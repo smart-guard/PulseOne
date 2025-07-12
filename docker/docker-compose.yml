@@ -1,0 +1,20 @@
+version: '3'
+services:
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: example
+    ports: ["5432:5432"]
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports: ["5672:5672", "15672:15672"]
+  backend:
+    build: ../backend
+    ports: ["3000:3000"]
+    depends_on: [redis, postgres, rabbitmq]
+  collector:
+    build: ../collector
+    depends_on: [redis, rabbitmq]
