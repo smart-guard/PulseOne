@@ -112,7 +112,7 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.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 }}
 
       # 🔔 Slack/Discord 알림 (필요 시 주석 해제)
       # - name: Notify Slack
