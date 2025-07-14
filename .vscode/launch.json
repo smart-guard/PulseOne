@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/kyungho/Project/PulseOne/collector/src",
+      "program": "/Users/kyungho/Project/PulseOne/collector/src/build/Debug/outDebug"
+    }
+  ]
+}

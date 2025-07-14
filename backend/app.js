@@ -9,4 +9,6 @@ const redis = require('redis');
 const client = redis.createClient({ url: `redis://${process.env.REDIS_HOST}:6379` });
 client.connect().then(() => console.log('Redis connected')).catch(console.error);
 
-app.listen(3000, () => console.log('Backend listening on port 3000'));
+app.listen(3000, '0.0.0.0', () => {
+    console.log('Backend listening on port 3000');
+  });
