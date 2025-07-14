@@ -26,4 +26,4 @@ test-results/
 .vscode/
 
 *.o
-bin/*.o
+bin/
