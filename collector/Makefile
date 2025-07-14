@@ -1,12 +1,39 @@
-CXX = g++
-CXXFLAGS = -std=c++17 -O2 -Wall
+# OS 자동 감지, 변수 선언
+ifeq ($(OS),Windows_NT)
+    TARGET = ModbusDriver.dll
+    CXX = g++
+    CXXFLAGS = -Wall -O2
+    LDFLAGS = -shared
+    RM = del /Q
+    SHARED_EXT = dll
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Linux)
+        TARGET = ModbusDriver.so
+        CXX = g++
+        CXXFLAGS = -Wall -fPIC -O2
+        LDFLAGS = -shared
+        RM = rm -f
+        SHARED_EXT = so
+    endif
+endif
 
-TARGET = main
+SRC_DIR = src
+SRCS = $(wildcard $(SRC_DIR)/*.cpp)
+OBJS = $(SRCS:.cpp=.o)
+PLUGIN_DIR = ../plugins
 
-all: $(TARGET)
+# 빌드 타겟
+build: $(PLUGIN_DIR)/$(TARGET)
 
-$(TARGET): main.cpp
-	$(CXX) $(CXXFLAGS) -o $@ $^
+$(PLUGIN_DIR)/$(TARGET): $(OBJS)
+	@mkdir -p $(PLUGIN_DIR)
+	$(CXX) $(LDFLAGS) -o $@ $(OBJS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(TARGET)
+	$(RM) $(SRC_DIR)/*.o $(PLUGIN_DIR)/ModbusDriver.$(SHARED_EXT)
+
+.PHONY: all build clean
