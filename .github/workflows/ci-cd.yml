@@ -62,5 +62,6 @@ jobs:
 
       - name: Backend 헬스체크
         run: |
-          sleep 10
-          curl -f http://localhost:3000/api/health
+          sleep 20
+          docker run --rm --network docker_default curlimages/curl:latest \
+            curl -f http://backend:3000/health
