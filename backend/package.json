@@ -1,16 +1,14 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "Node.js 기반 백엔드 및 DB저장 서비스 소스코드를 관리합니다.",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "test": "echo \"No test specified\" && exit 0"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "express": "^5.1.0"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "redis": "^4.6.5"
   }
 }
