@@ -1,4 +1,3 @@
-// src/main.cpp
 #include <iostream>
 
 extern "C" void hello() {

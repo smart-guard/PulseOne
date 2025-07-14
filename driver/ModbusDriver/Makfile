@@ -1,6 +1,4 @@
-# OS 감지 (Windows/MinGW, Linux)
 ifeq ($(OS),Windows_NT)
-    # Windows 환경 (MinGW 기준)
     TARGET = ModbusDriver.dll
     CXX = g++
     CXXFLAGS = -Wall -O2
@@ -24,7 +22,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 OBJS = $(SRCS:.cpp=.o)
 PLUGIN_DIR = ../plugins
 
-all: $(PLUGIN_DIR)/$(TARGET)
+build: $(PLUGIN_DIR)/$(TARGET)
 
 $(PLUGIN_DIR)/$(TARGET): $(OBJS)
 	@mkdir -p $(PLUGIN_DIR)
@@ -36,4 +34,4 @@ $(PLUGIN_DIR)/$(TARGET): $(OBJS)
 clean:
 	$(RM) $(SRC_DIR)/*.o $(PLUGIN_DIR)/ModbusDriver.$(SHARED_EXT)
 
-.PHONY: all clean
+.PHONY: all build clean
