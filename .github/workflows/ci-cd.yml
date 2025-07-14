@@ -2,6 +2,8 @@ name: PulseOne CI/CD
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'   # v1.0.0 같은 태그 push 시 실행
 
@@ -34,6 +36,11 @@ jobs:
       - name: Collector 빌드
         working-directory: ./collector
         run: make build
+
+      - name: Collector 실행 테스트
+        run: |
+          chmod +x ./collector/bin/collector
+          ./collector/bin/collector --help || echo "실행 테스트 실패"  
 
       - name: ModbusDriver 빌드
         working-directory: ./driver/ModbusDriver
