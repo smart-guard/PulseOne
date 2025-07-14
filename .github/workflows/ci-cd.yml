@@ -60,8 +60,9 @@ jobs:
           docker compose down || true
           docker compose up --build -d
 
-      - name: Backend 헬스체크
+      - name: Backend 헬스체크 (컨테이너 내부)
         run: |
           sleep 20
-          docker run --rm --network docker_default curlimages/curl:latest \
-            curl -f http://backend:3000/health
+          docker ps -a
+          docker logs $(docker ps -qf "name=backend")
+          docker exec $(docker ps -qf "name=backend") curl -f http://localhost:3000/health
