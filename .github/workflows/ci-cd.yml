@@ -36,7 +36,9 @@ jobs:
 
       - name: config/.env 파일 생성
         run: |
+          mkdir -p config
           echo "${{ secrets.ENV_FILE }}" > config/.env
+          cat config/.env
 
       - name: Backend 의존성 설치
         working-directory: ./backend
@@ -60,9 +62,13 @@ jobs:
           docker compose down || true
           docker compose up --build -d
 
-      - name: Backend 헬스체크 (컨테이너 내부)
+      - name: Backend 컨테이너 로그 및 헬스체크
         run: |
           sleep 20
           docker ps -a
-          docker logs $(docker ps -qf "name=backend")
-          docker exec $(docker ps -qf "name=backend") curl -f http://localhost:3000/health
+          echo "[ BACKEND LOGS ]"
+          docker logs $(docker ps -aqf "name=backend") || true
+          echo "[ COLLECTOR LOGS ]"
+          docker logs $(docker ps -aqf "name=collector") || true
+          echo "[ HEALTHCHECK ]"
+          docker exec $(docker ps -aqf "name=backend") curl -f http://localhost:3000/health || echo "헬스체크 실패"
