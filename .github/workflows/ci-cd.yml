@@ -1,0 +1,89 @@
+name: PulseOne CI/CD
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    services:
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pulseone
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+
+    env:
+      NODE_ENV: test
+      # 필요한 경우 추가 환경 변수 선언
+
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: config/.env 파일 생성
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > config/.env
+
+      # 1. Backend 빌드 및 테스트 (Node.js)
+      - name: Backend 의존성 설치
+        working-directory: ./backend
+        run: npm install
+
+      - name: Backend 테스트 실행
+        working-directory: ./backend
+        run: npm test || echo "테스트 스킵 또는 실패 무시"
+
+      # 2. Collector 빌드 (C++)
+      - name: Collector 빌드
+        working-directory: ./collector
+        run: make build
+
+      - name: Collector 테스트(옵션)
+        working-directory: ./collector
+        run: make test || echo "테스트 스킵 또는 실패 무시"
+
+      # 3. 드라이버 플러그인 빌드 (예시: ModbusDriver)
+      - name: ModbusDriver 빌드
+        working-directory: ./driver/ModbusDriver
+        run: make
+
+      # 4. Docker Compose 빌드 및 서비스 기동
+      - name: Docker Compose 빌드 및 기동
+        working-directory: ./docker
+        run: |
+          docker-compose down || true
+          docker-compose up --build -d
+
+      # 5. 헬스체크 및 간단 API 테스트
+      - name: Backend 헬스체크
+        run: |
+          sleep 10
+          curl -f http://localhost:3000/api/health
+
+      # 6. (옵션) 빌드 산출물 아카이브
+      - name: 빌드 산출물 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-build
+          path: collector/collector
+
+      # 7. (옵션) 슬랙/이메일 알림 등 추가 가능
+

@@ -1,0 +1,25 @@
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# 환경변수 및 민감 정보
+.env
+config/.env
+docker/.env
+secret.json
+credentials.json
+
+# 로그 및 시스템 파일
+*.log
+.DS_Store
+
+# 테스트/빌드 아티팩트
+coverage/
+dist/
+build/
+test-results/
