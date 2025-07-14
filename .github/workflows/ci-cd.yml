@@ -57,3 +57,17 @@ jobs:
           docker logs $(docker ps -aqf "name=collector") || true
           echo "[ HEALTHCHECK ]"
           docker exec $(docker ps -aqf "name=backend") curl -f http://localhost:3000/health || echo "헬스체크 실패"
+
+  build-windows:  # 👈 여기에 추가하면 됩니다
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build collector.exe
+        run: |
+          cd collector
+          make build
+      - name: Upload Windows .exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-windows
+          path: collector/bin/collector.exe
