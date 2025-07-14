@@ -24,3 +24,6 @@ dist/
 build/
 test-results/
 .vscode/
+
+*.o
+bin/*.o
