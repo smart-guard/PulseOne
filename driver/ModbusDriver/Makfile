@@ -1,0 +1,39 @@
+# OS 감지 (Windows/MinGW, Linux)
+ifeq ($(OS),Windows_NT)
+    # Windows 환경 (MinGW 기준)
+    TARGET = ModbusDriver.dll
+    CXX = g++
+    CXXFLAGS = -Wall -O2
+    LDFLAGS = -shared
+    RM = del /Q
+    SHARED_EXT = dll
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Linux)
+        TARGET = ModbusDriver.so
+        CXX = g++
+        CXXFLAGS = -Wall -fPIC -O2
+        LDFLAGS = -shared
+        RM = rm -f
+        SHARED_EXT = so
+    endif
+endif
+
+SRC_DIR = src
+SRCS = $(wildcard $(SRC_DIR)/*.cpp)
+OBJS = $(SRCS:.cpp=.o)
+PLUGIN_DIR = ../plugins
+
+all: $(PLUGIN_DIR)/$(TARGET)
+
+$(PLUGIN_DIR)/$(TARGET): $(OBJS)
+	@mkdir -p $(PLUGIN_DIR)
+	$(CXX) $(LDFLAGS) -o $@ $(OBJS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+clean:
+	$(RM) $(SRC_DIR)/*.o $(PLUGIN_DIR)/ModbusDriver.$(SHARED_EXT)
+
+.PHONY: all clean
