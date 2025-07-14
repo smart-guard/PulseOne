@@ -1,39 +1,43 @@
-# OS 자동 감지, 변수 선언
+# OS 감지 및 컴파일러 설정
 ifeq ($(OS),Windows_NT)
-    TARGET = ModbusDriver.dll
+    TARGET = collector.exe
     CXX = g++
     CXXFLAGS = -Wall -O2
-    LDFLAGS = -shared
     RM = del /Q
-    SHARED_EXT = dll
 else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Linux)
-        TARGET = ModbusDriver.so
+        TARGET = collector
         CXX = g++
-        CXXFLAGS = -Wall -fPIC -O2
-        LDFLAGS = -shared
+        CXXFLAGS = -Wall -O2
         RM = rm -f
-        SHARED_EXT = so
+    else ifeq ($(UNAME_S),Darwin)
+        TARGET = collector
+        CXX = clang++
+        CXXFLAGS = -Wall -O2
+        RM = rm -f
     endif
 endif
 
+# 디렉토리 및 파일 설정
 SRC_DIR = src
+BIN_DIR = bin
 SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 OBJS = $(SRCS:.cpp=.o)
-PLUGIN_DIR = ../plugins
+EXECUTABLE = $(BIN_DIR)/$(TARGET)
 
 # 빌드 타겟
-build: $(PLUGIN_DIR)/$(TARGET)
+build: $(EXECUTABLE)
 
-$(PLUGIN_DIR)/$(TARGET): $(OBJS)
-	@mkdir -p $(PLUGIN_DIR)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJS)
+$(EXECUTABLE): $(OBJS)
+	@mkdir -p $(BIN_DIR)
+	$(CXX) -o $(EXECUTABLE) $(OBJS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	$(RM) $(SRC_DIR)/*.o $(PLUGIN_DIR)/ModbusDriver.$(SHARED_EXT)
+	$(RM) $(SRC_DIR)/*.o
+	@rm -rf $(BIN_DIR)
 
 .PHONY: all build clean
