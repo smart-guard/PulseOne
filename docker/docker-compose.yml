@@ -1,20 +1,37 @@
-version: '3'
+version: "3.8"
 services:
-  redis:
-    image: redis:7
-    ports: ["6379:6379"]
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_PASSWORD: example
-    ports: ["5432:5432"]
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports: ["5672:5672", "15672:15672"]
   backend:
     build: ../backend
-    ports: ["3000:3000"]
-    depends_on: [redis, postgres, rabbitmq]
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../config/.env
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+
   collector:
     build: ../collector
-    depends_on: [redis, rabbitmq]
+    depends_on:
+      - rabbitmq
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: pulseone
+      POSTGRES_PASSWORD: yourpassword
+      POSTGRES_DB: pulseone
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
