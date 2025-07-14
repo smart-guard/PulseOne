@@ -1,14 +1,16 @@
+// app.js
 require('dotenv').config();
 const express = require('express');
+const redis = require('redis');
+
 const app = express();
 
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date() }));
 
-// 예시: Redis 연결
-const redis = require('redis');
+// Redis 클라이언트 연결
 const client = redis.createClient({ url: `redis://${process.env.REDIS_HOST}:6379` });
+
 client.connect().then(() => console.log('Redis connected')).catch(console.error);
 
-app.listen(3000, '0.0.0.0', () => {
-    console.log('Backend listening on port 3000');
-  });
+// 테스트 및 외부에서 불러올 수 있도록 export
+module.exports = app;
