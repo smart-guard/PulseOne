@@ -10,26 +10,6 @@ jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
 
-    # 아래 services 블록은 실무에서는 주석 처리(포트 충돌 방지, docker compose로만 통합 관리)
-    # services:
-    #   rabbitmq:
-    #     image: rabbitmq:3-management
-    #     ports:
-    #       - 5672:5672
-    #       - 15672:15672
-    #   postgres:
-    #     image: postgres:14
-    #     env:
-    #       POSTGRES_USER: pulseone
-    #       POSTGRES_PASSWORD: yourpassword
-    #       POSTGRES_DB: pulseone
-    #     ports:
-    #       - 5432:5432
-    #   redis:
-    #     image: redis:alpine
-    #     ports:
-    #       - 6379:6379
-
     steps:
       - name: 소스 체크아웃
         uses: actions/checkout@v4
@@ -37,7 +17,12 @@ jobs:
       - name: config/.env 파일 생성
         run: |
           mkdir -p config
-          echo "${{ secrets.ENV_FILE }}" > config/.env
+          echo "REDIS_HOST=redis" >> config/.env
+          echo "POSTGRES_HOST=postgres" >> config/.env
+          echo "RABBITMQ_HOST=rabbitmq" >> config/.env
+          echo "POSTGRES_USER=pulseone" >> config/.env
+          echo "POSTGRES_PASSWORD=yourpassword" >> config/.env
+          echo "POSTGRES_DB=pulseone" >> config/.env
           cat config/.env
 
       - name: Backend 의존성 설치
@@ -62,7 +47,7 @@ jobs:
           docker compose down || true
           docker compose up --build -d
 
-      - name: Backend 컨테이너 로그 및 헬스체크
+      - name: Backend 로그 및 헬스체크
         run: |
           sleep 20
           docker ps -a
