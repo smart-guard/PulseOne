@@ -9,8 +9,9 @@ __pycache__/
 
 # 환경변수 및 민감 정보
 .env
-config/.env
-docker/.env
+!config/.env.dev
+!config/.env.staging
+!config/.env.prod
 secret.json
 credentials.json
 
