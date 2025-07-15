@@ -26,12 +26,20 @@ jobs:
             exit 1
           fi
 
+      - name: Print working directory and list files
+        working-directory: ./backend
+        run: |
+          echo "📁 CURRENT DIR:"
+          pwd
+          echo "📂 FILES:"
+          ls -al
+
       - name: Install backend dependencies
-        working-directory: backend
+        working-directory: ./backend
         run: npm ci
 
       - name: Validate environment variables
-        working-directory: backend
+        working-directory: ./backend
         run: node scripts/validate-env.js
 
       - name: Run backend unit tests
