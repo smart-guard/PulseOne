@@ -12,6 +12,9 @@ jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
 
+    env:
+      ENV_STAGE: dev  # 'dev' 또는 'staging', 'prod'로 변경 가능
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4

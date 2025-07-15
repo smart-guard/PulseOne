@@ -1,32 +1,49 @@
-// backend/scripts/validate-env.js
+// scripts/validate-env.js
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
-const ENV_PATH = path.resolve(__dirname, '../../config/.env');
-const EXAMPLE_PATH = path.resolve(__dirname, '../../config/.env.example');
+const REQUIRED_KEYS = [
+  'DB_TYPE',
+  'POSTGRES_MAIN_DB_HOST',
+  'POSTGRES_MAIN_DB_PORT',
+  'POSTGRES_MAIN_DB_USER',
+  'POSTGRES_MAIN_DB_PASSWORD',
+  'POSTGRES_MAIN_DB_NAME',
+  'REDIS_MAIN_HOST',
+  'REDIS_MAIN_PORT',
+  'REDIS_MAIN_PASSWORD',
+  'RPC_HOST',
+  'RPC_PORT',
+  'INFLUXDB_HOST',
+  'INFLUXDB_PORT',
+  'INFLUXDB_TOKEN',
+  'INFLUXDB_ORG',
+  'INFLUXDB_BUCKET',
+  'BACKEND_PORT',
+];
 
-function parseEnvFile(filePath) {
-  if (!fs.existsSync(filePath)) return {};
-  const content = fs.readFileSync(filePath, 'utf-8');
-  return dotenv.parse(content);
+const stage = process.env.ENV_STAGE || 'dev';
+const envPath = path.resolve(__dirname, `../config/.env.${stage}`);
+
+if (!fs.existsSync(envPath)) {
+  console.error(`❌ .env.${stage} 파일이 존재하지 않습니다 (${envPath})`);
+  process.exit(1);
 }
 
-const actualEnv = parseEnvFile(ENV_PATH);
-const exampleEnv = parseEnvFile(EXAMPLE_PATH);
+dotenv.config({ path: envPath });
 
 let missing = [];
 
-for (const key in exampleEnv) {
-  if (!(key in actualEnv)) {
+for (const key of REQUIRED_KEYS) {
+  if (!process.env[key]) {
     missing.push(key);
   }
 }
 
 if (missing.length > 0) {
-  console.error('\x1b[31m[ENV ERROR]\x1b[0m 다음 환경변수가 누락되었습니다:');
-  missing.forEach(k => console.error(`  - ${k}`));
+  console.error('❌ 누락된 환경 변수:', missing.join(', '));
   process.exit(1);
-} else {
-  console.log('\x1b[32m[ENV OK]\x1b[0m .env 파일에 모든 필수 환경변수가 존재합니다.');
 }
+
+console.log(`✅ ${envPath} 유효성 검사 통과`);
