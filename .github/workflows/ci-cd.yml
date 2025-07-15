@@ -1,3 +1,4 @@
+# .github/workflows/ci-cd.yml
 name: PulseOne CI/CD
 
 on:
@@ -5,54 +6,73 @@ on:
     branches:
       - main
     tags:
-      - 'v*'   # v1.0.0 같은 태그 push 시 실행
+      - 'v*'
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 소스 체크아웃
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: config/.env 파일 생성
+      - name: Create config/.env file
         run: |
           mkdir -p config
           echo "REDIS_HOST=redis" >> config/.env
           echo "POSTGRES_HOST=postgres" >> config/.env
-          echo "RABBITMQ_HOST=rabbitmq" >> config/.env
           echo "POSTGRES_USER=pulseone" >> config/.env
           echo "POSTGRES_PASSWORD=yourpassword" >> config/.env
           echo "POSTGRES_DB=pulseone" >> config/.env
-
-      - name: Backend 의존성 설치
+          echo "DB_TYPE=postgres" >> config/.env
+          echo "RABBITMQ_HOST=rabbitmq" >> config/.env
+          echo "INFLUX_URL=http://influxdb:8086" >> config/.env
+          echo "INFLUX_TOKEN=devtoken" >> config/.env
+          echo "INFLUX_ORG=pulseone" >> config/.env
+          echo "INFLUX_BUCKET=metrics" >> config/.env
+          echo "RPC_HOST=localhost" >> config/.env
+          echo "RPC_PORT=4000" >> config/.env
+                
+      - name: Validate environment variables
         working-directory: ./backend
-        run: npm install
+        run: node scripts/validate-env.js    
 
-      - name: Backend 테스트 실행
+      - name: Install backend dependencies
         working-directory: ./backend
-        run: npm test || echo "테스트 스킵 또는 실패 무시"
+        run: npm ci
 
-      - name: Collector 빌드
+      - name: Run backend unit tests
+        working-directory: ./backend
+        run: npm test || echo "Backend tests failed"
+
+      - name: Run InfluxDB (TimeSeries) test
+        working-directory: ./backend
+        run: node __tests__/influx.test.js || echo "InfluxDB test skipped"
+
+      - name: Run RPC test
+        working-directory: ./backend
+        run: node __tests__/rpc.test.js || echo "RPC test skipped"
+
+      - name: Build Collector
         working-directory: ./collector
         run: make build
 
-      - name: Collector 실행 테스트
+      - name: Run Collector binary
         run: |
           chmod +x ./collector/bin/collector
-          ./collector/bin/collector --help || echo "실행 테스트 실패"  
+          ./collector/bin/collector --help || echo "Collector run failed"
 
-      - name: ModbusDriver 빌드
+      - name: Build ModbusDriver
         working-directory: ./driver/ModbusDriver
         run: make build
 
-      - name: Docker Compose 빌드 및 기동
+      - name: Launch Docker Compose
         working-directory: ./docker
         run: |
           docker compose down || true
           docker compose up --build -d
 
-      - name: Backend 로그 및 헬스체크
+      - name: Backend health check
         run: |
           sleep 20
           docker ps -a
@@ -61,13 +81,14 @@ jobs:
           echo "[ COLLECTOR LOGS ]"
           docker logs $(docker ps -aqf "name=collector") || true
           echo "[ HEALTHCHECK ]"
-          docker exec $(docker ps -aqf "name=backend") curl -f http://localhost:3000/health || echo "헬스체크 실패"
+          docker exec $(docker ps -aqf "name=backend") curl -f http://localhost:3000/health || echo "Healthcheck failed"
 
-      - name: Upload Linux binary
+      - name: Upload collector Linux binary
         uses: actions/upload-artifact@v4
         with:
           name: collector-linux
           path: collector/bin/collector
+
 
   build-windows:
     runs-on: windows-latest
@@ -80,7 +101,7 @@ jobs:
           cd collector
           make build
 
-      - name: Upload Windows .exe
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: collector-windows
@@ -96,13 +117,13 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Download Windows artifact
+      - name: Download artifacts (Windows)
         uses: actions/download-artifact@v4
         with:
           name: collector-windows
           path: dist/
 
-      - name: Download Linux artifact
+      - name: Download artifacts (Linux)
         uses: actions/download-artifact@v4
         with:
           name: collector-linux
@@ -121,17 +142,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
-      # 🔔 Slack/Discord 알림 (필요 시 주석 해제)
-      # - name: Notify Slack
-      #   uses: slackapi/slack-github-action@v1.24.0
-      #   with:
-      #     payload: |
-      #       {
-      #         "text": ":rocket: PulseOne ${{ github.ref_name }} 릴리즈 완료!"
-      #       }
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
   release-docker:
     name: Release Docker Image (multi-arch)
     needs: [build-test-deploy]
@@ -148,25 +158,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build multi-arch Docker image (not pushed yet)
+      - name: Build multi-arch Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: false  # ← 필요 시 true로 변경
+          push: false  # change to true if pushing to registry
           tags: |
-            yourname/collector:latest
-            yourname/collector:${{ github.ref_name }}
-
-      # 🔐 DockerHub 연동 시 아래 주석 해제
-      # - name: Login to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKER_USERNAME }}
-      #     password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # - name: Push Docker image
-      #   run: |
-      #     docker push yourname/collector:latest
-      #     docker push yourname/collector:${{ github.ref_name }}
+            pulseone/collector:latest
+            pulseone/collector:${{ github.ref_name }}
