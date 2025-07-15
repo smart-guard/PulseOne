@@ -31,15 +31,16 @@ jobs:
           echo "INFLUX_ORG=pulseone" >> config/.env
           echo "INFLUX_BUCKET=metrics" >> config/.env
           echo "RPC_HOST=localhost" >> config/.env
-          echo "RPC_PORT=4000" >> config/.env
-                
-      - name: Validate environment variables
-        working-directory: ./backend
-        run: node scripts/validate-env.js    
+          echo "RPC_PORT=4000" >> config/.env  
 
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
+
+                        
+      - name: Validate environment variables
+        working-directory: ./backend
+        run: node scripts/validate-env.js  
 
       - name: Run backend unit tests
         working-directory: ./backend
