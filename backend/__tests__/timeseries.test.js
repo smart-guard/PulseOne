@@ -1,6 +1,6 @@
 // __tests__/timeseries.test.js
 
-const { getInfluxClient } = require('../lib/connection/influx');
+const { getInfluxClient } = require('../../lib/connection/influx');
 
 describe('InfluxDB 연결 테스트', () => {
   let influx;

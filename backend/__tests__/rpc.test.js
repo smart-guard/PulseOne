@@ -1,6 +1,6 @@
 // __tests__/rpc.test.js
 
-const client = require('../lib/connection/rpc');
+const client = require('../../lib/connection/rpc');
 
 (async () => {
   try {
