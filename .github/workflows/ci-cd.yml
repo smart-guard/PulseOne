@@ -7,21 +7,19 @@ on:
     tags:
       - 'v*'
 
-env:
-  ENV_STAGE: dev # 변경 가능: dev, staging, prod
-
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
+    env:
+      ENV_STAGE: dev  # 변경 가능: dev, staging, prod
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up config/.env file based on stage
+      - name: Copy .env.dev → .env
         run: |
-          mkdir -p ./backend/config
-          cp ./config/.env.${ENV_STAGE} ./backend/config/.env
+          cp ./backend/config/.env.${{ env.ENV_STAGE }} ./backend/config/.env
 
       - name: Install backend dependencies
         working-directory: ./backend
@@ -33,43 +31,44 @@ jobs:
 
       - name: Run backend unit tests
         working-directory: ./backend
-        run: npm test || echo "✅ Unit test failed (non-blocking)"
+        run: npm test || echo "Backend tests failed"
+
+      - name: Run InfluxDB (TimeSeries) test
+        working-directory: ./backend
+        run: node __tests__/influx.test.js || echo "InfluxDB test skipped"
 
       - name: Run RPC test
         working-directory: ./backend
-        run: node __tests__/rpc.test.js || echo "✅ RPC test skipped"
+        run: node __tests__/rpc.test.js || echo "RPC test skipped"
 
-      - name: Run InfluxDB test
-        working-directory: ./backend
-        run: node __tests__/influx.test.js || echo "✅ Influx test skipped"
-
-      - name: Build Collector (Linux)
+      - name: Build Collector
         working-directory: ./collector
         run: make build
 
       - name: Run Collector binary
         run: |
           chmod +x ./collector/bin/collector
-          ./collector/bin/collector --help || echo "Collector test skipped"
+          ./collector/bin/collector --help || echo "Collector run failed"
 
       - name: Build ModbusDriver
         working-directory: ./driver/ModbusDriver
         run: make build
 
-      - name: Launch Docker Compose for integration test
+      - name: Launch Docker Compose
         working-directory: ./docker
         run: |
           docker compose down || true
           docker compose up --build -d
 
-      - name: Backend health check & logs
+      - name: Backend health check
         run: |
-          sleep 10
+          sleep 20
           docker ps -a
           echo "[ BACKEND LOGS ]"
           docker logs $(docker ps -aqf "name=backend") || true
           echo "[ COLLECTOR LOGS ]"
           docker logs $(docker ps -aqf "name=collector") || true
+          echo "[ HEALTHCHECK ]"
           docker exec $(docker ps -aqf "name=backend") curl -f http://localhost:3000/health || echo "Healthcheck failed"
 
       - name: Upload collector Linux binary
@@ -85,8 +84,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build collector.exe
-        working-directory: ./collector
-        run: make build
+        run: |
+          cd collector
+          make build
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -101,7 +101,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
       - name: Download artifacts (Windows)
         uses: actions/download-artifact@v4
@@ -135,9 +136,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-      - name: Set up QEMU for multi-arch
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -149,19 +151,7 @@ jobs:
           context: .
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: false
+          push: false  # change to true if pushing to registry
           tags: |
             pulseone/collector:latest
             pulseone/collector:${{ github.ref_name }}
-
-      # Optional push to Docker Hub:
-      # - name: Login to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKER_USERNAME }}
-      #     password: ${{ secrets.DOCKER_PASSWORD }}
-      #
-      # - name: Push Docker image
-      #   run: |
-      #     docker push pulseone/collector:latest
-      #     docker push pulseone/collector:${{ github.ref_name }}
