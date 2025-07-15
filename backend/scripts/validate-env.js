@@ -24,7 +24,7 @@ const REQUIRED_KEYS = [
 ];
 
 const stage = process.env.ENV_STAGE || 'dev';
-const envPath = path.resolve(__dirname, `../config/.env.${stage}`);
+const envPath = path.resolve(__dirname, `../../config/.env.${stage}`);
 
 if (!fs.existsSync(envPath)) {
   console.error(`❌ .env.${stage} 파일이 존재하지 않습니다 (${envPath})`);
