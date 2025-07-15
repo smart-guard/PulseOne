@@ -27,11 +27,11 @@ jobs:
           fi
 
       - name: Install backend dependencies
-        working-directory: ${{ github.workspace }}/backend
+        working-directory: backend
         run: npm ci
 
       - name: Validate environment variables
-        working-directory: ./backend
+        working-directory: backend
         run: node scripts/validate-env.js
 
       - name: Run backend unit tests
