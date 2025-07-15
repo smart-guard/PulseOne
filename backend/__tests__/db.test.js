@@ -1,4 +1,4 @@
-const db = require('../lib/connection/db');
+const db = require('../../lib/connection/db');
 
 describe('Database Connection Test', () => {
   afterAll(async () => {

@@ -1,4 +1,4 @@
-const connectMQ = require('../lib/connection/mq');
+const connectMQ = require('../../lib/connection/mq');
 
 describe('RabbitMQ Connection Test', () => {
   let connection, channel;
