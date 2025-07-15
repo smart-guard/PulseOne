@@ -26,13 +26,13 @@ jobs:
             exit 1
           fi
 
-      - name: Print working directory and list files
-        working-directory: ./backend
+      - name: Print directory before npm ci
         run: |
-          echo "📁 CURRENT DIR:"
-          pwd
+          echo "📁 CURRENT DIR: $(pwd)"
           echo "📂 FILES:"
           ls -al
+          echo "📂 ./backend FILES:"
+          ls -al ./backend
 
       - name: Install backend dependencies
         working-directory: ./backend
