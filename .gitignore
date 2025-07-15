@@ -27,3 +27,5 @@ test-results/
 
 *.o
 bin/
+
+structure.txt
