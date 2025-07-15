@@ -2,24 +2,29 @@ name: PulseOne CI/CD
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [ main ]
+    tags: [ 'v*' ]
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
     env:
-      ENV_STAGE: dev  # 변경 가능: dev, staging, prod
+      ENV_STAGE: dev  # dev, staging, prod 중 선택
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Copy .env.dev → .env
+      - name: Set .env from ENV_STAGE
         run: |
-          cp ./backend/config/.env.${{ env.ENV_STAGE }} ./backend/config/.env
+          ENV_FILE="./config/.env.${{ env.ENV_STAGE }}"
+          if [ -f "$ENV_FILE" ]; then
+            cp "$ENV_FILE" ./config/.env
+            echo "✅ Copied $ENV_FILE to ./config/.env"
+          else
+            echo "❌ $ENV_FILE not found!"
+            exit 1
+          fi
 
       - name: Install backend dependencies
         working-directory: ./backend
@@ -79,7 +84,6 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -101,16 +105,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download artifacts (Windows)
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: collector-windows
           path: dist/
 
-      - name: Download artifacts (Linux)
+      - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
           name: collector-linux
@@ -124,8 +127,6 @@ jobs:
           files: |
             dist/collector.exe
             dist/collector
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
@@ -136,8 +137,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -151,7 +151,7 @@ jobs:
           context: .
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: false  # change to true if pushing to registry
+          push: false
           tags: |
             pulseone/collector:latest
             pulseone/collector:${{ github.ref_name }}
