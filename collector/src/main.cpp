@@ -1,28 +1,25 @@
-#include <iostream>
-#include <csignal>
-#include <atomic>
-#include <thread>
-#include <chrono>
+// main.cpp - PulseOne Collector 진입점
 
-std::atomic<bool> running(true);
-
-void signalHandler(int signum) {
-    running = false;
-}
-
-void collectLoop() {
-    while (running) {
-        // 실제 디바이스 데이터 수집 로직 (여기선 모의)
-        std::cout << "[Collector] Data collected at " << std::time(nullptr) << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-    }
-}
+#include "DatabaseManager.h"
+#include "LogManager.h"
 
 int main() {
-    std::signal(SIGINT, signalHandler);
-    std::cout << "[Collector] Service started." << std::endl;
-    std::thread t(collectLoop);
-    t.join();
-    std::cout << "[Collector] Service stopped." << std::endl;
+    LogManager::getInstance().log(LOG_MODULE_SYSTEM, LOG_LEVEL_INFO, "🚀 PulseOne Collector 시작");
+
+    // DB 초기화
+    if (!DatabaseManager::getInstance().initialize()) {
+        LogManager::getInstance().log(LOG_MODULE_DATABASE, LOG_LEVEL_ERROR, "❌ 데이터베이스 초기화 실패");
+        return 1;
+    }
+
+    LogManager::getInstance().log(LOG_MODULE_DATABASE, LOG_LEVEL_INFO, "✅ 데이터베이스 초기화 완료");
+
+    // TODO: 드라이버 로드, ConfigManager 호출, VirtualPointEngine 시작 등 구현 예정
+
+    // 임시 대기 루프
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
+
     return 0;
 }

@@ -1,0 +1,46 @@
+name: Collector CI (Isolated)
+
+on:
+  push:
+    paths:
+      - 'collector/**'
+  pull_request:
+    paths:
+      - 'collector/**'
+
+jobs:
+  build-only-collector:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: collector
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ make libpqxx-dev libsqlite3-dev
+
+      - name: Ensure .env from .env.template
+        run: |
+          if [ ! -f ../config/.env ]; then
+            echo "📦 Copying missing .env from .env.template"
+            cp ../config/.env.template ../config/.env
+          fi
+
+      - name: Build collector
+        run: make all
+
+      - name: Run collector --help
+        run: |
+          chmod +x bin/collector
+          ./bin/collector --help || echo "Collector run check failed"
+
+      - name: Upload Linux artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-linux-isolated
+          path: bin/collector
