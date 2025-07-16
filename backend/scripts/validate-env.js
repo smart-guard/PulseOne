@@ -12,7 +12,7 @@ const REQUIRED_KEYS = [
   'POSTGRES_MAIN_DB_NAME',
   'REDIS_MAIN_HOST',
   'REDIS_MAIN_PORT',
-  'REDIS_MAIN_PASSWORD',
+  // 'REDIS_MAIN_PASSWORD', // ← 이것을 OPTIONAL로 이동
   'RPC_HOST',
   'RPC_PORT',
   'INFLUXDB_HOST',
@@ -21,6 +21,14 @@ const REQUIRED_KEYS = [
   'INFLUXDB_ORG',
   'INFLUXDB_BUCKET',
   'BACKEND_PORT',
+];
+
+// 선택적 환경변수 (빈 문자열도 허용)
+const OPTIONAL_KEYS = [
+  'REDIS_MAIN_PASSWORD',
+  'REDIS_SECONDARY_PASSWORD',
+  'NODE_ENV',
+  'LOG_LEVEL'
 ];
 
 const stage = process.env.ENV_STAGE || 'dev';
@@ -35,9 +43,17 @@ dotenv.config({ path: envPath });
 
 let missing = [];
 
+// 필수 환경변수 검사 (빈 문자열도 누락으로 간주)
 for (const key of REQUIRED_KEYS) {
-  if (!process.env[key]) {
+  if (!process.env[key] || process.env[key].trim() === '') {
     missing.push(key);
+  }
+}
+
+// 선택적 환경변수는 존재하기만 하면 OK (빈 문자열도 허용)
+for (const key of OPTIONAL_KEYS) {
+  if (process.env[key] === undefined) {
+    console.warn(`⚠️ 선택적 환경변수 ${key}가 설정되지 않음`);
   }
 }
 
@@ -47,3 +63,5 @@ if (missing.length > 0) {
 }
 
 console.log(`✅ ${envPath} 유효성 검사 통과`);
+console.log(`   - 필수 변수: ${REQUIRED_KEYS.length}개 확인됨`);
+console.log(`   - 선택적 변수: ${OPTIONAL_KEYS.length}개`);
