@@ -1,6 +1,6 @@
 // lib/connection/influxClient.js
 const { InfluxDB } = require('@influxdata/influxdb-client');
-const config = require('../../config');
+const config = require('../../../config/env');
 
 const influx = new InfluxDB({
   url: config.influx.url,

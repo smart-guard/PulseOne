@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-const { env } = require('../config');
+const env = require('../../../config/env');
 
 class PostgresDB {
   constructor() {

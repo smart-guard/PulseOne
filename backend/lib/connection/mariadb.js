@@ -1,5 +1,5 @@
 const mariadb = require('mariadb');
-const { env } = require('../config');
+const env = require('../../../config/env');
 
 class MariaDB {
   constructor() {

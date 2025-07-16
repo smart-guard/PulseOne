@@ -1,6 +1,6 @@
 // lib/connection/rpc.js
 const jayson = require('jayson');
-const config = require('../../config');
+const env = require('../../../config/env');
 
 /**
  * RPCClient 클래스는 JSON-RPC 서버와 통신하기 위한 클라이언트를 제공합니다.

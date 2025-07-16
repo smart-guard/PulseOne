@@ -1,4 +1,4 @@
-const redisClient = require('../../lib/connection/redis');
+const redisClient = require('../lib/connection/redis');
 
 describe('Redis Connection Test', () => {
   beforeAll(async () => {
