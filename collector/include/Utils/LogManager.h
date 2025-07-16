@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <memory>
+#include <thread>
 
 #include "LogLevels.h"  // 로그 레벨 상수 및 enum 사용
 

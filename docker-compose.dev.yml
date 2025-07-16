@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  backend:
+    container_name: pulseone-backend-dev
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    working_dir: /app/backend
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      influx:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    environment:
+      - ENV_STAGE=${ENV_STAGE:-dev}
+    env_file:
+      - ./config/.env.${ENV_STAGE:-dev}
+    volumes:
+      - ./backend:/app/backend
+      - ./config:/app/config
+    tty: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  collector:
+    container_name: pulseone-collector-dev
+    build:
+      context: .
+      dockerfile: collector/dev.Dockerfile
+    working_dir: /app/collector
+    volumes:
+      - .:/app
+    tty: true
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    environment:
+      - ENV_STAGE=${ENV_STAGE:-dev}
+
+  postgres:
+    image: postgres:15
+    container_name: pulseone-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: pulseone
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  influx:
+    image: influxdb:2.7
+    container_name: pulseone-influx
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=adminpass
+      - DOCKER_INFLUXDB_INIT_ORG=pulseone
+      - DOCKER_INFLUXDB_INIT_BUCKET=metrics
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=mytoken
+
+  redis:
+    image: redis:alpine
+    container_name: pulseone-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pulseone-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin

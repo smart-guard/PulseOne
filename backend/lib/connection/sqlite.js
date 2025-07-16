@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const { env } = require('../config');
+const env = require('../../../config/env');
 
 class SQLiteDB {
   constructor() {

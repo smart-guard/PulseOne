@@ -1,24 +1,24 @@
 const path = require('path');
 const dotenvSafe = require('dotenv-safe');
 
-// 현재 실행 환경: default = 'dev'
+// 실행 환경: 기본값 'dev'
 const ENV_STAGE = process.env.ENV_STAGE || 'dev';
 
-// 경로 정의
+// 경로 수정: 컨테이너 기준 /app/config/.env.{stage}
 const envPath = path.resolve(__dirname, `../../config/.env.${ENV_STAGE}`);
 const examplePath = path.resolve(__dirname, '../../config/.env.example');
 
-// 환경 변수 로드 및 검증
+// .env 환경변수 로드 및 검증
 dotenvSafe.config({
   path: envPath,
   example: examplePath,
   allowEmptyValues: false,
 });
 
-// 필요한 값 변환 처리
+// 숫자 변환 유틸
 const toInt = (v, def) => (v ? parseInt(v, 10) : def);
 
-// 설정 객체 내보내기
+// 환경변수 내보내기
 module.exports = {
   ENV_STAGE,
 
@@ -26,7 +26,10 @@ module.exports = {
   REDIS_MAIN_HOST: process.env.REDIS_MAIN_HOST,
   REDIS_MAIN_PORT: toInt(process.env.REDIS_MAIN_PORT, 6379),
   REDIS_MAIN_PASSWORD: process.env.REDIS_MAIN_PASSWORD || '',
-  REDIS_REPLICAS: process.env.REDIS_REPLICAS?.split(',') || [],
+  REDIS_REPLICAS: (process.env.REDIS_REPLICAS || '')
+    .split(',')
+    .filter(Boolean),
+
   REDIS_SECONDARY_HOST: process.env.REDIS_SECONDARY_HOST,
   REDIS_SECONDARY_PORT: toInt(process.env.REDIS_SECONDARY_PORT, 6379),
   REDIS_SECONDARY_PASSWORD: process.env.REDIS_SECONDARY_PASSWORD || '',
@@ -60,10 +63,10 @@ module.exports = {
   RABBITMQ_PORT: toInt(process.env.RABBITMQ_PORT, 5672),
   RABBITMQ_MANAGEMENT_PORT: toInt(process.env.RABBITMQ_MANAGEMENT_PORT, 15672),
 
-  // App
+  // Application
   BACKEND_PORT: toInt(process.env.BACKEND_PORT, 3000),
 
-  // Optional
+  // SQLite fallback
   DB_TYPE: process.env.DB_TYPE || 'postgres',
   SQLITE_PATH: process.env.SQLITE_PATH || './db.sqlite',
 };

@@ -1,9 +1,7 @@
-// __tests__/rpc.test.js
+const client = require('../lib/connection/rpc');
 
-const client = require('../../lib/connection/rpc');
-
-(async () => {
-  try {
+describe('RPC Client', () => {
+  test('ping 메서드 호출 시 정상 응답을 반환해야 한다', async () => {
     const result = await new Promise((resolve, reject) => {
       client.request('ping', [], (err, error, response) => {
         if (err) return reject(err);
@@ -11,9 +9,7 @@ const client = require('../../lib/connection/rpc');
         resolve(response);
       });
     });
-    console.log('RPC 서버 응답:', result);
-  } catch (err) {
-    console.error('RPC 호출 실패:', err.message || err);
-    process.exit(1);
-  }
-})();
+
+    expect(result).toBe('pong'); // or whatever your RPC returns
+  });
+});

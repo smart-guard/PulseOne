@@ -1,4 +1,5 @@
 // lib/connection/influx.js
+const { influxdb } = require('../../../config/env');
 const { InfluxDB, Point } = require('@influxdata/influxdb-client');
 
 function getInfluxClient() {

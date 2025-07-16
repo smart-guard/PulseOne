@@ -10,6 +10,21 @@
 #define LOG_LEVEL_ERROR "ERROR"
 #define LOG_LEVEL_FATAL "FATAL"
 
+// 🔹 호환성을 위한 짧은 별칭 (기존 코드에서 사용 중)
+#define LOG_DEBUG LOG_LEVEL_DEBUG
+#define LOG_INFO  LOG_LEVEL_INFO
+#define LOG_WARN  LOG_LEVEL_WARN
+#define LOG_ERROR LOG_LEVEL_ERROR
+#define LOG_FATAL LOG_LEVEL_FATAL
+
+// 🔹 모듈 상수 추가 (DatabaseManager, main.cpp에서 사용)
+#define LOG_MODULE_DATABASE "database"
+#define LOG_MODULE_SYSTEM   "system"
+#define LOG_MODULE_CONFIG   "config"
+#define LOG_MODULE_PLUGIN   "plugin"
+#define LOG_MODULE_ENGINE   "engine"
+#define LOG_MODULE_DRIVER   "driver"
+
 // 🔹 고급 enum + 매핑 함수 (선택적 사용 가능)
 enum class LogLevel {
     DEBUG,
@@ -30,17 +45,5 @@ inline std::string toString(LogLevel level) {
         default:              return "UNKNOWN";
     }
 }
-
-// (선택) 문자열 → enum 역변환이 필요한 경우 아래 함수도 추가할 수 있음
-/*
-inline LogLevel fromString(const std::string& str) {
-    if (str == "DEBUG") return LogLevel::DEBUG;
-    if (str == "INFO")  return LogLevel::INFO;
-    if (str == "WARN")  return LogLevel::WARN;
-    if (str == "ERROR") return LogLevel::ERROR;
-    if (str == "FATAL") return LogLevel::FATAL;
-    return LogLevel::INFO; // default
-}
-*/
 
 #endif // LOG_LEVELS_H
