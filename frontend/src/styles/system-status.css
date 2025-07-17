@@ -1,0 +1,351 @@
+/* system-status.css - 시스템 상태 페이지 전용 스타일 */
+
+/* ============================================
+   Service Management Page Styles
+   ============================================ */
+
+.service-management-container {
+  width: 100%;
+  max-width: none;
+}
+
+/* 서비스 목록 */
+.service-list {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  overflow: hidden;
+}
+
+.service-list-header {
+  padding: var(--space-4) var(--space-6);
+  background: var(--neutral-50);
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+.service-list-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.service-list-title h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+.service-count {
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
+  background: var(--neutral-100);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xl);
+}
+
+/* 서비스 테이블 */
+.service-table {
+  width: 100%;
+}
+
+.service-table-header {
+  display: grid;
+  grid-template-columns: 50px 1fr 120px 100px 120px 120px 120px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  background: var(--neutral-50);
+  border-bottom: 1px solid var(--neutral-200);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+.service-table-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 120px 100px 120px 120px 120px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--neutral-100);
+  transition: background-color 0.2s ease;
+}
+
+.service-table-row:hover {
+  background: var(--neutral-25);
+}
+
+.service-table-row:last-child {
+  border-bottom: none;
+}
+
+.service-table-cell {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+}
+
+/* 서비스 정보 */
+.service-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.service-icon {
+  font-size: 1.5rem;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.service-icon.text-success-600 {
+  color: var(--success-600);
+}
+
+.service-icon.text-error-600 {
+  color: var(--error-600);
+}
+
+.service-icon.text-neutral-400 {
+  color: var(--neutral-400);
+}
+
+.service-name {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin-bottom: var(--space-1);
+}
+
+.service-description {
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+  margin-top: var(--space-1);
+}
+
+/* 리소스 정보 */
+.resource-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.resource-info .text-xs {
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+}
+
+/* 포트 목록 */
+.port-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.port-badge {
+  font-size: var(--text-xs);
+  background: var(--primary-50);
+  color: var(--primary-700);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+}
+
+/* 서비스 제어 */
+.service-controls {
+  display: flex;
+  justify-content: center;
+}
+
+.service-controls .control-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.service-controls .btn {
+  padding: var(--space-2) var(--space-3);
+  min-width: 2.5rem;
+}
+
+/* 필수 서비스 표시 */
+.service-controls .text-xs.text-neutral-500 {
+  background-color: var(--neutral-100);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+/* 서비스 상태 텍스트 개선 */
+.status.status-running {
+  background-color: var(--success-50);
+  color: var(--success-700);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
+}
+
+.status.status-stopped {
+  background-color: var(--neutral-100);
+  color: var(--neutral-600);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
+}
+
+.status.status-error {
+  background-color: var(--error-50);
+  color: var(--error-700);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
+}
+
+/* 업타임 표시 */
+.service-table-cell .text-sm.text-neutral-600 {
+  font-family: var(--font-family-mono);
+  font-weight: 500;
+}
+
+/* 서비스별 상태 애니메이션 */
+.service-table-row:hover .service-icon {
+  transform: scale(1.1);
+}
+
+.service-table-row:hover .service-name {
+  color: var(--primary-600);
+}
+
+/* 처리 중 상태 */
+.service-table-row.processing {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.service-table-row.processing .service-icon {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 체크박스 스타일링 */
+.service-table-cell input[type="checkbox"] {
+  transform: scale(1.1);
+  accent-color: var(--primary-500);
+}
+
+/* 로딩 상태 버튼 */
+.service-controls .btn:disabled {
+  position: relative;
+}
+
+.service-controls .btn:disabled::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: -0.4375rem;
+  margin-left: -0.4375rem;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* 서비스별 특별 스타일링 */
+.service-table-row[data-service="backend"] .service-name::after {
+  content: "🔒";
+  margin-left: var(--space-1);
+  font-size: var(--text-xs);
+  opacity: 0.5;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 1024px) {
+  .service-table-header,
+  .service-table-row {
+    grid-template-columns: 40px 1fr 100px 80px 100px 100px;
+  }
+  
+  .resource-info {
+    font-size: var(--text-xs);
+  }
+  
+  .port-list {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .service-management-container {
+    padding: var(--space-4);
+  }
+  
+  .service-table-header,
+  .service-table-row {
+    grid-template-columns: 1fr 100px 80px;
+  }
+  
+  .service-table-cell:nth-child(1),
+  .service-table-cell:nth-child(4),
+  .service-table-cell:nth-child(5),
+  .service-table-cell:nth-child(6) {
+    display: none;
+  }
+  
+  .service-table-header {
+    display: none;
+  }
+  
+  .service-table-row {
+    display: block;
+    padding: var(--space-4);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+  }
+  
+  .service-table-cell {
+    display: block;
+    margin-bottom: var(--space-3);
+    border-bottom: 1px solid var(--neutral-100);
+    padding-bottom: var(--space-2);
+  }
+  
+  .service-table-cell:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  
+  .service-table-cell::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--neutral-700);
+    display: block;
+    margin-bottom: var(--space-1);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+  }
+  
+  .service-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .service-controls {
+    justify-content: flex-start;
+  }
+}
+

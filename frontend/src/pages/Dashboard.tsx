@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/base.css';
+import '../styles/dashboard.css';
 
 // 서비스 상태 타입 정의
 interface ServiceStatus {
