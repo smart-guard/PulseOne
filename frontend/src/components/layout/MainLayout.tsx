@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import Dashboard from '../../pages/Dashboard';
 import SystemStatus from '../../pages/SystemStatus';
+import DeviceList from '../../pages/DeviceList';
+import RealTimeMonitor from '../../pages/RealTimeMonitor';
+import DataExplorer from '../../pages/DataExplorer';
 import '../../styles/base.css';
 
 interface MenuItem {
@@ -36,6 +39,7 @@ const menuItems: MenuItem[] = [
     icon: 'fas fa-database',
     path: '/data',
     children: [
+      { id: 'data-explorer', title: '데이터 익스플로러', icon: 'fas fa-download', path: '/data/explorer' },
       { id: 'realtime', title: '실시간 데이터', icon: 'fas fa-chart-line', path: '/data/realtime' },
       { id: 'historical', title: '이력 데이터', icon: 'fas fa-history', path: '/data/historical' },
       { id: 'virtual-points', title: '가상포인트', icon: 'fas fa-calculator', path: '/data/virtual-points' },
@@ -159,19 +163,11 @@ const MainLayout: React.FC = () => {
       case 'dashboard':
         return <Dashboard />;
       case 'device-list':
-        return (
-          <div className="page-content">
-            <h2>디바이스 목록</h2>
-            <p>연결된 디바이스들의 목록을 관리합니다.</p>
-          </div>
-        );
+        return <DeviceList />;
+      case 'data-explorer':
+        return <DataExplorer />;
       case 'realtime':
-        return (
-          <div className="page-content">
-            <h2>실시간 데이터</h2>
-            <p>실시간으로 수집되는 데이터를 모니터링합니다.</p>
-          </div>
-        );
+        return <RealTimeMonitor />;
       case 'active-alarms':
         return (
           <div className="page-content">

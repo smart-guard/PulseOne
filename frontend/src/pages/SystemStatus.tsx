@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/base.css';
+import '../styles/system-status.css';
 
 interface ServiceStatus {
   name: string;
