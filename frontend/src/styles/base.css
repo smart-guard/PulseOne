@@ -933,3 +933,299 @@ body {
   }
 }
 
+
+/* ============================================
+   Service Control Styles
+   ============================================ */
+
+.service-controls {
+  margin-top: var(--space-2);
+  display: flex;
+  justify-content: center;
+}
+
+.service-description {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.service-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.btn-error {
+  background: var(--error-500);
+  color: white;
+  border-color: var(--error-500);
+}
+
+.btn-error:hover:not(:disabled) {
+  background: var(--error-600);
+}
+
+.btn-success {
+  background: var(--success-500);
+  color: white;
+  border-color: var(--success-500);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: var(--success-600);
+}
+
+.ml-2 {
+  margin-left: var(--space-2);
+}
+
+
+
+/* ============================================
+   Service Management Page Styles
+   ============================================ */
+
+.service-management-container {
+  width: 100%;
+  max-width: none;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+.page-title {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--neutral-800);
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* Control Panel */
+.control-panel {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+}
+
+.control-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-700);
+  margin-bottom: var(--space-2);
+}
+
+.control-buttons {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.selected-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+/* Service List */
+.service-list {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  overflow: hidden;
+}
+
+.service-list-header {
+  padding: var(--space-4) var(--space-6);
+  background: var(--neutral-50);
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+.service-list-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.service-list-title h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+.service-count {
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
+  background: var(--neutral-100);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xl);
+}
+
+/* Service Table */
+.service-table {
+  width: 100%;
+}
+
+.service-table-header {
+  display: grid;
+  grid-template-columns: 50px 1fr 120px 100px 120px 120px 120px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  background: var(--neutral-50);
+  border-bottom: 1px solid var(--neutral-200);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+.service-table-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 120px 100px 120px 120px 120px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--neutral-100);
+  transition: background-color 0.2s ease;
+}
+
+.service-table-row:hover {
+  background: var(--neutral-25);
+}
+
+.service-table-row:last-child {
+  border-bottom: none;
+}
+
+.service-table-cell {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+}
+
+.service-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.service-info .service-icon {
+  font-size: 1.5rem;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.service-info .service-name {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--neutral-800);
+}
+
+.service-info .service-description {
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+  margin-top: var(--space-1);
+}
+
+.resource-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.port-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.port-badge {
+  font-size: var(--text-xs);
+  background: var(--primary-50);
+  color: var(--primary-700);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+}
+
+.service-controls .control-buttons {
+  gap: var(--space-2);
+}
+
+/* Button Variants */
+.btn-warning {
+  background: var(--warning-500);
+  color: white;
+  border-color: var(--warning-500);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--warning-600);
+  border-color: var(--warning-600);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .control-panel {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+  
+  .service-table-header,
+  .service-table-row {
+    grid-template-columns: 40px 1fr 100px 80px 100px 100px;
+  }
+  
+  .resource-info {
+    font-size: var(--text-xs);
+  }
+}
+
+@media (max-width: 768px) {
+  .service-table-header,
+  .service-table-row {
+    grid-template-columns: 1fr 100px 80px;
+  }
+  
+  .service-table-cell:nth-child(1),
+  .service-table-cell:nth-child(4),
+  .service-table-cell:nth-child(5),
+  .service-table-cell:nth-child(6) {
+    display: none;
+  }
+  
+  .control-buttons {
+    flex-direction: column;
+  }
+}
+
+
+

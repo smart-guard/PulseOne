@@ -1,14 +1,18 @@
-
 import React, { useState, useEffect } from 'react';
 import '../styles/base.css';
 
-// 기존 타입 정의들은 그대로 유지
+// 서비스 상태 타입 정의
 interface ServiceStatus {
   name: string;
-  status: 'running' | 'paused' | 'stopped' | 'error';
+  displayName: string;
+  status: 'running' | 'stopped' | 'error';
   icon: string;
+  controllable: boolean;
+  container: string;
+  description: string;
 }
 
+// 기존 타입 정의들
 interface SystemMetrics {
   dataPointsPerSecond: number;
   avgResponseTime: number;
@@ -43,14 +47,65 @@ interface Device {
 }
 
 const Dashboard: React.FC = () => {
-  // 기존 상태 관리 코드들 그대로 유지
+  // 서비스 상태 관리
   const [services, setServices] = useState<ServiceStatus[]>([
-    { name: 'Database', status: 'running', icon: 'fas fa-database' },
-    { name: 'Backend', status: 'running', icon: 'fas fa-code-branch' },
-    { name: 'Collector', status: 'running', icon: 'fas fa-download' },
-    { name: 'Message Queue', status: 'paused', icon: 'fas fa-exchange-alt' },
+    { 
+      name: 'backend', 
+      displayName: 'Backend API',
+      status: 'running', 
+      icon: 'fas fa-server',
+      controllable: false,
+      container: 'pulseone-backend-dev',
+      description: 'REST API 서버 (필수 서비스)'
+    },
+    { 
+      name: 'collector', 
+      displayName: 'Data Collector',
+      status: 'running', 
+      icon: 'fas fa-download',
+      controllable: true,
+      container: 'pulseone-collector-dev',
+      description: 'C++ 데이터 수집 서비스'
+    },
+    { 
+      name: 'redis', 
+      displayName: 'Redis Cache',
+      status: 'running', 
+      icon: 'fas fa-database',
+      controllable: true,
+      container: 'pulseone-redis',
+      description: '실시간 데이터 캐시'
+    },
+    { 
+      name: 'postgres', 
+      displayName: 'PostgreSQL',
+      status: 'running', 
+      icon: 'fas fa-database',
+      controllable: true,
+      container: 'pulseone-postgres',
+      description: '메인 데이터베이스'
+    },
+    { 
+      name: 'influxdb', 
+      displayName: 'InfluxDB',
+      status: 'running', 
+      icon: 'fas fa-chart-line',
+      controllable: true,
+      container: 'pulseone-influx',
+      description: '시계열 데이터베이스'
+    },
+    { 
+      name: 'rabbitmq', 
+      displayName: 'RabbitMQ',
+      status: 'running', 
+      icon: 'fas fa-exchange-alt',
+      controllable: true,
+      container: 'pulseone-rabbitmq',
+      description: '메시지 큐 브로커'
+    }
   ]);
 
+  // 기존 상태들
   const [metrics, setMetrics] = useState<SystemMetrics>({
     dataPointsPerSecond: 2847,
     avgResponseTime: 145,
@@ -102,7 +157,7 @@ const Dashboard: React.FC = () => {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 기존 useEffect와 함수들 그대로 유지
+  // 실시간 업데이트 시뮬레이션
   useEffect(() => {
     const interval = setInterval(() => {
       setMetrics(prev => ({
@@ -117,6 +172,7 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // 새로고침 핸들러
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -124,30 +180,44 @@ const Dashboard: React.FC = () => {
     setIsRefreshing(false);
   };
 
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case 'running':
-      case 'connected':
-        return 'status-running';
-      case 'paused':
-        return 'status-paused';
-      case 'stopped':
-      case 'disconnected':
-        return 'status-stopped';
-      case 'error':
-        return 'status-error';
-      default:
-        return 'status-stopped';
+  // 서비스 제어 함수
+  const handleServiceControl = async (service: ServiceStatus, action: 'start' | 'stop') => {
+    if (!service.controllable) {
+      alert(`${service.displayName}는 필수 서비스로 제어할 수 없습니다.`);
+      return;
+    }
+
+    try {
+      setIsRefreshing(true);
+      
+      // 시뮬레이션: 실제로는 여기서 Docker API 호출
+      console.log(`${action}ing ${service.displayName}...`);
+      
+      // 임시 지연
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 상태 업데이트
+      setServices(prev => prev.map(s => 
+        s.name === service.name 
+          ? { ...s, status: action === 'start' ? 'running' : 'stopped' }
+          : s
+      ));
+      
+      console.log(`${service.displayName} ${action === 'start' ? '시작' : '정지'} 완료`);
+    } catch (error) {
+      console.error(`서비스 제어 실패:`, error);
+      alert(`${service.displayName} ${action === 'start' ? '시작' : '정지'} 실패`);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
+  // 유틸리티 함수들
   const getStatusDotClass = (status: string) => {
     switch (status) {
       case 'running':
       case 'connected':
         return 'status-dot-running';
-      case 'paused':
-        return 'status-dot-paused';
       case 'stopped':
       case 'disconnected':
         return 'status-dot-stopped';
@@ -177,6 +247,66 @@ const Dashboard: React.FC = () => {
     return `${diffDays}일 전`;
   };
 
+  // 서비스 카드 렌더링
+  const renderServiceCard = (service: ServiceStatus) => {
+    const isRunning = service.status === 'running';
+    const isError = service.status === 'error';
+    
+    return (
+      <div key={service.name} className="service-card">
+        <div className={`service-icon ${
+          isRunning ? 'text-success-600' : 
+          isError ? 'text-error-600' : 'text-neutral-400'
+        }`}>
+          <i className={service.icon}></i>
+        </div>
+        
+        <div className="service-name">{service.displayName}</div>
+        
+        <div className={`status ${
+          isRunning ? 'status-running' : 
+          isError ? 'status-error' : 'status-stopped'
+        }`}>
+          {isRunning ? '정상' : isError ? '오류' : '정지'}
+        </div>
+
+        {/* 제어 버튼 */}
+        <div className="service-controls">
+          {service.controllable ? (
+            <>
+              {isRunning ? (
+                <button 
+                  className="btn btn-sm btn-error"
+                  onClick={() => handleServiceControl(service, 'stop')}
+                  disabled={isRefreshing}
+                >
+                  <i className="fas fa-stop"></i>
+                  정지
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-sm btn-success"
+                  onClick={() => handleServiceControl(service, 'start')}
+                  disabled={isRefreshing}
+                >
+                  <i className="fas fa-play"></i>
+                  시작
+                </button>
+              )}
+            </>
+          ) : (
+            <span className="text-xs text-neutral-500">필수 서비스</span>
+          )}
+        </div>
+        
+        {/* 설명 */}
+        <div className="service-description">
+          {service.description}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="dashboard-container">
       {/* 대시보드 헤더 */}
@@ -193,7 +323,7 @@ const Dashboard: React.FC = () => {
 
       {/* 상태 표시줄 */}
       <div className="dashboard-status-bar">
-        <div className="connection-indicator">
+        <div className="connection-status">
           <div className="live-indicator"></div>
           실시간 연결됨
         </div>
@@ -210,34 +340,27 @@ const Dashboard: React.FC = () => {
 
       {/* 대시보드 그리드 */}
       <div className="dashboard-grid">
-        {/* 서비스 상태 */}
+        {/* 서비스 상태 위젯 */}
         <div className="dashboard-widget">
           <div className="widget-header">
             <div className="widget-title">
               <i className="fas fa-server text-primary-600"></i>
               서비스 상태
             </div>
-            <span className="status status-running">
-              <div className="status-dot status-dot-running"></div>
-              모든 서비스 정상
-            </span>
+            <div className="service-summary">
+              <span className="text-sm text-success-600">
+                {services.filter(s => s.status === 'running').length}개 실행 중
+              </span>
+              {services.some(s => s.status === 'error') && (
+                <span className="text-sm text-error-600 ml-2">
+                  {services.filter(s => s.status === 'error').length}개 오류
+                </span>
+              )}
+            </div>
           </div>
           <div className="widget-content">
             <div className="service-grid">
-              {services.map((service) => (
-                <div key={service.name} className="service-card">
-                  <div className={`service-icon ${getStatusClass(service.status) === 'status-running' ? 'text-success-600' : 
-                    getStatusClass(service.status) === 'status-paused' ? 'text-warning-600' : 'text-error-600'}`}>
-                    <i className={service.icon}></i>
-                  </div>
-                  <div className="service-name">{service.name}</div>
-                  <div className={`status ${getStatusClass(service.status)}`}>
-                    {service.status === 'running' ? '정상' : 
-                     service.status === 'paused' ? '지연' : 
-                     service.status === 'stopped' ? '정지' : '오류'}
-                  </div>
-                </div>
-              ))}
+              {services.map(service => renderServiceCard(service))}
             </div>
           </div>
         </div>

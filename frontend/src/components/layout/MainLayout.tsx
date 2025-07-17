@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Dashboard from '../../pages/Dashboard';
+import SystemStatus from '../../pages/SystemStatus';
 import '../../styles/base.css';
 
 interface MenuItem {
@@ -179,19 +180,7 @@ const MainLayout: React.FC = () => {
           </div>
         );
       case 'system-status':
-        return (
-          <div className="page-content">
-            <h2>시스템 상태</h2>
-            <p>전체 시스템의 상태를 모니터링합니다.</p>
-          </div>
-        );
-      default:
-        return (
-          <div className="page-content">
-            <h2>{menuItems.find(item => item.id === currentPage)?.title || '페이지'}</h2>
-            <p>해당 페이지가 개발 중입니다.</p>
-          </div>
-        );
+        return <SystemStatus />;
     }
   };
 
