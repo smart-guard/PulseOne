@@ -1,0 +1,988 @@
+/* login-history.css - 로그인 이력 페이지 전용 스타일 */
+
+.login-history-container {
+  width: 100%;
+  max-width: none;
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* 로그인 통계 패널 */
+.login-stats-panel {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-6);
+}
+
+.login-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--neutral-200);
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.login-stat-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.login-stat-card.total-logins {
+  border-top: 4px solid var(--primary-500);
+  background: linear-gradient(135deg, var(--primary-50), white);
+}
+
+.login-stat-card.success-rate {
+  border-top: 4px solid var(--success-500);
+  background: linear-gradient(135deg, var(--success-50), white);
+}
+
+.login-stat-card.failed-attempts {
+  border-top: 4px solid var(--error-500);
+  background: linear-gradient(135deg, var(--error-50), white);
+}
+
+.login-stat-card.unique-users {
+  border-top: 4px solid var(--warning-500);
+  background: linear-gradient(135deg, var(--warning-50), white);
+}
+
+.login-stat-card.suspicious-activities {
+  border-top: 4px solid var(--error-600);
+  background: linear-gradient(135deg, var(--error-100), white);
+  animation: pulse-warning 3s infinite;
+}
+
+.login-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xl);
+  margin-bottom: var(--space-3);
+}
+
+.login-stat-card.total-logins .login-stat-icon {
+  background: var(--primary-100);
+  color: var(--primary-600);
+}
+
+.login-stat-card.success-rate .login-stat-icon {
+  background: var(--success-100);
+  color: var(--success-600);
+}
+
+.login-stat-card.failed-attempts .login-stat-icon {
+  background: var(--error-100);
+  color: var(--error-600);
+}
+
+.login-stat-card.unique-users .login-stat-icon {
+  background: var(--warning-100);
+  color: var(--warning-600);
+}
+
+.login-stat-card.suspicious-activities .login-stat-icon {
+  background: var(--error-100);
+  color: var(--error-600);
+}
+
+.login-stat-value {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--neutral-800);
+  line-height: 1;
+  margin-bottom: var(--space-1);
+}
+
+.login-stat-card.success-rate .login-stat-value::after {
+  content: '%';
+  font-size: var(--text-lg);
+  color: var(--neutral-600);
+}
+
+.login-stat-label {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+  font-weight: 500;
+}
+
+.login-stat-trend {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+.login-stat-trend.up {
+  color: var(--success-600);
+}
+
+.login-stat-trend.down {
+  color: var(--error-600);
+}
+
+.login-stat-trend.neutral {
+  color: var(--neutral-600);
+}
+
+/* 활성 세션 패널 */
+.active-sessions-panel {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  margin-bottom: var(--space-6);
+}
+
+.active-sessions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--neutral-200);
+  background: var(--neutral-50);
+}
+
+.active-sessions-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.session-count-badge {
+  background: var(--primary-100);
+  color: var(--primary-700);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.active-sessions-content {
+  padding: var(--space-4) var(--space-6);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--neutral-100);
+  animation: slideIn 0.3s ease-out;
+}
+
+.session-item:last-child {
+  border-bottom: none;
+}
+
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.session-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--success-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--success-600);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  position: relative;
+}
+
+.session-avatar.current-user {
+  background: var(--primary-100);
+  color: var(--primary-600);
+}
+
+.session-avatar::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--success-500);
+  border: 2px solid white;
+  animation: pulse 2s infinite;
+}
+
+.session-details {
+  min-width: 0;
+}
+
+.session-user {
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin-bottom: var(--space-1);
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+}
+
+.session-location {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.session-device {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.session-duration {
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+  font-weight: 500;
+}
+
+.session-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.session-terminate-btn {
+  background: var(--error-100);
+  color: var(--error-700);
+  border: 1px solid var(--error-200);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.session-terminate-btn:hover {
+  background: var(--error-200);
+}
+
+/* 필터 및 검색 */
+.login-filters {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.login-search-box {
+  flex: 1;
+  min-width: 300px;
+  position: relative;
+}
+
+.login-search-input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-3) 2.5rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  background: white;
+  transition: all 0.2s ease;
+}
+
+.login-search-input:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.login-search-icon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--neutral-400);
+}
+
+.login-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 120px;
+}
+
+.login-filter-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--neutral-600);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.login-filter-select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  background-color: white;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right var(--space-2) center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+.login-filter-select:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.date-range-picker {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.date-input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  background: white;
+  cursor: pointer;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+/* 로그인 이력 테이블 */
+.login-history-table {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  overflow: hidden;
+}
+
+.login-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--neutral-200);
+  background: var(--neutral-50);
+}
+
+.login-history-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.login-history-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history-table th {
+  background: var(--neutral-50);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--neutral-700);
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+.history-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--neutral-100);
+  font-size: var(--text-sm);
+  color: var(--neutral-700);
+  vertical-align: middle;
+}
+
+.history-table tr {
+  transition: background-color 0.2s ease;
+}
+
+.history-table tr:hover {
+  background: var(--neutral-25);
+}
+
+.history-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* 로그인 상태 표시 */
+.login-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.login-status.success {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.login-status.failed {
+  background: var(--error-100);
+  color: var(--error-700);
+}
+
+.login-status.locked {
+  background: var(--warning-100);
+  color: var(--warning-700);
+}
+
+.login-status.suspicious {
+  background: var(--error-100);
+  color: var(--error-700);
+  animation: pulse-warning 2s infinite;
+}
+
+.login-status-icon {
+  font-size: var(--text-xs);
+}
+
+/* 디바이스 및 위치 정보 */
+.device-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.device-name {
+  font-weight: 500;
+  color: var(--neutral-800);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.device-details {
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+}
+
+.location-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.location-country {
+  font-weight: 500;
+  color: var(--neutral-800);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.location-details {
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+}
+
+.ip-address {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--neutral-600);
+  background: var(--neutral-100);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-1);
+}
+
+/* 위험 표시 */
+.risk-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.risk-indicator.low {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.risk-indicator.medium {
+  background: var(--warning-100);
+  color: var(--warning-700);
+}
+
+.risk-indicator.high {
+  background: var(--error-100);
+  color: var(--error-700);
+  animation: pulse-warning 2s infinite;
+}
+
+.risk-indicator.critical {
+  background: var(--error-200);
+  color: var(--error-800);
+  animation: pulse-critical 1s infinite;
+}
+
+/* 세션 지속시간 표시 */
+.session-duration-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.duration-bar {
+  width: 60px;
+  height: 6px;
+  background: var(--neutral-200);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.duration-fill {
+  height: 100%;
+  background: var(--primary-500);
+  border-radius: var(--radius-xl);
+  transition: width 0.3s ease;
+}
+
+.duration-text {
+  font-size: var(--text-xs);
+  color: var(--neutral-600);
+  font-weight: 500;
+  min-width: 50px;
+}
+
+/* 상세 정보 확장 */
+.login-detail-toggle {
+  background: none;
+  border: none;
+  color: var(--primary-600);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+  font-size: var(--text-xs);
+}
+
+.login-detail-toggle:hover {
+  background: var(--primary-50);
+}
+
+.login-detail-row {
+  background: var(--neutral-25);
+}
+
+.login-detail-content {
+  padding: var(--space-4);
+  border-top: 1px solid var(--neutral-200);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.detail-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--neutral-600);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-value {
+  font-size: var(--text-sm);
+  color: var(--neutral-800);
+  font-weight: 500;
+}
+
+.detail-value.code {
+  font-family: var(--font-family-mono);
+  background: var(--neutral-100);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+/* 페이지네이션 */
+.login-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--neutral-200);
+  background: var(--neutral-50);
+}
+
+.pagination-btn {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-300);
+  background: white;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--neutral-50);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-btn.active {
+  background: var(--primary-500);
+  color: white;
+  border-color: var(--primary-500);
+}
+
+.pagination-info {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+  margin: 0 var(--space-4);
+}
+
+/* 보안 알림 */
+.security-alert {
+  background: linear-gradient(135deg, var(--error-50), var(--warning-50));
+  border: 1px solid var(--error-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.security-alert-icon {
+  font-size: var(--text-2xl);
+  color: var(--error-600);
+  animation: pulse-warning 2s infinite;
+}
+
+.security-alert-content {
+  flex: 1;
+}
+
+.security-alert-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--error-800);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.security-alert-message {
+  font-size: var(--text-sm);
+  color: var(--error-700);
+  margin: 0;
+}
+
+.security-alert-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* 로딩 상태 */
+.login-history-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16);
+  color: var(--neutral-500);
+}
+
+.login-history-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--neutral-200);
+  border-radius: 50%;
+  border-top-color: var(--primary-500);
+  animation: spin 1s ease-in-out infinite;
+  margin-right: var(--space-3);
+}
+
+/* 빈 상태 */
+.login-history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16);
+  color: var(--neutral-500);
+}
+
+.login-history-empty-icon {
+  font-size: 4rem;
+  color: var(--neutral-300);
+  margin-bottom: var(--space-4);
+}
+
+.login-history-empty-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--neutral-600);
+  margin-bottom: var(--space-2);
+}
+
+.login-history-empty-description {
+  font-size: var(--text-base);
+  color: var(--neutral-500);
+  text-align: center;
+  max-width: 400px;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 1200px) {
+  .login-stats-panel {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-stats-panel {
+    grid-template-columns: 1fr;
+  }
+  
+  .login-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  
+  .login-search-box {
+    min-width: auto;
+  }
+  
+  .date-range-picker {
+    justify-content: space-between;
+  }
+  
+  .login-history-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  
+  .login-history-actions {
+    justify-content: center;
+  }
+  
+  .history-table {
+    font-size: var(--text-xs);
+  }
+  
+  .history-table th,
+  .history-table td {
+    padding: var(--space-2);
+  }
+  
+  .device-info,
+  .location-info {
+    gap: 0;
+  }
+  
+  .device-details,
+  .location-details {
+    display: none;
+  }
+  
+  .session-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  
+  .session-info {
+    justify-content: space-between;
+  }
+  
+  .session-actions {
+    justify-content: flex-end;
+  }
+  
+  .security-alert {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  
+  .security-alert-actions {
+    justify-content: center;
+  }
+}
+
+/* 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-warning {
+  0% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+}
+
+@keyframes pulse-critical {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.9);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 특별 표시 */
+.first-login-badge {
+  background: var(--primary-100);
+  color: var(--primary-700);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+}
+
+.admin-login-badge {
+  background: var(--error-100);
+  color: var(--error-700);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+}
+
+.failed-login-count {
+  background: var(--error-100);
+  color: var(--error-700);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
+}

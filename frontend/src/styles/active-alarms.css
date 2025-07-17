@@ -1,0 +1,834 @@
+/* active-alarms.css - 실시간 활성 알람 페이지 전용 스타일 */
+
+.active-alarms-container {
+  width: 100%;
+  max-width: none;
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* 긴급 알람 배너 */
+.emergency-banner {
+  background: linear-gradient(135deg, var(--error-500), var(--error-600));
+  color: white;
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+  animation: pulse-error 2s infinite;
+}
+
+.emergency-banner.hidden {
+  display: none;
+}
+
+.emergency-icon {
+  font-size: var(--text-2xl);
+  animation: shake 0.5s infinite;
+}
+
+.emergency-content h2 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+.emergency-content p {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.emergency-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* 알람 통계 패널 */
+.alarm-stats-panel {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-6);
+}
+
+.alarm-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border-top: 4px solid var(--neutral-200);
+  border: 1px solid var(--neutral-200);
+  position: relative;
+  overflow: hidden;
+}
+
+.alarm-stat-card.critical {
+  border-top-color: var(--error-500);
+  background: linear-gradient(135deg, var(--error-50), white);
+}
+
+.alarm-stat-card.high {
+  border-top-color: var(--warning-500);
+  background: linear-gradient(135deg, var(--warning-50), white);
+}
+
+.alarm-stat-card.medium {
+  border-top-color: var(--primary-500);
+  background: linear-gradient(135deg, var(--primary-50), white);
+}
+
+.alarm-stat-card.low {
+  border-top-color: var(--success-500);
+  background: linear-gradient(135deg, var(--success-50), white);
+}
+
+.alarm-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xl);
+  margin-bottom: var(--space-3);
+  position: relative;
+}
+
+.alarm-stat-card.critical .alarm-stat-icon {
+  background: var(--error-100);
+  color: var(--error-600);
+  animation: pulse-error 2s infinite;
+}
+
+.alarm-stat-card.high .alarm-stat-icon {
+  background: var(--warning-100);
+  color: var(--warning-600);
+}
+
+.alarm-stat-card.medium .alarm-stat-icon {
+  background: var(--primary-100);
+  color: var(--primary-600);
+}
+
+.alarm-stat-card.low .alarm-stat-icon {
+  background: var(--success-100);
+  color: var(--success-600);
+}
+
+.alarm-stat-value {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--neutral-800);
+  line-height: 1;
+  margin-bottom: var(--space-1);
+}
+
+.alarm-stat-card.critical .alarm-stat-value {
+  color: var(--error-700);
+}
+
+.alarm-stat-label {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+  font-weight: 500;
+}
+
+.alarm-trend {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.alarm-trend.up {
+  color: var(--error-600);
+}
+
+.alarm-trend.down {
+  color: var(--success-600);
+}
+
+/* 실시간 제어 패널 */
+.realtime-controls {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.realtime-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--success-50);
+  border: 1px solid var(--success-200);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--success-700);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success-500);
+  animation: pulse 2s infinite;
+}
+
+.last-update {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+}
+
+.sound-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sound-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.sound-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sound-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--neutral-300);
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.sound-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+input:checked + .sound-slider {
+  background-color: var(--primary-500);
+}
+
+input:checked + .sound-slider:before {
+  transform: translateX(20px);
+}
+
+/* 알람 필터 */
+.alarm-filters {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 120px;
+}
+
+.filter-group label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--neutral-600);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  background-color: white;
+  font-size: var(--text-sm);
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right var(--space-2) center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.quick-filters {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.quick-filter-btn {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-300);
+  background: white;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.quick-filter-btn:hover {
+  background: var(--neutral-50);
+}
+
+.quick-filter-btn.active {
+  background: var(--primary-500);
+  color: white;
+  border-color: var(--primary-500);
+}
+
+.quick-filter-btn.critical {
+  background: var(--error-500);
+  color: white;
+  border-color: var(--error-500);
+}
+
+/* 알람 목록 */
+.alarms-list {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  overflow: hidden;
+}
+
+.alarms-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--neutral-200);
+  background: var(--neutral-50);
+}
+
+.alarms-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.alarm-count {
+  background: var(--primary-100);
+  color: var(--primary-700);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.bulk-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* 알람 카드 */
+.alarm-card {
+  border-bottom: 1px solid var(--neutral-100);
+  padding: var(--space-4) var(--space-6);
+  transition: all 0.2s;
+  position: relative;
+  animation: slideIn 0.3s ease-out;
+}
+
+.alarm-card:hover {
+  background: var(--neutral-25);
+}
+
+.alarm-card.critical {
+  border-left: 4px solid var(--error-500);
+  background: linear-gradient(90deg, var(--error-50), transparent 50%);
+}
+
+.alarm-card.high {
+  border-left: 4px solid var(--warning-500);
+  background: linear-gradient(90deg, var(--warning-50), transparent 50%);
+}
+
+.alarm-card.medium {
+  border-left: 4px solid var(--primary-500);
+  background: linear-gradient(90deg, var(--primary-50), transparent 50%);
+}
+
+.alarm-card.low {
+  border-left: 4px solid var(--success-500);
+  background: linear-gradient(90deg, var(--success-50), transparent 50%);
+}
+
+.alarm-card.new {
+  animation: highlightNew 3s ease-out;
+}
+
+.alarm-card.acknowledged {
+  opacity: 0.7;
+  background: var(--neutral-50);
+}
+
+.alarm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+
+.alarm-main-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.alarm-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin: 0 0 var(--space-1) 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alarm-source {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.alarm-time {
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
+  min-width: 120px;
+}
+
+.alarm-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+}
+
+.alarm-priority.critical {
+  background: var(--error-100);
+  color: var(--error-700);
+}
+
+.alarm-priority.high {
+  background: var(--warning-100);
+  color: var(--warning-700);
+}
+
+.alarm-priority.medium {
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+
+.alarm-priority.low {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.alarm-body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-4);
+  align-items: end;
+}
+
+.alarm-details {
+  min-width: 0;
+}
+
+.alarm-message {
+  font-size: var(--text-base);
+  color: var(--neutral-700);
+  line-height: 1.5;
+  margin-bottom: var(--space-2);
+}
+
+.alarm-value {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.current-value {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--error-600);
+}
+
+.threshold-info {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+}
+
+.alarm-meta {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
+}
+
+.alarm-duration {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.alarm-count-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.alarm-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* 알람 상태 */
+.alarm-status {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xl);
+}
+
+.alarm-status.active {
+  background: var(--error-100);
+  color: var(--error-700);
+}
+
+.alarm-status.acknowledged {
+  background: var(--warning-100);
+  color: var(--warning-700);
+}
+
+.alarm-status.auto-ack {
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+
+/* 알람 승인 모달 */
+.acknowledge-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: var(--space-4);
+}
+
+.acknowledge-content {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: 500px;
+  padding: var(--space-6);
+}
+
+.acknowledge-content h3 {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--neutral-800);
+}
+
+.acknowledge-content textarea {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  min-height: 80px;
+  margin-bottom: var(--space-4);
+}
+
+.acknowledge-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* 빈 상태 */
+.empty-alarms {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16);
+  color: var(--neutral-500);
+}
+
+.empty-icon {
+  font-size: 4rem;
+  color: var(--success-300);
+  margin-bottom: var(--space-4);
+}
+
+.empty-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--success-600);
+  margin-bottom: var(--space-2);
+}
+
+.empty-description {
+  font-size: var(--text-base);
+  color: var(--neutral-500);
+  text-align: center;
+  max-width: 400px;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 1200px) {
+  .alarm-stats-panel {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .alarm-body {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+  
+  .alarm-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .alarm-stats-panel {
+    grid-template-columns: 1fr;
+  }
+  
+  .realtime-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  
+  .alarm-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  
+  .quick-filters {
+    margin-left: 0;
+    justify-content: center;
+  }
+  
+  .alarm-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  
+  .alarm-time {
+    text-align: left;
+    min-width: auto;
+  }
+  
+  .alarm-value {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  
+  .alarm-actions {
+    flex-wrap: wrap;
+  }
+  
+  .emergency-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  
+  .emergency-actions {
+    margin-left: 0;
+    align-self: stretch;
+  }
+}
+
+/* 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes highlightNew {
+  0% {
+    background: var(--warning-100);
+    transform: scale(1.02);
+  }
+  100% {
+    background: transparent;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-error {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+/* 알람 사운드 비활성화 상태 */
+.sound-disabled {
+  opacity: 0.6;
+}
+
+/* 새로운 알람 배지 */
+.new-alarm-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--error-500);
+  color: white;
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  border-radius: var(--radius-xl);
+  animation: pulse-error 2s infinite;
+}
+
+/* 스크롤바 커스터마이징 */
+.alarms-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.alarms-list::-webkit-scrollbar-track {
+  background: var(--neutral-100);
+}
+
+.alarms-list::-webkit-scrollbar-thumb {
+  background: var(--neutral-300);
+  border-radius: var(--radius-sm);
+}
+
+.alarms-list::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-400);
+}
