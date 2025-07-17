@@ -43,4 +43,6 @@ docker-compose.override.yml
 
 # 압축 파일 (개발용)
 *.tar.gz
-*.zip
+*.zip.vscode/settings.json
+secrets/
+*.key
