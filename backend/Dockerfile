@@ -13,3 +13,4 @@ COPY backend /app/backend
 COPY config /app/config
 
 CMD ["node", "app.js"]
+ 

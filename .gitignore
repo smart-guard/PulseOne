@@ -3,17 +3,25 @@ node_modules/
 npm-debug.log*
 
 # Python
-__pycache__/
+**__pycache__**/
 *.py[cod]
 .venv/
 
 # 환경변수 및 민감 정보
 .env
-!config/.env.dev
-!config/.env.staging
-!config/.env.prod
+.env.local
+.env.*.local
+!config/.env.template
+config/.env.dev
+config/.env.staging  
+config/.env.prod
 secret.json
 credentials.json
+
+# API Keys 보안 (추가)
+secrets/
+*.key
+.anthropic/
 
 # 로그 및 시스템 파일
 *.log
@@ -25,8 +33,14 @@ dist/
 build/
 test-results/
 .vscode/
-
 *.o
 bin/
-
 structure.txt
+
+# Docker 관련 (추가)
+.env.override
+docker-compose.override.yml
+
+# 압축 파일 (개발용)
+*.tar.gz
+*.zip

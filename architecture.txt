@@ -1,0 +1,90 @@
+# PulseOne 분산 아키텍처 설계
+
+# ============================================
+# 중앙 관리 서버 (항상 실행)
+# ============================================
+Central_Management_Server:
+  components:
+    - Backend_API        # 항상 실행
+    - Web_Dashboard      # 모든 서비스 제어
+    - Service_Registry   # 분산 서비스 등록/발견
+    - Configuration_Manager  # 중앙 설정 관리
+  
+  responsibilities:
+    - 웹 인터페이스 제공
+    - 사용자 인증/권한 관리
+    - 서비스 상태 모니터링
+    - 설정 배포 및 관리
+    - 알람 및 이벤트 처리
+    - 보고서 생성
+
+# ============================================
+# 데이터 수집 노드들 (선택적 실행)
+# ============================================
+Collector_Nodes:
+  collector_node_1:
+    location: "Factory A - Building 1"
+    services:
+      - Data_Collector      # 웹에서 시작/중지
+      - Protocol_Drivers    # Modbus, MQTT, BACnet
+    devices:
+      - PLC_Network_A
+      - MQTT_Sensors_A
+    
+  collector_node_2:
+    location: "Factory B - Building 2"  
+    services:
+      - Data_Collector
+      - Protocol_Drivers
+    devices:
+      - BACnet_HVAC_System
+      - Modbus_Energy_Meters
+
+# ============================================
+# 데이터베이스 클러스터 (분산 가능)
+# ============================================
+Database_Cluster:
+  redis_cluster:
+    primary_node: "DB-Server-1"
+    replica_nodes: ["DB-Server-2", "DB-Server-3"]
+    purpose: "실시간 데이터 캐싱"
+    
+  postgresql_cluster:
+    master_node: "DB-Server-1"
+    slave_nodes: ["DB-Server-2"]
+    purpose: "설정 및 메타데이터"
+    
+  influxdb_cluster:
+    nodes: ["TimeSeries-Server-1", "TimeSeries-Server-2"]
+    purpose: "시계열 데이터 저장"
+
+# ============================================
+# 메시지 큐 클러스터
+# ============================================
+Message_Queue_Cluster:
+  rabbitmq_nodes:
+    - "MQ-Server-1"
+    - "MQ-Server-2" 
+  purpose: "서비스간 비동기 통신"
+
+# ============================================
+# 웹 인터페이스 기능
+# ============================================
+Web_Dashboard_Features:
+  service_management:
+    - "Collector 서비스 시작/중지"
+    - "실시간 상태 모니터링"
+    - "로그 확인"
+    - "성능 지표 확인"
+  
+  configuration:
+    - "디바이스 설정 편집"
+    - "데이터 포인트 관리"
+    - "알람 설정"
+    - "가상포인트 관리"
+  
+  monitoring:
+    - "실시간 데이터 모니터링"
+    - "시스템 상태 대시보드"
+    - "알람/이벤트 뷰"
+    - "성능 차트"
