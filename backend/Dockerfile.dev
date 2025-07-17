@@ -1,0 +1,25 @@
+# backend/Dockerfile.dev - 개발용
+FROM node:20
+
+# Claude Code 설치를 위한 개발 도구
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/backend
+
+# Claude Code 글로벌 설치 (개발용만)
+RUN npm install -g @anthropic-ai/claude-code
+
+COPY backend/package*.json ./
+RUN npm install
+
+COPY backend /app/backend
+COPY config /app/config
+
+# 포트 노출
+EXPOSE 3000 9229
+
+# 개발 모드에서는 bash 실행
+CMD ["/bin/bash"]

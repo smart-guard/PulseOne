@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   backend:
     container_name: pulseone-backend-dev
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: backend/Dockerfile.dev
     working_dir: /app/backend
     ports:
       - "3000:3000"
@@ -20,12 +18,33 @@ services:
         condition: service_started
     environment:
       - ENV_STAGE=${ENV_STAGE:-dev}
+      - ANTHROPIC_API_KEY=./secrets/anthropic_api_key
     env_file:
       - ./config/.env.${ENV_STAGE:-dev}
     volumes:
       - ./backend:/app/backend
       - ./config:/app/config
+      - ./secrets:/app/secrets:ro
+      - claude_cache:/root/.cache/claude-code
     tty: true
+    stdin_open: true
+    command: >
+      bash -c "
+        if [ -f /app/secrets/anthropic_api_key ]; then
+          export ANTHROPIC_API_KEY=$(cat /app/secrets/anthropic_api_key)
+          echo '✅ ANTHROPIC_API_KEY loaded from secrets'
+        else
+          echo '⚠️  ANTHROPIC_API_KEY file not found'
+        fi
+        echo '🚀 PulseOne Backend Development Environment'
+        echo 'Available commands:'
+        echo '  npm run dev    - Start development server'
+        echo '  npm run debug  - Start with debugger'
+        echo '  npm test       - Run tests'
+        echo '  claude-code    - Use Claude Code CLI'
+        echo ''
+        /bin/bash
+      "
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -36,16 +55,37 @@ services:
     container_name: pulseone-collector-dev
     build:
       context: .
-      dockerfile: collector/dev.Dockerfile
+      dockerfile: collector/Dockerfile.dev
     working_dir: /app/collector
     volumes:
-      - .:/app
+      - ./collector:/app/collector
+      - ./config:/app/config
+      - ./secrets:/app/secrets:ro
+      - claude_cache:/root/.cache/claude-code
     tty: true
+    stdin_open: true
     depends_on:
       rabbitmq:
         condition: service_started
     environment:
       - ENV_STAGE=${ENV_STAGE:-dev}
+      - ANTHROPIC_API_KEY_FILE=./secrets/anthropic_api_key
+    command: >
+      bash -c "
+        if [ -f /app/secrets/anthropic_api_key ]; then
+          export ANTHROPIC_API_KEY=$(cat /app/secrets/anthropic_api_key)
+          echo '✅ ANTHROPIC_API_KEY loaded from secrets'
+        else
+          echo '⚠️  ANTHROPIC_API_KEY file not found'
+        fi
+        echo '🔧 PulseOne Collector Development Environment'
+        echo 'Available commands:'
+        echo '  make build     - Build collector'
+        echo '  make run       - Run collector'
+        echo '  claude-code    - Use Claude Code CLI'
+        echo ''
+        /bin/bash
+      "
 
   postgres:
     image: postgres:15
@@ -57,6 +97,8 @@ services:
       POSTGRES_DB: pulseone
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user"]
       interval: 10s
@@ -75,12 +117,16 @@ services:
       - DOCKER_INFLUXDB_INIT_ORG=pulseone
       - DOCKER_INFLUXDB_INIT_BUCKET=metrics
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=mytoken
+    volumes:
+      - influx_data:/var/lib/influxdb2
 
   redis:
     image: redis:alpine
     container_name: pulseone-redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -96,3 +142,17 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=admin
       - RABBITMQ_DEFAULT_PASS=admin
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  claude_cache:
+    driver: local
+  postgres_data:
+    driver: local
+  influx_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
