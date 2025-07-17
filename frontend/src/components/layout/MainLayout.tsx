@@ -4,6 +4,8 @@ import SystemStatus from '../../pages/SystemStatus';
 import DeviceList from '../../pages/DeviceList';
 import RealTimeMonitor from '../../pages/RealTimeMonitor';
 import DataExplorer from '../../pages/DataExplorer';
+import HistoricalData from '../../pages/HistoricalData';
+import VirtualPoints from '../../pages/VirtualPoints';
 import '../../styles/base.css';
 
 interface MenuItem {
@@ -177,6 +179,10 @@ const MainLayout: React.FC = () => {
         );
       case 'system-status':
         return <SystemStatus />;
+      case 'historical':
+        return <HistoricalData />;
+      case 'virtual-points':
+        return <VirtualPoints />;  
     }
   };
 
