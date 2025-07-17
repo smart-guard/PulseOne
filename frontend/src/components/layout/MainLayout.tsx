@@ -6,6 +6,16 @@ import RealTimeMonitor from '../../pages/RealTimeMonitor';
 import DataExplorer from '../../pages/DataExplorer';
 import HistoricalData from '../../pages/HistoricalData';
 import VirtualPoints from '../../pages/VirtualPoints';
+import DataExport from '../../pages/DataExport';
+import AlarmSettings from '../../pages/AlarmSettings';
+import AlarmHistory from '../../pages/AlarmHistory';
+import AlarmRules from '../../pages/AlarmRules';
+import ActiveAlarms from '../../pages/ActiveAlarms';
+import PermissionManagement from '../../pages/PermissionManagement';
+import NetworkSettings from '../../pages/NetworkSettings';
+import LoginHistory from '../../pages/LoginHistory';
+import BackupRestore from '../../pages/BackupRestore';
+import UserManagement from '../../pages/UserManagement';
 import '../../styles/base.css';
 
 interface MenuItem {
@@ -57,6 +67,8 @@ const menuItems: MenuItem[] = [
       { id: 'active-alarms', title: '활성 알람', icon: 'fas fa-exclamation-triangle', path: '/alarms/active' },
       { id: 'alarm-history', title: '알람 이력', icon: 'fas fa-clock', path: '/alarms/history' },
       { id: 'alarm-config', title: '알람 설정', icon: 'fas fa-cog', path: '/alarms/config' },
+      { id: 'alarm-type', title: '알람 종류', icon: 'fas fa-cog', path: '/alarms/type' },
+      { id: 'alarm-rules', title: '알람 규칙', icon: 'fas fa-cog', path: '/alarms/rules' },
       { id: 'notification', title: '알림 설정', icon: 'fas fa-envelope', path: '/alarms/notification' }
     ]
   },
@@ -90,6 +102,7 @@ const menuItems: MenuItem[] = [
     path: '/users',
     children: [
       { id: 'user-list', title: '사용자 목록', icon: 'fas fa-user-friends', path: '/users/list' },
+      { id: 'user-history', title: '로그인 이력', icon: 'fas fa-user-friends', path: '/users/history' },
       { id: 'roles', title: '역할 관리', icon: 'fas fa-user-tag', path: '/users/roles' },
       { id: 'permissions', title: '권한 관리', icon: 'fas fa-shield-alt', path: '/users/permissions' }
     ]
@@ -170,19 +183,38 @@ const MainLayout: React.FC = () => {
         return <DataExplorer />;
       case 'realtime':
         return <RealTimeMonitor />;
-      case 'active-alarms':
-        return (
-          <div className="page-content">
-            <h2>활성 알람</h2>
-            <p>현재 발생한 알람들을 확인하고 처리합니다.</p>
-          </div>
-        );
-      case 'system-status':
-        return <SystemStatus />;
       case 'historical':
         return <HistoricalData />;
       case 'virtual-points':
         return <VirtualPoints />;  
+      case 'data-export':
+        return <DataExport />;
+      case 'active-alarms':
+        return <ActiveAlarms />;
+      case 'alarm-history':
+        return <AlarmHistory />;
+      case 'alarm-config':
+        return <AlarmSettings />;
+      case 'alarm-type':
+        return <AlarmRules />;
+      case 'alarm-rules':
+        return <AlarmRules />;
+      case 'notification':
+        return <AlarmSettings />;
+      case 'system-status':
+        return <SystemStatus />;
+      case 'user-list':
+        return <UserManagement />;
+      case 'user-history':
+        return <LoginHistory />;
+      case 'network':
+        return <NetworkSettings />;
+      case 'permissions':
+        return <PermissionManagement />;
+      case 'backup':
+        return <BackupRestore />;
+        
+
     }
   };
 
