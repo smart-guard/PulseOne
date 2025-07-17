@@ -51,6 +51,26 @@ services:
       timeout: 10s
       retries: 3
 
+  # Frontend 개발 서버
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: pulseone-frontend-dev
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/api
+      VITE_WEBSOCKET_URL: ws://localhost:3000
+      VITE_DEBUG_MODE: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"    # Vite 개발 서버
+    networks:
+      - pulseone-dev-network
+    depends_on:
+      - backend
+
   collector:
     container_name: pulseone-collector-dev
     build:
@@ -156,3 +176,7 @@ volumes:
     driver: local
   rabbitmq_data:
     driver: local
+
+networks:
+  pulseone-dev-network:
+    driver: bridge
