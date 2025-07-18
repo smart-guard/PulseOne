@@ -46,3 +46,8 @@ docker-compose.override.yml
 *.zip.vscode/settings.json
 secrets/
 *.key
+
+
+config/*.local.conf
+config/drivers/*.local.conf
+config/**/passwords.conf
