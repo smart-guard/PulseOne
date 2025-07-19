@@ -19,8 +19,6 @@
 #include "Database/DataAccessManager.h"
 #include "Utils/LogManager.h"
 #include "Drivers/DriverFactory.h"
-#include "Drivers/DriverManager.h"
-#include "Network/WebSocketServer.h"
 #include "Network/RestApiServer.h"
 
 namespace PulseOne {
@@ -226,11 +224,9 @@ private:
     std::shared_ptr<LogManager> log_manager_;
     std::shared_ptr<ConfigManager> config_manager_;
     std::shared_ptr<DatabaseManager> database_manager_;
-    std::unique_ptr<Drivers::DriverManager> driver_manager_;
     
     // 웹 서비스들
     std::unique_ptr<Network::RestApiServer> api_server_;
-    std::unique_ptr<Network::WebSocketServer> websocket_server_;
     
     // 디바이스 관리
     mutable std::mutex devices_mutex_;
