@@ -182,11 +182,14 @@ struct DataPointInfo {
 struct CurrentValueInfo {
     UUID point_id;
     double value;
+    double raw_value;          // 추가
+    std::string string_value;  // 추가
     std::string quality;
     Timestamp timestamp;
     
     CurrentValueInfo() 
         : value(0.0)
+        , raw_value(0.0)      // 추가
         , quality("good")
         , timestamp(std::chrono::system_clock::now()) {}
 };
@@ -351,8 +354,8 @@ public:
      * @param db_manager 데이터베이스 매니저
      * @param tenant_code 테넌트 코드 (스키마 선택용)
      */
-    DeviceDataAccess(std::shared_ptr<DatabaseManager> db_manager, 
-                     const std::string& tenant_code);
+
+    explicit DeviceDataAccess(std::shared_ptr<DatabaseManager> db);
     
     /**
      * @brief 소멸자
@@ -362,17 +365,6 @@ public:
     // 복사/이동 방지
     DeviceDataAccess(const DeviceDataAccess&) = delete;
     DeviceDataAccess& operator=(const DeviceDataAccess&) = delete;
-    
-    // =================================================================
-    // 테넌트 및 공장 관리
-    // =================================================================
-    
-    /**
-     * @brief 테넌트 정보 조회
-     * @param tenant_code 테넌트 코드
-     * @return 테넌트 정보
-     */
-    std::optional<TenantInfo> GetTenantInfo(const std::string& tenant_code);
     
     /**
      * @brief 공장 목록 조회
@@ -707,26 +699,23 @@ public:
      */
     bool RollbackTransaction();
 
+    bool SaveDeviceData(const DeviceInfo& device_info, const nlohmann::json& data);
+
+
+    static std::string GetStaticDomainName() { return "DeviceData"; }
+
 private:
     // =============================================================================
     // 내부 데이터 멤버
     // =============================================================================
     
     std::shared_ptr<DatabaseManager> db_manager_;   ///< 데이터베이스 매니저
-    std::string tenant_code_;                       ///< 테넌트 코드
     std::string schema_name_;                       ///< 스키마 이름 (tenant_xxx)
     LogManager& logger_;                            ///< 로거
     
     // =============================================================================
     // 내부 유틸리티 함수들
     // =============================================================================
-    
-    /**
-     * @brief 스키마명 생성
-     * @param tenant_code 테넌트 코드
-     * @return 스키마명
-     */
-    std::string GetSchemaName(const std::string& tenant_code);
     
     /**
      * @brief 테이블명 생성 (스키마 포함)

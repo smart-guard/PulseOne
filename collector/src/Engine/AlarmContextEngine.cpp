@@ -28,7 +28,7 @@ AlarmContextEngine::AlarmContextEngine(std::shared_ptr<DatabaseManager> db_manag
                                        std::shared_ptr<RedisClient> redis_client)
     : db_manager_(db_manager)
     , redis_client_(redis_client)
-    , logger_(LogManager::Instance())
+    , logger_(Logger())
     , max_command_history_size_(1000)
     , max_alarm_history_size_(500)
     , default_correlation_window_ms_(30000)  // 30초
@@ -52,7 +52,7 @@ bool AlarmContextEngine::Initialize() {
         
         // 데이터베이스에서 의존성 규칙 로드
         if (!LoadDependencyRulesFromDB()) {
-            logger_.Warning("Failed to load dependency rules from database, continuing with empty rules");
+            logger_.Warn("Failed to load dependency rules from database, continuing with empty rules");
         }
         
         logger_.Info("AlarmContextEngine initialized successfully");
@@ -66,7 +66,7 @@ bool AlarmContextEngine::Initialize() {
 
 bool AlarmContextEngine::Start() {
     if (running_.load()) {
-        logger_.Warning("AlarmContextEngine is already running");
+        logger_.Warn("AlarmContextEngine is already running");
         return false;
     }
     
@@ -154,7 +154,7 @@ void AlarmContextEngine::UpdateCommandCompletion(const std::string& command_id,
             logger_.Debug("Command completion updated: " + command_id + 
                          ", Success: " + (was_successful ? "true" : "false"));
         } else {
-            logger_.Warning("Command not found for completion update: " + command_id);
+            logger_.Warn("Command not found for completion update: " + command_id);
         }
         
     } catch (const std::exception& e) {
@@ -331,7 +331,7 @@ std::vector<EnhancedAlarmEvent> AlarmContextEngine::AnalyzeBatchAlarms(const std
 
 bool AlarmContextEngine::LoadDependencyRulesFromDB() {
     if (!db_manager_) {
-        logger_.Warning("Database manager not available for loading dependency rules");
+        logger_.Warn("Database manager not available for loading dependency rules");
         return false;
     }
     
@@ -543,7 +543,7 @@ void AlarmContextEngine::PublishCommandEvent(const UserCommandContext& command) 
         command_json["command_id"] = command.command_id;
         command_json["user_id"] = command.user_id;
         command_json["user_name"] = command.user_name;
-        command_json["device_id"] = command.device_id.to_string();
+        command_json["device_id"] = command.device_id;
         command_json["control_point_id"] = command.control_point_id;
         command_json["command_type"] = command.command_type;
         command_json["target_value"] = command.target_value;
@@ -553,10 +553,10 @@ void AlarmContextEngine::PublishCommandEvent(const UserCommandContext& command) 
         command_json["was_successful"] = command.was_successful;
         
         std::string channel = "alarm_context:commands";
-        redis_client_->Publish(channel, command_json.dump());
+        redis_client_->set(channel, command_json.dump());
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to publish command event: " + std::string(e.what()));
+        logger_.Error("Failed to set command event: " + std::string(e.what()));
     }
 }
 
@@ -567,7 +567,7 @@ void AlarmContextEngine::PublishEnhancedAlarm(const EnhancedAlarmEvent& alarm) {
         json alarm_json;
         alarm_json["event_type"] = "enhanced_alarm";
         alarm_json["alarm_id"] = alarm.alarm_id;
-        alarm_json["device_id"] = alarm.device_id.to_string();
+        alarm_json["device_id"] = alarm.device_id;
         alarm_json["device_name"] = alarm.device_name;
         alarm_json["point_id"] = alarm.point_id;
         alarm_json["point_name"] = alarm.point_name;
@@ -596,10 +596,10 @@ void AlarmContextEngine::PublishEnhancedAlarm(const EnhancedAlarmEvent& alarm) {
         }
         
         std::string channel = "alarm_context:enhanced_alarms";
-        redis_client_->Publish(channel, alarm_json.dump());
+        redis_client_->set(channel, alarm_json.dump());
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to publish enhanced alarm: " + std::string(e.what()));
+        logger_.Error("Failed to set enhanced alarm: " + std::string(e.what()));
     }
 }
 
@@ -685,14 +685,28 @@ void AlarmContextEngine::PerformPeriodicAnalysis() {
 // =============================================================================
 
 void AlarmContextEngine::LoadDefaultDependencyRules() {
-    // 예시 의존성 규칙들
-    dependency_rules_ = {
-        {"rule_1", "pump_control", "flow_rate", "direct", 1000, 0.9, "Pump affects flow rate", true},
-        {"rule_2", "valve_position", "pressure", "direct", 2000, 0.8, "Valve affects pressure", true},
-        {"rule_3", "setpoint_temp", "actual_temp", "delayed", 5000, 0.7, "Temperature setpoint affects actual", true},
-        {"rule_4", "flow_rate", "level", "indirect", 3000, 0.6, "Flow rate affects tank level", true}
+    dependency_rules_.clear();
+    
+    auto addRule = [this](const std::string& id, const std::string& source, const std::string& target,
+                         const std::string& type, int delay, double factor, const std::string& desc, bool enabled) {
+        DependencyRule rule;
+        rule.rule_id = id;
+        rule.source_point_id = source;
+        rule.target_point_id = target;
+        rule.dependency_type = type;
+        rule.delay_ms = delay;
+        rule.influence_factor = factor;
+        rule.description = desc;
+        rule.is_enabled = enabled;
+        dependency_rules_.push_back(rule);
     };
+    
+    addRule("rule_1", "pump_control", "flow_rate", "direct", 1000, 0.9, "Pump affects flow rate", true);
+    addRule("rule_2", "valve_position", "pressure", "direct", 2000, 0.8, "Valve affects pressure", true);
+    addRule("rule_3", "setpoint_temp", "actual_temp", "delayed", 5000, 0.7, "Temperature setpoint affects actual", true);
+    addRule("rule_4", "flow_rate", "level", "indirect", 3000, 0.6, "Flow rate affects tank level", true);
 }
+
 
 void AlarmContextEngine::RebuildDependencyMap() {
     point_dependencies_.clear();

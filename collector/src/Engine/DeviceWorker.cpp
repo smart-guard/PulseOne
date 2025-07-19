@@ -76,7 +76,7 @@ std::future<bool> DeviceWorker::Start() {
             std::lock_guard<std::mutex> lock(state_mutex_);
             
             if (current_state_ == WorkerState::RUNNING) {
-                Warn("Device already running: " + device_info_.device_name);
+                logger_->Warn("Device already running: " + device_info_.device_name);
                 promise->set_value(true);
                 return;
             }
@@ -532,7 +532,7 @@ void DeviceWorker::ReadThreadMain() {
                     CalculateVirtualPoints();
                     
                 } else {
-                    Warn("Failed to read data from device: " + device_info_.device_name);
+                    logger_->Warn("Failed to read data from device: " + device_info_.device_name);
                     
                     // 자동 재연결 시도
                     if (auto_reconnect_enabled_) {
@@ -598,7 +598,7 @@ void DeviceWorker::ControlThreadMain() {
                 auto now = system_clock::now();
                 if (now > request.timeout) {
                     request.result_promise.set_value(false);
-                    Warn("Hardware control request timed out");
+                    logger_->Warn("Hardware control request timed out");
                     continue;
                 }
                 
@@ -787,7 +787,7 @@ bool DeviceWorker::AttemptReconnection() {
             }
         }
         
-        Warn("Reconnection failed for device: " + device_info_.device_name);
+        logger_->Warn("Reconnection failed for device: " + device_info_.device_name);
         return false;
         
     } catch (const std::exception& e) {

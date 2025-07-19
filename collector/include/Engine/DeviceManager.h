@@ -10,12 +10,13 @@
 #include <chrono>
 
 #include "Engine/DeviceWorker.h"
-#include "Engine/DeviceControlHandler.h"
-#include "Engine/VirtualPointEngine.h"
-#include "Engine/AlarmEngine.h"
+//#include "Engine/DeviceControlHandler.h"
+//#include "Engine/VirtualPointEngine.h"
+//#include "Engine/AlarmEngine.h"
 #include "Drivers/CommonTypes.h"
 #include "Database/DatabaseManager.h"
-#include "RedisClient.h"
+//#include "RedisClient.h"
+#include "RedisClientImpl.h"  // 구현체 헤더 추가
 #include "Utils/LogManager.h"
 
 namespace PulseOne {
@@ -95,9 +96,9 @@ private:
     std::thread cleanup_thread_;
     
     // 하위 엔진들
-    std::unique_ptr<DeviceControlHandler> control_handler_;
-    std::unique_ptr<VirtualPointEngine> virtual_point_engine_;
-    std::unique_ptr<AlarmEngine> alarm_engine_;
+ //   std::unique_ptr<DeviceControlHandler> control_handler_;
+ //   std::unique_ptr<VirtualPointEngine> virtual_point_engine_;
+ //   std::unique_ptr<AlarmEngine> alarm_engine_;
     
     // 외부 의존성
     std::shared_ptr<DatabaseManager> db_manager_;
@@ -595,3 +596,4 @@ public:
 
 } // namespace Engine
 } // namespace PulseOne
+

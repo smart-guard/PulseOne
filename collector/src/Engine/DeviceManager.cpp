@@ -1,14 +1,25 @@
 // collector/src/Engine/DeviceManager.cpp
 // 전체 디바이스 관리자 구현
 #include "Engine/DeviceManager.h"
-#include "Engine/DeviceControlHandler.h"
-#include "Engine/VirtualPointEngine.h"
-#include "Engine/AlarmEngine.h"
+//#include "Engine/VirtualPointEngine.h"
+//#include "Engine/AlarmEngine.h"
 #include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+
+// 네임스페이스 추가 - 이게 핵심!
+using namespace PulseOne::Drivers;  // DeviceInfo, DataPoint, ProtocolType 등
+using namespace PulseOne::Engine;   // DeviceWorkerState, ConnectionStatus 등
+using json = nlohmann::json;
+
+// 타입 별칭 추가 (임시)
+using DeviceStatus = PulseOne::Engine::DeviceStatus;
+using ErrorSeverity = PulseOne::Engine::ErrorSeverity; 
+using DeviceWorkerState = PulseOne::Engine::DeviceWorkerState;
+using ConnectionStatus = PulseOne::Engine::ConnectionStatus;
+using IDeviceWorkerEventListener = PulseOne::Engine::IDeviceWorkerEventListener;
 
 namespace PulseOne {
 namespace Engine {
@@ -39,7 +50,7 @@ bool DeviceManager::Initialize() {
         logger_.Info("Initializing DeviceManager...");
         
         // Redis 클라이언트 초기화
-        redis_client_ = std::make_shared<RedisClient>();
+        redis_client_ = std::make_shared<RedisClientImpl>();
         if (!redis_client_->connect("localhost", 6379)) {
             logger_.Error("Failed to connect to Redis");
             return false;
@@ -55,28 +66,28 @@ bool DeviceManager::Initialize() {
         logger_.Info("✅ Database manager initialized");
         
         // 제어 핸들러 초기화
-        control_handler_ = std::make_unique<DeviceControlHandler>(shared_from_this(), redis_client_);
-        if (!control_handler_->Initialize()) {
-            logger_.Error("Failed to initialize DeviceControlHandler");
-            return false;
-        }
-        logger_.Info("✅ Device control handler initialized");
+//        control_handler_ = std::make_unique<DeviceControlHandler>(shared_from_this(), redis_client_);
+//        if (!control_handler_->Initialize()) {
+//            logger_.Error("Failed to initialize DeviceControlHandler");
+//            return false;
+//        }
+//        logger_.Info("✅ Device control handler initialized");
         
         // 가상 포인트 엔진 초기화
-        virtual_point_engine_ = std::make_unique<VirtualPointEngine>();
-        if (!virtual_point_engine_->Initialize()) {
-            logger_.Warning("Failed to initialize VirtualPointEngine - continuing without virtual points");
-        } else {
-            logger_.Info("✅ Virtual point engine initialized");
-        }
+//        virtual_point_engine_ = std::make_unique<VirtualPointEngine>();
+//        if (!virtual_point_engine_->Initialize()) {
+//            logger_.Warn("Failed to initialize VirtualPointEngine - continuing without virtual points");
+//        } else {
+//            logger_.Info("✅ Virtual point engine initialized");
+//        }
         
         // 알람 엔진 초기화
-        alarm_engine_ = std::make_unique<AlarmEngine>();
-        if (!alarm_engine_->Initialize()) {
-            logger_.Warning("Failed to initialize AlarmEngine - continuing without alarms");
-        } else {
-            logger_.Info("✅ Alarm engine initialized");
-        }
+//        alarm_engine_ = std::make_unique<AlarmEngine>();
+//        if (!alarm_engine_->Initialize()) {
+//            logger_.Warn("Failed to initialize AlarmEngine - continuing without alarms");
+//        } else {
+//           logger_.Info("✅ Alarm engine initialized");
+//        }
         
         // 통계 초기화
         {
@@ -96,7 +107,7 @@ bool DeviceManager::Initialize() {
 
 bool DeviceManager::Start() {
     if (running_.load()) {
-        logger_.Warning("DeviceManager already running");
+        logger_.Warn("DeviceManager already running");
         return true;
     }
     
@@ -177,7 +188,7 @@ void DeviceManager::Stop() {
             try {
                 worker->Stop(true);  // 강제 정지
             } catch (const std::exception& e) {
-                logger_.Warning("Exception while stopping worker " + device_id + ": " + e.what());
+                logger_.Warn("Exception while stopping worker " + device_id + ": " + e.what());
             }
         }
         
@@ -217,7 +228,7 @@ int DeviceManager::LoadAllDevicesFromDatabase() {
                 std::vector<DataPoint> data_points = QueryDataPointsFromDB(device_info.id);
                 
                 if (data_points.empty()) {
-                    logger_.Warning("No data points found for device: " + device_info.name);
+                    logger_.Warn("No data points found for device: " + device_info.name);
                     continue;
                 }
                 
@@ -231,7 +242,7 @@ int DeviceManager::LoadAllDevicesFromDatabase() {
                 
                 // 최대 디바이스 수 체크
                 if (device_workers_.size() >= static_cast<size_t>(config_.max_concurrent_devices)) {
-                    logger_.Warning("Reached maximum concurrent devices limit: " + 
+                    logger_.Warn("Reached maximum concurrent devices limit: " + 
                                    std::to_string(config_.max_concurrent_devices));
                     break;
                 }
@@ -290,7 +301,7 @@ bool DeviceManager::AddDevice(const DeviceInfo& device_info, const std::vector<D
         
         // 이미 존재하는 디바이스 체크
         if (device_workers_.find(device_info.id) != device_workers_.end()) {
-            logger_.Warning("Device already exists: " + device_info.name);
+            logger_.Warn("Device already exists: " + device_info.name);
             return false;
         }
         
@@ -316,7 +327,7 @@ bool DeviceManager::RemoveDevice(const UUID& device_id, bool force_remove) {
         
         auto it = device_workers_.find(device_id);
         if (it == device_workers_.end()) {
-            logger_.Warning("Device not found for removal: " + device_id);
+            logger_.Warn("Device not found for removal: " + device_id);
             return false;
         }
         
@@ -356,7 +367,7 @@ bool DeviceManager::UpdateDevice(const UUID& device_id, const DeviceInfo& new_de
         
         auto it = device_workers_.find(device_id);
         if (it == device_workers_.end()) {
-            logger_.Warning("Device not found for update: " + device_id);
+            logger_.Warn("Device not found for update: " + device_id);
             return false;
         }
         
@@ -390,7 +401,7 @@ bool DeviceManager::UpdateDeviceDataPoints(const UUID& device_id, const std::vec
         
         auto it = device_workers_.find(device_id);
         if (it == device_workers_.end()) {
-            logger_.Warning("Device not found for data points update: " + device_id);
+            logger_.Warn("Device not found for data points update: " + device_id);
             return false;
         }
         
@@ -439,7 +450,7 @@ bool DeviceManager::StartDevice(const UUID& device_id) {
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for start: " + device_id);
+        logger_.Warn("Device not found for start: " + device_id);
         return false;
     }
     
@@ -459,7 +470,7 @@ bool DeviceManager::StopDevice(const UUID& device_id) {
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for stop: " + device_id);
+        logger_.Warn("Device not found for stop: " + device_id);
         return false;
     }
     
@@ -477,7 +488,7 @@ bool DeviceManager::PauseDevice(const UUID& device_id) {
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for pause: " + device_id);
+        logger_.Warn("Device not found for pause: " + device_id);
         return false;
     }
     
@@ -495,7 +506,7 @@ bool DeviceManager::ResumeDevice(const UUID& device_id) {
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for resume: " + device_id);
+        logger_.Warn("Device not found for resume: " + device_id);
         return false;
     }
     
@@ -513,7 +524,7 @@ bool DeviceManager::RestartDevice(const UUID& device_id) {
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for restart: " + device_id);
+        logger_.Warn("Device not found for restart: " + device_id);
         return false;
     }
     
@@ -538,7 +549,7 @@ int DeviceManager::StartAllDevices() {
                 ResetRestartAttempts(device_id);
             }
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while starting device " + device_id + ": " + e.what());
+            logger_.Warn("Exception while starting device " + device_id + ": " + e.what());
         }
     }
     
@@ -556,7 +567,7 @@ int DeviceManager::StopAllDevices() {
                 stopped_count++;
             }
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while stopping device " + device_id + ": " + e.what());
+            logger_.Warn("Exception while stopping device " + device_id + ": " + e.what());
         }
     }
     
@@ -597,7 +608,7 @@ int DeviceManager::ControlProjectDevices(const UUID& project_id, const std::stri
             }
             
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while controlling device " + device_id + ": " + e.what());
+            logger_.Warn("Exception while controlling device " + device_id + ": " + e.what());
         }
     }
     
@@ -614,7 +625,7 @@ bool DeviceManager::WriteToDevice(const UUID& device_id, const WriteRequest& req
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for write: " + device_id);
+        logger_.Warn("Device not found for write: " + device_id);
         return false;
     }
     
@@ -627,7 +638,7 @@ std::vector<DataValue> DeviceManager::ReadFromDevice(const UUID& device_id) {
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for read: " + device_id);
+        logger_.Warn("Device not found for read: " + device_id);
         return {};
     }
     
@@ -639,7 +650,7 @@ bool DeviceManager::WriteToPoint(const UUID& device_id, const UUID& point_id, do
     
     auto it = device_workers_.find(device_id);
     if (it == device_workers_.end()) {
-        logger_.Warning("Device not found for point write: " + device_id);
+        logger_.Warn("Device not found for point write: " + device_id);
         return false;
     }
     
@@ -660,7 +671,7 @@ std::vector<DeviceStatus> DeviceManager::GetAllDeviceStatus() const {
         try {
             all_status.push_back(worker->GetStatus());
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while getting status for device " + device_id + ": " + e.what());
+            logger_.Warn("Exception while getting status for device " + device_id + ": " + e.what());
         }
     }
     
@@ -678,7 +689,7 @@ std::optional<DeviceStatus> DeviceManager::GetDeviceStatus(const UUID& device_id
     try {
         return it->second->GetStatus();
     } catch (const std::exception& e) {
-        logger_.Warning("Exception while getting status for device " + device_id + ": " + e.what());
+        logger_.Warn("Exception while getting status for device " + device_id + ": " + e.what());
         return std::nullopt;
     }
 }
@@ -699,7 +710,7 @@ std::optional<DeviceStatistics> DeviceManager::GetDeviceStatistics(const UUID& d
     try {
         return it->second->GetStatistics();
     } catch (const std::exception& e) {
-        logger_.Warning("Exception while getting statistics for device " + device_id + ": " + e.what());
+        logger_.Warn("Exception while getting statistics for device " + device_id + ": " + e.what());
         return std::nullopt;
     }
 }
@@ -745,7 +756,7 @@ SystemStatistics DeviceManager::GetProjectStatistics(const UUID& project_id) con
             }
             
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while calculating project stats for device " + device_id + ": " + e.what());
+            logger_.Warn("Exception while calculating project stats for device " + device_id + ": " + e.what());
         }
     }
     
@@ -856,7 +867,7 @@ void DeviceManager::UpdateConfig(const DeviceManagerConfig& new_config) {
 
 bool DeviceManager::UpdateVirtualPointConfiguration() {
     if (!virtual_point_engine_) {
-        logger_.Warning("Virtual point engine not available");
+        logger_.Warn("Virtual point engine not available");
         return false;
     }
     
@@ -870,7 +881,7 @@ bool DeviceManager::UpdateVirtualPointConfiguration() {
 
 bool DeviceManager::UpdateAlarmConfiguration() {
     if (!alarm_engine_) {
-        logger_.Warning("Alarm engine not available");
+        logger_.Warn("Alarm engine not available");
         return false;
     }
     
@@ -959,7 +970,7 @@ int DeviceManager::ControlDevicesWhere(std::function<bool(const DeviceStatus&)> 
             }
             
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while controlling device " + device_id + ": " + e.what());
+            logger_.Warn("Exception while controlling device " + device_id + ": " + e.what());
         }
     }
     
@@ -1420,7 +1431,7 @@ void DeviceManager::CleanupInactiveDevices() {
                 if (error_duration.count() > 30 && 
                     !CanAttemptRestart(it->first)) {
                     
-                    logger_.Warning("Cleaning up long-term error device: " + status.device_name);
+                    logger_.Warn("Cleaning up long-term error device: " + status.device_name);
                     it->second->Stop(true);
                     it = device_workers_.erase(it);
                     continue;
@@ -1430,7 +1441,7 @@ void DeviceManager::CleanupInactiveDevices() {
             ++it;
             
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while cleaning up device " + it->first + ": " + e.what());
+            logger_.Warn("Exception while cleaning up device " + it->first + ": " + e.what());
             ++it;
         }
     }
@@ -1445,7 +1456,7 @@ void DeviceManager::MonitorDeviceHealth() {
             
             // 연결 상태 체크
             if (status.connection_status == ConnectionStatus::ERROR) {
-                logger_.Warning("Device in error state: " + status.device_name);
+                logger_.Warn("Device in error state: " + status.device_name);
                 NotifyDeviceError(device_id, "Device connection error", ErrorSeverity::HIGH);
             }
             
@@ -1458,7 +1469,7 @@ void DeviceManager::MonitorDeviceHealth() {
             // 폴링 간격의 5배 이상 응답이 없으면 경고
             int expected_interval = 1000;  // TODO: 실제 폴링 간격 사용
             if (last_read_duration.count() > (expected_interval * 5 / 1000)) {
-                logger_.Warning("Device not responding: " + status.device_name + 
+                logger_.Warn("Device not responding: " + status.device_name + 
                                ", Last read: " + std::to_string(last_read_duration.count()) + "s ago");
             }
             
@@ -1466,13 +1477,13 @@ void DeviceManager::MonitorDeviceHealth() {
             if (status.read_count > 100) {  // 충분한 샘플이 있을 때만
                 double error_rate = static_cast<double>(status.error_count) / status.read_count;
                 if (error_rate > 0.1) {  // 10% 이상 에러율
-                    logger_.Warning("High error rate for device: " + status.device_name + 
+                    logger_.Warn("High error rate for device: " + status.device_name + 
                                    " (" + std::to_string(error_rate * 100) + "%)");
                 }
             }
             
         } catch (const std::exception& e) {
-            logger_.Warning("Exception while monitoring device " + device_id + ": " + e.what());
+            logger_.Warn("Exception while monitoring device " + device_id + ": " + e.what());
         }
     }
 }
@@ -1531,7 +1542,7 @@ void DeviceManager::UpdateStatistics() {
                 }
                 
             } catch (const std::exception& e) {
-                logger_.Warning("Exception while updating statistics for device " + device_id + ": " + e.what());
+                logger_.Warn("Exception while updating statistics for device " + device_id + ": " + e.what());
             }
         }
     }
@@ -1591,7 +1602,7 @@ void DeviceManager::MonitorSystemResources() {
         }
         
     } catch (const std::exception& e) {
-        logger_.Warning("Exception while monitoring system resources: " + std::string(e.what()));
+        logger_.Warn("Exception while monitoring system resources: " + std::string(e.what()));
     }
 }
 
@@ -1608,13 +1619,13 @@ void DeviceManager::AutoRestartFailedDevices() {
                         RecordRestartAttempt(device_id);
                         logger_.Info("Auto-restart successful for device: " + device_id);
                     } else {
-                        logger_.Warning("Auto-restart failed for device: " + device_id);
+                        logger_.Warn("Auto-restart failed for device: " + device_id);
                     }
                 }
             }
             
         } catch (const std::exception& e) {
-            logger_.Warning("Exception during auto-restart for device " + device_id + ": " + e.what());
+            logger_.Warn("Exception during auto-restart for device " + device_id + ": " + e.what());
         }
     }
 }
@@ -1652,7 +1663,7 @@ void DeviceManager::PublishSystemStatus() {
             }}
         };
         
-        redis_client_->publish("system_status", status_json.dump());
+        redis_client_->set("system_status", status_json.dump());
         
     } catch (const std::exception& e) {
         logger_.Error("Failed to publish system status: " + std::string(e.what()));
@@ -1723,7 +1734,7 @@ void DeviceManager::SafeStopThread(std::thread& thread, const std::string& threa
             }
             
             if (thread.joinable()) {
-                logger_.Warning("Force detaching " + thread_name + " thread");
+                logger_.Warn("Force detaching " + thread_name + " thread");
                 thread.detach();
             }
             
@@ -1753,7 +1764,7 @@ void DeviceManager::NotifyDeviceStateChanged(const UUID& device_id,
             try {
                 listener->OnWorkerStateChanged(device_id, old_state, new_state);
             } catch (const std::exception& e) {
-                logger_.Warning("Exception in event listener: " + std::string(e.what()));
+                logger_.Warn("Exception in event listener: " + std::string(e.what()));
             }
         }
     }
@@ -1769,7 +1780,7 @@ void DeviceManager::NotifyDeviceError(const UUID& device_id,
             try {
                 listener->OnError(device_id, error_message, severity);
             } catch (const std::exception& e) {
-                logger_.Warning("Exception in error event listener: " + std::string(e.what()));
+                logger_.Warn("Exception in error event listener: " + std::string(e.what()));
             }
         }
     }

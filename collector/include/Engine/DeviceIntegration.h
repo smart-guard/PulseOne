@@ -15,7 +15,7 @@
 #include <condition_variable>
 
 #include "Database/DeviceDataAccess.h"
-#include "Database/DataAccessManager.h"
+//#include "Database/DataAccessManager.h"
 #include "Drivers/CommonTypes.h"
 #include "Utils/LogManager.h"
 #include "Config/ConfigManager.h"
@@ -426,6 +426,11 @@ private:
      * @brief 현재 타임스탬프 문자열 생성
      */
     std::string GetCurrentTimestamp() const;
+    
+    /**
+     * @brief 현재 타임스탬프 반환 (Timestamp 타입)
+     */
+    Database::Timestamp GetCurrentTimestampRaw() const;
     
     /**
      * @brief 우선순위 큐 비교 함수
