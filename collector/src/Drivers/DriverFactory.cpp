@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Drivers/DriverFactory.cpp
-// 드라이버 팩토리 구현
+// 드라이버 팩토리 구현 (IProtocolDriver.h와 호환)
 // =============================================================================
 
 #include "Drivers/DriverFactory.h"
@@ -8,11 +8,18 @@
 #include "Utils/LogManager.h"
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <thread>
 
 namespace PulseOne {
 namespace Drivers {
 
-// 정적 멤버 초기화는 헤더에서 인라인으로 처리되므로 별도 정의 불필요
+// =============================================================================
+// 유틸리티 함수들 (CommonTypes.h와 호환)
+// =============================================================================
 
 /**
  * @brief 프로토콜 타입을 문자열로 변환하는 유틸리티 함수
@@ -80,9 +87,10 @@ ProtocolType StringToProtocolType(const std::string& protocol_str) {
     }
 }
 
-/**
- * @brief 드라이버 팩토리 전역 함수들
- */
+// =============================================================================
+// 팩토리 유틸리티 네임스페이스
+// =============================================================================
+
 namespace FactoryUtils {
     
     /**
@@ -91,7 +99,7 @@ namespace FactoryUtils {
      */
     std::string GetRegisteredDriversInfo() {
         auto& factory = DriverFactory::GetInstance();
-        auto protocols = factory.GetSupportedProtocols();
+        auto protocols = factory.GetAvailableProtocols();  // ✅ 올바른 메소드명
         
         std::ostringstream oss;
         oss << "Registered Drivers (" << protocols.size() << "):\n";
@@ -137,7 +145,6 @@ namespace FactoryUtils {
      * @return 프로토콜 타입
      */
     ProtocolType ExtractProtocolFromConfig(const std::string& config_str) {
-        // 간단한 파싱 (실제로는 JSON 파서 사용 권장)
         std::string protocol_key = "protocol=";
         size_t pos = config_str.find(protocol_key);
         
@@ -157,10 +164,7 @@ namespace FactoryUtils {
     }
     
     /**
-     * @brief 드라이버 성능 테스트
-     * @param driver 테스트할 드라이버
-     * @param test_config 테스트 설정
-     * @return 테스트 결과
+     * @brief 드라이버 성능 테스트 구조체
      */
     struct PerformanceTestResult {
         bool success;
@@ -171,6 +175,13 @@ namespace FactoryUtils {
         std::string error_message;
     };
     
+    /**
+     * @brief 드라이버 성능 테스트
+     * @param driver 테스트할 드라이버
+     * @param test_points 테스트 데이터 포인트들
+     * @param test_iterations 테스트 반복 횟수
+     * @return 테스트 결과
+     */
     PerformanceTestResult TestDriverPerformance(
         IProtocolDriver* driver, 
         const std::vector<DataPoint>& test_points,
@@ -239,7 +250,7 @@ namespace FactoryUtils {
     std::map<ProtocolType, std::string> GetAllDriverStatus() {
         std::map<ProtocolType, std::string> status_map;
         auto& factory = DriverFactory::GetInstance();
-        auto protocols = factory.GetSupportedProtocols();
+        auto protocols = factory.GetAvailableProtocols();  // ✅ 올바른 메소드명
         
         for (const auto& protocol : protocols) {
             try {
@@ -259,258 +270,9 @@ namespace FactoryUtils {
     
 } // namespace FactoryUtils
 
-/**
- * @brief 드라이버 팩토리 관리자 클래스
- * 
- * 팩토리의 고급 관리 기능을 제공합니다.
- */
-class DriverFactoryManager {
-public:
-    /**
-     * @brief 싱글턴 인스턴스 반환
-     */
-    static DriverFactoryManager& GetInstance() {
-        static DriverFactoryManager instance;
-        return instance;
-    }
-    
-    /**
-     * @brief 팩토리 초기화 및 기본 드라이버 등록 확인
-     * @return 성공 시 true
-     */
-    bool Initialize() {
-        try {
-            auto& factory = DriverFactory::GetInstance();
-            
-            // 기본 드라이버들이 등록되었는지 확인
-            std::vector<ProtocolType> required_protocols = {
-                ProtocolType::MODBUS_TCP,
-                ProtocolType::MQTT,
-                ProtocolType::BACNET_IP
-            };
-            
-            bool all_registered = true;
-            for (const auto& protocol : required_protocols) {
-                if (!factory.IsProtocolSupported(protocol)) {
-                    LogError("Required protocol not registered: " + 
-                           ProtocolTypeToString(protocol));
-                    all_registered = false;
-                }
-            }
-            
-            if (all_registered) {
-                LogInfo("All required drivers registered successfully");
-                LogInfo(FactoryUtils::GetRegisteredDriversInfo());
-            }
-            
-            initialized_ = all_registered;
-            return initialized_;
-            
-        } catch (const std::exception& e) {
-            LogError("Factory manager initialization failed: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    /**
-     * @brief 드라이버 호환성 확인
-     * @param protocol 프로토콜 타입
-     * @param config 설정
-     * @return 호환성 확인 결과
-     */
-    struct CompatibilityResult {
-        bool compatible;
-        std::vector<std::string> issues;
-        std::vector<std::string> warnings;
-    };
-    
-    CompatibilityResult CheckDriverCompatibility(ProtocolType protocol, 
-                                                const DriverConfig& config) {
-        CompatibilityResult result;
-        result.compatible = true;
-        
-        try {
-            auto& factory = DriverFactory::GetInstance();
-            
-            // 드라이버 지원 여부 확인
-            if (!factory.IsProtocolSupported(protocol)) {
-                result.compatible = false;
-                result.issues.push_back("Protocol not supported: " + 
-                                      ProtocolTypeToString(protocol));
-                return result;
-            }
-            
-            // 프로토콜별 설정 검증
-            switch (protocol) {
-                case ProtocolType::MODBUS_TCP:
-                    CheckModbusConfig(config, result);
-                    break;
-                    
-                case ProtocolType::MQTT:
-                    CheckMqttConfig(config, result);
-                    break;
-                    
-                case ProtocolType::BACNET_IP:
-                    CheckBacnetConfig(config, result);
-                    break;
-                    
-                default:
-                    result.warnings.push_back("No specific validation for protocol: " + 
-                                            ProtocolTypeToString(protocol));
-                    break;
-            }
-            
-        } catch (const std::exception& e) {
-            result.compatible = false;
-            result.issues.push_back("Compatibility check failed: " + std::string(e.what()));
-        }
-        
-        return result;
-    }
-    
-    /**
-     * @brief 드라이버 팩토리 통계 정보
-     */
-    struct FactoryStatistics {
-        size_t total_protocols;
-        size_t successful_creations;
-        size_t failed_creations;
-        std::chrono::system_clock::time_point last_creation_time;
-        std::map<ProtocolType, size_t> creation_count_by_protocol;
-    };
-    
-    /**
-     * @brief 팩토리 통계 반환
-     */
-    FactoryStatistics GetStatistics() const {
-        std::lock_guard<std::mutex> lock(stats_mutex_);
-        return statistics_;
-    }
-    
-    /**
-     * @brief 통계 리셋
-     */
-    void ResetStatistics() {
-        std::lock_guard<std::mutex> lock(stats_mutex_);
-        statistics_ = FactoryStatistics{};
-        statistics_.total_protocols = DriverFactory::GetInstance().GetDriverCount();
-    }
-    
-    /**
-     * @brief 드라이버 생성 시 통계 업데이트 (팩토리에서 호출)
-     */
-    void OnDriverCreated(ProtocolType protocol, bool success) {
-        std::lock_guard<std::mutex> lock(stats_mutex_);
-        
-        if (success) {
-            statistics_.successful_creations++;
-        } else {
-            statistics_.failed_creations++;
-        }
-        
-        statistics_.creation_count_by_protocol[protocol]++;
-        statistics_.last_creation_time = std::chrono::system_clock::now();
-    }
-    
-private:
-    DriverFactoryManager() : initialized_(false) {}
-    ~DriverFactoryManager() = default;
-    
-    // 복사 및 이동 방지
-    DriverFactoryManager(const DriverFactoryManager&) = delete;
-    DriverFactoryManager& operator=(const DriverFactoryManager&) = delete;
-    
-    bool initialized_;
-    mutable std::mutex stats_mutex_;
-    FactoryStatistics statistics_;
-    
-    // 설정 검증 메서드들
-    void CheckModbusConfig(const DriverConfig& config, CompatibilityResult& result) {
-        // Modbus 특화 검증
-        if (config.endpoint.empty()) {
-            result.compatible = false;
-            result.issues.push_back("Modbus endpoint not specified");
-        }
-        
-        // IP:Port 형식 검증
-        size_t colon_pos = config.endpoint.find(':');
-        if (colon_pos == std::string::npos) {
-            result.warnings.push_back("Modbus endpoint should include port (e.g., 192.168.1.100:502)");
-        }
-        
-        // 타임아웃 검증
-        if (config.timeout_ms < 1000 || config.timeout_ms > 30000) {
-            result.warnings.push_back("Modbus timeout should be between 1-30 seconds");
-        }
-    }
-    
-    void CheckMqttConfig(const DriverConfig& config, CompatibilityResult& result) {
-        // MQTT 특화 검증
-        if (config.endpoint.empty()) {
-            result.compatible = false;
-            result.issues.push_back("MQTT broker endpoint not specified");
-        }
-        
-        // mqtt:// 프로토콜 확인
-        if (config.endpoint.find("mqtt://") != 0 && config.endpoint.find("mqtts://") != 0) {
-            result.warnings.push_back("MQTT endpoint should start with mqtt:// or mqtts://");
-        }
-        
-        // Keep-alive 시간 검증
-        if (config.retry_count > 10) {
-            result.warnings.push_back("MQTT retry count seems too high (>10)");
-        }
-    }
-    
-    void CheckBacnetConfig(const DriverConfig& config, CompatibilityResult& result) {
-        // BACnet 특화 검증
-        if (config.device_id.empty()) {
-            result.compatible = false;
-            result.issues.push_back("BACnet device ID not specified");
-        }
-        
-        // 디바이스 ID 범위 확인 (실제 구현에 따라 조정)
-        try {
-            uint32_t device_id = std::stoul(config.device_id);
-            if (device_id == 0 || device_id > 4194303) {  // BACnet 디바이스 ID 범위
-                result.warnings.push_back("BACnet device ID should be in range 1-4194303");
-            }
-        } catch (const std::exception&) {
-            result.compatible = false;
-            result.issues.push_back("Invalid BACnet device ID format");
-        }
-    }
-    
-    // 로깅 유틸리티
-    void LogInfo(const std::string& message) {
-        // 실제 구현에서는 PulseOne 로깅 시스템 사용
-        // 여기서는 간단한 구현
-        auto now = std::chrono::system_clock::now();
-        auto time_t = std::chrono::system_clock::to_time_t(now);
-        
-        std::ostringstream oss;
-        oss << "[" << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S") 
-            << "] [DriverFactory] [INFO] " << message;
-        
-        // 실제로는 LogManager를 통해 로깅
-        std::cout << oss.str() << std::endl;
-    }
-    
-    void LogError(const std::string& message) {
-        auto now = std::chrono::system_clock::now();
-        auto time_t = std::chrono::system_clock::to_time_t(now);
-        
-        std::ostringstream oss;
-        oss << "[" << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S") 
-            << "] [DriverFactory] [ERROR] " << message;
-        
-        std::cerr << oss.str() << std::endl;
-    }
-};
-
-/**
- * @brief 편의를 위한 전역 함수들
- */
+// =============================================================================
+// 편의를 위한 전역 함수들
+// =============================================================================
 
 /**
  * @brief 간편한 드라이버 생성 함수
@@ -534,7 +296,7 @@ std::unique_ptr<IProtocolDriver> CreateDriverSimple(
         config.endpoint = endpoint;
         config.timeout_ms = 5000;  // 기본 5초 타임아웃
         config.retry_count = 3;    // 기본 3회 재시도
-        config.is_enabled = true;
+        config.auto_reconnect = true;  // ✅ IProtocolDriver.h와 일치
         
         return FactoryUtils::CreateAndInitializeDriver(protocol, config);
         
@@ -544,56 +306,9 @@ std::unique_ptr<IProtocolDriver> CreateDriverSimple(
 }
 
 /**
- * @brief 설정 파일에서 드라이버 생성
- * @param config_file_path 설정 파일 경로
- * @return 드라이버 인스턴스들
- */
-std::vector<std::unique_ptr<IProtocolDriver>> CreateDriversFromConfig(
-    const std::string& config_file_path) {
-    
-    std::vector<std::unique_ptr<IProtocolDriver>> drivers;
-    
-    try {
-        // 설정 파일 읽기 (실제로는 JSON 파서 사용)
-        std::ifstream config_file(config_file_path);
-        if (!config_file.is_open()) {
-            throw std::runtime_error("Cannot open config file: " + config_file_path);
-        }
-        
-        // 간단한 구현 - 실제로는 JSON 라이브러리 사용 권장
-        std::string line;
-        while (std::getline(config_file, line)) {
-            if (line.empty() || line[0] == '#') {
-                continue;  // 빈 줄이나 주석 건너뛰기
-            }
-            
-            // 각 라인에서 드라이버 설정 파싱
-            // 형식: protocol=modbus_tcp,endpoint=192.168.1.100:502,device_id=device1
-            DriverConfig config = ParseConfigLine(line);
-            
-            auto driver = FactoryUtils::CreateAndInitializeDriver(config.protocol_type, config);
-            if (driver) {
-                drivers.push_back(std::move(driver));
-            }
-        }
-        
-    } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to load drivers from config: " + std::string(e.what()));
-    }
-    
-    return drivers;
-}
-
-/**
- * @brief 드라이버 팩토리 초기화 (프로그램 시작 시 호출)
- * @return 성공 시 true
- */
-bool InitializeDriverFactory() {
-    return DriverFactoryManager::GetInstance().Initialize();
-}
-
-/**
  * @brief 설정 라인 파싱 유틸리티
+ * @param line 설정 라인
+ * @return 파싱된 DriverConfig
  */
 DriverConfig ParseConfigLine(const std::string& line) {
     DriverConfig config;
@@ -614,7 +329,7 @@ DriverConfig ParseConfigLine(const std::string& line) {
             value.erase(0, value.find_first_not_of(" \t"));
             value.erase(value.find_last_not_of(" \t") + 1);
             
-            // 설정 적용
+            // 설정 적용 (IProtocolDriver.h의 DriverConfig와 일치)
             if (key == "protocol") {
                 config.protocol_type = StringToProtocolType(value);
             } else if (key == "endpoint") {
@@ -627,15 +342,90 @@ DriverConfig ParseConfigLine(const std::string& line) {
                 config.timeout_ms = std::stoul(value);
             } else if (key == "retry_count") {
                 config.retry_count = std::stoul(value);
-            } else if (key == "enabled") {
-                config.is_enabled = (value == "true" || value == "1");
-            } else if (key == "protocol_config") {
-                config.protocol_config = value;
+            } else if (key == "auto_reconnect") {
+                config.auto_reconnect = (value == "true" || value == "1");
+            } else if (key == "polling_interval") {
+                config.polling_interval_ms = std::stoul(value);
             }
         }
     }
     
     return config;
+}
+
+/**
+ * @brief 설정 파일에서 드라이버 생성
+ * @param config_file_path 설정 파일 경로
+ * @return 드라이버 인스턴스들
+ */
+std::vector<std::unique_ptr<IProtocolDriver>> CreateDriversFromConfig(
+    const std::string& config_file_path) {
+    
+    std::vector<std::unique_ptr<IProtocolDriver>> drivers;
+    
+    try {
+        std::ifstream config_file(config_file_path);
+        if (!config_file.is_open()) {
+            throw std::runtime_error("Cannot open config file: " + config_file_path);
+        }
+        
+        std::string line;
+        while (std::getline(config_file, line)) {
+            if (line.empty() || line[0] == '#') {
+                continue;  // 빈 줄이나 주석 건너뛰기
+            }
+            
+            // 각 라인에서 드라이버 설정 파싱
+            DriverConfig config = ParseConfigLine(line);
+            
+            auto driver = FactoryUtils::CreateAndInitializeDriver(config.protocol_type, config);
+            if (driver) {
+                drivers.push_back(std::move(driver));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to load drivers from config: " + std::string(e.what()));
+    }
+    
+    return drivers;
+}
+
+/**
+ * @brief 드라이버 팩토리 초기화 (프로그램 시작 시 호출)
+ * @return 성공 시 true
+ */
+bool InitializeDriverFactory() {
+    try {
+        auto& factory = DriverFactory::GetInstance();
+        
+        // 기본 드라이버들이 등록되었는지 확인
+        std::vector<ProtocolType> required_protocols = {
+            ProtocolType::MODBUS_TCP,
+            ProtocolType::MQTT,
+            ProtocolType::BACNET_IP
+        };
+        
+        bool all_registered = true;
+        for (const auto& protocol : required_protocols) {
+            if (!factory.IsProtocolSupported(protocol)) {
+                std::cerr << "Required protocol not registered: " 
+                         << ProtocolTypeToString(protocol) << std::endl;
+                all_registered = false;
+            }
+        }
+        
+        if (all_registered) {
+            std::cout << "All required drivers registered successfully" << std::endl;
+            std::cout << FactoryUtils::GetRegisteredDriversInfo() << std::endl;
+        }
+        
+        return all_registered;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Factory initialization failed: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 } // namespace Drivers
