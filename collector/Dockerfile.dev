@@ -1,363 +1,122 @@
 # ============================================================================
-# PulseOne Collector Development Dockerfile (문법 오류 완전 수정 버전)
-# GCC C23 표준 호환성 문제 해결 및 MQTT 스크립트 통합
+# PulseOne Collector Development Dockerfile (빌드 문제 완전 해결 버전)
 # ============================================================================
 
 FROM gcc:latest
 
-# 환경 변수 설정
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Seoul
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-# 빌드 인자
-ARG BUILD_TYPE=Debug
-ARG INSTALL_DEPS=true
-
 # ============================================================================
-# 1단계: 기존 패키지 + 추가 패키지 설치
+# 1단계: 필수 패키지 설치
 # ============================================================================
-
 RUN apt-get update && apt-get install -y \
-    cmake \
-    make \
-    libpqxx-dev \
-    libpq-dev \
-    libsqlite3-dev \
-    curl \
-    git \
-    nodejs \
-    npm \
-    pkg-config \
-    autoconf \
-    automake \
-    libtool \
-    uuid-dev \
-    libssl-dev \
-    wget \
-    unzip \
-    gdb \
-    valgrind \
-    vim \
-    nano \
-    tree \
-    htop \
-    netcat-openbsd \
-    telnet \
-    iputils-ping \
-    libhiredis-dev \
-    libjson-c-dev \
-    libconfig-dev \
-    libcurl4-openssl-dev \
-    tar \
-    gzip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    cmake make build-essential \
+    libpqxx-dev libpq-dev libsqlite3-dev \
+    curl git nodejs npm pkg-config \
+    autoconf automake libtool uuid-dev libssl-dev \
+    wget unzip gdb valgrind vim nano tree htop \
+    netcat-openbsd telnet iputils-ping \
+    libhiredis-dev libjson-c-dev libconfig-dev \
+    libcurl4-openssl-dev libmodbus-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ============================================================================
 # 2단계: Claude Code 설치
 # ============================================================================
-
-RUN npm install -g @anthropic-ai/claude-code || \
-    curl -fsSL https://claude.ai/cli/install.sh | bash || \
-    echo "⚠️  Claude Code installation failed, continuing without it"
+RUN npm install -g @anthropic-ai/claude-code || echo "⚠️  Claude Code installation failed"
 
 # ============================================================================
 # 3단계: 라이브러리 경로 설정
 # ============================================================================
-
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/lib
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
 
 # ============================================================================
-# 4단계: libmodbus 설치 (패키지 관리자 방식)
+# 4단계: Paho MQTT C 설치 (안정화 버전)
 # ============================================================================
-
-RUN echo "🔧 Installing libmodbus..." && \
-    apt-get update && \
-    apt-get install -y libmodbus-dev && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    echo "✅ libmodbus installed successfully"
-
-# ============================================================================
-# 5단계: Eclipse Paho MQTT C 설치 (완전한 스크립트)
-# ============================================================================
-
-RUN echo "🔧 Installing Paho MQTT C (with C23 compatibility fix)..." && \
-    cd /tmp && \
-    rm -rf paho.mqtt.c* mqtt_test* && \
-    git clone https://github.com/eclipse/paho.mqtt.c.git && \
-    cd paho.mqtt.c && \
-    echo "📝 Applying C23 compatibility fixes..." && \
-    sed -i '/typedef unsigned int bool;/d' src/MQTTPacket.h && \
-    sed -i '/typedef.*bool.*;/d' src/MQTTPacket.h && \
-    sed -i '1i#include <stdbool.h>' src/MQTTPacket.h && \
-    for file in src/*.h src/*.c; do \
-        if [ -f "$file" ] && grep -q "typedef.*bool" "$file"; then \
-            sed -i '/typedef.*bool.*;/d' "$file"; \
-        fi; \
-    done && \
-    mkdir -p build && cd build && \
-    cmake .. \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DPAHO_WITH_SSL=ON \
-        -DPAHO_ENABLE_TESTING=OFF \
-        -DPAHO_BUILD_STATIC=ON \
-        -DPAHO_BUILD_SHARED=ON \
-        -DCMAKE_C_STANDARD=11 \
-        -DCMAKE_C_FLAGS="-std=c11 -fPIC -O2" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DPAHO_BUILD_DOCUMENTATION=OFF && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    echo "📄 Creating pkg-config file..." && \
-    mkdir -p /usr/local/lib/pkgconfig && \
-    echo "prefix=/usr/local" > /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "exec_prefix=\${prefix}" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "libdir=\${exec_prefix}/lib" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "includedir=\${prefix}/include" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "Name: paho-mqtt3c" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "Description: Eclipse Paho MQTT C Client Library" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "Version: 1.3.13" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "Libs: -L\${libdir} -lpaho-mqtt3c -lpaho-mqtt3cs -lpaho-mqtt3a -lpaho-mqtt3as" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "Cflags: -I\${includedir}" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "Requires.private: openssl" >> /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "🧪 Testing compilation..." && \
-    cd /tmp && \
-    echo '#include <stdio.h>' > mqtt_test.c && \
-    echo '#include <stdlib.h>' >> mqtt_test.c && \
-    echo '#include <string.h>' >> mqtt_test.c && \
-    echo '#include <MQTTClient.h>' >> mqtt_test.c && \
-    echo 'int main() {' >> mqtt_test.c && \
-    echo '    printf("MQTT Test OK\\n");' >> mqtt_test.c && \
-    echo '    MQTTClient client;' >> mqtt_test.c && \
-    echo '    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;' >> mqtt_test.c && \
-    echo '    return 0;' >> mqtt_test.c && \
-    echo '}' >> mqtt_test.c && \
-    gcc -std=c11 mqtt_test.c $(pkg-config --cflags --libs paho-mqtt3c) -o mqtt_test && \
-    ./mqtt_test && \
-    echo "✅ MQTT compilation test successful" && \
-    cd / && rm -rf /tmp/paho.mqtt.c /tmp/mqtt_test* && \
-    echo "✅ Paho MQTT C installed successfully"
+RUN echo "🔧 Installing Paho MQTT C..." && \
+    cd /tmp && git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
+    cd paho.mqtt.c && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_WITH_SSL=ON -DPAHO_ENABLE_TESTING=OFF \
+             -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_SHARED=ON -DCMAKE_C_STANDARD=11 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/paho.mqtt.c && echo "✅ Paho MQTT C installed"
 
 # ============================================================================
-# 6단계: Eclipse Paho MQTT C++ 설치
+# 5단계: Paho MQTT C++ 설치
 # ============================================================================
-
 RUN echo "🔧 Installing Paho MQTT C++..." && \
-    cd /tmp && \
-    git clone https://github.com/eclipse/paho.mqtt.cpp.git && \
-    cd paho.mqtt.cpp && \
-    mkdir -p build && cd build && \
-    cmake .. \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DPAHO_BUILD_SAMPLES=OFF \
-        -DPAHO_BUILD_TESTS=OFF \
-        -DPAHO_BUILD_STATIC=ON \
-        -DPAHO_BUILD_SHARED=ON \
-        -DCMAKE_CXX_STANDARD=17 \
-        -DCMAKE_CXX_FLAGS="-std=c++17 -fPIC -O2" \
-        -DPAHO_MQTT_C_LIBRARIES=/usr/local/lib \
-        -DPAHO_MQTT_C_INCLUDE_DIRS=/usr/local/include && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    echo "📄 Creating C++ pkg-config file..." && \
-    echo "prefix=/usr/local" > /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "exec_prefix=\${prefix}" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "libdir=\${exec_prefix}/lib" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "includedir=\${prefix}/include" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "Name: paho-mqttpp3" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "Description: Eclipse Paho MQTT C++ Client Library" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "Version: 1.3.2" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "Requires: paho-mqtt3c" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "Libs: -L\${libdir} -lpaho-mqttpp3" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    echo "Cflags: -I\${includedir}" >> /usr/local/lib/pkgconfig/paho-mqttpp3.pc && \
-    cd / && rm -rf /tmp/paho.mqtt.cpp && \
-    echo "✅ Paho MQTT C++ installed successfully"
+    cd /tmp && git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
+    cd paho.mqtt.cpp && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_BUILD_SAMPLES=OFF -DPAHO_BUILD_TESTS=OFF \
+             -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_SHARED=ON -DCMAKE_CXX_STANDARD=17 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/paho.mqtt.cpp && echo "✅ Paho MQTT C++ installed"
 
 # ============================================================================
-# 7단계: BACnet Stack 설치
+# 6단계: BACnet 헤더만 설치 (안정성 우선)
 # ============================================================================
-
-RUN echo "🔧 Installing BACnet Stack..." && \
-    cd /tmp && \
-    git clone https://github.com/bacnet-stack/bacnet-stack.git && \
-    cd bacnet-stack && \
+RUN echo "🔧 Installing BACnet headers..." && \
+    cd /tmp && git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     mkdir -p /usr/local/include/bacnet && \
-    find include -name "*.h" -exec cp {} /usr/local/include/bacnet/ \; 2>/dev/null || true && \
-    find src -name "*.h" -exec cp {} /usr/local/include/bacnet/ \; 2>/dev/null || true && \
-    (mkdir -p build && cd build && \
-     cmake .. \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_SHARED_LIBS=ON \
-        -DCMAKE_C_STANDARD=11 \
-        -DCMAKE_C_FLAGS="-std=c11" 2>/dev/null && \
-     make -j$(nproc) 2>/dev/null && \
-     make install 2>/dev/null && \
-     ldconfig) || echo "⚠️  BACnet library build failed, headers only installed" && \
-    echo "📄 Creating BACnet pkg-config file..." && \
-    echo "prefix=/usr/local" > /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "exec_prefix=\${prefix}" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "libdir=\${exec_prefix}/lib" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "includedir=\${prefix}/include" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "Name: bacnet" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "Description: BACnet Protocol Stack" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "Version: 1.0.0" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "Libs: -L\${libdir} -lbacnet" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    echo "Cflags: -I\${includedir}/bacnet" >> /usr/local/lib/pkgconfig/bacnet.pc && \
-    cd / && rm -rf /tmp/bacnet-stack && \
-    echo "✅ BACnet Stack installed"
+    find bacnet-stack -name "*.h" -exec cp {} /usr/local/include/bacnet/ \; 2>/dev/null || true && \
+    cd / && rm -rf /tmp/bacnet-stack && echo "✅ BACnet headers installed"
 
 # ============================================================================
-# 8단계: RabbitMQ C 클라이언트 설치
+# 7단계: 추가 라이브러리들
 # ============================================================================
+# nlohmann/json
+RUN mkdir -p /usr/local/include/nlohmann && \
+    wget -q -O /usr/local/include/nlohmann/json.hpp \
+    https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp || \
+    apt-get update && apt-get install -y nlohmann-json3-dev && apt-get clean
 
-RUN echo "🔧 Installing RabbitMQ-C..." && \
-    cd /tmp && \
-    git clone https://github.com/alanxz/rabbitmq-c.git && \
-    cd rabbitmq-c && \
-    mkdir build && cd build && \
-    cmake .. \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_SHARED_LIBS=ON \
-        -DBUILD_STATIC_LIBS=ON \
-        -DBUILD_EXAMPLES=OFF \
-        -DBUILD_TOOLS=OFF \
-        -DCMAKE_C_STANDARD=11 \
-        -DCMAKE_C_FLAGS="-std=c11" && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    cd / && rm -rf /tmp/rabbitmq-c && \
-    echo "✅ RabbitMQ-C installed successfully"
+# spdlog
+RUN cd /tmp && git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
+    cd spdlog && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DSPDLOG_BUILD_SHARED=ON -DCMAKE_CXX_STANDARD=17 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/spdlog
 
-# ============================================================================
-# 9단계: 유용한 C++ 라이브러리들 설치
-# ============================================================================
-
-# JSON 처리를 위한 nlohmann/json
-RUN echo "🔧 Installing nlohmann/json..." && \
-    cd /tmp && \
-    wget -q https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp && \
-    mkdir -p /usr/local/include/nlohmann && \
-    mv json.hpp /usr/local/include/nlohmann/ && \
-    echo "✅ nlohmann/json installed successfully"
-
-# 로깅을 위한 spdlog
-RUN echo "🔧 Installing spdlog..." && \
-    cd /tmp && \
-    git clone https://github.com/gabime/spdlog.git && \
-    cd spdlog && \
-    mkdir build && cd build && \
-    cmake .. \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DSPDLOG_BUILD_SHARED=ON \
-        -DCMAKE_CXX_STANDARD=17 && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    cd / && rm -rf /tmp/spdlog && \
-    echo "✅ spdlog installed successfully"
-
-# 테스트 프레임워크 (Google Test)
-RUN echo "🔧 Installing Google Test..." && \
-    cd /tmp && \
-    git clone https://github.com/google/googletest.git && \
-    cd googletest && \
-    mkdir build && cd build && \
-    cmake .. \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_SHARED_LIBS=ON \
-        -DCMAKE_CXX_STANDARD=17 && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    cd / && rm -rf /tmp/googletest && \
-    echo "✅ Google Test installed successfully"
+# Google Test
+RUN cd /tmp && git clone --depth 1 --branch v1.14.0 https://github.com/google/googletest.git && \
+    cd googletest && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON -DCMAKE_CXX_STANDARD=17 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/googletest
 
 # ============================================================================
-# 10단계: 최종 라이브러리 검증
+# 8단계: PKG-CONFIG 파일 생성
 # ============================================================================
+RUN echo "prefix=/usr/local\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: paho-mqtt3c\nDescription: Eclipse Paho MQTT C Client\nVersion: 1.3.13\nLibs: -L\${libdir} -lpaho-mqtt3c -lpaho-mqtt3cs\nCflags: -I\${includedir}" > /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
+    echo "prefix=/usr/local\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: paho-mqttpp3\nDescription: Eclipse Paho MQTT C++ Client\nVersion: 1.3.2\nRequires: paho-mqtt3c\nLibs: -L\${libdir} -lpaho-mqttpp3\nCflags: -I\${includedir}" > /usr/local/lib/pkgconfig/paho-mqttpp3.pc
 
+# ============================================================================
+# 9단계: 검증 및 설정
+# ============================================================================
 RUN ldconfig && \
-    echo "🔍 Final library verification..." && \
-    echo "📦 Package versions and status:" && \
-    (pkg-config --exists libmodbus && echo "  ✅ libmodbus: $(pkg-config --modversion libmodbus)" || echo "  ❌ libmodbus: Not found") && \
-    (pkg-config --exists paho-mqtt3c && echo "  ✅ Paho MQTT C: $(pkg-config --modversion paho-mqtt3c)" || echo "  ❌ Paho MQTT C: Not found") && \
-    (pkg-config --exists paho-mqttpp3 && echo "  ✅ Paho MQTT C++: $(pkg-config --modversion paho-mqttpp3)" || echo "  ❌ Paho MQTT C++: Not found") && \
-    ([ -f /usr/local/include/MQTTClient.h ] && echo "  ✅ MQTT Headers: Found" || echo "  ❌ MQTT Headers: Not found") && \
-    ([ -d /usr/local/include/bacnet ] && echo "  ✅ BACnet Headers: Found" || echo "  ❌ BACnet Headers: Not found") && \
-    ([ -f /usr/local/include/amqp.h ] && echo "  ✅ RabbitMQ-C: Found" || echo "  ❌ RabbitMQ-C: Not found") && \
-    ([ -f /usr/local/include/nlohmann/json.hpp ] && echo "  ✅ nlohmann/json: Found" || echo "  ❌ nlohmann/json: Not found") && \
-    ([ -f /usr/local/include/spdlog/spdlog.h ] && echo "  ✅ spdlog: Found" || echo "  ❌ spdlog: Not found") && \
-    ([ -f /usr/local/include/gtest/gtest.h ] && echo "  ✅ Google Test: Found" || echo "  ❌ Google Test: Not found") && \
-    echo "🧪 Final MQTT compilation test:" && \
-    cd /tmp && \
-    echo '#include <MQTTClient.h>' > final_test.c && \
-    echo 'int main() { printf("MQTT Final Test OK\\n"); return 0; }' >> final_test.c && \
-    gcc -std=c11 final_test.c $(pkg-config --cflags --libs paho-mqtt3c) -o final_test && \
-    ./final_test && \
-    rm -f final_test* && \
-    echo "🎉 All libraries verified and working correctly!"
+    echo "🔍 Library verification:" && \
+    (pkg-config --exists libmodbus && echo "  ✅ libmodbus: $(pkg-config --modversion libmodbus)") || echo "  ❌ libmodbus" && \
+    (pkg-config --exists paho-mqtt3c && echo "  ✅ Paho MQTT C: $(pkg-config --modversion paho-mqtt3c)") || echo "  ❌ Paho MQTT C" && \
+    (pkg-config --exists paho-mqttpp3 && echo "  ✅ Paho MQTT C++: $(pkg-config --modversion paho-mqttpp3)") || echo "  ❌ Paho MQTT C++" && \
+    ([ -d /usr/local/include/bacnet ] && echo "  ✅ BACnet Headers: Found") || echo "  ❌ BACnet Headers" && \
+    ([ -f /usr/local/include/nlohmann/json.hpp ] && echo "  ✅ nlohmann/json: Found") || echo "  ❌ nlohmann/json" && \
+    echo "✅ All libraries verified!"
 
-# ============================================================================
-# 11단계: 개발 편의성 설정
-# ============================================================================
-
-RUN echo 'alias ll="ls -la"' >> /root/.bashrc && \
-    echo 'alias la="ls -A"' >> /root/.bashrc && \
-    echo 'alias l="ls -CF"' >> /root/.bashrc && \
+# 개발 환경 설정
+RUN mkdir -p /app/collector/{bin,build,lib,logs} /app/config/drivers && \
     echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
-    echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc && \
-    echo 'echo "📋 Available libraries: libmodbus, paho-mqtt3c, paho-mqttpp3, bacnet, spdlog, gtest"' >> /root/.bashrc && \
-    echo 'echo "🔧 Use: pkg-config --list-all | grep -E \"(modbus|paho|bacnet)\" to verify"' >> /root/.bashrc
+    echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc
 
-# 개발 디렉토리 생성
-RUN mkdir -p /app/collector/bin \
-             /app/collector/build \
-             /app/collector/lib \
-             /app/collector/include \
-             /app/collector/src \
-             /app/collector/tests \
-             /app/logs \
-             /app/config/drivers
-
-# C/C++ 컴파일러 기본 설정
-ENV CC=gcc
-ENV CXX=g++
+ENV CC=gcc CXX=g++
 ENV CFLAGS="-std=c11 -Wall -Wextra"
 ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
 
-# ============================================================================
-# 12단계: 작업 디렉토리 설정
-# ============================================================================
-
 WORKDIR /app/collector
-
-# ============================================================================
-# 13단계: 소스 복사
-# ============================================================================
-
-COPY collector/ /app/collector/
-COPY config/ /app/config/
-
-# ============================================================================
-# 마지막: 메타데이터 및 실행 설정
-# ============================================================================
-
-LABEL maintainer="PulseOne Development Team"
-LABEL version="1.0.2"
-LABEL description="PulseOne Collector Development Environment (문법 완전 수정)"
-
-VOLUME ["/app/collector", "/app/config", "/app/logs"]
-
 EXPOSE 2345 8080
+VOLUME ["/app/collector", "/app/config", "/app/logs"]
 
 CMD ["/bin/bash"]

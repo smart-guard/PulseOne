@@ -1,233 +1,221 @@
+version: '3.8'
+
 services:
-  # ============================================================================
-  # Backend 서비스 (Node.js API 서버)
-  # ============================================================================
+  # PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: pulseone-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pulseone}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: pulseone-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # InfluxDB (새로 추가)
+  influxdb:
+    image: influxdb:2.7
+    container_name: pulseone-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:-influxpassword}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-pulseone}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-timeseries}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-my-super-secret-auth-token}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pulseone-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq123}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # Backend
   backend:
-    container_name: pulseone-backend-dev
     build:
       context: .
       dockerfile: backend/Dockerfile.dev
-    working_dir: /app/backend
+    container_name: pulseone-backend-dev
+    environment:
+      NODE_ENV: development
+      ENV_STAGE: ${ENV_STAGE:-dev}
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-my-super-secret-auth-token}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-rabbitmq}:${RABBITMQ_PASSWORD:-rabbitmq123}@rabbitmq:5672
     ports:
       - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      influx:
-        condition: service_started
-      rabbitmq:
-        condition: service_started
-    environment:
-      - ENV_STAGE=${ENV_STAGE:-dev}
-      - ANTHROPIC_API_KEY=./secrets/anthropic_api_key
-    env_file:
-      - ./config/.env.${ENV_STAGE:-dev}
+      - "9229:9229"
     volumes:
       - ./backend:/app/backend
       - ./config:/app/config
-      - ./secrets:/app/secrets:ro
-      - claude_cache:/root/.cache/claude-code
-    tty: true
-    stdin_open: true
-    command: >
-      bash -c "
-        if [ -f /app/secrets/anthropic_api_key ]; then
-          export ANTHROPIC_API_KEY=$(cat /app/secrets/anthropic_api_key)
-          echo '✅ ANTHROPIC_API_KEY loaded from secrets'
-        else
-          echo '⚠️  ANTHROPIC_API_KEY file not found'
-        fi
-        echo '🚀 PulseOne Backend Development Environment'
-        echo 'Available commands:'
-        echo '  npm run dev    - Start development server'
-        echo '  npm run debug  - Start with debugger'
-        echo '  npm test       - Run tests'
-        echo '  claude-code    - Use Claude Code CLI'
-        echo ''
-        /bin/bash
-      "
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # ============================================================================
-  # Frontend 개발 서버 (Vite)
-  # ============================================================================
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    container_name: pulseone-frontend-dev
-    environment:
-      VITE_API_BASE_URL: http://localhost:3000/api
-      VITE_WEBSOCKET_URL: ws://localhost:3000
-      VITE_DEBUG_MODE: "true"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    ports:
-      - "5173:5173"    # Vite 개발 서버
+      - ./secrets:/app/secrets
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - pulseone_network
 
-  # ============================================================================
-  # Collector 서비스 (C++ 데이터 수집기)
-  # ============================================================================
+  # Collector (수정된 버전)
   collector:
-    container_name: pulseone-collector-dev
     build:
       context: .
       dockerfile: collector/Dockerfile.dev
-      args:
-        BUILD_TYPE: ${BUILD_TYPE:-Debug}
-        INSTALL_DEPS: "true"
-    working_dir: /app/collector
+    container_name: pulseone-collector-dev
+    tty: true
+    stdin_open: true
+    environment:
+      BUILD_TYPE: Debug
+      LOG_LEVEL: debug
+      ENV_STAGE: ${ENV_STAGE:-dev}
+      AUTO_BUILD: "true"          # 자동 빌드 활성화
+      AUTO_RUN: "false"           # 자동 실행 비활성화 (개발용)
     volumes:
       - ./collector:/app/collector
       - ./config:/app/config
-      - ./secrets:/app/secrets:ro
-      - claude_cache:/root/.cache/claude-code
-      # 드라이버 설정 파일들 마운트
-      - ./config/drivers:/app/config/drivers
-      # 로그 디렉토리 마운트
-      - ./logs/collector:/app/logs
-      # 라이브러리 캐시 (빌드 성능 향상)
-      - collector_libs:/usr/local/lib
-      - collector_includes:/usr/local/include
-    ports:
-      # 디버깅용 포트 (gdb 원격 디버깅)
-      - "2345:2345"
-      # 모니터링용 포트 (향후 확장)
-      - "8080:8080"
-    tty: true
-    stdin_open: true
+      - ./secrets:/app/secrets
+      - ./logs:/app/logs
     depends_on:
-      rabbitmq:
-        condition: service_started
-      redis:
-        condition: service_healthy
       postgres:
         condition: service_healthy
-    environment:
-      - ENV_STAGE=${ENV_STAGE:-dev}
-      - BUILD_TYPE=${BUILD_TYPE:-Debug}
-      - ANTHROPIC_API_KEY_FILE=./secrets/anthropic_api_key
-      # 라이브러리 경로 설정
-      - LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/lib
-      - PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig
-      # 드라이버 설정
-      - DRIVER_CONFIG_PATH=/app/config/drivers
-      - LOG_LEVEL=${LOG_LEVEL:-debug}
-      - ENABLE_PACKET_LOGGING=${ENABLE_PACKET_LOGGING:-true}
-      # 데이터베이스 연결 정보
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=pulseone
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - INFLUX_HOST=influx
-      - INFLUX_PORT=8086
-      - INFLUX_TOKEN=mytoken
-      - INFLUX_ORG=pulseone
-      - INFLUX_BUCKET=metrics
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=admin
-      - RABBITMQ_PASS=admin
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     command: >
       bash -c "
         echo '🔧 PulseOne Collector Development Environment'
         echo '============================================='
         
-        # ANTHROPIC API 키 로드
+        # 환경 정보 출력
         if [ -f /app/secrets/anthropic_api_key ]; then
           export ANTHROPIC_API_KEY=\$$(cat /app/secrets/anthropic_api_key)
-          echo '✅ ANTHROPIC_API_KEY loaded from secrets'
-        else
-          echo '⚠️  ANTHROPIC_API_KEY file not found'
+          echo '✅ ANTHROPIC_API_KEY loaded'
         fi
         
-        # 시스템 정보 출력
-        echo ''
-        echo '📋 System Information:'
+        echo '📋 System Info:'
         echo \"  OS: \$$(uname -s) \$$(uname -r)\"
-        echo \"  Compiler: \$$(g++ --version 2>/dev/null | head -n1 || echo 'Not found')\"
+        echo \"  Compiler: \$$(g++ --version | head -n1)\"
         echo \"  Build Type: \$$BUILD_TYPE\"
-        echo \"  Log Level: \$$LOG_LEVEL\"
-        echo ''
         
-        # 라이브러리 상태 체크
+        # 라이브러리 상태 확인
         echo '📚 Library Status:'
-        if pkg-config --exists libmodbus 2>/dev/null; then
-          VERSION=\$$(pkg-config --modversion libmodbus 2>/dev/null || echo 'unknown')
-          echo \"  ✅ libmodbus: \$$VERSION\"
-        else
-          echo '  ❌ libmodbus: Not found'
-        fi
-        [ -f /usr/local/include/MQTTClient.h ] && echo '  ✅ Paho MQTT C: Found' || echo '  ❌ Paho MQTT C: Not found'
-        [ -f /usr/local/include/mqtt/client.h ] && echo '  ✅ Paho MQTT C++: Found' || echo '  ❌ Paho MQTT C++: Not found'
-        [ -d /usr/local/include/bacnet ] && echo '  ✅ BACnet Stack: Found' || echo '  ❌ BACnet Stack: Not found'
-        echo ''
+        pkg-config --exists libmodbus && echo \"  ✅ libmodbus: \$$(pkg-config --modversion libmodbus)\" || echo '  ❌ libmodbus'
+        [ -f /usr/local/include/MQTTClient.h ] && echo '  ✅ Paho MQTT C: Found' || echo '  ❌ Paho MQTT C'
+        [ -f /usr/local/include/mqtt/client.h ] && echo '  ✅ Paho MQTT C++: Found' || echo '  ❌ Paho MQTT C++'
+        [ -d /usr/local/include/bacnet ] && echo '  ✅ BACnet: Found' || echo '  ❌ BACnet'
         
-        # 네트워크 연결 체크
+        # 서비스 연결 확인
         echo '🌐 Service Connectivity:'
-        timeout 5 bash -c '</dev/tcp/postgres/5432' 2>/dev/null && echo '  ✅ PostgreSQL: Connected' || echo '  ❌ PostgreSQL: Not reachable'
-        timeout 5 bash -c '</dev/tcp/redis/6379' 2>/dev/null && echo '  ✅ Redis: Connected' || echo '  ❌ Redis: Not reachable'
-        timeout 5 bash -c '</dev/tcp/influx/8086' 2>/dev/null && echo '  ✅ InfluxDB: Connected' || echo '  ❌ InfluxDB: Not reachable'
-        timeout 5 bash -c '</dev/tcp/rabbitmq/5672' 2>/dev/null && echo '  ✅ RabbitMQ: Connected' || echo '  ❌ RabbitMQ: Not reachable'
-        echo ''
+        timeout 5 bash -c '</dev/tcp/postgres/5432' 2>/dev/null && echo '  ✅ PostgreSQL' || echo '  ❌ PostgreSQL'
+        timeout 5 bash -c '</dev/tcp/redis/6379' 2>/dev/null && echo '  ✅ Redis' || echo '  ❌ Redis'
+        timeout 5 bash -c '</dev/tcp/influxdb/8086' 2>/dev/null && echo '  ✅ InfluxDB' || echo '  ❌ InfluxDB'
+        timeout 5 bash -c '</dev/tcp/rabbitmq/5672' 2>/dev/null && echo '  ✅ RabbitMQ' || echo '  ❌ RabbitMQ'
         
-        # 설정 파일 체크
-        echo '⚙️  Configuration Files:'
-        [ -f /app/config/.env.dev ] && echo '  ✅ Environment: /app/config/.env.dev' || echo '  ❌ Environment: Not found'
-        [ -f /app/config/drivers/drivers.conf ] && echo '  ✅ Drivers: /app/config/drivers/drivers.conf' || echo '  ⚠️  Drivers: Using default config'
-        [ -f /app/config/drivers/drivers.dev.conf ] && echo '  ✅ Dev Drivers: /app/config/drivers/drivers.dev.conf' || echo '  ⚠️  Dev Drivers: Not found'
-        echo ''
-        
-        # 빌드 상태 체크
-        echo '🔨 Build Status:'
-        if [ -f /app/collector/bin/pulseone-collector ]; then
-          FILE_SIZE=\$$(ls -lh /app/collector/bin/pulseone-collector 2>/dev/null | awk '{print \$$5}' || echo 'N/A')
-          echo \"  ✅ Executable: Found (\$$FILE_SIZE)\"
-        else
-          echo '  ❌ Executable: Not built'
+        # 자동 빌드 (선택적)
+        if [ \"\$$AUTO_BUILD\" = \"true\" ]; then
+          echo '🔨 Starting automatic build...'
+          cd /app/collector
+          
+          # 누락된 파일들 체크
+          echo '📁 Checking required files...'
+          
+          # 필수 디렉토리 생성
+          mkdir -p include/Core src/Core include/Drivers src/Drivers
+          
+          echo '🔧 Building collector...'
+          make clean 2>/dev/null || true
+          
+          if make debug; then
+            echo '✅ Build successful!'
+            
+            # 자동 실행 (선택적)
+            if [ \"\$$AUTO_RUN\" = \"true\" ]; then
+              echo '🚀 Starting collector...'
+              make run
+            else
+              echo '💡 Build completed. Use \"make run\" to start collector.'
+            fi
+          else
+            echo '❌ Build failed. Check the error messages above.'
+            echo '💡 You can still access the container to debug:'
+            echo '   docker exec -it pulseone-collector-dev bash'
+          fi
         fi
-        [ -f /app/collector/Makefile ] && echo '  ✅ Makefile: Found' || echo '  ❌ Makefile: Not found'
-        echo ''
         
+        echo ''
         echo '🚀 Available Commands:'
-        echo '  make info           - Show detailed build information'
-        echo '  make deps           - Install/update dependencies'
-        echo '  make clean          - Clean build files'
-        echo '  make debug          - Build in debug mode'
-        echo '  make release        - Build in release mode'
-        echo '  make drivers        - Build driver plugins'
-        echo '  make tests          - Build and run tests'
-        echo '  make run            - Build and run collector'
-        echo '  make ci             - Run full CI pipeline'
-        echo '  make docker-logs    - Show collector logs'
-        echo '  claude-code         - Use Claude Code CLI'
+        echo '  make clean && make debug  - Build collector'
+        echo '  make run                  - Run collector'
+        echo '  make tests                - Run tests'
+        echo '  claude-code               - Use Claude Code CLI'
         echo ''
-        echo '🔧 Development Workflow:'
-        echo '  1. make deps        # Install dependencies (if needed)'
-        echo '  2. make clean       # Clean previous builds'
-        echo '  3. make debug       # Build in debug mode'
-        echo '  4. make run         # Run the collector'
-        echo ''
-        echo '💡 Tips:'
-        echo '  - Use Ctrl+C to stop running processes'
-        echo '  - Use \"docker-compose logs collector\" to view logs'
-        echo '  - Configuration files are in /app/config/'
-        echo '  - Driver configs are in /app/config/drivers/'
-        echo ''
+        echo '🚀 PulseOne Collector Development Environment Ready!'
+        echo '💡 Use: docker exec -it pulseone-collector-dev bash'
         
-        /bin/bash
+        # 무한 대기
+        tail -f /dev/null
       "
     healthcheck:
       test: ["CMD-SHELL", "pgrep pulseone-collector || exit 1"]
@@ -235,163 +223,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    # 리소스 제한 (개발 환경)
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1.0'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-    # 로그 설정
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    networks:
+      - pulseone_network
 
-  # ============================================================================
-  # PostgreSQL 데이터베이스
-  # ============================================================================
-  postgres:
-    image: postgres:15
-    container_name: pulseone-postgres
-    restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: pulseone
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      # 초기 스키마 로드 (있다면)
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  # ============================================================================
-  # InfluxDB 시계열 데이터베이스
-  # ============================================================================
-  influx:
-    image: influxdb:2.7
-    container_name: pulseone-influx
-    ports:
-      - "8086:8086"
-    environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=adminpass
-      - DOCKER_INFLUXDB_INIT_ORG=pulseone
-      - DOCKER_INFLUXDB_INIT_BUCKET=metrics
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=mytoken
-    volumes:
-      - influx_data:/var/lib/influxdb2
-
-  # ============================================================================
-  # Redis 캐시 데이터베이스
-  # ============================================================================
-  redis:
-    image: redis:alpine
-    container_name: pulseone-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  # ============================================================================
-  # RabbitMQ 메시지 큐
-  # ============================================================================
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: pulseone-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"    # Management UI
-    environment:
-      - RABBITMQ_DEFAULT_USER=admin
-      - RABBITMQ_DEFAULT_PASS=admin
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-
-  # ============================================================================
-  # 모니터링 서비스들 (선택적)
-  # ============================================================================
-  monitoring:
-    image: prom/prometheus:latest
-    container_name: pulseone-monitoring
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    profiles:
-      - monitoring
-
-  loki:
-    image: grafana/loki:latest
-    container_name: pulseone-loki
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./monitoring/loki-config.yaml:/etc/loki/local-config.yaml:ro
-      - loki_data:/tmp/loki
-    profiles:
-      - monitoring
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: pulseone-grafana
-    ports:
-      - "3001:3000"    # 포트 충돌 방지 (backend가 3000 사용)
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    profiles:
-      - monitoring
-
-# ============================================================================
-# 볼륨 정의
-# ============================================================================
-volumes:
-  claude_cache:
-    driver: local
-  postgres_data:
-    driver: local
-  influx_data:
-    driver: local
-  redis_data:
-    driver: local
-  rabbitmq_data:
-    driver: local
-  # Collector 관련 볼륨들
-  collector_libs:
-    driver: local
-  collector_includes:
-    driver: local
-  # 모니터링 관련 볼륨들
-  prometheus_data:
-    driver: local
-  loki_data:
-    driver: local
-  grafana_data:
-    driver: local
-
-# ============================================================================
-# 네트워크 정의 (기본 네트워크 사용)
-# ============================================================================
 networks:
-  default:
+  pulseone_network:
     driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:
+  influxdb_config:
+  rabbitmq_data:
