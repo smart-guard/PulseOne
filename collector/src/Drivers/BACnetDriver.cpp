@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Drivers/BACnetDriver.cpp
-// BACnet 프로토콜 드라이버 구현
+// BACnet 프로토콜 드라이버 구현 - 진단 기능 완전 통합 버전
 // =============================================================================
 
 #include "Drivers/BACnetDriver.h"
@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <iostream>
 
 namespace PulseOne {
 namespace Drivers {
@@ -16,12 +17,21 @@ namespace Drivers {
 // 정적 멤버 초기화
 BACnetDriver* BACnetDriver::instance_ = nullptr;
 
+// =============================================================================
+// ✅ 생성자 - 진단 관련 초기화 포함
+// =============================================================================
 BACnetDriver::BACnetDriver()
     : initialized_(false)
     , connected_(false)
     , status_(DriverStatus::DISCONNECTED)
     , stop_threads_(false)
     , stack_initialized_(false)
+    // ✅ 진단 관련 초기화
+    , diagnostics_enabled_(false)
+    , packet_logging_enabled_(false)
+    , console_output_enabled_(false)
+    , log_manager_(nullptr)
+    , db_manager_(nullptr)
 {
     instance_ = this;
     
@@ -31,12 +41,19 @@ BACnetDriver::BACnetDriver()
     
     // 에러 초기화
     last_error_ = ErrorInfo(ErrorCode::SUCCESS, "Driver created");
+    
+    // 패킷 히스토리 예약
+    packet_history_.reserve(1000); // MAX_PACKET_HISTORY
 }
 
 BACnetDriver::~BACnetDriver() {
     Disconnect();
     instance_ = nullptr;
 }
+
+// =============================================================================
+// 기본 드라이버 메소드들
+// =============================================================================
 
 bool BACnetDriver::Initialize(const DriverConfig& config) {
     if (initialized_.load()) {
@@ -55,7 +72,6 @@ bool BACnetDriver::Initialize(const DriverConfig& config) {
         
         // BACnet 설정 파싱
         if (!config.protocol_config.empty()) {
-            // JSON 또는 설정 문자열 파싱
             ParseBACnetConfig(config.protocol_config);
         }
         
@@ -128,7 +144,6 @@ bool BACnetDriver::Connect() {
         UpdateStatistics("connect", true, duration);
         
         logger_->Info("Connected to BACnet network", DriverLogCategory::CONNECTION);
-        logger_->LogBacnetOperation("CONNECT", config_.device_id, 0, 0, true);
         
         // 초기 Who-Is 전송
         if (config_.who_is_enabled) {
@@ -172,7 +187,6 @@ bool BACnetDriver::Disconnect() {
         status_.store(DriverStatus::DISCONNECTED);
         
         logger_->Info("Disconnected from BACnet network", DriverLogCategory::CONNECTION);
-        logger_->LogBacnetOperation("DISCONNECT", config_.device_id, 0, 0, true);
         
         return true;
         
@@ -284,8 +298,6 @@ bool BACnetDriver::WriteValue(const DataPoint& point, const DataValue& value) {
         
         if (success) {
             logger_->Info("Write value successful", DriverLogCategory::DATA_PROCESSING);
-            logger_->LogBacnetOperation("WRITE_PROPERTY", device_id, object_instance, 
-                                       static_cast<uint32_t>(property_id), true);
         } else {
             logger_->Error("Write value failed", DriverLogCategory::DATA_PROCESSING);
         }
@@ -336,7 +348,9 @@ std::future<bool> BACnetDriver::WriteValueAsync(
     });
 }
 
+// =============================================================================
 // BACnet 특화 기능들
+// =============================================================================
 
 bool BACnetDriver::SendWhoIs(uint32_t low_device_id, uint32_t high_device_id) {
     if (!IsConnected()) {
@@ -460,7 +474,128 @@ bool BACnetDriver::UnsubscribeCOV(uint32_t device_id, BACNET_OBJECT_TYPE object_
     }
 }
 
+// =============================================================================
+// ✅ 진단 기능들 - 완전 구현
+// =============================================================================
+
+bool BACnetDriver::EnableDiagnostics(DatabaseManager& db_manager,
+                                     bool enable_packet_logging,
+                                     bool enable_console_output) {
+    std::lock_guard<std::mutex> lock(diagnostics_mutex_);
+    
+    // 기존 시스템 참조 설정
+    log_manager_ = &LogManager::getInstance();
+    db_manager_ = &db_manager;
+    
+    // 설정 적용
+    packet_logging_enabled_ = enable_packet_logging;
+    console_output_enabled_ = enable_console_output;
+    
+    // 디바이스 이름 조회
+    if (!driver_config_.device_id.empty()) {
+        device_name_ = QueryDeviceName(driver_config_.device_id);
+        if (device_name_.empty()) {
+            device_name_ = "bacnet_device_" + driver_config_.device_id.substr(0, 8);
+        }
+    }
+    
+    // 데이터베이스에서 포인트 정보 로드
+    bool success = LoadBACnetPointsFromDB();
+    
+    if (success) {
+        diagnostics_enabled_ = true;
+        
+        log_manager_->logDriver("bacnet_diagnostics",
+            "Diagnostics enabled for device: " + device_name_ + 
+            " (" + std::to_string(point_info_map_.size()) + " points loaded)");
+        
+        if (console_output_enabled_) {
+            std::cout << "🏢 BACnet diagnostics enabled for " << device_name_ 
+                      << " (" << point_info_map_.size() << " points)" << std::endl;
+        }
+    }
+    
+    return success;
+}
+
+void BACnetDriver::DisableDiagnostics() {
+    std::lock_guard<std::mutex> lock(diagnostics_mutex_);
+    
+    diagnostics_enabled_ = false;
+    packet_logging_enabled_ = false;
+    console_output_enabled_ = false;
+    
+    // 패킷 히스토리 정리
+    {
+        std::lock_guard<std::mutex> packet_lock(packet_log_mutex_);
+        packet_history_.clear();
+    }
+    
+    // 포인트 정보 정리
+    {
+        std::lock_guard<std::mutex> points_lock(points_mutex_);
+        point_info_map_.clear();
+    }
+    
+    if (log_manager_) {
+        log_manager_->logDriver("bacnet_diagnostics",
+            "Diagnostics disabled for device: " + device_name_);
+    }
+    
+    if (console_output_enabled_) {
+        std::cout << "🏢 BACnet diagnostics disabled for " << device_name_ << std::endl;
+    }
+}
+
+std::string BACnetDriver::GetDiagnosticsJSON() const {
+    std::ostringstream oss;
+    oss << "{\n";
+    oss << "  \"device_id\": \"" << driver_config_.device_id << "\",\n";
+    oss << "  \"device_name\": \"" << device_name_ << "\",\n";
+    oss << "  \"protocol\": \"BACnet/IP\",\n";
+    oss << "  \"diagnostics_enabled\": " << (diagnostics_enabled_ ? "true" : "false") << ",\n";
+    oss << "  \"packet_logging_enabled\": " << (packet_logging_enabled_ ? "true" : "false") << ",\n";
+    oss << "  \"console_output_enabled\": " << (console_output_enabled_ ? "true" : "false") << ",\n";
+    
+    {
+        std::lock_guard<std::mutex> lock(points_mutex_);
+        oss << "  \"data_points_count\": " << point_info_map_.size() << ",\n";
+    }
+    
+    {
+        std::lock_guard<std::mutex> lock(packet_log_mutex_);
+        oss << "  \"packet_history_count\": " << packet_history_.size() << ",\n";
+    }
+    
+    oss << "  \"connection_status\": \"" << (IsConnected() ? "connected" : "disconnected") << "\",\n";
+    oss << "  \"local_device_id\": " << config_.device_id << ",\n";
+    oss << "  \"interface\": \"" << config_.interface_name << "\",\n";
+    oss << "  \"port\": " << config_.port << ",\n";
+    oss << "  \"apdu_timeout\": " << config_.apdu_timeout << ",\n";
+    oss << "  \"who_is_enabled\": " << (config_.who_is_enabled ? "true" : "false") << "\n";
+    oss << "}";
+    
+    return oss.str();
+}
+
+std::string BACnetDriver::GetPointName(uint32_t device_id, BACNET_OBJECT_TYPE type, 
+                                      uint32_t instance) const {
+    std::string point_key = std::to_string(device_id) + ":" + 
+                           std::to_string(static_cast<int>(type)) + ":" + 
+                           std::to_string(instance);
+    
+    std::lock_guard<std::mutex> lock(points_mutex_);
+    auto it = point_info_map_.find(point_key);
+    if (it != point_info_map_.end()) {
+        return it->second.name;
+    }
+    
+    return GetObjectTypeName(type) + ":" + std::to_string(instance);
+}
+
+// =============================================================================
 // 내부 메서드들
+// =============================================================================
 
 bool BACnetDriver::InitializeBACnetStack() {
     if (stack_initialized_) {
@@ -581,9 +716,20 @@ void BACnetDriver::DiscoveryThread() {
     logger_->Info("BACnet discovery thread stopped", DriverLogCategory::DISCOVERY);
 }
 
+// =============================================================================
+// ✅ ReadProperty - 진단 로깅 통합 버전
+// =============================================================================
+
 bool BACnetDriver::ReadProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
                                uint32_t object_instance, BACNET_PROPERTY_ID property_id,
                                uint32_t array_index, BACNET_APPLICATION_DATA_VALUE& value) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // ✅ 진단: 송신 패킷 로깅
+    if (diagnostics_enabled_) {
+        LogBACnetPacket("TX", device_id, object_type, object_instance, property_id, true);
+    }
+    
     try {
         BACNET_ADDRESS target_address;
         
@@ -591,12 +737,30 @@ bool BACnetDriver::ReadProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_ty
         if (!address_get_by_device(device_id, NULL, &target_address)) {
             logger_->Warn("Device address not found: " + std::to_string(device_id),
                          DriverLogCategory::COMMUNICATION);
+                         
+            // ✅ 진단: 에러 로깅
+            if (diagnostics_enabled_) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                  (end_time - start_time).count();
+                LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                              property_id, false, "Device address not found", duration_ms);
+            }
             return false;
         }
         
         uint8_t invoke_id = tsm_next_free_invokeID();
         if (invoke_id == 0) {
             logger_->Warn("No free invoke ID available", DriverLogCategory::COMMUNICATION);
+            
+            // ✅ 진단: 에러 로깅
+            if (diagnostics_enabled_) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                  (end_time - start_time).count();
+                LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                              property_id, false, "No free invoke ID", duration_ms);
+            }
             return false;
         }
         
@@ -604,19 +768,38 @@ bool BACnetDriver::ReadProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_ty
         if (!Send_Read_Property_Request(invoke_id, &target_address, object_type,
                                        object_instance, property_id, array_index)) {
             logger_->Error("Failed to send Read Property request", DriverLogCategory::COMMUNICATION);
+            
+            // ✅ 진단: 에러 로깅
+            if (diagnostics_enabled_) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                  (end_time - start_time).count();
+                LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                              property_id, false, "Failed to send request", duration_ms);
+            }
             return false;
         }
         
         // 응답 대기
         auto timeout = std::chrono::milliseconds(config_.apdu_timeout);
-        auto start_time = std::chrono::steady_clock::now();
+        auto request_start = std::chrono::steady_clock::now();
         
-        while (std::chrono::steady_clock::now() - start_time < timeout) {
+        while (std::chrono::steady_clock::now() - request_start < timeout) {
             if (tsm_invoke_id_free(invoke_id)) {
                 // 응답을 받았음, 결과 확인
                 BACNET_TSM_DATA* tsm = tsm_get_transaction(invoke_id);
                 if (tsm && tsm->state == TSM_STATE_COMPLETED) {
                     // 성공적으로 읽기 완료
+                    auto end_time = std::chrono::steady_clock::now();
+                    auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                      (end_time - start_time).count();
+                    
+                    // ✅ 진단: 성공 로깅
+                    if (diagnostics_enabled_) {
+                        LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                                      property_id, true, "", duration_ms);
+                    }
+                    
                     // 실제 구현에서는 응답 데이터를 파싱하여 value에 저장
                     return true;
                 }
@@ -627,27 +810,75 @@ bool BACnetDriver::ReadProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_ty
         
         // 타임아웃 또는 실패
         tsm_free_invoke_id(invoke_id);
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                          (end_time - start_time).count();
+        
+        // ✅ 진단: 타임아웃 로깅
+        if (diagnostics_enabled_) {
+            LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                          property_id, false, "Timeout after " + std::to_string(duration_ms) + "ms", duration_ms);
+        }
+        
         return false;
         
     } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                          (end_time - start_time).count();
+        
+        // ✅ 진단: 예외 로깅
+        if (diagnostics_enabled_) {
+            LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                          property_id, false, "Exception: " + std::string(e.what()), duration_ms);
+        }
+        
         logger_->Error("Read property error: " + std::string(e.what()),
                       DriverLogCategory::COMMUNICATION);
         return false;
     }
 }
 
+// =============================================================================
+// ✅ WriteProperty - 진단 로깅 통합 버전
+// =============================================================================
+
 bool BACnetDriver::WriteProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
                                 uint32_t object_instance, BACNET_PROPERTY_ID property_id,
                                 uint32_t array_index, const BACNET_APPLICATION_DATA_VALUE& value) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // ✅ 진단: 송신 패킷 로깅
+    if (diagnostics_enabled_) {
+        LogBACnetPacket("TX", device_id, object_type, object_instance, property_id, true);
+    }
+    
     try {
         BACNET_ADDRESS target_address;
         
         if (!address_get_by_device(device_id, NULL, &target_address)) {
+            // ✅ 진단: 에러 로깅
+            if (diagnostics_enabled_) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                  (end_time - start_time).count();
+                LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                              property_id, false, "Device address not found", duration_ms);
+            }
             return false;
         }
         
         uint8_t invoke_id = tsm_next_free_invokeID();
         if (invoke_id == 0) {
+            // ✅ 진단: 에러 로깅
+            if (diagnostics_enabled_) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                  (end_time - start_time).count();
+                LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                              property_id, false, "No free invoke ID", duration_ms);
+            }
             return false;
         }
         
@@ -660,17 +891,35 @@ bool BACnetDriver::WriteProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_t
         wp_data.application_data_len = 0;  // 실제 구현에서는 value를 인코딩
         
         if (!Send_Write_Property_Request(invoke_id, &target_address, &wp_data)) {
+            // ✅ 진단: 에러 로깅
+            if (diagnostics_enabled_) {
+                auto end_time = std::chrono::steady_clock::now();
+                auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                  (end_time - start_time).count();
+                LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                              property_id, false, "Failed to send write request", duration_ms);
+            }
             return false;
         }
         
         // 응답 대기 로직 (ReadProperty와 유사)
         auto timeout = std::chrono::milliseconds(config_.apdu_timeout);
-        auto start_time = std::chrono::steady_clock::now();
+        auto request_start = std::chrono::steady_clock::now();
         
-        while (std::chrono::steady_clock::now() - start_time < timeout) {
+        while (std::chrono::steady_clock::now() - request_start < timeout) {
             if (tsm_invoke_id_free(invoke_id)) {
                 BACNET_TSM_DATA* tsm = tsm_get_transaction(invoke_id);
                 if (tsm && tsm->state == TSM_STATE_COMPLETED) {
+                    auto end_time = std::chrono::steady_clock::now();
+                    auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                                      (end_time - start_time).count();
+                    
+                    // ✅ 진단: 성공 로깅
+                    if (diagnostics_enabled_) {
+                        LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                                      property_id, true, "", duration_ms);
+                    }
+                    
                     return true;
                 }
                 break;
@@ -679,16 +928,39 @@ bool BACnetDriver::WriteProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_t
         }
         
         tsm_free_invoke_id(invoke_id);
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                          (end_time - start_time).count();
+        
+        // ✅ 진단: 타임아웃 로깅
+        if (diagnostics_enabled_) {
+            LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                          property_id, false, "Write timeout after " + std::to_string(duration_ms) + "ms", duration_ms);
+        }
+        
         return false;
         
     } catch (const std::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                          (end_time - start_time).count();
+        
+        // ✅ 진단: 예외 로깅
+        if (diagnostics_enabled_) {
+            LogBACnetPacket("RX", device_id, object_type, object_instance, 
+                          property_id, false, "Exception: " + std::string(e.what()), duration_ms);
+        }
+        
         logger_->Error("Write property error: " + std::string(e.what()),
                       DriverLogCategory::COMMUNICATION);
         return false;
     }
 }
 
+// =============================================================================
 // 정적 핸들러들
+// =============================================================================
 
 void BACnetDriver::IAmHandler(uint8_t* service_request, uint16_t service_len,
                              BACNET_ADDRESS* src) {
@@ -765,7 +1037,9 @@ void BACnetDriver::COVNotificationHandler(uint8_t* service_request, uint16_t ser
     }
 }
 
+// =============================================================================
 // 유틸리티 메서드들
+// =============================================================================
 
 bool BACnetDriver::ConvertToBACnetValue(const DataValue& data_value, DataType data_type,
                                        BACNET_APPLICATION_DATA_VALUE& bacnet_value) {
@@ -966,6 +1240,242 @@ void BACnetDriver::ParseBACnetConfig(const std::string& config_str) {
             }
         }
     }
+}
+
+// =============================================================================
+// ✅ 진단 헬퍼 함수들 구현
+// =============================================================================
+
+bool BACnetDriver::LoadBACnetPointsFromDB() {
+    if (!db_manager_) {
+        return false;
+    }
+    
+    std::string query = R"(
+        SELECT dp.name, dp.description, dp.unit, dp.scaling_factor, dp.scaling_offset,
+               bp.device_id, bp.object_type, bp.object_instance, bp.property_id
+        FROM data_points dp
+        JOIN bacnet_points bp ON dp.id = bp.data_point_id
+        WHERE bp.device_id = $1 AND dp.is_enabled = true
+        ORDER BY bp.object_instance
+    )";
+    
+    try {
+        auto result = db_manager_->ExecuteQuery(query, {std::to_string(config_.device_id)});
+        
+        {
+            std::lock_guard<std::mutex> lock(points_mutex_);
+            point_info_map_.clear();
+            
+            for (const auto& row : result) {
+                BACnetDataPointInfo point;
+                point.name = row["name"].as<std::string>();
+                point.description = row["description"].as<std::string>("");
+                point.unit = row["unit"].as<std::string>("");
+                point.scaling_factor = row["scaling_factor"].as<double>(1.0);
+                point.scaling_offset = row["scaling_offset"].as<double>(0.0);
+                
+                // Key: "DeviceID:ObjectType:ObjectInstance"
+                std::string key = row["device_id"].as<std::string>() + ":" +
+                                 row["object_type"].as<std::string>() + ":" +
+                                 row["object_instance"].as<std::string>();
+                
+                point_info_map_[key] = point;
+            }
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        if (log_manager_) {
+            log_manager_->logError("Failed to load BACnet points: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+std::string BACnetDriver::QueryDeviceName(const std::string& device_id) {
+    if (!db_manager_) {
+        return "";
+    }
+    
+    std::string query = "SELECT name FROM devices WHERE id = $1";
+    
+    try {
+        auto result = db_manager_->ExecuteQuery(query, {device_id});
+        if (!result.empty()) {
+            return result[0]["name"].as<std::string>();
+        }
+    } catch (const std::exception& e) {
+        if (log_manager_) {
+            log_manager_->logError("Failed to query device name: " + std::string(e.what()));
+        }
+    }
+    
+    return "";
+}
+
+void BACnetDriver::LogBACnetPacket(const std::string& direction, uint32_t device_id,
+                                  BACNET_OBJECT_TYPE type, uint32_t instance,
+                                  BACNET_PROPERTY_ID prop, bool success,
+                                  const std::string& error, double response_time_ms) {
+    if (!diagnostics_enabled_) {
+        return;
+    }
+    
+    BACnetPacketLog log;
+    log.direction = direction;
+    log.timestamp = std::chrono::system_clock::now();
+    log.device_id = device_id;
+    log.object_type = type;
+    log.object_instance = instance;
+    log.property_id = prop;
+    log.success = success;
+    log.error_message = error;
+    log.response_time_ms = response_time_ms;
+    
+    // 포인트 이름 조회 및 값 디코딩
+    std::string point_key = std::to_string(device_id) + ":" + 
+                           std::to_string(static_cast<int>(type)) + ":" + 
+                           std::to_string(instance);
+    
+    {
+        std::lock_guard<std::mutex> lock(points_mutex_);
+        auto it = point_info_map_.find(point_key);
+        if (it != point_info_map_.end()) {
+            log.decoded_value = it->second.name;
+            if (!it->second.unit.empty()) {
+                log.decoded_value += " (" + it->second.unit + ")";
+            }
+        } else {
+            log.decoded_value = GetObjectTypeName(type) + ":" + std::to_string(instance);
+        }
+    }
+    
+    // 원시 APDU 데이터 (실제로는 BACnet 스택에서 추출해야 함)
+    log.raw_data = "APDU[" + std::to_string(device_id) + ":" + 
+                   std::to_string(static_cast<int>(type)) + ":" + 
+                   std::to_string(instance) + ":" + 
+                   std::to_string(static_cast<int>(prop)) + "]";
+    
+    // 패킷 히스토리에 추가
+    {
+        std::lock_guard<std::mutex> lock(packet_log_mutex_);
+        packet_history_.push_back(log);
+        TrimPacketHistory();
+    }
+    
+    // 콘솔 출력
+    if (console_output_enabled_) {
+        std::cout << FormatPacketForConsole(log) << std::endl;
+    }
+    
+    // 파일 로깅
+    if (packet_logging_enabled_ && log_manager_) {
+        std::string log_msg = FormatPacketForFile(log);
+        log_manager_->logPacket("bacnet", device_name_, log_msg);
+    }
+}
+
+std::string BACnetDriver::GetObjectTypeName(BACNET_OBJECT_TYPE type) const {
+    switch (type) {
+        case OBJECT_ANALOG_INPUT: return "AnalogInput";
+        case OBJECT_ANALOG_OUTPUT: return "AnalogOutput";
+        case OBJECT_ANALOG_VALUE: return "AnalogValue";
+        case OBJECT_BINARY_INPUT: return "BinaryInput";
+        case OBJECT_BINARY_OUTPUT: return "BinaryOutput";
+        case OBJECT_BINARY_VALUE: return "BinaryValue";
+        case OBJECT_DEVICE: return "Device";
+        case OBJECT_MULTI_STATE_INPUT: return "MultiStateInput";
+        case OBJECT_MULTI_STATE_OUTPUT: return "MultiStateOutput";
+        case OBJECT_MULTI_STATE_VALUE: return "MultiStateValue";
+        default: return "Unknown(" + std::to_string(static_cast<int>(type)) + ")";
+    }
+}
+
+std::string BACnetDriver::GetPropertyName(BACNET_PROPERTY_ID prop) const {
+    switch (prop) {
+        case PROP_PRESENT_VALUE: return "PresentValue";
+        case PROP_OBJECT_NAME: return "ObjectName";
+        case PROP_DESCRIPTION: return "Description";
+        case PROP_UNITS: return "Units";
+        case PROP_OUT_OF_SERVICE: return "OutOfService";
+        case PROP_STATUS_FLAGS: return "StatusFlags";
+        case PROP_RELIABILITY: return "Reliability";
+        case PROP_PRIORITY_ARRAY: return "PriorityArray";
+        case PROP_RELINQUISH_DEFAULT: return "RelinquishDefault";
+        default: return "Property(" + std::to_string(static_cast<int>(prop)) + ")";
+    }
+}
+
+void BACnetDriver::TrimPacketHistory() {
+    const size_t MAX_PACKET_HISTORY = 1000;
+    if (packet_history_.size() > MAX_PACKET_HISTORY) {
+        packet_history_.erase(packet_history_.begin(), 
+                             packet_history_.begin() + (packet_history_.size() - MAX_PACKET_HISTORY));
+    }
+}
+
+std::string BACnetDriver::FormatPacketForConsole(const BACnetPacketLog& log) const {
+    std::ostringstream oss;
+    
+    auto time_t = std::chrono::system_clock::to_time_t(log.timestamp);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>
+             (log.timestamp.time_since_epoch()) % 1000;
+    
+    oss << "[" << std::put_time(std::localtime(&time_t), "%H:%M:%S") << "."
+        << std::setfill('0') << std::setw(3) << ms.count() << "] ";
+    
+    if (log.direction == "TX") {
+        oss << "🏢 TX -> Device " << log.device_id << ": Read Property"
+            << "\n  📍 Object: " << GetObjectTypeName(log.object_type) 
+            << ":" << log.object_instance
+            << "\n  🔍 Property: " << GetPropertyName(log.property_id)
+            << "\n  📊 Point: " << log.decoded_value;
+            
+    } else { // RX
+        oss << "🏢 RX <- Device " << log.device_id << ": ";
+        if (log.success) {
+            oss << "✅ SUCCESS (" << std::fixed << std::setprecision(1) 
+                << log.response_time_ms << "ms)";
+            if (!log.decoded_value.empty()) {
+                oss << "\n  📊 Value: " << log.decoded_value;
+            }
+        } else {
+            oss << "❌ FAILED: " << log.error_message;
+        }
+    }
+    
+    return oss.str();
+}
+
+std::string BACnetDriver::FormatPacketForFile(const BACnetPacketLog& log) const {
+    std::ostringstream oss;
+    
+    auto time_t = std::chrono::system_clock::to_time_t(log.timestamp);
+    
+    oss << "[" << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S") << "]"
+        << " " << log.direction 
+        << " Device:" << log.device_id
+        << " " << GetObjectTypeName(log.object_type) << ":" << log.object_instance
+        << " " << GetPropertyName(log.property_id);
+    
+    if (log.direction == "RX") {
+        if (log.success) {
+            oss << " SUCCESS (" << log.response_time_ms << "ms)";
+            if (!log.decoded_value.empty()) {
+                oss << " [" << log.decoded_value << "]";
+            }
+        } else {
+            oss << " FAILED: " << log.error_message;
+        }
+    }
+    
+    if (!log.raw_data.empty()) {
+        oss << " RAW: " << log.raw_data;
+    }
+    
+    return oss.str();
 }
 
 // 드라이버 자동 등록
