@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Drivers/DriverFactory.h
-// 드라이버 팩토리 클래스
+// 드라이버 팩토리 클래스 (IProtocolDriver.h와 호환)
 // =============================================================================
 
 #ifndef PULSEONE_DRIVERS_DRIVER_FACTORY_H
@@ -10,12 +10,14 @@
 #include <functional>
 #include <mutex>
 #include <memory>
+#include <map>
+#include <vector>
 
 namespace PulseOne {
 namespace Drivers {
 
 /**
- * @brief 드라이버 생성자 함수 타입
+ * @brief 드라이버 생성자 함수 타입 (IProtocolDriver.h와 동일)
  */
 using DriverCreator = std::function<std::unique_ptr<IProtocolDriver>()>;
 
@@ -42,7 +44,7 @@ public:
      * @param creator 드라이버 생성자 함수
      * @return 성공 시 true
      */
-    bool RegisterDriver(ProtocolType protocol, DriverCreator creator) {
+    virtual bool RegisterDriver(ProtocolType protocol, DriverCreator creator) {
         std::lock_guard<std::mutex> lock(mutex_);
         
         if (creators_.find(protocol) != creators_.end()) {
@@ -58,7 +60,7 @@ public:
      * @param protocol 프로토콜 타입
      * @return 성공 시 true
      */
-    bool UnregisterDriver(ProtocolType protocol) {
+    virtual bool UnregisterDriver(ProtocolType protocol) {
         std::lock_guard<std::mutex> lock(mutex_);
         return creators_.erase(protocol) > 0;
     }
@@ -68,7 +70,7 @@ public:
      * @param protocol 프로토콜 타입
      * @return 드라이버 인스턴스 (실패 시 nullptr)
      */
-    std::unique_ptr<IProtocolDriver> CreateDriver(ProtocolType protocol) {
+    virtual std::unique_ptr<IProtocolDriver> CreateDriver(ProtocolType protocol) {
         std::lock_guard<std::mutex> lock(mutex_);
         
         auto it = creators_.find(protocol);
@@ -79,7 +81,7 @@ public:
         try {
             return it->second();
         } catch (const std::exception& e) {
-            // 로깅 필요
+            // 로깅 필요 시 추가
             return nullptr;
         }
     }
@@ -88,7 +90,7 @@ public:
      * @brief 등록된 프로토콜 목록 반환
      * @return 프로토콜 타입 벡터
      */
-    std::vector<ProtocolType> GetSupportedProtocols() const {
+    virtual std::vector<ProtocolType> GetAvailableProtocols() const {
         std::lock_guard<std::mutex> lock(mutex_);
         
         std::vector<ProtocolType> protocols;
@@ -106,7 +108,7 @@ public:
      * @param protocol 프로토콜 타입
      * @return 지원 시 true
      */
-    bool IsProtocolSupported(ProtocolType protocol) const {
+    virtual bool IsProtocolSupported(ProtocolType protocol) const {
         std::lock_guard<std::mutex> lock(mutex_);
         return creators_.find(protocol) != creators_.end();
     }
@@ -115,14 +117,21 @@ public:
      * @brief 등록된 드라이버 수 반환
      * @return 드라이버 수
      */
-    size_t GetDriverCount() const {
+    virtual size_t GetDriverCount() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return creators_.size();
     }
     
-private:
+    /**
+     * @brief 가상 소멸자 (상속 가능하도록)
+     */
+    virtual ~DriverFactory() = default;
+
+protected:
+    /**
+     * @brief 생성자 (보호된 접근)
+     */
     DriverFactory() = default;
-    ~DriverFactory() = default;
     
     // 복사 및 이동 방지
     DriverFactory(const DriverFactory&) = delete;
