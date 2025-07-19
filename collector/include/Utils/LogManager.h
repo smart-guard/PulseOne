@@ -7,6 +7,8 @@
 #include <mutex>
 #include <memory>
 #include <thread>
+#include <sstream>
+#include <iostream>
 #include "LogLevels.h"
 
 namespace PulseOne {
@@ -21,6 +23,37 @@ public:
     void Error(const std::string& message);
     void Fatal(const std::string& message);
     void Debug(const std::string& message);
+
+    // 포맷 문자열을 지원하는 템플릿 메소드들
+    template<typename... Args>
+    void Info(const std::string& format, Args&&... args) {
+        std::string message = formatString(format, std::forward<Args>(args)...);
+        Info(message);
+    }
+
+    template<typename... Args>
+    void Warn(const std::string& format, Args&&... args) {
+        std::string message = formatString(format, std::forward<Args>(args)...);
+        Warn(message);
+    }
+
+    template<typename... Args>
+    void Error(const std::string& format, Args&&... args) {
+        std::string message = formatString(format, std::forward<Args>(args)...);
+        Error(message);
+    }
+
+    template<typename... Args>
+    void Fatal(const std::string& format, Args&&... args) {
+        std::string message = formatString(format, std::forward<Args>(args)...);
+        Fatal(message);
+    }
+
+    template<typename... Args>
+    void Debug(const std::string& format, Args&&... args) {
+        std::string message = formatString(format, std::forward<Args>(args)...);
+        Debug(message);
+    }
 
     // 확장된 로그 메소드들
     void log(const std::string& category, LogLevel level, const std::string& message);
@@ -49,6 +82,39 @@ private:
     std::string buildLogPath(const std::string& category);
     void writeToFile(const std::string& filePath, const std::string& message);
     bool shouldLog(LogLevel level) const;
+
+    // 간단한 포맷 문자열 구현
+    template<typename T>
+    void formatHelper(std::stringstream& ss, const std::string& format, size_t& pos, const T& value) {
+        size_t placeholder = format.find("{}", pos);
+        if (placeholder != std::string::npos) {
+            ss << format.substr(pos, placeholder - pos);
+            ss << value;
+            pos = placeholder + 2;
+        } else {
+            ss << format.substr(pos);
+        }
+    }
+
+    // 재귀 종료 조건
+    void formatRecursive(std::stringstream& ss, const std::string& format, size_t& pos) {
+        ss << format.substr(pos);
+    }
+
+    // 재귀 처리
+    template<typename T, typename... Args>
+    void formatRecursive(std::stringstream& ss, const std::string& format, size_t& pos, const T& value, Args&&... args) {
+        formatHelper(ss, format, pos, value);
+        formatRecursive(ss, format, pos, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    std::string formatString(const std::string& format, Args&&... args) {
+        std::stringstream ss;
+        size_t pos = 0;
+        formatRecursive(ss, format, pos, std::forward<Args>(args)...);
+        return ss.str();
+    }
 
     std::mutex mutex_;
     std::map<std::string, std::ofstream> logFiles_;

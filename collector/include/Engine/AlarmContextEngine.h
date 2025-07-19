@@ -25,6 +25,7 @@
 
 #include "Drivers/CommonTypes.h"
 #include "Database/DatabaseManager.h"
+#include "Database/DeviceDataAccess.h"
 #include "RedisClient.h"
 #include "Utils/LogManager.h"
 

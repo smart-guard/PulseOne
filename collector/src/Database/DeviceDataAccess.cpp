@@ -40,28 +40,16 @@ static std::string EscapeString(const std::string& input) {
 // =============================================================================
 // DeviceDataAccess 생성자 및 소멸자
 // =============================================================================
-
-DeviceDataAccess::DeviceDataAccess(std::shared_ptr<DatabaseManager> db_manager,
-                                   const std::string& tenant_code)
-    : db_manager_(db_manager)
-    , tenant_code_(tenant_code)
-    , schema_name_(GetSchemaName(tenant_code))
-    , logger_(LogManager::getInstance()) {
-    
-    logger_.Info("DeviceDataAccess created for tenant: " + tenant_code);
-}
+DeviceDataAccess::DeviceDataAccess(std::shared_ptr<DatabaseManager> db)
+    : db_manager_(std::move(db)), logger_(LogManager::getInstance()) {}
 
 DeviceDataAccess::~DeviceDataAccess() {
-    logger_.Info("DeviceDataAccess destroyed for tenant: " + tenant_code_);
+    logger_.Info("DeviceDataAccess destroyed for: ");
 }
 
 // =============================================================================
 // 유틸리티 메소드 구현
 // =============================================================================
-
-std::string DeviceDataAccess::GetSchemaName(const std::string& tenant_code) {
-    return "tenant_" + tenant_code;
-}
 
 std::string DeviceDataAccess::GetTableName(const std::string& table_name) {
     return schema_name_ + "." + table_name;
@@ -109,46 +97,6 @@ json DeviceDataAccess::StringVectorToJsonArray(const std::vector<std::string>& s
         result.push_back(str);
     }
     return result;
-}
-
-// =============================================================================
-// 테넌트 및 공장 관리
-// =============================================================================
-
-std::optional<TenantInfo> DeviceDataAccess::GetTenantInfo(const std::string& tenant_code) {
-    try {
-        std::string query = "SELECT * FROM public.tenants WHERE tenant_code = '" + 
-                           EscapeString(tenant_code) + "'";
-        
-        auto result = db_manager_->executeQueryPostgres(query);
-        
-        if (result.empty()) {
-            return std::nullopt;
-        }
-        
-        TenantInfo info;
-        const auto& row = result[0];
-        
-        info.tenant_id = StringToUUID(row["tenant_id"].as<std::string>());
-        info.company_name = row["company_name"].as<std::string>();
-        info.company_code = row["company_code"].as<std::string>();
-        info.subscription_status = row["subscription_status"].as<std::string>();
-        info.is_active = row["is_active"].as<bool>();
-        info.created_at = StringToTimestamp(row["created_at"].as<std::string>());
-        
-        if (!row["settings"].is_null()) {
-            info.settings = json::parse(row["settings"].as<std::string>());
-        }
-        if (!row["features"].is_null()) {
-            info.features = json::parse(row["features"].as<std::string>());
-        }
-        
-        return info;
-        
-    } catch (const std::exception& e) {
-        logger_.Error("GetTenantInfo failed: " + std::string(e.what()));
-        return std::nullopt;
-    }
 }
 
 std::vector<FactoryInfo> DeviceDataAccess::GetFactories(bool active_only) {
@@ -1352,8 +1300,6 @@ public:
                            std::shared_ptr<ConfigManager> config)
         : IDataAccess(logger, config) {
         
-        // 설정에서 테넌트 코드 읽기
-        tenant_code_ = config->getOrDefault("tenant_code", "default");
     }
     
     ~DeviceDataAccessAdapter() override = default;
@@ -1386,10 +1332,7 @@ public:
             );
             
             // DeviceDataAccess 인스턴스 생성
-            device_data_access_ = std::make_unique<DeviceDataAccess>(
-                db_manager,
-                tenant_code_
-            );
+            device_data_access_ = std::make_unique<DeviceDataAccess>(db_manager);
             
             logger_->Info("DeviceDataAccessAdapter initialized successfully");
             return true;
@@ -1470,7 +1413,6 @@ public:
     }
     
 private:
-    std::string tenant_code_;
     std::unique_ptr<DeviceDataAccess> device_data_access_;
 };
 

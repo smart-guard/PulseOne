@@ -372,7 +372,7 @@ struct DeviceInfo {
     UUID id;                                  ///< 디바이스 고유 ID
     std::string name;                         ///< 디바이스 이름
     std::string description;                  ///< 디바이스 설명
-    ProtocolType protocol;                    ///< 사용할 프로토콜
+    ProtocolType protocol;                       ///< 사용할 프로토콜
     std::string endpoint;                     ///< 연결 엔드포인트 (IP:Port, 시리얼 포트 등)
     std::string config_json;                  ///< 프로토콜별 설정 (JSON 형태)
     
@@ -469,6 +469,33 @@ struct DataPoint {
     }
 };
 
+// DriverConfig 구조체 정의 (DeviceIntegration에서 사용)
+/**
+ * @brief 드라이버 설정 구조체
+ * @details DeviceIntegration에서 사용하는 드라이버별 설정 정보
+ */
+struct DriverConfig {
+    int device_id;                            ///< 디바이스 ID
+    std::string name;                         ///< 드라이버 이름
+    ProtocolType protocol_type;               ///< 프로토콜 타입
+    std::string endpoint;                     ///< 연결 엔드포인트
+    int polling_interval_ms;                  ///< 폴링 간격 (밀리초)
+    int timeout_ms;                           ///< 타임아웃 (밀리초)
+    int retry_count;                          ///< 재시도 횟수
+    bool enabled;                             ///< 활성화 여부
+    std::map<std::string, std::string> properties;  ///< 추가 설정 속성들
+    
+    /**
+     * @brief 기본 생성자
+     */
+    DriverConfig()
+        : device_id(0)
+        , protocol_type(ProtocolType::UNKNOWN)
+        , polling_interval_ms(Constants::DEFAULT_POLLING_INTERVAL_MS)
+        , timeout_ms(Constants::DEFAULT_TIMEOUT_MS)
+        , retry_count(Constants::DEFAULT_RETRY_COUNT)
+        , enabled(true) {}
+};
 // =============================================================================
 // 유틸리티 함수들 (인라인으로 성능 최적화)
 // =============================================================================

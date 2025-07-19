@@ -43,9 +43,8 @@ bool DeviceIntegration::Initialize() {
     
     try {
         // DataAccessManager에서 DeviceDataAccess 획득
-        auto& dam = Database::DataAccessManager::GetInstance();
-        device_data_access_ = dam.GetDomain<Database::DeviceDataAccess>();
-        
+        auto db_manager = std::shared_ptr<DatabaseManager>(&DatabaseManager::getInstance(), [](DatabaseManager*){});
+        device_data_access_ = std::make_unique<PulseOne::Database::DeviceDataAccess>(db_manager);        
         if (!device_data_access_) {
             logger_->Error("Failed to get DeviceDataAccess from DataAccessManager");
             return false;
@@ -115,23 +114,29 @@ void DeviceIntegration::Shutdown() {
 // =============================================================================
 
 void DeviceIntegration::LoadConfiguration() {
-    if (!config_) {
-        return;
+    try {
+        max_batch_size_ = std::stoul(config_->getOrDefault("device_integration.max_batch_size", "100"));
+        
+        batch_timeout_ = std::chrono::milliseconds(
+            std::stoul(config_->getOrDefault("device_integration.batch_timeout_ms", "1000"))
+        );
+        
+        cache_ttl_ = std::chrono::seconds(
+            std::stoul(config_->getOrDefault("device_integration.cache_ttl_seconds", "300"))
+        );
+        
+        max_cache_size_ = std::stoul(config_->getOrDefault("device_integration.max_cache_size", "1000"));
+        
+        logger_->Info("Configuration loaded - Batch size: {}, Timeout: {}ms, Cache TTL: {}s", 
+                    max_batch_size_, batch_timeout_.count(), cache_ttl_.count());
+    } catch (const std::exception& e) {
+        logger_->Error("Failed to load configuration: {}", e.what());
+        // 기본값 사용
+        max_batch_size_ = 100;
+        batch_timeout_ = std::chrono::milliseconds(1000);
+        cache_ttl_ = std::chrono::seconds(300);
+        max_cache_size_ = 1000;
     }
-    
-    // 배치 처리 설정
-    max_batch_size_ = std::stoul(config_->GetValue("device_integration.max_batch_size", "100"));
-    batch_timeout_ = std::chrono::milliseconds(
-        std::stoul(config_->GetValue("device_integration.batch_timeout_ms", "1000"))
-    );
-    
-    // 캐시 설정
-    cache_ttl_ = std::chrono::seconds(
-        std::stoul(config_->GetValue("device_integration.cache_ttl_seconds", "300"))
-    );
-    max_cache_size_ = std::stoul(config_->GetValue("device_integration.max_cache_size", "1000"));
-    
-    logger_->Debug("Configuration loaded");
 }
 
 // =============================================================================
@@ -326,35 +331,28 @@ std::vector<Database::DataPointInfo> DeviceIntegration::GetEnabledDataPoints(int
     return datapoints;
 }
 
-bool DeviceIntegration::GetDeviceConfig(int device_id, Drivers::DeviceConfig& config) {
-    Database::DeviceInfo device_info;
-    if (!GetDeviceInfo(device_id, device_info)) {
-        return false;
-    }
-    
+bool DeviceIntegration::GetDeviceConfig(int device_id, Drivers::DriverConfig& config) {
     try {
-        // DeviceInfo를 DeviceConfig로 변환
+        Database::DeviceInfo device_info;
+        if (!device_data_access_->GetDevice(device_id, device_info)) {
+            logger_->Error("Failed to get device info for ID: {}", device_id);
+            return false;
+        }
+
+        // 필드명을 올바르게 매핑
         config.device_id = device_id;
         config.name = device_info.name;
         config.protocol_type = StringToProtocolType(device_info.protocol_type);
-        config.endpoint = device_info.endpoint;
-        config.polling_interval_ms = device_info.polling_interval;
-        config.timeout_ms = device_info.timeout;
+        config.endpoint = device_info.connection_string;
+        config.polling_interval_ms = device_info.polling_interval_ms;
+        config.timeout_ms = device_info.timeout_ms;
         config.retry_count = device_info.retry_count;
         config.enabled = device_info.is_enabled;
-        
-        // JSON 설정 파싱
-        if (!device_info.config.empty()) {
-            auto json_config = nlohmann::json::parse(device_info.config);
-            for (auto& [key, value] : json_config.items()) {
-                config.properties[key] = value.get<std::string>();
-            }
-        }
-        
+        config.properties = device_info.connection_config;
+
         return true;
-        
     } catch (const std::exception& e) {
-        logger_->Error("GetDeviceConfig conversion failed: " + std::string(e.what()));
+        logger_->Error("Exception getting device config: {}", e.what());
         return false;
     }
 }
@@ -751,12 +749,12 @@ Database::CurrentValue DeviceIntegration::ConvertToCurrentValue(int point_id,
     Database::CurrentValue current_value;
     current_value.point_id = point_id;
     current_value.quality = quality;
-    current_value.timestamp = GetCurrentTimestamp();
+    current_value.timestamp = GetCurrentTimestampRaw();  // Timestamp 타입 반환
     
     // DataValue에서 값 추출
     std::visit([&current_value](const auto& val) {
         using T = std::decay_t<decltype(val)>;
-        if constexpr (std::is_arithmetic_v<T>) {
+        if constexpr (std::is_arithmetic_v<T> && !std::is_same_v<T, bool>) {
             current_value.value = static_cast<double>(val);
             current_value.raw_value = current_value.value;
             current_value.string_value = std::to_string(val);
@@ -768,6 +766,11 @@ Database::CurrentValue DeviceIntegration::ConvertToCurrentValue(int point_id,
             current_value.value = val ? 1.0 : 0.0;
             current_value.raw_value = current_value.value;
             current_value.string_value = val ? "true" : "false";
+        } else if constexpr (std::is_same_v<T, std::monostate>) {
+            // null 값 처리
+            current_value.value = 0.0;
+            current_value.raw_value = 0.0;
+            current_value.string_value = "null";
         }
     }, value);
     
@@ -780,7 +783,7 @@ Database::CurrentValue DeviceIntegration::ConvertToCurrentValue(int point_id,
     Database::CurrentValue current_value;
     current_value.point_id = point_id;
     current_value.quality = quality;
-    current_value.timestamp = GetCurrentTimestamp();
+    current_value.timestamp = GetCurrentTimestampRaw();  // Timestamp 타입 반환
     
     // JSON에서 값 추출
     if (value_json.is_number()) {
@@ -796,6 +799,10 @@ Database::CurrentValue DeviceIntegration::ConvertToCurrentValue(int point_id,
         current_value.value = bool_val ? 1.0 : 0.0;
         current_value.raw_value = current_value.value;
         current_value.string_value = bool_val ? "true" : "false";
+    } else if (value_json.is_null()) {
+        current_value.value = 0.0;
+        current_value.raw_value = 0.0;
+        current_value.string_value = "null";
     }
     
     return current_value;
@@ -805,12 +812,25 @@ nlohmann::json DeviceIntegration::ConvertDataValueToJson(const DataValue& value)
     nlohmann::json json_value;
     
     std::visit([&json_value](const auto& val) {
-        json_value = val;
+        using T = std::decay_t<decltype(val)>;
+        if constexpr (std::is_same_v<T, std::monostate>) {
+            json_value = nullptr;  // JSON null
+        } else if constexpr (std::is_same_v<T, std::vector<uint8_t>>) {
+            // 바이너리 데이터는 16진수 문자열로 변환
+            std::stringstream ss;
+            for (auto byte : val) {
+                ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(byte);
+            }
+            json_value = ss.str();
+        } else {
+            json_value = val;
+        }
     }, value);
     
     return json_value;
 }
 
+// 문자열 반환 버전 (기존 코드 호환)
 std::string DeviceIntegration::GetCurrentTimestamp() const {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -824,12 +844,21 @@ std::string DeviceIntegration::GetCurrentTimestamp() const {
     return oss.str();
 }
 
+// Timestamp 타입 반환 버전 (CurrentValue에서 사용)
+Database::Timestamp DeviceIntegration::GetCurrentTimestampRaw() const {
+    return std::chrono::system_clock::now();
+}
+
 Drivers::ProtocolType DeviceIntegration::StringToProtocolType(const std::string& protocol_str) {
     if (protocol_str == "modbus_tcp") return Drivers::ProtocolType::MODBUS_TCP;
     if (protocol_str == "modbus_rtu") return Drivers::ProtocolType::MODBUS_RTU;
     if (protocol_str == "mqtt") return Drivers::ProtocolType::MQTT;
-    if (protocol_str == "bacnet") return Drivers::ProtocolType::BACNET;
-    return Drivers::ProtocolType::UNKNOWN;
+    if (protocol_str == "bacnet" || protocol_str == "bacnet_ip") return Drivers::ProtocolType::BACNET_IP;
+    if (protocol_str == "opc_ua") return Drivers::ProtocolType::OPC_UA;
+    if (protocol_str == "custom") return Drivers::ProtocolType::CUSTOM;
+    
+    logger_->Warn("Unknown protocol type: " + protocol_str + ", defaulting to CUSTOM");
+    return Drivers::ProtocolType::CUSTOM;
 }
 
 } // namespace Engine
