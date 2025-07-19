@@ -31,6 +31,7 @@ INCLUDES := -Iinclude \
            -Iinclude/Utils \
            -Iinclude/Plugin \
            -Iinclude/Config \
+           -Iinclude/Core \
            -Iinclude/Engine \
            -Iinclude/Publisher \
            -Iinclude/Drivers \
