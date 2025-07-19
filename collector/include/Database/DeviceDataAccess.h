@@ -27,6 +27,9 @@ using json = nlohmann::json;
 using UUID = Drivers::UUID;
 using Timestamp = std::chrono::system_clock::time_point;
 
+// DeviceIntegration과의 호환성을 위한 타입 별칭
+using DataValue = Drivers::DataValue;   // Drivers 네임스페이스의 DataValue 가져오기
+
 // =============================================================================
 // 데이터베이스 엔티티 구조체들
 // =============================================================================
@@ -186,6 +189,29 @@ struct CurrentValueInfo {
         : value(0.0)
         , quality("good")
         , timestamp(std::chrono::system_clock::now()) {}
+};
+
+// DeviceIntegration과의 호환성을 위한 타입 별칭
+using CurrentValue = CurrentValueInfo;  // 기존 CurrentValueInfo를 CurrentValue로도 사용
+
+/**
+ * @brief 디바이스 상태 정보 (DeviceIntegration에서 사용)
+ */
+struct DeviceStatus {
+    int device_id;
+    std::string connection_status;  // connected, disconnected, error
+    int error_count;
+    int response_time;              // milliseconds
+    std::string firmware_version;
+    std::string hardware_info;      // JSON 형식
+    std::string diagnostic_data;    // JSON 형식
+    std::string last_error;
+    
+    DeviceStatus() 
+        : device_id(0)
+        , connection_status("disconnected")
+        , error_count(0)
+        , response_time(0) {}
 };
 
 /**
@@ -396,6 +422,14 @@ public:
     std::optional<DeviceInfo> GetDevice(const UUID& device_id);
     
     /**
+     * @brief 디바이스 정보 조회 (ID 타입 오버로드)
+     * @param device_id 디바이스 ID (int)
+     * @param device_info 디바이스 정보 반환용 참조
+     * @return 성공 시 true
+     */
+    bool GetDevice(int device_id, DeviceInfo& device_info);
+    
+    /**
      * @brief 디바이스 생성
      * @param device 디바이스 정보
      * @return 성공 시 true
@@ -425,6 +459,13 @@ public:
      */
     bool UpdateDeviceStatus(const UUID& device_id, const std::string& status, const Timestamp& last_seen);
     
+    /**
+     * @brief 디바이스 상태 업데이트 (DeviceStatus 구조체 사용)
+     * @param status 디바이스 상태 정보
+     * @return 성공 시 true
+     */
+    bool UpdateDeviceStatus(const DeviceStatus& status);
+    
     // =================================================================
     // 데이터 포인트 관리
     // =================================================================
@@ -436,6 +477,13 @@ public:
      * @return 데이터 포인트 목록
      */
     std::vector<DataPointInfo> GetDataPoints(const UUID& device_id, bool enabled_only = true);
+    
+    /**
+     * @brief 활성화된 데이터 포인트 목록 조회 (ID 타입 오버로드)
+     * @param device_id 디바이스 ID (int)
+     * @return 활성화된 데이터 포인트 목록
+     */
+    std::vector<DataPointInfo> GetEnabledDataPoints(int device_id);
     
     /**
      * @brief 데이터 포인트 정보 조회
@@ -494,11 +542,26 @@ public:
     bool UpdateCurrentValue(const UUID& point_id, double value, const std::string& quality, const Timestamp& timestamp);
     
     /**
+     * @brief 현재 값 업데이트 (ID 타입 오버로드)
+     * @param point_id 포인트 ID (int)
+     * @param current_value 현재 값 정보
+     * @return 성공 시 true
+     */
+    bool UpdateCurrentValue(int point_id, const CurrentValue& current_value);
+    
+    /**
      * @brief 현재 값 일괄 업데이트
      * @param values 현재 값 목록
      * @return 성공 시 true
      */
     bool UpdateCurrentValues(const std::vector<CurrentValueInfo>& values);
+    
+    /**
+     * @brief 현재 값 일괄 업데이트 (배치 처리)
+     * @param values 포인트 ID -> 현재 값 매핑
+     * @return 성공 시 true
+     */
+    bool UpdateCurrentValuesBatch(const std::map<int, CurrentValue>& values);
     
     // =================================================================
     // 알람 관리
@@ -713,6 +776,20 @@ private:
      * @return JSON 배열
      */
     json StringVectorToJsonArray(const std::vector<std::string>& string_vector);
+    
+    /**
+     * @brief int ID를 UUID 문자열로 변환
+     * @param id 정수 ID
+     * @return UUID 형식 문자열
+     */
+    std::string IntToUUID(int id);
+    
+    /**
+     * @brief UUID 문자열을 int ID로 변환
+     * @param uuid UUID 문자열
+     * @return 정수 ID (-1 if invalid)
+     */
+    int UUIDToInt(const UUID& uuid);
 };
 
 } // namespace Database

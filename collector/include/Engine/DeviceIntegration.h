@@ -23,6 +23,11 @@
 namespace PulseOne {
 namespace Engine {
 
+// Drivers 네임스페이스의 타입들을 Engine에서 사용
+using DataValue = Drivers::DataValue;
+using DeviceConfig = Drivers::DriverConfig;
+using ProtocolType = Drivers::ProtocolType;
+
 // =============================================================================
 // 데이터 동기화 이벤트 타입
 // =============================================================================
@@ -112,7 +117,7 @@ public:
      * @param priority 우선순위 (기본값: 5)
      */
     void UpdateDataValue(int device_id, int point_id, 
-                        const DataValue& value, 
+                        const Drivers::DataValue& value, 
                         const std::string& quality = "good",
                         int priority = 5);
     
@@ -134,7 +139,7 @@ public:
      * @param data_updates 데이터 업데이트 맵 (point_id -> value)
      */
     void UpdateDataValuesBatch(int device_id, 
-                              const std::map<int, DataValue>& data_updates);
+                              const std::map<int, Drivers::DataValue>& data_updates);
     
     /**
      * @brief 디바이스 설정 변경 알림
@@ -163,12 +168,12 @@ public:
     std::vector<Database::DataPointInfo> GetEnabledDataPoints(int device_id);
     
     /**
-     * @brief 디바이스 설정을 CommonTypes::DeviceConfig로 변환
+     * @brief 디바이스 설정을 DriverConfig로 변환
      * @param device_id 디바이스 ID
      * @param config 출력 설정
      * @return 성공 시 true
      */
-    bool GetDeviceConfig(int device_id, Drivers::DeviceConfig& config);
+    bool GetDeviceConfig(int device_id, Drivers::DriverConfig& config);
     
     // ==========================================================================
     // 성능 및 모니터링
@@ -320,6 +325,76 @@ private:
     void CleanupExpiredCache();
     
     // ==========================================================================
+    // 설정 및 초기화
+    // ==========================================================================
+    
+    /**
+     * @brief 설정 로드
+     */
+    void LoadConfiguration();
+    
+    /**
+     * @brief 캐시 무효화
+     * @param device_id 디바이스 ID
+     */
+    void InvalidateDeviceCache(int device_id);
+    
+    // ==========================================================================
+    // 배치 처리
+    // ==========================================================================
+    
+    /**
+     * @brief 배치에 데이터 추가
+     * @param device_id 디바이스 ID
+     * @param data_updates 데이터 업데이트 맵
+     */
+    void AddToBatch(int device_id, const std::map<int, Drivers::DataValue>& data_updates);
+    
+    /**
+     * @brief 배치에 상태 추가
+     * @param device_id 디바이스 ID
+     * @param connection_status 연결 상태
+     * @param response_time 응답 시간
+     * @param error_message 에러 메시지
+     */
+    void AddToStatusBatch(int device_id, const std::string& connection_status,
+                         int response_time, const std::string& error_message);
+    
+    // ==========================================================================
+    // 이벤트 처리
+    // ==========================================================================
+    
+    /**
+     * @brief 디바이스 상태 이벤트 처리
+     * @param event 이벤트
+     */
+    void ProcessDeviceStatusEvent(const SyncEvent& event);
+    
+    /**
+     * @brief 데이터 값 이벤트 처리
+     * @param event 이벤트
+     */
+    void ProcessDataValueEvent(const SyncEvent& event);
+    
+    /**
+     * @brief 설정 변경 이벤트 처리
+     * @param event 이벤트
+     */
+    void ProcessConfigurationChangeEvent(const SyncEvent& event);
+    
+    /**
+     * @brief 대량 데이터 이벤트 처리
+     * @param event 이벤트
+     */
+    void ProcessBulkDataEvent(const SyncEvent& event);
+    
+    /**
+     * @brief 연결 상태 이벤트 처리
+     * @param event 이벤트
+     */
+    void ProcessConnectionStateEvent(const SyncEvent& event);
+    
+    // ==========================================================================
     // 유틸리티 메소드들
     // ==========================================================================
     
@@ -327,8 +402,25 @@ private:
      * @brief DataValue를 Database::CurrentValue로 변환
      */
     Database::CurrentValue ConvertToCurrentValue(int point_id, 
-                                                const DataValue& value,
+                                                const Drivers::DataValue& value,
                                                 const std::string& quality);
+    
+    /**
+     * @brief JSON을 Database::CurrentValue로 변환
+     */
+    Database::CurrentValue ConvertToCurrentValue(int point_id,
+                                                const nlohmann::json& value_json,
+                                                const std::string& quality);
+    
+    /**
+     * @brief DataValue를 JSON으로 변환
+     */
+    nlohmann::json ConvertDataValueToJson(const Drivers::DataValue& value);
+    
+    /**
+     * @brief 문자열을 ProtocolType으로 변환
+     */
+    Drivers::ProtocolType StringToProtocolType(const std::string& protocol_str);
     
     /**
      * @brief 현재 타임스탬프 문자열 생성

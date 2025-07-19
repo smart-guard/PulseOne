@@ -158,6 +158,32 @@ struct DriverStatistics {
         , last_successful_read(std::chrono::system_clock::now())
         , last_successful_write(std::chrono::system_clock::now())
         , last_error_time(std::chrono::system_clock::now()) {}
+
+    // 복사 생성자 수정
+    DriverStatistics(const DriverStatistics& other) {
+        // 올바른 필드명으로 수정
+        total_read_requests = other.total_read_requests.load();
+        successful_reads = other.successful_reads.load();
+        failed_reads = other.failed_reads.load();
+        total_write_requests = other.total_write_requests.load();
+        successful_writes = other.successful_writes.load();
+        failed_writes = other.failed_writes.load();
+        connection_attempts = other.connection_attempts.load();
+        successful_connections = other.successful_connections.load();
+        connection_failures = other.connection_failures.load();
+        current_connections = other.current_connections.load();
+        avg_response_time_ms = other.avg_response_time_ms.load();
+        min_response_time_ms = other.min_response_time_ms.load();
+        max_response_time_ms = other.max_response_time_ms.load();
+        total_bytes_sent = other.total_bytes_sent.load();
+        total_bytes_received = other.total_bytes_received.load();
+        
+        // 시간 정보는 단순 복사
+        start_time = other.start_time;
+        last_successful_read = other.last_successful_read;
+        last_successful_write = other.last_successful_write;
+        last_error_time = other.last_error_time;
+    }   
     
     /**
      * @brief 읽기 성공률 계산
@@ -497,7 +523,7 @@ public:
      */
     virtual std::string GetDiagnosticInfo() const {
         std::ostringstream oss;
-        auto stats = GetStatistics();
+        const auto& stats = GetStatistics();
         oss << "{"
             << "\"protocol\":\"" << ProtocolTypeToString(GetProtocolType()) << "\","
             << "\"status\":\"" << static_cast<int>(GetStatus()) << "\","

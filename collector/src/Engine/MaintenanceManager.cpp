@@ -82,7 +82,7 @@ public:
         std::lock_guard<std::mutex> lock(maintenance_mutex_);
         
         if (is_maintenance_active_) {
-            logger_->Warning("Maintenance mode already active for device: " + device_id_.to_string());
+            logger_->Warn("Maintenance mode already active for device: " + device_id_.to_string());
             return false;
         }
         

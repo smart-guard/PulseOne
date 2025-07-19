@@ -37,7 +37,7 @@ DeviceIntegration::~DeviceIntegration() {
 
 bool DeviceIntegration::Initialize() {
     if (running_) {
-        logger_->Warning("DeviceIntegration already initialized");
+        logger_->Warn("DeviceIntegration already initialized");
         return true;
     }
     
@@ -457,7 +457,7 @@ void DeviceIntegration::ProcessSyncEvent(const SyncEvent& event) {
             break;
             
         default:
-            logger_->Warning("Unknown sync event type: " + std::to_string(static_cast<int>(event.type)));
+            logger_->Warn("Unknown sync event type: " + std::to_string(static_cast<int>(event.type)));
             break;
     }
 }

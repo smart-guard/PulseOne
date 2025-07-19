@@ -5,7 +5,7 @@
 #include <pqxx/pqxx>
 #include <sqlite3.h>
 #include <memory>
-#include "LogManager.h"
+#include "Utils/LogManager.h"
 
 // DatabaseManager 클래스는 PostgreSQL 및 SQLite 연결을 관리하고
 // 쿼리 실행 시 로깅과 에러 처리를 수행합니다.
