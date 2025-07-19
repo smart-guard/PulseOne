@@ -1357,7 +1357,146 @@ std::future<bool> MqttDriver::PublishAsync(const std::string& topic,
     
     return future;
 }
+// ✅ message_arrived 콜백 수정 (진단 로깅 추가)
+void MqttDriver::message_arrived(mqtt::const_message_ptr msg) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    try {
+        total_messages_received_++;
+        total_bytes_received_ += msg->get_payload().length();
+        
+        // ✅ 진단: 수신 메시지 로깅
+        if (diagnostics_enabled_) {
+            LogMqttPacket("RECEIVE", msg->get_topic(), msg->get_qos(), 
+                         msg->get_payload().length(), true);
+        }
+        
+        ProcessIncomingMessage(msg);
+        
+        // 기존 로직...
+        
+    } catch (const std::exception& e) {
+        // ✅ 진단: 에러 로깅
+        if (diagnostics_enabled_) {
+            LogMqttPacket("RECEIVE", msg->get_topic(), msg->get_qos(), 
+                         msg->get_payload().length(), false, e.what());
+        }
+        
+        logger_->Error("Message processing error: " + std::string(e.what()),
+                      DriverLogCategory::ERROR_HANDLING);
+    }
+}
 
+// ✅ Publish 메소드 수정 (진단 로깅 추가)
+bool MqttDriver::Publish(const std::string& topic, const std::string& payload,
+                        int qos, bool retained) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // ✅ 진단: 송신 메시지 로깅
+    if (diagnostics_enabled_) {
+        LogMqttPacket("PUBLISH", topic, qos, payload.length(), true);
+    }
+    
+    try {
+        auto msg = mqtt::make_message(topic, payload, qos, retained);
+        auto tok = client_->publish(msg, nullptr, *this);
+        
+        // 기존 로직...
+        
+        return true;
+        
+    } catch (const mqtt::exception& e) {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                          (end_time - start_time).count();
+        
+        // ✅ 진단: 에러 로깅
+        if (diagnostics_enabled_) {
+            LogMqttPacket("PUBLISH", topic, qos, payload.length(), 
+                         false, e.what(), duration_ms);
+        }
+        
+        return false;
+    }
+}
+
+// ✅ MQTT 패킷 로깅 구현
+void MqttDriver::LogMqttPacket(const std::string& direction, const std::string& topic,
+                              int qos, size_t payload_size, bool success,
+                              const std::string& error, double response_time_ms) {
+    
+    MqttPacketLog log;
+    log.direction = direction;
+    log.timestamp = std::chrono::system_clock::now();
+    log.topic = topic;
+    log.qos = qos;
+    log.payload_size = payload_size;
+    log.success = success;
+    log.error_message = error;
+    log.response_time_ms = response_time_ms;
+    
+    // 포인트 이름 조회
+    {
+        std::lock_guard<std::mutex> lock(mqtt_points_mutex_);
+        auto it = mqtt_point_info_map_.find(topic);
+        if (it != mqtt_point_info_map_.end()) {
+            log.decoded_value = it->second.name + " (" + it->second.unit + ")";
+        } else {
+            log.decoded_value = "Topic: " + topic;
+        }
+    }
+    
+    // 패킷 히스토리에 추가
+    {
+        std::lock_guard<std::mutex> lock(mqtt_packet_log_mutex_);
+        mqtt_packet_history_.push_back(log);
+        TrimMqttPacketHistory();
+    }
+    
+    // 콘솔 출력
+    if (console_output_enabled_) {
+        std::cout << FormatMqttPacketForConsole(log) << std::endl;
+    }
+    
+    // 파일 로깅
+    if (packet_logging_enabled_ && log_manager_) {
+        std::string log_msg = FormatMqttPacketForFile(log);
+        log_manager_->logPacket("mqtt", device_name_, log_msg);
+    }
+}
+
+// ✅ 콘솔용 포매팅
+std::string MqttDriver::FormatMqttPacketForConsole(const MqttPacketLog& log) const {
+    std::ostringstream oss;
+    
+    auto time_t = std::chrono::system_clock::to_time_t(log.timestamp);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>
+             (log.timestamp.time_since_epoch()) % 1000;
+    
+    oss << "[" << std::put_time(std::localtime(&time_t), "%H:%M:%S") << "."
+        << std::setfill('0') << std::setw(3) << ms.count() << "] ";
+    
+    if (log.direction == "PUBLISH") {
+        oss << "📤 PUB -> " << log.topic << " (QoS:" << log.qos << ")"
+            << "\n  📦 Size: " << log.payload_size << " bytes"
+            << "\n  📊 Point: " << log.decoded_value;
+            
+    } else if (log.direction == "SUBSCRIBE") {
+        oss << "🔔 SUB -> " << log.topic << " (QoS:" << log.qos << ")";
+        
+    } else { // RECEIVE
+        oss << "📥 RCV <- " << log.topic << ": ";
+        if (log.success) {
+            oss << "✅ SUCCESS"
+                << "\n  📦 Size: " << log.payload_size << " bytes"
+                << "\n  📊 Point: " << log.decoded_value;
+        } else {
+            oss << "❌ FAILED: " << log.error_message;
+        }
+    }
+    
+    return oss.str();
+}
 // =============================================================================
 // 드라이버 자동 등록
 // =============================================================================

@@ -117,6 +117,13 @@ public:
     void on_failure(const mqtt::token& tok) override;
     void on_success(const mqtt::token& tok) override;
 
+    // ✅ 새로 추가: 진단 메소드들
+    bool EnableDiagnostics(DatabaseManager& db_manager, 
+                          bool packet_log = true, bool console = false);
+    void DisableDiagnostics();
+    std::string GetDiagnosticsJSON() const;
+    std::string GetTopicPointName(const std::string& topic) const;
+
 private:
     // ==========================================================================
     // 내부 구조체 및 열거형
@@ -266,6 +273,54 @@ private:
     std::atomic<uint64_t> total_messages_sent_;
     std::atomic<uint64_t> total_bytes_received_;
     std::atomic<uint64_t> total_bytes_sent_;
+
+        // ✅ 새로 추가: 진단 관련 멤버들
+    bool diagnostics_enabled_;
+    bool packet_logging_enabled_;
+    bool console_output_enabled_;
+    
+    LogManager* log_manager_;
+    DatabaseManager* db_manager_;
+    
+    struct MqttDataPointInfo {
+        std::string name;
+        std::string description;
+        std::string unit;
+        double scaling_factor;
+        double scaling_offset;
+        std::string topic;
+    };
+    
+    struct MqttPacketLog {
+        std::string direction;        // "PUBLISH", "SUBSCRIBE", "RECEIVE"
+        Timestamp timestamp;
+        std::string topic;
+        int qos;
+        size_t payload_size;
+        bool success;
+        std::string error_message;
+        double response_time_ms;
+        std::string decoded_value;    // 엔지니어 친화적 값
+        std::string raw_payload;      // 원시 페이로드 (일부)
+    };
+    
+    mutable std::mutex mqtt_diagnostics_mutex_;
+    mutable std::mutex mqtt_points_mutex_;
+    mutable std::mutex mqtt_packet_log_mutex_;
+    
+    std::map<std::string, MqttDataPointInfo> mqtt_point_info_map_;
+    std::deque<MqttPacketLog> mqtt_packet_history_;
+    
+    // 진단 헬퍼 메소드들
+    void LogMqttPacket(const std::string& direction, const std::string& topic,
+                      int qos, size_t payload_size, bool success,
+                      const std::string& error = "", double response_time_ms = 0.0);
+    
+    std::string FormatMqttValue(const std::string& topic, 
+                               const std::string& payload) const;
+    
+    std::string FormatMqttPacketForConsole(const MqttPacketLog& log) const;
+    bool LoadMqttPointsFromDB();
 };
 
 } // namespace Drivers

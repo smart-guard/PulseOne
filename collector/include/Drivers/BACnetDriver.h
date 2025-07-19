@@ -155,6 +155,14 @@ public:
     bool UnsubscribeCOV(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
                        uint32_t object_instance);
 
+                           // ✅ 새로 추가: 진단 메소드들
+    bool EnableDiagnostics(DatabaseManager& db_manager, 
+                          bool packet_log = true, bool console = false);
+    void DisableDiagnostics();
+    std::string GetDiagnosticsJSON() const;
+    std::string GetPointName(uint32_t device_id, BACNET_OBJECT_TYPE type, 
+                           uint32_t instance) const;
+
 private:
     // 내부 상태
     std::atomic<bool> initialized_;
@@ -311,6 +319,58 @@ private:
      */
     void UpdateStatistics(const std::string& operation, bool success,
                          std::chrono::milliseconds duration);
+
+    // ✅ 새로 추가: 진단 관련 멤버들
+    bool diagnostics_enabled_;
+    bool packet_logging_enabled_;
+    bool console_output_enabled_;
+    
+    LogManager* log_manager_;
+    DatabaseManager* db_manager_;
+    
+    struct BACnetDataPointInfo {
+        std::string name;
+        std::string description;
+        std::string unit;
+        double scaling_factor;
+        double scaling_offset;
+    };
+    
+    struct BACnetPacketLog {
+        std::string direction;        // "TX" or "RX"
+        Timestamp timestamp;
+        uint32_t device_id;
+        BACNET_OBJECT_TYPE object_type;
+        uint32_t object_instance;
+        BACNET_PROPERTY_ID property_id;
+        bool success;
+        std::string error_message;
+        double response_time_ms;
+        std::string decoded_value;    // 엔지니어 친화적 값
+        std::string raw_data;         // 원시 APDU 데이터
+    };
+    
+    mutable std::mutex diagnostics_mutex_;
+    mutable std::mutex points_mutex_;
+    mutable std::mutex packet_log_mutex_;
+    
+    std::map<std::string, BACnetDataPointInfo> point_info_map_;
+    std::deque<BACnetPacketLog> packet_history_;
+    std::string device_name_;
+    
+    // 진단 헬퍼 메소드들
+    void LogBACnetPacket(const std::string& direction, uint32_t device_id,
+                        BACNET_OBJECT_TYPE type, uint32_t instance,
+                        BACNET_PROPERTY_ID prop, bool success,
+                        const std::string& error = "",
+                        double response_time_ms = 0.0);
+    
+    std::string FormatBACnetValue(uint32_t device_id, BACNET_OBJECT_TYPE type,
+                                 uint32_t instance, BACNET_PROPERTY_ID prop,
+                                 const BACNET_APPLICATION_DATA_VALUE& value) const;
+    
+    std::string FormatPacketForConsole(const BACnetPacketLog& log) const;
+    bool LoadBACnetPointsFromDB();
     
     // 정적 멤버 (전역 인스턴스)
     static BACnetDriver* instance_;
