@@ -168,7 +168,7 @@ bool DataAccessManager::HealthCheckAll() {
     for (const auto& [domain_name, instance] : instances_) {
         if (instance && !instance->HealthCheck()) {
             if (logger_) {
-                logger_->Warning("Health check failed for domain: " + domain_name);
+                logger_->Warn("Health check failed for domain: " + domain_name);
             }
             all_healthy = false;
         }

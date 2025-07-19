@@ -12,6 +12,7 @@
 #include <atomic>
 #include <thread>
 #include <map>
+#include <vector>
 
 // JSON 라이브러리 (조건부 include)
 #ifdef HAVE_NLOHMANN_JSON
@@ -29,6 +30,7 @@ class json {
 public:
     static json object() { return json{}; }
     static json array() { return json{}; }
+    static json parse(const std::string& s) { return json{}; }
     std::string dump() const { return "{}"; }
     json& operator[](const std::string& key) { return *this; }
     json& operator=(const std::string& value) { return *this; }
@@ -38,40 +40,20 @@ public:
     json& operator=(const json& other) { return *this; }
     bool empty() const { return true; }
     void push_back(const json& item) {}
+    bool contains(const std::string& key) const { return false; }
+    template<typename T>
+    T value(const std::string& key, const T& default_value) const { return default_value; }
 };
 }
 }
 #endif
 
 // HTTP 라이브러리 전방 선언
-#ifdef HAVE_HTTPLIB
 namespace httplib {
     class Request;
     class Response;
     class Server;
 }
-#else
-// httplib가 없는 경우 더미 전방 선언
-namespace httplib {
-    class Request {
-    public:
-        std::string body;
-        std::map<std::string, std::string> headers;
-        std::vector<std::string> matches;
-    };
-    
-    class Response {
-    public:
-        int status = 200;
-        std::string body;
-        std::map<std::string, std::string> headers;
-        void set_header(const std::string& key, const std::string& value);
-        void set_content(const std::string& content, const std::string& type);
-    };
-    
-    class Server;
-}
-#endif
 
 namespace PulseOne {
 namespace Network {
@@ -205,7 +187,7 @@ public:
 
 private:
     // ==========================================================================
-    // 내부 메소드들
+    // 내부 메소드들 - 선언만
     // ==========================================================================
     
     void SetupRoutes();

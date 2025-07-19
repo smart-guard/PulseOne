@@ -22,20 +22,20 @@ void ConfigManager::initialize() {
             try {
                 std::filesystem::create_directories("./config");
                 std::filesystem::copy_file(TEMPLATE_ENV_PATH, envFilePath);
-                LogManager::getInstance().log("config", LOG_WARN, ".env 파일 없음 → 템플릿으로 복사: " + envFilePath);
+                PulseOne::LogManager::getInstance().log("config", LOG_WARN, ".env 파일 없음 → 템플릿으로 복사: " + envFilePath);
             } catch (const std::exception& e) {
-                LogManager::getInstance().log("config", LOG_ERROR, ".env 템플릿 복사 실패: " + std::string(e.what()));
+                PulseOne::LogManager::getInstance().log("config", LOG_ERROR, ".env 템플릿 복사 실패: " + std::string(e.what()));
                 return;
             }
         } else {
-            LogManager::getInstance().log("config", LOG_ERROR, ".env와 템플릿 모두 없음. 환경설정 초기화 실패");
+            PulseOne::LogManager::getInstance().log("config", LOG_ERROR, ".env와 템플릿 모두 없음. 환경설정 초기화 실패");
             return;
         }
     }
 
     std::ifstream file(envFilePath);
     if (!file.is_open()) {
-        LogManager::getInstance().log("config", LOG_ERROR, ".env 열기 실패: " + envFilePath);
+        PulseOne::LogManager::getInstance().log("config", LOG_ERROR, ".env 열기 실패: " + envFilePath);
         return;
     }
 
@@ -44,11 +44,11 @@ void ConfigManager::initialize() {
         parseLine(line);
     }
 
-    LogManager::getInstance().log("config", LOG_INFO, ".env 로딩 완료: " + envFilePath);
+    PulseOne::LogManager::getInstance().log("config", LOG_INFO, ".env 로딩 완료: " + envFilePath);
 }
 
 void ConfigManager::reload() {
-    LogManager::getInstance().log("config", LOG_INFO, "환경설정 재로딩 시작: " + envFilePath);
+    PulseOne::LogManager::getInstance().log("config", LOG_INFO, "환경설정 재로딩 시작: " + envFilePath);
     initialize();
 }
 

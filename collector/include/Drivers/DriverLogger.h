@@ -112,8 +112,8 @@ public:
             category_enabled_[static_cast<DriverLogCategory>(i)] = true;
         }
         
-        // 기존 LogManager 인스턴스 사용 (싱글턴 패턴 가정)
-        // legacy_logger_ = &PulseOne::LogManager::GetInstance();
+        // 기존 LogManager 인스턴스 가져오기
+        legacy_logger_ = &PulseOne::LogManager::getInstance();
     }
     
     ~DriverLogger() = default;
@@ -210,6 +210,56 @@ public:
             legacy_logger_->Fatal(formatted);
         } else {
             std::cerr << "[FATAL] " << formatted << std::endl;
+        }
+    }
+    
+    // =============================================================================
+    // IProtocolDriver에서 호출하는 특수 메소드들 추가
+    // =============================================================================
+    
+    /**
+     * @brief 연결 상태 변경 로그
+     * @param old_status 이전 상태
+     * @param new_status 새로운 상태
+     */
+    void LogConnectionStatusChange(ConnectionStatus old_status, ConnectionStatus new_status) {
+        std::ostringstream oss;
+        oss << "Connection status changed from " 
+            << ConnectionStatusToString(old_status) 
+            << " to " 
+            << ConnectionStatusToString(new_status);
+        Info(oss.str(), DriverLogCategory::CONNECTION);
+    }
+    
+    /**
+     * @brief 에러 정보 로그
+     * @param error 에러 정보 구조체
+     */
+    void LogError(const ErrorInfo& error) {
+        std::ostringstream oss;
+        oss << "Error occurred: [" << ErrorCodeToString(error.code) << "] " 
+            << error.message;
+        
+        if (!error.details.empty()) {
+            oss << " | Details: " << error.details;
+        }
+        
+        // 에러 코드에 따라 로그 레벨 결정
+        switch (error.code) {
+            case ErrorCode::SUCCESS:
+                // SUCCESS는 로그하지 않음
+                break;
+            case ErrorCode::WARNING_DATA_STALE:
+            case ErrorCode::WARNING_PARTIAL_SUCCESS:
+                Warn(oss.str(), DriverLogCategory::ERROR_HANDLING);
+                break;
+            case ErrorCode::FATAL_INTERNAL_ERROR:
+            case ErrorCode::FATAL_MEMORY_EXHAUSTED:
+                Fatal(oss.str(), DriverLogCategory::ERROR_HANDLING);
+                break;
+            default:
+                Error(oss.str(), DriverLogCategory::ERROR_HANDLING);
+                break;
         }
     }
     

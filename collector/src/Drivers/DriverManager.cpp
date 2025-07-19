@@ -91,7 +91,7 @@ bool DriverManager::StartAllDrivers() {
                 started_count++;
                 logger_->Info("Started driver: " + driver->GetDriverName());
             } else {
-                logger_->Warning("Failed to start driver: " + 
+                logger_->Warn("Failed to start driver: " + 
                                (driver ? driver->GetDriverName() : "unknown"));
             }
         }
@@ -199,7 +199,7 @@ bool DriverManager::ValidateConfiguration() const {
         // 기본 설정 확인
         std::string driver_config_path = config_->GetValue("driver_config_path", "");
         if (driver_config_path.empty()) {
-            logger_->Warning("No driver config path specified, using defaults");
+            logger_->Warn("No driver config path specified, using defaults");
         }
 
         // 추가 검증 로직이 필요하면 여기에 추가

@@ -40,8 +40,8 @@ INCLUDES := -Iinclude \
 
 # 빌드 타입별 플래그
 ifeq ($(BUILD_TYPE),Debug)
-    CXXFLAGS += -g -O0 -DDEBUG -fsanitize=address -fno-omit-frame-pointer
-    CFLAGS += -g -O0 -DDEBUG
+    CXXFLAGS += -g -O0 -DPULSEONE_DEBUG -fsanitize=address -fno-omit-frame-pointer
+    CFLAGS += -g -O0 -DPULSEONE_DEBUG
     LDFLAGS += -fsanitize=address
     BUILD_SUFFIX := _debug
 else ifeq ($(BUILD_TYPE),Release)

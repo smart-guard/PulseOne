@@ -484,7 +484,7 @@ bool BACnetDriver::EnableDiagnostics(DatabaseManager& db_manager,
     std::lock_guard<std::mutex> lock(diagnostics_mutex_);
     
     // 기존 시스템 참조 설정
-    log_manager_ = &LogManager::getInstance();
+    log_manager_ = &PulseOne::LogManager::getInstance();
     db_manager_ = &db_manager;
     
     // 설정 적용

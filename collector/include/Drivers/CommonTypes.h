@@ -22,6 +22,12 @@
 #include <mutex>
 #include <thread>
 #include <future>
+#include <random>      // 추가: std::random_device, std::mt19937
+#include <sstream>     // 추가: std::stringstream
+#include <iomanip>     // 추가: std::put_time, std::setw, std::setfill
+#include <limits>      // 추가: std::numeric_limits
+#include <ctime>       // 추가: std::gmtime
+#include <iostream>    // 추가: std::cerr
 
 // 기존 PulseOne 헤더들과의 호환성을 위한 인클루드
 // 실제 경로는 기존 코드 구조에 맞게 조정 필요
@@ -183,6 +189,10 @@ enum class ErrorCode : int32_t {
     ACCESS_DENIED = 6,              ///< 접근 거부
     RESOURCE_BUSY = 7,              ///< 리소스 사용 중
     
+    // 경고 (50-99) - 새로 추가
+    WARNING_DATA_STALE = 50,        ///< 데이터가 오래됨
+    WARNING_PARTIAL_SUCCESS = 51,   ///< 부분 성공
+    
     // 연결 관련 에러 (100-199)
     CONNECTION_FAILED = 100,        ///< 연결 실패
     CONNECTION_TIMEOUT = 101,       ///< 연결 타임아웃
@@ -218,7 +228,11 @@ enum class ErrorCode : int32_t {
     FILE_ACCESS_ERROR = 502,        ///< 파일 접근 에러
     CONFIGURATION_ERROR = 503,      ///< 설정 에러
     THREAD_ERROR = 504,             ///< 스레드 에러
-    MUTEX_ERROR = 505               ///< 뮤텍스 에러
+    MUTEX_ERROR = 505,              ///< 뮤텍스 에러
+    
+    // 치명적 에러 (600-699) - 새로 추가
+    FATAL_INTERNAL_ERROR = 600,     ///< 치명적 내부 에러
+    FATAL_MEMORY_EXHAUSTED = 601    ///< 메모리 고갈
 };
 
 // =============================================================================
@@ -266,10 +280,12 @@ using DataValue = std::variant<
  * @brief 에러 정보 구조체
  * @details 에러 발생 시 상세 정보를 담는 구조체
  */
+// CommonTypes.h의 ErrorInfo 구조체 수정 (약 275번 줄)
 struct ErrorInfo {
     ErrorCode code;                           ///< 에러 코드
     std::string message;                      ///< 에러 메시지
     std::string context;                      ///< 에러 발생 컨텍스트
+    std::string details;                      ///< 추가 상세 정보 (새로 추가)
     Timestamp occurred_at;                    ///< 에러 발생 시간
     std::string file;                         ///< 에러 발생 파일 (디버그용)
     int line;                                 ///< 에러 발생 라인 (디버그용)
@@ -310,6 +326,7 @@ struct ErrorInfo {
      */
     std::string ToJson() const;
 };
+
 
 /**
  * @brief 타임스탬프가 포함된 데이터 값
@@ -576,6 +593,105 @@ inline UUID GenerateUUID() {
     ss << "-";
     for (int i = 0; i < 12; i++) ss << dis(gen);
     return ss.str();
+}
+/**
+ * @brief 에러 코드를 문자열로 변환
+ * @param code 에러 코드
+ * @return 문자열 표현
+ */
+inline std::string ErrorCodeToString(ErrorCode code) noexcept {
+    switch (code) {
+        case ErrorCode::SUCCESS:                    return "SUCCESS";
+        case ErrorCode::UNKNOWN_ERROR:              return "UNKNOWN_ERROR";
+        case ErrorCode::INVALID_PARAMETER:          return "INVALID_PARAMETER";
+        case ErrorCode::NULL_POINTER:               return "NULL_POINTER";
+        case ErrorCode::OUT_OF_MEMORY:              return "OUT_OF_MEMORY";
+        case ErrorCode::NOT_IMPLEMENTED:            return "NOT_IMPLEMENTED";
+        case ErrorCode::ACCESS_DENIED:              return "ACCESS_DENIED";
+        case ErrorCode::RESOURCE_BUSY:              return "RESOURCE_BUSY";
+        
+        case ErrorCode::WARNING_DATA_STALE:         return "WARNING_DATA_STALE";
+        case ErrorCode::WARNING_PARTIAL_SUCCESS:    return "WARNING_PARTIAL_SUCCESS";
+        
+        case ErrorCode::CONNECTION_FAILED:          return "CONNECTION_FAILED";
+        case ErrorCode::CONNECTION_TIMEOUT:         return "CONNECTION_TIMEOUT";
+        case ErrorCode::CONNECTION_REFUSED:         return "CONNECTION_REFUSED";
+        case ErrorCode::CONNECTION_LOST:            return "CONNECTION_LOST";
+        case ErrorCode::AUTHENTICATION_FAILED:      return "AUTHENTICATION_FAILED";
+        case ErrorCode::AUTHORIZATION_FAILED:       return "AUTHORIZATION_FAILED";
+        
+        case ErrorCode::PROTOCOL_ERROR:             return "PROTOCOL_ERROR";
+        case ErrorCode::INVALID_MESSAGE_FORMAT:     return "INVALID_MESSAGE_FORMAT";
+        case ErrorCode::UNSUPPORTED_FUNCTION:       return "UNSUPPORTED_FUNCTION";
+        case ErrorCode::CHECKSUM_ERROR:             return "CHECKSUM_ERROR";
+        case ErrorCode::SEQUENCE_ERROR:             return "SEQUENCE_ERROR";
+        
+        case ErrorCode::DEVICE_NOT_FOUND:           return "DEVICE_NOT_FOUND";
+        case ErrorCode::DEVICE_BUSY:                return "DEVICE_BUSY";
+        case ErrorCode::DEVICE_ERROR:               return "DEVICE_ERROR";
+        case ErrorCode::REGISTER_NOT_FOUND:         return "REGISTER_NOT_FOUND";
+        case ErrorCode::INVALID_ADDRESS:            return "INVALID_ADDRESS";
+        
+        case ErrorCode::DATA_TYPE_MISMATCH:         return "DATA_TYPE_MISMATCH";
+        case ErrorCode::DATA_OUT_OF_RANGE:          return "DATA_OUT_OF_RANGE";
+        case ErrorCode::DATA_CORRUPTION:            return "DATA_CORRUPTION";
+        case ErrorCode::BUFFER_OVERFLOW:            return "BUFFER_OVERFLOW";
+        case ErrorCode::BUFFER_UNDERFLOW:           return "BUFFER_UNDERFLOW";
+        
+        case ErrorCode::SYSTEM_ERROR:               return "SYSTEM_ERROR";
+        case ErrorCode::FILE_NOT_FOUND:             return "FILE_NOT_FOUND";
+        case ErrorCode::FILE_ACCESS_ERROR:          return "FILE_ACCESS_ERROR";
+        case ErrorCode::CONFIGURATION_ERROR:        return "CONFIGURATION_ERROR";
+        case ErrorCode::THREAD_ERROR:               return "THREAD_ERROR";
+        case ErrorCode::MUTEX_ERROR:                return "MUTEX_ERROR";
+        
+        case ErrorCode::FATAL_INTERNAL_ERROR:       return "FATAL_INTERNAL_ERROR";
+        case ErrorCode::FATAL_MEMORY_EXHAUSTED:     return "FATAL_MEMORY_EXHAUSTED";
+        
+        default:                                    return "UNKNOWN_ERROR_CODE";
+    }
+}
+
+/**
+ * @brief 드라이버 상태를 문자열로 변환
+ * @param status 드라이버 상태
+ * @return 문자열 표현
+ */
+inline std::string DriverStatusToString(DriverStatus status) noexcept {
+    switch (status) {
+        case DriverStatus::UNINITIALIZED:   return "UNINITIALIZED";
+        case DriverStatus::INITIALIZING:    return "INITIALIZING";
+        case DriverStatus::INITIALIZED:     return "INITIALIZED";
+        case DriverStatus::STARTING:        return "STARTING";
+        case DriverStatus::RUNNING:         return "RUNNING";
+        case DriverStatus::PAUSING:         return "PAUSING";
+        case DriverStatus::PAUSED:          return "PAUSED";
+        case DriverStatus::STOPPING:        return "STOPPING";
+        case DriverStatus::STOPPED:         return "STOPPED";
+        case DriverStatus::ERROR:           return "ERROR";
+        case DriverStatus::CRASHED:         return "CRASHED";
+        default:                            return "UNKNOWN";
+    }
+}
+
+/**
+ * @brief 데이터 품질을 문자열로 변환
+ * @param quality 데이터 품질
+ * @return 문자열 표현
+ */
+inline std::string DataQualityToString(DataQuality quality) noexcept {
+    switch (quality) {
+        case DataQuality::GOOD:                 return "GOOD";
+        case DataQuality::BAD:                  return "BAD";
+        case DataQuality::UNCERTAIN:            return "UNCERTAIN";
+        case DataQuality::NOT_CONNECTED:        return "NOT_CONNECTED";
+        case DataQuality::DEVICE_FAILURE:       return "DEVICE_FAILURE";
+        case DataQuality::SENSOR_FAILURE:       return "SENSOR_FAILURE";
+        case DataQuality::COMMUNICATION_FAILURE: return "COMMUNICATION_FAILURE";
+        case DataQuality::OUT_OF_SERVICE:       return "OUT_OF_SERVICE";
+        case DataQuality::MAINTENANCE:          return "MAINTENANCE";
+        default:                                return "UNKNOWN";
+    }
 }
 
 } // namespace Drivers

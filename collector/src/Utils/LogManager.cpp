@@ -8,17 +8,18 @@
 
 namespace fs = std::filesystem;
 
+namespace PulseOne {
+
 LogManager::LogManager() {}
 LogManager::~LogManager() {
     flushAll();
 }
 
-LogManager& LogManager::getInstance() {
+LogManager& PulseOne::LogManager::getInstance() {
     static LogManager instance;
     return instance;
 }
 
-// 날짜 문자열: YYYYMMDD
 std::string LogManager::getCurrentDate() {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -29,7 +30,6 @@ std::string LogManager::getCurrentDate() {
     return oss.str();
 }
 
-// 시간 문자열: HH:MM:SS
 std::string LogManager::getCurrentTime() {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -40,13 +40,12 @@ std::string LogManager::getCurrentTime() {
     return oss.str();
 }
 
-// 로그 경로 생성: 일반 로그 vs 패킷 로그 자동 분리
 std::string LogManager::buildLogPath(const std::string& category) {
     std::string date = getCurrentDate();
     std::string baseDir;
 
     if (category.rfind("packet_", 0) == 0) {
-        baseDir = "logs/packets/" + date + "/" + category.substr(7); // remove 'packet_'
+        baseDir = "logs/packets/" + date + "/" + category.substr(7);
     } else {
         baseDir = "logs/" + date;
     }
@@ -62,9 +61,16 @@ std::string LogManager::buildLogPath(const std::string& category) {
     return fullPath.string();
 }
 
-// 내부 쓰기 함수 (파일 핸들 캐싱, 스레드 세이프)
+bool LogManager::shouldLog(LogLevel level) const {
+    return static_cast<int>(level) >= static_cast<int>(minLevel_);
+}
+
 void LogManager::writeToFile(const std::string& filePath, const std::string& message) {
     std::lock_guard<std::mutex> lock(mutex_);
+    
+    // 콘솔에도 출력
+    std::cout << message << std::endl;
+    
     std::ofstream& stream = logFiles_[filePath];
     if (!stream.is_open()) {
         stream.open(filePath, std::ios::app);
@@ -72,30 +78,49 @@ void LogManager::writeToFile(const std::string& filePath, const std::string& mes
     stream << message << std::endl;
 }
 
-// 일반 로그 (레벨 문자열 버전)
-void LogManager::log(const std::string& category, const std::string& level, const std::string& message) {
+// 기존 코드 호환 메소드들
+void LogManager::Info(const std::string& message) {
+    log(defaultCategory_, LogLevel::INFO, message);
+}
+
+void LogManager::Warn(const std::string& message) {
+    log(defaultCategory_, LogLevel::WARN, message);
+}
+
+void LogManager::Error(const std::string& message) {
+    log(defaultCategory_, LogLevel::ERROR, message);
+}
+
+void LogManager::Fatal(const std::string& message) {
+    log(defaultCategory_, LogLevel::FATAL, message);
+}
+
+void LogManager::Debug(const std::string& message) {
+    log(defaultCategory_, LogLevel::DEBUG, message);
+}
+
+// 확장 로그 메소드들
+void LogManager::log(const std::string& category, LogLevel level, const std::string& message) {
+    if (!shouldLog(level)) return;
+    
     std::ostringstream oss;
-    oss << "[" << getCurrentTime() << "][" << level << "] " << message;
+    oss << "[" << getCurrentTime() << "][" << toString(level) << "] " << message;
     std::string path = buildLogPath(category);
     writeToFile(path, oss.str());
 }
 
-// 일반 로그 (LogLevel enum 버전)
-void LogManager::log(const std::string& category, LogLevel level, const std::string& message) {
-    log(category, toString(level), message);
+void LogManager::log(const std::string& category, const std::string& level, const std::string& message) {
+    log(category, fromString(level), message);
 }
 
-// 드라이버용 로그
 void LogManager::logDriver(const std::string& driverName, const std::string& message) {
-    log("driver_" + driverName, LOG_LEVEL_INFO, message);
+    log("driver_" + driverName, LogLevel::INFO, message);
 }
 
-// 에러 로그 고정
 void LogManager::logError(const std::string& message) {
-    log("error", LOG_LEVEL_ERROR, message);
+    log("error", LogLevel::ERROR, message);
 }
 
-// 패킷 로그: driver + device 조합으로 로그 파일 분리
 void LogManager::logPacket(const std::string& driver, const std::string& device,
                            const std::string& rawPacket, const std::string& decoded) {
     std::ostringstream oss;
@@ -105,7 +130,6 @@ void LogManager::logPacket(const std::string& driver, const std::string& device,
     writeToFile(path, oss.str());
 }
 
-// 모든 열려있는 로그 flush + close
 void LogManager::flushAll() {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& kv : logFiles_) {
@@ -116,3 +140,5 @@ void LogManager::flushAll() {
     }
     logFiles_.clear();
 }
+
+} // namespace PulseOne
