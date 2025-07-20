@@ -31,10 +31,3 @@ run: $(TARGET)
 	./$(TARGET)
 
 .PHONY: all clean run
-
-# 디버그 빌드 (디버깅 로그 활성화)
-debug: CXXFLAGS += -g -DDEBUG -O0
-debug: clean $(TARGET)
-	@echo "✅ Debug build completed - verbose logging enabled"
-
-# 일반 빌드에서는 디버깅 로그 비활성화 (현재 상태 유지)
