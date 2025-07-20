@@ -1,26 +1,46 @@
+// =============================================================================
+// collector/src/main.cpp
+// 깔끔한 메인 - 모든 로직은 CollectorApplication 클래스에서 처리
+// =============================================================================
+
 #include <iostream>
-#include <thread>   // 추가: std::this_thread
-#include <chrono>   // 추가: std::chrono
-#include "Config/ConfigManager.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
+#include <signal.h>
+#include <memory>
+#include "Core/CollectorApplication.h"
 
-int main() {
-    LogManager::getInstance().log(LOG_MODULE_SYSTEM, LOG_LEVEL_INFO, "🚀 PulseOne Collector 시작");
+using namespace PulseOne::Core;
 
-    ConfigManager::getInstance().initialize();
-    if (!DatabaseManager::getInstance().initialize()) {
-        LogManager::getInstance().log(LOG_MODULE_DATABASE, LOG_LEVEL_ERROR, "❌ 데이터베이스 초기화 실패");
-        return 1;
+// 전역 애플리케이션 인스턴스
+std::unique_ptr<CollectorApplication> g_app;
+
+// 시그널 핸들러 - 깔끔하게 종료
+void SignalHandler(int signal) {
+    std::cout << "\n🛑 종료 신호 받음 (Signal: " << signal << ")" << std::endl;
+    if (g_app) {
+        g_app->Stop();
     }
+}
 
-    LogManager::getInstance().log(LOG_MODULE_DATABASE, LOG_LEVEL_INFO, "✅ 데이터베이스 초기화 완료");
-
-    // 메인 루프
-    while (true) {
-        // TODO: 실제 수집 로직
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+int main(int argc, char* argv[]) {
+    try {
+        // 시그널 핸들러 등록
+        signal(SIGINT, SignalHandler);   // Ctrl+C
+        signal(SIGTERM, SignalHandler);  // 종료 신호
+        
+        std::cout << R"(
+🚀 PulseOne Collector v2.0
+Enterprise Industrial Data Collection System
+)" << std::endl;
+        
+        // 애플리케이션 생성 및 실행
+        g_app = std::make_unique<CollectorApplication>();
+        g_app->Run();  // 여기서 모든 것이 처리됨!
+        
+        std::cout << "✅ 정상 종료" << std::endl;
+        return 0;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "💥 치명적 오류: " << e.what() << std::endl;
+        return -1;
     }
-
-    return 0;
 }

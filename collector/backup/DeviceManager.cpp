@@ -9,20 +9,21 @@
 #include <iomanip>
 #include <sstream>
 
-// 네임스페이스 추가 - 이게 핵심!
-using namespace PulseOne::Drivers;  // DeviceInfo, DataPoint, ProtocolType 등
-using namespace PulseOne::Engine;   // DeviceWorkerState, ConnectionStatus 등
-using json = nlohmann::json;
-
-// 타입 별칭 추가 (임시)
-using DeviceStatus = PulseOne::Engine::DeviceStatus;
-using ErrorSeverity = PulseOne::Engine::ErrorSeverity; 
-using DeviceWorkerState = PulseOne::Engine::DeviceWorkerState;
-using ConnectionStatus = PulseOne::Engine::ConnectionStatus;
-using IDeviceWorkerEventListener = PulseOne::Engine::IDeviceWorkerEventListener;
-
 namespace PulseOne {
 namespace Engine {
+
+// Forward declarations
+class DeviceWorker;
+class VirtualPointEngine;
+class AlarmEngine;
+class DeviceControlHandler;
+
+// Type aliases for consistency
+using UUID = PulseOne::Drivers::UUID;
+using DeviceInfo = PulseOne::Drivers::DeviceInfo;
+using DataPoint = PulseOne::Drivers::DataPoint;
+using DataValue = PulseOne::Drivers::DataValue;
+using WriteRequest = PulseOne::Drivers::WriteRequest;
 
 // =============================================================================
 // DeviceManager 구현

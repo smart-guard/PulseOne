@@ -19,6 +19,15 @@
 #include "RedisClientImpl.h"  // 구현체 헤더 추가
 #include "Utils/LogManager.h"
 
+#include "Drivers/CommonTypes.h"           // UUID, DataPoint, DeviceInfo
+#include "Drivers/DriverFactory.h"         // DeviceWorker 관련
+#include "Engine/DeviceWorkerState.h"      // DeviceWorkerState, ConnectionStatus
+#include "Engine/DeviceStatus.h"           // DeviceStatus, ErrorSeverity  
+#include "Engine/IDeviceWorkerEventListener.h"  // 이벤트 리스너
+#include <nlohmann/json.hpp>               // JSON 지원
+#include <optional>                        // std::optional
+#include <shared_mutex>                    // std::shared_mutex
+
 namespace PulseOne {
 namespace Engine {
 
@@ -44,7 +53,8 @@ struct SystemStatistics {
     
     uint32_t memory_usage_mb = 0;          ///< 메모리 사용량 (MB)
     double cpu_usage_percent = 0.0;       ///< CPU 사용률
-};
+    std::chrono::system_clock::time_point last_statistics_time;
+}system_stats_;
 
 /**
  * @brief 디바이스 매니저 설정 구조체
@@ -80,9 +90,21 @@ struct DeviceManagerConfig {
 class DeviceManager {
 private:
     // 디바이스 워커들
-    std::unordered_map<UUID, std::unique_ptr<DeviceWorker>> device_workers_;
+    std::unordered_map<UUID, std::shared_ptr<DeviceWorker>> device_workers_;
+    std::unordered_map<UUID, int> restart_attempts_;
+    std::unordered_map<UUID, std::chrono::system_clock::time_point> last_restart_time_;
+    std::vector<std::weak_ptr<IDeviceWorkerEventListener>> event_listeners_;
+
+    // 누락된 멤버들 추가
+    std::chrono::system_clock::time_point start_time_;
+    std::shared_ptr<VirtualPointEngine> virtual_point_engine_;
+    std::shared_ptr<AlarmEngine> alarm_engine_;
+    std::shared_ptr<DeviceControlHandler> control_handler_;
+
     mutable std::shared_mutex workers_mutex_;
-    
+    mutable std::mutex event_listeners_mutex_;
+
+
     // 재시작 시도 추적
     std::unordered_map<UUID, int> restart_attempts_;
     std::unordered_map<UUID, Timestamp> last_restart_time_;
