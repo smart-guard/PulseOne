@@ -30,9 +30,9 @@ public:
     virtual bool set(const std::string& key, const std::string& value) override;
     virtual std::string get(const std::string& key) override;
     virtual void disconnect() override;
-    virtual bool publish(const std::string& channel, const std::string& message) override;
-    virtual bool subscribe(const std::string& channel) override;
-    virtual bool unsubscribe(const std::string& channel) override;
+    virtual bool publish(const std::string& channel, const std::string& message);
+    virtual bool subscribe(const std::string& channel);
+    virtual bool unsubscribe(const std::string& channel);
     
     // 연결 상태 확인
     bool isConnected() const { return connected_; }

@@ -11,7 +11,7 @@
 #define DATABASE_DEVICE_DATA_ACCESS_H
 
 #include "Database/DatabaseManager.h"
-#include "Drivers/CommonTypes.h"
+#include "Drivers/Common/CommonTypes.h"
 #include "Utils/LogManager.h"
 #include <vector>
 #include <optional>

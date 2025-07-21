@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  pulseone-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pulseone-collector-dev
+    volumes:
+      - ../config:/app/config
+      - .:/app/collector
+    networks:
+      - pulseone-network
+    environment:
+      - ENV_STAGE=dev
+    command: tail -f /dev/null
+
+networks:
+  pulseone-network:
+    external: true

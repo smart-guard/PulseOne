@@ -1,6 +1,6 @@
 // collector/src/Core/LogLevelManager.cpp
 // 실시간 로그 레벨 관리자
-#include "Core/LogLevelManager.h"
+#include "Utils/LogLevelManager.h"
 #include <thread>
 #include <chrono>
 

@@ -1,0 +1,277 @@
+# ============================================================================
+# PulseOne Collector Development Dockerfile (새 폴더 구조 지원)
+# ============================================================================
+
+FROM gcc:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Seoul
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# ============================================================================
+# 1단계: 필수 패키지 설치
+# ============================================================================
+RUN apt-get update && apt-get install -y \
+    cmake make build-essential \
+    libpqxx-dev libpq-dev libsqlite3-dev \
+    curl git nodejs npm pkg-config \
+    autoconf automake libtool uuid-dev libssl-dev \
+    wget unzip gdb valgrind vim nano tree htop \
+    netcat-openbsd telnet iputils-ping \
+    libhiredis-dev libjson-c-dev libconfig-dev \
+    libcurl4-openssl-dev libmodbus-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# 2단계: Claude Code 설치
+# ============================================================================
+RUN npm install -g @anthropic-ai/claude-code || echo "⚠️  Claude Code installation failed"
+
+# ============================================================================
+# 3단계: 라이브러리 경로 설정
+# ============================================================================
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/lib
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
+
+# ============================================================================
+# 4단계: Paho MQTT C 설치 (안정화 버전)
+# ============================================================================
+RUN echo "🔧 Installing Paho MQTT C..." && \
+    cd /tmp && git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
+    cd paho.mqtt.c && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_WITH_SSL=ON -DPAHO_ENABLE_TESTING=OFF \
+             -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_SHARED=ON -DCMAKE_C_STANDARD=11 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/paho.mqtt.c && echo "✅ Paho MQTT C installed"
+
+# ============================================================================
+# 5단계: Paho MQTT C++ 설치
+# ============================================================================
+RUN echo "🔧 Installing Paho MQTT C++..." && \
+    cd /tmp && git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
+    cd paho.mqtt.cpp && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_BUILD_SAMPLES=OFF -DPAHO_BUILD_TESTS=OFF \
+             -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_SHARED=ON -DCMAKE_CXX_STANDARD=17 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/paho.mqtt.cpp && echo "✅ Paho MQTT C++ installed"
+
+# ============================================================================
+# 6단계: BACnet 헤더만 설치 (안정성 우선)
+# ============================================================================
+RUN echo "🔧 Installing BACnet headers..." && \
+    cd /tmp && git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
+    mkdir -p /usr/local/include/bacnet && \
+    find bacnet-stack -name "*.h" -exec cp {} /usr/local/include/bacnet/ \; 2>/dev/null || true && \
+    cd / && rm -rf /tmp/bacnet-stack && echo "✅ BACnet headers installed"
+
+# ============================================================================
+# 7단계: 추가 라이브러리들
+# ============================================================================
+# nlohmann/json
+RUN mkdir -p /usr/local/include/nlohmann && \
+    wget -q -O /usr/local/include/nlohmann/json.hpp \
+    https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp || \
+    apt-get update && apt-get install -y nlohmann-json3-dev && apt-get clean
+
+# spdlog
+RUN cd /tmp && git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
+    cd spdlog && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DSPDLOG_BUILD_SHARED=ON -DCMAKE_CXX_STANDARD=17 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/spdlog
+
+# Google Test
+RUN cd /tmp && git clone --depth 1 --branch v1.14.0 https://github.com/google/googletest.git && \
+    cd googletest && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON -DCMAKE_CXX_STANDARD=17 && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/googletest
+
+# ============================================================================
+# 8단계: PKG-CONFIG 파일 생성
+# ============================================================================
+RUN echo "prefix=/usr/local\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: paho-mqtt3c\nDescription: Eclipse Paho MQTT C Client\nVersion: 1.3.13\nLibs: -L\${libdir} -lpaho-mqtt3c -lpaho-mqtt3cs\nCflags: -I\${includedir}" > /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
+    echo "prefix=/usr/local\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: paho-mqttpp3\nDescription: Eclipse Paho MQTT C++ Client\nVersion: 1.3.2\nRequires: paho-mqtt3c\nLibs: -L\${libdir} -lpaho-mqttpp3\nCflags: -I\${includedir}" > /usr/local/lib/pkgconfig/paho-mqttpp3.pc
+
+# ============================================================================
+# 9단계: 새 폴더 구조 지원 개발 환경 설정
+# ============================================================================
+RUN mkdir -p /app/collector/{bin,build,lib,logs,test} && \
+    mkdir -p /app/collector/include/{Workers/{Base,Protocol,Components},Drivers/{Common,Modbus,Mqtt,Bacnet,Wireless},Core,Client,Utils,Database,Plugin} && \
+    mkdir -p /app/collector/src/{Workers/{Base,Protocol,Components},Drivers/{Common,Modbus,Mqtt,Bacnet,Wireless},Core,Client,Utils,Database,Plugin} && \
+    mkdir -p /app/config/drivers && \
+    mkdir -p /app/scripts && \
+    mkdir -p /app/docs
+
+# ============================================================================
+# 10단계: 개발 스크립트 생성
+# ============================================================================
+RUN cat > /app/collector/dev-build.sh << 'EOF'
+#!/bin/bash
+# PulseOne Collector 개발 빌드 스크립트
+
+set -e
+
+echo "🏗️ PulseOne Collector Development Build"
+echo "========================================"
+
+# 컬러 정의
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# 환경 체크
+echo -e "${BLUE}📋 Environment Check:${NC}"
+echo "  Compiler: $(gcc --version | head -n1)"
+echo "  Make: $(make --version | head -n1)"
+echo "  Working Dir: $(pwd)"
+
+# 폴더 구조 체크
+echo -e "${BLUE}📁 Folder Structure Check:${NC}"
+[ -d "include/Workers/Base" ] && echo -e "  ${GREEN}✅ include/Workers/Base${NC}" || echo -e "  ${RED}❌ include/Workers/Base${NC}"
+[ -d "include/Drivers/Common" ] && echo -e "  ${GREEN}✅ include/Drivers/Common${NC}" || echo -e "  ${RED}❌ include/Drivers/Common${NC}"
+[ -d "include/Client" ] && echo -e "  ${GREEN}✅ include/Client${NC}" || echo -e "  ${RED}❌ include/Client${NC}"
+[ -d "src/Workers/Base" ] && echo -e "  ${GREEN}✅ src/Workers/Base${NC}" || echo -e "  ${RED}❌ src/Workers/Base${NC}"
+[ -d "src/Core" ] && echo -e "  ${GREEN}✅ src/Core${NC}" || echo -e "  ${RED}❌ src/Core${NC}"
+
+# 라이브러리 체크
+echo -e "${BLUE}📚 Library Check:${NC}"
+pkg-config --exists libmodbus && echo -e "  ${GREEN}✅ libmodbus: $(pkg-config --modversion libmodbus)${NC}" || echo -e "  ${RED}❌ libmodbus${NC}"
+pkg-config --exists paho-mqtt3c && echo -e "  ${GREEN}✅ Paho MQTT C: $(pkg-config --modversion paho-mqtt3c)${NC}" || echo -e "  ${RED}❌ Paho MQTT C${NC}"
+pkg-config --exists paho-mqttpp3 && echo -e "  ${GREEN}✅ Paho MQTT C++: $(pkg-config --modversion paho-mqttpp3)${NC}" || echo -e "  ${RED}❌ Paho MQTT C++${NC}"
+[ -d /usr/local/include/bacnet ] && echo -e "  ${GREEN}✅ BACnet Headers${NC}" || echo -e "  ${RED}❌ BACnet Headers${NC}"
+
+# 빌드 실행
+echo -e "${BLUE}🔨 Starting Build:${NC}"
+case "${1:-debug}" in
+    "clean")
+        echo -e "${YELLOW}🧹 Cleaning...${NC}"
+        make clean
+        ;;
+    "debug")
+        echo -e "${YELLOW}🐛 Debug Build...${NC}"
+        make debug
+        ;;
+    "release")
+        echo -e "${YELLOW}🚀 Release Build...${NC}"
+        make release
+        ;;
+    "minimal")
+        echo -e "${YELLOW}📦 Minimal Build...${NC}"
+        make minimal
+        ;;
+    "syntax")
+        echo -e "${YELLOW}📝 Syntax Check...${NC}"
+        make syntax-check
+        ;;
+    "analyze")
+        echo -e "${YELLOW}📊 Code Analysis...${NC}"
+        make analyze
+        ;;
+    *)
+        echo -e "${YELLOW}🔧 Default Build...${NC}"
+        make
+        ;;
+esac
+
+echo -e "${GREEN}✅ Build script completed!${NC}"
+EOF
+
+# 스크립트 실행 권한 부여
+RUN chmod +x /app/collector/dev-build.sh
+
+# ============================================================================
+# 11단계: 빠른 테스트 스크립트 생성
+# ============================================================================
+RUN cat > /app/collector/quick-test.sh << 'EOF'
+#!/bin/bash
+# PulseOne Collector 빠른 테스트 스크립트
+
+echo "🧪 Quick Test Suite"
+echo "=================="
+
+# 헤더 파일 존재 확인
+echo "📄 Header Files Check:"
+find include/ -name "*.h" | head -10 | while read file; do
+    echo "  ✓ $file"
+done
+
+# 소스 파일 존재 확인  
+echo "💻 Source Files Check:"
+find src/ -name "*.cpp" | head -10 | while read file; do
+    echo "  ✓ $file"
+done
+
+# 간단한 컴파일 테스트
+echo "🔨 Compilation Test:"
+if [ -f "src/main.cpp" ]; then
+    g++ -std=c++17 -Iinclude -fsyntax-only src/main.cpp && echo "  ✅ main.cpp syntax OK" || echo "  ❌ main.cpp syntax error"
+else
+    echo "  ⚠️ main.cpp not found"
+fi
+
+# Makefile 존재 확인
+echo "📋 Build System Check:"
+[ -f "Makefile" ] && echo "  ✅ Makefile exists" || echo "  ❌ Makefile missing"
+
+echo "✅ Quick test completed!"
+EOF
+
+RUN chmod +x /app/collector/quick-test.sh
+
+# ============================================================================
+# 12단계: 개발 환경 설정 완료
+# ============================================================================
+RUN ldconfig && \
+    echo "🔍 Final verification:" && \
+    (pkg-config --exists libmodbus && echo "  ✅ libmodbus: $(pkg-config --modversion libmodbus)") || echo "  ❌ libmodbus" && \
+    (pkg-config --exists paho-mqtt3c && echo "  ✅ Paho MQTT C: $(pkg-config --modversion paho-mqtt3c)") || echo "  ❌ Paho MQTT C" && \
+    (pkg-config --exists paho-mqttpp3 && echo "  ✅ Paho MQTT C++: $(pkg-config --modversion paho-mqttpp3)") || echo "  ❌ Paho MQTT C++" && \
+    ([ -d /usr/local/include/bacnet ] && echo "  ✅ BACnet Headers: Found") || echo "  ❌ BACnet Headers" && \
+    ([ -f /usr/local/include/nlohmann/json.hpp ] && echo "  ✅ nlohmann/json: Found") || echo "  ❌ nlohmann/json" && \
+    echo "✅ All libraries verified!"
+
+# Bash 프롬프트 개선 및 개발 환경 메시지
+RUN echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
+    echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc && \
+    echo 'echo "📁 New folder structure supported:"' >> /root/.bashrc && \
+    echo 'echo "   include/Workers/{Base,Protocol,Components}/"' >> /root/.bashrc && \
+    echo 'echo "   include/Drivers/{Common,Modbus,Mqtt,Bacnet}/"' >> /root/.bashrc && \
+    echo 'echo "   include/{Core,Client,Utils,Database}/"' >> /root/.bashrc && \
+    echo 'echo ""' >> /root/.bashrc && \
+    echo 'echo "🔧 Quick commands:"' >> /root/.bashrc && \
+    echo 'echo "   ./dev-build.sh debug   - Debug build"' >> /root/.bashrc && \
+    echo 'echo "   ./dev-build.sh syntax  - Syntax check"' >> /root/.bashrc && \
+    echo 'echo "   ./quick-test.sh        - Quick test"' >> /root/.bashrc && \
+    echo 'echo "   make help             - Full help"' >> /root/.bashrc && \
+    echo 'echo ""' >> /root/.bashrc
+
+# 환경 변수 설정
+ENV CC=gcc CXX=g++
+ENV CFLAGS="-std=c11 -Wall -Wextra"
+ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
+
+# 작업 디렉토리 및 포트 설정
+WORKDIR /app/collector
+EXPOSE 2345 8080 5432 6379 1883
+
+# 볼륨 마운트 포인트
+VOLUME ["/app/collector", "/app/config", "/app/logs", "/app/scripts"]
+
+# 기본 명령어
+CMD ["/bin/bash"]
+
+# ============================================================================
+# 빌드 후 실행할 수 있는 명령어들
+# ============================================================================
+# docker build -t pulseone-collector-dev -f Dockerfile.dev .
+# docker run -it -v $(pwd):/app/collector pulseone-collector-dev
+# 
+# 컨테이너 내부에서:
+# ./dev-build.sh debug     # 디버그 빌드
+# ./dev-build.sh syntax    # 문법 체크만
+# ./quick-test.sh          # 빠른 테스트
+# make help               # 전체 도움말

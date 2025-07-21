@@ -4,7 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include "Utils/LogManager.h"
-#include "Config/ConfigManager.h"
+#include "Utils/ConfigManager.h"
 
 namespace PulseOne {
 namespace Core {

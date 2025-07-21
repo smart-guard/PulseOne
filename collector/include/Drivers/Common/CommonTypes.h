@@ -496,6 +496,108 @@ struct DriverConfig {
         , retry_count(Constants::DEFAULT_RETRY_COUNT)
         , enabled(true) {}
 };
+
+/**
+ * @brief 드라이버 통계 정보 구조체
+ * @details 성능 모니터링 및 진단을 위한 통계 데이터
+ */
+struct DriverStatistics {
+    // 기본 통계
+    uint64_t successful_connections;          ///< 성공한 연결 수
+    uint64_t failed_connections;              ///< 실패한 연결 수
+    uint64_t total_operations;                ///< 총 작업 수
+    uint64_t successful_operations;           ///< 성공한 작업 수
+    uint64_t failed_operations;               ///< 실패한 작업 수
+    
+    // 성능 지표
+    double avg_response_time_ms;              ///< 평균 응답 시간 (밀리초)
+    double min_response_time_ms;              ///< 최소 응답 시간 (밀리초)
+    double max_response_time_ms;              ///< 최대 응답 시간 (밀리초)
+    
+    // 시간 정보
+    Timestamp start_time;                     ///< 드라이버 시작 시간
+    Timestamp last_success_time;              ///< 마지막 성공 시간
+    Timestamp last_error_time;                ///< 마지막 에러 시간
+    
+    // 품질 지표
+    double success_rate;                      ///< 성공률 (0.0 ~ 1.0)
+    uint32_t consecutive_failures;            ///< 연속 실패 횟수
+    uint32_t uptime_seconds;                  ///< 가동 시간 (초)
+    
+    /**
+     * @brief 기본 생성자
+     */
+    DriverStatistics()
+        : successful_connections(0)
+        , failed_connections(0)
+        , total_operations(0)
+        , successful_operations(0)
+        , failed_operations(0)
+        , avg_response_time_ms(0.0)
+        , min_response_time_ms(std::numeric_limits<double>::max())
+        , max_response_time_ms(0.0)
+        , start_time(std::chrono::system_clock::now())
+        , last_success_time(std::chrono::system_clock::now())
+        , last_error_time(std::chrono::system_clock::now())
+        , success_rate(0.0)
+        , consecutive_failures(0)
+        , uptime_seconds(0) {}
+    
+    /**
+     * @brief 성공률 계산
+     */
+    void UpdateSuccessRate() {
+        if (total_operations > 0) {
+            success_rate = static_cast<double>(successful_operations) / total_operations;
+        } else {
+            success_rate = 0.0;
+        }
+    }
+};
+
+/**
+ * @brief 쓰기 요청 구조체
+ * @details 비동기 쓰기 작업을 위한 요청 정보
+ */
+struct WriteRequest {
+    UUID request_id;                          ///< 요청 고유 ID
+    DataPoint point;                          ///< 대상 데이터 포인트
+    DataValue value;                          ///< 쓸 값
+    int priority;                             ///< 우선순위 (높을수록 먼저 처리)
+    Timestamp created_at;                     ///< 요청 생성 시간
+    Timestamp deadline;                       ///< 처리 기한
+    std::function<void(bool, const ErrorInfo&)> callback; ///< 완료 콜백
+    
+    /**
+     * @brief 기본 생성자
+     */
+    WriteRequest()
+        : priority(5)
+        , created_at(std::chrono::system_clock::now())
+        , deadline(std::chrono::system_clock::now() + std::chrono::seconds(30)) {}
+    
+    /**
+     * @brief 우선순위 비교 (우선순위 큐용)
+     * @param other 비교할 요청
+     * @return 우선순위가 낮으면 true (높은 우선순위가 먼저 처리됨)
+     */
+    bool operator<(const WriteRequest& other) const {
+        return priority < other.priority;
+    }
+};
+
+// ModbusFunction enum 정의 (이미 ModbusDriver.h에 있음)
+enum class ModbusFunction : uint8_t {
+    read_coils = 0x01,
+    read_discrete_inputs = 0x02,
+    read_holding_registers = 0x03,
+    read_input_registers = 0x04,
+    write_single_coil = 0x05,
+    write_single_register = 0x06,
+    write_multiple_coils = 0x0F,
+    write_multiple_registers = 0x10
+};
+
 // =============================================================================
 // 유틸리티 함수들 (인라인으로 성능 최적화)
 // =============================================================================
