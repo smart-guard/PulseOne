@@ -243,8 +243,9 @@ public:
      * @param priority 우선순위 (기본값: 10)
      * @return future 객체
      */
-    virtual std::future<bool> WriteValueAsync(const DataPoint& point, 
-                                            const DataValue& value, int priority = 10) {
+    virtual std::future<bool> WriteValueAsync(const DataPoint& point,
+                                         const DataValue& value, 
+                                         int /* priority */ = 10) {
         auto promise = std::make_shared<std::promise<bool>>();
         auto future = promise->get_future();
         

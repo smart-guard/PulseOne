@@ -14,9 +14,10 @@
 #include <atomic>
 #include <unordered_map>
 #include <queue>
+#include <optional>
 #include <condition_variable>
 #include <nlohmann/json.hpp>
-
+/*
 // MQTT 라이브러리는 나중에 추가 (현재는 포인터 타입으로 전방 선언)
 namespace mqtt {
     class async_client;
@@ -30,6 +31,13 @@ namespace mqtt {
     using const_message_ptr = std::shared_ptr<const message>;
     using delivery_token_ptr = std::shared_ptr<delivery_token>;
 }
+*/
+#include <mqtt/async_client.h>
+#include <mqtt/callback.h>
+#include <mqtt/iaction_listener.h>
+#include <mqtt/connect_options.h>
+#include <mqtt/message.h>
+#include <mqtt/token.h>    
 
 namespace PulseOne {
 namespace Drivers {
@@ -59,6 +67,68 @@ public:
         const DataPoint& point,
         const DataValue& value
     ) override;
+    
+    struct MqttDataPointInfo {
+        std::string point_id;           ///< 데이터 포인트 고유 ID
+        std::string name;               ///< 데이터 포인트 이름  
+        std::string description;        ///< 데이터 포인트 설명
+        std::string topic;              ///< MQTT 토픽
+        int qos;                        ///< QoS 레벨 (0, 1, 2)
+        DataType data_type;             ///< 데이터 타입
+        std::string unit;               ///< 단위 (예: "°C", "%RH")
+        double scaling_factor;          ///< 스케일링 팩터
+        double scaling_offset;          ///< 스케일링 오프셋
+        bool is_writable;               ///< 쓰기 가능 여부
+        bool auto_subscribe;            ///< 자동 구독 여부
+    
+        /**
+         * @brief 기본 생성자
+        */
+        MqttDataPointInfo()
+        : qos(1)
+        , data_type(DataType::UNKNOWN)
+        , scaling_factor(1.0)
+        , scaling_offset(0.0)
+        , is_writable(false)
+        , auto_subscribe(true) {}
+    
+        /**
+         * @brief 매개변수 생성자
+        */
+        MqttDataPointInfo(const std::string& id, const std::string& point_name, 
+                     const std::string& desc, const std::string& mqtt_topic,
+                     int qos_level = 1, DataType type = DataType::FLOAT32)
+        : point_id(id)
+        , name(point_name)
+        , description(desc)
+        , topic(mqtt_topic)
+        , qos(qos_level)
+        , data_type(type)
+        , scaling_factor(1.0)
+        , scaling_offset(0.0)
+        , is_writable(false)
+        , auto_subscribe(true) {}
+        
+    /**
+     * @brief 전체 설정 생성자
+     */
+        MqttDataPointInfo(const std::string& id, const std::string& point_name,
+                     const std::string& desc, const std::string& mqtt_topic,
+                     int qos_level, DataType type, const std::string& point_unit,
+                     double scale_factor, double scale_offset, 
+                     bool writable, bool auto_sub)
+        : point_id(id)
+        , name(point_name)
+        , description(desc)
+        , topic(mqtt_topic)
+        , qos(qos_level)
+        , data_type(type)
+        , unit(point_unit)
+        , scaling_factor(scale_factor)
+        , scaling_offset(scale_offset)
+        , is_writable(writable)
+        , auto_subscribe(auto_sub) {}
+    };
     
     ProtocolType GetProtocolType() const override;
     DriverStatus GetStatus() const override;
@@ -114,6 +184,27 @@ public:
      */
     bool PublishDataPoints(const std::vector<std::pair<DataPoint, TimestampedValue>>& data_points,
                           const std::string& base_topic = "data");
+
+    // ✅ 여기에 새 메소드들 추가 ✅
+    /**
+     * @brief 토픽으로 데이터 포인트 정보 찾기
+     * @param topic 검색할 토픽
+     * @return 데이터 포인트 정보 (없으면 nullopt)
+     */
+    std::optional<MqttDataPointInfo> FindPointByTopic(const std::string& topic) const;
+    
+    /**
+     * @brief 포인트 ID로 토픽 찾기
+     * @param point_id 검색할 포인트 ID
+     * @return 토픽 이름 (없으면 빈 문자열)
+     */
+    std::string FindTopicByPointId(const std::string& point_id) const;
+    
+    /**
+     * @brief 로드된 포인트 수 반환
+     * @return 현재 로드된 MQTT 데이터 포인트 개수
+     */
+    size_t GetLoadedPointCount() const;                      
     
     // MQTT 콜백 인터페이스 구현 (스텁)
     virtual void connected(const std::string& cause);
@@ -168,6 +259,7 @@ private:
         bool auto_reconnect;                    ///< 자동 재연결 플래그
         bool use_ssl;                           ///< SSL 사용 여부
         int qos_level;                          ///< 기본 QoS 레벨
+        std::string ca_cert_path;              ///< 🆕 추가: CA 인증서 경로
         
         MqttConfig() 
             : broker_url("mqtt://localhost:1883")
@@ -206,14 +298,7 @@ private:
               request_time(std::chrono::system_clock::now()) {}
     };
     
-    struct MqttDataPointInfo {
-        std::string name;
-        std::string description;
-        std::string unit;
-        double scaling_factor;
-        double scaling_offset;
-        std::string topic;
-    };
+
     
     struct MqttPacketLog {
         std::string direction;        // "PUBLISH", "SUBSCRIBE", "RECEIVE"
@@ -301,7 +386,7 @@ private:
     mutable std::mutex subscriptions_mutex_;
     std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
     
-    // 데이터 포인트 매핑 (토픽 -> 데이터 포인트)
+    // 데이터 포인트 매핑 (토픽 -> 데이터 포인트)std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
     mutable std::mutex data_mapping_mutex_;
     std::unordered_map<std::string, std::vector<DataPoint>> topic_to_datapoints_;
     std::unordered_map<UUID, std::string> datapoint_to_topic_;
@@ -353,9 +438,14 @@ private:
     std::map<std::string, MqttDataPointInfo> mqtt_point_info_map_;
     std::deque<MqttPacketLog> mqtt_packet_history_;
 
-    mqtt::async_client* mqtt_client_;           ///< MQTT 클라이언트
-    mqtt::callback* mqtt_callback_;             ///< MQTT 콜백 핸들러
+    std::unique_ptr<mqtt::async_client> mqtt_client_;
+    std::unique_ptr<mqtt::callback> mqtt_callback_;
+    mqtt::connect_options connect_options_;
     std::mutex connection_mutex_;               ///< 연결 상태 뮤텍스
+
+    mutable std::mutex message_queue_mutex_;
+    std::queue<std::pair<std::string, std::string>> incoming_messages_; // topic, payload
+    std::condition_variable message_queue_cv_;
 
 
 
