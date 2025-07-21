@@ -213,6 +213,7 @@ public:
      */
     virtual std::future<std::vector<TimestampedValue>> 
     ReadValuesAsync(const std::vector<DataPoint>& points, int priority = 0) {
+        (void)priority;
         auto promise = std::make_shared<std::promise<std::vector<TimestampedValue>>>();
         auto future = promise->get_future();
         
