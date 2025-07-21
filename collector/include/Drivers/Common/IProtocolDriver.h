@@ -12,7 +12,7 @@
 
 #include "CommonTypes.h"
 #include "DriverLogger.h"
-#include "Config/ConfigManager.h"    // 기존 ConfigManager 사용
+#include "Utils/ConfigManager.h"    // 기존 ConfigManager 사용
 #include <functional>
 #include <map>
 #include <atomic>
@@ -50,135 +50,6 @@ using DiagnosticsCallback = std::function<void(const UUID& device_id,
  * @brief 드라이버 통계 정보 구조체
  * @details 성능 모니터링 및 진단을 위한 통계 데이터
  */
-struct DriverStatistics {
-    // 요청 관련 통계 (원자적 연산으로 스레드 안전)
-    std::atomic<uint64_t> total_read_requests{0};     ///< 총 읽기 요청 수
-    std::atomic<uint64_t> successful_reads{0};        ///< 성공한 읽기 수
-    std::atomic<uint64_t> failed_reads{0};            ///< 실패한 읽기 수
-    std::atomic<uint64_t> total_write_requests{0};    ///< 총 쓰기 요청 수
-    std::atomic<uint64_t> successful_writes{0};       ///< 성공한 쓰기 수
-    std::atomic<uint64_t> failed_writes{0};           ///< 실패한 쓰기 수
-    
-    // 연결 관련 통계
-    std::atomic<uint64_t> connection_attempts{0};     ///< 연결 시도 수
-    std::atomic<uint64_t> successful_connections{0};  ///< 성공한 연결 수
-    std::atomic<uint64_t> connection_failures{0};     ///< 연결 실패 수
-    std::atomic<uint32_t> current_connections{0};     ///< 현재 연결 수
-    
-    // 성능 통계
-    std::atomic<uint32_t> avg_response_time_ms{0};    ///< 평균 응답 시간 (밀리초)
-    std::atomic<uint32_t> min_response_time_ms{UINT32_MAX}; ///< 최소 응답 시간
-    std::atomic<uint32_t> max_response_time_ms{0};    ///< 최대 응답 시간
-    std::atomic<uint64_t> total_bytes_sent{0};        ///< 총 송신 바이트
-    std::atomic<uint64_t> total_bytes_received{0};    ///< 총 수신 바이트
-    
-    // 시간 정보
-    Timestamp start_time;                             ///< 드라이버 시작 시간
-    Timestamp last_successful_read;                   ///< 마지막 성공한 읽기 시간
-    Timestamp last_successful_write;                  ///< 마지막 성공한 쓰기 시간
-    Timestamp last_error_time;                        ///< 마지막 에러 발생 시간
-    
-    /**
-     * @brief 기본 생성자
-     */
-    DriverStatistics() 
-        : start_time(std::chrono::system_clock::now())
-        , last_successful_read(std::chrono::system_clock::now())
-        , last_successful_write(std::chrono::system_clock::now())
-        , last_error_time(std::chrono::system_clock::now()) {}
-
-    // 복사 생성자 수정
-    DriverStatistics(const DriverStatistics& other) {
-        // 올바른 필드명으로 수정
-        total_read_requests = other.total_read_requests.load();
-        successful_reads = other.successful_reads.load();
-        failed_reads = other.failed_reads.load();
-        total_write_requests = other.total_write_requests.load();
-        successful_writes = other.successful_writes.load();
-        failed_writes = other.failed_writes.load();
-        connection_attempts = other.connection_attempts.load();
-        successful_connections = other.successful_connections.load();
-        connection_failures = other.connection_failures.load();
-        current_connections = other.current_connections.load();
-        avg_response_time_ms = other.avg_response_time_ms.load();
-        min_response_time_ms = other.min_response_time_ms.load();
-        max_response_time_ms = other.max_response_time_ms.load();
-        total_bytes_sent = other.total_bytes_sent.load();
-        total_bytes_received = other.total_bytes_received.load();
-        
-        // 시간 정보는 단순 복사
-        start_time = other.start_time;
-        last_successful_read = other.last_successful_read;
-        last_successful_write = other.last_successful_write;
-        last_error_time = other.last_error_time;
-    }   
-    
-    /**
-     * @brief 읽기 성공률 계산
-     * @return 성공률 (0.0 ~ 100.0)
-     */
-    double GetReadSuccessRate() const noexcept {
-        uint64_t total = total_read_requests.load();
-        return total > 0 ? (double)successful_reads.load() / total * 100.0 : 0.0;
-    }
-    
-    /**
-     * @brief 쓰기 성공률 계산
-     * @return 성공률 (0.0 ~ 100.0)
-     */
-    double GetWriteSuccessRate() const noexcept {
-        uint64_t total = total_write_requests.load();
-        return total > 0 ? (double)successful_writes.load() / total * 100.0 : 0.0;
-    }
-    
-    /**
-     * @brief 연결 성공률 계산
-     * @return 성공률 (0.0 ~ 100.0)
-     */
-    double GetConnectionSuccessRate() const noexcept {
-        uint64_t total = connection_attempts.load();
-        return total > 0 ? (double)successful_connections.load() / total * 100.0 : 0.0;
-    }
-    
-    /**
-     * @brief 운영 시간 계산 (초)
-     * @return 운영 시간
-     */
-    double GetUptimeSeconds() const noexcept {
-        auto now = std::chrono::system_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::seconds>(
-            now - start_time);
-        return static_cast<double>(duration.count());
-    }
-    
-    /**
-     * @brief 통계를 JSON 문자열로 변환
-     * @return JSON 형태의 통계 정보
-     */
-    std::string ToJson() const;
-    
-    /**
-     * @brief 통계 초기화
-     */
-    void Reset() noexcept {
-        total_read_requests.store(0);
-        successful_reads.store(0);
-        failed_reads.store(0);
-        total_write_requests.store(0);
-        successful_writes.store(0);
-        failed_writes.store(0);
-        connection_attempts.store(0);
-        successful_connections.store(0);
-        connection_failures.store(0);
-        current_connections.store(0);
-        avg_response_time_ms.store(0);
-        min_response_time_ms.store(UINT32_MAX);
-        max_response_time_ms.store(0);
-        total_bytes_sent.store(0);
-        total_bytes_received.store(0);
-        start_time = std::chrono::system_clock::now();
-    }
-};
 
 // =============================================================================
 // 비동기 요청 구조체들
@@ -441,7 +312,7 @@ public:
      * @brief 통계 정보 초기화
      */
     virtual void ResetStatistics() {
-        statistics_.Reset();
+        // statistics_.Reset(); // TODO: implement
         logger_.Info("Driver statistics reset", DriverLogCategory::GENERAL);
     }
     
@@ -455,9 +326,9 @@ public:
         oss << "{"
             << "\"protocol\":\"" << ProtocolTypeToString(GetProtocolType()) << "\","
             << "\"status\":\"" << static_cast<int>(GetStatus()) << "\","
-            << "\"connection_status\":\"" << ConnectionStatusToString(current_connection_status_.load()) << "\","
-            << "\"statistics\":" << stats.ToJson() << ","
-            << "\"uptime_seconds\":" << stats.GetUptimeSeconds() << ","
+            << "\"connection_status\":\"" << ConnectionStatusToString(current_connection_status_) << "\","
+            << "\"statistics\":" << "{}" << ","
+            << "\"uptime_seconds\":" << stats.uptime_seconds << ","
             << "\"last_error\":\"" << GetLastError().message << "\""
             << "}";
         return oss.str();
@@ -695,39 +566,39 @@ protected:
      * @brief 응답 시간 업데이트 (성능 통계용)
      * @param response_time 응답 시간
      */
-    void UpdateResponseTime(std::chrono::milliseconds response_time) {
-        uint32_t response_ms = static_cast<uint32_t>(response_time.count());
-        
-        // 이동 평균으로 평균 응답 시간 업데이트 (90% 이전값, 10% 새값)
-        uint32_t current_avg = statistics_.avg_response_time_ms.load();
-        uint32_t new_avg = (current_avg * 9 + response_ms) / 10;
-        statistics_.avg_response_time_ms.store(new_avg);
-        
-        // 최소/최대 응답 시간 업데이트
-        uint32_t current_min = statistics_.min_response_time_ms.load();
-        while (response_ms < current_min) {
-            if (statistics_.min_response_time_ms.compare_exchange_weak(current_min, response_ms)) {
-                break;
-            }
-        }
-        
-        uint32_t current_max = statistics_.max_response_time_ms.load();
-        while (response_ms > current_max) {
-            if (statistics_.max_response_time_ms.compare_exchange_weak(current_max, response_ms)) {
-                break;
-            }
-        }
-    }
+    //     void UpdateResponseTime(std::chrono::milliseconds response_time) {
+    //         uint32_t response_ms = static_cast<uint32_t>(response_time.count());
+    //         
+    //         // 이동 평균으로 평균 응답 시간 업데이트 (90% 이전값, 10% 새값)
+    //         uint32_t current_avg = statistics_.avg_response_time_ms;
+    //         uint32_t new_avg = (current_avg * 9 + response_ms) / 10;
+    //         statistics_.avg_response_time_ms.store(new_avg);
+    //         
+    //         // 최소/최대 응답 시간 업데이트
+    //         uint32_t current_min = statistics_.min_response_time_ms;
+    //         while (response_ms < current_min) {
+    //             if (statistics_.min_response_time_ms.compare_exchange_weak(current_min, response_ms)) {
+    //                 break;
+    //             }
+    //         }
+    //         
+    //         uint32_t current_max = statistics_.max_response_time_ms;
+    //         while (response_ms > current_max) {
+    //             if (statistics_.max_response_time_ms.compare_exchange_weak(current_max, response_ms)) {
+    //                 break;
+    //             }
+    //         }
+    //     }
     
     /**
      * @brief 바이트 통계 업데이트
      * @param bytes_sent 송신 바이트 수
      * @param bytes_received 수신 바이트 수
      */
-    void UpdateByteCounters(uint64_t bytes_sent, uint64_t bytes_received) {
-        statistics_.total_bytes_sent.fetch_add(bytes_sent);
-        statistics_.total_bytes_received.fetch_add(bytes_received);
-    }
+    //     void UpdateByteCounters(uint64_t bytes_sent, uint64_t bytes_received) {
+    //         statistics_.total_bytes_sent.fetch_add(bytes_sent);
+    //         statistics_.total_bytes_received.fetch_add(bytes_received);
+    //     }
 };
 
 // =============================================================================

@@ -1,7 +1,7 @@
 #include <iostream>
 #include <signal.h>
 #include <memory>
-#include "Core/CollectorApplication.h"
+#include "Core/Application.h"
 
 using namespace PulseOne::Core;
 

@@ -1,10 +1,11 @@
-#include "Config/ConfigManager.h"
+#include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
 #include <algorithm>
 #include <filesystem>
+#include <vector>
 
 ConfigManager& ConfigManager::getInstance() {
     static ConfigManager instance;

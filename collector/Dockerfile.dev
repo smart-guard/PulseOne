@@ -1,122 +1,100 @@
-# ============================================================================
-# PulseOne Collector Development Dockerfile (빌드 문제 완전 해결 버전)
-# ============================================================================
-
+# collector/Dockerfile.dev - 수정된 버전
 FROM gcc:latest
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Asia/Seoul
-ENV LANG=C.UTF-8
-ENV LC_ALL=C.UTF-8
-
-# ============================================================================
-# 1단계: 필수 패키지 설치
-# ============================================================================
+# 기본 패키지 설치
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libpqxx-dev libpq-dev libsqlite3-dev \
     curl git nodejs npm pkg-config \
-    autoconf automake libtool uuid-dev libssl-dev \
-    wget unzip gdb valgrind vim nano tree htop \
-    netcat-openbsd telnet iputils-ping \
-    libhiredis-dev libjson-c-dev libconfig-dev \
-    libcurl4-openssl-dev libmodbus-dev \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    wget unzip \
+    libssl-dev uuid-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# ============================================================================
-# 2단계: Claude Code 설치
-# ============================================================================
-RUN npm install -g @anthropic-ai/claude-code || echo "⚠️  Claude Code installation failed"
+# =============================================================================
+# 필수 라이브러리들만 설치 (안정적인 버전)
+# =============================================================================
 
-# ============================================================================
-# 3단계: 라이브러리 경로 설정
-# ============================================================================
-ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/lib
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
+# 1. libmodbus 설치
+RUN echo "🔧 Installing libmodbus..." && \
+    cd /tmp && git clone --depth 1 --branch v3.1.10 https://github.com/stephane/libmodbus.git && \
+    cd libmodbus && ./autogen.sh && ./configure --prefix=/usr/local && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/libmodbus && echo "✅ libmodbus installed"
 
-# ============================================================================
-# 4단계: Paho MQTT C 설치 (안정화 버전)
-# ============================================================================
+# 2. hiredis 설치
+RUN echo "🔧 Installing hiredis..." && \
+    cd /tmp && git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
+    cd hiredis && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SSL=ON && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/hiredis && echo "✅ hiredis installed"
+
+# 3. Paho MQTT C 설치
 RUN echo "🔧 Installing Paho MQTT C..." && \
     cd /tmp && git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
     cd paho.mqtt.c && mkdir -p build && cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_WITH_SSL=ON -DPAHO_ENABLE_TESTING=OFF \
-             -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_SHARED=ON -DCMAKE_C_STANDARD=11 && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_DOCUMENTATION=FALSE && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/paho.mqtt.c && echo "✅ Paho MQTT C installed"
 
-# ============================================================================
-# 5단계: Paho MQTT C++ 설치
-# ============================================================================
-RUN echo "🔧 Installing Paho MQTT C++..." && \
-    cd /tmp && git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
-    cd paho.mqtt.cpp && mkdir -p build && cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_BUILD_SAMPLES=OFF -DPAHO_BUILD_TESTS=OFF \
-             -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_SHARED=ON -DCMAKE_CXX_STANDARD=17 && \
-    make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/paho.mqtt.cpp && echo "✅ Paho MQTT C++ installed"
+# 4. nlohmann/json 설치 (소스에서 빌드)
+RUN echo "🔧 Installing nlohmann/json..." && \
+    cd /tmp && git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git && \
+    cd json && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DJSON_BuildTests=OFF && \
+    make -j$(nproc) && make install && \
+    cd / && rm -rf /tmp/json && echo "✅ nlohmann/json installed"
 
-# ============================================================================
-# 6단계: BACnet 헤더만 설치 (안정성 우선)
-# ============================================================================
+# 5. spdlog 설치 (로깅 라이브러리)
+RUN echo "🔧 Installing spdlog..." && \
+    cd /tmp && git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
+    cd spdlog && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DSPDLOG_BUILD_SHARED=ON && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/spdlog && echo "✅ spdlog installed"
+
+# 6. BACnet 헤더 파일들 (헤더만 설치)
 RUN echo "🔧 Installing BACnet headers..." && \
     cd /tmp && git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     mkdir -p /usr/local/include/bacnet && \
     find bacnet-stack -name "*.h" -exec cp {} /usr/local/include/bacnet/ \; 2>/dev/null || true && \
     cd / && rm -rf /tmp/bacnet-stack && echo "✅ BACnet headers installed"
 
-# ============================================================================
-# 7단계: 추가 라이브러리들
-# ============================================================================
-# nlohmann/json
-RUN mkdir -p /usr/local/include/nlohmann && \
-    wget -q -O /usr/local/include/nlohmann/json.hpp \
-    https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp || \
-    apt-get update && apt-get install -y nlohmann-json3-dev && apt-get clean
+# =============================================================================
+# PKG-CONFIG 파일 생성 (라이브러리 찾기 도움)
+# =============================================================================
+RUN echo "📝 Creating pkg-config files..." && \
+    # libmodbus
+    cat > /usr/local/lib/pkgconfig/libmodbus.pc << 'EOF'
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 
-# spdlog
-RUN cd /tmp && git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
-    cd spdlog && mkdir -p build && cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DSPDLOG_BUILD_SHARED=ON -DCMAKE_CXX_STANDARD=17 && \
-    make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/spdlog
+Name: libmodbus
+Description: Modbus library
+Version: 3.1.10
+Libs: -L${libdir} -lmodbus
+Cflags: -I${includedir}
+EOF
 
-# Google Test
-RUN cd /tmp && git clone --depth 1 --branch v1.14.0 https://github.com/google/googletest.git && \
-    cd googletest && mkdir -p build && cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON -DCMAKE_CXX_STANDARD=17 && \
-    make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/googletest
+# 환경 변수 설정
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
-# ============================================================================
-# 8단계: PKG-CONFIG 파일 생성
-# ============================================================================
-RUN echo "prefix=/usr/local\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: paho-mqtt3c\nDescription: Eclipse Paho MQTT C Client\nVersion: 1.3.13\nLibs: -L\${libdir} -lpaho-mqtt3c -lpaho-mqtt3cs\nCflags: -I\${includedir}" > /usr/local/lib/pkgconfig/paho-mqtt3c.pc && \
-    echo "prefix=/usr/local\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: paho-mqttpp3\nDescription: Eclipse Paho MQTT C++ Client\nVersion: 1.3.2\nRequires: paho-mqtt3c\nLibs: -L\${libdir} -lpaho-mqttpp3\nCflags: -I\${includedir}" > /usr/local/lib/pkgconfig/paho-mqttpp3.pc
+# 작업 디렉토리 설정
+WORKDIR /app
 
-# ============================================================================
-# 9단계: 검증 및 설정
-# ============================================================================
-RUN ldconfig && \
-    echo "🔍 Library verification:" && \
-    (pkg-config --exists libmodbus && echo "  ✅ libmodbus: $(pkg-config --modversion libmodbus)") || echo "  ❌ libmodbus" && \
-    (pkg-config --exists paho-mqtt3c && echo "  ✅ Paho MQTT C: $(pkg-config --modversion paho-mqtt3c)") || echo "  ❌ Paho MQTT C" && \
-    (pkg-config --exists paho-mqttpp3 && echo "  ✅ Paho MQTT C++: $(pkg-config --modversion paho-mqttpp3)") || echo "  ❌ Paho MQTT C++" && \
-    ([ -d /usr/local/include/bacnet ] && echo "  ✅ BACnet Headers: Found") || echo "  ❌ BACnet Headers" && \
-    ([ -f /usr/local/include/nlohmann/json.hpp ] && echo "  ✅ nlohmann/json: Found") || echo "  ❌ nlohmann/json" && \
-    echo "✅ All libraries verified!"
+# 개발용 스크립트 추가
+RUN echo '#!/bin/bash' > /usr/local/bin/dev-build.sh && \
+    echo 'echo "🔧 PulseOne Collector 개발 빌드"' >> /usr/local/bin/dev-build.sh && \
+    echo 'cd /app/collector' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "📋 라이브러리 확인:"' >> /usr/local/bin/dev-build.sh && \
+    echo 'pkg-config --list-all | grep -E "(modbus|paho|hiredis)" || echo "  (pkg-config에서 확인 안됨)"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo ""' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "🔨 빌드 시작:"' >> /usr/local/bin/dev-build.sh && \
+    echo 'make clean && make debug' >> /usr/local/bin/dev-build.sh && \
+    chmod +x /usr/local/bin/dev-build.sh
 
-# 개발 환경 설정
-RUN mkdir -p /app/collector/{bin,build,lib,logs} /app/config/drivers && \
-    echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
-    echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc
-
-ENV CC=gcc CXX=g++
-ENV CFLAGS="-std=c11 -Wall -Wextra"
-ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
-
-WORKDIR /app/collector
-EXPOSE 2345 8080
-VOLUME ["/app/collector", "/app/config", "/app/logs"]
-
+# 기본 명령어
 CMD ["/bin/bash"]

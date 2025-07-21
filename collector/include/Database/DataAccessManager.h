@@ -10,7 +10,7 @@
 #include <string>
 #include "IDataAccess.h"
 #include "Utils/LogManager.h"
-#include "Config/ConfigManager.h"
+#include "Utils/ConfigManager.h"
 
 namespace PulseOne {
 namespace Database {

@@ -6,8 +6,8 @@
 #ifndef PULSEONE_DRIVERS_MQTT_DRIVER_H
 #define PULSEONE_DRIVERS_MQTT_DRIVER_H
 
-#include "IProtocolDriver.h"
-#include "DriverLogger.h"
+#include "Drivers/Common/IProtocolDriver.h"
+#include "Drivers/Common/DriverLogger.h"
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
 #include <mqtt/iaction_listener.h>
@@ -18,7 +18,7 @@
 #include <unordered_map>
 #include <queue>
 #include <condition_variable>
-#include <json/json.h>
+// #include <json/json.h>
 
 namespace PulseOne {
 namespace Drivers {

@@ -1,5 +1,5 @@
 // collector/src/Core/CollectorApplication.cpp
-#include "Core/CollectorApplication.h"
+#include "Core/Application.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
