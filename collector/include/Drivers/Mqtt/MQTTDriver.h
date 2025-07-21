@@ -132,38 +132,65 @@ public:
     std::string GetDiagnosticsJSON() const;
     std::string GetTopicPointName(const std::string& topic) const;
 
+        // ✅ 이 위치에 MQTT 콜백 메소드들 추가
+    /**
+     * @brief MQTT 연결 끊김 콜백
+     * @param cause 연결 끊김 원인
+     */
+    void OnConnectionLost(const std::string& cause);
+    
+    /**
+     * @brief MQTT 메시지 수신 콜백
+     * @param msg 수신된 메시지
+     */
+    void OnMessageArrived(mqtt::const_message_ptr msg);
+    
+    /**
+     * @brief MQTT 메시지 전송 완료 콜백
+     * @param token 전송 토큰
+     */
+    void OnDeliveryComplete(mqtt::delivery_token_ptr token);
+
 private:
     // ==========================================================================
     // 내부 구조체 및 열거형
     // ==========================================================================
     
     struct MqttConfig {
-        std::string broker_url;
-        std::string client_id;
-        std::string username;
-        std::string password;
-        int keep_alive_interval = 60;
-        int clean_session = true;
-        bool use_ssl = false;
-        std::string ca_cert_path;
-        std::string client_cert_path;
-        std::string client_key_path;
-        int max_inflight = 100;
-        int connection_timeout = 30;
-        int retry_interval = 10;
-        bool auto_reconnect = true;
-    };
-    
-    struct SubscriptionInfo {
-        std::string topic;
-        int qos;
-        bool subscribed;
-        Timestamp last_message;
-        uint64_t message_count;
+        std::string broker_url;                 ///< 브로커 URL (mqtt://localhost:1883)
+        std::string broker_address;             ///< 브로커 주소 (localhost)
+        int broker_port;                        ///< 브로커 포트 (1883)
+        std::string client_id;                  ///< 클라이언트 ID
+        std::string username;                   ///< 사용자명 (옵션)
+        std::string password;                   ///< 패스워드 (옵션)
+        int keep_alive_interval;                ///< Keep-alive 간격 (초)
+        bool clean_session;                     ///< Clean session 플래그
+        bool auto_reconnect;                    ///< 자동 재연결 플래그
+        bool use_ssl;                           ///< SSL 사용 여부
+        int qos_level;                          ///< 기본 QoS 레벨
         
-        SubscriptionInfo() : qos(1), subscribed(false), message_count(0) {}
-        SubscriptionInfo(const std::string& t, int q) 
-            : topic(t), qos(q), subscribed(false), message_count(0) {}
+        MqttConfig() 
+            : broker_url("mqtt://localhost:1883")
+            , broker_address("localhost")
+            , broker_port(1883)
+            , client_id("pulseone_client")
+            , keep_alive_interval(60)
+            , clean_session(true)
+            , auto_reconnect(true)
+            , use_ssl(false)
+            , qos_level(1) {}
+    } mqtt_config_;
+    
+    // 구독 정보 구조체 수정
+    struct SubscriptionInfo {
+        int qos;                                ///< QoS 레벨
+        Timestamp subscribed_at;                ///< 구독 시간
+        bool is_active;                         ///< 활성 상태
+        
+        SubscriptionInfo() : qos(1), is_active(false) {}
+        SubscriptionInfo(int q) : qos(q), is_active(true) {
+            subscribed_at = std::chrono::system_clock::now();
+        }
     };
     
     struct PublishRequest {
@@ -208,7 +235,7 @@ private:
     bool ParseConfig(const DriverConfig& config);
     bool SetupSslOptions();
     bool CreateMqttClient();
-    void SetupCallbacks();
+    bool SetupCallbacks();
     
     // 연결 관리
     bool EstablishConnection();
@@ -223,7 +250,7 @@ private:
     // 구독 관리
     void RestoreSubscriptions();
     void UpdateSubscriptionStatus(const std::string& topic, bool subscribed);
-    
+    void ProcessReceivedMessage(const std::string& topic, const std::string& payload, int qos);
     // 에러 처리
     void SetError(ErrorCode code, const std::string& message);
     void UpdateStatistics(const std::string& operation, bool success, double duration_ms = 0);
@@ -255,7 +282,6 @@ private:
     
     // 설정
     DriverConfig config_;
-    MqttConfig mqtt_config_;
     
     // MQTT 클라이언트 (나중에 구현)
     // std::unique_ptr<mqtt::async_client> client_;
@@ -326,6 +352,13 @@ private:
     
     std::map<std::string, MqttDataPointInfo> mqtt_point_info_map_;
     std::deque<MqttPacketLog> mqtt_packet_history_;
+
+    mqtt::async_client* mqtt_client_;           ///< MQTT 클라이언트
+    mqtt::callback* mqtt_callback_;             ///< MQTT 콜백 핸들러
+    std::mutex connection_mutex_;               ///< 연결 상태 뮤텍스
+
+
+
 };
 
 } // namespace Drivers

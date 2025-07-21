@@ -6,7 +6,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -DDEBUG -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
 LDFLAGS = 
-LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3
+LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3
 
 # 프로젝트 설정
 PROJECT_NAME = pulseone_collector
@@ -264,3 +264,128 @@ help:
 	@echo "  make debug   - Build debug version"
 	@echo "  make clean && make release - Clean rebuild for production"
 	@echo "  make syntax-check - Quick syntax validation"
+
+# =============================================================================
+# PulseOne Collector Makefile - 테스트 타겟 추가
+# 기존 Makefile 끝부분에 이 내용을 추가하세요
+# =============================================================================
+
+# 테스트 디렉토리 설정
+TEST_DIR = test
+TEST_BUILD_DIR = build/test
+TEST_BIN_DIR = bin/test
+
+# 테스트 소스 파일들
+TEST_SOURCES = $(wildcard $(TEST_DIR)/*.cpp)
+TEST_OBJECTS = $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BUILD_DIR)/%.o)
+TEST_TARGETS = $(TEST_SOURCES:$(TEST_DIR)/test_%.cpp=$(TEST_BIN_DIR)/test_%)
+
+# 테스트용 라이브러리 (메인 앱과 동일하지만 main.o 제외)
+TEST_LIB_OBJECTS = $(filter-out $(BUILD_DIR)/main.o,$(ALL_OBJECTS))
+
+# =============================================================================
+# 테스트 타겟들
+# =============================================================================
+
+.PHONY: tests test-mqtt test-all test-clean test-run
+
+# 모든 테스트 빌드
+tests: directories $(TEST_TARGETS)
+	@echo -e "$(GREEN)✅ All tests built successfully$(NC)"
+	@echo -e "$(CYAN)📋 Available test executables:$(NC)"
+	@for test in $(TEST_TARGETS); do \
+		if [ -f "$$test" ]; then \
+			echo -e "   $(GREEN)✅ $$test$(NC)"; \
+		fi \
+	done
+
+# MQTT 드라이버 테스트 빌드
+test-mqtt: directories $(TEST_BIN_DIR)/test_mqtt_driver
+	@echo -e "$(GREEN)✅ MQTT Driver test built: $(TEST_BIN_DIR)/test_mqtt_driver$(NC)"
+
+# 개별 테스트 빌드 규칙
+$(TEST_BIN_DIR)/test_%: $(TEST_BUILD_DIR)/test_%.o $(TEST_LIB_OBJECTS)
+	@mkdir -p $(TEST_BIN_DIR)
+	@echo -e "$(BLUE)🔗 Linking test: $@$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $< $(TEST_LIB_OBJECTS) $(LIBS)
+	@chmod +x $@
+
+# 테스트 오브젝트 파일 컴파일
+$(TEST_BUILD_DIR)/%.o: $(TEST_DIR)/%.cpp
+	@mkdir -p $(TEST_BUILD_DIR)
+	@echo -e "$(YELLOW)🧪 Compiling test: $<$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 모든 테스트 실행
+test-run: tests
+	@echo -e "$(CYAN)🧪 Running all tests...$(NC)"
+	@echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@passed=0; total=0; \
+	for test in $(TEST_TARGETS); do \
+		if [ -f "$$test" ]; then \
+			echo -e "$(YELLOW)🏃 Running: $$test$(NC)"; \
+			total=$$((total + 1)); \
+			if $$test; then \
+				echo -e "$(GREEN)✅ PASSED: $$test$(NC)"; \
+				passed=$$((passed + 1)); \
+			else \
+				echo -e "$(RED)❌ FAILED: $$test$(NC)"; \
+			fi; \
+			echo ""; \
+		fi \
+	done; \
+	echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"; \
+	echo -e "$(CYAN)📊 Test Results: $$passed/$$total passed$(NC)"; \
+	if [ $$passed -eq $$total ]; then \
+		echo -e "$(GREEN)🎉 All tests passed!$(NC)"; \
+	else \
+		echo -e "$(RED)⚠️  Some tests failed$(NC)"; \
+	fi
+
+# MQTT 테스트만 실행
+test-mqtt-run: $(TEST_BIN_DIR)/test_mqtt_driver
+	@echo -e "$(CYAN)🧪 Running MQTT Driver test...$(NC)"
+	@echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	$(TEST_BIN_DIR)/test_mqtt_driver
+
+# 테스트 정리
+test-clean:
+	@echo -e "$(YELLOW)🧹 Cleaning test files...$(NC)"
+	rm -rf $(TEST_BUILD_DIR) $(TEST_BIN_DIR)
+	@echo -e "$(GREEN)✅ Test clean completed$(NC)"
+
+# 테스트 디렉토리 생성 (기존 directories 타겟에 추가)
+test-directories:
+	@mkdir -p $(TEST_DIR)
+	@mkdir -p $(TEST_BUILD_DIR)
+	@mkdir -p $(TEST_BIN_DIR)
+
+# =============================================================================
+# 전체 정리 타겟 (기존 clean에 추가)
+# =============================================================================
+
+# 전체 정리 (기존 clean 타겟을 확장)
+clean-all: clean test-clean
+	@echo -e "$(GREEN)✅ Complete clean finished$(NC)"
+
+# =============================================================================
+# 헬프 업데이트 (기존 help 타겟에 추가)
+# =============================================================================
+
+test-help:
+	@echo -e "$(CYAN)🧪 PulseOne Test System$(NC)"
+	@echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(YELLOW)Test targets:$(NC)"
+	@echo -e "  $(GREEN)tests$(NC)          - Build all tests"
+	@echo -e "  $(GREEN)test-mqtt$(NC)      - Build MQTT driver test only"
+	@echo -e "  $(GREEN)test-run$(NC)       - Build and run all tests"
+	@echo -e "  $(GREEN)test-mqtt-run$(NC)  - Build and run MQTT test only"
+	@echo -e "  $(GREEN)test-clean$(NC)     - Clean test build files"
+	@echo -e "  $(GREEN)test-help$(NC)      - Show this help"
+	@echo -e ""
+	@echo -e "$(YELLOW)Usage examples:$(NC)"
+	@echo -e "  make tests                    # Build all tests"
+	@echo -e "  make test-mqtt-run           # Quick MQTT test"
+	@echo -e "  make test-run                # Build and run all tests"
+	@echo -e "  make clean-all               # Clean everything including tests"
+	@echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
