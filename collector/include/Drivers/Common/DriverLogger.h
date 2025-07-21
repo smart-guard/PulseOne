@@ -87,9 +87,9 @@ private:
         }
     }
     
-    std::string FormatMessage(LogLevel level, DriverLogCategory category,
-                             const std::string& message, 
-                             const DriverLogContext& context) const {
+    std::string FormatMessage(LogLevel /* level */, DriverLogCategory category,
+                         const std::string& message,
+                         const DriverLogContext& context = DriverLogContext()) const {
         std::ostringstream oss;
         oss << "[" << CategoryToString(category) << "] "
             << "[" << context.device_id << "] "
