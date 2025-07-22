@@ -305,12 +305,13 @@ protected:
         LogManager::getInstance().log("worker", level, message);
     }
 
+    Drivers::DeviceInfo device_info_;                    ///< 디바이스 정보
 private:
     // =============================================================================
     // 내부 데이터 멤버
     // =============================================================================
     
-    Drivers::DeviceInfo device_info_;                    ///< 디바이스 정보
+    
     std::shared_ptr<RedisClient> redis_client_;          ///< Redis 클라이언트
     std::shared_ptr<InfluxClient> influx_client_;        ///< InfluxDB 클라이언트
     std::shared_ptr<LogManager> logger_;                 ///< 로거
