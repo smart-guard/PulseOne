@@ -115,6 +115,100 @@ public:
     std::string GetDiagnosticsJSON() const;
     std::string GetRecentPacketsJSON(int count = 100) const;
 
+    // ==========================================================================
+    // 🆕 Modbus 특화 진단 함수들 (기존 public: 섹션에 추가)
+    // ==========================================================================
+        // 슬레이브별 건강상태 추적
+    // ==============================================================================
+// std::atomic 복사 문제 해결 패치
+// 파일: collector/include/Drivers/Modbus/ModbusDriver.h
+// ==============================================================================
+
+public:
+    // ==========================================================================
+    // 🔧 수정된 SlaveHealthInfo 구조체 (복사 가능하도록 수정)
+    // ==========================================================================
+    
+    /**
+     * @brief 슬레이브 건강상태 정보 (복사 가능한 버전)
+     * @details std::atomic 대신 일반 타입 사용 + 뮤텍스로 동기화
+     */
+    struct SlaveHealthInfo {
+        uint64_t successful_requests = 0;
+        uint64_t failed_requests = 0;
+        uint32_t avg_response_time_ms = 0;
+        std::chrono::system_clock::time_point last_response_time;
+        bool is_online = false;
+        
+        // 기본 생성자
+        SlaveHealthInfo() : last_response_time(std::chrono::system_clock::now()) {}
+        
+        // 복사 생성자 (명시적 정의)
+        SlaveHealthInfo(const SlaveHealthInfo& other) 
+            : successful_requests(other.successful_requests)
+            , failed_requests(other.failed_requests)
+            , avg_response_time_ms(other.avg_response_time_ms)
+            , last_response_time(other.last_response_time)
+            , is_online(other.is_online) {}
+        
+        // 복사 할당 연산자
+        SlaveHealthInfo& operator=(const SlaveHealthInfo& other) {
+            if (this != &other) {
+                successful_requests = other.successful_requests;
+                failed_requests = other.failed_requests;
+                avg_response_time_ms = other.avg_response_time_ms;
+                last_response_time = other.last_response_time;
+                is_online = other.is_online;
+            }
+            return *this;
+        }
+        
+        // 성공률 계산
+        double GetSuccessRate() const {
+            uint64_t total = successful_requests + failed_requests;
+            return total > 0 ? (double)successful_requests / total * 100.0 : 0.0;
+        }
+    };
+
+    std::map<int, SlaveHealthInfo> slave_health_map_;
+    /**
+     * @brief Exception Code별 발생 통계 조회
+     * @return Exception Code와 발생 횟수 맵
+     */
+    std::map<uint8_t, uint64_t> GetExceptionCodeStats() const;
+    
+    /**
+     * @brief CRC 에러율 조회
+     * @return CRC 에러율 (0.0 ~ 100.0)
+     */
+    double GetCrcErrorRate() const;
+    
+    /**
+     * @brief 슬레이브별 건강상태 조회
+     * @return 슬레이브 ID와 건강상태 정보 맵
+     */
+    std::map<int, SlaveHealthInfo> GetSlaveHealthStatus() const;
+    
+    /**
+     * @brief 응답시간 히스토그램 조회
+     * @return 응답시간 구간별 요청 수 배열
+     */
+    std::vector<uint64_t> GetResponseTimeHistogram() const;
+    
+    /**
+     * @brief 레지스터 접근 패턴 분석 보고서
+     * @return JSON 형태의 레지스터 접근 패턴 분석
+     */
+    std::string GetRegisterAccessReport() const;
+    
+    /**
+     * @brief Modbus 종합 진단 보고서
+     * @return JSON 형태의 종합 진단 정보
+     */
+    std::string GetModbusHealthReport() const;
+
+
+
 private:
     // ==========================================================================
     // 멤버 변수들
@@ -138,7 +232,6 @@ private:
     std::atomic<bool> diagnostics_enabled_;
     std::atomic<bool> packet_logging_enabled_;
     std::atomic<bool> console_output_enabled_;
-    std::mutex diagnostics_mutex_;
     
     // 외부 의존성
     PulseOne::LogManager* log_manager_;
@@ -191,6 +284,73 @@ private:
     
     DataValue ConvertModbusValue(const DataPoint& point, uint16_t raw_value) const;
     uint16_t ConvertToModbusValue(const DataPoint& point, const DataValue& value) const;
+
+    // ==========================================================================
+    // 🆕 Modbus 특화 진단 데이터 (기존 private: 섹션에 추가)
+    // ==========================================================================
+    mutable std::mutex diagnostics_mutex_;
+    
+    // Exception Code별 통계
+    std::map<uint8_t, std::atomic<uint64_t>> exception_counters_;
+    
+    // CRC 에러 추적
+    std::atomic<uint64_t> total_crc_checks_{0};
+    std::atomic<uint64_t> crc_errors_{0};
+    
+    // 응답시간 히스토그램 (0-10ms, 10-50ms, 50-100ms, 100-500ms, 500ms+)
+    std::array<std::atomic<uint64_t>, 5> response_time_buckets_;
+    
+    // 레지스터 접근 패턴 추적
+    struct RegisterAccessPattern {
+        std::atomic<uint64_t> read_count{0};
+        std::atomic<uint64_t> write_count{0};
+        std::chrono::system_clock::time_point last_access;
+        std::atomic<uint32_t> avg_response_time_ms{0};
+        
+        RegisterAccessPattern() : last_access(std::chrono::system_clock::now()) {}
+    };
+    std::map<uint16_t, RegisterAccessPattern> register_access_patterns_;
+
+protected:
+    // ==========================================================================
+    // 🆕 내부 진단 업데이트 헬퍼 함수들 (기존 protected: 섹션에 추가)
+    // ==========================================================================
+    
+    /**
+     * @brief Exception Code 발생 기록
+     * @param exception_code Modbus Exception Code
+     */
+    void RecordExceptionCode(uint8_t exception_code);
+    
+    /**
+     * @brief CRC 검사 결과 기록
+     * @param crc_valid CRC 검사 통과 여부
+     */
+    void RecordCrcCheck(bool crc_valid);
+    
+    /**
+     * @brief 응답시간 기록
+     * @param slave_id 슬레이브 ID
+     * @param response_time_ms 응답시간 (밀리초)
+     */
+    void RecordResponseTime(int slave_id, uint32_t response_time_ms);
+    
+    /**
+     * @brief 레지스터 접근 기록
+     * @param register_address 레지스터 주소
+     * @param is_write 쓰기 여부 (false면 읽기)
+     * @param response_time_ms 응답시간
+     */
+    void RecordRegisterAccess(uint16_t register_address, bool is_write, uint32_t response_time_ms);
+    
+    /**
+     * @brief 슬레이브 요청 결과 기록
+     * @param slave_id 슬레이브 ID
+     * @param success 성공 여부
+     * @param response_time_ms 응답시간
+     */
+    void RecordSlaveRequest(int slave_id, bool success, uint32_t response_time_ms);    
+
 };
 
 } // namespace Drivers
