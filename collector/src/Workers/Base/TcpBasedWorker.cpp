@@ -38,14 +38,11 @@ TcpBasedWorker::TcpBasedWorker(const Drivers::DeviceInfo& device_info,
     , connection_timeout_seconds_(5)
     , socket_fd_(-1) {
     
-    // device_info_가 이제 protected이므로 접근 가능
-    if (!device_info_.endpoint.empty()) {
-        size_t colon_pos = device_info_.endpoint.find(':');
-        if (colon_pos != std::string::npos) {
-            ip_address_ = device_info_.endpoint.substr(0, colon_pos);
-            port_ = static_cast<uint16_t>(std::stoi(device_info_.endpoint.substr(colon_pos + 1)));
-        }
-    }
+    ReconnectionSettings settings;
+    settings.auto_reconnect_enabled = true;
+    settings.retry_interval_ms = 5000;
+    settings.keep_alive_enabled = true;
+    UpdateReconnectionSettings(settings);
     
     LogMessage(LogLevel::INFO, "TcpBasedWorker created for device: " + device_info_.name);
 }
@@ -186,6 +183,12 @@ bool TcpBasedWorker::CreateTcpSocket() {
     if (setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
         LogMessage(LogLevel::WARN, "Failed to set SO_REUSEADDR: " + std::string(strerror(errno)));
     }
+
+    struct timeval tv;
+    tv.tv_sec = connection_timeout_seconds_;
+    tv.tv_usec = 0;
+    setsockopt(socket_fd_, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(socket_fd_, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
     
     // 논블로킹 모드 설정
     int flags = fcntl(socket_fd_, F_GETFL, 0);
@@ -206,44 +209,10 @@ bool TcpBasedWorker::CreateTcpSocket() {
     }
     
     // 연결 시도
-    int connect_result = connect(socket_fd_, (struct sockaddr*)&server_addr, sizeof(server_addr));
-    
-    if (connect_result < 0) {
-        if (errno == EINPROGRESS) {
-            // 논블로킹 연결 진행 중 - select로 대기
-            fd_set write_fds;
-            FD_ZERO(&write_fds);
-            FD_SET(socket_fd_, &write_fds);
-            
-            struct timeval timeout;
-            timeout.tv_sec = connection_timeout_seconds_;
-            timeout.tv_usec = 0;
-            
-            int select_result = select(socket_fd_ + 1, NULL, &write_fds, NULL, &timeout);
-            
-            if (select_result > 0) {
-                // 연결 결과 확인
-                int error = 0;
-                socklen_t len = sizeof(error);
-                if (getsockopt(socket_fd_, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-                    LogMessage(LogLevel::ERROR, "TCP connection failed: " + std::string(strerror(error)));
-                    CloseTcpSocket();
-                    return false;
-                }
-            } else if (select_result == 0) {
-                LogMessage(LogLevel::ERROR, "TCP connection timeout");
-                CloseTcpSocket();
-                return false;
-            } else {
-                LogMessage(LogLevel::ERROR, "TCP connection failed immediately: " + std::string(strerror(errno)));
-                CloseTcpSocket();
-                return false;
-            }
-        } else {
-            LogMessage(LogLevel::ERROR, "TCP connection failed: " + std::string(strerror(errno)));
-            CloseTcpSocket();
-            return false;
-        }
+    if (connect(socket_fd_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        LogMessage(LogLevel::ERROR, "TCP connection failed: " + std::string(strerror(errno)));
+        CloseTcpSocket();
+        return false;
     }
     
     LogMessage(LogLevel::INFO, "TCP socket connected successfully");
