@@ -158,7 +158,16 @@ private:
     // =============================================================================
     // TCP 연결 관리 (내부용)
     // =============================================================================
-    
+    void ParseEndpoint() {  // 
+        // device_info_가 이제 protected이므로 접근 가능
+        if (!device_info_.endpoint.empty()) {
+            size_t colon_pos = device_info_.endpoint.find(':');
+            if (colon_pos != std::string::npos) {
+                ip_address_ = device_info_.endpoint.substr(0, colon_pos);
+                port_ = static_cast<uint16_t>(std::stoi(device_info_.endpoint.substr(colon_pos + 1)));
+            }
+        }
+    }
     /**
      * @brief 기본 TCP 소켓 연결 확인 (내부용)
      * @return 연결 상태
