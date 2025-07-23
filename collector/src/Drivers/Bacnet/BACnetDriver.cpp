@@ -924,5 +924,329 @@ bool BACnetDriver::WriteProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_t
     }
 }
 
+
+// =============================================================================
+// BACnet GetDeviceObjects 메서드 구현
+// src/Drivers/Bacnet/BACnetDriver.cpp에 추가할 코드
+// =============================================================================
+
+std::vector<BACnetObjectInfo> BACnetDriver::GetDeviceObjects(uint32_t device_id) {
+    std::vector<BACnetObjectInfo> objects;
+    
+    try {
+        if (logger_) {
+            logger_->Info("Starting object discovery for device " + std::to_string(device_id),
+                         DriverLogCategory::DIAGNOSTICS);
+        }
+        
+        // 1. 디바이스가 발견된 목록에 있는지 확인
+        {
+            std::lock_guard<std::mutex> lock(devices_mutex_);
+            auto device_iter = discovered_devices_.find(device_id);
+            if (device_iter == discovered_devices_.end()) {
+                SetError(ErrorCode::DEVICE_NOT_FOUND, 
+                        "Device " + std::to_string(device_id) + " not found. Run Who-Is first.");
+                return objects;
+            }
+        }
+        
+        // 2. Device Object의 Object_List Property 읽기
+        BACNET_APPLICATION_DATA_VALUE object_list_value;
+        bool success = ReadProperty(device_id, OBJECT_DEVICE, device_id, 
+                                   PROP_OBJECT_LIST, BACNET_ARRAY_ALL, object_list_value);
+        
+        if (!success) {
+            // Object_List를 지원하지 않는 경우, 표준 객체 타입들을 스캔
+            return ScanStandardObjects(device_id);
+        }
+        
+        // 3. Object_List에서 객체들 파싱
+        objects = ParseObjectList(device_id, object_list_value);
+        
+        // 4. 각 객체의 기본 속성들 읽기 (비동기로 처리)
+        EnrichObjectProperties(objects);
+        
+        if (logger_) {
+            logger_->Info("Object discovery completed for device " + std::to_string(device_id) + 
+                         ". Found " + std::to_string(objects.size()) + " objects",
+                         DriverLogCategory::DIAGNOSTICS);
+        }
+        
+        return objects;
+        
+    } catch (const std::exception& e) {
+        SetError(ErrorCode::DEVICE_ERROR, 
+                "Object discovery failed for device " + std::to_string(device_id) + 
+                ": " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("Object discovery exception: " + std::string(e.what()),
+                          DriverLogCategory::DIAGNOSTICS);
+        }
+        return objects;
+    }
+}
+// =============================================================================
+// 헬퍼 메서드들 (private 섹션에 추가)
+// =============================================================================
+
+std::vector<BACnetObjectInfo> BACnetDriver::ScanStandardObjects(uint32_t device_id) {
+    std::vector<BACnetObjectInfo> objects;
+    
+    // 표준 BACnet 객체 타입들 (존재하는 것들만)
+    std::vector<BACNET_OBJECT_TYPE> standard_types = {
+        OBJECT_ANALOG_INPUT,
+        OBJECT_ANALOG_OUTPUT,
+        OBJECT_ANALOG_VALUE,
+        OBJECT_BINARY_INPUT,
+        OBJECT_BINARY_OUTPUT,
+        OBJECT_BINARY_VALUE,
+        OBJECT_MULTI_STATE_INPUT,
+        OBJECT_MULTI_STATE_OUTPUT,
+        OBJECT_MULTI_STATE_VALUE,
+        OBJECT_DEVICE,
+        OBJECT_SCHEDULE,
+        OBJECT_CALENDAR,
+        OBJECT_NOTIFICATION_CLASS,
+        OBJECT_LOOP,
+        OBJECT_PROGRAM,
+        OBJECT_FILE,
+        OBJECT_AVERAGING,
+        OBJECT_TRENDLOG,  // OBJECT_TREND_LOG → OBJECT_TRENDLOG
+        OBJECT_LIFE_SAFETY_POINT,
+        OBJECT_LIFE_SAFETY_ZONE
+    };
+    
+    if (logger_) {
+        logger_->Debug("Scanning standard object types for device " + std::to_string(device_id),
+                      DriverLogCategory::DIAGNOSTICS);
+    }
+    
+    // 각 객체 타입에 대해 인스턴스 스캔 (1-1000 범위)
+    for (auto object_type : standard_types) {
+        ScanObjectInstances(device_id, object_type, objects);
+    }
+    
+    return objects;
+}
+
+void BACnetDriver::ScanObjectInstances(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
+                                      std::vector<BACnetObjectInfo>& objects) {
+    const uint32_t MAX_INSTANCE_SCAN = 1000;  // 실용적인 스캔 범위
+    const uint32_t BATCH_SIZE = 50;           // 배치 크기
+    
+    for (uint32_t instance = 1; instance <= MAX_INSTANCE_SCAN; instance += BATCH_SIZE) {
+        uint32_t end_instance = (instance + BATCH_SIZE - 1 < MAX_INSTANCE_SCAN) ? 
+                                instance + BATCH_SIZE - 1 : MAX_INSTANCE_SCAN;
+        
+        // 배치 단위로 객체 존재 여부 확인
+        for (uint32_t i = instance; i <= end_instance; ++i) {
+            BACNET_APPLICATION_DATA_VALUE value;
+            
+            // Object_Name Property 읽기 시도 (가장 기본적인 속성)
+            bool exists = ReadProperty(device_id, object_type, i, PROP_OBJECT_NAME, 
+                                     BACNET_ARRAY_ALL, value);
+            
+            if (exists) {
+                BACnetObjectInfo obj_info;
+                obj_info.object_type = object_type;
+                obj_info.object_instance = i;
+                obj_info.property_id = PROP_PRESENT_VALUE;  // 기본값
+                obj_info.array_index = BACNET_ARRAY_ALL;
+                obj_info.quality = DataQuality::GOOD;
+                obj_info.timestamp = std::chrono::system_clock::now();
+                
+                // Object_Name에서 이름 추출
+                if (value.tag == BACNET_APPLICATION_TAG_CHARACTER_STRING) {
+                    obj_info.object_name = std::string(value.type.Character_String.value,
+                                                      value.type.Character_String.length);
+                } else {
+                    obj_info.object_name = GetObjectTypeName(object_type) + "_" + std::to_string(i);
+                }
+                
+                objects.push_back(obj_info);
+                
+                if (logger_) {
+                    logger_->Debug("Found object: " + obj_info.object_name + 
+                                  " (" + GetObjectTypeName(object_type) + ":" + std::to_string(i) + ")",
+                                  DriverLogCategory::DIAGNOSTICS);
+                }
+            }
+        }
+        
+        // CPU 부하 방지를 위한 짧은 대기
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+std::vector<BACnetObjectInfo> BACnetDriver::ParseObjectList(uint32_t device_id,
+                                                           const BACNET_APPLICATION_DATA_VALUE& object_list) {
+    std::vector<BACnetObjectInfo> objects;
+    
+    try {
+        // Object_List는 Object_Identifier의 배열
+        if (object_list.tag != BACNET_APPLICATION_TAG_OBJECT_ID) {
+            if (logger_) {
+                logger_->Warn("Object_List property has unexpected data type",
+                              DriverLogCategory::DIAGNOSTICS);
+            }
+            return objects;
+        }
+        
+        // 단일 객체 식별자인 경우
+        BACnetObjectInfo obj_info;
+        obj_info.object_type = (BACNET_OBJECT_TYPE)object_list.type.Object_Id.type;
+        obj_info.object_instance = object_list.type.Object_Id.instance;
+        obj_info.property_id = PROP_PRESENT_VALUE;
+        obj_info.array_index = BACNET_ARRAY_ALL;
+        obj_info.quality = DataQuality::GOOD;
+        obj_info.timestamp = std::chrono::system_clock::now();
+        
+        // 객체 이름 읽기
+        BACNET_APPLICATION_DATA_VALUE name_value;
+        if (ReadProperty(device_id, obj_info.object_type, obj_info.object_instance,
+                        PROP_OBJECT_NAME, BACNET_ARRAY_ALL, name_value)) {
+            if (name_value.tag == BACNET_APPLICATION_TAG_CHARACTER_STRING) {
+                obj_info.object_name = std::string(name_value.type.Character_String.value,
+                                                  name_value.type.Character_String.length);
+            }
+        }
+        
+        if (obj_info.object_name.empty()) {
+            obj_info.object_name = GetObjectTypeName(obj_info.object_type) + "_" + 
+                                  std::to_string(obj_info.object_instance);
+        }
+        
+        objects.push_back(obj_info);
+        
+        if (logger_) {
+            logger_->Debug("Parsed object from Object_List: " + obj_info.object_name,
+                          DriverLogCategory::DIAGNOSTICS);
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("Error parsing Object_List: " + std::string(e.what()),
+                          DriverLogCategory::DIAGNOSTICS);
+        }
+    }
+    
+    return objects;
+}
+
+void BACnetDriver::EnrichObjectProperties(std::vector<BACnetObjectInfo>& objects) {
+    const size_t MAX_CONCURRENT_READS = 10;  // 동시 읽기 제한
+    
+    if (logger_) {
+        logger_->Debug("Enriching properties for " + std::to_string(objects.size()) + " objects",
+                      DriverLogCategory::DIAGNOSTICS);
+    }
+    
+    // 객체들을 배치로 처리
+    for (size_t i = 0; i < objects.size(); i += MAX_CONCURRENT_READS) {
+        size_t end_idx = (i + MAX_CONCURRENT_READS < objects.size()) ? 
+                         i + MAX_CONCURRENT_READS : objects.size();
+        
+        // 현재 배치의 객체들에 대해 Present_Value 읽기
+        for (size_t j = i; j < end_idx; ++j) {
+            auto& obj = objects[j];
+            
+            // Present_Value 속성 읽기 시도
+            BACNET_APPLICATION_DATA_VALUE present_value;
+            if (ReadProperty(obj.object_instance, obj.object_type, obj.object_instance,
+                           PROP_PRESENT_VALUE, BACNET_ARRAY_ALL, present_value)) {
+                obj.value = present_value;
+                obj.property_id = PROP_PRESENT_VALUE;
+                obj.quality = DataQuality::GOOD;
+            } else {
+                // Present_Value가 없는 경우 Object_Name으로 대체
+                BACNET_APPLICATION_DATA_VALUE name_value;
+                if (ReadProperty(obj.object_instance, obj.object_type, obj.object_instance,
+                               PROP_OBJECT_NAME, BACNET_ARRAY_ALL, name_value)) {
+                    obj.value = name_value;
+                    obj.property_id = PROP_OBJECT_NAME;
+                    obj.quality = DataQuality::GOOD;
+                } else {
+                    obj.quality = DataQuality::BAD;
+                }
+            }
+            
+            obj.timestamp = std::chrono::system_clock::now();
+        }
+        
+        // 배치 간 대기 (네트워크 부하 방지)
+        if (end_idx < objects.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+}
+
+std::string BACnetDriver::GetObjectTypeName(BACNET_OBJECT_TYPE type) const {
+    switch (type) {
+        case OBJECT_ANALOG_INPUT:       return "Analog Input";
+        case OBJECT_ANALOG_OUTPUT:      return "Analog Output";
+        case OBJECT_ANALOG_VALUE:       return "Analog Value";
+        case OBJECT_BINARY_INPUT:       return "Binary Input";
+        case OBJECT_BINARY_OUTPUT:      return "Binary Output";
+        case OBJECT_BINARY_VALUE:       return "Binary Value";
+        case OBJECT_MULTI_STATE_INPUT:  return "Multi-state Input";
+        case OBJECT_MULTI_STATE_OUTPUT: return "Multi-state Output";
+        case OBJECT_MULTI_STATE_VALUE:  return "Multi-state Value";
+        case OBJECT_DEVICE:             return "Device";
+        case OBJECT_SCHEDULE:           return "Schedule";
+        case OBJECT_CALENDAR:           return "Calendar";
+        case OBJECT_NOTIFICATION_CLASS: return "Notification Class";
+        case OBJECT_LOOP:               return "Loop";
+        case OBJECT_PROGRAM:            return "Program";
+        case OBJECT_FILE:               return "File";
+        case OBJECT_AVERAGING:          return "Averaging";
+        case OBJECT_TRENDLOG:           return "Trend Log";
+        case OBJECT_LIFE_SAFETY_POINT:  return "Life Safety Point";
+        case OBJECT_LIFE_SAFETY_ZONE:   return "Life Safety Zone";
+        default:                        return "Unknown Object (" + std::to_string(type) + ")";
+    }
+}
+
+std::string BACnetDriver::GetPropertyName(BACNET_PROPERTY_ID prop) const {
+    switch (prop) {
+        case PROP_PRESENT_VALUE:        return "Present Value";
+        case PROP_OBJECT_NAME:          return "Object Name";
+        case PROP_OBJECT_TYPE:          return "Object Type";
+        case PROP_OBJECT_IDENTIFIER:    return "Object Identifier";
+        case PROP_DESCRIPTION:          return "Description";
+        case PROP_UNITS:                return "Units";
+        case PROP_OUT_OF_SERVICE:       return "Out of Service";
+        case PROP_STATUS_FLAGS:         return "Status Flags";
+        case PROP_RELIABILITY:          return "Reliability";
+        case PROP_PRIORITY_ARRAY:       return "Priority Array";
+        case PROP_RELINQUISH_DEFAULT:   return "Relinquish Default";
+        case PROP_COV_INCREMENT:        return "COV Increment";
+        case PROP_TIME_DELAY:           return "Time Delay";
+        case PROP_NOTIFICATION_CLASS:   return "Notification Class";
+        case PROP_HIGH_LIMIT:           return "High Limit";
+        case PROP_LOW_LIMIT:            return "Low Limit";
+        case PROP_DEADBAND:             return "Deadband";
+        case PROP_LIMIT_ENABLE:         return "Limit Enable";
+        case PROP_EVENT_ENABLE:         return "Event Enable";
+        case PROP_ACKED_TRANSITIONS:    return "Acked Transitions";
+        case PROP_NOTIFY_TYPE:          return "Notify Type";
+        case PROP_EVENT_TIME_STAMPS:    return "Event Time Stamps";
+        case PROP_OBJECT_LIST:          return "Object List";
+        case PROP_MAX_APDU_LENGTH_ACCEPTED: return "Max APDU Length Accepted";
+        case PROP_SEGMENTATION_SUPPORTED:   return "Segmentation Supported";
+        case PROP_VENDOR_NAME:          return "Vendor Name";
+        case PROP_VENDOR_IDENTIFIER:    return "Vendor Identifier";
+        case PROP_MODEL_NAME:           return "Model Name";
+        case PROP_FIRMWARE_REVISION:    return "Firmware Revision";
+        case PROP_APPLICATION_SOFTWARE_VERSION: return "Application Software Version";
+        case PROP_PROTOCOL_VERSION:     return "Protocol Version";
+        case PROP_PROTOCOL_REVISION:    return "Protocol Revision";
+        case PROP_PROTOCOL_SERVICES_SUPPORTED: return "Protocol Services Supported";
+        case PROP_PROTOCOL_OBJECT_TYPES_SUPPORTED: return "Protocol Object Types Supported";
+        case PROP_SYSTEM_STATUS:        return "System Status";
+        case PROP_DATABASE_REVISION:    return "Database Revision";
+        default:                        return "Unknown Property (" + std::to_string(prop) + ")";
+    }
+}
+
 } // namespace Drivers
 } // namespace PulseOne

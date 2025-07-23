@@ -415,6 +415,13 @@ private:
      */
     std::string FormatPacketForFile(const BACnetPacketLog& log) const;
     uint8_t GetNextInvokeID();
+        std::vector<BACnetObjectInfo> ScanStandardObjects(uint32_t device_id);
+    void ScanObjectInstances(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
+                            std::vector<BACnetObjectInfo>& objects);
+    std::vector<BACnetObjectInfo> ParseObjectList(uint32_t device_id,
+                                                 const BACNET_APPLICATION_DATA_VALUE& object_list);
+    void EnrichObjectProperties(std::vector<BACnetObjectInfo>& objects);
+
 };
 
 } // namespace Drivers
