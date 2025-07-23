@@ -1,34 +1,31 @@
 /**
- * @file ModbusTcpWorker.h
- * @brief Modbus TCP 프로토콜 전용 워커 클래스
- * @details TcpBasedWorker를 상속받아 Modbus TCP 네트워크 통신 기능 제공
+ * @file ModbusTcpWorker.h (수정됨)
+ * @brief Modbus TCP 디바이스 워커 클래스 - ModbusDriver를 통신 매체로 사용
  * @author PulseOne Development Team
- * @date 2025-01-21
- * @version 1.0.0
+ * @date 2025-01-23
+ * @version 2.0.0 (수정됨)
+ * 
+ * @details
+ * 올바른 아키텍처: ModbusDriver가 순수 통신 담당, Worker가 객체 관리 담당
  */
 
-#ifndef WORKERS_PROTOCOL_MODBUS_TCP_WORKER_H
-#define WORKERS_PROTOCOL_MODBUS_TCP_WORKER_H
+#ifndef MODBUS_TCP_WORKER_H
+#define MODBUS_TCP_WORKER_H
 
 #include "Workers/Base/TcpBasedWorker.h"
-#include "Drivers/Common/CommonTypes.h"
+#include "Drivers/Modbus/ModbusDriver.h"
 #include <memory>
-#include <queue>
-#include <thread>
-#include <atomic>
+#include <vector>
 #include <map>
-#include <chrono>
-#include <modbus/modbus.h>
-#include <cstring>  // strerror 함수용
-#include <shared_mutex>
-#include <sys/socket.h>
+#include <mutex>
+#include <thread>
+#include <queue>
 
 namespace PulseOne {
 namespace Workers {
-namespace Protocol {
 
 /**
- * @brief Modbus 레지스터 타입
+ * @brief Modbus 레지스터 타입 (Worker에서 사용)
  */
 enum class ModbusRegisterType {
     COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
@@ -38,47 +35,25 @@ enum class ModbusRegisterType {
 };
 
 /**
- * @brief Modbus TCP 슬레이브 정보
- */
-struct ModbusTcpSlaveInfo {
-    int slave_id;                                    ///< 슬레이브 ID (1-247)
-    std::string ip_address;                          ///< IP 주소
-    int port;                                        ///< TCP 포트 (기본 502)
-    bool is_online;                                  ///< 온라인 상태
-    std::chrono::system_clock::time_point last_response; ///< 마지막 응답 시간
-    std::atomic<uint32_t> response_time_ms{0};       ///< 평균 응답 시간
-    std::atomic<uint64_t> total_requests{0};         ///< 총 요청 수
-    std::atomic<uint64_t> successful_requests{0};    ///< 성공 요청 수
-    std::string last_error;                          ///< 마지막 에러 메시지
-    
-    ModbusTcpSlaveInfo(int id = 1, const std::string& ip = "127.0.0.1", int p = 502) 
-        : slave_id(id), ip_address(ip), port(p), is_online(false)
-        , last_response(std::chrono::system_clock::now()) {}
-};
-
-/**
- * @brief Modbus TCP 폴링 그룹
+ * @brief Modbus TCP 폴링 그룹 (Worker가 관리)
  */
 struct ModbusTcpPollingGroup {
-    uint32_t group_id;                               ///< 그룹 고유 ID
-    std::string group_name;                          ///< 그룹 이름
-    int slave_id;                                    ///< 대상 슬레이브 ID
-    std::string target_ip;                           ///< 대상 IP 주소
-    int target_port;                                 ///< 대상 포트
+    uint32_t group_id;                               ///< 그룹 ID
+    uint8_t slave_id;                                ///< 슬레이브 ID
     ModbusRegisterType register_type;                ///< 레지스터 타입
     uint16_t start_address;                          ///< 시작 주소
-    uint16_t register_count;                         ///< 읽을 레지스터 수
-    int polling_interval_ms;                         ///< 폴링 주기 (밀리초)
+    uint16_t register_count;                         ///< 레지스터 개수
+    uint32_t polling_interval_ms;                    ///< 폴링 주기 (밀리초)
     bool enabled;                                    ///< 활성화 여부
     
     std::vector<Drivers::DataPoint> data_points;     ///< 이 그룹에 속한 데이터 포인트들
     
-    // 실행 시간 추적 (단순 타입만 사용)
+    // 실행 시간 추적
     std::chrono::system_clock::time_point last_poll_time;
     std::chrono::system_clock::time_point next_poll_time;
     
     ModbusTcpPollingGroup() 
-        : group_id(0), slave_id(1), target_ip("127.0.0.1"), target_port(502)
+        : group_id(0), slave_id(1)
         , register_type(ModbusRegisterType::HOLDING_REGISTER)
         , start_address(0), register_count(1), polling_interval_ms(1000), enabled(true)
         , last_poll_time(std::chrono::system_clock::now())
@@ -86,16 +61,12 @@ struct ModbusTcpPollingGroup {
 };
 
 /**
- * @brief Modbus TCP 워커 클래스
- * @details TcpBasedWorker를 상속받아 Modbus TCP 네트워크 통신 특화 기능 제공
+ * @brief Modbus TCP 워커 클래스 (수정됨)
+ * @details TcpBasedWorker를 상속받아 ModbusDriver를 통신 매체로 사용
  * 
- * 주요 기능:
- * - Modbus TCP 네트워크 통신 관리
- * - 다중 슬레이브 디바이스 연결 관리
- * - 폴링 그룹 기반 효율적 데이터 수집
- * - 읽기/쓰기 작업 큐 관리
- * - 네트워크 에러 검출 및 재시도
- * - TCP 연결 풀링 및 재사용
+ * 책임 분리:
+ * - ModbusDriver: 순수 Modbus 통신 (연결, 읽기/쓰기, 에러 처리)
+ * - ModbusTcpWorker: 객체 관리 (폴링 그룹, 스케줄링, 데이터 변환, DB 저장)
  */
 class ModbusTcpWorker : public TcpBasedWorker {
 public:
@@ -122,63 +93,31 @@ public:
     
     std::future<bool> Start() override;
     std::future<bool> Stop() override;
-    WorkerState GetState() const override;
 
     // =============================================================================
-    // TcpBasedWorker 인터페이스 구현
+    // TcpBasedWorker 인터페이스 구현 (Driver 위임)
     // =============================================================================
     
     bool EstablishProtocolConnection() override;
     bool CloseProtocolConnection() override;
     bool CheckProtocolConnection() override;
+    /**
+     * @brief TcpBasedWorker 인터페이스 구현 (Driver 위임)
+     * @details SendProtocolKeepAlive는 TcpBasedWorker에서 virtual이므로 override 제거
+     * @return 성공 시 true
+     */
     bool SendProtocolKeepAlive();
 
     // =============================================================================
-    // Modbus TCP 특화 설정 관리
-    // =============================================================================
-    
-    /**
-     * @brief Modbus TCP 기본 설정
-     * @param default_slave_id 기본 슬레이브 ID
-     * @param response_timeout_ms 응답 타임아웃 (밀리초)
-     * @param byte_timeout_ms 바이트 타임아웃 (밀리초)
-     */
-    void ConfigureModbusTcp(int default_slave_id = 1, 
-                           int response_timeout_ms = 1000,
-                           int byte_timeout_ms = 1000);
-    
-    /**
-     * @brief 연결 풀 설정
-     * @param max_connections 최대 동시 연결 수
-     * @param connection_reuse_enabled 연결 재사용 활성화
-     */
-    void ConfigureConnectionPool(int max_connections = 10, 
-                                bool connection_reuse_enabled = true);
-
-    // =============================================================================
-    // 폴링 그룹 관리
+    // Modbus TCP 특화 객체 관리 (Worker 고유 기능)
     // =============================================================================
     
     /**
      * @brief 폴링 그룹 추가
-     * @param group_name 그룹 이름
-     * @param slave_id 슬레이브 ID
-     * @param target_ip 대상 IP 주소
-     * @param target_port 대상 포트
-     * @param register_type 레지스터 타입
-     * @param start_address 시작 주소
-     * @param register_count 레지스터 개수
-     * @param polling_interval_ms 폴링 주기
-     * @return 그룹 ID (실패 시 0)
+     * @param group 폴링 그룹
+     * @return 성공 시 true
      */
-    uint32_t AddPollingGroup(const std::string& group_name,
-                            int slave_id,
-                            const std::string& target_ip,
-                            int target_port,
-                            ModbusRegisterType register_type,
-                            uint16_t start_address,
-                            uint16_t register_count,
-                            int polling_interval_ms = 1000);
+    bool AddPollingGroup(const ModbusTcpPollingGroup& group);
     
     /**
      * @brief 폴링 그룹 제거
@@ -188,271 +127,199 @@ public:
     bool RemovePollingGroup(uint32_t group_id);
     
     /**
+     * @brief 모든 폴링 그룹 조회
+     * @return 폴링 그룹 목록
+     */
+    std::vector<ModbusTcpPollingGroup> GetPollingGroups() const;
+    
+    /**
      * @brief 폴링 그룹 활성화/비활성화
      * @param group_id 그룹 ID
      * @param enabled 활성화 여부
      * @return 성공 시 true
      */
-    bool EnablePollingGroup(uint32_t group_id, bool enabled);
+    bool SetPollingGroupEnabled(uint32_t group_id, bool enabled);
     
     /**
-     * @brief 폴링 그룹에 데이터 포인트 추가
-     * @param group_id 그룹 ID
-     * @param data_point 데이터 포인트
-     * @return 성공 시 true
-     */
-    bool AddDataPointToGroup(uint32_t group_id, const Drivers::DataPoint& data_point);
-
-    // =============================================================================
-    // 슬레이브 관리
-    // =============================================================================
-    
-    /**
-     * @brief 슬레이브 추가
-     * @param slave_id 슬레이브 ID
-     * @param ip_address IP 주소
-     * @param port 포트 번호
-     * @return 성공 시 true
-     */
-    bool AddSlave(int slave_id, const std::string& ip_address, int port = 502);
-    
-    /**
-     * @brief 슬레이브 제거
-     * @param slave_id 슬레이브 ID
-     * @return 성공 시 true
-     */
-    bool RemoveSlave(int slave_id);
-    
-    /**
-     * @brief 슬레이브 상태 조회
-     * @param slave_id 슬레이브 ID
-     * @return 슬레이브 정보 (없으면 nullptr)
-     */
-    std::shared_ptr<ModbusTcpSlaveInfo> GetSlaveInfo(int slave_id) const;
-    
-    /**
-     * @brief 모든 슬레이브 스캔
-     * @param ip_range IP 범위 (예: "192.168.1.1-192.168.1.100")
-     * @param port 포트 번호
-     * @param timeout_ms 스캔 타임아웃
-     * @return 발견된 슬레이브 수
-     */
-    int ScanSlaves(const std::string& ip_range, int port = 502, int timeout_ms = 2000);
-
-    // =============================================================================
-    // 데이터 읽기/쓰기
-    // =============================================================================
-    
-    /**
-     * @brief 홀딩 레지스터 읽기
-     * @param slave_id 슬레이브 ID
-     * @param target_ip 대상 IP
-     * @param target_port 대상 포트
-     * @param start_address 시작 주소
-     * @param register_count 레지스터 개수
-     * @param values 읽은 값들 (출력)
-     * @return 성공 시 true
-     */
-    bool ReadHoldingRegisters(int slave_id, const std::string& target_ip, int target_port,
-                             uint16_t start_address, uint16_t register_count, 
-                             std::vector<uint16_t>& values);
-    
-    /**
-     * @brief 입력 레지스터 읽기
-     * @param slave_id 슬레이브 ID
-     * @param target_ip 대상 IP
-     * @param target_port 대상 포트
-     * @param start_address 시작 주소
-     * @param register_count 레지스터 개수
-     * @param values 읽은 값들 (출력)
-     * @return 성공 시 true
-     */
-    bool ReadInputRegisters(int slave_id, const std::string& target_ip, int target_port,
-                           uint16_t start_address, uint16_t register_count, 
-                           std::vector<uint16_t>& values);
-    
-    /**
-     * @brief 코일 읽기
-     * @param slave_id 슬레이브 ID
-     * @param target_ip 대상 IP
-     * @param target_port 대상 포트
-     * @param start_address 시작 주소
-     * @param coil_count 코일 개수
-     * @param values 읽은 값들 (출력)
-     * @return 성공 시 true
-     */
-    bool ReadCoils(int slave_id, const std::string& target_ip, int target_port,
-                   uint16_t start_address, uint16_t coil_count, 
-                   std::vector<bool>& values);
-    
-    /**
-     * @brief 단일 홀딩 레지스터 쓰기
-     * @param slave_id 슬레이브 ID
-     * @param target_ip 대상 IP
-     * @param target_port 대상 포트
-     * @param address 주소
-     * @param value 쓸 값
-     * @return 성공 시 true
-     */
-    bool WriteSingleRegister(int slave_id, const std::string& target_ip, int target_port,
-                            uint16_t address, uint16_t value);
-    
-    /**
-     * @brief 다중 홀딩 레지스터 쓰기
-     * @param slave_id 슬레이브 ID
-     * @param target_ip 대상 IP
-     * @param target_port 대상 포트
-     * @param start_address 시작 주소
-     * @param values 쓸 값들
-     * @return 성공 시 true
-     */
-    bool WriteMultipleRegisters(int slave_id, const std::string& target_ip, int target_port,
-                               uint16_t start_address, const std::vector<uint16_t>& values);
-
-    // =============================================================================
-    // 상태 및 통계 조회
-    // =============================================================================
-    
-    /**
-     * @brief Modbus TCP 통계 조회
+     * @brief Modbus 통계 정보 조회 (Driver에서 가져옴)
      * @return JSON 형태의 통계 정보
      */
-    std::string GetModbusTcpStats() const;
-    
-    /**
-     * @brief 모든 폴링 그룹 상태 조회
-     * @return JSON 형태의 그룹 상태
-     */
-    std::string GetPollingGroupStatus() const;
+    std::string GetModbusStats() const;
 
 protected:
     // =============================================================================
-    // 멤버 변수들
+    // 데이터 포인트 처리 (Worker 고유 로직)
     // =============================================================================
     
-    // Modbus TCP 설정
-    int default_slave_id_;
-    int response_timeout_ms_;
-    int byte_timeout_ms_;
+    /**
+     * @brief 데이터 포인트들을 폴링 그룹으로 자동 구성
+     * @param data_points 데이터 포인트 목록
+     * @return 생성된 폴링 그룹 수
+     */
+    size_t CreatePollingGroupsFromDataPoints(const std::vector<Drivers::DataPoint>& data_points);
     
-    // 연결 풀 설정
-    int max_connections_;
-    bool connection_reuse_enabled_;
+    /**
+     * @brief 폴링 그룹 최적화 (연속된 주소 병합)
+     * @return 최적화된 그룹 수
+     */
+    size_t OptimizePollingGroups();
+
+private:
+    // =============================================================================
+    // Modbus TCP 전용 멤버 변수
+    // =============================================================================
     
-    // Modbus 컨텍스트 관리
-    std::map<std::string, modbus_t*> connection_pool_;  // "ip:port" -> modbus_t*
-    mutable std::mutex connection_mutex_;
+    /// Modbus 드라이버 (순수 통신 담당)
+    std::unique_ptr<Drivers::ModbusDriver> modbus_driver_;
     
-    // 슬레이브 관리
-    std::map<int, std::shared_ptr<ModbusTcpSlaveInfo>> slaves_;
-    mutable std::shared_mutex slaves_mutex_;
-    
-    // 폴링 그룹 관리
+    /// 폴링 그룹 맵 (Group ID → 폴링 그룹)
     std::map<uint32_t, ModbusTcpPollingGroup> polling_groups_;
-    mutable std::shared_mutex polling_groups_mutex_;
-    uint32_t next_group_id_;
     
-    // 폴링 워커 스레드
-    std::thread polling_thread_;
-    std::atomic<bool> stop_workers_;
+    /// 폴링 그룹 뮤텍스
+    mutable std::mutex polling_groups_mutex_;
     
-    // 통계 (atomic 사용하지 않고 mutex로 보호)
-    mutable std::mutex stats_mutex_;
-    uint64_t total_reads_;
-    uint64_t successful_reads_;
-    uint64_t total_writes_;
-    uint64_t successful_writes_;
-    uint64_t network_errors_;
-    uint64_t timeout_errors_;
-    uint64_t connection_errors_;
+    /// 폴링 스레드
+    std::unique_ptr<std::thread> polling_thread_;
+    
+    /// 폴링 스레드 실행 플래그
+    std::atomic<bool> polling_thread_running_;
+    
+    /// 다음 그룹 ID (자동 증가)
+    std::atomic<uint32_t> next_group_id_;
+    
+    /// 기본 설정
+    uint32_t default_polling_interval_ms_;
+    uint16_t max_registers_per_group_;
+    bool auto_group_creation_enabled_;
 
     // =============================================================================
-    // 내부 헬퍼 메소드들
+    // 내부 메서드 (Worker 고유 로직)
     // =============================================================================
     
     /**
-     * @brief 폴링 워커 루프
+     * @brief Modbus 설정 파싱
+     * @details device_info의 protocol_config에서 Modbus 설정 추출
+     * @return 성공 시 true
      */
-    void PollingWorkerLoop();
+    bool ParseModbusConfig();
     
     /**
-     * @brief 개별 폴링 그룹 처리
+     * @brief ModbusDriver 초기화 및 설정
+     * @return 성공 시 true
+     */
+    bool InitializeModbusDriver();
+    
+    /**
+     * @brief 폴링 스레드 함수 (Worker 고유)
+     */
+    void PollingThreadFunction();
+    
+    /**
+     * @brief 단일 폴링 그룹 처리 (Driver 위임)
      * @param group 폴링 그룹
-     * @return 처리 성공 시 true
+     * @return 성공 시 true
      */
-    bool ProcessPollingGroup(ModbusTcpPollingGroup& group);
+    bool ProcessPollingGroup(const ModbusTcpPollingGroup& group);
     
     /**
-     * @brief Modbus 연결 가져오기 (연결 풀에서)
-     * @param ip_address IP 주소
-     * @param port 포트
+     * @brief Modbus 값들을 TimestampedValue로 변환
+     * @param group 폴링 그룹
+     * @param values Modbus에서 읽은 원시 값들
+     * @return 변환된 TimestampedValue 목록
+     */
+    std::vector<Drivers::TimestampedValue> ConvertModbusValues(
+        const ModbusTcpPollingGroup& group,
+        const std::vector<uint16_t>& values);
+    
+    /**
+     * @brief 데이터베이스에 데이터 저장 (BaseDeviceWorker 기능 사용)
+     * @param data_point 데이터 포인트
+     * @param value 타임스탬프 값
+     * @return 성공 시 true
+     */
+    bool SaveDataPointValue(const Drivers::DataPoint& data_point,
+                           const Drivers::TimestampedValue& value);
+    
+    /**
+     * @brief 데이터 포인트에서 Modbus 주소 파싱
+     * @param data_point 데이터 포인트
+     * @param slave_id 슬레이브 ID (출력)
+     * @param register_type 레지스터 타입 (출력)
+     * @param address 주소 (출력)
+     * @return 성공 시 true
+     */
+    bool ParseModbusAddress(const Drivers::DataPoint& data_point,
+                           uint8_t& slave_id,
+                           ModbusRegisterType& register_type,
+                           uint16_t& address);
+    
+    /**
+     * @brief 폴링 그룹 유효성 검사
+     * @param group 폴링 그룹
+     * @return 유효하면 true
+     */
+    bool ValidatePollingGroup(const ModbusTcpPollingGroup& group);
+    
+    /**
+     * @brief 폴링 그룹 병합 가능성 체크
+     * @param group1 첫 번째 그룹
+     * @param group2 두 번째 그룹
+     * @return 병합 가능하면 true
+     */
+    bool CanMergePollingGroups(const ModbusTcpPollingGroup& group1,
+                              const ModbusTcpPollingGroup& group2);
+    
+    /**
+     * @brief 두 폴링 그룹 병합
+     * @param group1 첫 번째 그룹
+     * @param group2 두 번째 그룹
+     * @return 병합된 그룹
+     */
+    ModbusTcpPollingGroup MergePollingGroups(const ModbusTcpPollingGroup& group1,
+                                            const ModbusTcpPollingGroup& group2);
+
+    // =============================================================================
+    // ModbusDriver 콜백 메서드들 (Driver → Worker)
+    // =============================================================================
+    
+    /**
+     * @brief ModbusDriver 콜백 설정
+     * @details Driver에서 Worker로의 콜백 함수들 등록
+     */
+    void SetupDriverCallbacks();
+    
+    /**
+     * @brief 연결 상태 변경 콜백 (Driver → Worker)
+     * @param worker_ptr Worker 포인터
+     * @param connected 연결 상태
+     * @param error_message 에러 메시지 (연결 실패 시)
+     */
+    static void OnConnectionStatusChanged(void* worker_ptr, bool connected,
+                                         const std::string& error_message);
+    
+    /**
+     * @brief Modbus 에러 콜백 (Driver → Worker)
+     * @param worker_ptr Worker 포인터
      * @param slave_id 슬레이브 ID
-     * @return Modbus 컨텍스트 (실패 시 nullptr)
-     */
-    modbus_t* GetModbusConnection(const std::string& ip_address, int port, int slave_id);
-    
-    /**
-     * @brief Modbus 연결 반환 (연결 풀로)
-     * @param connection_key 연결 키 ("ip:port")
-     * @param ctx Modbus 컨텍스트
-     */
-    void ReturnModbusConnection(const std::string& connection_key, modbus_t* ctx);
-    
-    /**
-     * @brief Modbus 에러 코드를 문자열로 변환
+     * @param function_code 함수 코드
      * @param error_code 에러 코드
-     * @return 에러 메시지
+     * @param error_message 에러 메시지
      */
-    std::string ModbusErrorToString(int error_code) const;
+    static void OnModbusError(void* worker_ptr, uint8_t slave_id, uint8_t function_code,
+                             int error_code, const std::string& error_message);
     
     /**
-     * @brief 통계 업데이트
-     * @param operation 연산 타입 ("read", "write")
+     * @brief 통계 업데이트 콜백 (Driver → Worker)
+     * @param worker_ptr Worker 포인터
+     * @param operation 작업 유형 ("read", "write")
      * @param success 성공 여부
-     * @param error_type 에러 타입 ("network", "timeout", "connection")
+     * @param response_time_ms 응답 시간 (밀리초)
      */
-    void UpdateModbusTcpStats(const std::string& operation, bool success, 
-                             const std::string& error_type = "");
-    
-    /**
-     * @brief 슬레이브 응답 시간 업데이트
-     * @param slave_id 슬레이브 ID
-     * @param response_time_ms 응답 시간
-     * @param success 성공 여부
-     */
-    void UpdateSlaveStatus(int slave_id, int response_time_ms, bool success);
-    
-    /**
-     * @brief Modbus TCP 로그 메시지 출력
-     * @param level 로그 레벨
-     * @param message 메시지
-     */
-    void LogModbusTcpMessage(LogLevel level, const std::string& message) const;
-    
-    /**
-     * @brief 폴링 그룹 검증
-     * @param slave_id 슬레이브 ID
-     * @param target_ip 대상 IP
-     * @param target_port 대상 포트
-     * @param register_type 레지스터 타입
-     * @param start_address 시작 주소
-     * @param register_count 레지스터 개수
-     * @return 유효한 설정인지 여부
-     */
-    bool ValidatePollingGroup(int slave_id, const std::string& target_ip, int target_port,
-                             ModbusRegisterType register_type,
-                             uint16_t start_address, uint16_t register_count) const;
-    
-    /**
-     * @brief IP 주소 범위 파싱
-     * @param ip_range IP 범위 문자열
-     * @return IP 주소 리스트
-     */
-    std::vector<std::string> ParseIpRange(const std::string& ip_range) const;
+    static void OnStatisticsUpdate(void* worker_ptr, const std::string& operation,
+                                  bool success, uint32_t response_time_ms);
 };
 
-} // namespace Protocol
 } // namespace Workers
 } // namespace PulseOne
 
-#endif // WORKERS_PROTOCOL_MODBUS_TCP_WORKER_H
+#endif // MODBUS_TCP_WORKER_H
