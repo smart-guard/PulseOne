@@ -296,7 +296,7 @@ protected:
     
     /**
      * @brief IP 주소 문자열을 sockaddr_in으로 변환
-     * @param ip_str IP 주소 문자열
+     * @param ip_str IP 주소 문자열  
      * @param port 포트 번호
      * @param addr 변환된 주소 (출력)
      * @return 성공 시 true
@@ -306,8 +306,7 @@ protected:
     
     /**
      * @brief sockaddr_in을 IP 주소 문자열로 변환
-     * @param addr 주소
-     * @return IP 주소 문자열
+     * @param addr 주소    * @return IP 주소 문자열
      */
     static std::string SockAddrToString(const struct sockaddr_in& addr);
     
@@ -352,7 +351,7 @@ private:
     
     /**
      * @brief UDP 설정 파싱
-     * @details device_info의 protocol_config에서 UDP 설정 추출
+     * @details device_info의 config_json에서 UDP 설정 추출
      * @return 성공 시 true
      */
     bool ParseUdpConfig();
