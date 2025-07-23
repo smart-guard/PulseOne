@@ -1,6 +1,8 @@
 /**
  * @file MQTTWorker_Production.cpp
- * @brief 프로덕션용 MQTT 워커 구현 - 완성본 (컴파일 에러 수정)
+ * @brief 프로덕션용 MQTT 워커 구현 - 완성본
+ * @author PulseOne Development Team
+ * @date 2025-01-23
  */
 
 #include "Workers/Protocol/MQTTWorker_Production.h"
@@ -13,7 +15,6 @@ using json = nlohmann::json;
 
 namespace PulseOne {
 namespace Workers {
-namespace Protocol {
 
 // =============================================================================
 // 생성자 및 소멸자
@@ -23,7 +24,7 @@ MQTTWorkerProduction::MQTTWorkerProduction(const Drivers::DeviceInfo& device_inf
                                          std::shared_ptr<RedisClient> redis_client,
                                          std::shared_ptr<InfluxClient> influx_client)
     : MQTTWorker(device_info, redis_client, influx_client)
-    , start_time_(steady_clock::now())  // ✅ 헤더 선언 순서와 일치
+    , start_time_(steady_clock::now())
     , last_throughput_calculation_(steady_clock::now()) {
     
     LogMessage(LogLevel::INFO, "MQTTWorkerProduction created");
@@ -116,14 +117,14 @@ std::future<bool> MQTTWorkerProduction::Stop() {
 bool MQTTWorkerProduction::PublishWithPriority(const std::string& topic,
                                               const std::string& payload,
                                               int priority,
-                                              int qos,  // ✅ int 타입으로 변경
-                                              const MessageMetadata& /* metadata */) {  // ✅ 미사용 매개변수
+                                              MqttQoS qos,
+                                              const MessageMetadata& /* metadata */) {
     try {
-        // 메시지 생성
+        // 오프라인 메시지 생성
         OfflineMessage message(topic, payload, qos, false, priority);
         message.timestamp = system_clock::now();
         
-        // MQTT 클라이언트 확인 (실제로는 MQTTWorker에서 처리)
+        // 연결 확인
         if (!CheckConnection()) {
             // 오프라인 큐에 저장
             SaveOfflineMessage(message);
@@ -131,8 +132,9 @@ bool MQTTWorkerProduction::PublishWithPriority(const std::string& topic,
             return false;
         }
         
-        // ✅ 가장 간단한 해결책: 기본값으로 발행
-        bool success = PublishMessage(topic, payload);  // 기본 QoS 사용
+        // MQTTDriver가 int를 받는다면 변환해서 사용
+        int qos_int = MQTTWorker::QosToInt(qos);
+        bool success = PublishMessage(topic, payload, qos_int, false);
         
         if (success) {
             performance_metrics_.messages_sent++;
@@ -142,7 +144,7 @@ bool MQTTWorkerProduction::PublishWithPriority(const std::string& topic,
             SaveOfflineMessage(message);
         }
         
-        // ✅ 기본 클래스에 UpdateMqttStats가 없다면 직접 로깅 (문자열 연결 수정)
+        // 로깅 (문자열 연결 수정)
         std::string result_msg = "Message send " + std::string(success ? "successful" : "failed") + " for topic: " + topic;
         LogMessage(success ? LogLevel::DEBUG : LogLevel::WARN, result_msg);
         
@@ -162,7 +164,6 @@ size_t MQTTWorkerProduction::PublishBatch(const std::vector<OfflineMessage>& mes
         MessageMetadata metadata;
         metadata.timestamp = duration_cast<milliseconds>(msg.timestamp.time_since_epoch()).count();
         
-        // ✅ qos 필드를 int로 사용
         bool success = PublishWithPriority(msg.topic, msg.payload, msg.priority, msg.qos, metadata);
         if (success) {
             successful++;
@@ -188,7 +189,7 @@ bool MQTTWorkerProduction::PublishIfQueueAvailable(const std::string& topic,
         }
     }
     
-    return PublishWithPriority(topic, payload, 5, 1);  // ✅ int 값 사용 (1 = AT_LEAST_ONCE)
+    return PublishWithPriority(topic, payload, 5, MqttQoS::AT_LEAST_ONCE);
 }
 
 // =============================================================================
@@ -224,7 +225,7 @@ std::string MQTTWorkerProduction::GetPerformanceMetricsJson() const {
 
 std::string MQTTWorkerProduction::GetRealtimeDashboardData() const {
     json dashboard;
-    dashboard["status"] = GetState() == WorkerState::RUNNING ? "running" : "stopped";  // ✅ GetCurrentState → GetState
+    dashboard["status"] = GetState() == WorkerState::RUNNING ? "running" : "stopped";
     dashboard["broker_url"] = device_info_.endpoint;
     dashboard["connection_healthy"] = IsConnectionHealthy();
     dashboard["system_load"] = GetSystemLoad();
@@ -233,7 +234,7 @@ std::string MQTTWorkerProduction::GetRealtimeDashboardData() const {
 }
 
 std::string MQTTWorkerProduction::GetDetailedDiagnostics() const {
-    auto now = steady_clock::now();  // ✅ steady_clock 사용
+    auto now = steady_clock::now();
     auto uptime = duration_cast<seconds>(now - start_time_);
     
     json diagnostics;
@@ -246,7 +247,7 @@ std::string MQTTWorkerProduction::GetDetailedDiagnostics() const {
 }
 
 bool MQTTWorkerProduction::IsConnectionHealthy() const {
-    // ✅ const_cast로 const 문제 해결
+    // const_cast로 const 문제 해결
     if (!const_cast<MQTTWorkerProduction*>(this)->CheckConnection()) {
         return false;
     }
@@ -350,7 +351,6 @@ void MQTTWorkerProduction::PriorityQueueProcessorLoop() {
                 metadata.timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
                 
                 for (const auto& message : batch) {
-                    // ✅ message.qos를 int로 사용
                     PublishWithPriority(message.topic, message.payload, 8, message.qos, metadata);
                 }
             }
@@ -401,7 +401,7 @@ void MQTTWorkerProduction::CollectPerformanceMetrics() {
     
     // 큐 크기 업데이트
     {
-        std::lock_guard<std::mutex> queue_lock(offline_messages_mutex_);  // ✅ 수정
+        std::lock_guard<std::mutex> queue_lock(offline_messages_mutex_);
         performance_metrics_.queue_size = offline_messages_.size();
     }
     
@@ -462,7 +462,7 @@ void MQTTWorkerProduction::UpdateLatencyMetrics(uint32_t latency_ms) {
 
 std::string MQTTWorkerProduction::SelectBroker() {
     if (backup_brokers_.empty()) {
-        return device_info_.endpoint;  // ✅ 수정
+        return device_info_.endpoint;
     }
     
     // 현재 브로커가 실패한 경우 다음 브로커로 전환
@@ -470,13 +470,13 @@ std::string MQTTWorkerProduction::SelectBroker() {
         current_broker_index_ = (current_broker_index_ + 1) % (backup_brokers_.size() + 1);
         
         if (current_broker_index_ == 0) {
-            return device_info_.endpoint;  // ✅ 수정
+            return device_info_.endpoint;
         } else {
             return backup_brokers_[current_broker_index_ - 1];
         }
     }
     
-    return device_info_.endpoint;  // ✅ 수정
+    return device_info_.endpoint;
 }
 
 bool MQTTWorkerProduction::IsCircuitOpen() const {
@@ -521,7 +521,6 @@ void MQTTWorkerProduction::SaveOfflineMessage(const OfflineMessage& message) {
     
     if (offline_messages_.size() >= advanced_config_.max_offline_messages) {
         // 큐가 가득 찬 경우 가장 낮은 우선순위 메시지 제거
-        // priority_queue는 top()이 가장 높은 우선순위이므로 별도 처리 필요
         LogMessage(LogLevel::WARN, "Offline queue full, dropping low priority message");
         performance_metrics_.messages_dropped++;
         return;
@@ -551,7 +550,7 @@ bool MQTTWorkerProduction::IsDuplicateMessage(const std::string& message_id) {
 }
 
 double MQTTWorkerProduction::CalculateMessagePriority(const std::string& topic, const std::string& /* payload */) {
-    // 토픽과 페이로드 기반 우선순위 계산
+    // 토픽 기반 우선순위 계산
     double priority = 5.0;  // 기본 우선순위
     
     // 토픽 기반 우선순위 조정
@@ -566,6 +565,5 @@ double MQTTWorkerProduction::CalculateMessagePriority(const std::string& topic, 
     return priority;
 }
 
-} // namespace Protocol
 } // namespace Workers
 } // namespace PulseOne

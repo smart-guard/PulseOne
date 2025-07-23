@@ -1,6 +1,6 @@
 /**
  * @file MQTTWorker_Production.h
- * @brief 프로덕션용 MQTT 워커 클래스 - 완성본 (컴파일 에러 수정)
+ * @brief 프로덕션용 MQTT 워커 클래스 - 완성본
  * @author PulseOne Development Team
  * @date 2025-01-23
  */
@@ -21,10 +21,9 @@
 
 namespace PulseOne {
 namespace Workers {
-namespace Protocol {
 
 // =============================================================================
-// 타입 정의 (MqttQoS는 MQTTWorker.h에서 이미 정의되어 있음)
+// 프로덕션용 타입 정의
 // =============================================================================
 
 struct MessageMetadata {
@@ -47,12 +46,12 @@ struct AdvancedMqttConfig {
 struct OfflineMessage {
     std::string topic;
     std::string payload;
-    int qos;  // ✅ int 타입으로 변경 (0=AT_MOST_ONCE, 1=AT_LEAST_ONCE, 2=EXACTLY_ONCE)
+    MqttQoS qos;  // ✅ MQTTWorker.h에서 정의된 enum 사용
     bool retain;
     std::chrono::system_clock::time_point timestamp;
     int priority = 5;
     
-    OfflineMessage(const std::string& t, const std::string& p, int q = 1, bool r = false, int prio = 5)
+    OfflineMessage(const std::string& t, const std::string& p, MqttQoS q = MqttQoS::AT_LEAST_ONCE, bool r = false, int prio = 5)
         : topic(t), payload(p), qos(q), retain(r), timestamp(std::chrono::system_clock::now()), priority(prio) {}
     
     // priority_queue를 위한 비교 연산자
@@ -204,7 +203,7 @@ struct PerformanceMetrics {
 
 class MQTTWorkerProduction : public MQTTWorker {
 public:
-    // 생성자 및 소멸자 순서 수정
+    // 생성자 및 소멸자
     MQTTWorkerProduction(const Drivers::DeviceInfo& device_info,
                         std::shared_ptr<RedisClient> redis_client,
                         std::shared_ptr<InfluxClient> influx_client);
@@ -219,7 +218,7 @@ public:
     bool PublishWithPriority(const std::string& topic,
                            const std::string& payload,
                            int priority,
-                           int qos = 1,  // ✅ int 타입으로 변경
+                           MqttQoS qos = MqttQoS::AT_LEAST_ONCE,
                            const MessageMetadata& metadata = MessageMetadata());
     
     size_t PublishBatch(const std::vector<OfflineMessage>& messages);
@@ -317,7 +316,6 @@ private:
     std::atomic<int> consecutive_failures_{0};
 };
 
-} // namespace Protocol
 } // namespace Workers
 } // namespace PulseOne
 
