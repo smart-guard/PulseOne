@@ -1,159 +1,140 @@
 /**
  * @file MQTTWorker.h
- * @brief MQTT 프로토콜 전용 워커 클래스
- * @details TcpBasedWorker를 상속받아 MQTT Pub/Sub 통신 기능 제공
+ * @brief MQTT 프로토콜 워커 클래스
  * @author PulseOne Development Team
- * @date 2025-01-22
+ * @date 2025-01-23
  * @version 1.0.0
+ * 
+ * @details
+ * BaseDeviceWorker를 상속받아 MQTT 프로토콜 특화 기능을 제공합니다.
+ * MQTTDriver를 통신 매체로 사용하여 객체 관리와 통신을 분리합니다.
+ * 
+ * 역할 분리:
+ * - MQTTDriver: 순수 MQTT 통신 (연결, 발행/구독, 메시지 처리)
+ * - MQTTWorker: 객체 관리 (토픽 관리, 스케줄링, 데이터 변환, DB 저장)
  */
 
-#ifndef WORKERS_PROTOCOL_MQTT_WORKER_H
-#define WORKERS_PROTOCOL_MQTT_WORKER_H
+#ifndef MQTT_WORKER_H
+#define MQTT_WORKER_H
 
-#include "Workers/Base/TcpBasedWorker.h"
-#include "Drivers/Common/CommonTypes.h"
+#include "Workers/Base/BaseDeviceWorker.h"
+#include "Drivers/Mqtt/MQTTDriver.h"
 #include <memory>
-#include <queue>
-#include <thread>
-#include <atomic>
+#include <vector>
 #include <map>
-#include <chrono>
-#include <shared_mutex>
-#include <condition_variable>
-#include <nlohmann/json.hpp>
-
-// Eclipse Paho MQTT C++ 헤더들
-#include <mqtt/async_client.h>
-#include <mqtt/callback.h>
-#include <mqtt/iaction_listener.h>
-#include <mqtt/connect_options.h>
-#include <mqtt/message.h>
-#include <mqtt/token.h>
+#include <mutex>
+#include <thread>
+#include <queue>
+#include <atomic>
 
 namespace PulseOne {
 namespace Workers {
-namespace Protocol {
 
 /**
- * @brief MQTT QoS 레벨
+ * @brief MQTT 토픽 구독 정보
  */
-enum class MqttQoS {
-    AT_MOST_ONCE = 0,      ///< 최대 한번 전송 (Fire and forget)
-    AT_LEAST_ONCE = 1,     ///< 최소 한번 전송 (ACK 필요)
-    EXACTLY_ONCE = 2       ///< 정확히 한번 전송 (핸드셰이크)
+struct MQTTSubscription {
+    std::string topic;                    ///< MQTT 토픽
+    int qos;                              ///< QoS 레벨 (0, 1, 2)
+    bool enabled;                         ///< 활성화 여부
+    std::string point_id;                 ///< 연결된 데이터 포인트 ID
+    Drivers::DataType data_type;          ///< 예상 데이터 타입
+    std::string json_path;                ///< JSON 페이로드에서 값 추출 경로 (예: "sensors.temperature")
+    double scaling_factor;                ///< 스케일링 팩터
+    double scaling_offset;                ///< 스케일링 오프셋
+    
+    // 통계
+    uint64_t messages_received;           ///< 수신된 메시지 수
+    std::chrono::system_clock::time_point last_received; ///< 마지막 수신 시간
+    
+    MQTTSubscription()
+        : qos(1), enabled(true), data_type(Drivers::DataType::UNKNOWN)
+        , scaling_factor(1.0), scaling_offset(0.0), messages_received(0)
+        , last_received(std::chrono::system_clock::now()) {}
 };
 
 /**
- * @brief MQTT 구독 정보
+ * @brief MQTT 발행 작업
  */
-struct MqttSubscription {
-    uint32_t subscription_id;                    ///< 구독 고유 ID
-    std::string topic;                           ///< MQTT 토픽
-    MqttQoS qos;                                ///< QoS 레벨
-    bool is_active;                             ///< 활성화 여부
-    std::vector<Drivers::DataPoint> data_points; ///< 이 토픽과 연관된 데이터 포인트들
+struct MQTTPublishTask {
+    std::string topic;                    ///< 발행할 토픽
+    std::string payload;                  ///< 발행할 페이로드
+    int qos;                              ///< QoS 레벨
+    bool retained;                        ///< Retain 플래그
+    std::chrono::system_clock::time_point scheduled_time; ///< 예약 시간
+    int retry_count;                      ///< 재시도 횟수
     
-    // 통계 (atomic 대신 일반 변수 사용)
-    uint64_t messages_received;                 ///< 수신된 메시지 수
-    std::chrono::system_clock::time_point last_message_time; ///< 마지막 메시지 수신 시간
-    
-    MqttSubscription()
-        : subscription_id(0), qos(MqttQoS::AT_MOST_ONCE), is_active(false)
-        , messages_received(0), last_message_time(std::chrono::system_clock::now()) {}
+    MQTTPublishTask()
+        : qos(1), retained(false)
+        , scheduled_time(std::chrono::system_clock::now())
+        , retry_count(0) {}
 };
 
 /**
- * @brief MQTT 발행 정보
+ * @brief MQTT 워커 설정
  */
-struct MqttPublication {
-    uint32_t publication_id;                     ///< 발행 고유 ID
-    std::string topic;                           ///< MQTT 토픽
-    MqttQoS qos;                                ///< QoS 레벨
-    bool retain;                                ///< Retain 플래그
-    int publish_interval_ms;                    ///< 발행 주기 (밀리초)
-    bool is_active;                             ///< 활성화 여부
+struct MQTTWorkerConfig {
+    std::string broker_url;               ///< 브로커 URL (mqtt://host:port)
+    std::string client_id;                ///< 클라이언트 ID
+    std::string username;                 ///< 사용자명 (옵션)
+    std::string password;                 ///< 비밀번호 (옵션)
+    bool use_ssl;                         ///< SSL/TLS 사용 여부
+    int keep_alive_interval;              ///< Keep-alive 간격 (초)
+    bool clean_session;                   ///< Clean Session 플래그
+    bool auto_reconnect;                  ///< 자동 재연결
+    uint32_t message_timeout_ms;          ///< 메시지 타임아웃 (밀리초)
+    uint32_t publish_retry_count;         ///< 발행 재시도 횟수
     
-    std::vector<Drivers::DataPoint> data_points; ///< 이 토픽으로 발행할 데이터 포인트들
-    
-    // 실행 시간 추적
-    std::chrono::system_clock::time_point last_publish_time;
-    std::chrono::system_clock::time_point next_publish_time;
-    
-    // 통계 (atomic 대신 일반 변수 사용)
-    uint64_t messages_published;                ///< 발행된 메시지 수
-    uint64_t failed_publishes;                 ///< 발행 실패 수
-    
-    MqttPublication()
-        : publication_id(0), qos(MqttQoS::AT_MOST_ONCE), retain(false)
-        , publish_interval_ms(1000), is_active(false)
-        , last_publish_time(std::chrono::system_clock::now())
-        , next_publish_time(std::chrono::system_clock::now())
-        , messages_published(0), failed_publishes(0) {}
+    MQTTWorkerConfig()
+        : use_ssl(false), keep_alive_interval(60), clean_session(true)
+        , auto_reconnect(true), message_timeout_ms(30000), publish_retry_count(3) {}
 };
 
 /**
- * @brief MQTT 클라이언트 설정
+ * @brief MQTT 워커 통계
  */
-struct MqttClientConfig {
-    std::string client_id;                      ///< 클라이언트 ID
-    std::string username;                       ///< 사용자명 (선택사항)
-    std::string password;                       ///< 패스워드 (선택사항)
+struct MQTTWorkerStatistics {
+    std::atomic<uint64_t> messages_received{0};    ///< 수신된 메시지 수
+    std::atomic<uint64_t> messages_published{0};   ///< 발행된 메시지 수
+    std::atomic<uint64_t> subscribe_operations{0}; ///< 구독 작업 수
+    std::atomic<uint64_t> publish_operations{0};   ///< 발행 작업 수
+    std::atomic<uint64_t> successful_publishes{0}; ///< 성공한 발행 수
+    std::atomic<uint64_t> failed_operations{0};    ///< 실패한 작업 수
+    std::atomic<uint64_t> json_parse_errors{0};    ///< JSON 파싱 에러 수
     
-    // 연결 설정
-    int keep_alive_interval_seconds;            ///< Keep-alive 간격 (초)
-    bool clean_session;                         ///< Clean Session 플래그
-    int connection_timeout_seconds;             ///< 연결 타임아웃 (초)
-    
-    // SSL/TLS 설정
-    bool use_ssl;                               ///< SSL/TLS 사용 여부
-    std::string ca_cert_file;                   ///< CA 인증서 파일
-    std::string client_cert_file;               ///< 클라이언트 인증서 파일
-    std::string client_key_file;                ///< 클라이언트 키 파일
-    
-    // Will 메시지 설정
-    bool use_will_message;                      ///< Will 메시지 사용 여부
-    std::string will_topic;                     ///< Will 토픽
-    std::string will_payload;                   ///< Will 페이로드
-    MqttQoS will_qos;                          ///< Will QoS
-    bool will_retain;                           ///< Will Retain 플래그
-    
-    MqttClientConfig()
-        : keep_alive_interval_seconds(60)
-        , clean_session(true)
-        , connection_timeout_seconds(30)
-        , use_ssl(false)
-        , use_will_message(false)
-        , will_qos(MqttQoS::AT_MOST_ONCE)
-        , will_retain(false) {}
+    std::chrono::system_clock::time_point start_time;     ///< 통계 시작 시간
+    std::chrono::system_clock::time_point last_reset;     ///< 마지막 리셋 시간
 };
 
-// 전방 선언
-class MqttCallbackHandler;
-
 /**
- * @brief MQTT 워커 클래스
- * @details TcpBasedWorker를 상속받아 MQTT Pub/Sub 통신 특화 기능 제공
+ * @class MQTTWorker
+ * @brief MQTT 프로토콜 워커
  * 
- * 주요 기능:
- * - MQTT 브로커 연결 관리
- * - 토픽 구독/발행 관리
- * - QoS 레벨별 메시지 처리
- * - 자동 재연결 및 세션 복구
- * - SSL/TLS 보안 연결
- * - Will 메시지 지원
+ * @details
+ * BaseDeviceWorker를 상속받아 MQTT 프로토콜에 특화된 기능을 제공합니다.
+ * MQTTDriver를 내부적으로 사용하여 실제 MQTT 통신을 수행합니다.
+ * - MQTT 토픽 구독/발행 관리
+ * - JSON 페이로드 파싱 및 데이터 추출
+ * - 비동기 메시지 처리
+ * - 토픽 기반 데이터 포인트 매핑
  */
-class MQTTWorker : public TcpBasedWorker {
+class MQTTWorker : public BaseDeviceWorker {
+
 public:
+    // =============================================================================
+    // 생성자 및 소멸자
+    // =============================================================================
+    
     /**
      * @brief 생성자
      * @param device_info 디바이스 정보
-     * @param redis_client Redis 클라이언트 (선택적)
-     * @param influx_client InfluxDB 클라이언트 (선택적)
+     * @param redis_client Redis 클라이언트
+     * @param influx_client InfluxDB 클라이언트
      */
     explicit MQTTWorker(
         const Drivers::DeviceInfo& device_info,
-        std::shared_ptr<RedisClient> redis_client = nullptr,
-        std::shared_ptr<InfluxClient> influx_client = nullptr
+        std::shared_ptr<RedisClient> redis_client,
+        std::shared_ptr<InfluxClient> influx_client
     );
     
     /**
@@ -167,344 +148,196 @@ public:
     
     std::future<bool> Start() override;
     std::future<bool> Stop() override;
-    WorkerState GetState() const override;
+    bool EstablishConnection() override;
+    bool CloseConnection() override;
+    bool CheckConnection() override;
+    bool SendKeepAlive() override;
 
     // =============================================================================
-    // TcpBasedWorker 인터페이스 구현
-    // =============================================================================
-    
-    bool EstablishProtocolConnection() override;
-    bool CloseProtocolConnection() override;
-    bool CheckProtocolConnection() override;
-    bool SendProtocolKeepAlive();  // 기본 구현이 있음
-
-    // =============================================================================
-    // MQTT 클라이언트 설정 관리
+    // MQTT 공개 인터페이스
     // =============================================================================
     
     /**
-     * @brief MQTT 클라이언트 설정
-     * @param config 클라이언트 설정
+     * @brief MQTT 워커 설정
+     * @param config MQTT 워커 설정
      */
-    void ConfigureMqttClient(const MqttClientConfig& config);
+    void ConfigureMQTTWorker(const MQTTWorkerConfig& config);
     
     /**
-     * @brief 브로커 연결 설정
-     * @param broker_url 브로커 URL (예: "tcp://localhost:1883", "ssl://broker.example.com:8883")
-     * @param client_id 클라이언트 ID
-     * @param username 사용자명 (선택사항)
-     * @param password 패스워드 (선택사항)
+     * @brief MQTT 워커 통계 정보 조회
+     * @return JSON 형태의 통계 정보
      */
-    void ConfigureBroker(const std::string& broker_url,
-                        const std::string& client_id,
-                        const std::string& username = "",
-                        const std::string& password = "");
-
-    // =============================================================================
-    // 구독 관리
-    // =============================================================================
+    std::string GetMQTTWorkerStats() const;
+    
+    /**
+     * @brief MQTT 워커 통계 리셋
+     */
+    void ResetMQTTWorkerStats();
     
     /**
      * @brief 토픽 구독 추가
-     * @param topic MQTT 토픽
-     * @param qos QoS 레벨
-     * @return 구독 ID (실패 시 0)
-     */
-    uint32_t AddSubscription(const std::string& topic, MqttQoS qos = MqttQoS::AT_MOST_ONCE);
-    
-    /**
-     * @brief 구독 제거
-     * @param subscription_id 구독 ID
+     * @param subscription 구독 정보
      * @return 성공 시 true
      */
-    bool RemoveSubscription(uint32_t subscription_id);
+    bool AddSubscription(const MQTTSubscription& subscription);
     
     /**
-     * @brief 구독 활성화/비활성화
-     * @param subscription_id 구독 ID
-     * @param active 활성화 여부
+     * @brief 토픽 구독 제거
+     * @param topic 토픽 이름
      * @return 성공 시 true
      */
-    bool SetSubscriptionActive(uint32_t subscription_id, bool active);
+    bool RemoveSubscription(const std::string& topic);
     
     /**
-     * @brief 구독에 데이터 포인트 추가
-     * @param subscription_id 구독 ID
-     * @param data_point 데이터 포인트
-     * @return 성공 시 true
-     */
-    bool AddDataPointToSubscription(uint32_t subscription_id, const Drivers::DataPoint& data_point);
-
-    // =============================================================================
-    // 발행 관리
-    // =============================================================================
-    
-    /**
-     * @brief 발행 토픽 추가
-     * @param topic MQTT 토픽
-     * @param qos QoS 레벨
-     * @param retain Retain 플래그
-     * @param publish_interval_ms 발행 주기 (밀리초)
-     * @return 발행 ID (실패 시 0)
-     */
-    uint32_t AddPublication(const std::string& topic,
-                           MqttQoS qos = MqttQoS::AT_MOST_ONCE,
-                           bool retain = false,
-                           int publish_interval_ms = 1000);
-    
-    /**
-     * @brief 발행 제거
-     * @param publication_id 발행 ID
-     * @return 성공 시 true
-     */
-    bool RemovePublication(uint32_t publication_id);
-    
-    /**
-     * @brief 발행 활성화/비활성화
-     * @param publication_id 발행 ID
-     * @param active 활성화 여부
-     * @return 성공 시 true
-     */
-    bool SetPublicationActive(uint32_t publication_id, bool active);
-    
-    /**
-     * @brief 발행에 데이터 포인트 추가
-     * @param publication_id 발행 ID
-     * @param data_point 데이터 포인트
-     * @return 성공 시 true
-     */
-    bool AddDataPointToPublication(uint32_t publication_id, const Drivers::DataPoint& data_point);
-
-    // =============================================================================
-    // 메시지 송수신
-    // =============================================================================
-    
-    /**
-     * @brief 즉시 메시지 발행
+     * @brief 메시지 발행
      * @param topic 토픽
      * @param payload 페이로드
      * @param qos QoS 레벨
-     * @param retain Retain 플래그
+     * @param retained Retain 플래그
      * @return 성공 시 true
      */
-    bool PublishMessage(const std::string& topic,
-                       const std::string& payload,
-                       MqttQoS qos = MqttQoS::AT_MOST_ONCE,
-                       bool retain = false);
+    bool PublishMessage(const std::string& topic, const std::string& payload, 
+                       int qos = 1, bool retained = false);
     
     /**
-     * @brief JSON 형태 메시지 발행
-     * @param topic 토픽
-     * @param json_data JSON 데이터
-     * @param qos QoS 레벨
-     * @param retain Retain 플래그
-     * @return 성공 시 true
+     * @brief 활성 구독 목록 조회
+     * @return JSON 형태의 구독 목록
      */
-    bool PublishJsonMessage(const std::string& topic,
-                           const nlohmann::json& json_data,
-                           MqttQoS qos = MqttQoS::AT_MOST_ONCE,
-                           bool retain = false);
-
-    // =============================================================================
-    // 상태 및 통계 조회
-    // =============================================================================
-    
-    /**
-     * @brief MQTT 클라이언트 통계 조회
-     * @return JSON 형태의 통계 정보
-     */
-    std::string GetMqttStats() const;
-    
-    /**
-     * @brief 모든 구독 상태 조회
-     * @return JSON 형태의 구독 상태
-     */
-    std::string GetSubscriptionStatus() const;
-    
-    /**
-     * @brief 모든 발행 상태 조회
-     * @return JSON 형태의 발행 상태
-     */
-    std::string GetPublicationStatus() const;
-
-    // =============================================================================
-    // 콜백 메서드 (MqttCallbackHandler에서 호출)
-    // =============================================================================
-    
-    /**
-     * @brief 연결 손실 콜백
-     * @param cause 원인
-     */
-    void OnConnectionLost(const std::string& cause);
-    
-    /**
-     * @brief 메시지 수신 콜백
-     * @param message 수신된 메시지
-     */
-    void OnMessageArrived(mqtt::const_message_ptr message);
-    
-    /**
-     * @brief 메시지 전송 완료 콜백
-     * @param token 전송 토큰
-     */
-    void OnDeliveryComplete(mqtt::delivery_token_ptr token);
-    
-    /**
-     * @brief 연결 성공 콜백
-     * @param reconnect 재연결 여부
-     */
-    void OnConnected(bool reconnect);
+    std::string GetActiveSubscriptions() const;
 
 protected:
     // =============================================================================
-    // 멤버 변수들
-    // =============================================================================
-    
-    // MQTT 클라이언트 설정
-    MqttClientConfig mqtt_config_;
-    std::string broker_url_;
-    
-    // MQTT 클라이언트
-    std::unique_ptr<mqtt::async_client> mqtt_client_;
-    std::unique_ptr<MqttCallbackHandler> callback_handler_;
-    
-    // 구독 관리
-    std::map<uint32_t, MqttSubscription> subscriptions_;
-    mutable std::shared_mutex subscriptions_mutex_;
-    uint32_t next_subscription_id_;
-    
-    // 발행 관리
-    std::map<uint32_t, MqttPublication> publications_;
-    mutable std::shared_mutex publications_mutex_;
-    uint32_t next_publication_id_;
-    
-    // 워커 스레드들
-    std::thread publish_worker_thread_;
-    std::atomic<bool> stop_workers_;
-    
-    // 메시지 큐
-    std::queue<std::pair<std::string, std::string>> incoming_messages_; // topic, payload
-    mutable std::mutex message_queue_mutex_;
-    std::condition_variable message_queue_cv_;
-    
-    // 통계 (mutex로 보호)
-    mutable std::mutex stats_mutex_;
-    uint64_t total_messages_sent_;
-    uint64_t total_messages_received_;
-    uint64_t failed_sends_;
-    uint64_t connection_attempts_;
-    uint64_t successful_connections_;
-
-    // =============================================================================
-    // 내부 헬퍼 메소드들
+    // MQTT 워커 핵심 기능
     // =============================================================================
     
     /**
-     * @brief 발행 워커 루프
+     * @brief MQTTDriver 초기화
+     * @return 성공 시 true
      */
-    void PublishWorkerLoop();
+    bool InitializeMQTTDriver();
     
     /**
-     * @brief 개별 발행 처리
-     * @param publication 발행 정보
-     * @return 처리 성공 시 true
+     * @brief MQTTDriver 종료
      */
-    bool ProcessPublication(MqttPublication& publication);
+    void ShutdownMQTTDriver();
     
     /**
-     * @brief 수신된 메시지 처리
+     * @brief 데이터 포인트에서 MQTT 구독 생성
+     * @param points 데이터 포인트 목록
+     * @return 성공 시 true
+     */
+    bool CreateSubscriptionsFromDataPoints(const std::vector<Drivers::DataPoint>& points);
+    
+    /**
+     * @brief 수신된 MQTT 메시지 처리
      * @param topic 토픽
      * @param payload 페이로드
+     * @return 성공 시 true
      */
-    void ProcessReceivedMessage(const std::string& topic, const std::string& payload);
+    bool ProcessReceivedMessage(const std::string& topic, const std::string& payload);
     
     /**
-     * @brief 페이로드를 데이터 값으로 파싱
-     * @param payload 페이로드 문자열
-     * @param data_type 데이터 타입
-     * @return 파싱된 데이터 값
+     * @brief JSON 페이로드에서 값 추출
+     * @param payload JSON 페이로드
+     * @param json_path JSON 경로 (예: "sensors.temperature")
+     * @param extracted_value 추출된 값 (출력)
+     * @return 성공 시 true
      */
-    Drivers::DataValue ParsePayloadToDataValue(const std::string& payload, Drivers::DataType data_type);
+    bool ExtractValueFromJSON(const std::string& payload, const std::string& json_path,
+                             Drivers::DataValue& extracted_value);
     
     /**
-     * @brief 데이터 값을 페이로드로 변환
-     * @param value 데이터 값
-     * @return 페이로드 문자열
+     * @brief 데이터 포인트에서 MQTT 토픽 정보 파싱
+     * @param point 데이터 포인트
+     * @param topic 토픽 (출력)
+     * @param json_path JSON 경로 (출력)
+     * @param qos QoS 레벨 (출력)
+     * @return 성공 시 true
      */
-    std::string DataValueToPayload(const Drivers::DataValue& value);
+    bool ParseMQTTTopic(const Drivers::DataPoint& point, std::string& topic,
+                       std::string& json_path, int& qos);
+
+    // =============================================================================
+    // 멤버 변수 (protected)
+    // =============================================================================
+    
+    /// MQTT 워커 설정
+    MQTTWorkerConfig worker_config_;
+    
+    /// MQTT 워커 통계
+    mutable MQTTWorkerStatistics worker_stats_;
+    
+    /// MQTT 드라이버 인스턴스
+    std::unique_ptr<Drivers::MqttDriver> mqtt_driver_;
+    
+    /// 활성 구독 맵 (Topic -> Subscription Info)
+    std::map<std::string, MQTTSubscription> active_subscriptions_;
+    
+    /// 발행 작업 큐
+    std::queue<MQTTPublishTask> publish_queue_;
+    
+    /// 워커 스레드들
+    std::unique_ptr<std::thread> message_processor_thread_;
+    std::unique_ptr<std::thread> publish_processor_thread_;
+    
+    /// 스레드 실행 플래그
+    std::atomic<bool> threads_running_;
+    
+    /// 구독 맵 뮤텍스
+    mutable std::mutex subscriptions_mutex_;
+    
+    /// 발행 큐 뮤텍스
+    mutable std::mutex publish_queue_mutex_;
+    
+    /// 발행 큐 조건 변수
+    std::condition_variable publish_queue_cv_;
+
+private:
+    // =============================================================================
+    // 내부 메서드
+    // =============================================================================
     
     /**
-     * @brief MQTT 에러를 문자열로 변환
-     * @param return_code 리턴 코드
-     * @return 에러 메시지
+     * @brief MQTT 워커 설정 파싱
+     * @details device_info의 config_json에서 MQTT 워커 설정 추출
+     * @return 성공 시 true
      */
-    std::string MqttErrorToString(int return_code) const;
+    bool ParseMQTTWorkerConfig();
+    
+    /**
+     * @brief 메시지 처리 스레드 함수
+     */
+    void MessageProcessorThreadFunction();
+    
+    /**
+     * @brief 발행 처리 스레드 함수
+     */
+    void PublishProcessorThreadFunction();
+    
+    /**
+     * @brief MQTTDriver 설정 생성
+     * @return 드라이버 설정
+     */
+    Drivers::DriverConfig CreateDriverConfig();
     
     /**
      * @brief 통계 업데이트
-     * @param operation 연산 타입 ("send", "receive", "connect")
+     * @param operation 작업 타입
      * @param success 성공 여부
      */
-    void UpdateMqttStats(const std::string& operation, bool success);
+    void UpdateWorkerStats(const std::string& operation, bool success);
     
     /**
-     * @brief MQTT 로그 메시지 출력
-     * @param level 로그 레벨
-     * @param message 메시지
+     * @brief MQTT 메시지 콜백 (정적 메서드)
+     * @param worker_instance 워커 인스턴스
+     * @param topic 토픽
+     * @param payload 페이로드
      */
-    void LogMqttMessage(LogLevel level, const std::string& message) const;
-    
-    /**
-     * @brief QoS enum을 정수로 변환
-     * @param qos QoS enum
-     * @return QoS 정수 값
-     */
-    int QosToInt(MqttQoS qos) const;
-    
-    /**
-     * @brief 브로커 URL 파싱 및 검증
-     * @param url 브로커 URL
-     * @return 유효한 URL인지 여부
-     */
-    bool ValidateBrokerUrl(const std::string& url) const;
-    
-    /**
-     * @brief MQTT 토픽 유효성 검사
-     * @param topic MQTT 토픽
-     * @return 유효한 토픽인지 여부
-     */
-    bool ValidateMqttTopic(const std::string& topic) const;
-    
-    /**
-     * @brief 구독 복원 (재연결 시)
-     */
-    void RestoreSubscriptions();
+    static void MessageCallback(MQTTWorker* worker_instance, 
+                               const std::string& topic, const std::string& payload);
 };
 
-/**
- * @brief MQTT 콜백 핸들러 클래스
- * @details Eclipse Paho의 콜백을 MQTTWorker로 전달하는 어댑터
- */
-class MqttCallbackHandler : public virtual mqtt::callback,
-                           public virtual mqtt::iaction_listener {
-public:
-    explicit MqttCallbackHandler(MQTTWorker* worker) : mqtt_worker_(worker) {}
-    
-    // mqtt::callback 인터페이스 구현
-    void connection_lost(const std::string& cause) override;
-    void message_arrived(mqtt::const_message_ptr message) override;
-    void delivery_complete(mqtt::delivery_token_ptr token) override;
-    
-    // mqtt::iaction_listener 인터페이스 구현
-    void on_failure(const mqtt::token& token) override;
-    void on_success(const mqtt::token& token) override;
-    
-private:
-    MQTTWorker* mqtt_worker_;
-};
-
-} // namespace Protocol
 } // namespace Workers
 } // namespace PulseOne
 
-#endif // WORKERS_PROTOCOL_MQTT_WORKER_H
+#endif // MQTT_WORKER_H

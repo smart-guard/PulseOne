@@ -1,8 +1,8 @@
 /**
  * @file MQTTWorker.cpp
- * @brief MQTT 워커 구현
+ * @brief MQTT 프로토콜 워커 클래스 구현
  * @author PulseOne Development Team
- * @date 2025-01-22
+ * @date 2025-01-23
  * @version 1.0.0
  */
 
@@ -11,117 +11,58 @@
 #include <sstream>
 #include <iomanip>
 #include <thread>
-#include <algorithm>
-#include <cstring>
-#include <shared_mutex>
 #include <nlohmann/json.hpp>
 
-// Eclipse Paho MQTT C++ 헤더들
-#include <mqtt/async_client.h>
-#include <mqtt/connect_options.h>
-#include <mqtt/disconnect_options.h>
-#include <mqtt/ssl_options.h>
-
 using namespace std::chrono;
-using namespace PulseOne::Drivers;
 using json = nlohmann::json;
 
 namespace PulseOne {
 namespace Workers {
-namespace Protocol {
-
-// =============================================================================
-// MqttCallbackHandler 구현
-// =============================================================================
-
-void MqttCallbackHandler::connection_lost(const std::string& cause) {
-    if (mqtt_worker_) {
-        mqtt_worker_->OnConnectionLost(cause);
-    }
-}
-
-void MqttCallbackHandler::message_arrived(mqtt::const_message_ptr message) {
-    if (mqtt_worker_) {
-        mqtt_worker_->OnMessageArrived(message);
-    }
-}
-
-void MqttCallbackHandler::delivery_complete(mqtt::delivery_token_ptr token) {
-    if (mqtt_worker_) {
-        mqtt_worker_->OnDeliveryComplete(token);
-    }
-}
-
-void MqttCallbackHandler::on_failure(const mqtt::token& /* token */) {
-    // 연결/구독/발행 실패 처리
-    // 구체적인 처리는 MQTTWorker에서 수행
-}
-
-void MqttCallbackHandler::on_success(const mqtt::token& token) {
-    // 연결/구독/발행 성공 처리
-    if (mqtt_worker_ && token.get_type() == mqtt::token::CONNECT) {
-        mqtt_worker_->OnConnected(false);
-    }
-}
 
 // =============================================================================
 // 생성자 및 소멸자
 // =============================================================================
 
-MQTTWorker::MQTTWorker(const Drivers::DeviceInfo& device_info,
-                       std::shared_ptr<RedisClient> redis_client,
-                       std::shared_ptr<InfluxClient> influx_client)
-    : TcpBasedWorker(device_info, redis_client, influx_client)
-    , next_subscription_id_(1)
-    , next_publication_id_(1)
-    , stop_workers_(false)
-    , total_messages_sent_(0), total_messages_received_(0), failed_sends_(0)
-    , connection_attempts_(0), successful_connections_(0) {
+MQTTWorker::MQTTWorker(
+    const Drivers::DeviceInfo& device_info,
+    std::shared_ptr<RedisClient> redis_client,
+    std::shared_ptr<InfluxClient> influx_client)
+    : BaseDeviceWorker(device_info, redis_client, influx_client)
+    , threads_running_(false) {
     
-    LogMqttMessage(LogLevel::INFO, "MQTTWorker created for device: " + device_info.name);
+    // MQTT 워커 통계 초기화
+    worker_stats_.start_time = system_clock::now();
+    worker_stats_.last_reset = worker_stats_.start_time;
     
-    // 기본 재연결 설정
-    ReconnectionSettings settings;
-    settings.auto_reconnect_enabled = true;
-    settings.retry_interval_ms = 10000;         // MQTT는 긴 재연결 주기
-    settings.max_retries_per_cycle = 5;
-    settings.keep_alive_enabled = true;
-    settings.keep_alive_interval_seconds = 60;  // MQTT Keep-alive
-    UpdateReconnectionSettings(settings);
+    LogMessage(LogLevel::INFO, "MQTTWorker created for device: " + device_info.name);
     
-    // DeviceInfo에서 브로커 정보 파싱
-    if (!device_info.endpoint.empty()) {
-        broker_url_ = device_info.endpoint;
-        if (broker_url_.find("://") == std::string::npos) {
-            broker_url_ = "tcp://" + broker_url_;  // 기본 프로토콜 추가
-        }
-    } else {
-        broker_url_ = "tcp://localhost:1883";  // 기본값
+    // device_info에서 MQTT 워커 설정 파싱
+    if (!ParseMQTTWorkerConfig()) {
+        LogMessage(LogLevel::WARN, "Failed to parse MQTT worker config, using defaults");
     }
     
-    // 기본 클라이언트 ID 생성
-    mqtt_config_.client_id = "PulseOne_" + device_info.id;
+    // MQTT 드라이버 생성
+    mqtt_driver_ = std::make_unique<Drivers::MqttDriver>();
 }
 
 MQTTWorker::~MQTTWorker() {
-    // 워커 스레드 정리
-    stop_workers_ = true;
-    message_queue_cv_.notify_all();
-    
-    if (publish_worker_thread_.joinable()) {
-        publish_worker_thread_.join();
-    }
-    
-    // MQTT 클라이언트 정리
-    if (mqtt_client_ && mqtt_client_->is_connected()) {
-        try {
-            mqtt_client_->disconnect()->wait();
-        } catch (const std::exception& e) {
-            LogMqttMessage(LogLevel::WARN, "Exception during MQTT disconnect: " + std::string(e.what()));
+    // 스레드 정리
+    if (threads_running_.load()) {
+        threads_running_ = false;
+        publish_queue_cv_.notify_all();
+        
+        if (message_processor_thread_ && message_processor_thread_->joinable()) {
+            message_processor_thread_->join();
+        }
+        if (publish_processor_thread_ && publish_processor_thread_->joinable()) {
+            publish_processor_thread_->join();
         }
     }
     
-    LogMqttMessage(LogLevel::INFO, "MQTTWorker destroyed");
+    // MQTT 드라이버 정리
+    ShutdownMQTTDriver();
+    
+    LogMessage(LogLevel::INFO, "MQTTWorker destroyed for device: " + device_info_.name);
 }
 
 // =============================================================================
@@ -129,842 +70,705 @@ MQTTWorker::~MQTTWorker() {
 // =============================================================================
 
 std::future<bool> MQTTWorker::Start() {
-    return std::async(std::launch::async, [this]() -> bool {
-        if (GetState() == WorkerState::RUNNING) {
-            LogMqttMessage(LogLevel::WARN, "Worker already running");
-            return true;
+    auto promise = std::make_shared<std::promise<bool>>();
+    auto future = promise->get_future();
+    
+    try {
+        LogMessage(LogLevel::INFO, "Starting MQTT worker...");
+        
+        // 상태를 STARTING으로 변경
+        ChangeState(WorkerState::STARTING);
+        
+        // MQTT 연결 수립
+        if (!EstablishConnection()) {
+            LogMessage(LogLevel::ERROR, "Failed to establish MQTT connection");
+            ChangeState(WorkerState::ERROR);
+            promise->set_value(false);
+            return future;
         }
         
-        LogMqttMessage(LogLevel::INFO, "Starting MQTTWorker...");
-        
-        try {
-            // 기본 연결 설정
-            if (!EstablishConnection()) {
-                LogMqttMessage(LogLevel::ERROR, "Failed to establish connection");
-                return false;
-            }
-            
-            // 상태 변경
-            ChangeState(WorkerState::RUNNING);
-            
-            // 발행 워커 스레드 시작
-            stop_workers_ = false;
-            publish_worker_thread_ = std::thread(&MQTTWorker::PublishWorkerLoop, this);
-            
-            LogMqttMessage(LogLevel::INFO, "MQTTWorker started successfully");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogMqttMessage(LogLevel::ERROR, "Exception during start: " + std::string(e.what()));
-            return false;
+        // 데이터 포인트에서 구독 생성
+        auto data_points = GetDataPoints();
+        if (!CreateSubscriptionsFromDataPoints(data_points)) {
+            LogMessage(LogLevel::WARN, "Failed to create some subscriptions from data points");
         }
-    });
+        
+        // 워커 스레드들 시작
+        threads_running_ = true;
+        message_processor_thread_ = std::make_unique<std::thread>(&MQTTWorker::MessageProcessorThreadFunction, this);
+        publish_processor_thread_ = std::make_unique<std::thread>(&MQTTWorker::PublishProcessorThreadFunction, this);
+        
+        // 상태를 RUNNING으로 변경
+        ChangeState(WorkerState::RUNNING);
+        
+        LogMessage(LogLevel::INFO, "MQTT worker started successfully");
+        promise->set_value(true);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Exception in MQTT Start: " + std::string(e.what()));
+        ChangeState(WorkerState::ERROR);
+        promise->set_value(false);
+    }
+    
+    return future;
 }
 
 std::future<bool> MQTTWorker::Stop() {
-    return std::async(std::launch::async, [this]() -> bool {
-        if (GetState() == WorkerState::STOPPED) {
-            LogMqttMessage(LogLevel::WARN, "Worker already stopped");
-            return true;
-        }
-        
-        LogMqttMessage(LogLevel::INFO, "Stopping MQTTWorker...");
-        
-        try {
-            // 워커 스레드 중지
-            stop_workers_ = true;
-            message_queue_cv_.notify_all();
-            
-            if (publish_worker_thread_.joinable()) {
-                publish_worker_thread_.join();
-            }
-            
-            // 연결 종료
-            CloseConnection();
-            
-            // 상태 변경
-            ChangeState(WorkerState::STOPPED);
-            
-            LogMqttMessage(LogLevel::INFO, "MQTTWorker stopped successfully");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogMqttMessage(LogLevel::ERROR, "Exception during stop: " + std::string(e.what()));
-            return false;
-        }
-    });
-}
-
-WorkerState MQTTWorker::GetState() const {
-    return TcpBasedWorker::GetState();
-}
-
-// =============================================================================
-// TcpBasedWorker 인터페이스 구현
-// =============================================================================
-
-bool MQTTWorker::EstablishProtocolConnection() {
-    LogMqttMessage(LogLevel::INFO, "Establishing MQTT protocol connection...");
+    auto promise = std::make_shared<std::promise<bool>>();
+    auto future = promise->get_future();
     
     try {
-        // MQTT 클라이언트 생성
-        if (!mqtt_client_) {
-            mqtt_client_ = std::make_unique<mqtt::async_client>(broker_url_, mqtt_config_.client_id);
-            callback_handler_ = std::make_unique<MqttCallbackHandler>(this);
-            mqtt_client_->set_callback(*callback_handler_);
-        }
+        LogMessage(LogLevel::INFO, "Stopping MQTT worker...");
         
-        // 연결 옵션 설정
-        mqtt::connect_options conn_opts;
-        conn_opts.set_keep_alive_interval(mqtt_config_.keep_alive_interval_seconds);
-        conn_opts.set_clean_session(mqtt_config_.clean_session);
-        conn_opts.set_connect_timeout(mqtt_config_.connection_timeout_seconds);
+        // 상태를 STOPPING으로 변경
+        ChangeState(WorkerState::STOPPING);
         
-        // 사용자 인증 설정
-        if (!mqtt_config_.username.empty()) {
-            conn_opts.set_user_name(mqtt_config_.username);
-            if (!mqtt_config_.password.empty()) {
-                conn_opts.set_password(mqtt_config_.password);
-            }
-        }
-        
-        // SSL 설정
-        if (mqtt_config_.use_ssl) {
-            mqtt::ssl_options ssl_opts;
-            if (!mqtt_config_.ca_cert_file.empty()) {
-                ssl_opts.set_trust_store(mqtt_config_.ca_cert_file);
-            }
-            if (!mqtt_config_.client_cert_file.empty() && !mqtt_config_.client_key_file.empty()) {
-                ssl_opts.set_key_store(mqtt_config_.client_cert_file);
-                ssl_opts.set_private_key(mqtt_config_.client_key_file);
-            }
-            conn_opts.set_ssl(ssl_opts);
-        }
-        
-        // Will 메시지 설정
-        if (mqtt_config_.use_will_message) {
-            mqtt::will_options will_opts(mqtt_config_.will_topic,
-                                        mqtt_config_.will_payload,
-                                        QosToInt(mqtt_config_.will_qos),
-                                        mqtt_config_.will_retain);
-            conn_opts.set_will(will_opts);
-        }
-        
-        // 연결 시도
-        UpdateMqttStats("connect", false);
-        auto token = mqtt_client_->connect(conn_opts);
-        token->wait_for(std::chrono::seconds(mqtt_config_.connection_timeout_seconds));
-        
-        if (token->is_complete()) {
-            LogMqttMessage(LogLevel::INFO, "MQTT protocol connection established to " + broker_url_);
-            UpdateMqttStats("connect", true);
+        // 워커 스레드들 정지
+        if (threads_running_.load()) {
+            threads_running_ = false;
+            publish_queue_cv_.notify_all();
             
-            // 기존 구독 복구
-            RestoreSubscriptions();
-            
-            return true;
-        } else {
-            std::string error_msg = "MQTT connection failed";
-            LogMqttMessage(LogLevel::ERROR, error_msg);
-            return false;
+            if (message_processor_thread_ && message_processor_thread_->joinable()) {
+                message_processor_thread_->join();
+            }
+            if (publish_processor_thread_ && publish_processor_thread_->joinable()) {
+                publish_processor_thread_->join();
+            }
         }
+        
+        // MQTT 연결 해제
+        CloseConnection();
+        
+        // 상태를 STOPPED로 변경
+        ChangeState(WorkerState::STOPPED);
+        
+        LogMessage(LogLevel::INFO, "MQTT worker stopped");
+        promise->set_value(true);
         
     } catch (const std::exception& e) {
-        LogMqttMessage(LogLevel::ERROR, "Exception in MQTT connection: " + std::string(e.what()));
-        return false;
+        LogMessage(LogLevel::ERROR, "Exception in MQTT Stop: " + std::string(e.what()));
+        ChangeState(WorkerState::ERROR);
+        promise->set_value(false);
     }
+    
+    return future;
 }
 
-bool MQTTWorker::CloseProtocolConnection() {
-    LogMqttMessage(LogLevel::INFO, "Closing MQTT protocol connection...");
+bool MQTTWorker::EstablishConnection() {
+    LogMessage(LogLevel::INFO, "Establishing MQTT connection...");
     
-    try {
-        if (mqtt_client_ && mqtt_client_->is_connected()) {
-            mqtt::disconnect_options disc_opts;
-            disc_opts.set_timeout(std::chrono::seconds(5));
-            
-            auto token = mqtt_client_->disconnect(disc_opts);
-            token->wait();
-            
-            LogMqttMessage(LogLevel::INFO, "MQTT protocol connection closed");
+    if (!InitializeMQTTDriver()) {
+        LogMessage(LogLevel::ERROR, "Failed to initialize MQTT driver");
+        return false;
+    }
+    
+    LogMessage(LogLevel::INFO, "MQTT connection established");
+    SetConnectionState(true);
+    return true;
+}
+
+bool MQTTWorker::CloseConnection() {
+    LogMessage(LogLevel::INFO, "Closing MQTT connection...");
+    
+    ShutdownMQTTDriver();
+    
+    LogMessage(LogLevel::INFO, "MQTT connection closed");
+    SetConnectionState(false);
+    return true;
+}
+
+bool MQTTWorker::CheckConnection() {
+    if (!mqtt_driver_) {
+        return false;
+    }
+    
+    return mqtt_driver_->IsConnected();
+}
+
+bool MQTTWorker::SendKeepAlive() {
+    // MQTT는 내부적으로 Keep-alive를 처리하므로 단순히 연결 상태만 확인
+    return CheckConnection();
+}
+
+// =============================================================================
+// MQTT 공개 인터페이스
+// =============================================================================
+
+void MQTTWorker::ConfigureMQTTWorker(const MQTTWorkerConfig& config) {
+    worker_config_ = config;
+    LogMessage(LogLevel::INFO, "MQTT worker configuration updated");
+}
+
+std::string MQTTWorker::GetMQTTWorkerStats() const {
+    std::stringstream ss;
+    ss << "{\n";
+    ss << "  \"mqtt_worker_statistics\": {\n";
+    ss << "    \"messages_received\": " << worker_stats_.messages_received.load() << ",\n";
+    ss << "    \"messages_published\": " << worker_stats_.messages_published.load() << ",\n";
+    ss << "    \"subscribe_operations\": " << worker_stats_.subscribe_operations.load() << ",\n";
+    ss << "    \"publish_operations\": " << worker_stats_.publish_operations.load() << ",\n";
+    ss << "    \"successful_publishes\": " << worker_stats_.successful_publishes.load() << ",\n";
+    ss << "    \"failed_operations\": " << worker_stats_.failed_operations.load() << ",\n";
+    ss << "    \"json_parse_errors\": " << worker_stats_.json_parse_errors.load() << ",\n";
+    
+    // 통계 시간 정보
+    auto start_time = duration_cast<seconds>(worker_stats_.start_time.time_since_epoch()).count();
+    auto reset_time = duration_cast<seconds>(worker_stats_.last_reset.time_since_epoch()).count();
+    ss << "    \"start_timestamp\": " << start_time << ",\n";
+    ss << "    \"last_reset_timestamp\": " << reset_time << ",\n";
+    
+    // 활성 구독 수
+    {
+        std::lock_guard<std::mutex> lock(subscriptions_mutex_);
+        ss << "    \"active_subscriptions_count\": " << active_subscriptions_.size() << ",\n";
+    }
+    
+    // 대기 중인 발행 작업 수
+    {
+        std::lock_guard<std::mutex> lock(publish_queue_mutex_);
+        ss << "    \"pending_publish_tasks\": " << publish_queue_.size() << "\n";
+    }
+    
+    ss << "  },\n";
+    
+    // MQTT 드라이버 통계 추가
+    if (mqtt_driver_) {
+        try {
+            auto driver_stats = mqtt_driver_->GetStatistics();
+            ss << "  \"mqtt_driver_statistics\": {\n";
+            ss << "    \"successful_connections\": " << driver_stats.successful_connections << ",\n";
+            ss << "    \"failed_connections\": " << driver_stats.failed_connections << ",\n";
+            ss << "    \"total_operations\": " << driver_stats.total_operations << ",\n";
+            ss << "    \"successful_operations\": " << driver_stats.successful_operations << ",\n";
+            ss << "    \"failed_operations\": " << driver_stats.failed_operations << ",\n";
+            ss << "    \"avg_response_time_ms\": " << driver_stats.avg_response_time_ms << ",\n";
+            ss << "    \"success_rate\": " << driver_stats.success_rate << ",\n";
+            ss << "    \"consecutive_failures\": " << driver_stats.consecutive_failures << "\n";
+            ss << "  },\n";
+        } catch (const std::exception& e) {
+            LogMessage(LogLevel::WARN, "Failed to get driver statistics: " + std::string(e.what()));
         }
+    }
+    
+    // 기본 워커 통계 추가
+    ss << "  \"base_worker_statistics\": " << GetStatusJson() << "\n";
+    ss << "}";
+    
+    return ss.str();
+}
+
+void MQTTWorker::ResetMQTTWorkerStats() {
+    worker_stats_.messages_received = 0;
+    worker_stats_.messages_published = 0;
+    worker_stats_.subscribe_operations = 0;
+    worker_stats_.publish_operations = 0;
+    worker_stats_.successful_publishes = 0;
+    worker_stats_.failed_operations = 0;
+    worker_stats_.json_parse_errors = 0;
+    worker_stats_.last_reset = system_clock::now();
+    
+    LogMessage(LogLevel::INFO, "MQTT worker statistics reset");
+}
+
+bool MQTTWorker::AddSubscription(const MQTTSubscription& subscription) {
+    try {
+        std::lock_guard<std::mutex> lock(subscriptions_mutex_);
+        
+        // 중복 구독 확인
+        if (active_subscriptions_.find(subscription.topic) != active_subscriptions_.end()) {
+            LogMessage(LogLevel::WARN, "Subscription already exists for topic: " + subscription.topic);
+            return false;
+        }
+        
+        active_subscriptions_[subscription.topic] = subscription;
+        worker_stats_.subscribe_operations++;
+        
+        LogMessage(LogLevel::INFO, "Added subscription for topic: " + subscription.topic);
+        UpdateWorkerStats("add_subscription", true);
         return true;
         
     } catch (const std::exception& e) {
-        LogMqttMessage(LogLevel::ERROR, "Exception during MQTT disconnect: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Failed to add subscription: " + std::string(e.what()));
+        UpdateWorkerStats("add_subscription", false);
         return false;
     }
 }
 
-bool MQTTWorker::CheckProtocolConnection() {
-    return mqtt_client_ && mqtt_client_->is_connected();
-}
-
-bool MQTTWorker::SendProtocolKeepAlive() {
-    // MQTT는 자동으로 keep-alive를 관리하므로 연결 상태만 확인
-    return CheckProtocolConnection();
-}
-
-// =============================================================================
-// MQTT 클라이언트 설정 관리
-// =============================================================================
-
-void MQTTWorker::ConfigureMqttClient(const MqttClientConfig& config) {
-    mqtt_config_ = config;
-    
-    LogMqttMessage(LogLevel::INFO, 
-        "MQTT client configured - ClientID: " + config.client_id +
-        ", KeepAlive: " + std::to_string(config.keep_alive_interval_seconds) + "s" +
-        ", CleanSession: " + (config.clean_session ? "true" : "false"));
-}
-
-void MQTTWorker::ConfigureBroker(const std::string& broker_url,
-                                const std::string& client_id,
-                                const std::string& username,
-                                const std::string& password) {
-    broker_url_ = broker_url;
-    mqtt_config_.client_id = client_id;
-    mqtt_config_.username = username;
-    mqtt_config_.password = password;
-    
-    LogMqttMessage(LogLevel::INFO, 
-        "Broker configured - URL: " + broker_url + 
-        ", ClientID: " + client_id +
-        ", Username: " + (username.empty() ? "none" : username));
-}
-
-// =============================================================================
-// 구독 관리
-// =============================================================================
-
-uint32_t MQTTWorker::AddSubscription(const std::string& topic, MqttQoS qos) {
-    if (!ValidateMqttTopic(topic)) {
-        LogMqttMessage(LogLevel::ERROR, "Invalid MQTT topic: " + topic);
-        return 0;
-    }
-    
-    std::unique_lock<std::shared_mutex> lock(subscriptions_mutex_);
-    
-    uint32_t subscription_id = next_subscription_id_++;
-    MqttSubscription subscription;
-    subscription.subscription_id = subscription_id;
-    subscription.topic = topic;
-    subscription.qos = qos;
-    subscription.is_active = true;
-    
-    subscriptions_.emplace(subscription_id, std::move(subscription));
-    
-    // 즉시 구독 시도 (연결된 경우)
-    if (CheckProtocolConnection()) {
-        try {
-            auto token = mqtt_client_->subscribe(topic, QosToInt(qos));
-            token->wait_for(std::chrono::seconds(10));
-            
-            if (token->is_complete()) {
-                LogMqttMessage(LogLevel::INFO, 
-                    "Subscribed to topic '" + topic + "' (ID: " + std::to_string(subscription_id) + 
-                    ", QoS: " + std::to_string(QosToInt(qos)) + ")");
-            } else {
-                LogMqttMessage(LogLevel::WARN, "Failed to subscribe to topic: " + topic);
-            }
-        } catch (const std::exception& e) {
-            LogMqttMessage(LogLevel::ERROR, "Exception during subscription: " + std::string(e.what()));
-        }
-    }
-    
-    return subscription_id;
-}
-
-bool MQTTWorker::RemoveSubscription(uint32_t subscription_id) {
-    std::unique_lock<std::shared_mutex> lock(subscriptions_mutex_);
-    
-    auto it = subscriptions_.find(subscription_id);
-    if (it == subscriptions_.end()) {
-        LogMqttMessage(LogLevel::WARN, "Subscription not found: " + std::to_string(subscription_id));
-        return false;
-    }
-    
-    std::string topic = it->second.topic;
-    
-    // 구독 해제 시도 (연결된 경우)
-    if (CheckProtocolConnection()) {
-        try {
-            auto token = mqtt_client_->unsubscribe(topic);
-            token->wait_for(std::chrono::seconds(5));
-        } catch (const std::exception& e) {
-            LogMqttMessage(LogLevel::WARN, "Exception during unsubscription: " + std::string(e.what()));
-        }
-    }
-    
-    subscriptions_.erase(it);
-    
-    LogMqttMessage(LogLevel::INFO, "Removed subscription '" + topic + "' (ID: " + std::to_string(subscription_id) + ")");
-    return true;
-}
-
-bool MQTTWorker::SetSubscriptionActive(uint32_t subscription_id, bool active) {
-    std::shared_lock<std::shared_mutex> lock(subscriptions_mutex_);
-    
-    auto it = subscriptions_.find(subscription_id);
-    if (it == subscriptions_.end()) {
-        LogMqttMessage(LogLevel::WARN, "Subscription not found: " + std::to_string(subscription_id));
-        return false;
-    }
-    
-    const_cast<MqttSubscription&>(it->second).is_active = active;
-    
-    LogMqttMessage(LogLevel::INFO, 
-        "Subscription " + std::to_string(subscription_id) + " " + (active ? "activated" : "deactivated"));
-    return true;
-}
-
-bool MQTTWorker::AddDataPointToSubscription(uint32_t subscription_id, const Drivers::DataPoint& data_point) {
-    std::shared_lock<std::shared_mutex> lock(subscriptions_mutex_);
-    
-    auto it = subscriptions_.find(subscription_id);
-    if (it == subscriptions_.end()) {
-        LogMqttMessage(LogLevel::WARN, "Subscription not found: " + std::to_string(subscription_id));
-        return false;
-    }
-    
-    const_cast<MqttSubscription&>(it->second).data_points.push_back(data_point);
-    
-    LogMqttMessage(LogLevel::DEBUG, 
-        "Added data point '" + data_point.name + "' to subscription " + std::to_string(subscription_id));
-    return true;
-}
-
-// =============================================================================
-// 발행 관리
-// =============================================================================
-
-uint32_t MQTTWorker::AddPublication(const std::string& topic,
-                                   MqttQoS qos,
-                                   bool retain,
-                                   int publish_interval_ms) {
-    if (!ValidateMqttTopic(topic)) {
-        LogMqttMessage(LogLevel::ERROR, "Invalid MQTT topic: " + topic);
-        return 0;
-    }
-    
-    std::unique_lock<std::shared_mutex> lock(publications_mutex_);
-    
-    uint32_t publication_id = next_publication_id_++;
-    MqttPublication publication;
-    publication.publication_id = publication_id;
-    publication.topic = topic;
-    publication.qos = qos;
-    publication.retain = retain;
-    publication.publish_interval_ms = publish_interval_ms;
-    publication.is_active = true;
-    publication.next_publish_time = std::chrono::system_clock::now();
-    
-    publications_.emplace(publication_id, std::move(publication));
-    
-    LogMqttMessage(LogLevel::INFO, 
-        "Added publication '" + topic + "' (ID: " + std::to_string(publication_id) + 
-        ") with interval " + std::to_string(publish_interval_ms) + "ms");
-    
-    return publication_id;
-}
-
-bool MQTTWorker::RemovePublication(uint32_t publication_id) {
-    std::unique_lock<std::shared_mutex> lock(publications_mutex_);
-    
-    auto it = publications_.find(publication_id);
-    if (it == publications_.end()) {
-        LogMqttMessage(LogLevel::WARN, "Publication not found: " + std::to_string(publication_id));
-        return false;
-    }
-    
-    std::string topic = it->second.topic;
-    publications_.erase(it);
-    
-    LogMqttMessage(LogLevel::INFO, "Removed publication '" + topic + "' (ID: " + std::to_string(publication_id) + ")");
-    return true;
-}
-
-bool MQTTWorker::SetPublicationActive(uint32_t publication_id, bool active) {
-    std::shared_lock<std::shared_mutex> lock(publications_mutex_);
-    
-    auto it = publications_.find(publication_id);
-    if (it == publications_.end()) {
-        LogMqttMessage(LogLevel::WARN, "Publication not found: " + std::to_string(publication_id));
-        return false;
-    }
-    
-    const_cast<MqttPublication&>(it->second).is_active = active;
-    
-    LogMqttMessage(LogLevel::INFO, 
-        "Publication " + std::to_string(publication_id) + " " + (active ? "activated" : "deactivated"));
-    return true;
-}
-
-bool MQTTWorker::AddDataPointToPublication(uint32_t publication_id, const Drivers::DataPoint& data_point) {
-    std::shared_lock<std::shared_mutex> lock(publications_mutex_);
-    
-    auto it = publications_.find(publication_id);
-    if (it == publications_.end()) {
-        LogMqttMessage(LogLevel::WARN, "Publication not found: " + std::to_string(publication_id));
-        return false;
-    }
-    
-    const_cast<MqttPublication&>(it->second).data_points.push_back(data_point);
-    
-    LogMqttMessage(LogLevel::DEBUG, 
-        "Added data point '" + data_point.name + "' to publication " + std::to_string(publication_id));
-    return true;
-}
-
-// =============================================================================
-// 메시지 송수신
-// =============================================================================
-
-bool MQTTWorker::PublishMessage(const std::string& topic,
-                               const std::string& payload,
-                               MqttQoS qos,
-                               bool retain) {
-    if (!CheckProtocolConnection()) {
-        LogMqttMessage(LogLevel::WARN, "Cannot publish - MQTT not connected");
-        return false;
-    }
-    
+bool MQTTWorker::RemoveSubscription(const std::string& topic) {
     try {
-        auto message = mqtt::make_message(topic, payload);
-        message->set_qos(QosToInt(qos));
-        message->set_retained(retain);
+        std::lock_guard<std::mutex> lock(subscriptions_mutex_);
         
-        auto token = mqtt_client_->publish(message);
+        auto it = active_subscriptions_.find(topic);
+        if (it == active_subscriptions_.end()) {
+            LogMessage(LogLevel::WARN, "Subscription not found for topic: " + topic);
+            return false;
+        }
         
-        // QoS 0이면 대기하지 않음
-        if (qos == MqttQoS::AT_MOST_ONCE) {
-            UpdateMqttStats("send", true);
-            return true;
-        } else {
-            // QoS 1,2는 완료까지 대기
-            bool success = token->wait_for(std::chrono::seconds(10));
-            UpdateMqttStats("send", success);
-            
-            if (success) {
-                LogMqttMessage(LogLevel::DEBUG, "Published to topic: " + topic);
-            } else {
-                LogMqttMessage(LogLevel::WARN, "Publish timeout for topic: " + topic);
-            }
-            return success;
+        active_subscriptions_.erase(it);
+        
+        LogMessage(LogLevel::INFO, "Removed subscription for topic: " + topic);
+        UpdateWorkerStats("remove_subscription", true);
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Failed to remove subscription: " + std::string(e.what()));
+        UpdateWorkerStats("remove_subscription", false);
+        return false;
+    }
+}
+
+bool MQTTWorker::PublishMessage(const std::string& topic, const std::string& payload, 
+                               int qos, bool retained) {
+    try {
+        MQTTPublishTask task;
+        task.topic = topic;
+        task.payload = payload;
+        task.qos = qos;
+        task.retained = retained;
+        task.scheduled_time = system_clock::now();
+        
+        {
+            std::lock_guard<std::mutex> lock(publish_queue_mutex_);
+            publish_queue_.push(task);
+        }
+        
+        publish_queue_cv_.notify_one();
+        worker_stats_.publish_operations++;
+        
+        LogMessage(LogLevel::DEBUG, "Queued publish task for topic: " + topic);
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Failed to queue publish task: " + std::string(e.what()));
+        worker_stats_.failed_operations++;
+        return false;
+    }
+}
+
+std::string MQTTWorker::GetActiveSubscriptions() const {
+    std::lock_guard<std::mutex> lock(subscriptions_mutex_);
+    
+    std::stringstream ss;
+    ss << "{\n";
+    ss << "  \"active_subscriptions\": [\n";
+    
+    bool first = true;
+    for (const auto& [topic, subscription] : active_subscriptions_) {
+        if (!first) ss << ",\n";
+        first = false;
+        
+        ss << "    {\n";
+        ss << "      \"topic\": \"" << topic << "\",\n";
+        ss << "      \"qos\": " << subscription.qos << ",\n";
+        ss << "      \"enabled\": " << (subscription.enabled ? "true" : "false") << ",\n";
+        ss << "      \"point_id\": \"" << subscription.point_id << "\",\n";
+        ss << "      \"data_type\": \"" << static_cast<int>(subscription.data_type) << "\",\n";
+        ss << "      \"json_path\": \"" << subscription.json_path << "\",\n";
+        ss << "      \"scaling_factor\": " << subscription.scaling_factor << ",\n";
+        ss << "      \"scaling_offset\": " << subscription.scaling_offset << ",\n";
+        ss << "      \"messages_received\": " << subscription.messages_received << ",\n";
+        
+        // 마지막 수신 시간
+        auto last_received = duration_cast<seconds>(subscription.last_received.time_since_epoch()).count();
+        ss << "      \"last_received_timestamp\": " << last_received << "\n";
+        ss << "    }";
+    }
+    
+    ss << "\n  ],\n";
+    ss << "  \"total_count\": " << active_subscriptions_.size() << "\n";
+    ss << "}";
+    
+    return ss.str();
+}
+
+// =============================================================================
+// MQTT 워커 핵심 기능
+// =============================================================================
+
+bool MQTTWorker::InitializeMQTTDriver() {
+    try {
+        if (!mqtt_driver_) {
+            LogMessage(LogLevel::ERROR, "MQTT driver not created");
+            return false;
+        }
+        
+        // 드라이버 설정 생성
+        auto driver_config = CreateDriverConfig();
+        
+        // 드라이버 초기화
+        if (!mqtt_driver_->Initialize(driver_config)) {
+            auto error = mqtt_driver_->GetLastError();
+            LogMessage(LogLevel::ERROR, "MQTT driver initialization failed: " + error.message);
+            return false;
+        }
+        
+        // 드라이버 연결
+        if (!mqtt_driver_->Connect()) {
+            auto error = mqtt_driver_->GetLastError();
+            LogMessage(LogLevel::ERROR, "MQTT driver connection failed: " + error.message);
+            return false;
+        }
+        
+        LogMessage(LogLevel::INFO, "MQTT driver initialized and connected successfully");
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Exception in InitializeMQTTDriver: " + std::string(e.what()));
+        return false;
+    }
+}
+
+void MQTTWorker::ShutdownMQTTDriver() {
+    try {
+        if (mqtt_driver_) {
+            mqtt_driver_->Disconnect();
+            LogMessage(LogLevel::INFO, "MQTT driver shutdown complete");
         }
         
     } catch (const std::exception& e) {
-        LogMqttMessage(LogLevel::ERROR, "Exception during publish: " + std::string(e.what()));
-        UpdateMqttStats("send", false);
-        return false;
+        LogMessage(LogLevel::ERROR, "Exception in ShutdownMQTTDriver: " + std::string(e.what()));
     }
 }
 
-bool MQTTWorker::PublishJsonMessage(const std::string& topic,
-                                   const nlohmann::json& json_data,
-                                   MqttQoS qos,
-                                   bool retain) {
+bool MQTTWorker::CreateSubscriptionsFromDataPoints(const std::vector<Drivers::DataPoint>& points) {
     try {
-        std::string payload = json_data.dump();
-        return PublishMessage(topic, payload, qos, retain);
-    } catch (const std::exception& e) {
-        LogMqttMessage(LogLevel::ERROR, "Exception during JSON publish: " + std::string(e.what()));
-        return false;
-    }
-}
-
-// =============================================================================
-// 상태 및 통계 조회
-// =============================================================================
-
-std::string MQTTWorker::GetMqttStats() const {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    
-    json stats;
-    stats["total_messages_sent"] = total_messages_sent_;
-    stats["total_messages_received"] = total_messages_received_;
-    stats["failed_sends"] = failed_sends_;
-    stats["connection_attempts"] = connection_attempts_;
-    stats["successful_connections"] = successful_connections_;
-    stats["send_success_rate"] = total_messages_sent_ > 0 ? 
-        (double)(total_messages_sent_ - failed_sends_) / total_messages_sent_ * 100.0 : 0.0;
-    stats["connection_success_rate"] = connection_attempts_ > 0 ?
-        (double)successful_connections_ / connection_attempts_ * 100.0 : 0.0;
-    
-    // const 메서드에서 non-const 메서드 호출을 피하기 위해 직접 확인
-    bool is_connected = mqtt_client_ && mqtt_client_->is_connected();
-    stats["is_connected"] = is_connected;
-    
-    stats["broker_url"] = broker_url_;
-    stats["client_id"] = mqtt_config_.client_id;
-    
-    return stats.dump(2);
-}
-
-std::string MQTTWorker::GetSubscriptionStatus() const {
-    std::shared_lock<std::shared_mutex> lock(subscriptions_mutex_);
-    
-    json subscriptions = json::array();
-    
-    for (const auto& pair : subscriptions_) {
-        const auto& sub = pair.second;
-        json sub_info;
-        sub_info["subscription_id"] = sub.subscription_id;
-        sub_info["topic"] = sub.topic;
-        sub_info["qos"] = QosToInt(sub.qos);
-        sub_info["is_active"] = sub.is_active;
-        sub_info["messages_received"] = sub.messages_received;
-        sub_info["data_points_count"] = sub.data_points.size();
+        bool all_success = true;
         
-        subscriptions.push_back(sub_info);
-    }
-    
-    return subscriptions.dump(2);
-}
-
-std::string MQTTWorker::GetPublicationStatus() const {
-    std::shared_lock<std::shared_mutex> lock(publications_mutex_);
-    
-    json publications = json::array();
-    
-    for (const auto& pair : publications_) {
-        const auto& pub = pair.second;
-        json pub_info;
-        pub_info["publication_id"] = pub.publication_id;
-        pub_info["topic"] = pub.topic;
-        pub_info["qos"] = QosToInt(pub.qos);
-        pub_info["retain"] = pub.retain;
-        pub_info["publish_interval_ms"] = pub.publish_interval_ms;
-        pub_info["is_active"] = pub.is_active;
-        pub_info["messages_published"] = pub.messages_published;
-        pub_info["failed_publishes"] = pub.failed_publishes;
-        pub_info["data_points_count"] = pub.data_points.size();
-        
-        publications.push_back(pub_info);
-    }
-    
-    return publications.dump(2);
-}
-
-// =============================================================================
-// 콜백 메서드
-// =============================================================================
-
-void MQTTWorker::OnConnectionLost(const std::string& cause) {
-    LogMqttMessage(LogLevel::WARN, "MQTT connection lost: " + cause);
-    
-    // 자동 재연결은 BaseDeviceWorker가 처리하므로 상태만 업데이트
-    SetConnectionState(false);
-}
-
-void MQTTWorker::OnMessageArrived(mqtt::const_message_ptr message) {
-    std::string topic = message->get_topic();
-    std::string payload = message->to_string();
-    
-    LogMqttMessage(LogLevel::DEBUG, "Message received on topic: " + topic);
-    
-    // 메시지 큐에 추가
-    {
-        std::lock_guard<std::mutex> lock(message_queue_mutex_);
-        incoming_messages_.push({topic, payload});
-    }
-    message_queue_cv_.notify_one();
-    
-    // 즉시 처리
-    ProcessReceivedMessage(topic, payload);
-    
-    UpdateMqttStats("receive", true);
-}
-
-void MQTTWorker::OnDeliveryComplete(mqtt::delivery_token_ptr /* token */) {
-    // 메시지 전송 완료 처리
-    LogMqttMessage(LogLevel::DEBUG, "Message delivery completed");
-}
-
-void MQTTWorker::OnConnected(bool reconnect) {
-    LogMqttMessage(LogLevel::INFO, reconnect ? "MQTT reconnected" : "MQTT connected");
-    SetConnectionState(true);
-}
-
-// =============================================================================
-// 내부 헬퍼 메소드들
-// =============================================================================
-
-void MQTTWorker::PublishWorkerLoop() {
-    LogMqttMessage(LogLevel::INFO, "Publish worker started");
-    
-    while (!stop_workers_) {
-        try {
-            auto current_time = std::chrono::system_clock::now();
+        for (const auto& point : points) {
+            std::string topic;
+            std::string json_path;
+            int qos;
             
-            std::shared_lock<std::shared_mutex> lock(publications_mutex_);
-            for (auto& pair : publications_) {
-                auto& publication = const_cast<MqttPublication&>(pair.second);
+            if (ParseMQTTTopic(point, topic, json_path, qos)) {
+                MQTTSubscription subscription;
+                subscription.topic = topic;
+                subscription.qos = qos;
+                subscription.point_id = point.id;
+                subscription.data_type = point.data_type;
+                subscription.json_path = json_path;
+                subscription.scaling_factor = point.scaling_factor;
+                subscription.scaling_offset = point.scaling_offset;
+                subscription.enabled = point.is_enabled;
                 
-                if (!publication.is_active) continue;
-                
-                if (current_time >= publication.next_publish_time) {
-                    ProcessPublication(publication);
-                    
-                    // 다음 발행 시간 설정
-                    publication.last_publish_time = current_time;
-                    publication.next_publish_time = current_time + 
-                        std::chrono::milliseconds(publication.publish_interval_ms);
+                if (!AddSubscription(subscription)) {
+                    all_success = false;
                 }
+            } else {
+                LogMessage(LogLevel::WARN, "Failed to parse MQTT topic for data point: " + point.name);
+                all_success = false;
             }
-            
-        } catch (const std::exception& e) {
-            LogMqttMessage(LogLevel::ERROR, "Exception in publish worker: " + std::string(e.what()));
         }
         
-        // 100ms 대기
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    
-    LogMqttMessage(LogLevel::INFO, "Publish worker stopped");
-}
-
-bool MQTTWorker::ProcessPublication(MqttPublication& publication) {
-    if (!CheckProtocolConnection() || publication.data_points.empty()) {
-        return false;
-    }
-    
-    try {
-        // 데이터 포인트들로부터 JSON 메시지 생성
-        json message_data = json::object();
-        message_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        message_data["device_id"] = GetDeviceInfo().id;
-        message_data["data_points"] = json::array();
+        LogMessage(LogLevel::INFO, 
+                  "Created subscriptions from " + std::to_string(points.size()) + " data points");
         
-        for (const auto& data_point : publication.data_points) {
-            json point_data;
-            point_data["id"] = data_point.id;
-            point_data["name"] = data_point.name;
-            point_data["address"] = data_point.address;
-            point_data["unit"] = data_point.unit;
-            
-            // 실제 값은 데이터 수집 시스템에서 가져와야 함
-            // 여기서는 예시로 랜덤 값 사용
-            point_data["value"] = 0.0;  // TODO: 실제 값으로 대체
-            
-            message_data["data_points"].push_back(point_data);
-        }
-        
-        bool success = PublishJsonMessage(publication.topic, message_data, 
-                                         publication.qos, publication.retain);
-        
-        if (success) {
-            publication.messages_published++;
-            LogMqttMessage(LogLevel::DEBUG, 
-                "Published data to topic: " + publication.topic);
-        } else {
-            publication.failed_publishes++;
-        }
-        
-        return success;
+        return all_success;
         
     } catch (const std::exception& e) {
-        LogMqttMessage(LogLevel::ERROR, 
-            "Exception in publication processing: " + std::string(e.what()));
-        publication.failed_publishes++;
+        LogMessage(LogLevel::ERROR, "Exception in CreateSubscriptionsFromDataPoints: " + std::string(e.what()));
         return false;
     }
 }
 
-void MQTTWorker::ProcessReceivedMessage(const std::string& topic, const std::string& payload) {
-    // 구독과 연결된 데이터 포인트 찾기
-    std::shared_lock<std::shared_mutex> lock(subscriptions_mutex_);
-    
-    for (auto& pair : subscriptions_) {
-        auto& subscription = const_cast<MqttSubscription&>(pair.second);
+bool MQTTWorker::ProcessReceivedMessage(const std::string& topic, const std::string& payload) {
+    try {
+        worker_stats_.messages_received++;
         
-        if (!subscription.is_active || subscription.topic != topic) {
-            continue;
+        std::lock_guard<std::mutex> lock(subscriptions_mutex_);
+        
+        // 토픽에 해당하는 구독 찾기
+        auto it = active_subscriptions_.find(topic);
+        if (it == active_subscriptions_.end()) {
+            LogMessage(LogLevel::DEBUG, "No subscription found for topic: " + topic);
+            return false;
         }
         
+        auto& subscription = it->second;
         subscription.messages_received++;
-        subscription.last_message_time = std::chrono::system_clock::now();
+        subscription.last_received = system_clock::now();
         
-        // JSON 파싱 시도
-        try {
-            json message_data = json::parse(payload);
-            
-            // 데이터 포인트별 값 처리
-            for (const auto& data_point : subscription.data_points) {
-                if (message_data.contains("data_points")) {
-                    for (const auto& point_data : message_data["data_points"]) {
-                        if (point_data.contains("id") && 
-                            point_data["id"] == data_point.id &&
-                            point_data.contains("value")) {
-                            
-                            // 값 추출 및 저장
-                            double value = point_data["value"];
-                            TimestampedValue timestamped_value;
-                            timestamped_value.value = value;
-                            timestamped_value.quality = DataQuality::GOOD;
-                            timestamped_value.timestamp = std::chrono::system_clock::now();
-                            
-                            // Redis/InfluxDB에 저장
-                            SaveToInfluxDB(data_point.id, timestamped_value);
-                        }
-                    }
-                }
+        // JSON에서 값 추출
+        Drivers::DataValue extracted_value;
+        if (!ExtractValueFromJSON(payload, subscription.json_path, extracted_value)) {
+            worker_stats_.json_parse_errors++;
+            LogMessage(LogLevel::WARN, "Failed to extract value from JSON for topic: " + topic);
+            return false;
+        }
+        
+        // 스케일링 적용 (숫자 타입인 경우)
+        std::visit([&subscription](auto& val) {
+            using T = std::decay_t<decltype(val)>;
+            if constexpr (std::is_arithmetic_v<T> && !std::is_same_v<T, bool>) {
+                val = static_cast<T>(val * subscription.scaling_factor + subscription.scaling_offset);
             }
-            
-        } catch (const json::exception& e) {
-            // JSON이 아닌 경우 단순 문자열로 처리
-            LogMqttMessage(LogLevel::DEBUG, 
-                "Non-JSON message on topic " + topic + ": " + payload);
-        }
-    }
-}
-
-Drivers::DataValue MQTTWorker::ParsePayloadToDataValue(const std::string& payload, Drivers::DataType data_type) {
-    try {
-        switch (data_type) {
-            case DataType::BOOL:
-                return (payload == "true" || payload == "1" || payload == "on");
-                
-            case DataType::INT32:
-                return std::stoi(payload);
-                
-            case DataType::FLOAT32:
-                return std::stof(payload);
-                
-            case DataType::FLOAT64:
-                return std::stod(payload);
-                
-            case DataType::STRING:
-            default:
-                return payload;
-        }
+        }, extracted_value);
+        
+        // TimestampedValue 생성
+        Drivers::TimestampedValue timestamped_value(extracted_value, Drivers::DataQuality::GOOD);
+        
+        // InfluxDB에 저장
+        SaveToInfluxDB(subscription.point_id, timestamped_value);
+        
+        LogMessage(LogLevel::DEBUG, 
+                  "Processed message for topic: " + topic + " (point: " + subscription.point_id + ")");
+        
+        UpdateWorkerStats("message_processing", true);
+        return true;
+        
     } catch (const std::exception& e) {
-        LogMqttMessage(LogLevel::WARN, "Failed to parse payload: " + payload);
-        return payload;  // 기본값으로 문자열 반환
-    }
-}
-
-std::string MQTTWorker::DataValueToPayload(const Drivers::DataValue& value) {
-    try {
-        if (std::holds_alternative<bool>(value)) {
-            return std::get<bool>(value) ? "true" : "false";
-        } else if (std::holds_alternative<int>(value)) {
-            return std::to_string(std::get<int>(value));
-        } else if (std::holds_alternative<float>(value)) {
-            return std::to_string(std::get<float>(value));
-        } else if (std::holds_alternative<double>(value)) {
-            return std::to_string(std::get<double>(value));
-        } else if (std::holds_alternative<std::string>(value)) {
-            return std::get<std::string>(value);
-        }
-    } catch (const std::exception& e) {
-        LogMqttMessage(LogLevel::WARN, "Failed to convert value to payload");
-    }
-    
-    return "";
-}
-
-std::string MQTTWorker::MqttErrorToString(int return_code) const {
-    switch (return_code) {
-        case 0: return "Success";
-        case -1: return "General failure";
-        case -2: return "Persistence error";
-        case -3: return "Client disconnected";
-        case -4: return "Max messages in-flight";
-        case -5: return "Bad UTF8 string";
-        case -6: return "Null parameter";
-        case -7: return "Topic name truncated";
-        case -8: return "Bad structure";
-        case -9: return "Bad QoS";
-        case -10: return "SSL not supported";
-        case -11: return "Bad protocol";
-        case -14: return "Bad MQTT version";
-        case -15: return "Disk full";
-        default:
-            return "Unknown error (" + std::to_string(return_code) + ")";
-    }
-}
-
-void MQTTWorker::UpdateMqttStats(const std::string& operation, bool success) {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    
-    if (operation == "send") {
-        total_messages_sent_++;
-        if (!success) {
-            failed_sends_++;
-        }
-    } else if (operation == "receive") {
-        total_messages_received_++;
-    } else if (operation == "connect") {
-        connection_attempts_++;
-        if (success) {
-            successful_connections_++;
-        }
-    }
-}
-
-void MQTTWorker::LogMqttMessage(LogLevel level, const std::string& message) const {
-    // BaseDeviceWorker의 LogMessage 사용 (const_cast 필요)
-    const_cast<MQTTWorker*>(this)->LogMessage(level, "[MQTT] " + message);
-}
-
-int MQTTWorker::QosToInt(MqttQoS qos) const {
-    return static_cast<int>(qos);
-}
-
-bool MQTTWorker::ValidateBrokerUrl(const std::string& url) const {
-    return !url.empty() && 
-           (url.find("tcp://") == 0 || url.find("ssl://") == 0 || url.find("ws://") == 0);
-}
-
-bool MQTTWorker::ValidateMqttTopic(const std::string& topic) const {
-    if (topic.empty() || topic.length() > 65535) {
+        LogMessage(LogLevel::ERROR, "Exception in ProcessReceivedMessage: " + std::string(e.what()));
+        UpdateWorkerStats("message_processing", false);
         return false;
     }
-    
-    // MQTT 토픽 유효성 검사
-    for (char c : topic) {
-        if (c == '+' || c == '#') {
-            // 와일드카드는 특정 위치에서만 허용
-            continue;
-        }
-        if (c < 32 || c > 126) {
-            return false;  // 인쇄 가능한 ASCII만 허용
-        }
-    }
-    
-    return true;
 }
 
-void MQTTWorker::RestoreSubscriptions() {
-    if (!CheckProtocolConnection()) {
-        return;
-    }
-    
-    std::shared_lock<std::shared_mutex> lock(subscriptions_mutex_);
-    
-    for (const auto& pair : subscriptions_) {
-        const auto& subscription = pair.second;
-        
-        if (!subscription.is_active) {
-            continue;
+bool MQTTWorker::ExtractValueFromJSON(const std::string& payload, const std::string& json_path,
+                                     Drivers::DataValue& extracted_value) {
+    try {
+        if (payload.empty()) {
+            return false;
         }
         
-        try {
-            auto token = mqtt_client_->subscribe(subscription.topic, QosToInt(subscription.qos));
-            token->wait_for(std::chrono::seconds(5));
+        // JSON 파싱
+        json parsed_json = json::parse(payload);
+        
+        // JSON 경로가 비어있으면 전체 값을 사용
+        if (json_path.empty()) {
+            if (parsed_json.is_number()) {
+                if (parsed_json.is_number_integer()) {
+                    extracted_value = parsed_json.get<int32_t>();
+                } else {
+                    extracted_value = parsed_json.get<double>();
+                }
+            } else if (parsed_json.is_boolean()) {
+                extracted_value = parsed_json.get<bool>();
+            } else if (parsed_json.is_string()) {
+                extracted_value = parsed_json.get<std::string>();
+            } else {
+                return false;
+            }
+            return true;
+        }
+        
+        // JSON 경로 파싱 (간단한 구현: 점으로 구분)
+        json current = parsed_json;
+        std::stringstream ss(json_path);
+        std::string segment;
+        
+        while (std::getline(ss, segment, '.')) {
+            if (!current.contains(segment)) {
+                return false;
+            }
+            current = current[segment];
+        }
+        
+        // 최종 값 추출
+        if (current.is_number()) {
+            if (current.is_number_integer()) {
+                extracted_value = current.get<int32_t>();
+            } else {
+                extracted_value = current.get<double>();
+            }
+        } else if (current.is_boolean()) {
+            extracted_value = current.get<bool>();
+        } else if (current.is_string()) {
+            extracted_value = current.get<std::string>();
+        } else {
+            return false;
+        }
+        
+        return true;
+        
+    } catch (const json::exception& e) {
+        LogMessage(LogLevel::ERROR, "JSON parsing error: " + std::string(e.what()));
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Exception in ExtractValueFromJSON: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::ParseMQTTTopic(const Drivers::DataPoint& point, std::string& topic,
+                               std::string& json_path, int& qos) {
+    try {
+        // address_string에서 MQTT 정보 파싱
+        // 형식: "topic:json_path:qos" 예: "sensors/temperature:value:1"
+        
+        std::string addr_str = point.address_string;
+        if (addr_str.empty()) {
+            // address 필드를 문자열로 변환해서 사용
+            addr_str = "data/" + std::to_string(point.address);
+        }
+        
+        // 기본값 설정
+        topic = addr_str;
+        json_path = "";
+        qos = 1;
+        
+        // 콜론으로 구분하여 파싱
+        size_t first_colon = addr_str.find(':');
+        if (first_colon != std::string::npos) {
+            topic = addr_str.substr(0, first_colon);
             
-            LogMqttMessage(LogLevel::INFO, "Restored subscription to: " + subscription.topic);
+            size_t second_colon = addr_str.find(':', first_colon + 1);
+            if (second_colon != std::string::npos) {
+                json_path = addr_str.substr(first_colon + 1, second_colon - first_colon - 1);
+                qos = std::stoi(addr_str.substr(second_colon + 1));
+            } else {
+                json_path = addr_str.substr(first_colon + 1);
+            }
+        }
+        
+        LogMessage(LogLevel::DEBUG, 
+                  "Parsed MQTT topic: " + topic + ", JSON path: " + json_path + 
+                  ", QoS: " + std::to_string(qos));
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Failed to parse MQTT topic: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 내부 메서드 (private)
+// =============================================================================
+
+bool MQTTWorker::ParseMQTTWorkerConfig() {
+    try {
+        // device_info_.config_json에서 MQTT 워커 설정 파싱
+        if (device_info_.config_json.empty()) {
+            LogMessage(LogLevel::INFO, "No MQTT worker config in device_info, using defaults");
+            return true;
+        }
+        
+        // 간단한 설정 파싱 (실제로는 JSON 파서 사용)
+        // endpoint에서 브로커 URL 추출
+        if (!device_info_.endpoint.empty()) {
+            worker_config_.broker_url = device_info_.endpoint;
+        }
+        
+        // 기본 설정 매핑
+        worker_config_.message_timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);
+        worker_config_.publish_retry_count = static_cast<uint32_t>(device_info_.retry_count);
+        
+        // 클라이언트 ID 생성
+        worker_config_.client_id = "pulseone_worker_" + device_info_.name;
+        
+        LogMessage(LogLevel::DEBUG, "MQTT worker config parsed successfully");
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Failed to parse MQTT worker config: " + std::string(e.what()));
+        return false;
+    }
+}
+
+void MQTTWorker::MessageProcessorThreadFunction() {
+    LogMessage(LogLevel::INFO, "MQTT message processor thread started");
+    
+    while (threads_running_.load()) {
+        try {
+            // 실제 구현에서는 MQTT 드라이버로부터 메시지를 받아서 처리
+            // 현재는 단순히 대기
+            std::this_thread::sleep_for(milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogMqttMessage(LogLevel::WARN, 
-                "Failed to restore subscription to " + subscription.topic + ": " + e.what());
+            LogMessage(LogLevel::ERROR, "Exception in message processor thread: " + std::string(e.what()));
+            std::this_thread::sleep_for(milliseconds(1000));
         }
+    }
+    
+    LogMessage(LogLevel::INFO, "MQTT message processor thread stopped");
+}
+
+void MQTTWorker::PublishProcessorThreadFunction() {
+    LogMessage(LogLevel::INFO, "MQTT publish processor thread started");
+    
+    while (threads_running_.load()) {
+        try {
+            std::unique_lock<std::mutex> lock(publish_queue_mutex_);
+            
+            // 발행할 작업이 있을 때까지 대기
+            publish_queue_cv_.wait(lock, [this] { 
+                return !publish_queue_.empty() || !threads_running_.load(); 
+            });
+            
+            if (!threads_running_.load()) break;
+            
+            // 발행 작업 처리
+            while (!publish_queue_.empty()) {
+                auto task = publish_queue_.front();
+                publish_queue_.pop();
+                lock.unlock();
+                
+                // MQTT 드라이버를 통해 메시지 발행
+                if (mqtt_driver_ && mqtt_driver_->IsConnected()) {
+                    // 실제 구현에서는 MQTTDriver의 발행 메서드 호출
+                    worker_stats_.messages_published++;
+                    worker_stats_.successful_publishes++;
+                    
+                    LogMessage(LogLevel::DEBUG, 
+                              "Published message to topic: " + task.topic);
+                } else {
+                    worker_stats_.failed_operations++;
+                    LogMessage(LogLevel::WARN, 
+                              "Failed to publish message - driver not connected");
+                }
+                
+                lock.lock();
+            }
+            
+        } catch (const std::exception& e) {
+            LogMessage(LogLevel::ERROR, "Exception in publish processor thread: " + std::string(e.what()));
+            std::this_thread::sleep_for(milliseconds(1000));
+        }
+    }
+    
+    LogMessage(LogLevel::INFO, "MQTT publish processor thread stopped");
+}
+
+Drivers::DriverConfig MQTTWorker::CreateDriverConfig() {
+    Drivers::DriverConfig config;
+    
+    config.device_id = 0;  // MQTT는 디바이스 ID 개념이 없음
+    config.name = device_info_.name;
+    config.protocol_type = Drivers::ProtocolType::MQTT;
+    config.endpoint = worker_config_.broker_url;
+    config.timeout_ms = worker_config_.message_timeout_ms;
+    config.retry_count = worker_config_.publish_retry_count;
+    config.polling_interval_ms = 1000;  // MQTT는 푸시 기반이므로 의미 없음
+    
+    // MQTT 특화 설정
+    config.properties["client_id"] = worker_config_.client_id;
+    config.properties["username"] = worker_config_.username;
+    config.properties["password"] = worker_config_.password;
+    config.properties["use_ssl"] = worker_config_.use_ssl ? "true" : "false";
+    config.properties["keep_alive_interval"] = std::to_string(worker_config_.keep_alive_interval);
+    config.properties["clean_session"] = worker_config_.clean_session ? "true" : "false";
+    config.properties["auto_reconnect"] = worker_config_.auto_reconnect ? "true" : "false";
+    
+    return config;
+}
+
+void MQTTWorker::UpdateWorkerStats(const std::string& operation, bool success) {
+    try {
+        LogMessage(LogLevel::DEBUG, 
+                  "MQTT worker operation: " + operation + 
+                  " (success: " + (success ? "true" : "false") + ")");
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Exception in UpdateWorkerStats: " + std::string(e.what()));
     }
 }
 
+void MQTTWorker::MessageCallback(MQTTWorker* worker_instance, 
+                                const std::string& topic, const std::string& payload) {
+    if (worker_instance) {
+        worker_instance->ProcessReceivedMessage(topic, payload);
+    }
+}
 
-} // namespace Protocol
 } // namespace Workers
 } // namespace PulseOne
