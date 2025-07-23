@@ -6,7 +6,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -DDEBUG -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
 LDFLAGS = 
-LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3
+LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3 -lbacnet
 
 # 프로젝트 설정
 PROJECT_NAME = pulseone_collector
@@ -389,3 +389,10 @@ test-help:
 	@echo -e "  make test-run                # Build and run all tests"
 	@echo -e "  make clean-all               # Clean everything including tests"
 	@echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+
+# BACnet 설정 추가
+BACNET_CFLAGS = $(shell pkg-config --cflags bacnet)
+BACNET_LIBS = $(shell pkg-config --libs bacnet)
+
+CXXFLAGS += $(BACNET_CFLAGS)
+LIBS += $(BACNET_LIBS)
