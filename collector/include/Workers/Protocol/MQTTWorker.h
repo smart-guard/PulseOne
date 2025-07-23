@@ -30,6 +30,20 @@
 namespace PulseOne {
 namespace Workers {
 
+
+// =============================================================================
+// MQTT QoS 레벨 정의
+// =============================================================================
+
+/**
+ * @brief MQTT QoS 레벨
+ */
+enum class MqttQoS {
+    AT_MOST_ONCE = 0,      ///< 최대 한번 전송 (Fire and forget)
+    AT_LEAST_ONCE = 1,     ///< 최소 한번 전송 (ACK 필요)
+    EXACTLY_ONCE = 2       ///< 정확히 한번 전송 (핸드셰이크)
+};
+
 /**
  * @brief MQTT 토픽 구독 정보
  */
@@ -145,7 +159,28 @@ public:
     // =============================================================================
     // BaseDeviceWorker 인터페이스 구현
     // =============================================================================
+    /**
+     * @brief QoS enum을 정수로 변환 (정적 메서드)
+     * @param qos QoS enum
+     * @return QoS 정수 값
+     */
+    static int QosToInt(MqttQoS qos) {
+        return static_cast<int>(qos);
+    }
     
+    /**
+     * @brief 정수를 QoS enum으로 변환 (정적 메서드)
+     * @param qos_int QoS 정수 값
+     * @return QoS enum
+     */
+    static MqttQoS IntToQos(int qos_int) {
+        switch (qos_int) {
+            case 0: return MqttQoS::AT_MOST_ONCE;
+            case 2: return MqttQoS::EXACTLY_ONCE;
+            default: return MqttQoS::AT_LEAST_ONCE;
+        }
+    }
+
     std::future<bool> Start() override;
     std::future<bool> Stop() override;
     bool EstablishConnection() override;

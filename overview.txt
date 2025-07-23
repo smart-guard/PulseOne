@@ -1,30 +1,53 @@
 # ============================================================================
-# PulseOne Project Configuration Files
+# PulseOne Project Overview (3-Level Structure)
 # Generated: 2025-07-24 08:15:21
 # ============================================================================
 
 .
+├── architecture.txt
 ├── backend
 │   ├── __mocks__
+│   │   └── redis.js
 │   ├── __tests__
+│   │   ├── app.test.js
+│   │   ├── db.test.js
+│   │   ├── mq.test.js
+│   │   ├── redis.test.js
+│   │   ├── rpc.test.js
+│   │   ├── timeseries.test.js
+│   │   └── user.test.js
+│   ├── app.js
 │   ├── Dockerfile
 │   ├── Dockerfile.dev
+│   ├── index.js
 │   ├── lib
 │   │   ├── config
 │   │   ├── connection
 │   │   └── services
 │   ├── package-lock.json
 │   ├── package.json
+│   ├── README.md
 │   ├── routes
+│   │   ├── api.js
+│   │   ├── health.js
+│   │   ├── processes.js
+│   │   ├── services.js
+│   │   ├── system.js
+│   │   └── user.js
 │   └── scripts
+│       ├── init-helper.js
+│       ├── smart-db-initializer.js
+│       └── validate-env.js
 ├── backup
 │   └── old_schemas
+│       └── schema.sql
+├── CLAUDE.md
 ├── collector
 │   ├── backup
 │   │   ├── 20250719_232257
-│   │   │   └── src_Engine_backup
 │   │   ├── 20250719_234333
-│   │   │   └── src_Engine_backup
+│   │   ├── DeviceManager.cpp
+│   │   ├── DeviceManager.h
 │   │   └── Engine_backup
 │   ├── CMakeLists.txt
 │   ├── Dockerfile
@@ -34,50 +57,48 @@
 │   │   ├── Core
 │   │   ├── Database
 │   │   ├── Drivers
-│   │   │   ├── Bacnet
-│   │   │   ├── Common
-│   │   │   ├── Modbus
-│   │   │   ├── Mqtt
-│   │   │   └── Wireless
 │   │   ├── Publisher
 │   │   ├── Utils
 │   │   └── Workers
-│   │       ├── Base
-│   │       ├── Components
-│   │       └── Protocol
 │   ├── lib
 │   ├── Makefile
+│   ├── README.md
 │   ├── src
 │   │   ├── Client
 │   │   ├── Config
 │   │   ├── Core
 │   │   ├── Database
 │   │   ├── Drivers
-│   │   │   ├── Bacnet
-│   │   │   ├── Common
-│   │   │   ├── Modbus
-│   │   │   ├── Mqtt
-│   │   │   └── Wireless
+│   │   ├── main.cpp
 │   │   ├── Publisher
 │   │   ├── Utils
 │   │   └── Workers
-│   │       ├── Base
-│   │       ├── Components
-│   │       └── Protocol
+│   ├── temp_fix_includes.sh
 │   ├── test
+│   │   ├── test_common_types.cpp
+│   │   ├── test_driver_logger.cpp
+│   │   ├── test_mqtt_driver.cpp
+│   │   └── test_sample.txt
 │   └── tests
 │       ├── CMakeLists.txt
-│       └── Driver
-│           └── Mqtt
+│       ├── complete_mqtt_test.cpp
+│       ├── Driver
+│       ├── path_corrected_test.cpp
+│       ├── setup_docker_test_env.sh
+│       └── simple_mqtt_test.cpp
 ├── config
 │   ├── config.json
 │   ├── drivers
 │   │   ├── drivers.dev.conf
 │   │   ├── drivers.prod.conf
 │   │   └── drivers.staging.conf
-│   └── drivers.conf
+│   ├── drivers.conf
+│   ├── env.js
+│   ├── index.js
+│   └── README.md
 ├── docker
-│   └── docker-compose.yml
+│   ├── docker-compose.yml
+│   └── README.md
 ├── docker-compose.dev.yml
 ├── driver
 │   ├── BACnetDriver
@@ -86,28 +107,42 @@
 │   ├── ModbusDriver
 │   │   ├── Makefile
 │   │   └── src
-│   └── MQTTDriver
-│       ├── Makefile
-│       └── src
+│   ├── MQTTDriver
+│   │   ├── Makefile
+│   │   └── src
+│   └── README.md
 ├── frontend
 │   ├── Dockerfile
 │   ├── Dockerfile.dev
+│   ├── index.html
 │   ├── package.json
 │   ├── public
 │   ├── src
+│   │   ├── App.tsx
 │   │   ├── components
-│   │   │   ├── common
-│   │   │   └── layout
 │   │   ├── hooks
+│   │   ├── main.tsx
 │   │   ├── pages
 │   │   ├── services
 │   │   ├── store
 │   │   ├── styles
 │   │   ├── types
 │   │   └── utils
-│   └── tsconfig.json
+│   ├── tsconfig.json
+│   └── vite.config.ts
 ├── package-lock.json
+├── project-filetree.sh
+├── README.md
+├── schema.txt
 ├── scripts
-└── secrets
+│   ├── dev_build.sh
+│   ├── dev-frontend.sh
+│   ├── dev-setup.sh
+│   ├── prod-build.sh
+│   ├── quick-dev.sh
+│   └── setup-replication.js
+├── secrets
+│   └── anthropic_api_key
+└── structure.txt
 
-82 directories, 24 files
+61 directories, 80 files

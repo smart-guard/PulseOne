@@ -6,8 +6,8 @@
       "type": "lldb",
       "request": "launch",
       "args": [],
-      "cwd": "/Users/kyungho/Project/PulseOne/collector/src",
-      "program": "/Users/kyungho/Project/PulseOne/collector/src/build/Debug/outDebug"
+      "cwd": "/Users/kyungho/Project/PulseOne/collector/src/Workers/Protocol",
+      "program": "/Users/kyungho/Project/PulseOne/collector/src/Workers/Protocol/build/Debug/outDebug"
     }
   ]
 }
