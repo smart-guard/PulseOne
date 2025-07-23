@@ -1,4 +1,4 @@
-# collector/Dockerfile.dev - 수정된 버전
+# collector/Dockerfile.dev - BACnet 라이브러리 포함 버전
 FROM gcc:latest
 
 # 기본 패키지 설치
@@ -8,10 +8,11 @@ RUN apt-get update && apt-get install -y \
     curl git nodejs npm pkg-config \
     wget unzip \
     libssl-dev uuid-dev \
+    autotools-dev autoconf automake libtool \
     && rm -rf /var/lib/apt/lists/*
 
 # =============================================================================
-# 필수 라이브러리들만 설치 (안정적인 버전)
+# 필수 라이브러리들 설치 (안정적인 버전)
 # =============================================================================
 
 # 1. libmodbus 설치
@@ -53,17 +54,54 @@ RUN echo "🔧 Installing spdlog..." && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/spdlog && echo "✅ spdlog installed"
 
-# 6. BACnet 헤더 파일들 (헤더만 설치)
-RUN echo "🔧 Installing BACnet headers..." && \
+# 6. BACnet Stack 완전 설치 및 라이브러리 생성 🎯
+RUN echo "🔧 Installing BACnet Stack with library..." && \
     cd /tmp && git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
+    cd bacnet-stack && \
+    echo "📋 Configuring BACnet build..." && \
+    # BACnet 빌드 설정
+    export BACNET_PORT=linux && \
+    export BACNET_DEFINES="-DPRINT_ENABLED=1 -DBACAPP_ALL -DBACFILE -DINTRINSIC_REPORTING" && \
+    echo "🔨 Building BACnet Stack..." && \
+    make clean && \
+    make -j$(nproc) all && \
+    echo "📦 Creating BACnet library..." && \
+    # 모든 오브젝트 파일을 정적 라이브러리로 생성
+    find . -name "*.o" -exec ar rcs libbacnet.a {} + && \
+    echo "📂 Installing BACnet files..." && \
+    # 헤더 파일 설치
     mkdir -p /usr/local/include/bacnet && \
-    find bacnet-stack -name "*.h" -exec cp {} /usr/local/include/bacnet/ \; 2>/dev/null || true && \
-    cd / && rm -rf /tmp/bacnet-stack && echo "✅ BACnet headers installed"
+    find . -name "*.h" -exec cp --parents {} /usr/local/include/bacnet/ \; && \
+    # 라이브러리 설치
+    cp libbacnet.a /usr/local/lib/ && \
+    # 오브젝트 파일들도 설치 (개별 사용 가능하도록)
+    find . -name "*.o" -exec cp --parents {} /usr/local/include/bacnet/ \; && \
+    # 라이브러리 캐시 업데이트
+    ldconfig && \
+    echo "🧹 Cleaning up..." && \
+    cd / && rm -rf /tmp/bacnet-stack && \
+    echo "✅ BACnet Stack completely installed"
+
+# 7. BACnet pkg-config 파일 생성
+RUN echo "📝 Creating BACnet pkg-config file..." && \
+    mkdir -p /usr/local/lib/pkgconfig && \
+    cat > /usr/local/lib/pkgconfig/bacnet.pc << 'EOF'
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: BACnet Stack
+Description: BACnet protocol stack library
+Version: 1.0.0
+Libs: -L${libdir} -lbacnet
+Cflags: -I${includedir}/bacnet -DPRINT_ENABLED=1 -DBACAPP_ALL -DBACFILE -DINTRINSIC_REPORTING
+EOF
 
 # =============================================================================
-# PKG-CONFIG 파일 생성 (라이브러리 찾기 도움)
+# 기존 PKG-CONFIG 파일들
 # =============================================================================
-RUN echo "📝 Creating pkg-config files..." && \
+RUN echo "📝 Creating other pkg-config files..." && \
     # libmodbus
     cat > /usr/local/lib/pkgconfig/libmodbus.pc << 'EOF'
 prefix=/usr/local
@@ -78,23 +116,56 @@ Libs: -L${libdir} -lmodbus
 Cflags: -I${includedir}
 EOF
 
+# =============================================================================
 # 환경 변수 설정
+# =============================================================================
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+ENV BACNET_PORT=linux
+ENV BACNET_DEFINES="-DPRINT_ENABLED=1 -DBACAPP_ALL -DBACFILE -DINTRINSIC_REPORTING"
 
-# 작업 디렉토리 설정
-WORKDIR /app
-
-# 개발용 스크립트 추가
+# =============================================================================
+# 개발용 스크립트 개선
+# =============================================================================
 RUN echo '#!/bin/bash' > /usr/local/bin/dev-build.sh && \
     echo 'echo "🔧 PulseOne Collector 개발 빌드"' >> /usr/local/bin/dev-build.sh && \
     echo 'cd /app/collector' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "📋 라이브러리 확인:"' >> /usr/local/bin/dev-build.sh && \
-    echo 'pkg-config --list-all | grep -E "(modbus|paho|hiredis)" || echo "  (pkg-config에서 확인 안됨)"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "📋 설치된 라이브러리 확인:"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  libmodbus: $(pkg-config --exists libmodbus && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  BACnet: $(pkg-config --exists bacnet && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  BACnet library: $(ls -la /usr/local/lib/libbacnet.a 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  Paho MQTT: $(ls -la /usr/local/lib/libpaho-mqtt3c.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo ""' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "🔨 빌드 시작:"' >> /usr/local/bin/dev-build.sh && \
     echo 'make clean && make debug' >> /usr/local/bin/dev-build.sh && \
     chmod +x /usr/local/bin/dev-build.sh
 
+# BACnet 설치 확인 스크립트
+RUN echo '#!/bin/bash' > /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "🔍 BACnet 설치 확인:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "📂 헤더 파일들:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'find /usr/local/include/bacnet -name "*.h" | head -10' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "📦 라이브러리 파일:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'ls -la /usr/local/lib/libbacnet.a' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "📋 라이브러리 크기:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'du -h /usr/local/lib/libbacnet.a' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "🧪 pkg-config 테스트:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'pkg-config --cflags bacnet' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'pkg-config --libs bacnet' >> /usr/local/bin/check-bacnet.sh && \
+    chmod +x /usr/local/bin/check-bacnet.sh
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
 # 기본 명령어
 CMD ["/bin/bash"]
+
+# =============================================================================
+# 빌드 완료 후 확인사항 출력
+# =============================================================================
+RUN echo "🎉 Docker 이미지 빌드 완료!" && \
+    echo "📦 설치된 BACnet 라이브러리:" && \
+    ls -la /usr/local/lib/libbacnet.a && \
+    echo "📋 BACnet 헤더 파일 개수:" && \
+    find /usr/local/include/bacnet -name "*.h" | wc -l && \
+    echo "✅ 모든 라이브러리 설치 완료"
