@@ -1,20 +1,23 @@
 /**
  * @file ModbusRtuWorker.cpp
- * @brief Modbus RTU 워커 구현
+ * @brief Modbus RTU 워커 클래스 구현
+ * @details SerialBasedWorker 기반의 Modbus RTU 프로토콜 구현
  * @author PulseOne Development Team
- * @date 2025-01-21
+ * @date 2025-01-23
  * @version 1.0.0
  */
 
 #include "Workers/Protocol/ModbusRtuWorker.h"
 #include "Utils/LogManager.h"
+#include <iostream>
 #include <sstream>
 #include <iomanip>
-#include <thread>
 #include <algorithm>
 #include <cstring>
-#include <errno.h>
+#include <thread>
 
+using namespace PulseOne::Workers::Protocol;
+using namespace PulseOne::Drivers;
 using namespace std::chrono;
 
 namespace PulseOne {
@@ -25,30 +28,63 @@ namespace Protocol {
 // 생성자 및 소멸자
 // =============================================================================
 
-ModbusRtuWorker::ModbusRtuWorker(const Drivers::DeviceInfo& device_info,
-                                 std::shared_ptr<RedisClient> redis_client,
-                                 std::shared_ptr<InfluxClient> influx_client)
+ModbusRtuWorker::ModbusRtuWorker(
+    const Drivers::DeviceInfo& device_info,
+    std::shared_ptr<RedisClient> redis_client,
+    std::shared_ptr<InfluxClient> influx_client)
     : SerialBasedWorker(device_info, redis_client, influx_client)
-    , modbus_ctx_(nullptr)
+    , modbus_driver_(nullptr)
     , default_slave_id_(1)
     , response_timeout_ms_(1000)
-    , byte_timeout_ms_(1000)
-    , bus_lock_time_ms_(10)  // 10ms 버스 락
+    , byte_timeout_ms_(100)
+    , inter_frame_delay_ms_(50)
     , next_group_id_(1)
     , stop_workers_(false)
-    , total_reads_(0), successful_reads_(0), total_writes_(0)
-    , successful_writes_(0), crc_errors_(0), timeout_errors_(0), bus_errors_(0) {
+    , total_reads_(0)
+    , successful_reads_(0)
+    , total_writes_(0)
+    , successful_writes_(0)
+    , crc_errors_(0)
+    , timeout_errors_(0)
+    , frame_errors_(0) {
     
-    LogModbusMessage(LogLevel::INFO, "ModbusRtuWorker created for device: " + device_info.name);
+    // ModbusDriver 생성
+    modbus_driver_ = std::make_unique<Drivers::ModbusDriver>();
     
-    // 기본 재연결 설정 (RTU는 시리얼이므로 더 빠른 재연결)
-    ReconnectionSettings settings;
-    settings.auto_reconnect_enabled = true;
-    settings.retry_interval_ms = 2000;          // RTU는 빠른 재연결
-    settings.max_retries_per_cycle = 5;
-    settings.keep_alive_enabled = true;
-    settings.keep_alive_interval_seconds = 30;  // RTU Keep-alive
-    UpdateReconnectionSettings(settings);
+    // 기본 시리얼 버스 설정
+    ConfigureSerialBus(SerialBusConfig());
+    
+    // DeviceInfo에서 시리얼 포트 정보 파싱
+    if (!device_info.endpoint.empty()) {
+        serial_bus_config_.port_name = device_info.endpoint;
+        
+        // endpoint에서 설정 파라미터 파싱 (예: "/dev/ttyUSB0:9600:8:N:1")
+        size_t colon_pos = device_info.endpoint.find(':');
+        if (colon_pos != std::string::npos) {
+            std::string params = device_info.endpoint.substr(colon_pos + 1);
+            std::istringstream iss(params);
+            std::string token;
+            
+            // 보드레이트
+            if (std::getline(iss, token, ':')) {
+                serial_bus_config_.baud_rate = std::stoi(token);
+            }
+            // 데이터 비트
+            if (std::getline(iss, token, ':')) {
+                serial_bus_config_.data_bits = std::stoi(token);
+            }
+            // 패리티
+            if (std::getline(iss, token, ':')) {
+                serial_bus_config_.parity = token[0];
+            }
+            // 스톱 비트
+            if (std::getline(iss, token, ':')) {
+                serial_bus_config_.stop_bits = std::stoi(token);
+            }
+        }
+    }
+    
+    LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker created for port: " + serial_bus_config_.port_name);
 }
 
 ModbusRtuWorker::~ModbusRtuWorker() {
@@ -58,14 +94,7 @@ ModbusRtuWorker::~ModbusRtuWorker() {
         polling_thread_.join();
     }
     
-    // Modbus 컨텍스트 정리
-    if (modbus_ctx_) {
-        modbus_close(modbus_ctx_);
-        modbus_free(modbus_ctx_);
-        modbus_ctx_ = nullptr;
-    }
-    
-    LogModbusMessage(LogLevel::INFO, "ModbusRtuWorker destroyed");
+    LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker destroyed");
 }
 
 // =============================================================================
@@ -73,74 +102,73 @@ ModbusRtuWorker::~ModbusRtuWorker() {
 // =============================================================================
 
 std::future<bool> ModbusRtuWorker::Start() {
-    auto promise = std::make_shared<std::promise<bool>>();
-    auto future = promise->get_future();
-    
-    try {
-        LogModbusMessage(LogLevel::INFO, "Starting Modbus RTU worker...");
-        
-        // 직접 연결 수립 (부모 클래스 호출 제거)
-        if (!EstablishConnection()) {
-            LogModbusMessage(LogLevel::ERROR, "Failed to establish connection");
-            promise->set_value(false);
-            return future;
+    return std::async(std::launch::async, [this]() -> bool {
+        if (GetState() == WorkerState::RUNNING) {
+            LogRtuMessage(LogLevel::WARN, "Worker already running");
+            return true;
         }
         
-        // 상태를 RUNNING으로 변경
-        ChangeState(WorkerState::RUNNING);
+        LogRtuMessage(LogLevel::INFO, "Starting ModbusRtuWorker...");
         
-        // 폴링 스레드 시작
-        stop_workers_ = false;
-        polling_thread_ = std::thread(&ModbusRtuWorker::PollingWorkerLoop, this);
-        
-        LogModbusMessage(LogLevel::INFO, "Modbus RTU worker started successfully");
-        promise->set_value(true);
-        
-    } catch (const std::exception& e) {
-        LogModbusMessage(LogLevel::ERROR, "Start failed: " + std::string(e.what()));
-        ChangeState(WorkerState::ERROR);
-        promise->set_value(false);
-    }
-    
-    return future;
+        try {
+            // 기본 연결 설정
+            if (!EstablishConnection()) {
+                LogRtuMessage(LogLevel::ERROR, "Failed to establish connection");
+                return false;
+            }
+            
+            // 상태 변경
+            ChangeState(WorkerState::RUNNING);
+            
+            // 폴링 스레드 시작
+            stop_workers_ = false;
+            polling_thread_ = std::thread(&ModbusRtuWorker::PollingWorkerThread, this);
+            
+            LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker started successfully");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogRtuMessage(LogLevel::ERROR, "Start failed: " + std::string(e.what()));
+            ChangeState(WorkerState::ERROR);
+            return false;
+        }
+    });
 }
 
 std::future<bool> ModbusRtuWorker::Stop() {
-    auto promise = std::make_shared<std::promise<bool>>();
-    auto future = promise->get_future();
-    
-    try {
-        LogModbusMessage(LogLevel::INFO, "Stopping Modbus RTU worker...");
-        
-        // 상태를 STOPPING으로 변경
-        ChangeState(WorkerState::STOPPING);
-        
-        // 폴링 스레드 정지
-        stop_workers_ = true;
-        if (polling_thread_.joinable()) {
-            polling_thread_.join();
+    return std::async(std::launch::async, [this]() -> bool {
+        if (GetState() == WorkerState::STOPPED) {
+            LogRtuMessage(LogLevel::WARN, "Worker already stopped");
+            return true;
         }
         
-        // 연결 해제
-        CloseConnection();
+        LogRtuMessage(LogLevel::INFO, "Stopping ModbusRtuWorker...");
         
-        // 상태를 STOPPED로 변경
-        ChangeState(WorkerState::STOPPED);
-        
-        LogModbusMessage(LogLevel::INFO, "Modbus RTU worker stopped");
-        promise->set_value(true);
-        
-    } catch (const std::exception& e) {
-        LogModbusMessage(LogLevel::ERROR, "Stop failed: " + std::string(e.what()));
-        ChangeState(WorkerState::ERROR);
-        promise->set_value(false);
-    }
-    
-    return future;
+        try {
+            // 스레드 중지
+            stop_workers_ = true;
+            if (polling_thread_.joinable()) {
+                polling_thread_.join();
+            }
+            
+            // 연결 해제
+            CloseConnection();
+            
+            // 상태 변경
+            ChangeState(WorkerState::STOPPED);
+            
+            LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker stopped successfully");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogRtuMessage(LogLevel::ERROR, "Stop failed: " + std::string(e.what()));
+            return false;
+        }
+    });
 }
 
 WorkerState ModbusRtuWorker::GetState() const {
-    return BaseDeviceWorker::GetState();  // SerialBasedWorker 대신 BaseDeviceWorker 직접 호출
+    return BaseDeviceWorker::GetState();
 }
 
 // =============================================================================
@@ -148,102 +176,72 @@ WorkerState ModbusRtuWorker::GetState() const {
 // =============================================================================
 
 bool ModbusRtuWorker::EstablishProtocolConnection() {
-    std::lock_guard<std::mutex> lock(bus_mutex_);
+    LogRtuMessage(LogLevel::INFO, "Establishing Modbus RTU protocol connection");
+    
+    if (!modbus_driver_) {
+        LogRtuMessage(LogLevel::ERROR, "ModbusDriver not initialized");
+        return false;
+    }
     
     try {
-        // SerialBasedWorker의 시리얼 설정 접근
-        std::string port = serial_config_.port_name;
-        int baud_rate = serial_config_.baud_rate;
-        char parity = serial_config_.parity;
-        int data_bits = serial_config_.data_bits;
-        int stop_bits = serial_config_.stop_bits;
+        // ModbusDriver 설정 (기본 멤버만 사용)
+        DriverConfig config;
+        config.protocol_type = ProtocolType::MODBUS_RTU;
+        config.endpoint = serial_bus_config_.port_name;  // 시리얼 포트 경로
+        config.timeout_ms = response_timeout_ms_;
+        config.retry_count = 3;  // 기본 재시도 횟수
         
-        LogModbusMessage(LogLevel::INFO, "Creating Modbus RTU context: " + port + 
-                        " (" + std::to_string(baud_rate) + "," + std::string(1, parity) + 
-                        "," + std::to_string(data_bits) + "," + std::to_string(stop_bits) + ")");
+        // RTU 전용 설정은 ModbusDriver가 내부적으로 endpoint를 파싱하여 처리
+        // 또는 별도의 방법으로 전달 (예: 환경 변수, 전역 설정 등)
         
-        modbus_ctx_ = modbus_new_rtu(port.c_str(), baud_rate, parity, data_bits, stop_bits);
-        if (!modbus_ctx_) {
-            LogModbusMessage(LogLevel::ERROR, "Failed to create Modbus RTU context: " + 
-                           std::string(strerror(errno)));
+        // 드라이버 초기화
+        if (!modbus_driver_->Initialize(config)) {
+            LogRtuMessage(LogLevel::ERROR, "Failed to initialize ModbusDriver");
             return false;
         }
         
-        // 타임아웃 설정
-        modbus_set_response_timeout(modbus_ctx_, response_timeout_ms_ / 1000, 
-                                   (response_timeout_ms_ % 1000) * 1000);
-        modbus_set_byte_timeout(modbus_ctx_, byte_timeout_ms_ / 1000, 
-                               (byte_timeout_ms_ % 1000) * 1000);
-        
-        // Modbus 연결
-        if (modbus_connect(modbus_ctx_) == -1) {
-            LogModbusMessage(LogLevel::ERROR, "Failed to connect Modbus RTU: " + 
-                           std::string(modbus_strerror(errno)));
-            modbus_free(modbus_ctx_);
-            modbus_ctx_ = nullptr;
+        // 연결 수립
+        if (!modbus_driver_->Connect()) {
+            ErrorInfo error = modbus_driver_->GetLastError();
+            LogRtuMessage(LogLevel::ERROR, "Failed to connect: " + error.message);
             return false;
         }
         
-        LogModbusMessage(LogLevel::INFO, "Modbus RTU protocol connection established");
+        LogRtuMessage(LogLevel::INFO, "Modbus RTU protocol connection established");
         return true;
         
     } catch (const std::exception& e) {
-        LogModbusMessage(LogLevel::ERROR, "EstablishProtocolConnection failed: " + 
-                        std::string(e.what()));
-        if (modbus_ctx_) {
-            modbus_free(modbus_ctx_);
-            modbus_ctx_ = nullptr;
-        }
+        LogRtuMessage(LogLevel::ERROR, "EstablishProtocolConnection failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool ModbusRtuWorker::CloseProtocolConnection() {
-    std::lock_guard<std::mutex> lock(bus_mutex_);
+    LogRtuMessage(LogLevel::INFO, "Closing Modbus RTU protocol connection");
     
-    if (modbus_ctx_) {
-        modbus_close(modbus_ctx_);
-        modbus_free(modbus_ctx_);
-        modbus_ctx_ = nullptr;
-        LogModbusMessage(LogLevel::INFO, "Modbus RTU protocol connection closed");
+    if (modbus_driver_) {
+        modbus_driver_->Disconnect();
+        LogRtuMessage(LogLevel::INFO, "Modbus RTU protocol connection closed");
     }
     
-    return true;  // bool 타입 반환
+    return true;
 }
 
 bool ModbusRtuWorker::CheckProtocolConnection() {
-    if (!modbus_ctx_) {
+    if (!modbus_driver_) {
         return false;
     }
     
-    // 기본 슬레이브로 간단한 읽기 테스트
-    std::lock_guard<std::mutex> lock(bus_mutex_);
-    
-    modbus_set_slave(modbus_ctx_, default_slave_id_);
-    uint16_t data[1];
-    
-    // 홀딩 레지스터 0번 주소 1개 읽기 시도
-    int result = modbus_read_input_registers(modbus_ctx_, 0, 1, data);  // holding_registers 대신 input_registers 사용
-    
-    if (result == -1) {
-        int error = errno;
-        if (error != EMBXILFUN && error != EMBXILADD) {  // 기능 코드나 주소 에러가 아닌 경우
-            LogModbusMessage(LogLevel::DEBUG, "Connection check failed: " + 
-                           std::string(modbus_strerror(errno)));
-            return false;
-        }
-    }
-    
-    return true;  // 통신 자체는 성공 (응답이 있음)
+    return modbus_driver_->IsConnected();
 }
 
 bool ModbusRtuWorker::SendProtocolKeepAlive() {
-    if (!modbus_ctx_) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
         return false;
     }
     
     // 등록된 슬레이브들에게 Keep-alive 전송
-    std::lock_guard<std::mutex> slaves_lock(slaves_mutex_);
+    std::shared_lock<std::shared_mutex> slaves_lock(slaves_mutex_);
     bool any_response = false;
     
     for (auto& [slave_id, slave_info] : slaves_) {
@@ -254,8 +252,7 @@ bool ModbusRtuWorker::SendProtocolKeepAlive() {
                 UpdateSlaveStatus(slave_id, response_time, true);
             } else {
                 slave_info->is_online = false;
-                LogModbusMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + 
-                               " is offline");
+                LogRtuMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " is offline");
             }
         }
     }
@@ -264,73 +261,140 @@ bool ModbusRtuWorker::SendProtocolKeepAlive() {
 }
 
 // =============================================================================
-// Modbus RTU 특화 설정 관리
+// 설정 관리
 // =============================================================================
 
-bool ModbusRtuWorker::ConfigureModbusRtu(int default_slave_id, 
-                                         int response_timeout,
-                                         int byte_timeout) {
-    if (default_slave_id < 1 || default_slave_id > 247) {
-        LogModbusMessage(LogLevel::ERROR, "Invalid slave ID: " + std::to_string(default_slave_id));
-        return false;
-    }
-    
+void ModbusRtuWorker::ConfigureModbusRtu(int default_slave_id,
+                                         int response_timeout_ms,
+                                         int byte_timeout_ms,
+                                         int inter_frame_delay_ms) {
     default_slave_id_ = default_slave_id;
-    response_timeout_ms_ = response_timeout;
-    byte_timeout_ms_ = byte_timeout;
+    response_timeout_ms_ = response_timeout_ms;
+    byte_timeout_ms_ = byte_timeout_ms;
+    inter_frame_delay_ms_ = inter_frame_delay_ms;
     
-    // Modbus 컨텍스트가 이미 생성된 경우 타임아웃 업데이트
-    if (modbus_ctx_) {
-        std::lock_guard<std::mutex> lock(bus_mutex_);
-        modbus_set_response_timeout(modbus_ctx_, response_timeout_ms_ / 1000, 
-                                   (response_timeout_ms_ % 1000) * 1000);
-        modbus_set_byte_timeout(modbus_ctx_, byte_timeout_ms_ / 1000, 
-                               (byte_timeout_ms_ % 1000) * 1000);
-    }
-    
-    LogModbusMessage(LogLevel::INFO, "Modbus RTU configured - Slave ID: " + 
-                    std::to_string(default_slave_id_) + ", Timeouts: " + 
-                    std::to_string(response_timeout_ms_) + "/" + 
-                    std::to_string(byte_timeout_ms_) + "ms");
-    
-    return true;
+    LogRtuMessage(LogLevel::INFO, 
+        "Modbus RTU configured - Slave ID: " + std::to_string(default_slave_id) +
+        ", Response timeout: " + std::to_string(response_timeout_ms) + "ms" +
+        ", Byte timeout: " + std::to_string(byte_timeout_ms) + "ms" +
+        ", Inter-frame delay: " + std::to_string(inter_frame_delay_ms) + "ms");
 }
 
-bool ModbusRtuWorker::AddSlave(int slave_id, const std::string& description) {
+void ModbusRtuWorker::ConfigureSerialBus(const SerialBusConfig& config) {
+    serial_bus_config_ = config;
+    
+    LogRtuMessage(LogLevel::INFO, 
+        "Serial bus configured - Port: " + config.port_name +
+        ", Baud: " + std::to_string(config.baud_rate) +
+        ", Data bits: " + std::to_string(config.data_bits) +
+        ", Parity: " + std::string(1, config.parity) +
+        ", Stop bits: " + std::to_string(config.stop_bits));
+}
+
+void ModbusRtuWorker::ConfigureReconnection(int max_retry_attempts,
+                                           int retry_delay_ms,
+                                           bool exponential_backoff) {
+    // BaseDeviceWorker의 재연결 설정 사용 (실제 구조체에 맞춰 수정)
+    ReconnectionSettings settings;
+    settings.auto_reconnect_enabled = true;
+    settings.retry_interval_ms = retry_delay_ms;              // retry_delay_ms 대신
+    settings.max_retries_per_cycle = max_retry_attempts;      // max_retry_attempts 대신
+    settings.wait_time_after_max_retries_ms = retry_delay_ms * 8;  // max_retry_delay_ms 대신
+    settings.keep_alive_enabled = true;
+    settings.keep_alive_interval_seconds = 30;  // RTU Keep-alive
+    
+    UpdateReconnectionSettings(settings);
+    
+    LogRtuMessage(LogLevel::INFO, 
+        "Reconnection configured - Max retries: " + std::to_string(max_retry_attempts) +
+        ", Retry delay: " + std::to_string(retry_delay_ms) + "ms" +
+        ", Exponential backoff: " + (exponential_backoff ? "enabled" : "disabled"));
+}
+
+// =============================================================================
+// 슬레이브 관리
+// =============================================================================
+
+bool ModbusRtuWorker::AddSlave(int slave_id, const std::string& device_name) {
     if (slave_id < 1 || slave_id > 247) {
-        LogModbusMessage(LogLevel::ERROR, "Invalid slave ID: " + std::to_string(slave_id));
+        LogRtuMessage(LogLevel::ERROR, "Invalid slave ID: " + std::to_string(slave_id));
         return false;
     }
     
-    std::lock_guard<std::mutex> lock(slaves_mutex_);
+    std::unique_lock<std::shared_mutex> lock(slaves_mutex_);
     
     if (slaves_.find(slave_id) != slaves_.end()) {
-        LogModbusMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " already exists");
+        LogRtuMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " already exists");
         return false;
     }
     
-    auto slave_info = std::make_unique<ModbusSlaveInfo>(slave_id);
-    slaves_[slave_id] = std::move(slave_info);
+    auto slave_info = std::make_shared<ModbusRtuSlaveInfo>(
+        slave_id, 
+        device_name.empty() ? "Slave_" + std::to_string(slave_id) : device_name
+    );
     
-    LogModbusMessage(LogLevel::INFO, "Added slave " + std::to_string(slave_id) + 
-                    (description.empty() ? "" : " (" + description + ")"));
+    slaves_[slave_id] = slave_info;
+    
+    LogRtuMessage(LogLevel::INFO, 
+        "Added slave " + std::to_string(slave_id) + 
+        " (" + slave_info->device_name + ")");
     
     return true;
 }
 
 bool ModbusRtuWorker::RemoveSlave(int slave_id) {
-    std::lock_guard<std::mutex> lock(slaves_mutex_);
+    std::unique_lock<std::shared_mutex> lock(slaves_mutex_);
     
     auto it = slaves_.find(slave_id);
     if (it == slaves_.end()) {
-        LogModbusMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " not found");
+        LogRtuMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " not found");
         return false;
     }
     
     slaves_.erase(it);
-    LogModbusMessage(LogLevel::INFO, "Removed slave " + std::to_string(slave_id));
+    LogRtuMessage(LogLevel::INFO, "Removed slave " + std::to_string(slave_id));
     
     return true;
+}
+
+std::shared_ptr<ModbusRtuSlaveInfo> ModbusRtuWorker::GetSlaveInfo(int slave_id) const {
+    std::shared_lock<std::shared_mutex> lock(slaves_mutex_);
+    
+    auto it = slaves_.find(slave_id);
+    return (it != slaves_.end()) ? it->second : nullptr;
+}
+
+int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int timeout_ms) {
+    LogRtuMessage(LogLevel::INFO, 
+        "Scanning slaves from " + std::to_string(start_id) + 
+        " to " + std::to_string(end_id));
+    
+    int found_count = 0;
+    int original_timeout = response_timeout_ms_;
+    response_timeout_ms_ = timeout_ms;
+    
+    for (int slave_id = start_id; slave_id <= end_id; ++slave_id) {
+        int response_time = CheckSlaveStatus(slave_id);
+        if (response_time >= 0) {
+            AddSlave(slave_id);
+            UpdateSlaveStatus(slave_id, response_time, true);
+            found_count++;
+            
+            LogRtuMessage(LogLevel::INFO, 
+                "Found slave " + std::to_string(slave_id) + 
+                " (response time: " + std::to_string(response_time) + "ms)");
+        }
+        
+        // 스캔 간 지연
+        std::this_thread::sleep_for(std::chrono::milliseconds(inter_frame_delay_ms_));
+    }
+    
+    response_timeout_ms_ = original_timeout;
+    
+    LogRtuMessage(LogLevel::INFO, 
+        "Slave scan completed. Found " + std::to_string(found_count) + " slaves");
+    
+    return found_count;
 }
 
 // =============================================================================
@@ -338,20 +402,16 @@ bool ModbusRtuWorker::RemoveSlave(int slave_id) {
 // =============================================================================
 
 uint32_t ModbusRtuWorker::AddPollingGroup(const std::string& group_name,
-                                          int slave_id,
-                                          ModbusRegisterType register_type,
-                                          uint16_t start_address,
-                                          uint16_t register_count,
-                                          int polling_interval_ms) {
-    if (!ValidatePollingGroup(slave_id, register_type, start_address, register_count)) {
-        return 0;
-    }
-    
-    std::lock_guard<std::mutex> lock(polling_groups_mutex_);
+                                         int slave_id,
+                                         ModbusRegisterType register_type,
+                                         uint16_t start_address,
+                                         uint16_t register_count,
+                                         int polling_interval_ms) {
+    std::unique_lock<std::shared_mutex> lock(polling_groups_mutex_);
     
     uint32_t group_id = next_group_id_++;
     
-    ModbusPollingGroup group;
+    ModbusRtuPollingGroup group;
     group.group_id = group_id;
     group.group_name = group_name;
     group.slave_id = slave_id;
@@ -360,351 +420,455 @@ uint32_t ModbusRtuWorker::AddPollingGroup(const std::string& group_name,
     group.register_count = register_count;
     group.polling_interval_ms = polling_interval_ms;
     group.enabled = true;
+    group.last_poll_time = system_clock::now();
     group.next_poll_time = system_clock::now();
     
-    polling_groups_[group_id] = group;  // std::move 제거
+    polling_groups_[group_id] = group;
     
-    LogModbusMessage(LogLevel::INFO, "Added polling group '" + group_name + "' (ID: " + 
-                    std::to_string(group_id) + ") - Slave: " + std::to_string(slave_id) + 
-                    ", Type: " + std::to_string(static_cast<int>(register_type)) + 
-                    ", Address: " + std::to_string(start_address) + 
-                    ", Count: " + std::to_string(register_count) + 
-                    ", Interval: " + std::to_string(polling_interval_ms) + "ms");
+    LogRtuMessage(LogLevel::INFO, 
+        "Added polling group " + std::to_string(group_id) + 
+        " (" + group_name + ") for slave " + std::to_string(slave_id));
     
     return group_id;
 }
 
 bool ModbusRtuWorker::RemovePollingGroup(uint32_t group_id) {
-    std::lock_guard<std::mutex> lock(polling_groups_mutex_);
+    std::unique_lock<std::shared_mutex> lock(polling_groups_mutex_);
     
     auto it = polling_groups_.find(group_id);
     if (it == polling_groups_.end()) {
-        LogModbusMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + 
-                        " not found");
+        LogRtuMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
         return false;
     }
     
-    LogModbusMessage(LogLevel::INFO, "Removed polling group '" + it->second.group_name + 
-                    "' (ID: " + std::to_string(group_id) + ")");
-    
     polling_groups_.erase(it);
+    LogRtuMessage(LogLevel::INFO, "Removed polling group " + std::to_string(group_id));
+    
     return true;
 }
 
-bool ModbusRtuWorker::SetPollingGroupEnabled(uint32_t group_id, bool enabled) {
-    std::lock_guard<std::mutex> lock(polling_groups_mutex_);
+bool ModbusRtuWorker::EnablePollingGroup(uint32_t group_id, bool enabled) {
+    std::unique_lock<std::shared_mutex> lock(polling_groups_mutex_);
     
     auto it = polling_groups_.find(group_id);
     if (it == polling_groups_.end()) {
-        LogModbusMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + 
-                        " not found");
+        LogRtuMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
         return false;
     }
     
     it->second.enabled = enabled;
-    LogModbusMessage(LogLevel::INFO, "Polling group " + std::to_string(group_id) + 
-                    (enabled ? " enabled" : " disabled"));
+    LogRtuMessage(LogLevel::INFO, 
+        "Polling group " + std::to_string(group_id) + 
+        (enabled ? " enabled" : " disabled"));
+    
+    return true;
+}
+
+bool ModbusRtuWorker::AddDataPointToGroup(uint32_t group_id, const Drivers::DataPoint& data_point) {
+    std::unique_lock<std::shared_mutex> lock(polling_groups_mutex_);
+    
+    auto it = polling_groups_.find(group_id);
+    if (it == polling_groups_.end()) {
+        LogRtuMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
+        return false;
+    }
+    
+    it->second.data_points.push_back(data_point);
+    LogRtuMessage(LogLevel::INFO, 
+        "Added data point " + data_point.name + 
+        " to polling group " + std::to_string(group_id));
     
     return true;
 }
 
 // =============================================================================
-// 동기 읽기/쓰기 작업
+// 데이터 읽기/쓰기 (ModbusDriver 사용)
 // =============================================================================
 
-bool ModbusRtuWorker::ReadRegisters(int slave_id,
-                                    ModbusRegisterType register_type,
-                                    uint16_t address,
-                                    uint16_t count,
-                                    std::vector<uint16_t>& values) {
-    if (!modbus_ctx_) {
-        LogModbusMessage(LogLevel::ERROR, "Modbus context not initialized");
-        return false;
-    }
-    
-    LockBus();  // 시리얼 버스 락
-    
-    auto start_time = steady_clock::now();
-    bool success = false;
+bool ModbusRtuWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address, 
+                                          uint16_t register_count, std::vector<uint16_t>& values) {
+    LockBus();
     
     try {
-        // 슬레이브 설정
-        modbus_set_slave(modbus_ctx_, slave_id);
+        // DataPoint 벡터 생성
+        std::vector<DataPoint> data_points = CreateDataPoints(
+            slave_id, ModbusRegisterType::HOLDING_REGISTER, start_address, register_count);
         
-        values.resize(count);
-        int result = -1;
+        // ModbusDriver를 통한 읽기
+        std::vector<TimestampedValue> timestamped_values;
+        bool success = modbus_driver_->ReadValues(data_points, timestamped_values);
         
-        // 레지스터 타입에 따른 읽기
-        switch (register_type) {
-            case ModbusRegisterType::COIL:
-                {
-                    std::vector<uint8_t> coil_data(count);
-                    result = modbus_read_bits(modbus_ctx_, address, count, coil_data.data());  // modbus_read_coils 대신
-                    if (result != -1) {
-                        for (int i = 0; i < count; ++i) {
-                            values[i] = coil_data[i] ? 1 : 0;
-                        }
+        if (success) {
+            // 결과 변환 (std::variant를 uint16_t로 안전하게 변환)
+            values.clear();
+            values.reserve(timestamped_values.size());
+            for (const auto& tv : timestamped_values) {
+                uint16_t uint16_val = 0;
+                std::visit([&uint16_val](const auto& val) {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_same_v<T, uint16_t>) {
+                        uint16_val = val;
+                    } else if constexpr (std::is_same_v<T, std::monostate>) {
+                        uint16_val = 0;
+                    } else if constexpr (std::is_arithmetic_v<T>) {
+                        uint16_val = static_cast<uint16_t>(val);
+                    } else {
+                        uint16_val = 0;
                     }
-                }
-                break;
-                
-            case ModbusRegisterType::DISCRETE_INPUT:
-                {
-                    std::vector<uint8_t> input_data(count);
-                    result = modbus_read_input_bits(modbus_ctx_, address, count, input_data.data());  // 올바른 함수명
-                    if (result != -1) {
-                        for (int i = 0; i < count; ++i) {
-                            values[i] = input_data[i] ? 1 : 0;
-                        }
-                    }
-                }
-                break;
-                
-            case ModbusRegisterType::HOLDING_REGISTER:
-                result = modbus_read_registers(modbus_ctx_, address, count, values.data());  // modbus_read_holding_registers 대신
-                break;
-                
-            case ModbusRegisterType::INPUT_REGISTER:
-                result = modbus_read_input_registers(modbus_ctx_, address, count, values.data());
-                break;
-        }
-        
-        success = (result != -1);
-        
-        if (!success) {
-            int error = errno;
-            std::string error_type = "unknown";
-            
-            if (error == EMBXSFAIL) error_type = "crc";
-            else if (error == ETIMEDOUT) error_type = "timeout";
-            else error_type = "bus";
-            
-            LogModbusMessage(LogLevel::ERROR, "Read failed - Slave: " + std::to_string(slave_id) + 
-                           ", Type: " + std::to_string(static_cast<int>(register_type)) + 
-                           ", Address: " + std::to_string(address) + 
-                           ", Count: " + std::to_string(count) + 
-                           ", Error: " + ModbusErrorToString(error));
-            
-            UpdateModbusStats("read", false, error_type);
-        } else {
-            UpdateModbusStats("read", true);
-        }
-        
-    } catch (const std::exception& e) {
-        LogModbusMessage(LogLevel::ERROR, "Read exception: " + std::string(e.what()));
-        UpdateModbusStats("read", false, "exception");
-    }
-    
-    // 응답 시간 계산
-    auto end_time = steady_clock::now();
-    int response_time = duration_cast<milliseconds>(end_time - start_time).count();
-    
-    // 슬레이브 상태 업데이트
-    UpdateSlaveStatus(slave_id, response_time, success);
-    
-    UnlockBus();  // 시리얼 버스 언락
-    
-    return success;
-}
-
-bool ModbusRtuWorker::WriteRegister(int slave_id,
-                                   ModbusRegisterType register_type,
-                                   uint16_t address,
-                                   uint16_t value) {
-    return WriteRegisters(slave_id, register_type, address, {value});
-}
-
-bool ModbusRtuWorker::WriteRegisters(int slave_id,
-                                     ModbusRegisterType register_type,
-                                     uint16_t address,
-                                     const std::vector<uint16_t>& values) {
-    if (!modbus_ctx_) {
-        LogModbusMessage(LogLevel::ERROR, "Modbus context not initialized");
-        return false;
-    }
-    
-    if (register_type != ModbusRegisterType::COIL && 
-        register_type != ModbusRegisterType::HOLDING_REGISTER) {
-        LogModbusMessage(LogLevel::ERROR, "Invalid register type for write operation");
-        return false;
-    }
-    
-    LockBus();  // 시리얼 버스 락
-    
-    auto start_time = steady_clock::now();
-    bool success = false;
-    
-    try {
-        // 슬레이브 설정
-        modbus_set_slave(modbus_ctx_, slave_id);
-        
-        int result = -1;
-        
-        if (register_type == ModbusRegisterType::COIL) {
-            if (values.size() == 1) {
-                // 단일 코일 쓰기
-                result = modbus_write_bit(modbus_ctx_, address, values[0] ? 1 : 0);
-            } else {
-                // 다중 코일 쓰기
-                std::vector<uint8_t> coil_data(values.size());
-                for (size_t i = 0; i < values.size(); ++i) {
-                    coil_data[i] = values[i] ? 1 : 0;
-                }
-                result = modbus_write_bits(modbus_ctx_, address, values.size(), coil_data.data());
+                }, tv.value);
+                values.push_back(uint16_val);
             }
-        } else {  // HOLDING_REGISTER
-            if (values.size() == 1) {
-                // 단일 레지스터 쓰기
-                result = modbus_write_register(modbus_ctx_, address, values[0]);
-            } else {
-                // 다중 레지스터 쓰기
-                result = modbus_write_registers(modbus_ctx_, address, values.size(), values.data());
-            }
-        }
-        
-        success = (result != -1);
-        
-        if (!success) {
-            int error = errno;
-            std::string error_type = "unknown";
             
-            if (error == EMBXSFAIL) error_type = "crc";
-            else if (error == ETIMEDOUT) error_type = "timeout";
-            else error_type = "bus";
-            
-            LogModbusMessage(LogLevel::ERROR, "Write failed - Slave: " + std::to_string(slave_id) + 
-                           ", Type: " + std::to_string(static_cast<int>(register_type)) + 
-                           ", Address: " + std::to_string(address) + 
-                           ", Count: " + std::to_string(values.size()) + 
-                           ", Error: " + ModbusErrorToString(error));
-            
-            UpdateModbusStats("write", false, error_type);
+            UpdateRtuStats("read", true);
+            UpdateSlaveStatus(slave_id, 0, true);  // 응답 시간은 드라이버에서 측정
         } else {
-            UpdateModbusStats("write", true);
-        }
-        
-    } catch (const std::exception& e) {
-        LogModbusMessage(LogLevel::ERROR, "Write exception: " + std::string(e.what()));
-        UpdateModbusStats("write", false, "exception");
-    }
-    
-    // 응답 시간 계산
-    auto end_time = steady_clock::now();
-    int response_time = duration_cast<milliseconds>(end_time - start_time).count();
-    
-    // 슬레이브 상태 업데이트
-    UpdateSlaveStatus(slave_id, response_time, success);
-    
-    UnlockBus();  // 시리얼 버스 언락
-    
-    return success;
-}
-
-// =============================================================================
-// 진단 및 모니터링
-// =============================================================================
-
-std::vector<int> ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int timeout_ms) {
-    std::vector<int> found_slaves;
-    
-    if (!modbus_ctx_) {
-        LogModbusMessage(LogLevel::ERROR, "Modbus context not initialized");
-        return found_slaves;
-    }
-    
-    LogModbusMessage(LogLevel::INFO, "Scanning slaves from " + std::to_string(start_id) + 
-                    " to " + std::to_string(end_id) + " (timeout: " + 
-                    std::to_string(timeout_ms) + "ms)");
-    
-    // 임시로 짧은 타임아웃 설정
-    int original_timeout = response_timeout_ms_;
-    modbus_set_response_timeout(modbus_ctx_, timeout_ms / 1000, (timeout_ms % 1000) * 1000);
-    
-    for (int slave_id = start_id; slave_id <= end_id; ++slave_id) {
-        LockBus();
-        
-        modbus_set_slave(modbus_ctx_, slave_id);
-        uint16_t data[1];
-        
-        // 홀딩 레지스터 0번 읽기 시도
-        int result = modbus_read_input_registers(modbus_ctx_, 0, 1, data);  // holding_registers 대신
-        
-        if (result != -1 || errno == EMBXILFUN || errno == EMBXILADD) {
-            // 응답이 있음 (에러여도 슬레이브가 응답한 것)
-            found_slaves.push_back(slave_id);
-            LogModbusMessage(LogLevel::INFO, "Found slave: " + std::to_string(slave_id));
+            ErrorInfo error = modbus_driver_->GetLastError();
+            LogRtuMessage(LogLevel::ERROR, 
+                "Failed to read holding registers from slave " + std::to_string(slave_id) + 
+                ": " + error.message);
             
-            // 자동으로 슬레이브 추가
-            AddSlave(slave_id, "Auto-discovered");
+            UpdateRtuStats("read", false, "read_error");
+            UpdateSlaveStatus(slave_id, 0, false);
         }
         
         UnlockBus();
+        return success;
         
-        // 다음 슬레이브 스캔 전 잠시 대기 (버스 안정화)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    } catch (const std::exception& e) {
+        UnlockBus();
+        LogRtuMessage(LogLevel::ERROR, "ReadHoldingRegisters exception: " + std::string(e.what()));
+        UpdateRtuStats("read", false, "exception");
+        return false;
     }
-    
-    // 원래 타임아웃 복원
-    modbus_set_response_timeout(modbus_ctx_, original_timeout / 1000, (original_timeout % 1000) * 1000);
-    
-    LogModbusMessage(LogLevel::INFO, "Slave scan completed. Found " + 
-                    std::to_string(found_slaves.size()) + " slaves");
-    
-    return found_slaves;
 }
 
-int ModbusRtuWorker::CheckSlaveStatus(int slave_id) {
-    if (!modbus_ctx_) {
-        return -1;
-    }
-    
-    auto start_time = steady_clock::now();
-    
+bool ModbusRtuWorker::ReadInputRegisters(int slave_id, uint16_t start_address, 
+                                        uint16_t register_count, std::vector<uint16_t>& values) {
     LockBus();
-    modbus_set_slave(modbus_ctx_, slave_id);
     
-    uint16_t data[1];
-    int result = modbus_read_input_registers(modbus_ctx_, 0, 1, data);  // holding_registers 대신
-    
-    UnlockBus();
-    
-    if (result == -1 && errno != EMBXILFUN && errno != EMBXILADD) {
-        return -1;  // 통신 실패
+    try {
+        // DataPoint 벡터 생성
+        std::vector<DataPoint> data_points = CreateDataPoints(
+            slave_id, ModbusRegisterType::INPUT_REGISTER, start_address, register_count);
+        
+        // ModbusDriver를 통한 읽기
+        std::vector<TimestampedValue> timestamped_values;
+        bool success = modbus_driver_->ReadValues(data_points, timestamped_values);
+        
+        if (success) {
+            // 결과 변환 (std::variant를 uint16_t로 안전하게 변환)
+            values.clear();
+            values.reserve(timestamped_values.size());
+            for (const auto& tv : timestamped_values) {
+                uint16_t uint16_val = 0;
+                std::visit([&uint16_val](const auto& val) {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_same_v<T, uint16_t>) {
+                        uint16_val = val;
+                    } else if constexpr (std::is_same_v<T, std::monostate>) {
+                        uint16_val = 0;
+                    } else if constexpr (std::is_arithmetic_v<T>) {
+                        uint16_val = static_cast<uint16_t>(val);
+                    } else {
+                        uint16_val = 0;
+                    }
+                }, tv.value);
+                values.push_back(uint16_val);
+            }
+            
+            UpdateRtuStats("read", true);
+            UpdateSlaveStatus(slave_id, 0, true);
+        } else {
+            ErrorInfo error = modbus_driver_->GetLastError();
+            LogRtuMessage(LogLevel::ERROR, 
+                "Failed to read input registers from slave " + std::to_string(slave_id) + 
+                ": " + error.message);
+            
+            UpdateRtuStats("read", false, "read_error");
+            UpdateSlaveStatus(slave_id, 0, false);
+        }
+        
+        UnlockBus();
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        LogRtuMessage(LogLevel::ERROR, "ReadInputRegisters exception: " + std::string(e.what()));
+        UpdateRtuStats("read", false, "exception");
+        return false;
     }
-    
-    auto end_time = steady_clock::now();
-    return duration_cast<milliseconds>(end_time - start_time).count();
 }
 
-std::string ModbusRtuWorker::GetModbusStatistics() const {
+bool ModbusRtuWorker::ReadCoils(int slave_id, uint16_t start_address, 
+                               uint16_t coil_count, std::vector<bool>& values) {
+    LockBus();
+    
+    try {
+        // DataPoint 벡터 생성
+        std::vector<DataPoint> data_points = CreateDataPoints(
+            slave_id, ModbusRegisterType::COIL, start_address, coil_count);
+        
+        // ModbusDriver를 통한 읽기
+        std::vector<TimestampedValue> timestamped_values;
+        bool success = modbus_driver_->ReadValues(data_points, timestamped_values);
+        
+        if (success) {
+            // 결과 변환 (std::variant 안전한 접근)
+            values.clear();
+            values.reserve(timestamped_values.size());
+            for (const auto& tv : timestamped_values) {
+                // std::variant 값을 안전하게 bool로 변환
+                bool bool_val = false;
+                std::visit([&bool_val](const auto& val) {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_same_v<T, bool>) {
+                        bool_val = val;
+                    } else if constexpr (std::is_same_v<T, std::monostate>) {
+                        bool_val = false;
+                    } else if constexpr (std::is_arithmetic_v<T>) {
+                        bool_val = (val != static_cast<T>(0));
+                    } else {
+                        bool_val = false;
+                    }
+                }, tv.value);
+                values.push_back(bool_val);
+            }
+            
+            UpdateRtuStats("read", true);
+            UpdateSlaveStatus(slave_id, 0, true);
+        } else {
+            ErrorInfo error = modbus_driver_->GetLastError();
+            LogRtuMessage(LogLevel::ERROR, 
+                "Failed to read coils from slave " + std::to_string(slave_id) + 
+                ": " + error.message);
+            
+            UpdateRtuStats("read", false, "read_error");
+            UpdateSlaveStatus(slave_id, 0, false);
+        }
+        
+        UnlockBus();
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        LogRtuMessage(LogLevel::ERROR, "ReadCoils exception: " + std::string(e.what()));
+        UpdateRtuStats("read", false, "exception");
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address, 
+                                        uint16_t input_count, std::vector<bool>& values) {
+    LockBus();
+    
+    try {
+        // DataPoint 벡터 생성
+        std::vector<DataPoint> data_points = CreateDataPoints(
+            slave_id, ModbusRegisterType::DISCRETE_INPUT, start_address, input_count);
+        
+        // ModbusDriver를 통한 읽기
+        std::vector<TimestampedValue> timestamped_values;
+        bool success = modbus_driver_->ReadValues(data_points, timestamped_values);
+        
+        if (success) {
+            // 결과 변환 (std::variant 안전한 접근)
+            values.clear();
+            values.reserve(timestamped_values.size());
+            for (const auto& tv : timestamped_values) {
+                // std::variant 값을 안전하게 bool로 변환
+                bool bool_val = false;
+                std::visit([&bool_val](const auto& val) {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_same_v<T, bool>) {
+                        bool_val = val;
+                    } else if constexpr (std::is_same_v<T, std::monostate>) {
+                        bool_val = false;
+                    } else if constexpr (std::is_arithmetic_v<T>) {
+                        bool_val = (val != static_cast<T>(0));
+                    } else {
+                        bool_val = false;
+                    }
+                }, tv.value);
+                values.push_back(bool_val);
+            }
+            
+            UpdateRtuStats("read", true);
+            UpdateSlaveStatus(slave_id, 0, true);
+        } else {
+            ErrorInfo error = modbus_driver_->GetLastError();
+            LogRtuMessage(LogLevel::ERROR, 
+                "Failed to read discrete inputs from slave " + std::to_string(slave_id) + 
+                ": " + error.message);
+            
+            UpdateRtuStats("read", false, "read_error");
+            UpdateSlaveStatus(slave_id, 0, false);
+        }
+        
+        UnlockBus();
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        LogRtuMessage(LogLevel::ERROR, "ReadDiscreteInputs exception: " + std::string(e.what()));
+        UpdateRtuStats("read", false, "exception");
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16_t value) {
+    LockBus();
+    
+    try {
+        // DataPoint 생성
+        DataPoint data_point;
+        data_point.address = address;
+        data_point.data_type = DataType::UINT16;
+        data_point.name = "RTU_" + std::to_string(slave_id) + "_" + std::to_string(address);
+        
+        // DataValue 생성 (std::variant로 직접 할당)
+        DataValue data_value = static_cast<uint16_t>(value);
+        
+        // ModbusDriver를 통한 쓰기
+        bool success = modbus_driver_->WriteValue(data_point, data_value);
+        
+        if (success) {
+            UpdateRtuStats("write", true);
+            UpdateSlaveStatus(slave_id, 0, true);
+        } else {
+            ErrorInfo error = modbus_driver_->GetLastError();
+            LogRtuMessage(LogLevel::ERROR, 
+                "Failed to write single register to slave " + std::to_string(slave_id) + 
+                ": " + error.message);
+            
+            UpdateRtuStats("write", false, "write_error");
+            UpdateSlaveStatus(slave_id, 0, false);
+        }
+        
+        UnlockBus();
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        LogRtuMessage(LogLevel::ERROR, "WriteSingleRegister exception: " + std::string(e.what()));
+        UpdateRtuStats("write", false, "exception");
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value) {
+    LockBus();
+    
+    try {
+        // DataPoint 생성
+        DataPoint data_point;
+        data_point.address = address;
+        data_point.data_type = DataType::BOOL;
+        data_point.name = "RTU_" + std::to_string(slave_id) + "_" + std::to_string(address);
+        
+        // DataValue 생성 (std::variant로 직접 할당)
+        DataValue data_value = value;
+        
+        // ModbusDriver를 통한 쓰기
+        bool success = modbus_driver_->WriteValue(data_point, data_value);
+        
+        if (success) {
+            UpdateRtuStats("write", true);
+            UpdateSlaveStatus(slave_id, 0, true);
+        } else {
+            ErrorInfo error = modbus_driver_->GetLastError();
+            LogRtuMessage(LogLevel::ERROR, 
+                "Failed to write single coil to slave " + std::to_string(slave_id) + 
+                ": " + error.message);
+            
+            UpdateRtuStats("write", false, "write_error");
+            UpdateSlaveStatus(slave_id, 0, false);
+        }
+        
+        UnlockBus();
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        LogRtuMessage(LogLevel::ERROR, "WriteSingleCoil exception: " + std::string(e.what()));
+        UpdateRtuStats("write", false, "exception");
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::WriteMultipleRegisters(int slave_id, uint16_t start_address, 
+                                            const std::vector<uint16_t>& values) {
+    // 단일 레지스터 쓰기를 반복 (ModbusDriver가 다중 쓰기를 지원하지 않는 경우)
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (!WriteSingleRegister(slave_id, start_address + i, values[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ModbusRtuWorker::WriteMultipleCoils(int slave_id, uint16_t start_address, 
+                                        const std::vector<bool>& values) {
+    // 단일 코일 쓰기를 반복 (ModbusDriver가 다중 쓰기를 지원하지 않는 경우)
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (!WriteSingleCoil(slave_id, start_address + i, values[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// =============================================================================
+// 상태 및 통계 조회
+// =============================================================================
+
+std::string ModbusRtuWorker::GetModbusRtuStats() const {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     
     std::stringstream ss;
     ss << "{\n";
+    ss << "  \"protocol\": \"Modbus RTU\",\n";
+    ss << "  \"serial_port\": \"" << serial_bus_config_.port_name << "\",\n";
+    ss << "  \"baud_rate\": " << serial_bus_config_.baud_rate << ",\n";
     ss << "  \"total_reads\": " << total_reads_ << ",\n";
     ss << "  \"successful_reads\": " << successful_reads_ << ",\n";
     ss << "  \"total_writes\": " << total_writes_ << ",\n";
     ss << "  \"successful_writes\": " << successful_writes_ << ",\n";
     ss << "  \"crc_errors\": " << crc_errors_ << ",\n";
     ss << "  \"timeout_errors\": " << timeout_errors_ << ",\n";
-    ss << "  \"bus_errors\": " << bus_errors_ << ",\n";
+    ss << "  \"frame_errors\": " << frame_errors_ << ",\n";
     
     // 성공률 계산
-    uint64_t total_operations = total_reads_ + total_writes_;
-    uint64_t successful_operations = successful_reads_ + successful_writes_;
-    double success_rate = total_operations > 0 ? 
-        (static_cast<double>(successful_operations) / total_operations * 100.0) : 0.0;
+    double read_success_rate = total_reads_ > 0 ? 
+        (static_cast<double>(successful_reads_) / total_reads_ * 100.0) : 0.0;
+    double write_success_rate = total_writes_ > 0 ? 
+        (static_cast<double>(successful_writes_) / total_writes_ * 100.0) : 0.0;
     
-    ss << "  \"success_rate_percent\": " << std::fixed << std::setprecision(2) << success_rate << ",\n";
-    ss << "  \"polling_groups_count\": " << polling_groups_.size() << ",\n";
-    ss << "  \"active_slaves_count\": " << slaves_.size() << "\n";
+    ss << "  \"read_success_rate_percent\": " << std::fixed << std::setprecision(2) << read_success_rate << ",\n";
+    ss << "  \"write_success_rate_percent\": " << std::fixed << std::setprecision(2) << write_success_rate << "\n";
     ss << "}";
     
     return ss.str();
 }
 
-std::string ModbusRtuWorker::GetSlaveList() const {
-    std::lock_guard<std::mutex> lock(slaves_mutex_);
+std::string ModbusRtuWorker::GetSerialBusStatus() const {
+    std::stringstream ss;
+    ss << "{\n";
+    ss << "  \"port_name\": \"" << serial_bus_config_.port_name << "\",\n";
+    ss << "  \"baud_rate\": " << serial_bus_config_.baud_rate << ",\n";
+    ss << "  \"data_bits\": " << serial_bus_config_.data_bits << ",\n";
+    ss << "  \"parity\": \"" << serial_bus_config_.parity << "\",\n";
+    ss << "  \"stop_bits\": " << serial_bus_config_.stop_bits << ",\n";
+    ss << "  \"response_timeout_ms\": " << response_timeout_ms_ << ",\n";
+    ss << "  \"byte_timeout_ms\": " << byte_timeout_ms_ << ",\n";
+    ss << "  \"inter_frame_delay_ms\": " << inter_frame_delay_ms_ << ",\n";
+    ss << "  \"is_connected\": " << (const_cast<ModbusRtuWorker*>(this)->CheckProtocolConnection() ? "true" : "false") << "\n";
+    ss << "}";
+    
+    return ss.str();
+}
+
+std::string ModbusRtuWorker::GetSlaveStatusList() const {
+    std::shared_lock<std::shared_mutex> lock(slaves_mutex_);
     
     std::stringstream ss;
     ss << "{\n";
@@ -717,10 +881,13 @@ std::string ModbusRtuWorker::GetSlaveList() const {
         
         ss << "    {\n";
         ss << "      \"slave_id\": " << slave_id << ",\n";
+        ss << "      \"device_name\": \"" << slave_info->device_name << "\",\n";
         ss << "      \"is_online\": " << (slave_info->is_online ? "true" : "false") << ",\n";
         ss << "      \"response_time_ms\": " << slave_info->response_time_ms.load() << ",\n";
         ss << "      \"total_requests\": " << slave_info->total_requests.load() << ",\n";
         ss << "      \"successful_requests\": " << slave_info->successful_requests.load() << ",\n";
+        ss << "      \"crc_errors\": " << slave_info->crc_errors.load() << ",\n";
+        ss << "      \"timeout_errors\": " << slave_info->timeout_errors.load() << ",\n";
         
         // 성공률 계산
         uint64_t total = slave_info->total_requests.load();
@@ -738,8 +905,8 @@ std::string ModbusRtuWorker::GetSlaveList() const {
     return ss.str();
 }
 
-std::string ModbusRtuWorker::GetPollingGroupList() const {
-    std::lock_guard<std::mutex> lock(polling_groups_mutex_);
+std::string ModbusRtuWorker::GetPollingGroupStatus() const {
+    std::shared_lock<std::shared_mutex> lock(polling_groups_mutex_);
     
     std::stringstream ss;
     ss << "{\n";
@@ -758,7 +925,8 @@ std::string ModbusRtuWorker::GetPollingGroupList() const {
         ss << "      \"start_address\": " << group.start_address << ",\n";
         ss << "      \"register_count\": " << group.register_count << ",\n";
         ss << "      \"polling_interval_ms\": " << group.polling_interval_ms << ",\n";
-        ss << "      \"enabled\": " << (group.enabled ? "true" : "false") << "\n";
+        ss << "      \"enabled\": " << (group.enabled ? "true" : "false") << ",\n";
+        ss << "      \"data_points_count\": " << group.data_points.size() << "\n";
         ss << "    }";
     }
     
@@ -769,161 +937,197 @@ std::string ModbusRtuWorker::GetPollingGroupList() const {
 }
 
 // =============================================================================
-// 고급 기능들
-// =============================================================================
-
-bool ModbusRtuWorker::BroadcastWrite(ModbusRegisterType register_type, 
-                                     uint16_t address, 
-                                     uint16_t value) {
-    if (!modbus_ctx_) {
-        LogModbusMessage(LogLevel::ERROR, "Modbus context not initialized");
-        return false;
-    }
-    
-    if (register_type != ModbusRegisterType::COIL && 
-        register_type != ModbusRegisterType::HOLDING_REGISTER) {
-        LogModbusMessage(LogLevel::ERROR, "Invalid register type for broadcast write");
-        return false;
-    }
-    
-    LockBus();
-    
-    // 브로드캐스트 주소 (0) 사용
-    modbus_set_slave(modbus_ctx_, 0);
-    
-    bool success = false;
-    
-    try {
-        int result = -1;
-        
-        if (register_type == ModbusRegisterType::COIL) {
-            result = modbus_write_bit(modbus_ctx_, address, value ? 1 : 0);
-        } else {  // HOLDING_REGISTER
-            result = modbus_write_register(modbus_ctx_, address, value);
-        }
-        
-        success = (result != -1);
-        
-        if (success) {
-            LogModbusMessage(LogLevel::INFO, "Broadcast write successful - Type: " + 
-                           std::to_string(static_cast<int>(register_type)) + 
-                           ", Address: " + std::to_string(address) + 
-                           ", Value: " + std::to_string(value));
-        } else {
-            LogModbusMessage(LogLevel::ERROR, "Broadcast write failed: " + 
-                           ModbusErrorToString(errno));
-        }
-        
-    } catch (const std::exception& e) {
-        LogModbusMessage(LogLevel::ERROR, "Broadcast write exception: " + std::string(e.what()));
-    }
-    
-    UnlockBus();
-    
-    return success;
-}
-
-void ModbusRtuWorker::SetBusLockTime(int lock_time_ms) {
-    bus_lock_time_ms_ = lock_time_ms;
-    LogModbusMessage(LogLevel::INFO, "Bus lock time set to " + std::to_string(lock_time_ms) + "ms");
-}
-
-// =============================================================================
 // 내부 헬퍼 메소드들
 // =============================================================================
 
-void ModbusRtuWorker::PollingWorkerLoop() {
-    LogModbusMessage(LogLevel::INFO, "Polling worker started");
+void ModbusRtuWorker::PollingWorkerThread() {
+    LogRtuMessage(LogLevel::INFO, "Polling worker thread started");
     
     while (!stop_workers_) {
         try {
-            auto current_time = system_clock::now();
+            auto now = system_clock::now();
             
-            // 폴링 그룹들 처리
+            // 폴링 그룹들 확인 및 처리
             {
-                std::lock_guard<std::mutex> lock(polling_groups_mutex_);
+                std::shared_lock<std::shared_mutex> lock(polling_groups_mutex_);
                 
                 for (auto& [group_id, group] : polling_groups_) {
-                    if (!group.enabled) continue;
+                    if (!group.enabled || stop_workers_) {
+                        continue;
+                    }
                     
-                    if (current_time >= group.next_poll_time) {
-                        ProcessPollingGroup(group);
+                    // 폴링 시간 확인
+                    if (now >= group.next_poll_time) {
+                        // 그룹 처리 (뮤텍스 해제 후)
+                        lock.~shared_lock();
+                        ProcessPollingGroup(const_cast<ModbusRtuPollingGroup&>(group));
                         
                         // 다음 폴링 시간 설정
-                        group.next_poll_time = current_time + 
-                            milliseconds(group.polling_interval_ms);
+                        std::unique_lock<std::shared_mutex> write_lock(polling_groups_mutex_);
+                        auto& mutable_group = polling_groups_[group_id];
+                        mutable_group.last_poll_time = now;
+                        mutable_group.next_poll_time = now + milliseconds(mutable_group.polling_interval_ms);
+                        write_lock.unlock();
+                        
+                        // 새로운 shared_lock 획득
+                        lock = std::shared_lock<std::shared_mutex>(polling_groups_mutex_);
                     }
                 }
             }
             
-            // 짧은 대기 (CPU 사용률 제어)
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // 폴링 스레드 휴식 (100ms)
+            std::this_thread::sleep_for(milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogModbusMessage(LogLevel::ERROR, "Polling worker exception: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            LogRtuMessage(LogLevel::ERROR, "Polling worker thread error: " + std::string(e.what()));
+            std::this_thread::sleep_for(seconds(1));
         }
     }
     
-    LogModbusMessage(LogLevel::INFO, "Polling worker stopped");
+    LogRtuMessage(LogLevel::INFO, "Polling worker thread stopped");
 }
 
-bool ModbusRtuWorker::ProcessPollingGroup(ModbusPollingGroup& group) {
-    auto start_time = steady_clock::now();
-    
-    // 폴링 카운트는 별도 멤버 변수로 관리하거나 제거
+bool ModbusRtuWorker::ProcessPollingGroup(ModbusRtuPollingGroup& group) {
+    LogRtuMessage(LogLevel::DEBUG, 
+        "Processing polling group " + std::to_string(group.group_id) + 
+        " (" + group.group_name + ")");
     
     std::vector<uint16_t> values;
-    bool success = ReadRegisters(group.slave_id, group.register_type, 
-                                group.start_address, group.register_count, values);
+    bool success = false;
     
-    if (success) {
-        auto end_time = steady_clock::now();
-        int response_time = duration_cast<milliseconds>(end_time - start_time).count();
-        group.last_poll_time = system_clock::now();
-        
-        // 데이터 포인트들에 값 할당 및 저장
-        for (size_t i = 0; i < group.data_points.size() && i < values.size(); ++i) {
-            Drivers::TimestampedValue timestamped_value;
-            timestamped_value.value = static_cast<double>(values[i]);
-            timestamped_value.timestamp = system_clock::now();
-            timestamped_value.quality = Drivers::DataQuality::GOOD;  // enum 타입 사용
-            
-            // Redis 및 InfluxDB 저장
-            SaveToInfluxDB(group.data_points[i].id, timestamped_value);
+    try {
+        // 레지스터 타입에 따른 읽기
+        switch (group.register_type) {
+            case ModbusRegisterType::HOLDING_REGISTER:
+                success = ReadHoldingRegisters(group.slave_id, group.start_address, 
+                                             group.register_count, values);
+                break;
+                
+            case ModbusRegisterType::INPUT_REGISTER:
+                success = ReadInputRegisters(group.slave_id, group.start_address, 
+                                           group.register_count, values);
+                break;
+                
+            case ModbusRegisterType::COIL:
+            case ModbusRegisterType::DISCRETE_INPUT:
+                {
+                    std::vector<bool> bool_values;
+                    if (group.register_type == ModbusRegisterType::COIL) {
+                        success = ReadCoils(group.slave_id, group.start_address, 
+                                          group.register_count, bool_values);
+                    } else {
+                        success = ReadDiscreteInputs(group.slave_id, group.start_address, 
+                                                   group.register_count, bool_values);
+                    }
+                    
+                    // bool 값을 uint16_t로 변환 (std::variant 안전한 접근)
+                    values.reserve(bool_values.size());
+                    for (const bool& val : bool_values) {
+                        values.push_back(val ? 1 : 0);
+                    }
+                }
+                break;
+                
+            default:
+                LogRtuMessage(LogLevel::ERROR, 
+                    "Unknown register type in group " + std::to_string(group.group_id));
+                return false;
         }
         
-        LogModbusMessage(LogLevel::DEBUG, "Polling group '" + group.group_name + 
-                        "' processed successfully (" + std::to_string(response_time) + "ms)");
-    } else {
-        LogModbusMessage(LogLevel::WARN, "Polling group '" + group.group_name + 
-                        "' failed - Slave: " + std::to_string(group.slave_id));
+        if (success && !values.empty()) {
+            // 데이터 포인트들에 값 할당 및 저장
+            for (size_t i = 0; i < group.data_points.size() && i < values.size(); ++i) {
+                auto& data_point = group.data_points[i];
+                
+                // TimestampedValue 생성하여 저장
+                TimestampedValue timestamped_value;
+                timestamped_value.value = static_cast<double>(values[i]);
+                timestamped_value.quality = DataQuality::GOOD;
+                timestamped_value.timestamp = system_clock::now();
+                
+                // Redis/InfluxDB에 데이터 저장 (BaseDeviceWorker 메서드 사용)
+                SaveToInfluxDB(data_point.id, timestamped_value);
+            }
+            
+            LogRtuMessage(LogLevel::DEBUG, 
+                "Successfully processed group " + std::to_string(group.group_id) + 
+                ", read " + std::to_string(values.size()) + " values");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogRtuMessage(LogLevel::ERROR, 
+            "ProcessPollingGroup exception for group " + std::to_string(group.group_id) + 
+            ": " + std::string(e.what()));
+        return false;
     }
+}
+
+void ModbusRtuWorker::UpdateSlaveStatus(int slave_id, int response_time_ms, bool success) {
+    std::shared_lock<std::shared_mutex> lock(slaves_mutex_);
     
-    return success;
-}
-
-std::string ModbusRtuWorker::ModbusErrorToString(int error_code) const {
-    switch (error_code) {
-        case EMBXILFUN:  return "Illegal function";
-        case EMBXILADD:  return "Illegal data address";
-        case EMBXILVAL:  return "Illegal data value";
-        case EMBXSFAIL:  return "Slave device failure";
-        case EMBXACK:    return "Acknowledge";
-        case EMBXSBUSY:  return "Slave device busy";
-        case EMBXNACK:   return "Negative acknowledge";
-        case EMBXMEMPAR: return "Memory parity error";
-        case EMBXGPATH:  return "Gateway path unavailable";
-        case EMBXGTAR:   return "Gateway target device failed to respond";
-        case ETIMEDOUT:  return "Connection timed out";
-        case ECONNRESET: return "Connection reset by peer";
-        case ECONNREFUSED: return "Connection refused";
-        default:         return "Unknown error (" + std::to_string(error_code) + ")";
+    auto it = slaves_.find(slave_id);
+    if (it != slaves_.end()) {
+        auto& slave_info = it->second;
+        
+        slave_info->total_requests++;
+        if (success) {
+            slave_info->successful_requests++;
+            slave_info->is_online = true;
+            slave_info->last_response = system_clock::now();
+            
+            if (response_time_ms > 0) {
+                // 이동 평균으로 응답 시간 업데이트
+                uint32_t current_avg = slave_info->response_time_ms.load();
+                uint32_t new_avg = (current_avg * 7 + response_time_ms) / 8;  // 8-점 이동 평균
+                slave_info->response_time_ms = new_avg;
+            }
+            
+            slave_info->last_error.clear();
+        } else {
+            slave_info->is_online = false;
+            
+            // 에러 타입별 카운트 (에러 정보가 있다면)
+            if (modbus_driver_) {
+                ErrorInfo error = modbus_driver_->GetLastError();
+                slave_info->last_error = error.message;
+                
+                // 에러 타입에 따른 카운터 증가
+                if (error.message.find("CRC") != std::string::npos) {
+                    slave_info->crc_errors++;
+                } else if (error.message.find("timeout") != std::string::npos || 
+                          error.message.find("Timeout") != std::string::npos) {
+                    slave_info->timeout_errors++;
+                }
+            }
+        }
     }
 }
 
-void ModbusRtuWorker::UpdateModbusStats(const std::string& operation, bool success, 
-                                        const std::string& error_type) {
+int ModbusRtuWorker::CheckSlaveStatus(int slave_id) {
+    auto start_time = steady_clock::now();
+    
+    try {
+        // 간단한 읽기 테스트 (홀딩 레지스터 0번 주소 1개)
+        std::vector<uint16_t> test_values;
+        bool success = ReadHoldingRegisters(slave_id, 0, 1, test_values);
+        
+        auto end_time = steady_clock::now();
+        int response_time = duration_cast<milliseconds>(end_time - start_time).count();
+        
+        return success ? response_time : -1;
+        
+    } catch (const std::exception& e) {
+        LogRtuMessage(LogLevel::DEBUG, 
+            "CheckSlaveStatus exception for slave " + std::to_string(slave_id) + 
+            ": " + std::string(e.what()));
+        return -1;
+    }
+}
+
+void ModbusRtuWorker::UpdateRtuStats(const std::string& operation, bool success, 
+                                     const std::string& error_type) {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     
     if (operation == "read") {
@@ -938,35 +1142,13 @@ void ModbusRtuWorker::UpdateModbusStats(const std::string& operation, bool succe
         }
     }
     
-    // 에러 타입별 통계
-    if (!success) {
+    if (!success && !error_type.empty()) {
         if (error_type == "crc") {
             crc_errors_++;
         } else if (error_type == "timeout") {
             timeout_errors_++;
-        } else if (error_type == "bus") {
-            bus_errors_++;
-        }
-    }
-}
-
-void ModbusRtuWorker::UpdateSlaveStatus(int slave_id, int response_time_ms, bool success) {
-    std::lock_guard<std::mutex> lock(slaves_mutex_);
-    
-    auto it = slaves_.find(slave_id);
-    if (it != slaves_.end()) {
-        auto& slave_info = it->second;
-        
-        slave_info->total_requests++;
-        if (success) {
-            slave_info->successful_requests++;
-            slave_info->is_online = true;
-            slave_info->response_time_ms = response_time_ms;
-            slave_info->last_response = system_clock::now();
-            slave_info->last_error.clear();
-        } else {
-            slave_info->is_online = false;
-            slave_info->last_error = ModbusErrorToString(errno);
+        } else if (error_type == "frame") {
+            frame_errors_++;
         }
     }
 }
@@ -974,9 +1156,9 @@ void ModbusRtuWorker::UpdateSlaveStatus(int slave_id, int response_time_ms, bool
 void ModbusRtuWorker::LockBus() {
     bus_mutex_.lock();
     
-    // 시리얼 버스 안정화를 위한 짧은 대기
-    if (bus_lock_time_ms_ > 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(bus_lock_time_ms_));
+    // 프레임 간 지연 적용 (이전 트랜잭션과의 간격 보장)
+    if (inter_frame_delay_ms_ > 0) {
+        std::this_thread::sleep_for(milliseconds(inter_frame_delay_ms_));
     }
 }
 
@@ -984,54 +1166,39 @@ void ModbusRtuWorker::UnlockBus() {
     bus_mutex_.unlock();
 }
 
-void ModbusRtuWorker::LogModbusMessage(LogLevel level, const std::string& message) const {
-    // BaseDeviceWorker의 LogMessage 사용 (const_cast 필요)
-    const_cast<ModbusRtuWorker*>(this)->LogMessage(level, "[ModbusRTU] " + message);
+void ModbusRtuWorker::LogRtuMessage(LogLevel level, const std::string& message) {
+    std::string prefix = "[ModbusRTU:" + serial_bus_config_.port_name + "] ";
+    LogMessage(level, prefix + message);
 }
 
-bool ModbusRtuWorker::ValidatePollingGroup(int slave_id, ModbusRegisterType register_type,
-                                          uint16_t start_address, uint16_t register_count) const {
-    // 슬레이브 ID 검증
-    if (slave_id < 1 || slave_id > 247) {
-        LogModbusMessage(LogLevel::ERROR, "Invalid slave ID: " + std::to_string(slave_id));
-        return false;
+std::vector<Drivers::DataPoint> ModbusRtuWorker::CreateDataPoints(int slave_id, 
+                                                                 ModbusRegisterType register_type,
+                                                                 uint16_t start_address, 
+                                                                 uint16_t count) {
+    std::vector<DataPoint> data_points;
+    data_points.reserve(count);
+    
+    for (uint16_t i = 0; i < count; ++i) {
+        DataPoint point;
+        point.address = start_address + i;
+        point.name = "RTU_" + std::to_string(slave_id) + "_" + std::to_string(start_address + i);
+        
+        // 레지스터 타입에 따른 데이터 타입 설정
+        switch (register_type) {
+            case ModbusRegisterType::COIL:
+            case ModbusRegisterType::DISCRETE_INPUT:
+                point.data_type = DataType::BOOL;
+                break;
+            case ModbusRegisterType::HOLDING_REGISTER:
+            case ModbusRegisterType::INPUT_REGISTER:
+                point.data_type = DataType::UINT16;
+                break;
+        }
+        
+        data_points.push_back(point);
     }
     
-    // 레지스터 개수 검증
-    if (register_count == 0 || register_count > 125) {  // Modbus 표준 제한
-        LogModbusMessage(LogLevel::ERROR, "Invalid register count: " + std::to_string(register_count));
-        return false;
-    }
-    
-    // 주소 범위 검증 (0-65535)
-    if (start_address + register_count > 65536) {
-        LogModbusMessage(LogLevel::ERROR, "Address range overflow: " + 
-                        std::to_string(start_address) + " + " + std::to_string(register_count));
-        return false;
-    }
-    
-    // 레지스터 타입별 제한 검증
-    switch (register_type) {
-        case ModbusRegisterType::COIL:
-        case ModbusRegisterType::DISCRETE_INPUT:
-            if (register_count > 2000) {  // 비트 타입 제한
-                LogModbusMessage(LogLevel::ERROR, "Too many bits requested: " + 
-                               std::to_string(register_count));
-                return false;
-            }
-            break;
-            
-        case ModbusRegisterType::HOLDING_REGISTER:
-        case ModbusRegisterType::INPUT_REGISTER:
-            if (register_count > 125) {  // 16비트 레지스터 제한
-                LogModbusMessage(LogLevel::ERROR, "Too many registers requested: " + 
-                               std::to_string(register_count));
-                return false;
-            }
-            break;
-    }
-    
-    return true;
+    return data_points;
 }
 
 } // namespace Protocol
