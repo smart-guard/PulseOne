@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "Drivers/Mqtt/MqttDriver.h"
-#include "Drivers/Common/CommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"
 #include <memory>
 #include <thread>
 #include <chrono>

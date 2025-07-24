@@ -186,9 +186,9 @@ bool ModbusRtuWorker::EstablishProtocolConnection() {
     try {
         // ModbusDriver 설정 (기본 멤버만 사용)
         DriverConfig config;
-        config.protocol_type = ProtocolType::MODBUS_RTU;
+        config.protocol_type = "MODBUS_RTU";
         config.endpoint = serial_bus_config_.port_name;  // 시리얼 포트 경로
-        config.timeout_ms = response_timeout_ms_;
+        config.timeout = std::chrono::milliseconds(response_timeout_ms_);
         config.retry_count = 3;  // 기본 재시도 횟수
         
         // RTU 전용 설정은 ModbusDriver가 내부적으로 endpoint를 파싱하여 처리
@@ -722,7 +722,7 @@ bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16
         // DataPoint 생성
         DataPoint data_point;
         data_point.address = address;
-        data_point.data_type = DataType::UINT16;
+        data_point.data_type = "UINT16";
         data_point.name = "RTU_" + std::to_string(slave_id) + "_" + std::to_string(address);
         
         // DataValue 생성 (std::variant로 직접 할당)
@@ -762,7 +762,7 @@ bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value
         // DataPoint 생성
         DataPoint data_point;
         data_point.address = address;
-        data_point.data_type = DataType::BOOL;
+        data_point.data_type = "BOOL";
         data_point.name = "RTU_" + std::to_string(slave_id) + "_" + std::to_string(address);
         
         // DataValue 생성 (std::variant로 직접 할당)
@@ -1187,11 +1187,11 @@ std::vector<PulseOne::DataPoint> ModbusRtuWorker::CreateDataPoints(int slave_id,
         switch (register_type) {
             case ModbusRegisterType::COIL:
             case ModbusRegisterType::DISCRETE_INPUT:
-                point.data_type = DataType::BOOL;
+                point.data_type = "BOOL";
                 break;
             case ModbusRegisterType::HOLDING_REGISTER:
             case ModbusRegisterType::INPUT_REGISTER:
-                point.data_type = DataType::UINT16;
+                point.data_type = "UINT16";
                 break;
         }
         

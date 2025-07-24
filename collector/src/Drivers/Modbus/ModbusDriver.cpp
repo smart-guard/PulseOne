@@ -532,7 +532,7 @@ void ModbusDriver::SetError(ErrorCode code, const std::string& message) {
     last_error_.message = message;
     
     if (logger_) {
-        ErrorInfo error_info;
+        PulseOne::Structs::ErrorInfo error_info;
         error_info.code = code;
         error_info.message = message;
         logger_->LogError(error_info);
@@ -569,6 +569,6 @@ ProtocolType ModbusDriver::GetProtocolType() const {
     return ProtocolType::MODBUS_TCP;
 }
 
-ErrorInfo ModbusDriver::GetLastError() const {
+PulseOne::Structs::ErrorInfo ModbusDriver::GetLastError() const {
     return last_error_;
 }

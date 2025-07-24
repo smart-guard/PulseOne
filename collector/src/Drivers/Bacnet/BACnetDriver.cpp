@@ -458,60 +458,41 @@ void BACnetDriver::DiscoveryThread() {
 
 
 
-bool BACnetDriver::ConvertToBACnetValue(const DataValue& data_value, DataType data_type,
+bool BACnetDriver::ConvertToBACnetValue(const DataValue& data_value,
                                        BACNET_APPLICATION_DATA_VALUE& bacnet_value) {
     try {
-        switch (data_type) {
-            case DataType::BOOL:
-                if (std::holds_alternative<bool>(data_value)) {
-                    bacnet_value.tag = BACNET_APPLICATION_TAG_BOOLEAN;
-                    bacnet_value.type.Boolean = std::get<bool>(data_value);
-                    return true;
-                }
-                break;
-                
-            case DataType::INT16:
-            case DataType::INT32:
-                if (std::holds_alternative<int32_t>(data_value)) {
-                    bacnet_value.tag = BACNET_APPLICATION_TAG_SIGNED_INT;
-                    bacnet_value.type.Signed_Int = std::get<int32_t>(data_value);
-                    return true;
-                }
-                break;
-                
-            case DataType::UINT16:
-            case DataType::UINT32:
-                if (std::holds_alternative<uint32_t>(data_value)) {
-                    bacnet_value.tag = BACNET_APPLICATION_TAG_UNSIGNED_INT;
-                    bacnet_value.type.Unsigned_Int = std::get<uint32_t>(data_value);
-                    return true;
-                }
-                break;
-                
-            case DataType::FLOAT32:
-                if (std::holds_alternative<float>(data_value)) {
-                    bacnet_value.tag = BACNET_APPLICATION_TAG_REAL;
-                    bacnet_value.type.Real = std::get<float>(data_value);
-                    return true;
-                } else if (std::holds_alternative<double>(data_value)) {
-                    bacnet_value.tag = BACNET_APPLICATION_TAG_REAL;
-                    bacnet_value.type.Real = static_cast<float>(std::get<double>(data_value));
-                    return true;
-                }
-                break;
-                
-            case DataType::STRING:
-                if (std::holds_alternative<std::string>(data_value)) {
-                    bacnet_value.tag = BACNET_APPLICATION_TAG_CHARACTER_STRING;
-                    std::string str_val = std::get<std::string>(data_value);
-                    strncpy(bacnet_value.type.Character_String.value, str_val.c_str(), 255);
-                    bacnet_value.type.Character_String.length = (str_val.length() < 255) ? str_val.length() : 255;
-                    return true;
-                }
-                break;
-                
-            default:
-                break;
+        // std::variant의 타입을 런타임에 확인
+        if (std::holds_alternative<bool>(data_value)) {
+            bacnet_value.tag = BACNET_APPLICATION_TAG_BOOLEAN;
+            bacnet_value.type.Boolean = std::get<bool>(data_value);
+            return true;
+        }
+        else if (std::holds_alternative<int32_t>(data_value)) {
+            bacnet_value.tag = BACNET_APPLICATION_TAG_SIGNED_INT;
+            bacnet_value.type.Signed_Int = std::get<int32_t>(data_value);
+            return true;
+        }
+        else if (std::holds_alternative<uint32_t>(data_value)) {
+            bacnet_value.tag = BACNET_APPLICATION_TAG_UNSIGNED_INT;
+            bacnet_value.type.Unsigned_Int = std::get<uint32_t>(data_value);
+            return true;
+        }
+        else if (std::holds_alternative<float>(data_value)) {
+            bacnet_value.tag = BACNET_APPLICATION_TAG_REAL;
+            bacnet_value.type.Real = std::get<float>(data_value);
+            return true;
+        }
+        else if (std::holds_alternative<double>(data_value)) {
+            bacnet_value.tag = BACNET_APPLICATION_TAG_REAL;
+            bacnet_value.type.Real = static_cast<float>(std::get<double>(data_value));
+            return true;
+        }
+        else if (std::holds_alternative<std::string>(data_value)) {
+            bacnet_value.tag = BACNET_APPLICATION_TAG_CHARACTER_STRING;
+            std::string str_val = std::get<std::string>(data_value);
+            strncpy(bacnet_value.type.Character_String.value, str_val.c_str(), 255);
+            bacnet_value.type.Character_String.length = std::min(str_val.length(), size_t(255));
+            return true;
         }
         
         return false;
