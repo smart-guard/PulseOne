@@ -37,6 +37,13 @@ struct BACnetWorkerConfig {
     bool auto_discovery = true;              ///< 자동 디스커버리 활성화
     uint32_t apdu_timeout = 6000;            ///< APDU 타임아웃 (ms)
     uint8_t apdu_retries = 3;                ///< APDU 재시도 횟수
+    
+    // 🔥 BACnetWorker.cpp에서 요구하는 필드들 추가
+    uint32_t max_retries = 3;                ///< 최대 재시도 횟수 (apdu_retries와 동일)
+    std::string target_ip = "";              ///< 타겟 IP 주소
+    uint16_t target_port = 47808;            ///< 타겟 포트
+    uint32_t device_instance = 260001;       ///< 디바이스 인스턴스
+    uint16_t max_apdu_length = 1476;         ///< 최대 APDU 길이
 };
 
 /**
@@ -217,7 +224,7 @@ private:
      * @brief BACnet 드라이버 설정 생성
      * @return 드라이버 설정
      */
-    Drivers::DriverConfig CreateDriverConfig();
+    PulseOne::Structs::DriverConfig CreateDriverConfig();
     
     /**
      * @brief 통계 업데이트

@@ -33,11 +33,14 @@ struct UdpConfig {
     std::string local_interface = "0.0.0.0";  ///< 로컬 바인딩 인터페이스
     uint16_t local_port = 0;                  ///< 로컬 포트 (0=자동 할당)
     std::string remote_host = "";             ///< 원격 호스트 (P2P 모드용)
+    std::string remote_ip = "";               ///< 원격 IP (호환성용) 
     uint16_t remote_port = 0;                 ///< 원격 포트 (P2P 모드용)
     bool broadcast_enabled = true;            ///< 브로드캐스트 허용
     bool multicast_enabled = false;           ///< 멀티캐스트 허용
     std::string multicast_group = "";         ///< 멀티캐스트 그룹 주소
     uint32_t socket_timeout_ms = 5000;        ///< 소켓 타임아웃 (밀리초)
+    uint32_t polling_interval_ms = 1000;      ///< 폴링 간격 (밀리초)
+    uint32_t max_retries = 3;                 ///< 최대 재시도 횟수
     uint32_t receive_buffer_size = 65536;     ///< 수신 버퍼 크기
     uint32_t send_buffer_size = 65536;        ///< 송신 버퍼 크기
     bool reuse_address = true;                ///< SO_REUSEADDR 옵션

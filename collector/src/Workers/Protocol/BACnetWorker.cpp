@@ -467,12 +467,6 @@ bool BACnetWorker::ProcessDataPoints(const std::vector<PulseOne::DataPoint>& poi
 
 bool BACnetWorker::ParseBACnetWorkerConfig() {
     try {
-        // =============================================================================
-// BACnetWorker.cpp - 기존 ParseBACnetWorkerConfig() 함수만 수정
-// =============================================================================
-
-bool BACnetWorker::ParseBACnetWorkerConfig() {
-    try {
         // ❌ Before: 없는 필드 사용
         /*
         if (device_info_.config_json.empty()) {
@@ -526,8 +520,8 @@ bool BACnetWorker::ParseBACnetWorkerConfig() {
         }
         
         // 5. 기본 BACnet 설정
-        worker_config_.device_instance = PulseOne::BACNET_DEFAULT_DEVICE_INSTANCE;
-        worker_config_.max_apdu_length = PulseOne::BACNET_MAX_APDU_LENGTH;
+        worker_config_.device_instance = PulseOne::Constants::BACNET_DEFAULT_DEVICE_INSTANCE;
+        worker_config_.max_apdu_length = PulseOne::Constants::BACNET_MAX_APDU_LENGTH;
         
         LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
                   "BACnet Config - IP: " + worker_config_.target_ip + 
@@ -597,21 +591,21 @@ void BACnetWorker::PollingThreadFunction() {
     LogMessage(PulseOne::LogLevel::INFO, "BACnet polling thread stopped");
 }
 
-Drivers::DriverConfig BACnetWorker::CreateDriverConfig() {
-    Drivers::DriverConfig config;
+PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfig() {
+    PulseOne::Structs::DriverConfig config;
     
-    config.device_id = static_cast<int>(worker_config_.device_id);
-    config.name = device_info_.name;  // name 멤버 사용
-    config.protocol_type = Drivers::ProtocolType::BACNET_IP;
+    config.device_id = device_info_.id;  // UUID 사용
+    config.name = device_info_.name;
+    config.protocol = PulseOne::ProtocolType::BACNET_IP;
     config.endpoint = device_info_.endpoint;
-    config.timeout_ms = worker_config_.apdu_timeout;
+    config.timeout = std::chrono::milliseconds(worker_config_.apdu_timeout);
     config.retry_count = worker_config_.apdu_retries;
-    config.polling_interval_ms = worker_config_.polling_interval;
+    config.polling_interval = std::chrono::milliseconds(worker_config_.polling_interval);
     
     // BACnet 특화 설정
-    config.properties["device_id"] = std::to_string(worker_config_.device_id);
-    config.properties["port"] = std::to_string(worker_config_.port);
-    config.properties["auto_discovery"] = worker_config_.auto_discovery ? "true" : "false";
+    config.custom_settings["device_id"] = std::to_string(worker_config_.device_id);
+    config.custom_settings["port"] = std::to_string(worker_config_.port);
+    config.custom_settings["auto_discovery"] = worker_config_.auto_discovery ? "true" : "false";
     
     return config;
 }

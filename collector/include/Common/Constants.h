@@ -66,7 +66,7 @@ namespace PulseOne::Constants {
     // BACnet 프로토콜 상수
     // ========================================
     constexpr uint16_t BACNET_MAX_APDU_LENGTH = 1476;
-    constexpr uint32_t BACNET_DEFAULT_DEVICE_INSTANCE = 123456;
+    constexpr uint32_t BACNET_DEFAULT_DEVICE_INSTANCE = 260001;
     constexpr uint8_t BACNET_MAX_SEGMENTS = 64;
     
     // ========================================
