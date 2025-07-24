@@ -120,7 +120,7 @@ bool MqttDriver::Initialize(const DriverConfig& config) {
     config_ = config;
     
     // 로거 초기화
-    std::string device_id_str = std::to_string(config_.device_id);
+    std::string device_id_str = config_.device_id;
     logger_ = std::make_unique<DriverLogger>(
         device_id_str,
         ProtocolType::MQTT,
@@ -169,7 +169,7 @@ bool MqttDriver::Initialize(const DriverConfig& config) {
         return true;
         
     } catch (const std::exception& e) {
-        last_error_ = ErrorInfo(ErrorCode::UNKNOWN_ERROR, 
+        last_error_ = ErrorInfo(ErrorCode::INTERNAL_ERROR, 
                                "MQTT initialization failed: " + std::string(e.what()));
         logger_->Error("MQTT initialization error: " + std::string(e.what()), DriverLogCategory::GENERAL);
         return false;
@@ -263,7 +263,7 @@ bool MqttDriver::Connect() {
         
         // 실제 연결 시도
         auto token = mqtt_client_->connect(conn_opts);
-        bool success = token->wait_for(std::chrono::milliseconds(config_.timeout_ms));
+        bool success = token->wait_for(std::chrono::milliseconds(std::chrono::duration_cast<std::chrono::milliseconds>(config_.timeout).count()));
         
         connection_in_progress_ = false;
         
@@ -295,7 +295,7 @@ bool MqttDriver::Connect() {
         return false;
     } catch (const std::exception& e) {
         connection_in_progress_ = false;
-        SetError(ErrorCode::UNKNOWN_ERROR, "Unexpected connection error: " + std::string(e.what()));
+        SetError(ErrorCode::INTERNAL_ERROR, "Unexpected connection error: " + std::string(e.what()));
         if (logger_) {
             logger_->Error("Unexpected connection error: " + std::string(e.what()), 
                           DriverLogCategory::ERROR_HANDLING);
@@ -306,7 +306,7 @@ bool MqttDriver::Connect() {
 
 bool MqttDriver::EstablishConnection() {
     if (!mqtt_client_) {
-        SetError(ErrorCode::UNKNOWN_ERROR, "MQTT client not created");
+        SetError(ErrorCode::INTERNAL_ERROR, "MQTT client not created");
         return false;
     }
     
@@ -336,7 +336,7 @@ bool MqttDriver::EstablishConnection() {
         
         // 연결 시도
         auto token = mqtt_client_->connect(conn_opts);
-        bool success = token->wait_for(std::chrono::milliseconds(config_.timeout_ms));
+        bool success = token->wait_for(std::chrono::milliseconds(std::chrono::duration_cast<std::chrono::milliseconds>(config_.timeout).count()));
         
         if (success && mqtt_client_->is_connected()) {
             if (logger_) {
@@ -490,7 +490,7 @@ bool MqttDriver::Subscribe(const std::string& topic, int qos) {
     }
     
     if (!mqtt_client_) {
-        SetError(ErrorCode::UNKNOWN_ERROR, "MQTT client not initialized");
+        SetError(ErrorCode::INTERNAL_ERROR, "MQTT client not initialized");
         return false;
     }
     
@@ -499,7 +499,7 @@ bool MqttDriver::Subscribe(const std::string& topic, int qos) {
         
         // 실제 구독 시도
         auto token = mqtt_client_->subscribe(topic, qos);
-        bool success = token->wait_for(std::chrono::milliseconds(config_.timeout_ms));
+        bool success = token->wait_for(std::chrono::milliseconds(std::chrono::duration_cast<std::chrono::milliseconds>(config_.timeout).count()));
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -562,7 +562,7 @@ bool MqttDriver::Unsubscribe(const std::string& topic) {
     
     try {
         auto token = mqtt_client_->unsubscribe(topic);
-        bool success = token->wait_for(std::chrono::milliseconds(config_.timeout_ms));
+        bool success = token->wait_for(std::chrono::milliseconds(std::chrono::duration_cast<std::chrono::milliseconds>(config_.timeout).count()));
         
         if (success) {
             std::lock_guard<std::mutex> lock(subscriptions_mutex_);
@@ -598,7 +598,7 @@ bool MqttDriver::Publish(const std::string& topic, const std::string& payload,
     }
     
     if (!mqtt_client_) {
-        SetError(ErrorCode::UNKNOWN_ERROR, "MQTT client not initialized");
+        SetError(ErrorCode::INTERNAL_ERROR, "MQTT client not initialized");
         return false;
     }
     
@@ -612,7 +612,7 @@ bool MqttDriver::Publish(const std::string& topic, const std::string& payload,
         
         // 실제 발행
         auto token = mqtt_client_->publish(msg);
-        bool success = token->wait_for(std::chrono::milliseconds(config_.timeout_ms));
+        bool success = token->wait_for(std::chrono::milliseconds(std::chrono::duration_cast<std::chrono::milliseconds>(config_.timeout).count()));
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -687,7 +687,7 @@ bool MqttDriver::PublishDataPoints(
         // const TimestampedValue& value = pair.second; // 사용하지 않으므로 주석 처리
         
         // 토픽 생성 (device_id가 int이므로 string으로 변환)
-        std::string topic = base_topic + "/" + std::to_string(config_.device_id) + "/" + point.name;
+        std::string topic = base_topic + "/" + config_.device_id + "/" + point.name;
         
         // 스텁으로 발행
         bool success = Publish(topic, "dummy_value", 1, false);
@@ -830,24 +830,24 @@ void MqttDriver::ProcessIncomingMessage(mqtt::const_message_ptr msg) {
 
 DataValue MqttDriver::ParseMessagePayload(const std::string& payload, DataType expected_type) {
     switch (expected_type) {
-        case DataType::BOOL: {
+        case "BOOL": {
             std::string lower_payload = payload;
             std::transform(lower_payload.begin(), lower_payload.end(), lower_payload.begin(), ::tolower);
             return DataValue(lower_payload == "true" || lower_payload == "1" || lower_payload == "on");
         }
-        case DataType::INT16:
+        case "INT16":
             return DataValue(static_cast<int16_t>(std::stoi(payload)));
-        case DataType::UINT16:
+        case "UINT16":
             return DataValue(static_cast<uint16_t>(std::stoul(payload)));
-        case DataType::INT32:
+        case "INT32":
             return DataValue(static_cast<int32_t>(std::stoi(payload)));
-        case DataType::UINT32:
+        case "UINT32":
             return DataValue(static_cast<uint32_t>(std::stoul(payload)));
-        case DataType::FLOAT32:  // FLOAT 대신 FLOAT32 사용
+        case "FLOAT"32:  // FLOAT 대신 FLOAT32 사용
             return DataValue(std::stof(payload));
-        case DataType::FLOAT64:  // DOUBLE 대신 FLOAT64 사용
+        case "FLOAT"64:  // DOUBLE 대신 FLOAT64 사용
             return DataValue(std::stod(payload));
-        case DataType::STRING:
+        case "STRING":
             return DataValue(payload);
         default:
             throw std::invalid_argument("Unsupported data type for MQTT message parsing");
@@ -878,7 +878,7 @@ nlohmann::json MqttDriver::CreateDataPointJson(const DataPoint& point, const Tim
         json_obj["unit"] = point.unit;
     }
     
-    json_obj["device"] = std::to_string(config_.device_id);
+    json_obj["device"] = config_.device_id;
     
     return json_obj;
 }
@@ -899,7 +899,7 @@ bool MqttDriver::CreateMqttClient() {
         return true;
         
     } catch (const std::exception& e) {
-        SetError(ErrorCode::UNKNOWN_ERROR, "Failed to create MQTT client: " + std::string(e.what()));  // 🔧 수정
+        SetError(ErrorCode::INTERNAL_ERROR, "Failed to create MQTT client: " + std::string(e.what()));  // 🔧 수정
         if (logger_) {
             logger_->Error("Failed to create MQTT client: " + std::string(e.what()), 
                           DriverLogCategory::CONNECTION);
@@ -928,7 +928,7 @@ bool MqttDriver::SetupCallbacks() {
         return true;
         
     } catch (const std::exception& e) {
-        SetError(ErrorCode::UNKNOWN_ERROR, "Failed to setup callbacks: " + std::string(e.what()));  // 🔧 수정
+        SetError(ErrorCode::INTERNAL_ERROR, "Failed to setup callbacks: " + std::string(e.what()));  // 🔧 수정
         if (logger_) {
             logger_->Error("Failed to setup callbacks: " + std::string(e.what()), 
                           DriverLogCategory::CONNECTION);
@@ -972,7 +972,7 @@ void MqttDriver::RestoreSubscriptions() {
         
         try {
             auto token = mqtt_client_->subscribe(topic, qos);
-            bool success = token->wait_for(std::chrono::milliseconds(config_.timeout_ms));
+            bool success = token->wait_for(std::chrono::milliseconds(std::chrono::duration_cast<std::chrono::milliseconds>(config_.timeout).count()));
             
             if (success) {
                 successful++;
@@ -1072,7 +1072,7 @@ void MqttDriver::UpdateStatistics(const std::string& operation, bool success, do
         statistics_.total_operations++;
         if (success) {
             statistics_.successful_operations++;
-            statistics_.last_success_time = system_clock::now();
+            statistics_.last_read_time = system_clock::now();
         } else {
             statistics_.failed_operations++;
             statistics_.last_error_time = system_clock::now();
@@ -1091,13 +1091,13 @@ void MqttDriver::UpdateStatistics(const std::string& operation, bool success, do
     if (duration_ms > 0) {
         if (statistics_.total_operations == 1) {
             statistics_.avg_response_time_ms = duration_ms;
-            statistics_.max_response_time_ms = duration_ms;
+            statistics_.avg_response_time_ms = duration_ms;
         } else {
             statistics_.avg_response_time_ms = 
                 (statistics_.avg_response_time_ms * (statistics_.total_operations - 1) + duration_ms) / statistics_.total_operations;
             
-            if (duration_ms > statistics_.max_response_time_ms) {
-                statistics_.max_response_time_ms = duration_ms;
+            if (duration_ms > statistics_.avg_response_time_ms) {
+                statistics_.avg_response_time_ms = duration_ms;
             }
         }
     }
@@ -1109,7 +1109,7 @@ void MqttDriver::UpdateStatistics(const std::string& operation, bool success, do
     }
 }
 
-const DriverStatistics& MqttDriver::GetStatistics() const {
+const PulseOne::Structs::DriverStatisticsconst DriverStatistics& MqttDriver::GetStatistics() const {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     return statistics_;
 }
@@ -1364,7 +1364,7 @@ std::string MqttDriver::GetDiagnosticsJSON() const {
         diag_json["basic"]["total_operations"] = std::to_string(statistics_.total_operations);
         diag_json["basic"]["success_rate"] = std::to_string(statistics_.success_rate) + "%";
         diag_json["basic"]["avg_response_time"] = std::to_string(statistics_.avg_response_time_ms) + "ms";
-        diag_json["basic"]["max_response_time"] = std::to_string(statistics_.max_response_time_ms) + "ms";
+        diag_json["basic"]["max_response_time"] = std::to_string(statistics_.avg_response_time_ms) + "ms";
     }
     
     return diag_json.dump(2);
@@ -1414,7 +1414,7 @@ std::string MqttDriver::GetTopicPointName(const std::string& topic) const {
         }
         
         // 7. 디바이스 ID 접두사 제거 (pulseone_12345 같은 패턴)
-        std::string device_prefix = "pulseone_" + std::to_string(config_.device_id) + "_";
+        std::string device_prefix = "pulseone_" + config_.device_id + "_";
         if (result.find(device_prefix) == 0) {
             result = result.substr(device_prefix.length());
         }
@@ -1621,21 +1621,16 @@ bool MqttDriver::LoadMqttPointsFromDB() {
         int loaded_points = 0;
         int auto_subscribed = 0;
         
-        // 새로운 구조체를 사용한 데이터 포인트들
+        // 헤더에 정의된 6개 매개변수 생성자 사용
         std::vector<MqttDataPointInfo> default_points = {
-            // 온도 센서 - 전체 설정 생성자 사용
+            // 온도 센서
             MqttDataPointInfo(
                 "temp_sensor_01",                    // point_id
                 "Temperature Sensor 1",              // name
                 "Room temperature monitoring",       // description
                 "sensors/temperature/room1",         // topic
                 1,                                   // qos
-                DataType::FLOAT32,                   // data_type
-                "°C",                               // unit
-                1.0,                                // scaling_factor
-                0.0,                                // scaling_offset
-                false,                              // is_writable
-                true                                // auto_subscribe
+                DataType::FLOAT32                    // data_type
             ),
             
             // 습도 센서
@@ -1645,12 +1640,7 @@ bool MqttDriver::LoadMqttPointsFromDB() {
                 "Room humidity monitoring",          // description
                 "sensors/humidity/room1",            // topic
                 1,                                   // qos
-                DataType::FLOAT32,                   // data_type
-                "%RH",                              // unit
-                1.0,                                // scaling_factor
-                0.0,                                // scaling_offset
-                false,                              // is_writable
-                true                                // auto_subscribe
+                DataType::FLOAT32                    // data_type
             ),
             
             // 제어 밸브
@@ -1660,12 +1650,7 @@ bool MqttDriver::LoadMqttPointsFromDB() {
                 "HVAC control valve",                // description
                 "actuators/valve/room1/setpoint",    // topic
                 2,                                   // qos
-                DataType::FLOAT32,                   // data_type
-                "%",                                // unit
-                1.0,                                // scaling_factor
-                0.0,                                // scaling_offset
-                true,                               // is_writable
-                false                               // auto_subscribe
+                DataType::FLOAT32                    // data_type
             ),
             
             // 상태 포인트
@@ -1675,14 +1660,39 @@ bool MqttDriver::LoadMqttPointsFromDB() {
                 "Overall system status",             // description
                 "status/system/overall",             // topic
                 1,                                   // qos
-                DataType::STRING,                    // data_type
-                "",                                 // unit
-                1.0,                                // scaling_factor
-                0.0,                                // scaling_offset
-                false,                              // is_writable
-                true                                // auto_subscribe
+                DataType::STRING                     // data_type
             )
         };
+        
+        // 생성 후 추가 필드 설정
+        for (auto& point : default_points) {
+            // 추가 필드들을 개별적으로 설정
+            if (point.point_id == "temp_sensor_01") {
+                point.unit = "°C";
+                point.scaling_factor = 1.0;
+                point.scaling_offset = 0.0;
+                point.is_writable = false;
+                point.auto_subscribe = true;
+            } else if (point.point_id == "humid_sensor_01") {
+                point.unit = "%RH";
+                point.scaling_factor = 1.0;
+                point.scaling_offset = 0.0;
+                point.is_writable = false;
+                point.auto_subscribe = true;
+            } else if (point.point_id == "valve_ctrl_01") {
+                point.unit = "%";
+                point.scaling_factor = 1.0;
+                point.scaling_offset = 0.0;
+                point.is_writable = true;
+                point.auto_subscribe = false;
+            } else if (point.point_id == "system_status") {
+                point.unit = "";
+                point.scaling_factor = 1.0;
+                point.scaling_offset = 0.0;
+                point.is_writable = false;
+                point.auto_subscribe = true;
+            }
+        }
         
         // 포인트들을 맵에 저장하고 자동 구독 처리
         for (const auto& point : default_points) {
@@ -1724,7 +1734,26 @@ bool MqttDriver::LoadMqttPointsFromDB() {
                 dp.name = info.name;
                 dp.description = info.description;
                 dp.address = 0; // MQTT는 주소 개념 없음
-                dp.data_type = info.data_type;
+                
+                // DataType enum을 string으로 변환
+                switch (info.data_type) {
+                    case DataType::FLOAT32:
+                        dp.data_type = "FLOAT32";
+                        break;
+                    case DataType::STRING:
+                        dp.data_type = "STRING";
+                        break;
+                    case DataType::BOOL:
+                        dp.data_type = "BOOL";
+                        break;
+                    case DataType::UINT16:
+                        dp.data_type = "UINT16";
+                        break;
+                    default:
+                        dp.data_type = "UNKNOWN";
+                        break;
+                }
+                
                 dp.unit = info.unit;
                 dp.scaling_factor = info.scaling_factor;
                 dp.scaling_offset = info.scaling_offset;

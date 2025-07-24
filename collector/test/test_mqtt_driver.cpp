@@ -8,7 +8,7 @@
 
 // 실제 헤더 include
 #include "Drivers/Mqtt/MqttDriver.h"
-#include "Drivers/Common/CommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"
 
 using namespace PulseOne::Drivers;
 

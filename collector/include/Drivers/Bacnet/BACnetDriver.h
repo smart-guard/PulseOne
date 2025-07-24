@@ -87,6 +87,9 @@ extern "C" {
 namespace PulseOne {
 namespace Drivers {
 
+// 🔥 편의성을 위한 상수 alias 정의
+using namespace PulseOne::Constants;
+
 /**
  * @brief BACnet 디바이스 정보
  */
@@ -98,6 +101,14 @@ struct BACnetDeviceInfo {
     uint32_t max_apdu_length;    ///< 최대 APDU 길이
     bool segmentation_supported; ///< 세그멘테이션 지원 여부
     std::chrono::system_clock::time_point last_seen; ///< 마지막 응답 시간
+    
+    // 🔥 기본값 설정을 통합 상수 사용
+    BACnetDeviceInfo() 
+        : device_id(BACNET_DEFAULT_DEVICE_INSTANCE)
+        , port(BACNET_DEFAULT_PORT)
+        , max_apdu_length(BACNET_MAX_APDU_LENGTH)
+        , segmentation_supported(true)
+        , last_seen(std::chrono::system_clock::now()) {}
 };
 
 /**
@@ -112,22 +123,33 @@ struct BACnetObjectInfo {
     BACNET_APPLICATION_DATA_VALUE value; ///< 현재 값
     DataQuality quality;                 ///< 데이터 품질
     std::chrono::system_clock::time_point timestamp; ///< 타임스탬프
+    
+    // 🔥 기본값 설정
+    BACnetObjectInfo() 
+        : object_type(OBJECT_ANALOG_INPUT)
+        , object_instance(0)
+        , property_id(PROP_PRESENT_VALUE)
+        , array_index(BACNET_ARRAY_ALL)
+        , quality(DataQuality::GOOD)
+        , timestamp(std::chrono::system_clock::now()) {}
 };
 
 /**
- * @brief BACnet 설정 구조체
+ * @brief BACnet 설정 구조체 (🔥 통합 상수 적용)
  */
 struct BACnetConfig {
-    uint32_t device_id = 260001;        ///< 로컬 Device ID
-    std::string interface_name = "eth0"; ///< 네트워크 인터페이스
-    uint16_t port = 47808;               ///< UDP 포트
-    uint32_t apdu_timeout = 6000;        ///< APDU 타임아웃 (ms)
-    uint8_t apdu_retries = 3;            ///< APDU 재시도 횟수
-    bool who_is_enabled = true;          ///< Who-Is 브로드캐스트 활성화
-    uint32_t who_is_interval = 30000;    ///< Who-Is 간격 (ms)
-    uint32_t scan_interval = 5000;       ///< 스캔 간격 (ms)
-    bool cov_subscription = false;       ///< COV 구독 사용
-    uint32_t cov_lifetime = 3600;        ///< COV 구독 수명 (초)
+    uint32_t device_id = BACNET_DEFAULT_DEVICE_INSTANCE;        ///< 로컬 Device ID
+    std::string interface_name = DEFAULT_INTERFACE_NAME;        ///< 네트워크 인터페이스
+    uint16_t port = BACNET_DEFAULT_PORT;                       ///< UDP 포트
+    uint32_t apdu_timeout = BACNET_DEFAULT_APDU_TIMEOUT_MS;    ///< APDU 타임아웃 (ms)
+    uint8_t apdu_retries = BACNET_DEFAULT_APDU_RETRIES;        ///< APDU 재시도 횟수
+    bool who_is_enabled = true;                                ///< Who-Is 브로드캐스트 활성화
+    uint32_t who_is_interval = BACNET_WHO_IS_INTERVAL_MS;      ///< Who-Is 간격 (ms)
+    uint32_t scan_interval = BACNET_SCAN_INTERVAL_MS;          ///< 스캔 간격 (ms)
+    bool cov_subscription = false;                             ///< COV 구독 사용
+    uint32_t cov_lifetime = BACNET_COV_LIFETIME_SECONDS;       ///< COV 구독 수명 (초)
+    uint16_t max_apdu_length = BACNET_MAX_APDU_LENGTH;         ///< 최대 APDU 길이
+    uint8_t segmentation = BACNET_SEGMENTED_BOTH;              ///< 세그멘테이션 지원
 };
 
 /**
@@ -145,8 +167,18 @@ struct BACnetPacketLog {
     double response_time_ms;
     std::string decoded_value;    // 엔지니어 친화적 값
     std::string raw_data;         // 원시 APDU 데이터
+    
+    // 🔥 기본값 설정
+    BACnetPacketLog() 
+        : direction("Unknown")
+        , timestamp(std::chrono::system_clock::now())
+        , device_id(0)
+        , object_type(OBJECT_ANALOG_INPUT)
+        , object_instance(0)
+        , property_id(PROP_PRESENT_VALUE)
+        , success(false)
+        , response_time_ms(0.0) {}
 };
-
 /**
  * @brief BACnet 프로토콜 드라이버
  * 
@@ -347,7 +379,7 @@ private:
      * @param bacnet_value 출력 BACnet 값
      * @return 성공 시 true
      */
-    bool ConvertToBACnetValue(const DataValue& data_value, PulseOne::DataType data_type,
+    bool ConvertToBACnetValue(const DataValue& data_value, 
                          BACNET_APPLICATION_DATA_VALUE& bacnet_value);    
     /**
      * @brief BACNET_APPLICATION_DATA_VALUE를 DataValue로 변환

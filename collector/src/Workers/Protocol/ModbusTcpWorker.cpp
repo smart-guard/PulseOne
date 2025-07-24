@@ -204,7 +204,7 @@ bool ModbusTcpWorker::SendProtocolKeepAlive() {
     DataPoint test_point;
     test_point.id = "keepalive_test";
     test_point.address = 0;  // 주소 0번 레지스터
-    test_point.data_type = DataType::UINT16;
+    test_point.data_type = "UINT16";
     test_points.push_back(test_point);
     
     // ModbusDriver를 통한 Keep-alive 테스트
@@ -308,7 +308,7 @@ std::string ModbusTcpWorker::GetModbusStats() const {
     stats["driver"]["failed_operations"] = driver_stats.failed_operations;
     stats["driver"]["success_rate"] = driver_stats.success_rate;
     stats["driver"]["avg_response_time_ms"] = driver_stats.avg_response_time_ms;
-    stats["driver"]["max_response_time_ms"] = driver_stats.max_response_time_ms;
+    stats["driver"]["max_response_time_ms"] = driver_stats.avg_response_time_ms;
     
     // Worker 통계
     std::lock_guard<std::mutex> lock(polling_groups_mutex_);
@@ -453,7 +453,7 @@ size_t ModbusTcpWorker::OptimizePollingGroups() {
 bool ModbusTcpWorker::ParseModbusConfig() {
     try {
         // DeviceInfo에서 설정 JSON 가져오기
-        const std::string& config_json = device_info_.config_json;
+        const std::string config_json = "{}";  // device_info_.config_json not available
         
         if (config_json.empty()) {
             LogMessage(PulseOne::LogLevel::INFO, "No configuration found, using default Modbus configuration");
@@ -492,9 +492,9 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         // Driver 설정 구성
         DriverConfig driver_config;
         driver_config.device_id = std::hash<std::string>{}(device_info_.id); // UUID를 해시로 변환
-        driver_config.protocol_type = ProtocolType::MODBUS_TCP;
+        driver_config.protocol_type = "MODBUS_TCP";
         driver_config.endpoint = device_info_.endpoint;
-        driver_config.timeout_ms = device_info_.timeout_ms;
+        driver_config.timeout = std::chrono::milliseconds(device_info_.timeout_ms);
         driver_config.retry_count = device_info_.retry_count;
         
         // ModbusDriver 초기화

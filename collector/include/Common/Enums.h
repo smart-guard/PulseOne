@@ -205,6 +205,28 @@ namespace PulseOne::Enums {
         READ_WRITE = 2,
         READ_WRITE_MAINTENANCE_ONLY = 3  // 🆕 점검 시에만 쓰기 가능
     };
+        
+    /**
+     * @brief 데이터 타입 열거형 (프로토콜 드라이버에서 사용)
+     */
+    enum class DataType : uint8_t {
+        UNKNOWN = 0,        // 알 수 없는 타입
+        BOOL = 1,          // boolean
+        INT8 = 2,          // 8bit 정수
+        UINT8 = 3,         // 8bit 부호없는 정수  
+        INT16 = 4,         // 16bit 정수
+        UINT16 = 5,        // 16bit 부호없는 정수
+        INT32 = 6,         // 32bit 정수
+        UINT32 = 7,        // 32bit 부호없는 정수
+        INT64 = 8,         // 64bit 정수 (향후 확장)
+        UINT64 = 9,        // 64bit 부호없는 정수 (향후 확장)
+        FLOAT32 = 10,      // 32bit 부동소수점 (기존 테스트 코드 호환)
+        FLOAT64 = 11,      // 64bit 부동소수점 (DOUBLE 대신)
+        STRING = 12,       // 문자열
+        BINARY = 13,       // 바이너리 데이터
+        DATETIME = 14,     // 날짜/시간 (향후 확장)
+        JSON = 15          // JSON 데이터 (MQTT용)
+    };
     
 } // namespace PulseOne::Enums
 
