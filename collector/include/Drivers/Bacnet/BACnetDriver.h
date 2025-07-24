@@ -347,9 +347,8 @@ private:
      * @param bacnet_value 출력 BACnet 값
      * @return 성공 시 true
      */
-    bool ConvertToBACnetValue(const DataValue& data_value, DataType data_type,
-                             BACNET_APPLICATION_DATA_VALUE& bacnet_value);
-    
+    bool ConvertToBACnetValue(const DataValue& data_value, PulseOne::DataType data_type,
+                         BACNET_APPLICATION_DATA_VALUE& bacnet_value);    
     /**
      * @brief BACNET_APPLICATION_DATA_VALUE를 DataValue로 변환
      * @param bacnet_value 입력 BACnet 값

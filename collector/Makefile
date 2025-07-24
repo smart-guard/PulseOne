@@ -1,12 +1,20 @@
 # =============================================================================
 # PulseOne Collector Makefile - 새 폴더 구조 지원
 # =============================================================================
+# nlohmann/json 라이브러리 체크
+HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
 # 컴파일러 설정
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
 LDFLAGS = 
 LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3 -lbacnet
+
+# 기존 CXXFLAGS에 JSON 플래그 추가
+ifeq ($(HAS_NLOHMANN_JSON),1)
+    CXXFLAGS += -DHAS_NLOHMANN_JSON
+endif
+
 
 # 프로젝트 설정
 PROJECT_NAME = pulseone_collector
@@ -169,9 +177,8 @@ run: $(TARGET)
 # 디버그 빌드
 debug: CXXFLAGS += -g -DPULSEONE_DEBUG_MODE -O0
 debug: CXXFLAGS := $(filter-out -O2,$(CXXFLAGS))
-debug: clean all
+debug: check-json clean all
 	@echo -e "$(GREEN)🐛 Debug build completed - verbose logging enabled$(NC)"
-
 # 릴리즈 빌드
 release: CXXFLAGS += -O3 -DNDEBUG
 release: CXXFLAGS := $(filter-out -O2,$(CXXFLAGS))
@@ -190,6 +197,16 @@ minimal: directories $(MINIMAL_OBJECTS)
 # 개발 도구들
 # =============================================================================
 
+# JSON 라이브러리 체크
+check-json:
+	@echo "🔍 Checking nlohmann/json..."
+	@if [ "$(HAS_NLOHMANN_JSON)" = "0" ]; then \
+		echo "⚠️  nlohmann/json not found - using fallback"; \
+		echo "   Install: sudo apt-get install nlohmann-json3-dev"; \
+	else \
+		echo "✅ nlohmann/json found"; \
+	fi
+	
 # 코드 분석
 analyze:
 	@echo -e "$(BLUE)📊 Analyzing code structure...$(NC)"

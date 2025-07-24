@@ -58,12 +58,11 @@ namespace PulseOne {
         using DataPoint = PulseOne::DataPoint;
         using TimestampedValue = PulseOne::TimestampedValue;
         using ProtocolType = PulseOne::ProtocolType;
-        using DriverLogCategory = PulseOne::DriverLogCategory;
         using DriverLogContext = PulseOne::DriverLogContext;
         
-        // 유틸리티 함수들도 별칭으로 제공
+        // 유틸리티 함수들은 Utils 네임스페이스 것을 사용
         inline std::string ProtocolTypeToString(ProtocolType type) {
-            return PulseOne::ProtocolTypeToString(type);
+            return PulseOne::Utils::ProtocolTypeToString(type);
         }
     }
 }
