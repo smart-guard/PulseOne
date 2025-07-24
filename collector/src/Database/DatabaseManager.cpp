@@ -4,6 +4,8 @@
 #include <thread>
 #include <chrono>
 
+using namespace PulseOne::Constants;
+
 DatabaseManager::DatabaseManager() {}
 DatabaseManager::~DatabaseManager() {
     if (sqlite_conn) {

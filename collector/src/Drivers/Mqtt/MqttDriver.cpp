@@ -3,12 +3,14 @@
 // MQTT 드라이버 구현 (기존 구조 완전 호환 버전)
 // =============================================================================
 
-#include "Drivers/Mqtt/MqttDriver.h"
+#include "Drivers/Mqtt/MqttDriver.h" 
+#include "Common/UnifiedCommonTypes.h"  // 통합 타입 시스템
 #include "Drivers/Common/DriverFactory.h"
 #include <optional>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <nlohmann/json.hpp>           // JSON 처리
 
 
 // Eclipse Paho MQTT C++ 헤더들
@@ -16,6 +18,11 @@
 #include <mqtt/callback.h>
 #include <mqtt/iaction_listener.h>
 
+using namespace PulseOne::Drivers;
+using namespace std::chrono;
+using namespace PulseOne;
+using namespace PulseOne::Structs;
+using namespace PulseOne::Enums;
 using namespace PulseOne::Drivers;
 using namespace std::chrono;
 
@@ -120,9 +127,8 @@ bool MqttDriver::Initialize(const DriverConfig& config) {
     config_ = config;
     
     // 로거 초기화
-    std::string device_id_str = config_.device_id;
     logger_ = std::make_unique<DriverLogger>(
-        device_id_str,
+        config_.device_id,  // std::to_string() 제거
         ProtocolType::MQTT,
         config_.endpoint
     );
@@ -180,7 +186,7 @@ bool MqttDriver::Initialize(const DriverConfig& config) {
 bool MqttDriver::ParseConfig(const DriverConfig& config) {
     // 브로커 URL 파싱
     mqtt_config_.broker_url = config.endpoint;
-    
+
     // URL에서 주소와 포트 추출 (간단한 파싱)
     std::string url = config.endpoint;
     if (url.find("mqtt://") == 0) {
@@ -197,7 +203,7 @@ bool MqttDriver::ParseConfig(const DriverConfig& config) {
     }
     
     // 클라이언트 ID 생성
-    mqtt_config_.client_id = "pulseone_" + std::to_string(config.device_id);
+    mqtt_config_.client_id = "pulseone_" + config.device_id;
     
     // 🔧 수정: 기존 변수명 사용
     mqtt_config_.keep_alive_interval = 60;    // keep_alive_sec가 아니라 keep_alive_interval
@@ -830,24 +836,24 @@ void MqttDriver::ProcessIncomingMessage(mqtt::const_message_ptr msg) {
 
 DataValue MqttDriver::ParseMessagePayload(const std::string& payload, DataType expected_type) {
     switch (expected_type) {
-        case "BOOL": {
+        case DataType::BOOL: {  // ✅ 수정: enum 직접 사용
             std::string lower_payload = payload;
             std::transform(lower_payload.begin(), lower_payload.end(), lower_payload.begin(), ::tolower);
             return DataValue(lower_payload == "true" || lower_payload == "1" || lower_payload == "on");
         }
-        case "INT16":
+        case DataType::INT16:   // ✅ 수정: enum 직접 사용
             return DataValue(static_cast<int16_t>(std::stoi(payload)));
-        case "UINT16":
+        case DataType::UINT16:  // ✅ 수정: enum 직접 사용
             return DataValue(static_cast<uint16_t>(std::stoul(payload)));
-        case "INT32":
+        case DataType::INT32:   // ✅ 수정: enum 직접 사용
             return DataValue(static_cast<int32_t>(std::stoi(payload)));
-        case "UINT32":
+        case DataType::UINT32:  // ✅ 수정: enum 직접 사용
             return DataValue(static_cast<uint32_t>(std::stoul(payload)));
-        case "FLOAT"32:  // FLOAT 대신 FLOAT32 사용
+        case DataType::FLOAT32: // ✅ 수정: 올바른 enum 사용
             return DataValue(std::stof(payload));
-        case "FLOAT"64:  // DOUBLE 대신 FLOAT64 사용
+        case DataType::FLOAT64:  // ✅ 수정: FLOAT64 대신 DOUBLE 사용
             return DataValue(std::stod(payload));
-        case "STRING":
+        case DataType::STRING:  // ✅ 수정: enum 직접 사용
             return DataValue(payload);
         default:
             throw std::invalid_argument("Unsupported data type for MQTT message parsing");
@@ -1109,7 +1115,7 @@ void MqttDriver::UpdateStatistics(const std::string& operation, bool success, do
     }
 }
 
-const PulseOne::Structs::DriverStatisticsconst DriverStatistics& MqttDriver::GetStatistics() const {
+const DriverStatistics& MqttDriver::GetStatistics() const {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     return statistics_;
 }

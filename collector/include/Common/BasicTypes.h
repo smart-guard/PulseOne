@@ -35,14 +35,16 @@ namespace PulseOne::BasicTypes {
      * @brief 데이터 값을 담는 범용 variant 타입
      * 산업용 데이터 타입들을 모두 포함
      */
-    using DataVariant = std::variant<
-        bool,           // Digital/Boolean 값
-        int16_t,        // 16비트 정수 (Modbus 표준)
-        int32_t,        // 32비트 정수
-        int64_t,        // 64비트 정수
-        float,          // 32비트 실수
-        double,         // 64비트 실수
-        std::string     // 문자열 값
+     using DataVariant = std::variant<
+        std::monostate,         // ✅ 빈 상태 (첫 번째 필수 - GCC 15 요구사항)
+        bool,                  // Digital/Boolean 값
+        int16_t,               // 16비트 정수 (Modbus 표준)
+        int32_t,               // 32비트 정수
+        int64_t,               // 64비트 정수 (BACNET_UNSIGNED_INTEGER 호환)
+        uint32_t,              // 32비트 부호없는 정수 (BACnet 호환 추가)
+        float,                 // 32비트 실수
+        double,                // 64비트 실수
+        std::string            // 문자열 값
     >;
     
     /**

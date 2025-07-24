@@ -335,16 +335,19 @@ namespace PulseOne::Utils {
     inline std::string DataVariantToString(const DataVariant& value) {
         return std::visit([](auto&& arg) -> std::string {
             using T = std::decay_t<decltype(arg)>;
-            if constexpr (std::is_same_v<T, bool>) {
+            if constexpr (std::is_same_v<T, std::monostate>) {
+                return "null";  // std::monostate 처리
+            } else if constexpr (std::is_same_v<T, bool>) {
                 return arg ? "true" : "false";
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return arg;
+            } else if constexpr (std::is_arithmetic_v<T>) {
+                return std::to_string(arg);  // 숫자 타입만 처리
             } else {
-                return std::to_string(arg);
+                return "unknown_type";
             }
         }, value);
     }
-    
     /**
      * @brief 문자열을 DataVariant로 변환 (타입 추론)
      */

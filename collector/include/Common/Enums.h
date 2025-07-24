@@ -129,6 +129,8 @@ namespace PulseOne::Enums {
         INTERNAL_ERROR = 501,
         CONFIGURATION_ERROR = 502,
         DRIVER_NOT_FOUND = 503,
+        DEVICE_NOT_FOUND = 504,
+        DEVICE_ERROR = 505,
         INVALID_PARAMETER = 504,
         
         // 🆕 드라이버 시스템용 추가 에러들
