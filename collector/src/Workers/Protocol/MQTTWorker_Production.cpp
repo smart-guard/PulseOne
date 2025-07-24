@@ -20,14 +20,14 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-MQTTWorkerProduction::MQTTWorkerProduction(const Drivers::DeviceInfo& device_info,
+MQTTWorkerProduction::MQTTWorkerProduction(const PulseOne::DeviceInfo& device_info,
                                          std::shared_ptr<RedisClient> redis_client,
                                          std::shared_ptr<InfluxClient> influx_client)
     : MQTTWorker(device_info, redis_client, influx_client)
     , start_time_(steady_clock::now())
     , last_throughput_calculation_(steady_clock::now()) {
     
-    LogMessage(LogLevel::INFO, "MQTTWorkerProduction created");
+    LogMessage(PulseOne::LogLevel::INFO, "MQTTWorkerProduction created");
     
     // 기본 설정 초기화
     advanced_config_ = AdvancedMqttConfig{};
@@ -50,7 +50,7 @@ MQTTWorkerProduction::~MQTTWorkerProduction() {
         alarm_monitor_thread_.join();
     }
     
-    LogMessage(LogLevel::INFO, "MQTTWorkerProduction destroyed");
+    LogMessage(PulseOne::LogLevel::INFO, "MQTTWorkerProduction destroyed");
 }
 
 // =============================================================================
@@ -64,7 +64,7 @@ std::future<bool> MQTTWorkerProduction::Start() {
         bool base_success = base_result.get();
         
         if (!base_success) {
-            LogMessage(LogLevel::ERROR, "Failed to start base MQTT worker");
+            LogMessage(PulseOne::LogLevel::ERROR, "Failed to start base MQTT worker");
             return false;
         }
         
@@ -74,11 +74,11 @@ std::future<bool> MQTTWorkerProduction::Start() {
             priority_queue_thread_ = std::thread(&MQTTWorkerProduction::PriorityQueueProcessorLoop, this);
             alarm_monitor_thread_ = std::thread(&MQTTWorkerProduction::AlarmMonitorLoop, this);
             
-            LogMessage(LogLevel::INFO, "MQTTWorkerProduction started successfully");
+            LogMessage(PulseOne::LogLevel::INFO, "MQTTWorkerProduction started successfully");
             return true;
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Failed to start production threads: " + std::string(e.what()));
+            LogMessage(PulseOne::LogLevel::ERROR, "Failed to start production threads: " + std::string(e.what()));
             return false;
         }
     });
@@ -105,7 +105,7 @@ std::future<bool> MQTTWorkerProduction::Stop() {
         auto base_result = MQTTWorker::Stop();
         bool base_success = base_result.get();
         
-        LogMessage(LogLevel::INFO, "MQTTWorkerProduction stopped");
+        LogMessage(PulseOne::LogLevel::INFO, "MQTTWorkerProduction stopped");
         return base_success;
     });
 }
@@ -128,7 +128,7 @@ bool MQTTWorkerProduction::PublishWithPriority(const std::string& topic,
         if (!CheckConnection()) {
             // 오프라인 큐에 저장
             SaveOfflineMessage(message);
-            LogMessage(LogLevel::WARN, "Connection not available, message queued for offline processing");
+            LogMessage(PulseOne::LogLevel::WARN, "Connection not available, message queued for offline processing");
             return false;
         }
         
@@ -146,12 +146,12 @@ bool MQTTWorkerProduction::PublishWithPriority(const std::string& topic,
         
         // 로깅 (문자열 연결 수정)
         std::string result_msg = "Message send " + std::string(success ? "successful" : "failed") + " for topic: " + topic;
-        LogMessage(success ? LogLevel::DEBUG : LogLevel::WARN, result_msg);
+        LogMessage(success ? PulseOne::LogLevel::DEBUG_LEVEL : PulseOne::LogLevel::WARN, result_msg);
         
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in PublishWithPriority: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception in PublishWithPriority: " + std::string(e.what()));
         performance_metrics_.error_count++;
         return false;
     }
@@ -170,7 +170,7 @@ size_t MQTTWorkerProduction::PublishBatch(const std::vector<OfflineMessage>& mes
         }
     }
     
-    LogMessage(LogLevel::INFO, "Batch publish completed: " + std::to_string(successful) + 
+    LogMessage(PulseOne::LogLevel::INFO, "Batch publish completed: " + std::to_string(successful) + 
               "/" + std::to_string(messages.size()) + " messages sent");
     
     return successful;
@@ -184,7 +184,7 @@ bool MQTTWorkerProduction::PublishIfQueueAvailable(const std::string& topic,
         std::lock_guard<std::mutex> lock(offline_messages_mutex_);
         if (offline_messages_.size() >= max_queue_size) {
             performance_metrics_.messages_dropped++;
-            LogMessage(LogLevel::WARN, "Message dropped due to queue overflow");
+            LogMessage(PulseOne::LogLevel::WARN, "Message dropped due to queue overflow");
             return false;
         }
     }
@@ -277,27 +277,27 @@ double MQTTWorkerProduction::GetSystemLoad() const {
 
 void MQTTWorkerProduction::SetMetricsCollectionInterval(int interval_seconds) {
     metrics_collection_interval_ = interval_seconds;
-    LogMessage(LogLevel::INFO, "Metrics collection interval set to " + std::to_string(interval_seconds) + " seconds");
+    LogMessage(PulseOne::LogLevel::INFO, "Metrics collection interval set to " + std::to_string(interval_seconds) + " seconds");
 }
 
 void MQTTWorkerProduction::SetMaxQueueSize(size_t max_size) {
     max_queue_size_ = max_size;
-    LogMessage(LogLevel::INFO, "Max queue size set to " + std::to_string(max_size));
+    LogMessage(PulseOne::LogLevel::INFO, "Max queue size set to " + std::to_string(max_size));
 }
 
 void MQTTWorkerProduction::ResetMetrics() {
     performance_metrics_.Reset();
-    LogMessage(LogLevel::INFO, "Performance metrics reset");
+    LogMessage(PulseOne::LogLevel::INFO, "Performance metrics reset");
 }
 
 void MQTTWorkerProduction::SetBackpressureThreshold(double threshold) {
     backpressure_threshold_ = threshold;
-    LogMessage(LogLevel::INFO, "Backpressure threshold set to " + std::to_string(threshold));
+    LogMessage(PulseOne::LogLevel::INFO, "Backpressure threshold set to " + std::to_string(threshold));
 }
 
 void MQTTWorkerProduction::ConfigureAdvanced(const AdvancedMqttConfig& config) {
     advanced_config_ = config;
-    LogMessage(LogLevel::INFO, "Advanced MQTT configuration updated");
+    LogMessage(PulseOne::LogLevel::INFO, "Advanced MQTT configuration updated");
 }
 
 void MQTTWorkerProduction::EnableAutoFailover(const std::vector<std::string>& backup_brokers, int max_failures) {
@@ -305,7 +305,7 @@ void MQTTWorkerProduction::EnableAutoFailover(const std::vector<std::string>& ba
     broker_last_failure_.resize(backup_brokers.size() + 1);  // +1 for primary
     advanced_config_.max_failures = max_failures;
     
-    LogMessage(LogLevel::INFO, "Auto failover enabled with " + std::to_string(backup_brokers.size()) + " backup brokers");
+    LogMessage(PulseOne::LogLevel::INFO, "Auto failover enabled with " + std::to_string(backup_brokers.size()) + " backup brokers");
 }
 
 // =============================================================================
@@ -313,7 +313,7 @@ void MQTTWorkerProduction::EnableAutoFailover(const std::vector<std::string>& ba
 // =============================================================================
 
 void MQTTWorkerProduction::MetricsCollectorLoop() {
-    LogMessage(LogLevel::INFO, "Metrics collector thread started");
+    LogMessage(PulseOne::LogLevel::INFO, "Metrics collector thread started");
     
     while (!stop_metrics_thread_.load()) {
         try {
@@ -321,16 +321,16 @@ void MQTTWorkerProduction::MetricsCollectorLoop() {
             std::this_thread::sleep_for(seconds(metrics_collection_interval_.load()));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in metrics collector: " + std::string(e.what()));
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception in metrics collector: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(10));
         }
     }
     
-    LogMessage(LogLevel::INFO, "Metrics collector thread stopped");
+    LogMessage(PulseOne::LogLevel::INFO, "Metrics collector thread stopped");
 }
 
 void MQTTWorkerProduction::PriorityQueueProcessorLoop() {
-    LogMessage(LogLevel::INFO, "Priority queue processor thread started");
+    LogMessage(PulseOne::LogLevel::INFO, "Priority queue processor thread started");
     
     while (!stop_priority_thread_.load()) {
         try {
@@ -358,39 +358,39 @@ void MQTTWorkerProduction::PriorityQueueProcessorLoop() {
             std::this_thread::sleep_for(milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in priority queue processor: " + std::string(e.what()));
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception in priority queue processor: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(1));
         }
     }
     
-    LogMessage(LogLevel::INFO, "Priority queue processor thread stopped");
+    LogMessage(PulseOne::LogLevel::INFO, "Priority queue processor thread stopped");
 }
 
 void MQTTWorkerProduction::AlarmMonitorLoop() {
-    LogMessage(LogLevel::INFO, "Alarm monitor thread started");
+    LogMessage(PulseOne::LogLevel::INFO, "Alarm monitor thread started");
     
     while (!stop_alarm_thread_.load()) {
         try {
             // 연결 상태 모니터링
             if (!IsConnectionHealthy()) {
-                LogMessage(LogLevel::WARN, "Connection health check failed");
+                LogMessage(PulseOne::LogLevel::WARN, "Connection health check failed");
             }
             
             // 큐 크기 모니터링
             double load = GetSystemLoad();
             if (load > backpressure_threshold_.load()) {
-                LogMessage(LogLevel::WARN, "High system load detected: " + std::to_string(load));
+                LogMessage(PulseOne::LogLevel::WARN, "High system load detected: " + std::to_string(load));
             }
             
             std::this_thread::sleep_for(seconds(30));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in alarm monitor: " + std::string(e.what()));
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception in alarm monitor: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(10));
         }
     }
     
-    LogMessage(LogLevel::INFO, "Alarm monitor thread stopped");
+    LogMessage(PulseOne::LogLevel::INFO, "Alarm monitor thread stopped");
 }
 
 void MQTTWorkerProduction::CollectPerformanceMetrics() {
@@ -521,7 +521,7 @@ void MQTTWorkerProduction::SaveOfflineMessage(const OfflineMessage& message) {
     
     if (offline_messages_.size() >= advanced_config_.max_offline_messages) {
         // 큐가 가득 찬 경우 가장 낮은 우선순위 메시지 제거
-        LogMessage(LogLevel::WARN, "Offline queue full, dropping low priority message");
+        LogMessage(PulseOne::LogLevel::WARN, "Offline queue full, dropping low priority message");
         performance_metrics_.messages_dropped++;
         return;
     }

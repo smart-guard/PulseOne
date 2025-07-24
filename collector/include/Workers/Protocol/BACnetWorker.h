@@ -82,7 +82,7 @@ public:
      * @param influx_client InfluxDB 클라이언트
      */
     explicit BACnetWorker(
-        const Drivers::DeviceInfo& device_info,
+        const PulseOne::DeviceInfo& device_info,
         std::shared_ptr<RedisClient> redis_client,
         std::shared_ptr<InfluxClient> influx_client
     );
@@ -163,7 +163,7 @@ protected:
      * @param points 데이터 포인트 목록
      * @return 성공 시 true
      */
-    bool ProcessDataPoints(const std::vector<Drivers::DataPoint>& points);
+    bool ProcessDataPoints(const std::vector<PulseOne::DataPoint>& points);
 
     // =============================================================================
     // 멤버 변수 (protected)

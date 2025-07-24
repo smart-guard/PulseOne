@@ -143,7 +143,7 @@ public:
      * @param influx_client InfluxDB 클라이언트
      * @param logger 로거
      */
-    DeviceWorker(const Drivers::DeviceInfo& device_info,
+    DeviceWorker(const PulseOne::DeviceInfo& device_info,
                  std::unique_ptr<Drivers::IProtocolDriver> driver,
                  std::shared_ptr<RedisClient> redis_client,
                  std::shared_ptr<InfluxClient> influx_client,
@@ -277,7 +277,7 @@ public:
      * @param point 데이터 포인트 정보
      * @return 성공 시 true
      */
-    bool AddDataPoint(const Drivers::DataPoint& point);
+    bool AddDataPoint(const PulseOne::DataPoint& point);
     
     /**
      * @brief 데이터 포인트 제거
@@ -332,13 +332,13 @@ public:
      * @brief 디바이스 정보
      * @return 디바이스 정보 구조체
      */
-    const Drivers::DeviceInfo& GetDeviceInfo() const { return device_info_; }
+    const PulseOne::DeviceInfo& GetDeviceInfo() const { return device_info_; }
     
     /**
      * @brief 현재 데이터 포인트 목록
      * @return 데이터 포인트들
      */
-    std::vector<Drivers::DataPoint> GetDataPoints() const;
+    std::vector<PulseOne::DataPoint> GetDataPoints() const;
     
     /**
      * @brief 상태 정보를 JSON으로 반환
@@ -352,7 +352,7 @@ private:
     // =============================================================================
     
     // 기본 정보
-    Drivers::DeviceInfo device_info_;
+    PulseOne::DeviceInfo device_info_;
     std::unique_ptr<Drivers::IProtocolDriver> driver_;
     std::shared_ptr<RedisClient> redis_client_;
     std::shared_ptr<InfluxClient> influx_client_;
@@ -370,8 +370,8 @@ private:
     
     // 데이터 저장
     mutable std::mutex data_points_mutex_;
-    std::map<UUID, Drivers::DataPoint> data_points_;
-    std::map<UUID, Drivers::TimestampedValue> latest_values_;
+    std::map<UUID, PulseOne::DataPoint> data_points_;
+    std::map<UUID, PulseOne::TimestampedValue> latest_values_;
     
     // 가상 포인트 및 알람
     mutable std::mutex virtual_points_mutex_;
@@ -441,7 +441,7 @@ private:
      * @param point_id 포인트 ID
      * @param value 값
      */
-    void SaveToInfluxDB(const UUID& point_id, const Drivers::TimestampedValue& value);
+    void SaveToInfluxDB(const UUID& point_id, const PulseOne::TimestampedValue& value);
     
     /**
      * @brief 가상 포인트 계산
@@ -453,7 +453,7 @@ private:
      * @param point_id 포인트 ID
      * @param value 값
      */
-    void CheckAlarms(const UUID& point_id, const Drivers::TimestampedValue& value);
+    void CheckAlarms(const UUID& point_id, const PulseOne::TimestampedValue& value);
     
     /**
      * @brief 드라이버 재연결 시도

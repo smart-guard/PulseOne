@@ -20,8 +20,8 @@ class DeviceControlHandler;
 
 // Type aliases for consistency
 using UUID = PulseOne::Drivers::UUID;
-using DeviceInfo = PulseOne::Drivers::DeviceInfo;
-using DataPoint = PulseOne::Drivers::DataPoint;
+using DeviceInfo = PulseOne::PulseOne::DeviceInfo;
+using DataPoint = PulseOne::PulseOne::DataPoint;
 using DataValue = PulseOne::Drivers::DataValue;
 using WriteRequest = PulseOne::Drivers::WriteRequest;
 

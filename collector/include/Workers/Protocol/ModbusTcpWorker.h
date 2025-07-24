@@ -46,7 +46,7 @@ struct ModbusTcpPollingGroup {
     uint32_t polling_interval_ms;                    ///< 폴링 주기 (밀리초)
     bool enabled;                                    ///< 활성화 여부
     
-    std::vector<Drivers::DataPoint> data_points;     ///< 이 그룹에 속한 데이터 포인트들
+    std::vector<PulseOne::DataPoint> data_points;     ///< 이 그룹에 속한 데이터 포인트들
     
     // 실행 시간 추적
     std::chrono::system_clock::time_point last_poll_time;
@@ -77,7 +77,7 @@ public:
      * @param influx_client InfluxDB 클라이언트 (선택적)
      */
     explicit ModbusTcpWorker(
-        const Drivers::DeviceInfo& device_info,
+        const PulseOne::DeviceInfo& device_info,
         std::shared_ptr<RedisClient> redis_client = nullptr,
         std::shared_ptr<InfluxClient> influx_client = nullptr
     );
@@ -156,7 +156,7 @@ protected:
      * @param data_points 데이터 포인트 목록
      * @return 생성된 폴링 그룹 수
      */
-    size_t CreatePollingGroupsFromDataPoints(const std::vector<Drivers::DataPoint>& data_points);
+    size_t CreatePollingGroupsFromDataPoints(const std::vector<PulseOne::DataPoint>& data_points);
     
     /**
      * @brief 폴링 그룹 최적화 (연속된 주소 병합)
@@ -227,7 +227,7 @@ private:
      * @param values Modbus에서 읽은 원시 값들
      * @return 변환된 TimestampedValue 목록
      */
-    std::vector<Drivers::TimestampedValue> ConvertModbusValues(
+    std::vector<PulseOne::TimestampedValue> ConvertModbusValues(
         const ModbusTcpPollingGroup& group,
         const std::vector<uint16_t>& values);
     
@@ -237,8 +237,8 @@ private:
      * @param value 타임스탬프 값
      * @return 성공 시 true
      */
-    bool SaveDataPointValue(const Drivers::DataPoint& data_point,
-                           const Drivers::TimestampedValue& value);
+    bool SaveDataPointValue(const PulseOne::DataPoint& data_point,
+                           const PulseOne::TimestampedValue& value);
     
     /**
      * @brief 데이터 포인트에서 Modbus 주소 파싱
@@ -248,7 +248,7 @@ private:
      * @param address 주소 (출력)
      * @return 성공 시 true
      */
-    bool ParseModbusAddress(const Drivers::DataPoint& data_point,
+    bool ParseModbusAddress(const PulseOne::DataPoint& data_point,
                            uint8_t& slave_id,
                            ModbusRegisterType& register_type,
                            uint16_t& address);

@@ -26,7 +26,7 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-ModbusTcpWorker::ModbusTcpWorker(const Drivers::DeviceInfo& device_info,
+ModbusTcpWorker::ModbusTcpWorker(const PulseOne::DeviceInfo& device_info,
                                  std::shared_ptr<RedisClient> redis_client,
                                  std::shared_ptr<InfluxClient> influx_client)
     : TcpBasedWorker(device_info, redis_client, influx_client)
@@ -37,21 +37,21 @@ ModbusTcpWorker::ModbusTcpWorker(const Drivers::DeviceInfo& device_info,
     , max_registers_per_group_(125)  // Modbus TCP standard limit
     , auto_group_creation_enabled_(true) {
     
-    LogMessage(LogLevel::INFO, "ModbusTcpWorker created for device: " + device_info.name);
+    LogMessage(PulseOne::LogLevel::INFO, "ModbusTcpWorker created for device: " + device_info.name);
     
     // 설정 파싱
     if (!ParseModbusConfig()) {
-        LogMessage(LogLevel::ERROR, "Failed to parse Modbus configuration");
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to parse Modbus configuration");
         return;
     }
     
     // ModbusDriver 초기화
     if (!InitializeModbusDriver()) {
-        LogMessage(LogLevel::ERROR, "Failed to initialize ModbusDriver");
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to initialize ModbusDriver");
         return;
     }
     
-    LogMessage(LogLevel::INFO, "ModbusTcpWorker initialization completed");
+    LogMessage(PulseOne::LogLevel::INFO, "ModbusTcpWorker initialization completed");
 }
 
 ModbusTcpWorker::~ModbusTcpWorker() {
@@ -64,7 +64,7 @@ ModbusTcpWorker::~ModbusTcpWorker() {
     // ModbusDriver 정리 (자동으로 연결 해제됨)
     modbus_driver_.reset();
     
-    LogMessage(LogLevel::INFO, "ModbusTcpWorker destroyed");
+    LogMessage(PulseOne::LogLevel::INFO, "ModbusTcpWorker destroyed");
 }
 
 // =============================================================================
@@ -74,16 +74,16 @@ ModbusTcpWorker::~ModbusTcpWorker() {
 std::future<bool> ModbusTcpWorker::Start() {
     return std::async(std::launch::async, [this]() -> bool {
         if (GetState() == WorkerState::RUNNING) {
-            LogMessage(LogLevel::WARN, "Worker already running");
+            LogMessage(PulseOne::LogLevel::WARN, "Worker already running");
             return true;
         }
         
-        LogMessage(LogLevel::INFO, "Starting ModbusTcpWorker...");
+        LogMessage(PulseOne::LogLevel::INFO, "Starting ModbusTcpWorker...");
         
         try {
             // 기본 연결 설정 (TcpBasedWorker → ModbusDriver 위임)
             if (!EstablishConnection()) {
-                LogMessage(LogLevel::ERROR, "Failed to establish connection");
+                LogMessage(PulseOne::LogLevel::ERROR, "Failed to establish connection");
                 return false;
             }
             
@@ -91,7 +91,7 @@ std::future<bool> ModbusTcpWorker::Start() {
             const auto& data_points = GetDataPoints();
             if (auto_group_creation_enabled_ && !data_points.empty()) {
                 size_t group_count = CreatePollingGroupsFromDataPoints(data_points);
-                LogMessage(LogLevel::INFO, "Created " + std::to_string(group_count) + " polling groups from " + 
+                LogMessage(PulseOne::LogLevel::INFO, "Created " + std::to_string(group_count) + " polling groups from " + 
                           std::to_string(data_points.size()) + " data points");
             }
             
@@ -102,11 +102,11 @@ std::future<bool> ModbusTcpWorker::Start() {
             // 상태 변경
             ChangeState(WorkerState::RUNNING);
             
-            LogMessage(LogLevel::INFO, "ModbusTcpWorker started successfully");
+            LogMessage(PulseOne::LogLevel::INFO, "ModbusTcpWorker started successfully");
             return true;
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception during start: " + std::string(e.what()));
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception during start: " + std::string(e.what()));
             return false;
         }
     });
@@ -114,7 +114,7 @@ std::future<bool> ModbusTcpWorker::Start() {
 
 std::future<bool> ModbusTcpWorker::Stop() {
     return std::async(std::launch::async, [this]() -> bool {
-        LogMessage(LogLevel::INFO, "Stopping ModbusTcpWorker...");
+        LogMessage(PulseOne::LogLevel::INFO, "Stopping ModbusTcpWorker...");
         
         try {
             // 폴링 스레드 중지
@@ -129,11 +129,11 @@ std::future<bool> ModbusTcpWorker::Stop() {
             // 상태 변경
             ChangeState(WorkerState::STOPPED);
             
-            LogMessage(LogLevel::INFO, "ModbusTcpWorker stopped successfully");
+            LogMessage(PulseOne::LogLevel::INFO, "ModbusTcpWorker stopped successfully");
             return true;
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception during stop: " + std::string(e.what()));
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception during stop: " + std::string(e.what()));
             return false;
         }
     });
@@ -145,20 +145,20 @@ std::future<bool> ModbusTcpWorker::Stop() {
 
 bool ModbusTcpWorker::EstablishProtocolConnection() {
     if (!modbus_driver_) {
-        LogMessage(LogLevel::ERROR, "ModbusDriver not initialized");
+        LogMessage(PulseOne::LogLevel::ERROR, "ModbusDriver not initialized");
         return false;
     }
     
-    LogMessage(LogLevel::INFO, "Establishing Modbus protocol connection...");
+    LogMessage(PulseOne::LogLevel::INFO, "Establishing Modbus protocol connection...");
     
     // ModbusDriver를 통한 연결 수립
     if (!modbus_driver_->Connect()) {
         const auto& error = modbus_driver_->GetLastError();
-        LogMessage(LogLevel::ERROR, "ModbusDriver connection failed: " + error.message);
+        LogMessage(PulseOne::LogLevel::ERROR, "ModbusDriver connection failed: " + error.message);
         return false;
     }
     
-    LogMessage(LogLevel::INFO, "Modbus protocol connection established");
+    LogMessage(PulseOne::LogLevel::INFO, "Modbus protocol connection established");
     return true;
 }
 
@@ -167,16 +167,16 @@ bool ModbusTcpWorker::CloseProtocolConnection() {
         return true;  // 이미 없으면 성공으로 간주
     }
     
-    LogMessage(LogLevel::INFO, "Closing Modbus protocol connection...");
+    LogMessage(PulseOne::LogLevel::INFO, "Closing Modbus protocol connection...");
     
     // ModbusDriver를 통한 연결 해제
     bool result = modbus_driver_->Disconnect();
     
     if (result) {
-        LogMessage(LogLevel::INFO, "Modbus protocol connection closed");
+        LogMessage(PulseOne::LogLevel::INFO, "Modbus protocol connection closed");
     } else {
         const auto& error = modbus_driver_->GetLastError();
-        LogMessage(LogLevel::WARN, "ModbusDriver disconnect warning: " + error.message);
+        LogMessage(PulseOne::LogLevel::WARN, "ModbusDriver disconnect warning: " + error.message);
     }
     
     return result;
@@ -211,10 +211,10 @@ bool ModbusTcpWorker::SendProtocolKeepAlive() {
     bool result = modbus_driver_->ReadValues(test_points, test_values);
     
     if (result) {
-        LogMessage(LogLevel::DEBUG, "Modbus Keep-alive successful");
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Modbus Keep-alive successful");
     } else {
         const auto& error = modbus_driver_->GetLastError();
-        LogMessage(LogLevel::WARN, "Modbus Keep-alive failed: " + error.message);
+        LogMessage(PulseOne::LogLevel::WARN, "Modbus Keep-alive failed: " + error.message);
     }
     
     return result;
@@ -226,7 +226,7 @@ bool ModbusTcpWorker::SendProtocolKeepAlive() {
 
 bool ModbusTcpWorker::AddPollingGroup(const ModbusTcpPollingGroup& group) {
     if (!ValidatePollingGroup(group)) {
-        LogMessage(LogLevel::ERROR, "Invalid polling group");
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid polling group");
         return false;
     }
     
@@ -234,13 +234,13 @@ bool ModbusTcpWorker::AddPollingGroup(const ModbusTcpPollingGroup& group) {
     
     // 그룹 ID 중복 체크
     if (polling_groups_.find(group.group_id) != polling_groups_.end()) {
-        LogMessage(LogLevel::ERROR, "Polling group ID " + std::to_string(group.group_id) + " already exists");
+        LogMessage(PulseOne::LogLevel::ERROR, "Polling group ID " + std::to_string(group.group_id) + " already exists");
         return false;
     }
     
     polling_groups_[group.group_id] = group;
     
-    LogMessage(LogLevel::INFO, "Added polling group " + std::to_string(group.group_id) + 
+    LogMessage(PulseOne::LogLevel::INFO, "Added polling group " + std::to_string(group.group_id) + 
                " with " + std::to_string(group.data_points.size()) + " data points");
     
     return true;
@@ -251,13 +251,13 @@ bool ModbusTcpWorker::RemovePollingGroup(uint32_t group_id) {
     
     auto it = polling_groups_.find(group_id);
     if (it == polling_groups_.end()) {
-        LogMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
+        LogMessage(PulseOne::LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
         return false;
     }
     
     polling_groups_.erase(it);
     
-    LogMessage(LogLevel::INFO, "Removed polling group " + std::to_string(group_id));
+    LogMessage(PulseOne::LogLevel::INFO, "Removed polling group " + std::to_string(group_id));
     return true;
 }
 
@@ -279,13 +279,13 @@ bool ModbusTcpWorker::SetPollingGroupEnabled(uint32_t group_id, bool enabled) {
     
     auto it = polling_groups_.find(group_id);
     if (it == polling_groups_.end()) {
-        LogMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
+        LogMessage(PulseOne::LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
         return false;
     }
     
     it->second.enabled = enabled;
     
-    LogMessage(LogLevel::INFO, "Polling group " + std::to_string(group_id) + 
+    LogMessage(PulseOne::LogLevel::INFO, "Polling group " + std::to_string(group_id) + 
                (enabled ? " enabled" : " disabled"));
     
     return true;
@@ -338,12 +338,12 @@ std::string ModbusTcpWorker::GetModbusStats() const {
 // 데이터 포인트 처리 (Worker 고유 로직)
 // =============================================================================
 
-size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Drivers::DataPoint>& data_points) {
+size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<PulseOne::DataPoint>& data_points) {
     if (data_points.empty()) {
         return 0;
     }
     
-    LogMessage(LogLevel::INFO, "Creating polling groups from " + std::to_string(data_points.size()) + " data points");
+    LogMessage(PulseOne::LogLevel::INFO, "Creating polling groups from " + std::to_string(data_points.size()) + " data points");
     
     // 슬레이브 ID별, 레지스터 타입별로 그룹화
     std::map<std::tuple<uint8_t, ModbusRegisterType>, std::vector<DataPoint>> grouped_points;
@@ -354,7 +354,7 @@ size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Driv
         uint16_t address;
         
         if (!ParseModbusAddress(data_point, slave_id, register_type, address)) {
-            LogMessage(LogLevel::WARN, "Failed to parse Modbus address for data point: " + data_point.name);
+            LogMessage(PulseOne::LogLevel::WARN, "Failed to parse Modbus address for data point: " + data_point.name);
             continue;
         }
         
@@ -401,7 +401,7 @@ size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Driv
         }
     }
     
-    LogMessage(LogLevel::INFO, "Created " + std::to_string(created_groups) + " polling groups");
+    LogMessage(PulseOne::LogLevel::INFO, "Created " + std::to_string(created_groups) + " polling groups");
     return created_groups;
 }
 
@@ -440,7 +440,7 @@ size_t ModbusTcpWorker::OptimizePollingGroups() {
     next_group_id_ = new_group_id;
     
     size_t optimized_count = polling_groups_.size();
-    LogMessage(LogLevel::INFO, "Optimized polling groups: " + std::to_string(original_count) + 
+    LogMessage(PulseOne::LogLevel::INFO, "Optimized polling groups: " + std::to_string(original_count) + 
                " → " + std::to_string(optimized_count));
     
     return optimized_count;
@@ -456,7 +456,7 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         const std::string& config_json = device_info_.config_json;
         
         if (config_json.empty()) {
-            LogMessage(LogLevel::INFO, "No configuration found, using default Modbus configuration");
+            LogMessage(PulseOne::LogLevel::INFO, "No configuration found, using default Modbus configuration");
             return true;
         }
         
@@ -475,11 +475,11 @@ bool ModbusTcpWorker::ParseModbusConfig() {
             auto_group_creation_enabled_ = config["auto_group_creation"].get<bool>();
         }
         
-        LogMessage(LogLevel::INFO, "Modbus configuration parsed successfully");
+        LogMessage(PulseOne::LogLevel::INFO, "Modbus configuration parsed successfully");
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception parsing Modbus config: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception parsing Modbus config: " + std::string(e.what()));
         return false;
     }
 }
@@ -500,24 +500,24 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         // ModbusDriver 초기화
         if (!modbus_driver_->Initialize(driver_config)) {
             const auto& error = modbus_driver_->GetLastError();
-            LogMessage(LogLevel::ERROR, "Failed to initialize ModbusDriver: " + error.message);
+            LogMessage(PulseOne::LogLevel::ERROR, "Failed to initialize ModbusDriver: " + error.message);
             return false;
         }
         
         // Driver 콜백 설정
         SetupDriverCallbacks();
         
-        LogMessage(LogLevel::INFO, "ModbusDriver initialized successfully");
+        LogMessage(PulseOne::LogLevel::INFO, "ModbusDriver initialized successfully");
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception initializing ModbusDriver: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception initializing ModbusDriver: " + std::string(e.what()));
         return false;
     }
 }
 
 void ModbusTcpWorker::PollingThreadFunction() {
-    LogMessage(LogLevel::INFO, "Polling thread started");
+    LogMessage(PulseOne::LogLevel::INFO, "Polling thread started");
     
     while (polling_thread_running_) {
         try {
@@ -553,21 +553,21 @@ void ModbusTcpWorker::PollingThreadFunction() {
             std::this_thread::sleep_for(milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(1));
         }
     }
     
-    LogMessage(LogLevel::INFO, "Polling thread stopped");
+    LogMessage(PulseOne::LogLevel::INFO, "Polling thread stopped");
 }
 
 bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
     if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
-        LogMessage(LogLevel::WARN, "ModbusDriver not connected, skipping group " + std::to_string(group.group_id));
+        LogMessage(PulseOne::LogLevel::WARN, "ModbusDriver not connected, skipping group " + std::to_string(group.group_id));
         return false;
     }
     
-    LogMessage(LogLevel::DEBUG, "Processing polling group " + std::to_string(group.group_id));
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Processing polling group " + std::to_string(group.group_id));
     
     try {
         // ModbusDriver를 통한 값 읽기
@@ -576,7 +576,7 @@ bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
         
         if (!success) {
             const auto& error = modbus_driver_->GetLastError();
-            LogMessage(LogLevel::WARN, "Failed to read group " + std::to_string(group.group_id) + ": " + error.message);
+            LogMessage(PulseOne::LogLevel::WARN, "Failed to read group " + std::to_string(group.group_id) + ": " + error.message);
             return false;
         }
         
@@ -585,19 +585,19 @@ bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
             SaveDataPointValue(group.data_points[i], values[i]);
         }
         
-        LogMessage(LogLevel::DEBUG, "Successfully processed group " + std::to_string(group.group_id) + 
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Successfully processed group " + std::to_string(group.group_id) + 
                    ", read " + std::to_string(values.size()) + " values");
         
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception processing group " + std::to_string(group.group_id) + ": " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception processing group " + std::to_string(group.group_id) + ": " + std::string(e.what()));
         return false;
     }
 }
 
-bool ModbusTcpWorker::SaveDataPointValue(const Drivers::DataPoint& data_point,
-                                         const Drivers::TimestampedValue& value) {
+bool ModbusTcpWorker::SaveDataPointValue(const PulseOne::DataPoint& data_point,
+                                         const PulseOne::TimestampedValue& value) {
     try {
         // BaseDeviceWorker의 기본 저장 메서드 사용
         SaveToInfluxDB(data_point.id, value);
@@ -606,12 +606,12 @@ bool ModbusTcpWorker::SaveDataPointValue(const Drivers::DataPoint& data_point,
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to save data point " + data_point.name + ": " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to save data point " + data_point.name + ": " + std::string(e.what()));
         return false;
     }
 }
 
-bool ModbusTcpWorker::ParseModbusAddress(const Drivers::DataPoint& data_point,
+bool ModbusTcpWorker::ParseModbusAddress(const PulseOne::DataPoint& data_point,
                                          uint8_t& slave_id,
                                          ModbusRegisterType& register_type,
                                          uint16_t& address) {
@@ -653,29 +653,29 @@ bool ModbusTcpWorker::ParseModbusAddress(const Drivers::DataPoint& data_point,
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to parse Modbus address for " + data_point.name + ": " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to parse Modbus address for " + data_point.name + ": " + std::string(e.what()));
         return false;
     }
 }
 
 bool ModbusTcpWorker::ValidatePollingGroup(const ModbusTcpPollingGroup& group) {
     if (group.data_points.empty()) {
-        LogMessage(LogLevel::ERROR, "Polling group has no data points");
+        LogMessage(PulseOne::LogLevel::ERROR, "Polling group has no data points");
         return false;
     }
     
     if (group.register_count == 0 || group.register_count > max_registers_per_group_) {
-        LogMessage(LogLevel::ERROR, "Invalid register count: " + std::to_string(group.register_count));
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid register count: " + std::to_string(group.register_count));
         return false;
     }
     
     if (group.slave_id == 0 || group.slave_id > 247) {
-        LogMessage(LogLevel::ERROR, "Invalid slave ID: " + std::to_string(group.slave_id));
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid slave ID: " + std::to_string(group.slave_id));
         return false;
     }
     
     if (group.polling_interval_ms < 100) {
-        LogMessage(LogLevel::ERROR, "Polling interval too short: " + std::to_string(group.polling_interval_ms) + "ms");
+        LogMessage(PulseOne::LogLevel::ERROR, "Polling interval too short: " + std::to_string(group.polling_interval_ms) + "ms");
         return false;
     }
     
@@ -738,7 +738,7 @@ void ModbusTcpWorker::SetupDriverCallbacks() {
     // 콜백 설정 (ModbusDriver가 이러한 콜백을 지원한다고 가정)
     // 실제 구현에서는 ModbusDriver의 API에 따라 달라질 수 있음
     
-    LogMessage(LogLevel::DEBUG, "ModbusDriver callbacks configured");
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "ModbusDriver callbacks configured");
 }
 
 void ModbusTcpWorker::OnConnectionStatusChanged(void* worker_ptr, bool connected,
@@ -749,9 +749,9 @@ void ModbusTcpWorker::OnConnectionStatusChanged(void* worker_ptr, bool connected
     }
     
     if (connected) {
-        worker->LogMessage(LogLevel::INFO, "Modbus connection established");
+        worker->LogMessage(PulseOne::LogLevel::INFO, "Modbus connection established");
     } else {
-        worker->LogMessage(LogLevel::WARN, "Modbus connection lost: " + error_message);
+        worker->LogMessage(PulseOne::LogLevel::WARN, "Modbus connection lost: " + error_message);
     }
 }
 
@@ -762,7 +762,7 @@ void ModbusTcpWorker::OnModbusError(void* worker_ptr, uint8_t slave_id, uint8_t 
         return;
     }
     
-    worker->LogMessage(LogLevel::ERROR, "Modbus error - Slave: " + std::to_string(slave_id) + 
+    worker->LogMessage(PulseOne::LogLevel::ERROR, "Modbus error - Slave: " + std::to_string(slave_id) + 
                        ", Function: " + std::to_string(function_code) + 
                        ", Code: " + std::to_string(error_code) + 
                        ", Message: " + error_message);
@@ -775,7 +775,7 @@ void ModbusTcpWorker::OnStatisticsUpdate(void* worker_ptr, const std::string& op
         return;
     }
     
-    worker->LogMessage(LogLevel::DEBUG, "Modbus " + operation + 
+    worker->LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Modbus " + operation + 
                        (success ? " succeeded" : " failed") + 
                        " in " + std::to_string(response_time_ms) + "ms");
 }

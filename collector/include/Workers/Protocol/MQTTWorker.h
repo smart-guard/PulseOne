@@ -146,7 +146,7 @@ public:
      * @param influx_client InfluxDB 클라이언트
      */
     explicit MQTTWorker(
-        const Drivers::DeviceInfo& device_info,
+        const PulseOne::DeviceInfo& device_info,
         std::shared_ptr<RedisClient> redis_client,
         std::shared_ptr<InfluxClient> influx_client
     );
@@ -261,7 +261,7 @@ protected:
      * @param points 데이터 포인트 목록
      * @return 성공 시 true
      */
-    bool CreateSubscriptionsFromDataPoints(const std::vector<Drivers::DataPoint>& points);
+    bool CreateSubscriptionsFromDataPoints(const std::vector<PulseOne::DataPoint>& points);
     
     /**
      * @brief 수신된 MQTT 메시지 처리
@@ -289,7 +289,7 @@ protected:
      * @param qos QoS 레벨 (출력)
      * @return 성공 시 true
      */
-    bool ParseMQTTTopic(const Drivers::DataPoint& point, std::string& topic,
+    bool ParseMQTTTopic(const PulseOne::DataPoint& point, std::string& topic,
                        std::string& json_path, int& qos);
 
     // =============================================================================

@@ -111,7 +111,7 @@ public:
      * @param influx_client InfluxDB 클라이언트
      */
     explicit UdpBasedWorker(
-        const Drivers::DeviceInfo& device_info,
+        const PulseOne::DeviceInfo& device_info,
         std::shared_ptr<RedisClient> redis_client,
         std::shared_ptr<InfluxClient> influx_client
     );

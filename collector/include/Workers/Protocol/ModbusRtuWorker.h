@@ -12,7 +12,7 @@
 
 #include "Workers/Base/SerialBasedWorker.h"
 #include "Drivers/Modbus/ModbusDriver.h"
-#include "Drivers/Common/CommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"
 #include <memory>
 #include <queue>
 #include <thread>
@@ -88,7 +88,7 @@ struct ModbusRtuPollingGroup {
     int polling_interval_ms;                         ///< 폴링 주기 (밀리초)
     bool enabled;                                    ///< 활성화 여부
     
-    std::vector<Drivers::DataPoint> data_points;     ///< 이 그룹에 속한 데이터 포인트들
+    std::vector<PulseOne::DataPoint> data_points;     ///< 이 그룹에 속한 데이터 포인트들
     
     // 실행 시간 추적 (단순 타입만 사용)
     std::chrono::system_clock::time_point last_poll_time;
@@ -122,7 +122,7 @@ public:
      * @param influx_client InfluxDB 클라이언트 (선택적)
      */
     explicit ModbusRtuWorker(
-        const Drivers::DeviceInfo& device_info,
+        const PulseOne::DeviceInfo& device_info,
         std::shared_ptr<RedisClient> redis_client = nullptr,
         std::shared_ptr<InfluxClient> influx_client = nullptr
     );
@@ -258,7 +258,7 @@ public:
      * @param data_point 데이터 포인트
      * @return 성공 시 true
      */
-    bool AddDataPointToGroup(uint32_t group_id, const Drivers::DataPoint& data_point);
+    bool AddDataPointToGroup(uint32_t group_id, const PulseOne::DataPoint& data_point);
 
     // =============================================================================
     // 데이터 읽기/쓰기 (ModbusDriver 사용)
@@ -482,7 +482,7 @@ protected:
      * @param count 개수
      * @return DataPoint 벡터
      */
-    std::vector<Drivers::DataPoint> CreateDataPoints(int slave_id, 
+    std::vector<PulseOne::DataPoint> CreateDataPoints(int slave_id, 
                                                     ModbusRegisterType register_type,
                                                     uint16_t start_address, 
                                                     uint16_t count);

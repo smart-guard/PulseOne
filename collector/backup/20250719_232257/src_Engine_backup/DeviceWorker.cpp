@@ -26,7 +26,7 @@ using namespace std::chrono;
 // 생성자 및 소멸자
 // =============================================================================
 
-DeviceWorker::DeviceWorker(const Drivers::DeviceInfo& device_info,
+DeviceWorker::DeviceWorker(const PulseOne::DeviceInfo& device_info,
                            std::unique_ptr<Drivers::IProtocolDriver> driver,
                            std::shared_ptr<RedisClient> redis_client,
                            std::shared_ptr<InfluxClient> influx_client,
@@ -351,7 +351,7 @@ bool DeviceWorker::IsInMaintenanceMode() const {
 // 설정 관리
 // =============================================================================
 
-bool DeviceWorker::AddDataPoint(const Drivers::DataPoint& point) {
+bool DeviceWorker::AddDataPoint(const PulseOne::DataPoint& point) {
     std::lock_guard<std::mutex> lock(data_points_mutex_);
     data_points_[point.id] = point;
     logger_->Info("Data point added: " + point.name + " for device: " + device_info_.device_name);
@@ -398,9 +398,9 @@ Drivers::ConnectionStatus DeviceWorker::GetConnectionStatus() const {
     return driver_->GetConnectionStatus();
 }
 
-std::vector<Drivers::DataPoint> DeviceWorker::GetDataPoints() const {
+std::vector<PulseOne::DataPoint> DeviceWorker::GetDataPoints() const {
     std::lock_guard<std::mutex> lock(data_points_mutex_);
-    std::vector<Drivers::DataPoint> points;
+    std::vector<PulseOne::DataPoint> points;
     points.reserve(data_points_.size());
     
     for (const auto& pair : data_points_) {
@@ -490,7 +490,7 @@ void DeviceWorker::ReadThreadMain() {
             auto start_time = steady_clock::now();
             
             // 데이터 포인트들 읽기
-            std::vector<Drivers::DataPoint> points_to_read;
+            std::vector<PulseOne::DataPoint> points_to_read;
             {
                 std::lock_guard<std::mutex> lock(data_points_mutex_);
                 for (const auto& pair : data_points_) {
@@ -501,7 +501,7 @@ void DeviceWorker::ReadThreadMain() {
             }
             
             if (!points_to_read.empty()) {
-                std::vector<Drivers::TimestampedValue> values;
+                std::vector<PulseOne::TimestampedValue> values;
                 statistics_.total_reads++;
                 
                 if (driver_->ReadValues(points_to_read, values)) {
@@ -677,7 +677,7 @@ void DeviceWorker::PublishStatusToRedis() {
     }
 }
 
-void DeviceWorker::SaveToInfluxDB(const UUID& point_id, const Drivers::TimestampedValue& value) {
+void DeviceWorker::SaveToInfluxDB(const UUID& point_id, const PulseOne::TimestampedValue& value) {
     if (!influx_client_) return;
     
     try {
@@ -741,7 +741,7 @@ void DeviceWorker::CalculateVirtualPoints() {
             }
             
             // 계산된 값 저장
-            Drivers::TimestampedValue virtual_value;
+            PulseOne::TimestampedValue virtual_value;
             virtual_value.value = Drivers::DataValue(result);
             virtual_value.quality = Drivers::DataQuality::GOOD;
             virtual_value.timestamp = system_clock::now();
@@ -762,7 +762,7 @@ void DeviceWorker::CalculateVirtualPoints() {
     }
 }
 
-void DeviceWorker::CheckAlarms(const UUID& point_id, const Drivers::TimestampedValue& value) {
+void DeviceWorker::CheckAlarms(const UUID& point_id, const PulseOne::TimestampedValue& value) {
     if (!alarm_engine_) return;
     
     try {
