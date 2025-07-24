@@ -24,11 +24,13 @@ namespace PulseOne {
 namespace Database {
 
 using json = nlohmann::json;
-using UUID = Drivers::UUID;
 using Timestamp = std::chrono::system_clock::time_point;
 
 // DeviceIntegration과의 호환성을 위한 타입 별칭
-using DataValue = Drivers::DataValue;   // Drivers 네임스페이스의 DataValue 가져오기
+using DataValue = PulseOne::BasicTypes::DataVariant;
+// 🔥 올바른 네임스페이스에서 타입 가져오기
+using UUID = PulseOne::BasicTypes::UUID;          // Drivers::UUID -> BasicTypes::UUID
+
 
 // =============================================================================
 // 데이터베이스 엔티티 구조체들

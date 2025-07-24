@@ -161,9 +161,9 @@ void LogManager::updateStatistics(LogLevel level) {
         case PulseOne::LogLevel::TRACE: statistics_.debug_count++; break;  // TRACE를 debug로 카운트
         case PulseOne::LogLevel::DEBUG_LEVEL: statistics_.debug_count++; break;
         case PulseOne::LogLevel::INFO: statistics_.info_count++; break;
-        case PulseOne::LogLevel::WARN: statistics_.warn_count++; break;
+        case PulseOne::LogLevel::WARN: statistics_.warning_count++; break;
         case PulseOne::LogLevel::ERROR: statistics_.error_count++; break;
-        case PulseOne::LogLevel::FATAL: statistics_.fatal_count++; break;
+        case PulseOne::LogLevel::FATAL: statistics_.error_count++; break;
         case PulseOne::LogLevel::MAINTENANCE: statistics_.maintenance_count++; break;
     }
 }
@@ -321,7 +321,14 @@ LogStatistics LogManager::getStatistics() const {
 
 void LogManager::resetStatistics() {
     std::lock_guard<std::mutex> lock(mutex_);
-    statistics_.Reset();
+    statistics_.total_logs = 0;
+    statistics_.error_count = 0;
+    statistics_.warning_count = 0;
+    statistics_.info_count = 0;
+    statistics_.debug_count = 0;
+    statistics_.trace_count = 0;
+    statistics_.maintenance_count = 0;
+    statistics_.last_reset_time = PulseOne::Utils::GetCurrentTimestamp();
 }
 
 void LogManager::flushAll() {

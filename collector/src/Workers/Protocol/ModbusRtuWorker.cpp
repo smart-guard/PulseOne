@@ -186,7 +186,7 @@ bool ModbusRtuWorker::EstablishProtocolConnection() {
     try {
         // ModbusDriver 설정 (기본 멤버만 사용)
         DriverConfig config;
-        config.protocol_type = "MODBUS_RTU";
+        config.protocol = ProtocolType::MODBUS_RTU;
         config.endpoint = serial_bus_config_.port_name;  // 시리얼 포트 경로
         config.timeout = std::chrono::milliseconds(response_timeout_ms_);
         config.retry_count = 3;  // 기본 재시도 횟수

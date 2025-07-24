@@ -56,7 +56,7 @@ bool BACnetDriver::Initialize(const DriverConfig& config) {
         
         // 로거 초기화
         logger_ = std::make_unique<DriverLogger>(
-            std::to_string(config.device_id), 
+            config.device_id,  // UUID는 이미 std::string이므로 to_string 불필요
             ProtocolType::BACNET_IP, 
             config.endpoint
         );
@@ -274,7 +274,7 @@ bool BACnetDriver::WriteValue(const DataPoint& point, const DataValue& value) {
         }
         
         BACNET_APPLICATION_DATA_VALUE bacnet_value;
-        if (!ConvertToBACnetValue(value, point.data_type, bacnet_value)) {
+        if (!ConvertToBACnetValue(value, bacnet_value)) {
             SetError(ErrorCode::INVALID_PARAMETER, "Failed to convert value");
             return false;
         }
@@ -490,8 +490,13 @@ bool BACnetDriver::ConvertToBACnetValue(const DataValue& data_value,
         else if (std::holds_alternative<std::string>(data_value)) {
             bacnet_value.tag = BACNET_APPLICATION_TAG_CHARACTER_STRING;
             std::string str_val = std::get<std::string>(data_value);
-            strncpy(bacnet_value.type.Character_String.value, str_val.c_str(), 255);
-            bacnet_value.type.Character_String.length = std::min(str_val.length(), size_t(255));
+            
+            // 🔥 std::min 템플릿 인자 문제 수정 - 명시적 캐스팅
+            size_t max_length = 255;
+            size_t copy_length = (str_val.length() < max_length) ? str_val.length() : max_length;
+            
+            strncpy(bacnet_value.type.Character_String.value, str_val.c_str(), copy_length);
+            bacnet_value.type.Character_String.length = static_cast<uint8_t>(copy_length);
             return true;
         }
         
@@ -515,7 +520,7 @@ bool BACnetDriver::ConvertFromBACnetValue(const BACNET_APPLICATION_DATA_VALUE& b
                 return true;
                 
             case BACNET_APPLICATION_TAG_UNSIGNED_INT:
-                data_value = bacnet_value.type.Unsigned_Int;
+                data_value = static_cast<int64_t>(bacnet_value.type.Unsigned_Int);
                 return true;
                 
             case BACNET_APPLICATION_TAG_SIGNED_INT:

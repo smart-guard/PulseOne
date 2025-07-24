@@ -17,6 +17,7 @@
 #include "BasicTypes.h"
 #include "Enums.h"
 #include "Constants.h"
+#include "Utils.h"
 #include <vector>
 #include <optional>
 #include <mutex>
@@ -47,15 +48,9 @@ namespace PulseOne::Structs {
     
     using namespace PulseOne::BasicTypes;
     using namespace PulseOne::Enums;
+    using namespace PulseOne::Utils;
     using JsonType = json_impl::json;
     
-    // =========================================================================
-    // 핵심 유틸리티 함수들 (순환 include 방지)
-    // =========================================================================
-    
-    inline Timestamp GetCurrentTimestamp() {
-        return std::chrono::system_clock::now();
-    }
     
     // =========================================================================
     // 기본 타입 별칭들 (기존 CommonTypes.h에서 통합)
@@ -314,12 +309,36 @@ namespace PulseOne::Structs {
         Duration polling_interval = std::chrono::seconds(1);
         
         // 🔥 추가 설정들
+        std::map<std::string, std::string> properties;  // 🔥 BACnetDriver에서 사용하는 필드
         std::map<std::string, std::string> custom_settings;
         JsonType config_json;
         
         // 🔥 호환성 필드들 (일부 코드에서 요구)
-        std::string protocol_type = "unknown";       // 문자열 형태
-        int device_id_int = 0;                       // 정수 형태 (레거시)
+        uint32_t timeout_ms = 5000;                 // Duration과 동기화
+        uint32_t polling_interval_ms = 1000;        // Duration과 동기화  
+        bool auto_reconnect = true;
+        int device_instance = 0;                    // BACnet용 호환 필드
+
+        // 🔥 생성자에서 필드 동기화
+        DriverConfig() {
+            SyncDurationFields();
+        }
+        
+        // 🔥 Duration 필드와 ms 필드 동기화
+        void SyncDurationFields() {
+            timeout_ms = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count()
+            );
+            polling_interval_ms = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(polling_interval).count()
+            );
+        }
+        
+        // 🔥 ms 필드에서 Duration으로 역동기화
+        void SyncFromMs() {
+            timeout = std::chrono::milliseconds(timeout_ms);
+            polling_interval = std::chrono::milliseconds(polling_interval_ms);
+        }
     };
     
     /**
@@ -345,17 +364,23 @@ namespace PulseOne::Structs {
         Timestamp last_read_time;
         Timestamp last_write_time;
         Timestamp last_error_time;
+        Timestamp start_time;
         Duration average_response_time = std::chrono::milliseconds(0);
         
         // 🔥 IProtocolDriver에서 요구하는 필드들
         uint64_t uptime_seconds = 0;
         double avg_response_time_ms = 0.0;
+        double max_response_time_ms = 0.0;
+        double min_response_time_ms = 0.0;
+        Timestamp last_success_time;
+        Timestamp last_connection_time;
         double success_rate = 0.0;
         
         DriverStatistics() 
             : last_read_time(GetCurrentTimestamp())
             , last_write_time(GetCurrentTimestamp())
-            , last_error_time(GetCurrentTimestamp()) 
+            , last_error_time(GetCurrentTimestamp())
+            , start_time(GetCurrentTimestamp()) 
         {}
         
         double GetSuccessRate() const {

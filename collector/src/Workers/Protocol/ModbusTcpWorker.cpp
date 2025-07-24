@@ -492,7 +492,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         // Driver 설정 구성
         DriverConfig driver_config;
         driver_config.device_id = std::hash<std::string>{}(device_info_.id); // UUID를 해시로 변환
-        driver_config.protocol_type = "MODBUS_TCP";
+        driver_config.protocol = ProtocolType::MODBUS_TCP;
         driver_config.endpoint = device_info_.endpoint;
         driver_config.timeout = std::chrono::milliseconds(device_info_.timeout_ms);
         driver_config.retry_count = device_info_.retry_count;
