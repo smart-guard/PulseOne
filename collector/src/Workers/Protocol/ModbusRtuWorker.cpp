@@ -29,7 +29,7 @@ namespace Protocol {
 // =============================================================================
 
 ModbusRtuWorker::ModbusRtuWorker(
-    const Drivers::DeviceInfo& device_info,
+    const PulseOne::DeviceInfo& device_info,
     std::shared_ptr<RedisClient> redis_client,
     std::shared_ptr<InfluxClient> influx_client)
     : SerialBasedWorker(device_info, redis_client, influx_client)
@@ -84,7 +84,7 @@ ModbusRtuWorker::ModbusRtuWorker(
         }
     }
     
-    LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker created for port: " + serial_bus_config_.port_name);
+    LogRtuMessage(PulseOne::LogLevel::INFO, "ModbusRtuWorker created for port: " + serial_bus_config_.port_name);
 }
 
 ModbusRtuWorker::~ModbusRtuWorker() {
@@ -94,7 +94,7 @@ ModbusRtuWorker::~ModbusRtuWorker() {
         polling_thread_.join();
     }
     
-    LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker destroyed");
+    LogRtuMessage(PulseOne::LogLevel::INFO, "ModbusRtuWorker destroyed");
 }
 
 // =============================================================================
@@ -104,16 +104,16 @@ ModbusRtuWorker::~ModbusRtuWorker() {
 std::future<bool> ModbusRtuWorker::Start() {
     return std::async(std::launch::async, [this]() -> bool {
         if (GetState() == WorkerState::RUNNING) {
-            LogRtuMessage(LogLevel::WARN, "Worker already running");
+            LogRtuMessage(PulseOne::LogLevel::WARN, "Worker already running");
             return true;
         }
         
-        LogRtuMessage(LogLevel::INFO, "Starting ModbusRtuWorker...");
+        LogRtuMessage(PulseOne::LogLevel::INFO, "Starting ModbusRtuWorker...");
         
         try {
             // 기본 연결 설정
             if (!EstablishConnection()) {
-                LogRtuMessage(LogLevel::ERROR, "Failed to establish connection");
+                LogRtuMessage(PulseOne::LogLevel::ERROR, "Failed to establish connection");
                 return false;
             }
             
@@ -124,11 +124,11 @@ std::future<bool> ModbusRtuWorker::Start() {
             stop_workers_ = false;
             polling_thread_ = std::thread(&ModbusRtuWorker::PollingWorkerThread, this);
             
-            LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker started successfully");
+            LogRtuMessage(PulseOne::LogLevel::INFO, "ModbusRtuWorker started successfully");
             return true;
             
         } catch (const std::exception& e) {
-            LogRtuMessage(LogLevel::ERROR, "Start failed: " + std::string(e.what()));
+            LogRtuMessage(PulseOne::LogLevel::ERROR, "Start failed: " + std::string(e.what()));
             ChangeState(WorkerState::ERROR);
             return false;
         }
@@ -138,11 +138,11 @@ std::future<bool> ModbusRtuWorker::Start() {
 std::future<bool> ModbusRtuWorker::Stop() {
     return std::async(std::launch::async, [this]() -> bool {
         if (GetState() == WorkerState::STOPPED) {
-            LogRtuMessage(LogLevel::WARN, "Worker already stopped");
+            LogRtuMessage(PulseOne::LogLevel::WARN, "Worker already stopped");
             return true;
         }
         
-        LogRtuMessage(LogLevel::INFO, "Stopping ModbusRtuWorker...");
+        LogRtuMessage(PulseOne::LogLevel::INFO, "Stopping ModbusRtuWorker...");
         
         try {
             // 스레드 중지
@@ -157,11 +157,11 @@ std::future<bool> ModbusRtuWorker::Stop() {
             // 상태 변경
             ChangeState(WorkerState::STOPPED);
             
-            LogRtuMessage(LogLevel::INFO, "ModbusRtuWorker stopped successfully");
+            LogRtuMessage(PulseOne::LogLevel::INFO, "ModbusRtuWorker stopped successfully");
             return true;
             
         } catch (const std::exception& e) {
-            LogRtuMessage(LogLevel::ERROR, "Stop failed: " + std::string(e.what()));
+            LogRtuMessage(PulseOne::LogLevel::ERROR, "Stop failed: " + std::string(e.what()));
             return false;
         }
     });
@@ -176,10 +176,10 @@ WorkerState ModbusRtuWorker::GetState() const {
 // =============================================================================
 
 bool ModbusRtuWorker::EstablishProtocolConnection() {
-    LogRtuMessage(LogLevel::INFO, "Establishing Modbus RTU protocol connection");
+    LogRtuMessage(PulseOne::LogLevel::INFO, "Establishing Modbus RTU protocol connection");
     
     if (!modbus_driver_) {
-        LogRtuMessage(LogLevel::ERROR, "ModbusDriver not initialized");
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "ModbusDriver not initialized");
         return false;
     }
     
@@ -196,32 +196,32 @@ bool ModbusRtuWorker::EstablishProtocolConnection() {
         
         // 드라이버 초기화
         if (!modbus_driver_->Initialize(config)) {
-            LogRtuMessage(LogLevel::ERROR, "Failed to initialize ModbusDriver");
+            LogRtuMessage(PulseOne::LogLevel::ERROR, "Failed to initialize ModbusDriver");
             return false;
         }
         
         // 연결 수립
         if (!modbus_driver_->Connect()) {
             ErrorInfo error = modbus_driver_->GetLastError();
-            LogRtuMessage(LogLevel::ERROR, "Failed to connect: " + error.message);
+            LogRtuMessage(PulseOne::LogLevel::ERROR, "Failed to connect: " + error.message);
             return false;
         }
         
-        LogRtuMessage(LogLevel::INFO, "Modbus RTU protocol connection established");
+        LogRtuMessage(PulseOne::LogLevel::INFO, "Modbus RTU protocol connection established");
         return true;
         
     } catch (const std::exception& e) {
-        LogRtuMessage(LogLevel::ERROR, "EstablishProtocolConnection failed: " + std::string(e.what()));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "EstablishProtocolConnection failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool ModbusRtuWorker::CloseProtocolConnection() {
-    LogRtuMessage(LogLevel::INFO, "Closing Modbus RTU protocol connection");
+    LogRtuMessage(PulseOne::LogLevel::INFO, "Closing Modbus RTU protocol connection");
     
     if (modbus_driver_) {
         modbus_driver_->Disconnect();
-        LogRtuMessage(LogLevel::INFO, "Modbus RTU protocol connection closed");
+        LogRtuMessage(PulseOne::LogLevel::INFO, "Modbus RTU protocol connection closed");
     }
     
     return true;
@@ -252,7 +252,7 @@ bool ModbusRtuWorker::SendProtocolKeepAlive() {
                 UpdateSlaveStatus(slave_id, response_time, true);
             } else {
                 slave_info->is_online = false;
-                LogRtuMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " is offline");
+                LogRtuMessage(PulseOne::LogLevel::WARN, "Slave " + std::to_string(slave_id) + " is offline");
             }
         }
     }
@@ -273,7 +273,7 @@ void ModbusRtuWorker::ConfigureModbusRtu(int default_slave_id,
     byte_timeout_ms_ = byte_timeout_ms;
     inter_frame_delay_ms_ = inter_frame_delay_ms;
     
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Modbus RTU configured - Slave ID: " + std::to_string(default_slave_id) +
         ", Response timeout: " + std::to_string(response_timeout_ms) + "ms" +
         ", Byte timeout: " + std::to_string(byte_timeout_ms) + "ms" +
@@ -283,7 +283,7 @@ void ModbusRtuWorker::ConfigureModbusRtu(int default_slave_id,
 void ModbusRtuWorker::ConfigureSerialBus(const SerialBusConfig& config) {
     serial_bus_config_ = config;
     
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Serial bus configured - Port: " + config.port_name +
         ", Baud: " + std::to_string(config.baud_rate) +
         ", Data bits: " + std::to_string(config.data_bits) +
@@ -305,7 +305,7 @@ void ModbusRtuWorker::ConfigureReconnection(int max_retry_attempts,
     
     UpdateReconnectionSettings(settings);
     
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Reconnection configured - Max retries: " + std::to_string(max_retry_attempts) +
         ", Retry delay: " + std::to_string(retry_delay_ms) + "ms" +
         ", Exponential backoff: " + (exponential_backoff ? "enabled" : "disabled"));
@@ -317,14 +317,14 @@ void ModbusRtuWorker::ConfigureReconnection(int max_retry_attempts,
 
 bool ModbusRtuWorker::AddSlave(int slave_id, const std::string& device_name) {
     if (slave_id < 1 || slave_id > 247) {
-        LogRtuMessage(LogLevel::ERROR, "Invalid slave ID: " + std::to_string(slave_id));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "Invalid slave ID: " + std::to_string(slave_id));
         return false;
     }
     
     std::unique_lock<std::shared_mutex> lock(slaves_mutex_);
     
     if (slaves_.find(slave_id) != slaves_.end()) {
-        LogRtuMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " already exists");
+        LogRtuMessage(PulseOne::LogLevel::WARN, "Slave " + std::to_string(slave_id) + " already exists");
         return false;
     }
     
@@ -335,7 +335,7 @@ bool ModbusRtuWorker::AddSlave(int slave_id, const std::string& device_name) {
     
     slaves_[slave_id] = slave_info;
     
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Added slave " + std::to_string(slave_id) + 
         " (" + slave_info->device_name + ")");
     
@@ -347,12 +347,12 @@ bool ModbusRtuWorker::RemoveSlave(int slave_id) {
     
     auto it = slaves_.find(slave_id);
     if (it == slaves_.end()) {
-        LogRtuMessage(LogLevel::WARN, "Slave " + std::to_string(slave_id) + " not found");
+        LogRtuMessage(PulseOne::LogLevel::WARN, "Slave " + std::to_string(slave_id) + " not found");
         return false;
     }
     
     slaves_.erase(it);
-    LogRtuMessage(LogLevel::INFO, "Removed slave " + std::to_string(slave_id));
+    LogRtuMessage(PulseOne::LogLevel::INFO, "Removed slave " + std::to_string(slave_id));
     
     return true;
 }
@@ -365,7 +365,7 @@ std::shared_ptr<ModbusRtuSlaveInfo> ModbusRtuWorker::GetSlaveInfo(int slave_id) 
 }
 
 int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int timeout_ms) {
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Scanning slaves from " + std::to_string(start_id) + 
         " to " + std::to_string(end_id));
     
@@ -380,7 +380,7 @@ int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int timeout_ms) {
             UpdateSlaveStatus(slave_id, response_time, true);
             found_count++;
             
-            LogRtuMessage(LogLevel::INFO, 
+            LogRtuMessage(PulseOne::LogLevel::INFO, 
                 "Found slave " + std::to_string(slave_id) + 
                 " (response time: " + std::to_string(response_time) + "ms)");
         }
@@ -391,7 +391,7 @@ int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int timeout_ms) {
     
     response_timeout_ms_ = original_timeout;
     
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Slave scan completed. Found " + std::to_string(found_count) + " slaves");
     
     return found_count;
@@ -425,7 +425,7 @@ uint32_t ModbusRtuWorker::AddPollingGroup(const std::string& group_name,
     
     polling_groups_[group_id] = group;
     
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Added polling group " + std::to_string(group_id) + 
         " (" + group_name + ") for slave " + std::to_string(slave_id));
     
@@ -437,12 +437,12 @@ bool ModbusRtuWorker::RemovePollingGroup(uint32_t group_id) {
     
     auto it = polling_groups_.find(group_id);
     if (it == polling_groups_.end()) {
-        LogRtuMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
+        LogRtuMessage(PulseOne::LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
         return false;
     }
     
     polling_groups_.erase(it);
-    LogRtuMessage(LogLevel::INFO, "Removed polling group " + std::to_string(group_id));
+    LogRtuMessage(PulseOne::LogLevel::INFO, "Removed polling group " + std::to_string(group_id));
     
     return true;
 }
@@ -452,29 +452,29 @@ bool ModbusRtuWorker::EnablePollingGroup(uint32_t group_id, bool enabled) {
     
     auto it = polling_groups_.find(group_id);
     if (it == polling_groups_.end()) {
-        LogRtuMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
+        LogRtuMessage(PulseOne::LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
         return false;
     }
     
     it->second.enabled = enabled;
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Polling group " + std::to_string(group_id) + 
         (enabled ? " enabled" : " disabled"));
     
     return true;
 }
 
-bool ModbusRtuWorker::AddDataPointToGroup(uint32_t group_id, const Drivers::DataPoint& data_point) {
+bool ModbusRtuWorker::AddDataPointToGroup(uint32_t group_id, const PulseOne::DataPoint& data_point) {
     std::unique_lock<std::shared_mutex> lock(polling_groups_mutex_);
     
     auto it = polling_groups_.find(group_id);
     if (it == polling_groups_.end()) {
-        LogRtuMessage(LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
+        LogRtuMessage(PulseOne::LogLevel::WARN, "Polling group " + std::to_string(group_id) + " not found");
         return false;
     }
     
     it->second.data_points.push_back(data_point);
-    LogRtuMessage(LogLevel::INFO, 
+    LogRtuMessage(PulseOne::LogLevel::INFO, 
         "Added data point " + data_point.name + 
         " to polling group " + std::to_string(group_id));
     
@@ -523,7 +523,7 @@ bool ModbusRtuWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address,
             UpdateSlaveStatus(slave_id, 0, true);  // 응답 시간은 드라이버에서 측정
         } else {
             ErrorInfo error = modbus_driver_->GetLastError();
-            LogRtuMessage(LogLevel::ERROR, 
+            LogRtuMessage(PulseOne::LogLevel::ERROR, 
                 "Failed to read holding registers from slave " + std::to_string(slave_id) + 
                 ": " + error.message);
             
@@ -536,7 +536,7 @@ bool ModbusRtuWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address,
         
     } catch (const std::exception& e) {
         UnlockBus();
-        LogRtuMessage(LogLevel::ERROR, "ReadHoldingRegisters exception: " + std::string(e.what()));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "ReadHoldingRegisters exception: " + std::string(e.what()));
         UpdateRtuStats("read", false, "exception");
         return false;
     }
@@ -580,7 +580,7 @@ bool ModbusRtuWorker::ReadInputRegisters(int slave_id, uint16_t start_address,
             UpdateSlaveStatus(slave_id, 0, true);
         } else {
             ErrorInfo error = modbus_driver_->GetLastError();
-            LogRtuMessage(LogLevel::ERROR, 
+            LogRtuMessage(PulseOne::LogLevel::ERROR, 
                 "Failed to read input registers from slave " + std::to_string(slave_id) + 
                 ": " + error.message);
             
@@ -593,7 +593,7 @@ bool ModbusRtuWorker::ReadInputRegisters(int slave_id, uint16_t start_address,
         
     } catch (const std::exception& e) {
         UnlockBus();
-        LogRtuMessage(LogLevel::ERROR, "ReadInputRegisters exception: " + std::string(e.what()));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "ReadInputRegisters exception: " + std::string(e.what()));
         UpdateRtuStats("read", false, "exception");
         return false;
     }
@@ -638,7 +638,7 @@ bool ModbusRtuWorker::ReadCoils(int slave_id, uint16_t start_address,
             UpdateSlaveStatus(slave_id, 0, true);
         } else {
             ErrorInfo error = modbus_driver_->GetLastError();
-            LogRtuMessage(LogLevel::ERROR, 
+            LogRtuMessage(PulseOne::LogLevel::ERROR, 
                 "Failed to read coils from slave " + std::to_string(slave_id) + 
                 ": " + error.message);
             
@@ -651,7 +651,7 @@ bool ModbusRtuWorker::ReadCoils(int slave_id, uint16_t start_address,
         
     } catch (const std::exception& e) {
         UnlockBus();
-        LogRtuMessage(LogLevel::ERROR, "ReadCoils exception: " + std::string(e.what()));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "ReadCoils exception: " + std::string(e.what()));
         UpdateRtuStats("read", false, "exception");
         return false;
     }
@@ -696,7 +696,7 @@ bool ModbusRtuWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address,
             UpdateSlaveStatus(slave_id, 0, true);
         } else {
             ErrorInfo error = modbus_driver_->GetLastError();
-            LogRtuMessage(LogLevel::ERROR, 
+            LogRtuMessage(PulseOne::LogLevel::ERROR, 
                 "Failed to read discrete inputs from slave " + std::to_string(slave_id) + 
                 ": " + error.message);
             
@@ -709,7 +709,7 @@ bool ModbusRtuWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address,
         
     } catch (const std::exception& e) {
         UnlockBus();
-        LogRtuMessage(LogLevel::ERROR, "ReadDiscreteInputs exception: " + std::string(e.what()));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "ReadDiscreteInputs exception: " + std::string(e.what()));
         UpdateRtuStats("read", false, "exception");
         return false;
     }
@@ -736,7 +736,7 @@ bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16
             UpdateSlaveStatus(slave_id, 0, true);
         } else {
             ErrorInfo error = modbus_driver_->GetLastError();
-            LogRtuMessage(LogLevel::ERROR, 
+            LogRtuMessage(PulseOne::LogLevel::ERROR, 
                 "Failed to write single register to slave " + std::to_string(slave_id) + 
                 ": " + error.message);
             
@@ -749,7 +749,7 @@ bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16
         
     } catch (const std::exception& e) {
         UnlockBus();
-        LogRtuMessage(LogLevel::ERROR, "WriteSingleRegister exception: " + std::string(e.what()));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "WriteSingleRegister exception: " + std::string(e.what()));
         UpdateRtuStats("write", false, "exception");
         return false;
     }
@@ -776,7 +776,7 @@ bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value
             UpdateSlaveStatus(slave_id, 0, true);
         } else {
             ErrorInfo error = modbus_driver_->GetLastError();
-            LogRtuMessage(LogLevel::ERROR, 
+            LogRtuMessage(PulseOne::LogLevel::ERROR, 
                 "Failed to write single coil to slave " + std::to_string(slave_id) + 
                 ": " + error.message);
             
@@ -789,7 +789,7 @@ bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value
         
     } catch (const std::exception& e) {
         UnlockBus();
-        LogRtuMessage(LogLevel::ERROR, "WriteSingleCoil exception: " + std::string(e.what()));
+        LogRtuMessage(PulseOne::LogLevel::ERROR, "WriteSingleCoil exception: " + std::string(e.what()));
         UpdateRtuStats("write", false, "exception");
         return false;
     }
@@ -941,7 +941,7 @@ std::string ModbusRtuWorker::GetPollingGroupStatus() const {
 // =============================================================================
 
 void ModbusRtuWorker::PollingWorkerThread() {
-    LogRtuMessage(LogLevel::INFO, "Polling worker thread started");
+    LogRtuMessage(PulseOne::LogLevel::INFO, "Polling worker thread started");
     
     while (!stop_workers_) {
         try {
@@ -979,16 +979,16 @@ void ModbusRtuWorker::PollingWorkerThread() {
             std::this_thread::sleep_for(milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogRtuMessage(LogLevel::ERROR, "Polling worker thread error: " + std::string(e.what()));
+            LogRtuMessage(PulseOne::LogLevel::ERROR, "Polling worker thread error: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(1));
         }
     }
     
-    LogRtuMessage(LogLevel::INFO, "Polling worker thread stopped");
+    LogRtuMessage(PulseOne::LogLevel::INFO, "Polling worker thread stopped");
 }
 
 bool ModbusRtuWorker::ProcessPollingGroup(ModbusRtuPollingGroup& group) {
-    LogRtuMessage(LogLevel::DEBUG, 
+    LogRtuMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
         "Processing polling group " + std::to_string(group.group_id) + 
         " (" + group.group_name + ")");
     
@@ -1029,7 +1029,7 @@ bool ModbusRtuWorker::ProcessPollingGroup(ModbusRtuPollingGroup& group) {
                 break;
                 
             default:
-                LogRtuMessage(LogLevel::ERROR, 
+                LogRtuMessage(PulseOne::LogLevel::ERROR, 
                     "Unknown register type in group " + std::to_string(group.group_id));
                 return false;
         }
@@ -1049,7 +1049,7 @@ bool ModbusRtuWorker::ProcessPollingGroup(ModbusRtuPollingGroup& group) {
                 SaveToInfluxDB(data_point.id, timestamped_value);
             }
             
-            LogRtuMessage(LogLevel::DEBUG, 
+            LogRtuMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
                 "Successfully processed group " + std::to_string(group.group_id) + 
                 ", read " + std::to_string(values.size()) + " values");
         }
@@ -1057,7 +1057,7 @@ bool ModbusRtuWorker::ProcessPollingGroup(ModbusRtuPollingGroup& group) {
         return success;
         
     } catch (const std::exception& e) {
-        LogRtuMessage(LogLevel::ERROR, 
+        LogRtuMessage(PulseOne::LogLevel::ERROR, 
             "ProcessPollingGroup exception for group " + std::to_string(group.group_id) + 
             ": " + std::string(e.what()));
         return false;
@@ -1119,7 +1119,7 @@ int ModbusRtuWorker::CheckSlaveStatus(int slave_id) {
         return success ? response_time : -1;
         
     } catch (const std::exception& e) {
-        LogRtuMessage(LogLevel::DEBUG, 
+        LogRtuMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
             "CheckSlaveStatus exception for slave " + std::to_string(slave_id) + 
             ": " + std::string(e.what()));
         return -1;
@@ -1171,7 +1171,7 @@ void ModbusRtuWorker::LogRtuMessage(LogLevel level, const std::string& message) 
     LogMessage(level, prefix + message);
 }
 
-std::vector<Drivers::DataPoint> ModbusRtuWorker::CreateDataPoints(int slave_id, 
+std::vector<PulseOne::DataPoint> ModbusRtuWorker::CreateDataPoints(int slave_id, 
                                                                  ModbusRegisterType register_type,
                                                                  uint16_t start_address, 
                                                                  uint16_t count) {

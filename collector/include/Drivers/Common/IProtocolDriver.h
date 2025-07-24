@@ -10,7 +10,7 @@
 #ifndef DRIVERS_IPROTOCOL_DRIVER_H
 #define DRIVERS_IPROTOCOL_DRIVER_H
 
-#include "CommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"
 #include "DriverLogger.h"
 #include "Utils/ConfigManager.h"    // 기존 ConfigManager 사용
 #include <functional>

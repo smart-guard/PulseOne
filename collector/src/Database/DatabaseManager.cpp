@@ -38,11 +38,11 @@ bool DatabaseManager::connectPostgres() {
             pg_conn = std::make_unique<pqxx::connection>(connStr);
 
             if (pg_conn->is_open()) {
-                PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::INFO, "PostgreSQL 연결 성공");
+                PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::INFO, "PostgreSQL 연결 성공");
                 return true;
             }
         } catch (const std::exception& e) {
-            PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::ERROR, std::string("PostgreSQL 연결 실패: ") + e.what());
+            PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::ERROR, std::string("PostgreSQL 연결 실패: ") + e.what());
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
@@ -54,10 +54,10 @@ bool DatabaseManager::connectSQLite() {
     if (!db_path) db_path = "./config/db.sqlite";
     int rc = sqlite3_open(db_path, &sqlite_conn);
     if (rc != SQLITE_OK) {
-        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::ERROR, "SQLite 연결 실패: " + std::string(sqlite3_errmsg(sqlite_conn)));
+        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::ERROR, "SQLite 연결 실패: " + std::string(sqlite3_errmsg(sqlite_conn)));
         return false;
     }
-    PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::INFO, "SQLite 연결 성공");
+    PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::INFO, "SQLite 연결 성공");
     return true;
 }
 
@@ -74,10 +74,10 @@ pqxx::result DatabaseManager::executeQueryPostgres(const std::string& query) {
         pqxx::work txn(*pg_conn);
         pqxx::result r = txn.exec(query);
         txn.commit();
-        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::INFO, "PostgreSQL 쿼리 성공: " + query);
+        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::INFO, "PostgreSQL 쿼리 성공: " + query);
         return r;
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::ERROR, std::string("PostgreSQL 쿼리 실패: ") + e.what());
+        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::ERROR, std::string("PostgreSQL 쿼리 실패: ") + e.what());
         throw;
     }
 }
@@ -87,10 +87,10 @@ bool DatabaseManager::executeNonQueryPostgres(const std::string& query) {
         pqxx::work txn(*pg_conn);
         txn.exec(query);
         txn.commit();
-        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::INFO, "PostgreSQL non-query 성공: " + query);
+        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::INFO, "PostgreSQL non-query 성공: " + query);
         return true;
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::ERROR, std::string("PostgreSQL non-query 실패: ") + e.what());
+        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::ERROR, std::string("PostgreSQL non-query 실패: ") + e.what());
         return false;
     }
 }
@@ -101,11 +101,11 @@ bool DatabaseManager::executeQuerySQLite(const std::string& query,
     char* errMsg = nullptr;
     int rc = sqlite3_exec(sqlite_conn, query.c_str(), callback, data, &errMsg);
     if (rc != SQLITE_OK) {
-        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::ERROR, "SQLite 쿼리 실패: " + std::string(errMsg));
+        PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::ERROR, "SQLite 쿼리 실패: " + std::string(errMsg));
         sqlite3_free(errMsg);
         return false;
     }
-    PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, LogLevel::INFO, "SQLite 쿼리 성공: " + query);
+    PulseOne::LogManager::getInstance().log(LOG_MODULE_DATABASE, PulseOne::LogLevel::INFO, "SQLite 쿼리 성공: " + query);
     return true;
 }
 

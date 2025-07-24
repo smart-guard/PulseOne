@@ -31,7 +31,7 @@
 
 // 기존 PulseOne 헤더들과의 호환성을 위한 인클루드
 // 실제 경로는 기존 코드 구조에 맞게 조정 필요
-#include "Utils/LogLevels.h"  // 기존 로그 레벨 사용
+#include "Common/UnifiedCommonTypes.h"  // 기존 로그 레벨 사용
 
 namespace PulseOne {
 namespace Drivers {

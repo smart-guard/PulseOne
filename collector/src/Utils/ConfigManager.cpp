@@ -25,20 +25,20 @@ void ConfigManager::initialize() {
     for (const auto& path : possible_paths) {
         if (std::filesystem::exists(path)) {
             envFilePath = path;
-            PulseOne::LogManager::getInstance().log("config", LogLevel::INFO, "Found config file: " + path);
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "Found config file: " + path);
             found = true;
             break;
         }
     }
     
     if (!found) {
-        PulseOne::LogManager::getInstance().log("config", LogLevel::WARN, "No .env file found in any location");
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "No .env file found in any location");
         return;
     }
 
     std::ifstream file(envFilePath);
     if (!file.is_open()) {
-        PulseOne::LogManager::getInstance().log("config", LogLevel::ERROR, ".env 열기 실패: " + envFilePath);
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, ".env 열기 실패: " + envFilePath);
         return;
     }
 
@@ -47,7 +47,7 @@ void ConfigManager::initialize() {
     int parsed_count = 0;
     
 #ifdef DEBUG
-    PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, "🔍 Parsing .env file line by line:");
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, "🔍 Parsing .env file line by line:");
 #endif
     
     while (std::getline(file, line)) {
@@ -56,7 +56,7 @@ void ConfigManager::initialize() {
 #ifdef DEBUG
         // 디버그 모드일 때만 각 라인 파싱 과정 출력
         if (line_count <= 10) {
-            PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
                 "Line " + std::to_string(line_count) + ": [" + line + "]");
         }
 #endif
@@ -68,36 +68,36 @@ void ConfigManager::initialize() {
             parsed_count++;
 #ifdef DEBUG
             if (line_count <= 10) {
-                PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+                PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
                     "  → Parsed successfully! ConfigMap now has " + std::to_string(configMap.size()) + " entries");
             }
 #endif
         }
 #ifdef DEBUG
         else if (line_count <= 10) {
-            PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
                 "  → Skipped (empty/comment/invalid)");
         }
 #endif
     }
 
-    PulseOne::LogManager::getInstance().log("config", LogLevel::INFO, 
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
         ".env 로딩 완료: " + envFilePath + 
         " (" + std::to_string(parsed_count) + "/" + std::to_string(line_count) + " entries)");
     
 #ifdef DEBUG
     // 디버그 모드일 때만 전체 configMap 내용 출력
-    PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
         "🗂️ Final configMap contents (" + std::to_string(configMap.size()) + " entries):");
     
     int count = 0;
     for (const auto& [key, value] : configMap) {
         count++;
         if (count <= 15) {
-            PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
                 "  [" + std::to_string(count) + "] " + key + " = '" + value + "'");
         } else if (count == 16) {
-            PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
                 "  ... (총 " + std::to_string(configMap.size()) + "개 - 나머지 생략)");
             break;
         }
@@ -106,7 +106,7 @@ void ConfigManager::initialize() {
 }
 
 void ConfigManager::reload() {
-    PulseOne::LogManager::getInstance().log("config", LogLevel::INFO, "환경설정 재로딩 시작");
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "환경설정 재로딩 시작");
     configMap.clear();
     initialize();
 }
@@ -134,7 +134,7 @@ void ConfigManager::parseLine(const std::string& line) {
 #ifdef DEBUG
     // 디버그 모드일 때만 상세 파싱 로그
     if (configMap.size() <= 5) {
-        PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
             "    Parsed: '" + original_key + "' = '" + original_value + 
             "' → '" + key + "' = '" + value + "'");
     }
@@ -151,7 +151,7 @@ std::string ConfigManager::get(const std::string& key) const {
     get_call_count++;
     if (get_call_count <= 10) {
         std::string result = (it != configMap.end()) ? it->second : "";
-        PulseOne::LogManager::getInstance().log("config", LogLevel::DEBUG, 
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::DEBUG_LEVEL, 
             "🔍 get('" + key + "') → '" + result + "' (존재: " + 
             (it != configMap.end() ? "YES" : "NO") + ")");
     }

@@ -47,7 +47,7 @@ protected:
         endpoint_ = "192.168.1.100:502";
         
         logger_ = std::make_unique<DriverLogger>(device_id_, protocol_, endpoint_);
-        logger_->SetMinLevel(LogLevel::DEBUG);  // 모든 로그 레벨 활성화
+        logger_->SetMinLevel(PulseOne::LogLevel::DEBUG_LEVEL);  // 모든 로그 레벨 활성화
         
         // 모든 카테고리 활성화
         logger_->SetCategoryEnabled(DriverLogCategory::GENERAL, true);
@@ -124,7 +124,7 @@ TEST_F(DriverLoggerTest, CategorySpecificLogging) {
 
 TEST_F(DriverLoggerTest, LogLevelFiltering) {
     // INFO 레벨로 설정 (DEBUG 메시지는 필터링됨)
-    logger_->SetMinLevel(LogLevel::INFO);
+    logger_->SetMinLevel(PulseOne::LogLevel::INFO);
     logger_->ResetStatistics();
     
     logger_->Debug("This debug message should be filtered");
@@ -140,7 +140,7 @@ TEST_F(DriverLoggerTest, LogLevelFiltering) {
     EXPECT_EQ(3, stats.total_count);
     
     // ERROR 레벨로 변경 (INFO, WARN도 필터링됨)
-    logger_->SetMinLevel(LogLevel::ERROR);
+    logger_->SetMinLevel(PulseOne::LogLevel::ERROR);
     logger_->ResetStatistics();
     
     logger_->Debug("Filtered debug");
@@ -200,7 +200,7 @@ TEST_F(DriverLoggerTest, ContextualLogging) {
     context.extra_data["request_id"] = "REQ-001";
     context.extra_data["operation"] = "ReadRegisters";
     
-    logger_->LogWithContext(LogLevel::INFO, "Test message with context", 
+    logger_->LogWithContext(PulseOne::LogLevel::INFO, "Test message with context", 
                            DriverLogCategory::COMMUNICATION, context);
     
     auto stats = logger_->GetStatistics();
@@ -545,17 +545,17 @@ TEST_F(DriverLoggerTest, DynamicLevelChange) {
     logger_->ResetStatistics();
     
     // 초기에는 모든 레벨 허용
-    logger_->SetMinLevel(LogLevel::DEBUG);
+    logger_->SetMinLevel(PulseOne::LogLevel::DEBUG_LEVEL);
     logger_->Debug("Debug message 1");
     logger_->Info("Info message 1");
     
     // 레벨을 INFO로 변경
-    logger_->SetMinLevel(LogLevel::INFO);
+    logger_->SetMinLevel(PulseOne::LogLevel::INFO);
     logger_->Debug("Debug message 2");  // 필터링됨
     logger_->Info("Info message 2");
     
     // 레벨을 ERROR로 변경
-    logger_->SetMinLevel(LogLevel::ERROR);
+    logger_->SetMinLevel(PulseOne::LogLevel::ERROR);
     logger_->Info("Info message 3");    // 필터링됨
     logger_->Error("Error message 1");
     

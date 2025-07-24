@@ -1,9 +1,9 @@
 #ifndef DRIVERS_DRIVER_LOGGER_H
 #define DRIVERS_DRIVER_LOGGER_H
 
-#include "CommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"
 #include "Utils/LogManager.h"      // 기존 LogManager 사용
-#include "Utils/LogLevels.h"       // 기존 LogLevels 사용
+#include "Common/UnifiedCommonTypes.h"       // 기존 LogLevels 사용
 #include <memory>
 #include <string>
 #include <sstream>
@@ -101,7 +101,7 @@ public:
     DriverLogger(const UUID& device_id = "", 
                  ProtocolType protocol = ProtocolType::UNKNOWN,
                  const std::string& endpoint = "")
-        : legacy_logger_(nullptr), min_level_(LogLevel::INFO) {
+        : legacy_logger_(nullptr), min_level_(PulseOne::LogLevel::INFO) {
         
         default_context_.device_id = device_id;
         default_context_.protocol = protocol;
@@ -146,10 +146,10 @@ public:
     
     void Debug(const std::string& message, 
                DriverLogCategory category = DriverLogCategory::GENERAL) {
-        if (!ShouldLog(LogLevel::DEBUG, category)) return;
+        if (!ShouldLog(PulseOne::LogLevel::DEBUG_LEVEL, category)) return;
         
-        UpdateStatistics(LogLevel::DEBUG);
-        std::string formatted = FormatMessage(LogLevel::DEBUG, category, message, default_context_);
+        UpdateStatistics(PulseOne::LogLevel::DEBUG_LEVEL);
+        std::string formatted = FormatMessage(PulseOne::LogLevel::DEBUG_LEVEL, category, message, default_context_);
         
         // legacy_logger_가 있으면 사용, 없으면 기본 출력
         if (legacy_logger_) {
@@ -161,10 +161,10 @@ public:
     
     void Info(const std::string& message, 
               DriverLogCategory category = DriverLogCategory::GENERAL) {
-        if (!ShouldLog(LogLevel::INFO, category)) return;
+        if (!ShouldLog(PulseOne::LogLevel::INFO, category)) return;
         
-        UpdateStatistics(LogLevel::INFO);
-        std::string formatted = FormatMessage(LogLevel::INFO, category, message, default_context_);
+        UpdateStatistics(PulseOne::LogLevel::INFO);
+        std::string formatted = FormatMessage(PulseOne::LogLevel::INFO, category, message, default_context_);
         
         if (legacy_logger_) {
             legacy_logger_->Info(formatted);
@@ -175,10 +175,10 @@ public:
     
     void Warn(const std::string& message, 
               DriverLogCategory category = DriverLogCategory::GENERAL) {
-        if (!ShouldLog(LogLevel::WARN, category)) return;
+        if (!ShouldLog(PulseOne::LogLevel::WARN, category)) return;
         
-        UpdateStatistics(LogLevel::WARN);
-        std::string formatted = FormatMessage(LogLevel::WARN, category, message, default_context_);
+        UpdateStatistics(PulseOne::LogLevel::WARN);
+        std::string formatted = FormatMessage(PulseOne::LogLevel::WARN, category, message, default_context_);
         
         if (legacy_logger_) {
             legacy_logger_->Warn(formatted);
@@ -189,10 +189,10 @@ public:
     
     void Error(const std::string& message, 
                DriverLogCategory category = DriverLogCategory::GENERAL) {
-        if (!ShouldLog(LogLevel::ERROR, category)) return;
+        if (!ShouldLog(PulseOne::LogLevel::ERROR, category)) return;
         
-        UpdateStatistics(LogLevel::ERROR);
-        std::string formatted = FormatMessage(LogLevel::ERROR, category, message, default_context_);
+        UpdateStatistics(PulseOne::LogLevel::ERROR);
+        std::string formatted = FormatMessage(PulseOne::LogLevel::ERROR, category, message, default_context_);
         
         if (legacy_logger_) {
             legacy_logger_->Error(formatted);
@@ -203,8 +203,8 @@ public:
     
     void Fatal(const std::string& message, 
                DriverLogCategory category = DriverLogCategory::GENERAL) {
-        UpdateStatistics(LogLevel::FATAL);
-        std::string formatted = FormatMessage(LogLevel::FATAL, category, message, default_context_);
+        UpdateStatistics(PulseOne::LogLevel::FATAL);
+        std::string formatted = FormatMessage(PulseOne::LogLevel::FATAL, category, message, default_context_);
         
         if (legacy_logger_) {
             legacy_logger_->Fatal(formatted);
@@ -353,23 +353,23 @@ public:
         std::string formatted = FormatMessage(level, category, message, context);
         
         switch (level) {
-            case LogLevel::DEBUG:
+            case PulseOne::LogLevel::DEBUG_LEVEL:
                 if (legacy_logger_) legacy_logger_->Debug(formatted);
                 else std::cout << "[DEBUG] " << formatted << std::endl;
                 break;
-            case LogLevel::INFO:
+            case PulseOne::LogLevel::INFO:
                 if (legacy_logger_) legacy_logger_->Info(formatted);
                 else std::cout << "[INFO] " << formatted << std::endl;
                 break;
-            case LogLevel::WARN:
+            case PulseOne::LogLevel::WARN:
                 if (legacy_logger_) legacy_logger_->Warn(formatted);
                 else std::cout << "[WARN] " << formatted << std::endl;
                 break;
-            case LogLevel::ERROR:
+            case PulseOne::LogLevel::ERROR:
                 if (legacy_logger_) legacy_logger_->Error(formatted);
                 else std::cerr << "[ERROR] " << formatted << std::endl;
                 break;
-            case LogLevel::FATAL:
+            case PulseOne::LogLevel::FATAL:
                 if (legacy_logger_) legacy_logger_->Fatal(formatted);
                 else std::cerr << "[FATAL] " << formatted << std::endl;
                 break;
@@ -387,11 +387,11 @@ public:
             std::snprintf(buffer, sizeof(buffer), format.c_str(), args...);
             
             switch (level) {
-                case LogLevel::DEBUG: Debug(std::string(buffer), category); break;
-                case LogLevel::INFO:  Info(std::string(buffer), category); break;
-                case LogLevel::WARN:  Warn(std::string(buffer), category); break;
-                case LogLevel::ERROR: Error(std::string(buffer), category); break;
-                case LogLevel::FATAL: Fatal(std::string(buffer), category); break;
+                case PulseOne::LogLevel::DEBUG_LEVEL: Debug(std::string(buffer), category); break;
+                case PulseOne::LogLevel::INFO:  Info(std::string(buffer), category); break;
+                case PulseOne::LogLevel::WARN:  Warn(std::string(buffer), category); break;
+                case PulseOne::LogLevel::ERROR: Error(std::string(buffer), category); break;
+                case PulseOne::LogLevel::FATAL: Fatal(std::string(buffer), category); break;
             }
         } catch (const std::exception& e) {
             Error("Log formatting error: " + std::string(e.what()) + 
@@ -403,11 +403,11 @@ public:
                DriverLogCategory category = DriverLogCategory::GENERAL) {
         if (condition) {
             switch (level) {
-                case LogLevel::DEBUG: Debug(message, category); break;
-                case LogLevel::INFO:  Info(message, category); break;
-                case LogLevel::WARN:  Warn(message, category); break;
-                case LogLevel::ERROR: Error(message, category); break;
-                case LogLevel::FATAL: Fatal(message, category); break;
+                case PulseOne::LogLevel::DEBUG_LEVEL: Debug(message, category); break;
+                case PulseOne::LogLevel::INFO:  Info(message, category); break;
+                case PulseOne::LogLevel::WARN:  Warn(message, category); break;
+                case PulseOne::LogLevel::ERROR: Error(message, category); break;
+                case PulseOne::LogLevel::FATAL: Fatal(message, category); break;
             }
         }
     }
@@ -419,11 +419,11 @@ private:
     
     void UpdateStatistics(LogLevel level) const noexcept {
         switch (level) {
-            case LogLevel::DEBUG: log_count_debug_++; break;
-            case LogLevel::INFO:  log_count_info_++; break;
-            case LogLevel::WARN:  log_count_warn_++; break;
-            case LogLevel::ERROR: log_count_error_++; break;
-            case LogLevel::FATAL: log_count_fatal_++; break;
+            case PulseOne::LogLevel::DEBUG_LEVEL: log_count_debug_++; break;
+            case PulseOne::LogLevel::INFO:  log_count_info_++; break;
+            case PulseOne::LogLevel::WARN:  log_count_warn_++; break;
+            case PulseOne::LogLevel::ERROR: log_count_error_++; break;
+            case PulseOne::LogLevel::FATAL: log_count_fatal_++; break;
         }
     }
 };
@@ -444,40 +444,40 @@ private:
 
 #define DRIVER_LOG_DEBUG(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= LogLevel::DEBUG) { \
+        if ((logger).GetMinLevel() <= PulseOne::LogLevel::DEBUG_LEVEL) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(LogLevel::DEBUG, message, category, ctx); \
+            (logger).LogWithContext(PulseOne::LogLevel::DEBUG_LEVEL, message, category, ctx); \
         } \
     } while(0)
 
 #define DRIVER_LOG_INFO(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= LogLevel::INFO) { \
+        if ((logger).GetMinLevel() <= PulseOne::LogLevel::INFO) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(LogLevel::INFO, message, category, ctx); \
+            (logger).LogWithContext(PulseOne::LogLevel::INFO, message, category, ctx); \
         } \
     } while(0)
 
 #define DRIVER_LOG_WARN(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= LogLevel::WARN) { \
+        if ((logger).GetMinLevel() <= PulseOne::LogLevel::WARN) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(LogLevel::WARN, message, category, ctx); \
+            (logger).LogWithContext(PulseOne::LogLevel::WARN, message, category, ctx); \
         } \
     } while(0)
 
 #define DRIVER_LOG_ERROR(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= LogLevel::ERROR) { \
+        if ((logger).GetMinLevel() <= PulseOne::LogLevel::ERROR) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(LogLevel::ERROR, message, category, ctx); \
+            (logger).LogWithContext(PulseOne::LogLevel::ERROR, message, category, ctx); \
         } \
     } while(0)
 
 #define DRIVER_LOG_FATAL(logger, message, category) \
     do { \
         auto ctx = DRIVER_LOG_CONTEXT(); \
-        (logger).LogWithContext(LogLevel::FATAL, message, category, ctx); \
+        (logger).LogWithContext(PulseOne::LogLevel::FATAL, message, category, ctx); \
     } while(0)
 
 #define DLOG_DEBUG(logger, message) \

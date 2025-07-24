@@ -30,7 +30,7 @@ namespace Workers {
 // =============================================================================
 
 UdpBasedWorker::UdpBasedWorker(
-    const Drivers::DeviceInfo& device_info,
+    const PulseOne::DeviceInfo& device_info,
     std::shared_ptr<RedisClient> redis_client,
     std::shared_ptr<InfluxClient> influx_client)
     : BaseDeviceWorker(device_info, redis_client, influx_client)
@@ -43,11 +43,11 @@ UdpBasedWorker::UdpBasedWorker(
     // UDP 연결 정보 초기화  
     udp_connection_.last_activity = system_clock::now();
     
-    LogMessage(LogLevel::INFO, "UdpBasedWorker created for device: " + device_info.name);
+    LogMessage(PulseOne::LogLevel::INFO, "UdpBasedWorker created for device: " + device_info.name);
     
     // device_info에서 UDP 설정 파싱
     if (!ParseUdpConfig()) {
-        LogMessage(LogLevel::WARN, "Failed to parse UDP config, using defaults");
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to parse UDP config, using defaults");
     }
 }
 
@@ -63,7 +63,7 @@ UdpBasedWorker::~UdpBasedWorker() {
     // UDP 소켓 정리
     CloseUdpSocket();
     
-    LogMessage(LogLevel::INFO, "UdpBasedWorker destroyed for device: " + device_info_.name);
+    LogMessage(PulseOne::LogLevel::INFO, "UdpBasedWorker destroyed for device: " + device_info_.name);
 }
 
 // =============================================================================
@@ -72,7 +72,7 @@ UdpBasedWorker::~UdpBasedWorker() {
 
 void UdpBasedWorker::ConfigureUdp(const UdpConfig& config) {
     udp_config_ = config;
-    LogMessage(LogLevel::INFO, "UDP configuration updated");
+    LogMessage(PulseOne::LogLevel::INFO, "UDP configuration updated");
 }
 
 std::string UdpBasedWorker::GetUdpConnectionInfo() const {
@@ -159,7 +159,7 @@ void UdpBasedWorker::ResetUdpStats() {
     udp_stats_.multicast_packets = 0;
     udp_stats_.last_reset = system_clock::now();
     
-    LogMessage(LogLevel::INFO, "UDP statistics reset");
+    LogMessage(PulseOne::LogLevel::INFO, "UDP statistics reset");
 }
 
 // =============================================================================
@@ -167,18 +167,18 @@ void UdpBasedWorker::ResetUdpStats() {
 // =============================================================================
 
 bool UdpBasedWorker::EstablishConnection() {
-    LogMessage(LogLevel::INFO, "Establishing UDP connection...");
+    LogMessage(PulseOne::LogLevel::INFO, "Establishing UDP connection...");
     
     try {
         // 1. UDP 소켓 생성 및 설정
         if (!CreateUdpSocket()) {
-            LogMessage(LogLevel::ERROR, "Failed to create UDP socket");
+            LogMessage(PulseOne::LogLevel::ERROR, "Failed to create UDP socket");
             return false;
         }
         
         // 2. UDP 소켓 바인딩
         if (!BindUdpSocket()) {
-            LogMessage(LogLevel::ERROR, "Failed to bind UDP socket");
+            LogMessage(PulseOne::LogLevel::ERROR, "Failed to bind UDP socket");
             CloseUdpSocket();
             return false;
         }
@@ -189,7 +189,7 @@ bool UdpBasedWorker::EstablishConnection() {
         
         // 4. 프로토콜별 연결 수립
         if (!EstablishProtocolConnection()) {
-            LogMessage(LogLevel::ERROR, "Failed to establish protocol connection");
+            LogMessage(PulseOne::LogLevel::ERROR, "Failed to establish protocol connection");
             receive_thread_running_ = false;
             if (receive_thread_->joinable()) {
                 receive_thread_->join();
@@ -198,19 +198,19 @@ bool UdpBasedWorker::EstablishConnection() {
             return false;
         }
         
-        LogMessage(LogLevel::INFO, "UDP connection established successfully");
+        LogMessage(PulseOne::LogLevel::INFO, "UDP connection established successfully");
         SetConnectionState(true);
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in EstablishConnection: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception in EstablishConnection: " + std::string(e.what()));
         CloseConnection();
         return false;
     }
 }
 
 bool UdpBasedWorker::CloseConnection() {
-    LogMessage(LogLevel::INFO, "Closing UDP connection...");
+    LogMessage(PulseOne::LogLevel::INFO, "Closing UDP connection...");
     
     try {
         // 1. 프로토콜별 연결 해제
@@ -235,12 +235,12 @@ bool UdpBasedWorker::CloseConnection() {
             }
         }
         
-        LogMessage(LogLevel::INFO, "UDP connection closed successfully");
+        LogMessage(PulseOne::LogLevel::INFO, "UDP connection closed successfully");
         SetConnectionState(false);
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in CloseConnection: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception in CloseConnection: " + std::string(e.what()));
         return false;
     }
 }
@@ -267,7 +267,7 @@ bool UdpBasedWorker::CheckConnection() {
 bool UdpBasedWorker::SendKeepAlive() {
     // UDP 소켓 상태 확인
     if (!CheckConnection()) {
-        LogMessage(LogLevel::WARN, "Cannot send keep-alive: connection not established");
+        LogMessage(PulseOne::LogLevel::WARN, "Cannot send keep-alive: connection not established");
         return false;
     }
     
@@ -286,11 +286,11 @@ bool UdpBasedWorker::CreateUdpSocket() {
     // UDP 소켓 생성
     udp_connection_.socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_connection_.socket_fd == -1) {
-        LogMessage(LogLevel::ERROR, "Failed to create UDP socket: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to create UDP socket: " + std::string(strerror(errno)));
         return false;
     }
     
-    LogMessage(LogLevel::DEBUG, "UDP socket created (fd: " + std::to_string(udp_connection_.socket_fd) + ")");
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "UDP socket created (fd: " + std::to_string(udp_connection_.socket_fd) + ")");
     
     // 소켓 옵션 설정
     if (!SetSocketOptions()) {
@@ -303,7 +303,7 @@ bool UdpBasedWorker::CreateUdpSocket() {
 
 bool UdpBasedWorker::BindUdpSocket() {
     if (udp_connection_.socket_fd == -1) {
-        LogMessage(LogLevel::ERROR, "Socket not created before binding");
+        LogMessage(PulseOne::LogLevel::ERROR, "Socket not created before binding");
         return false;
     }
     
@@ -318,7 +318,7 @@ bool UdpBasedWorker::BindUdpSocket() {
     } else {
         if (inet_pton(AF_INET, udp_config_.local_interface.c_str(), 
                      &udp_connection_.local_addr.sin_addr) != 1) {
-            LogMessage(LogLevel::ERROR, "Invalid local interface: " + udp_config_.local_interface);
+            LogMessage(PulseOne::LogLevel::ERROR, "Invalid local interface: " + udp_config_.local_interface);
             return false;
         }
     }
@@ -327,7 +327,7 @@ bool UdpBasedWorker::BindUdpSocket() {
     if (bind(udp_connection_.socket_fd, 
              reinterpret_cast<struct sockaddr*>(&udp_connection_.local_addr),
              sizeof(udp_connection_.local_addr)) == -1) {
-        LogMessage(LogLevel::ERROR, "Failed to bind UDP socket: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to bind UDP socket: " + std::string(strerror(errno)));
         return false;
     }
     
@@ -338,7 +338,7 @@ bool UdpBasedWorker::BindUdpSocket() {
     if (getsockname(udp_connection_.socket_fd,
                    reinterpret_cast<struct sockaddr*>(&udp_connection_.local_addr),
                    &addr_len) == 0) {
-        LogMessage(LogLevel::INFO, 
+        LogMessage(PulseOne::LogLevel::INFO, 
                   "UDP socket bound to: " + SockAddrToString(udp_connection_.local_addr));
     }
     
@@ -348,7 +348,7 @@ bool UdpBasedWorker::BindUdpSocket() {
 void UdpBasedWorker::CloseUdpSocket() {
     if (udp_connection_.socket_fd != -1) {
         close(udp_connection_.socket_fd);
-        LogMessage(LogLevel::DEBUG, "UDP socket closed (fd: " + std::to_string(udp_connection_.socket_fd) + ")");
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "UDP socket closed (fd: " + std::to_string(udp_connection_.socket_fd) + ")");
         udp_connection_.socket_fd = -1;
     }
     
@@ -363,13 +363,13 @@ void UdpBasedWorker::CloseUdpSocket() {
 ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data, 
                                     const struct sockaddr_in& target_addr) {
     if (udp_connection_.socket_fd == -1) {
-        LogMessage(LogLevel::ERROR, "Socket not created for sending data");
+        LogMessage(PulseOne::LogLevel::ERROR, "Socket not created for sending data");
         UpdateErrorStats(true);
         return -1;
     }
     
     if (data.empty()) {
-        LogMessage(LogLevel::WARN, "Attempted to send empty data");
+        LogMessage(PulseOne::LogLevel::WARN, "Attempted to send empty data");
         return 0;
     }
     
@@ -379,7 +379,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data,
                                sizeof(target_addr));
     
     if (bytes_sent == -1) {
-        LogMessage(LogLevel::ERROR, "Failed to send UDP data: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to send UDP data: " + std::string(strerror(errno)));
         UpdateErrorStats(true);
         return -1;
     }
@@ -388,7 +388,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data,
     UpdateSendStats(static_cast<size_t>(bytes_sent));
     udp_connection_.last_activity = system_clock::now();
     
-    LogMessage(LogLevel::DEBUG, 
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
               "Sent " + std::to_string(bytes_sent) + " bytes to " + 
               SockAddrToString(target_addr));
     
@@ -399,7 +399,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::string& data,
                                     const std::string& target_host, uint16_t target_port) {
     struct sockaddr_in target_addr;
     if (!StringToSockAddr(target_host, target_port, target_addr)) {
-        LogMessage(LogLevel::ERROR, "Invalid target address: " + target_host + ":" + std::to_string(target_port));
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid target address: " + target_host + ":" + std::to_string(target_port));
         return -1;
     }
     
@@ -409,7 +409,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::string& data,
 
 ssize_t UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t port) {
     if (!udp_config_.broadcast_enabled) {
-        LogMessage(LogLevel::ERROR, "Broadcast is disabled");
+        LogMessage(PulseOne::LogLevel::ERROR, "Broadcast is disabled");
         return -1;
     }
     
@@ -430,13 +430,13 @@ ssize_t UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t
 ssize_t UdpBasedWorker::SendMulticast(const std::vector<uint8_t>& data, 
                                       const std::string& multicast_group, uint16_t port) {
     if (!udp_config_.multicast_enabled) {
-        LogMessage(LogLevel::ERROR, "Multicast is disabled");
+        LogMessage(PulseOne::LogLevel::ERROR, "Multicast is disabled");
         return -1;
     }
     
     struct sockaddr_in multicast_addr;
     if (!StringToSockAddr(multicast_group, port, multicast_addr)) {
-        LogMessage(LogLevel::ERROR, "Invalid multicast address: " + multicast_group);
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid multicast address: " + multicast_group);
         return -1;
     }
     
@@ -539,33 +539,42 @@ std::string UdpBasedWorker::CalculateBroadcastAddress(const std::string& interfa
 
 bool UdpBasedWorker::ParseUdpConfig() {
     try {
-        // device_info_.config_json에서 UDP 설정 파싱
-        if (device_info_.config_json.empty()) {
-            LogMessage(LogLevel::INFO, "No UDP config in device_info, using defaults");
+         // 1. endpoint에서 정보 파싱 (config_json 대신)
+        if (device_info_.endpoint.empty()) {
+            LogMessage(PulseOne::LogLevel::WARN, "No UDP endpoint configured, using defaults");
             return true;
         }
         
-        // JSON 파싱 (간단한 구현, 실제로는 nlohmann::json 등 사용)
-        std::string config = device_info_.config_json;
+        // 2. endpoint 파싱
+        std::string endpoint = device_info_.endpoint;
+        size_t colon_pos = endpoint.find(':');
         
-        // endpoint에서 호스트와 포트 추출
-        if (!device_info_.endpoint.empty()) {
-            size_t colon_pos = device_info_.endpoint.find(':');
-            if (colon_pos != std::string::npos) {
-                udp_config_.remote_host = device_info_.endpoint.substr(0, colon_pos);
-                udp_config_.remote_port = static_cast<uint16_t>(
-                    std::stoi(device_info_.endpoint.substr(colon_pos + 1)));
-            }
+        if (colon_pos != std::string::npos) {
+            udp_config_.remote_ip = endpoint.substr(0, colon_pos);
+            udp_config_.remote_port = static_cast<uint16_t>(std::stoi(endpoint.substr(colon_pos + 1)));
+        } else {
+            udp_config_.remote_ip = endpoint;
+            udp_config_.remote_port = 502;  // 기본 포트
         }
         
-        // 타임아웃 설정
-        udp_config_.socket_timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);
+        // 3. Duration을 밀리초로 변환 (timeout_ms 대신)
+        udp_config_.socket_timeout_ms = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(device_info_.timeout).count()
+        );
         
-        LogMessage(LogLevel::DEBUG, "UDP config parsed successfully");
+        // 4. 폴링 간격도 Duration에서 변환 (polling_interval_ms 대신)
+        udp_config_.polling_interval_ms = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(device_info_.polling_interval).count()
+        );
+        
+        // 5. 재시도 횟수는 그대로 사용
+        udp_config_.max_retries = static_cast<uint32_t>(device_info_.retry_count);
+        
+        LogMessage(PulseOne::LogLevel::INFO, "UDP config parsed from DeviceInfo successfully");
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to parse UDP config: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to parse UDP config: " + std::string(e.what()));
         return false;
     }
 }
@@ -581,7 +590,7 @@ bool UdpBasedWorker::SetSocketOptions() {
     if (udp_config_.reuse_address) {
         if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_REUSEADDR, 
                       &opt, sizeof(opt)) == -1) {
-            LogMessage(LogLevel::WARN, "Failed to set SO_REUSEADDR: " + std::string(strerror(errno)));
+            LogMessage(PulseOne::LogLevel::WARN, "Failed to set SO_REUSEADDR: " + std::string(strerror(errno)));
         }
     }
     
@@ -590,7 +599,7 @@ bool UdpBasedWorker::SetSocketOptions() {
     if (udp_config_.reuse_port) {
         if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_REUSEPORT, 
                       &opt, sizeof(opt)) == -1) {
-            LogMessage(LogLevel::WARN, "Failed to set SO_REUSEPORT: " + std::string(strerror(errno)));
+            LogMessage(PulseOne::LogLevel::WARN, "Failed to set SO_REUSEPORT: " + std::string(strerror(errno)));
         }
     }
 #endif
@@ -599,7 +608,7 @@ bool UdpBasedWorker::SetSocketOptions() {
     if (udp_config_.broadcast_enabled) {
         if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_BROADCAST, 
                       &opt, sizeof(opt)) == -1) {
-            LogMessage(LogLevel::WARN, "Failed to enable broadcast: " + std::string(strerror(errno)));
+            LogMessage(PulseOne::LogLevel::WARN, "Failed to enable broadcast: " + std::string(strerror(errno)));
         }
     }
     
@@ -607,14 +616,14 @@ bool UdpBasedWorker::SetSocketOptions() {
     int recv_buffer_size = static_cast<int>(udp_config_.receive_buffer_size);
     if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_RCVBUF, 
                   &recv_buffer_size, sizeof(recv_buffer_size)) == -1) {
-        LogMessage(LogLevel::WARN, "Failed to set receive buffer size: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to set receive buffer size: " + std::string(strerror(errno)));
     }
     
     // 송신 버퍼 크기 설정
     int send_buffer_size = static_cast<int>(udp_config_.send_buffer_size);
     if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_SNDBUF, 
                   &send_buffer_size, sizeof(send_buffer_size)) == -1) {
-        LogMessage(LogLevel::WARN, "Failed to set send buffer size: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to set send buffer size: " + std::string(strerror(errno)));
     }
     
     // 소켓 타임아웃 설정
@@ -624,20 +633,20 @@ bool UdpBasedWorker::SetSocketOptions() {
     
     if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_RCVTIMEO, 
                   &timeout, sizeof(timeout)) == -1) {
-        LogMessage(LogLevel::WARN, "Failed to set receive timeout: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to set receive timeout: " + std::string(strerror(errno)));
     }
     
     if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_SNDTIMEO, 
                   &timeout, sizeof(timeout)) == -1) {
-        LogMessage(LogLevel::WARN, "Failed to set send timeout: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to set send timeout: " + std::string(strerror(errno)));
     }
     
-    LogMessage(LogLevel::DEBUG, "Socket options configured successfully");
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Socket options configured successfully");
     return true;
 }
 
 void UdpBasedWorker::ReceiveThreadFunction() {
-    LogMessage(LogLevel::INFO, "UDP receive thread started");
+    LogMessage(PulseOne::LogLevel::INFO, "UDP receive thread started");
     
     uint8_t buffer[65536]; // 최대 UDP 패킷 크기
     struct sockaddr_in sender_addr;
@@ -657,7 +666,7 @@ void UdpBasedWorker::ReceiveThreadFunction() {
         
         if (select_result == -1) {
             if (errno != EINTR) {
-                LogMessage(LogLevel::ERROR, "Select error in receive thread: " + std::string(strerror(errno)));
+                LogMessage(PulseOne::LogLevel::ERROR, "Select error in receive thread: " + std::string(strerror(errno)));
                 UpdateErrorStats(false);
             }
             continue;
@@ -677,7 +686,7 @@ void UdpBasedWorker::ReceiveThreadFunction() {
             
             if (bytes_received == -1) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                    LogMessage(LogLevel::ERROR, "Receive error: " + std::string(strerror(errno)));
+                    LogMessage(PulseOne::LogLevel::ERROR, "Receive error: " + std::string(strerror(errno)));
                     UpdateErrorStats(false);
                 }
                 continue;
@@ -695,7 +704,7 @@ void UdpBasedWorker::ReceiveThreadFunction() {
                 UpdateReceiveStats(static_cast<size_t>(bytes_received));
                 udp_connection_.last_activity = system_clock::now();
                 
-                LogMessage(LogLevel::DEBUG, 
+                LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
                           "Received " + std::to_string(bytes_received) + " bytes from " + 
                           SockAddrToString(sender_addr));
                 
@@ -708,14 +717,14 @@ void UdpBasedWorker::ReceiveThreadFunction() {
                     if (receive_queue_.size() < 1000) { // 최대 큐 크기
                         receive_queue_.push(std::move(packet));
                     } else {
-                        LogMessage(LogLevel::WARN, "Receive queue full, dropping packet");
+                        LogMessage(PulseOne::LogLevel::WARN, "Receive queue full, dropping packet");
                     }
                 }
             }
         }
     }
     
-    LogMessage(LogLevel::INFO, "UDP receive thread stopped");
+    LogMessage(PulseOne::LogLevel::INFO, "UDP receive thread stopped");
 }
 
 void UdpBasedWorker::UpdateSendStats(size_t bytes_sent, bool is_broadcast, bool is_multicast) {

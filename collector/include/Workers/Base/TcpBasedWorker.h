@@ -11,7 +11,7 @@
 #define WORKERS_TCP_BASED_WORKER_H
 
 #include "Workers/Base/BaseDeviceWorker.h"
-#include "Drivers/Common/CommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"
 #include <string>
 #include <atomic>
 #include <chrono>
@@ -32,7 +32,7 @@ public:
      * @param redis_client Redis 클라이언트
      * @param influx_client InfluxDB 클라이언트
      */
-    TcpBasedWorker(const Drivers::DeviceInfo& device_info,
+    TcpBasedWorker(const PulseOne::DeviceInfo& device_info,
                    std::shared_ptr<RedisClient> redis_client,
                    std::shared_ptr<InfluxClient> influx_client);
     

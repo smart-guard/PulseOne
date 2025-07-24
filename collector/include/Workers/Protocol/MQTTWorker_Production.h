@@ -204,7 +204,7 @@ struct PerformanceMetrics {
 class MQTTWorkerProduction : public MQTTWorker {
 public:
     // 생성자 및 소멸자
-    MQTTWorkerProduction(const Drivers::DeviceInfo& device_info,
+    MQTTWorkerProduction(const PulseOne::DeviceInfo& device_info,
                         std::shared_ptr<RedisClient> redis_client,
                         std::shared_ptr<InfluxClient> influx_client);
     

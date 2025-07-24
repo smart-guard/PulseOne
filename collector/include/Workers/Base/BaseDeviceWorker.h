@@ -10,7 +10,7 @@
 #ifndef WORKERS_BASE_DEVICE_WORKER_H
 #define WORKERS_BASE_DEVICE_WORKER_H
 
-#include "Drivers/Common/CommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"
 #include "Utils/LogManager.h"
 #include "Client/InfluxClient.h"
 #include "Client/RedisClient.h"
@@ -116,7 +116,7 @@ public:
      * @param redis_client Redis 클라이언트
      * @param influx_client InfluxDB 클라이언트
      */
-    BaseDeviceWorker(const Drivers::DeviceInfo& device_info,
+    BaseDeviceWorker(const PulseOne::DeviceInfo& device_info,
                      std::shared_ptr<RedisClient> redis_client,
                      std::shared_ptr<InfluxClient> influx_client);
     
@@ -198,13 +198,13 @@ public:
      * @param point 추가할 데이터 포인트
      * @return 성공 시 true
      */
-    virtual bool AddDataPoint(const Drivers::DataPoint& point);
+    virtual bool AddDataPoint(const PulseOne::DataPoint& point);
     
     /**
      * @brief 현재 등록된 데이터 포인트 목록 조회
      * @return 데이터 포인트 벡터
      */
-    virtual std::vector<Drivers::DataPoint> GetDataPoints() const;
+    virtual std::vector<PulseOne::DataPoint> GetDataPoints() const;
     
     // =============================================================================
     // 재연결 관리 (공통 기능 - 모든 프로토콜에서 사용)
@@ -260,7 +260,7 @@ public:
      * @brief 디바이스 정보 조회
      * @return 디바이스 정보
      */
-    const Drivers::DeviceInfo& GetDeviceInfo() const { return device_info_; }
+    const PulseOne::DeviceInfo& GetDeviceInfo() const { return device_info_; }
 
 protected:
     // =============================================================================
@@ -282,7 +282,7 @@ protected:
      * @param point_id 데이터 포인트 ID (GitHub 구조: std::string UUID)
      * @param value 저장할 값
      */
-    void SaveToInfluxDB(const std::string& point_id, const Drivers::TimestampedValue& value);
+    void SaveToInfluxDB(const std::string& point_id, const PulseOne::TimestampedValue& value);
     
     /**
      * @brief 연결 상태 설정 (재연결 로직에서 사용)
@@ -305,7 +305,7 @@ protected:
         LogManager::getInstance().log("worker", level, message);
     }
 
-    Drivers::DeviceInfo device_info_;                    ///< 디바이스 정보
+    PulseOne::DeviceInfo device_info_;                    ///< 디바이스 정보
 private:
     // =============================================================================
     // 내부 데이터 멤버
@@ -347,7 +347,7 @@ private:
     // =============================================================================
     
     mutable std::mutex data_points_mutex_;               ///< 데이터 포인트 뮤텍스
-    std::vector<Drivers::DataPoint> data_points_;        ///< 등록된 데이터 포인트들
+    std::vector<PulseOne::DataPoint> data_points_;        ///< 등록된 데이터 포인트들
     
     // =============================================================================
     // 내부 메서드들

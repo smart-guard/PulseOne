@@ -29,7 +29,7 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-TcpBasedWorker::TcpBasedWorker(const Drivers::DeviceInfo& device_info,
+TcpBasedWorker::TcpBasedWorker(const PulseOne::DeviceInfo& device_info,
                                std::shared_ptr<RedisClient> redis_client,
                                std::shared_ptr<InfluxClient> influx_client)
     : BaseDeviceWorker(device_info, redis_client, influx_client)
@@ -44,12 +44,12 @@ TcpBasedWorker::TcpBasedWorker(const Drivers::DeviceInfo& device_info,
     settings.keep_alive_enabled = true;
     UpdateReconnectionSettings(settings);
     
-    LogMessage(LogLevel::INFO, "TcpBasedWorker created for device: " + device_info_.name);
+    LogMessage(PulseOne::LogLevel::INFO, "TcpBasedWorker created for device: " + device_info_.name);
 }
 
 TcpBasedWorker::~TcpBasedWorker() {
     CloseTcpSocket();
-    LogMessage(LogLevel::INFO, "TcpBasedWorker destroyed");
+    LogMessage(PulseOne::LogLevel::INFO, "TcpBasedWorker destroyed");
 }
 
 // =============================================================================
@@ -57,33 +57,33 @@ TcpBasedWorker::~TcpBasedWorker() {
 // =============================================================================
 
 bool TcpBasedWorker::EstablishConnection() {
-    LogMessage(LogLevel::INFO, "Establishing TCP connection to " + ip_address_ + ":" + std::to_string(port_));
+    LogMessage(PulseOne::LogLevel::INFO, "Establishing TCP connection to " + ip_address_ + ":" + std::to_string(port_));
     
     // TCP 설정 검증
     if (!ValidateTcpConfig()) {
-        LogMessage(LogLevel::ERROR, "Invalid TCP configuration");
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid TCP configuration");
         return false;
     }
     
     // TCP 소켓 생성 및 연결
     if (!CreateTcpSocket()) {
-        LogMessage(LogLevel::ERROR, "Failed to create TCP socket");
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to create TCP socket");
         return false;
     }
     
     // 파생 클래스의 프로토콜별 연결 수립
     if (!EstablishProtocolConnection()) {
-        LogMessage(LogLevel::ERROR, "Failed to establish protocol connection");
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to establish protocol connection");
         CloseTcpSocket();
         return false;
     }
     
-    LogMessage(LogLevel::INFO, "TCP connection established successfully");
+    LogMessage(PulseOne::LogLevel::INFO, "TCP connection established successfully");
     return true;
 }
 
 bool TcpBasedWorker::CloseConnection() {
-    LogMessage(LogLevel::INFO, "Closing TCP connection");
+    LogMessage(PulseOne::LogLevel::INFO, "Closing TCP connection");
     
     // 프로토콜별 연결 해제
     CloseProtocolConnection();
@@ -91,7 +91,7 @@ bool TcpBasedWorker::CloseConnection() {
     // TCP 소켓 해제
     CloseTcpSocket();
     
-    LogMessage(LogLevel::INFO, "TCP connection closed");
+    LogMessage(PulseOne::LogLevel::INFO, "TCP connection closed");
     return true;
 }
 
@@ -108,7 +108,7 @@ bool TcpBasedWorker::CheckConnection() {
 bool TcpBasedWorker::SendKeepAlive() {
     // TCP 소켓 상태 먼저 확인
     if (!IsTcpSocketConnected()) {
-        LogMessage(LogLevel::WARN, "TCP socket not connected for keep-alive");
+        LogMessage(PulseOne::LogLevel::WARN, "TCP socket not connected for keep-alive");
         return false;
     }
     
@@ -127,7 +127,7 @@ void TcpBasedWorker::ConfigureTcpConnection(const std::string& ip,
     port_ = port;
     connection_timeout_seconds_ = timeout_seconds;
     
-    LogMessage(LogLevel::INFO, "TCP connection configured - " + ip + ":" + std::to_string(port));
+    LogMessage(PulseOne::LogLevel::INFO, "TCP connection configured - " + ip + ":" + std::to_string(port));
 }
 
 std::string TcpBasedWorker::GetTcpConnectionInfo() const {
@@ -150,17 +150,17 @@ std::string TcpBasedWorker::GetTcpConnectionInfo() const {
 
 bool TcpBasedWorker::ValidateTcpConfig() const {
     if (ip_address_.empty()) {
-        LogMessage(LogLevel::ERROR, "IP address is empty");
+        LogMessage(PulseOne::LogLevel::ERROR, "IP address is empty");
         return false;
     }
     
     if (port_ == 0) {
-        LogMessage(LogLevel::ERROR, "Port is zero");
+        LogMessage(PulseOne::LogLevel::ERROR, "Port is zero");
         return false;
     }
     
     if (connection_timeout_seconds_ <= 0) {
-        LogMessage(LogLevel::ERROR, "Invalid timeout value: " + std::to_string(connection_timeout_seconds_));
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid timeout value: " + std::to_string(connection_timeout_seconds_));
         return false;
     }
     
@@ -174,14 +174,14 @@ bool TcpBasedWorker::CreateTcpSocket() {
     // 새 소켓 생성
     socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd_ < 0) {
-        LogMessage(LogLevel::ERROR, "Failed to create TCP socket: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::ERROR, "Failed to create TCP socket: " + std::string(strerror(errno)));
         return false;
     }
     
     // SO_REUSEADDR 설정
     int opt = 1;
     if (setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        LogMessage(LogLevel::WARN, "Failed to set SO_REUSEADDR: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to set SO_REUSEADDR: " + std::string(strerror(errno)));
     }
 
     struct timeval tv;
@@ -193,7 +193,7 @@ bool TcpBasedWorker::CreateTcpSocket() {
     // 논블로킹 모드 설정
     int flags = fcntl(socket_fd_, F_GETFL, 0);
     if (fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
-        LogMessage(LogLevel::WARN, "Failed to set non-blocking mode: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to set non-blocking mode: " + std::string(strerror(errno)));
     }
     
     // 서버 주소 설정
@@ -203,19 +203,19 @@ bool TcpBasedWorker::CreateTcpSocket() {
     server_addr.sin_port = htons(port_);
     
     if (inet_pton(AF_INET, ip_address_.c_str(), &server_addr.sin_addr) <= 0) {
-        LogMessage(LogLevel::ERROR, "Invalid IP address: " + ip_address_);
+        LogMessage(PulseOne::LogLevel::ERROR, "Invalid IP address: " + ip_address_);
         CloseTcpSocket();
         return false;
     }
     
     // 연결 시도
     if (connect(socket_fd_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        LogMessage(LogLevel::ERROR, "TCP connection failed: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::ERROR, "TCP connection failed: " + std::string(strerror(errno)));
         CloseTcpSocket();
         return false;
     }
     
-    LogMessage(LogLevel::INFO, "TCP socket connected successfully");
+    LogMessage(PulseOne::LogLevel::INFO, "TCP socket connected successfully");
     return true;
 }
 
@@ -223,7 +223,7 @@ void TcpBasedWorker::CloseTcpSocket() {
     if (socket_fd_ >= 0) {
         close(socket_fd_);
         socket_fd_ = -1;
-        LogMessage(LogLevel::DEBUG, "TCP socket closed");
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "TCP socket closed");
     }
 }
 
@@ -254,11 +254,11 @@ bool TcpBasedWorker::SendProtocolKeepAlive() {
     
     int keep_alive = 1;
     if (setsockopt(socket_fd_, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(keep_alive)) < 0) {
-        LogMessage(LogLevel::WARN, "Failed to set TCP keep-alive: " + std::string(strerror(errno)));
+        LogMessage(PulseOne::LogLevel::WARN, "Failed to set TCP keep-alive: " + std::string(strerror(errno)));
         return false;
     }
     
-    LogMessage(LogLevel::DEBUG, "TCP keep-alive sent");
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "TCP keep-alive sent");
     return true;
 }
 

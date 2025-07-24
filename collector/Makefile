@@ -4,7 +4,7 @@
 
 # 컴파일러 설정
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -DDEBUG -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
+CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
 LDFLAGS = 
 LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3 -lbacnet
 
@@ -167,7 +167,7 @@ run: $(TARGET)
 # =============================================================================
 
 # 디버그 빌드
-debug: CXXFLAGS += -g -DDEBUG -O0
+debug: CXXFLAGS += -g -DPULSEONE_DEBUG_MODE -O0
 debug: CXXFLAGS := $(filter-out -O2,$(CXXFLAGS))
 debug: clean all
 	@echo -e "$(GREEN)🐛 Debug build completed - verbose logging enabled$(NC)"
