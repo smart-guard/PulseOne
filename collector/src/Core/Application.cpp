@@ -1,5 +1,6 @@
 // collector/src/Core/CollectorApplication.cpp
 #include "Core/Application.h"
+#include "Utils/ConfigManager.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -43,36 +44,45 @@ void CollectorApplication::Run() {
 
 bool CollectorApplication::Initialize() {
     try {
+        logger_.Info("🔧 ConfigManager 초기화 시작...");
+        
         config_ = &ConfigManager::getInstance();
         config_->initialize();
+ 
         
-        // 로드된 모든 설정 출력 (처음 10개만)
         auto all_config = config_->listAll();
-        logger_.Info("📋 Loaded " + std::to_string(all_config.size()) + " configuration entries:");
+        logger_.Info("📋 Loaded " + std::to_string(all_config.size()) + " configuration entries");
         
-        int count = 0;
-        for (const auto& [key, value] : all_config) {
-            if (count < 10) {  // 처음 10개만 출력
-                logger_.Info("  " + key + " = " + value);
-                count++;
-            } else if (count == 10) {
-                logger_.Info("  ... (총 " + std::to_string(all_config.size()) + "개 설정)");
-                break;
+        // 🔧 개선: 설정 로딩 확인을 더 안전하게
+        if (all_config.empty()) {
+            logger_.Warn("⚠️ No configuration entries loaded - using defaults");
+        } else {
+            int count = 0;
+            for (const auto& [key, value] : all_config) {
+                if (count < 5) {  // 처음 5개만 출력 (로그 줄이기)
+                    logger_.Info("  " + key + " = " + value);
+                    count++;
+                } else if (count == 5) {
+                    logger_.Info("  ... (총 " + std::to_string(all_config.size()) + "개 설정)");
+                    break;
+                }
             }
         }
         
-        // 주요 설정 확인 (실제 존재하는 키들 확인)
-        std::string db_type = config_->get("DB_TYPE");
-        std::string node_env = config_->get("NODE_ENV");
-        std::string postgres_host = config_->get("POSTGRES_MAIN_DB_HOST");
+        // 🔧 개선: 주요 설정 확인 (더 안전한 방식)
+        std::string db_type = config_->getOrDefault("DATABASE_TYPE", "SQLITE");  // 기본값 제공
+        std::string node_env = config_->getOrDefault("NODE_ENV", "development");
+        std::string log_level = config_->getOrDefault("LOG_LEVEL", "info");
         
-        if (!db_type.empty() || !node_env.empty() || !postgres_host.empty()) {
-            logger_.Info("✅ Configuration successfully loaded!");
-            logger_.Info("   DB_TYPE: " + (db_type.empty() ? "not set" : db_type));
-            logger_.Info("   NODE_ENV: " + (node_env.empty() ? "not set" : node_env));
-            logger_.Info("   POSTGRES_HOST: " + (postgres_host.empty() ? "not set" : postgres_host));
-        } else {
-            logger_.Warn("⚠️ Configuration file loaded but no expected keys found");
+        logger_.Info("✅ Configuration successfully loaded!");
+        logger_.Info("   DATABASE_TYPE: " + db_type);
+        logger_.Info("   NODE_ENV: " + node_env);
+        logger_.Info("   LOG_LEVEL: " + log_level);
+        
+        // 🔧 추가: 설정 디렉토리 정보
+        std::string config_dir = config_->getConfigDirectory();
+        if (!config_dir.empty()) {
+            logger_.Info("   CONFIG_DIR: " + config_dir);
         }
         
         start_time_ = std::chrono::system_clock::now();
@@ -88,14 +98,18 @@ void CollectorApplication::MainLoop() {
     running_.store(true);
     int heartbeat_counter = 0;
     
+    logger_.Info("🔄 메인 루프 시작 (5초 간격)");
+    
     while (running_.load()) {
         try {
             heartbeat_counter++;
             
-            if (heartbeat_counter % 12 == 0) {
+            // 🔧 개선: 상태 출력 주기를 더 합리적으로 (60초마다)
+            if (heartbeat_counter % 12 == 0) {  // 12 * 5초 = 60초
                 PrintStatus();
                 heartbeat_counter = 0;
             } else {
+                // 🔧 개선: Debug 레벨로 하트비트 출력 (로그 spam 방지)
                 logger_.Debug("💗 Heartbeat #" + std::to_string(heartbeat_counter));
             }
             
@@ -116,29 +130,55 @@ void CollectorApplication::Stop() {
 }
 
 void CollectorApplication::Cleanup() {
-    logger_.Info("🧹 Cleanup completed");
+    logger_.Info("🧹 Cleanup started");
+    
+    try {
+        // 🔧 추가: 설정 시스템 정리
+        if (config_) {
+            logger_.Debug("🧹 ConfigManager cleanup");
+            // ConfigManager는 싱글톤이므로 명시적 정리 불필요
+        }
+        
+        // 🔧 추가: 로그 시스템 플러시
+        logger_.Debug("🧹 LogManager flush");
+        // LogManager 플러시는 소멸자에서 자동 처리
+        
+        logger_.Info("✅ Cleanup completed successfully");
+        
+    } catch (const std::exception& e) {
+        logger_.Error("💥 Cleanup exception: " + std::string(e.what()));
+    }
 }
 
 void CollectorApplication::PrintStatus() {
-    auto now = std::chrono::system_clock::now();
-    auto uptime = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
-    
-    auto hours = std::chrono::duration_cast<std::chrono::hours>(uptime);
-    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(uptime % std::chrono::hours(1));
-    auto seconds = uptime % std::chrono::minutes(1);
-    
-    std::stringstream status;
-    status << "📊 STATUS: v" << version_ 
-           << " | Uptime: " << hours.count() << "h " 
-           << minutes.count() << "m " << seconds.count() << "s";
-    
-    logger_.Info(status.str());
-    
-    // 현재 설정 상태 출력
-    if (config_) {
-        std::string db_type = config_->getOrDefault("DB_TYPE", "none");
-        std::string node_env = config_->getOrDefault("NODE_ENV", "none");
-        logger_.Info("📋 Config: DB_TYPE=" + db_type + ", NODE_ENV=" + node_env);
+    try {
+        auto now = std::chrono::system_clock::now();
+        auto uptime = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
+        
+        auto hours = std::chrono::duration_cast<std::chrono::hours>(uptime);
+        auto minutes = std::chrono::duration_cast<std::chrono::minutes>(uptime % std::chrono::hours(1));
+        auto seconds = uptime % std::chrono::minutes(1);
+        
+        std::stringstream status;
+        status << "📊 STATUS: v" << version_ 
+               << " | Uptime: " << hours.count() << "h " 
+               << minutes.count() << "m " << seconds.count() << "s";
+        
+        logger_.Info(status.str());
+        
+        // 현재 설정 상태 출력
+        if (config_) {
+            std::string db_type = config_->getOrDefault("DATABASE_TYPE", "unknown");
+            std::string node_env = config_->getOrDefault("NODE_ENV", "unknown");
+            std::string data_dir = config_->getOrDefault("DATA_DIR", "unknown");
+            
+            logger_.Info("📋 Config: DB=" + db_type + ", ENV=" + node_env + ", DATA=" + data_dir);
+        } else {
+            logger_.Warn("⚠️ ConfigManager not available");
+        }
+        
+    } catch (const std::exception& e) {
+        logger_.Error("💥 PrintStatus exception: " + std::string(e.what()));
     }
 }
 
