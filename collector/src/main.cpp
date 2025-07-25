@@ -8,7 +8,7 @@ using namespace PulseOne::Core;
 std::unique_ptr<CollectorApplication> g_app;
 
 void SignalHandler(int signal_num) {
-    std::cout << "\n🛑 종료 신호 받음" << std::endl;
+    std::cout << "\n🛑 종료 신호 받음 (Signal: " << signal_num << ")" << std::endl;
     if (g_app) {
         g_app->Stop();
     }
