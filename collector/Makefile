@@ -413,3 +413,4 @@ BACNET_LIBS = $(shell pkg-config --libs bacnet)
 
 CXXFLAGS += $(BACNET_CFLAGS)
 LIBS += $(BACNET_LIBS)
+

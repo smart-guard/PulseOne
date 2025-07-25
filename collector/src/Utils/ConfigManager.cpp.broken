@@ -1,5 +1,6 @@
 // =============================================================================
-// collector/src/Utils/ConfigManager.cpp - 깔끔한 버전 (핵심 기능만)
+// collector/src/Utils/ConfigManager.cpp
+// PulseOne 통합 설정 관리자 구현 - 완성본
 // =============================================================================
 
 #include "Utils/ConfigManager.h"
@@ -12,50 +13,61 @@
 #include <iostream>
 #include <cstring>
 
+// =============================================================================
+// 싱글톤 구현
+// =============================================================================
+
 ConfigManager& ConfigManager::getInstance() {
     static ConfigManager instance;
     return instance;
 }
 
 // =============================================================================
-// 메인 초기화 (데드락 해결)
+// 메인 초기화 로직
 // =============================================================================
 
 void ConfigManager::initialize() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "🔍 ConfigManager 초기화 시작...");
+    std::lock_guard<std::mutex> lock(configMutex);
     
-    // 1. 설정 디렉토리 찾기 (뮤텍스 밖에서)
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        "🔍 ConfigManager 초기화 시작...");
+    
+    // 1. 설정 디렉토리 찾기 (환경변수 우선)
     configDir_ = findConfigDirectory();
     if (configDir_.empty()) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, "❌ 설정 디렉토리를 찾을 수 없습니다!");
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, 
+            "❌ 설정 디렉토리를 찾을 수 없습니다!");
         return;
     }
     
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ 설정 디렉토리: " + configDir_);
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        "✅ 설정 디렉토리: " + configDir_);
     
-    // 2. 설정 파일 확인 및 생성
+    // 2. 설정 파일들 존재 확인 및 생성 (실패해도 계속 진행)
     try {
         ensureConfigFilesExist();
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ 설정 파일 생성 중 오류: " + std::string(e.what()));
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ 설정 파일 생성 중 오류 (계속 진행): " + std::string(e.what()));
     }
     
-    // 3. envFilePath 설정 (기존 호환)
-    envFilePath = configDir_ + "/.env";
-    
-    // 4. 설정 파일들 로드 (뮤텍스 사용)
-    loadMainConfig();
-    loadAdditionalConfigs();
-    
-    // 5. 데이터 디렉토리 설정 (뮤텍스 밖에서, 설정 로드 후)
+    // 3. 데이터 디렉토리 설정
     dataDir_ = findDataDirectory();
     try {
         ensureDataDirectories();
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ 데이터 디렉토리 생성 중 오류: " + std::string(e.what()));
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ 데이터 디렉토리 생성 중 오류 (계속 진행): " + std::string(e.what()));
     }
     
-    // 6. 변수 확장 (뮤텍스 사용)
+    // 4. 기존 호환성을 위한 envFilePath 설정
+    envFilePath = configDir_ + "/.env";
+    
+    // 5. 설정 파일들 로드
+    loadMainConfig();
+    loadAdditionalConfigs();
+    
+    // 6. 변수 확장
     expandAllVariables();
     
     PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
@@ -63,8 +75,10 @@ void ConfigManager::initialize() {
 }
 
 void ConfigManager::reload() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "🔄 ConfigManager 재로딩 시작...");
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        "🔄 ConfigManager 재로딩 시작...");
     
+    // 기존 설정 클리어
     {
         std::lock_guard<std::mutex> lock(configMutex);
         configMap.clear();
@@ -72,11 +86,12 @@ void ConfigManager::reload() {
         searchLog_.clear();
     }
     
+    // 다시 초기화
     initialize();
 }
 
 // =============================================================================
-// 경로 찾기
+// 스마트 경로 찾기 (환경변수 우선)
 // =============================================================================
 
 std::string ConfigManager::findConfigDirectory() {
@@ -91,12 +106,29 @@ std::string ConfigManager::findConfigDirectory() {
         searchLog_.push_back("❌ 환경변수 (존재하지 않음): " + std::string(env_config));
     }
     
-    // 2. 기본 경로들 확인
-    std::vector<std::string> candidates = {
-        "./config", "../config", "../../config",
-        "/opt/pulseone/config", "/etc/pulseone"
-    };
+    // 2. 실행파일 기준 후보 경로들
+    std::string exe_dir = getExecutableDirectory();
+    std::vector<std::string> candidates;
     
+    if (!exe_dir.empty()) {
+        candidates.push_back(exe_dir + "/../config");      // bin/../config (일반적)
+        candidates.push_back(exe_dir + "/../../config");   // bin/debug/../config (개발환경)
+        candidates.push_back(exe_dir + "/config");         // bin/config
+    }
+    
+    // 3. 현재 작업 디렉토리 기준
+    candidates.push_back("./config");
+    candidates.push_back("../config");
+    candidates.push_back("../../config");
+    
+    // 4. 절대 경로들 (리눅스 표준)
+#ifndef _WIN32
+    candidates.push_back("/opt/pulseone/config");
+    candidates.push_back("/etc/pulseone");
+    candidates.push_back("/usr/local/etc/pulseone");
+#endif
+    
+    // 5. 각 후보 경로 검사
     for (const auto& candidate : candidates) {
         try {
             if (directoryExists(candidate)) {
@@ -111,8 +143,49 @@ std::string ConfigManager::findConfigDirectory() {
         }
     }
     
-    searchLog_.push_back("❌ 설정 디렉토리를 찾을 수 없음");
+    searchLog_.push_back("❌ 모든 후보 경로에서 config 디렉토리를 찾을 수 없음");
     return "";
+}
+
+std::string ConfigManager::getExecutablePath() {
+#ifdef _WIN32
+    char path[MAX_PATH];
+    DWORD length = GetModuleFileNameA(NULL, path, MAX_PATH);
+    if (length > 0 && length < MAX_PATH) {
+        return std::string(path);
+    }
+    return "";
+#else
+    char path[1024];
+    ssize_t count = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (count != -1) {
+        path[count] = '\0';
+        return std::string(path);
+    }
+    return "";
+#endif
+}
+
+std::string ConfigManager::getExecutableDirectory() {
+    std::string exe_path = getExecutablePath();
+    if (exe_path.empty()) {
+        return "";
+    }
+    
+    return getDirectoryFromPath(exe_path);
+}
+
+std::string ConfigManager::getDirectoryFromPath(const std::string& path) {
+    try {
+        return std::filesystem::path(path).parent_path().string();
+    } catch (const std::exception&) {
+        // 폴백: 수동으로 디렉토리 추출
+        size_t last_slash = path.find_last_of("/\\");
+        if (last_slash != std::string::npos) {
+            return path.substr(0, last_slash);
+        }
+        return "";
+    }
 }
 
 bool ConfigManager::directoryExists(const std::string& path) {
@@ -121,23 +194,6 @@ bool ConfigManager::directoryExists(const std::string& path) {
     } catch (const std::exception&) {
         return false;
     }
-}
-
-std::string ConfigManager::findDataDirectory() {
-    // 1. 환경변수 확인
-    const char* env_data = std::getenv("PULSEONE_DATA_DIR");
-    if (env_data && strlen(env_data) > 0) {
-        return std::string(env_data);
-    }
-    
-    // 2. 설정에서 확인 (🔧 데드락 해결: 뮤텍스 없이 직접 접근)
-    auto it = configMap.find("DATA_DIR");
-    if (it != configMap.end() && !it->second.empty()) {
-        return expandVariables(it->second);
-    }
-    
-    // 3. 기본값
-    return "./data";
 }
 
 // =============================================================================
@@ -149,32 +205,39 @@ void ConfigManager::loadMainConfig() {
     
     if (std::filesystem::exists(main_env_path)) {
         loadConfigFile(main_env_path);
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ 메인 설정 로드: .env");
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+            "✅ 메인 설정 로드: .env");
     } else {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ 메인 설정 파일 없음: .env");
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ 메인 설정 파일 없음: .env");
     }
 }
 
 void ConfigManager::loadAdditionalConfigs() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "🔍 추가 설정 파일 확인 시작");
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        "🔍 추가 설정 파일 확인 시작");
     
-    // 🔧 데드락 해결: 뮤텍스 없이 직접 접근
-    auto it = configMap.find("CONFIG_FILES");
-    std::string config_files = (it != configMap.end()) ? it->second : "";
+    // CONFIG_FILES에서 추가 파일 목록 읽기
+    std::string config_files = getOrDefault("CONFIG_FILES", "");
     
     if (config_files.empty()) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "ℹ️ 추가 설정 파일 없음 (CONFIG_FILES 비어있음)");
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+            "ℹ️ 추가 설정 파일 없음 (CONFIG_FILES 비어있음)");
         return;
     }
     
-    // 간단한 콤마 분리 (최대 5개 제한)
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        "🔍 추가 설정 파일 목록: " + config_files);
+    
+    // 안전한 콤마 분리 (무한루프 방지)
     std::vector<std::string> file_list;
     std::string current_file;
     
-    for (size_t i = 0; i < config_files.length() && file_list.size() < 5; ++i) {
+    for (size_t i = 0; i < config_files.length() && file_list.size() < 10; ++i) {
         char c = config_files[i];
         
         if (c == ',') {
+            // 공백 제거 후 추가
             current_file.erase(0, current_file.find_first_not_of(" \t"));
             current_file.erase(current_file.find_last_not_of(" \t") + 1);
             
@@ -188,7 +251,7 @@ void ConfigManager::loadAdditionalConfigs() {
     }
     
     // 마지막 파일 추가
-    if (!current_file.empty() && file_list.size() < 5) {
+    if (!current_file.empty() && file_list.size() < 10) {
         current_file.erase(0, current_file.find_first_not_of(" \t"));
         current_file.erase(current_file.find_last_not_of(" \t") + 1);
         if (!current_file.empty()) {
@@ -196,29 +259,34 @@ void ConfigManager::loadAdditionalConfigs() {
         }
     }
     
-    // 각 파일 로드
+    // 각 파일 로드 시도
     for (const auto& filename : file_list) {
         std::string full_path = configDir_ + "/" + filename;
         
         try {
             if (std::filesystem::exists(full_path)) {
                 loadConfigFile(full_path);
-                PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ 추가 설정 로드: " + filename);
+                PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+                    "✅ 추가 설정 로드: " + filename);
             } else {
-                PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "ℹ️ 추가 설정 파일 없음: " + filename);
+                PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+                    "ℹ️ 추가 설정 파일 없음: " + filename);
             }
         } catch (const std::exception& e) {
-            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ 설정 파일 로드 실패: " + filename + " - " + e.what());
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+                "⚠️ 설정 파일 로드 실패: " + filename + " - " + e.what());
         }
     }
     
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ 추가 설정 파일 확인 완료");
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        "✅ 추가 설정 파일 확인 완료");
 }
 
 void ConfigManager::loadConfigFile(const std::string& filepath) {
     std::ifstream file(filepath);
     if (!file.is_open()) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, "❌ 파일 열기 실패: " + filepath);
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, 
+            "❌ 파일 열기 실패: " + filepath);
         return;
     }
     
@@ -226,38 +294,33 @@ void ConfigManager::loadConfigFile(const std::string& filepath) {
     int line_count = 0;
     int parsed_count = 0;
     
-    // 🔧 뮤텍스 스코프 제한
-    {
-        std::lock_guard<std::mutex> lock(configMutex);
+    while (std::getline(file, line)) {
+        line_count++;
         
-        while (std::getline(file, line)) {
-            line_count++;
-            size_t original_size = configMap.size();
-            parseLine(line);
-            
-            if (configMap.size() > original_size) {
-                parsed_count++;
-            }
+        size_t original_size = configMap.size();
+        parseLine(line);
+        
+        if (configMap.size() > original_size) {
+            parsed_count++;
         }
-        
-        loadedFiles_.push_back(filepath);
     }
     
     file.close();
+    loadedFiles_.push_back(filepath);
     
     PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
-        "📄 " + filepath + " - " + std::to_string(parsed_count) + "/" + std::to_string(line_count) + " 라인 파싱됨");
+        "📄 " + filepath + " - " + std::to_string(parsed_count) + "/" + 
+        std::to_string(line_count) + " 라인 파싱됨");
 }
 
 // =============================================================================
-// 변수 확장
+// 변수 확장 (${VAR} 형태)
 // =============================================================================
 
 void ConfigManager::expandAllVariables() {
-    std::lock_guard<std::mutex> lock(configMutex);
-    
+    // 여러 번 반복해서 중첩된 변수도 확장
     bool changed = true;
-    int max_iterations = 3;  // 무한루프 방지
+    int max_iterations = 5;  // 무한루프 방지
     
     for (int i = 0; i < max_iterations && changed; ++i) {
         changed = false;
@@ -270,23 +333,29 @@ void ConfigManager::expandAllVariables() {
             }
         }
     }
+    
+    if (changed) {
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ 변수 확장이 " + std::to_string(max_iterations) + 
+            "번 반복 후에도 완료되지 않음 (순환 참조 가능성)");
+    }
 }
 
 std::string ConfigManager::expandVariables(const std::string& value) const {
     std::string result = value;
     size_t pos = 0;
-    int max_replacements = 5;  // 무한루프 방지
+    int max_replacements = 10;  // 무한루프 방지
     
     while ((pos = result.find("${", pos)) != std::string::npos && max_replacements-- > 0) {
         size_t end_pos = result.find("}", pos + 2);
         if (end_pos == std::string::npos) {
-            break;
+            break; // 닫는 괄호가 없음
         }
         
         std::string var_name = result.substr(pos + 2, end_pos - pos - 2);
         std::string var_value;
         
-        // 1. configMap에서 찾기
+        // 1. 먼저 configMap에서 찾기
         auto it = configMap.find(var_name);
         if (it != configMap.end()) {
             var_value = it->second;
@@ -307,7 +376,7 @@ std::string ConfigManager::expandVariables(const std::string& value) const {
 }
 
 // =============================================================================
-// 기본 인터페이스 (기존 100% 호환)
+// 기본 인터페이스 구현 (100% 호환)
 // =============================================================================
 
 void ConfigManager::parseLine(const std::string& line) {
@@ -321,12 +390,14 @@ void ConfigManager::parseLine(const std::string& line) {
 
     // 앞뒤 공백 제거
     key.erase(std::remove_if(key.begin(), key.end(), ::isspace), key.end());
+    
+    // 값의 앞뒤 공백 및 따옴표 제거
     value.erase(0, value.find_first_not_of(" \t"));
     value.erase(value.find_last_not_of(" \t") + 1);
     value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
 
     if (!key.empty()) {
-        configMap[key] = value;  // 이미 뮤텍스 락된 상태에서 호출됨
+        configMap[key] = value;
     }
 }
 
@@ -358,84 +429,133 @@ std::map<std::string, std::string> ConfigManager::listAll() const {
 }
 
 // =============================================================================
-// 편의 기능들
+// 타입별 설정값 조회 (편의 기능)
 // =============================================================================
 
 int ConfigManager::getInt(const std::string& key, int defaultValue) const {
     std::string value = get(key);
-    if (value.empty()) return defaultValue;
-    try { return std::stoi(value); } catch (...) { return defaultValue; }
+    if (value.empty()) {
+        return defaultValue;
+    }
+    
+    try {
+        return std::stoi(value);
+    } catch (const std::exception&) {
+        return defaultValue;
+    }
 }
 
 bool ConfigManager::getBool(const std::string& key, bool defaultValue) const {
     std::string value = get(key);
-    if (value.empty()) return defaultValue;
+    if (value.empty()) {
+        return defaultValue;
+    }
+    
+    // true, yes, 1, on을 true로 인식
     std::transform(value.begin(), value.end(), value.begin(), ::tolower);
     return (value == "true" || value == "yes" || value == "1" || value == "on");
 }
 
 double ConfigManager::getDouble(const std::string& key, double defaultValue) const {
     std::string value = get(key);
-    if (value.empty()) return defaultValue;
-    try { return std::stod(value); } catch (...) { return defaultValue; }
+    if (value.empty()) {
+        return defaultValue;
+    }
+    
+    try {
+        return std::stod(value);
+    } catch (const std::exception&) {
+        return defaultValue;
+    }
 }
 
-std::string ConfigManager::getDataDirectory() const {
-    return dataDir_.empty() ? "./data" : dataDir_;
-}
-
-std::string ConfigManager::getSQLiteDbPath() const {
-    return getDataDirectory() + "/db/pulseone.db";
-}
-
-std::string ConfigManager::getBackupDirectory() const {
-    return getDataDirectory() + "/backup";
-}
+// =============================================================================
+// 디버깅 도구
+// =============================================================================
 
 void ConfigManager::printConfigSearchLog() const {
     std::cout << "\n🔍 ConfigManager 경로 검색 로그:\n";
+    std::cout << "================================================\n";
+    
     for (const auto& log_entry : searchLog_) {
         std::cout << log_entry << "\n";
     }
+    
     std::cout << "\n📄 로드된 설정 파일들:\n";
     for (const auto& file : loadedFiles_) {
-        std::cout << "  " + file << "\n";
+        std::cout << "  " << file << "\n";
     }
+    
     std::cout << "\n⚙️ 총 " << configMap.size() << "개 설정 항목 로드됨\n";
+    std::cout << "================================================\n\n";
 }
 
 // =============================================================================
-// 템플릿 생성 (모든 기본 파일들)
+// 템플릿 생성 기능들 (간소화 버전)
 // =============================================================================
 
 void ConfigManager::ensureConfigFilesExist() {
-    // 1. 메인 .env 파일 생성
-    std::string main_env_path = configDir_ + "/.env";
-    if (!std::filesystem::exists(main_env_path)) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ 메인 설정 파일 없음, 기본 템플릿 생성: .env");
-        createMainEnvFile();
+    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        "🔍 설정 파일 존재 여부 확인 중...");
+    
+    try {
+        // 메인 .env 파일만 확인/생성
+        std::string main_env_path = configDir_ + "/.env";
+        if (!std::filesystem::exists(main_env_path)) {
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+                "⚠️ 메인 설정 파일 없음, 기본 템플릿 생성: .env");
+            createMainEnvFile();
+        } else {
+            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+                "✅ 메인 설정 파일 존재: .env");
+        }
+        
+        // 기본 추가 파일들도 생성 (실패해도 계속 진행)
+        createDefaultConfigFiles();
+        
+    } catch (const std::exception& e) {
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ 설정 파일 확인 중 오류: " + std::string(e.what()) + " (계속 진행)");
     }
-    
-    // 2. 추가 설정 파일들 생성
-    createDatabaseEnvFile();
-    createRedisEnvFile();
-    createTimeseriesEnvFile();
-    createMessagingEnvFile();
-    createSecretsDirectory();
-    
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ 기본 설정 파일들 확인 완료");
+}
+
+void ConfigManager::createDefaultConfigFiles() {
+    try {
+        createSecretsDirectory();
+        createDatabaseEnvFile();
+        createRedisEnvFile();
+        createTimeseriesEnvFile();
+        createMessagingEnvFile();
+        
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+            "✅ 기본 설정 파일들이 생성되었습니다.");
+            
+    } catch (const std::exception& e) {
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ 추가 설정 파일 생성 실패: " + std::string(e.what()));
+    }
 }
 
 void ConfigManager::createMainEnvFile() {
-    std::string content = R"(# PulseOne 메인 설정 파일 (.env) - 자동 생성됨
+    std::string content = R"(# =============================================================================
+# PulseOne 메인 설정 파일 (.env) - 자동 생성됨
+# =============================================================================
+
+# 환경 설정
 NODE_ENV=development
 LOG_LEVEL=info
+
+# 기본 데이터베이스 설정
 DATABASE_TYPE=SQLITE
+
+# 기본 디렉토리 설정
 DATA_DIR=./data
+
+# 시스템 설정
 MAX_WORKER_THREADS=4
 DEFAULT_TIMEOUT_MS=5000
 
-# 추가 설정 파일들 (모듈별 분리)
+# 추가 설정 파일들 (선택적)
 CONFIG_FILES=database.env,redis.env,timeseries.env,messaging.env
 )";
     
@@ -487,10 +607,6 @@ REDIS_PRIMARY_SSL=false
 REDIS_CONNECTION_TIMEOUT=5000
 REDIS_MAX_CONNECTIONS=20
 REDIS_RETRY_ATTEMPTS=3
-
-# 복제 설정 (필요시 활성화)
-REDIS_REPLICATION_ENABLED=false
-REDIS_REPLICA_COUNT=0
 )";
 
     createFileFromTemplate(configDir_ + "/redis.env", content);
@@ -513,10 +629,6 @@ INFLUX_BATCH_SIZE=1000
 INFLUX_FLUSH_INTERVAL_SEC=10
 INFLUX_RETRY_INTERVAL_SEC=5
 INFLUX_MAX_RETRIES=3
-
-# 데이터 보존 정책
-INFLUX_RETENTION_POLICY=30d
-INFLUX_SHARD_DURATION=1d
 )";
 
     createFileFromTemplate(configDir_ + "/timeseries.env", content);
@@ -540,11 +652,6 @@ RABBITMQ_CONNECTION_TIMEOUT=30
 RABBITMQ_HEARTBEAT_INTERVAL=60
 RABBITMQ_MAX_CHANNELS=100
 RABBITMQ_AUTO_RECOVERY=true
-
-# Exchange 및 Queue 설정
-RABBITMQ_DEVICE_EXCHANGE=device_data
-RABBITMQ_ALARM_EXCHANGE=alarms
-RABBITMQ_SYSTEM_EXCHANGE=system_events
 )";
 
     createFileFromTemplate(configDir_ + "/messaging.env", content);
@@ -570,24 +677,23 @@ void ConfigManager::createSecretsDirectory() {
 - redis_primary.key  
 - influx_token.key
 - rabbitmq.key
-
-## 사용법
-각 파일에는 해당 서비스의 인증 정보를 저장합니다.
-ConfigManager가 자동으로 읽어서 사용합니다.
 )";
 
         createFileFromTemplate(secrets_dir + "/README.md", readme_content);
         createFileFromTemplate(secrets_dir + "/.gitignore", "*\n!README.md\n!.gitignore\n");
         
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ Secrets 디렉토리 생성: " + secrets_dir);
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+            "✅ Secrets 디렉토리 생성: " + secrets_dir);
             
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ Secrets 디렉토리 생성 실패: " + std::string(e.what()));
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ Secrets 디렉토리 생성 실패: " + std::string(e.what()));
     }
 }
 
 bool ConfigManager::createFileFromTemplate(const std::string& filepath, const std::string& content) {
     try {
+        // 파일이 이미 존재하면 생성하지 않음
         if (std::filesystem::exists(filepath)) {
             return true;
         }
@@ -600,14 +706,37 @@ bool ConfigManager::createFileFromTemplate(const std::string& filepath, const st
         file << content;
         file.close();
         
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ 설정 파일 생성: " + std::filesystem::path(filepath).filename().string());
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+            "✅ 설정 파일 생성: " + std::filesystem::path(filepath).filename().string());
         
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ 파일 생성 중 예외: " + std::string(e.what()));
+        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            "⚠️ 파일 생성 중 예외: " + std::string(e.what()));
         return false;
     }
+}
+
+// =============================================================================
+// 데이터 경로 관련
+// =============================================================================
+
+std::string ConfigManager::findDataDirectory() {
+    // 1. 환경변수 최우선 확인
+    const char* env_data = std::getenv("PULSEONE_DATA_DIR");
+    if (env_data && strlen(env_data) > 0) {
+        return std::string(env_data);
+    }
+    
+    // 2. 설정파일에서 확인
+    std::string config_data = get("DATA_DIR");
+    if (!config_data.empty()) {
+        return expandVariables(config_data);
+    }
+    
+    // 3. 기본 경로 사용
+    return "./data";
 }
 
 void ConfigManager::ensureDataDirectories() {
@@ -625,4 +754,28 @@ void ConfigManager::ensureDataDirectories() {
             // 실패해도 계속 진행
         }
     }
+}
+
+// =============================================================================
+// 편의 메서드들
+// =============================================================================
+
+std::string ConfigManager::getDataDirectory() const {
+    return dataDir_.empty() ? "./data" : dataDir_;
+}
+
+std::string ConfigManager::getSQLiteDbPath() const {
+    std::string sqlite_path = get("SQLITE_PATH");
+    if (!sqlite_path.empty()) {
+        return expandVariables(sqlite_path);
+    }
+    return getDataDirectory() + "/db/pulseone.db";
+}
+
+std::string ConfigManager::getBackupDirectory() const {
+    std::string backup_path = get("SQLITE_BACKUP_PATH");
+    if (!backup_path.empty()) {
+        return expandVariables(backup_path);
+    }
+    return getDataDirectory() + "/backup";
 }
