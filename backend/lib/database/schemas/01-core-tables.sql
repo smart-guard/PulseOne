@@ -1,30 +1,19 @@
--- backend/lib/database/schemas/core-tables.sql
--- PulseOne 기본 시스템 테이블 (멀티 테넌트 지원)
+-- =============================================================================
+-- backend/lib/database/schemas/01-core-tables.sql
+-- 핵심 시스템 테이블 (SQLite 버전)
+-- =============================================================================
 
 -- 스키마 버전 관리 테이블
 CREATE TABLE IF NOT EXISTS schema_versions (
-    id {{AUTO_INCREMENT}},
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     version VARCHAR(20) NOT NULL,
-    applied_at {{TIMESTAMP}},
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT
-);
-
--- 시스템 관리자 테이블
-CREATE TABLE IF NOT EXISTS system_admins (
-    id {{AUTO_INCREMENT}},
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    full_name VARCHAR(100),
-    is_active {{BOOLEAN}} DEFAULT {{TRUE}},
-    last_login {{TIMESTAMP}},
-    created_at {{TIMESTAMP}},
-    updated_at {{TIMESTAMP}}
 );
 
 -- 테넌트(회사) 테이블
 CREATE TABLE IF NOT EXISTS tenants (
-    id {{AUTO_INCREMENT}},
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_name VARCHAR(100) NOT NULL UNIQUE,
     company_code VARCHAR(20) NOT NULL UNIQUE,
     domain VARCHAR(100) UNIQUE,
@@ -42,15 +31,15 @@ CREATE TABLE IF NOT EXISTS tenants (
     max_users INTEGER DEFAULT 5,
     
     -- 상태 정보
-    is_active {{BOOLEAN}} DEFAULT {{TRUE}},
-    trial_end_date {{TIMESTAMP}},
-    created_at {{TIMESTAMP}},
-    updated_at {{TIMESTAMP}}
+    is_active INTEGER DEFAULT 1,
+    trial_end_date DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Edge 서버 등록 테이블
 CREATE TABLE IF NOT EXISTS edge_servers (
-    id {{AUTO_INCREMENT}},
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
     -- 서버 식별 정보
@@ -69,29 +58,29 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     
     -- 상태 정보
     status VARCHAR(20) DEFAULT 'pending',
-    last_seen {{TIMESTAMP}},
+    last_seen DATETIME,
     version VARCHAR(20),
     
     -- 설정 정보
-    config {{TEXT}},
-    sync_enabled {{BOOLEAN}} DEFAULT {{TRUE}},
+    config TEXT,
+    sync_enabled INTEGER DEFAULT 1,
     
-    created_at {{TIMESTAMP}},
-    updated_at {{TIMESTAMP}},
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
 -- 시스템 설정 테이블
 CREATE TABLE IF NOT EXISTS system_settings (
-    id {{AUTO_INCREMENT}},
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     key_name VARCHAR(100) UNIQUE NOT NULL,
-    value {{TEXT}} NOT NULL,
+    value TEXT NOT NULL,
     description TEXT,
     category VARCHAR(50) DEFAULT 'general',
-    is_public {{BOOLEAN}} DEFAULT {{FALSE}},
+    is_public INTEGER DEFAULT 0,
     updated_by INTEGER,
-    updated_at {{TIMESTAMP}},
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (updated_by) REFERENCES system_admins(id)
+    FOREIGN KEY (updated_by) REFERENCES users(id)
 );
