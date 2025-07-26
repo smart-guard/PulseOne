@@ -553,10 +553,10 @@ DATABASE_TYPE=SQLITE
 # =============================================================================
 # SQLite 설정 (기본값, 가장 안전)
 # =============================================================================
-SQLITE_PATH=${DATA_DIR}/db/pulseone.db
-SQLITE_BACKUP_PATH=${DATA_DIR}/backup/
-SQLITE_LOGS_PATH=${DATA_DIR}/logs/
-SQLITE_TEMP_PATH=${DATA_DIR}/temp/
+SQLITE_PATH=./data/db/pulseone.db
+SQLITE_BACKUP_PATH=./data/backup/
+SQLITE_LOGS_PATH=./data/logs/
+SQLITE_TEMP_PATH=./data/temp/
 
 # SQLite 성능 설정
 SQLITE_JOURNAL_MODE=WAL

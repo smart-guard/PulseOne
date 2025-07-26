@@ -1,3 +1,30 @@
+# =============================================================================
+# PulseOne .gitignore
+# 데이터베이스, 로그, 설정 파일 등을 git에서 제외
+# =============================================================================
+
+
+# =============================================================================
+# 데이터베이스 파일들 (중요!)
+# =============================================================================
+# SQLite 데이터베이스
+*.db
+*.sqlite
+*.sqlite3
+data/db/
+data/backup/
+data/temp/
+
+# 데이터베이스 백업 및 덤프
+*.sql.backup
+*_backup_*.db
+*.dump
+
+# 데이터베이스 로그
+*.db-journal
+*.db-wal
+*.db-shm
+
 # Node.js
 node_modules/
 npm-debug.log*
@@ -22,6 +49,8 @@ credentials.json
 secrets/
 *.key
 .anthropic/
+config/secrets/*.key
+config/secrets/
 
 # 로그 및 시스템 파일
 *.log
@@ -46,8 +75,3 @@ docker-compose.override.yml
 *.zip.vscode/settings.json
 secrets/
 *.key
-
-
-config/*.local.conf
-config/drivers/*.local.conf
-config/**/passwords.conf
