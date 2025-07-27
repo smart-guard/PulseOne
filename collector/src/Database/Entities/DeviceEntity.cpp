@@ -13,7 +13,7 @@ using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {
-
+namespace Entities { 
 // =============================================================================
 // 생성자 및 소멸자
 // =============================================================================
@@ -213,15 +213,9 @@ json DeviceEntity::toJson() const {
         j["retry_count"] = device_info_.retry_count;
         
         // 설정 (이미 JSON이면 그대로, 아니면 파싱)
-        if (!device_info_.connection_config.empty()) {
-            try {
-                j["config"] = json::parse(device_info_.connection_config);
-            } catch (const std::exception&) {
-                j["config"] = device_info_.connection_config;
-            }
-        } else {
-            j["config"] = json::object();
-        }
+        j["config"] = device_info_.connection_config.empty() ? 
+              json::object() : 
+              device_info_.connection_config;   
         
         // 태그
         j["tags"] = device_info_.tags;
@@ -372,23 +366,56 @@ json DeviceEntity::extractProtocolConfig() const {
 // 실시간 데이터 RDB 저장 지원
 // =============================================================================
 
-RDBContext DeviceEntity::getRDBContext() const {
-    RDBContext context;
+json DeviceEntity::getRDBContext() const {
+    json context;
     
-    context.device_id = std::to_string(id_);  // int를 string으로 변환
-    context.device_name = device_info_.name;
-    context.protocol_type = device_info_.protocol_type;
-    context.tenant_id = tenant_id_;
-    context.site_id = site_id_;
+    context["device_id"] = std::to_string(id_);  // int를 string으로 변환
+    context["device_name"] = device_info_.name;
+    context["protocol_type"] = device_info_.protocol_type;
+    context["tenant_id"] = tenant_id_;
+    context["site_id"] = site_id_;
     
     // 메타데이터 추가
-    context.metadata["endpoint"] = device_info_.connection_string;
-    context.metadata["status"] = device_info_.status;
-    context.metadata["polling_interval"] = std::to_string(device_info_.polling_interval_ms);
+    context["metadata"]["endpoint"] = device_info_.connection_string;
+    context["metadata"]["status"] = device_info_.status;
+    context["metadata"]["polling_interval"] = std::to_string(device_info_.polling_interval_ms);
     
     return context;
 }
 
+int DeviceEntity::saveRealtimeDataToRDB(const std::vector<json>& values) {
+    if (values.empty()) {
+        return 0;
+    }
+    
+    try {
+        int saved_count = 0;
+        
+        for (const auto& value : values) {
+            std::ostringstream sql;
+            sql << "INSERT INTO data_history (point_id, device_id, value, quality, timestamp) VALUES (";
+            sql << "'" << escapeString(value["point_id"].get<std::string>()) << "', ";
+            sql << id_ << ", ";
+            sql << value["value"].get<double>() << ", ";
+            sql << "'" << escapeString(value["quality"].get<std::string>()) << "', ";
+            sql << "'" << timestampToString(std::chrono::system_clock::now()) << "'";
+            sql << ")";
+            
+            if (executeUnifiedNonQuery(sql.str())) {
+                saved_count++;
+            }
+        }
+        
+        logger_.Info("DeviceEntity::saveRealtimeDataToRDB - Saved " + std::to_string(saved_count) + " values");
+        return saved_count;
+        
+    } catch (const std::exception& e) {
+        logger_.Error("DeviceEntity::saveRealtimeDataToRDB failed: " + std::string(e.what()));
+        return 0;
+    }
+}
+
+/*
 int DeviceEntity::saveRealtimeDataToRDB(const std::vector<RealtimeValueEntity>& values) {
     if (values.empty()) {
         return 0;
@@ -420,6 +447,7 @@ int DeviceEntity::saveRealtimeDataToRDB(const std::vector<RealtimeValueEntity>& 
         return 0;
     }
 }
+*/
 
 // =============================================================================
 // 관계 엔티티 로드 (lazy loading)
@@ -762,5 +790,6 @@ json DeviceEntity::parseProtocolConfig(const std::string& protocol_type, const s
     }
 }
 
+} // namespace Entities
 } // namespace Database
 } // namespace PulseOne
