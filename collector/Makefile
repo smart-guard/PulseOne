@@ -68,7 +68,9 @@ DRIVERS_BACNET_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 DRIVERS_SOURCES := $(DRIVERS_COMMON_SOURCES) $(DRIVERS_MODBUS_SOURCES) $(DRIVERS_MQTT_SOURCES) $(DRIVERS_BACNET_SOURCES)
 
 # Database 소스들 (있을 수도 있음)
-DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp)
+DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp) \
+                   $(wildcard $(SRC_DIR)/Database/Entities/*.cpp) \
+                   $(wildcard $(SRC_DIR)/Database/Repositories/*.cpp)
 
 # Client 소스들 (있을 수도 있음)
 CLIENT_SOURCES := $(wildcard $(SRC_DIR)/Client/*.cpp)
