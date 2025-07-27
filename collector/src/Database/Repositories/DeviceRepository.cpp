@@ -13,7 +13,7 @@ using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {
-
+namespace Repositories{
 // =============================================================================
 // 생성자 및 초기화
 // =============================================================================
@@ -1033,5 +1033,6 @@ std::string DeviceRepository::escapeString(const std::string& str) const {
     return escaped;
 }
 
+} // namespace Repositories
 } // namespace Database
 } // namespace PulseOne

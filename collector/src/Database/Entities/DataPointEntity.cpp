@@ -1,88 +1,130 @@
-/**
- * @file DataPointEntity.cpp
- * @brief PulseOne 데이터포인트 엔티티 구현 (SQLite 스키마 기반)
- * @author PulseOne Development Team
- * @date 2025-07-27
- */
+// =============================================================================
+// collector/src/Database/Entities/DataPointEntity.cpp
+// PulseOne 데이터포인트 엔티티 구현 - 기존 패턴 100% 준수
+// =============================================================================
 
 #include "Database/Entities/DataPointEntity.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
-#include "Utils/ConfigManager.h"
+#include "Common/Constants.h"
 #include <sstream>
 #include <iomanip>
-#include <limits>
+#include <algorithm>
+
+using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {
-namespace Entities {  // 🔥 올바른 네임스페이스!
+namespace Entities {
 
-// =======================================================================
+// =============================================================================
 // 생성자 및 소멸자
-// =======================================================================
+// =============================================================================
 
-DataPointEntity::DataPointEntity()
+DataPointEntity::DataPointEntity() 
     : BaseEntity<DataPointEntity>()
     , device_id_(0)
     , name_("")
     , description_("")
     , address_(0)
-    , data_type_("float")
+    , data_type_("UNKNOWN")
     , access_mode_("read")
+    , is_enabled_(true)
     , unit_("")
     , scaling_factor_(1.0)
     , scaling_offset_(0.0)
     , min_value_(std::numeric_limits<double>::lowest())
     , max_value_(std::numeric_limits<double>::max())
+    , log_enabled_(true)
+    , log_interval_ms_(0)
+    , log_deadband_(0.0)
+    , last_read_time_(std::chrono::system_clock::now())
+    , last_write_time_(std::chrono::system_clock::now())
+    , read_count_(0)
+    , write_count_(0)
+    , error_count_(0) {
+}
+
+DataPointEntity::DataPointEntity(int point_id) 
+    : BaseEntity<DataPointEntity>(point_id)
+    , device_id_(0)
+    , name_("")
+    , description_("")
+    , address_(0)
+    , data_type_("UNKNOWN")
+    , access_mode_("read")
     , is_enabled_(true)
-    , scan_rate_(std::nullopt)
-    , deadband_(0.0)
-    , config_(json::object())
-    , tags_()
-    , created_at_(std::chrono::system_clock::now())
-    , updated_at_(std::chrono::system_clock::now())
-    , device_info_loaded_(false)
-    , alarm_configs_loaded_(false)
-    , current_value_loaded_(false) {
+    , unit_("")
+    , scaling_factor_(1.0)
+    , scaling_offset_(0.0)
+    , min_value_(std::numeric_limits<double>::lowest())
+    , max_value_(std::numeric_limits<double>::max())
+    , log_enabled_(true)
+    , log_interval_ms_(0)
+    , log_deadband_(0.0)
+    , last_read_time_(std::chrono::system_clock::now())
+    , last_write_time_(std::chrono::system_clock::now())
+    , read_count_(0)
+    , write_count_(0)
+    , error_count_(0) {
 }
 
-DataPointEntity::DataPointEntity(int point_id)
-    : DataPointEntity() {
-    setId(point_id);
+DataPointEntity::DataPointEntity(const DataPoint& data_point) 
+    : BaseEntity<DataPointEntity>()
+    , device_id_(0)  // device_id는 UUID를 int로 변환 필요 (별도 처리)
+    , name_(data_point.name)
+    , description_(data_point.description)
+    , address_(data_point.address)
+    , data_type_(data_point.data_type)
+    , access_mode_(data_point.is_writable ? "read_write" : "read")
+    , is_enabled_(data_point.is_enabled)
+    , unit_(data_point.unit)
+    , scaling_factor_(data_point.scaling_factor)
+    , scaling_offset_(data_point.scaling_offset)
+    , min_value_(data_point.min_value)
+    , max_value_(data_point.max_value)
+    , log_enabled_(data_point.log_enabled)
+    , log_interval_ms_(data_point.log_interval_ms)
+    , log_deadband_(data_point.log_deadband)
+    , tags_(data_point.tags)
+    , metadata_(data_point.metadata)
+    , last_read_time_(std::chrono::system_clock::now())
+    , last_write_time_(std::chrono::system_clock::now())
+    , read_count_(data_point.read_count)
+    , write_count_(data_point.write_count)
+    , error_count_(data_point.error_count) {
 }
 
-DataPointEntity::DataPointEntity(int device_id, int address)
-    : DataPointEntity() {
-    device_id_ = device_id;
-    address_ = address;
-}
-
-// =======================================================================
+// =============================================================================
 // BaseEntity 순수 가상 함수 구현
-// =======================================================================
+// =============================================================================
 
 bool DataPointEntity::loadFromDatabase() {
-    if (getId() <= 0) {
-        getLogger().Error("DataPointEntity::loadFromDatabase - Invalid ID");
+    if (id_ <= 0) {
+        logger_.Error("DataPointEntity::loadFromDatabase() - Invalid ID: " + std::to_string(id_));
         return false;
     }
     
     try {
-        std::ostringstream query;
-        query << "SELECT * FROM data_points WHERE id = " << getId();
+        std::string query = "SELECT * FROM data_points WHERE id = " + std::to_string(id_);
         
-        auto& db_manager = getDatabaseManager();
-        auto result = db_manager.executeQuerySQLite(query.str());
+        auto results = db_manager_.isPostgresConnected() 
+            ? executePostgresQuery(query)
+            : executeSQLiteQuery(query);
         
-        if (result.empty()) {
-            getLogger().Warning("DataPointEntity::loadFromDatabase - Point not found: " + std::to_string(getId()));
+        if (results.empty()) {
+            logger_.Warning("DataPointEntity::loadFromDatabase() - No data found for ID: " + std::to_string(id_));
             return false;
         }
         
-        return mapRowToEntity(result[0]);
+        bool success = mapRowToEntity(results[0]);
+        if (success) {
+            setState(EntityState::LOADED);
+            logger_.Debug("DataPointEntity loaded successfully: " + name_);
+        }
+        
+        return success;
         
     } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::loadFromDatabase failed: " + std::string(e.what()));
+        logger_.Error("DataPointEntity::loadFromDatabase() - Exception: " + std::string(e.what()));
         setState(EntityState::ERROR);
         return false;
     }
@@ -90,511 +132,429 @@ bool DataPointEntity::loadFromDatabase() {
 
 bool DataPointEntity::saveToDatabase() {
     try {
-        std::string sql = buildInsertSQL();
+        std::string query;
         
-        auto& db_manager = getDatabaseManager();
-        bool success = db_manager.executeUpdateSQLite(sql);
+        if (getState() == EntityState::NEW) {
+            // INSERT 쿼리
+            query = buildInsertQuery();
+        } else {
+            // UPDATE 쿼리
+            query = buildUpdateQuery();
+        }
+        
+        bool success = db_manager_.isPostgresConnected() 
+            ? executePostgresNonQuery(query)
+            : executeSQLiteNonQuery(query);
         
         if (success) {
-            // SQLite의 마지막 삽입 ID 조회
-            auto result = db_manager.executeQuerySQLite("SELECT last_insert_rowid() as id");
-            if (!result.empty()) {
-                setId(std::stoi(result[0].at("id")));
+            // NEW 상태였다면 ID 조회 (AUTO_INCREMENT)
+            if (getState() == EntityState::NEW && id_ <= 0) {
+                std::string last_id_query = db_manager_.isPostgresConnected()
+                    ? "SELECT lastval()"
+                    : "SELECT last_insert_rowid()";
+                
+                auto result = db_manager_.isPostgresConnected()
+                    ? executePostgresQuery(last_id_query)
+                    : executeSQLiteQuery(last_id_query);
+                
+                if (!result.empty() && result[0].find("lastval") != result[0].end()) {
+                    id_ = std::stoi(result[0].at("lastval"));
+                } else if (!result.empty() && result[0].find("last_insert_rowid()") != result[0].end()) {
+                    id_ = std::stoi(result[0].at("last_insert_rowid()"));
+                }
             }
             
             setState(EntityState::LOADED);
-            getLogger().Info("DataPointEntity saved with ID: " + std::to_string(getId()));
+            updated_at_ = std::chrono::system_clock::now();
+            logger_.Info("DataPointEntity saved successfully: " + name_);
             return true;
         }
         
+        return false;
+        
     } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::saveToDatabase failed: " + std::string(e.what()));
+        logger_.Error("DataPointEntity::saveToDatabase() - Exception: " + std::string(e.what()));
         setState(EntityState::ERROR);
-    }
-    
-    return false;
-}
-
-bool DataPointEntity::updateToDatabase() {
-    if (getId() <= 0) {
-        getLogger().Error("DataPointEntity::updateToDatabase - Invalid ID");
         return false;
     }
-    
-    try {
-        std::string sql = buildUpdateSQL();
-        
-        auto& db_manager = getDatabaseManager();
-        bool success = db_manager.executeUpdateSQLite(sql);
-        
-        if (success) {
-            updated_at_ = std::chrono::system_clock::now();
-            setState(EntityState::LOADED);
-            getLogger().Info("DataPointEntity updated: " + std::to_string(getId()));
-            return true;
-        }
-        
-    } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::updateToDatabase failed: " + std::string(e.what()));
-        setState(EntityState::ERROR);
-    }
-    
-    return false;
 }
 
 bool DataPointEntity::deleteFromDatabase() {
-    if (getId() <= 0) {
-        getLogger().Error("DataPointEntity::deleteFromDatabase - Invalid ID");
+    if (id_ <= 0) {
+        logger_.Error("DataPointEntity::deleteFromDatabase() - Invalid ID: " + std::to_string(id_));
         return false;
     }
     
     try {
-        std::ostringstream sql;
-        sql << "DELETE FROM data_points WHERE id = " << getId();
+        std::string query = "DELETE FROM data_points WHERE id = " + std::to_string(id_);
         
-        auto& db_manager = getDatabaseManager();
-        bool success = db_manager.executeUpdateSQLite(sql.str());
+        bool success = db_manager_.isPostgresConnected() 
+            ? executePostgresNonQuery(query)
+            : executeSQLiteNonQuery(query);
         
         if (success) {
             setState(EntityState::DELETED);
-            getLogger().Info("DataPointEntity deleted: " + std::to_string(getId()));
-            return true;
+            logger_.Info("DataPointEntity deleted successfully: " + name_);
         }
         
+        return success;
+        
     } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        logger_.Error("DataPointEntity::deleteFromDatabase() - Exception: " + std::string(e.what()));
         setState(EntityState::ERROR);
+        return false;
     }
-    
-    return false;
 }
 
-json DataPointEntity::toJson() const {
-    json j = json::object();
-    
-    // 기본 필드들
-    j["id"] = getId();
-    j["device_id"] = device_id_;
-    j["name"] = name_;
-    j["description"] = description_;
-    j["address"] = address_;
-    j["data_type"] = data_type_;
-    j["access_mode"] = access_mode_;
-    
-    // 엔지니어링 정보
-    j["unit"] = unit_;
-    j["scaling_factor"] = scaling_factor_;
-    j["scaling_offset"] = scaling_offset_;
-    j["min_value"] = min_value_;
-    j["max_value"] = max_value_;
-    
-    // 수집 설정
-    j["is_enabled"] = is_enabled_;
-    if (scan_rate_.has_value()) {
-        j["scan_rate"] = scan_rate_.value();
-    } else {
-        j["scan_rate"] = nullptr;
+bool DataPointEntity::updateToDatabase() {
+    if (id_ <= 0 || !isValid()) {
+        logger_.Error("DataPointEntity::updateToDatabase - Invalid data point data or ID");
+        return false;
     }
-    j["deadband"] = deadband_;
     
-    // 메타데이터
-    j["config"] = config_;
-    j["tags"] = tags_;
+    try {
+        auto row_data = mapEntityToRow();
+        std::string set_clause;
+        
+        for (const auto& pair : row_data) {
+            if (!set_clause.empty()) set_clause += ", ";
+            set_clause += pair.first + " = '" + escapeString(pair.second) + "'";
+        }
+        
+        std::string query = "UPDATE data_points SET " + set_clause + " WHERE id = " + std::to_string(id_);
+        
+        bool success = executeUnifiedNonQuery(query);
+        
+        if (success) {
+            setState(EntityState::LOADED);
+            updated_at_ = std::chrono::system_clock::now();
+            logger_.Info("DataPointEntity updated successfully: " + name_);
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_.Error("DataPointEntity::updateToDatabase() - Exception: " + std::string(e.what()));
+        setState(EntityState::ERROR);
+        return false;
+    }
+}
+
+std::string DataPointEntity::toString() const {
+    std::stringstream ss;
+    ss << "DataPointEntity{";
+    ss << "id=" << id_;
+    ss << ", device_id=" << device_id_;
+    ss << ", name='" << name_ << "'";
+    ss << ", address=" << address_;
+    ss << ", data_type='" << data_type_ << "'";
+    ss << ", enabled=" << (is_enabled_ ? "true" : "false");
+    ss << "}";
+    return ss.str();
+}
+
+std::string DataPointEntity::getTableName() const {
+    return "data_points";
+}
+    json j;
     
-    // 시간 필드들
-    j["created_at"] = std::chrono::duration_cast<std::chrono::seconds>(
-        created_at_.time_since_epoch()).count();
-    j["updated_at"] = std::chrono::duration_cast<std::chrono::seconds>(
-        updated_at_.time_since_epoch()).count();
+    try {
+        // 기본 정보
+        j["id"] = id_;
+        j["device_id"] = device_id_;
+        j["name"] = name_;
+        j["description"] = description_;
+        
+        // 주소 및 타입 정보
+        j["address"] = address_;
+        j["data_type"] = data_type_;
+        j["access_mode"] = access_mode_;
+        j["is_enabled"] = is_enabled_;
+        
+        // 엔지니어링 정보
+        j["unit"] = unit_;
+        j["scaling_factor"] = scaling_factor_;
+        j["scaling_offset"] = scaling_offset_;
+        j["min_value"] = min_value_;
+        j["max_value"] = max_value_;
+        
+        // 로깅 설정
+        j["log_enabled"] = log_enabled_;
+        j["log_interval_ms"] = log_interval_ms_;
+        j["log_deadband"] = log_deadband_;
+        
+        // 메타데이터
+        j["tags"] = tags_;
+        j["metadata"] = metadata_;
+        
+        // 통계 정보
+        j["read_count"] = read_count_;
+        j["write_count"] = write_count_;
+        j["error_count"] = error_count_;
+        
+        // 시간 정보
+        auto created_time_t = std::chrono::system_clock::to_time_t(created_at_);
+        auto updated_time_t = std::chrono::system_clock::to_time_t(updated_at_);
+        auto last_read_time_t = std::chrono::system_clock::to_time_t(last_read_time_);
+        auto last_write_time_t = std::chrono::system_clock::to_time_t(last_write_time_);
+        
+        std::stringstream ss;
+        ss << std::put_time(std::gmtime(&created_time_t), "%Y-%m-%d %H:%M:%S");
+        j["created_at"] = ss.str();
+        
+        ss.str("");
+        ss << std::put_time(std::gmtime(&updated_time_t), "%Y-%m-%d %H:%M:%S");
+        j["updated_at"] = ss.str();
+        
+        ss.str("");
+        ss << std::put_time(std::gmtime(&last_read_time_t), "%Y-%m-%d %H:%M:%S");
+        j["last_read_time"] = ss.str();
+        
+        ss.str("");
+        ss << std::put_time(std::gmtime(&last_write_time_t), "%Y-%m-%d %H:%M:%S");
+        j["last_write_time"] = ss.str();
+        
+    } catch (const std::exception& e) {
+        logger_.Error("DataPointEntity::toJson() - Exception: " + std::string(e.what()));
+    }
     
     return j;
 }
 
-bool DataPointEntity::fromJson(const json& data) {
+bool DataPointEntity::fromJson(const json& j) {
     try {
-        // 기본 필드들
-        if (data.contains("id") && !data["id"].is_null()) {
-            setId(data["id"].get<int>());
+        // 기본 정보
+        if (j.contains("id") && j["id"].is_number_integer()) {
+            id_ = j["id"];
         }
         
-        if (data.contains("device_id")) {
-            device_id_ = data["device_id"].get<int>();
+        if (j.contains("device_id") && j["device_id"].is_number_integer()) {
+            device_id_ = j["device_id"];
         }
         
-        if (data.contains("name")) {
-            name_ = data["name"].get<std::string>();
+        if (j.contains("name") && j["name"].is_string()) {
+            name_ = j["name"];
         }
         
-        if (data.contains("description")) {
-            description_ = data["description"].get<std::string>();
+        if (j.contains("description") && j["description"].is_string()) {
+            description_ = j["description"];
         }
         
-        if (data.contains("address")) {
-            address_ = data["address"].get<int>();
+        // 주소 및 타입 정보
+        if (j.contains("address") && j["address"].is_number_integer()) {
+            address_ = j["address"];
         }
         
-        if (data.contains("data_type")) {
-            data_type_ = data["data_type"].get<std::string>();
+        if (j.contains("data_type") && j["data_type"].is_string()) {
+            data_type_ = j["data_type"];
         }
         
-        if (data.contains("access_mode")) {
-            access_mode_ = data["access_mode"].get<std::string>();
+        if (j.contains("access_mode") && j["access_mode"].is_string()) {
+            access_mode_ = j["access_mode"];
+        }
+        
+        if (j.contains("is_enabled") && j["is_enabled"].is_boolean()) {
+            is_enabled_ = j["is_enabled"];
         }
         
         // 엔지니어링 정보
-        if (data.contains("unit")) {
-            unit_ = data["unit"].get<std::string>();
+        if (j.contains("unit") && j["unit"].is_string()) {
+            unit_ = j["unit"];
         }
         
-        if (data.contains("scaling_factor")) {
-            scaling_factor_ = data["scaling_factor"].get<double>();
+        if (j.contains("scaling_factor") && j["scaling_factor"].is_number()) {
+            scaling_factor_ = j["scaling_factor"];
         }
         
-        if (data.contains("scaling_offset")) {
-            scaling_offset_ = data["scaling_offset"].get<double>();
+        if (j.contains("scaling_offset") && j["scaling_offset"].is_number()) {
+            scaling_offset_ = j["scaling_offset"];
         }
         
-        if (data.contains("min_value")) {
-            min_value_ = data["min_value"].get<double>();
+        if (j.contains("min_value") && j["min_value"].is_number()) {
+            min_value_ = j["min_value"];
         }
         
-        if (data.contains("max_value")) {
-            max_value_ = data["max_value"].get<double>();
+        if (j.contains("max_value") && j["max_value"].is_number()) {
+            max_value_ = j["max_value"];
         }
         
-        // 수집 설정
-        if (data.contains("is_enabled")) {
-            is_enabled_ = data["is_enabled"].get<bool>();
+        // 로깅 설정
+        if (j.contains("log_enabled") && j["log_enabled"].is_boolean()) {
+            log_enabled_ = j["log_enabled"];
         }
         
-        if (data.contains("scan_rate") && !data["scan_rate"].is_null()) {
-            scan_rate_ = data["scan_rate"].get<int>();
-        } else {
-            scan_rate_ = std::nullopt;
+        if (j.contains("log_interval_ms") && j["log_interval_ms"].is_number_integer()) {
+            log_interval_ms_ = j["log_interval_ms"];
         }
         
-        if (data.contains("deadband")) {
-            deadband_ = data["deadband"].get<double>();
+        if (j.contains("log_deadband") && j["log_deadband"].is_number()) {
+            log_deadband_ = j["log_deadband"];
         }
         
         // 메타데이터
-        if (data.contains("config")) {
-            config_ = data["config"];
+        if (j.contains("tags") && j["tags"].is_array()) {
+            tags_ = j["tags"];
         }
         
-        if (data.contains("tags") && data["tags"].is_array()) {
-            tags_ = data["tags"].get<std::vector<std::string>>();
+        if (j.contains("metadata") && j["metadata"].is_object()) {
+            metadata_ = j["metadata"];
+        }
+        
+        // 통계 정보
+        if (j.contains("read_count") && j["read_count"].is_number_unsigned()) {
+            read_count_ = j["read_count"];
+        }
+        
+        if (j.contains("write_count") && j["write_count"].is_number_unsigned()) {
+            write_count_ = j["write_count"];
+        }
+        
+        if (j.contains("error_count") && j["error_count"].is_number_unsigned()) {
+            error_count_ = j["error_count"];
         }
         
         markModified();
         return true;
         
     } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::fromJson failed: " + std::string(e.what()));
+        logger_.Error("DataPointEntity::fromJson() - Exception: " + std::string(e.what()));
         return false;
     }
 }
 
-std::string DataPointEntity::toString() const {
-    std::ostringstream oss;
-    oss << "DataPoint[id=" << getId() 
-        << ", device_id=" << device_id_
-        << ", name='" << name_ << "'"
-        << ", address=" << address_
-        << ", data_type='" << data_type_ << "'"
-        << ", enabled=" << (is_enabled_ ? "true" : "false")
-        << "]";
-    return oss.str();
-}
+// =============================================================================
+// 고급 기능 (DeviceEntity와 동일 패턴)
+// =============================================================================
 
-// =======================================================================
-// Worker 지원 메서드들
-// =======================================================================
-
-bool DataPointEntity::updateCurrentValue(double value, 
-                                        std::optional<double> raw_value,
-                                        const std::string& quality) {
-    try {
-        std::ostringstream sql;
-        sql << "INSERT OR REPLACE INTO current_values ("
-            << "point_id, value, raw_value, quality, timestamp"
-            << ") VALUES ("
-            << getId() << ", "
-            << std::fixed << std::setprecision(4) << value << ", "
-            << (raw_value.has_value() ? 
-                std::to_string(raw_value.value()) : "NULL") << ", "
-            << "'" << quality << "', "
-            << "datetime('now', 'localtime')"
-            << ")";
-        
-        auto& db_manager = getDatabaseManager();
-        bool success = db_manager.executeUpdateSQLite(sql.str());
-        
-        if (success) {
-            // 캐시 무효화
-            cached_current_value_ = std::nullopt;
-            current_value_loaded_ = false;
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::updateCurrentValue failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool DataPointEntity::updateCurrentStringValue(const std::string& string_value,
-                                              const std::string& quality) {
-    try {
-        std::ostringstream sql;
-        sql << "INSERT OR REPLACE INTO current_values ("
-            << "point_id, string_value, quality, timestamp"
-            << ") VALUES ("
-            << getId() << ", "
-            << "'" << string_value << "', "
-            << "'" << quality << "', "
-            << "datetime('now', 'localtime')"
-            << ")";
-        
-        auto& db_manager = getDatabaseManager();
-        bool success = db_manager.executeUpdateSQLite(sql.str());
-        
-        if (success) {
-            // 캐시 무효화
-            cached_current_value_ = std::nullopt;
-            current_value_loaded_ = false;
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::updateCurrentStringValue failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool DataPointEntity::updateValueWithScaling(double raw_value) {
-    // 스케일링 적용
-    double scaled_value = applyScaling(raw_value);
+DataPoint DataPointEntity::toDataPointStruct() const {
+    DataPoint dp;
     
-    // 범위 검사
-    if (!isValueInRange(scaled_value)) {
-        getLogger().Warning("DataPointEntity::updateValueWithScaling - Value out of range: " + 
-                           std::to_string(scaled_value));
-        return updateCurrentValue(scaled_value, raw_value, "bad");
-    }
+    // 기본 정보 매핑
+    dp.id = std::to_string(id_);  // INTEGER ID를 문자열로 변환
+    dp.device_id = std::to_string(device_id_);
+    dp.name = name_;
+    dp.description = description_;
     
-    return updateCurrentValue(scaled_value, raw_value, "good");
-}
-
-bool DataPointEntity::isSignificantChange(double old_value, double new_value) const {
-    if (deadband_ <= 0.0) {
-        return true; // 데드밴드가 0이면 모든 변화 유효
-    }
+    // 주소 정보
+    dp.address = address_;
+    dp.address_string = std::to_string(address_);
     
-    double change = std::abs(new_value - old_value);
-    return change >= deadband_;
-}
-
-// =======================================================================
-// 프로토콜별 설정 추출
-// =======================================================================
-
-std::optional<std::string> DataPointEntity::getMQTTTopic() const {
-    if (config_.contains("mqtt_topic") && config_["mqtt_topic"].is_string()) {
-        return config_["mqtt_topic"].get<std::string>();
-    }
-    return std::nullopt;
-}
-
-std::optional<std::pair<int, int>> DataPointEntity::getBACnetObjectInfo() const {
-    if (config_.contains("bacnet_object_type") && config_.contains("bacnet_instance")) {
-        try {
-            int obj_type = config_["bacnet_object_type"].get<int>();
-            int instance = config_["bacnet_instance"].get<int>();
-            return std::make_pair(obj_type, instance);
-        } catch (const std::exception&) {
-            // JSON 타입 변환 실패
-        }
-    }
-    return std::nullopt;
-}
-
-json DataPointEntity::extractProtocolConfig() const {
-    json protocol_config = json::object();
+    // 데이터 타입 및 설정
+    dp.data_type = data_type_;
+    dp.is_enabled = is_enabled_;
+    dp.is_writable = (access_mode_ == "write" || access_mode_ == "read_write");
     
-    // 기본 주소 정보
-    protocol_config["address"] = address_;
-    protocol_config["data_type"] = data_type_;
-    protocol_config["access_mode"] = access_mode_;
+    // 엔지니어링 정보
+    dp.unit = unit_;
+    dp.scaling_factor = scaling_factor_;
+    dp.scaling_offset = scaling_offset_;
+    dp.min_value = min_value_;
+    dp.max_value = max_value_;
     
-    // config JSON에서 프로토콜별 설정 추출
-    if (!config_.empty()) {
-        protocol_config["protocol_config"] = config_;
-    }
+    // 로깅 설정
+    dp.log_enabled = log_enabled_;
+    dp.log_interval_ms = log_interval_ms_;
+    dp.log_deadband = log_deadband_;
     
-    return protocol_config;
-}
-
-// =======================================================================
-// 데이터 검증 및 변환
-// =======================================================================
-
-bool DataPointEntity::isValueInRange(double value) const {
-    return value >= min_value_ && value <= max_value_;
-}
-
-double DataPointEntity::applyScaling(double raw_value) const {
-    return raw_value * scaling_factor_ + scaling_offset_;
-}
-
-double DataPointEntity::reverseScaling(double scaled_value) const {
-    return (scaled_value - scaling_offset_) / scaling_factor_;
-}
-
-// =======================================================================
-// 현재값 조회
-// =======================================================================
-
-json DataPointEntity::getCurrentValue() const {
-    // 캐시 확인
-    if (current_value_loaded_ && cached_current_value_.has_value()) {
-        return cached_current_value_.value();
-    }
+    // 메타데이터
+    dp.tags = tags_;
+    dp.metadata = metadata_;
     
-    try {
-        std::ostringstream query;
-        query << "SELECT * FROM current_values WHERE point_id = " << getId();
-        
-        auto& db_manager = getDatabaseManager();
-        auto result = db_manager.executeQuerySQLite(query.str());
-        
-        json current_value = json::object();
-        
-        if (!result.empty()) {
-            const auto& row = result[0];
-            for (const auto& [key, value] : row) {
-                current_value[key] = value;
-            }
-        }
-        
-        // 캐시에 저장
-        cached_current_value_ = current_value;
-        current_value_loaded_ = true;
-        
-        return current_value;
-        
-    } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::getCurrentValue failed: " + std::string(e.what()));
-        return json::object();
-    }
-}
-
-std::vector<json> DataPointEntity::getValueHistory(int limit) const {
-    try {
-        // 실제로는 시계열 DB(InfluxDB)에서 조회해야 하지만
-        // 여기서는 current_values 테이블에서 간단히 조회
-        std::ostringstream query;
-        query << "SELECT * FROM current_values WHERE point_id = " << getId()
-              << " ORDER BY timestamp DESC LIMIT " << limit;
-        
-        auto& db_manager = getDatabaseManager();
-        auto result = db_manager.executeQuerySQLite(query.str());
-        
-        std::vector<json> history;
-        for (const auto& row : result) {
-            json record = json::object();
-            for (const auto& [key, value] : row) {
-                record[key] = value;
-            }
-            history.push_back(record);
-        }
-        
-        return history;
-        
-    } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::getValueHistory failed: " + std::string(e.what()));
-        return {};
-    }
-}
-
-// =======================================================================
-// 관계 엔티티 로드
-// =======================================================================
-
-json DataPointEntity::getDeviceInfo() const {
-    // 캐시 확인
-    if (device_info_loaded_ && cached_device_info_.has_value()) {
-        return cached_device_info_.value();
-    }
+    // 통계 정보
+    dp.read_count = read_count_;
+    dp.write_count = write_count_;
+    dp.error_count = error_count_;
     
-    try {
-        std::ostringstream query;
-        query << "SELECT * FROM devices WHERE id = " << device_id_;
-        
-        auto& db_manager = getDatabaseManager();
-        auto result = db_manager.executeQuerySQLite(query.str());
-        
-        json device_info = json::object();
-        
-        if (!result.empty()) {
-            const auto& row = result[0];
-            for (const auto& [key, value] : row) {
-                device_info[key] = value;
-            }
-        }
-        
-        // 캐시에 저장
-        cached_device_info_ = device_info;
-        device_info_loaded_ = true;
-        
-        return device_info;
-        
-    } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::getDeviceInfo failed: " + std::string(e.what()));
-        return json::object();
-    }
-}
-
-std::vector<json> DataPointEntity::getAlarmConfigs() const {
-    // 캐시 확인
-    if (alarm_configs_loaded_ && cached_alarm_configs_.has_value()) {
-        return cached_alarm_configs_.value();
-    }
+    // 시간 정보
+    dp.created_at = created_at_;
+    dp.updated_at = updated_at_;
+    dp.last_read_time = last_read_time_;
+    dp.last_write_time = last_write_time_;
     
-    try {
-        // 알람 설정 테이블이 있다면 조회
-        std::ostringstream query;
-        query << "SELECT * FROM alarm_configs WHERE point_id = " << getId();
-        
-        auto& db_manager = getDatabaseManager();
-        auto result = db_manager.executeQuerySQLite(query.str());
-        
-        std::vector<json> alarm_configs;
-        for (const auto& row : result) {
-            json config = json::object();
-            for (const auto& [key, value] : row) {
-                config[key] = value;
-            }
-            alarm_configs.push_back(config);
-        }
-        
-        // 캐시에 저장
-        cached_alarm_configs_ = alarm_configs;
-        alarm_configs_loaded_ = true;
-        
-        return alarm_configs;
-        
-    } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::getAlarmConfigs failed: " + std::string(e.what()));
-        return {};
-    }
+    return dp;
 }
 
-// =======================================================================
-// 유효성 검사
-// =======================================================================
+json DataPointEntity::extractConfiguration() const {
+    json config;
+    
+    config["basic"] = {
+        {"name", name_},
+        {"description", description_},
+        {"address", address_},
+        {"data_type", data_type_},
+        {"access_mode", access_mode_},
+        {"is_enabled", is_enabled_}
+    };
+    
+    config["engineering"] = {
+        {"unit", unit_},
+        {"scaling_factor", scaling_factor_},
+        {"scaling_offset", scaling_offset_},
+        {"min_value", min_value_},
+        {"max_value", max_value_}
+    };
+    
+    config["logging"] = {
+        {"log_enabled", log_enabled_},
+        {"log_interval_ms", log_interval_ms_},
+        {"log_deadband", log_deadband_}
+    };
+    
+    config["metadata"] = {
+        {"tags", tags_},
+        {"custom", metadata_}
+    };
+    
+    return config;
+}
+
+json DataPointEntity::getWorkerContext() const {
+    json context;
+    
+    context["point_id"] = id_;
+    context["device_id"] = device_id_;
+    context["name"] = name_;
+    context["address"] = address_;
+    context["data_type"] = data_type_;
+    context["is_enabled"] = is_enabled_;
+    context["is_writable"] = (access_mode_ == "write" || access_mode_ == "read_write");
+    
+    // Worker가 필요한 최소 정보만 포함
+    context["scaling"] = {
+        {"factor", scaling_factor_},
+        {"offset", scaling_offset_}
+    };
+    
+    context["limits"] = {
+        {"min", min_value_},
+        {"max", max_value_}
+    };
+    
+    return context;
+}
+
+json DataPointEntity::getRDBContext() const {
+    json rdb_context;
+    
+    rdb_context["point_id"] = id_;
+    rdb_context["device_id"] = device_id_;
+    rdb_context["name"] = name_;
+    rdb_context["data_type"] = data_type_;
+    rdb_context["unit"] = unit_;
+    
+    // Redis 키 생성용 정보
+    rdb_context["redis_key"] = "data:device:" + std::to_string(device_id_) + ":point:" + std::to_string(id_);
+    rdb_context["time_series_key"] = "ts:" + std::to_string(device_id_) + ":" + std::to_string(id_);
+    
+    // 로깅 설정
+    rdb_context["logging"] = {
+        {"enabled", log_enabled_},
+        {"interval_ms", log_interval_ms_},
+        {"deadband", log_deadband_}
+    };
+    
+    return rdb_context;
+}
 
 bool DataPointEntity::isValid() const {
     // 필수 필드 검사
@@ -620,12 +580,17 @@ bool DataPointEntity::isValid() const {
         return false;
     }
     
+    // 접근 모드 검사
+    if (access_mode_ != "read" && access_mode_ != "write" && access_mode_ != "read_write") {
+        return false;
+    }
+    
     return true;
 }
 
-// =======================================================================
+// =============================================================================
 // 내부 헬퍼 메서드들
-// =======================================================================
+// =============================================================================
 
 bool DataPointEntity::mapRowToEntity(const std::map<std::string, std::string>& row) {
     try {
@@ -654,6 +619,10 @@ bool DataPointEntity::mapRowToEntity(const std::map<std::string, std::string>& r
             access_mode_ = row.at("access_mode");
         }
         
+        if (row.find("is_enabled") != row.end()) {
+            is_enabled_ = (row.at("is_enabled") == "1" || row.at("is_enabled") == "true");
+        }
+        
         // 엔지니어링 정보
         if (row.find("unit") != row.end()) {
             unit_ = row.at("unit");
@@ -675,120 +644,94 @@ bool DataPointEntity::mapRowToEntity(const std::map<std::string, std::string>& r
             max_value_ = std::stod(row.at("max_value"));
         }
         
-        // 수집 설정
-        if (row.find("is_enabled") != row.end()) {
-            is_enabled_ = (row.at("is_enabled") == "1");
+        // 로깅 설정
+        if (row.find("log_enabled") != row.end()) {
+            log_enabled_ = (row.at("log_enabled") == "1" || row.at("log_enabled") == "true");
         }
         
-        if (row.find("scan_rate") != row.end() && !row.at("scan_rate").empty() && row.at("scan_rate") != "NULL") {
-            scan_rate_ = std::stoi(row.at("scan_rate"));
-        } else {
-            scan_rate_ = std::nullopt;
+        if (row.find("log_interval_ms") != row.end() && !row.at("log_interval_ms").empty()) {
+            log_interval_ms_ = std::stoi(row.at("log_interval_ms"));
         }
         
-        if (row.find("deadband") != row.end() && !row.at("deadband").empty()) {
-            deadband_ = std::stod(row.at("deadband"));
+        if (row.find("log_deadband") != row.end() && !row.at("log_deadband").empty()) {
+            log_deadband_ = std::stod(row.at("log_deadband"));
         }
         
-        // 메타데이터
-        if (row.find("config") != row.end() && !row.at("config").empty()) {
-            config_ = safeParseJson(row.at("config"));
-        }
-        
+        // 메타데이터 파싱 (JSON 형태로 저장되어 있다고 가정)
         if (row.find("tags") != row.end() && !row.at("tags").empty()) {
-            tags_ = parseTagsArray(row.at("tags"));
+            try {
+                json tags_json = json::parse(row.at("tags"));
+                if (tags_json.is_array()) {
+                    tags_ = tags_json;
+                }
+            } catch (...) {
+                // JSON 파싱 실패 시 무시
+            }
         }
         
-        setState(EntityState::LOADED);
+        if (row.find("metadata") != row.end() && !row.at("metadata").empty()) {
+            try {
+                metadata_ = json::parse(row.at("metadata"));
+            } catch (...) {
+                // JSON 파싱 실패 시 무시
+            }
+        }
+        
+        // 통계 정보
+        if (row.find("read_count") != row.end() && !row.at("read_count").empty()) {
+            read_count_ = std::stoull(row.at("read_count"));
+        }
+        
+        if (row.find("write_count") != row.end() && !row.at("write_count").empty()) {
+            write_count_ = std::stoull(row.at("write_count"));
+        }
+        
+        if (row.find("error_count") != row.end() && !row.at("error_count").empty()) {
+            error_count_ = std::stoull(row.at("error_count"));
+        }
+        
         return true;
         
     } catch (const std::exception& e) {
-        getLogger().Error("DataPointEntity::mapRowToEntity failed: " + std::string(e.what()));
+        logger_.Error("DataPointEntity::mapRowToEntity() - Exception: " + std::string(e.what()));
         return false;
     }
 }
 
-std::string DataPointEntity::buildInsertSQL() const {
-    std::ostringstream sql;
+std::map<std::string, std::string> DataPointEntity::mapEntityToRow() const {
+    std::map<std::string, std::string> row;
     
-    sql << "INSERT INTO data_points ("
-        << "device_id, name, description, address, data_type, access_mode, "
-        << "unit, scaling_factor, scaling_offset, min_value, max_value, "
-        << "is_enabled, scan_rate, deadband, config, tags, "
-        << "created_at, updated_at"
-        << ") VALUES ("
-        << device_id_ << ", "
-        << "'" << name_ << "', "
-        << "'" << description_ << "', "
-        << address_ << ", "
-        << "'" << data_type_ << "', "
-        << "'" << access_mode_ << "', "
-        << "'" << unit_ << "', "
-        << scaling_factor_ << ", "
-        << scaling_offset_ << ", "
-        << min_value_ << ", "
-        << max_value_ << ", "
-        << (is_enabled_ ? 1 : 0) << ", "
-        << (scan_rate_.has_value() ? std::to_string(scan_rate_.value()) : "NULL") << ", "
-        << deadband_ << ", "
-        << "'" << config_.dump() << "', "
-        << "'" << tagsToJsonString(tags_) << "', "
-        << "datetime('now', 'localtime'), "
-        << "datetime('now', 'localtime')"
-        << ")";
+    // 기본 필드들
+    row["device_id"] = std::to_string(device_id_);
+    row["name"] = name_;
+    row["description"] = description_;
+    row["address"] = std::to_string(address_);
+    row["data_type"] = data_type_;
+    row["access_mode"] = access_mode_;
+    row["is_enabled"] = is_enabled_ ? "1" : "0";
     
-    return sql.str();
-}
-
-std::string DataPointEntity::buildUpdateSQL() const {
-    std::ostringstream sql;
+    // 엔지니어링 정보
+    row["unit"] = unit_;
+    row["scaling_factor"] = std::to_string(scaling_factor_);
+    row["scaling_offset"] = std::to_string(scaling_offset_);
+    row["min_value"] = std::to_string(min_value_);
+    row["max_value"] = std::to_string(max_value_);
     
-    sql << "UPDATE data_points SET "
-        << "device_id = " << device_id_ << ", "
-        << "name = '" << name_ << "', "
-        << "description = '" << description_ << "', "
-        << "address = " << address_ << ", "
-        << "data_type = '" << data_type_ << "', "
-        << "access_mode = '" << access_mode_ << "', "
-        << "unit = '" << unit_ << "', "
-        << "scaling_factor = " << scaling_factor_ << ", "
-        << "scaling_offset = " << scaling_offset_ << ", "
-        << "min_value = " << min_value_ << ", "
-        << "max_value = " << max_value_ << ", "
-        << "is_enabled = " << (is_enabled_ ? 1 : 0) << ", "
-        << "scan_rate = " << (scan_rate_.has_value() ? std::to_string(scan_rate_.value()) : "NULL") << ", "
-        << "deadband = " << deadband_ << ", "
-        << "config = '" << config_.dump() << "', "
-        << "tags = '" << tagsToJsonString(tags_) << "', "
-        << "updated_at = datetime('now', 'localtime') "
-        << "WHERE id = " << getId();
+    // 로깅 설정
+    row["log_enabled"] = log_enabled_ ? "1" : "0";
+    row["log_interval_ms"] = std::to_string(log_interval_ms_);
+    row["log_deadband"] = std::to_string(log_deadband_);
     
-    return sql.str();
-}
-
-json DataPointEntity::safeParseJson(const std::string& json_str) const {
-    try {
-        return json::parse(json_str);
-    } catch (const std::exception&) {
-        return json::object();
-    }
-}
-
-std::vector<std::string> DataPointEntity::parseTagsArray(const std::string& json_array_str) const {
-    try {
-        json tags_json = json::parse(json_array_str);
-        if (tags_json.is_array()) {
-            return tags_json.get<std::vector<std::string>>();
-        }
-    } catch (const std::exception&) {
-        // JSON 파싱 실패
-    }
-    return {};
-}
-
-std::string DataPointEntity::tagsToJsonString(const std::vector<std::string>& tags) const {
-    json tags_json = tags;
-    return tags_json.dump();
+    // 메타데이터 (JSON 문자열로 저장)
+    row["tags"] = json(tags_).dump();
+    row["metadata"] = metadata_.dump();
+    
+    // 통계 정보
+    row["read_count"] = std::to_string(read_count_);
+    row["write_count"] = std::to_string(write_count_);
+    row["error_count"] = std::to_string(error_count_);
+    
+    return row;
 }
 
 } // namespace Entities

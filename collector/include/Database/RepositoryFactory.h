@@ -3,20 +3,17 @@
 
 /**
  * @file RepositoryFactory.h
- * @brief PulseOne Repository 팩토리 (싱글톤)
+ * @brief PulseOne Repository 팩토리 (싱글톤) - 깃허브 기존 버전 + 타입 별칭
  * @author PulseOne Development Team
- * @date 2025-07-26
+ * @date 2025-07-27
  * 
- * Repository 인스턴스 중앙 관리:
- * - 싱글톤 패턴으로 전역 접근
- * - 모든 Repository 인스턴스 생성 및 관리
- * - DatabaseManager 의존성 자동 주입
- * - 캐싱 정책 중앙 제어
+ * 🔥 네임스페이스 수정:
+ * - DeviceRepository, DataPointRepository는 PulseOne::Database::Repositories 네임스페이스
+ * - 타입 별칭으로 해결
  */
 
 #include "Database/Repositories/DeviceRepository.h"
-// TODO: 향후 추가할 Repository들
-// #include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/DataPointRepository.h"
 // #include "Database/Repositories/AlarmConfigRepository.h"
 // #include "Database/Repositories/UserRepository.h"
 // #include "Database/Repositories/TenantRepository.h"
@@ -31,6 +28,15 @@
 
 namespace PulseOne {
 namespace Database {
+
+// 🔥 타입 별칭 정의 (Repositories 네임스페이스 해결)
+using DeviceRepository = PulseOne::Database::Repositories::DeviceRepository;
+using DataPointRepository = PulseOne::Database::Repositories::DataPointRepository;
+// TODO: 향후 추가할 Repository들
+// using AlarmConfigRepository = PulseOne::Database::Repositories::AlarmConfigRepository;
+// using UserRepository = PulseOne::Database::Repositories::UserRepository;
+// using TenantRepository = PulseOne::Database::Repositories::TenantRepository;
+// using SiteRepository = PulseOne::Database::Repositories::SiteRepository;
 
 /**
  * @brief Repository 팩토리 (싱글톤)
@@ -60,7 +66,7 @@ public:
     void shutdown();
 
     // =======================================================================
-    // Repository 인스턴스 조회
+    // Repository 인스턴스 조회 (깃허브 기존 버전)
     // =======================================================================
     
     /**
@@ -69,9 +75,14 @@ public:
      */
     DeviceRepository& getDeviceRepository();
     
+    /**
+     * @brief DataPointRepository 인스턴스 조회
+     * @return DataPointRepository 참조
+     */
+    DataPointRepository& getDataPointRepository();   
+    
     // TODO: 향후 추가할 Repository들
     /*
-    DataPointRepository& getDataPointRepository();
     AlarmConfigRepository& getAlarmConfigRepository();
     UserRepository& getUserRepository();
     TenantRepository& getTenantRepository();
@@ -220,18 +231,19 @@ private:
 
 private:
     // =======================================================================
-    // 멤버 변수들
+    // 멤버 변수들 (깃허브 기존 버전)
     // =======================================================================
     
     // 초기화 상태
     bool initialized_;
     mutable std::mutex factory_mutex_;
     
-    // Repository 인스턴스들
+    // Repository 인스턴스들 (타입 별칭 사용)
     std::unique_ptr<DeviceRepository> device_repository_;
+    std::unique_ptr<DataPointRepository> data_point_repository_;
+
     // TODO: 향후 추가할 Repository들
     /*
-    std::unique_ptr<DataPointRepository> data_point_repository_;
     std::unique_ptr<AlarmConfigRepository> alarm_config_repository_;
     std::unique_ptr<UserRepository> user_repository_;
     std::unique_ptr<TenantRepository> tenant_repository_;
