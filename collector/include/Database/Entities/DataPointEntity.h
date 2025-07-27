@@ -359,6 +359,16 @@ private:
      * @brief 엔티티를 데이터베이스 값들로 변환
      */
     std::map<std::string, std::string> mapEntityToRow() const;
+
+    /**
+     * @brief INSERT SQL 쿼리 생성
+     */
+    std::string buildInsertSQL() const;
+    
+    /**
+     * @brief UPDATE SQL 쿼리 생성
+     */
+    std::string buildUpdateSQL() const;
 };
 
 } // namespace Entities
