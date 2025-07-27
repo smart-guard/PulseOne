@@ -186,7 +186,7 @@ public:
     const std::string& getUnit() const { return unit_; }
     void setUnit(const std::string& unit) { 
         unit_ = unit; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
@@ -195,7 +195,7 @@ public:
     double getScalingFactor() const { return scaling_factor_; }
     void setScalingFactor(double scaling_factor) { 
         scaling_factor_ = scaling_factor; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
@@ -204,7 +204,7 @@ public:
     double getScalingOffset() const { return scaling_offset_; }
     void setScalingOffset(double scaling_offset) { 
         scaling_offset_ = scaling_offset; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
@@ -213,7 +213,7 @@ public:
     double getMinValue() const { return min_value_; }
     void setMinValue(double min_value) { 
         min_value_ = min_value; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
@@ -222,7 +222,7 @@ public:
     double getMaxValue() const { return max_value_; }
     void setMaxValue(double max_value) { 
         max_value_ = max_value; 
-        markAsModified(); 
+        markModified(); 
     }
 
     // =======================================================================
@@ -235,7 +235,7 @@ public:
     bool isLogEnabled() const { return log_enabled_; }
     void setLogEnabled(bool log_enabled) { 
         log_enabled_ = log_enabled; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
@@ -244,7 +244,7 @@ public:
     int getLogInterval() const { return log_interval_ms_; }
     void setLogInterval(int log_interval_ms) { 
         log_interval_ms_ = log_interval_ms; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
@@ -253,7 +253,7 @@ public:
     double getLogDeadband() const { return log_deadband_; }
     void setLogDeadband(double log_deadband) { 
         log_deadband_ = log_deadband; 
-        markAsModified(); 
+        markModified(); 
     }
 
     // =======================================================================
@@ -290,7 +290,7 @@ public:
     const std::vector<std::string>& getTags() const { return tags_; }
     void setTags(const std::vector<std::string>& tags) { 
         tags_ = tags; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
@@ -299,7 +299,7 @@ public:
     const json& getMetadata() const { return metadata_; }
     void setMetadata(const json& metadata) { 
         metadata_ = metadata; 
-        markAsModified(); 
+        markModified(); 
     }
     
     /**
