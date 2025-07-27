@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Database/RepositoryFactory.cpp
-// PulseOne Repository 팩토리 구현 - 싱글톤 패턴
+// PulseOne Repository 팩토리 구현 - 네임스페이스 수정
 // =============================================================================
 
 #include "Database/RepositoryFactory.h"
@@ -117,6 +117,7 @@ void RepositoryFactory::shutdown() {
         
         // Repository 인스턴스 해제
         device_repository_.reset();
+        data_point_repository_.reset();
         // TODO: 향후 추가할 Repository들
         /*
         data_point_repository_.reset();
@@ -136,7 +137,7 @@ void RepositoryFactory::shutdown() {
 }
 
 // =============================================================================
-// Repository 인스턴스 조회
+// Repository 인스턴스 조회 (타입 별칭 사용)
 // =============================================================================
 
 DeviceRepository& RepositoryFactory::getDeviceRepository() {
@@ -152,6 +153,21 @@ DeviceRepository& RepositoryFactory::getDeviceRepository() {
     
     creation_count_++;
     return *device_repository_;
+}
+
+DataPointRepository& RepositoryFactory::getDataPointRepository() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    if (!initialized_) {
+        throw std::runtime_error("RepositoryFactory not initialized");
+    }
+    
+    if (!data_point_repository_) {
+        throw std::runtime_error("DataPointRepository not created");
+    }
+    
+    creation_count_++;
+    return *data_point_repository_;
 }
 
 // TODO: 향후 추가할 Repository들
@@ -233,181 +249,7 @@ SiteRepository& RepositoryFactory::getSiteRepository() {
 */
 
 // =============================================================================
-// 전역 캐싱 제어
-// =============================================================================
-
-void RepositoryFactory::setCacheEnabled(bool enabled) {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
-    global_cache_enabled_ = enabled;
-    
-    if (initialized_) {
-        // 모든 Repository에 캐시 설정 적용
-        if (device_repository_) {
-            device_repository_->setCacheEnabled(enabled);
-        }
-        
-        // TODO: 향후 추가할 Repository들
-        /*
-        if (data_point_repository_) {
-            data_point_repository_->setCacheEnabled(enabled);
-        }
-        if (alarm_config_repository_) {
-            alarm_config_repository_->setCacheEnabled(enabled);
-        }
-        if (user_repository_) {
-            user_repository_->setCacheEnabled(enabled);
-        }
-        if (tenant_repository_) {
-            tenant_repository_->setCacheEnabled(enabled);
-        }
-        if (site_repository_) {
-            site_repository_->setCacheEnabled(enabled);
-        }
-        */
-    }
-    
-    logger_.Info("Global cache " + std::string(enabled ? "enabled" : "disabled"));
-}
-
-void RepositoryFactory::clearAllCaches() {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
-    if (!initialized_) {
-        return;
-    }
-    
-    int total_cleared = 0;
-    
-    try {
-        // 모든 Repository 캐시 클리어
-        if (device_repository_) {
-            auto stats = device_repository_->getCacheStats();
-            total_cleared += stats["size"];
-            device_repository_->clearCache();
-        }
-        
-        // TODO: 향후 추가할 Repository들
-        /*
-        if (data_point_repository_) {
-            auto stats = data_point_repository_->getCacheStats();
-            total_cleared += stats["size"];
-            data_point_repository_->clearCache();
-        }
-        if (alarm_config_repository_) {
-            auto stats = alarm_config_repository_->getCacheStats();
-            total_cleared += stats["size"];
-            alarm_config_repository_->clearCache();
-        }
-        if (user_repository_) {
-            auto stats = user_repository_->getCacheStats();
-            total_cleared += stats["size"];
-            user_repository_->clearCache();
-        }
-        if (tenant_repository_) {
-            auto stats = tenant_repository_->getCacheStats();
-            total_cleared += stats["size"];
-            tenant_repository_->clearCache();
-        }
-        if (site_repository_) {
-            auto stats = site_repository_->getCacheStats();
-            total_cleared += stats["size"];
-            site_repository_->clearCache();
-        }
-        */
-        
-        logger_.Info("Cleared all caches - " + std::to_string(total_cleared) + " entries removed");
-        
-    } catch (const std::exception& e) {
-        logger_.Error("RepositoryFactory::clearAllCaches failed: " + std::string(e.what()));
-        error_count_++;
-    }
-}
-
-std::map<std::string, std::map<std::string, int>> RepositoryFactory::getAllCacheStats() {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
-    std::map<std::string, std::map<std::string, int>> all_stats;
-    
-    if (!initialized_) {
-        return all_stats;
-    }
-    
-    try {
-        // 각 Repository의 캐시 통계 수집
-        if (device_repository_) {
-            all_stats["DeviceRepository"] = device_repository_->getCacheStats();
-        }
-        
-        // TODO: 향후 추가할 Repository들
-        /*
-        if (data_point_repository_) {
-            all_stats["DataPointRepository"] = data_point_repository_->getCacheStats();
-        }
-        if (alarm_config_repository_) {
-            all_stats["AlarmConfigRepository"] = alarm_config_repository_->getCacheStats();
-        }
-        if (user_repository_) {
-            all_stats["UserRepository"] = user_repository_->getCacheStats();
-        }
-        if (tenant_repository_) {
-            all_stats["TenantRepository"] = tenant_repository_->getCacheStats();
-        }
-        if (site_repository_) {
-            all_stats["SiteRepository"] = site_repository_->getCacheStats();
-        }
-        */
-        
-    } catch (const std::exception& e) {
-        logger_.Error("RepositoryFactory::getAllCacheStats failed: " + std::string(e.what()));
-        error_count_++;
-    }
-    
-    return all_stats;
-}
-
-// =============================================================================
-// 성능 모니터링
-// =============================================================================
-
-int RepositoryFactory::getActiveRepositoryCount() const {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
-    int count = 0;
-    
-    if (device_repository_) count++;
-    // TODO: 향후 추가할 Repository들
-    /*
-    if (data_point_repository_) count++;
-    if (alarm_config_repository_) count++;
-    if (user_repository_) count++;
-    if (tenant_repository_) count++;
-    if (site_repository_) count++;
-    */
-    
-    return count;
-}
-
-std::map<std::string, int> RepositoryFactory::getFactoryStats() const {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
-    std::map<std::string, int> stats;
-    
-    stats["initialized"] = initialized_ ? 1 : 0;
-    stats["active_repositories"] = getActiveRepositoryCount();
-    stats["creation_count"] = creation_count_;
-    stats["error_count"] = error_count_;
-    stats["transaction_count"] = transaction_count_;
-    stats["cache_enabled"] = global_cache_enabled_ ? 1 : 0;
-    stats["cache_ttl_seconds"] = cache_ttl_seconds_;
-    stats["max_cache_size"] = max_cache_size_;
-    stats["transaction_active"] = transaction_active_ ? 1 : 0;
-    
-    return stats;
-}
-
-// =============================================================================
-// 트랜잭션 지원 (전역)
+// 글로벌 트랜잭션 관리
 // =============================================================================
 
 bool RepositoryFactory::beginGlobalTransaction() {
@@ -424,28 +266,29 @@ bool RepositoryFactory::beginGlobalTransaction() {
     }
     
     try {
-        // PostgreSQL 트랜잭션 시작 (현재 PostgreSQL만 지원)
+        // PostgreSQL/SQLite 구분해서 트랜잭션 시작
         std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
         
+        bool success = false;
         if (db_type == "POSTGRESQL") {
-            bool success = db_manager_.executeNonQueryPostgres("BEGIN");
-            if (success) {
-                transaction_active_ = true;
-                transaction_count_++;
-                logger_.Info("Global transaction started");
-                return true;
-            }
+            success = db_manager_.executeNonQueryPostgres("BEGIN");
         } else {
-            logger_.Warn("Global transactions not supported for " + db_type);
-            return false;
+            success = db_manager_.executeNonQuerySQLite("BEGIN");
         }
         
+        if (success) {
+            transaction_active_ = true;
+            transaction_count_++;
+            logger_.Info("Global transaction started");
+        }
+        
+        return success;
+        
     } catch (const std::exception& e) {
-        logger_.Error("RepositoryFactory::beginGlobalTransaction failed: " + std::string(e.what()));
+        logger_.Error("Failed to begin global transaction: " + std::string(e.what()));
         error_count_++;
+        return false;
     }
-    
-    return false;
 }
 
 bool RepositoryFactory::commitGlobalTransaction() {
@@ -459,27 +302,30 @@ bool RepositoryFactory::commitGlobalTransaction() {
     try {
         std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
         
+        bool success = false;
         if (db_type == "POSTGRESQL") {
-            bool success = db_manager_.executeNonQueryPostgres("COMMIT");
-            transaction_active_ = false;
-            
-            if (success) {
-                logger_.Info("Global transaction committed");
-                return true;
-            } else {
-                logger_.Error("Failed to commit global transaction");
-                error_count_++;
-                return false;
-            }
+            success = db_manager_.executeNonQueryPostgres("COMMIT");
+        } else {
+            success = db_manager_.executeNonQuerySQLite("COMMIT");
         }
         
+        transaction_active_ = false;
+        
+        if (success) {
+            logger_.Info("Global transaction committed");
+        } else {
+            logger_.Error("Failed to commit global transaction");
+            error_count_++;
+        }
+        
+        return success;
+        
     } catch (const std::exception& e) {
-        logger_.Error("RepositoryFactory::commitGlobalTransaction failed: " + std::string(e.what()));
+        logger_.Error("Failed to commit global transaction: " + std::string(e.what()));
         transaction_active_ = false;
         error_count_++;
+        return false;
     }
-    
-    return false;
 }
 
 bool RepositoryFactory::rollbackGlobalTransaction() {
@@ -493,27 +339,30 @@ bool RepositoryFactory::rollbackGlobalTransaction() {
     try {
         std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
         
+        bool success = false;
         if (db_type == "POSTGRESQL") {
-            bool success = db_manager_.executeNonQueryPostgres("ROLLBACK");
-            transaction_active_ = false;
-            
-            if (success) {
-                logger_.Info("Global transaction rolled back");
-                return true;
-            } else {
-                logger_.Error("Failed to rollback global transaction");
-                error_count_++;
-                return false;
-            }
+            success = db_manager_.executeNonQueryPostgres("ROLLBACK");
+        } else {
+            success = db_manager_.executeNonQuerySQLite("ROLLBACK");
         }
         
+        transaction_active_ = false;  // 롤백 후에는 항상 비활성화
+        
+        if (success) {
+            logger_.Info("Global transaction rolled back");
+        } else {
+            logger_.Error("Failed to rollback global transaction");
+            error_count_++;
+        }
+        
+        return success;
+        
     } catch (const std::exception& e) {
-        logger_.Error("RepositoryFactory::rollbackGlobalTransaction failed: " + std::string(e.what()));
-        transaction_active_ = false;
+        logger_.Error("Failed to rollback global transaction: " + std::string(e.what()));
+        transaction_active_ = false;  // 에러가 나도 트랜잭션은 비활성화
         error_count_++;
+        return false;
     }
-    
-    return false;
 }
 
 bool RepositoryFactory::executeInGlobalTransaction(std::function<bool()> work) {
@@ -529,7 +378,7 @@ bool RepositoryFactory::executeInGlobalTransaction(std::function<bool()> work) {
             return false;
         }
     } catch (const std::exception& e) {
-        logger_.Error("RepositoryFactory::executeInGlobalTransaction work failed: " + std::string(e.what()));
+        logger_.Error("executeInGlobalTransaction work failed: " + std::string(e.what()));
         rollbackGlobalTransaction();
         error_count_++;
         return false;
@@ -537,36 +386,121 @@ bool RepositoryFactory::executeInGlobalTransaction(std::function<bool()> work) {
 }
 
 // =============================================================================
-// 설정 관리
+// 캐싱 제어
 // =============================================================================
 
-bool RepositoryFactory::reloadConfigurations() {
+void RepositoryFactory::setCacheEnabled(bool enabled) {
     std::lock_guard<std::mutex> lock(factory_mutex_);
     
-    if (!initialized_) {
-        logger_.Warn("RepositoryFactory not initialized for configuration reload");
-        return false;
+    global_cache_enabled_ = enabled;
+    
+    logger_.Info("Global cache " + std::string(enabled ? "enabled" : "disabled"));
+    
+    // 각 Repository에 캐시 설정 적용
+    if (device_repository_) {
+        device_repository_->setCacheEnabled(enabled);
     }
     
+    // TODO: 향후 추가할 Repository들
+    /*
+    if (data_point_repository_) {
+        data_point_repository_->setCacheEnabled(enabled);
+    }
+    
+    if (alarm_config_repository_) {
+        alarm_config_repository_->setCacheEnabled(enabled);
+    }
+    
+    if (user_repository_) {
+        user_repository_->setCacheEnabled(enabled);
+    }
+    
+    if (tenant_repository_) {
+        tenant_repository_->setCacheEnabled(enabled);
+    }
+    
+    if (site_repository_) {
+        site_repository_->setCacheEnabled(enabled);
+    }
+    */
+}
+
+void RepositoryFactory::clearAllCaches() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    logger_.Info("Clearing all repository caches...");
+    
+    int total_cleared = 0;
+    
+    // DeviceRepository 캐시 클리어
+    if (device_repository_) {
+        try {
+            auto stats = device_repository_->getCacheStats();
+            int cached_items = stats["cached_items"];
+            
+            device_repository_->clearCache();
+            total_cleared += cached_items;
+            
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear DeviceRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
+    }
+    
+    // TODO: 향후 추가할 Repository들 캐시 클리어
+    /*
+    if (data_point_repository_) {
+        try {
+            auto stats = data_point_repository_->getCacheStats();
+            total_cleared += stats["cached_items"];
+            data_point_repository_->clearCache();
+        } catch (...) {}
+    }
+    */
+    
+    logger_.Info("Cleared " + std::to_string(total_cleared) + " cached items from all repositories");
+}
+
+std::map<std::string, std::map<std::string, int>> RepositoryFactory::getAllCacheStats() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    std::map<std::string, std::map<std::string, int>> all_stats;
+    
     try {
-        logger_.Info("Reloading repository configurations...");
+        // DeviceRepository 통계
+        if (device_repository_) {
+            all_stats["DeviceRepository"] = device_repository_->getCacheStats();
+        }
         
-        // ConfigManager에서 최신 설정 로드
-        cache_ttl_seconds_ = std::stoi(config_manager_.getOrDefault("REPOSITORY_CACHE_TTL_SECONDS", "300"));
-        max_cache_size_ = std::stoi(config_manager_.getOrDefault("REPOSITORY_MAX_CACHE_SIZE", "1000"));
-        global_cache_enabled_ = (config_manager_.getOrDefault("REPOSITORY_CACHE_ENABLED", "true") == "true");
+        // TODO: 향후 추가할 Repository들
+        /*
+        if (data_point_repository_) {
+            all_stats["DataPointRepository"] = data_point_repository_->getCacheStats();
+        }
         
-        // Repository별 설정 적용
-        applyRepositoryConfigurations();
+        if (alarm_config_repository_) {
+            all_stats["AlarmConfigRepository"] = alarm_config_repository_->getCacheStats();
+        }
         
-        logger_.Info("Repository configurations reloaded successfully");
-        return true;
+        if (user_repository_) {
+            all_stats["UserRepository"] = user_repository_->getCacheStats();
+        }
+        
+        if (tenant_repository_) {
+            all_stats["TenantRepository"] = tenant_repository_->getCacheStats();
+        }
+        
+        if (site_repository_) {
+            all_stats["SiteRepository"] = site_repository_->getCacheStats();
+        }
+        */
         
     } catch (const std::exception& e) {
-        logger_.Error("RepositoryFactory::reloadConfigurations failed: " + std::string(e.what()));
+        logger_.Error("Failed to get cache statistics: " + std::string(e.what()));
         error_count_++;
-        return false;
     }
+    
+    return all_stats;
 }
 
 void RepositoryFactory::setCacheTTL(int ttl_seconds) {
@@ -592,6 +526,86 @@ void RepositoryFactory::setMaxCacheSize(int max_size) {
 }
 
 // =============================================================================
+// 성능 모니터링 (현재 버전 형식)
+// =============================================================================
+
+std::map<std::string, int> RepositoryFactory::getFactoryStats() const {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    std::map<std::string, int> stats;
+    
+    stats["initialized"] = initialized_ ? 1 : 0;
+    stats["active_repositories"] = getActiveRepositoryCount();
+    stats["creation_count"] = creation_count_;
+    stats["error_count"] = error_count_;
+    stats["transaction_count"] = transaction_count_;
+    stats["cache_enabled"] = global_cache_enabled_ ? 1 : 0;
+    stats["cache_ttl_seconds"] = cache_ttl_seconds_;
+    stats["max_cache_size"] = max_cache_size_;
+    stats["transaction_active"] = transaction_active_ ? 1 : 0;
+    
+    return stats;
+}
+
+int RepositoryFactory::getActiveRepositoryCount() const {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    int count = 0;
+    
+    if (device_repository_) count++;
+    if (data_point_repository_) count++;
+    // TODO: 향후 추가할 Repository들
+    /*
+    if (data_point_repository_) count++;
+    if (alarm_config_repository_) count++;
+    if (user_repository_) count++;
+    if (tenant_repository_) count++;
+    if (site_repository_) count++;
+    */
+    
+    return count;
+}
+
+bool RepositoryFactory::reloadConfigurations() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    if (!initialized_) {
+        logger_.Warn("RepositoryFactory not initialized for configuration reload");
+        return false;
+    }
+    
+    try {
+        logger_.Info("Reloading repository configurations...");
+        
+        // ConfigManager에서 최신 설정 로드
+        cache_ttl_seconds_ = std::stoi(config_manager_.getOrDefault("REPOSITORY_CACHE_TTL_SECONDS", "300"));
+        max_cache_size_ = std::stoi(config_manager_.getOrDefault("REPOSITORY_MAX_CACHE_SIZE", "1000"));
+        global_cache_enabled_ = (config_manager_.getOrDefault("REPOSITORY_CACHE_ENABLED", "true") == "true");
+        
+        // Repository별 설정 적용
+        applyRepositoryConfigurations();
+        
+        logger_.Info("Repository configurations reloaded successfully");
+        return true;
+        
+    } catch (const std::exception& e) {
+        logger_.Error("reloadConfigurations failed: " + std::string(e.what()));
+        error_count_++;
+        return false;
+    }
+}
+
+void RepositoryFactory::resetStats() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    creation_count_ = 0;
+    error_count_ = 0;
+    transaction_count_ = 0;
+    
+    logger_.Info("RepositoryFactory statistics reset");
+}
+
+// =============================================================================
 // 내부 헬퍼 메서드들
 // =============================================================================
 
@@ -599,10 +613,17 @@ bool RepositoryFactory::createRepositoryInstances() {
     try {
         logger_.Info("Creating repository instances...");
         
-        // DeviceRepository 생성
+        // DeviceRepository 생성 (타입 별칭 사용)
         device_repository_ = std::make_unique<DeviceRepository>();
         if (!device_repository_) {
             logger_.Error("Failed to create DeviceRepository");
+            return false;
+        }
+        
+        // DataPointRepository 생성 (타입 별칭 사용)
+        data_point_repository_ = std::make_unique<DataPointRepository>();
+        if (!data_point_repository_) {
+            logger_.Error("Failed to create DataPointRepository");
             return false;
         }
         
