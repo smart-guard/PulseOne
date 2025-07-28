@@ -18,6 +18,7 @@
 #include "Database/Repositories/UserRepository.h"
 #include "Database/Repositories/TenantRepository.h"
 #include "Database/Repositories/AlarmConfigRepository.h"
+#include "Database/Repositories/SiteRepository.h"
 
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
@@ -39,6 +40,7 @@ using DataPointRepository = PulseOne::Database::Repositories::DataPointRepositor
 using UserRepository = PulseOne::Database::Repositories::UserRepository;
 using TenantRepository = PulseOne::Database::Repositories::TenantRepository;
 using AlarmConfigRepository = PulseOne::Database::Repositories::AlarmConfigRepository;
+using SiteRepository = PulseOne::Database::Repositories::SiteRepository;
 
 /**
  * @brief Repository 팩토리 (싱글톤)
@@ -100,6 +102,8 @@ public:
      * @return AlarmConfigRepository 참조
      */
     AlarmConfigRepository& getAlarmConfigRepository();
+
+    SiteRepository& getSiteRepository();
 
     // =======================================================================
     // 글로벌 트랜잭션 관리
@@ -222,6 +226,7 @@ private:
     std::unique_ptr<UserRepository> user_repository_;
     std::unique_ptr<TenantRepository> tenant_repository_;
     std::unique_ptr<AlarmConfigRepository> alarm_config_repository_;
+    std::unique_ptr<SiteRepository> site_repository_;
     
     // 동기화 및 상태 관리
     mutable std::mutex factory_mutex_;

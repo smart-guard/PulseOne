@@ -118,6 +118,7 @@ void RepositoryFactory::shutdown() {
         user_repository_.reset();
         tenant_repository_.reset();
         alarm_config_repository_.reset();
+        site_repository_.reset();
         
         initialized_ = false;
         logger_.Info("✅ RepositoryFactory shutdown completed");
@@ -206,6 +207,22 @@ AlarmConfigRepository& RepositoryFactory::getAlarmConfigRepository() {
     creation_count_++;
     return *alarm_config_repository_;
 }
+
+SiteRepository& RepositoryFactory::getSiteRepository() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    if (!initialized_) {
+        throw std::runtime_error("RepositoryFactory not initialized");
+    }
+    
+    if (!site_repository_) {
+        throw std::runtime_error("SiteRepository not created");
+    }
+    
+    creation_count_++;
+    return *site_repository_;
+}
+
 
 // =============================================================================
 // 글로벌 트랜잭션 관리
@@ -525,6 +542,7 @@ int RepositoryFactory::getActiveRepositoryCount() const {
     if (user_repository_) count++;
     if (tenant_repository_) count++;
     if (alarm_config_repository_) count++;
+    if (site_repository_) count++;
     
     return count;
 }
@@ -608,6 +626,13 @@ bool RepositoryFactory::createRepositoryInstances() {
         alarm_config_repository_ = std::make_unique<AlarmConfigRepository>();
         if (!alarm_config_repository_) {
             logger_.Error("Failed to create AlarmConfigRepository");
+            return false;
+        }
+        
+        // SiteRepository 생성 (AlarmConfigRepository 다음에 추가)
+        site_repository_ = std::make_unique<SiteRepository>();
+        if (!site_repository_) {
+            logger_.Error("Failed to create SiteRepository");
             return false;
         }
         
