@@ -3,16 +3,14 @@
 
 /**
  * @file IRepository.h
- * @brief PulseOne Repository 인터페이스 템플릿
+ * @brief PulseOne Repository 인터페이스 템플릿 (캐시 기능 내장)
  * @author PulseOne Development Team
- * @date 2025-07-26
+ * @date 2025-07-28
  * 
- * Repository 패턴 구현:
- * - 공통 CRUD 연산
- * - 벌크 연산 지원
- * - 캐싱 기능
- * - N+1 문제 해결
- * - DatabaseManager 통합 사용
+ * 🔥 점진적 마이그레이션:
+ * - 기존 CachedRepositoryBase.h 기능을 IRepository에 통합
+ * - DeviceRepository는 기존 구현 유지하면서 점진적 마이그레이션
+ * - 새 Repository는 즉시 캐시 기능 자동 획득
  */
 
 #include "Common/UnifiedCommonTypes.h"
@@ -25,335 +23,281 @@
 #include <memory>
 #include <string>
 #include <functional>
-#include <functional>
+#include <mutex>
+#include <chrono>
+#include <atomic>
 
 namespace PulseOne {
 namespace Database {
 
-/**
- * @brief 쿼리 조건 구조체
- */
-struct QueryCondition {
-    std::string field;
-    std::string operation; // "=", "!=", ">", "<", ">=", "<=", "LIKE", "IN"
-    std::string value;
-    
-    QueryCondition(const std::string& f, const std::string& op, const std::string& v)
-        : field(f), operation(op), value(v) {}
-};
+// 🔥 타입 별칭들 (UnifiedCommonTypes.h에서)
+using QueryCondition = PulseOne::Structs::QueryCondition;
+using OrderBy = PulseOne::Structs::OrderBy;
+using Pagination = PulseOne::Structs::Pagination;
 
 /**
- * @brief 정렬 조건 구조체
- */
-struct OrderBy {
-    std::string field;
-    bool ascending;
-    
-    OrderBy(const std::string& f, bool asc = true) : field(f), ascending(asc) {}
-};
-
-/**
- * @brief 페이징 정보 구조체
- */
-struct Pagination {
-    int page;
-    int size;
-    
-    Pagination(int p = 1, int s = 50) : page(p), size(s) {}
-    
-    int getOffset() const { return (page - 1) * size; }
-    int getLimit() const { return size; }
-};
-
-/**
- * @brief Repository 인터페이스 템플릿
+ * @brief Repository 통합 인터페이스 템플릿 (캐시 기능 내장)
  * @tparam EntityType 엔티티 타입 (DeviceEntity, DataPointEntity 등)
  */
 template<typename EntityType>
 class IRepository {
-public:
+private:
     // =======================================================================
-    // 생성자 및 소멸자
+    // 🔥 캐시 전용 구조체 (Repository에서만 사용)
     // =======================================================================
     
+    /**
+     * @brief 캐시 엔트리 구조체 (Repository 내부에서만 사용)
+     */
+    struct CacheEntry {
+        EntityType entity;
+        std::chrono::system_clock::time_point cached_at;
+        
+        CacheEntry() : cached_at(std::chrono::system_clock::now()) {}
+        CacheEntry(const EntityType& e) : entity(e), cached_at(std::chrono::system_clock::now()) {}
+        
+        bool isExpired(const std::chrono::seconds& ttl) const {
+            auto now = std::chrono::system_clock::now();
+            return (now - cached_at) > ttl;
+        }
+    };
+
+public:
+protected:
+    // =======================================================================
+    // 🔥 보호된 생성자 (기존 DeviceRepository 호환)
+    // =======================================================================
+    
+    /**
+     * @brief Repository 초기화 (캐시 포함)
+     * @param repository_name Repository 이름 (로깅용)
+     */
+    explicit IRepository(const std::string& repository_name = "Repository")
+        : repository_name_(repository_name)
+        , db_manager_(&DatabaseManager::getInstance())
+        , config_manager_(&ConfigManager::getInstance())
+        , logger_(&PulseOne::LogManager::getInstance())
+        , cache_enabled_(true)
+        , cache_ttl_(std::chrono::seconds(300))  // 기본 5분 TTL
+        , cache_hits_(0)
+        , cache_misses_(0)
+        , cache_evictions_(0)
+        , max_cache_size_(1000)  // 기본 최대 1000개
+        , enable_bulk_optimization_(true) {
+        
+        loadCacheConfiguration();
+        logger_->Info("🗄️ " + repository_name_ + " initialized with caching enabled");
+    }
+
+public:
     /**
      * @brief 가상 소멸자
      */
     virtual ~IRepository() = default;
 
     // =======================================================================
-    // 기본 CRUD 연산
+    // 🔥 순수 가상 함수들 (기존 DeviceRepository 호환)
     // =======================================================================
     
-    /**
-     * @brief 모든 엔티티 조회
-     * @return 엔티티 목록
-     */
     virtual std::vector<EntityType> findAll() = 0;
-    
-    /**
-     * @brief ID로 엔티티 조회
-     * @param id 엔티티 ID
-     * @return 엔티티 (없으면 nullopt)
-     */
     virtual std::optional<EntityType> findById(int id) = 0;
-    
-    /**
-     * @brief 엔티티 저장
-     * @param entity 저장할 엔티티 (참조로 전달하여 ID 업데이트)
-     * @return 성공 시 true
-     */
     virtual bool save(EntityType& entity) = 0;
-    
-    /**
-     * @brief 엔티티 업데이트
-     * @param entity 업데이트할 엔티티
-     * @return 성공 시 true
-     */
     virtual bool update(const EntityType& entity) = 0;
-    
-    /**
-     * @brief ID로 엔티티 삭제
-     * @param id 삭제할 엔티티 ID
-     * @return 성공 시 true
-     */
     virtual bool deleteById(int id) = 0;
-    
-    /**
-     * @brief 엔티티 삭제
-     * @param entity 삭제할 엔티티
-     * @return 성공 시 true
-     */
-    virtual bool deleteEntity(const EntityType& entity) {
-        return deleteById(entity.getId());
-    }
-
-    // =======================================================================
-    // 벌크 연산 (성능 최적화)
-    // =======================================================================
-    
-    /**
-     * @brief 여러 ID로 엔티티들 조회
-     * @param ids ID 목록
-     * @return 엔티티 목록
-     */
     virtual std::vector<EntityType> findByIds(const std::vector<int>& ids) = 0;
-    
-    /**
-     * @brief 여러 엔티티 일괄 저장
-     * @param entities 저장할 엔티티들 (참조로 전달하여 ID 업데이트)
-     * @return 저장된 엔티티 수
-     */
     virtual int saveBulk(std::vector<EntityType>& entities) = 0;
-    
-    /**
-     * @brief 여러 엔티티 일괄 업데이트
-     * @param entities 업데이트할 엔티티들
-     * @return 업데이트된 엔티티 수
-     */
     virtual int updateBulk(const std::vector<EntityType>& entities) = 0;
-    
-    /**
-     * @brief 여러 ID 일괄 삭제
-     * @param ids 삭제할 ID들
-     * @return 삭제된 엔티티 수
-     */
     virtual int deleteByIds(const std::vector<int>& ids) = 0;
-
-    // =======================================================================
-    // 조건부 조회
-    // =======================================================================
-    
-    /**
-     * @brief 조건으로 엔티티 조회
-     * @param conditions 쿼리 조건들
-     * @param order_by 정렬 조건 (선택사항)
-     * @param pagination 페이징 정보 (선택사항)
-     * @return 조건에 맞는 엔티티 목록
-     */
     virtual std::vector<EntityType> findByConditions(
         const std::vector<QueryCondition>& conditions,
         const std::optional<OrderBy>& order_by = std::nullopt,
         const std::optional<Pagination>& pagination = std::nullopt) = 0;
-    
-    /**
-     * @brief 단일 조건으로 엔티티 조회
-     * @param field 필드명
-     * @param operation 연산자
-     * @param value 값
-     * @return 조건에 맞는 엔티티 목록
-     */
-    virtual std::vector<EntityType> findBy(const std::string& field, 
-                                          const std::string& operation, 
-                                          const std::string& value) {
-        return findByConditions({QueryCondition(field, operation, value)});
-    }
-    
-    /**
-     * @brief 조건으로 첫 번째 엔티티 조회
-     * @param conditions 쿼리 조건들
-     * @return 첫 번째 엔티티 (없으면 nullopt)
-     */
-    virtual std::optional<EntityType> findFirstByConditions(
-        const std::vector<QueryCondition>& conditions) {
-        auto results = findByConditions(conditions, std::nullopt, Pagination(1, 1));
-        return results.empty() ? std::nullopt : std::make_optional(results[0]);
-    }
-    
-    /**
-     * @brief 조건에 맞는 엔티티 개수 조회
-     * @param conditions 쿼리 조건들
-     * @return 엔티티 개수
-     */
     virtual int countByConditions(const std::vector<QueryCondition>& conditions) = 0;
+    virtual int getTotalCount() = 0;
 
     // =======================================================================
-    // 캐싱 관리
+    // 🔥 캐시 인터페이스 (기존 DeviceRepository와 호환)
     // =======================================================================
     
-    /**
-     * @brief 캐시 활성화/비활성화
-     * @param enabled 캐시 사용 여부
-     */
-    virtual void setCacheEnabled(bool enabled) = 0;
+    virtual void setCacheEnabled(bool enabled) {
+        std::lock_guard<std::mutex> lock(cache_mutex_);
+        cache_enabled_ = enabled;
+        
+        if (!enabled) {
+            entity_cache_.clear();
+            logger_->Info(repository_name_ + " cache disabled and cleared");
+        } else {
+            logger_->Info(repository_name_ + " cache enabled");
+        }
+    }
     
-    /**
-     * @brief 캐시 상태 조회
-     * @return 캐시 활성화 여부
-     */
-    virtual bool isCacheEnabled() const = 0;
+    virtual bool isCacheEnabled() const {
+        return cache_enabled_;
+    }
     
-    /**
-     * @brief 모든 캐시 삭제
-     */
-    virtual void clearCache() = 0;
+    virtual void clearCache() {
+        std::lock_guard<std::mutex> lock(cache_mutex_);
+        int cleared_count = static_cast<int>(entity_cache_.size());
+        entity_cache_.clear();
+        cache_hits_ = 0;
+        cache_misses_ = 0;
+        cache_evictions_ = 0;
+        
+        logger_->Info(repository_name_ + " cache cleared - " + 
+                     std::to_string(cleared_count) + " entries removed");
+    }
     
-    /**
-     * @brief 특정 엔티티 캐시 삭제
-     * @param id 엔티티 ID
-     */
-    virtual void clearCacheForId(int id) = 0;
+    virtual void clearCacheForId(int id) {
+        std::lock_guard<std::mutex> lock(cache_mutex_);
+        auto it = entity_cache_.find(id);
+        if (it != entity_cache_.end()) {
+            entity_cache_.erase(it);
+            logger_->Debug(repository_name_ + " cache cleared for ID: " + std::to_string(id));
+        }
+    }
     
-    /**
-     * @brief 캐시 통계 조회
-     * @return 캐시 통계 (hits, misses, size 등)
-     */
-    virtual std::map<std::string, int> getCacheStats() const = 0;
-
-    // =======================================================================
-    // 관계 데이터 로딩 (N+1 문제 해결)
-    // =======================================================================
-    
-    /**
-     * @brief 관계 데이터 사전 로딩
-     * @param entities 엔티티들
-     * @param relation_name 관계명
-     */
-    virtual void preloadRelation(std::vector<EntityType>& entities, 
-                                const std::string& relation_name) {
-        // 기본 구현은 비어둠 (파생 클래스에서 필요시 오버라이드)
-        (void)entities;
-        (void)relation_name;
+    virtual std::map<std::string, int> getCacheStats() const {
+        std::lock_guard<std::mutex> lock(cache_mutex_);
+        
+        std::map<std::string, int> stats;
+        stats["enabled"] = cache_enabled_ ? 1 : 0;
+        stats["size"] = static_cast<int>(entity_cache_.size());
+        stats["max_size"] = max_cache_size_;
+        stats["hits"] = cache_hits_.load();
+        stats["misses"] = cache_misses_.load();
+        stats["evictions"] = cache_evictions_.load();
+        stats["hit_rate"] = (cache_hits_ + cache_misses_ > 0) 
+                           ? (cache_hits_.load() * 100) / (cache_hits_.load() + cache_misses_.load()) 
+                           : 0;
+        
+        return stats;
     }
 
     // =======================================================================
-    // 통계 및 유틸리티
+    // 🔥 유틸리티 메서드들 (기존 DeviceRepository와 호환)
     // =======================================================================
     
-    /**
-     * @brief 전체 엔티티 개수 조회
-     * @return 전체 엔티티 개수
-     */
-    virtual int getTotalCount() = 0;
+    virtual std::string getRepositoryName() const {
+        return repository_name_;
+    }
     
-    /**
-     * @brief Repository가 비어있는지 확인
-     * @return 비어있으면 true
-     */
-    virtual bool isEmpty() {
+    bool isEmpty() {
         return getTotalCount() == 0;
     }
     
-    /**
-     * @brief 특정 ID가 존재하는지 확인
-     * @param id 확인할 ID
-     * @return 존재하면 true
-     */
-    virtual bool exists(int id) {
+    bool exists(int id) {
         return findById(id).has_value();
     }
     
-    /**
-     * @brief Repository 이름 조회 (디버깅용)
-     * @return Repository 이름
-     */
-    virtual std::string getRepositoryName() const = 0;
-
-    // =======================================================================
-    // 트랜잭션 지원 (선택사항)
-    // =======================================================================
-    
-    /**
-     * @brief 트랜잭션 시작
-     * @return 성공 시 true
-     */
-    virtual bool beginTransaction() {
-        // 기본 구현은 비어둠 (파생 클래스에서 필요시 구현)
-        return true;
+    bool deleteEntity(const EntityType& entity) {
+        return deleteById(entity.getId());
     }
     
-    /**
-     * @brief 트랜잭션 커밋
-     * @return 성공 시 true
-     */
-    virtual bool commitTransaction() {
-        // 기본 구현은 비어둠
-        return true;
+    std::vector<EntityType> findBy(const std::string& field, 
+                                  const std::string& operation, 
+                                  const std::string& value) {
+        return findByConditions({QueryCondition(field, operation, value)});
     }
     
-    /**
-     * @brief 트랜잭션 롤백
-     * @return 성공 시 true
-     */
-    virtual bool rollbackTransaction() {
-        // 기본 구현은 비어둠
-        return true;
-    }
-    
-    /**
-     * @brief 트랜잭션 내에서 작업 실행
-     * @param work 실행할 작업 (람다 함수)
-     * @return 성공 시 true
-     */
-    virtual bool executeInTransaction(std::function<bool()> work) {
-        if (!beginTransaction()) {
-            return false;
-        }
-        
-        try {
-            if (work()) {
-                return commitTransaction();
-            } else {
-                rollbackTransaction();
-                return false;
-            }
-        } catch (const std::exception&) {
-            rollbackTransaction();
-            return false;
-        }
+    std::optional<EntityType> findFirstByConditions(const std::vector<QueryCondition>& conditions) {
+        auto results = findByConditions(conditions, std::nullopt, Pagination(1, 1));
+        return results.empty() ? std::nullopt : std::make_optional(results[0]);
     }
 
 protected:
     // =======================================================================
-    // 보호된 헬퍼 메서드들 (파생 클래스에서 사용)
+    // 🔥 파생 클래스에서 사용할 캐시 헬퍼 메서드들 (기존 DeviceRepository 호환)
     // =======================================================================
     
     /**
-     * @brief QueryCondition들을 WHERE 절로 변환
-     * @param conditions 쿼리 조건들
-     * @return WHERE 절 문자열
+     * @brief 캐시에서 엔티티 조회 (기존 DeviceRepository::getCachedEntity와 동일)
      */
-    virtual std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    std::optional<EntityType> getCachedEntity(int id) {
+        if (!cache_enabled_) {
+            return std::nullopt;
+        }
+        
+        std::lock_guard<std::mutex> lock(cache_mutex_);
+        
+        auto it = entity_cache_.find(id);
+        if (it == entity_cache_.end()) {
+            cache_misses_.fetch_add(1);
+            return std::nullopt;
+        }
+        
+        auto& entry = it->second;
+        
+        // TTL 확인 (기존 DeviceRepository와 동일 로직)
+        auto now = std::chrono::system_clock::now();
+        if (now - entry.cached_at > cache_ttl_) {
+            entity_cache_.erase(it);
+            cache_evictions_.fetch_add(1);
+            cache_misses_.fetch_add(1);
+            return std::nullopt;
+        }
+        
+        cache_hits_.fetch_add(1);
+        return entry.entity;
+    }
+    
+    /**
+     * @brief 캐시에 엔티티 저장 (기존 DeviceRepository::cacheEntity와 동일)
+     */
+    void cacheEntity(const EntityType& entity) {
+        if (!cache_enabled_) {
+            return;
+        }
+        
+        std::lock_guard<std::mutex> lock(cache_mutex_);
+        
+        // 캐시 크기 제한 확인 (기존 DeviceRepository와 동일 로직)
+        if (static_cast<int>(entity_cache_.size()) >= max_cache_size_) {
+            cleanupExpiredCache();
+            
+            // 여전히 크기 초과시 가장 오래된 것 제거 (LRU)
+            if (static_cast<int>(entity_cache_.size()) >= max_cache_size_) {
+                auto oldest_it = entity_cache_.begin();
+                auto oldest_time = oldest_it->second.cached_at;
+                
+                for (auto it = entity_cache_.begin(); it != entity_cache_.end(); ++it) {
+                    if (it->second.cached_at < oldest_time) {
+                        oldest_time = it->second.cached_at;
+                        oldest_it = it;
+                    }
+                }
+                
+                entity_cache_.erase(oldest_it);
+                cache_evictions_.fetch_add(1);
+            }
+        }
+        
+        entity_cache_[entity.getId()] = CacheEntry(entity);
+    }
+    
+    // =======================================================================
+    // 🔥 파생 클래스에서 접근할 수 있는 공통 멤버들 (기존 DeviceRepository 호환)
+    // =======================================================================
+    
+    DatabaseManager* db_manager_;
+    ConfigManager* config_manager_;
+    PulseOne::LogManager* logger_;
+    bool enable_bulk_optimization_;
+
+    // 캐시 관련 (Repository 내부 전용)
+    mutable std::mutex cache_mutex_;
+    bool cache_enabled_;
+    std::map<int, CacheEntry> entity_cache_;  // 🔥 내부 CacheEntry 사용
+    std::chrono::seconds cache_ttl_;
+    std::atomic<int> cache_hits_;
+    std::atomic<int> cache_misses_;
+    std::atomic<int> cache_evictions_;
+    int max_cache_size_;
+
+    // =======================================================================
+    // 🔥 SQL 빌더 헬퍼 메서드들 (기존 DeviceRepository 헬퍼들과 호환)
+    // =======================================================================
+    
+    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const {
         if (conditions.empty()) {
             return "";
         }
@@ -367,25 +311,19 @@ protected:
             const auto& condition = conditions[i];
             where_clause += condition.field + " " + condition.operation + " ";
             
-            // IN 연산자는 특별 처리
             if (condition.operation == "IN") {
                 where_clause += "(" + condition.value + ")";
             } else if (condition.operation == "LIKE") {
-                where_clause += "'%" + condition.value + "%'";
+                where_clause += "'%" + escapeString(condition.value) + "%'";
             } else {
-                where_clause += "'" + condition.value + "'";
+                where_clause += "'" + escapeString(condition.value) + "'";
             }
         }
         
         return where_clause;
     }
     
-    /**
-     * @brief OrderBy를 ORDER BY 절로 변환
-     * @param order_by 정렬 조건
-     * @return ORDER BY 절 문자열
-     */
-    virtual std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const {
         if (!order_by.has_value()) {
             return "";
         }
@@ -394,18 +332,63 @@ protected:
                (order_by->ascending ? " ASC" : " DESC");
     }
     
-    /**
-     * @brief Pagination을 LIMIT/OFFSET 절로 변환
-     * @param pagination 페이징 정보
-     * @return LIMIT/OFFSET 절 문자열
-     */
-    virtual std::string buildLimitClause(const std::optional<Pagination>& pagination) const {
+    std::string buildLimitClause(const std::optional<Pagination>& pagination) const {
         if (!pagination.has_value()) {
             return "";
         }
         
         return " LIMIT " + std::to_string(pagination->getLimit()) + 
                " OFFSET " + std::to_string(pagination->getOffset());
+    }
+
+private:
+    std::string repository_name_;
+    
+    // =======================================================================
+    // 내부 헬퍼 메서드들 (기존 DeviceRepository와 동일)
+    // =======================================================================
+    
+    void cleanupExpiredCache() {
+        auto now = std::chrono::system_clock::now();
+        
+        auto it = entity_cache_.begin();
+        while (it != entity_cache_.end()) {
+            if (now - it->second.cached_at > cache_ttl_) {
+                it = entity_cache_.erase(it);
+                cache_evictions_.fetch_add(1);
+            } else {
+                ++it;
+            }
+        }
+    }
+    
+    void loadCacheConfiguration() {
+        try {
+            int ttl_seconds = std::stoi(config_manager_->getOrDefault("CACHE_TTL_SECONDS", "300"));
+            cache_ttl_ = std::chrono::seconds(ttl_seconds);
+            
+            max_cache_size_ = std::stoi(config_manager_->getOrDefault("CACHE_MAX_SIZE", "1000"));
+            
+            enable_bulk_optimization_ = config_manager_->getOrDefault("ENABLE_BULK_OPTIMIZATION", "true") == "true";
+                
+            logger_->Debug(repository_name_ + " cache config loaded - TTL: " + 
+                          std::to_string(ttl_seconds) + "s, Max size: " + 
+                          std::to_string(max_cache_size_));
+                          
+        } catch (const std::exception& e) {
+            logger_->Warn(repository_name_ + " failed to load cache config, using defaults: " + 
+                         std::string(e.what()));
+        }
+    }
+    
+    std::string escapeString(const std::string& str) const {
+        std::string escaped = str;
+        size_t pos = 0;
+        while ((pos = escaped.find("'", pos)) != std::string::npos) {
+            escaped.replace(pos, 1, "''");
+            pos += 2;
+        }
+        return escaped;
     }
 };
 
