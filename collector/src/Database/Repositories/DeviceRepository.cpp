@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Database/Repositories/DeviceRepository.cpp
-// PulseOne 디바이스 Repository 구현 - IRepository 패턴 준수
+// PulseOne 디바이스 Repository 구현 - IRepository 마이그레이션 완성본
 // =============================================================================
 
 #include "Database/Repositories/DeviceRepository.h"
@@ -14,27 +14,19 @@ using namespace PulseOne::Constants;
 namespace PulseOne {
 namespace Database {
 namespace Repositories{
+
 // =============================================================================
-// 생성자 및 초기화
+// 생성자 및 초기화 (IRepository 기반)
 // =============================================================================
 
 DeviceRepository::DeviceRepository()
-    : db_manager_(&DatabaseManager::getInstance())
-    , config_manager_(&ConfigManager::getInstance())
-    , logger_(&PulseOne::LogManager::getInstance())
-    , cache_enabled_(true)
-    , cache_ttl_(std::chrono::seconds(300))  // 5분 TTL
-    , cache_hits_(0)
-    , cache_misses_(0)
-    , cache_evictions_(0)
-    , max_cache_size_(1000)
-    , enable_bulk_optimization_(true) {
-    
-    logger_->Info("🏭 DeviceRepository initialized with caching enabled");
+    : IRepository<DeviceEntity>("DeviceRepository")  // 🔥 IRepository 초기화로 캐시 자동 설정
+{
+    logger_->Info("🏭 DeviceRepository initialized with IRepository caching enabled");
 }
 
 // =============================================================================
-// IRepository 기본 CRUD 구현
+// IRepository 기본 CRUD 구현 (캐시 자동 적용)
 // =============================================================================
 
 std::vector<DeviceEntity> DeviceRepository::findAll() {
@@ -62,15 +54,11 @@ std::optional<DeviceEntity> DeviceRepository::findById(int id) {
         return std::nullopt;
     }
     
-    // 캐시 확인
-    if (cache_enabled_) {
-        auto cached = getCachedEntity(id);
-        if (cached.has_value()) {
-            cache_hits_++;
-            logger_->Debug("DeviceRepository::findById - Cache hit for ID: " + std::to_string(id));
-            return cached;
-        }
-        cache_misses_++;
+    // 🔥 IRepository의 캐시 자동 확인 (getCachedEntity는 IRepository에서 제공)
+    auto cached = getCachedEntity(id);
+    if (cached.has_value()) {
+        logger_->Debug("DeviceRepository::findById - Cache hit for ID: " + std::to_string(id));
+        return cached;
     }
     
     try {
@@ -85,10 +73,8 @@ std::optional<DeviceEntity> DeviceRepository::findById(int id) {
             return std::nullopt;
         }
         
-        // 캐시에 저장
-        if (cache_enabled_) {
-            cacheEntity(entities[0]);
-        }
+        // 🔥 IRepository의 캐시 자동 저장 (cacheEntity는 IRepository에서 제공)
+        cacheEntity(entities[0]);
         
         logger_->Debug("DeviceRepository::findById - Found device: " + entities[0].getName());
         return entities[0];
@@ -103,7 +89,8 @@ bool DeviceRepository::save(DeviceEntity& entity) {
     try {
         bool success = entity.saveToDatabase();
         
-        if (success && cache_enabled_) {
+        // 🔥 IRepository의 캐시 자동 적용
+        if (success) {
             cacheEntity(entity);
             logger_->Info("DeviceRepository::save - Saved and cached device: " + entity.getName());
         }
@@ -122,8 +109,8 @@ bool DeviceRepository::update(const DeviceEntity& entity) {
         DeviceEntity& mutable_entity = const_cast<DeviceEntity&>(entity);
         bool success = mutable_entity.updateToDatabase();
         
-        if (success && cache_enabled_) {
-            // 캐시에서 제거 (다음 조회 시 새로 로드)
+        // 🔥 IRepository의 캐시 자동 무효화
+        if (success) {
             clearCacheForId(entity.getId());
             logger_->Info("DeviceRepository::update - Updated device and cleared cache: " + entity.getName());
         }
@@ -141,7 +128,8 @@ bool DeviceRepository::deleteById(int id) {
         DeviceEntity entity(id);
         bool success = entity.deleteFromDatabase();
         
-        if (success && cache_enabled_) {
+        // 🔥 IRepository의 캐시 자동 제거
+        if (success) {
             clearCacheForId(id);
             logger_->Info("DeviceRepository::deleteById - Deleted device and cleared cache: " + std::to_string(id));
         }
@@ -155,7 +143,7 @@ bool DeviceRepository::deleteById(int id) {
 }
 
 // =============================================================================
-// IRepository 벌크 연산 구현
+// IRepository 벌크 연산 구현 (캐시 자동 적용)
 // =============================================================================
 
 std::vector<DeviceEntity> DeviceRepository::findByIds(const std::vector<int>& ids) {
@@ -177,11 +165,9 @@ std::vector<DeviceEntity> DeviceRepository::findByIds(const std::vector<int>& id
         
         auto entities = findByConditions(conditions);
         
-        // 캐시에 저장
-        if (cache_enabled_) {
-            for (const auto& entity : entities) {
-                cacheEntity(entity);
-            }
+        // 🔥 IRepository의 캐시 자동 저장
+        for (const auto& entity : entities) {
+            cacheEntity(entity);
         }
         
         logger_->Info("DeviceRepository::findByIds - Found " + 
@@ -244,10 +230,8 @@ int DeviceRepository::saveBulk(std::vector<DeviceEntity>& entities) {
                 if (entity.saveToDatabase()) {
                     saved_count++;
                     
-                    // 캐시에 저장
-                    if (cache_enabled_) {
-                        cacheEntity(entity);
-                    }
+                    // 🔥 IRepository의 캐시 자동 저장
+                    cacheEntity(entity);
                 }
             }
             
@@ -276,10 +260,8 @@ int DeviceRepository::updateBulk(const std::vector<DeviceEntity>& entities) {
             if (mutable_entity.updateToDatabase()) {
                 updated_count++;
                 
-                // 캐시에서 제거
-                if (cache_enabled_) {
-                    clearCacheForId(entity.getId());
-                }
+                // 🔥 IRepository의 캐시 자동 무효화
+                clearCacheForId(entity.getId());
             }
         }
         
@@ -309,8 +291,8 @@ int DeviceRepository::deleteByIds(const std::vector<int>& ids) {
         
         bool success = executeUnifiedNonQuery(sql);
         
-        if (success && cache_enabled_) {
-            // 캐시에서 제거
+        // 🔥 IRepository의 캐시 자동 제거
+        if (success) {
             for (int id : ids) {
                 clearCacheForId(id);
             }
@@ -378,7 +360,43 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
 }
 
 // =============================================================================
-// 디바이스 전용 조회 메서드들
+// IRepository 캐시 관리 (자동 위임)
+// =============================================================================
+
+void DeviceRepository::setCacheEnabled(bool enabled) {
+    // 🔥 IRepository의 캐시 관리 위임
+    IRepository<DeviceEntity>::setCacheEnabled(enabled);
+    logger_->Info("DeviceRepository cache " + std::string(enabled ? "enabled" : "disabled"));
+}
+
+bool DeviceRepository::isCacheEnabled() const {
+    // 🔥 IRepository의 캐시 상태 위임
+    return IRepository<DeviceEntity>::isCacheEnabled();
+}
+
+void DeviceRepository::clearCache() {
+    // 🔥 IRepository의 캐시 클리어 위임
+    IRepository<DeviceEntity>::clearCache();
+    logger_->Info("DeviceRepository cache cleared");
+}
+
+void DeviceRepository::clearCacheForId(int id) {
+    // 🔥 IRepository의 개별 캐시 클리어 위임
+    IRepository<DeviceEntity>::clearCacheForId(id);
+    logger_->Debug("DeviceRepository cache cleared for ID: " + std::to_string(id));
+}
+
+std::map<std::string, int> DeviceRepository::getCacheStats() const {
+    // 🔥 IRepository의 캐시 통계 위임
+    return IRepository<DeviceEntity>::getCacheStats();
+}
+
+int DeviceRepository::getTotalCount() {
+    return countByConditions({});
+}
+
+// =============================================================================
+// 디바이스 전용 조회 메서드들 (기존 로직 그대로 유지)
 // =============================================================================
 
 std::vector<DeviceEntity> DeviceRepository::findAllEnabled() {
@@ -463,7 +481,7 @@ std::vector<DeviceEntity> DeviceRepository::findByNamePattern(const std::string&
 }
 
 // =============================================================================
-// 관계 데이터 사전 로딩 (N+1 문제 해결)
+// 관계 데이터 사전 로딩 (N+1 문제 해결) - 기존 로직 유지
 // =============================================================================
 
 void DeviceRepository::preloadDataPoints(std::vector<DeviceEntity>& devices) {
@@ -509,7 +527,6 @@ void DeviceRepository::preloadDataPoints(std::vector<DeviceEntity>& devices) {
             int device_id = device.getId();
             if (device_points_map.count(device_id)) {
                 // 실제로는 DeviceEntity 내부의 캐시에 저장해야 함
-                // 여기서는 getDataPoints()를 호출하여 로드 트리거
                 device.getDataPoints();
             }
         }
@@ -561,72 +578,7 @@ void DeviceRepository::preloadAllRelations(std::vector<DeviceEntity>& devices) {
 }
 
 // =============================================================================
-// IRepository 캐싱 구현
-// =============================================================================
-
-void DeviceRepository::setCacheEnabled(bool enabled) {
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    cache_enabled_ = enabled;
-    
-    if (!enabled) {
-        entity_cache_.clear();
-        logger_->Info("DeviceRepository cache disabled and cleared");
-    } else {
-        logger_->Info("DeviceRepository cache enabled");
-    }
-}
-
-bool DeviceRepository::isCacheEnabled() const {
-    return cache_enabled_;
-}
-
-void DeviceRepository::clearCache() {
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    int cleared_count = static_cast<int>(entity_cache_.size());
-    entity_cache_.clear();
-    cache_hits_ = 0;
-    cache_misses_ = 0;
-    cache_evictions_ = 0;
-    
-    logger_->Info("DeviceRepository cache cleared - " + std::to_string(cleared_count) + " entries removed");
-}
-
-void DeviceRepository::clearCacheForId(int id) {
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    auto it = entity_cache_.find(id);
-    if (it != entity_cache_.end()) {
-        entity_cache_.erase(it);
-        logger_->Debug("DeviceRepository cache cleared for ID: " + std::to_string(id));
-    }
-}
-
-std::map<std::string, int> DeviceRepository::getCacheStats() const {
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    
-    std::map<std::string, int> stats;
-    stats["enabled"] = cache_enabled_ ? 1 : 0;
-    stats["size"] = static_cast<int>(entity_cache_.size());
-    stats["max_size"] = max_cache_size_;
-    stats["hits"] = cache_hits_;
-    stats["misses"] = cache_misses_;
-    stats["evictions"] = cache_evictions_;
-    stats["hit_rate"] = (cache_hits_ + cache_misses_ > 0) 
-                       ? (cache_hits_ * 100) / (cache_hits_ + cache_misses_) 
-                       : 0;
-    
-    return stats;
-}
-
-// =============================================================================
-// IRepository 통계 및 유틸리티 구현
-// =============================================================================
-
-int DeviceRepository::getTotalCount() {
-    return countByConditions({});
-}
-
-// =============================================================================
-// 디바이스 전용 통계
+// 디바이스 전용 통계 - 기존 로직 유지
 // =============================================================================
 
 std::map<std::string, int> DeviceRepository::getCountByProtocol() {
@@ -716,7 +668,7 @@ std::map<std::string, int> DeviceRepository::getCountByStatus() {
 }
 
 // =============================================================================
-// Worker 지원 메서드들
+// Worker 지원 메서드들 - 기존 로직 유지
 // =============================================================================
 
 std::vector<DeviceEntity> DeviceRepository::findDevicesForWorkers() {
@@ -749,10 +701,8 @@ int DeviceRepository::updateDeviceStatuses(const std::map<int, std::string>& sta
             if (executeUnifiedNonQuery(sql)) {
                 updated_count++;
                 
-                // 캐시에서 제거 (다음 조회 시 새로 로드)
-                if (cache_enabled_) {
-                    clearCacheForId(device_id);
-                }
+                // 🔥 IRepository의 캐시 자동 무효화
+                clearCacheForId(device_id);
             }
         }
         
@@ -768,7 +718,7 @@ int DeviceRepository::updateDeviceStatuses(const std::map<int, std::string>& sta
 }
 
 // =============================================================================
-// 내부 헬퍼 메서드들
+// 내부 헬퍼 메서드들 (기존 로직 그대로 유지)
 // =============================================================================
 
 std::vector<DeviceEntity> DeviceRepository::mapResultsToEntities(
@@ -891,75 +841,8 @@ std::string DeviceRepository::buildSelectQuery(
     return query.str();
 }
 
-std::optional<DeviceEntity> DeviceRepository::getCachedEntity(int id) {
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    
-    auto it = entity_cache_.find(id);
-    if (it == entity_cache_.end()) {
-        return std::nullopt;
-    }
-    
-    auto& entry = it->second;
-    
-    // TTL 확인
-    auto now = std::chrono::system_clock::now();
-    if (now - entry.cached_at > cache_ttl_) {
-        entity_cache_.erase(it);
-        cache_evictions_++;
-        return std::nullopt;
-    }
-    
-    return entry.entity;
-}
-
-void DeviceRepository::cacheEntity(const DeviceEntity& entity) {
-    if (!cache_enabled_) {
-        return;
-    }
-    
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    
-    // 캐시 크기 제한 확인
-    if (static_cast<int>(entity_cache_.size()) >= max_cache_size_) {
-        cleanupExpiredCache();
-        
-        // 여전히 크기 초과시 가장 오래된 것 제거 (LRU)
-        if (static_cast<int>(entity_cache_.size()) >= max_cache_size_) {
-            auto oldest_it = entity_cache_.begin();
-            auto oldest_time = oldest_it->second.cached_at;
-            
-            for (auto it = entity_cache_.begin(); it != entity_cache_.end(); ++it) {
-                if (it->second.cached_at < oldest_time) {
-                    oldest_time = it->second.cached_at;
-                    oldest_it = it;
-                }
-            }
-            
-            entity_cache_.erase(oldest_it);
-            cache_evictions_++;
-        }
-    }
-    
-    // 새 엔트리 추가
-    entity_cache_[entity.getId()] = CacheEntry(entity);
-}
-
-void DeviceRepository::cleanupExpiredCache() {
-    auto now = std::chrono::system_clock::now();
-    
-    auto it = entity_cache_.begin();
-    while (it != entity_cache_.end()) {
-        if (now - it->second.cached_at > cache_ttl_) {
-            it = entity_cache_.erase(it);
-            cache_evictions_++;
-        } else {
-            ++it;
-        }
-    }
-}
-
 // =============================================================================
-// DB 쿼리 실행 헬퍼 메서드들 (BaseEntity와 유사한 패턴)
+// DB 쿼리 실행 헬퍼 메서드들 (기존 로직 그대로 유지)
 // =============================================================================
 
 std::vector<std::map<std::string, std::string>> DeviceRepository::executePostgresQuery(const std::string& sql) {
