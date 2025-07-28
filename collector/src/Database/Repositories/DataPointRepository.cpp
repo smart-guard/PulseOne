@@ -1,11 +1,7 @@
-// DataPointRepository.cpp - 올바른 DatabaseManager 메서드 사용
-
-/**
- * @file DataPointRepository.cpp  
- * @brief PulseOne DataPointRepository 구현 - DatabaseManager 실제 메서드 사용
- * @author PulseOne Development Team
- * @date 2025-07-27
- */
+// =============================================================================
+// collector/src/Database/Repositories/DataPointRepository.cpp
+// PulseOne 데이터포인트 Repository 구현 - IRepository 마이그레이션 완성본
+// =============================================================================
 
 #include "Database/Repositories/DataPointRepository.h"
 #include <sstream>
@@ -14,18 +10,6 @@
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
-
-// =============================================================================
-// 생성자
-// =============================================================================
-DataPointRepository::DataPointRepository()
-    : db_manager_(&DatabaseManager::getInstance())
-    , config_manager_(&ConfigManager::getInstance())
-    , logger_(&PulseOne::LogManager::getInstance())
-    , cache_enabled_(true) {
-    
-    logger_->Info("DataPointRepository created");
-}
 
 // =============================================================================
 // SQLite 쿼리 결과를 map으로 변환하는 콜백
@@ -48,7 +32,17 @@ static int sqlite_callback(void* data, int argc, char** argv, char** column_name
 }
 
 // =============================================================================
-// DatabaseManager 래퍼 메서드들
+// 생성자 및 초기화 (IRepository 기반)
+// =============================================================================
+
+DataPointRepository::DataPointRepository()
+    : IRepository<DataPointEntity>("DataPointRepository")  // 🔥 IRepository 초기화로 캐시 자동 설정
+{
+    logger_->Info("📊 DataPointRepository initialized with IRepository caching enabled");
+}
+
+// =============================================================================
+// DatabaseManager 래퍼 메서드들 (기존 로직 그대로 유지)
 // =============================================================================
 
 std::vector<std::map<std::string, std::string>> DataPointRepository::executeDatabaseQuery(const std::string& sql) {
@@ -59,12 +53,12 @@ std::vector<std::map<std::string, std::string>> DataPointRepository::executeData
             auto pq_result = db_manager_->executeQueryPostgres(sql);
             std::vector<std::map<std::string, std::string>> result;
             
-            // 🔥 수정: pqxx::row 접근 방법 수정
+            // PostgreSQL 결과 처리
             for (const auto& row : pq_result) {
                 std::map<std::string, std::string> row_map;
                 for (size_t i = 0; i < row.size(); ++i) {
                     std::string column_name = pq_result.column_name(static_cast<int>(i));
-                    std::string value = row[static_cast<int>(i)].c_str();  // 🔥 수정: int로 캐스팅
+                    std::string value = row[static_cast<int>(i)].c_str();
                     row_map[column_name] = value;
                 }
                 result.push_back(row_map);
@@ -86,7 +80,6 @@ std::vector<std::map<std::string, std::string>> DataPointRepository::executeData
 
 bool DataPointRepository::executeDatabaseNonQuery(const std::string& sql) {
     try {
-        // 🔥 수정: 실제 DatabaseManager 메서드 사용
         std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
         
         if (db_type == "POSTGRESQL") {
@@ -102,14 +95,18 @@ bool DataPointRepository::executeDatabaseNonQuery(const std::string& sql) {
 }
 
 // =============================================================================
-// IRepository 인터페이스 구현
+// IRepository 기본 CRUD 구현 (캐시 자동 적용)
 // =============================================================================
 
 std::vector<DataPointEntity> DataPointRepository::findAll() {
     try {
         std::string sql = "SELECT * FROM data_points ORDER BY device_id, address";
         auto result = executeDatabaseQuery(sql);
-        return mapResultToEntities(result);
+        auto entities = mapResultToEntities(result);
+        
+        logger_->Info("DataPointRepository::findAll - Found " + std::to_string(entities.size()) + " data points");
+        return entities;
+        
     } catch (const std::exception& e) {
         logger_->Error("DataPointRepository::findAll failed: " + std::string(e.what()));
         return {};
@@ -117,25 +114,33 @@ std::vector<DataPointEntity> DataPointRepository::findAll() {
 }
 
 std::optional<DataPointEntity> DataPointRepository::findById(int id) {
+    if (id <= 0) {
+        logger_->Warn("DataPointRepository::findById - Invalid ID: " + std::to_string(id));
+        return std::nullopt;
+    }
+    
+    // 🔥 IRepository의 캐시 자동 확인
+    auto cached = getCachedEntity(id);
+    if (cached.has_value()) {
+        logger_->Debug("DataPointRepository::findById - Cache hit for ID: " + std::to_string(id));
+        return cached;
+    }
+    
     try {
-        // 캐시에서 먼저 확인
-        if (cache_enabled_) {
-            auto cached = getFromCache(id);
-            if (cached.has_value()) {
-                updateCacheStats("hit");
-                return cached;
-            }
-            updateCacheStats("miss");
-        }
-        
         std::string sql = "SELECT * FROM data_points WHERE id = " + std::to_string(id);
         auto result = executeDatabaseQuery(sql);
         
         if (result.empty()) {
+            logger_->Debug("DataPointRepository::findById - Data point not found: " + std::to_string(id));
             return std::nullopt;
         }
         
         DataPointEntity entity = mapRowToEntity(result[0]);
+        
+        // 🔥 IRepository의 캐시 자동 저장
+        cacheEntity(entity);
+        
+        logger_->Debug("DataPointRepository::findById - Found data point: " + entity.getName());
         return entity;
         
     } catch (const std::exception& e) {
@@ -189,9 +194,15 @@ bool DataPointRepository::save(DataPointEntity& entity) {
             if (!id_result.empty()) {
                 entity.setId(std::stoi(id_result[0].at("id")));
             }
+            
+            // 🔥 IRepository의 캐시 자동 저장
+            cacheEntity(entity);
+            
+            logger_->Info("DataPointRepository::save - Saved and cached data point: " + entity.getName());
         }
         
         return success;
+        
     } catch (const std::exception& e) {
         logger_->Error("DataPointRepository::save failed: " + std::string(e.what()));
         return false;
@@ -223,11 +234,14 @@ bool DataPointRepository::update(const DataPointEntity& entity) {
         
         bool success = executeDatabaseNonQuery(sql);
         
+        // 🔥 IRepository의 캐시 자동 무효화
         if (success) {
-            logger_->Info("DataPointRepository::update - Updated data point: " + entity.getName());
+            clearCacheForId(entity.getId());
+            logger_->Info("DataPointRepository::update - Updated data point and cleared cache: " + entity.getName());
         }
         
         return success;
+        
     } catch (const std::exception& e) {
         logger_->Error("DataPointRepository::update failed: " + std::string(e.what()));
         return false;
@@ -239,12 +253,14 @@ bool DataPointRepository::deleteById(int id) {
         std::string sql = "DELETE FROM data_points WHERE id = " + std::to_string(id);
         bool success = executeDatabaseNonQuery(sql);
         
+        // 🔥 IRepository의 캐시 자동 제거
         if (success) {
             clearCacheForId(id);
-            logger_->Info("DataPointRepository::deleteById - Deleted data point ID: " + std::to_string(id));
+            logger_->Info("DataPointRepository::deleteById - Deleted data point and cleared cache: " + std::to_string(id));
         }
         
         return success;
+        
     } catch (const std::exception& e) {
         logger_->Error("DataPointRepository::deleteById failed: " + std::string(e.what()));
         return false;
@@ -256,7 +272,7 @@ bool DataPointRepository::exists(int id) {
 }
 
 // =============================================================================
-// 벌크 연산 구현 (기본적인 것들만)
+// 벌크 연산 구현 (캐시 자동 적용)
 // =============================================================================
 
 std::vector<DataPointEntity> DataPointRepository::findByIds(const std::vector<int>& ids) {
@@ -271,7 +287,18 @@ std::vector<DataPointEntity> DataPointRepository::findByIds(const std::vector<in
     try {
         std::string sql = "SELECT * FROM data_points WHERE id IN (" + id_list + ")";
         auto result = executeDatabaseQuery(sql);
-        return mapResultToEntities(result);
+        auto entities = mapResultToEntities(result);
+        
+        // 🔥 IRepository의 캐시 자동 저장
+        for (const auto& entity : entities) {
+            cacheEntity(entity);
+        }
+        
+        logger_->Info("DataPointRepository::findByIds - Found " + 
+                    std::to_string(entities.size()) + "/" + std::to_string(ids.size()) + " data points");
+        
+        return entities;
+        
     } catch (const std::exception& e) {
         logger_->Error("DataPointRepository::findByIds failed: " + std::string(e.what()));
         return {};
@@ -290,7 +317,13 @@ std::vector<DataPointEntity> DataPointRepository::findByConditions(
         sql += buildLimitClause(pagination);
         
         auto result = executeDatabaseQuery(sql);
-        return mapResultToEntities(result);
+        auto entities = mapResultToEntities(result);
+        
+        logger_->Debug("DataPointRepository::findByConditions - Found " + 
+                     std::to_string(entities.size()) + " data points");
+        
+        return entities;
+        
     } catch (const std::exception& e) {
         logger_->Error("DataPointRepository::findByConditions failed: " + std::string(e.what()));
         return {};
@@ -320,246 +353,85 @@ int DataPointRepository::countByConditions(const std::vector<QueryCondition>& co
     return 0;
 }
 
-// =============================================================================
-// 캐시 관리 구현 (간단하게)
-// =============================================================================
-
-void DataPointRepository::setCacheEnabled(bool enabled) {
-    cache_enabled_ = enabled;
-}
-
-bool DataPointRepository::isCacheEnabled() const {
-    return cache_enabled_;
-}
-
-void DataPointRepository::clearCache() {
-    // 캐시 기능 일시 비활성화 (BaseEntity 문제 해결 후 재구현)
-}
-
-void DataPointRepository::clearCacheForId(int id) {
-    // 캐시 기능 일시 비활성화
-    (void)id;
-}
-
-std::map<std::string, int> DataPointRepository::getCacheStats() const {
-    return std::map<std::string, int>();
-}
-
-// =============================================================================
-// 유틸리티 구현
-// =============================================================================
-
-int DataPointRepository::getTotalCount() {
-    try {
-        auto result = executeDatabaseQuery("SELECT COUNT(*) as count FROM data_points");
-        if (!result.empty()) {
-            return std::stoi(result[0].at("count"));
-        }
-    } catch (const std::exception& e) {
-        logger_->Error("DataPointRepository::getTotalCount failed: " + std::string(e.what()));
-    }
-    return 0;
-}
-
-std::string DataPointRepository::getRepositoryName() const {
-    return "DataPointRepository";
-}
-
-// =============================================================================
-// DataPoint 전용 메서드들 구현 (기본적인 것들만)
-// =============================================================================
-
-std::vector<DataPointEntity> DataPointRepository::findByDeviceId(int device_id, bool enabled_only) {
-    std::vector<QueryCondition> conditions;
-    conditions.emplace_back("device_id", "=", std::to_string(device_id));
-    
-    if (enabled_only) {
-        conditions.emplace_back("is_enabled", "=", "1");
-    }
-    
-    return findByConditions(conditions);
-}
-
-// =============================================================================
-// 내부 헬퍼 메서드들 구현
-// =============================================================================
-
-DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
-    DataPointEntity entity;
-    
-    try {
-        // 기본 필드들
-        entity.setId(std::stoi(row.at("id")));
-        entity.setDeviceId(std::stoi(row.at("device_id")));
-        entity.setName(row.at("name"));
-        entity.setDescription(row.at("description"));
-        entity.setAddress(std::stoi(row.at("address")));
-        entity.setDataType(row.at("data_type"));
-        entity.setAccessMode(row.at("access_mode"));
-        entity.setEnabled(row.at("is_enabled") == "1");
-        
-        // 엔지니어링 정보
-        if (row.count("unit")) entity.setUnit(row.at("unit"));
-        if (row.count("scaling_factor")) entity.setScalingFactor(std::stod(row.at("scaling_factor")));
-        if (row.count("scaling_offset")) entity.setScalingOffset(std::stod(row.at("scaling_offset")));
-        if (row.count("min_value")) entity.setMinValue(std::stod(row.at("min_value")));
-        if (row.count("max_value")) entity.setMaxValue(std::stod(row.at("max_value")));
-        
-        // 로깅 설정
-        if (row.count("log_enabled")) entity.setLogEnabled(row.at("log_enabled") == "1");
-        if (row.count("log_interval_ms")) entity.setLogInterval(std::stoi(row.at("log_interval_ms")));
-        if (row.count("log_deadband")) entity.setLogDeadband(std::stod(row.at("log_deadband")));
-        
-        // 태그 파싱
-        if (row.count("tags")) {
-            std::string tags_str = row.at("tags");
-            std::vector<std::string> tags = parseTagsFromString(tags_str);
-            entity.setTags(tags);
-        }
-        
-        // 메타데이터 파싱
-        if (row.count("metadata") && !row.at("metadata").empty()) {
-            try {
-                json metadata = json::parse(row.at("metadata"));
-                entity.setMetadata(metadata);
-            } catch (const std::exception&) {
-                entity.setMetadata(json::object());
-            }
-        }
-        
-    } catch (const std::exception& e) {
-        logger_->Error("DataPointRepository::mapRowToEntity failed: " + std::string(e.what()));
-    }
-    
-    return entity;
-}
-
-std::vector<DataPointEntity> DataPointRepository::mapResultToEntities(
-    const std::vector<std::map<std::string, std::string>>& result) {
-    
-    std::vector<DataPointEntity> entities;
-    entities.reserve(result.size());
-    
-    for (const auto& row : result) {
-        entities.push_back(mapRowToEntity(row));
-    }
-    
-    return entities;
-}
-
-std::optional<DataPointEntity> DataPointRepository::getFromCache(int id) const {
-    // 캐시 기능 일시 비활성화
-    (void)id;
-    return std::nullopt;
-}
-
-void DataPointRepository::updateCacheStats(const std::string& operation) const {
-    // 캐시 기능 일시 비활성화
-    (void)operation;
-}
-
-// =============================================================================
-// 유틸리티 함수들
-// =============================================================================
-
-std::string DataPointRepository::tagsToString(const std::vector<std::string>& tags) {
-    if (tags.empty()) return "";
-    
-    std::ostringstream oss;
-    for (size_t i = 0; i < tags.size(); ++i) {
-        if (i > 0) oss << ",";
-        oss << tags[i];
-    }
-    return oss.str();
-}
-
-std::vector<std::string> DataPointRepository::parseTagsFromString(const std::string& tags_str) {
-    std::vector<std::string> tags;
-    if (tags_str.empty()) return tags;
-    
-    std::istringstream iss(tags_str);
-    std::string tag;
-    while (std::getline(iss, tag, ',')) {
-        if (!tag.empty()) {
-            tags.push_back(tag);
-        }
-    }
-    return tags;
-}
-
-std::string DataPointRepository::getCurrentTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
-
-std::string DataPointRepository::escapeString(const std::string& str) {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
-
-// =============================================================================
-// SQL 빌더 헬퍼 메서드들
-// =============================================================================
-
-std::string DataPointRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        // 🔥 수정: operation 멤버 사용 (op가 아님)
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string DataPointRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    // 🔥 수정: ascending 멤버 사용 (direction이 아님)
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string DataPointRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    // 🔥 수정: getLimit(), getOffset() 메서드 사용
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
-// 기타 누락된 메서드들 (기본 구현)
 int DataPointRepository::saveBulk(std::vector<DataPointEntity>& entities) {
     int saved_count = 0;
     for (auto& entity : entities) {
-        if (save(entity)) saved_count++;
+        if (save(entity)) {
+            saved_count++;
+            // save() 메서드에서 이미 캐시 처리됨
+        }
     }
+    
+    logger_->Info("DataPointRepository::saveBulk - Saved " + std::to_string(saved_count) + " data points");
     return saved_count;
 }
 
 int DataPointRepository::updateBulk(const std::vector<DataPointEntity>& entities) {
     int updated_count = 0;
     for (const auto& entity : entities) {
-        if (update(entity)) updated_count++;
+        if (update(entity)) {
+            updated_count++;
+            // update() 메서드에서 이미 캐시 무효화됨
+        }
     }
+    
+    logger_->Info("DataPointRepository::updateBulk - Updated " + std::to_string(updated_count) + " data points");
     return updated_count;
 }
 
 int DataPointRepository::deleteByIds(const std::vector<int>& ids) {
     int deleted_count = 0;
     for (int id : ids) {
-        if (deleteById(id)) deleted_count++;
+        if (deleteById(id)) {
+            deleted_count++;
+            // deleteById() 메서드에서 이미 캐시 제거됨
+        }
     }
+    
+    logger_->Info("DataPointRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " data points");
     return deleted_count;
 }
 
-// 추가 DataPoint 전용 메서드들 (기본 구현)
+// =============================================================================
+// IRepository 캐시 관리 (자동 위임)
+// =============================================================================
+
+void DataPointRepository::setCacheEnabled(bool enabled) {
+    // 🔥 IRepository의 캐시 관리 위임
+    IRepository<DataPointEntity>::setCacheEnabled(enabled);
+    logger_->Info("DataPointRepository cache " + std::string(enabled ? "enabled" : "disabled"));
+}
+
+bool DataPointRepository::isCacheEnabled() const {
+    // 🔥 IRepository의 캐시 상태 위임
+    return IRepository<DataPointEntity>::isCacheEnabled();
+}
+
+void DataPointRepository::clearCache() {
+    // 🔥 IRepository의 캐시 클리어 위임
+    IRepository<DataPointEntity>::clearCache();
+    logger_->Info("DataPointRepository cache cleared");
+}
+
+void DataPointRepository::clearCacheForId(int id) {
+    // 🔥 IRepository의 개별 캐시 클리어 위임
+    IRepository<DataPointEntity>::clearCacheForId(id);
+    logger_->Debug("DataPointRepository cache cleared for ID: " + std::to_string(id));
+}
+
+std::map<std::string, int> DataPointRepository::getCacheStats() const {
+    // 🔥 IRepository의 캐시 통계 위임
+    return IRepository<DataPointEntity>::getCacheStats();
+}
+
+int DataPointRepository::getTotalCount() {
+    return countByConditions({});
+}
+
+// =============================================================================
+// DataPoint 전용 메서드들 (기존 로직 그대로 유지)
+// =============================================================================
+
 std::vector<DataPointEntity> DataPointRepository::findAllWithLimit(size_t limit) {
     if (limit == 0) return findAll();
     
@@ -571,6 +443,22 @@ std::vector<DataPointEntity> DataPointRepository::findAllWithLimit(size_t limit)
         logger_->Error("DataPointRepository::findAllWithLimit failed: " + std::string(e.what()));
         return {};
     }
+}
+
+std::vector<DataPointEntity> DataPointRepository::findByDeviceId(int device_id, bool enabled_only) {
+    std::vector<QueryCondition> conditions;
+    conditions.emplace_back("device_id", "=", std::to_string(device_id));
+    
+    if (enabled_only) {
+        conditions.emplace_back("is_enabled", "=", "1");
+    }
+    
+    auto entities = findByConditions(conditions);
+    
+    logger_->Info("DataPointRepository::findByDeviceId - Found " + 
+                std::to_string(entities.size()) + " data points for device " + std::to_string(device_id));
+    
+    return entities;
 }
 
 std::vector<DataPointEntity> DataPointRepository::findByDeviceIds(const std::vector<int>& device_ids, bool enabled_only) {
@@ -638,20 +526,32 @@ std::vector<DataPointEntity> DataPointRepository::findRecentlyCreated(int days) 
     }
 }
 
-// 관계 데이터 로딩 (빈 구현)
+// =============================================================================
+// 관계 데이터 사전 로딩 (기본 구현)
+// =============================================================================
+
 void DataPointRepository::preloadDeviceInfo(std::vector<DataPointEntity>& data_points) {
+    // 기본 구현: 향후 DeviceRepository와 연계하여 구현
     (void)data_points;
+    logger_->Debug("DataPointRepository::preloadDeviceInfo - Not implemented yet");
 }
 
 void DataPointRepository::preloadCurrentValues(std::vector<DataPointEntity>& data_points) {
+    // 기본 구현: 향후 실시간 데이터 저장소와 연계하여 구현
     (void)data_points;
+    logger_->Debug("DataPointRepository::preloadCurrentValues - Not implemented yet");
 }
 
 void DataPointRepository::preloadAlarmConfigs(std::vector<DataPointEntity>& data_points) {
+    // 기본 구현: 향후 AlarmConfigRepository와 연계하여 구현
     (void)data_points;
+    logger_->Debug("DataPointRepository::preloadAlarmConfigs - Not implemented yet");
 }
 
-// 통계 메서드들
+// =============================================================================
+// 통계 메서드들 (기존 로직 그대로 유지)
+// =============================================================================
+
 std::map<int, int> DataPointRepository::getPointCountByDevice() {
     std::map<int, int> counts;
     
@@ -684,6 +584,146 @@ std::map<std::string, int> DataPointRepository::getPointCountByDataType() {
     }
     
     return counts;
+}
+
+// =============================================================================
+// 내부 헬퍼 메서드들 (기존 로직 그대로 유지)
+// =============================================================================
+
+DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
+    DataPointEntity entity;
+    
+    try {
+        // 기본 필드들
+        entity.setId(std::stoi(row.at("id")));
+        entity.setDeviceId(std::stoi(row.at("device_id")));
+        entity.setName(row.at("name"));
+        entity.setDescription(row.at("description"));
+        entity.setAddress(std::stoi(row.at("address")));
+        entity.setDataType(row.at("data_type"));
+        entity.setAccessMode(row.at("access_mode"));
+        entity.setEnabled(row.at("is_enabled") == "1");
+        
+        // 엔지니어링 정보
+        if (row.count("unit")) entity.setUnit(row.at("unit"));
+        if (row.count("scaling_factor")) entity.setScalingFactor(std::stod(row.at("scaling_factor")));
+        if (row.count("scaling_offset")) entity.setScalingOffset(std::stod(row.at("scaling_offset")));
+        if (row.count("min_value")) entity.setMinValue(std::stod(row.at("min_value")));
+        if (row.count("max_value")) entity.setMaxValue(std::stod(row.at("max_value")));
+        
+        // 로깅 설정
+        if (row.count("log_enabled")) entity.setLogEnabled(row.at("log_enabled") == "1");
+        if (row.count("log_interval_ms")) entity.setLogInterval(std::stoi(row.at("log_interval_ms")));
+        if (row.count("log_deadband")) entity.setLogDeadband(std::stod(row.at("log_deadband")));
+        
+        // 태그 파싱
+        if (row.count("tags")) {
+            std::string tags_str = row.at("tags");
+            std::vector<std::string> tags = parseTagsFromString(tags_str);
+            entity.setTags(tags);
+        }
+        
+        // 메타데이터 파싱
+        if (row.count("metadata") && !row.at("metadata").empty()) {
+            try {
+                json metadata = json::parse(row.at("metadata"));
+                entity.setMetadata(metadata);
+            } catch (const std::exception&) {
+                entity.setMetadata(json::object());
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("DataPointRepository::mapRowToEntity failed: " + std::string(e.what()));
+    }
+    
+    return entity;
+}
+
+std::vector<DataPointEntity> DataPointRepository::mapResultToEntities(
+    const std::vector<std::map<std::string, std::string>>& result) {
+    
+    std::vector<DataPointEntity> entities;
+    entities.reserve(result.size());
+    
+    for (const auto& row : result) {
+        entities.push_back(mapRowToEntity(row));
+    }
+    
+    return entities;
+}
+
+// =============================================================================
+// SQL 빌더 헬퍼 메서드들 (기존 로직 그대로 유지)
+// =============================================================================
+
+std::string DataPointRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) return "";
+    
+    std::string clause = " WHERE ";
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) clause += " AND ";
+        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
+    }
+    return clause;
+}
+
+std::string DataPointRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) return "";
+    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
+}
+
+std::string DataPointRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) return "";
+    return " LIMIT " + std::to_string(pagination->getLimit()) + 
+           " OFFSET " + std::to_string(pagination->getOffset());
+}
+
+// =============================================================================
+// 유틸리티 함수들 (기존 로직 그대로 유지)
+// =============================================================================
+
+std::string DataPointRepository::tagsToString(const std::vector<std::string>& tags) {
+    if (tags.empty()) return "";
+    
+    std::ostringstream oss;
+    for (size_t i = 0; i < tags.size(); ++i) {
+        if (i > 0) oss << ",";
+        oss << tags[i];
+    }
+    return oss.str();
+}
+
+std::vector<std::string> DataPointRepository::parseTagsFromString(const std::string& tags_str) {
+    std::vector<std::string> tags;
+    if (tags_str.empty()) return tags;
+    
+    std::istringstream iss(tags_str);
+    std::string tag;
+    while (std::getline(iss, tag, ',')) {
+        if (!tag.empty()) {
+            tags.push_back(tag);
+        }
+    }
+    return tags;
+}
+
+std::string DataPointRepository::getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    std::ostringstream oss;
+    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return oss.str();
+}
+
+std::string DataPointRepository::escapeString(const std::string& str) {
+    std::string escaped = str;
+    size_t pos = 0;
+    while ((pos = escaped.find("'", pos)) != std::string::npos) {
+        escaped.replace(pos, 1, "''");
+        pos += 2;
+    }
+    return escaped;
 }
 
 } // namespace Repositories

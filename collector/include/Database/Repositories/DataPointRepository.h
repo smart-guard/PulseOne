@@ -3,15 +3,15 @@
 
 /**
  * @file DataPointRepository.h
- * @brief PulseOne 데이터포인트 Repository - 완성된 헤더파일
+ * @brief PulseOne DataPointRepository - IRepository 마이그레이션 완성본
  * @author PulseOne Development Team
- * @date 2025-07-27
+ * @date 2025-07-28
  * 
- * 🔥 실제 구현과 완전히 일치하는 헤더파일:
- * - 실제 DatabaseManager API 사용
- * - 모든 구현된 메서드 선언
- * - 캐시 기능 일시 비활성화
- * - SQL 빌더 헬퍼 메서드들 포함
+ * 🔥 캐시 마이그레이션 완료:
+ * - IRepository<DataPointEntity> 상속으로 캐시 기능 자동 획득
+ * - 캐시 관련 멤버 변수 및 메서드 제거 (IRepository에서 자동 처리)
+ * - 모든 기존 DataPoint 전용 메서드 유지
+ * - DatabaseManager 실제 API 사용
  */
 
 #include "Database/Repositories/IRepository.h"
@@ -32,14 +32,20 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 타입 별칭 정의
+// 🔥 타입 별칭 정의 (UnifiedCommonTypes.h에서 통합)
 using DataPointEntity = PulseOne::Database::Entities::DataPointEntity;
-using QueryCondition = PulseOne::Database::QueryCondition;
-using OrderBy = PulseOne::Database::OrderBy;
-using Pagination = PulseOne::Database::Pagination;
+using QueryCondition = PulseOne::Structs::QueryCondition;
+using OrderBy = PulseOne::Structs::OrderBy;
+using Pagination = PulseOne::Structs::Pagination;
 
 /**
- * @brief DataPoint Repository 클래스 (실제 DatabaseManager API 사용)
+ * @brief DataPoint Repository 클래스 (IRepository 상속으로 캐시 자동 획득)
+ * 
+ * 기능:
+ * - INTEGER ID 기반 CRUD 연산
+ * - 디바이스별 데이터포인트 조회
+ * - Worker용 최적화 메서드들
+ * - 캐싱 및 벌크 연산 지원 (IRepository에서 자동 제공)
  */
 class DataPointRepository : public IRepository<DataPointEntity> {
 public:
@@ -47,50 +53,78 @@ public:
     // 생성자 및 소멸자
     // =======================================================================
     
+    /**
+     * @brief 기본 생성자 (IRepository 초기화 포함)
+     */
     DataPointRepository();
+    
+    /**
+     * @brief 가상 소멸자
+     */
     virtual ~DataPointRepository() = default;
     
     // =======================================================================
-    // IRepository 인터페이스 구현 (🔥 정확한 시그니처)
+    // IRepository 인터페이스 구현
     // =======================================================================
     
     /**
-     * @brief 모든 데이터포인트 조회 (IRepository 인터페이스)
+     * @brief 모든 데이터포인트 조회
+     * @return 데이터포인트 목록
      */
     std::vector<DataPointEntity> findAll() override;
     
     /**
      * @brief ID로 데이터포인트 조회
+     * @param id 데이터포인트 ID
+     * @return 데이터포인트 (없으면 nullopt)
      */
     std::optional<DataPointEntity> findById(int id) override;
     
     /**
      * @brief 데이터포인트 저장
+     * @param entity 저장할 데이터포인트 (참조로 전달하여 ID 업데이트)
+     * @return 성공 시 true
      */
     bool save(DataPointEntity& entity) override;
     
     /**
      * @brief 데이터포인트 업데이트
+     * @param entity 업데이트할 데이터포인트
+     * @return 성공 시 true
      */
     bool update(const DataPointEntity& entity) override;
     
     /**
      * @brief ID로 데이터포인트 삭제
+     * @param id 삭제할 데이터포인트 ID
+     * @return 성공 시 true
      */
     bool deleteById(int id) override;
     
     /**
      * @brief 데이터포인트 존재 여부 확인
+     * @param id 확인할 ID
+     * @return 존재하면 true
      */
     bool exists(int id) override;
     
+    // =======================================================================
+    // 벌크 연산 (성능 최적화)
+    // =======================================================================
+    
     /**
      * @brief 여러 ID로 데이터포인트들 조회
+     * @param ids ID 목록
+     * @return 데이터포인트 목록
      */
     std::vector<DataPointEntity> findByIds(const std::vector<int>& ids) override;
     
     /**
      * @brief 조건부 조회
+     * @param conditions 쿼리 조건들
+     * @param order_by 정렬 조건 (선택사항)
+     * @param pagination 페이징 정보 (선택사항)
+     * @return 조건에 맞는 데이터포인트 목록
      */
     std::vector<DataPointEntity> findByConditions(
         const std::vector<QueryCondition>& conditions,
@@ -99,133 +133,203 @@ public:
     
     /**
      * @brief 조건으로 첫 번째 데이터포인트 조회
+     * @param conditions 쿼리 조건들
+     * @return 첫 번째 매칭 데이터포인트 (없으면 nullopt)
      */
     std::optional<DataPointEntity> findFirstByConditions(
         const std::vector<QueryCondition>& conditions) override;
     
     /**
      * @brief 조건에 맞는 데이터포인트 개수 조회
+     * @param conditions 쿼리 조건들
+     * @return 개수
      */
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
     
     /**
      * @brief 여러 데이터포인트 일괄 저장
+     * @param entities 저장할 데이터포인트들 (참조로 전달하여 ID 업데이트)
+     * @return 저장된 개수
      */
     int saveBulk(std::vector<DataPointEntity>& entities) override;
     
     /**
      * @brief 여러 데이터포인트 일괄 업데이트
+     * @param entities 업데이트할 데이터포인트들
+     * @return 업데이트된 개수
      */
     int updateBulk(const std::vector<DataPointEntity>& entities) override;
     
     /**
      * @brief 여러 ID 일괄 삭제
+     * @param ids 삭제할 ID들
+     * @return 삭제된 개수
      */
     int deleteByIds(const std::vector<int>& ids) override;
     
     // =======================================================================
-    // 캐시 관리 (일시 비활성화)
+    // 캐시 관리 (IRepository에서 자동 제공 - override만 필요)
     // =======================================================================
     
+    /**
+     * @brief 캐시 활성화/비활성화
+     * @param enabled 캐시 사용 여부
+     */
     void setCacheEnabled(bool enabled) override;
+    
+    /**
+     * @brief 캐시 상태 조회
+     * @return 캐시 활성화 여부
+     */
     bool isCacheEnabled() const override;
+    
+    /**
+     * @brief 모든 캐시 삭제
+     */
     void clearCache() override;
+    
+    /**
+     * @brief 특정 데이터포인트 캐시 삭제
+     * @param id 데이터포인트 ID
+     */
     void clearCacheForId(int id) override;
+    
+    /**
+     * @brief 캐시 통계 조회
+     * @return 캐시 통계 (hits, misses, size 등)
+     */
     std::map<std::string, int> getCacheStats() const override;
     
     // =======================================================================
     // 유틸리티
     // =======================================================================
     
+    /**
+     * @brief 전체 데이터포인트 개수 조회
+     * @return 전체 개수
+     */
     int getTotalCount() override;
-    std::string getRepositoryName() const override;
+    
+    /**
+     * @brief Repository 이름 조회 (디버깅용)
+     * @return Repository 이름
+     */
+    std::string getRepositoryName() const override { return "DataPointRepository"; }
 
     // =======================================================================
-    // DataPoint 전용 메서드들 (🔥 오버라이드 없음)
+    // DataPoint 전용 메서드들
     // =======================================================================
     
     /**
      * @brief 제한된 개수로 데이터포인트 조회
+     * @param limit 최대 개수 (0이면 전체)
+     * @return 데이터포인트 목록
      */
     std::vector<DataPointEntity> findAllWithLimit(size_t limit = 0);
     
     /**
      * @brief 디바이스별 데이터포인트 조회
+     * @param device_id 디바이스 ID
+     * @param enabled_only 활성화된 것만 조회할지 여부
+     * @return 해당 디바이스의 데이터포인트 목록
      */
     std::vector<DataPointEntity> findByDeviceId(int device_id, bool enabled_only = true);
     
     /**
      * @brief 여러 디바이스의 데이터포인트 조회
+     * @param device_ids 디바이스 ID 목록
+     * @param enabled_only 활성화된 것만 조회할지 여부
+     * @return 해당 디바이스들의 데이터포인트 목록
      */
     std::vector<DataPointEntity> findByDeviceIds(const std::vector<int>& device_ids, bool enabled_only = true);
     
     /**
      * @brief 쓰기 가능한 데이터포인트 조회
+     * @return 쓰기 가능한 데이터포인트 목록
      */
     std::vector<DataPointEntity> findWritablePoints();
     
     /**
      * @brief 특정 데이터 타입의 데이터포인트 조회
+     * @param data_type 데이터 타입
+     * @return 해당 타입의 데이터포인트 목록
      */
     std::vector<DataPointEntity> findByDataType(const std::string& data_type);
     
     /**
      * @brief Worker용 데이터포인트 조회
+     * @param device_ids 디바이스 ID 목록 (빈 경우 모든 활성 포인트)
+     * @return Worker용 최적화된 데이터포인트 목록
      */
     std::vector<DataPointEntity> findDataPointsForWorkers(const std::vector<int>& device_ids = {});
     
     /**
      * @brief 디바이스와 주소로 데이터포인트 조회
+     * @param device_id 디바이스 ID
+     * @param address 주소
+     * @return 해당 디바이스의 특정 주소 데이터포인트 (없으면 nullopt)
      */
     std::optional<DataPointEntity> findByDeviceAndAddress(int device_id, int address);
     
     /**
      * @brief 태그로 데이터포인트 조회
+     * @param tag 검색할 태그
+     * @return 해당 태그를 가진 데이터포인트 목록
      */
     std::vector<DataPointEntity> findByTag(const std::string& tag);
     
     /**
      * @brief 비활성 데이터포인트 조회
+     * @return 비활성화된 데이터포인트 목록
      */
     std::vector<DataPointEntity> findDisabledPoints();
     
     /**
      * @brief 최근 생성된 데이터포인트 조회
+     * @param days 며칠 이내 (기본 7일)
+     * @return 최근 생성된 데이터포인트 목록
      */
     std::vector<DataPointEntity> findRecentlyCreated(int days = 7);
 
     // =======================================================================
-    // 관계 데이터 사전 로딩 (기본 구현)
+    // 관계 데이터 사전 로딩 (N+1 문제 해결)
     // =======================================================================
     
+    /**
+     * @brief 디바이스 정보 사전 로딩
+     * @param data_points 데이터포인트들
+     */
     void preloadDeviceInfo(std::vector<DataPointEntity>& data_points);
+    
+    /**
+     * @brief 현재 값 사전 로딩
+     * @param data_points 데이터포인트들
+     */
     void preloadCurrentValues(std::vector<DataPointEntity>& data_points);
+    
+    /**
+     * @brief 알람 설정 사전 로딩
+     * @param data_points 데이터포인트들
+     */
     void preloadAlarmConfigs(std::vector<DataPointEntity>& data_points);
 
     // =======================================================================
     // 통계 및 분석
     // =======================================================================
     
+    /**
+     * @brief 디바이스별 데이터포인트 개수 통계
+     * @return {device_id: count} 맵
+     */
     std::map<int, int> getPointCountByDevice();
+    
+    /**
+     * @brief 데이터 타입별 데이터포인트 개수 통계
+     * @return {data_type: count} 맵
+     */
     std::map<std::string, int> getPointCountByDataType();
 
 private:
-    // =======================================================================
-    // 내부 멤버 변수들
-    // =======================================================================
-    
-    DatabaseManager* db_manager_;
-    ConfigManager* config_manager_;
-    PulseOne::LogManager* logger_;
-    
-    // 캐싱 관련 (일시 비활성화)
-    mutable std::mutex cache_mutex_;
-    bool cache_enabled_;
-    std::map<int, DataPointEntity> entity_cache_;
-    
-    // 캐시 통계
-    mutable std::map<std::string, int> cache_stats_;
-    
     // =======================================================================
     // 🔥 DatabaseManager 래퍼 메서드들 (핵심!)
     // =======================================================================
@@ -250,46 +354,43 @@ private:
     
     /**
      * @brief WHERE 절 생성
+     * @param conditions 조건 목록
+     * @return WHERE 절 문자열
      */
     std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
     
     /**
      * @brief ORDER BY 절 생성
+     * @param order_by 정렬 조건
+     * @return ORDER BY 절 문자열
      */
     std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
     
     /**
      * @brief LIMIT 절 생성
+     * @param pagination 페이징 조건
+     * @return LIMIT 절 문자열
      */
-    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;    
+    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
+    
     // =======================================================================
     // 데이터 매핑 헬퍼 메서드들
     // =======================================================================
     
     /**
      * @brief 데이터베이스 행을 엔티티로 변환
+     * @param row 데이터베이스 행
+     * @return 변환된 엔티티
      */
     DataPointEntity mapRowToEntity(const std::map<std::string, std::string>& row);
     
     /**
      * @brief 여러 행을 엔티티 벡터로 변환
+     * @param result 쿼리 결과
+     * @return 엔티티 목록
      */
     std::vector<DataPointEntity> mapResultToEntities(
         const std::vector<std::map<std::string, std::string>>& result);
-    
-    // =======================================================================
-    // 캐시 관리 헬퍼 메서드들 (일시 비활성화)
-    // =======================================================================
-    
-    /**
-     * @brief 캐시에서 엔티티 조회
-     */
-    std::optional<DataPointEntity> getFromCache(int id) const;
-    
-    /**
-     * @brief 캐시 통계 업데이트
-     */
-    void updateCacheStats(const std::string& operation) const;
     
     // =======================================================================
     // 유틸리티 헬퍼 메서드들
@@ -297,21 +398,28 @@ private:
     
     /**
      * @brief SQL 문자열 이스케이프
+     * @param str 이스케이프할 문자열
+     * @return 이스케이프된 문자열
      */
     std::string escapeString(const std::string& str);
     
     /**
      * @brief 태그 벡터를 콤마 구분 문자열로 변환
+     * @param tags 태그 목록
+     * @return 콤마 구분 문자열
      */
     std::string tagsToString(const std::vector<std::string>& tags);
     
     /**
      * @brief 콤마 구분 문자열을 태그 벡터로 변환
+     * @param tags_str 콤마 구분 문자열
+     * @return 태그 목록
      */
     std::vector<std::string> parseTagsFromString(const std::string& tags_str);
     
     /**
      * @brief 현재 타임스탬프를 문자열로 반환
+     * @return ISO 형식 타임스탬프
      */
     std::string getCurrentTimestamp();
 };

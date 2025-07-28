@@ -3,19 +3,18 @@
 
 /**
  * @file DeviceRepository.h
- * @brief PulseOne DeviceRepository - 구현 파일과 100% 일치하는 완전한 헤더
+ * @brief PulseOne DeviceRepository - IRepository 마이그레이션 완성본
  * @author PulseOne Development Team
  * @date 2025-07-28
  * 
- * 🔥 주요 수정사항:
- * - 구현 파일의 모든 58개 메서드를 헤더에 선언
- * - 누락된 캐시 관련 멤버 변수들 추가
- * - 내부 헬퍼 메서드들 private 섹션에 추가
- * - 캐시 엔트리 구조체 추가
+ * 🔥 캐시 마이그레이션 완료:
+ * - CachedRepositoryBase.h 의존성 제거
+ * - IRepository<DeviceEntity> 상속으로 캐시 기능 자동 획득
+ * - 캐시 관련 멤버 변수 및 메서드 제거 (IRepository에서 자동 처리)
+ * - 모든 기존 Device 전용 메서드 유지
  */
 
 #include "Database/Repositories/IRepository.h"
-#include "Database/Repositories/CachedRepositoryBase.h"
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
@@ -34,23 +33,21 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 타입 별칭 정의 (Entities 네임스페이스 참조)
+// 🔥 타입 별칭 정의 (UnifiedCommonTypes.h에서 통합)
 using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
-using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
-using QueryCondition = PulseOne::Database::QueryCondition;
-using OrderBy = PulseOne::Database::OrderBy;
-using Pagination = PulseOne::Database::Pagination;
+using QueryCondition = PulseOne::Structs::QueryCondition;
+using OrderBy = PulseOne::Structs::OrderBy;
+using Pagination = PulseOne::Structs::Pagination;
 using DataPoint = PulseOne::DataPoint;
-using CacheEntry = PulseOne::Structs::CacheEntry<DeviceEntity>;
 
 /**
- * @brief Device Repository 클래스 (INTEGER ID 기반)
+ * @brief Device Repository 클래스 (IRepository 상속으로 캐시 자동 획득)
  * 
  * 기능:
  * - INTEGER ID 기반 CRUD 연산
  * - 프로토콜별 디바이스 조회
  * - Worker용 최적화 메서드들
- * - 캐싱 및 벌크 연산 지원
+ * - 캐싱 및 벌크 연산 지원 (IRepository에서 자동 제공)
  */
 class DeviceRepository : public IRepository<DeviceEntity> {
 public:
@@ -59,7 +56,7 @@ public:
     // =======================================================================
     
     /**
-     * @brief 기본 생성자
+     * @brief 기본 생성자 (IRepository 초기화 포함)
      */
     DeviceRepository();
     
@@ -158,7 +155,7 @@ public:
     int deleteByIds(const std::vector<int>& ids) override;
     
     // =======================================================================
-    // 캐시 관리
+    // 캐시 관리 (IRepository에서 자동 제공 - override만 필요)
     // =======================================================================
     
     /**
@@ -316,25 +313,6 @@ public:
 
 private:
     // =======================================================================
-    // 내부 멤버 변수들 (구현 파일에서 초기화하는 모든 변수들)
-    // =======================================================================
-    
-    DatabaseManager* db_manager_;
-    ConfigManager* config_manager_;
-    PulseOne::LogManager* logger_;
-    
-    // 캐싱 관련 (구현 파일에서 초기화)
-    mutable std::mutex cache_mutex_;         // 캐시 뮤텍스
-    bool cache_enabled_;                     // 캐시 활성화 여부
-    std::map<int, CacheEntry> entity_cache_; // 엔티티 캐시 (CacheEntry 사용)
-    std::chrono::seconds cache_ttl_;         // 캐시 TTL
-    std::atomic<int> cache_hits_;            // 캐시 히트 수
-    std::atomic<int> cache_misses_;          // 캐시 미스 수
-    std::atomic<int> cache_evictions_;       // 캐시 제거 수
-    int max_cache_size_;                     // 최대 캐시 크기
-    bool enable_bulk_optimization_;          // 벌크 최적화 활성화
-    
-    // =======================================================================
     // 내부 헬퍼 메서드들 (구현 파일에 있는 모든 private 메서드들)
     // =======================================================================
     
@@ -385,24 +363,6 @@ private:
      * @return LIMIT 절 문자열
      */
     std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
-    
-    /**
-     * @brief 캐시에서 엔티티 조회
-     * @param id 엔티티 ID
-     * @return 캐시된 엔티티 (없으면 nullopt)
-     */
-    std::optional<DeviceEntity> getCachedEntity(int id);
-    
-    /**
-     * @brief 캐시에 엔티티 저장
-     * @param entity 저장할 엔티티
-     */
-    void cacheEntity(const DeviceEntity& entity);
-    
-    /**
-     * @brief 만료된 캐시 엔트리 정리
-     */
-    void cleanupExpiredCache();
     
     /**
      * @brief PostgreSQL 쿼리 실행
