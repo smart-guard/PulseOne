@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Database/RepositoryFactory.cpp
-// PulseOne Repository 팩토리 구현 - 완전한 구현
+// PulseOne Repository 팩토리 구현 - 완전한 구현 (CurrentValueRepository 추가)
 // =============================================================================
 
 #include "Database/RepositoryFactory.h"
@@ -119,6 +119,8 @@ void RepositoryFactory::shutdown() {
         tenant_repository_.reset();
         alarm_config_repository_.reset();
         site_repository_.reset();
+        virtual_point_repository_.reset();
+        current_value_repository_.reset();  // 🆕 추가
         
         initialized_ = false;
         logger_.Info("✅ RepositoryFactory shutdown completed");
@@ -223,6 +225,36 @@ SiteRepository& RepositoryFactory::getSiteRepository() {
     return *site_repository_;
 }
 
+VirtualPointRepository& RepositoryFactory::getVirtualPointRepository() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    if (!initialized_) {
+        throw std::runtime_error("RepositoryFactory not initialized");
+    }
+    
+    if (!virtual_point_repository_) {
+        throw std::runtime_error("VirtualPointRepository not created");
+    }
+    
+    creation_count_++;
+    return *virtual_point_repository_;
+}
+
+// 🆕 CurrentValueRepository 인스턴스 조회 메서드 추가
+CurrentValueRepository& RepositoryFactory::getCurrentValueRepository() {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    if (!initialized_) {
+        throw std::runtime_error("RepositoryFactory not initialized");
+    }
+    
+    if (!current_value_repository_) {
+        throw std::runtime_error("CurrentValueRepository not created");
+    }
+    
+    creation_count_++;
+    return *current_value_repository_;
+}
 
 // =============================================================================
 // 글로벌 트랜잭션 관리
@@ -388,6 +420,16 @@ void RepositoryFactory::setCacheEnabled(bool enabled) {
     if (alarm_config_repository_) {
         alarm_config_repository_->setCacheEnabled(enabled);
     }
+    if (site_repository_) {
+        site_repository_->setCacheEnabled(enabled);
+    }
+    if (virtual_point_repository_) {
+        virtual_point_repository_->setCacheEnabled(enabled);
+    }
+    // 🆕 CurrentValueRepository 캐시 설정 추가
+    if (current_value_repository_) {
+        current_value_repository_->setCacheEnabled(enabled);
+    }
 }
 
 void RepositoryFactory::clearAllCaches() {
@@ -458,36 +500,128 @@ void RepositoryFactory::clearAllCaches() {
         }
     }
     
+    if (site_repository_) {
+        try {
+            auto stats = site_repository_->getCacheStats();
+            int cached_items = stats["cached_items"];
+            site_repository_->clearCache();
+            total_cleared += cached_items;
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear SiteRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
+    }
+    
+    if (virtual_point_repository_) {
+        try {
+            auto stats = virtual_point_repository_->getCacheStats();
+            int cached_items = stats["cached_items"];
+            virtual_point_repository_->clearCache();
+            total_cleared += cached_items;
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear VirtualPointRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
+    }
+    
+    // 🆕 CurrentValueRepository 캐시 클리어 추가
+    if (current_value_repository_) {
+        try {
+            auto stats = current_value_repository_->getCacheStats();
+            int cached_items = stats["cached_items"];
+            current_value_repository_->clearCache();
+            total_cleared += cached_items;
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear CurrentValueRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
+    }
+    
     logger_.Info("Cleared " + std::to_string(total_cleared) + " cached items from all repositories");
 }
 
 std::map<std::string, std::map<std::string, int>> RepositoryFactory::getAllCacheStats() {
     std::lock_guard<std::mutex> lock(factory_mutex_);
     
-    std::map<std::string, std::map<std::string, int>> all_stats;
+    std::map<std::string, std::map<std::string, int>> stats;
     
-    try {
+    if (initialized_) {
+        // 각 Repository의 캐시 통계 수집
         if (device_repository_) {
-            all_stats["DeviceRepository"] = device_repository_->getCacheStats();
+            try {
+                stats["DeviceRepository"] = device_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get DeviceRepository cache stats: " + std::string(e.what()));
+                stats["DeviceRepository"] = {{"error", 1}};
+            }
         }
+        
         if (data_point_repository_) {
-            all_stats["DataPointRepository"] = data_point_repository_->getCacheStats();
+            try {
+                stats["DataPointRepository"] = data_point_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get DataPointRepository cache stats: " + std::string(e.what()));
+                stats["DataPointRepository"] = {{"error", 1}};
+            }
         }
+        
         if (user_repository_) {
-            all_stats["UserRepository"] = user_repository_->getCacheStats();
+            try {
+                stats["UserRepository"] = user_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get UserRepository cache stats: " + std::string(e.what()));
+                stats["UserRepository"] = {{"error", 1}};
+            }
         }
+        
         if (tenant_repository_) {
-            all_stats["TenantRepository"] = tenant_repository_->getCacheStats();
+            try {
+                stats["TenantRepository"] = tenant_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get TenantRepository cache stats: " + std::string(e.what()));
+                stats["TenantRepository"] = {{"error", 1}};
+            }
         }
+        
         if (alarm_config_repository_) {
-            all_stats["AlarmConfigRepository"] = alarm_config_repository_->getCacheStats();
+            try {
+                stats["AlarmConfigRepository"] = alarm_config_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get AlarmConfigRepository cache stats: " + std::string(e.what()));
+                stats["AlarmConfigRepository"] = {{"error", 1}};
+            }
         }
-    } catch (const std::exception& e) {
-        logger_.Error("Failed to get cache statistics: " + std::string(e.what()));
-        error_count_++;
+        
+        if (site_repository_) {
+            try {
+                stats["SiteRepository"] = site_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get SiteRepository cache stats: " + std::string(e.what()));
+                stats["SiteRepository"] = {{"error", 1}};
+            }
+        }
+        
+        if (virtual_point_repository_) {
+            try {
+                stats["VirtualPointRepository"] = virtual_point_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get VirtualPointRepository cache stats: " + std::string(e.what()));
+                stats["VirtualPointRepository"] = {{"error", 1}};
+            }
+        }
+        
+        // 🆕 CurrentValueRepository 캐시 통계 추가
+        if (current_value_repository_) {
+            try {
+                stats["CurrentValueRepository"] = current_value_repository_->getCacheStats();
+            } catch (const std::exception& e) {
+                logger_.Error("Failed to get CurrentValueRepository cache stats: " + std::string(e.what()));
+                stats["CurrentValueRepository"] = {{"error", 1}};
+            }
+        }
     }
     
-    return all_stats;
+    return stats;
 }
 
 void RepositoryFactory::setCacheTTL(int ttl_seconds) {
@@ -543,6 +677,8 @@ int RepositoryFactory::getActiveRepositoryCount() const {
     if (tenant_repository_) count++;
     if (alarm_config_repository_) count++;
     if (site_repository_) count++;
+    if (virtual_point_repository_) count++;
+    if (current_value_repository_) count++;  // 🆕 추가
     
     return count;
 }
@@ -629,10 +765,24 @@ bool RepositoryFactory::createRepositoryInstances() {
             return false;
         }
         
-        // SiteRepository 생성 (AlarmConfigRepository 다음에 추가)
+        // SiteRepository 생성
         site_repository_ = std::make_unique<SiteRepository>();
         if (!site_repository_) {
             logger_.Error("Failed to create SiteRepository");
+            return false;
+        }
+
+        // VirtualPointRepository 생성
+        virtual_point_repository_ = std::make_unique<VirtualPointRepository>();
+        if (!virtual_point_repository_) {
+            logger_.Error("Failed to create VirtualPointRepository");
+            return false;
+        }
+        
+        // 🆕 CurrentValueRepository 생성
+        current_value_repository_ = std::make_unique<CurrentValueRepository>();
+        if (!current_value_repository_) {
+            logger_.Error("Failed to create CurrentValueRepository");
             return false;
         }
         
