@@ -60,9 +60,9 @@ public:
         , state_(EntityState::NEW)
         , created_at_(std::chrono::system_clock::now())
         , updated_at_(std::chrono::system_clock::now())
-        , db_manager_(DatabaseManager::getInstance())
-        , config_manager_(ConfigManager::getInstance())
-        , logger_(PulseOne::LogManager::getInstance()) {}
+        , db_manager_(&DatabaseManager::getInstance())
+        , config_manager_(&ConfigManager::getInstance())
+        , logger_(&PulseOne::LogManager::getInstance()) {}
     
     /**
      * @brief ID로 생성하는 생성자
@@ -80,6 +80,65 @@ public:
      */
     virtual ~BaseEntity() = default;
 
+    // =======================================================================
+    // 🔥 복사/이동 생성자 및 할당 연산자 - 명시적 선언 필요
+    // =======================================================================
+    
+    /**
+     * @brief 복사 생성자 - 명시적 선언 (이동 할당 연산자 때문에 삭제되는 것 방지)
+     */
+    BaseEntity(const BaseEntity& other) 
+        : id_(other.id_)
+        , state_(other.state_)
+        , created_at_(other.created_at_)
+        , updated_at_(other.updated_at_)
+        , db_manager_(&DatabaseManager::getInstance())      // 동일한 싱글톤 참조
+        , config_manager_(&ConfigManager::getInstance())    // 동일한 싱글톤 참조
+        , logger_(&PulseOne::LogManager::getInstance()) {}  // 동일한 싱글톤 참조
+    
+    /**
+     * @brief 이동 생성자
+     */
+    BaseEntity(BaseEntity&& other) noexcept
+        : id_(other.id_)
+        , state_(other.state_)
+        , created_at_(other.created_at_)
+        , updated_at_(other.updated_at_)
+        , db_manager_(&DatabaseManager::getInstance())      // 동일한 싱글톤 참조
+        , config_manager_(&ConfigManager::getInstance())    // 동일한 싱글톤 참조
+        , logger_(&PulseOne::LogManager::getInstance()) {}  // 동일한 싱글톤 참조
+
+    // =======================================================================
+    // 🔥 할당 연산자들 (기존에 있던 것들)
+    // =======================================================================
+    
+    /**
+     * @brief 복사 할당 연산자
+     */
+    BaseEntity& operator=(const BaseEntity& other) {
+        if (this != &other) {
+            id_ = other.id_;
+            state_ = other.state_;
+            created_at_ = other.created_at_;
+            updated_at_ = other.updated_at_;
+            // 포인터들은 동일한 싱글톤을 가리키므로 복사할 필요 없음
+        }
+        return *this;
+    }
+    
+    /**
+     * @brief 이동 할당 연산자
+     */
+    BaseEntity& operator=(BaseEntity&& other) noexcept {
+        if (this != &other) {
+            id_ = other.id_;
+            state_ = other.state_;
+            created_at_ = other.created_at_;
+            updated_at_ = other.updated_at_;
+            // 포인터들은 동일한 싱글톤을 가리키므로 이동할 필요 없음
+        }
+        return *this;
+    }
     // =======================================================================
     // 공통 DB 연산 (순수 가상 함수)
     // =======================================================================
@@ -250,7 +309,7 @@ protected:
      */
     std::vector<std::map<std::string, std::string>> executeUnifiedQuery(const std::string& sql) {
         try {
-            std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
             
             if (db_type == "POSTGRESQL") {
                 return executePostgresQuery(sql);
@@ -258,7 +317,7 @@ protected:
                 return executeSQLiteQuery(sql);
             }
         } catch (const std::exception& e) {
-            logger_.Error("executeUnifiedQuery failed: " + std::string(e.what()));
+            logger_->Error("executeUnifiedQuery failed: " + std::string(e.what()));
             markError();
             return {};
         }
@@ -271,15 +330,15 @@ protected:
      */
     bool executeUnifiedNonQuery(const std::string& sql) {
         try {
-            std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
             
             if (db_type == "POSTGRESQL") {
-                return db_manager_.executeNonQueryPostgres(sql);
+                return db_manager_->executeNonQueryPostgres(sql);
             } else {
-                return db_manager_.executeNonQuerySQLite(sql);
+                return db_manager_->executeNonQuerySQLite(sql);
             }
         } catch (const std::exception& e) {
-            logger_.Error("executeUnifiedNonQuery failed: " + std::string(e.what()));
+            logger_->Error("executeUnifiedNonQuery failed: " + std::string(e.what()));
             markError();
             return false;
         }
@@ -325,16 +384,18 @@ private:
         // PostgreSQL 구현 (기존 코드 활용)
         std::vector<std::map<std::string, std::string>> results;
         try {
-            auto result = db_manager_.executeQueryPostgres(sql);
+            auto result = db_manager_->executeQueryPostgres(sql);
             for (const auto& row : result) {
                 std::map<std::string, std::string> row_map;
                 for (size_t i = 0; i < row.size(); ++i) {
-                    row_map[result.column_name(i)] = row[static_cast<int>(i)].as<std::string>();
+                    std::string column_name = result.column_name(i);
+                    std::string value = row[static_cast<int>(i)].is_null() ? "" : row[static_cast<int>(i)].as<std::string>();
+                    row_map[column_name] = value;
                 }
                 results.push_back(row_map);
             }
         } catch (const std::exception& e) {
-            logger_.Error("PostgreSQL query failed: " + std::string(e.what()));
+            logger_->Error("PostgreSQL query failed: " + std::string(e.what()));
         }
         return results;
     }
@@ -359,9 +420,9 @@ private:
             return 0;
         };
         
-        bool success = db_manager_.executeQuerySQLite(sql, callback, &results);
+        bool success = db_manager_->executeQuerySQLite(sql, callback, &results);
         if (!success) {
-            logger_.Error("SQLite query failed: " + sql);
+            logger_->Error("SQLite query failed: " + sql);
             results.clear();
         }
         
@@ -379,9 +440,9 @@ protected:
     std::chrono::system_clock::time_point updated_at_;    // 수정 시간
     
     // 의존성 (참조로 저장)
-    DatabaseManager& db_manager_;
-    ConfigManager& config_manager_;
-    PulseOne::LogManager& logger_;
+    DatabaseManager* db_manager_;
+    ConfigManager* config_manager_;
+    PulseOne::LogManager* logger_;
 };
 
 } // namespace Database

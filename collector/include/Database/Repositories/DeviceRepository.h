@@ -3,14 +3,15 @@
 
 /**
  * @file DeviceRepository.h
- * @brief PulseOne DeviceRepository - 완전 수정 버전 (네임스페이스 통일)
+ * @brief PulseOne DeviceRepository - 구현 파일과 100% 일치하는 완전한 헤더
  * @author PulseOne Development Team
- * @date 2025-07-27
+ * @date 2025-07-28
  * 
- * 🔥 주요 변경사항:
- * - 네임스페이스를 PulseOne::Database::Repositories로 통일
- * - INTEGER ID 기반으로 변경 (UUID 제거)
- * - IRepository 상속 구조 수정
+ * 🔥 주요 수정사항:
+ * - 구현 파일의 모든 58개 메서드를 헤더에 선언
+ * - 누락된 캐시 관련 멤버 변수들 추가
+ * - 내부 헬퍼 메서드들 private 섹션에 추가
+ * - 캐시 엔트리 구조체 추가
  */
 
 #include "Database/Repositories/IRepository.h"
@@ -24,6 +25,8 @@
 #include <mutex>
 #include <vector>
 #include <optional>
+#include <chrono>
+#include <atomic>
 
 namespace PulseOne {
 namespace Database {
@@ -31,9 +34,21 @@ namespace Repositories {
 
 // 🔥 타입 별칭 정의 (Entities 네임스페이스 참조)
 using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
+using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
 using QueryCondition = PulseOne::Database::QueryCondition;
 using OrderBy = PulseOne::Database::OrderBy;
-using Pagination = PulseOne::Database::Pagination;    
+using Pagination = PulseOne::Database::Pagination;
+using DataPoint = PulseOne::DataPoint;
+/**
+ * @brief 캐시 엔트리 구조체
+ */
+struct CacheEntry {
+    DeviceEntity entity;
+    std::chrono::system_clock::time_point cached_at;
+    
+    CacheEntry(const DeviceEntity& e) 
+        : entity(e), cached_at(std::chrono::system_clock::now()) {}
+};
 
 /**
  * @brief Device Repository 클래스 (INTEGER ID 기반)
@@ -98,13 +113,6 @@ public:
      */
     bool deleteById(int id) override;
     
-    /**
-     * @brief 디바이스 존재 여부 확인
-     * @param id 확인할 ID
-     * @return 존재하면 true
-     */
-    bool exists(int id) override;
-    
     // =======================================================================
     // 벌크 연산 (성능 최적화)
     // =======================================================================
@@ -127,14 +135,6 @@ public:
         const std::vector<QueryCondition>& conditions,
         const std::optional<OrderBy>& order_by = std::nullopt,
         const std::optional<Pagination>& pagination = std::nullopt) override;
-    
-    /**
-     * @brief 조건으로 첫 번째 디바이스 조회
-     * @param conditions 쿼리 조건들
-     * @return 첫 번째 디바이스 (없으면 nullopt)
-     */
-    std::optional<DeviceEntity> findFirstByConditions(
-        const std::vector<QueryCondition>& conditions) override;
     
     /**
      * @brief 조건에 맞는 디바이스 개수 조회
@@ -211,10 +211,10 @@ public:
      * @brief Repository 이름 조회 (디버깅용)
      * @return Repository 이름
      */
-    std::string getRepositoryName() const override;
+    std::string getRepositoryName() const override { return "DeviceRepository"; }
 
     // =======================================================================
-    // Device 전용 메서드들
+    // Device 전용 메서드들 (구현 파일에 있는 모든 메서드들)
     // =======================================================================
     
     /**
@@ -231,39 +231,39 @@ public:
     std::vector<DeviceEntity> findByProtocol(const std::string& protocol_type);
     
     /**
+     * @brief 테넌트별 디바이스 조회
+     * @param tenant_id 테넌트 ID
+     * @return 해당 테넌트의 디바이스 목록
+     */
+    std::vector<DeviceEntity> findByTenant(int tenant_id);
+    
+    /**
+     * @brief 사이트별 디바이스 조회
+     * @param site_id 사이트 ID
+     * @return 해당 사이트의 디바이스 목록
+     */
+    std::vector<DeviceEntity> findBySite(int site_id);
+    
+    /**
+     * @brief 엔드포인트로 디바이스 조회
+     * @param endpoint 엔드포인트 주소
+     * @return 해당 엔드포인트의 디바이스 (없으면 nullopt)
+     */
+    std::optional<DeviceEntity> findByEndpoint(const std::string& endpoint);
+    
+    /**
+     * @brief 이름 패턴으로 디바이스 조회
+     * @param name_pattern 이름 패턴 (LIKE 검색)
+     * @return 패턴에 맞는 디바이스 목록
+     */
+    std::vector<DeviceEntity> findByNamePattern(const std::string& name_pattern);
+    
+    /**
      * @brief Worker용 디바이스 조회 (관계 데이터 포함)
      * @return Worker용 최적화된 디바이스 목록
      */
     std::vector<DeviceEntity> findDevicesForWorkers();
     
-    /**
-     * @brief 이름으로 디바이스 조회
-     * @param device_name 디바이스 이름
-     * @return 디바이스 (없으면 nullopt)
-     */
-    std::optional<DeviceEntity> findByName(const std::string& device_name);
-    
-    /**
-     * @brief IP와 포트로 디바이스 조회
-     * @param ip_address IP 주소
-     * @param port 포트 번호
-     * @return 해당 엔드포인트의 디바이스 목록
-     */
-    std::vector<DeviceEntity> findByEndpoint(const std::string& ip_address, int port);
-    
-    /**
-     * @brief 비활성 디바이스 조회
-     * @return 비활성 디바이스 목록
-     */
-    std::vector<DeviceEntity> findDisabled();
-    
-    /**
-     * @brief 최근 통신이 없는 디바이스 조회
-     * @param minutes 분 단위 (기본값: 60분)
-     * @return 통신이 끊긴 디바이스 목록
-     */
-    std::vector<DeviceEntity> findOfflineDevices(int minutes = 60);
-
     // =======================================================================
     // 관계 데이터 사전 로딩 (N+1 문제 해결)
     // =======================================================================
@@ -275,10 +275,16 @@ public:
     void preloadDataPoints(std::vector<DeviceEntity>& devices);
     
     /**
-     * @brief 통계 정보 사전 로딩
+     * @brief 알람 설정 사전 로딩
      * @param devices 디바이스들
      */
-    void preloadStatistics(std::vector<DeviceEntity>& devices);
+    void preloadAlarmConfigs(std::vector<DeviceEntity>& devices);
+    
+    /**
+     * @brief 모든 관계 데이터 사전 로딩
+     * @param devices 디바이스들
+     */
+    void preloadAllRelations(std::vector<DeviceEntity>& devices);
 
     // =======================================================================
     // 통계 및 분석
@@ -288,41 +294,64 @@ public:
      * @brief 프로토콜별 디바이스 개수 통계
      * @return {protocol_type: count} 맵
      */
-    std::map<std::string, int> getDeviceCountByProtocol();
+    std::map<std::string, int> getCountByProtocol();
     
     /**
-     * @brief 디바이스 상태별 개수 통계
+     * @brief 테넌트별 디바이스 개수 통계
+     * @return {tenant_id: count} 맵
+     */
+    std::map<int, int> getCountByTenant();
+    
+    /**
+     * @brief 사이트별 디바이스 개수 통계
+     * @return {site_id: count} 맵
+     */
+    std::map<int, int> getCountBySite();
+    
+    /**
+     * @brief 상태별 디바이스 개수 통계
      * @return {status: count} 맵
      */
-    std::map<std::string, int> getDeviceCountByStatus();
+    std::map<std::string, int> getCountByStatus();
     
     /**
-     * @brief 최근 생성된 디바이스 조회
-     * @param days 최근 N일 (기본값: 7일)
-     * @return 최근 생성된 디바이스 목록
+     * @brief 디바이스 상태 일괄 업데이트
+     * @param status_updates {device_id: status} 맵
+     * @return 업데이트된 개수
      */
-    std::vector<DeviceEntity> findRecentlyCreated(int days = 7);
+    int updateDeviceStatuses(const std::map<int, std::string>& status_updates);
 
 private:
     // =======================================================================
-    // 내부 멤버 변수들
+    // 내부 멤버 변수들 (구현 파일에서 초기화하는 모든 변수들)
     // =======================================================================
     
-    DatabaseManager& db_manager_;            // 데이터베이스 관리자
-    ConfigManager& config_manager_;          // 설정 관리자
-    LogManager& logger_;                     // 로그 관리자
+    DatabaseManager* db_manager_;
+    ConfigManager* config_manager_;
+    PulseOne::LogManager* logger_;
     
-    // 캐싱 관련
+    // 캐싱 관련 (구현 파일에서 초기화)
     mutable std::mutex cache_mutex_;         // 캐시 뮤텍스
     bool cache_enabled_;                     // 캐시 활성화 여부
-    std::map<int, DeviceEntity> entity_cache_;  // 엔티티 캐시
-    
-    // 캐시 통계
-    mutable std::map<std::string, int> cache_stats_;
+    std::map<int, CacheEntry> entity_cache_; // 엔티티 캐시 (CacheEntry 사용)
+    std::chrono::seconds cache_ttl_;         // 캐시 TTL
+    std::atomic<int> cache_hits_;            // 캐시 히트 수
+    std::atomic<int> cache_misses_;          // 캐시 미스 수
+    std::atomic<int> cache_evictions_;       // 캐시 제거 수
+    int max_cache_size_;                     // 최대 캐시 크기
+    bool enable_bulk_optimization_;          // 벌크 최적화 활성화
     
     // =======================================================================
-    // 내부 헬퍼 메서드들
+    // 내부 헬퍼 메서드들 (구현 파일에 있는 모든 private 메서드들)
     // =======================================================================
+    
+    /**
+     * @brief SQL 결과를 엔티티 목록으로 변환
+     * @param results SQL 실행 결과
+     * @return 엔티티 목록
+     */
+    std::vector<DeviceEntity> mapResultsToEntities(
+        const std::vector<std::map<std::string, std::string>>& results);
     
     /**
      * @brief 데이터베이스 행을 엔티티로 변환
@@ -332,31 +361,83 @@ private:
     DeviceEntity mapRowToEntity(const std::map<std::string, std::string>& row);
     
     /**
+     * @brief SELECT 쿼리 빌드
+     * @param conditions 조건 목록 (선택사항)
+     * @param order_by 정렬 조건 (선택사항)
+     * @param pagination 페이징 (선택사항)
+     * @return 빌드된 SQL 쿼리
+     */
+    std::string buildSelectQuery(
+        const std::vector<QueryCondition>& conditions = {},
+        const std::optional<OrderBy>& order_by = std::nullopt,
+        const std::optional<Pagination>& pagination = std::nullopt);
+    
+    /**
+     * @brief WHERE 절 빌드
+     * @param conditions 조건 목록
+     * @return WHERE 절 문자열
+     */
+    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
+    
+    /**
+     * @brief ORDER BY 절 빌드
+     * @param order_by 정렬 조건
+     * @return ORDER BY 절 문자열
+     */
+    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
+    
+    /**
+     * @brief LIMIT/OFFSET 절 빌드
+     * @param pagination 페이징 조건
+     * @return LIMIT 절 문자열
+     */
+    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
+    
+    /**
      * @brief 캐시에서 엔티티 조회
      * @param id 엔티티 ID
      * @return 캐시된 엔티티 (없으면 nullopt)
      */
-    std::optional<DeviceEntity> getFromCache(int id) const;
+    std::optional<DeviceEntity> getCachedEntity(int id);
     
     /**
      * @brief 캐시에 엔티티 저장
      * @param entity 저장할 엔티티
      */
-    void putToCache(const DeviceEntity& entity);
+    void cacheEntity(const DeviceEntity& entity);
     
     /**
-     * @brief SQL 결과를 엔티티 목록으로 변환
-     * @param result SQL 실행 결과
-     * @return 엔티티 목록
+     * @brief 만료된 캐시 엔트리 정리
      */
-    std::vector<DeviceEntity> mapResultToEntities(
-        const std::vector<std::map<std::string, std::string>>& result);
+    void cleanupExpiredCache();
     
     /**
-     * @brief 캐시 통계 업데이트
-     * @param operation 연산 타입 ("hit", "miss", "put", "evict")
+     * @brief PostgreSQL 쿼리 실행
+     * @param sql SQL 쿼리
+     * @return 실행 결과
      */
-    void updateCacheStats(const std::string& operation) const;
+    std::vector<std::map<std::string, std::string>> executePostgresQuery(const std::string& sql);
+    
+    /**
+     * @brief SQLite 쿼리 실행
+     * @param sql SQL 쿼리
+     * @return 실행 결과
+     */
+    std::vector<std::map<std::string, std::string>> executeSQLiteQuery(const std::string& sql);
+    
+    /**
+     * @brief 통합 비쿼리 실행 (INSERT/UPDATE/DELETE)
+     * @param sql SQL 쿼리
+     * @return 성공 시 true
+     */
+    bool executeUnifiedNonQuery(const std::string& sql);
+    
+    /**
+     * @brief 문자열 이스케이프 처리
+     * @param str 이스케이프할 문자열
+     * @return 이스케이프된 문자열
+     */
+    std::string escapeString(const std::string& str) const;
 };
 
 } // namespace Repositories

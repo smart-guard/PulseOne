@@ -213,9 +213,9 @@ private:
     // 내부 멤버 변수들
     // =======================================================================
     
-    DatabaseManager& db_manager_;
-    ConfigManager& config_manager_;
-    LogManager& logger_;
+    DatabaseManager* db_manager_;
+    ConfigManager* config_manager_;
+    PulseOne::LogManager* logger_;
     
     // 캐싱 관련 (일시 비활성화)
     mutable std::mutex cache_mutex_;

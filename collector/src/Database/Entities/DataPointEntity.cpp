@@ -99,7 +99,7 @@ DataPointEntity::DataPointEntity(const DataPoint& data_point)
 
 bool DataPointEntity::loadFromDatabase() {
     if (id_ <= 0) {
-        logger_.Error("DataPointEntity::loadFromDatabase - Invalid data point ID: " + std::to_string(id_));
+        logger_->Error("DataPointEntity::loadFromDatabase - Invalid data point ID: " + std::to_string(id_));
         markError();
         return false;
     }
@@ -111,7 +111,7 @@ bool DataPointEntity::loadFromDatabase() {
         auto results = executeUnifiedQuery(query);
         
         if (results.empty()) {
-            logger_.Warn("DataPointEntity::loadFromDatabase - Data point not found: " + std::to_string(id_));
+            logger_->Warn("DataPointEntity::loadFromDatabase - Data point not found: " + std::to_string(id_));
             return false;
         }
         
@@ -120,13 +120,13 @@ bool DataPointEntity::loadFromDatabase() {
         
         if (success) {
             markSaved();  // DeviceEntity 패턴
-            logger_.Info("DataPointEntity::loadFromDatabase - Loaded data point: " + name_);
+            logger_->Info("DataPointEntity::loadFromDatabase - Loaded data point: " + name_);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointEntity::loadFromDatabase failed: " + std::string(e.what()));
+        logger_->Error("DataPointEntity::loadFromDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -134,7 +134,7 @@ bool DataPointEntity::loadFromDatabase() {
 
 bool DataPointEntity::saveToDatabase() {
     if (!isValid()) {
-        logger_.Error("DataPointEntity::saveToDatabase - Invalid data point data");
+        logger_->Error("DataPointEntity::saveToDatabase - Invalid data point data");
         return false;
     }
     
@@ -145,7 +145,7 @@ bool DataPointEntity::saveToDatabase() {
         
         if (success) {
             // SQLite인 경우 마지막 INSERT ID 조회
-            std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
             if (db_type == "SQLITE") {
                 auto results = executeUnifiedQuery("SELECT last_insert_rowid() as id");
                 if (!results.empty()) {
@@ -154,13 +154,13 @@ bool DataPointEntity::saveToDatabase() {
             }
             
             markSaved();  // DeviceEntity 패턴
-            logger_.Info("DataPointEntity::saveToDatabase - Saved data point: " + name_);
+            logger_->Info("DataPointEntity::saveToDatabase - Saved data point: " + name_);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointEntity::saveToDatabase failed: " + std::string(e.what()));
+        logger_->Error("DataPointEntity::saveToDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -168,7 +168,7 @@ bool DataPointEntity::saveToDatabase() {
 
 bool DataPointEntity::updateToDatabase() {
     if (id_ <= 0 || !isValid()) {
-        logger_.Error("DataPointEntity::updateToDatabase - Invalid data point data or ID");
+        logger_->Error("DataPointEntity::updateToDatabase - Invalid data point data or ID");
         return false;
     }
     
@@ -179,13 +179,13 @@ bool DataPointEntity::updateToDatabase() {
         
         if (success) {
             markSaved();  // DeviceEntity 패턴
-            logger_.Info("DataPointEntity::updateToDatabase - Updated data point: " + name_);
+            logger_->Info("DataPointEntity::updateToDatabase - Updated data point: " + name_);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointEntity::updateToDatabase failed: " + std::string(e.what()));
+        logger_->Error("DataPointEntity::updateToDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -193,7 +193,7 @@ bool DataPointEntity::updateToDatabase() {
 
 bool DataPointEntity::deleteFromDatabase() {
     if (id_ <= 0) {
-        logger_.Error("DataPointEntity::deleteFromDatabase - Invalid data point ID");
+        logger_->Error("DataPointEntity::deleteFromDatabase - Invalid data point ID");
         return false;
     }
     
@@ -204,13 +204,13 @@ bool DataPointEntity::deleteFromDatabase() {
         
         if (success) {
             markDeleted();  // DeviceEntity 패턴
-            logger_.Info("DataPointEntity::deleteFromDatabase - Deleted data point: " + name_);
+            logger_->Info("DataPointEntity::deleteFromDatabase - Deleted data point: " + name_);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        logger_->Error("DataPointEntity::deleteFromDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -260,7 +260,7 @@ json DataPointEntity::toJson() const {
         j["last_write_time"] = timestampToString(last_write_time_);
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointEntity::toJson() - Exception: " + std::string(e.what()));
+        logger_->Error("DataPointEntity::toJson() - Exception: " + std::string(e.what()));
     }
     
     return j;
@@ -362,7 +362,7 @@ bool DataPointEntity::fromJson(const json& j) {
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointEntity::fromJson() - Exception: " + std::string(e.what()));
+        logger_->Error("DataPointEntity::fromJson() - Exception: " + std::string(e.what()));
         return false;
     }
 }
@@ -647,7 +647,7 @@ bool DataPointEntity::mapRowToEntity(const std::map<std::string, std::string>& r
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointEntity::mapRowToEntity() - Exception: " + std::string(e.what()));
+        logger_->Error("DataPointEntity::mapRowToEntity() - Exception: " + std::string(e.what()));
         return false;
     }
 }
