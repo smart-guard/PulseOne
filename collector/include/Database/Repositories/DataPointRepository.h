@@ -138,7 +138,7 @@ public:
      * @return 첫 번째 매칭 데이터포인트 (없으면 nullopt)
      */
     std::optional<DataPointEntity> findFirstByConditions(
-        const std::vector<QueryCondition>& conditions) override;
+        const std::vector<QueryCondition>& conditions);
     
     /**
      * @brief 조건에 맞는 데이터포인트 개수 조회
