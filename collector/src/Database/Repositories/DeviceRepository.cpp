@@ -19,9 +19,9 @@ namespace Repositories{
 // =============================================================================
 
 DeviceRepository::DeviceRepository()
-    : db_manager_(DatabaseManager::getInstance())
-    , config_manager_(ConfigManager::getInstance())
-    , logger_(PulseOne::LogManager::getInstance())
+    : db_manager_(&DatabaseManager::getInstance())
+    , config_manager_(&ConfigManager::getInstance())
+    , logger_(&PulseOne::LogManager::getInstance())
     , cache_enabled_(true)
     , cache_ttl_(std::chrono::seconds(300))  // 5분 TTL
     , cache_hits_(0)
@@ -30,7 +30,7 @@ DeviceRepository::DeviceRepository()
     , max_cache_size_(1000)
     , enable_bulk_optimization_(true) {
     
-    logger_.Info("🏭 DeviceRepository initialized with caching enabled");
+    logger_->Info("🏭 DeviceRepository initialized with caching enabled");
 }
 
 // =============================================================================
@@ -41,24 +41,24 @@ std::vector<DeviceEntity> DeviceRepository::findAll() {
     try {
         std::string query = buildSelectQuery();
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
         auto entities = mapResultsToEntities(results);
         
-        logger_.Info("DeviceRepository::findAll - Found " + std::to_string(entities.size()) + " devices");
+        logger_->Info("DeviceRepository::findAll - Found " + std::to_string(entities.size()) + " devices");
         return entities;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::findAll failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::findAll failed: " + std::string(e.what()));
         return {};
     }
 }
 
 std::optional<DeviceEntity> DeviceRepository::findById(int id) {
     if (id <= 0) {
-        logger_.Warn("DeviceRepository::findById - Invalid ID: " + std::to_string(id));
+        logger_->Warn("DeviceRepository::findById - Invalid ID: " + std::to_string(id));
         return std::nullopt;
     }
     
@@ -67,7 +67,7 @@ std::optional<DeviceEntity> DeviceRepository::findById(int id) {
         auto cached = getCachedEntity(id);
         if (cached.has_value()) {
             cache_hits_++;
-            logger_.Debug("DeviceRepository::findById - Cache hit for ID: " + std::to_string(id));
+            logger_->Debug("DeviceRepository::findById - Cache hit for ID: " + std::to_string(id));
             return cached;
         }
         cache_misses_++;
@@ -81,7 +81,7 @@ std::optional<DeviceEntity> DeviceRepository::findById(int id) {
         auto entities = findByConditions(conditions, std::nullopt, Pagination(1, 1));
         
         if (entities.empty()) {
-            logger_.Debug("DeviceRepository::findById - Device not found: " + std::to_string(id));
+            logger_->Debug("DeviceRepository::findById - Device not found: " + std::to_string(id));
             return std::nullopt;
         }
         
@@ -90,11 +90,11 @@ std::optional<DeviceEntity> DeviceRepository::findById(int id) {
             cacheEntity(entities[0]);
         }
         
-        logger_.Debug("DeviceRepository::findById - Found device: " + entities[0].getDeviceName());
+        logger_->Debug("DeviceRepository::findById - Found device: " + entities[0].getName());
         return entities[0];
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::findById failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
@@ -105,13 +105,13 @@ bool DeviceRepository::save(DeviceEntity& entity) {
         
         if (success && cache_enabled_) {
             cacheEntity(entity);
-            logger_.Info("DeviceRepository::save - Saved and cached device: " + entity.getDeviceName());
+            logger_->Info("DeviceRepository::save - Saved and cached device: " + entity.getName());
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::save failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::save failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -125,13 +125,13 @@ bool DeviceRepository::update(const DeviceEntity& entity) {
         if (success && cache_enabled_) {
             // 캐시에서 제거 (다음 조회 시 새로 로드)
             clearCacheForId(entity.getId());
-            logger_.Info("DeviceRepository::update - Updated device and cleared cache: " + entity.getDeviceName());
+            logger_->Info("DeviceRepository::update - Updated device and cleared cache: " + entity.getName());
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::update failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::update failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -143,13 +143,13 @@ bool DeviceRepository::deleteById(int id) {
         
         if (success && cache_enabled_) {
             clearCacheForId(id);
-            logger_.Info("DeviceRepository::deleteById - Deleted device and cleared cache: " + std::to_string(id));
+            logger_->Info("DeviceRepository::deleteById - Deleted device and cleared cache: " + std::to_string(id));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::deleteById failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::deleteById failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -184,13 +184,13 @@ std::vector<DeviceEntity> DeviceRepository::findByIds(const std::vector<int>& id
             }
         }
         
-        logger_.Info("DeviceRepository::findByIds - Found " + 
+        logger_->Info("DeviceRepository::findByIds - Found " + 
                     std::to_string(entities.size()) + "/" + std::to_string(ids.size()) + " devices");
         
         return entities;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::findByIds failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::findByIds failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -235,7 +235,7 @@ int DeviceRepository::saveBulk(std::vector<DeviceEntity>& entities) {
             bool success = executeUnifiedNonQuery(bulk_sql.str());
             if (success) {
                 saved_count = static_cast<int>(entities.size());
-                logger_.Info("DeviceRepository::saveBulk - Bulk saved " + std::to_string(saved_count) + " devices");
+                logger_->Info("DeviceRepository::saveBulk - Bulk saved " + std::to_string(saved_count) + " devices");
             }
             
         } else {
@@ -251,13 +251,13 @@ int DeviceRepository::saveBulk(std::vector<DeviceEntity>& entities) {
                 }
             }
             
-            logger_.Info("DeviceRepository::saveBulk - Individual saved " + std::to_string(saved_count) + " devices");
+            logger_->Info("DeviceRepository::saveBulk - Individual saved " + std::to_string(saved_count) + " devices");
         }
         
         return saved_count;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::saveBulk failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::saveBulk failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -283,11 +283,11 @@ int DeviceRepository::updateBulk(const std::vector<DeviceEntity>& entities) {
             }
         }
         
-        logger_.Info("DeviceRepository::updateBulk - Updated " + std::to_string(updated_count) + " devices");
+        logger_->Info("DeviceRepository::updateBulk - Updated " + std::to_string(updated_count) + " devices");
         return updated_count;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::updateBulk failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::updateBulk failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -317,12 +317,12 @@ int DeviceRepository::deleteByIds(const std::vector<int>& ids) {
         }
         
         int deleted_count = success ? static_cast<int>(ids.size()) : 0;
-        logger_.Info("DeviceRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " devices");
+        logger_->Info("DeviceRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " devices");
         
         return deleted_count;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::deleteByIds failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::deleteByIds failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -339,19 +339,19 @@ std::vector<DeviceEntity> DeviceRepository::findByConditions(
     try {
         std::string query = buildSelectQuery(conditions, order_by, pagination);
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
         auto entities = mapResultsToEntities(results);
         
-        logger_.Debug("DeviceRepository::findByConditions - Found " + 
+        logger_->Debug("DeviceRepository::findByConditions - Found " + 
                      std::to_string(entities.size()) + " devices");
         
         return entities;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::findByConditions failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::findByConditions failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -361,7 +361,7 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
         std::string where_clause = buildWhereClause(conditions);
         std::string query = "SELECT COUNT(*) as count FROM devices" + where_clause;
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
@@ -372,7 +372,7 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
         return std::stoi(results[0]["count"]);
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::countByConditions failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::countByConditions failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -388,7 +388,7 @@ std::vector<DeviceEntity> DeviceRepository::findAllEnabled() {
     
     auto entities = findByConditions(conditions, OrderBy("name", true));
     
-    logger_.Info("DeviceRepository::findAllEnabled - Found " + 
+    logger_->Info("DeviceRepository::findAllEnabled - Found " + 
                 std::to_string(entities.size()) + " enabled devices");
     
     return entities;
@@ -401,7 +401,7 @@ std::vector<DeviceEntity> DeviceRepository::findByProtocol(const std::string& pr
     
     auto entities = findByConditions(conditions, OrderBy("name", true));
     
-    logger_.Info("DeviceRepository::findByProtocol - Found " + 
+    logger_->Info("DeviceRepository::findByProtocol - Found " + 
                 std::to_string(entities.size()) + " " + protocol_type + " devices");
     
     return entities;
@@ -414,7 +414,7 @@ std::vector<DeviceEntity> DeviceRepository::findByTenant(int tenant_id) {
     
     auto entities = findByConditions(conditions, OrderBy("name", true));
     
-    logger_.Info("DeviceRepository::findByTenant - Found " + 
+    logger_->Info("DeviceRepository::findByTenant - Found " + 
                 std::to_string(entities.size()) + " devices for tenant " + std::to_string(tenant_id));
     
     return entities;
@@ -427,7 +427,7 @@ std::vector<DeviceEntity> DeviceRepository::findBySite(int site_id) {
     
     auto entities = findByConditions(conditions, OrderBy("name", true));
     
-    logger_.Info("DeviceRepository::findBySite - Found " + 
+    logger_->Info("DeviceRepository::findBySite - Found " + 
                 std::to_string(entities.size()) + " devices for site " + std::to_string(site_id));
     
     return entities;
@@ -441,11 +441,11 @@ std::optional<DeviceEntity> DeviceRepository::findByEndpoint(const std::string& 
     auto entities = findByConditions(conditions, std::nullopt, Pagination(1, 1));
     
     if (entities.empty()) {
-        logger_.Debug("DeviceRepository::findByEndpoint - Device not found: " + endpoint);
+        logger_->Debug("DeviceRepository::findByEndpoint - Device not found: " + endpoint);
         return std::nullopt;
     }
     
-    logger_.Debug("DeviceRepository::findByEndpoint - Found device: " + entities[0].getDeviceName());
+    logger_->Debug("DeviceRepository::findByEndpoint - Found device: " + entities[0].getName());
     return entities[0];
 }
 
@@ -456,7 +456,7 @@ std::vector<DeviceEntity> DeviceRepository::findByNamePattern(const std::string&
     
     auto entities = findByConditions(conditions, OrderBy("name", true));
     
-    logger_.Info("DeviceRepository::findByNamePattern - Found " + 
+    logger_->Info("DeviceRepository::findByNamePattern - Found " + 
                 std::to_string(entities.size()) + " devices matching pattern: " + name_pattern);
     
     return entities;
@@ -482,7 +482,7 @@ void DeviceRepository::preloadDataPoints(std::vector<DeviceEntity>& devices) {
         // 벌크로 모든 데이터 포인트 조회
         std::string query = "SELECT * FROM data_points WHERE device_id IN (" + device_ids.str() + ") ORDER BY device_id, name";
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
@@ -514,11 +514,11 @@ void DeviceRepository::preloadDataPoints(std::vector<DeviceEntity>& devices) {
             }
         }
         
-        logger_.Info("DeviceRepository::preloadDataPoints - Preloaded data points for " + 
+        logger_->Info("DeviceRepository::preloadDataPoints - Preloaded data points for " + 
                     std::to_string(devices.size()) + " devices");
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::preloadDataPoints failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::preloadDataPoints failed: " + std::string(e.what()));
     }
 }
 
@@ -538,7 +538,7 @@ void DeviceRepository::preloadAlarmConfigs(std::vector<DeviceEntity>& devices) {
         // 벌크로 모든 알람 설정 조회
         std::string query = "SELECT * FROM alarm_definitions WHERE device_id IN (" + device_ids.str() + ") ORDER BY device_id, alarm_name";
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
@@ -547,11 +547,11 @@ void DeviceRepository::preloadAlarmConfigs(std::vector<DeviceEntity>& devices) {
             device.getAlarmConfigs();
         }
         
-        logger_.Info("DeviceRepository::preloadAlarmConfigs - Preloaded alarm configs for " + 
+        logger_->Info("DeviceRepository::preloadAlarmConfigs - Preloaded alarm configs for " + 
                     std::to_string(devices.size()) + " devices");
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::preloadAlarmConfigs failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::preloadAlarmConfigs failed: " + std::string(e.what()));
     }
 }
 
@@ -570,9 +570,9 @@ void DeviceRepository::setCacheEnabled(bool enabled) {
     
     if (!enabled) {
         entity_cache_.clear();
-        logger_.Info("DeviceRepository cache disabled and cleared");
+        logger_->Info("DeviceRepository cache disabled and cleared");
     } else {
-        logger_.Info("DeviceRepository cache enabled");
+        logger_->Info("DeviceRepository cache enabled");
     }
 }
 
@@ -588,7 +588,7 @@ void DeviceRepository::clearCache() {
     cache_misses_ = 0;
     cache_evictions_ = 0;
     
-    logger_.Info("DeviceRepository cache cleared - " + std::to_string(cleared_count) + " entries removed");
+    logger_->Info("DeviceRepository cache cleared - " + std::to_string(cleared_count) + " entries removed");
 }
 
 void DeviceRepository::clearCacheForId(int id) {
@@ -596,7 +596,7 @@ void DeviceRepository::clearCacheForId(int id) {
     auto it = entity_cache_.find(id);
     if (it != entity_cache_.end()) {
         entity_cache_.erase(it);
-        logger_.Debug("DeviceRepository cache cleared for ID: " + std::to_string(id));
+        logger_->Debug("DeviceRepository cache cleared for ID: " + std::to_string(id));
     }
 }
 
@@ -635,7 +635,7 @@ std::map<std::string, int> DeviceRepository::getCountByProtocol() {
     try {
         std::string query = "SELECT protocol_type, COUNT(*) as count FROM devices GROUP BY protocol_type";
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
@@ -644,7 +644,7 @@ std::map<std::string, int> DeviceRepository::getCountByProtocol() {
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::getCountByProtocol failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::getCountByProtocol failed: " + std::string(e.what()));
     }
     
     return counts;
@@ -656,7 +656,7 @@ std::map<int, int> DeviceRepository::getCountByTenant() {
     try {
         std::string query = "SELECT tenant_id, COUNT(*) as count FROM devices GROUP BY tenant_id";
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
@@ -665,7 +665,7 @@ std::map<int, int> DeviceRepository::getCountByTenant() {
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::getCountByTenant failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::getCountByTenant failed: " + std::string(e.what()));
     }
     
     return counts;
@@ -677,7 +677,7 @@ std::map<int, int> DeviceRepository::getCountBySite() {
     try {
         std::string query = "SELECT site_id, COUNT(*) as count FROM devices GROUP BY site_id";
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
@@ -686,7 +686,7 @@ std::map<int, int> DeviceRepository::getCountBySite() {
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::getCountBySite failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::getCountBySite failed: " + std::string(e.what()));
     }
     
     return counts;
@@ -698,7 +698,7 @@ std::map<std::string, int> DeviceRepository::getCountByStatus() {
     try {
         std::string query = "SELECT is_enabled, COUNT(*) as count FROM devices GROUP BY is_enabled";
         
-        auto results = db_manager_.isPostgresConnected() 
+        auto results = db_manager_->isPostgresConnected() 
             ? executePostgresQuery(query)
             : executeSQLiteQuery(query);
         
@@ -709,7 +709,7 @@ std::map<std::string, int> DeviceRepository::getCountByStatus() {
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::getCountByStatus failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::getCountByStatus failed: " + std::string(e.what()));
     }
     
     return counts;
@@ -725,7 +725,7 @@ std::vector<DeviceEntity> DeviceRepository::findDevicesForWorkers() {
     // 관계 데이터 사전 로딩으로 N+1 문제 해결
     preloadAllRelations(devices);
     
-    logger_.Info("DeviceRepository::findDevicesForWorkers - Prepared " + 
+    logger_->Info("DeviceRepository::findDevicesForWorkers - Prepared " + 
                 std::to_string(devices.size()) + " devices for workers");
     
     return devices;
@@ -756,13 +756,13 @@ int DeviceRepository::updateDeviceStatuses(const std::map<int, std::string>& sta
             }
         }
         
-        logger_.Info("DeviceRepository::updateDeviceStatuses - Updated " + 
+        logger_->Info("DeviceRepository::updateDeviceStatuses - Updated " + 
                     std::to_string(updated_count) + " device statuses");
         
         return updated_count;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::updateDeviceStatuses failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::updateDeviceStatuses failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -782,7 +782,7 @@ std::vector<DeviceEntity> DeviceRepository::mapResultsToEntities(
             DeviceEntity entity = mapRowToEntity(row);
             entities.push_back(entity);
         } catch (const std::exception& e) {
-            logger_.Warn("DeviceRepository::mapResultsToEntities - Failed to map row: " + std::string(e.what()));
+            logger_->Warn("DeviceRepository::mapResultsToEntities - Failed to map row: " + std::string(e.what()));
         }
     }
     
@@ -966,7 +966,7 @@ std::vector<std::map<std::string, std::string>> DeviceRepository::executePostgre
     std::vector<std::map<std::string, std::string>> results;
     
     try {
-        auto result = db_manager_.executeQueryPostgres(sql);
+        auto result = db_manager_->executeQueryPostgres(sql);
         
         for (const auto& row : result) {
             std::map<std::string, std::string> row_map;
@@ -977,7 +977,7 @@ std::vector<std::map<std::string, std::string>> DeviceRepository::executePostgre
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::executePostgresQuery failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::executePostgresQuery failed: " + std::string(e.what()));
     }
     
     return results;
@@ -999,9 +999,9 @@ std::vector<std::map<std::string, std::string>> DeviceRepository::executeSQLiteQ
         return 0;
     };
     
-    bool success = db_manager_.executeQuerySQLite(sql, callback, &results);
+    bool success = db_manager_->executeQuerySQLite(sql, callback, &results);
     if (!success) {
-        logger_.Error("DeviceRepository::executeSQLiteQuery failed: " + sql);
+        logger_->Error("DeviceRepository::executeSQLiteQuery failed: " + sql);
         results.clear();
     }
     
@@ -1010,15 +1010,15 @@ std::vector<std::map<std::string, std::string>> DeviceRepository::executeSQLiteQ
 
 bool DeviceRepository::executeUnifiedNonQuery(const std::string& sql) {
     try {
-        std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+        std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
         
         if (db_type == "POSTGRESQL") {
-            return db_manager_.executeNonQueryPostgres(sql);
+            return db_manager_->executeNonQueryPostgres(sql);
         } else {
-            return db_manager_.executeNonQuerySQLite(sql);
+            return db_manager_->executeNonQuerySQLite(sql);
         }
     } catch (const std::exception& e) {
-        logger_.Error("DeviceRepository::executeUnifiedNonQuery failed: " + std::string(e.what()));
+        logger_->Error("DeviceRepository::executeUnifiedNonQuery failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -1031,6 +1031,55 @@ std::string DeviceRepository::escapeString(const std::string& str) const {
         pos += 2;
     }
     return escaped;
+}
+
+std::string DeviceRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) {
+        return "";
+    }
+    
+    std::ostringstream where;
+    where << " WHERE ";
+    
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) where << " AND ";
+        
+        where << conditions[i].field << " " << conditions[i].operation << " ";
+        
+        if (conditions[i].operation == "IN") {
+            where << "(" << conditions[i].value << ")";
+        } else if (conditions[i].operation == "LIKE") {
+            where << "'%" << escapeString(conditions[i].value) << "%'";
+        } else {
+            where << "'" << escapeString(conditions[i].value) << "'";
+        }
+    }
+    
+    return where.str();
+}
+
+std::string DeviceRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) {
+        return "";
+    }
+    
+    std::ostringstream order;
+    order << " ORDER BY " << order_by->field;
+    order << (order_by->ascending ? " ASC" : " DESC");
+    
+    return order.str();
+}
+
+std::string DeviceRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) {
+        return "";
+    }
+    
+    std::ostringstream limit;
+    limit << " LIMIT " << pagination->getLimit();
+    limit << " OFFSET " << pagination->getOffset();
+    
+    return limit.str();
 }
 
 } // namespace Repositories

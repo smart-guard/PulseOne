@@ -19,12 +19,12 @@ namespace Repositories {
 // 생성자
 // =============================================================================
 DataPointRepository::DataPointRepository()
-    : db_manager_(DatabaseManager::getInstance())
-    , config_manager_(ConfigManager::getInstance())
-    , logger_(LogManager::getInstance())
+    : db_manager_(&DatabaseManager::getInstance())
+    , config_manager_(&ConfigManager::getInstance())
+    , logger_(&PulseOne::LogManager::getInstance())
     , cache_enabled_(true) {
     
-    logger_.Info("DataPointRepository created");
+    logger_->Info("DataPointRepository created");
 }
 
 // =============================================================================
@@ -53,10 +53,10 @@ static int sqlite_callback(void* data, int argc, char** argv, char** column_name
 
 std::vector<std::map<std::string, std::string>> DataPointRepository::executeDatabaseQuery(const std::string& sql) {
     try {
-        std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+        std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
         
         if (db_type == "POSTGRESQL") {
-            auto pq_result = db_manager_.executeQueryPostgres(sql);
+            auto pq_result = db_manager_->executeQueryPostgres(sql);
             std::vector<std::map<std::string, std::string>> result;
             
             // 🔥 수정: pqxx::row 접근 방법 수정
@@ -74,12 +74,12 @@ std::vector<std::map<std::string, std::string>> DataPointRepository::executeData
         } else {
             // SQLite 처리
             SQLiteQueryResult result;
-            bool success = db_manager_.executeQuerySQLite(sql, sqlite_callback, &result);
+            bool success = db_manager_->executeQuerySQLite(sql, sqlite_callback, &result);
             return success ? result.rows : std::vector<std::map<std::string, std::string>>{};
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("executeDatabaseQuery failed: " + std::string(e.what()));
+        logger_->Error("executeDatabaseQuery failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -87,16 +87,16 @@ std::vector<std::map<std::string, std::string>> DataPointRepository::executeData
 bool DataPointRepository::executeDatabaseNonQuery(const std::string& sql) {
     try {
         // 🔥 수정: 실제 DatabaseManager 메서드 사용
-        std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+        std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
         
         if (db_type == "POSTGRESQL") {
-            return db_manager_.executeNonQueryPostgres(sql);
+            return db_manager_->executeNonQueryPostgres(sql);
         } else {
-            return db_manager_.executeNonQuerySQLite(sql);
+            return db_manager_->executeNonQuerySQLite(sql);
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("executeDatabaseNonQuery failed: " + std::string(e.what()));
+        logger_->Error("executeDatabaseNonQuery failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -111,7 +111,7 @@ std::vector<DataPointEntity> DataPointRepository::findAll() {
         auto result = executeDatabaseQuery(sql);
         return mapResultToEntities(result);
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::findAll failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::findAll failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -139,7 +139,7 @@ std::optional<DataPointEntity> DataPointRepository::findById(int id) {
         return entity;
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::findById failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
@@ -176,7 +176,7 @@ bool DataPointRepository::save(DataPointEntity& entity) {
         
         if (success) {
             // ID 조회 (DB 타입별 처리)
-            std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
             std::string id_query;
             
             if (db_type == "POSTGRESQL") {
@@ -193,7 +193,7 @@ bool DataPointRepository::save(DataPointEntity& entity) {
         
         return success;
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::save failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::save failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -224,12 +224,12 @@ bool DataPointRepository::update(const DataPointEntity& entity) {
         bool success = executeDatabaseNonQuery(sql);
         
         if (success) {
-            logger_.Info("DataPointRepository::update - Updated data point: " + entity.getName());
+            logger_->Info("DataPointRepository::update - Updated data point: " + entity.getName());
         }
         
         return success;
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::update failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::update failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -241,12 +241,12 @@ bool DataPointRepository::deleteById(int id) {
         
         if (success) {
             clearCacheForId(id);
-            logger_.Info("DataPointRepository::deleteById - Deleted data point ID: " + std::to_string(id));
+            logger_->Info("DataPointRepository::deleteById - Deleted data point ID: " + std::to_string(id));
         }
         
         return success;
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::deleteById failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::deleteById failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -273,7 +273,7 @@ std::vector<DataPointEntity> DataPointRepository::findByIds(const std::vector<in
         auto result = executeDatabaseQuery(sql);
         return mapResultToEntities(result);
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::findByIds failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::findByIds failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -292,7 +292,7 @@ std::vector<DataPointEntity> DataPointRepository::findByConditions(
         auto result = executeDatabaseQuery(sql);
         return mapResultToEntities(result);
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::findByConditions failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::findByConditions failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -314,7 +314,7 @@ int DataPointRepository::countByConditions(const std::vector<QueryCondition>& co
             return std::stoi(result[0].at("count"));
         }
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::countByConditions failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::countByConditions failed: " + std::string(e.what()));
     }
     
     return 0;
@@ -356,7 +356,7 @@ int DataPointRepository::getTotalCount() {
             return std::stoi(result[0].at("count"));
         }
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::getTotalCount failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::getTotalCount failed: " + std::string(e.what()));
     }
     return 0;
 }
@@ -428,7 +428,7 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::mapRowToEntity failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::mapRowToEntity failed: " + std::string(e.what()));
     }
     
     return entity;
@@ -568,7 +568,7 @@ std::vector<DataPointEntity> DataPointRepository::findAllWithLimit(size_t limit)
         auto result = executeDatabaseQuery(sql);
         return mapResultToEntities(result);
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::findAllWithLimit failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::findAllWithLimit failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -633,7 +633,7 @@ std::vector<DataPointEntity> DataPointRepository::findRecentlyCreated(int days) 
         auto result = executeDatabaseQuery(sql);
         return mapResultToEntities(result);
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::findRecentlyCreated failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::findRecentlyCreated failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -663,7 +663,7 @@ std::map<int, int> DataPointRepository::getPointCountByDevice() {
             counts[std::stoi(row.at("device_id"))] = std::stoi(row.at("count"));
         }
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::getPointCountByDevice failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::getPointCountByDevice failed: " + std::string(e.what()));
     }
     
     return counts;
@@ -680,7 +680,7 @@ std::map<std::string, int> DataPointRepository::getPointCountByDataType() {
             counts[row.at("data_type")] = std::stoi(row.at("count"));
         }
     } catch (const std::exception& e) {
-        logger_.Error("DataPointRepository::getPointCountByDataType failed: " + std::string(e.what()));
+        logger_->Error("DataPointRepository::getPointCountByDataType failed: " + std::string(e.what()));
     }
     
     return counts;

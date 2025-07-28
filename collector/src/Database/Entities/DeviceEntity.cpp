@@ -64,7 +64,7 @@ DeviceEntity::DeviceEntity(const DeviceInfo& device_info)
 
 bool DeviceEntity::loadFromDatabase() {
     if (id_ <= 0) {
-        logger_.Error("DeviceEntity::loadFromDatabase - Invalid device ID: " + std::to_string(id_));
+        logger_->Error("DeviceEntity::loadFromDatabase - Invalid device ID: " + std::to_string(id_));
         markError();
         return false;
     }
@@ -75,7 +75,7 @@ bool DeviceEntity::loadFromDatabase() {
         auto results = executeUnifiedQuery(query);
         
         if (results.empty()) {
-            logger_.Warn("DeviceEntity::loadFromDatabase - Device not found: " + std::to_string(id_));
+            logger_->Warn("DeviceEntity::loadFromDatabase - Device not found: " + std::to_string(id_));
             return false;
         }
         
@@ -94,11 +94,11 @@ bool DeviceEntity::loadFromDatabase() {
         }
         
         markSaved();
-        logger_.Info("DeviceEntity::loadFromDatabase - Loaded device: " + device_info_.name);
+        logger_->Info("DeviceEntity::loadFromDatabase - Loaded device: " + device_info_.name);
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::loadFromDatabase failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::loadFromDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -106,7 +106,7 @@ bool DeviceEntity::loadFromDatabase() {
 
 bool DeviceEntity::saveToDatabase() {
     if (!isValid()) {
-        logger_.Error("DeviceEntity::saveToDatabase - Invalid device data");
+        logger_->Error("DeviceEntity::saveToDatabase - Invalid device data");
         return false;
     }
     
@@ -117,7 +117,7 @@ bool DeviceEntity::saveToDatabase() {
         
         if (success) {
             // SQLite인 경우 마지막 INSERT ID 조회
-            std::string db_type = config_manager_.getOrDefault("DATABASE_TYPE", "SQLITE");
+            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
             if (db_type == "SQLITE") {
                 auto results = executeUnifiedQuery("SELECT last_insert_rowid() as id");
                 if (!results.empty()) {
@@ -126,13 +126,13 @@ bool DeviceEntity::saveToDatabase() {
             }
             
             markSaved();
-            logger_.Info("DeviceEntity::saveToDatabase - Saved device: " + device_info_.name);
+            logger_->Info("DeviceEntity::saveToDatabase - Saved device: " + device_info_.name);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::saveToDatabase failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::saveToDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -140,7 +140,7 @@ bool DeviceEntity::saveToDatabase() {
 
 bool DeviceEntity::updateToDatabase() {
     if (id_ <= 0 || !isValid()) {
-        logger_.Error("DeviceEntity::updateToDatabase - Invalid device data or ID");
+        logger_->Error("DeviceEntity::updateToDatabase - Invalid device data or ID");
         return false;
     }
     
@@ -151,13 +151,13 @@ bool DeviceEntity::updateToDatabase() {
         
         if (success) {
             markSaved();
-            logger_.Info("DeviceEntity::updateToDatabase - Updated device: " + device_info_.name);
+            logger_->Info("DeviceEntity::updateToDatabase - Updated device: " + device_info_.name);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::updateToDatabase failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::updateToDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -165,7 +165,7 @@ bool DeviceEntity::updateToDatabase() {
 
 bool DeviceEntity::deleteFromDatabase() {
     if (id_ <= 0) {
-        logger_.Error("DeviceEntity::deleteFromDatabase - Invalid device ID");
+        logger_->Error("DeviceEntity::deleteFromDatabase - Invalid device ID");
         return false;
     }
     
@@ -176,13 +176,13 @@ bool DeviceEntity::deleteFromDatabase() {
         
         if (success) {
             markDeleted();
-            logger_.Info("DeviceEntity::deleteFromDatabase - Deleted device ID: " + std::to_string(id_));
+            logger_->Info("DeviceEntity::deleteFromDatabase - Deleted device ID: " + std::to_string(id_));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::deleteFromDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -236,7 +236,7 @@ json DeviceEntity::toJson() const {
         j["state"] = static_cast<int>(state_);
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::toJson failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::toJson failed: " + std::string(e.what()));
     }
     
     return j;
@@ -303,7 +303,7 @@ bool DeviceEntity::fromJson(const json& data) {
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::fromJson failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::fromJson failed: " + std::string(e.what()));
         markError();
         return false;
     }
@@ -342,7 +342,7 @@ json DeviceEntity::extractModbusConfig() const {
             return config;
         }
     } catch (const std::exception& e) {
-        logger_.Warn("DeviceEntity::extractModbusConfig failed: " + std::string(e.what()));
+        logger_->Warn("DeviceEntity::extractModbusConfig failed: " + std::string(e.what()));
     }
     return json::object();
 }
@@ -362,7 +362,7 @@ json DeviceEntity::extractMqttConfig() const {
             return config;
         }
     } catch (const std::exception& e) {
-        logger_.Warn("DeviceEntity::extractMqttConfig failed: " + std::string(e.what()));
+        logger_->Warn("DeviceEntity::extractMqttConfig failed: " + std::string(e.what()));
     }
     return json::object();
 }
@@ -373,7 +373,7 @@ json DeviceEntity::extractBacnetConfig() const {
             return device_info_.connection_config;
         }
     } catch (const std::exception& e) {
-        logger_.Warn("DeviceEntity::extractBacnetConfig failed: " + std::string(e.what()));
+        logger_->Warn("DeviceEntity::extractBacnetConfig failed: " + std::string(e.what()));
     }
     return json::object();
 }
@@ -410,7 +410,7 @@ json DeviceEntity::parseProtocolConfig(const std::string& protocol_type, const s
         return config;
         
     } catch (const std::exception& e) {
-        logger_.Warn("DeviceEntity::parseProtocolConfig failed: " + std::string(e.what()));
+        logger_->Warn("DeviceEntity::parseProtocolConfig failed: " + std::string(e.what()));
         return json::object();
     }
 }
@@ -458,11 +458,11 @@ int DeviceEntity::saveRealtimeDataToRDB(const std::vector<json>& values) {
             }
         }
         
-        logger_.Info("DeviceEntity::saveRealtimeDataToRDB - Saved " + std::to_string(saved_count) + " values");
+        logger_->Info("DeviceEntity::saveRealtimeDataToRDB - Saved " + std::to_string(saved_count) + " values");
         return saved_count;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::saveRealtimeDataToRDB failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::saveRealtimeDataToRDB failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -491,11 +491,11 @@ int DeviceEntity::saveRealtimeDataToRDB(const std::vector<RealtimeValueEntity>& 
             }
         }
         
-        logger_.Info("DeviceEntity::saveRealtimeDataToRDB - Saved " + std::to_string(saved_count) + " values");
+        logger_->Info("DeviceEntity::saveRealtimeDataToRDB - Saved " + std::to_string(saved_count) + " values");
         return saved_count;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::saveRealtimeDataToRDB failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::saveRealtimeDataToRDB failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -567,11 +567,11 @@ std::vector<DataPoint> DeviceEntity::getDataPoints(bool enabled_only) {
         cached_data_points_ = data_points;
         data_points_loaded_ = true;
         
-        logger_.Info("DeviceEntity::getDataPoints - Loaded " + std::to_string(data_points.size()) + " points");
+        logger_->Info("DeviceEntity::getDataPoints - Loaded " + std::to_string(data_points.size()) + " points");
         return data_points;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::getDataPoints failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::getDataPoints failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -603,11 +603,11 @@ std::vector<json> DeviceEntity::getAlarmConfigs() {
         cached_alarm_configs_ = alarm_configs;
         alarm_configs_loaded_ = true;
         
-        logger_.Info("DeviceEntity::getAlarmConfigs - Loaded " + std::to_string(alarm_configs.size()) + " alarms");
+        logger_->Info("DeviceEntity::getAlarmConfigs - Loaded " + std::to_string(alarm_configs.size()) + " alarms");
         return alarm_configs;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::getAlarmConfigs failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::getAlarmConfigs failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -632,13 +632,13 @@ bool DeviceEntity::updateDeviceStatus(const std::string& status, const std::stri
         
         if (success) {
             markModified();
-            logger_.Info("DeviceEntity::updateDeviceStatus - Updated status: " + status);
+            logger_->Info("DeviceEntity::updateDeviceStatus - Updated status: " + status);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_.Error("DeviceEntity::updateDeviceStatus failed: " + std::string(e.what()));
+        logger_->Error("DeviceEntity::updateDeviceStatus failed: " + std::string(e.what()));
         return false;
     }
 }
