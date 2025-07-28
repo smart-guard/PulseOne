@@ -142,6 +142,10 @@ bool DeviceRepository::deleteById(int id) {
     }
 }
 
+bool DeviceRepository::exists(int id) {
+    return findById(id).has_value();
+}
+
 // =============================================================================
 // IRepository 벌크 연산 구현 (캐시 자동 적용)
 // =============================================================================
@@ -357,6 +361,13 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
         logger_->Error("DeviceRepository::countByConditions failed: " + std::string(e.what()));
         return 0;
     }
+}
+
+std::optional<DeviceEntity> DeviceRepository::findFirstByConditions(
+    const std::vector<QueryCondition>& conditions) {
+    
+    auto results = findByConditions(conditions, std::nullopt, Pagination(1, 0));
+    return results.empty() ? std::nullopt : std::make_optional(results[0]);
 }
 
 // =============================================================================
