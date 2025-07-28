@@ -3,13 +3,14 @@
 
 /**
  * @file RepositoryFactory.h
- * @brief PulseOne Repository 팩토리 (싱글톤) - 모든 Repository 통합 관리
+ * @brief PulseOne Repository 팩토리 (싱글톤) - 모든 Repository 통합 관리 (CurrentValueRepository 추가)
  * @author PulseOne Development Team
  * @date 2025-07-28
  * 
  * 🔥 완전한 Repository 생태계:
  * - DeviceRepository, DataPointRepository (기존 완료)
  * - UserRepository, TenantRepository, AlarmConfigRepository (신규 추가)
+ * - CurrentValueRepository (실시간 데이터 저장) 🆕
  * - IRepository 기반 통합 캐시 시스템
  */
 
@@ -19,6 +20,8 @@
 #include "Database/Repositories/TenantRepository.h"
 #include "Database/Repositories/AlarmConfigRepository.h"
 #include "Database/Repositories/SiteRepository.h"
+#include "Database/Repositories/VirtualPointRepository.h"
+#include "Database/Repositories/CurrentValueRepository.h"  // 🆕 추가
 
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
@@ -41,6 +44,8 @@ using UserRepository = PulseOne::Database::Repositories::UserRepository;
 using TenantRepository = PulseOne::Database::Repositories::TenantRepository;
 using AlarmConfigRepository = PulseOne::Database::Repositories::AlarmConfigRepository;
 using SiteRepository = PulseOne::Database::Repositories::SiteRepository;
+using VirtualPointRepository = PulseOne::Database::Repositories::VirtualPointRepository;
+using CurrentValueRepository = PulseOne::Database::Repositories::CurrentValueRepository;  // 🆕 추가
 
 /**
  * @brief Repository 팩토리 (싱글톤)
@@ -102,8 +107,24 @@ public:
      * @return AlarmConfigRepository 참조
      */
     AlarmConfigRepository& getAlarmConfigRepository();
-
+    
+    /**
+     * @brief SiteRepository 인스턴스 조회
+     * @return SiteRepository 참조
+     */
     SiteRepository& getSiteRepository();
+    
+    /**
+     * @brief VirtualPointRepository 인스턴스 조회
+     * @return VirtualPointRepository 참조
+     */
+    VirtualPointRepository& getVirtualPointRepository();
+    
+    /**
+     * @brief CurrentValueRepository 인스턴스 조회 🆕
+     * @return CurrentValueRepository 참조
+     */
+    CurrentValueRepository& getCurrentValueRepository();
 
     // =======================================================================
     // 글로벌 트랜잭션 관리
@@ -227,6 +248,8 @@ private:
     std::unique_ptr<TenantRepository> tenant_repository_;
     std::unique_ptr<AlarmConfigRepository> alarm_config_repository_;
     std::unique_ptr<SiteRepository> site_repository_;
+    std::unique_ptr<VirtualPointRepository> virtual_point_repository_;
+    std::unique_ptr<CurrentValueRepository> current_value_repository_;  // 🆕 추가
     
     // 동기화 및 상태 관리
     mutable std::mutex factory_mutex_;
@@ -270,4 +293,4 @@ private:
 } // namespace Database
 } // namespace PulseOne
 
-#endif // PULSEONE_REPOSITORY_FACTORY_
+#endif // PULSEONE_REPOSITORY_FACTORY_H

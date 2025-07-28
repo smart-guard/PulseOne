@@ -26,7 +26,11 @@ namespace PulseOne::Enums {
         ETHERNET_IP = 7,
         CUSTOM = 99
     };
-    
+    std::string protocolTypeToString(ProtocolType type);
+    ProtocolType stringToProtocolType(const std::string& str);
+    std::vector<ProtocolType> getAllSupportedProtocols();
+    bool isValidProtocolString(const std::string& str);
+    bool isProtocolImplemented(ProtocolType type);
     /**
      * @brief 데이터 품질 상태 (현장 점검 상황 반영)
      */
