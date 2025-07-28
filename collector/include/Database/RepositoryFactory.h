@@ -26,6 +26,9 @@
 #include <mutex>
 #include <functional>
 #include <map>
+#include <vector>
+#include <string>
+#include <chrono>
 
 namespace PulseOne {
 namespace Database {
@@ -99,7 +102,36 @@ public:
     AlarmConfigRepository& getAlarmConfigRepository();
 
     // =======================================================================
-    // 전역 캐싱 제어 (IRepository 통합 관리)
+    // 글로벌 트랜잭션 관리
+    // =======================================================================
+    
+    /**
+     * @brief 전역 트랜잭션 시작
+     * @return 성공 시 true
+     */
+    bool beginGlobalTransaction();
+    
+    /**
+     * @brief 전역 트랜잭션 커밋
+     * @return 성공 시 true
+     */
+    bool commitGlobalTransaction();
+    
+    /**
+     * @brief 전역 트랜잭션 롤백
+     * @return 성공 시 true
+     */
+    bool rollbackGlobalTransaction();
+    
+    /**
+     * @brief 트랜잭션 내에서 작업 실행
+     * @param work 실행할 작업 함수
+     * @return 성공 시 true
+     */
+    bool executeInGlobalTransaction(std::function<bool()> work);
+
+    // =======================================================================
+    // 캐싱 제어 (IRepository 통합 관리)
     // =======================================================================
     
     /**
@@ -120,116 +152,43 @@ public:
     std::map<std::string, std::map<std::string, int>> getAllCacheStats();
     
     /**
-     * @brief 전체 캐시 메모리 사용량 조회
-     * @return 총 캐시 메모리 사용량 (bytes)
+     * @brief 캐시 TTL 설정
+     * @param ttl_seconds TTL (초)
      */
-    size_t getTotalCacheMemoryUsage();
+    void setCacheTTL(int ttl_seconds);
     
     /**
-     * @brief 캐시 히트율 조회
-     * @return Repository별 캐시 히트율
+     * @brief 캐시 최대 크기 설정
+     * @param max_size 최대 크기
      */
-    std::map<std::string, double> getCacheHitRates();
+    void setMaxCacheSize(int max_size);
 
     // =======================================================================
     // 성능 모니터링 및 분석
     // =======================================================================
     
     /**
-     * @brief Repository별 성능 통계 조회
-     * @return 성능 지표 맵
+     * @brief 팩토리 통계 조회
+     * @return 통계 정보 맵
      */
-    std::map<std::string, std::map<std::string, double>> getPerformanceStats();
+    std::map<std::string, int> getFactoryStats() const;
     
     /**
-     * @brief 전체 Repository 상태 확인
-     * @return 상태 정보 맵
+     * @brief 활성 Repository 수 조회
+     * @return 활성 Repository 수
      */
-    std::map<std::string, std::string> getRepositoryHealthStatus();
+    int getActiveRepositoryCount() const;
     
     /**
-     * @brief 캐시 최적화 실행
-     * @param max_memory_mb 최대 메모리 사용량 (MB)
-     * @return 최적화된 Repository 수
-     */
-    int optimizeCaches(int max_memory_mb = 100);
-
-    // =======================================================================
-    // 배치 작업 지원
-    // =======================================================================
-    
-    /**
-     * @brief 모든 Repository 백업
-     * @param backup_path 백업 파일 경로
+     * @brief 설정 다시 로드
      * @return 성공 시 true
      */
-    bool backupAllRepositories(const std::string& backup_path);
+    bool reloadConfigurations();
     
     /**
-     * @brief Repository 데이터 무결성 검사
-     * @return 문제가 발견된 Repository 목록
+     * @brief 통계 초기화
      */
-    std::vector<std::string> validateDataIntegrity();
-    
-    /**
-     * @brief 트랜잭션 기반 배치 작업 시작
-     * @return 트랜잭션 ID
-     */
-    std::string beginBatchTransaction();
-    
-    /**
-     * @brief 배치 트랜잭션 커밋
-     * @param transaction_id 트랜잭션 ID
-     * @return 성공 시 true
-     */
-    bool commitBatchTransaction(const std::string& transaction_id);
-    
-    /**
-     * @brief 배치 트랜잭션 롤백
-     * @param transaction_id 트랜잭션 ID
-     * @return 성공 시 true
-     */
-    bool rollbackBatchTransaction(const std::string& transaction_id);
-
-    // =======================================================================
-    // 이벤트 및 알림 시스템
-    // =======================================================================
-    
-    /**
-     * @brief Repository 이벤트 리스너 등록
-     * @param event_type 이벤트 타입 (CREATE, UPDATE, DELETE)
-     * @param callback 콜백 함수
-     */
-    void addEventListener(const std::string& event_type, 
-                         std::function<void(const std::string&, int)> callback);
-    
-    /**
-     * @brief 캐시 이벤트 리스너 등록
-     * @param callback 캐시 이벤트 콜백
-     */
-    void addCacheEventListener(std::function<void(const std::string&, const std::string&)> callback);
-
-    // =======================================================================
-    // 디버깅 및 개발 지원
-    // =======================================================================
-    
-    /**
-     * @brief Repository 상세 정보 덤프
-     * @return Repository 정보 문자열
-     */
-    std::string dumpRepositoryInfo();
-    
-    /**
-     * @brief SQL 쿼리 로깅 활성화/비활성화
-     * @param enabled 로깅 활성화 여부
-     */
-    void setQueryLoggingEnabled(bool enabled);
-    
-    /**
-     * @brief 느린 쿼리 감지 임계값 설정
-     * @param threshold_ms 임계값 (밀리초)
-     */
-    void setSlowQueryThreshold(int threshold_ms);
+    void resetStats();
 
     // =======================================================================
     // 복사 및 이동 제한 (싱글톤)
@@ -252,10 +211,10 @@ private:
     // 멤버 변수들
     // =======================================================================
     
-    // 기본 시스템 컴포넌트들
-    std::unique_ptr<LogManager> logger_;
-    std::unique_ptr<ConfigManager> config_manager_;
-    std::unique_ptr<DatabaseManager> db_manager_;
+    // 기본 시스템 컴포넌트들 (참조 방식)
+    DatabaseManager& db_manager_;
+    ConfigManager& config_manager_;
+    PulseOne::LogManager& logger_;
     
     // Repository 인스턴스들
     std::unique_ptr<DeviceRepository> device_repository_;
@@ -267,87 +226,43 @@ private:
     // 동기화 및 상태 관리
     mutable std::mutex factory_mutex_;
     bool initialized_;
-    bool cache_enabled_;
+    
+    // 캐시 관리
+    bool global_cache_enabled_;
+    int cache_ttl_seconds_;
+    int max_cache_size_;
+    
+    // 트랜잭션 관리
+    bool transaction_active_;
     
     // 성능 모니터링
-    std::map<std::string, std::chrono::high_resolution_clock::time_point> performance_timers_;
-    std::map<std::string, std::vector<double>> query_times_;
-    
-    // 이벤트 시스템
-    std::map<std::string, std::vector<std::function<void(const std::string&, int)>>> event_listeners_;
-    std::vector<std::function<void(const std::string&, const std::string&)>> cache_event_listeners_;
-    
-    // 배치 트랜잭션 관리
-    std::map<std::string, std::vector<std::string>> active_transactions_;
-    
-    // 디버깅 및 로깅
-    bool query_logging_enabled_;
-    int slow_query_threshold_ms_;
+    int creation_count_;
+    int error_count_;
+    int transaction_count_;
 
     // =======================================================================
     // 내부 헬퍼 메서드들
     // =======================================================================
     
     /**
-     * @brief Repository 초기화
+     * @brief Repository 인스턴스 생성
      * @return 성공 시 true
      */
-    bool initializeRepositories();
+    bool createRepositoryInstances();
     
     /**
-     * @brief 캐시 통계 수집
-     * @param repo_name Repository 이름
-     * @return 캐시 통계
+     * @brief Repository 설정 적용
      */
-    std::map<std::string, int> collectCacheStats(const std::string& repo_name);
+    void applyRepositoryConfigurations();
     
     /**
-     * @brief 성능 타이머 시작
-     * @param operation_name 작업 이름
+     * @brief 의존성 주입
+     * @return 성공 시 true
      */
-    void startPerformanceTimer(const std::string& operation_name);
-    
-    /**
-     * @brief 성능 타이머 종료
-     * @param operation_name 작업 이름
-     * @return 경과 시간 (밀리초)
-     */
-    double endPerformanceTimer(const std::string& operation_name);
-    
-    /**
-     * @brief Repository 이벤트 트리거
-     * @param event_type 이벤트 타입
-     * @param repo_name Repository 이름
-     * @param entity_id 엔티티 ID
-     */
-    void triggerRepositoryEvent(const std::string& event_type, 
-                               const std::string& repo_name, 
-                               int entity_id);
-    
-    /**
-     * @brief 캐시 이벤트 트리거
-     * @param event_type 이벤트 타입
-     * @param details 상세 정보
-     */
-    void triggerCacheEvent(const std::string& event_type, const std::string& details);
-    
-    /**
-     * @brief 쿼리 성능 로깅
-     * @param repo_name Repository 이름
-     * @param query SQL 쿼리
-     * @param execution_time_ms 실행 시간 (밀리초)
-     */
-    void logQueryPerformance(const std::string& repo_name, 
-                            const std::string& query, 
-                            double execution_time_ms);
-    
-    /**
-     * @brief 메모리 정리
-     */
-    void cleanupResources();
+    bool injectDependencies();
 };
 
 } // namespace Database
 } // namespace PulseOne
 
-#endif // PULSEONE_REPOSITORY_FACTORY_H
+#endif // PULSEONE_REPOSITORY_FACTORY_

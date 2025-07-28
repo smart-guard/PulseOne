@@ -1,13 +1,10 @@
 // =============================================================================
 // collector/src/Database/RepositoryFactory.cpp
-// PulseOne Repository 팩토리 구현 - 네임스페이스 수정
+// PulseOne Repository 팩토리 구현 - 완전한 구현
 // =============================================================================
 
 #include "Database/RepositoryFactory.h"
-#include "Common/Constants.h"
 #include <stdexcept>
-
-using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {
@@ -17,17 +14,17 @@ namespace Database {
 // =============================================================================
 
 RepositoryFactory::RepositoryFactory()
-    : initialized_(false)
-    , db_manager_(DatabaseManager::getInstance())
+    : db_manager_(DatabaseManager::getInstance())
     , config_manager_(ConfigManager::getInstance())
     , logger_(PulseOne::LogManager::getInstance())
-    , creation_count_(0)
-    , error_count_(0)
-    , transaction_count_(0)
+    , initialized_(false)
     , global_cache_enabled_(true)
     , cache_ttl_seconds_(300)  // 5분 기본값
     , max_cache_size_(1000)
-    , transaction_active_(false) {
+    , transaction_active_(false)
+    , creation_count_(0)
+    , error_count_(0)
+    , transaction_count_(0) {
     
     logger_.Info("🏭 RepositoryFactory created");
 }
@@ -118,14 +115,9 @@ void RepositoryFactory::shutdown() {
         // Repository 인스턴스 해제
         device_repository_.reset();
         data_point_repository_.reset();
-        // TODO: 향후 추가할 Repository들
-        /*
-        data_point_repository_.reset();
-        alarm_config_repository_.reset();
         user_repository_.reset();
         tenant_repository_.reset();
-        site_repository_.reset();
-        */
+        alarm_config_repository_.reset();
         
         initialized_ = false;
         logger_.Info("✅ RepositoryFactory shutdown completed");
@@ -170,38 +162,6 @@ DataPointRepository& RepositoryFactory::getDataPointRepository() {
     return *data_point_repository_;
 }
 
-// TODO: 향후 추가할 Repository들
-/*
-DataPointRepository& RepositoryFactory::getDataPointRepository() {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
-    if (!initialized_) {
-        throw std::runtime_error("RepositoryFactory not initialized");
-    }
-    
-    if (!data_point_repository_) {
-        throw std::runtime_error("DataPointRepository not created");
-    }
-    
-    creation_count_++;
-    return *data_point_repository_;
-}
-
-AlarmConfigRepository& RepositoryFactory::getAlarmConfigRepository() {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
-    if (!initialized_) {
-        throw std::runtime_error("RepositoryFactory not initialized");
-    }
-    
-    if (!alarm_config_repository_) {
-        throw std::runtime_error("AlarmConfigRepository not created");
-    }
-    
-    creation_count_++;
-    return *alarm_config_repository_;
-}
-
 UserRepository& RepositoryFactory::getUserRepository() {
     std::lock_guard<std::mutex> lock(factory_mutex_);
     
@@ -232,21 +192,20 @@ TenantRepository& RepositoryFactory::getTenantRepository() {
     return *tenant_repository_;
 }
 
-SiteRepository& RepositoryFactory::getSiteRepository() {
+AlarmConfigRepository& RepositoryFactory::getAlarmConfigRepository() {
     std::lock_guard<std::mutex> lock(factory_mutex_);
     
     if (!initialized_) {
         throw std::runtime_error("RepositoryFactory not initialized");
     }
     
-    if (!site_repository_) {
-        throw std::runtime_error("SiteRepository not created");
+    if (!alarm_config_repository_) {
+        throw std::runtime_error("AlarmConfigRepository not created");
     }
     
     creation_count_++;
-    return *site_repository_;
+    return *alarm_config_repository_;
 }
-*/
 
 // =============================================================================
 // 글로벌 트랜잭션 관리
@@ -400,29 +359,18 @@ void RepositoryFactory::setCacheEnabled(bool enabled) {
     if (device_repository_) {
         device_repository_->setCacheEnabled(enabled);
     }
-    
-    // TODO: 향후 추가할 Repository들
-    /*
     if (data_point_repository_) {
         data_point_repository_->setCacheEnabled(enabled);
     }
-    
-    if (alarm_config_repository_) {
-        alarm_config_repository_->setCacheEnabled(enabled);
-    }
-    
     if (user_repository_) {
         user_repository_->setCacheEnabled(enabled);
     }
-    
     if (tenant_repository_) {
         tenant_repository_->setCacheEnabled(enabled);
     }
-    
-    if (site_repository_) {
-        site_repository_->setCacheEnabled(enabled);
+    if (alarm_config_repository_) {
+        alarm_config_repository_->setCacheEnabled(enabled);
     }
-    */
 }
 
 void RepositoryFactory::clearAllCaches() {
@@ -432,31 +380,66 @@ void RepositoryFactory::clearAllCaches() {
     
     int total_cleared = 0;
     
-    // DeviceRepository 캐시 클리어
+    // 각 Repository 캐시 클리어
     if (device_repository_) {
         try {
             auto stats = device_repository_->getCacheStats();
             int cached_items = stats["cached_items"];
-            
             device_repository_->clearCache();
             total_cleared += cached_items;
-            
         } catch (const std::exception& e) {
             logger_.Error("Failed to clear DeviceRepository cache: " + std::string(e.what()));
             error_count_++;
         }
     }
     
-    // TODO: 향후 추가할 Repository들 캐시 클리어
-    /*
     if (data_point_repository_) {
         try {
             auto stats = data_point_repository_->getCacheStats();
-            total_cleared += stats["cached_items"];
+            int cached_items = stats["cached_items"];
             data_point_repository_->clearCache();
-        } catch (...) {}
+            total_cleared += cached_items;
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear DataPointRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
     }
-    */
+    
+    if (user_repository_) {
+        try {
+            auto stats = user_repository_->getCacheStats();
+            int cached_items = stats["cached_items"];
+            user_repository_->clearCache();
+            total_cleared += cached_items;
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear UserRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
+    }
+    
+    if (tenant_repository_) {
+        try {
+            auto stats = tenant_repository_->getCacheStats();
+            int cached_items = stats["cached_items"];
+            tenant_repository_->clearCache();
+            total_cleared += cached_items;
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear TenantRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
+    }
+    
+    if (alarm_config_repository_) {
+        try {
+            auto stats = alarm_config_repository_->getCacheStats();
+            int cached_items = stats["cached_items"];
+            alarm_config_repository_->clearCache();
+            total_cleared += cached_items;
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to clear AlarmConfigRepository cache: " + std::string(e.what()));
+            error_count_++;
+        }
+    }
     
     logger_.Info("Cleared " + std::to_string(total_cleared) + " cached items from all repositories");
 }
@@ -467,34 +450,21 @@ std::map<std::string, std::map<std::string, int>> RepositoryFactory::getAllCache
     std::map<std::string, std::map<std::string, int>> all_stats;
     
     try {
-        // DeviceRepository 통계
         if (device_repository_) {
             all_stats["DeviceRepository"] = device_repository_->getCacheStats();
         }
-        
-        // TODO: 향후 추가할 Repository들
-        /*
         if (data_point_repository_) {
             all_stats["DataPointRepository"] = data_point_repository_->getCacheStats();
         }
-        
-        if (alarm_config_repository_) {
-            all_stats["AlarmConfigRepository"] = alarm_config_repository_->getCacheStats();
-        }
-        
         if (user_repository_) {
             all_stats["UserRepository"] = user_repository_->getCacheStats();
         }
-        
         if (tenant_repository_) {
             all_stats["TenantRepository"] = tenant_repository_->getCacheStats();
         }
-        
-        if (site_repository_) {
-            all_stats["SiteRepository"] = site_repository_->getCacheStats();
+        if (alarm_config_repository_) {
+            all_stats["AlarmConfigRepository"] = alarm_config_repository_->getCacheStats();
         }
-        */
-        
     } catch (const std::exception& e) {
         logger_.Error("Failed to get cache statistics: " + std::string(e.what()));
         error_count_++;
@@ -526,7 +496,7 @@ void RepositoryFactory::setMaxCacheSize(int max_size) {
 }
 
 // =============================================================================
-// 성능 모니터링 (현재 버전 형식)
+// 성능 모니터링
 // =============================================================================
 
 std::map<std::string, int> RepositoryFactory::getFactoryStats() const {
@@ -548,20 +518,13 @@ std::map<std::string, int> RepositoryFactory::getFactoryStats() const {
 }
 
 int RepositoryFactory::getActiveRepositoryCount() const {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    
     int count = 0;
     
     if (device_repository_) count++;
     if (data_point_repository_) count++;
-    // TODO: 향후 추가할 Repository들
-    /*
-    if (data_point_repository_) count++;
-    if (alarm_config_repository_) count++;
     if (user_repository_) count++;
     if (tenant_repository_) count++;
-    if (site_repository_) count++;
-    */
+    if (alarm_config_repository_) count++;
     
     return count;
 }
@@ -613,52 +576,40 @@ bool RepositoryFactory::createRepositoryInstances() {
     try {
         logger_.Info("Creating repository instances...");
         
-        // DeviceRepository 생성 (타입 별칭 사용)
+        // DeviceRepository 생성
         device_repository_ = std::make_unique<DeviceRepository>();
         if (!device_repository_) {
             logger_.Error("Failed to create DeviceRepository");
             return false;
         }
         
-        // DataPointRepository 생성 (타입 별칭 사용)
+        // DataPointRepository 생성
         data_point_repository_ = std::make_unique<DataPointRepository>();
         if (!data_point_repository_) {
             logger_.Error("Failed to create DataPointRepository");
             return false;
         }
         
-        // TODO: 향후 추가할 Repository들
-        /*
-        data_point_repository_ = std::make_unique<DataPointRepository>();
-        if (!data_point_repository_) {
-            logger_.Error("Failed to create DataPointRepository");
-            return false;
-        }
-        
-        alarm_config_repository_ = std::make_unique<AlarmConfigRepository>();
-        if (!alarm_config_repository_) {
-            logger_.Error("Failed to create AlarmConfigRepository");
-            return false;
-        }
-        
+        // UserRepository 생성
         user_repository_ = std::make_unique<UserRepository>();
         if (!user_repository_) {
             logger_.Error("Failed to create UserRepository");
             return false;
         }
         
+        // TenantRepository 생성
         tenant_repository_ = std::make_unique<TenantRepository>();
         if (!tenant_repository_) {
             logger_.Error("Failed to create TenantRepository");
             return false;
         }
         
-        site_repository_ = std::make_unique<SiteRepository>();
-        if (!site_repository_) {
-            logger_.Error("Failed to create SiteRepository");
+        // AlarmConfigRepository 생성
+        alarm_config_repository_ = std::make_unique<AlarmConfigRepository>();
+        if (!alarm_config_repository_) {
+            logger_.Error("Failed to create AlarmConfigRepository");
             return false;
         }
-        */
         
         logger_.Info("All repository instances created successfully");
         return true;

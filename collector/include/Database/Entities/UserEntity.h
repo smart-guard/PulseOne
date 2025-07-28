@@ -3,9 +3,15 @@
 
 /**
  * @file UserEntity.h
- * @brief PulseOne User Entity - 사용자 정보 엔티티
+ * @brief PulseOne User Entity - 사용자 정보 엔티티 (DeviceEntity 패턴 준수)
  * @author PulseOne Development Team
  * @date 2025-07-28
+ * 
+ * 🔥 DeviceEntity/DataPointEntity 패턴 100% 준수:
+ * - BaseEntity<UserEntity> 상속 (CRTP)
+ * - INTEGER ID 기반
+ * - markModified() 패턴 통일
+ * - JSON 직렬화/역직렬화
  */
 
 #include "Database/Entities/BaseEntity.h"
@@ -20,9 +26,9 @@ namespace Database {
 namespace Entities {
 
 /**
- * @brief 사용자 엔티티 클래스
+ * @brief 사용자 엔티티 클래스 (BaseEntity 템플릿 상속)
  */
-class UserEntity : public BaseEntity {
+class UserEntity : public BaseEntity<UserEntity> {
 public:
     // =======================================================================
     // 생성자 및 소멸자
@@ -45,18 +51,70 @@ public:
     virtual ~UserEntity() = default;
 
     // =======================================================================
-    // BaseEntity 인터페이스 구현
+    // BaseEntity 순수 가상 함수 구현 (DeviceEntity 패턴)
     // =======================================================================
     
+    /**
+     * @brief DB에서 엔티티 로드
+     * @return 성공 시 true
+     */
     bool loadFromDatabase() override;
+    
+    /**
+     * @brief DB에 엔티티 저장
+     * @return 성공 시 true
+     */
     bool saveToDatabase() override;
+    
+    /**
+     * @brief DB에 엔티티 업데이트
+     * @return 성공 시 true
+     */
     bool updateToDatabase() override;
+    
+    /**
+     * @brief DB에서 엔티티 삭제
+     * @return 성공 시 true
+     */
     bool deleteFromDatabase() override;
+    
+    /**
+     * @brief 테이블명 반환
+     * @return 테이블명
+     */
     std::string getTableName() const override { return "users"; }
+    
+    /**
+     * @brief 유효성 검사
+     * @return 유효하면 true
+     */
     bool isValid() const override;
 
     // =======================================================================
-    // Getter 메서드들
+    // JSON 직렬화 (BaseEntity 순수 가상 함수)
+    // =======================================================================
+    
+    /**
+     * @brief JSON으로 변환
+     * @return JSON 객체
+     */
+    json toJson() const override;
+    
+    /**
+     * @brief JSON에서 로드
+     * @param data JSON 데이터
+     * @return 성공 시 true
+     */
+    bool fromJson(const json& data) override;
+    
+    /**
+     * @brief 문자열 표현
+     * @return 엔티티 정보 문자열
+     */
+    std::string toString() const override;
+
+    // =======================================================================
+    // Getter 메서드들 (DeviceEntity 패턴)
     // =======================================================================
     
     const std::string& getUsername() const { return username_; }
@@ -65,133 +123,182 @@ public:
     const std::string& getRole() const { return role_; }
     int getTenantId() const { return tenant_id_; }
     bool isEnabled() const { return is_enabled_; }
-    const std::chrono::system_clock::time_point& getLastLogin() const { return last_login_; }
-    const std::chrono::system_clock::time_point& getCreatedAt() const { return created_at_; }
     const std::string& getPhoneNumber() const { return phone_number_; }
     const std::string& getDepartment() const { return department_; }
     const std::vector<std::string>& getPermissions() const { return permissions_; }
+    const std::chrono::system_clock::time_point& getLastLoginAt() const { return last_login_at_; }
+    int getLoginCount() const { return login_count_; }
 
     // =======================================================================
-    // Setter 메서드들
+    // Setter 메서드들 (markModified 패턴 통일)
     // =======================================================================
     
-    void setUsername(const std::string& username) { username_ = username; markModified(); }
-    void setEmail(const std::string& email) { email_ = email; markModified(); }
-    void setFullName(const std::string& full_name) { full_name_ = full_name; markModified(); }
-    void setRole(const std::string& role) { role_ = role; markModified(); }
-    void setTenantId(int tenant_id) { tenant_id_ = tenant_id; markModified(); }
-    void setEnabled(bool enabled) { is_enabled_ = enabled; markModified(); }
-    void setPhoneNumber(const std::string& phone) { phone_number_ = phone; markModified(); }
-    void setDepartment(const std::string& dept) { department_ = dept; markModified(); }
-    void setPermissions(const std::vector<std::string>& perms) { permissions_ = perms; markModified(); }
+    void setUsername(const std::string& username) { 
+        username_ = username; 
+        markModified(); 
+    }
+    
+    void setEmail(const std::string& email) { 
+        email_ = email; 
+        markModified(); 
+    }
+    
+    void setFullName(const std::string& full_name) { 
+        full_name_ = full_name; 
+        markModified(); 
+    }
+    
+    void setRole(const std::string& role) { 
+        role_ = role; 
+        markModified(); 
+    }
+    
+    void setTenantId(int tenant_id) { 
+        tenant_id_ = tenant_id; 
+        markModified(); 
+    }
+    
+    void setEnabled(bool enabled) { 
+        is_enabled_ = enabled; 
+        markModified(); 
+    }
+    
+    void setPhoneNumber(const std::string& phone) { 
+        phone_number_ = phone; 
+        markModified(); 
+    }
+    
+    void setDepartment(const std::string& dept) { 
+        department_ = dept; 
+        markModified(); 
+    }
+    
+    void setPermissions(const std::vector<std::string>& perms) { 
+        permissions_ = perms; 
+        markModified(); 
+    }
 
     // =======================================================================
-    // 사용자 관련 비즈니스 로직
+    // 비즈니스 로직 메서드들 (DataPointEntity 패턴)
     // =======================================================================
     
     /**
-     * @brief 비밀번호 설정 (해시 처리)
-     * @param password 원본 비밀번호
-     * @return 성공 시 true
+     * @brief 비밀번호 설정 (해싱 포함)
+     * @param password 평문 비밀번호
      */
-    bool setPassword(const std::string& password);
+    void setPassword(const std::string& password);
     
     /**
      * @brief 비밀번호 검증
-     * @param password 입력된 비밀번호
+     * @param password 검증할 비밀번호
      * @return 일치하면 true
      */
     bool verifyPassword(const std::string& password) const;
     
     /**
+     * @brief 로그인 시간 업데이트
+     */
+    void updateLastLogin();
+    
+    /**
      * @brief 권한 확인
-     * @param permission 확인할 권한명
+     * @param permission 확인할 권한
      * @return 권한이 있으면 true
      */
     bool hasPermission(const std::string& permission) const;
     
     /**
      * @brief 권한 추가
-     * @param permission 추가할 권한명
+     * @param permission 추가할 권한
      */
     void addPermission(const std::string& permission);
     
     /**
      * @brief 권한 제거
-     * @param permission 제거할 권한명
+     * @param permission 제거할 권한
      */
     void removePermission(const std::string& permission);
+
+    // =======================================================================
+    // 고급 기능 (DeviceEntity 패턴)
+    // =======================================================================
     
     /**
-     * @brief 마지막 로그인 시간 업데이트
+     * @brief 사용자 설정을 JSON으로 추출
+     * @return 설정 JSON
      */
-    void updateLastLogin();
+    json extractConfiguration() const;
+    
+    /**
+     * @brief 인증용 컨텍스트 조회
+     * @return 인증 컨텍스트
+     */
+    json getAuthContext() const;
+    
+    /**
+     * @brief 프로필 정보 조회
+     * @return 프로필 정보
+     */
+    json getProfileInfo() const;
 
 private:
     // =======================================================================
-    // 멤버 변수들
+    // 멤버 변수들 (DeviceEntity 패턴)
     // =======================================================================
     
-    // 사용자 기본 정보
     std::string username_;
     std::string email_;
+    std::string password_hash_;     // bcrypt 해시
     std::string full_name_;
-    std::string password_hash_;
-    std::string role_;                       // admin, user, viewer, operator
-    int tenant_id_;                          // 외래키 (tenants.id)
+    std::string role_;              // admin, engineer, operator, viewer
+    int tenant_id_;
     bool is_enabled_;
-    
-    // 추가 정보
     std::string phone_number_;
     std::string department_;
-    
-    // 시간 정보
-    std::chrono::system_clock::time_point last_login_;
-    std::chrono::system_clock::time_point created_at_;
-    std::chrono::system_clock::time_point updated_at_;
-    
-    // 권한 정보
     std::vector<std::string> permissions_;
+    std::chrono::system_clock::time_point last_login_at_;
+    int login_count_;
+    
+    // 추가 메타데이터
+    std::string notes_;
+    std::string password_salt_;     // 추가 보안을 위한 솔트
 
     // =======================================================================
-    // 내부 헬퍼 메서드들
+    // 내부 헬퍼 메서드들 (DeviceEntity 패턴)
     // =======================================================================
     
     /**
-     * @brief 비밀번호 해시 생성
-     * @param password 원본 비밀번호
-     * @return 해시된 비밀번호
+     * @brief DB 행을 엔티티로 매핑
+     * @param row DB 행 데이터
+     * @return 성공 시 true
      */
-    std::string hashPassword(const std::string& password) const;
+    bool mapRowToEntity(const std::map<std::string, std::string>& row);
     
     /**
-     * @brief 데이터베이스 행을 멤버 변수로 매핑
-     * @param row 데이터베이스 행
-     */
-    void mapRowToMembers(const std::map<std::string, std::string>& row);
-    
-    /**
-     * @brief 권한 문자열을 벡터로 파싱
-     * @param permissions_str 콤마로 구분된 권한 문자열
-     * @return 권한 벡터
-     */
-    std::vector<std::string> parsePermissions(const std::string& permissions_str) const;
-    
-    /**
-     * @brief 권한 벡터를 문자열로 변환
-     * @return 콤마로 구분된 권한 문자열
-     */
-    std::string permissionsToString() const;
-    
-    /**
-     * @brief INSERT SQL 쿼리 생성
+     * @brief INSERT SQL 생성
+     * @return INSERT SQL 문
      */
     std::string buildInsertSQL() const;
     
     /**
-     * @brief UPDATE SQL 쿼리 생성
+     * @brief UPDATE SQL 생성
+     * @return UPDATE SQL 문
      */
     std::string buildUpdateSQL() const;
+    
+    /**
+     * @brief 비밀번호 해싱
+     * @param password 평문 비밀번호
+     * @return 해싱된 비밀번호
+     */
+    std::string hashPassword(const std::string& password) const;
+    
+    /**
+     * @brief 타임스탬프를 문자열로 변환
+     * @param tp 타임스탬프
+     * @return 문자열 표현
+     */
+    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
 };
 
 } // namespace Entities
