@@ -147,7 +147,7 @@ public:
      * @return 첫 번째 매칭 디바이스 (없으면 nullopt)
      */
     std::optional<DeviceEntity> findFirstByConditions(
-        const std::vector<QueryCondition>& conditions) override;
+        const std::vector<QueryCondition>& conditions);
     
     /**
      * @brief 여러 디바이스 일괄 저장

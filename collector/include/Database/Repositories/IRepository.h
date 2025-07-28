@@ -112,8 +112,6 @@ public:
         const std::vector<QueryCondition>& conditions,
         const std::optional<OrderBy>& order_by = std::nullopt,
         const std::optional<Pagination>& pagination = std::nullopt) = 0;
-    virtual std::optional<EntityType> findFirstByConditions(
-        const std::vector<QueryCondition>& conditions) = 0;  // 🔥 누락된 메서드 추가
     virtual int countByConditions(const std::vector<QueryCondition>& conditions) = 0;
     virtual int getTotalCount() = 0;
     virtual std::string getRepositoryName() const = 0;
