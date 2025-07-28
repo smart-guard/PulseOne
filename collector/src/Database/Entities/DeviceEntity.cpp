@@ -328,40 +328,92 @@ std::string DeviceEntity::toString() const {
 // =============================================================================
 
 json DeviceEntity::extractModbusConfig() const {
-    return parseProtocolConfig("modbus", device_info_.connection_config);
+    try {
+        if (!device_info_.connection_config.empty()) {
+            json config = device_info_.connection_config;
+            
+            // Modbus 기본값 추가
+            if (!config.contains("timeout_ms")) {
+                config["timeout_ms"] = device_info_.timeout_ms;
+            }
+            if (!config.contains("retry_count")) {
+                config["retry_count"] = device_info_.retry_count;
+            }
+            return config;
+        }
+    } catch (const std::exception& e) {
+        logger_.Warn("DeviceEntity::extractModbusConfig failed: " + std::string(e.what()));
+    }
+    return json::object();
 }
 
 json DeviceEntity::extractMqttConfig() const {
-    return parseProtocolConfig("mqtt", device_info_.connection_config);
+    try {
+        if (!device_info_.connection_config.empty()) {
+            json config = device_info_.connection_config;
+            
+            // MQTT 기본값 추가
+            if (!config.contains("keep_alive")) {
+                config["keep_alive"] = 60;
+            }
+            if (!config.contains("qos")) {
+                config["qos"] = 1;
+            }
+            return config;
+        }
+    } catch (const std::exception& e) {
+        logger_.Warn("DeviceEntity::extractMqttConfig failed: " + std::string(e.what()));
+    }
+    return json::object();
 }
 
 json DeviceEntity::extractBacnetConfig() const {
-    return parseProtocolConfig("bacnet", device_info_.connection_config);
+    try {
+        if (!device_info_.connection_config.empty()) {
+            return device_info_.connection_config;
+        }
+    } catch (const std::exception& e) {
+        logger_.Warn("DeviceEntity::extractBacnetConfig failed: " + std::string(e.what()));
+    }
+    return json::object();
 }
 
-json DeviceEntity::extractProtocolConfig() const {
-    std::string protocol_lower = device_info_.protocol_type;
-    std::transform(protocol_lower.begin(), protocol_lower.end(), protocol_lower.begin(), ::tolower);
-    
-    if (protocol_lower.find("modbus") != std::string::npos) {
-        return extractModbusConfig();
-    } else if (protocol_lower.find("mqtt") != std::string::npos) {
-        return extractMqttConfig();
-    } else if (protocol_lower.find("bacnet") != std::string::npos) {
-        return extractBacnetConfig();
-    } else {
-        // 범용 설정 반환
-        try {
-            if (!device_info_.connection_config.empty()) {
-                return json::parse(device_info_.connection_config);
-            }
-        } catch (const std::exception& e) {
-            logger_.Warn("DeviceEntity::extractProtocolConfig - Failed to parse config: " + std::string(e.what()));
+json DeviceEntity::parseProtocolConfig(const std::string& protocol_type, const std::string& config_json) const {
+    try {
+        if (config_json.empty()) {
+            return json::object();
         }
+        
+        // string 파라미터이므로 파싱 필요
+        json config = json::parse(config_json);
+        
+        // 프로토콜별 기본값 추가
+        std::string protocol_lower = protocol_type;
+        std::transform(protocol_lower.begin(), protocol_lower.end(), protocol_lower.begin(), ::tolower);
+        
+        if (protocol_lower.find("modbus") != std::string::npos) {
+            if (!config.contains("timeout_ms")) {
+                config["timeout_ms"] = device_info_.timeout_ms;
+            }
+            if (!config.contains("retry_count")) {
+                config["retry_count"] = device_info_.retry_count;
+            }
+        } else if (protocol_lower.find("mqtt") != std::string::npos) {
+            if (!config.contains("keep_alive")) {
+                config["keep_alive"] = 60;
+            }
+            if (!config.contains("qos")) {
+                config["qos"] = 1;
+            }
+        }
+        
+        return config;
+        
+    } catch (const std::exception& e) {
+        logger_.Warn("DeviceEntity::parseProtocolConfig failed: " + std::string(e.what()));
         return json::object();
     }
 }
-
 // =============================================================================
 // 실시간 데이터 RDB 저장 지원
 // =============================================================================
@@ -750,44 +802,6 @@ std::string DeviceEntity::buildUpdateSQL() const {
     sql << "WHERE id = " << id_;
     
     return sql.str();
-}
-
-json DeviceEntity::parseProtocolConfig(const std::string& protocol_type, const std::string& config_json) const {
-    try {
-        if (config_json.empty()) {
-            return json::object();
-        }
-        
-        json config = json::parse(config_json);
-        
-        // 프로토콜별 기본값 추가 (필요시)
-        std::string protocol_lower = protocol_type;
-        std::transform(protocol_lower.begin(), protocol_lower.end(), protocol_lower.begin(), ::tolower);
-        
-        if (protocol_lower.find("modbus") != std::string::npos) {
-            // Modbus 기본값
-            if (!config.contains("timeout_ms")) {
-                config["timeout_ms"] = device_info_.timeout_ms;
-            }
-            if (!config.contains("retry_count")) {
-                config["retry_count"] = device_info_.retry_count;
-            }
-        } else if (protocol_lower.find("mqtt") != std::string::npos) {
-            // MQTT 기본값
-            if (!config.contains("keep_alive")) {
-                config["keep_alive"] = 60;
-            }
-            if (!config.contains("qos")) {
-                config["qos"] = 1;
-            }
-        }
-        
-        return config;
-        
-    } catch (const std::exception& e) {
-        logger_.Warn("DeviceEntity::parseProtocolConfig failed: " + std::string(e.what()));
-        return json::object();
-    }
 }
 
 } // namespace Entities
