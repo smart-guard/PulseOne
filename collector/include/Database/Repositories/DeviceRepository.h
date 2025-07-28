@@ -15,10 +15,12 @@
  */
 
 #include "Database/Repositories/IRepository.h"
+#include "Database/Repositories/CachedRepositoryBase.h"
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
+#include "Common/UnifiedCommonTypes.h"
 #include <memory>
 #include <map>
 #include <string>
@@ -39,16 +41,7 @@ using QueryCondition = PulseOne::Database::QueryCondition;
 using OrderBy = PulseOne::Database::OrderBy;
 using Pagination = PulseOne::Database::Pagination;
 using DataPoint = PulseOne::DataPoint;
-/**
- * @brief 캐시 엔트리 구조체
- */
-struct CacheEntry {
-    DeviceEntity entity;
-    std::chrono::system_clock::time_point cached_at;
-    
-    CacheEntry(const DeviceEntity& e) 
-        : entity(e), cached_at(std::chrono::system_clock::now()) {}
-};
+using CacheEntry = PulseOne::Structs::CacheEntry<DeviceEntity>;
 
 /**
  * @brief Device Repository 클래스 (INTEGER ID 기반)

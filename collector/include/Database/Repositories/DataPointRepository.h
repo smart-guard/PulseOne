@@ -19,6 +19,7 @@
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
+#include "Common/UnifiedCommonTypes.h"
 #include <memory>
 #include <map>
 #include <string>
