@@ -3,15 +3,14 @@
 
 /**
  * @file DeviceRepository.h
- * @brief PulseOne DeviceRepository - IRepository 마이그레이션 완성본
+ * @brief PulseOne DeviceRepository - 타입 정의 문제 해결 완성본
  * @author PulseOne Development Team
  * @date 2025-07-28
  * 
- * 🔥 캐시 마이그레이션 완료:
- * - CachedRepositoryBase.h 의존성 제거
- * - IRepository<DeviceEntity> 상속으로 캐시 기능 자동 획득
- * - 캐시 관련 멤버 변수 및 메서드 제거 (IRepository에서 자동 처리)
- * - 모든 기존 Device 전용 메서드 유지
+ * 🔥 타입 정의 문제 해결:
+ * - DatabaseTypes.h 사용으로 타입 경로 수정
+ * - 네임스페이스 일관성 확보 (PulseOne::Database 내에서 직접 사용)
+ * - 불필요한 using 별칭 제거
  */
 
 #include "Database/Repositories/IRepository.h"
@@ -19,7 +18,7 @@
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
-#include "Common/UnifiedCommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"  // DataPoint 등 기타 타입용
 #include <memory>
 #include <map>
 #include <string>
@@ -33,12 +32,14 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 타입 별칭 정의 (UnifiedCommonTypes.h에서 통합)
+// 🔥 타입 별칭 정의 수정 - Database 네임스페이스 내에서 직접 사용
 using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
-using QueryCondition = PulseOne::Structs::QueryCondition;
-using OrderBy = PulseOne::Structs::OrderBy;
-using Pagination = PulseOne::Structs::Pagination;
-using DataPoint = PulseOne::DataPoint;
+using DataPoint = PulseOne::DataPoint;  // Common에서 가져오는 타입
+
+// 🔥 QueryCondition, OrderBy, Pagination은 같은 네임스페이스에 있으므로 별칭 불필요
+// using QueryCondition = PulseOne::Database::QueryCondition;  ❌ 제거
+// using OrderBy = PulseOne::Database::OrderBy;                ❌ 제거
+// using Pagination = PulseOne::Database::Pagination;          ❌ 제거
 
 /**
  * @brief Device Repository 클래스 (IRepository 상속으로 캐시 자동 획득)
@@ -103,6 +104,13 @@ public:
      */
     bool deleteById(int id) override;
     
+    /**
+     * @brief 디바이스 존재 여부 확인
+     * @param id 확인할 ID
+     * @return 존재하면 true
+     */
+    bool exists(int id) override;
+    
     // =======================================================================
     // 벌크 연산 (성능 최적화)
     // =======================================================================
@@ -132,6 +140,14 @@ public:
      * @return 개수
      */
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
+    
+    /**
+     * @brief 조건으로 첫 번째 디바이스 조회
+     * @param conditions 쿼리 조건들
+     * @return 첫 번째 매칭 디바이스 (없으면 nullopt)
+     */
+    std::optional<DeviceEntity> findFirstByConditions(
+        const std::vector<QueryCondition>& conditions) override;
     
     /**
      * @brief 여러 디바이스 일괄 저장

@@ -3,15 +3,14 @@
 
 /**
  * @file DataPointRepository.h
- * @brief PulseOne DataPointRepository - IRepository 마이그레이션 완성본
+ * @brief PulseOne DataPointRepository - 타입 정의 문제 해결 완성본
  * @author PulseOne Development Team
  * @date 2025-07-28
  * 
- * 🔥 캐시 마이그레이션 완료:
- * - IRepository<DataPointEntity> 상속으로 캐시 기능 자동 획득
- * - 캐시 관련 멤버 변수 및 메서드 제거 (IRepository에서 자동 처리)
- * - 모든 기존 DataPoint 전용 메서드 유지
- * - DatabaseManager 실제 API 사용
+ * 🔥 타입 정의 문제 해결:
+ * - DatabaseTypes.h 사용으로 타입 경로 수정
+ * - 네임스페이스 일관성 확보 (PulseOne::Database 내에서 직접 사용)
+ * - 불필요한 using 별칭 제거
  */
 
 #include "Database/Repositories/IRepository.h"
@@ -19,7 +18,7 @@
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
-#include "Common/UnifiedCommonTypes.h"
+#include "Common/UnifiedCommonTypes.h"  // 기타 타입용
 #include <memory>
 #include <map>
 #include <string>
@@ -32,11 +31,13 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 타입 별칭 정의 (UnifiedCommonTypes.h에서 통합)
+// 🔥 타입 별칭 정의 수정 - Database 네임스페이스 내에서 직접 사용
 using DataPointEntity = PulseOne::Database::Entities::DataPointEntity;
-using QueryCondition = PulseOne::Structs::QueryCondition;
-using OrderBy = PulseOne::Structs::OrderBy;
-using Pagination = PulseOne::Structs::Pagination;
+
+// 🔥 QueryCondition, OrderBy, Pagination은 같은 네임스페이스에 있으므로 별칭 불필요
+// using QueryCondition = PulseOne::Database::QueryCondition;  ❌ 제거
+// using OrderBy = PulseOne::Database::OrderBy;                ❌ 제거
+// using Pagination = PulseOne::Database::Pagination;          ❌ 제거
 
 /**
  * @brief DataPoint Repository 클래스 (IRepository 상속으로 캐시 자동 획득)
