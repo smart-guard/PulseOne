@@ -3,14 +3,9 @@
 
 /**
  * @file Utils.h
- * @brief PulseOne 유틸리티 함수들 - using namespace 완전 제거
+ * @brief PulseOne 유틸리티 함수들 (점검 기능 포함)
  * @author PulseOne Development Team  
- * @date 2025-07-29
- * 
- * 🔥 주요 수정사항:
- * - using namespace 모두 제거 (STL 오염 방지)
- * - 모든 타입을 명시적 경로로 사용
- * - 순환 의존성 방지를 위한 전방 선언 사용
+ * @date 2025-07-24
  */
 
 #include "BasicTypes.h"
@@ -21,29 +16,12 @@
 #include <iomanip>
 #include <random>
 #include <algorithm>
-#include <vector>
-#include <chrono>
-#include <ctime>
 
 namespace PulseOne::Utils {
     
-    // 🔥 using namespace 완전 제거! 개별 타입만 명시적 선언
-    
-    // BasicTypes에서 필요한 타입들만 개별 선언
-    using UUID = PulseOne::BasicTypes::UUID;
-    using Timestamp = PulseOne::BasicTypes::Timestamp;
-    using Duration = PulseOne::BasicTypes::Duration;
-    using DataVariant = PulseOne::BasicTypes::DataVariant;
-    using EngineerID = PulseOne::BasicTypes::EngineerID;
-    
-    // Enums에서 필요한 열거형들만 개별 선언
-    using ProtocolType = PulseOne::Enums::ProtocolType;
-    using LogLevel = PulseOne::Enums::LogLevel;
-    using DriverLogCategory = PulseOne::Enums::DriverLogCategory;
-    using DataQuality = PulseOne::Enums::DataQuality;
-    using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
-    using MaintenanceStatus = PulseOne::Enums::MaintenanceStatus;
-    using ErrorCode = PulseOne::Enums::ErrorCode;
+    // 필요한 타입들을 네임스페이스에서 가져오기
+    using namespace PulseOne::BasicTypes;
+    using namespace PulseOne::Enums;
     
     // ========================================
     // 문자열 변환 함수들
@@ -85,7 +63,7 @@ namespace PulseOne::Utils {
     }
     
     /**
-     * @brief 드라이버 로그 카테고리를 문자열로 변환
+     * @brief 드라이버 로그 카테고리를 문자열로 변환 (🆕)
      */
     inline std::string DriverLogCategoryToString(DriverLogCategory category) {
         switch (category) {
@@ -103,7 +81,7 @@ namespace PulseOne::Utils {
     }
     
     /**
-     * @brief 로그 레벨을 문자열로 변환
+     * @brief 로그 레벨을 문자열로 변환 (기존 LogLevels.h 호환)
      */
     inline std::string LogLevelToString(LogLevel level) {
         switch (level) {
@@ -119,7 +97,7 @@ namespace PulseOne::Utils {
     }
     
     /**
-     * @brief 문자열을 로그 레벨로 변환
+     * @brief 문자열을 로그 레벨로 변환 (기존 LogLevels.h 호환)
      */
     inline LogLevel StringToLogLevel(const std::string& level) {
         std::string upper = level;
@@ -134,10 +112,6 @@ namespace PulseOne::Utils {
         if (upper == "MAINTENANCE") return LogLevel::MAINTENANCE;
         return LogLevel::INFO; // 기본값
     }
-    
-    /**
-     * @brief 데이터 품질을 문자열로 변환
-     */
     inline std::string DataQualityToString(DataQuality quality) {
         switch (quality) {
             case DataQuality::GOOD: return "GOOD";
@@ -155,7 +129,7 @@ namespace PulseOne::Utils {
     }
     
     /**
-     * @brief 연결 상태를 문자열로 변환
+     * @brief 연결 상태를 문자열로 변환 (🆕)
      */
     inline std::string ConnectionStatusToString(ConnectionStatus status) {
         switch (status) {
@@ -168,10 +142,6 @@ namespace PulseOne::Utils {
             default: return "UNKNOWN";
         }
     }
-    
-    /**
-     * @brief 점검 상태를 문자열로 변환
-     */
     inline std::string MaintenanceStatusToString(MaintenanceStatus status) {
         switch (status) {
             case MaintenanceStatus::NORMAL: return "NORMAL";
@@ -280,14 +250,14 @@ namespace PulseOne::Utils {
     }
     
     /**
-     * @brief 데이터 나이 계산
+     * @brief 데이터 나이 계산 (🆕 점검 기능)
      */
     inline Duration CalculateDataAge(const Timestamp& data_timestamp) {
         return GetDurationSince(data_timestamp);
     }
 
     /**
-     * @brief Duration을 밀리초로 변환
+     * @brief Duration을 밀리초로 변환 (기존 timeout_ms 대체)
      */
     inline uint32_t DurationToMs(const Duration& duration) {
         return static_cast<uint32_t>(
@@ -325,9 +295,8 @@ namespace PulseOne::Utils {
         }
         return default_port;
     }   
-    
     // ========================================
-    // 점검 관련 유틸리티 함수들
+    // 점검 관련 유틸리티 함수들 (🆕)
     // ========================================
     
     /**
@@ -367,19 +336,18 @@ namespace PulseOne::Utils {
         return std::visit([](auto&& arg) -> std::string {
             using T = std::decay_t<decltype(arg)>;
             if constexpr (std::is_same_v<T, std::monostate>) {
-                return "null";
+                return "null";  // std::monostate 처리
             } else if constexpr (std::is_same_v<T, bool>) {
                 return arg ? "true" : "false";
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return arg;
             } else if constexpr (std::is_arithmetic_v<T>) {
-                return std::to_string(arg);
+                return std::to_string(arg);  // 숫자 타입만 처리
             } else {
                 return "unknown_type";
             }
         }, value);
     }
-    
     /**
      * @brief 문자열을 DataVariant로 변환 (타입 추론)
      */
@@ -438,34 +406,7 @@ namespace PulseOne::Utils {
                engineer_id != "SYSTEM";
     }
 
-    /**
-     * @brief 문자열을 타임스탬프로 변환 (DB용)
-     * @param str 시간 문자열 (형식: "YYYY-MM-DD HH:MM:SS")
-     * @return 타임스탬프 (실패 시 현재 시간)
-     */
-    inline Timestamp ParseTimestampFromString(const std::string& str) {
-        std::tm tm = {};
-        std::istringstream ss(str);
-        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-        
-        if (ss.fail()) {
-            return GetCurrentTimestamp();  // 실패 시 현재 시간 반환
-        }
-        
-        return std::chrono::system_clock::from_time_t(std::mktime(&tm));
-    }
     
-    /**
-     * @brief 타임스탬프를 DB용 문자열로 변환
-     * @param tp 타임스탬프
-     * @return DB 문자열 (형식: "YYYY-MM-DD HH:MM:SS")
-     */
-    inline std::string TimestampToDBString(const Timestamp& tp) {
-        auto time_t = std::chrono::system_clock::to_time_t(tp);
-        std::ostringstream oss;
-        oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-        return oss.str();
-    }
     
 } // namespace PulseOne::Utils
 

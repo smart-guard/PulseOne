@@ -59,13 +59,13 @@ public:
     bool IsConnected() const override;
     
     bool ReadValues(
-        const std::vector<DataPoint>& points,
+        const std::vector<Structs::DataPoint>& points,
         std::vector<TimestampedValue>& values
     ) override;
     
     bool WriteValue(
-        const DataPoint& point,
-        const DataValue& value
+        const Structs::DataPoint& point,
+        const Structs::DataValue& value
     ) override;
     
     struct MqttDataPointInfo {
@@ -74,7 +74,7 @@ public:
         std::string description;        ///< 데이터 포인트 설명
         std::string topic;              ///< MQTT 토픽
         int qos;                        ///< QoS 레벨 (0, 1, 2)
-        DataType data_type;             ///< 데이터 타입
+        Structs::DataType data_type;             ///< 데이터 타입
         std::string unit;               ///< 단위 (예: "°C", "%RH")
         double scaling_factor;          ///< 스케일링 팩터
         double scaling_offset;          ///< 스케일링 오프셋
@@ -86,7 +86,7 @@ public:
         */
         MqttDataPointInfo()
         : qos(1)
-        , data_type(DataType::UNKNOWN)
+        , data_type(Structs::DataType::UNKNOWN)
         , scaling_factor(1.0)
         , scaling_offset(0.0)
         , is_writable(false)
@@ -97,7 +97,7 @@ public:
         */
         MqttDataPointInfo(const std::string& id, const std::string& point_name, 
                      const std::string& desc, const std::string& mqtt_topic,
-                     int qos_level = 1, DataType type = DataType::FLOAT32)
+                     int qos_level = 1, Structs::DataType type = Structs::DataType::FLOAT32)
         : point_id(id)
         , name(point_name)
         , description(desc)
@@ -114,7 +114,7 @@ public:
      */
         MqttDataPointInfo(const std::string& id, const std::string& point_name,
                      const std::string& desc, const std::string& mqtt_topic,
-                     int qos_level, DataType type, const std::string& point_unit,
+                     int qos_level, Structs::DataType type, const std::string& point_unit,
                      double scale_factor, double scale_offset, 
                      bool writable, bool auto_sub)
         : point_id(id)
@@ -131,7 +131,7 @@ public:
     };
     
     ProtocolType GetProtocolType() const override;
-    DriverStatus GetStatus() const override;
+    Structs::DriverStatus GetStatus() const override;
     ErrorInfo GetLastError() const override;
     const DriverStatistics& GetStatistics() const override;
     void ResetStatistics() override;
@@ -182,7 +182,7 @@ public:
      * @param base_topic 기본 토픽 (데이터 포인트별로 확장됨)
      * @return 성공 시 true
      */
-    bool PublishDataPoints(const std::vector<std::pair<DataPoint, TimestampedValue>>& data_points,
+    bool PublishDataPoints(const std::vector<std::pair<Structs::DataPoint, TimestampedValue>>& data_points,
                           const std::string& base_topic = "data");
 
     // ✅ 여기에 새 메소드들 추가 ✅
@@ -329,8 +329,8 @@ private:
     
     // 메시지 처리
     void ProcessIncomingMessage(mqtt::const_message_ptr msg);
-    DataValue ParseMessagePayload(const std::string& payload, DataType expected_type);
-    nlohmann::json CreateDataPointJson(const DataPoint& point, const TimestampedValue& value);
+    Structs::DataValue ParseMessagePayload(const std::string& payload, Structs::DataType expected_type);
+    nlohmann::json CreateDataPointJson(const Structs::DataPoint& point, const TimestampedValue& value);
     
     // 구독 관리
     void RestoreSubscriptions();
@@ -372,7 +372,7 @@ private:
     // std::unique_ptr<mqtt::async_client> client_;
     
     // 상태 관리
-    std::atomic<DriverStatus> status_;
+    std::atomic<Structs::DriverStatus> status_;
     std::atomic<bool> is_connected_;
     std::atomic<bool> connection_in_progress_;
     
@@ -388,7 +388,7 @@ private:
     
     // 데이터 포인트 매핑 (토픽 -> 데이터 포인트)std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
     mutable std::mutex data_mapping_mutex_;
-    std::unordered_map<std::string, std::vector<DataPoint>> topic_to_datapoints_;
+    std::unordered_map<std::string, std::vector<Structs::DataPoint>> topic_to_datapoints_;
     std::unordered_map<UUID, std::string> datapoint_to_topic_;
     
     // 최신 값 저장
@@ -446,12 +446,10 @@ private:
     mutable std::mutex message_queue_mutex_;
     std::queue<std::pair<std::string, std::string>> incoming_messages_; // topic, payload
     std::condition_variable message_queue_cv_;
-
-
-
 };
 
 } // namespace Drivers
 } // namespace PulseOne
 
 #endif // PULSEONE_DRIVERS_MQTT_DRIVER_H
+

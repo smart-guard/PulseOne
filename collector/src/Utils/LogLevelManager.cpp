@@ -7,6 +7,9 @@
 namespace PulseOne {
 namespace Core {
 
+// ✅ Utils 네임스페이스 별칭 추가 (가장 중요!)
+namespace Utils = PulseOne::Utils;
+
 // =============================================================================
 // 생성자 및 싱글톤
 // =============================================================================
@@ -19,7 +22,10 @@ LogLevelManager::LogLevelManager()
     , running_(false)
     , maintenance_mode_(false)
     , last_db_check_(std::chrono::steady_clock::now())
-    , last_file_check_(std::chrono::steady_clock::now()) {
+    , last_file_check_(std::chrono::steady_clock::now())
+    , level_change_count_(0)
+    , db_check_count_(0)
+    , file_check_count_(0) {
     
     // 카테고리별 기본 레벨 설정
     category_levels_[DriverLogCategory::GENERAL] = PulseOne::LogLevel::INFO;
@@ -122,7 +128,7 @@ void LogLevelManager::SetLogLevel(LogLevel level, LogLevelSource source,
         
         PulseOne::LogManager::getInstance().Info(
             "🎯 Log level changed: {} → {} (Source: {}, By: {})", 
-            LogLevelToString(old_level), LogLevelToString(level),
+            Utils::LogLevelToString(old_level), Utils::LogLevelToString(level),
             LogLevelSourceToString(source), changed_by);
     }
 }
@@ -142,7 +148,7 @@ void LogLevelManager::SetCategoryLogLevel(DriverLogCategory category, LogLevel l
     
     PulseOne::LogManager::getInstance().Info(
         "📊 Category log level set: {} = {}",
-        DriverLogCategoryToString(category), LogLevelToString(level));
+        Utils::DriverLogCategoryToString(category), Utils::LogLevelToString(level));
 }
 
 LogLevel LogLevelManager::GetCategoryLogLevel(DriverLogCategory category) const {
@@ -209,7 +215,7 @@ bool LogLevelManager::UpdateLogLevelInDB(LogLevel level, const EngineerID& chang
             SetLogLevel(level, LogLevelSource::WEB_API, changed_by, reason);
             PulseOne::LogManager::getInstance().Info(
                 "✅ Log level updated via Web API: {} by {}", 
-                LogLevelToString(level), changed_by);
+                Utils::LogLevelToString(level), changed_by);
         }
         
         return success;
@@ -243,7 +249,7 @@ bool LogLevelManager::UpdateCategoryLogLevelInDB(DriverLogCategory category, Log
 
 bool LogLevelManager::StartMaintenanceModeFromWeb(const EngineerID& engineer_id,
                                                  LogLevel maintenance_level) {
-    if (engineer_id.empty() || !IsValidEngineerID(engineer_id)) {
+    if (engineer_id.empty() || !Utils::IsValidEngineerID(engineer_id)) {
         PulseOne::LogManager::getInstance().Error(
             "❌ Invalid engineer ID for maintenance mode: {}", engineer_id);
         return false;
@@ -256,7 +262,7 @@ bool LogLevelManager::StartMaintenanceModeFromWeb(const EngineerID& engineer_id,
         try {
             std::string query = 
                 "INSERT INTO maintenance_log (engineer_id, action, log_level, timestamp, source) "
-                "VALUES ('" + engineer_id + "', 'START', '" + LogLevelToString(maintenance_level) + 
+                "VALUES ('" + engineer_id + "', 'START', '" + Utils::LogLevelToString(maintenance_level) +
                 "', NOW(), 'WEB_API')";
             db_manager_->executeNonQueryPostgres(query);
         } catch (const std::exception& e) {
@@ -473,7 +479,7 @@ void LogLevelManager::RunDiagnostics() {
         try {
             LogLevel test_level = LoadLogLevelFromDB();
             logger.Info("🗄️ Database connection: OK (current level: {})", 
-                       LogLevelToString(test_level));
+                       Utils::LogLevelToString(test_level));
         } catch (const std::exception& e) {
             logger.Error("🗄️ Database connection: FAILED ({})", e.what());
         }
@@ -486,7 +492,7 @@ void LogLevelManager::RunDiagnostics() {
         try {
             LogLevel test_level = LoadLogLevelFromFile();
             logger.Info("📁 Config file: OK (current level: {})", 
-                       LogLevelToString(test_level));
+                       Utils::LogLevelToString(test_level));
         } catch (const std::exception& e) {
             logger.Error("📁 Config file: FAILED ({})", e.what());
         }
@@ -531,7 +537,7 @@ LogLevel LogLevelManager::LoadLogLevelFromDB() {
         
         if (!result.empty()) {
             std::string level_str = result[0]["setting_value"].as<std::string>();
-            LogLevel level = StringToLogLevel(level_str);
+            LogLevel level = Utils::StringToLogLevel(level_str);
             
             last_db_check_ = std::chrono::steady_clock::now();
             return level;
@@ -549,7 +555,7 @@ LogLevel LogLevelManager::LoadLogLevelFromFile() {
     
     std::string level_str = config_->get("LOG_LEVEL");
     if (!level_str.empty()) {
-        LogLevel level = StringToLogLevel(level_str);
+        LogLevel level = Utils::StringToLogLevel(level_str);
         return level;
     }
     
@@ -561,7 +567,7 @@ bool LogLevelManager::SaveLogLevelToDB(LogLevel level, LogLevelSource source,
     if (!db_manager_) return false;
     
     try {
-        std::string level_str = LogLevelToString(level);
+        std::string level_str = Utils::LogLevelToString(level);
         std::string source_str = LogLevelSourceToString(source);
         
         // system_settings 테이블 업데이트
@@ -579,7 +585,7 @@ bool LogLevelManager::SaveLogLevelToDB(LogLevel level, LogLevelSource source,
         if (success) {
             std::string history_query = 
                 "INSERT INTO log_level_history (old_level, new_level, source, changed_by, reason, change_time) "
-                "VALUES ('" + LogLevelToString(current_level_) + "', '" + level_str + "', '" + 
+                "VALUES ('" + Utils::LogLevelToString(current_level_) + "', '" + level_str + "', '" +
                 source_str + "', '" + changed_by + "', '" + reason + "', NOW())";
             db_manager_->executeNonQueryPostgres(history_query);
         }
@@ -606,7 +612,7 @@ void LogLevelManager::LoadCategoryLevelsFromDB() {
             std::string category_str = row["category"].as<std::string>();
             std::string level_str = row["log_level"].as<std::string>();
             
-            // 문자열을 enum으로 변환 (간단한 매핑)
+            // 문자열을 enum으로 변환 (수동 매핑)
             DriverLogCategory category = DriverLogCategory::GENERAL;  // 기본값
             if (category_str == "CONNECTION") category = DriverLogCategory::CONNECTION;
             else if (category_str == "COMMUNICATION") category = DriverLogCategory::COMMUNICATION;
@@ -616,8 +622,8 @@ void LogLevelManager::LoadCategoryLevelsFromDB() {
             else if (category_str == "SECURITY") category = DriverLogCategory::SECURITY;
             else if (category_str == "PROTOCOL_SPECIFIC") category = DriverLogCategory::PROTOCOL_SPECIFIC;
             else if (category_str == "DIAGNOSTICS") category = DriverLogCategory::DIAGNOSTICS;
+            LogLevel level = Utils::StringToLogLevel(level_str);
             
-            LogLevel level = StringToLogLevel(level_str);
             category_levels_[category] = level;
         }
         
@@ -635,8 +641,8 @@ bool LogLevelManager::SaveCategoryLevelToDB(DriverLogCategory category, LogLevel
     if (!db_manager_) return false;
     
     try {
-        std::string category_str = DriverLogCategoryToString(category);
-        std::string level_str = LogLevelToString(level);
+        std::string category_str = Utils::DriverLogCategoryToString(category);
+        std::string level_str = Utils::LogLevelToString(level);
         
         std::string query = 
             "INSERT INTO category_log_levels (category, log_level, updated_by, updated_at) "

@@ -3,15 +3,14 @@
 
 /**
  * @file RepositoryFactory.h
- * @brief PulseOne Repository 팩토리 (싱글톤) - 모든 Repository 통합 관리 (CurrentValueRepository 추가)
+ * @brief PulseOne Repository 팩토리 (싱글톤) - 멤버 변수 타입 수정
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-29
  * 
- * 🔥 완전한 Repository 생태계:
- * - DeviceRepository, DataPointRepository (기존 완료)
- * - UserRepository, TenantRepository, AlarmConfigRepository (신규 추가)
- * - CurrentValueRepository (실시간 데이터 저장) 🆕
- * - IRepository 기반 통합 캐시 시스템
+ * 🔥 주요 수정사항:
+ * - 멤버 변수를 참조(&)에서 포인터(*)로 변경
+ * - cpp 구현과 일치하도록 수정
+ * - transaction_count_ 멤버 변수 추가 (누락되어 있었음)
  */
 
 #include "Database/Repositories/DeviceRepository.h"
@@ -21,7 +20,7 @@
 #include "Database/Repositories/AlarmConfigRepository.h"
 #include "Database/Repositories/SiteRepository.h"
 #include "Database/Repositories/VirtualPointRepository.h"
-#include "Database/Repositories/CurrentValueRepository.h"  // 🆕 추가
+#include "Database/Repositories/CurrentValueRepository.h"
 
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
@@ -37,7 +36,7 @@
 namespace PulseOne {
 namespace Database {
 
-// 🔥 타입 별칭 정의 (Repositories 네임스페이스 해결)
+// 타입 별칭 정의
 using DeviceRepository = PulseOne::Database::Repositories::DeviceRepository;
 using DataPointRepository = PulseOne::Database::Repositories::DataPointRepository;
 using UserRepository = PulseOne::Database::Repositories::UserRepository;
@@ -45,201 +44,62 @@ using TenantRepository = PulseOne::Database::Repositories::TenantRepository;
 using AlarmConfigRepository = PulseOne::Database::Repositories::AlarmConfigRepository;
 using SiteRepository = PulseOne::Database::Repositories::SiteRepository;
 using VirtualPointRepository = PulseOne::Database::Repositories::VirtualPointRepository;
-using CurrentValueRepository = PulseOne::Database::Repositories::CurrentValueRepository;  // 🆕 추가
+using CurrentValueRepository = PulseOne::Database::Repositories::CurrentValueRepository;
 
-/**
- * @brief Repository 팩토리 (싱글톤)
- * @details 모든 Repository 인스턴스를 중앙에서 관리하며 통합 캐시 시스템 제공
- */
 class RepositoryFactory {
 public:
-    // =======================================================================
     // 싱글톤 패턴
-    // =======================================================================
-    
-    /**
-     * @brief 싱글톤 인스턴스 조회
-     * @return RepositoryFactory 인스턴스
-     */
     static RepositoryFactory& getInstance();
-    
-    /**
-     * @brief 팩토리 초기화
-     * @return 성공 시 true
-     */
     bool initialize();
-    
-    /**
-     * @brief 팩토리 종료 및 리소스 정리
-     */
     void shutdown();
 
-    // =======================================================================
-    // Repository 인스턴스 조회 (완전한 라인업)
-    // =======================================================================
-    
-    /**
-     * @brief DeviceRepository 인스턴스 조회
-     * @return DeviceRepository 참조
-     */
+    // Repository 인스턴스 조회
     DeviceRepository& getDeviceRepository();
-    
-    /**
-     * @brief DataPointRepository 인스턴스 조회
-     * @return DataPointRepository 참조
-     */
     DataPointRepository& getDataPointRepository();   
-    
-    /**
-     * @brief UserRepository 인스턴스 조회
-     * @return UserRepository 참조
-     */
     UserRepository& getUserRepository();
-    
-    /**
-     * @brief TenantRepository 인스턴스 조회
-     * @return TenantRepository 참조
-     */
     TenantRepository& getTenantRepository();
-    
-    /**
-     * @brief AlarmConfigRepository 인스턴스 조회
-     * @return AlarmConfigRepository 참조
-     */
     AlarmConfigRepository& getAlarmConfigRepository();
-    
-    /**
-     * @brief SiteRepository 인스턴스 조회
-     * @return SiteRepository 참조
-     */
     SiteRepository& getSiteRepository();
-    
-    /**
-     * @brief VirtualPointRepository 인스턴스 조회
-     * @return VirtualPointRepository 참조
-     */
     VirtualPointRepository& getVirtualPointRepository();
-    
-    /**
-     * @brief CurrentValueRepository 인스턴스 조회 🆕
-     * @return CurrentValueRepository 참조
-     */
     CurrentValueRepository& getCurrentValueRepository();
 
-    // =======================================================================
     // 글로벌 트랜잭션 관리
-    // =======================================================================
-    
-    /**
-     * @brief 전역 트랜잭션 시작
-     * @return 성공 시 true
-     */
     bool beginGlobalTransaction();
-    
-    /**
-     * @brief 전역 트랜잭션 커밋
-     * @return 성공 시 true
-     */
     bool commitGlobalTransaction();
-    
-    /**
-     * @brief 전역 트랜잭션 롤백
-     * @return 성공 시 true
-     */
     bool rollbackGlobalTransaction();
-    
-    /**
-     * @brief 트랜잭션 내에서 작업 실행
-     * @param work 실행할 작업 함수
-     * @return 성공 시 true
-     */
     bool executeInGlobalTransaction(std::function<bool()> work);
 
-    // =======================================================================
-    // 캐싱 제어 (IRepository 통합 관리)
-    // =======================================================================
-    
-    /**
-     * @brief 모든 Repository 캐시 활성화/비활성화
-     * @param enabled 캐시 사용 여부
-     */
+    // 캐싱 제어
     void setCacheEnabled(bool enabled);
-    
-    /**
-     * @brief 모든 Repository 캐시 삭제
-     */
     void clearAllCaches();
-    
-    /**
-     * @brief 전체 캐시 통계 조회
-     * @return Repository별 캐시 통계
-     */
     std::map<std::string, std::map<std::string, int>> getAllCacheStats();
-    
-    /**
-     * @brief 캐시 TTL 설정
-     * @param ttl_seconds TTL (초)
-     */
     void setCacheTTL(int ttl_seconds);
-    
-    /**
-     * @brief 캐시 최대 크기 설정
-     * @param max_size 최대 크기
-     */
     void setMaxCacheSize(int max_size);
 
-    // =======================================================================
-    // 성능 모니터링 및 분석
-    // =======================================================================
-    
-    /**
-     * @brief 팩토리 통계 조회
-     * @return 통계 정보 맵
-     */
+    // 성능 모니터링
     std::map<std::string, int> getFactoryStats() const;
-    
-    /**
-     * @brief 활성 Repository 수 조회
-     * @return 활성 Repository 수
-     */
     int getActiveRepositoryCount() const;
-    
-    /**
-     * @brief 설정 다시 로드
-     * @return 성공 시 true
-     */
     bool reloadConfigurations();
-    
-    /**
-     * @brief 통계 초기화
-     */
     void resetStats();
 
-    // =======================================================================
     // 복사 및 이동 제한 (싱글톤)
-    // =======================================================================
-    
     RepositoryFactory(const RepositoryFactory&) = delete;
     RepositoryFactory& operator=(const RepositoryFactory&) = delete;
     RepositoryFactory(RepositoryFactory&&) = delete;
     RepositoryFactory& operator=(RepositoryFactory&&) = delete;
 
 private:
-    // =======================================================================
-    // 생성자 및 소멸자 (private)
-    // =======================================================================
-    
     RepositoryFactory();
     ~RepositoryFactory();
 
     // =======================================================================
-    // 멤버 변수들
+    // 🔥 멤버 변수들 - 포인터 타입으로 수정!
     // =======================================================================
     
-    // 기본 시스템 컴포넌트들 (참조 방식)
-    DatabaseManager& db_manager_;
-    ConfigManager& config_manager_;
-    PulseOne::LogManager& logger_;
+    // 기본 시스템 컴포넌트들 (포인터 방식으로 변경)
+    DatabaseManager* db_manager_;        // & → * 변경
+    ConfigManager* config_manager_;      // & → * 변경  
+    PulseOne::LogManager* logger_;       // & → * 변경
     
     // Repository 인스턴스들
     std::unique_ptr<DeviceRepository> device_repository_;
@@ -249,7 +109,7 @@ private:
     std::unique_ptr<AlarmConfigRepository> alarm_config_repository_;
     std::unique_ptr<SiteRepository> site_repository_;
     std::unique_ptr<VirtualPointRepository> virtual_point_repository_;
-    std::unique_ptr<CurrentValueRepository> current_value_repository_;  // 🆕 추가
+    std::unique_ptr<CurrentValueRepository> current_value_repository_;
     
     // 동기화 및 상태 관리
     mutable std::mutex factory_mutex_;
@@ -263,30 +123,14 @@ private:
     // 트랜잭션 관리
     bool transaction_active_;
     
-    // 성능 모니터링
+    // 성능 모니터링 (🔥 transaction_count_ 추가!)
     int creation_count_;
     int error_count_;
-    int transaction_count_;
+    int transaction_count_;  // 이게 빠져있었음!
 
-    // =======================================================================
     // 내부 헬퍼 메서드들
-    // =======================================================================
-    
-    /**
-     * @brief Repository 인스턴스 생성
-     * @return 성공 시 true
-     */
     bool createRepositoryInstances();
-    
-    /**
-     * @brief Repository 설정 적용
-     */
     void applyRepositoryConfigurations();
-    
-    /**
-     * @brief 의존성 주입
-     * @return 성공 시 true
-     */
     bool injectDependencies();
 };
 

@@ -11,7 +11,6 @@
 #include <crypt.h>
 #include <random>
 
-using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {

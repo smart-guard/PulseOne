@@ -345,7 +345,7 @@ std::string BaseDeviceWorker::GetStatusJson() const {
     ss << "  \"device_info\": {\n";
     ss << "    \"device_id\": \"" << device_info_.id << "\",\n";
     ss << "    \"device_name\": \"" << device_info_.name << "\",\n";
-    ss << "    \"protocol_type\": \"" << PulseOne::Drivers::ProtocolTypeToString(device_info_.protocol) << "\",\n";
+    ss << "    \"protocol_type\": \"" << PulseOne::Utils::ProtocolTypeToString(device_info_.protocol) << "\",\n";
     ss << "    \"endpoint\": \"" << device_info_.endpoint << "\"\n";
     ss << "  },\n";
     ss << "  \"status\": {\n";

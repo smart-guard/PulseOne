@@ -55,7 +55,7 @@ struct MQTTSubscription {
     std::string json_path;
     int qos = 1;
     bool enabled = true;
-    DataType data_type = DataType::UNKNOWN;
+    Structs::DataType data_type = Structs::DataType::UNKNOWN;
     std::string point_id;
     double scaling_factor = 1.0;
     double scaling_offset = 0.0;
@@ -231,7 +231,7 @@ private:
     bool ProcessReceivedMessage(const std::string& topic, const std::string& payload);
     bool ExtractValueFromJSON(const std::string& payload, 
                              const std::string& json_path, 
-                             DataValue& extracted_value);
+                             Structs::DataValue& extracted_value);
     bool ParseMQTTTopic(const PulseOne::DataPoint& point, 
                        std::string& topic, std::string& json_path, int& qos);
     bool ParseMQTTWorkerConfig();
@@ -244,7 +244,7 @@ private:
                                const std::string& topic, const std::string& payload);
     
 #ifdef HAS_NLOHMANN_JSON
-    bool ConvertJsonToDataValue(const nlohmann::json& json_val, DataValue& data_value);
+    bool ConvertJsonToDataValue(const nlohmann::json& json_val, Structs::DataValue& data_value);
 #endif
 };
 

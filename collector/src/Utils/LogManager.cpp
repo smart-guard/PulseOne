@@ -9,7 +9,7 @@
 namespace fs = std::filesystem;
 
 namespace PulseOne {
-
+namespace Utils = PulseOne::Utils;
 LogManager::LogManager() {
     // 🆕 카테고리별 기본 로그 레벨 설정
     categoryLevels_[DriverLogCategory::GENERAL] = PulseOne::LogLevel::INFO;
@@ -58,7 +58,7 @@ std::string LogManager::getCurrentTime() {
 
 std::string LogManager::getCurrentTimestamp() {
     auto now = std::chrono::system_clock::now();
-    return TimestampToISOString(now);
+    return Utils::TimestampToISOString(now);
 }
 
 // =============================================================================
@@ -114,7 +114,7 @@ std::string LogManager::formatLogMessage(LogLevel level, const std::string& cate
                                        const std::string& message) {
     std::ostringstream oss;
     oss << "[" << getCurrentTimestamp() << "]"
-        << "[" << LogLevelToString(level) << "]";
+        << "[" << Utils::LogLevelToString(level) << "]";
     
     if (!category.empty() && category != defaultCategory_) {
         oss << "[" << category << "]";
@@ -216,7 +216,7 @@ void LogManager::log(const std::string& category, LogLevel level, const std::str
 }
 
 void LogManager::log(const std::string& category, const std::string& level, const std::string& message) {
-    log(category, StringToLogLevel(level), message);
+    log(category, Utils::StringToLogLevel(level), message);
 }
 
 // 🆕 점검 관련 로그 메소드들
@@ -230,7 +230,7 @@ void LogManager::logMaintenance(const UUID& device_id, const EngineerID& enginee
 void LogManager::logMaintenanceStart(const DeviceInfo& device, const EngineerID& engineer_id) {
     std::ostringstream oss;
     oss << "MAINTENANCE STARTED - Device: " << device.name 
-        << " (" << device.id << "), Protocol: " << ProtocolTypeToString(device.protocol);
+        << " (" << device.id << "), Protocol: " << Utils::ProtocolTypeToString(device.protocol);
     logMaintenance(device.id, engineer_id, oss.str());
 }
 
@@ -253,9 +253,9 @@ void LogManager::logDriver(const UUID& device_id, DriverLogCategory category,
     if (!shouldLogCategory(category, level)) return;
     
     std::ostringstream oss;
-    oss << "[Device:" << device_id << "][" << DriverLogCategoryToString(category) << "] " << message;
+    oss << "[Device:" << device_id << "][" << Utils::DriverLogCategoryToString(category) << "] " << message;
     
-    std::string categoryName = "driver_" + DriverLogCategoryToString(category);
+    std::string categoryName = "driver_" + Utils::DriverLogCategoryToString(category);
     log(categoryName, level, oss.str());
 }
 
@@ -267,7 +267,7 @@ void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
     std::ostringstream oss;
     oss << "DATA QUALITY ISSUE - Device: " << device_id 
         << ", Point: " << point_id 
-        << ", Quality: " << DataQualityToString(quality);
+        << ", Quality: " << Utils::DataQualityToString(quality);
     
     if (!reason.empty()) {
         oss << ", Reason: " << reason;

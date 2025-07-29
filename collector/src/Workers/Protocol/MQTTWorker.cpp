@@ -373,15 +373,15 @@ bool MQTTWorker::CreateSubscriptionsFromDataPoints(const std::vector<PulseOne::D
                 subscription.point_id = point.id;
                 // ✅ point.data_type 타입 변환
                 if (point.data_type == "float") {
-                    subscription.data_type = DataType::FLOAT32;
+                    subscription.data_type = Structs::DataType::FLOAT32;
                 } else if (point.data_type == "int") {
-                    subscription.data_type = DataType::INT32;
+                    subscription.data_type = Structs::DataType::INT32;
                 } else if (point.data_type == "bool") {
-                    subscription.data_type = DataType::BOOL;
+                    subscription.data_type = Structs::DataType::BOOL;
                 } else if (point.data_type == "string") {
-                    subscription.data_type = DataType::STRING;
+                    subscription.data_type = Structs::DataType::STRING;
                 } else {
-                    subscription.data_type = DataType::UNKNOWN;
+                    subscription.data_type = Structs::DataType::UNKNOWN;
                 }
                 subscription.json_path = json_path;
                 subscription.scaling_factor = point.scaling_factor;
@@ -421,7 +421,7 @@ bool MQTTWorker::ProcessReceivedMessage(const std::string& topic, const std::str
         subscription.messages_received++;
         subscription.last_received = system_clock::now();
         
-        DataValue extracted_value;
+        Structs::DataValue extracted_value;
         if (!ExtractValueFromJSON(payload, subscription.json_path, extracted_value)) {
             worker_stats_.json_parse_errors++;
             LogMessage(PulseOne::LogLevel::WARN, "Failed to extract value from JSON for topic: " + topic);
@@ -451,7 +451,7 @@ bool MQTTWorker::ProcessReceivedMessage(const std::string& topic, const std::str
 
 bool MQTTWorker::ExtractValueFromJSON(const std::string& payload, 
                                      const std::string& json_path, 
-                                     DataValue& extracted_value) {
+                                     Structs::DataValue& extracted_value) {
     try {
         if (payload.empty()) {
             LogMessage(PulseOne::LogLevel::WARN, "Empty payload received");
@@ -669,7 +669,7 @@ void MQTTWorker::MessageCallback(MQTTWorker* worker,
 }
 
 #ifdef HAS_NLOHMANN_JSON
-bool MQTTWorker::ConvertJsonToDataValue(const nlohmann::json& json_val, DataValue& data_value) {
+bool MQTTWorker::ConvertJsonToDataValue(const nlohmann::json& json_val, Structs::DataValue& data_value) {
     try {
         if (json_val.is_boolean()) {
             data_value = json_val.get<bool>();

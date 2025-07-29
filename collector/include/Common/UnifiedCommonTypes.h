@@ -3,74 +3,65 @@
 
 /**
  * @file UnifiedCommonTypes.h
- * @brief PulseOne 통합 타입 시스템 - 단일 진입점
- * @author PulseOne Development Team
- * @date 2025-07-24
+ * @brief PulseOne 통합 타입 시스템 - 순서 수정
+ * @date 2025-07-29
  * 
- * 모든 PulseOne 타입들을 한 곳에서 include할 수 있는 단일 진입점
- * 기존 중복 구조체들을 통합하고 현장 점검 기능을 추가
+ * 🔥 중요: include 순서가 중요함!
+ * 1. BasicTypes, Enums, Constants 먼저
+ * 2. 타입 선언
+ * 3. Structs 나중에
  */
 
-// 🔥 DEBUG 매크로 충돌 방지 - 가장 먼저 처리
-#ifdef DEBUG
-#pragma push_macro("DEBUG")
-#undef DEBUG
-#define PULSEONE_DEBUG_MACRO_WAS_DEFINED
-#endif
-
-#include "Common/BasicTypes.h"    // 기본 타입 정의
-#include "Common/Constants.h"     // 전역 상수들
-#include "Common/Enums.h"         // 열거형들
-#include "Common/Structs.h"       // 구조체들 (점검 기능 포함)
-#include "Common/Utils.h"         // 유틸리티 함수들
+// 🔥 1단계: 기본 타입들 먼저 include
+#include "Common/BasicTypes.h"
+#include "Common/Enums.h"
+#include "Common/Constants.h"
 
 namespace PulseOne {
-    // 모든 하위 네임스페이스를 루트로 끌어올림
-    using namespace BasicTypes;
-    using namespace Constants;
-    using namespace Enums;
-    using namespace Structs;
-    using namespace Utils;
+    // 🔥 2단계: 기본 타입들 선언
+    using UUID = BasicTypes::UUID;
+    using Timestamp = BasicTypes::Timestamp;
+    using Duration = BasicTypes::Duration;
+    using DataVariant = BasicTypes::DataVariant;
+    using EngineerID = BasicTypes::EngineerID;
     
-    // 기존 코드 호환성을 위한 별칭들
-    namespace Compatibility {
-        // Database::DeviceInfo -> DeviceInfo
-        using DatabaseDeviceInfo = DeviceInfo;
-        // Drivers::DataPoint -> DataPoint  
-        using DriversDataPoint = DataPoint;
-        // 기존 LogLevels.h 호환
-        using LegacyLogLevel = LogLevel;
-        // DriverLogger.h 타입들 호환
-        using LegacyDriverLogContext = DriverLogContext;
-        using LegacyDriverLogCategory = DriverLogCategory;
-        
-        // 🔥 DEBUG 매크로 충돌 완전 회피 - 매크로 해제 후 재정의
-        #ifdef DEBUG
-        #undef DEBUG
-        #endif
-        constexpr LogLevel DEBUG_LOG_LEVEL = LogLevel::DEBUG_LEVEL;
-        // DEBUG 상수는 별도 네임스페이스로 격리
-    }
+    // Enums에서 가져오기
+    using ProtocolType = Enums::ProtocolType;
+    using LogLevel = Enums::LogLevel;
+    using DriverLogCategory = Enums::DriverLogCategory;
+    using DataQuality = Enums::DataQuality;
+    using ConnectionStatus = Enums::ConnectionStatus;
+    using MaintenanceStatus = Enums::MaintenanceStatus;
+    using MaintenanceType = Enums::MaintenanceType;
+    using ErrorCode = Enums::ErrorCode;
     
-    // 🔥 기존 Drivers 네임스페이스 호환성을 위한 별칭
+    // Constants에서 가져오기
+    using Constants::LOG_MODULE_SYSTEM;
+}
+
+// 🔥 3단계: 타입 선언 후에 Structs include
+#include "Common/Structs.h"
+
+namespace PulseOne {
+    // 🔥 4단계: Structs에서 가져오기 (이제 타입들이 정의된 후)
+    using DeviceInfo = Structs::DeviceInfo;
+    using DataPoint = Structs::DataPoint;
+    using TimestampedValue = Structs::TimestampedValue;
+    using DriverLogContext = Structs::DriverLogContext;
+    using LogStatistics = Structs::LogStatistics;
+    using MaintenanceState = Structs::MaintenanceState;
+    using DriverConfig = Structs::DriverConfig;
+    using DriverStatistics = Structs::DriverStatistics;
+    using ErrorInfo = Structs::ErrorInfo;
+    
+    // Drivers 네임스페이스 호환성
     namespace Drivers {
         using DeviceInfo = PulseOne::DeviceInfo;
         using DataPoint = PulseOne::DataPoint;
         using TimestampedValue = PulseOne::TimestampedValue;
         using ProtocolType = PulseOne::ProtocolType;
         using DriverLogContext = PulseOne::DriverLogContext;
-        
-        // 유틸리티 함수들은 Utils 네임스페이스 것을 사용
-        inline std::string ProtocolTypeToString(ProtocolType type) {
-            return PulseOne::Utils::ProtocolTypeToString(type);
-        }
     }
 }
-
-// 🔥 DEBUG 매크로 복원 (파일 끝에서)
-#ifdef PULSEONE_DEBUG_MACRO_WAS_DEFINED
-#pragma pop_macro("DEBUG")
-#undef PULSEONE_DEBUG_MACRO_WAS_DEFINED
-#endif
 
 #endif // PULSEONE_UNIFIED_COMMON_TYPES_H

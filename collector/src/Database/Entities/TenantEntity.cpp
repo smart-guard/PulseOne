@@ -5,11 +5,11 @@
 
 #include "Database/Entities/TenantEntity.h"
 #include "Common/Constants.h"
+#include "Common/Utils.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
 
-using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {
@@ -435,9 +435,10 @@ bool TenantEntity::mapRowToEntity(const std::map<std::string, std::string>& row)
         if (row.count("city")) city_ = row.at("city");
         if (row.count("country")) country_ = row.at("country");
         if (row.count("timezone")) timezone_ = row.at("timezone");
-        if (row.count("subscription_start")) subscription_start_ = stringToTimestamp(row.at("subscription_start"));
-        if (row.count("subscription_end")) subscription_end_ = stringToTimestamp(row.at("subscription_end"));
-        
+        if (row.count("subscription_start")) 
+            subscription_start_ = PulseOne::Utils::ParseTimestampFromString(row.at("subscription_start"));  // ✅ Utils 함수 사용
+        if (row.count("subscription_end")) 
+            subscription_end_ = PulseOne::Utils::ParseTimestampFromString(row.at("subscription_end"));         
         return true;
         
     } catch (const std::exception& e) {
@@ -466,10 +467,11 @@ std::string TenantEntity::buildInsertSQL() const {
     ss << city_ << "', '";
     ss << country_ << "', '";
     ss << timezone_ << "', '";
-    ss << timestampToString(subscription_start_) << "', '";
-    ss << timestampToString(subscription_end_) << "', '";
-    ss << timestampToString(created_at_) << "', '";
-    ss << timestampToString(updated_at_) << "')";
+    ss << PulseOne::Utils::TimestampToDBString(subscription_start_) << "', '";  // ✅ Utils 함수 사용
+    ss << PulseOne::Utils::TimestampToDBString(subscription_end_) << "', '";    // ✅ Utils 함수 사용
+    ss << PulseOne::Utils::TimestampToDBString(created_at_) << "', '";          // ✅ Utils 함수 사용
+    ss << PulseOne::Utils::TimestampToDBString(updated_at_) << "')";            // ✅ Utils 함수 사용
+
     
     return ss.str();
 }
@@ -498,19 +500,6 @@ std::string TenantEntity::buildUpdateSQL() const {
     return ss.str();
 }
 
-std::string TenantEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(tp);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return ss.str();
-}
-
-std::chrono::system_clock::time_point TenantEntity::stringToTimestamp(const std::string& str) const {
-    std::tm tm = {};
-    std::stringstream ss(str);
-    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-    return std::chrono::system_clock::from_time_t(std::mktime(&tm));
-}
 
 } // namespace Entities
 } // namespace Database

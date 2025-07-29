@@ -4,6 +4,7 @@
 // =============================================================================
 
 #include "Database/Repositories/DataPointRepository.h"
+#include "Common/Utils.h"
 #include <sstream>
 #include <iomanip>
 
@@ -175,7 +176,7 @@ bool DataPointRepository::save(DataPointEntity& entity) {
                          + std::to_string(entity.getLogDeadband()) + ", '"
                          + escapeString(tagsToString(entity.getTags())) + "', '"
                          + escapeString(entity.getMetadata().dump()) + "', '"
-                         + getCurrentTimestamp() + "')";
+                         + PulseOne::Utils::TimestampToISOString(PulseOne::Utils::GetCurrentTimestamp()) + "')";
         
         bool success = executeDatabaseNonQuery(sql);
         
@@ -229,7 +230,7 @@ bool DataPointRepository::update(const DataPointEntity& entity) {
                          + ", log_deadband=" + std::to_string(entity.getLogDeadband())
                          + ", tags='" + escapeString(tagsToString(entity.getTags())) + "'"
                          + ", metadata='" + escapeString(entity.getMetadata().dump()) + "'"
-                         + ", updated_at='" + getCurrentTimestamp() + "'"
+                         + ", updated_at='" + PulseOne::Utils::TimestampToISOString(PulseOne::Utils::GetCurrentTimestamp()) + "'"
                          + " WHERE id=" + std::to_string(entity.getId());
         
         bool success = executeDatabaseNonQuery(sql);
@@ -706,14 +707,6 @@ std::vector<std::string> DataPointRepository::parseTagsFromString(const std::str
         }
     }
     return tags;
-}
-
-std::string DataPointRepository::getCurrentTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
 }
 
 std::string DataPointRepository::escapeString(const std::string& str) {

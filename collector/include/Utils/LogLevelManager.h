@@ -10,7 +10,6 @@
  */
 
 #include "Common/UnifiedCommonTypes.h"
-#include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h" 
 #include "Database/DatabaseManager.h"
 #include <thread>
@@ -18,6 +17,8 @@
 #include <chrono>
 #include <map>
 #include <functional>
+#include <vector>
+#include <mutex>
 
 namespace PulseOne {
 namespace Core {
@@ -50,7 +51,7 @@ struct LogLevelChangeEvent {
     std::string reason = "";        // 🆕 변경 이유
     bool is_maintenance_related = false; // 🆕 점검 관련 변경인지
     
-    LogLevelChangeEvent() : change_time(GetCurrentTimestamp()) {}
+    LogLevelChangeEvent() : change_time(PulseOne::Utils::GetCurrentTimestamp()) {}
 };
 
 /**
@@ -70,6 +71,11 @@ private:
     std::chrono::steady_clock::time_point last_db_check_;
     std::chrono::steady_clock::time_point last_file_check_;
     
+    // 🆕 통계 카운터들
+    std::atomic<uint64_t> level_change_count_;
+    std::atomic<uint64_t> db_check_count_;
+    std::atomic<uint64_t> file_check_count_;
+    
     // 🆕 카테고리별 로그 레벨 관리
     std::map<DriverLogCategory, LogLevel> category_levels_;
     mutable std::mutex category_mutex_;
@@ -79,75 +85,66 @@ private:
     std::vector<LogLevelChangeEvent> change_history_;
     mutable std::mutex callback_mutex_;
     mutable std::mutex history_mutex_;
-    
-    // 🆕 성능 통계
-    std::atomic<uint64_t> db_check_count_{0};
-    std::atomic<uint64_t> file_check_count_{0};
-    std::atomic<uint64_t> level_change_count_{0};
 
 public:
+    // =============================================================================
+    // 싱글톤 및 생명주기
+    // =============================================================================
     static LogLevelManager& getInstance();
-    
-    // =============================================================================
-    // 초기화 및 생명주기 관리
-    // =============================================================================
-    void Initialize(ConfigManager* config, DatabaseManager* db = nullptr);
+    void Initialize(ConfigManager* config, DatabaseManager* db);
     void Shutdown();
     
     // =============================================================================
-    // 로그 레벨 관리 (기존 + 확장)
+    // 기본 로그 레벨 관리
     // =============================================================================
-    void SetLogLevel(LogLevel level, LogLevelSource source = LogLevelSource::COMMAND_LINE,
-                    const EngineerID& changed_by = "", const std::string& reason = "");
-    LogLevel GetCurrentLevel() const { 
-        return maintenance_mode_.load() ? maintenance_level_ : current_level_; 
-    }
-    LogLevel GetBaseLevel() const { return current_level_; }
+    void SetLogLevel(LogLevel level, LogLevelSource source = LogLevelSource::WEB_API,
+                    const EngineerID& changed_by = "SYSTEM", const std::string& reason = "");
+    LogLevel GetLogLevel() const { return current_level_; }
     
-    // 🆕 카테고리별 로그 레벨 관리
+    // =============================================================================
+    // 카테고리별 로그 레벨 관리 (🆕)
+    // =============================================================================
     void SetCategoryLogLevel(DriverLogCategory category, LogLevel level);
     LogLevel GetCategoryLogLevel(DriverLogCategory category) const;
     void ResetCategoryLogLevels();
     
-    // 🆕 점검 모드 관리
-    void SetMaintenanceMode(bool enabled, LogLevel maintenance_level = PulseOne::LogLevel::DEBUG_LEVEL,
+    // =============================================================================
+    // 점검 모드 관리 (🆕)
+    // =============================================================================
+    void SetMaintenanceMode(bool enabled, LogLevel maintenance_level = LogLevel::TRACE,
                            const EngineerID& engineer_id = "");
-    bool IsMaintenanceModeEnabled() const { return maintenance_mode_.load(); }
+    bool IsMaintenanceMode() const { return maintenance_mode_.load(); }
     LogLevel GetMaintenanceLevel() const { return maintenance_level_; }
     
     // =============================================================================
-    // 웹 API 지원 (기존 + 확장)
+    // 웹 API 지원 (🆕)
     // =============================================================================
-    bool UpdateLogLevelInDB(LogLevel level, const EngineerID& changed_by = "WEB_USER",
-                           const std::string& reason = "Web interface change");
+    bool UpdateLogLevelInDB(LogLevel level, const EngineerID& changed_by, 
+                           const std::string& reason = "Updated via Web API");
     bool UpdateCategoryLogLevelInDB(DriverLogCategory category, LogLevel level,
-                                   const EngineerID& changed_by = "WEB_USER");
-    
-    // 🆕 점검 관련 웹 API
+                                   const EngineerID& changed_by);
     bool StartMaintenanceModeFromWeb(const EngineerID& engineer_id, 
-                                    LogLevel maintenance_level = PulseOne::LogLevel::TRACE);
+                                    LogLevel maintenance_level = LogLevel::TRACE);
     bool EndMaintenanceModeFromWeb(const EngineerID& engineer_id);
     
     // =============================================================================
-    // 모니터링 및 이벤트 관리
+    // 콜백 관리 (🆕)
     // =============================================================================
-    void StartMonitoring();
-    void StopMonitoring();
-    
-    // 🆕 콜백 관리
     void RegisterChangeCallback(const LogLevelChangeCallback& callback);
     void UnregisterAllCallbacks();
     
-    // 🆕 이벤트 히스토리
+    // =============================================================================
+    // 이력 관리 (🆕)
+    // =============================================================================
     std::vector<LogLevelChangeEvent> GetChangeHistory(size_t max_count = 100) const;
     void ClearChangeHistory();
     
     // =============================================================================
-    // 상태 조회 및 진단
+    // 상태 조회 및 진단 (🆕)
     // =============================================================================
     
     /**
-     * @brief 관리자 상태 정보
+     * @brief 매니저 상태 정보
      */
     struct ManagerStatus {
         LogLevel current_level;
@@ -157,16 +154,19 @@ public:
         uint64_t db_check_count;
         uint64_t file_check_count;
         uint64_t level_change_count;
-        Timestamp last_db_check;
-        Timestamp last_file_check;
+        std::chrono::system_clock::time_point last_db_check;
+        std::chrono::system_clock::time_point last_file_check;
         size_t active_callbacks;
         size_t history_entries;
         
+        /**
+         * @brief JSON 형태로 상태 정보 반환
+         */
         std::string ToJson() const {
             std::ostringstream oss;
             oss << "{"
-                << "\"current_level\":\"" << LogLevelToString(current_level) << "\","
-                << "\"maintenance_level\":\"" << LogLevelToString(maintenance_level) << "\","
+                << "\"current_level\":\"" << static_cast<int>(current_level) << "\","
+                << "\"maintenance_level\":\"" << static_cast<int>(maintenance_level) << "\","
                 << "\"maintenance_mode\":" << (maintenance_mode ? "true" : "false") << ","
                 << "\"monitoring_active\":" << (monitoring_active ? "true" : "false") << ","
                 << "\"db_check_count\":" << db_check_count << ","
@@ -195,6 +195,15 @@ private:
     LogLevelManager& operator=(const LogLevelManager&) = delete;
     
     // =============================================================================
+    // 모니터링 관련
+    // =============================================================================
+    void StartMonitoring();
+    void StopMonitoring();
+    void MonitoringLoop();
+    void CheckDatabaseChanges();
+    void CheckFileChanges();
+    
+    // =============================================================================
     // 내부 구현 메소드들
     // =============================================================================
     LogLevel LoadLogLevelFromDB();
@@ -210,15 +219,6 @@ private:
     // 🆕 이벤트 처리
     void NotifyLevelChange(const LogLevelChangeEvent& event);
     void AddToHistory(const LogLevelChangeEvent& event);
-    
-    // 🆕 모니터링 루프
-    void MonitoringLoop();
-    void CheckDatabaseChanges();
-    void CheckFileChanges();
-    
-    // 🆕 점검 모드 처리
-    void ApplyMaintenanceMode();
-    void RestoreNormalMode();
     
     // 🆕 유틸리티
     std::string LogLevelSourceToString(LogLevelSource source) const {
