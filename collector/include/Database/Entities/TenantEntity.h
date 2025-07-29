@@ -346,19 +346,6 @@ private:
      */
     std::string buildUpdateSQL() const;
     
-    /**
-     * @brief 타임스탬프를 문자열로 변환
-     * @param tp 타임스탬프
-     * @return 문자열 표현
-     */
-    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
-    
-    /**
-     * @brief 문자열을 타임스탬프로 변환
-     * @param str 문자열
-     * @return 타임스탬프
-     */
-    std::chrono::system_clock::time_point stringToTimestamp(const std::string& str) const;
 };
 
 } // namespace Entities

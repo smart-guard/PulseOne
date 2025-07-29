@@ -124,6 +124,30 @@ services:
     networks:
       - pulseone_network
 
+   # Frontend (React + TypeScript + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: pulseone-frontend-dev
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      ENV_STAGE: ${ENV_STAGE:-dev}
+      VITE_API_BASE_URL: http://localhost:3000/api
+      VITE_WEBSOCKET_URL: ws://localhost:3000
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_HMR_HOST: 0.0.0.0
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - pulseone_network
+
 # Collector (완성된 버전)
   collector:
     build:

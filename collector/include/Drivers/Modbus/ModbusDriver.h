@@ -91,12 +91,12 @@ public:
     bool Disconnect() override;
     bool IsConnected() const override;
     
-    bool ReadValues(const std::vector<DataPoint>& points,
+    bool ReadValues(const std::vector<Structs::DataPoint>& points,
                    std::vector<TimestampedValue>& values) override;
-    bool WriteValue(const DataPoint& point, const DataValue& value) override;
+    bool WriteValue(const Structs::DataPoint& point, const Structs::DataValue& value) override;
     
     ProtocolType GetProtocolType() const override;
-    DriverStatus GetStatus() const override;
+    Structs::DriverStatus GetStatus() const override;
     ErrorInfo GetLastError() const override;
     const DriverStatistics& GetStatistics() const override;
     
@@ -207,8 +207,6 @@ public:
      */
     std::string GetModbusHealthReport() const;
 
-
-
 private:
     // ==========================================================================
     // 멤버 변수들
@@ -282,8 +280,8 @@ private:
     void SetError(ErrorCode code, const std::string& message);
     void UpdateStatistics(bool success, double response_time_ms);
     
-    DataValue ConvertModbusValue(const DataPoint& point, uint16_t raw_value) const;
-    uint16_t ConvertToModbusValue(const DataPoint& point, const DataValue& value) const;
+    Structs::DataValue ConvertModbusValue(const Structs::DataPoint& point, uint16_t raw_value) const;
+    uint16_t ConvertToModbusValue(const Structs::DataPoint& point, const Structs::DataValue& value) const;
 
     // ==========================================================================
     // 🆕 Modbus 특화 진단 데이터 (기존 private: 섹션에 추가)

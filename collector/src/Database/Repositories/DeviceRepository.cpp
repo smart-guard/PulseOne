@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <thread>
 
-using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {

@@ -16,7 +16,7 @@ namespace Drivers {
 BACnetDriver::BACnetDriver()
     : initialized_(false)
     , connected_(false)
-    , status_(DriverStatus::UNINITIALIZED)
+    , status_(Structs::DriverStatus::UNINITIALIZED)
     , stop_threads_(false)
 {
     // 통계 초기화
@@ -78,7 +78,7 @@ bool BACnetDriver::Initialize(const DriverConfig& config) {
             return false;
         }
         
-        status_.store(DriverStatus::INITIALIZED);
+        status_.store(Structs::DriverStatus::INITIALIZED);
         initialized_.store(true);
         
         logger_->Info("BACnet driver initialized successfully", DriverLogCategory::GENERAL);
@@ -115,7 +115,7 @@ bool BACnetDriver::Connect() {
         discovery_thread_ = std::thread(&BACnetDriver::DiscoveryThread, this);
         
         connected_.store(true);
-        status_.store(DriverStatus::RUNNING);
+        status_.store(Structs::DriverStatus::RUNNING);
         
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start_time);
@@ -167,7 +167,7 @@ bool BACnetDriver::Disconnect() {
         ShutdownBACnetStack();
         
         connected_.store(false);
-        status_.store(DriverStatus::STOPPED);
+        status_.store(Structs::DriverStatus::STOPPED);
         
         if (logger_) {
             logger_->Info("Disconnected from BACnet network", DriverLogCategory::CONNECTION);
@@ -186,7 +186,7 @@ bool BACnetDriver::Disconnect() {
 }
 
 bool BACnetDriver::IsConnected() const {
-    return connected_.load() && status_.load() == DriverStatus::RUNNING;
+    return connected_.load() && status_.load() == Structs::DriverStatus::RUNNING;
 }
 
 bool BACnetDriver::ReadValues(const std::vector<DataPoint>& points,
@@ -211,21 +211,21 @@ bool BACnetDriver::ReadValues(const std::vector<DataPoint>& points,
             
             if (!ParseDataPoint(point, device_id, object_type, object_instance, 
                               property_id, array_index)) {
-                values.emplace_back(DataValue(), DataQuality::BAD);
+                values.emplace_back(Structs::DataValue(), DataQuality::BAD);
                 continue;
             }
             
             BACNET_APPLICATION_DATA_VALUE bacnet_value;
             if (ReadProperty(device_id, object_type, object_instance, 
                            property_id, array_index, bacnet_value)) {
-                DataValue data_value;
+                Structs::DataValue data_value;
                 if (ConvertFromBACnetValue(bacnet_value, data_value)) {
                     values.emplace_back(data_value, DataQuality::GOOD);
                 } else {
-                    values.emplace_back(DataValue(), DataQuality::BAD);
+                    values.emplace_back(Structs::DataValue(), DataQuality::BAD);
                 }
             } else {
-                values.emplace_back(DataValue(), DataQuality::BAD);
+                values.emplace_back(Structs::DataValue(), DataQuality::BAD);
             }
         }
         
@@ -252,7 +252,7 @@ bool BACnetDriver::ReadValues(const std::vector<DataPoint>& points,
     }
 }
 
-bool BACnetDriver::WriteValue(const DataPoint& point, const DataValue& value) {
+bool BACnetDriver::WriteValue(const Structs::DataPoint& point, const Structs::DataValue& value) {
     if (!IsConnected()) {
         SetError(ErrorCode::CONNECTION_FAILED, "BACnet driver not connected");
         return false;
@@ -312,7 +312,7 @@ ProtocolType BACnetDriver::GetProtocolType() const {
     return ProtocolType::BACNET_IP;
 }
 
-DriverStatus BACnetDriver::GetStatus() const {
+Structs::DriverStatus BACnetDriver::GetStatus() const {
     return status_.load();
 }
 
@@ -338,7 +338,7 @@ std::future<std::vector<TimestampedValue>> BACnetDriver::ReadValuesAsync(
 }
 
 std::future<bool> BACnetDriver::WriteValueAsync(
-    const DataPoint& point, const DataValue& value, int priority) {
+    const Structs::DataPoint& point, const Structs::DataValue& value, int priority) {
     
     (void)priority; // 경고 제거
     
@@ -458,7 +458,7 @@ void BACnetDriver::DiscoveryThread() {
 
 
 
-bool BACnetDriver::ConvertToBACnetValue(const DataValue& data_value,
+bool BACnetDriver::ConvertToBACnetValue(const Structs::DataValue& data_value,
                                        BACNET_APPLICATION_DATA_VALUE& bacnet_value) {
     try {
         // std::variant의 타입을 런타임에 확인
@@ -512,7 +512,7 @@ bool BACnetDriver::ConvertToBACnetValue(const DataValue& data_value,
 }
 
 bool BACnetDriver::ConvertFromBACnetValue(const BACNET_APPLICATION_DATA_VALUE& bacnet_value,
-                                         DataValue& data_value) {
+                                         Structs::DataValue& data_value) {
     try {
         switch (bacnet_value.tag) {
             case BACNET_APPLICATION_TAG_BOOLEAN:
@@ -554,7 +554,7 @@ bool BACnetDriver::ConvertFromBACnetValue(const BACNET_APPLICATION_DATA_VALUE& b
     }
 }
 
-bool BACnetDriver::ParseDataPoint(const DataPoint& point, uint32_t& device_id,
+bool BACnetDriver::ParseDataPoint(const Structs::DataPoint& point, uint32_t& device_id,
                                  BACNET_OBJECT_TYPE& object_type, uint32_t& object_instance,
                                  BACNET_PROPERTY_ID& property_id, uint32_t& array_index) {
     try {

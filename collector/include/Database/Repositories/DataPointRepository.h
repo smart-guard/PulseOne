@@ -417,12 +417,7 @@ private:
      * @return 태그 목록
      */
     std::vector<std::string> parseTagsFromString(const std::string& tags_str);
-    
-    /**
-     * @brief 현재 타임스탬프를 문자열로 반환
-     * @return ISO 형식 타임스탬프
-     */
-    std::string getCurrentTimestamp();
+
 };
 
 } // namespace Repositories

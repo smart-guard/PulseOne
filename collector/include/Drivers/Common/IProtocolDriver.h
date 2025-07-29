@@ -11,6 +11,17 @@
 #define DRIVERS_IPROTOCOL_DRIVER_H
 
 #include "Common/UnifiedCommonTypes.h"
+// Utils 네임스페이스 별칭
+namespace Utils = PulseOne::Utils;
+namespace Constants = PulseOne::Constants;
+namespace Structs = PulseOne::Structs;
+
+
+// Utils 네임스페이스 별칭
+namespace Utils = PulseOne::Utils;
+namespace Constants = PulseOne::Constants;
+namespace Structs = PulseOne::Structs;
+
 #include "DriverLogger.h"
 #include "Utils/ConfigManager.h"    // 기존 ConfigManager 사용
 #include <functional>
@@ -60,7 +71,7 @@ using DiagnosticsCallback = std::function<void(const UUID& device_id,
  */
 struct AsyncReadRequest {
     UUID request_id;                                  ///< 요청 고유 ID
-    std::vector<DataPoint> points;                    ///< 읽을 데이터 포인트들
+    std::vector<Structs::DataPoint> points;                    ///< 읽을 데이터 포인트들
     std::promise<std::vector<TimestampedValue>> promise; ///< 결과 promise
     Timestamp requested_at;                           ///< 요청 시간
     int priority;                                     ///< 우선순위 (높을수록 우선)
@@ -71,8 +82,8 @@ struct AsyncReadRequest {
      * @param data_points 읽을 데이터 포인트들
      * @param req_priority 우선순위 (기본값: 0)
      */
-    AsyncReadRequest(const std::vector<DataPoint>& data_points, int req_priority = 0)
-        : request_id(GenerateUUID())
+    AsyncReadRequest(const std::vector<Structs::DataPoint>& data_points, int req_priority = 0)
+        : request_id(Utils::GenerateUUID())
         , points(data_points)
         , requested_at(std::chrono::system_clock::now())
         , priority(req_priority)
@@ -84,8 +95,8 @@ struct AsyncReadRequest {
  */
 struct AsyncWriteRequest {
     UUID request_id;                                  ///< 요청 고유 ID
-    DataPoint point;                                  ///< 쓸 데이터 포인트
-    DataValue value;                                  ///< 쓸 값
+    Structs::DataPoint point;                                  ///< 쓸 데이터 포인트
+    Structs::DataValue value;                                  ///< 쓸 값
     std::promise<bool> promise;                       ///< 결과 promise
     Timestamp requested_at;                           ///< 요청 시간
     int priority;                                     ///< 우선순위 (높을수록 우선)
@@ -97,9 +108,9 @@ struct AsyncWriteRequest {
      * @param data_value 쓸 값
      * @param req_priority 우선순위 (기본값: 10, 쓰기는 일반적으로 높은 우선순위)
      */
-    AsyncWriteRequest(const DataPoint& data_point, const DataValue& data_value, 
+    AsyncWriteRequest(const Structs::DataPoint& data_point, const Structs::DataValue& data_value, 
                      int req_priority = 10)
-        : request_id(GenerateUUID())
+        : request_id(Utils::GenerateUUID())
         , point(data_point)
         , value(data_value)
         , requested_at(std::chrono::system_clock::now())
@@ -169,7 +180,7 @@ public:
      * @return 성공 시 true, 실패 시 false
      * @details 배치 읽기로 성능 최적화, 부분 실패 처리 포함
      */
-    virtual bool ReadValues(const std::vector<DataPoint>& points,
+    virtual bool ReadValues(const std::vector<Structs::DataPoint>& points,
                            std::vector<TimestampedValue>& values) = 0;
     
     /**
@@ -179,8 +190,8 @@ public:
      * @return 성공 시 true, 실패 시 false
      * @details 타입 변환 및 유효성 검사 포함
      */
-    virtual bool WriteValue(const DataPoint& point, 
-                           const DataValue& value) = 0;
+    virtual bool WriteValue(const Structs::DataPoint& point, 
+                           const Structs::DataValue& value) = 0;
     
     /**
      * @brief 프로토콜 타입 반환
@@ -192,7 +203,7 @@ public:
      * @brief 드라이버 상태 반환
      * @return 현재 드라이버 상태
      */
-    virtual DriverStatus GetStatus() const = 0;
+    virtual Structs::DriverStatus GetStatus() const = 0;
     
     /**
      * @brief 마지막 에러 정보 반환
@@ -212,7 +223,7 @@ public:
      * @details 기본 구현은 별도 스레드에서 동기 읽기 수행
      */
     virtual std::future<std::vector<TimestampedValue>> 
-    ReadValuesAsync(const std::vector<DataPoint>& points, int priority = 0) {
+    ReadValuesAsync(const std::vector<Structs::DataPoint>& points, int priority = 0) {
         (void)priority;
         auto promise = std::make_shared<std::promise<std::vector<TimestampedValue>>>();
         auto future = promise->get_future();
@@ -243,8 +254,8 @@ public:
      * @param priority 우선순위 (기본값: 10)
      * @return future 객체
      */
-    virtual std::future<bool> WriteValueAsync(const DataPoint& point,
-                                         const DataValue& value, 
+    virtual std::future<bool> WriteValueAsync(const Structs::DataPoint& point,
+                                         const Structs::DataValue& value, 
                                          int /* priority */ = 10) {
         auto promise = std::make_shared<std::promise<bool>>();
         auto future = promise->get_future();
@@ -268,7 +279,7 @@ public:
      * @return 성공 시 true, 실패 시 false
      * @details 기본 구현은 순차적으로 WriteValue 호출
      */
-    virtual bool WriteValues(const std::map<DataPoint, DataValue>& points_and_values) {
+    virtual bool WriteValues(const std::map<Structs::DataPoint, Structs::DataValue>& points_and_values) {
         bool all_success = true;
         for (const auto& pair : points_and_values) {
             if (!WriteValue(pair.first, pair.second)) {
@@ -326,9 +337,9 @@ public:
         std::ostringstream oss;
         const auto& stats = GetStatistics();
         oss << "{"
-            << "\"protocol\":\"" << ProtocolTypeToString(GetProtocolType()) << "\","
+            << "\"protocol\":\"" << Utils::ProtocolTypeToString(GetProtocolType()) << "\","
             << "\"status\":\"" << static_cast<int>(GetStatus()) << "\","
-            << "\"connection_status\":\"" << ConnectionStatusToString(current_connection_status_) << "\","
+            << "\"connection_status\":\"" << Utils::ConnectionStatusToString(current_connection_status_) << "\","
             << "\"statistics\":" << "{}" << ","
             << "\"uptime_seconds\":" << stats.uptime_seconds << ","
             << "\"last_error\":\"" << GetLastError().message << "\""
@@ -373,8 +384,8 @@ public:
      */
     virtual bool HealthCheck() {
         bool is_healthy = IsConnected() && 
-                         (GetStatus() == DriverStatus::RUNNING ||
-                          GetStatus() == DriverStatus::INITIALIZED);
+                         (GetStatus() == Structs::DriverStatus::RUNNING ||
+                          GetStatus() == Structs::DriverStatus::INITIALIZED);
         
         if (!is_healthy) {
             logger_.Warn("Health check failed: " + GetDiagnosticInfo(), 
@@ -390,23 +401,23 @@ public:
      * @details 폴링 스레드 등 백그라운드 작업 시작
      */
     virtual bool Start() {
-        if (GetStatus() != DriverStatus::INITIALIZED) {
+        if (GetStatus() != Structs::DriverStatus::INITIALIZED) {
             logger_.Error("Cannot start driver: not initialized", 
                          DriverLogCategory::ERROR_HANDLING);
             return false;
         }
         
-        status_ = DriverStatus::STARTING;
+        status_ = Structs::DriverStatus::STARTING;
         logger_.Info("Driver starting", DriverLogCategory::GENERAL);
         
         // 실제 시작 로직은 파생 클래스에서 구현
         bool success = DoStart();
         
         if (success) {
-            status_ = DriverStatus::RUNNING;
+            status_ = Structs::DriverStatus::RUNNING;
             logger_.Info("Driver started successfully", DriverLogCategory::GENERAL);
         } else {
-            status_ = DriverStatus::ERROR;
+            status_ = Structs::DriverStatus::ERROR;
             logger_.Error("Driver start failed", DriverLogCategory::ERROR_HANDLING);
         }
         
@@ -418,12 +429,12 @@ public:
      * @return 성공 시 true
      */
     virtual bool Stop() {
-        if (GetStatus() != DriverStatus::RUNNING) {
+        if (GetStatus() != Structs::DriverStatus::RUNNING) {
             logger_.Warn("Driver is not running", DriverLogCategory::GENERAL);
             return true; // 이미 정지된 상태는 성공으로 간주
         }
         
-        status_ = DriverStatus::STOPPING;
+        status_ = Structs::DriverStatus::STOPPING;
         logger_.Info("Driver stopping", DriverLogCategory::GENERAL);
         
         // 연결 해제
@@ -433,10 +444,10 @@ public:
         bool success = DoStop();
         
         if (success) {
-            status_ = DriverStatus::STOPPED;
+            status_ = Structs::DriverStatus::STOPPED;
             logger_.Info("Driver stopped successfully", DriverLogCategory::GENERAL);
         } else {
-            status_ = DriverStatus::ERROR;
+            status_ = Structs::DriverStatus::ERROR;
             logger_.Error("Driver stop failed", DriverLogCategory::ERROR_HANDLING);
         }
         
@@ -450,7 +461,7 @@ protected:
     
     DriverConfig config_;                             ///< 드라이버 설정
     mutable DriverStatistics statistics_;            ///< 통계 정보
-    std::atomic<DriverStatus> status_{DriverStatus::UNINITIALIZED}; ///< 드라이버 상태
+    std::atomic<Structs::DriverStatus> status_{Structs::DriverStatus::UNINITIALIZED}; ///< 드라이버 상태
     std::atomic<ConnectionStatus> current_connection_status_{ConnectionStatus::DISCONNECTED}; ///< 연결 상태
     ErrorInfo last_error_{ErrorCode::SUCCESS, "No error"}; ///< 마지막 에러 정보
     

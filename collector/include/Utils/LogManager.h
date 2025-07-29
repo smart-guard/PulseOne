@@ -22,6 +22,7 @@
 
 namespace PulseOne {
 
+namespace Utils = PulseOne::Utils;
 /**
  * @brief 통합 로그 관리자 (싱글톤)
  * @details 파일/콘솔 출력, 포맷팅, 카테고리 관리 담당

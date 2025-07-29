@@ -4,12 +4,12 @@
 // =============================================================================
 
 #include "Database/Entities/SiteEntity.h"
+#include "Common/Utils.h"
 #include "Common/Constants.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
 
-using namespace PulseOne::Constants;
 
 namespace PulseOne {
 namespace Database {
@@ -246,8 +246,8 @@ json SiteEntity::toJson() const {
     j["contact_name"] = contact_name_;
     j["contact_email"] = contact_email_;
     j["contact_phone"] = contact_phone_;
-    j["created_at"] = timestampToString(created_at_);
-    j["updated_at"] = timestampToString(updated_at_);
+    j["created_at"] = PulseOne::Utils::TimestampToISOString(created_at_);
+    j["updated_at"] = PulseOne::Utils::TimestampToISOString(updated_at_);
     
     return j;
 }
@@ -492,12 +492,12 @@ bool SiteEntity::mapRowToEntity(const std::map<std::string, std::string>& row) {
         // 타임스탬프 처리
         it = row.find("created_at");
         if (it != row.end() && !it->second.empty()) {
-            created_at_ = stringToTimestamp(it->second);
+            created_at_ = PulseOne::Utils::ParseTimestampFromString(it->second);
         }
         
         it = row.find("updated_at");
         if (it != row.end() && !it->second.empty()) {
-            updated_at_ = stringToTimestamp(it->second);
+            updated_at_ = PulseOne::Utils::ParseTimestampFromString(it->second);
         }
         
         return true;
@@ -535,8 +535,8 @@ std::string SiteEntity::buildInsertSQL() const {
         << "'" << contact_name_ << "', "
         << "'" << contact_email_ << "', "
         << "'" << contact_phone_ << "', "
-        << "'" << timestampToString(created_at_) << "', "
-        << "'" << timestampToString(updated_at_) << "'"
+        << "'" << PulseOne::Utils::TimestampToDBString(created_at_) << "', "
+        << "'" << PulseOne::Utils::TimestampToDBString(updated_at_) << "'"
         << ")";
         
     return sql.str();
@@ -564,30 +564,13 @@ std::string SiteEntity::buildUpdateSQL() const {
         << "contact_name = '" << contact_name_ << "', "
         << "contact_email = '" << contact_email_ << "', "
         << "contact_phone = '" << contact_phone_ << "', "
-        << "updated_at = '" << timestampToString(updated_at_) << "' "
+        << "updated_at = '" << PulseOne::Utils::TimestampToDBString(updated_at_) << "' "
         << "WHERE id = " << id_;
         
     return sql.str();
 }
 
-std::string SiteEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(tp);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
 
-std::chrono::system_clock::time_point SiteEntity::stringToTimestamp(const std::string& str) const {
-    std::tm tm = {};
-    std::istringstream ss(str);
-    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-    
-    if (ss.fail()) {
-        return std::chrono::system_clock::now();
-    }
-    
-    return std::chrono::system_clock::from_time_t(std::mktime(&tm));
-}
 
 } // namespace Entities
 } // namespace Database

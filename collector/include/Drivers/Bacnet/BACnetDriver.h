@@ -88,7 +88,6 @@ namespace PulseOne {
 namespace Drivers {
 
 // 🔥 편의성을 위한 상수 alias 정의
-using namespace PulseOne::Constants;
 
 /**
  * @brief BACnet 디바이스 정보
@@ -104,9 +103,9 @@ struct BACnetDeviceInfo {
     
     // 🔥 기본값 설정을 통합 상수 사용
     BACnetDeviceInfo() 
-        : device_id(BACNET_DEFAULT_DEVICE_INSTANCE)
-        , port(BACNET_DEFAULT_PORT)
-        , max_apdu_length(BACNET_MAX_APDU_LENGTH)
+        : device_id(Constants::BACNET_DEFAULT_DEVICE_INSTANCE)
+        , port(Constants::BACNET_DEFAULT_PORT)
+        , max_apdu_length(Constants::BACNET_MAX_APDU_LENGTH)
         , segmentation_supported(true)
         , last_seen(std::chrono::system_clock::now()) {}
 };
@@ -138,18 +137,18 @@ struct BACnetObjectInfo {
  * @brief BACnet 설정 구조체 (🔥 통합 상수 적용)
  */
 struct BACnetConfig {
-    uint32_t device_id = BACNET_DEFAULT_DEVICE_INSTANCE;        ///< 로컬 Device ID
-    std::string interface_name = DEFAULT_INTERFACE_NAME;        ///< 네트워크 인터페이스
-    uint16_t port = BACNET_DEFAULT_PORT;                       ///< UDP 포트
-    uint32_t apdu_timeout = BACNET_DEFAULT_APDU_TIMEOUT_MS;    ///< APDU 타임아웃 (ms)
-    uint8_t apdu_retries = BACNET_DEFAULT_APDU_RETRIES;        ///< APDU 재시도 횟수
+    uint32_t device_id = Constants::BACNET_DEFAULT_DEVICE_INSTANCE;        ///< 로컬 Device ID
+    std::string interface_name = Constants::DEFAULT_INTERFACE_NAME;        ///< 네트워크 인터페이스
+    uint16_t port = Constants::BACNET_DEFAULT_PORT;                       ///< UDP 포트
+    uint32_t apdu_timeout = Constants::BACNET_DEFAULT_APDU_TIMEOUT_MS;    ///< APDU 타임아웃 (ms)
+    uint8_t apdu_retries = Constants::BACNET_DEFAULT_APDU_RETRIES;        ///< APDU 재시도 횟수
     bool who_is_enabled = true;                                ///< Who-Is 브로드캐스트 활성화
-    uint32_t who_is_interval = BACNET_WHO_IS_INTERVAL_MS;      ///< Who-Is 간격 (ms)
-    uint32_t scan_interval = BACNET_SCAN_INTERVAL_MS;          ///< 스캔 간격 (ms)
+    uint32_t who_is_interval = Constants::BACNET_WHO_IS_INTERVAL_MS;      ///< Who-Is 간격 (ms)
+    uint32_t scan_interval = Constants::BACNET_SCAN_INTERVAL_MS;          ///< 스캔 간격 (ms)
     bool cov_subscription = false;                             ///< COV 구독 사용
-    uint32_t cov_lifetime = BACNET_COV_LIFETIME_SECONDS;       ///< COV 구독 수명 (초)
-    uint16_t max_apdu_length = BACNET_MAX_APDU_LENGTH;         ///< 최대 APDU 길이
-    uint8_t segmentation = BACNET_SEGMENTED_BOTH;              ///< 세그멘테이션 지원
+    uint32_t cov_lifetime = Constants::BACNET_COV_LIFETIME_SECONDS;       ///< COV 구독 수명 (초)
+    uint16_t max_apdu_length = Constants::BACNET_MAX_APDU_LENGTH;         ///< 최대 APDU 길이
+    uint8_t segmentation = Constants::BACNET_SEGMENTED_BOTH;              ///< 세그멘테이션 지원
 };
 
 /**
@@ -205,20 +204,20 @@ public:
     bool Disconnect() override;
     bool IsConnected() const override;
     
-    bool ReadValues(const std::vector<DataPoint>& points,
+    bool ReadValues(const std::vector<Structs::DataPoint>& points,
                    std::vector<TimestampedValue>& values) override;
-    bool WriteValue(const DataPoint& point, const DataValue& value) override;
+    bool WriteValue(const Structs::DataPoint& point, const Structs::DataValue& value) override;
     
     ProtocolType GetProtocolType() const override;
-    DriverStatus GetStatus() const override;
+    Structs::DriverStatus GetStatus() const override;
     ErrorInfo GetLastError() const override;
     const DriverStatistics& GetStatistics() const override;
     
     // 비동기 인터페이스
     std::future<std::vector<TimestampedValue>> ReadValuesAsync(
-        const std::vector<DataPoint>& points, int timeout_ms = 0) override;
+        const std::vector<Structs::DataPoint>& points, int timeout_ms = 0) override;
     std::future<bool> WriteValueAsync(
-        const DataPoint& point, const DataValue& value, int priority = 16) override;
+        const Structs::DataPoint& point, const Structs::DataValue& value, int priority = 16) override;
     
     // =============================================================================
     // BACnet 특화 기능
@@ -282,7 +281,7 @@ private:
     // 기본 상태
     std::atomic<bool> initialized_;
     std::atomic<bool> connected_;
-    std::atomic<DriverStatus> status_;
+    std::atomic<Structs::DriverStatus> status_;
     
     // 설정
     DriverConfig driver_config_;
@@ -373,22 +372,22 @@ private:
                       uint32_t array_index, const BACNET_APPLICATION_DATA_VALUE& value);
     
     /**
-     * @brief DataValue를 BACNET_APPLICATION_DATA_VALUE로 변환
-     * @param data_value 입력 DataValue
+     * @brief Structs::DataValue를 BACNET_APPLICATION_DATA_VALUE로 변환
+     * @param data_value 입력 Structs::DataValue
      * @param data_type 데이터 타입
      * @param bacnet_value 출력 BACnet 값
      * @return 성공 시 true
      */
-    bool ConvertToBACnetValue(const DataValue& data_value,
+    bool ConvertToBACnetValue(const Structs::DataValue& data_value,
                              BACNET_APPLICATION_DATA_VALUE& bacnet_value);    
     /**
-     * @brief BACNET_APPLICATION_DATA_VALUE를 DataValue로 변환
+     * @brief BACNET_APPLICATION_DATA_VALUE를 Structs::DataValue로 변환
      * @param bacnet_value 입력 BACnet 값
-     * @param data_value 출력 DataValue
+     * @param data_value 출력 Structs::DataValue
      * @return 성공 시 true
      */
     bool ConvertFromBACnetValue(const BACNET_APPLICATION_DATA_VALUE& bacnet_value,
-                               DataValue& data_value);
+                               Structs::DataValue& data_value);
     
     /**
      * @brief 데이터 포인트에서 BACnet 객체 정보 파싱
@@ -400,7 +399,7 @@ private:
      * @param array_index 출력 배열 인덱스
      * @return 성공 시 true
      */
-    bool ParseDataPoint(const DataPoint& point, uint32_t& device_id,
+    bool ParseDataPoint(const Structs::DataPoint& point, uint32_t& device_id,
                        BACNET_OBJECT_TYPE& object_type, uint32_t& object_instance,
                        BACNET_PROPERTY_ID& property_id, uint32_t& array_index);
     

@@ -725,8 +725,8 @@ bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16
         data_point.data_type = "UINT16";
         data_point.name = "RTU_" + std::to_string(slave_id) + "_" + std::to_string(address);
         
-        // DataValue 생성 (std::variant로 직접 할당)
-        DataValue data_value = static_cast<uint16_t>(value);
+        // Structs::DataValue 생성 (std::variant로 직접 할당)
+        Structs::DataValue data_value = static_cast<uint16_t>(value);
         
         // ModbusDriver를 통한 쓰기
         bool success = modbus_driver_->WriteValue(data_point, data_value);
@@ -765,8 +765,8 @@ bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value
         data_point.data_type = "BOOL";
         data_point.name = "RTU_" + std::to_string(slave_id) + "_" + std::to_string(address);
         
-        // DataValue 생성 (std::variant로 직접 할당)
-        DataValue data_value = value;
+        // Structs::DataValue 생성 (std::variant로 직접 할당)
+        Structs::DataValue data_value = value;
         
         // ModbusDriver를 통한 쓰기
         bool success = modbus_driver_->WriteValue(data_point, data_value);

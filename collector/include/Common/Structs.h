@@ -46,11 +46,13 @@
 
 namespace PulseOne::Structs {
     
+    // ✅ 모든 필요한 네임스페이스와 함수 별칭 명시적 선언
     using namespace PulseOne::BasicTypes;
     using namespace PulseOne::Enums;
-    using namespace PulseOne::Utils;
     using JsonType = json_impl::json;
     
+    // ✅ Utils 네임스페이스 별칭 (함수 직접 별칭은 불가능)
+    namespace Utils = PulseOne::Utils;
     
     // =========================================================================
     // 기본 타입 별칭들 (기존 CommonTypes.h에서 통합)
@@ -103,7 +105,8 @@ namespace PulseOne::Structs {
         bool data_collection_paused = false;
         std::string emergency_contact = "";
         
-        MaintenanceState() : start_time(GetCurrentTimestamp()), expected_end_time(GetCurrentTimestamp()) {}
+        // ✅ Utils 네임스페이스 사용 (네임스페이스 에러 해결)
+        MaintenanceState() : start_time(Utils::GetCurrentTimestamp()), expected_end_time(Utils::GetCurrentTimestamp()) {}
     };
     
     // =========================================================================
@@ -158,16 +161,16 @@ namespace PulseOne::Structs {
         std::vector<std::string> tags;
         JsonType metadata;
         
-        // 생성자
+        // ✅ 생성자 - Utils 네임스페이스 사용
         DeviceInfo() 
             : timeout(std::chrono::milliseconds(5000))
             , timeout_ms(5000)
             , polling_interval(std::chrono::milliseconds(1000))
             , polling_interval_ms(1000)
-            , last_communication(GetCurrentTimestamp())
-            , last_seen(GetCurrentTimestamp())
-            , created_at(GetCurrentTimestamp())
-            , updated_at(GetCurrentTimestamp())
+            , last_communication(Utils::GetCurrentTimestamp())
+            , last_seen(Utils::GetCurrentTimestamp())
+            , created_at(Utils::GetCurrentTimestamp())
+            , updated_at(Utils::GetCurrentTimestamp())
         {
             SyncCompatibilityFields();
         }
@@ -258,12 +261,12 @@ namespace PulseOne::Structs {
         Timestamp created_at;
         Timestamp updated_at;
         
-        // 생성자
+        // ✅ 생성자 - Utils 네임스페이스 사용
         DataPoint() 
-            : last_read_time(GetCurrentTimestamp())
-            , last_write_time(GetCurrentTimestamp())
-            , created_at(GetCurrentTimestamp())
-            , updated_at(GetCurrentTimestamp())
+            : last_read_time(Utils::GetCurrentTimestamp())
+            , last_write_time(Utils::GetCurrentTimestamp())
+            , created_at(Utils::GetCurrentTimestamp())
+            , updated_at(Utils::GetCurrentTimestamp())
         {}
         
         // 🔥 호환성을 위한 연산자들 (STL 컨테이너용)
@@ -376,11 +379,12 @@ namespace PulseOne::Structs {
         Timestamp last_connection_time;
         double success_rate = 0.0;
         
+        // ✅ 생성자 - Utils 네임스페이스 사용
         DriverStatistics() 
-            : last_read_time(GetCurrentTimestamp())
-            , last_write_time(GetCurrentTimestamp())
-            , last_error_time(GetCurrentTimestamp())
-            , start_time(GetCurrentTimestamp()) 
+            : last_read_time(Utils::GetCurrentTimestamp())
+            , last_write_time(Utils::GetCurrentTimestamp())
+            , last_error_time(Utils::GetCurrentTimestamp())
+            , start_time(Utils::GetCurrentTimestamp()) 
         {}
         
         double GetSuccessRate() const {
@@ -426,9 +430,10 @@ namespace PulseOne::Structs {
         bool under_maintenance = false;
         std::string engineer_id = "";
         
-        TimestampedValue() : timestamp(GetCurrentTimestamp()) {}
+        // ✅ 생성자들 - Utils 네임스페이스 사용
+        TimestampedValue() : timestamp(Utils::GetCurrentTimestamp()) {}
         TimestampedValue(const DataVariant& val, DataQuality qual = DataQuality::GOOD)
-            : value(val), quality(qual), timestamp(GetCurrentTimestamp()) {}
+            : value(val), quality(qual), timestamp(Utils::GetCurrentTimestamp()) {}
         
         bool IsValid() const noexcept {
             return quality == DataQuality::GOOD || quality == DataQuality::UNCERTAIN;
@@ -463,7 +468,8 @@ namespace PulseOne::Structs {
         uint64_t maintenance_count = 0;
         Timestamp last_reset_time;
         
-        LogStatistics() : last_reset_time(GetCurrentTimestamp()) {}
+        // ✅ 생성자 - Utils 네임스페이스 사용
+        LogStatistics() : last_reset_time(Utils::GetCurrentTimestamp()) {}
         
         double GetErrorRate() const {
             return (total_logs > 0) ? (static_cast<double>(error_count) / total_logs) * 100.0 : 0.0;
@@ -479,9 +485,10 @@ namespace PulseOne::Structs {
         std::string details = "";
         Timestamp occurred_at;
         
-        ErrorInfo() : occurred_at(GetCurrentTimestamp()) {}
+        // ✅ 생성자들 - Utils 네임스페이스 사용
+        ErrorInfo() : occurred_at(Utils::GetCurrentTimestamp()) {}
         ErrorInfo(ErrorCode err_code, const std::string& msg) 
-            : code(err_code), message(msg), occurred_at(GetCurrentTimestamp()) {}
+            : code(err_code), message(msg), occurred_at(Utils::GetCurrentTimestamp()) {}
     };
     
 } // namespace PulseOne::Structs
