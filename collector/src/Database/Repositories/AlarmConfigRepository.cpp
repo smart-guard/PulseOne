@@ -15,15 +15,7 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// =======================================================================
-// 생성자 및 초기화 (DeviceRepository 패턴)
-// =======================================================================
-
-AlarmConfigRepository::AlarmConfigRepository() 
-    : IRepository<AlarmConfigEntity>("AlarmConfigRepository") {
-    logger_->Info("🚨 AlarmConfigRepository initialized with IRepository caching system");
-    logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
-}
+using AlarmConfigEntity = Entities::AlarmConfigEntity;
 
 // =======================================================================
 // IRepository 인터페이스 구현 (DeviceRepository 패턴 100% 동일)

@@ -15,7 +15,7 @@
 //#include "Engine/AlarmEngine.h"
 #include "Drivers/CommonTypes.h"
 #include "Database/DatabaseManager.h"
-//#include "RedisClient.h"
+#include "Client/RedisClient.h"
 #include "RedisClientImpl.h"  // 구현체 헤더 추가
 #include "Utils/LogManager.h"
 

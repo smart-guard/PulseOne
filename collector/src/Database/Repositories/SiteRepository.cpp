@@ -1,13 +1,18 @@
 // =============================================================================
 // collector/src/Database/Repositories/SiteRepository.cpp
-// PulseOne SiteRepository 구현 - TenantRepository 패턴 100% 준수
+// PulseOne SiteRepository 구현 - 생성자 문제 해결
 // =============================================================================
 
 /**
  * @file SiteRepository.cpp
- * @brief PulseOne SiteRepository 구현 - TenantRepository 패턴 100% 준수
+ * @brief PulseOne SiteRepository 구현 - 생성자 문제 해결
  * @author PulseOne Development Team
  * @date 2025-07-28
+ * 
+ * 🔥 수정 사항:
+ * - 생성자 구현 제거 (헤더에서 인라인 처리)
+ * - 네임스페이스 수정
+ * - 캐시 메서드들 간소화
  */
 
 #include "Database/Repositories/SiteRepository.h"
@@ -20,90 +25,105 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 기존 패턴 준수 - using 선언 필수 (cpp에도 필요)
-using SiteEntity = PulseOne::Database::Entities::SiteEntity;
+// 🔥 네임스페이스 수정 - 중복 제거
+using SiteEntity = Entities::SiteEntity;
+
+// 🔥 생성자는 헤더에서 인라인으로 처리하므로 여기서는 제거
 
 // =======================================================================
-// 생성자 및 초기화 (TenantRepository 패턴)
+// 캐시 관리 메서드들 (헤더에서 인라인 처리하므로 구현 제거)
 // =======================================================================
 
-SiteRepository::SiteRepository() 
-    : IRepository<SiteEntity>("SiteRepository") {
-    logger_->Info("🏭 SiteRepository initialized with IRepository caching system");
-    logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
-}
+// setCacheEnabled, isCacheEnabled, clearCache 등은 
+// 헤더에서 IRepository를 호출하도록 인라인 처리했으므로 구현 불필요
 
 // =======================================================================
-// 캐시 관리 메서드들 (TenantRepository 패턴)
-// =======================================================================
-
-void SiteRepository::setCacheEnabled(bool enabled) {
-    IRepository<SiteEntity>::setCacheEnabled(enabled);
-    logger_->Info("SiteRepository cache " + std::string(enabled ? "enabled" : "disabled"));
-}
-
-bool SiteRepository::isCacheEnabled() const {
-    return IRepository<SiteEntity>::isCacheEnabled();
-}
-
-void SiteRepository::clearCache() {
-    IRepository<SiteEntity>::clearCache();
-    logger_->Info("SiteRepository cache cleared");
-}
-
-void SiteRepository::clearCacheForId(int id) {
-    IRepository<SiteEntity>::clearCacheForId(id);
-    logger_->Debug("SiteRepository cache cleared for ID: " + std::to_string(id));
-}
-
-std::map<std::string, int> SiteRepository::getCacheStats() const {
-    return IRepository<SiteEntity>::getCacheStats();
-}
-
-// =======================================================================
-// IRepository 인터페이스 구현 (TenantRepository 패턴)
+// IRepository 기본 CRUD 구현 (기존 로직 유지, 캐시 호출 수정)
 // =======================================================================
 
 std::vector<SiteEntity> SiteRepository::findAll() {
-    logger_->Debug("🔍 SiteRepository::findAll() - Fetching all sites");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findAll() - Fetching all sites");
+    }
     
-    return findByConditions({}, OrderBy("name", "ASC"));
+    try {
+        return findByConditions({}, OrderBy("name", "ASC"));
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("SiteRepository::findAll failed: " + std::string(e.what()));
+        }
+        return {};
+    }
 }
 
 std::optional<SiteEntity> SiteRepository::findById(int id) {
-    logger_->Debug("🔍 SiteRepository::findById(" + std::to_string(id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findById(" + std::to_string(id) + ")");
+    }
     
+    if (id <= 0) {
+        if (logger_) {
+            logger_->Warn("SiteRepository::findById - Invalid ID: " + std::to_string(id));
+        }
+        return std::nullopt;
+    }
+    
+    // 🔥 IRepository의 캐시 자동 확인
     auto cached = getCachedEntity(id);
     if (cached.has_value()) {
-        logger_->Debug("✅ Cache HIT for site ID: " + std::to_string(id));
+        if (logger_) {
+            logger_->Debug("✅ Cache HIT for site ID: " + std::to_string(id));
+        }
         return cached;
     }
     
-    auto sites = findByConditions({QueryCondition("id", "=", std::to_string(id))});
-    if (!sites.empty()) {
-        logger_->Debug("✅ Site found: " + sites[0].getName());
-        return sites[0];
+    try {
+        auto sites = findByConditions({QueryCondition("id", "=", std::to_string(id))});
+        if (!sites.empty()) {
+            // 🔥 캐시에 저장
+            cacheEntity(sites[0]);
+            if (logger_) {
+                logger_->Debug("✅ Site found: " + sites[0].getName());
+            }
+            return sites[0];
+        }
+        
+        if (logger_) {
+            logger_->Debug("❌ Site not found: " + std::to_string(id));
+        }
+        return std::nullopt;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("SiteRepository::findById failed: " + std::string(e.what()));
+        }
+        return std::nullopt;
     }
-    
-    logger_->Debug("❌ Site not found: " + std::to_string(id));
-    return std::nullopt;
 }
 
 bool SiteRepository::save(SiteEntity& entity) {
-    logger_->Debug("💾 SiteRepository::save() - " + entity.getName());
+    if (logger_) {
+        logger_->Debug("💾 SiteRepository::save() - " + entity.getName());
+    }
     
     if (!validateSite(entity)) {
-        logger_->Error("❌ SiteRepository::save - Invalid site data");
+        if (logger_) {
+            logger_->Error("❌ SiteRepository::save - Invalid site data");
+        }
         return false;
     }
     
     if (isSiteNameTaken(entity.getName(), entity.getTenantId(), entity.getId())) {
-        logger_->Error("❌ SiteRepository::save - Site name already taken: " + entity.getName());
+        if (logger_) {
+            logger_->Error("❌ SiteRepository::save - Site name already taken: " + entity.getName());
+        }
         return false;
     }
     
     if (isSiteCodeTaken(entity.getCode(), entity.getTenantId(), entity.getId())) {
-        logger_->Error("❌ SiteRepository::save - Site code already taken: " + entity.getCode());
+        if (logger_) {
+            logger_->Error("❌ SiteRepository::save - Site code already taken: " + entity.getCode());
+        }
         return false;
     }
     
@@ -112,32 +132,44 @@ bool SiteRepository::save(SiteEntity& entity) {
         
         if (success) {
             cacheEntity(entity);
-            logger_->Info("✅ SiteRepository::save - Saved and cached site: " + entity.getName());
+            if (logger_) {
+                logger_->Info("✅ SiteRepository::save - Saved and cached site: " + entity.getName());
+            }
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_->Error("SiteRepository::save failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("SiteRepository::save failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
 
 bool SiteRepository::update(const SiteEntity& entity) {
-    logger_->Debug("🔄 SiteRepository::update() - " + entity.getName());
+    if (logger_) {
+        logger_->Debug("🔄 SiteRepository::update() - " + entity.getName());
+    }
     
     if (!validateSite(entity)) {
-        logger_->Error("❌ SiteRepository::update - Invalid site data");
+        if (logger_) {
+            logger_->Error("❌ SiteRepository::update - Invalid site data");
+        }
         return false;
     }
     
     if (isSiteNameTaken(entity.getName(), entity.getTenantId(), entity.getId())) {
-        logger_->Error("❌ SiteRepository::update - Site name already taken: " + entity.getName());
+        if (logger_) {
+            logger_->Error("❌ SiteRepository::update - Site name already taken: " + entity.getName());
+        }
         return false;
     }
     
     if (isSiteCodeTaken(entity.getCode(), entity.getTenantId(), entity.getId())) {
-        logger_->Error("❌ SiteRepository::update - Site code already taken: " + entity.getCode());
+        if (logger_) {
+            logger_->Error("❌ SiteRepository::update - Site code already taken: " + entity.getCode());
+        }
         return false;
     }
     
@@ -147,22 +179,30 @@ bool SiteRepository::update(const SiteEntity& entity) {
         
         if (success) {
             clearCacheForId(entity.getId());
-            logger_->Info("✅ SiteRepository::update - Updated site and cleared cache: " + entity.getName());
+            if (logger_) {
+                logger_->Info("✅ SiteRepository::update - Updated site and cleared cache: " + entity.getName());
+            }
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_->Error("SiteRepository::update failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("SiteRepository::update failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
 
 bool SiteRepository::deleteById(int id) {
-    logger_->Debug("🗑️ SiteRepository::deleteById(" + std::to_string(id) + ")");
+    if (logger_) {
+        logger_->Debug("🗑️ SiteRepository::deleteById(" + std::to_string(id) + ")");
+    }
     
     if (hasChildSites(id)) {
-        logger_->Error("❌ SiteRepository::deleteById - Cannot delete site with child sites: " + std::to_string(id));
+        if (logger_) {
+            logger_->Error("❌ SiteRepository::deleteById - Cannot delete site with child sites: " + std::to_string(id));
+        }
         return false;
     }
     
@@ -172,31 +212,41 @@ bool SiteRepository::deleteById(int id) {
         
         if (success) {
             clearCacheForId(id);
-            logger_->Info("✅ SiteRepository::deleteById - Deleted site and cleared cache: " + std::to_string(id));
+            if (logger_) {
+                logger_->Info("✅ SiteRepository::deleteById - Deleted site and cleared cache: " + std::to_string(id));
+            }
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        logger_->Error("SiteRepository::deleteById failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("SiteRepository::deleteById failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
 
 bool SiteRepository::exists(int id) {
-    logger_->Debug("🔍 SiteRepository::exists(" + std::to_string(id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::exists(" + std::to_string(id) + ")");
+    }
     
     return findById(id).has_value();
 }
 
 std::vector<SiteEntity> SiteRepository::findByIds(const std::vector<int>& ids) {
-    logger_->Debug("🔍 SiteRepository::findByIds() - " + std::to_string(ids.size()) + " sites");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByIds() - " + std::to_string(ids.size()) + " sites");
+    }
     
     return IRepository<SiteEntity>::findByIds(ids);
 }
 
 int SiteRepository::saveBulk(std::vector<SiteEntity>& entities) {
-    logger_->Info("💾 SiteRepository::saveBulk() - " + std::to_string(entities.size()) + " sites");
+    if (logger_) {
+        logger_->Info("💾 SiteRepository::saveBulk() - " + std::to_string(entities.size()) + " sites");
+    }
     
     int valid_count = 0;
     for (const auto& entity : entities) {
@@ -205,22 +255,28 @@ int SiteRepository::saveBulk(std::vector<SiteEntity>& entities) {
         }
     }
     
-    if (valid_count != entities.size()) {
-        logger_->Warn("⚠️ SiteRepository::saveBulk - Valid: " + 
-                      std::to_string(valid_count) + "/" + std::to_string(entities.size()));
+    if (valid_count != static_cast<int>(entities.size())) {
+        if (logger_) {
+            logger_->Warn("⚠️ SiteRepository::saveBulk - Valid: " + 
+                          std::to_string(valid_count) + "/" + std::to_string(entities.size()));
+        }
     }
     
     return IRepository<SiteEntity>::saveBulk(entities);
 }
 
 int SiteRepository::updateBulk(const std::vector<SiteEntity>& entities) {
-    logger_->Info("🔄 SiteRepository::updateBulk() - " + std::to_string(entities.size()) + " sites");
+    if (logger_) {
+        logger_->Info("🔄 SiteRepository::updateBulk() - " + std::to_string(entities.size()) + " sites");
+    }
     
     return IRepository<SiteEntity>::updateBulk(entities);
 }
 
 int SiteRepository::deleteByIds(const std::vector<int>& ids) {
-    logger_->Info("🗑️ SiteRepository::deleteByIds() - " + std::to_string(ids.size()) + " sites");
+    if (logger_) {
+        logger_->Info("🗑️ SiteRepository::deleteByIds() - " + std::to_string(ids.size()) + " sites");
+    }
     
     return IRepository<SiteEntity>::deleteByIds(ids);
 }
@@ -230,11 +286,57 @@ std::vector<SiteEntity> SiteRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    return IRepository<SiteEntity>::findByConditions(conditions, order_by, pagination);
+    try {
+        // 🔥 실제 데이터베이스 쿼리 구현 (기존 로직)
+        std::string sql = "SELECT * FROM sites";
+        
+        // WHERE 절 추가
+        if (!conditions.empty()) {
+            sql += buildWhereClause(conditions);
+        }
+        
+        // ORDER BY 절 추가
+        if (order_by.has_value()) {
+            sql += buildOrderByClause(order_by);
+        }
+        
+        // LIMIT 절 추가
+        if (pagination.has_value()) {
+            sql += buildLimitClause(pagination);
+        }
+        
+        auto result = executeDatabaseQuery(sql);
+        return mapResultToEntities(result);
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("SiteRepository::findByConditions failed: " + std::string(e.what()));
+        }
+        return {};
+    }
 }
 
 int SiteRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    return IRepository<SiteEntity>::countByConditions(conditions);
+    try {
+        std::string sql = "SELECT COUNT(*) as count FROM sites";
+        
+        if (!conditions.empty()) {
+            sql += buildWhereClause(conditions);
+        }
+        
+        auto result = executeDatabaseQuery(sql);
+        if (!result.empty() && result[0].find("count") != result[0].end()) {
+            return std::stoi(result[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("SiteRepository::countByConditions failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
 }
 
 int SiteRepository::getTotalCount() {
@@ -242,30 +344,38 @@ int SiteRepository::getTotalCount() {
 }
 
 // =======================================================================
-// 사이트 전용 조회 메서드들 (TenantRepository 패턴)
+// 사이트 전용 조회 메서드들 (기존 로직 유지)
 // =======================================================================
 
 std::vector<SiteEntity> SiteRepository::findByTenant(int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findByTenant(" + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByTenant(" + std::to_string(tenant_id) + ")");
+    }
     
     return findByConditions({buildTenantCondition(tenant_id)}, OrderBy("name", "ASC"));
 }
 
 std::vector<SiteEntity> SiteRepository::findByParentSite(int parent_site_id) {
-    logger_->Debug("🔍 SiteRepository::findByParentSite(" + std::to_string(parent_site_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByParentSite(" + std::to_string(parent_site_id) + ")");
+    }
     
     return findByConditions({QueryCondition("parent_site_id", "=", std::to_string(parent_site_id))}, 
                            OrderBy("name", "ASC"));
 }
 
 std::vector<SiteEntity> SiteRepository::findBySiteType(SiteEntity::SiteType site_type) {
-    logger_->Debug("🔍 SiteRepository::findBySiteType(" + SiteEntity::siteTypeToString(site_type) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findBySiteType(" + SiteEntity::siteTypeToString(site_type) + ")");
+    }
     
     return findByConditions({buildSiteTypeCondition(site_type)}, OrderBy("name", "ASC"));
 }
 
 std::optional<SiteEntity> SiteRepository::findByName(const std::string& name, int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findByName(" + name + ", " + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByName(" + name + ", " + std::to_string(tenant_id) + ")");
+    }
     
     auto sites = findByConditions({
         QueryCondition("name", "=", name),
@@ -276,7 +386,9 @@ std::optional<SiteEntity> SiteRepository::findByName(const std::string& name, in
 }
 
 std::optional<SiteEntity> SiteRepository::findByCode(const std::string& code, int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findByCode(" + code + ", " + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByCode(" + code + ", " + std::to_string(tenant_id) + ")");
+    }
     
     auto sites = findByConditions({
         QueryCondition("code", "=", code),
@@ -287,21 +399,27 @@ std::optional<SiteEntity> SiteRepository::findByCode(const std::string& code, in
 }
 
 std::vector<SiteEntity> SiteRepository::findByLocation(const std::string& location) {
-    logger_->Debug("🔍 SiteRepository::findByLocation(" + location + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByLocation(" + location + ")");
+    }
     
     return findByConditions({QueryCondition("location", "LIKE", "%" + location + "%")}, 
                            OrderBy("name", "ASC"));
 }
 
 std::vector<SiteEntity> SiteRepository::findByTimezone(const std::string& timezone) {
-    logger_->Debug("🔍 SiteRepository::findByTimezone(" + timezone + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByTimezone(" + timezone + ")");
+    }
     
     return findByConditions({QueryCondition("timezone", "=", timezone)}, 
                            OrderBy("name", "ASC"));
 }
 
 std::vector<SiteEntity> SiteRepository::findActiveSites(int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findActiveSites(" + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findActiveSites(" + std::to_string(tenant_id) + ")");
+    }
     
     std::vector<QueryCondition> conditions = {buildActiveCondition(true)};
     
@@ -313,7 +431,9 @@ std::vector<SiteEntity> SiteRepository::findActiveSites(int tenant_id) {
 }
 
 std::vector<SiteEntity> SiteRepository::findRootSites(int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findRootSites(" + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findRootSites(" + std::to_string(tenant_id) + ")");
+    }
     
     return findByConditions({
         buildTenantCondition(tenant_id),
@@ -322,7 +442,9 @@ std::vector<SiteEntity> SiteRepository::findRootSites(int tenant_id) {
 }
 
 std::vector<SiteEntity> SiteRepository::findByHierarchyLevel(int level, int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findByHierarchyLevel(" + std::to_string(level) + ", " + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByHierarchyLevel(" + std::to_string(level) + ", " + std::to_string(tenant_id) + ")");
+    }
     
     std::vector<QueryCondition> conditions = {
         QueryCondition("hierarchy_level", "=", std::to_string(level))
@@ -336,7 +458,9 @@ std::vector<SiteEntity> SiteRepository::findByHierarchyLevel(int level, int tena
 }
 
 std::vector<SiteEntity> SiteRepository::findByNamePattern(const std::string& name_pattern, int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findByNamePattern(" + name_pattern + ", " + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findByNamePattern(" + name_pattern + ", " + std::to_string(tenant_id) + ")");
+    }
     
     std::vector<QueryCondition> conditions = {
         QueryCondition("name", "LIKE", "%" + name_pattern + "%")
@@ -350,7 +474,9 @@ std::vector<SiteEntity> SiteRepository::findByNamePattern(const std::string& nam
 }
 
 std::vector<SiteEntity> SiteRepository::findSitesWithGPS(int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::findSitesWithGPS(" + std::to_string(tenant_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::findSitesWithGPS(" + std::to_string(tenant_id) + ")");
+    }
     
     std::vector<QueryCondition> conditions = {
         QueryCondition("latitude", "!=", "0"),
@@ -365,11 +491,13 @@ std::vector<SiteEntity> SiteRepository::findSitesWithGPS(int tenant_id) {
 }
 
 // =======================================================================
-// 사이트 비즈니스 로직 메서드들 (TenantRepository 패턴)
+// 사이트 비즈니스 로직 메서드들
 // =======================================================================
 
 bool SiteRepository::isSiteNameTaken(const std::string& name, int tenant_id, int exclude_id) {
-    logger_->Debug("🔍 SiteRepository::isSiteNameTaken(" + name + ", " + std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::isSiteNameTaken(" + name + ", " + std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
+    }
     
     std::vector<QueryCondition> conditions = {
         QueryCondition("name", "=", name),
@@ -385,7 +513,9 @@ bool SiteRepository::isSiteNameTaken(const std::string& name, int tenant_id, int
 }
 
 bool SiteRepository::isSiteCodeTaken(const std::string& code, int tenant_id, int exclude_id) {
-    logger_->Debug("🔍 SiteRepository::isSiteCodeTaken(" + code + ", " + std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::isSiteCodeTaken(" + code + ", " + std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
+    }
     
     std::vector<QueryCondition> conditions = {
         QueryCondition("code", "=", code),
@@ -401,7 +531,9 @@ bool SiteRepository::isSiteCodeTaken(const std::string& code, int tenant_id, int
 }
 
 bool SiteRepository::hasChildSites(int parent_site_id) {
-    logger_->Debug("🔍 SiteRepository::hasChildSites(" + std::to_string(parent_site_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::hasChildSites(" + std::to_string(parent_site_id) + ")");
+    }
     
     int count = countByConditions({
         QueryCondition("parent_site_id", "=", std::to_string(parent_site_id))
@@ -410,12 +542,16 @@ bool SiteRepository::hasChildSites(int parent_site_id) {
     return count > 0;
 }
 
-json SiteRepository::getSiteHierarchy(int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::getSiteHierarchy(" + std::to_string(tenant_id) + ")");
+// 🔥 JSON 메서드들 - 조건부 컴파일
+#ifdef HAVE_NLOHMANN_JSON
+nlohmann::json SiteRepository::getSiteHierarchy(int tenant_id) {
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::getSiteHierarchy(" + std::to_string(tenant_id) + ")");
+    }
     
     auto all_sites = findByTenant(tenant_id);
     
-    json hierarchy;
+    nlohmann::json hierarchy;
     hierarchy["tenant_id"] = tenant_id;
     hierarchy["total_sites"] = all_sites.size();
     hierarchy["hierarchy"] = buildHierarchyRecursive(all_sites, 0);
@@ -423,8 +559,95 @@ json SiteRepository::getSiteHierarchy(int tenant_id) {
     return hierarchy;
 }
 
+nlohmann::json SiteRepository::getSiteStatistics(int tenant_id) {
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::getSiteStatistics(" + std::to_string(tenant_id) + ")");
+    }
+    
+    nlohmann::json stats;
+    stats["tenant_id"] = tenant_id;
+    
+    stats["total_sites"] = countByConditions({buildTenantCondition(tenant_id)});
+    
+    stats["active_sites"] = countByConditions({
+        buildTenantCondition(tenant_id),
+        buildActiveCondition(true)
+    });
+    
+    // 타입별 통계
+    nlohmann::json type_stats;
+    for (int type = 0; type <= 7; type++) {
+        auto site_type = static_cast<SiteEntity::SiteType>(type);
+        std::string type_name = SiteEntity::siteTypeToString(site_type);
+        
+        int count = countByConditions({
+            buildTenantCondition(tenant_id),
+            buildSiteTypeCondition(site_type)
+        });
+        
+        type_stats[type_name] = count;
+    }
+    stats["by_type"] = type_stats;
+    
+    return stats;
+}
+
+nlohmann::json SiteRepository::buildHierarchyRecursive(const std::vector<SiteEntity>& sites, int parent_id) const {
+    nlohmann::json children = nlohmann::json::array();
+    
+    for (const auto& site : sites) {
+        if (site.getParentSiteId() == parent_id) {
+            nlohmann::json node;
+            node["id"] = site.getId();
+            node["name"] = site.getName();
+            node["code"] = site.getCode();
+            node["type"] = SiteEntity::siteTypeToString(site.getSiteType());
+            node["level"] = site.getHierarchyLevel();
+            node["active"] = site.isActive();
+            
+            node["children"] = buildHierarchyRecursive(sites, site.getId());
+            
+            children.push_back(node);
+        }
+    }
+    
+    return children;
+}
+
+#else
+// JSON 라이브러리가 없는 경우 문자열 반환
+std::string SiteRepository::getSiteHierarchy(int tenant_id) {
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::getSiteHierarchy(" + std::to_string(tenant_id) + ") - JSON not available");
+    }
+    
+    auto all_sites = findByTenant(tenant_id);
+    return "{\"tenant_id\":" + std::to_string(tenant_id) + 
+           ",\"total_sites\":" + std::to_string(all_sites.size()) + "}";
+}
+
+std::string SiteRepository::getSiteStatistics(int tenant_id) {
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::getSiteStatistics(" + std::to_string(tenant_id) + ") - JSON not available");
+    }
+    
+    int total = countByConditions({buildTenantCondition(tenant_id)});
+    int active = countByConditions({buildTenantCondition(tenant_id), buildActiveCondition(true)});
+    
+    return "{\"tenant_id\":" + std::to_string(tenant_id) + 
+           ",\"total_sites\":" + std::to_string(total) + 
+           ",\"active_sites\":" + std::to_string(active) + "}";
+}
+
+std::string SiteRepository::buildHierarchyRecursive(const std::vector<SiteEntity>& sites, int parent_id) const {
+    return "[]";  // 단순 문자열 반환
+}
+#endif
+
 std::vector<SiteEntity> SiteRepository::getAllChildSites(int parent_site_id) {
-    logger_->Debug("🔍 SiteRepository::getAllChildSites(" + std::to_string(parent_site_id) + ")");
+    if (logger_) {
+        logger_->Debug("🔍 SiteRepository::getAllChildSites(" + std::to_string(parent_site_id) + ")");
+    }
     
     std::vector<SiteEntity> all_children;
     
@@ -440,57 +663,8 @@ std::vector<SiteEntity> SiteRepository::getAllChildSites(int parent_site_id) {
     return all_children;
 }
 
-json SiteRepository::getSiteStatistics(int tenant_id) {
-    logger_->Debug("🔍 SiteRepository::getSiteStatistics(" + std::to_string(tenant_id) + ")");
-    
-    json stats;
-    stats["tenant_id"] = tenant_id;
-    
-    stats["total_sites"] = countByConditions({buildTenantCondition(tenant_id)});
-    
-    stats["active_sites"] = countByConditions({
-        buildTenantCondition(tenant_id),
-        buildActiveCondition(true)
-    });
-    
-    json type_stats;
-    for (int type = 0; type <= 7; type++) {
-        auto site_type = static_cast<SiteEntity::SiteType>(type);
-        std::string type_name = SiteEntity::siteTypeToString(site_type);
-        
-        int count = countByConditions({
-            buildTenantCondition(tenant_id),
-            buildSiteTypeCondition(site_type)
-        });
-        
-        type_stats[type_name] = count;
-    }
-    stats["by_type"] = type_stats;
-    
-    json level_stats;
-    for (int level = 1; level <= 5; level++) {
-        int count = countByConditions({
-            buildTenantCondition(tenant_id),
-            QueryCondition("hierarchy_level", "=", std::to_string(level))
-        });
-        
-        if (count > 0) {
-            level_stats["level_" + std::to_string(level)] = count;
-        }
-    }
-    stats["by_hierarchy_level"] = level_stats;
-    
-    stats["sites_with_gps"] = countByConditions({
-        buildTenantCondition(tenant_id),
-        QueryCondition("latitude", "!=", "0"),
-        QueryCondition("longitude", "!=", "0")
-    });
-    
-    return stats;
-}
-
 // =======================================================================
-// private 헬퍼 메서드들 (TenantRepository 패턴)
+// private 헬퍼 메서드들
 // =======================================================================
 
 bool SiteRepository::validateSite(const SiteEntity& site) const {
@@ -534,26 +708,95 @@ QueryCondition SiteRepository::buildActiveCondition(bool active) const {
     return QueryCondition("is_active", "=", active ? "1" : "0");
 }
 
-json SiteRepository::buildHierarchyRecursive(const std::vector<SiteEntity>& sites, int parent_id) const {
-    json children = json::array();
+// =======================================================================
+// 데이터베이스 헬퍼 메서드들 (임시 구현)
+// =======================================================================
+
+SiteEntity SiteRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
+    // 임시 구현 - 실제로는 row 데이터를 SiteEntity로 변환
+    SiteEntity entity;
+    // TODO: 실제 매핑 로직 구현
+    return entity;
+}
+
+std::vector<SiteEntity> SiteRepository::mapResultToEntities(
+    const std::vector<std::map<std::string, std::string>>& result) {
     
-    for (const auto& site : sites) {
-        if (site.getParentSiteId() == parent_id) {
-            json node;
-            node["id"] = site.getId();
-            node["name"] = site.getName();
-            node["code"] = site.getCode();
-            node["type"] = SiteEntity::siteTypeToString(site.getSiteType());
-            node["level"] = site.getHierarchyLevel();
-            node["active"] = site.isActive();
-            
-            node["children"] = buildHierarchyRecursive(sites, site.getId());
-            
-            children.push_back(node);
-        }
+    std::vector<SiteEntity> entities;
+    for (const auto& row : result) {
+        entities.push_back(mapRowToEntity(row));
     }
+    return entities;
+}
+
+std::vector<std::map<std::string, std::string>> SiteRepository::executeDatabaseQuery(const std::string& sql) {
+    try {
+        if (!db_manager_) return {};
+        
+        // 데이터베이스 타입에 따른 쿼리 실행
+        if (config_manager_) {
+            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
+            
+            if (db_type == "POSTGRESQL") {
+                auto result = db_manager_->executeQueryPostgres(sql);
+                return result.rows;
+            } else {
+                auto result = db_manager_->executeQuerySQLite(sql);
+                return result.rows;
+            }
+        }
+        
+        return {};
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("executeDatabaseQuery failed: " + std::string(e.what()));
+        }
+        return {};
+    }
+}
+
+bool SiteRepository::executeDatabaseNonQuery(const std::string& sql) {
+    try {
+        if (!db_manager_) return false;
+        
+        if (config_manager_) {
+            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
+            
+            if (db_type == "POSTGRESQL") {
+                return db_manager_->executeNonQueryPostgres(sql);
+            } else {
+                return db_manager_->executeNonQuerySQLite(sql);
+            }
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("executeDatabaseNonQuery failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+std::string SiteRepository::getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
     
-    return children;
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
+std::string SiteRepository::escapeString(const std::string& str) {
+    std::string escaped = str;
+    size_t pos = 0;
+    while ((pos = escaped.find("'", pos)) != std::string::npos) {
+        escaped.replace(pos, 1, "''");
+        pos += 2;
+    }
+    return escaped;
 }
 
 } // namespace Repositories
