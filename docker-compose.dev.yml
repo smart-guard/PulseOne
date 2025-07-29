@@ -88,9 +88,17 @@ services:
       context: .
       dockerfile: backend/Dockerfile.dev
     container_name: pulseone-backend-dev
+    working_dir: /app  # 🎯 작업 디렉토리 명시
+    env_file:
+      - ./config/.env
+      - ./config/database.env
+      - ./config/redis.env
+      - ./config/timeseries.env
+      - ./config/messaging.env
     environment:
       NODE_ENV: development
       ENV_STAGE: ${ENV_STAGE:-dev}
+      # 기존 Docker 서비스 연결 정보 유지
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       INFLUX_URL: http://influxdb:8086
@@ -103,6 +111,7 @@ services:
       - ./backend:/app/backend
       - ./config:/app/config
       - ./secrets:/app/secrets
+      - ./data:/app/data  # 🎯 SQLite 파일 접근용 볼륨 추가
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,7 +124,7 @@ services:
     networks:
       - pulseone_network
 
-  # Collector (수정된 버전)
+# Collector (완성된 버전)
   collector:
     build:
       context: .
@@ -123,6 +132,13 @@ services:
     container_name: pulseone-collector-dev
     tty: true
     stdin_open: true
+    working_dir: /app  # 🎯 작업 디렉토리 명시
+    env_file:
+      - ./config/.env
+      - ./config/database.env
+      - ./config/redis.env
+      - ./config/timeseries.env
+      - ./config/messaging.env
     environment:
       BUILD_TYPE: Debug
       LOG_LEVEL: debug
@@ -134,6 +150,7 @@ services:
       - ./config:/app/config
       - ./secrets:/app/secrets
       - ./logs:/app/logs
+      - ./data:/app/data  # 🎯 SQLite 파일 접근용 볼륨 추가
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,6 +175,18 @@ services:
         echo \"  OS: \$$(uname -s) \$$(uname -r)\"
         echo \"  Compiler: \$$(g++ --version | head -n1)\"
         echo \"  Build Type: \$$BUILD_TYPE\"
+        echo \"  Working Dir: \$$(pwd)\"
+        
+        # 🎯 데이터베이스 설정 확인 추가
+        echo '🗄️ Database Configuration:'
+        echo \"  DATABASE_TYPE: \$$DATABASE_TYPE\"
+        echo \"  SQLITE_PATH: \$$SQLITE_PATH\"
+        if [ -f \"\$$SQLITE_PATH\" ]; then
+          echo \"  ✅ SQLite file found: \$$SQLITE_PATH\"
+          sqlite3 \"\$$SQLITE_PATH\" 'SELECT COUNT(*) as device_count FROM devices;' 2>/dev/null && echo \"  📊 Database accessible\" || echo \"  ⚠️ Database query failed\"
+        else
+          echo \"  ❌ SQLite file not found: \$$SQLITE_PATH\"
+        fi
         
         # 라이브러리 상태 확인
         echo '📚 Library Status:'
@@ -210,6 +239,10 @@ services:
         echo '  make run                  - Run collector'
         echo '  make tests                - Run tests'
         echo '  claude-code               - Use Claude Code CLI'
+        echo ''
+        echo '📊 Database Commands:'
+        echo '  sqlite3 \$$SQLITE_PATH    - Access SQLite database'
+        echo '  sqlite3 \$$SQLITE_PATH \".tables\"  - List tables'
         echo ''
         echo '🚀 PulseOne Collector Development Environment Ready!'
         echo '💡 Use: docker exec -it pulseone-collector-dev bash'

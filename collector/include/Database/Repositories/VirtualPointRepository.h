@@ -37,7 +37,7 @@ namespace Database {
 namespace Repositories {
 
 // 🔥 기존 패턴 준수 - using 선언 필수
-using VirtualPointEntity = PulseOne::Database::Entities::VirtualPointEntity;
+using VirtualPointEntity = Entities::VirtualPointEntity;
 
 /**
  * @brief VirtualPoint Repository 클래스 (IRepository 템플릿 상속)

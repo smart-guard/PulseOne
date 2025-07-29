@@ -22,7 +22,7 @@ namespace Database {
 namespace Repositories {
 
 // 🔥 기존 패턴 준수 - using 선언 필수 (cpp에도 필요)
-using VirtualPointEntity = PulseOne::Database::Entities::VirtualPointEntity;
+using VirtualPointEntity = Entities::VirtualPointEntity;
 
 // =======================================================================
 // 생성자 및 초기화 (SiteRepository 패턴)

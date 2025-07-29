@@ -2,7 +2,7 @@
 #ifndef REDIS_CLIENT_IMPL_H
 #define REDIS_CLIENT_IMPL_H
 
-#include "RedisClient.h"
+#include "Client/RedisClient.h"
 #include <string>
 #include <memory>
 #include <map>

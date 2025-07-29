@@ -1,6 +1,13 @@
 #ifndef ALARM_CONFIG_REPOSITORY_H
 #define ALARM_CONFIG_REPOSITORY_H
 
+/**
+ * @file AlarmConfigRepository.h
+ * @brief PulseOne AlarmConfig Repository - 알람 설정 관리 Repository (DeviceRepository 패턴 100% 준수)
+ * @author PulseOne Development Team
+ * @date 2025-07-28
+ */
+
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/AlarmConfigEntity.h"
 #include "Database/DatabaseManager.h"
@@ -15,67 +22,73 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-using AlarmConfigEntity = PulseOne::Database::Entities::AlarmConfigEntity;
+// 🔥 네임스페이스 수정 - PulseOne::Database:: 제거
+using AlarmConfigEntity = Entities::AlarmConfigEntity;
 
+/**
+ * @brief 알람 설정 Repository 클래스 (IRepository 템플릿 상속)
+ */
 class AlarmConfigRepository : public IRepository<AlarmConfigEntity> {
 public:
     // =======================================================================
-    // 생성자 및 소멸자
+    // 생성자 및 소멸자 (DeviceRepository 패턴)
     // =======================================================================
     
-    AlarmConfigRepository();
+    // 🔥 생성자에서 initializeDependencies() 호출
+    AlarmConfigRepository() : IRepository<AlarmConfigEntity>("AlarmConfigRepository") {
+        initializeDependencies();
+        if (logger_) {
+            logger_->Info("🚨 AlarmConfigRepository initialized with IRepository caching system");
+            logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
+        }
+    }
+    
     virtual ~AlarmConfigRepository() = default;
     
     // =======================================================================
-    // 캐시 관리 메서드들 (한 곳에만 선언)
+    // 캐시 관리 메서드들 (DeviceRepository 패턴) - override → final
     // =======================================================================
     
-    void setCacheEnabled(bool enabled) override;
-    bool isCacheEnabled() const override;
-    void clearCache() override;
-    void clearCacheForId(int id) override;
-    std::map<std::string, int> getCacheStats() const override;
+    void setCacheEnabled(bool enabled) final;
+    bool isCacheEnabled() const final;
+    void clearCache() final;
+    void clearCacheForId(int id) final;
+    std::map<std::string, int> getCacheStats() const final;
     
     // =======================================================================
-    // IRepository 인터페이스 구현
+    // IRepository 인터페이스 구현 - override → final
     // =======================================================================
     
-    std::vector<AlarmConfigEntity> findAll() override;
-    std::optional<AlarmConfigEntity> findById(int id) override;
-    bool save(AlarmConfigEntity& entity) override;
-    bool update(const AlarmConfigEntity& entity) override;
-    bool deleteById(int id) override;
-    bool exists(int id) override;
-    std::vector<AlarmConfigEntity> findByIds(const std::vector<int>& ids) override;
-    int saveBulk(std::vector<AlarmConfigEntity>& entities) override;
-    int updateBulk(const std::vector<AlarmConfigEntity>& entities) override;
-    int deleteByIds(const std::vector<int>& ids) override;
+    std::vector<AlarmConfigEntity> findAll() final;
+    std::optional<AlarmConfigEntity> findById(int id) final;
+    bool save(AlarmConfigEntity& entity) final;
+    bool update(const AlarmConfigEntity& entity) final;
+    bool deleteById(int id) final;
+    bool exists(int id) final;
+    std::vector<AlarmConfigEntity> findByIds(const std::vector<int>& ids) final;
+    int saveBulk(std::vector<AlarmConfigEntity>& entities) final;
+    int updateBulk(const std::vector<AlarmConfigEntity>& entities) final;
+    int deleteByIds(const std::vector<int>& ids) final;
     
     std::vector<AlarmConfigEntity> findByConditions(
         const std::vector<QueryCondition>& conditions,
         const std::optional<OrderBy>& order_by = std::nullopt,
-        const std::optional<Pagination>& pagination = std::nullopt) override;
+        const std::optional<Pagination>& pagination = std::nullopt) final;
     
-    int countByConditions(const std::vector<QueryCondition>& conditions) override;
-    int getTotalCount() override;
-    std::string getRepositoryName() const override { return "AlarmConfigRepository"; }
+    int countByConditions(const std::vector<QueryCondition>& conditions) final;
+    int getTotalCount() final;
+    std::string getRepositoryName() const final { return "AlarmConfigRepository"; }
 
     // =======================================================================
-    // 🔥 구현 파일에 있는 모든 메서드들 선언 추가
+    // 알람 설정 전용 조회 메서드들 (DeviceRepository 패턴)
     // =======================================================================
     
     // 기본 조회 메서드들
     std::vector<AlarmConfigEntity> findByDataPoint(int data_point_id);
-    std::vector<AlarmConfigEntity> findByDevice(int device_id);
-    std::vector<AlarmConfigEntity> findEnabledAlarms();
-    std::vector<AlarmConfigEntity> findByAlarmType(const std::string& alarm_type);
-    std::vector<AlarmConfigEntity> findBySeverity(const std::string& severity);
-    
-    // 🔥 구현 파일에만 있던 메서드들
     std::vector<AlarmConfigEntity> findByVirtualPoint(int virtual_point_id);
     std::vector<AlarmConfigEntity> findByTenant(int tenant_id);
     std::vector<AlarmConfigEntity> findBySite(int site_id);
-    std::vector<AlarmConfigEntity> findBySeverity(AlarmConfigEntity::Severity severity);  // 오버로드
+    std::vector<AlarmConfigEntity> findBySeverity(AlarmConfigEntity::Severity severity);
     std::vector<AlarmConfigEntity> findByConditionType(AlarmConfigEntity::ConditionType condition_type);
     std::vector<AlarmConfigEntity> findActiveAlarms();
     std::vector<AlarmConfigEntity> findAutoAcknowledgeAlarms();
@@ -84,16 +97,17 @@ public:
     // 이름/조회 메서드들
     std::optional<AlarmConfigEntity> findByName(const std::string& name, int tenant_id = 0);
     std::vector<AlarmConfigEntity> findActiveConfigs();
+    std::vector<AlarmConfigEntity> findByDevice(int device_id);
     std::vector<AlarmConfigEntity> findByPriorityRange(int min_priority, int max_priority);
     
-    // 🔥 관리 메서드들 (누락된 선언)
+    // 관리 메서드들
     bool isAlarmNameTaken(const std::string& name, int tenant_id = 0, int exclude_id = 0);
     bool enableConfig(int config_id, bool enabled);
     bool updateThresholds(int config_id, double low_threshold, double high_threshold);
     bool updatePriority(int config_id, int new_priority);
     bool updateSeverity(int config_id, AlarmConfigEntity::Severity new_severity);
     
-    // 🔥 통계 메서드들 (누락된 선언)
+    // 통계 메서드들
     int countByTenant(int tenant_id);
     int countByDataPoint(int data_point_id);
     std::map<std::string, int> getTypeStats();
@@ -102,7 +116,7 @@ public:
     std::vector<AlarmConfigEntity> findTopPriorityConfigs(int limit = 10);
     std::vector<AlarmConfigEntity> findRecentConfigs(int limit = 10);
     
-    // 🔥 디바이스 연동 메서드들 (누락된 선언)
+    // 디바이스 연동 메서드들
     bool deployToDevice(int config_id, int device_id);
     bool syncWithDevice(int config_id);
     std::vector<AlarmConfigEntity> findConfigsNeedingSync();
@@ -110,7 +124,7 @@ public:
 
 private:
     // =======================================================================
-    // 🔥 내부 헬퍼 메서드들 (누락된 선언)
+    // 내부 헬퍼 메서드들
     // =======================================================================
     
     bool validateAlarmConfig(const AlarmConfigEntity& config) const;

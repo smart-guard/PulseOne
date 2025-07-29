@@ -17,9 +17,6 @@
 #include "Common/UnifiedCommonTypes.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "DBClient.h"
-#include "RedisClient.h"
-#include "InfluxClient.h"
 #include "Common/Constants.h"
 
 #include <sstream>
