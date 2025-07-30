@@ -49,7 +49,7 @@ VirtualPointEntity::VirtualPointEntity()
     , last_calculation_time_(std::chrono::system_clock::time_point{})
     , last_calculation_error_("") {
     
-    PulseOne::LogManager::getInstance().Debug("VirtualPointEntity default constructor");
+    LogManager::getInstance().Debug("VirtualPointEntity default constructor");
 }
 
 VirtualPointEntity::VirtualPointEntity(int tenant_id, const std::string& name, const std::string& formula)
@@ -73,7 +73,7 @@ VirtualPointEntity::VirtualPointEntity(int tenant_id, const std::string& name, c
     , last_calculation_time_(std::chrono::system_clock::time_point{})
     , last_calculation_error_("") {
     
-    PulseOne::LogManager::getInstance().Debug("VirtualPointEntity constructor: " + name);
+    LogManager::getInstance().Debug("VirtualPointEntity constructor: " + name);
 }
 
 VirtualPointEntity::VirtualPointEntity(int tenant_id, int site_id, const std::string& name, 
@@ -100,7 +100,7 @@ VirtualPointEntity::VirtualPointEntity(int tenant_id, int site_id, const std::st
     , last_calculation_time_(std::chrono::system_clock::time_point{})
     , last_calculation_error_("") {
     
-    PulseOne::LogManager::getInstance().Debug("VirtualPointEntity full constructor: " + name);
+    LogManager::getInstance().Debug("VirtualPointEntity full constructor: " + name);
 }
 
 // =======================================================================
@@ -108,16 +108,16 @@ VirtualPointEntity::VirtualPointEntity(int tenant_id, int site_id, const std::st
 // =======================================================================
 
 bool VirtualPointEntity::validateFormula() const {
-    PulseOne::LogManager::getInstance().Debug("🔍 VirtualPointEntity::validateFormula() - " + name_);
+    LogManager::getInstance().Debug("🔍 VirtualPointEntity::validateFormula() - " + name_);
     
     if (formula_.empty()) {
-        PulseOne::LogManager::getInstance().Error("❌ Empty formula for virtual point: " + name_);
+        LogManager::getInstance().Error("❌ Empty formula for virtual point: " + name_);
         return false;
     }
     
     // 1. 안전성 검사 (SQL Injection, Script Injection 방지)
     if (!isFormulaSafe(formula_)) {
-        PulseOne::LogManager::getInstance().Error("❌ Unsafe formula detected: " + name_);
+        LogManager::getInstance().Error("❌ Unsafe formula detected: " + name_);
         return false;
     }
     
@@ -130,13 +130,13 @@ bool VirtualPointEntity::validateFormula() const {
             else if (c == ')') parentheses_count--;
             
             if (parentheses_count < 0) {
-                PulseOne::LogManager::getInstance().Error("❌ Unbalanced parentheses in formula: " + name_);
+                LogManager::getInstance().Error("❌ Unbalanced parentheses in formula: " + name_);
                 return false;
             }
         }
         
         if (parentheses_count != 0) {
-            PulseOne::LogManager::getInstance().Error("❌ Unbalanced parentheses in formula: " + name_);
+            LogManager::getInstance().Error("❌ Unbalanced parentheses in formula: " + name_);
             return false;
         }
         
@@ -156,21 +156,21 @@ bool VirtualPointEntity::validateFormula() const {
         reconstructed.erase(std::remove_if(reconstructed.begin(), reconstructed.end(), ::isspace), reconstructed.end());
         
         if (formula_no_space != reconstructed) {
-            PulseOne::LogManager::getInstance().Error("❌ Invalid characters in formula: " + name_);
+            LogManager::getInstance().Error("❌ Invalid characters in formula: " + name_);
             return false;
         }
         
-        PulseOne::LogManager::getInstance().Debug("✅ Formula validation passed: " + name_);
+        LogManager::getInstance().Debug("✅ Formula validation passed: " + name_);
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ Formula validation error: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ Formula validation error: " + std::string(e.what()));
         return false;
     }
 }
 
 std::optional<double> VirtualPointEntity::calculateValue(const std::map<std::string, double>& input_values) const {
-    PulseOne::LogManager::getInstance().Debug("🔢 VirtualPointEntity::calculateValue() - " + name_);
+    LogManager::getInstance().Debug("🔢 VirtualPointEntity::calculateValue() - " + name_);
     
     last_calculation_time_ = std::chrono::system_clock::now();
     last_calculation_error_.clear();
@@ -219,19 +219,19 @@ std::optional<double> VirtualPointEntity::calculateValue(const std::map<std::str
         }
         
         last_calculated_value_ = result;
-        PulseOne::LogManager::getInstance().Debug("✅ Calculation successful: " + name_ + " = " + std::to_string(result));
+        LogManager::getInstance().Debug("✅ Calculation successful: " + name_ + " = " + std::to_string(result));
         
         return result;
         
     } catch (const std::exception& e) {
         last_calculation_error_ = "Calculation error: " + std::string(e.what());
-        PulseOne::LogManager::getInstance().Error("❌ Calculation failed: " + name_ + " - " + last_calculation_error_);
+        LogManager::getInstance().Error("❌ Calculation failed: " + name_ + " - " + last_calculation_error_);
         return std::nullopt;
     }
 }
 
 std::vector<std::string> VirtualPointEntity::extractVariableNames() const {
-    PulseOne::LogManager::getInstance().Debug("🔍 VirtualPointEntity::extractVariableNames() - " + name_);
+    LogManager::getInstance().Debug("🔍 VirtualPointEntity::extractVariableNames() - " + name_);
     
     std::vector<std::string> variables;
     
@@ -263,10 +263,10 @@ std::vector<std::string> VirtualPointEntity::extractVariableNames() const {
             }
         }
         
-        PulseOne::LogManager::getInstance().Debug("✅ Found " + std::to_string(variables.size()) + " variables in formula: " + name_);
+        LogManager::getInstance().Debug("✅ Found " + std::to_string(variables.size()) + " variables in formula: " + name_);
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ Variable extraction error: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ Variable extraction error: " + std::string(e.what()));
     }
     
     return variables;
@@ -388,7 +388,7 @@ json VirtualPointEntity::toJson() const {
         }
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ VirtualPointEntity::toJson() error: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ VirtualPointEntity::toJson() error: " + std::string(e.what()));
     }
     
     return j;
@@ -424,7 +424,7 @@ bool VirtualPointEntity::fromJson(const json& j) {
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ VirtualPointEntity::fromJson() error: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ VirtualPointEntity::fromJson() error: " + std::string(e.what()));
         return false;
     }
 }
@@ -445,7 +445,7 @@ json VirtualPointEntity::toSummaryJson() const {
         }
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ VirtualPointEntity::toSummaryJson() error: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ VirtualPointEntity::toSummaryJson() error: " + std::string(e.what()));
     }
     
     return j;
@@ -587,7 +587,7 @@ void VirtualPointEntity::tagsFromJsonString(const std::string& json_str) {
             }
         }
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ Tags JSON parsing error: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ Tags JSON parsing error: " + std::string(e.what()));
         tags_.clear();
     }
 }
@@ -665,87 +665,87 @@ double VirtualPointEntity::evaluateSimpleExpression(const std::string& expressio
 // =======================================================================
 
 bool VirtualPointEntity::loadFromDatabase() {
-    PulseOne::LogManager::getInstance().Debug("🔍 VirtualPointEntity::loadFromDatabase() - ID: " + std::to_string(getId()));
+    LogManager::getInstance().Debug("🔍 VirtualPointEntity::loadFromDatabase() - ID: " + std::to_string(getId()));
     
     try {
         if (getId() <= 0) {
-            PulseOne::LogManager::getInstance().Error("❌ Invalid ID for loadFromDatabase: " + std::to_string(getId()));
+            LogManager::getInstance().Error("❌ Invalid ID for loadFromDatabase: " + std::to_string(getId()));
             return false;
         }
         
         // 실제 구현에서는 DatabaseManager를 통해 DB에서 로드
         // 여기서는 기본 구현만 제공
-        PulseOne::LogManager::getInstance().Info("✅ VirtualPoint loaded: " + name_);
+        LogManager::getInstance().Info("✅ VirtualPoint loaded: " + name_);
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ VirtualPoint loadFromDatabase failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ VirtualPoint loadFromDatabase failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool VirtualPointEntity::saveToDatabase() {
-    PulseOne::LogManager::getInstance().Debug("💾 VirtualPointEntity::saveToDatabase() - " + name_);
+    LogManager::getInstance().Debug("💾 VirtualPointEntity::saveToDatabase() - " + name_);
     
     try {
         if (!isValid()) {
-            PulseOne::LogManager::getInstance().Error("❌ Invalid VirtualPoint for save: " + name_);
+            LogManager::getInstance().Error("❌ Invalid VirtualPoint for save: " + name_);
             return false;
         }
         
         // 실제 구현에서는 DatabaseManager를 통해 DB에 저장
         // 여기서는 기본 구현만 제공
-        PulseOne::LogManager::getInstance().Info("✅ VirtualPoint saved: " + name_);
+        LogManager::getInstance().Info("✅ VirtualPoint saved: " + name_);
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ VirtualPoint saveToDatabase failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ VirtualPoint saveToDatabase failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool VirtualPointEntity::updateToDatabase() {
-    PulseOne::LogManager::getInstance().Debug("🔄 VirtualPointEntity::updateToDatabase() - " + name_);
+    LogManager::getInstance().Debug("🔄 VirtualPointEntity::updateToDatabase() - " + name_);
     
     try {
         if (getId() <= 0) {
-            PulseOne::LogManager::getInstance().Error("❌ Invalid ID for updateToDatabase: " + std::to_string(getId()));
+            LogManager::getInstance().Error("❌ Invalid ID for updateToDatabase: " + std::to_string(getId()));
             return false;
         }
         
         if (!isValid()) {
-            PulseOne::LogManager::getInstance().Error("❌ Invalid VirtualPoint for update: " + name_);
+            LogManager::getInstance().Error("❌ Invalid VirtualPoint for update: " + name_);
             return false;
         }
         
         // 실제 구현에서는 DatabaseManager를 통해 DB에 업데이트
         // 여기서는 기본 구현만 제공
         updated_at_ = std::chrono::system_clock::now();
-        PulseOne::LogManager::getInstance().Info("✅ VirtualPoint updated: " + name_);
+        LogManager::getInstance().Info("✅ VirtualPoint updated: " + name_);
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ VirtualPoint updateToDatabase failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ VirtualPoint updateToDatabase failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool VirtualPointEntity::deleteFromDatabase() {
-    PulseOne::LogManager::getInstance().Debug("🗑️ VirtualPointEntity::deleteFromDatabase() - " + name_);
+    LogManager::getInstance().Debug("🗑️ VirtualPointEntity::deleteFromDatabase() - " + name_);
     
     try {
         if (getId() <= 0) {
-            PulseOne::LogManager::getInstance().Error("❌ Invalid ID for deleteFromDatabase: " + std::to_string(getId()));
+            LogManager::getInstance().Error("❌ Invalid ID for deleteFromDatabase: " + std::to_string(getId()));
             return false;
         }
         
         // 실제 구현에서는 DatabaseManager를 통해 DB에서 삭제
         // 여기서는 기본 구현만 제공
-        PulseOne::LogManager::getInstance().Info("✅ VirtualPoint deleted: " + name_);
+        LogManager::getInstance().Info("✅ VirtualPoint deleted: " + name_);
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().Error("❌ VirtualPoint deleteFromDatabase failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ VirtualPoint deleteFromDatabase failed: " + std::string(e.what()));
         return false;
     }
 }

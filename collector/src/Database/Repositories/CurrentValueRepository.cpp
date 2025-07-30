@@ -95,13 +95,6 @@ std::optional<CurrentValueEntity> CurrentValueRepository::findById(int id) {
         return std::nullopt;
     }
     
-    // 🔥 IRepository의 캐시 자동 확인
-    auto cached = getCachedEntity(id);
-    if (cached.has_value()) {
-        logger_->Debug("CurrentValueRepository::findById - Cache hit for ID: " + std::to_string(id));
-        return cached;
-    }
-    
     try {
         std::string sql = "SELECT * FROM current_values WHERE id = " + std::to_string(id);
         auto result = executeDatabaseQuery(sql);

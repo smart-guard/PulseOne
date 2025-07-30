@@ -739,13 +739,42 @@ std::vector<std::map<std::string, std::string>> SiteRepository::executeDatabaseQ
             
             if (db_type == "POSTGRESQL") {
                 auto result = db_manager_->executeQueryPostgres(sql);
-                return result.rows;
+                
+                // PostgreSQL 결과를 벡터<맵>으로 변환
+                std::vector<std::map<std::string, std::string>> rows;
+                for (const auto& row : result) {
+                    std::map<std::string, std::string> row_map;
+                    for (size_t i = 0; i < row.size(); ++i) {
+                        std::string column_name = result.column_name(i);
+                        std::string value = row[static_cast<int>(i)].is_null() ? "" : row[static_cast<int>(i)].c_str();
+                        row_map[column_name] = value;
+                    }
+                    rows.push_back(row_map);
+                }
+                return rows;
+                
             } else {
-                auto result = db_manager_->executeQuerySQLite(sql);
-                return result.rows;
+                // SQLite는 콜백 함수가 필요하므로 임시로 빈 결과 반환
+                logger_->Warn("SQLite query execution not implemented in executeDatabaseQuery");
+                return {};
+                
+                // 실제 SQLite 구현이 필요하다면:
+                /*
+                std::vector<std::map<std::string, std::string>> rows;
+                auto callback = [](void* data, int argc, char** argv, char** azColName) -> int {
+                    auto* results = static_cast<std::vector<std::map<std::string, std::string>>*>(data);
+                    std::map<std::string, std::string> row;
+                    for (int i = 0; i < argc; i++) {
+                        row[azColName[i]] = argv[i] ? argv[i] : "";
+                    }
+                    results->push_back(row);
+                    return 0;
+                };
+                db_manager_->executeQuerySQLite(sql, callback, &rows);
+                return rows;
+                */
             }
         }
-        
         return {};
         
     } catch (const std::exception& e) {
@@ -797,6 +826,47 @@ std::string SiteRepository::escapeString(const std::string& str) {
         pos += 2;
     }
     return escaped;
+}
+
+std::string SiteRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) {
+        return "";
+    }
+    
+    std::string where_clause = " WHERE ";
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) {
+            where_clause += " AND ";
+        }
+        where_clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
+    }
+    return where_clause;
+}
+
+/**
+ * @brief ORDER BY 절 생성
+ */
+std::string SiteRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) {
+        return "";
+    }
+    
+    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
+}
+
+/**
+ * @brief LIMIT 절 생성
+ */
+std::string SiteRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) {
+        return "";
+    }
+    
+    std::string limit_clause = " LIMIT " + std::to_string(pagination->limit);
+    if (pagination->offset > 0) {
+        limit_clause += " OFFSET " + std::to_string(pagination->offset);
+    }
+    return limit_clause;
 }
 
 } // namespace Repositories

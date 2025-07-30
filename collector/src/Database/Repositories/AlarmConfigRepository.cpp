@@ -30,17 +30,12 @@ std::vector<AlarmConfigEntity> AlarmConfigRepository::findAll() {
 std::optional<AlarmConfigEntity> AlarmConfigRepository::findById(int id) {
     logger_->Debug("🔍 AlarmConfigRepository::findById(" + std::to_string(id) + ")");
     
-    // 캐시 먼저 확인 (IRepository 자동 처리)
-    auto cached = getCachedEntity(id);
-    if (cached.has_value()) {
-        logger_->Debug("✅ Cache HIT for alarm config ID: " + std::to_string(id));
-        return cached;
-    }
-    
-    // DB에서 조회
+    // 캐시는 IRepository에서 내부적으로 처리됨
+    // 직접 DB에서 조회 (내부적으로 캐시 확인됨)
     auto configs = findByConditions({QueryCondition("id", "=", std::to_string(id))});
     if (!configs.empty()) {
-        logger_->Debug("✅ Alarm config found: " + configs[0].getName());  // ✅ getName() 사용
+        logger_->Debug("✅ Alarm config found: " + configs[0].getName());
+        cacheEntity(configs[0]);  // 수동으로 캐시에 저장
         return configs[0];
     }
     

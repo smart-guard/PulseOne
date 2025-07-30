@@ -41,7 +41,7 @@ RepositoryFactory::RepositoryFactory()
     // 🔥 포인터 타입으로 초기화
     : db_manager_(&DatabaseManager::getInstance())
     , config_manager_(&ConfigManager::getInstance())
-    , logger_(&PulseOne::LogManager::getInstance())
+    , logger_(&LogManager::getInstance())
     , initialized_(false)
     , global_cache_enabled_(true)
     , cache_ttl_seconds_(300)
