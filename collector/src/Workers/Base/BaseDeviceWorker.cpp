@@ -620,7 +620,7 @@ void BaseDeviceWorker::UpdateReconnectionStats(bool connection_successful) {
     }
 }
 
-std::string BaseDeviceWorker::WorkerStateToString(WorkerState state) const {
+std::string BaseDeviceWorker::WorkerStateToString(WorkerState state) const{
     switch (state) {
         case WorkerState::STOPPED: return "STOPPED";
         case WorkerState::STARTING: return "STARTING";
@@ -645,6 +645,35 @@ std::string BaseDeviceWorker::WorkerStateToString(WorkerState state) const {
         case WorkerState::MAX_RETRIES_EXCEEDED: return "MAX_RETRIES_EXCEEDED";
         default: return "UNKNOWN";
     }
+}
+
+/**
+ * @brief 활성 상태인지 확인
+ * @param state 워커 상태
+ * @return 활성 상태이면 true
+ */
+bool BaseDeviceWorker::IsActiveState(WorkerState state) {
+    return state == WorkerState::RUNNING ||
+           state == WorkerState::SIMULATION ||
+           state == WorkerState::CALIBRATION ||
+           state == WorkerState::COMMISSIONING ||
+           state == WorkerState::MAINTENANCE ||
+           state == WorkerState::DIAGNOSTIC_MODE;
+}
+
+/**
+ * @brief 에러 상태인지 확인
+ * @param state 워커 상태
+ * @return 에러 상태이면 true
+ */
+bool BaseDeviceWorker::IsErrorState(WorkerState state) {
+    return state == WorkerState::ERROR ||
+           state == WorkerState::DEVICE_OFFLINE ||
+           state == WorkerState::COMMUNICATION_ERROR ||
+           state == WorkerState::DATA_INVALID ||
+           state == WorkerState::SENSOR_FAULT ||
+           state == WorkerState::EMERGENCY_STOP ||
+           state == WorkerState::MAX_RETRIES_EXCEEDED;
 }
 
 } // namespace Workers

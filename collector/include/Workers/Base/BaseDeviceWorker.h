@@ -304,6 +304,30 @@ protected:
     void LogMessage(LogLevel level, const std::string& message) const {
         LogManager::getInstance().log("worker", level, message);
     }
+    // =============================================================================
+    // WorkerState 유틸리티 함수들 (네임스페이스 레벨)
+    // =============================================================================
+
+    /**
+     * @brief WorkerState를 문자열로 변환
+     * @param state 워커 상태
+     * @return 상태 문자열
+     */
+    std::string WorkerStateToString(WorkerState state) const;
+
+    /**
+     * @brief 활성 상태인지 확인
+     * @param state 워커 상태
+     * @return 활성 상태이면 true
+     */
+    bool IsActiveState(WorkerState state);
+
+    /**
+     * @brief 에러 상태인지 확인
+     * @param state 워커 상태
+     * @return 에러 상태이면 true
+     */
+    bool IsErrorState(WorkerState state);
 
     PulseOne::DeviceInfo device_info_;                    ///< 디바이스 정보
 private:
@@ -386,13 +410,9 @@ private:
      */
     void UpdateReconnectionStats(bool connection_successful);
     
-    /**
-     * @brief 워커 상태를 문자열로 변환
-     * @param state 워커 상태
-     * @return 상태 문자열
-     */
-    std::string WorkerStateToString(WorkerState state) const;
 };
+
+
 
 } // namespace Workers
 } // namespace PulseOne
