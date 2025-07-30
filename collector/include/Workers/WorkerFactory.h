@@ -18,11 +18,6 @@
 #include <chrono>
 #include <future>
 
-namespace PulseOne {
-
-// =============================================================================
-// 🔥 전방 선언 (Forward Declarations) - Common/Structs.h 참조
-// =============================================================================
 
 // Utils 네임스페이스
 class LogManager;
@@ -31,6 +26,13 @@ class ConfigManager;
 // Database 클라이언트들
 class RedisClient;
 class InfluxClient;
+namespace PulseOne {
+
+// =============================================================================
+// 🔥 전방 선언 (Forward Declarations) - Common/Structs.h 참조
+// =============================================================================
+
+
 
 // 🔧 Common Types - Common/Structs.h에 정의된 타입들은 전방 선언만
 namespace Structs {
