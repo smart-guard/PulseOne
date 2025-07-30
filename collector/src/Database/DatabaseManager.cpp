@@ -1,6 +1,7 @@
 // DatabaseManager.cpp - 완전한 멀티DB 지원 구현
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
+#include "Client/RedisClientImpl.h"
 #include <cstdlib>
 #include <thread>
 #include <chrono>
@@ -277,12 +278,14 @@ bool DatabaseManager::connectMSSQL() {
 
 bool DatabaseManager::connectRedis() {
     try {
-        redis_client_ = std::make_unique<RedisClient>();
+        // ✅ 구체적인 구현체 사용 (abstract class가 아닌)
+        redis_client_ = std::make_unique<RedisClientImpl>();
         
         std::string host = std::getenv("REDIS_HOST") ?: "localhost";
         int port = std::stoi(std::getenv("REDIS_PORT") ?: "6379");
+        std::string password = std::getenv("REDIS_PASSWORD") ?: "";
         
-        if (redis_client_->connect(host, port)) {
+        if (redis_client_->connect(host, port, password)) {
             LogManager::getInstance().log("database", LogLevel::INFO, 
                 "✅ Redis 연결 성공: " + host + ":" + std::to_string(port));
             return true;
@@ -300,18 +303,13 @@ bool DatabaseManager::connectRedis() {
 
 bool DatabaseManager::connectInflux() {
     try {
-        influx_client_ = std::make_unique<InfluxClient>();
+        // ✅ InfluxClientImpl이 없으므로 임시로 nullptr 설정
+        influx_client_ = nullptr;
         
-        std::string url = std::getenv("INFLUX_URL") ?: "http://localhost:8086";
-        std::string token = std::getenv("INFLUX_TOKEN") ?: "";
-        std::string org = std::getenv("INFLUX_ORG") ?: "pulseone";
-        std::string bucket = std::getenv("INFLUX_BUCKET") ?: "data";
+        LogManager::getInstance().log("database", LogLevel::WARN, 
+            "⚠️ InfluxClientImpl 미구현 - 임시로 비활성화");
+        return false;  // 임시로 false 반환
         
-        if (influx_client_->connect(url, token, org, bucket)) {
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ InfluxDB 연결 성공: " + url);
-            return true;
-        }
     } catch (const std::exception& e) {
         LogManager::getInstance().log("database", LogLevel::ERROR, 
             "❌ InfluxDB 연결 실패: " + std::string(e.what()));
@@ -350,11 +348,16 @@ bool DatabaseManager::isMSSQLConnected() {
 #endif
 
 bool DatabaseManager::isRedisConnected() {
-    return redis_client_ && redis_client_->isConnected();
+    if (!redis_client_) return false;
+    
+    // ✅ RedisClientImpl로 캐스팅 (이제 타입이 알려짐)
+    auto redis_impl = dynamic_cast<RedisClientImpl*>(redis_client_.get());
+    return redis_impl && redis_impl->isConnected();
 }
 
 bool DatabaseManager::isInfluxConnected() {
-    return influx_client_ && influx_client_->isConnected();
+    // ✅ InfluxClientImpl이 없으므로 임시로 false 반환
+    return influx_client_ != nullptr;
 }
 
 // =============================================================================
@@ -365,27 +368,28 @@ void DatabaseManager::loadDatabaseConfig() {
     // ConfigManager에서 설정 로드
     auto& config = ConfigManager::getInstance();
     
-    // database.env에서 활성화된 DB들 읽기
+    // ✅ getOrDefault() 메서드 사용 (getValue 대신)
     enabled_databases_[DatabaseType::POSTGRESQL] = 
-        config.getValue("POSTGRES_ENABLED", "true") == "true";
+        config.getOrDefault("POSTGRES_ENABLED", "true") == "true";
     enabled_databases_[DatabaseType::SQLITE] = 
-        config.getValue("SQLITE_ENABLED", "true") == "true";
+        config.getOrDefault("SQLITE_ENABLED", "true") == "true";
     enabled_databases_[DatabaseType::MYSQL] = 
-        config.getValue("MYSQL_ENABLED", "false") == "true";
+        config.getOrDefault("MYSQL_ENABLED", "false") == "true";
     enabled_databases_[DatabaseType::MSSQL] = 
-        config.getValue("MSSQL_ENABLED", "false") == "true";
+        config.getOrDefault("MSSQL_ENABLED", "false") == "true";
     enabled_databases_[DatabaseType::REDIS] = 
-        config.getValue("REDIS_ENABLED", "true") == "true";
+        config.getOrDefault("REDIS_ENABLED", "true") == "true";
     enabled_databases_[DatabaseType::INFLUXDB] = 
-        config.getValue("INFLUX_ENABLED", "true") == "true";
+        config.getOrDefault("INFLUX_ENABLED", "true") == "true";
     
     // 메인 RDB 설정
-    std::string primary_db = config.getValue("PRIMARY_DB", "postgresql");
+    std::string primary_db = config.getOrDefault("PRIMARY_DB", "postgresql");
     if (primary_db == "mysql") primary_rdb_ = DatabaseType::MYSQL;
     else if (primary_db == "mssql") primary_rdb_ = DatabaseType::MSSQL;
     else if (primary_db == "sqlite") primary_rdb_ = DatabaseType::SQLITE;
     else primary_rdb_ = DatabaseType::POSTGRESQL;
 }
+
 
 std::map<std::string, bool> DatabaseManager::getAllConnectionStatus() {
     return {

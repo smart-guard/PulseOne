@@ -66,161 +66,40 @@ RUN echo "🔧 Installing spdlog..." && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/spdlog && echo "✅ spdlog installed"
 
-# 6. BACnet Stack 헤더 및 인터페이스 설치 (환경변수 호환)
-RUN echo "🔧 Installing BACnet headers and interface..." && \
+# 6. BACnet Stack 정적 라이브러리 빌드 및 설치
+RUN echo "🔧 Installing BACnet Stack as static library..." && \
     cd /tmp && \
     git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     cd bacnet-stack && \
-    echo "📋 Configuring BACnet environment..." && \
+    echo "📋 Configuring BACnet build environment..." && \
     export BACNET_PORT=linux && \
     export BACNET_DEFINES="-DPRINT_ENABLED=1 -DBACAPP_ALL -DBACFILE -DINTRINSIC_REPORTING" && \
-    echo "📂 Installing BACnet headers with proper structure..." && \
+    \
+    echo "🔨 Building BACnet Stack as static library..." && \
+    # BACnet Stack을 정적 라이브러리로 빌드
+    make clean && \
+    make BACNET_PORT=linux \
+         BACNET_DEFINES="-DPRINT_ENABLED=1 -DBACAPP_ALL -DBACFILE -DINTRINSIC_REPORTING" \
+         OPTIMIZATION="-O2" \
+         -j$(nproc) all && \
+    \
+    echo "📦 Creating BACnet static library..." && \
+    # 모든 오브젝트 파일을 정적 라이브러리로 패키징
+    find . -name "*.o" -type f > object_files.txt && \
+    ar rcs libbacnet.a $(cat object_files.txt) && \
+    ranlib libbacnet.a && \
+    \
+    echo "📂 Installing BACnet headers..." && \
     mkdir -p /usr/local/include/bacnet && \
     cp -r src/bacnet/* /usr/local/include/bacnet/ && \
-    cp -r src/*.h /usr/local/include/bacnet/ 2>/dev/null || true
-
-# BACnet 설정 헤더 생성
-RUN echo "🔧 Creating BACnet configuration headers..." && \
-    cat > /usr/local/include/bacnet_config.h << 'EOF'
-// BACnet Configuration for PulseOne (환경변수 호환)
-#ifndef BACNET_CONFIG_H
-#define BACNET_CONFIG_H
-
-// 기존 환경변수들을 매크로로 정의
-#define PRINT_ENABLED 1
-#define BACAPP_ALL 1
-#define BACFILE 1
-#define DINTRINSIC_REPORTING 1
-
-// 플랫폼 설정
-#ifdef __linux__
-    #define BACNET_PORT linux
-#elif _WIN32
-    #define BACNET_PORT win32
-#elif __APPLE__
-    #define BACNET_PORT macos
-#endif
-
-// BACnet 기본 설정들
-#define MAX_APDU 1476
-#define MAX_TSM_TRANSACTIONS 255
-#define BACNET_USE_THREADS 1
-
-// BACnet 객체 타입들 (표준)
-#define OBJECT_ANALOG_INPUT 0
-#define OBJECT_ANALOG_OUTPUT 1
-#define OBJECT_ANALOG_VALUE 2
-#define OBJECT_BINARY_INPUT 3
-#define OBJECT_BINARY_OUTPUT 4
-#define OBJECT_BINARY_VALUE 5
-#define OBJECT_DEVICE 8
-
-// BACnet 프로퍼티 ID들 (표준)
-#define PROP_PRESENT_VALUE 85
-#define PROP_OBJECT_NAME 77
-#define PROP_OBJECT_TYPE 79
-#define PROP_DESCRIPTION 28
-
-#endif // BACNET_CONFIG_H
-EOF
-
-# BACnet 인터페이스 정의 파일 생성
-RUN echo "📋 Creating BACnet interface definitions..." && \
-    cat > /usr/local/include/bacnet_interface.h << 'EOF'
-// BACnet Interface for PulseOne (기존 환경변수 호환)
-#ifndef BACNET_INTERFACE_H
-#define BACNET_INTERFACE_H
-
-// 기존 설정 포함
-#include "bacnet_config.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// BACnet 기본 타입들 (기존 BACnet Stack과 호환)
-typedef struct {
-    uint32_t device_id;
-    char name[64];
-    char description[128];
-    char ip_address[16];
-    uint16_t port;
-    uint8_t network_type;  // IP=0, MSTP=1, Ethernet=2
-    uint32_t vendor_id;
-    uint16_t max_apdu;
-} BACnet_Device_Info;
-
-typedef struct {
-    uint32_t object_instance;
-    uint16_t object_type;
-    char object_name[64];
-    float present_value;
-    char units[32];
-    uint8_t priority;
-    uint8_t reliability;
-    uint8_t status_flags;
-} BACnet_Object_Info;
-
-// BACnet 오류 코드들
-typedef enum {
-    BACNET_SUCCESS = 0,
-    BACNET_ERROR_TIMEOUT = -1,
-    BACNET_ERROR_REJECT = -2,
-    BACNET_ERROR_ABORT = -3,
-    BACNET_ERROR_DEVICE_NOT_FOUND = -4,
-    BACNET_ERROR_OBJECT_NOT_FOUND = -5,
-    BACNET_ERROR_PROPERTY_NOT_FOUND = -6,
-    BACNET_ERROR_INVALID_PARAMETER = -7,
-    BACNET_ERROR_CONNECTION_FAILED = -8
-} BACnet_Error_Code;
-
-// BACnet 함수 인터페이스 (실제 BACnet Stack API와 유사)
-typedef struct {
-    // 초기화 및 설정
-    int (*init)(const char* interface_name);
-    int (*set_device_info)(uint32_t device_id, const char* name, const char* description);
-    int (*cleanup)(void);
-    
-    // 디바이스 관리
-    int (*discover_devices)(BACnet_Device_Info* devices, int max_devices, int timeout_ms);
-    int (*bind_device)(uint32_t device_id, const char* ip_address, uint16_t port);
-    int (*is_device_connected)(uint32_t device_id);
-    
-    // 프로퍼티 읽기/쓰기 (기존 BACnet 방식)
-    int (*read_property)(uint32_t device_id, uint16_t object_type, uint32_t object_instance, 
-                        uint32_t property_id, uint32_t array_index, void* value, size_t* value_len);
-    int (*write_property)(uint32_t device_id, uint16_t object_type, uint32_t object_instance, 
-                         uint32_t property_id, uint32_t array_index, const void* value, size_t value_len, uint8_t priority);
-    
-    // 객체 리스팅
-    int (*get_object_list)(uint32_t device_id, BACnet_Object_Info* objects, int max_objects);
-    int (*get_object_name)(uint32_t device_id, uint16_t object_type, uint32_t object_instance, char* name, size_t name_len);
-    
-    // 구독 및 이벤트 (COV - Change of Value)
-    int (*subscribe_cov)(uint32_t device_id, uint16_t object_type, uint32_t object_instance, uint32_t lifetime);
-    int (*unsubscribe_cov)(uint32_t device_id, uint16_t object_type, uint32_t object_instance);
-    
-    // 상태 및 오류 관리
-    BACnet_Error_Code (*get_last_error)(void);
-    const char* (*get_error_string)(BACnet_Error_Code error_code);
-    int (*get_device_status)(uint32_t device_id);
-    
-    // 통계 및 진단
-    int (*get_statistics)(uint32_t* total_requests, uint32_t* successful_requests, uint32_t* failed_requests);
-    void (*reset_statistics)(void);
-    
-} BACnet_Interface;
-
-// 함수 포인터 로딩 (동적 라이브러리에서)
-extern BACnet_Interface* bacnet_load_interface(const char* library_path);
-extern void bacnet_unload_interface(BACnet_Interface* interface);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif // BACNET_INTERFACE_H
-EOF
+    cp -r src/*.h /usr/local/include/bacnet/ 2>/dev/null || true && \
+    \
+    echo "📚 Installing BACnet static library..." && \
+    cp libbacnet.a /usr/local/lib/ && \
+    \
+    echo "🧹 Cleaning up..." && \
+    cd / && rm -rf /tmp/bacnet-stack && \
+    echo "✅ BACnet Stack static library and headers installed successfully"
 
 # 플랫폼별 라이브러리 로더 생성
 RUN echo "🔧 Creating platform-specific library loader..." && \
