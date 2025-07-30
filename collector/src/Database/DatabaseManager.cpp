@@ -474,3 +474,143 @@ void DatabaseManager::disconnectAll() {
     LogManager::getInstance().log("database", LogLevel::INFO, 
         "✅ 모든 데이터베이스 연결 해제 완료");
 }
+
+pqxx::result DatabaseManager::executeQueryPostgres(const std::string& sql) {
+    if (!isPostgresConnected()) {
+        throw std::runtime_error("PostgreSQL not connected");
+    }
+    
+    try {
+        pqxx::work transaction(*pg_conn_);
+        pqxx::result query_result = transaction.exec(sql);
+        transaction.commit();
+        
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "PostgreSQL query executed successfully, rows: " + std::to_string(query_result.size()));
+        
+        return query_result;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "PostgreSQL query failed: " + std::string(e.what()));
+        throw;
+    }
+}
+
+bool DatabaseManager::executeNonQueryPostgres(const std::string& sql) {
+    if (!isPostgresConnected()) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "PostgreSQL not connected for non-query: " + sql);
+        return false;
+    }
+    
+    try {
+        pqxx::work transaction(*pg_conn_);
+        transaction.exec(sql);
+        transaction.commit();
+        
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "PostgreSQL non-query executed successfully");
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "PostgreSQL non-query failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool DatabaseManager::isPostgresConnected() {
+    return pg_conn_ && pg_conn_->is_open();
+}
+
+// =============================================================================
+// 🔥 SQLite 함수들 구현
+// =============================================================================
+
+bool DatabaseManager::connectSQLite() {
+    for (int i = 0; i < MAX_RETRIES; ++i) {
+        try {
+            std::string db_path = std::getenv("SQLITE_PATH") ?: "/app/data/pulseone.db";
+            
+            // 디렉토리 생성
+            std::string dir_path = db_path.substr(0, db_path.find_last_of('/'));
+            system(("mkdir -p " + dir_path).c_str());
+            
+            int result = sqlite3_open(db_path.c_str(), &sqlite_conn_);
+            if (result == SQLITE_OK) {
+                LogManager::getInstance().log("database", LogLevel::INFO, 
+                    "✅ SQLite 연결 성공: " + db_path);
+                return true;
+            } else {
+                LogManager::getInstance().log("database", LogLevel::ERROR, 
+                    "❌ SQLite 연결 실패: " + std::string(sqlite3_errmsg(sqlite_conn_)));
+                if (sqlite_conn_) {
+                    sqlite3_close(sqlite_conn_);
+                    sqlite_conn_ = nullptr;
+                }
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "❌ SQLite 연결 예외: " + std::string(e.what()));
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    return false;
+}
+
+bool DatabaseManager::executeQuerySQLite(
+    const std::string& sql, 
+    int (*callback)(void*, int, char**, char**), 
+    void* data) {
+    
+    if (!isSQLiteConnected()) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "SQLite not connected for query: " + sql);
+        return false;
+    }
+    
+    char* error_msg = nullptr;
+    int result = sqlite3_exec(sqlite_conn_, sql.c_str(), callback, data, &error_msg);
+    
+    if (result != SQLITE_OK) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "SQLite query failed: " + std::string(error_msg ? error_msg : "Unknown error"));
+        if (error_msg) {
+            sqlite3_free(error_msg);
+        }
+        return false;
+    }
+    
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "SQLite query executed successfully");
+    return true;
+}
+
+bool DatabaseManager::executeNonQuerySQLite(const std::string& sql) {
+    if (!isSQLiteConnected()) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "SQLite not connected for non-query: " + sql);
+        return false;
+    }
+    
+    char* error_msg = nullptr;
+    int result = sqlite3_exec(sqlite_conn_, sql.c_str(), nullptr, nullptr, &error_msg);
+    
+    if (result != SQLITE_OK) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "SQLite non-query failed: " + std::string(error_msg ? error_msg : "Unknown error"));
+        if (error_msg) {
+            sqlite3_free(error_msg);
+        }
+        return false;
+    }
+    
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "SQLite non-query executed successfully");
+    return true;
+}
+
+bool DatabaseManager::isSQLiteConnected() {
+    return sqlite_conn_ != nullptr;
+}
