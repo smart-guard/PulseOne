@@ -122,6 +122,7 @@ namespace PulseOne::Structs {
     struct DeviceInfo {
         // 🔥 공통 핵심 필드들
         UUID id;
+        uint32_t tenant_id = 0;
         std::string name;
         std::string description = "";
         ProtocolType protocol = ProtocolType::UNKNOWN;
