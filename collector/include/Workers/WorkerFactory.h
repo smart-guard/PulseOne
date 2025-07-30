@@ -1,6 +1,10 @@
-// ============================================================================
-// 1. WorkerFactory.h 수정 - UnifiedCommonTypes.h 제거하고 전방선언만
-// ============================================================================
+/**
+ * @file WorkerFactory.h
+ * @brief PulseOne WorkerFactory - 컴파일 에러 완전 해결
+ * @author PulseOne Development Team
+ * @date 2025-07-30
+ */
+
 #ifndef WORKER_FACTORY_H
 #define WORKER_FACTORY_H
 
@@ -14,15 +18,15 @@
 #include <chrono>
 #include <future>
 
-namespace PulseOne {
-
-// ✅ 전방 선언만 사용 - 순환 참조 방지
+// 🔧 중요: 전역 네임스페이스에서 전방선언 (PulseOne:: 제거)
 class LogManager;
 class ConfigManager;
 class RedisClient;
 class InfluxClient;
 
-// ✅ Structs 네임스페이스도 전방 선언
+namespace PulseOne {
+
+// ✅ PulseOne 네임스페이스 안의 전방선언들
 namespace Structs {
     struct DeviceInfo;
     struct DataPoint;
@@ -43,10 +47,11 @@ namespace Workers {
 
 class BaseDeviceWorker;
 
+// ✅ WorkerCreator 타입 정의 - 전역 클래스 사용
 using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(
     const PulseOne::Structs::DeviceInfo& device_info,
-    std::shared_ptr<::RedisClient> redis_client,    // ✅ 이제 전역 클래스
-    std::shared_ptr<::InfluxClient> influx_client   // ✅ 이제 전역 클래스
+    std::shared_ptr<::RedisClient> redis_client,    // ✅ 전역 클래스
+    std::shared_ptr<::InfluxClient> influx_client   // ✅ 전역 클래스
 )>;
 
 struct FactoryStats {
@@ -62,15 +67,15 @@ struct FactoryStats {
 
 class WorkerFactory {
 public:
-    // ✅ 기존 코드와 동일한 메서드명 사용
+    // 🔧 수정: 메서드명 통일 - getInstance (소문자 g)
     static WorkerFactory& getInstance();
     
     WorkerFactory(const WorkerFactory&) = delete;
     WorkerFactory& operator=(const WorkerFactory&) = delete;
 
-    // ✅ 기존 코드에 맞춰서 Initialize() 오버로드 추가
-    bool Initialize();  // 매개변수 없는 버전 (기존 코드용)
-    bool Initialize(LogManager* logger, ConfigManager* config_manager);  // 새 버전
+    // 🔧 수정: Initialize() 메서드 정리
+    bool Initialize();  // 기본 버전 - 내부에서 싱글톤들 가져오기
+    bool Initialize(::LogManager* logger, ::ConfigManager* config_manager);  // 직접 주입 버전
     
     void SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo);
     void SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo);
@@ -78,6 +83,7 @@ public:
         std::shared_ptr<::RedisClient> redis_client,     // ✅ 전역 클래스
         std::shared_ptr<::InfluxClient> influx_client    // ✅ 전역 클래스
     );
+
     std::unique_ptr<BaseDeviceWorker> CreateWorker(const Database::Entities::DeviceEntity& device_entity);
     std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
     std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers();
@@ -104,14 +110,16 @@ private:
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;
     
-    LogManager* logger_ = nullptr;
-    ConfigManager* config_manager_ = nullptr;
+    // 🔧 수정: 전역 클래스 포인터들 (PulseOne:: 제거)
+    ::LogManager* logger_ = nullptr;
+    ::ConfigManager* config_manager_ = nullptr;
     
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo_;
     
-    std::shared_ptr<::RedisClient> redis_client_;       // ✅ 전역 클래스
-    std::shared_ptr<::InfluxClient> influx_client_;     // ✅ 전역 클래스
+    // ✅ 전역 클래스 shared_ptr
+    std::shared_ptr<::RedisClient> redis_client_;
+    std::shared_ptr<::InfluxClient> influx_client_;
     
     std::map<std::string, WorkerCreator> worker_creators_;
     
