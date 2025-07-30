@@ -151,7 +151,7 @@ private:
     void RegisterWorkerCreators();
     std::string ValidateWorkerConfig(const Database::Entities::DeviceEntity& device_entity) const;
     DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
-    std::vector<DataPoint> LoadDataPointsForDevice(int device_id) const;
+    std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
 
     // =======================================================================
     // 멤버 변수들
