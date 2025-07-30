@@ -1,12 +1,8 @@
+// ============================================================================
+// 1. WorkerFactory.h 수정 - UnifiedCommonTypes.h 제거하고 전방선언만
+// ============================================================================
 #ifndef WORKER_FACTORY_H
 #define WORKER_FACTORY_H
-
-/**
- * @file WorkerFactory.h
- * @brief PulseOne WorkerFactory - 전방 선언 수정 버전
- * @author PulseOne Development Team
- * @date 2025-07-30
- */
 
 #include <memory>
 #include <functional>
@@ -18,37 +14,25 @@
 #include <chrono>
 #include <future>
 
-
-// Utils 네임스페이스
-class LogManager;
-class ConfigManager;
-
-// Database 클라이언트들
-class RedisClient;
-class InfluxClient;
 namespace PulseOne {
 
-// =============================================================================
-// 🔥 전방 선언 (Forward Declarations) - Common/Structs.h 참조
-// =============================================================================
+// ✅ 전방 선언만 사용 - 순환 참조 방지
+class LogManager;
+class ConfigManager;
+class RedisClient;
+class InfluxClient;
 
-
-
-// 🔧 Common Types - Common/Structs.h에 정의된 타입들은 전방 선언만
+// ✅ Structs 네임스페이스도 전방 선언
 namespace Structs {
-    struct DeviceInfo;   // Common/Structs.h에 정의됨
-    struct DataPoint;    // Common/Structs.h에 정의됨
+    struct DeviceInfo;
+    struct DataPoint;
 }
-
-// 🔧 또는 UnifiedCommonTypes.h의 using 선언 사용
-// (이미 다른 곳에서 include되어 있으므로 중복 정의 방지)
 
 namespace Database {
 namespace Entities {
     class DeviceEntity;
     class DataPointEntity;
 }
-
 namespace Repositories {
     class DeviceRepository;
     class DataPointRepository;
@@ -57,25 +41,14 @@ namespace Repositories {
 
 namespace Workers {
 
-// Worker 클래스들 전방 선언
 class BaseDeviceWorker;
-class ModbusTcpWorker;
-class MQTTWorker;
-class BACnetWorker;
 
-/**
- * @brief Worker 생성 함수 타입 정의
- * 🔧 Common/Structs.h의 타입 사용
- */
 using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(
     const PulseOne::Structs::DeviceInfo& device_info,
-    std::shared_ptr<RedisClient> redis_client,
-    std::shared_ptr<InfluxClient> influx_client
+    std::shared_ptr<::RedisClient> redis_client,    // ✅ 이제 전역 클래스
+    std::shared_ptr<::InfluxClient> influx_client   // ✅ 이제 전역 클래스
 )>;
 
-/**
- * @brief WorkerFactory 통계 정보
- */
 struct FactoryStats {
     uint64_t workers_created = 0;
     uint64_t creation_failures = 0;
@@ -84,66 +57,37 @@ struct FactoryStats {
     std::chrono::milliseconds total_creation_time{0};
     
     std::string ToString() const;
+    void Reset();
 };
 
-/**
- * @brief PulseOne Worker Factory (싱글톤 패턴)
- */
 class WorkerFactory {
 public:
-    // =======================================================================
-    // 싱글톤 패턴
-    // =======================================================================
-    
+    // ✅ 기존 코드와 동일한 메서드명 사용
     static WorkerFactory& getInstance();
     
     WorkerFactory(const WorkerFactory&) = delete;
     WorkerFactory& operator=(const WorkerFactory&) = delete;
 
-    // =======================================================================
-    // 초기화 및 설정
-    // =======================================================================
-    
-    bool Initialize();
+    // ✅ 기존 코드에 맞춰서 Initialize() 오버로드 추가
+    bool Initialize();  // 매개변수 없는 버전 (기존 코드용)
+    bool Initialize(LogManager* logger, ConfigManager* config_manager);  // 새 버전
     
     void SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo);
     void SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo);
-    
     void SetDatabaseClients(
-        std::shared_ptr<RedisClient> redis_client,
-        std::shared_ptr<InfluxClient> influx_client
+        std::shared_ptr<::RedisClient> redis_client,     // ✅ 전역 클래스
+        std::shared_ptr<::InfluxClient> influx_client    // ✅ 전역 클래스
     );
-
-    // =======================================================================
-    // Worker 생성 메서드들
-    // =======================================================================
-    
     std::unique_ptr<BaseDeviceWorker> CreateWorker(const Database::Entities::DeviceEntity& device_entity);
-    
     std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
-    
-    // 🔧 CreateAllActiveWorkers 메서드 오버로드 추가
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers();  // tenant_id 없는 버전
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers(int tenant_id);  // 기존 버전
-    
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateWorkersByProtocol(
-        const std::string& protocol_type, 
-        int tenant_id = 1
-    );
+    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers();
+    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers(int tenant_id);
+    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateWorkersByProtocol(const std::string& protocol_type, int tenant_id = 0);
 
-    // =======================================================================
-    // 팩토리 정보 조회
-    // =======================================================================
-    
     std::vector<std::string> GetSupportedProtocols() const;
     bool IsProtocolSupported(const std::string& protocol_type) const;
     FactoryStats GetFactoryStats() const;
     std::string GetFactoryStatsString() const;
-
-    // =======================================================================
-    // 확장성 지원
-    // =======================================================================
-    
     void RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator);
 
 private:
@@ -152,13 +96,11 @@ private:
 
     void RegisterWorkerCreators();
     std::string ValidateWorkerConfig(const Database::Entities::DeviceEntity& device_entity) const;
-    DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
+    
+    // ✅ 전방 선언된 타입 사용
+    PulseOne::Structs::DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
     std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
 
-    // =======================================================================
-    // 멤버 변수들
-    // =======================================================================
-    
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;
     
@@ -168,8 +110,8 @@ private:
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo_;
     
-    std::shared_ptr<RedisClient> redis_client_;
-    std::shared_ptr<InfluxClient> influx_client_;
+    std::shared_ptr<::RedisClient> redis_client_;       // ✅ 전역 클래스
+    std::shared_ptr<::InfluxClient> influx_client_;     // ✅ 전역 클래스
     
     std::map<std::string, WorkerCreator> worker_creators_;
     
