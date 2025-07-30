@@ -9,7 +9,7 @@ HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
 LDFLAGS = 
-LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3 -lbacnet
+LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3 -lbacnet -lmysqlclient
 
 # 기존 CXXFLAGS에 JSON 플래그 추가
 ifeq ($(HAS_NLOHMANN_JSON),1)
@@ -58,7 +58,7 @@ $(info 🔍 DEBUG: CONFIG_SOURCES = $(CONFIG_SOURCES))
 WORKERS_BASE_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
 WORKERS_PROTOCOL_SOURCES := $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp)
 WORKERS_COMPONENTS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
-WORKERS_SOURCES := $(WORKERS_BASE_SOURCES) $(WORKERS_PROTOCOL_SOURCES) $(WORKERS_COMPONENTS_SOURCES)
+WORKERS_SOURCES := $(WORKERS_BASE_SOURCES) $(WORKERS_PROTOCOL_SOURCES) $(WORKERS_COMPONENTS_SOURCES) $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp)
 
 # Drivers 소스들 (아직 없을 수 있음)
 DRIVERS_COMMON_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
