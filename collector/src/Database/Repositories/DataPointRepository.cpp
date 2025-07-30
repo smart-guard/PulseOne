@@ -33,16 +33,6 @@ static int sqlite_callback(void* data, int argc, char** argv, char** column_name
 }
 
 // =============================================================================
-// 생성자 및 초기화 (IRepository 기반)
-// =============================================================================
-
-DataPointRepository::DataPointRepository()
-    : IRepository<DataPointEntity>("DataPointRepository")  // 🔥 IRepository 초기화로 캐시 자동 설정
-{
-    logger_->Info("📊 DataPointRepository initialized with IRepository caching enabled");
-}
-
-// =============================================================================
 // DatabaseManager 래퍼 메서드들 (기존 로직 그대로 유지)
 // =============================================================================
 

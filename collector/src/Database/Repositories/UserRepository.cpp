@@ -15,15 +15,6 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// =======================================================================
-// 생성자 및 초기화 (DeviceRepository 패턴)
-// =======================================================================
-
-UserRepository::UserRepository() 
-    : IRepository<UserEntity>("UserRepository") {
-    logger_->Info("🔥 UserRepository initialized with IRepository caching system");
-    logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));  // ✅ 수정
-}
 
 // =======================================================================
 // IRepository 인터페이스 구현 (DeviceRepository 패턴 100% 동일)

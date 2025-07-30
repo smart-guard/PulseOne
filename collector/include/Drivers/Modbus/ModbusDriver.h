@@ -232,7 +232,7 @@ private:
     std::atomic<bool> console_output_enabled_;
     
     // 외부 의존성
-    PulseOne::LogManager* log_manager_;
+    LogManager* log_manager_;
     DatabaseManager* db_manager_;
     std::string device_name_;
     

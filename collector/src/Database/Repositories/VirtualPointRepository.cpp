@@ -24,15 +24,6 @@ namespace Repositories {
 // 🔥 기존 패턴 준수 - using 선언 필수 (cpp에도 필요)
 using VirtualPointEntity = Entities::VirtualPointEntity;
 
-// =======================================================================
-// 생성자 및 초기화 (SiteRepository 패턴)
-// =======================================================================
-
-VirtualPointRepository::VirtualPointRepository() 
-    : IRepository<VirtualPointEntity>("VirtualPointRepository") {
-    logger_->Info("🔢 VirtualPointRepository initialized with IRepository caching system");
-    logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
-}
 
 // =======================================================================
 // 캐시 관리 메서드들 (SiteRepository 패턴)

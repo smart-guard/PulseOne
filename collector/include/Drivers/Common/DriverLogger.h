@@ -1,7 +1,7 @@
 #ifndef DRIVERS_DRIVER_LOGGER_H
 #define DRIVERS_DRIVER_LOGGER_H
 
-#include "Common/UnifiedCommonTypes.h"
+
 #include "Utils/LogManager.h"
 #include <memory>
 #include <string>
@@ -14,16 +14,14 @@
 namespace PulseOne {
 namespace Drivers {
 
-// 🔥 중복 정의 제거 - UnifiedCommonTypes.h의 것들을 사용
-// enum class DriverLogCategory - 삭제 (Enums.h에 있음)
-// struct DriverLogContext - 삭제 (Structs.h에 있음)
+
 
 /**
  * @brief 드라이버 전용 로거 클래스 (기존 LogManager 래핑)
  */
 class DriverLogger {
 private:
-    PulseOne::LogManager* legacy_logger_;
+    LogManager* legacy_logger_;
     DriverLogContext default_context_;
     LogLevel min_level_;
     std::map<DriverLogCategory, bool> category_enabled_;
@@ -67,7 +65,7 @@ public:
     DriverLogger(const UUID& device_id = "", 
                  ProtocolType protocol = ProtocolType::UNKNOWN,
                  const std::string& endpoint = "")
-        : legacy_logger_(nullptr), min_level_(PulseOne::LogLevel::INFO) {
+        : legacy_logger_(nullptr), min_level_(LogLevel::INFO) {
         
         default_context_.device_id = device_id;
         default_context_.protocol = protocol;
@@ -79,7 +77,7 @@ public:
         }
         
         // 기존 LogManager 인스턴스 가져오기
-        legacy_logger_ = &PulseOne::LogManager::getInstance();
+        legacy_logger_ = &LogManager::getInstance();
     }
     
     ~DriverLogger() = default;
@@ -276,33 +274,33 @@ public:
 
 #define DRIVER_LOG_DEBUG(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= PulseOne::LogLevel::DEBUG_LEVEL) { \
+        if ((logger).GetMinLevel() <= LogLevel::DEBUG_LEVEL) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(PulseOne::LogLevel::DEBUG_LEVEL, message, category, ctx); \
+            (logger).LogWithContext(LogLevel::DEBUG_LEVEL, message, category, ctx); \
         } \
     } while(0)
 
 #define DRIVER_LOG_INFO(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= PulseOne::LogLevel::INFO) { \
+        if ((logger).GetMinLevel() <= LogLevel::INFO) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(PulseOne::LogLevel::INFO, message, category, ctx); \
+            (logger).LogWithContext(LogLevel::INFO, message, category, ctx); \
         } \
     } while(0)
 
 #define DRIVER_LOG_WARN(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= PulseOne::LogLevel::WARN) { \
+        if ((logger).GetMinLevel() <= LogLevel::WARN) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(PulseOne::LogLevel::WARN, message, category, ctx); \
+            (logger).LogWithContext(LogLevel::WARN, message, category, ctx); \
         } \
     } while(0)
 
 #define DRIVER_LOG_ERROR(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= PulseOne::LogLevel::ERROR) { \
+        if ((logger).GetMinLevel() <= LogLevel::ERROR) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(PulseOne::LogLevel::ERROR, message, category, ctx); \
+            (logger).LogWithContext(LogLevel::ERROR, message, category, ctx); \
         } \
     } while(0)
 

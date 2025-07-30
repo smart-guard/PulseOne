@@ -7,20 +7,20 @@
 #include <filesystem>
 
 namespace fs = std::filesystem;
-
-namespace PulseOne {
 namespace Utils = PulseOne::Utils;
+using LogLevel = PulseOne::Enums::LogLevel;
+
 LogManager::LogManager() {
     // 🆕 카테고리별 기본 로그 레벨 설정
-    categoryLevels_[DriverLogCategory::GENERAL] = PulseOne::LogLevel::INFO;
-    categoryLevels_[DriverLogCategory::CONNECTION] = PulseOne::LogLevel::INFO;
-    categoryLevels_[DriverLogCategory::COMMUNICATION] = PulseOne::LogLevel::WARN;
-    categoryLevels_[DriverLogCategory::DATA_PROCESSING] = PulseOne::LogLevel::INFO;
-    categoryLevels_[DriverLogCategory::ERROR_HANDLING] = PulseOne::LogLevel::ERROR;
-    categoryLevels_[DriverLogCategory::PERFORMANCE] = PulseOne::LogLevel::WARN;
-    categoryLevels_[DriverLogCategory::SECURITY] = PulseOne::LogLevel::WARN;
-    categoryLevels_[DriverLogCategory::PROTOCOL_SPECIFIC] = PulseOne::LogLevel::DEBUG_LEVEL;
-    categoryLevels_[DriverLogCategory::DIAGNOSTICS] = PulseOne::LogLevel::DEBUG_LEVEL;
+    categoryLevels_[DriverLogCategory::GENERAL] = LogLevel::INFO;
+    categoryLevels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
+    categoryLevels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
+    categoryLevels_[DriverLogCategory::DATA_PROCESSING] = LogLevel::INFO;
+    categoryLevels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::ERROR;
+    categoryLevels_[DriverLogCategory::PERFORMANCE] = LogLevel::WARN;
+    categoryLevels_[DriverLogCategory::SECURITY] = LogLevel::WARN;
+    categoryLevels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG_LEVEL;
+    categoryLevels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG_LEVEL;
 }
 
 LogManager::~LogManager() {
@@ -158,13 +158,13 @@ void LogManager::updateStatistics(LogLevel level) {
     std::lock_guard<std::mutex> lock(mutex_);
     
     switch (level) {
-        case PulseOne::LogLevel::TRACE: statistics_.debug_count++; break;  // TRACE를 debug로 카운트
-        case PulseOne::LogLevel::DEBUG_LEVEL: statistics_.debug_count++; break;
-        case PulseOne::LogLevel::INFO: statistics_.info_count++; break;
-        case PulseOne::LogLevel::WARN: statistics_.warning_count++; break;
-        case PulseOne::LogLevel::ERROR: statistics_.error_count++; break;
-        case PulseOne::LogLevel::FATAL: statistics_.error_count++; break;
-        case PulseOne::LogLevel::MAINTENANCE: statistics_.maintenance_count++; break;
+        case LogLevel::TRACE: statistics_.debug_count++; break;  // TRACE를 debug로 카운트
+        case LogLevel::DEBUG_LEVEL: statistics_.debug_count++; break;
+        case LogLevel::INFO: statistics_.info_count++; break;
+        case LogLevel::WARN: statistics_.warning_count++; break;
+        case LogLevel::ERROR: statistics_.error_count++; break;
+        case LogLevel::FATAL: statistics_.error_count++; break;
+        case LogLevel::MAINTENANCE: statistics_.maintenance_count++; break;
     }
 }
 
@@ -173,32 +173,32 @@ void LogManager::updateStatistics(LogLevel level) {
 // =============================================================================
 
 void LogManager::Info(const std::string& message) {
-    log(defaultCategory_, PulseOne::LogLevel::INFO, message);
+    log(defaultCategory_, LogLevel::INFO, message);
 }
 
 void LogManager::Warn(const std::string& message) {
-    log(defaultCategory_, PulseOne::LogLevel::WARN, message);
+    log(defaultCategory_, LogLevel::WARN, message);
 }
 
 void LogManager::Error(const std::string& message) {
-    log(defaultCategory_, PulseOne::LogLevel::ERROR, message);
+    log(defaultCategory_, LogLevel::ERROR, message);
 }
 
 void LogManager::Fatal(const std::string& message) {
-    log(defaultCategory_, PulseOne::LogLevel::FATAL, message);
+    log(defaultCategory_, LogLevel::FATAL, message);
 }
 
 void LogManager::Debug(const std::string& message) {
-    log(defaultCategory_, PulseOne::LogLevel::DEBUG_LEVEL, message);
+    log(defaultCategory_, LogLevel::DEBUG_LEVEL, message);
 }
 
 void LogManager::Trace(const std::string& message) {
-    log(defaultCategory_, PulseOne::LogLevel::TRACE, message);
+    log(defaultCategory_, LogLevel::TRACE, message);
 }
 
 void LogManager::Maintenance(const std::string& message) {
     if (maintenance_mode_enabled_) {
-        log("maintenance", PulseOne::LogLevel::MAINTENANCE, message);
+        log("maintenance", LogLevel::MAINTENANCE, message);
     }
 }
 
@@ -244,7 +244,7 @@ void LogManager::logMaintenanceEnd(const DeviceInfo& device, const EngineerID& e
 void LogManager::logRemoteControlBlocked(const UUID& device_id, const std::string& reason) {
     std::ostringstream oss;
     oss << "REMOTE CONTROL BLOCKED - Device: " << device_id << ", Reason: " << reason;
-    log("security", PulseOne::LogLevel::WARN, oss.str());
+    log("security", LogLevel::WARN, oss.str());
 }
 
 // 🆕 드라이버 로그 (카테고리 지원)
@@ -273,17 +273,17 @@ void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
         oss << ", Reason: " << reason;
     }
     
-    LogLevel level = (quality == DataQuality::BAD) ? PulseOne::LogLevel::ERROR : PulseOne::LogLevel::WARN;
+    LogLevel level = (quality == DataQuality::BAD) ? LogLevel::ERROR : LogLevel::WARN;
     log("data_quality", level, oss.str());
 }
 
 // 기존 특수 로그 메소드들 (유지)
 void LogManager::logDriver(const std::string& driverName, const std::string& message) {
-    log("driver_" + driverName, PulseOne::LogLevel::INFO, message);
+    log("driver_" + driverName, LogLevel::INFO, message);
 }
 
 void LogManager::logError(const std::string& message) {
-    log("error", PulseOne::LogLevel::ERROR, message);
+    log("error", LogLevel::ERROR, message);
 }
 
 void LogManager::logPacket(const std::string& driver, const std::string& device,
@@ -358,4 +358,3 @@ void LogManager::rotateLogs() {
     Info("Log rotation completed");
 }
 
-} // namespace PulseOne

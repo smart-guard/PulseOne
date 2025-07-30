@@ -16,16 +16,6 @@ namespace Database {
 namespace Repositories {
 
 // =======================================================================
-// 생성자 및 초기화 (DeviceRepository 패턴)
-// =======================================================================
-
-TenantRepository::TenantRepository() 
-    : IRepository<TenantEntity>("TenantRepository") {
-    logger_->Info("🏢 TenantRepository initialized with IRepository caching system");
-    logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));  // ✅ 수정
-}
-
-// =======================================================================
 // IRepository 인터페이스 구현 (DeviceRepository 패턴 100% 동일)
 // =======================================================================
 

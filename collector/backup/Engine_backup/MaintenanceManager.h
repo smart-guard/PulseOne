@@ -15,7 +15,7 @@
 
 #include "Drivers/CommonTypes.h"
 #include "Database/DatabaseManager.h"
-#include "RedisClient.h"
+#include "Client/RedisClient.h"
 #include "Utils/LogManager.h"
 
 namespace PulseOne {

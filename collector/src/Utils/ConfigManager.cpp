@@ -23,25 +23,25 @@ ConfigManager& ConfigManager::getInstance() {
 // =============================================================================
 
 void ConfigManager::initialize() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "🔍 ConfigManager 초기화 시작...");
     
     // 1. 설정 디렉토리 찾기
     configDir_ = findConfigDirectory();
     if (configDir_.empty()) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, 
+        LogManager::getInstance().log("config", LogLevel::ERROR, 
             "❌ 설정 디렉토리를 찾을 수 없습니다!");
         return;
     }
     
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "✅ 설정 디렉토리: " + configDir_);
     
     // 2. 설정 파일 확인 및 생성
     try {
         ensureConfigFilesExist();
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+        LogManager::getInstance().log("config", LogLevel::WARN, 
             "⚠️ 설정 파일 생성 중 오류: " + std::string(e.what()));
     }
     
@@ -57,26 +57,26 @@ void ConfigManager::initialize() {
     try {
         ensureDataDirectories();
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+        LogManager::getInstance().log("config", LogLevel::WARN, 
             "⚠️ 데이터 디렉토리 생성 중 오류: " + std::string(e.what()));
     }
     
     // 6. 변수 확장 실행 (중요!)
     try {
         expandAllVariables();
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        LogManager::getInstance().log("config", LogLevel::INFO, 
             "✅ 변수 확장 완료");
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+        LogManager::getInstance().log("config", LogLevel::WARN, 
             "⚠️ 변수 확장 중 오류: " + std::string(e.what()));
     }
     
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "✅ ConfigManager 초기화 완료 - " + std::to_string(configMap.size()) + "개 설정 로드됨");
 }
 
 void ConfigManager::reload() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "🔄 ConfigManager 재로딩 시작...");
+    LogManager::getInstance().log("config", LogLevel::INFO, "🔄 ConfigManager 재로딩 시작...");
     
     {
         std::lock_guard<std::mutex> lock(configMutex);
@@ -162,14 +162,14 @@ void ConfigManager::loadMainConfig() {
     
     if (std::filesystem::exists(main_env_path)) {
         loadConfigFile(main_env_path);
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, "✅ 메인 설정 로드: .env");
+        LogManager::getInstance().log("config", LogLevel::INFO, "✅ 메인 설정 로드: .env");
     } else {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, "⚠️ 메인 설정 파일 없음: .env");
+        LogManager::getInstance().log("config", LogLevel::WARN, "⚠️ 메인 설정 파일 없음: .env");
     }
 }
 
 void ConfigManager::loadAdditionalConfigs() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "🔍 추가 설정 파일 확인 시작");
     
     // 데드락 해결: configMap 직접 접근
@@ -181,7 +181,7 @@ void ConfigManager::loadAdditionalConfigs() {
     }
     
     if (config_files.empty()) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        LogManager::getInstance().log("config", LogLevel::INFO, 
             "ℹ️ 추가 설정 파일 없음 (CONFIG_FILES 비어있음)");
         return;
     }
@@ -208,26 +208,26 @@ void ConfigManager::loadAdditionalConfigs() {
         try {
             if (std::filesystem::exists(full_path)) {
                 loadConfigFile(full_path);
-                PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+                LogManager::getInstance().log("config", LogLevel::INFO, 
                     "✅ 추가 설정 로드: " + filename);
             } else {
-                PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+                LogManager::getInstance().log("config", LogLevel::INFO, 
                     "ℹ️ 추가 설정 파일 없음: " + filename);
             }
         } catch (const std::exception& e) {
-            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            LogManager::getInstance().log("config", LogLevel::WARN, 
                 "⚠️ 설정 파일 로드 실패: " + filename + " - " + e.what());
         }
     }
     
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "✅ 추가 설정 파일 확인 완료");
 }
 
 void ConfigManager::loadConfigFile(const std::string& filepath) {
     std::ifstream file(filepath);
     if (!file.is_open()) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, 
+        LogManager::getInstance().log("config", LogLevel::ERROR, 
             "❌ 파일 열기 실패: " + filepath);
         return;
     }
@@ -261,7 +261,7 @@ void ConfigManager::loadConfigFile(const std::string& filepath) {
     
     file.close();
     
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "📄 " + filepath + " - " + std::to_string(parsed_count) + "/" + std::to_string(line_count) + " 라인 파싱됨");
 }
 
@@ -486,14 +486,14 @@ void ConfigManager::printConfigSearchLog() const {
 // =============================================================================
 
 void ConfigManager::ensureConfigFilesExist() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "🔍 모든 설정 파일 존재 여부 확인 중...");
     
     try {
         // 1. 메인 .env 파일 확인/생성
         std::string main_env_path = configDir_ + "/.env";
         if (!std::filesystem::exists(main_env_path)) {
-            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            LogManager::getInstance().log("config", LogLevel::WARN, 
                 "⚠️ 메인 설정 파일 없음, 기본 템플릿 생성: .env");
             createMainEnvFile();
         }
@@ -506,11 +506,11 @@ void ConfigManager::ensureConfigFilesExist() {
         createMessagingEnvFile();
         createSecurityEnvFile();  // 새로 추가
         
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        LogManager::getInstance().log("config", LogLevel::INFO, 
             "✅ 모든 설정 파일 확인 완료");
             
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+        LogManager::getInstance().log("config", LogLevel::WARN, 
             "⚠️ 설정 파일 확인 중 오류: " + std::string(e.what()) + " (계속 진행)");
     }
 }
@@ -891,7 +891,7 @@ DEV_ALLOW_HTTP=true                 # HTTP 허용 (개발 시에만)
 }
 
 void ConfigManager::createSecretsDirectory() {
-    PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+    LogManager::getInstance().log("config", LogLevel::INFO, 
         "🔐 보안 디렉토리 및 기본 파일들 생성 중...");
     
     std::string secrets_dir = configDir_ + "/secrets";
@@ -959,11 +959,11 @@ void ConfigManager::createSecretsDirectory() {
             }
         }
         
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        LogManager::getInstance().log("config", LogLevel::INFO, 
             "✅ 보안 디렉토리 및 기본 파일들 생성 완료");
             
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+        LogManager::getInstance().log("config", LogLevel::WARN, 
             "⚠️ 보안 디렉토리 생성 실패: " + std::string(e.what()));
     }
 }
@@ -982,13 +982,13 @@ bool ConfigManager::createFileFromTemplate(const std::string& filepath, const st
         file << content;
         file.close();
         
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::INFO, 
+        LogManager::getInstance().log("config", LogLevel::INFO, 
             "✅ 설정 파일 생성: " + std::filesystem::path(filepath).filename().string());
         
         return true;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+        LogManager::getInstance().log("config", LogLevel::WARN, 
             "⚠️ 파일 생성 중 예외: " + std::string(e.what()));
         return false;
     }
@@ -1054,7 +1054,7 @@ std::string ConfigManager::loadPasswordFromFile(const std::string& password_file
     try {
         std::ifstream file(password_file);
         if (!file.is_open()) {
-            PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+            LogManager::getInstance().log("config", LogLevel::WARN, 
                 "⚠️ 비밀번호 파일 없음: " + password_file);
             return "";
         }
@@ -1069,7 +1069,7 @@ std::string ConfigManager::loadPasswordFromFile(const std::string& password_file
         return password;
         
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::ERROR, 
+        LogManager::getInstance().log("config", LogLevel::ERROR, 
             "❌ 비밀번호 파일 읽기 실패: " + password_file + " - " + std::string(e.what()));
         return "";
     }
@@ -1099,7 +1099,7 @@ void ConfigManager::triggerVariableExpansion() {
     try {
         expandAllVariables();
     } catch (const std::exception& e) {
-        PulseOne::LogManager::getInstance().log("config", PulseOne::LogLevel::WARN, 
+        LogManager::getInstance().log("config", LogLevel::WARN, 
             "⚠️ 변수 확장 중 오류: " + std::string(e.what()));
     }
 }
