@@ -3,18 +3,25 @@
 
 /**
  * @file DatabaseTypes.h
- * @brief PulseOne Database 전용 타입 정의
+ * @brief PulseOne Database 전용 타입 정의 - 매크로 충돌 해결
  * @author PulseOne Development Team
- * @date 2025-07-28
- * 
- * Database Repository에서 사용하는 전용 타입들:
- * - QueryCondition: SQL WHERE 절 조건
- * - OrderBy: SQL ORDER BY 절 정렬
- * - Pagination: 페이징 처리
+ * @date 2025-07-30
  */
 
 #include <string>
 #include <algorithm>
+
+// 🔧 매크로 충돌 방지
+#ifdef max
+#undef max
+#endif
+#ifdef min  
+#undef min
+#endif
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
 namespace PulseOne {
 namespace Database {
@@ -23,9 +30,9 @@ namespace Database {
      * @brief SQL 쿼리 조건 구조체
      */
     struct QueryCondition {
-        std::string field;        // 필드명 (예: "id", "name")
-        std::string operation;    // 연산자 (예: "=", "LIKE", "IN")
-        std::string value;        // 값 (예: "123", "'test'")
+        std::string field;        // 필드명
+        std::string operation;    // 연산자
+        std::string value;        // 값
         
         QueryCondition() = default;
         
@@ -82,7 +89,7 @@ namespace Database {
     };
     
     /**
-     * @brief 페이징 구조체
+     * @brief 페이징 구조체 - 매크로 충돌 해결
      */
     struct Pagination {
         int limit;                // 한 페이지당 항목 수
@@ -98,7 +105,7 @@ namespace Database {
             return Pagination(page_size, (page - 1) * page_size);
         }
         
-        // Getter 메서드들 (기존 코드 호환성)
+        // Getter 메서드들
         int getLimit() const { return limit; }
         int getOffset() const { return offset; }
         
@@ -111,8 +118,9 @@ namespace Database {
             return Pagination(limit, offset + limit);
         }
         
+        // 🔧 수정: std::max 대신 삼항 연산자 사용
         Pagination prevPage() const {
-            int new_offset = std::max(0, offset - limit);
+            int new_offset = (offset - limit > 0) ? (offset - limit) : 0;
             return Pagination(limit, new_offset);
         }
     };

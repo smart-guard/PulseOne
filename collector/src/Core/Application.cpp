@@ -1,6 +1,6 @@
 /**
  * @file Application.cpp
- * @brief PulseOne Collector v2.0 - shared_ptr 문제 완전 해결
+ * @brief PulseOne Collector v2.0 - WorkerFactory 호출 방식 수정
  */
 
 #include "Core/Application.h"
@@ -28,7 +28,7 @@ CollectorApplication::CollectorApplication()
     , config_manager_(&::ConfigManager::getInstance())
     , db_manager_(&::DatabaseManager::getInstance())
     , repository_factory_(&Database::RepositoryFactory::getInstance())
-    , worker_factory_(&PulseOne::Workers::WorkerFactory::getInstance()) {  // ✅ 올바른 네임스페이스
+    , worker_factory_(&PulseOne::Workers::WorkerFactory::getInstance()) {  // 🔧 수정: getInstance (소문자 g)
     
     std::cout << "🔧 CollectorApplication 생성됨" << std::endl;
 }
@@ -96,18 +96,17 @@ bool CollectorApplication::Initialize() {
         std::cout << "  ✅ RepositoryFactory 초기화 완료" << std::endl;
         
         // 4. WorkerFactory 초기화
-        std::cout << "  ⚙️ WorkerFactory 초기화..." << std::endl;
+        std::cout << "  🏭 WorkerFactory 초기화..." << std::endl;
         if (!InitializeWorkerFactory()) {
             std::cout << "  ❌ WorkerFactory 초기화 실패" << std::endl;
             return false;
         }
         std::cout << "  ✅ WorkerFactory 초기화 완료" << std::endl;
         
-        std::cout << "✅ 시스템 초기화 완료!" << std::endl;
         return true;
         
     } catch (const std::exception& e) {
-        std::cout << "💥 초기화 중 예외: " << e.what() << std::endl;
+        std::cout << "💥 초기화 중 오류: " << e.what() << std::endl;
         logger_->Error("CollectorApplication::Initialize() failed: " + std::string(e.what()));
         return false;
     }
@@ -115,44 +114,29 @@ bool CollectorApplication::Initialize() {
 
 bool CollectorApplication::InitializeWorkerFactory() {
     try {
-        // ✅ 1. 기존 코드와 동일하게 Initialize() 호출 (매개변수 없음)
+        // 🔧 수정: 매개변수 없는 Initialize() 호출 - 내부에서 싱글톤들 가져옴
         if (!worker_factory_->Initialize()) {
             logger_->Error("Failed to initialize WorkerFactory");
             return false;
         }
         
-        // 2. Repository 의존성 주입
+        // Repository 의존성 주입
         auto device_repo = repository_factory_->getDeviceRepository();
         auto datapoint_repo = repository_factory_->getDataPointRepository();
-        
-        if (!device_repo || !datapoint_repo) {
-            logger_->Error("Failed to get repositories from RepositoryFactory");
-            return false;
-        }
         
         worker_factory_->SetDeviceRepository(device_repo);
         worker_factory_->SetDataPointRepository(datapoint_repo);
         
-        // ✅ 3. shared_ptr 문제 완전 해결 - 가장 간단한 방법: 그냥 단순 포인터로 래핑
+        // 🔧 수정: shared_ptr 생성 - 전역 클래스 사용
         auto redis_client_raw = db_manager_->getRedisClient();
         auto influx_client_raw = db_manager_->getInfluxClient();
         
-        if (!redis_client_raw || !influx_client_raw) {
-            logger_->Error("Failed to get database clients from DatabaseManager");
-            return false;
-        }
-        
-        // ✅ 해결책: std::shared_ptr 생성자 직접 사용하지 말고 간접적으로
-        struct NoDelete {
-            void operator()(void*) {} // 아무것도 삭제하지 않는 deleter
-        };
-
+        // 🔧 수정: 올바른 타입으로 shared_ptr 생성
         std::shared_ptr<::RedisClient> redis_shared(redis_client_raw, [](::RedisClient*){});
         std::shared_ptr<::InfluxClient> influx_shared(influx_client_raw, [](::InfluxClient*){});
-
+        
         worker_factory_->SetDatabaseClients(redis_shared, influx_shared);
         
-        logger_->Info("✅ WorkerFactory initialization completed");
         return true;
         
     } catch (const std::exception& e) {
@@ -162,7 +146,7 @@ bool CollectorApplication::InitializeWorkerFactory() {
 }
 
 void CollectorApplication::MainLoop() {
-    logger_->Info("🔄 메인 루프 시작");
+    std::cout << "🔄 메인 루프 시작..." << std::endl;
     
     auto start_time = std::chrono::steady_clock::now();
     int loop_count = 0;
@@ -171,54 +155,54 @@ void CollectorApplication::MainLoop() {
         try {
             loop_count++;
             
-            // 기본 동작들
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            
-            // 통계 출력 (10초마다)
+            // 매 10초마다 통계 출력
             if (loop_count % 10 == 0) {
                 PrintRuntimeStatistics(loop_count, start_time);
             }
             
+            // 1초 대기
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            
         } catch (const std::exception& e) {
-            logger_->Error("Exception in main loop: " + std::string(e.what()));
+            logger_->Error("Exception in MainLoop: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
     
-    logger_->Info("🔄 메인 루프 종료");
+    std::cout << "🔄 메인 루프 종료" << std::endl;
 }
 
 void CollectorApplication::PrintRuntimeStatistics(int loop_count, const std::chrono::steady_clock::time_point& start_time) {
     auto now = std::chrono::steady_clock::now();
-    auto uptime = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
     
-    std::stringstream ss;
-    ss << "📊 Runtime Statistics (Loop: " << loop_count << ", Uptime: " << uptime.count() << "s)";
+    std::ostringstream stats;
+    stats << "📊 Runtime Statistics:\n"
+          << "  Uptime: " << duration.count() << "s\n"
+          << "  Loop Count: " << loop_count << "\n";
     
     // WorkerFactory 통계 추가
     if (worker_factory_) {
-        ss << "\n   " << worker_factory_->GetFactoryStatsString();
+        stats << "  " << worker_factory_->GetFactoryStatsString();
     }
     
-    logger_->Info(ss.str());
+    std::cout << stats.str() << std::endl;
+    logger_->Info(stats.str());
 }
 
 void CollectorApplication::Cleanup() {
+    std::cout << "🧹 시스템 정리 중..." << std::endl;
+    
     try {
-        std::cout << "🧹 시스템 정리 중..." << std::endl;
-        
         is_running_.store(false);
         
-        if (worker_factory_) {
-            std::cout << "  🔧 WorkerFactory 정리 중..." << std::endl;
-            // WorkerFactory는 싱글톤이므로 명시적 정리 불필요
-        }
+        // 필요한 경우 추가 정리 작업
         
         std::cout << "✅ 시스템 정리 완료" << std::endl;
         
     } catch (const std::exception& e) {
-        std::cout << "💥 정리 중 예외: " << e.what() << std::endl;
-        logger_->Error("CollectorApplication::Cleanup() failed: " + std::string(e.what()));
+        std::cout << "⚠️ 정리 중 오류: " << e.what() << std::endl;
+        logger_->Error("Exception in Cleanup: " + std::string(e.what()));
     }
 }
 
