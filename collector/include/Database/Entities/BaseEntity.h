@@ -62,7 +62,7 @@ public:
         , updated_at_(std::chrono::system_clock::now())
         , db_manager_(&DatabaseManager::getInstance())
         , config_manager_(&ConfigManager::getInstance())
-        , logger_(&PulseOne::LogManager::getInstance()) {}
+        , logger_(&LogManager::getInstance()) {}
     
     /**
      * @brief ID로 생성하는 생성자
@@ -94,7 +94,7 @@ public:
         , updated_at_(other.updated_at_)
         , db_manager_(&DatabaseManager::getInstance())      // 동일한 싱글톤 참조
         , config_manager_(&ConfigManager::getInstance())    // 동일한 싱글톤 참조
-        , logger_(&PulseOne::LogManager::getInstance()) {}  // 동일한 싱글톤 참조
+        , logger_(&LogManager::getInstance()) {}  // 동일한 싱글톤 참조
     
     /**
      * @brief 이동 생성자
@@ -106,7 +106,7 @@ public:
         , updated_at_(other.updated_at_)
         , db_manager_(&DatabaseManager::getInstance())      // 동일한 싱글톤 참조
         , config_manager_(&ConfigManager::getInstance())    // 동일한 싱글톤 참조
-        , logger_(&PulseOne::LogManager::getInstance()) {}  // 동일한 싱글톤 참조
+        , logger_(&LogManager::getInstance()) {}  // 동일한 싱글톤 참조
 
     // =======================================================================
     // 🔥 할당 연산자들 (기존에 있던 것들)
@@ -442,7 +442,7 @@ protected:
     // 의존성 (참조로 저장)
     DatabaseManager* db_manager_;
     ConfigManager* config_manager_;
-    PulseOne::LogManager* logger_;
+    LogManager* logger_;
 };
 
 } // namespace Database

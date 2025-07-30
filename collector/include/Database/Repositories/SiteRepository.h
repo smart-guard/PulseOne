@@ -201,6 +201,11 @@ private:
      * @return 이스케이프된 문자열
      */
     std::string escapeString(const std::string& str);
+
+    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
+    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
+    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
+
 };
 
 } // namespace Repositories

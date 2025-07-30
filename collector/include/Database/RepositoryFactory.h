@@ -99,7 +99,7 @@ private:
     // 기본 시스템 컴포넌트들 (포인터 방식으로 변경)
     DatabaseManager* db_manager_;        // & → * 변경
     ConfigManager* config_manager_;      // & → * 변경  
-    PulseOne::LogManager* logger_;       // & → * 변경
+    LogManager* logger_;       // & → * 변경
     
     // Repository 인스턴스들
     std::unique_ptr<DeviceRepository> device_repository_;
