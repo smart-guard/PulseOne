@@ -236,7 +236,7 @@ const DriverStatistics& ModbusDriver::GetStatistics() const {
 bool ModbusDriver::EnableDiagnostics(DatabaseManager& db_manager,
                                     bool enable_packet_logging,
                                     bool enable_console_output) {
-    log_manager_ = &PulseOne::LogManager::getInstance();
+    log_manager_ = &LogManager::getInstance();
     db_manager_ = &db_manager;
     packet_logging_enabled_ = enable_packet_logging;
     console_output_enabled_ = enable_console_output;

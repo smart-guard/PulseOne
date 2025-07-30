@@ -14,7 +14,7 @@
 #include "Drivers/CommonTypes.h"
 #include "Utils/LogManager.h"
 #include "Config/ConfigManager.h"
-#include "RedisClient.h"
+#include "Client/RedisClient.h"
 #include "InfluxClient.h"
 #include <thread>
 #include <atomic>

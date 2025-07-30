@@ -3,15 +3,17 @@
 
 /**
  * @file IRepository.h
- * @brief PulseOne Repository 인터페이스 템플릿 (완전 새 버전)
+ * @brief PulseOne Repository 인터페이스 템플릿 (모든 매니저 전역 네임스페이스)
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-29
+ * 
+ * 🔥 네임스페이스 완전 일관성:
+ * - DatabaseManager: 전역 네임스페이스
+ * - ConfigManager: 전역 네임스페이스  
+ * - LogManager: 전역 네임스페이스 (수정)
  */
 
-#include "Database/DatabaseTypes.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+// ✅ 표준 라이브러리
 #include <vector>
 #include <optional>
 #include <map>
@@ -22,12 +24,21 @@
 #include <chrono>
 #include <atomic>
 
+// ✅ 필수 타입만 include
+#include "Database/DatabaseTypes.h"
+
+// ✅ 전방 선언 (모두 전역 네임스페이스)
+class DatabaseManager;        // ✅ 전역 네임스페이스
+class ConfigManager;          // ✅ 전역 네임스페이스
+class LogManager;             // ✅ 전역 네임스페이스 (수정)
+
 namespace PulseOne {
 namespace Database {
 
 template<typename EntityType>
 class IRepository {
 private:
+    // ✅ CacheEntry 구조체
     struct CacheEntry {
         EntityType entity;
         std::chrono::system_clock::time_point cached_at;
@@ -38,11 +49,10 @@ private:
         bool isExpired(const std::chrono::seconds& ttl) const {
             auto now = std::chrono::system_clock::now();
             return (now - cached_at) > ttl;
-    private:
-    // =======================================================================
-    // 캐시 관련 (private)
-    // =======================================================================
+        }
+    };
     
+    // ✅ 캐시 관련 멤버 변수들
     bool cache_enabled_;
     std::chrono::seconds cache_ttl_;
     size_t max_cache_size_;
@@ -51,18 +61,18 @@ private:
     mutable std::atomic<int> cache_hits_;
     mutable std::atomic<int> cache_misses_;
     mutable std::atomic<int> cache_evictions_;
-    };
 
 protected:
+    // ✅ 생성자
     explicit IRepository(const std::string& repository_name = "Repository")
-        : repository_name_(repository_name)
-        , enable_bulk_optimization_(true)
-        , cache_enabled_(true)
+        : cache_enabled_(true)
         , cache_ttl_(std::chrono::seconds(300))
         , max_cache_size_(1000)
         , cache_hits_(0)
         , cache_misses_(0)
         , cache_evictions_(0)
+        , repository_name_(repository_name)
+        , enable_bulk_optimization_(true)
         , db_manager_(nullptr)
         , config_manager_(nullptr)
         , logger_(nullptr) {
@@ -73,9 +83,10 @@ public:
 
     void initializeDependencies() {
         try {
-            db_manager_ = &PulseOne::Database::DatabaseManager::getInstance();
-            config_manager_ = &PulseOne::ConfigManager::getInstance();
-            logger_ = &PulseOne::LogManager::getInstance();
+            // ✅ 모든 매니저를 전역 네임스페이스로 접근
+            db_manager_ = &DatabaseManager::getInstance();      // ✅ 전역
+            config_manager_ = &ConfigManager::getInstance();    // ✅ 전역
+            logger_ = &LogManager::getInstance();               // ✅ 전역 (수정)
             
             loadCacheConfiguration();
             if (logger_) {
@@ -98,26 +109,31 @@ public:
     }
     
     virtual std::optional<EntityType> findById(int id) {
+        (void)id;
         if (logger_) logger_->Error(repository_name_ + "::findById() - Not implemented");
         return std::nullopt;
     }
     
     virtual bool save(EntityType& entity) {
+        (void)entity;
         if (logger_) logger_->Error(repository_name_ + "::save() - Not implemented");
         return false;
     }
     
     virtual bool update(const EntityType& entity) {
+        (void)entity;
         if (logger_) logger_->Error(repository_name_ + "::update() - Not implemented");
         return false;
     }
     
     virtual bool deleteById(int id) {
+        (void)id;
         if (logger_) logger_->Error(repository_name_ + "::deleteById() - Not implemented");
         return false;
     }
     
     virtual bool exists(int id) {
+        (void)id;
         if (logger_) logger_->Error(repository_name_ + "::exists() - Not implemented");
         return false;
     }
@@ -169,11 +185,13 @@ public:
         const std::vector<QueryCondition>& conditions,
         const std::optional<OrderBy>& order_by = std::nullopt,
         const std::optional<Pagination>& pagination = std::nullopt) {
+        (void)conditions; (void)order_by; (void)pagination;
         if (logger_) logger_->Error(repository_name_ + "::findByConditions() - Not implemented");
         return {};
     }
     
     virtual int countByConditions(const std::vector<QueryCondition>& conditions) {
+        (void)conditions;
         if (logger_) logger_->Error(repository_name_ + "::countByConditions() - Not implemented");
         return 0;
     }
@@ -308,16 +326,16 @@ protected:
 
 protected:
     // =======================================================================
-    // 파생 클래스에서 접근 가능한 멤버들
+    // ✅ 멤버 변수들 (모두 전역 네임스페이스)
     // =======================================================================
     
     std::string repository_name_;
     bool enable_bulk_optimization_;
     
-    // 의존성들 (파생 클래스에서 접근 가능)
-    PulseOne::Database::DatabaseManager* db_manager_;
-    PulseOne::ConfigManager* config_manager_;
-    PulseOne::LogManager* logger_;
+    // ✅ 모든 매니저가 전역 네임스페이스
+    DatabaseManager* db_manager_;           // ✅ 전역
+    ConfigManager* config_manager_;         // ✅ 전역
+    LogManager* logger_;                    // ✅ 전역 (수정)
 };
 
 } // namespace Database

@@ -10,6 +10,8 @@
 
 #include <cstdint>
 
+#include <string>
+#include <vector>
 namespace PulseOne::Enums {
     
     /**

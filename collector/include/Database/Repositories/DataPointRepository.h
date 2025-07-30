@@ -34,11 +34,6 @@ namespace Repositories {
 // 🔥 타입 별칭 정의 수정 - Database 네임스페이스 내에서 직접 사용
 using DataPointEntity = PulseOne::Database::Entities::DataPointEntity;
 
-// 🔥 QueryCondition, OrderBy, Pagination은 같은 네임스페이스에 있으므로 별칭 불필요
-// using QueryCondition = PulseOne::Database::QueryCondition;  ❌ 제거
-// using OrderBy = PulseOne::Database::OrderBy;                ❌ 제거
-// using Pagination = PulseOne::Database::Pagination;          ❌ 제거
-
 /**
  * @brief DataPoint Repository 클래스 (IRepository 상속으로 캐시 자동 획득)
  * 
@@ -54,10 +49,15 @@ public:
     // 생성자 및 소멸자
     // =======================================================================
     
-    /**
-     * @brief 기본 생성자 (IRepository 초기화 포함)
-     */
-    DataPointRepository();
+    DataPointRepository() : IRepository<DataPointEntity>("DataPointRepository") {
+        // 🔥 의존성 초기화를 여기서 호출
+        initializeDependencies();
+        
+        if (logger_) {
+            logger_->Info("🏭 DataPointRepository initialized with IRepository caching system");
+            logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
+        }
+    }
     
     /**
      * @brief 가상 소멸자

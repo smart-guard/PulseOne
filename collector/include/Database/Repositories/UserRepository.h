@@ -23,7 +23,15 @@ public:
     // 생성자 및 소멸자
     // =======================================================================
     
-    UserRepository();
+    UserRepository() : IRepository<UserEntity>("UserRepository") {
+        // 🔥 의존성 초기화를 여기서 호출
+        initializeDependencies();
+        
+        if (logger_) {
+            logger_->Info("🏭 UserRepository initialized with IRepository caching system");
+            logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
+        }
+    }
     virtual ~UserRepository() = default;
     
     // =======================================================================

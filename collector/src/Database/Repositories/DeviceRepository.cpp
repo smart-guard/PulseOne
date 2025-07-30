@@ -15,16 +15,6 @@ namespace Database {
 namespace Repositories{
 
 // =============================================================================
-// 생성자 및 초기화 (IRepository 기반)
-// =============================================================================
-
-DeviceRepository::DeviceRepository()
-    : IRepository<DeviceEntity>("DeviceRepository")  // 🔥 IRepository 초기화로 캐시 자동 설정
-{
-    logger_->Info("🏭 DeviceRepository initialized with IRepository caching enabled");
-}
-
-// =============================================================================
 // IRepository 기본 CRUD 구현 (캐시 자동 적용)
 // =============================================================================
 

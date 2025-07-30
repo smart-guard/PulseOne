@@ -19,34 +19,6 @@ namespace Repositories {
 // 생성자 및 소멸자
 // =============================================================================
 
-CurrentValueRepository::CurrentValueRepository() 
-    : IRepository<CurrentValueEntity>("CurrentValueRepository")
-    , redis_client_(nullptr)
-    , redis_enabled_(false)
-    , redis_prefix_("cv:")
-    , default_ttl_seconds_(300)
-    , periodic_save_thread_(nullptr)
-    , periodic_save_running_(false)
-    , periodic_save_interval_(60)
-    , redis_read_count_(0)
-    , redis_write_count_(0)
-    , db_read_count_(0)
-    , db_write_count_(0)
-    , batch_save_count_(0) {
-    
-    logger_->Info("🗄️ CurrentValueRepository initializing...");
-    
-    // 설정 로드
-    loadConfiguration();
-    
-    // Redis 클라이언트 초기화
-    if (redis_enabled_) {
-        initializeRedisClient();
-    }
-    
-    logger_->Info("✅ CurrentValueRepository initialized");
-}
-
 CurrentValueRepository::~CurrentValueRepository() {
     logger_->Info("🗄️ CurrentValueRepository shutting down...");
     
