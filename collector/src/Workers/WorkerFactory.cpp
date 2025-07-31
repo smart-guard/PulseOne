@@ -526,8 +526,8 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
     device_info.protocol_type = device_entity.getProtocolType();
     
     // ✅ endpoint와 connection_string 필드 사용
-    device_info.endpoint = device_entity.getConnectionString();
-    device_info.connection_string = device_entity.getConnectionString();
+    device_info.endpoint = device_entity.getEndpoint();
+    device_info.connection_string = device_entity.getEndpoint();
     
     // ✅ isEnabled() 메서드 사용
     device_info.is_enabled = device_entity.isEnabled();
