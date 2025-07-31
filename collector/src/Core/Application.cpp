@@ -119,15 +119,19 @@ bool CollectorApplication::InitializeWorkerFactory() {
             logger_->Error("Failed to initialize WorkerFactory");
             return false;
         }
-        
-        // Repository 의존성 주입
-        auto device_repo = repository_factory_->getDeviceRepository();
-        auto datapoint_repo = repository_factory_->getDataPointRepository();
-        auto current_value_repo = repository_factory_->getCurrentValueRepository();
 
-        worker_factory_->SetDeviceRepository(device_repo);
-        worker_factory_->SetDataPointRepository(datapoint_repo);
-        worker_factory_->SetCurrentValueRepository(current_value_repo);
+        auto repo_factory_shared = std::shared_ptr<Database::RepositoryFactory>(
+            repository_factory_, [](Database::RepositoryFactory*){}
+        );
+        worker_factory_->SetRepositoryFactory(repo_factory_shared);
+        // Repository 의존성 주입
+        //auto device_repo = repository_factory_->getDeviceRepository();
+        //auto datapoint_repo = repository_factory_->getDataPointRepository();
+        //auto current_value_repo = repository_factory_->getCurrentValueRepository();
+
+        //worker_factory_->SetDeviceRepository(device_repo);
+        //worker_factory_->SetDataPointRepository(datapoint_repo);
+        //worker_factory_->SetCurrentValueRepository(current_value_repo);
 
         // 🔧 수정: shared_ptr 생성 - 전역 클래스 사용
         auto redis_client_raw = db_manager_->getRedisClient();
@@ -138,7 +142,8 @@ bool CollectorApplication::InitializeWorkerFactory() {
         std::shared_ptr<::InfluxClient> influx_shared(influx_client_raw, [](::InfluxClient*){});
         
         worker_factory_->SetDatabaseClients(redis_shared, influx_shared);
-        
+
+        logger_->Info("✅ WorkerFactory dependencies injected successfully (Hybrid Pattern)");
         return true;
         
     } catch (const std::exception& e) {

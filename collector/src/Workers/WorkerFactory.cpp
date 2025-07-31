@@ -8,6 +8,8 @@
 #include <functional>
 #include <memory>
 
+#include "Database/RepositoryFactory.h"
+
 #ifdef max
 #undef max
 #endif
@@ -127,6 +129,11 @@ bool WorkerFactory::Initialize(::LogManager* logger, ::ConfigManager* config_man
 // =============================================================================
 // 의존성 주입 메서드들
 // =============================================================================
+void WorkerFactory::SetRepositoryFactory(std::shared_ptr<Database::RepositoryFactory> repo_factory) {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    repo_factory_ = repo_factory;
+    logger_->Info("✅ RepositoryFactory injected into WorkerFactory");
+}
 
 void WorkerFactory::SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo) {
     std::lock_guard<std::mutex> lock(factory_mutex_);
@@ -287,8 +294,8 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
 }
 
 std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorkerById(int device_id) {
-    if (!device_repo_) {
-        logger_->Error("DeviceRepository not set");
+    if (!repo_factory_) {
+        logger_->Error("RepositoryFactory not set");
         return nullptr;
     }
     
@@ -314,18 +321,24 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWor
 std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWorkers(int /* tenant_id */) {
     std::vector<std::unique_ptr<BaseDeviceWorker>> workers;
     
-    if (!device_repo_) {
-        logger_->Error("DeviceRepository not set");
+    std::shared_ptr<Database::Repositories::DeviceRepository> device_repo;
+    if (repo_factory_) {
+        device_repo = repo_factory_->getDeviceRepository();
+    } else if (device_repo_) {
+        device_repo = device_repo_;
+    } else {
+        logger_->Error("No DeviceRepository available (neither RepositoryFactory nor individual repo)");
         return workers;
     }
-    
+
     try {
         logger_->Info("🏭 Creating workers for all active devices");
         
-        auto devices = device_repo_->findAll();
+        // 🔧 수정: device_repo_ → device_repo
+        auto devices = device_repo->findAll();
         
         for (const auto& device : devices) {
-            if (device.isEnabled()) {  // 🔧 수정: getIsEnabled() → isEnabled()
+            if (device.isEnabled()) {
                 auto worker = CreateWorker(device);
                 if (worker) {
                     workers.push_back(std::move(worker));
@@ -335,7 +348,7 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWor
             }
         }
         
-        logger_->Info("✅ Created " + std::to_string(workers.size()) + " workers from " + 
+        logger_->Info("✅ Created " + std::to_string(workers.size()) + " workers from " +
                      std::to_string(devices.size()) + " devices");
         
         return workers;
@@ -351,8 +364,13 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByPro
     
     std::vector<std::unique_ptr<BaseDeviceWorker>> workers;
     
-    if (!device_repo_) {
-        logger_->Error("DeviceRepository not set");
+    std::shared_ptr<Database::Repositories::DeviceRepository> device_repo;
+    if (repo_factory_) {
+        device_repo = repo_factory_->getDeviceRepository();
+    } else if (device_repo_) {
+        device_repo = device_repo_;
+    } else {
+        logger_->Error("No DeviceRepository available (neither RepositoryFactory nor individual repo)");
         return workers;
     }
     
@@ -522,27 +540,39 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
 // =============================================================================
 
 std::vector<PulseOne::Structs::DataPoint> WorkerFactory::LoadDataPointsForDevice(int device_id) const {
-    if (!datapoint_repo_) {
-        logger_->Error("DataPointRepository not set");
-        return {};
+    // 🔥 RepositoryFactory 우선 사용, fallback으로 기존 방식
+    if (repo_factory_) {
+        try {
+            logger_->Debug("🔍 Loading DataPoints via RepositoryFactory for device ID: " + std::to_string(device_id));
+            
+            auto datapoint_repo = repo_factory_->getDataPointRepository();
+            auto data_points = datapoint_repo->getDataPointsWithCurrentValues(device_id, true);
+            
+            logger_->Info("✅ Loaded " + std::to_string(data_points.size()) + 
+                         " complete data points via RepositoryFactory");
+            
+            return data_points;
+            
+        } catch (const std::exception& e) {
+            logger_->Warn("RepositoryFactory failed, falling back to individual repos: " + std::string(e.what()));
+        }
     }
     
-    try {
-        logger_->Debug("🔍 Loading DataPoints for device ID: " + std::to_string(device_id));
-        
-        // ✅ 모든 로직을 DataPointRepository에 완전 위임
-        auto data_points = datapoint_repo_->getDataPointsWithCurrentValues(device_id, true);
-        
-        logger_->Info("✅ Loaded " + std::to_string(data_points.size()) + 
-                     " complete data points for device: " + std::to_string(device_id));
-        
-        return data_points;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Exception in LoadDataPointsForDevice: " + std::string(e.what()));
-        return {};
+    // 🔥 기존 방식 fallback (있다면)
+    if (datapoint_repo_) {
+        try {
+            logger_->Debug("🔍 Loading DataPoints via individual repository for device ID: " + std::to_string(device_id));
+            auto data_points = datapoint_repo_->getDataPointsWithCurrentValues(device_id, true);
+            return data_points;
+        } catch (const std::exception& e) {
+            logger_->Error("Individual repository also failed: " + std::string(e.what()));
+        }
     }
+    
+    logger_->Error("No DataPoint repository available");
+    return {};
 }
+
 
 // =============================================================================
 // 팩토리 정보 조회 메서드들
