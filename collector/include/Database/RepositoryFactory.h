@@ -24,6 +24,7 @@ namespace Database {
 namespace Repositories {
     class DeviceRepository;
     class DataPointRepository;
+    class DeviceSettingsRepository;
     class CurrentValueRepository;
     class VirtualPointRepository;
     class SiteRepository;
@@ -78,6 +79,15 @@ public:
         creation_count_.fetch_add(1);
         return data_point_repository_;
     }
+
+    std::shared_ptr<Repositories::DeviceSettingsRepository> getDeviceSettingsRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return device_settings_repository_;  // 🆕 실제 멤버 변수 사용
+    }  
     
     std::shared_ptr<Repositories::CurrentValueRepository> getCurrentValueRepository() {
         std::lock_guard<std::mutex> lock(factory_mutex_);
@@ -177,6 +187,7 @@ private:
     // Repository 인스턴스들 (shared_ptr로 직접 관리)
     std::shared_ptr<Repositories::DeviceRepository> device_repository_;
     std::shared_ptr<Repositories::DataPointRepository> data_point_repository_;
+    std::shared_ptr<Repositories::DeviceSettingsRepository> device_settings_repository_;
     std::shared_ptr<Repositories::UserRepository> user_repository_;
     std::shared_ptr<Repositories::TenantRepository> tenant_repository_;
     std::shared_ptr<Repositories::AlarmConfigRepository> alarm_config_repository_;

@@ -15,6 +15,7 @@
 // ✅ Repository 구현 클래스들 include (전방 선언 해결)
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/DeviceSettingsRepository.h"
 #include "Database/Repositories/UserRepository.h"
 #include "Database/Repositories/TenantRepository.h"
 #include "Database/Repositories/AlarmConfigRepository.h"
@@ -147,6 +148,7 @@ void RepositoryFactory::shutdown() {
         site_repository_.reset();
         virtual_point_repository_.reset();
         current_value_repository_.reset();
+        device_settings_repository_.reset(); 
         
         initialized_.store(false);
         logger_->Info("✅ RepositoryFactory shutdown completed");
@@ -224,6 +226,12 @@ bool RepositoryFactory::createRepositoryInstances() {
         device_repository_ = std::make_shared<Repositories::DeviceRepository>();
         if (!device_repository_) {
             logger_->Error("Failed to create DeviceRepository");
+            return false;
+        }
+
+        device_settings_repository_ = std::make_shared<Repositories::DeviceSettingsRepository>();  // 🆕 이 줄 추가
+        if (!device_settings_repository_) {
+            logger_->Error("Failed to create DeviceSettingsRepository");
             return false;
         }
         
