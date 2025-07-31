@@ -5,11 +5,18 @@ FROM gcc:12
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libpqxx-dev libpq-dev libsqlite3-dev \
+    sqlite3 sqlite3-doc \
     curl git nodejs npm pkg-config \
-    wget unzip \
+    wget unzip vim nano \
     libssl-dev uuid-dev \
     autotools-dev autoconf automake libtool \
+    tree htop procps \
     && rm -rf /var/lib/apt/lists/*
+
+# SQLite 설치 확인
+RUN echo "🔍 SQLite 설치 확인:" && \
+    sqlite3 --version && \
+    echo "✅ SQLite3 설치 완료"
 
 # =============================================================================
 # 필수 라이브러리들 설치 (안정적인 버전)
@@ -454,7 +461,7 @@ RUN echo "🔨 Compiling BACnet stub library..." && \
     echo "✅ BACnet stub library created: libbacnet_stub.so" && \
     ls -la libbacnet_stub.so
 
-    
+
 # libmodbus pkg-config 파일 생성
 RUN echo "📝 Creating other pkg-config files..." && \
     cat > /usr/local/lib/pkgconfig/libmodbus.pc << 'EOF'

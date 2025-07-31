@@ -384,6 +384,7 @@ private:
      * @return LIMIT 절 문자열
      */
     std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
+    std::string buildWhereClauseWithAlias(const std::vector<QueryCondition>& conditions);
     
     /**
      * @brief PostgreSQL 쿼리 실행
