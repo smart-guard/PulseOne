@@ -946,6 +946,10 @@ std::string TenantRepository::formatTimestamp(const std::chrono::system_clock::t
     return oss.str();
 }
 
+std::map<std::string, int> TenantRepository::getCacheStats() const {
+    return IRepository<TenantEntity>::getCacheStats();
+}
+
 } // namespace Repositories
 } // namespace Database
 } // namespace PulseOne

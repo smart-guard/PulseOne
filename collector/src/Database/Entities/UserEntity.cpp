@@ -1,33 +1,39 @@
-// =============================================================================
-// collector/src/Database/Entities/UserEntity.cpp
-// PulseOne 사용자 엔티티 구현 - DeviceEntity 패턴 100% 준수
-// =============================================================================
+/**
+ * @file UserEntity.cpp
+ * @brief PulseOne UserEntity 구현 (DeviceEntity 패턴 100% 적용)
+ * @author PulseOne Development Team
+ * @date 2025-07-31
+ * 
+ * 🎯 DeviceEntity 패턴 완전 적용:
+ * - 헤더에서는 선언만, CPP에서 Repository 호출
+ * - Repository include는 CPP에서만 (순환 참조 방지)
+ * - BaseEntity 순수 가상 함수 구현만 포함
+ * - 모든 DB 작업은 Repository로 위임
+ */
 
 #include "Database/Entities/UserEntity.h"
-#include "Common/Constants.h"
-#include <sstream>
-#include <iomanip>
+#include "Database/RepositoryFactory.h"
+#include "Database/Repositories/UserRepository.h"
 #include <algorithm>
-#include <crypt.h>
 #include <random>
-
+#include <functional>
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
 
 // =============================================================================
-// 생성자 및 소멸자
+// 생성자 구현 (CPP에서 구현하여 중복 제거)
 // =============================================================================
 
 UserEntity::UserEntity() 
     : BaseEntity<UserEntity>()
+    , tenant_id_(0)
     , username_("")
     , email_("")
     , password_hash_("")
     , full_name_("")
     , role_("viewer")
-    , tenant_id_(0)
     , is_enabled_(true)
     , phone_number_("")
     , department_("")
@@ -35,61 +41,53 @@ UserEntity::UserEntity()
     , last_login_at_(std::chrono::system_clock::now())
     , login_count_(0)
     , notes_("")
-    , password_salt_("") {
+    , password_salt_("")
+    , created_at_(std::chrono::system_clock::now())
+    , updated_at_(std::chrono::system_clock::now()) {
 }
 
 UserEntity::UserEntity(int user_id) 
-    : BaseEntity<UserEntity>(user_id)
-    , username_("")
-    , email_("")
-    , password_hash_("")
-    , full_name_("")
-    , role_("viewer")
-    , tenant_id_(0)
-    , is_enabled_(true)
-    , phone_number_("")
-    , department_("")
-    , permissions_()
-    , last_login_at_(std::chrono::system_clock::now())
-    , login_count_(0)
-    , notes_("")
-    , password_salt_("") {
+    : UserEntity() {  // 위임 생성자 사용
+    setId(user_id);
 }
 
 // =============================================================================
-// BaseEntity 순수 가상 함수 구현 (DeviceEntity 패턴)
+// BaseEntity 순수 가상 함수 구현 (Repository 활용)
 // =============================================================================
 
 bool UserEntity::loadFromDatabase() {
-    if (id_ <= 0) {
-        logger_->Error("UserEntity::loadFromDatabase - Invalid user ID: " + std::to_string(id_));
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("UserEntity::loadFromDatabase - Invalid user ID: " + std::to_string(getId()));
+        }
         markError();
         return false;
     }
     
     try {
-        std::string query = "SELECT * FROM " + getTableName() + " WHERE id = " + std::to_string(id_);
-        
-        // 🔥 DeviceEntity와 동일한 방식으로 executeUnifiedQuery 사용
-        auto results = executeUnifiedQuery(query);
-        
-        if (results.empty()) {
-            logger_->Warn("UserEntity::loadFromDatabase - User not found: " + std::to_string(id_));
-            return false;
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getUserRepository();
+        if (repo) {
+            auto loaded = repo->findById(getId());
+            if (loaded.has_value()) {
+                *this = loaded.value();
+                markSaved();
+                if (logger_) {
+                    logger_->Info("UserEntity::loadFromDatabase - Loaded user: " + username_);
+                }
+                return true;
+            }
         }
         
-        // 첫 번째 행을 엔티티로 변환
-        bool success = mapRowToEntity(results[0]);
-        
-        if (success) {
-            markSaved();  // DeviceEntity 패턴
-            logger_->Info("UserEntity::loadFromDatabase - Loaded user: " + username_);
+        if (logger_) {
+            logger_->Warn("UserEntity::loadFromDatabase - User not found: " + std::to_string(getId()));
         }
-        
-        return success;
+        return false;
         
     } catch (const std::exception& e) {
-        logger_->Error("UserEntity::loadFromDatabase failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("UserEntity::loadFromDatabase failed: " + std::string(e.what()));
+        }
         markError();
         return false;
     }
@@ -97,83 +95,105 @@ bool UserEntity::loadFromDatabase() {
 
 bool UserEntity::saveToDatabase() {
     if (!isValid()) {
-        logger_->Error("UserEntity::saveToDatabase - Invalid user data");
+        if (logger_) {
+            logger_->Error("UserEntity::saveToDatabase - Invalid user data");
+        }
         return false;
     }
     
     try {
-        std::string sql = buildInsertSQL();  // DeviceEntity 패턴
-        
-        bool success = executeUnifiedNonQuery(sql);
-        
-        if (success) {
-            // SQLite인 경우 마지막 INSERT ID 조회
-            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
-            if (db_type == "SQLITE") {
-                auto results = executeUnifiedQuery("SELECT last_insert_rowid() as id");
-                if (!results.empty()) {
-                    id_ = std::stoi(results[0]["id"]);
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getUserRepository();
+        if (repo) {
+            // Repository의 save 메서드가 ID를 자동으로 설정함
+            bool success = repo->save(*this);
+            
+            if (success) {
+                markSaved();
+                if (logger_) {
+                    logger_->Info("UserEntity::saveToDatabase - Saved user: " + username_);
                 }
             }
             
-            markSaved();  // DeviceEntity 패턴
-            logger_->Info("UserEntity::saveToDatabase - Saved user: " + username_);
+            return success;
         }
         
-        return success;
+        return false;
         
     } catch (const std::exception& e) {
-        logger_->Error("UserEntity::saveToDatabase failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("UserEntity::saveToDatabase failed: " + std::string(e.what()));
+        }
         markError();
         return false;
     }
 }
 
 bool UserEntity::updateToDatabase() {
-    if (id_ <= 0 || !isValid()) {
-        logger_->Error("UserEntity::updateToDatabase - Invalid user data or ID");
+    if (getId() <= 0 || !isValid()) {
+        if (logger_) {
+            logger_->Error("UserEntity::updateToDatabase - Invalid user data or ID");
+        }
         return false;
     }
     
     try {
-        std::string sql = buildUpdateSQL();  // DeviceEntity 패턴
-        
-        bool success = executeUnifiedNonQuery(sql);
-        
-        if (success) {
-            markSaved();  // DeviceEntity 패턴
-            logger_->Info("UserEntity::updateToDatabase - Updated user: " + username_);
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getUserRepository();
+        if (repo) {
+            bool success = repo->update(*this);
+            
+            if (success) {
+                markSaved();
+                if (logger_) {
+                    logger_->Info("UserEntity::updateToDatabase - Updated user: " + username_);
+                }
+            }
+            
+            return success;
         }
         
-        return success;
+        return false;
         
     } catch (const std::exception& e) {
-        logger_->Error("UserEntity::updateToDatabase failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("UserEntity::updateToDatabase failed: " + std::string(e.what()));
+        }
         markError();
         return false;
     }
 }
 
 bool UserEntity::deleteFromDatabase() {
-    if (id_ <= 0) {
-        logger_->Error("UserEntity::deleteFromDatabase - Invalid user ID");
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("UserEntity::deleteFromDatabase - Invalid user ID");
+        }
         return false;
     }
     
     try {
-        std::string sql = "DELETE FROM " + getTableName() + " WHERE id = " + std::to_string(id_);
-        
-        bool success = executeUnifiedNonQuery(sql);
-        
-        if (success) {
-            markDeleted();  // DeviceEntity 패턴
-            logger_->Info("UserEntity::deleteFromDatabase - Deleted user: " + username_);
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getUserRepository();
+        if (repo) {
+            bool success = repo->deleteById(getId());
+            
+            if (success) {
+                markDeleted();
+                if (logger_) {
+                    logger_->Info("UserEntity::deleteFromDatabase - Deleted user: " + username_);
+                }
+            }
+            
+            return success;
         }
         
-        return success;
+        return false;
         
     } catch (const std::exception& e) {
-        logger_->Error("UserEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("UserEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        }
         markError();
         return false;
     }
@@ -207,87 +227,7 @@ bool UserEntity::isValid() const {
 }
 
 // =============================================================================
-// JSON 직렬화 (DataPointEntity 패턴)
-// =============================================================================
-
-json UserEntity::toJson() const {
-    json j;
-    
-    try {
-        // 기본 정보
-        j["id"] = id_;
-        j["username"] = username_;
-        j["email"] = email_;
-        j["full_name"] = full_name_;
-        j["role"] = role_;
-        j["tenant_id"] = tenant_id_;
-        j["is_enabled"] = is_enabled_;
-        
-        // 연락처 정보
-        j["phone_number"] = phone_number_;
-        j["department"] = department_;
-        j["permissions"] = permissions_;
-        
-        // 통계 정보
-        j["login_count"] = login_count_;
-        j["last_login_at"] = timestampToString(last_login_at_);
-        
-        // 메타데이터
-        j["notes"] = notes_;
-        
-        // 시간 정보 (DeviceEntity 패턴)
-        j["created_at"] = timestampToString(created_at_);
-        j["updated_at"] = timestampToString(updated_at_);
-        
-        // 보안상 비밀번호 해시는 제외
-        
-    } catch (const std::exception& e) {
-        logger_->Error("UserEntity::toJson failed: " + std::string(e.what()));
-    }
-    
-    return j;
-}
-
-bool UserEntity::fromJson(const json& data) {
-    try {
-        if (data.contains("id")) id_ = data["id"];
-        if (data.contains("username")) username_ = data["username"];
-        if (data.contains("email")) email_ = data["email"];
-        if (data.contains("full_name")) full_name_ = data["full_name"];
-        if (data.contains("role")) role_ = data["role"];
-        if (data.contains("tenant_id")) tenant_id_ = data["tenant_id"];
-        if (data.contains("is_enabled")) is_enabled_ = data["is_enabled"];
-        if (data.contains("phone_number")) phone_number_ = data["phone_number"];
-        if (data.contains("department")) department_ = data["department"];
-        if (data.contains("permissions")) permissions_ = data["permissions"];
-        if (data.contains("login_count")) login_count_ = data["login_count"];
-        if (data.contains("notes")) notes_ = data["notes"];
-        
-        markModified();
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("UserEntity::fromJson failed: " + std::string(e.what()));
-        markError();
-        return false;
-    }
-}
-
-std::string UserEntity::toString() const {
-    std::stringstream ss;
-    ss << "UserEntity{";
-    ss << "id=" << id_;
-    ss << ", username='" << username_ << "'";
-    ss << ", email='" << email_ << "'";
-    ss << ", role='" << role_ << "'";
-    ss << ", tenant_id=" << tenant_id_;
-    ss << ", enabled=" << (is_enabled_ ? "true" : "false");
-    ss << "}";
-    return ss.str();
-}
-
-// =============================================================================
-// 비즈니스 로직 메서드들
+// 비즈니스 로직 메서드들 (Repository 패턴 통합)
 // =============================================================================
 
 void UserEntity::setPassword(const std::string& password) {
@@ -307,6 +247,7 @@ bool UserEntity::verifyPassword(const std::string& password) const {
 void UserEntity::updateLastLogin() {
     last_login_at_ = std::chrono::system_clock::now();
     login_count_++;
+    updated_at_ = std::chrono::system_clock::now();
     markModified();
 }
 
@@ -357,7 +298,7 @@ json UserEntity::extractConfiguration() const {
 
 json UserEntity::getAuthContext() const {
     json context;
-    context["user_id"] = id_;
+    context["user_id"] = getId();
     context["username"] = username_;
     context["role"] = role_;
     context["tenant_id"] = tenant_id_;
@@ -369,7 +310,7 @@ json UserEntity::getAuthContext() const {
 
 json UserEntity::getProfileInfo() const {
     json profile;
-    profile["user_id"] = id_;
+    profile["user_id"] = getId();
     profile["username"] = username_;
     profile["email"] = email_;
     profile["full_name"] = full_name_;
@@ -385,101 +326,13 @@ json UserEntity::getProfileInfo() const {
 // 내부 헬퍼 메서드들 (DeviceEntity 패턴)
 // =============================================================================
 
-bool UserEntity::mapRowToEntity(const std::map<std::string, std::string>& row) {
-    try {
-        if (row.count("id")) id_ = std::stoi(row.at("id"));
-        if (row.count("username")) username_ = row.at("username");
-        if (row.count("email")) email_ = row.at("email");
-        if (row.count("password_hash")) password_hash_ = row.at("password_hash");
-        if (row.count("full_name")) full_name_ = row.at("full_name");
-        if (row.count("role")) role_ = row.at("role");
-        if (row.count("tenant_id")) tenant_id_ = std::stoi(row.at("tenant_id"));
-        if (row.count("is_enabled")) is_enabled_ = (row.at("is_enabled") == "1" || row.at("is_enabled") == "true");
-        if (row.count("phone_number")) phone_number_ = row.at("phone_number");
-        if (row.count("department")) department_ = row.at("department");
-        if (row.count("login_count")) login_count_ = std::stoi(row.at("login_count"));
-        if (row.count("notes")) notes_ = row.at("notes");
-        
-        // 권한은 JSON 배열로 저장되어 있다고 가정
-        if (row.count("permissions")) {
-            try {
-                json perms_json = json::parse(row.at("permissions"));
-                permissions_ = perms_json.get<std::vector<std::string>>();
-            } catch (...) {
-                permissions_.clear();
-            }
-        }
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("UserEntity::mapRowToEntity failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::string UserEntity::buildInsertSQL() const {
-    std::stringstream ss;
-    ss << "INSERT INTO " << getTableName() << " ";
-    ss << "(username, email, password_hash, full_name, role, tenant_id, is_enabled, ";
-    ss << "phone_number, department, permissions, login_count, notes, created_at, updated_at) ";
-    ss << "VALUES ('";
-    ss << username_ << "', '";
-    ss << email_ << "', '";
-    ss << password_hash_ << "', '";
-    ss << full_name_ << "', '";
-    ss << role_ << "', ";
-    ss << tenant_id_ << ", ";
-    ss << (is_enabled_ ? 1 : 0) << ", '";
-    ss << phone_number_ << "', '";
-    ss << department_ << "', '";
-    
-    // 권한을 JSON 배열로 직렬화
-    json perms_json = permissions_;
-    ss << perms_json.dump() << "', ";
-    ss << login_count_ << ", '";
-    ss << notes_ << "', '";
-    ss << timestampToString(created_at_) << "', '";
-    ss << timestampToString(updated_at_) << "')";
-    
-    return ss.str();
-}
-
-std::string UserEntity::buildUpdateSQL() const {
-    std::stringstream ss;
-    ss << "UPDATE " << getTableName() << " SET ";
-    ss << "username = '" << username_ << "', ";
-    ss << "email = '" << email_ << "', ";
-    ss << "password_hash = '" << password_hash_ << "', ";
-    ss << "full_name = '" << full_name_ << "', ";
-    ss << "role = '" << role_ << "', ";
-    ss << "tenant_id = " << tenant_id_ << ", ";
-    ss << "is_enabled = " << (is_enabled_ ? 1 : 0) << ", ";
-    ss << "phone_number = '" << phone_number_ << "', ";
-    ss << "department = '" << department_ << "', ";
-    
-    json perms_json = permissions_;
-    ss << "permissions = '" << perms_json.dump() << "', ";
-    ss << "login_count = " << login_count_ << ", ";
-    ss << "notes = '" << notes_ << "', ";
-    ss << "updated_at = '" << timestampToString(updated_at_) << "' ";
-    ss << "WHERE id = " << id_;
-    
-    return ss.str();
-}
-
 std::string UserEntity::hashPassword(const std::string& password) const {
     // 간단한 해싱 (실제 환경에서는 bcrypt 사용 권장)
+    // salt 추가로 보안 강화
+    std::string salted_password = password + "pulseone_salt_2025";
     std::hash<std::string> hasher;
-    size_t hashed = hasher(password + "pulseone_salt");
+    size_t hashed = hasher(salted_password);
     return std::to_string(hashed);
-}
-
-std::string UserEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(tp);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return ss.str();
 }
 
 } // namespace Entities

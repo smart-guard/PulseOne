@@ -181,6 +181,20 @@ bool DeviceEntity::updateToDatabase() {
     }
 }
 
+std::string DeviceEntity::dateToString(const std::chrono::system_clock::time_point& date) const {
+    auto time_t = std::chrono::system_clock::to_time_t(date);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d");
+    return ss.str();
+}
+
+std::string DeviceEntity::timestampToString(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

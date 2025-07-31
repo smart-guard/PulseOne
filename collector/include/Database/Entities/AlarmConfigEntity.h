@@ -109,6 +109,7 @@ public:
      * @return 유효하면 true
      */
     bool isValid() const override;
+
     // =======================================================================
     // JSON 직렬화 (BaseEntity 순수 가상 함수)
     // =======================================================================
@@ -311,6 +312,33 @@ public:
      */
     json getAlarmInfo() const;
 
+    // =======================================================================
+    // 🔥 중요: 헬퍼 메서드들 선언 (DeviceEntity 패턴)
+    // =======================================================================
+    
+    /**
+     * @brief 타임스탬프를 문자열로 변환 (DeviceEntity 패턴 필수)
+     * @param tp 타임스탬프
+     * @return 변환된 문자열 (YYYY-MM-DD HH:MM:S 형식)
+     */
+    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
+    
+    // =======================================================================
+    // 🔥 중요: 타임스탬프 접근자 메서드들 (DeviceEntity 패턴)
+    // =======================================================================
+    
+    std::chrono::system_clock::time_point getCreatedAt() const { return created_at_; }
+    void setCreatedAt(const std::chrono::system_clock::time_point& created_at) { 
+        created_at_ = created_at; 
+        markModified();
+    }
+    
+    std::chrono::system_clock::time_point getUpdatedAt() const { return updated_at_; }
+    void setUpdatedAt(const std::chrono::system_clock::time_point& updated_at) { 
+        updated_at_ = updated_at; 
+        markModified();
+    }
+
 private:
     // =======================================================================
     // 멤버 변수들 (DeviceEntity 패턴)
@@ -335,6 +363,10 @@ private:
     bool auto_acknowledge_;         // 자동 확인 여부
     int delay_seconds_;             // 지연 시간 (초)
     std::string message_template_;  // 메시지 템플릿
+    
+    // 🔥 중요: 타임스탬프 멤버 변수들 (DeviceEntity 패턴)
+    std::chrono::system_clock::time_point created_at_;    // 생성 시간
+    std::chrono::system_clock::time_point updated_at_;    // 수정 시간
 
     // =======================================================================
     // 내부 헬퍼 메서드들 (DeviceEntity 패턴)

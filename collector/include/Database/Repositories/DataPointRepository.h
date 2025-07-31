@@ -415,7 +415,7 @@ private:
      * @return 변환된 엔티티
      */
     DataPointEntity mapRowToEntity(const std::map<std::string, std::string>& row);
-    
+    std::map<std::string, std::string> entityToParams(const DataPointEntity& entity);
     /**
      * @brief 여러 행을 엔티티 벡터로 변환
      * @param result 쿼리 결과
