@@ -48,6 +48,13 @@ namespace PulseOne::Enums {
         MAINTENANCE_BLOCKED = 8,     // 🆕 점검으로 인한 차단
         ENGINEER_OVERRIDE = 9        // 🆕 엔지니어 수동 값 설정
     };
+
+    enum class StorageType {
+        IMMEDIATE,          // 즉시 저장
+        ON_CHANGE,          // 값 변경 시 저장
+        PERIODIC,           // 주기적 저장
+        BUFFERED            // 버퍼링 후 저장
+    };
     
     /**
      * @brief 디바이스 연결 상태

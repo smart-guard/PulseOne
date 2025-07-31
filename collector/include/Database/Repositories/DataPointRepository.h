@@ -30,7 +30,7 @@
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
-
+    class CurrentValueRepository;
 // 🔥 타입 별칭 정의 수정 - Database 네임스페이스 내에서 직접 사용
 using DataPointEntity = PulseOne::Database::Entities::DataPointEntity;
 
@@ -291,6 +291,20 @@ public:
      * @return 최근 생성된 데이터포인트 목록
      */
     std::vector<DataPointEntity> findRecentlyCreated(int days = 7);
+ 
+    /**
+     * @brief 현재값이 포함된 완성된 DataPoint 조회 (WorkerFactory 전용)
+     * @param device_id 디바이스 ID
+     * @param enabled_only 활성화된 것만 조회할지 여부 (기본값: true)
+     * @return 현재값이 포함된 완성된 DataPoint 목록
+     */
+    std::vector<PulseOne::Structs::DataPoint> getDataPointsWithCurrentValues(int device_id, bool enabled_only = true);
+    
+    /**
+     * @brief CurrentValueRepository 의존성 주입
+     * @param current_value_repo CurrentValueRepository 인스턴스
+     */
+    void setCurrentValueRepository(std::shared_ptr<CurrentValueRepository> current_value_repo);
 
     // =======================================================================
     // 관계 데이터 사전 로딩 (N+1 문제 해결)
@@ -417,7 +431,8 @@ private:
      * @return 태그 목록
      */
     std::vector<std::string> parseTagsFromString(const std::string& tags_str);
-
+    // CurrentValueRepository 의존성
+    std::shared_ptr<CurrentValueRepository> current_value_repo_;
 };
 
 } // namespace Repositories

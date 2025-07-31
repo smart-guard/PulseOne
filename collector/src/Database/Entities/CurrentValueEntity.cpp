@@ -23,11 +23,11 @@ CurrentValueEntity::CurrentValueEntity()
     , virtual_point_id_(0)
     , value_(0.0)
     , raw_value_(0.0)
-    , quality_(DataQuality::GOOD)
+    , quality_(PulseOne::Enums::DataQuality::GOOD)
     , timestamp_(std::chrono::system_clock::now())
     , redis_key_("")
     , is_from_redis_(false)
-    , storage_type_(StorageType::PERIODIC)
+    , storage_type_(PulseOne::Enums::StorageType::PERIODIC)
     , last_save_time_(std::chrono::system_clock::time_point::min())
     , last_saved_value_(0.0) {
 }
@@ -38,11 +38,11 @@ CurrentValueEntity::CurrentValueEntity(int id)
     , virtual_point_id_(0)
     , value_(0.0)
     , raw_value_(0.0)
-    , quality_(DataQuality::GOOD)
+    , quality_(PulseOne::Enums::DataQuality::GOOD)
     , timestamp_(std::chrono::system_clock::now())
     , redis_key_("")
     , is_from_redis_(false)
-    , storage_type_(StorageType::PERIODIC)
+    , storage_type_(PulseOne::Enums::StorageType::PERIODIC)
     , last_save_time_(std::chrono::system_clock::time_point::min())
     , last_saved_value_(0.0) {
 }
@@ -53,11 +53,11 @@ CurrentValueEntity::CurrentValueEntity(int data_point_id, double value)
     , virtual_point_id_(0)
     , value_(value)
     , raw_value_(value)
-    , quality_(DataQuality::GOOD)
+    , quality_(PulseOne::Enums::DataQuality::GOOD)
     , timestamp_(std::chrono::system_clock::now())
     , redis_key_("")
     , is_from_redis_(false)
-    , storage_type_(StorageType::PERIODIC)
+    , storage_type_(PulseOne::Enums::StorageType::PERIODIC)
     , last_save_time_(std::chrono::system_clock::time_point::min())
     , last_saved_value_(0.0) {
     
@@ -306,8 +306,7 @@ std::string CurrentValueEntity::getQualityString() const {
 }
 
 void CurrentValueEntity::setQualityFromString(const std::string& quality_str) {
-    quality_ = stringToQuality(quality_str);
-    markModified();
+    setQuality(stringToQuality(quality_str));
 }
 
 // =============================================================================
@@ -386,7 +385,7 @@ bool CurrentValueEntity::needsPeriodicSave(int interval_seconds) const {
 }
 
 bool CurrentValueEntity::needsOnChangeSave(double deadband) const {
-    if (storage_type_ != StorageType::ON_CHANGE) return false;
+    if (storage_type_ != PulseOne::Enums::StorageType::ON_CHANGE) return false;
     
     double diff = std::abs(value_ - last_saved_value_);
     return diff > deadband;
@@ -467,49 +466,54 @@ bool CurrentValueEntity::hasChangedFrom(const CurrentValueEntity& other) const {
 // 정적 헬퍼 메서드들
 // =============================================================================
 
-std::string CurrentValueEntity::qualityToString(DataQuality quality) {
+std::string CurrentValueEntity::qualityToString(PulseOne::Enums::DataQuality quality) {
     switch (quality) {
-        case DataQuality::GOOD: return "GOOD";
-        case DataQuality::BAD: return "BAD";
-        case DataQuality::UNCERTAIN: return "UNCERTAIN";
-        case DataQuality::TIMEOUT: return "TIMEOUT";
-        case DataQuality::INVALID: return "INVALID";
-        case DataQuality::OVERRANGE: return "OVERRANGE";
-        case DataQuality::UNDERRANGE: return "UNDERRANGE";
-        case DataQuality::OFFLINE: return "OFFLINE";
+        case PulseOne::Enums::DataQuality::GOOD: return "GOOD";
+        case PulseOne::Enums::DataQuality::BAD: return "BAD";
+        case PulseOne::Enums::DataQuality::UNCERTAIN: return "UNCERTAIN";
+        case PulseOne::Enums::DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
+        case PulseOne::Enums::DataQuality::SCAN_DELAYED: return "SCAN_DELAYED";
+        case PulseOne::Enums::DataQuality::UNDER_MAINTENANCE: return "UNDER_MAINTENANCE";
+        case PulseOne::Enums::DataQuality::STALE_DATA: return "STALE_DATA";
+        case PulseOne::Enums::DataQuality::VERY_STALE_DATA: return "VERY_STALE_DATA";
+        case PulseOne::Enums::DataQuality::MAINTENANCE_BLOCKED: return "MAINTENANCE_BLOCKED";
+        case PulseOne::Enums::DataQuality::ENGINEER_OVERRIDE: return "ENGINEER_OVERRIDE";
         default: return "UNKNOWN";
     }
 }
 
-CurrentValueEntity::DataQuality CurrentValueEntity::stringToQuality(const std::string& quality_str) {
-    if (quality_str == "GOOD") return DataQuality::GOOD;
-    if (quality_str == "BAD") return DataQuality::BAD;
-    if (quality_str == "UNCERTAIN") return DataQuality::UNCERTAIN;
-    if (quality_str == "TIMEOUT") return DataQuality::TIMEOUT;
-    if (quality_str == "INVALID") return DataQuality::INVALID;
-    if (quality_str == "OVERRANGE") return DataQuality::OVERRANGE;
-    if (quality_str == "UNDERRANGE") return DataQuality::UNDERRANGE;
-    if (quality_str == "OFFLINE") return DataQuality::OFFLINE;
-    return DataQuality::GOOD; // 기본값
+PulseOne::Enums::DataQuality CurrentValueEntity::stringToQuality(const std::string& quality_str) {
+    if (quality_str == "GOOD") return PulseOne::Enums::DataQuality::GOOD;
+    if (quality_str == "BAD") return PulseOne::Enums::DataQuality::BAD;
+    if (quality_str == "UNCERTAIN") return PulseOne::Enums::DataQuality::UNCERTAIN;
+    if (quality_str == "NOT_CONNECTED") return PulseOne::Enums::DataQuality::NOT_CONNECTED;
+    if (quality_str == "SCAN_DELAYED") return PulseOne::Enums::DataQuality::SCAN_DELAYED;
+    if (quality_str == "UNDER_MAINTENANCE") return PulseOne::Enums::DataQuality::UNDER_MAINTENANCE;
+    if (quality_str == "STALE_DATA") return PulseOne::Enums::DataQuality::STALE_DATA;
+    if (quality_str == "VERY_STALE_DATA") return PulseOne::Enums::DataQuality::VERY_STALE_DATA;
+    if (quality_str == "MAINTENANCE_BLOCKED") return PulseOne::Enums::DataQuality::MAINTENANCE_BLOCKED;
+    if (quality_str == "ENGINEER_OVERRIDE") return PulseOne::Enums::DataQuality::ENGINEER_OVERRIDE;
+    return PulseOne::Enums::DataQuality::BAD;  // 기본값
 }
 
-std::string CurrentValueEntity::storageTypeToString(StorageType type) {
+std::string CurrentValueEntity::storageTypeToString(PulseOne::Enums::StorageType type) {
     switch (type) {
-        case StorageType::IMMEDIATE: return "IMMEDIATE";
-        case StorageType::ON_CHANGE: return "ON_CHANGE";
-        case StorageType::PERIODIC: return "PERIODIC";
-        case StorageType::BUFFERED: return "BUFFERED";
-        default: return "PERIODIC";
+        case PulseOne::Enums::StorageType::IMMEDIATE: return "IMMEDIATE";
+        case PulseOne::Enums::StorageType::ON_CHANGE: return "ON_CHANGE";
+        case PulseOne::Enums::StorageType::PERIODIC: return "PERIODIC";
+        case PulseOne::Enums::StorageType::BUFFERED: return "BUFFERED";
+        default: return "UNKNOWN";
     }
 }
 
-CurrentValueEntity::StorageType CurrentValueEntity::stringToStorageType(const std::string& type_str) {
-    if (type_str == "IMMEDIATE") return StorageType::IMMEDIATE;
-    if (type_str == "ON_CHANGE") return StorageType::ON_CHANGE;
-    if (type_str == "PERIODIC") return StorageType::PERIODIC;
-    if (type_str == "BUFFERED") return StorageType::BUFFERED;
-    return StorageType::PERIODIC; // 기본값
+PulseOne::Enums::StorageType CurrentValueEntity::stringToStorageType(const std::string& type_str) {
+    if (type_str == "IMMEDIATE") return PulseOne::Enums::StorageType::IMMEDIATE;
+    if (type_str == "ON_CHANGE") return PulseOne::Enums::StorageType::ON_CHANGE;
+    if (type_str == "PERIODIC") return PulseOne::Enums::StorageType::PERIODIC;
+    if (type_str == "BUFFERED") return PulseOne::Enums::StorageType::BUFFERED;
+    return PulseOne::Enums::StorageType::PERIODIC;  // 기본값
 }
+
 
 } // namespace Entities
 } // namespace Database

@@ -123,10 +123,12 @@ bool CollectorApplication::InitializeWorkerFactory() {
         // Repository 의존성 주입
         auto device_repo = repository_factory_->getDeviceRepository();
         auto datapoint_repo = repository_factory_->getDataPointRepository();
-        
+        auto current_value_repo = repository_factory_->getCurrentValueRepository();
+
         worker_factory_->SetDeviceRepository(device_repo);
         worker_factory_->SetDataPointRepository(datapoint_repo);
-        
+        worker_factory_->SetCurrentValueRepository(current_value_repo);
+
         // 🔧 수정: shared_ptr 생성 - 전역 클래스 사용
         auto redis_client_raw = db_manager_->getRedisClient();
         auto influx_client_raw = db_manager_->getInfluxClient();

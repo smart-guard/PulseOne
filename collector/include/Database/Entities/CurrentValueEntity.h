@@ -22,7 +22,7 @@
  */
 
 #include "Database/Entities/BaseEntity.h"
-#include "Common/UnifiedCommonTypes.h"
+#include "Common/Enums.h"
 #include <string>
 #include <chrono>
 #include <optional>
@@ -36,32 +36,6 @@ namespace Entities {
  */
 class CurrentValueEntity : public BaseEntity<CurrentValueEntity> {
 public:
-    // =======================================================================
-    // 데이터 품질 열거형 (산업 표준)
-    // =======================================================================
-    
-    enum class DataQuality {
-        GOOD,               // 정상 데이터
-        BAD,                // 불량 데이터 (통신 오류)
-        UNCERTAIN,          // 불확실한 데이터 (센서 문제)
-        TIMEOUT,            // 타임아웃
-        INVALID,            // 유효하지 않은 데이터
-        OVERRANGE,          // 범위 초과
-        UNDERRANGE,         // 범위 미만
-        OFFLINE             // 오프라인 상태
-    };
-    
-    // =======================================================================
-    // 저장 타입 열거형
-    // =======================================================================
-    
-    enum class StorageType {
-        IMMEDIATE,          // 즉시 저장 (Critical points)
-        ON_CHANGE,          // 값 변경 시 저장 (Binary/Digital)
-        PERIODIC,           // 주기적 저장 (Analog)
-        BUFFERED            // 버퍼링 후 배치 저장
-    };
-
     // =======================================================================
     // 생성자 및 소멸자 (기존 패턴)
     // =======================================================================
@@ -198,16 +172,16 @@ public:
     /**
      * @brief 정적 품질 변환 메서드들 (public으로 변경)
      */
-    static std::string qualityToString(DataQuality quality);
-    static DataQuality stringToQuality(const std::string& quality_str);
-    static std::string storageTypeToString(StorageType type);
-    static StorageType stringToStorageType(const std::string& type_str);
+    static std::string qualityToString(PulseOne::Enums::DataQuality quality);
+    static PulseOne::Enums::DataQuality stringToQuality(const std::string& quality_str);
+    static std::string storageTypeToString(PulseOne::Enums::StorageType type);
+    static PulseOne::Enums::StorageType stringToStorageType(const std::string& type_str);
     
     /**
      * @brief 데이터 품질 조회/설정
      */
-    DataQuality getQuality() const { return quality_; }
-    void setQuality(DataQuality quality) { 
+    PulseOne::Enums::DataQuality getQuality() const { return quality_; }
+    void setQuality(PulseOne::Enums::DataQuality quality) { 
         quality_ = quality; 
         markModified(); 
     }
@@ -241,8 +215,8 @@ public:
     /**
      * @brief 저장 타입 조회/설정
      */
-    StorageType getStorageType() const { return storage_type_; }
-    void setStorageType(StorageType storage_type) { 
+    PulseOne::Enums::StorageType getStorageType() const { return storage_type_; }
+    void setStorageType(PulseOne::Enums::StorageType storage_type) { 
         storage_type_ = storage_type; 
         markModified(); 
     }
@@ -341,7 +315,7 @@ public:
      * @brief 데이터 품질 상태 확인
      * @return 정상 데이터인지 여부
      */
-    bool isGoodQuality() const { return quality_ == DataQuality::GOOD; }
+    bool isGoodQuality() const { return quality_ == PulseOne::Enums::DataQuality::GOOD; }
 
 private:
     // =======================================================================
@@ -353,13 +327,13 @@ private:
     int virtual_point_id_;                        // 외래키 (virtual_points.id, 선택적)
     double value_;                                // 현재값
     double raw_value_;                            // 원시값 (스케일링 전)
-    DataQuality quality_;                         // 데이터 품질
+    PulseOne::Enums::DataQuality quality_;                         // 데이터 품질
     std::chrono::system_clock::time_point timestamp_;  // 타임스탬프
     
     // Redis 연동
     std::string redis_key_;                       // Redis 키
     bool is_from_redis_;                          // Redis에서 로드된 데이터인지
-    StorageType storage_type_;                    // 저장 타입
+    PulseOne::Enums::StorageType storage_type_;                    // 저장 타입
     
     // 성능 최적화용
     mutable std::chrono::system_clock::time_point last_save_time_;  // 마지막 저장 시간
