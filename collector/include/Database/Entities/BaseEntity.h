@@ -3,15 +3,14 @@
 
 /**
  * @file BaseEntity.h
- * @brief PulseOne 기본 엔티티 템플릿
+ * @brief PulseOne 기본 엔티티 템플릿 - 간단한 Repository 패턴
  * @author PulseOne Development Team
- * @date 2025-07-26
+ * @date 2025-07-31
  * 
- * 모든 엔티티의 공통 기능 제공:
- * - 공통 DB 연산 (CRUD)
- * - JSON 직렬화/역직렬화
- * - 캐싱 및 상태 관리
- * - DatabaseManager 통합 사용
+ * 🎯 간단한 Repository 패턴:
+ * - 각 Entity가 자기 Repository를 알아서 호출
+ * - 중복 코드 제거
+ * - Forward Declaration 불필요
  */
 
 #include "Common/UnifiedCommonTypes.h"
@@ -25,11 +24,27 @@
 #include <sstream>
 #include <iomanip>
 
+#ifdef HAS_NLOHMANN_JSON
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
+#else
+using json = nlohmann::json;
+#endif
 
 namespace PulseOne {
 namespace Database {
 
+    namespace Repositories {
+    class DeviceRepository;
+    class DeviceSettingsRepository;
+    class DataPointRepository;
+    class CurrentValueRepository;
+    class VirtualPointRepository;
+    class SiteRepository;
+    class TenantRepository;
+    class UserRepository;
+    class AlarmConfigRepository;
+}
 /**
  * @brief 엔티티 상태 열거형
  */
@@ -139,8 +154,174 @@ public:
         }
         return *this;
     }
+
     // =======================================================================
-    // 공통 DB 연산 (순수 가상 함수)
+    // 🎯 NEW: Repository 자동 선택 패턴
+    // =======================================================================
+
+protected:
+    /**
+     * @brief 타입별 Repository 자동 선택 - CRTP 활용
+     * @return 해당 Entity 타입의 Repository
+     */
+    template<typename EntityType = DerivedType>
+    auto getRepository() -> decltype(getRepositoryImpl(static_cast<EntityType*>(nullptr))) {
+        return getRepositoryImpl(static_cast<EntityType*>(nullptr));
+    }
+
+    /**
+     * @brief Repository를 통한 자동 저장
+     * @return 성공 시 true
+     */
+    bool saveViaRepository() {
+        try {
+            auto repo = getRepository();
+            if (repo) {
+                DerivedType& derived = static_cast<DerivedType&>(*this);
+                bool success = repo->save(derived);
+                if (success) {
+                    markSaved();
+                    logger_->Info("BaseEntity::saveViaRepository - Saved " + getEntityTypeName());
+                }
+                return success;
+            }
+            return false;
+        } catch (const std::exception& e) {
+            logger_->Error("BaseEntity::saveViaRepository failed: " + std::string(e.what()));
+            markError();
+            return false;
+        }
+    }
+
+    /**
+     * @brief Repository를 통한 자동 업데이트
+     * @return 성공 시 true
+     */
+    bool updateViaRepository() {
+        try {
+            auto repo = getRepository();
+            if (repo) {
+                const DerivedType& derived = static_cast<const DerivedType&>(*this);
+                bool success = repo->update(derived);
+                if (success) {
+                    markSaved();
+                    logger_->Info("BaseEntity::updateViaRepository - Updated " + getEntityTypeName());
+                }
+                return success;
+            }
+            return false;
+        } catch (const std::exception& e) {
+            logger_->Error("BaseEntity::updateViaRepository failed: " + std::string(e.what()));
+            markError();
+            return false;
+        }
+    }
+
+    /**
+     * @brief Repository를 통한 자동 삭제
+     * @return 성공 시 true
+     */
+    bool deleteViaRepository() {
+        try {
+            auto repo = getRepository();
+            if (repo) {
+                bool success = repo->deleteById(getEntityId());
+                if (success) {
+                    markDeleted();
+                    logger_->Info("BaseEntity::deleteViaRepository - Deleted " + getEntityTypeName());
+                }
+                return success;
+            }
+            return false;
+        } catch (const std::exception& e) {
+            logger_->Error("BaseEntity::deleteViaRepository failed: " + std::string(e.what()));
+            markError();
+            return false;
+        }
+    }
+
+    /**
+     * @brief Repository를 통한 자동 로드
+     * @return 성공 시 true
+     */
+    bool loadViaRepository() {
+        try {
+            auto repo = getRepository();
+            if (repo) {
+                auto loaded = repo->findById(getEntityId());
+                if (loaded.has_value()) {
+                    DerivedType& derived = static_cast<DerivedType&>(*this);
+                    derived = loaded.value();
+                    markSaved();
+                    logger_->Info("BaseEntity::loadViaRepository - Loaded " + getEntityTypeName());
+                    return true;
+                }
+            }
+            return false;
+        } catch (const std::exception& e) {
+            logger_->Error("BaseEntity::loadViaRepository failed: " + std::string(e.what()));
+            markError();
+            return false;
+        }
+    }
+
+private:
+    // =======================================================================
+    // Repository 타입별 특화 (SFINAE 패턴)
+    // =======================================================================
+
+    // DeviceEntity 특화
+    std::shared_ptr<Repositories::DeviceRepository> getRepositoryImpl(class DeviceEntity*);
+
+    // DeviceSettingsEntity 특화
+    std::shared_ptr<Repositories::DeviceSettingsRepository> getRepositoryImpl(class DeviceSettingsEntity*);
+
+    // DataPointEntity 특화
+    std::shared_ptr<Repositories::DataPointRepository> getRepositoryImpl(class DataPointEntity*);
+
+    // CurrentValueEntity 특화
+    std::shared_ptr<Repositories::CurrentValueRepository> getRepositoryImpl(class CurrentValueEntity*);
+
+    // 다른 Entity들...
+    std::shared_ptr<Repositories::VirtualPointRepository> getRepositoryImpl(class VirtualPointEntity*);
+    std::shared_ptr<Repositories::SiteRepository> getRepositoryImpl(class SiteEntity*);
+    std::shared_ptr<Repositories::TenantRepository> getRepositoryImpl(class TenantEntity*);
+    std::shared_ptr<Repositories::UserRepository> getRepositoryImpl(class UserEntity*);
+    std::shared_ptr<Repositories::AlarmConfigRepository> getRepositoryImpl(class AlarmConfigEntity*);
+
+    /**
+     * @brief Entity ID 조회 (타입별 다를 수 있음)
+     */
+    int getEntityId() const {
+        // 대부분의 Entity는 id_ 사용
+        if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {
+            // DeviceSettingsEntity는 device_id_ 사용
+            return static_cast<const DerivedType&>(*this).getDeviceId();
+        } else {
+            return id_;
+        }
+    }
+
+    /**
+     * @brief Entity 타입명 조회 (디버깅용)
+     */
+    std::string getEntityTypeName() const {
+        if constexpr (std::is_same_v<DerivedType, class DeviceEntity>) {
+            return "DeviceEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {
+            return "DeviceSettingsEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class DataPointEntity>) {
+            return "DataPointEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class CurrentValueEntity>) {
+            return "CurrentValueEntity";
+        } else {
+            return "UnknownEntity";
+        }
+    }
+
+public:
+    // =======================================================================
+    // 공통 DB 연산 (순수 가상 함수) - 기존과 동일
     // =======================================================================
     
     /**
@@ -168,7 +349,7 @@ public:
     virtual bool deleteFromDatabase() = 0;
 
     // =======================================================================
-    // 공통 JSON 직렬화 (순수 가상 함수)
+    // 공통 JSON 직렬화 (순수 가상 함수) - 기존과 동일
     // =======================================================================
     
     /**
@@ -191,7 +372,7 @@ public:
     virtual std::string toString() const = 0;
 
     // =======================================================================
-    // 공통 접근자 (getter/setter)
+    // 공통 접근자 (getter/setter) - 기존과 동일
     // =======================================================================
     
     /**
@@ -224,7 +405,7 @@ public:
     std::chrono::system_clock::time_point getUpdatedAt() const { return updated_at_; }
 
     // =======================================================================
-    // 공통 상태 관리
+    // 공통 상태 관리 - 기존과 동일
     // =======================================================================
     
     /**
@@ -260,7 +441,7 @@ public:
     }
 
     // =======================================================================
-    // 공통 유틸리티
+    // 공통 유틸리티 - 기존과 동일
     // =======================================================================
     
     /**
@@ -299,7 +480,7 @@ public:
 
 protected:
     // =======================================================================
-    // 보호된 헬퍼 메서드들
+    // 보호된 헬퍼 메서드들 - 기존과 동일
     // =======================================================================
     
     /**
@@ -378,7 +559,7 @@ protected:
 
 private:
     // =======================================================================
-    // PostgreSQL 전용 쿼리 실행
+    // PostgreSQL 전용 쿼리 실행 - 기존과 동일
     // =======================================================================
     std::vector<std::map<std::string, std::string>> executePostgresQuery(const std::string& sql) {
         // PostgreSQL 구현 (기존 코드 활용)
@@ -401,7 +582,7 @@ private:
     }
     
     // =======================================================================
-    // SQLite 전용 쿼리 실행
+    // SQLite 전용 쿼리 실행 - 기존과 동일
     // =======================================================================
     std::vector<std::map<std::string, std::string>> executeSQLiteQuery(const std::string& sql) {
         // SQLite 구현 (콜백 기반)
@@ -431,7 +612,7 @@ private:
 
 protected:
     // =======================================================================
-    // 멤버 변수들
+    // 멤버 변수들 - 기존과 동일
     // =======================================================================
     
     int id_;                                              // 엔티티 ID
