@@ -3,46 +3,57 @@
 
 /**
  * @file SiteRepository.h
- * @brief PulseOne Site Repository - 사이트 관리 Repository (생성자 문제 해결)
+ * @brief PulseOne SiteRepository - DeviceRepository 패턴 100% 적용
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-31
  * 
- * 🔥 수정 사항:
- * - 생성자에서 initializeDependencies() 호출
- * - override → final 변경
- * - 네임스페이스 수정
+ * 🔥 DeviceRepository 패턴 완전 적용:
+ * - DatabaseAbstractionLayer 사용
+ * - executeQuery/executeNonQuery 패턴
+ * - 컴파일 에러 완전 해결
+ * - BaseEntity 상속 패턴 지원
  */
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/SiteEntity.h"
+#include "Database/DatabaseManager.h"
 #include "Utils/LogManager.h"
-#include <vector>
-#include <string>
-#include <optional>
 #include <memory>
+#include <map>
+#include <string>
+#include <mutex>
+#include <vector>
+#include <optional>
+#include <chrono>
+#include <atomic>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 네임스페이스 수정 - 중복 제거
-using SiteEntity = Entities::SiteEntity;
+// 타입 별칭 정의 (DeviceRepository 패턴)
+using SiteEntity = PulseOne::Database::Entities::SiteEntity;
 
 /**
- * @brief 사이트 Repository 클래스 (IRepository 템플릿 상속)
+ * @brief Site Repository 클래스 (DeviceRepository 패턴 적용)
+ * 
+ * 기능:
+ * - INTEGER ID 기반 CRUD 연산
+ * - 계층구조별 사이트 조회
+ * - DatabaseAbstractionLayer 사용
+ * - 캐싱 및 벌크 연산 지원 (IRepository에서 자동 제공)
  */
 class SiteRepository : public IRepository<SiteEntity> {
 public:
     // =======================================================================
-    // 생성자 및 소멸자 (수정됨)
+    // 생성자 및 소멸자
     // =======================================================================
     
     SiteRepository() : IRepository<SiteEntity>("SiteRepository") {
-        // 🔥 의존성 초기화를 여기서 호출
         initializeDependencies();
         
         if (logger_) {
-            logger_->Info("🏭 SiteRepository initialized with IRepository caching system");
+            logger_->Info("🏭 SiteRepository initialized with BaseEntity pattern");
             logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
         }
     }
@@ -50,162 +61,181 @@ public:
     virtual ~SiteRepository() = default;
 
     // =======================================================================
-    // 캐시 관리 메서드들 (override → final)
+    // IRepository 인터페이스 구현
     // =======================================================================
     
-    void setCacheEnabled(bool enabled) final {
+    std::vector<SiteEntity> findAll() override;
+    std::optional<SiteEntity> findById(int id) override;
+    bool save(SiteEntity& entity) override;
+    bool update(const SiteEntity& entity) override;
+    bool deleteById(int id) override;
+    bool exists(int id) override;
+
+    // =======================================================================
+    // 벌크 연산
+    // =======================================================================
+    
+    std::vector<SiteEntity> findByIds(const std::vector<int>& ids) override;
+    
+    std::vector<SiteEntity> findByConditions(
+        const std::vector<QueryCondition>& conditions,
+        const std::optional<OrderBy>& order_by = std::nullopt,
+        const std::optional<Pagination>& pagination = std::nullopt
+    ) override;
+    
+    int countByConditions(const std::vector<QueryCondition>& conditions) override;
+
+    // =======================================================================
+    // Site 전용 메서드들
+    // =======================================================================
+    
+    std::vector<SiteEntity> findByTenant(int tenant_id);
+    std::vector<SiteEntity> findByParentSite(int parent_site_id);
+    std::vector<SiteEntity> findBySiteType(SiteEntity::SiteType site_type);
+    std::vector<SiteEntity> findActiveSites(int tenant_id = 0);
+    std::vector<SiteEntity> findRootSites(int tenant_id);
+    std::optional<SiteEntity> findByCode(const std::string& code, int tenant_id);
+    std::map<std::string, std::vector<SiteEntity>> groupBySiteType();
+
+    // =======================================================================
+    // 벌크 연산 (DeviceRepository 패턴)
+    // =======================================================================
+    
+    int saveBulk(std::vector<SiteEntity>& entities);
+    int updateBulk(const std::vector<SiteEntity>& entities);
+    int deleteByIds(const std::vector<int>& ids);
+
+    // =======================================================================
+    // 실시간 사이트 관리
+    // =======================================================================
+    
+    bool activateSite(int site_id);
+    bool deactivateSite(int site_id);
+    bool updateSiteStatus(int site_id, bool is_active);
+    bool updateHierarchyPath(SiteEntity& entity);
+    bool hasChildSites(int site_id);
+
+    // =======================================================================
+    // 통계 및 분석
+    // =======================================================================
+    
+    std::string getSiteStatistics() const;
+    std::vector<SiteEntity> findInactiveSites() const;
+    std::map<std::string, int> getSiteTypeDistribution() const;
+
+    // =======================================================================
+    // 캐시 관리
+    // =======================================================================
+    
+    void setCacheEnabled(bool enabled) override {
         IRepository<SiteEntity>::setCacheEnabled(enabled);
         if (logger_) {
             logger_->Info("SiteRepository cache " + std::string(enabled ? "enabled" : "disabled"));
         }
     }
     
-    bool isCacheEnabled() const final {
+    bool isCacheEnabled() const override {
         return IRepository<SiteEntity>::isCacheEnabled();
     }
     
-    void clearCache() final {
+    void clearCache() override {
         IRepository<SiteEntity>::clearCache();
-    }
-    
-    void clearCacheForId(int id) final {
-        IRepository<SiteEntity>::clearCacheForId(id);
-    }
-    
-    std::map<std::string, int> getCacheStats() const final {
-        return IRepository<SiteEntity>::getCacheStats();
+        if (logger_) {
+            logger_->Info("SiteRepository cache cleared");
+        }
     }
 
     // =======================================================================
-    // IRepository 인터페이스 구현 (override → final)
+    // Worker용 최적화 메서드들 (DeviceRepository 패턴)
     // =======================================================================
     
-    std::vector<SiteEntity> findAll() final;
-    std::optional<SiteEntity> findById(int id) final;
-    bool save(SiteEntity& entity) final;
-    bool update(const SiteEntity& entity) final;
-    bool deleteById(int id) final;
-    bool exists(int id) final;
-    std::vector<SiteEntity> findByIds(const std::vector<int>& ids) final;
-    int saveBulk(std::vector<SiteEntity>& entities) final;
-    int updateBulk(const std::vector<SiteEntity>& entities) final;
-    int deleteByIds(const std::vector<int>& ids) final;
-    
-    std::vector<SiteEntity> findByConditions(
-        const std::vector<QueryCondition>& conditions,
-        const std::optional<OrderBy>& order_by = std::nullopt,
-        const std::optional<Pagination>& pagination = std::nullopt) final;
-    
-    int countByConditions(const std::vector<QueryCondition>& conditions) final;
-    int getTotalCount() final;
-    
-    std::string getRepositoryName() const final { 
-        return "SiteRepository"; 
-    }
-
-    // =======================================================================
-    // 사이트 전용 조회 메서드들
-    // =======================================================================
-    
-    std::vector<SiteEntity> findByTenant(int tenant_id);
-    std::vector<SiteEntity> findByParentSite(int parent_site_id);
-    std::vector<SiteEntity> findBySiteType(SiteEntity::SiteType site_type);
-    std::optional<SiteEntity> findByName(const std::string& name, int tenant_id);
-    std::optional<SiteEntity> findByCode(const std::string& code, int tenant_id);
-    std::vector<SiteEntity> findByLocation(const std::string& location);
-    std::vector<SiteEntity> findByTimezone(const std::string& timezone);
-    std::vector<SiteEntity> findActiveSites(int tenant_id = 0);
-    std::vector<SiteEntity> findRootSites(int tenant_id);
-    std::vector<SiteEntity> findByHierarchyLevel(int level, int tenant_id = 0);
-    std::vector<SiteEntity> findByNamePattern(const std::string& name_pattern, int tenant_id = 0);
-    std::vector<SiteEntity> findSitesWithGPS(int tenant_id = 0);
-
-    // =======================================================================
-    // 사이트 비즈니스 로직 메서드들
-    // =======================================================================
-    
-    bool isSiteNameTaken(const std::string& name, int tenant_id, int exclude_id = 0);
-    bool isSiteCodeTaken(const std::string& code, int tenant_id, int exclude_id = 0);
-    bool hasChildSites(int parent_site_id);
-    
-    // 🔥 JSON 관련 메서드들 (조건부 컴파일)
-#ifdef HAVE_NLOHMANN_JSON
-    nlohmann::json getSiteHierarchy(int tenant_id);
-    nlohmann::json getSiteStatistics(int tenant_id);
-#else
-    std::string getSiteHierarchy(int tenant_id);      // JSON 문자열 반환
-    std::string getSiteStatistics(int tenant_id);    // JSON 문자열 반환
-#endif
-    
-    std::vector<SiteEntity> getAllChildSites(int parent_site_id);
+    int getTotalCount();
 
 private:
     // =======================================================================
-    // private 헬퍼 메서드들
+    // 의존성 관리
     // =======================================================================
     
-    bool validateSite(const SiteEntity& site) const;
-    QueryCondition buildSiteTypeCondition(SiteEntity::SiteType site_type) const;
-    QueryCondition buildTenantCondition(int tenant_id) const;
-    QueryCondition buildActiveCondition(bool active = true) const;
+    DatabaseManager* db_manager_;
+    LogManager* logger_;
     
-    // 🔥 JSON 관련 헬퍼 메서드들 (조건부 컴파일)
-#ifdef HAVE_NLOHMANN_JSON
-    nlohmann::json buildHierarchyRecursive(const std::vector<SiteEntity>& sites, int parent_id) const;
-#else
-    std::string buildHierarchyRecursive(const std::vector<SiteEntity>& sites, int parent_id) const;
-#endif
+    void initializeDependencies() {
+        db_manager_ = &DatabaseManager::getInstance();
+        logger_ = &LogManager::getInstance();
+    }
 
     // =======================================================================
-    // 데이터베이스 헬퍼 메서드들
+    // 내부 헬퍼 메서드들 (DeviceRepository 패턴)
     // =======================================================================
     
     /**
-     * @brief 데이터베이스 행을 엔티티로 변환
-     * @param row 데이터베이스 행
-     * @return 변환된 엔티티
+     * @brief SQL 결과를 SiteEntity로 변환
+     * @param row SQL 결과 행
+     * @return SiteEntity
      */
     SiteEntity mapRowToEntity(const std::map<std::string, std::string>& row);
     
     /**
-     * @brief 여러 행을 엔티티 벡터로 변환
-     * @param result 쿼리 결과
-     * @return 엔티티 목록
+     * @brief 여러 SQL 결과를 SiteEntity 벡터로 변환
+     * @param result SQL 결과
+     * @return SiteEntity 벡터
      */
-    std::vector<SiteEntity> mapResultToEntities(
-        const std::vector<std::map<std::string, std::string>>& result);
+    std::vector<SiteEntity> mapResultToEntities(const std::vector<std::map<std::string, std::string>>& result);
     
     /**
-     * @brief 통합 데이터베이스 쿼리 실행 (SELECT)
-     * @param sql SQL 쿼리
-     * @return 결과 맵의 벡터
+     * @brief SiteEntity를 SQL 파라미터 맵으로 변환
+     * @param entity 엔티티
+     * @return SQL 파라미터 맵
      */
-    std::vector<std::map<std::string, std::string>> executeDatabaseQuery(const std::string& sql);
+    std::map<std::string, std::string> entityToParams(const SiteEntity& entity);
     
     /**
-     * @brief 통합 데이터베이스 비쿼리 실행 (INSERT/UPDATE/DELETE)
-     * @param sql SQL 쿼리
+     * @brief sites 테이블이 존재하는지 확인하고 없으면 생성
      * @return 성공 시 true
      */
-    bool executeDatabaseNonQuery(const std::string& sql);
+    bool ensureTableExists();
     
     /**
-     * @brief 현재 타임스탬프를 문자열로 반환
-     * @return ISO 형식 타임스탬프
+     * @brief 사이트 검증
+     * @param entity 검증할 사이트 엔티티
+     * @return 유효하면 true
      */
-    std::string getCurrentTimestamp();
+    bool validateSite(const SiteEntity& entity) const;
     
     /**
-     * @brief SQL 문자열 이스케이프
+     * @brief SQL 문자열 이스케이프 처리
      * @param str 이스케이프할 문자열
      * @return 이스케이프된 문자열
      */
-    std::string escapeString(const std::string& str);
-
+    std::string escapeString(const std::string& str) const;
+    
+    /**
+     * @brief 타임스탬프를 문자열로 변환
+     * @param timestamp 타임스탬프
+     * @return 문자열 형태의 타임스탬프
+     */
+    std::string formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const;
+    
+    /**
+     * @brief WHERE 절 생성
+     * @param conditions 조건들
+     * @return WHERE 절 문자열
+     */
     std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
+    
+    /**
+     * @brief ORDER BY 절 생성
+     * @param order_by 정렬 조건
+     * @return ORDER BY 절 문자열
+     */
     std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
+    
+    /**
+     * @brief LIMIT 절 생성
+     * @param pagination 페이지네이션
+     * @return LIMIT 절 문자열
+     */
     std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
-
 };
 
 } // namespace Repositories

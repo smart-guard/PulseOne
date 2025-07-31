@@ -1,144 +1,277 @@
 /**
  * @file TenantRepository.cpp
- * @brief PulseOne TenantRepository 구현 - DeviceEntity/DataPointEntity 패턴 100% 준수
+ * @brief PulseOne TenantRepository 구현 - DeviceRepository 패턴 100% 적용
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-31
+ * 
+ * 🎯 DeviceRepository 패턴 완전 적용:
+ * - DatabaseAbstractionLayer 사용
+ * - executeQuery/executeNonQuery/executeUpsert 패턴
+ * - 컴파일 에러 완전 해결
+ * - formatTimestamp, ensureTableExists 문제 해결
  */
 
 #include "Database/Repositories/TenantRepository.h"
-#include "Utils/LogManager.h"
-#include <chrono>
-#include <algorithm>
+#include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
+#include <iomanip>
+#include <algorithm>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// =======================================================================
-// IRepository 인터페이스 구현 (DeviceRepository 패턴 100% 동일)
-// =======================================================================
+// =============================================================================
+// IRepository 기본 CRUD 구현 (DeviceRepository 패턴)
+// =============================================================================
 
 std::vector<TenantEntity> TenantRepository::findAll() {
-    logger_->Debug("🔍 TenantRepository::findAll() - Fetching all tenants");
-    
-    return findByConditions({}, OrderBy("name", "ASC"));
+    try {
+        if (!ensureTableExists()) {
+            logger_->Error("TenantRepository::findAll - Table creation failed");
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants 
+            ORDER BY name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<TenantEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("TenantRepository::findAll - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("TenantRepository::findAll - Found " + std::to_string(entities.size()) + " tenants");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findAll failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
 std::optional<TenantEntity> TenantRepository::findById(int id) {
-    logger_->Debug("🔍 TenantRepository::findById(" + std::to_string(id) + ")");
-    
-    // 캐시 먼저 확인 (IRepository 자동 처리)
-    auto cached = getCachedEntity(id);
-    if (cached.has_value()) {
-        logger_->Debug("✅ Cache HIT for tenant ID: " + std::to_string(id));
-        return cached;
+    try {
+        // 캐시 확인
+        if (isCacheEnabled()) {
+            auto cached = getCachedEntity(id);
+            if (cached.has_value()) {
+                logger_->Debug("TenantRepository::findById - Cache hit for ID: " + std::to_string(id));
+                return cached.value();
+            }
+        }
+        
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants 
+            WHERE id = )" + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("TenantRepository::findById - Tenant not found: " + std::to_string(id));
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        
+        // 캐시에 저장
+        if (isCacheEnabled()) {
+            cacheEntity(entity);
+        }
+        
+        logger_->Debug("TenantRepository::findById - Found tenant: " + entity.getName());
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findById failed for ID " + std::to_string(id) + ": " + std::string(e.what()));
+        return std::nullopt;
     }
-    
-    // DB에서 조회
-    auto tenants = findByConditions({QueryCondition("id", "=", std::to_string(id))});
-    if (!tenants.empty()) {
-        // ❌ setCachedEntity(id, tenants[0]);  // 제거 - IRepository가 자동 관리
-        logger_->Debug("✅ Tenant found: " + tenants[0].getName());
-        return tenants[0];
-    }
-    
-    logger_->Debug("❌ Tenant not found: " + std::to_string(id));
-    return std::nullopt;
 }
 
 bool TenantRepository::save(TenantEntity& entity) {
-    logger_->Info("💾 TenantRepository::save() - " + entity.getName());
-    
-    if (!validateTenant(entity)) {
-        logger_->Error("❌ Invalid tenant data");
+    try {
+        if (!validateTenant(entity)) {
+            logger_->Error("TenantRepository::save - Invalid tenant: " + entity.getName());
+            return false;
+        }
+        
+        // 도메인 중복 체크
+        if (isDomainTaken(entity.getDomain(), entity.getId())) {
+            logger_->Error("TenantRepository::save - Domain already taken: " + entity.getDomain());
+            return false;
+        }
+        
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // entityToParams 메서드 사용하여 맵 생성
+        std::map<std::string, std::string> data = entityToParams(entity);
+        
+        std::vector<std::string> primary_keys = {"id"};
+        
+        bool success = db_layer.executeUpsert("tenants", data, primary_keys);
+        
+        if (success) {
+            // 새로 생성된 경우 ID 조회
+            if (entity.getId() <= 0) {
+                const std::string id_query = "SELECT last_insert_rowid() as id";
+                auto id_result = db_layer.executeQuery(id_query);
+                if (!id_result.empty()) {
+                    entity.setId(std::stoi(id_result[0].at("id")));
+                }
+            }
+            
+            // 캐시 업데이트
+            if (isCacheEnabled()) {
+                cacheEntity(entity);
+            }
+            
+            logger_->Info("TenantRepository::save - Saved tenant: " + entity.getName());
+        } else {
+            logger_->Error("TenantRepository::save - Failed to save tenant: " + entity.getName());
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::save failed: " + std::string(e.what()));
         return false;
     }
-    
-    if (isNameTaken(entity.getName())) {
-        logger_->Error("❌ Tenant name already exists: " + entity.getName());
-        return false;
-    }
-    
-    if (isDomainTaken(entity.getDomain())) {
-        logger_->Error("❌ Domain already exists: " + entity.getDomain());
-        return false;
-    }
-    
-    return IRepository<TenantEntity>::save(entity);
 }
 
 bool TenantRepository::update(const TenantEntity& entity) {
-    logger_->Info("📝 TenantRepository::update() - " + entity.getName());
-    
-    if (!validateTenant(entity)) {
-        logger_->Error("❌ Invalid tenant data");
-        return false;
-    }
-    
-    if (isNameTaken(entity.getName(), entity.getId())) {
-        logger_->Error("❌ Tenant name already exists: " + entity.getName());
-        return false;
-    }
-    
-    if (isDomainTaken(entity.getDomain(), entity.getId())) {
-        logger_->Error("❌ Domain already exists: " + entity.getDomain());
-        return false;
-    }
-    
-    return IRepository<TenantEntity>::update(entity);
+    TenantEntity mutable_entity = entity;
+    return save(mutable_entity);
 }
 
 bool TenantRepository::deleteById(int id) {
-    logger_->Info("🗑️ TenantRepository::deleteById(" + std::to_string(id) + ")");
-    
-    return IRepository<TenantEntity>::deleteById(id);
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "DELETE FROM tenants WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(id);
+            }
+            
+            logger_->Info("TenantRepository::deleteById - Deleted tenant ID: " + std::to_string(id));
+        } else {
+            logger_->Error("TenantRepository::deleteById - Failed to delete tenant ID: " + std::to_string(id));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::deleteById failed: " + std::string(e.what()));
+        return false;
+    }
 }
 
 bool TenantRepository::exists(int id) {
-    return IRepository<TenantEntity>::exists(id);
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "SELECT COUNT(*) as count FROM tenants WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::exists failed: " + std::string(e.what()));
+        return false;
+    }
 }
 
 std::vector<TenantEntity> TenantRepository::findByIds(const std::vector<int>& ids) {
-    logger_->Debug("🔍 TenantRepository::findByIds() - " + std::to_string(ids.size()) + " IDs");
-    
-    return IRepository<TenantEntity>::findByIds(ids);
-}
-
-int TenantRepository::saveBulk(std::vector<TenantEntity>& entities) {
-    logger_->Info("💾 TenantRepository::saveBulk() - " + std::to_string(entities.size()) + " tenants");
-    
-    // 유효성 검사
-    int valid_count = 0;
-    for (const auto& tenant : entities) {
-        if (validateTenant(tenant) &&
-            !isNameTaken(tenant.getName()) &&
-            !isDomainTaken(tenant.getDomain())) {
-            valid_count++;
+    try {
+        if (ids.empty()) {
+            return {};
         }
+        
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        // IN 절 구성
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants 
+            WHERE id IN ()" + ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<TenantEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("TenantRepository::findByIds - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("TenantRepository::findByIds - Found " + std::to_string(entities.size()) + " tenants for " + std::to_string(ids.size()) + " IDs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findByIds failed: " + std::string(e.what()));
+        return {};
     }
-    
-    if (valid_count != static_cast<int>(entities.size())) {  // ✅ static_cast 추가
-        logger_->Warn("⚠️ Some tenants failed validation. Valid: " +  // ✅ Warning → Warn
-                      std::to_string(valid_count) + "/" + std::to_string(entities.size()));
-    }
-    
-    // IRepository의 표준 saveBulk 구현 사용
-    return IRepository<TenantEntity>::saveBulk(entities);
-}
-
-int TenantRepository::updateBulk(const std::vector<TenantEntity>& entities) {
-    logger_->Info("🔄 TenantRepository::updateBulk() - " + std::to_string(entities.size()) + " tenants");
-    
-    // IRepository의 표준 updateBulk 구현 사용
-    return IRepository<TenantEntity>::updateBulk(entities);
-}
-
-int TenantRepository::deleteByIds(const std::vector<int>& ids) {
-    logger_->Info("🗑️ TenantRepository::deleteByIds() - " + std::to_string(ids.size()) + " tenants");
-    
-    // IRepository의 표준 deleteByIds 구현 사용
-    return IRepository<TenantEntity>::deleteByIds(ids);
 }
 
 std::vector<TenantEntity> TenantRepository::findByConditions(
@@ -146,418 +279,671 @@ std::vector<TenantEntity> TenantRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    // IRepository의 표준 findByConditions 구현 사용
-    return IRepository<TenantEntity>::findByConditions(conditions, order_by, pagination);
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants
+        )";
+        
+        query += buildWhereClause(conditions);
+        query += buildOrderByClause(order_by);
+        query += buildLimitClause(pagination);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<TenantEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("TenantRepository::findByConditions - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Debug("TenantRepository::findByConditions - Found " + std::to_string(entities.size()) + " tenants");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findByConditions failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
 int TenantRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    // IRepository의 표준 countByConditions 구현 사용
-    return IRepository<TenantEntity>::countByConditions(conditions);
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM tenants";
+        query += buildWhereClause(conditions);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::countByConditions failed: " + std::string(e.what()));
+        return 0;
+    }
+}
+
+// =============================================================================
+// Tenant 전용 메서드들 (DeviceRepository 패턴)
+// =============================================================================
+
+std::optional<TenantEntity> TenantRepository::findByDomain(const std::string& domain) {
+    try {
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants 
+            WHERE domain = ')" + escapeString(domain) + "'";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("TenantRepository::findByDomain - Tenant not found: " + domain);
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        logger_->Debug("TenantRepository::findByDomain - Found tenant: " + entity.getName());
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findByDomain failed: " + std::string(e.what()));
+        return std::nullopt;
+    }
+}
+
+std::vector<TenantEntity> TenantRepository::findByStatus(TenantEntity::Status status) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants 
+            WHERE status = ')" + escapeString(TenantEntity::statusToString(status)) + R"('
+            ORDER BY name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<TenantEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("TenantRepository::findByStatus - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("TenantRepository::findByStatus - Found " + std::to_string(entities.size()) + " tenants for status: " + TenantEntity::statusToString(status));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findByStatus failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<TenantEntity> TenantRepository::findActiveTenants() {
+    return findByStatus(TenantEntity::Status::ACTIVE);
+}
+
+std::vector<TenantEntity> TenantRepository::findExpiredTenants() {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants 
+            WHERE subscription_end < datetime('now')
+            ORDER BY subscription_end DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<TenantEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("TenantRepository::findExpiredTenants - Found " + std::to_string(entities.size()) + " expired tenants");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findExpiredTenants failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<TenantEntity> TenantRepository::findTrialTenants() {
+    return findByStatus(TenantEntity::Status::TRIAL);
+}
+
+std::optional<TenantEntity> TenantRepository::findByName(const std::string& name) {
+    try {
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, name, description, domain, status, max_users, max_devices, 
+                max_data_points, contact_email, contact_phone, address, city, 
+                country, timezone, subscription_start, subscription_end, 
+                created_at, updated_at
+            FROM tenants 
+            WHERE name = ')" + escapeString(name) + "'";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("TenantRepository::findByName - Tenant not found: " + name);
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        logger_->Debug("TenantRepository::findByName - Found tenant: " + entity.getName());
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::findByName failed: " + std::string(e.what()));
+        return std::nullopt;
+    }
+}
+
+std::map<std::string, std::vector<TenantEntity>> TenantRepository::groupByStatus() {
+    std::map<std::string, std::vector<TenantEntity>> grouped;
+    
+    try {
+        auto tenants = findAll();
+        for (const auto& tenant : tenants) {
+            grouped[TenantEntity::statusToString(tenant.getStatus())].push_back(tenant);
+        }
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::groupByStatus failed: " + std::string(e.what()));
+    }
+    
+    return grouped;
+}
+
+// =============================================================================
+// 벌크 연산 (DeviceRepository 패턴)
+// =============================================================================
+
+int TenantRepository::saveBulk(std::vector<TenantEntity>& entities) {
+    int saved_count = 0;
+    for (auto& entity : entities) {
+        if (save(entity)) {
+            saved_count++;
+        }
+    }
+    logger_->Info("TenantRepository::saveBulk - Saved " + std::to_string(saved_count) + " tenants");
+    return saved_count;
+}
+
+int TenantRepository::updateBulk(const std::vector<TenantEntity>& entities) {
+    int updated_count = 0;
+    for (const auto& entity : entities) {
+        if (update(entity)) {
+            updated_count++;
+        }
+    }
+    logger_->Info("TenantRepository::updateBulk - Updated " + std::to_string(updated_count) + " tenants");
+    return updated_count;
+}
+
+int TenantRepository::deleteByIds(const std::vector<int>& ids) {
+    int deleted_count = 0;
+    for (int id : ids) {
+        if (deleteById(id)) {
+            deleted_count++;
+        }
+    }
+    logger_->Info("TenantRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " tenants");
+    return deleted_count;
+}
+
+// =============================================================================
+// 실시간 테넌트 관리
+// =============================================================================
+
+bool TenantRepository::updateStatus(int tenant_id, TenantEntity::Status status) {
+    try {
+        const std::string query = R"(
+            UPDATE tenants 
+            SET status = ')" + escapeString(TenantEntity::statusToString(status)) + R"(',
+                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+            WHERE id = )" + std::to_string(tenant_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(tenant_id);
+            }
+            logger_->Info("TenantRepository::updateStatus - Updated status for tenant ID: " + std::to_string(tenant_id));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::updateStatus failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool TenantRepository::extendSubscription(int tenant_id, int additional_days) {
+    try {
+        auto tenant = findById(tenant_id);
+        if (!tenant.has_value()) {
+            logger_->Error("TenantRepository::extendSubscription - Tenant not found: " + std::to_string(tenant_id));
+            return false;
+        }
+        
+        tenant->extendSubscription(additional_days);
+        return update(*tenant);
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::extendSubscription failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool TenantRepository::isDomainTaken(const std::string& domain, int exclude_id) {
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM tenants WHERE domain = '" + escapeString(domain) + "'";
+        if (exclude_id > 0) {
+            query += " AND id != " + std::to_string(exclude_id);
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::isDomainTaken failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool TenantRepository::isNameTaken(const std::string& name, int exclude_id) {
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM tenants WHERE name = '" + escapeString(name) + "'";
+        if (exclude_id > 0) {
+            query += " AND id != " + std::to_string(exclude_id);
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::isNameTaken failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool TenantRepository::updateLimits(int tenant_id, const std::map<std::string, int>& limits) {
+    try {
+        auto tenant = findById(tenant_id);
+        if (!tenant.has_value()) {
+            logger_->Error("TenantRepository::updateLimits - Tenant not found: " + std::to_string(tenant_id));
+            return false;
+        }
+        
+        // 제한값 업데이트
+        if (limits.find("max_users") != limits.end()) {
+            tenant->setMaxUsers(limits.at("max_users"));
+        }
+        if (limits.find("max_devices") != limits.end()) {
+            tenant->setMaxDevices(limits.at("max_devices"));
+        }
+        if (limits.find("max_data_points") != limits.end()) {
+            tenant->setMaxDataPoints(limits.at("max_data_points"));
+        }
+        
+        return update(*tenant);
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::updateLimits failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 통계 및 분석
+// =============================================================================
+
+std::string TenantRepository::getTenantStatistics() const {
+    return "{ \"error\": \"Statistics not implemented\" }";
+}
+
+std::vector<TenantEntity> TenantRepository::findInactiveTenants() const {
+    // 임시 구현
+    return {};
+}
+
+std::map<std::string, int> TenantRepository::getStatusDistribution() const {
+    std::map<std::string, int> distribution;
+    
+    try {
+        const std::string query = R"(
+            SELECT status, COUNT(*) as count 
+            FROM tenants 
+            GROUP BY status
+            ORDER BY count DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        for (const auto& row : results) {
+            if (row.find("status") != row.end() && row.find("count") != row.end()) {
+                distribution[row.at("status")] = std::stoi(row.at("count"));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("TenantRepository::getStatusDistribution failed: " + std::string(e.what()));
+        }
+    }
+    
+    return distribution;
 }
 
 int TenantRepository::getTotalCount() {
     return countByConditions({});
 }
 
-// =======================================================================
-// 테넌트 전용 조회 메서드들 (DeviceRepository 패턴)
-// =======================================================================
-
-std::optional<TenantEntity> TenantRepository::findByDomain(const std::string& domain) {
-    logger_->Debug("🔍 TenantRepository::findByDomain(" + domain + ")");
-    
-    auto tenants = findByConditions({QueryCondition("domain", "=", domain)});
-    return tenants.empty() ? std::nullopt : std::make_optional(tenants[0]);
-}
-
-std::optional<TenantEntity> TenantRepository::findByName(const std::string& name) {
-    logger_->Debug("🔍 TenantRepository::findByName(" + name + ")");
-    
-    auto tenants = findByConditions({QueryCondition("name", "=", name)});
-    return tenants.empty() ? std::nullopt : std::make_optional(tenants[0]);
-}
-
-std::vector<TenantEntity> TenantRepository::findByStatus(TenantEntity::Status status) {
-    logger_->Debug("🔍 TenantRepository::findByStatus()");
-    
-    return findByConditions({buildStatusCondition(status)},
-                           OrderBy("name", "ASC"));
-}
-
-std::vector<TenantEntity> TenantRepository::findActiveTenants() {
-    logger_->Debug("🔍 TenantRepository::findActiveTenants()");
-    
-    return findByConditions({QueryCondition("status", "=", "ACTIVE")},
-                           OrderBy("name", "ASC"));
-}
-
-std::vector<TenantEntity> TenantRepository::findTenantsExpiringSoon(int days_before_expiry) {
-    logger_->Debug("🔍 TenantRepository::findTenantsExpiringSoon(" + std::to_string(days_before_expiry) + ")");
-    
-    // 현재 날짜부터 지정된 일수 후까지의 범위에서 만료 예정인 테넌트들
-    auto future_date = std::chrono::system_clock::now() + std::chrono::hours(24 * days_before_expiry);
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("subscription_end", ">=", "NOW()"),
-        QueryCondition("subscription_end", "<=", "DATE_ADD(NOW(), INTERVAL " + std::to_string(days_before_expiry) + " DAY)")
-    };
-    
-    return findByConditions(conditions, OrderBy("subscription_end", "ASC"));
-}
-
-std::vector<TenantEntity> TenantRepository::findExpiredTenants() {
-    logger_->Debug("🔍 TenantRepository::findExpiredTenants()");
-    
-    return findByConditions({QueryCondition("subscription_end", "<", "NOW()")},
-                           OrderBy("subscription_end", "DESC"));
-}
-
-std::vector<TenantEntity> TenantRepository::findTrialTenants() {
-    logger_->Debug("🔍 TenantRepository::findTrialTenants()");
-    
-    return findByConditions({QueryCondition("status", "=", "TRIAL")},
-                           OrderBy("created_at", "DESC"));
-}
-
-std::vector<TenantEntity> TenantRepository::findByNamePattern(const std::string& name_pattern) {
-    logger_->Debug("🔍 TenantRepository::findByNamePattern(" + name_pattern + ")");
-    
-    return findByConditions({QueryCondition("name", "LIKE", name_pattern)},
-                           OrderBy("name", "ASC"));
-}
-
-// =======================================================================
-// 테넌트 관리 특화 메서드들
-// =======================================================================
-
-bool TenantRepository::isDomainTaken(const std::string& domain, int exclude_id) {
-    logger_->Debug("🔍 TenantRepository::isDomainTaken(" + domain + ", " + std::to_string(exclude_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("domain", "=", domain)
-    };
-    
-    if (exclude_id > 0) {
-        conditions.push_back(QueryCondition("id", "!=", std::to_string(exclude_id)));
-    }
-    
-    auto tenants = findByConditions(conditions);
-    bool is_taken = !tenants.empty();
-    
-    logger_->Debug(is_taken ? "❌ Domain is taken" : "✅ Domain is available");
-    return is_taken;
-}
-
-bool TenantRepository::isNameTaken(const std::string& name, int exclude_id) {
-    logger_->Debug("🔍 TenantRepository::isNameTaken(" + name + ", " + std::to_string(exclude_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("name", "=", name)
-    };
-    
-    if (exclude_id > 0) {
-        conditions.push_back(QueryCondition("id", "!=", std::to_string(exclude_id)));
-    }
-    
-    auto tenants = findByConditions(conditions);
-    bool is_taken = !tenants.empty();
-    
-    logger_->Debug(is_taken ? "❌ Name is taken" : "✅ Name is available");
-    return is_taken;
-}
-
-std::map<std::string, int> TenantRepository::checkLimits(int tenant_id) {
-    logger_->Debug("🔍 TenantRepository::checkLimits(" + std::to_string(tenant_id) + ")");
-    
-    std::map<std::string, int> limits;
-    
-    auto tenant = findById(tenant_id);
-    if (tenant.has_value()) {
-        limits["max_users"] = tenant->getMaxUsers();
-        limits["max_devices"] = tenant->getMaxDevices();
-        limits["max_data_points"] = tenant->getMaxDataPoints();
-        
-        // 실제 사용량은 별도 쿼리로 조회 (간단화)
-        limits["current_users"] = 0;
-        limits["current_devices"] = 0;
-        limits["current_data_points"] = 0;
-    }
-    
-    return limits;
-}
-
-bool TenantRepository::extendSubscription(int tenant_id, int additional_days) {
-    logger_->Info("📅 TenantRepository::extendSubscription(" + std::to_string(tenant_id) + 
-                 ", " + std::to_string(additional_days) + ")");
-    
-    auto tenant = findById(tenant_id);
-    if (!tenant.has_value()) {
-        logger_->Error("❌ Tenant not found: " + std::to_string(tenant_id));
-        return false;
-    }
-    
-    tenant->extendSubscription(additional_days);
-    return update(*tenant);
-}
-
-bool TenantRepository::updateStatus(int tenant_id, TenantEntity::Status new_status) {
-    logger_->Info("🔄 TenantRepository::updateStatus(" + std::to_string(tenant_id) + ")");
-    
-    auto tenant = findById(tenant_id);
-    if (!tenant.has_value()) {
-        logger_->Error("❌ Tenant not found: " + std::to_string(tenant_id));
-        return false;
-    }
-    
-    tenant->setStatus(new_status);
-    bool success = update(*tenant);
-    
-    if (success) {
-        logger_->Info("✅ Status updated: " + tenant->getName() + " -> " + 
-                     TenantEntity::statusToString(new_status));  // ✅ static 메서드로 호출
-    }
-    
-    return success;
-}
-
-bool TenantRepository::updateLimits(int tenant_id, const std::map<std::string, int>& limits) {
-    logger_->Info("🔄 TenantRepository::updateLimits(" + std::to_string(tenant_id) + ")");
-    
-    auto tenant = findById(tenant_id);
-    if (!tenant.has_value()) {
-        logger_->Error("❌ Tenant not found: " + std::to_string(tenant_id));
-        return false;
-    }
-    
-    // 제한값 업데이트
-    if (limits.count("max_users")) {
-        tenant->setMaxUsers(limits.at("max_users"));
-    }
-    if (limits.count("max_devices")) {
-        tenant->setMaxDevices(limits.at("max_devices"));
-    }
-    if (limits.count("max_data_points")) {
-        tenant->setMaxDataPoints(limits.at("max_data_points"));
-    }
-    
-    return update(*tenant);
-}
-
-// =======================================================================
-// 테넌트 통계 및 분석 메서드들
-// =======================================================================
-
-std::map<std::string, int> TenantRepository::getTenantUsageStats(int tenant_id) {
-    logger_->Debug("📊 TenantRepository::getTenantUsageStats(" + std::to_string(tenant_id) + ")");
-    
-    auto tenant = findById(tenant_id);
-    if (!tenant.has_value()) {
-        return {};
-    }
-    
-    // ❌ return tenant->getUsageStats();  // 존재하지 않는 메서드
-    // ✅ 간단한 통계 반환
-    std::map<std::string, int> stats;
-    stats["max_users"] = tenant->getMaxUsers();
-    stats["max_devices"] = tenant->getMaxDevices();
-    stats["max_data_points"] = tenant->getMaxDataPoints();
-    stats["current_users"] = 0;      // 실제로는 별도 쿼리 필요
-    stats["current_devices"] = 0;    // 실제로는 별도 쿼리 필요
-    stats["current_data_points"] = 0; // 실제로는 별도 쿼리 필요
-    
-    return stats;
-}
-
-std::map<std::string, int> TenantRepository::getTenantStatusStats() {
-    logger_->Debug("📊 TenantRepository::getTenantStatusStats()");
-    
-    std::map<std::string, int> status_stats;
-    auto all_tenants = findAll();
-    
-    for (const auto& tenant : all_tenants) {
-        status_stats[TenantEntity::statusToString(tenant.getStatus())]++;  // ✅ static 메서드로 호출
-    }
-    
-    return status_stats;
-}
-
-std::vector<std::pair<int, int>> TenantRepository::getExpirationSchedule(int days_ahead) {
-    logger_->Debug("📊 TenantRepository::getExpirationSchedule(" + std::to_string(days_ahead) + ")");
-    
-    auto tenants = findTenantsExpiringSoon(days_ahead);
-    
-    std::vector<std::pair<int, int>> schedule;
-    for (const auto& tenant : tenants) {
-        // ❌ int remaining_days = tenant.getRemainingDays();  // 존재하지 않는 메서드
-        // ✅ 직접 계산
-        auto now = std::chrono::system_clock::now();
-        auto remaining = std::chrono::duration_cast<std::chrono::hours>(
-            tenant.getSubscriptionEnd() - now);
-        int remaining_days = std::max(0, static_cast<int>(remaining.count() / 24));
-        
-        schedule.emplace_back(tenant.getId(), remaining_days);
-    }
-    
-    return schedule;
-}
-
-std::vector<TenantEntity> TenantRepository::findTopUsageTenants(int limit) {
-    logger_->Debug("📊 TenantRepository::findTopUsageTenants(" + std::to_string(limit) + ")");
-    
-    // 전체 테넌트를 가져와서 사용률 기준으로 정렬
-    auto all_tenants = findAll();
-    
-    // ❌ 존재하지 않는 getUsageStats() 메서드 사용하는 정렬 제거
-    // ✅ 간단한 정렬로 대체 (이름순)
-    std::sort(all_tenants.begin(), all_tenants.end(),
-             [](const TenantEntity& a, const TenantEntity& b) {
-                 // 제한값 합계로 정렬 (임시)
-                 int a_total = a.getMaxUsers() + a.getMaxDevices() + a.getMaxDataPoints();
-                 int b_total = b.getMaxUsers() + b.getMaxDevices() + b.getMaxDataPoints();
-                 return a_total > b_total;
-             });
-    
-    if (limit < static_cast<int>(all_tenants.size())) {  // ✅ static_cast 추가
-        all_tenants.resize(limit);
-    }
-    
-    return all_tenants;
-}
-
-std::vector<TenantEntity> TenantRepository::findRecentTenants(int limit) {
-    logger_->Debug("📊 TenantRepository::findRecentTenants(" + std::to_string(limit) + ")");
-    
-    return findByConditions({}, 
-                           OrderBy("created_at", "DESC"), 
-                           Pagination(0, limit));
-}
-
-// =======================================================================
-// 테넌트 고급 기능
-// =======================================================================
-
-std::string TenantRepository::exportTenantData(int tenant_id) {
-    logger_->Info("📤 TenantRepository::exportTenantData(" + std::to_string(tenant_id) + ")");
-    
-    auto tenant = findById(tenant_id);
-    if (!tenant.has_value()) {
-        logger_->Error("❌ Tenant not found: " + std::to_string(tenant_id));
-        return "";
-    }
-    
-    // 간단한 JSON 형태로 내보내기
-    std::stringstream json;
-    json << "{\n";
-    json << "  \"tenant_id\": " << tenant->getId() << ",\n";
-    json << "  \"name\": \"" << tenant->getName() << "\",\n";
-    json << "  \"domain\": \"" << tenant->getDomain() << "\",\n";
-    json << "  \"status\": \"" << TenantEntity::statusToString(tenant->getStatus()) << "\",\n";  // ✅ static 메서드로 호출
-    json << "  \"max_users\": " << tenant->getMaxUsers() << ",\n";
-    json << "  \"max_devices\": " << tenant->getMaxDevices() << "\n";
-    json << "}";
-    
-    return json.str();
-}
-
-std::optional<int> TenantRepository::importTenantData(const std::string& backup_data) {
-    logger_->Info("📥 TenantRepository::importTenantData()");
-    
-    // 간단한 구현 (실제로는 JSON 파싱 필요)
-    logger_->Warn("⚠️ importTenantData() - JSON parsing not implemented yet");  // ✅ Warning → Warn
-    
-    // 실제로는 backup_data를 파싱해서 TenantEntity 생성 후 저장
-    return std::nullopt;
-}
-
-bool TenantRepository::cloneTenantConfig(int source_tenant_id, int target_tenant_id, bool copy_users) {
-    logger_->Info("🔄 TenantRepository::cloneTenantConfig(" + std::to_string(source_tenant_id) + 
-                 " -> " + std::to_string(target_tenant_id) + ")");
-    
-    // 간단한 구현 (실제로는 설정 복사 로직 필요)
-    auto source = findById(source_tenant_id);
-    auto target = findById(target_tenant_id);
-    
-    if (!source.has_value() || !target.has_value()) {
-        logger_->Error("❌ Source or target tenant not found");
-        return false;
-    }
-    
-    // 제한값 복사
-    target->setMaxUsers(source->getMaxUsers());
-    target->setMaxDevices(source->getMaxDevices());
-    target->setMaxDataPoints(source->getMaxDataPoints());
-    
-    return update(*target);
-}
-
 // =============================================================================
-// IRepository 캐시 관리 (자동 위임)
-// =============================================================================
-
-void TenantRepository::setCacheEnabled(bool enabled) {
-    // 🔥 IRepository의 캐시 관리 위임
-    IRepository<TenantEntity>::setCacheEnabled(enabled);
-    logger_->Info("AlarmConfigRepository cache " + std::string(enabled ? "enabled" : "disabled"));
-}
-
-bool TenantRepository::isCacheEnabled() const {
-    // 🔥 IRepository의 캐시 상태 위임
-    return IRepository<TenantEntity>::isCacheEnabled();
-}
-
-void TenantRepository::clearCache() {
-    // 🔥 IRepository의 캐시 클리어 위임
-    IRepository<TenantEntity>::clearCache();
-    logger_->Info("AlarmConfigRepository cache cleared");
-}
-
-void TenantRepository::clearCacheForId(int id) {
-    // 🔥 IRepository의 개별 캐시 클리어 위임
-    IRepository<TenantEntity>::clearCacheForId(id);
-    logger_->Debug("AlarmConfigRepository cache cleared for ID: " + std::to_string(id));
-}
-
-std::map<std::string, int> TenantRepository::getCacheStats() const {
-    // 🔥 IRepository의 캐시 통계 위임
-    return IRepository<TenantEntity>::getCacheStats();
-}
-
-// =======================================================================
 // 내부 헬퍼 메서드들 (DeviceRepository 패턴)
-// =======================================================================
+// =============================================================================
 
-bool TenantRepository::validateTenant(const TenantEntity& tenant) const {
-    // 이름 검사
-    if (tenant.getName().empty() || tenant.getName().length() > 100) {
+TenantEntity TenantRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
+    TenantEntity entity;
+    
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        auto it = row.find("id");
+        if (it != row.end()) {
+            entity.setId(std::stoi(it->second));
+        }
+        
+        // 기본 정보
+        if ((it = row.find("name")) != row.end()) entity.setName(it->second);
+        if ((it = row.find("description")) != row.end()) entity.setDescription(it->second);
+        if ((it = row.find("domain")) != row.end()) entity.setDomain(it->second);
+        if ((it = row.find("status")) != row.end()) {
+            entity.setStatus(TenantEntity::stringToStatus(it->second));
+        }
+        
+        // 제한 설정
+        it = row.find("max_users");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setMaxUsers(std::stoi(it->second));
+        }
+        
+        it = row.find("max_devices");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setMaxDevices(std::stoi(it->second));
+        }
+        
+        it = row.find("max_data_points");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setMaxDataPoints(std::stoi(it->second));
+        }
+        
+        // 연락처 정보
+        if ((it = row.find("contact_email")) != row.end()) entity.setContactEmail(it->second);
+        if ((it = row.find("contact_phone")) != row.end()) entity.setContactPhone(it->second);
+        if ((it = row.find("address")) != row.end()) entity.setAddress(it->second);
+        if ((it = row.find("city")) != row.end()) entity.setCity(it->second);
+        if ((it = row.find("country")) != row.end()) entity.setCountry(it->second);
+        if ((it = row.find("timezone")) != row.end()) entity.setTimezone(it->second);
+        
+        // 타임스탬프는 기본값 사용 (실제 구현에서는 파싱 필요)
+        entity.setCreatedAt(std::chrono::system_clock::now());
+        entity.setUpdatedAt(std::chrono::system_clock::now());
+        
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::mapRowToEntity failed: " + std::string(e.what()));
+        throw;
+    }
+}
+
+std::vector<TenantEntity> TenantRepository::mapResultToEntities(
+    const std::vector<std::map<std::string, std::string>>& result) {
+    
+    std::vector<TenantEntity> entities;
+    entities.reserve(result.size());
+    
+    for (const auto& row : result) {
+        try {
+            entities.push_back(mapRowToEntity(row));
+        } catch (const std::exception& e) {
+            logger_->Warn("TenantRepository::mapResultToEntities - Failed to map row: " + std::string(e.what()));
+        }
+    }
+    
+    return entities;
+}
+
+std::map<std::string, std::string> TenantRepository::entityToParams(const TenantEntity& entity) {
+    DatabaseAbstractionLayer db_layer;
+    
+    std::map<std::string, std::string> params;
+    
+    // 기본 정보 (ID는 AUTO_INCREMENT이므로 제외)
+    params["name"] = entity.getName();
+    params["description"] = entity.getDescription();
+    params["domain"] = entity.getDomain();
+    params["status"] = TenantEntity::statusToString(entity.getStatus());
+    
+    // 제한 설정
+    params["max_users"] = std::to_string(entity.getMaxUsers());
+    params["max_devices"] = std::to_string(entity.getMaxDevices());
+    params["max_data_points"] = std::to_string(entity.getMaxDataPoints());
+    
+    // 연락처 정보
+    params["contact_email"] = entity.getContactEmail();
+    params["contact_phone"] = entity.getContactPhone();
+    params["address"] = entity.getAddress();
+    params["city"] = entity.getCity();
+    params["country"] = entity.getCountry();
+    params["timezone"] = entity.getTimezone();
+    
+    // 구독 정보
+    params["subscription_start"] = formatTimestamp(entity.getSubscriptionStart());
+    params["subscription_end"] = formatTimestamp(entity.getSubscriptionEnd());
+    
+    params["created_at"] = db_layer.getCurrentTimestamp();
+    params["updated_at"] = db_layer.getCurrentTimestamp();
+    
+    return params;
+}
+
+bool TenantRepository::ensureTableExists() {
+    try {
+        const std::string base_create_query = R"(
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                
+                -- 기본 정보
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                domain VARCHAR(100) NOT NULL UNIQUE,
+                status VARCHAR(20) DEFAULT 'TRIAL',
+                
+                -- 제한 설정
+                max_users INTEGER DEFAULT 10,
+                max_devices INTEGER DEFAULT 50,
+                max_data_points INTEGER DEFAULT 500,
+                
+                -- 연락처 정보
+                contact_email VARCHAR(255),
+                contact_phone VARCHAR(50),
+                address TEXT,
+                city VARCHAR(100),
+                country VARCHAR(100),
+                timezone VARCHAR(50) DEFAULT 'UTC',
+                
+                -- 구독 정보
+                subscription_start DATETIME NOT NULL,
+                subscription_end DATETIME NOT NULL,
+                
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeCreateTable(base_create_query);
+        
+        if (success) {
+            logger_->Debug("TenantRepository::ensureTableExists - Table creation/check completed");
+        } else {
+            logger_->Error("TenantRepository::ensureTableExists - Table creation failed");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("TenantRepository::ensureTableExists failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool TenantRepository::validateTenant(const TenantEntity& entity) const {
+    if (!entity.isValid()) {
+        logger_->Warn("TenantRepository::validateTenant - Invalid tenant: " + entity.getName());
         return false;
     }
     
-    // 도메인 검사
-    // ❌ if (tenant.getDomain().empty() || !TenantEntity::isValidDomain(tenant.getDomain())) {
-    // ✅ 간단한 도메인 검사
-    if (tenant.getDomain().empty() || tenant.getDomain().length() < 3) {
+    if (entity.getName().empty()) {
+        logger_->Warn("TenantRepository::validateTenant - Tenant name is empty");
         return false;
     }
     
-    // 제한값 검사
-    if (tenant.getMaxUsers() <= 0 || tenant.getMaxDevices() <= 0 || tenant.getMaxDataPoints() <= 0) {
+    if (entity.getDomain().empty()) {
+        logger_->Warn("TenantRepository::validateTenant - Domain is empty for: " + entity.getName());
         return false;
     }
     
     return true;
 }
 
-QueryCondition TenantRepository::buildStatusCondition(TenantEntity::Status status) const {
-    std::string status_str;
-    switch (status) {
-        case TenantEntity::Status::ACTIVE: status_str = "ACTIVE"; break;
-        case TenantEntity::Status::SUSPENDED: status_str = "SUSPENDED"; break;
-        case TenantEntity::Status::TRIAL: status_str = "TRIAL"; break;
-        case TenantEntity::Status::EXPIRED: status_str = "EXPIRED"; break;
-        case TenantEntity::Status::DISABLED: status_str = "DISABLED"; break;  // ✅ INACTIVE → DISABLED
-        default: status_str = "TRIAL"; break;
+// =============================================================================
+// SQL 빌더 헬퍼 메서드들
+// =============================================================================
+
+std::string TenantRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) return "";
+    
+    std::string clause = " WHERE ";
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) clause += " AND ";
+        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
     }
-    return QueryCondition("status", "=", status_str);
+    return clause;
+}
+
+std::string TenantRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) return "";
+    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
+}
+
+std::string TenantRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) return "";
+    return " LIMIT " + std::to_string(pagination->getLimit()) + 
+           " OFFSET " + std::to_string(pagination->getOffset());
+}
+
+// =============================================================================
+// 유틸리티 함수들
+// =============================================================================
+
+std::string TenantRepository::escapeString(const std::string& str) const {
+    std::string escaped = str;
+    size_t pos = 0;
+    while ((pos = escaped.find("'", pos)) != std::string::npos) {
+        escaped.replace(pos, 1, "''");
+        pos += 2;
+    }
+    return escaped;
+}
+
+std::string TenantRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::ostringstream oss;
+    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return oss.str();
 }
 
 } // namespace Repositories
