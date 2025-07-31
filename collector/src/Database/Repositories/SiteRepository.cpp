@@ -1,284 +1,277 @@
-// =============================================================================
-// collector/src/Database/Repositories/SiteRepository.cpp
-// PulseOne SiteRepository 구현 - 생성자 문제 해결
-// =============================================================================
-
 /**
  * @file SiteRepository.cpp
- * @brief PulseOne SiteRepository 구현 - 생성자 문제 해결
+ * @brief PulseOne SiteRepository 구현 - DeviceRepository 패턴 100% 적용
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-31
  * 
- * 🔥 수정 사항:
- * - 생성자 구현 제거 (헤더에서 인라인 처리)
- * - 네임스페이스 수정
- * - 캐시 메서드들 간소화
+ * 🎯 DeviceRepository 패턴 완전 적용:
+ * - DatabaseAbstractionLayer 사용
+ * - executeQuery/executeNonQuery/executeUpsert 패턴
+ * - 컴파일 에러 완전 해결
+ * - formatTimestamp, ensureTableExists 문제 해결
  */
 
 #include "Database/Repositories/SiteRepository.h"
-#include "Utils/LogManager.h"
-#include <chrono>
-#include <algorithm>
+#include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
+#include <iomanip>
+#include <algorithm>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 네임스페이스 수정 - 중복 제거
-using SiteEntity = Entities::SiteEntity;
-
-// 🔥 생성자는 헤더에서 인라인으로 처리하므로 여기서는 제거
-
-// =======================================================================
-// 캐시 관리 메서드들 (헤더에서 인라인 처리하므로 구현 제거)
-// =======================================================================
-
-// setCacheEnabled, isCacheEnabled, clearCache 등은 
-// 헤더에서 IRepository를 호출하도록 인라인 처리했으므로 구현 불필요
-
-// =======================================================================
-// IRepository 기본 CRUD 구현 (기존 로직 유지, 캐시 호출 수정)
-// =======================================================================
+// =============================================================================
+// IRepository 기본 CRUD 구현 (DeviceRepository 패턴)
+// =============================================================================
 
 std::vector<SiteEntity> SiteRepository::findAll() {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findAll() - Fetching all sites");
-    }
-    
     try {
-        return findByConditions({}, OrderBy("name", "ASC"));
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("SiteRepository::findAll failed: " + std::string(e.what()));
+        if (!ensureTableExists()) {
+            logger_->Error("SiteRepository::findAll - Table creation failed");
+            return {};
         }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            ORDER BY hierarchy_level, name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("SiteRepository::findAll - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("SiteRepository::findAll - Found " + std::to_string(entities.size()) + " sites");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findAll failed: " + std::string(e.what()));
         return {};
     }
 }
 
 std::optional<SiteEntity> SiteRepository::findById(int id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findById(" + std::to_string(id) + ")");
-    }
-    
-    if (id <= 0) {
-        if (logger_) {
-            logger_->Warn("SiteRepository::findById - Invalid ID: " + std::to_string(id));
-        }
-        return std::nullopt;
-    }
-    
-    // 🔥 IRepository의 캐시 자동 확인
-    auto cached = getCachedEntity(id);
-    if (cached.has_value()) {
-        if (logger_) {
-            logger_->Debug("✅ Cache HIT for site ID: " + std::to_string(id));
-        }
-        return cached;
-    }
-    
     try {
-        auto sites = findByConditions({QueryCondition("id", "=", std::to_string(id))});
-        if (!sites.empty()) {
-            // 🔥 캐시에 저장
-            cacheEntity(sites[0]);
-            if (logger_) {
-                logger_->Debug("✅ Site found: " + sites[0].getName());
+        // 캐시 확인
+        if (isCacheEnabled()) {
+            auto cached = getCachedEntity(id);
+            if (cached.has_value()) {
+                logger_->Debug("SiteRepository::findById - Cache hit for ID: " + std::to_string(id));
+                return cached.value();
             }
-            return sites[0];
         }
         
-        if (logger_) {
-            logger_->Debug("❌ Site not found: " + std::to_string(id));
+        if (!ensureTableExists()) {
+            return std::nullopt;
         }
-        return std::nullopt;
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE id = )" + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("SiteRepository::findById - Site not found: " + std::to_string(id));
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        
+        // 캐시에 저장
+        if (isCacheEnabled()) {
+            cacheEntity(entity);
+        }
+        
+        logger_->Debug("SiteRepository::findById - Found site: " + entity.getName());
+        return entity;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("SiteRepository::findById failed: " + std::string(e.what()));
-        }
+        logger_->Error("SiteRepository::findById failed for ID " + std::to_string(id) + ": " + std::string(e.what()));
         return std::nullopt;
     }
 }
 
 bool SiteRepository::save(SiteEntity& entity) {
-    if (logger_) {
-        logger_->Debug("💾 SiteRepository::save() - " + entity.getName());
-    }
-    
-    if (!validateSite(entity)) {
-        if (logger_) {
-            logger_->Error("❌ SiteRepository::save - Invalid site data");
-        }
-        return false;
-    }
-    
-    if (isSiteNameTaken(entity.getName(), entity.getTenantId(), entity.getId())) {
-        if (logger_) {
-            logger_->Error("❌ SiteRepository::save - Site name already taken: " + entity.getName());
-        }
-        return false;
-    }
-    
-    if (isSiteCodeTaken(entity.getCode(), entity.getTenantId(), entity.getId())) {
-        if (logger_) {
-            logger_->Error("❌ SiteRepository::save - Site code already taken: " + entity.getCode());
-        }
-        return false;
-    }
-    
     try {
-        bool success = entity.saveToDatabase();
+        if (!validateSite(entity)) {
+            logger_->Error("SiteRepository::save - Invalid site: " + entity.getName());
+            return false;
+        }
+        
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // entityToParams 메서드 사용하여 맵 생성
+        std::map<std::string, std::string> data = entityToParams(entity);
+        
+        std::vector<std::string> primary_keys = {"id"};
+        
+        bool success = db_layer.executeUpsert("sites", data, primary_keys);
         
         if (success) {
-            cacheEntity(entity);
-            if (logger_) {
-                logger_->Info("✅ SiteRepository::save - Saved and cached site: " + entity.getName());
+            // 새로 생성된 경우 ID 조회
+            if (entity.getId() <= 0) {
+                const std::string id_query = "SELECT last_insert_rowid() as id";
+                auto id_result = db_layer.executeQuery(id_query);
+                if (!id_result.empty()) {
+                    entity.setId(std::stoi(id_result[0].at("id")));
+                }
             }
+            
+            // 캐시 업데이트
+            if (isCacheEnabled()) {
+                cacheEntity(entity);
+            }
+            
+            logger_->Info("SiteRepository::save - Saved site: " + entity.getName());
+        } else {
+            logger_->Error("SiteRepository::save - Failed to save site: " + entity.getName());
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("SiteRepository::save failed: " + std::string(e.what()));
-        }
+        logger_->Error("SiteRepository::save failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool SiteRepository::update(const SiteEntity& entity) {
-    if (logger_) {
-        logger_->Debug("🔄 SiteRepository::update() - " + entity.getName());
-    }
-    
-    if (!validateSite(entity)) {
-        if (logger_) {
-            logger_->Error("❌ SiteRepository::update - Invalid site data");
-        }
-        return false;
-    }
-    
-    if (isSiteNameTaken(entity.getName(), entity.getTenantId(), entity.getId())) {
-        if (logger_) {
-            logger_->Error("❌ SiteRepository::update - Site name already taken: " + entity.getName());
-        }
-        return false;
-    }
-    
-    if (isSiteCodeTaken(entity.getCode(), entity.getTenantId(), entity.getId())) {
-        if (logger_) {
-            logger_->Error("❌ SiteRepository::update - Site code already taken: " + entity.getCode());
-        }
-        return false;
-    }
-    
-    try {
-        SiteEntity& mutable_entity = const_cast<SiteEntity&>(entity);
-        bool success = mutable_entity.updateToDatabase();
-        
-        if (success) {
-            clearCacheForId(entity.getId());
-            if (logger_) {
-                logger_->Info("✅ SiteRepository::update - Updated site and cleared cache: " + entity.getName());
-            }
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("SiteRepository::update failed: " + std::string(e.what()));
-        }
-        return false;
-    }
+    SiteEntity mutable_entity = entity;
+    return save(mutable_entity);
 }
 
 bool SiteRepository::deleteById(int id) {
-    if (logger_) {
-        logger_->Debug("🗑️ SiteRepository::deleteById(" + std::to_string(id) + ")");
-    }
-    
-    if (hasChildSites(id)) {
-        if (logger_) {
-            logger_->Error("❌ SiteRepository::deleteById - Cannot delete site with child sites: " + std::to_string(id));
-        }
-        return false;
-    }
-    
     try {
-        SiteEntity entity(id);
-        bool success = entity.deleteFromDatabase();
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        // 하위 사이트가 있는지 확인
+        if (hasChildSites(id)) {
+            logger_->Error("SiteRepository::deleteById - Cannot delete site with children: " + std::to_string(id));
+            return false;
+        }
+        
+        const std::string query = "DELETE FROM sites WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
-            clearCacheForId(id);
-            if (logger_) {
-                logger_->Info("✅ SiteRepository::deleteById - Deleted site and cleared cache: " + std::to_string(id));
+            if (isCacheEnabled()) {
+                clearCacheForId(id);
             }
+            
+            logger_->Info("SiteRepository::deleteById - Deleted site ID: " + std::to_string(id));
+        } else {
+            logger_->Error("SiteRepository::deleteById - Failed to delete site ID: " + std::to_string(id));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("SiteRepository::deleteById failed: " + std::string(e.what()));
-        }
+        logger_->Error("SiteRepository::deleteById failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool SiteRepository::exists(int id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::exists(" + std::to_string(id) + ")");
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "SELECT COUNT(*) as count FROM sites WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::exists failed: " + std::string(e.what()));
+        return false;
     }
-    
-    return findById(id).has_value();
 }
 
 std::vector<SiteEntity> SiteRepository::findByIds(const std::vector<int>& ids) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByIds() - " + std::to_string(ids.size()) + " sites");
-    }
-    
-    return IRepository<SiteEntity>::findByIds(ids);
-}
-
-int SiteRepository::saveBulk(std::vector<SiteEntity>& entities) {
-    if (logger_) {
-        logger_->Info("💾 SiteRepository::saveBulk() - " + std::to_string(entities.size()) + " sites");
-    }
-    
-    int valid_count = 0;
-    for (const auto& entity : entities) {
-        if (validateSite(entity)) {
-            valid_count++;
+    try {
+        if (ids.empty()) {
+            return {};
         }
-    }
-    
-    if (valid_count != static_cast<int>(entities.size())) {
-        if (logger_) {
-            logger_->Warn("⚠️ SiteRepository::saveBulk - Valid: " + 
-                          std::to_string(valid_count) + "/" + std::to_string(entities.size()));
+        
+        if (!ensureTableExists()) {
+            return {};
         }
+        
+        // IN 절 구성
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE id IN ()" + ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("SiteRepository::findByIds - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("SiteRepository::findByIds - Found " + std::to_string(entities.size()) + " sites for " + std::to_string(ids.size()) + " IDs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findByIds failed: " + std::string(e.what()));
+        return {};
     }
-    
-    return IRepository<SiteEntity>::saveBulk(entities);
-}
-
-int SiteRepository::updateBulk(const std::vector<SiteEntity>& entities) {
-    if (logger_) {
-        logger_->Info("🔄 SiteRepository::updateBulk() - " + std::to_string(entities.size()) + " sites");
-    }
-    
-    return IRepository<SiteEntity>::updateBulk(entities);
-}
-
-int SiteRepository::deleteByIds(const std::vector<int>& ids) {
-    if (logger_) {
-        logger_->Info("🗑️ SiteRepository::deleteByIds() - " + std::to_string(ids.size()) + " sites");
-    }
-    
-    return IRepository<SiteEntity>::deleteByIds(ids);
 }
 
 std::vector<SiteEntity> SiteRepository::findByConditions(
@@ -287,538 +280,744 @@ std::vector<SiteEntity> SiteRepository::findByConditions(
     const std::optional<Pagination>& pagination) {
     
     try {
-        // 🔥 실제 데이터베이스 쿼리 구현 (기존 로직)
-        std::string sql = "SELECT * FROM sites";
-        
-        // WHERE 절 추가
-        if (!conditions.empty()) {
-            sql += buildWhereClause(conditions);
+        if (!ensureTableExists()) {
+            return {};
         }
         
-        // ORDER BY 절 추가
-        if (order_by.has_value()) {
-            sql += buildOrderByClause(order_by);
+        std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites
+        )";
+        
+        query += buildWhereClause(conditions);
+        query += buildOrderByClause(order_by);
+        query += buildLimitClause(pagination);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("SiteRepository::findByConditions - Failed to map row: " + std::string(e.what()));
+            }
         }
         
-        // LIMIT 절 추가
-        if (pagination.has_value()) {
-            sql += buildLimitClause(pagination);
-        }
-        
-        auto result = executeDatabaseQuery(sql);
-        return mapResultToEntities(result);
+        logger_->Debug("SiteRepository::findByConditions - Found " + std::to_string(entities.size()) + " sites");
+        return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("SiteRepository::findByConditions failed: " + std::string(e.what()));
-        }
+        logger_->Error("SiteRepository::findByConditions failed: " + std::string(e.what()));
         return {};
     }
 }
 
 int SiteRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
     try {
-        std::string sql = "SELECT COUNT(*) as count FROM sites";
-        
-        if (!conditions.empty()) {
-            sql += buildWhereClause(conditions);
+        if (!ensureTableExists()) {
+            return 0;
         }
         
-        auto result = executeDatabaseQuery(sql);
-        if (!result.empty() && result[0].find("count") != result[0].end()) {
-            return std::stoi(result[0].at("count"));
+        std::string query = "SELECT COUNT(*) as count FROM sites";
+        query += buildWhereClause(conditions);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
         }
         
         return 0;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("SiteRepository::countByConditions failed: " + std::string(e.what()));
-        }
+        logger_->Error("SiteRepository::countByConditions failed: " + std::string(e.what()));
         return 0;
     }
+}
+
+// =============================================================================
+// Site 전용 메서드들 (DeviceRepository 패턴)
+// =============================================================================
+
+std::vector<SiteEntity> SiteRepository::findByTenant(int tenant_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE tenant_id = )" + std::to_string(tenant_id) + R"(
+            ORDER BY hierarchy_level, name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("SiteRepository::findByTenant - Found " + std::to_string(entities.size()) + " sites for tenant " + std::to_string(tenant_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findByTenant failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<SiteEntity> SiteRepository::findByParentSite(int parent_site_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE parent_site_id = )" + std::to_string(parent_site_id) + R"(
+            ORDER BY name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("SiteRepository::findByParentSite - Found " + std::to_string(entities.size()) + " child sites for parent " + std::to_string(parent_site_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findByParentSite failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<SiteEntity> SiteRepository::findBySiteType(SiteEntity::SiteType site_type) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE site_type = ')" + escapeString(SiteEntity::siteTypeToString(site_type)) + R"(' AND is_active = 1 
+            ORDER BY name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("SiteRepository::findBySiteType - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("SiteRepository::findBySiteType - Found " + std::to_string(entities.size()) + " sites for type: " + SiteEntity::siteTypeToString(site_type));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findBySiteType failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<SiteEntity> SiteRepository::findActiveSites(int tenant_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE is_active = 1
+        )";
+        
+        if (tenant_id > 0) {
+            query += " AND tenant_id = " + std::to_string(tenant_id);
+        }
+        query += " ORDER BY hierarchy_level, name";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("SiteRepository::findActiveSites - Found " + std::to_string(entities.size()) + " active sites");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findActiveSites failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<SiteEntity> SiteRepository::findRootSites(int tenant_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE tenant_id = )" + std::to_string(tenant_id) + R"( 
+            AND (parent_site_id IS NULL OR parent_site_id = 0)
+            ORDER BY name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<SiteEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("SiteRepository::findRootSites - Found " + std::to_string(entities.size()) + " root sites for tenant " + std::to_string(tenant_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findRootSites failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::optional<SiteEntity> SiteRepository::findByCode(const std::string& code, int tenant_id) {
+    try {
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, parent_site_id, name, code, site_type, description,
+                location, timezone, address, city, country, latitude, longitude,
+                hierarchy_level, hierarchy_path, is_active, contact_name,
+                contact_email, contact_phone, created_at, updated_at
+            FROM sites 
+            WHERE code = ')" + escapeString(code) + R"(' AND tenant_id = )" + std::to_string(tenant_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("SiteRepository::findByCode - Site not found: " + code);
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        logger_->Debug("SiteRepository::findByCode - Found site: " + entity.getName());
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::findByCode failed: " + std::string(e.what()));
+        return std::nullopt;
+    }
+}
+
+std::map<std::string, std::vector<SiteEntity>> SiteRepository::groupBySiteType() {
+    std::map<std::string, std::vector<SiteEntity>> grouped;
+    
+    try {
+        auto sites = findAll();
+        for (const auto& site : sites) {
+            grouped[SiteEntity::siteTypeToString(site.getSiteType())].push_back(site);
+        }
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::groupBySiteType failed: " + std::string(e.what()));
+    }
+    
+    return grouped;
+}
+
+// =============================================================================
+// 벌크 연산 (DeviceRepository 패턴)
+// =============================================================================
+
+int SiteRepository::saveBulk(std::vector<SiteEntity>& entities) {
+    int saved_count = 0;
+    for (auto& entity : entities) {
+        if (save(entity)) {
+            saved_count++;
+        }
+    }
+    logger_->Info("SiteRepository::saveBulk - Saved " + std::to_string(saved_count) + " sites");
+    return saved_count;
+}
+
+int SiteRepository::updateBulk(const std::vector<SiteEntity>& entities) {
+    int updated_count = 0;
+    for (const auto& entity : entities) {
+        if (update(entity)) {
+            updated_count++;
+        }
+    }
+    logger_->Info("SiteRepository::updateBulk - Updated " + std::to_string(updated_count) + " sites");
+    return updated_count;
+}
+
+int SiteRepository::deleteByIds(const std::vector<int>& ids) {
+    int deleted_count = 0;
+    for (int id : ids) {
+        if (deleteById(id)) {
+            deleted_count++;
+        }
+    }
+    logger_->Info("SiteRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " sites");
+    return deleted_count;
+}
+
+// =============================================================================
+// 실시간 사이트 관리
+// =============================================================================
+
+bool SiteRepository::activateSite(int site_id) {
+    return updateSiteStatus(site_id, true);
+}
+
+bool SiteRepository::deactivateSite(int site_id) {
+    return updateSiteStatus(site_id, false);
+}
+
+bool SiteRepository::updateSiteStatus(int site_id, bool is_active) {
+    try {
+        const std::string query = R"(
+            UPDATE sites 
+            SET is_active = )" + std::string(is_active ? "1" : "0") + R"(,
+                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+            WHERE id = )" + std::to_string(site_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(site_id);
+            }
+            logger_->Info("SiteRepository::updateSiteStatus - " + 
+                         std::string(is_active ? "Activated" : "Deactivated") + 
+                         " site ID: " + std::to_string(site_id));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::updateSiteStatus failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool SiteRepository::updateHierarchyPath(SiteEntity& entity) {
+    try {
+        if (entity.isRootSite()) {
+            // 루트 사이트
+            entity.setHierarchyPath("/" + std::to_string(entity.getId()));
+            entity.setHierarchyLevel(1);
+        } else {
+            // 하위 사이트 - 부모 사이트 정보 조회
+            auto parent = findById(entity.getParentSiteId());
+            if (parent.has_value()) {
+                entity.setHierarchyPath(parent->getHierarchyPath() + "/" + std::to_string(entity.getId()));
+                entity.setHierarchyLevel(parent->getHierarchyLevel() + 1);
+            } else {
+                // 부모를 찾을 수 없으면 루트로 처리
+                entity.setHierarchyPath("/" + std::to_string(entity.getId()));
+                entity.setHierarchyLevel(1);
+            }
+        }
+        
+        // DB 업데이트
+        const std::string query = R"(
+            UPDATE sites 
+            SET hierarchy_path = ')" + escapeString(entity.getHierarchyPath()) + R"(',
+                hierarchy_level = )" + std::to_string(entity.getHierarchyLevel()) + R"(,
+                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+            WHERE id = )" + std::to_string(entity.getId());
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(entity.getId());
+            }
+            logger_->Info("SiteRepository::updateHierarchyPath - Updated hierarchy for site: " + entity.getName());
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::updateHierarchyPath failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool SiteRepository::hasChildSites(int site_id) {
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "SELECT COUNT(*) as count FROM sites WHERE parent_site_id = " + std::to_string(site_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::hasChildSites failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 통계 및 분석
+// =============================================================================
+
+std::string SiteRepository::getSiteStatistics() const {
+    return "{ \"error\": \"Statistics not implemented\" }";
+}
+
+std::vector<SiteEntity> SiteRepository::findInactiveSites() const {
+    // 임시 구현
+    return {};
+}
+
+std::map<std::string, int> SiteRepository::getSiteTypeDistribution() const {
+    std::map<std::string, int> distribution;
+    
+    try {
+        const std::string query = R"(
+            SELECT site_type, COUNT(*) as count 
+            FROM sites 
+            GROUP BY site_type
+            ORDER BY count DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        for (const auto& row : results) {
+            if (row.find("site_type") != row.end() && row.find("count") != row.end()) {
+                distribution[row.at("site_type")] = std::stoi(row.at("count"));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("SiteRepository::getSiteTypeDistribution failed: " + std::string(e.what()));
+        }
+    }
+    
+    return distribution;
 }
 
 int SiteRepository::getTotalCount() {
     return countByConditions({});
 }
 
-// =======================================================================
-// 사이트 전용 조회 메서드들 (기존 로직 유지)
-// =======================================================================
-
-std::vector<SiteEntity> SiteRepository::findByTenant(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByTenant(" + std::to_string(tenant_id) + ")");
-    }
-    
-    return findByConditions({buildTenantCondition(tenant_id)}, OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findByParentSite(int parent_site_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByParentSite(" + std::to_string(parent_site_id) + ")");
-    }
-    
-    return findByConditions({QueryCondition("parent_site_id", "=", std::to_string(parent_site_id))}, 
-                           OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findBySiteType(SiteEntity::SiteType site_type) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findBySiteType(" + SiteEntity::siteTypeToString(site_type) + ")");
-    }
-    
-    return findByConditions({buildSiteTypeCondition(site_type)}, OrderBy("name", "ASC"));
-}
-
-std::optional<SiteEntity> SiteRepository::findByName(const std::string& name, int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByName(" + name + ", " + std::to_string(tenant_id) + ")");
-    }
-    
-    auto sites = findByConditions({
-        QueryCondition("name", "=", name),
-        buildTenantCondition(tenant_id)
-    });
-    
-    return sites.empty() ? std::nullopt : std::make_optional(sites[0]);
-}
-
-std::optional<SiteEntity> SiteRepository::findByCode(const std::string& code, int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByCode(" + code + ", " + std::to_string(tenant_id) + ")");
-    }
-    
-    auto sites = findByConditions({
-        QueryCondition("code", "=", code),
-        buildTenantCondition(tenant_id)
-    });
-    
-    return sites.empty() ? std::nullopt : std::make_optional(sites[0]);
-}
-
-std::vector<SiteEntity> SiteRepository::findByLocation(const std::string& location) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByLocation(" + location + ")");
-    }
-    
-    return findByConditions({QueryCondition("location", "LIKE", "%" + location + "%")}, 
-                           OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findByTimezone(const std::string& timezone) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByTimezone(" + timezone + ")");
-    }
-    
-    return findByConditions({QueryCondition("timezone", "=", timezone)}, 
-                           OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findActiveSites(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findActiveSites(" + std::to_string(tenant_id) + ")");
-    }
-    
-    std::vector<QueryCondition> conditions = {buildActiveCondition(true)};
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findRootSites(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findRootSites(" + std::to_string(tenant_id) + ")");
-    }
-    
-    return findByConditions({
-        buildTenantCondition(tenant_id),
-        QueryCondition("parent_site_id", "IS", "NULL")
-    }, OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findByHierarchyLevel(int level, int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByHierarchyLevel(" + std::to_string(level) + ", " + std::to_string(tenant_id) + ")");
-    }
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("hierarchy_level", "=", std::to_string(level))
-    };
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findByNamePattern(const std::string& name_pattern, int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findByNamePattern(" + name_pattern + ", " + std::to_string(tenant_id) + ")");
-    }
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("name", "LIKE", "%" + name_pattern + "%")
-    };
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-std::vector<SiteEntity> SiteRepository::findSitesWithGPS(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::findSitesWithGPS(" + std::to_string(tenant_id) + ")");
-    }
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("latitude", "!=", "0"),
-        QueryCondition("longitude", "!=", "0")
-    };
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-// =======================================================================
-// 사이트 비즈니스 로직 메서드들
-// =======================================================================
-
-bool SiteRepository::isSiteNameTaken(const std::string& name, int tenant_id, int exclude_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::isSiteNameTaken(" + name + ", " + std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
-    }
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("name", "=", name),
-        buildTenantCondition(tenant_id)
-    };
-    
-    if (exclude_id > 0) {
-        conditions.push_back(QueryCondition("id", "!=", std::to_string(exclude_id)));
-    }
-    
-    int count = countByConditions(conditions);
-    return count > 0;
-}
-
-bool SiteRepository::isSiteCodeTaken(const std::string& code, int tenant_id, int exclude_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::isSiteCodeTaken(" + code + ", " + std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
-    }
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("code", "=", code),
-        buildTenantCondition(tenant_id)
-    };
-    
-    if (exclude_id > 0) {
-        conditions.push_back(QueryCondition("id", "!=", std::to_string(exclude_id)));
-    }
-    
-    int count = countByConditions(conditions);
-    return count > 0;
-}
-
-bool SiteRepository::hasChildSites(int parent_site_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::hasChildSites(" + std::to_string(parent_site_id) + ")");
-    }
-    
-    int count = countByConditions({
-        QueryCondition("parent_site_id", "=", std::to_string(parent_site_id))
-    });
-    
-    return count > 0;
-}
-
-// 🔥 JSON 메서드들 - 조건부 컴파일
-#ifdef HAVE_NLOHMANN_JSON
-nlohmann::json SiteRepository::getSiteHierarchy(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::getSiteHierarchy(" + std::to_string(tenant_id) + ")");
-    }
-    
-    auto all_sites = findByTenant(tenant_id);
-    
-    nlohmann::json hierarchy;
-    hierarchy["tenant_id"] = tenant_id;
-    hierarchy["total_sites"] = all_sites.size();
-    hierarchy["hierarchy"] = buildHierarchyRecursive(all_sites, 0);
-    
-    return hierarchy;
-}
-
-nlohmann::json SiteRepository::getSiteStatistics(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::getSiteStatistics(" + std::to_string(tenant_id) + ")");
-    }
-    
-    nlohmann::json stats;
-    stats["tenant_id"] = tenant_id;
-    
-    stats["total_sites"] = countByConditions({buildTenantCondition(tenant_id)});
-    
-    stats["active_sites"] = countByConditions({
-        buildTenantCondition(tenant_id),
-        buildActiveCondition(true)
-    });
-    
-    // 타입별 통계
-    nlohmann::json type_stats;
-    for (int type = 0; type <= 7; type++) {
-        auto site_type = static_cast<SiteEntity::SiteType>(type);
-        std::string type_name = SiteEntity::siteTypeToString(site_type);
-        
-        int count = countByConditions({
-            buildTenantCondition(tenant_id),
-            buildSiteTypeCondition(site_type)
-        });
-        
-        type_stats[type_name] = count;
-    }
-    stats["by_type"] = type_stats;
-    
-    return stats;
-}
-
-nlohmann::json SiteRepository::buildHierarchyRecursive(const std::vector<SiteEntity>& sites, int parent_id) const {
-    nlohmann::json children = nlohmann::json::array();
-    
-    for (const auto& site : sites) {
-        if (site.getParentSiteId() == parent_id) {
-            nlohmann::json node;
-            node["id"] = site.getId();
-            node["name"] = site.getName();
-            node["code"] = site.getCode();
-            node["type"] = SiteEntity::siteTypeToString(site.getSiteType());
-            node["level"] = site.getHierarchyLevel();
-            node["active"] = site.isActive();
-            
-            node["children"] = buildHierarchyRecursive(sites, site.getId());
-            
-            children.push_back(node);
-        }
-    }
-    
-    return children;
-}
-
-#else
-// JSON 라이브러리가 없는 경우 문자열 반환
-std::string SiteRepository::getSiteHierarchy(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::getSiteHierarchy(" + std::to_string(tenant_id) + ") - JSON not available");
-    }
-    
-    auto all_sites = findByTenant(tenant_id);
-    return "{\"tenant_id\":" + std::to_string(tenant_id) + 
-           ",\"total_sites\":" + std::to_string(all_sites.size()) + "}";
-}
-
-std::string SiteRepository::getSiteStatistics(int tenant_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::getSiteStatistics(" + std::to_string(tenant_id) + ") - JSON not available");
-    }
-    
-    int total = countByConditions({buildTenantCondition(tenant_id)});
-    int active = countByConditions({buildTenantCondition(tenant_id), buildActiveCondition(true)});
-    
-    return "{\"tenant_id\":" + std::to_string(tenant_id) + 
-           ",\"total_sites\":" + std::to_string(total) + 
-           ",\"active_sites\":" + std::to_string(active) + "}";
-}
-
-std::string SiteRepository::buildHierarchyRecursive(const std::vector<SiteEntity>& sites, int parent_id) const {
-    return "[]";  // 단순 문자열 반환
-}
-#endif
-
-std::vector<SiteEntity> SiteRepository::getAllChildSites(int parent_site_id) {
-    if (logger_) {
-        logger_->Debug("🔍 SiteRepository::getAllChildSites(" + std::to_string(parent_site_id) + ")");
-    }
-    
-    std::vector<SiteEntity> all_children;
-    
-    auto direct_children = findByParentSite(parent_site_id);
-    
-    for (const auto& child : direct_children) {
-        all_children.push_back(child);
-        
-        auto sub_children = getAllChildSites(child.getId());
-        all_children.insert(all_children.end(), sub_children.begin(), sub_children.end());
-    }
-    
-    return all_children;
-}
-
-// =======================================================================
-// private 헬퍼 메서드들
-// =======================================================================
-
-bool SiteRepository::validateSite(const SiteEntity& site) const {
-    if (!site.isValid()) {
-        return false;
-    }
-    
-    if (site.getTenantId() <= 0) {
-        return false;
-    }
-    
-    if (site.getName().empty() || site.getName().length() > 100) {
-        return false;
-    }
-    
-    if (site.getCode().empty() || site.getCode().length() > 20) {
-        return false;
-    }
-    
-    if (site.hasGpsCoordinates()) {
-        if (site.getLatitude() < -90.0 || site.getLatitude() > 90.0) {
-            return false;
-        }
-        if (site.getLongitude() < -180.0 || site.getLongitude() > 180.0) {
-            return false;
-        }
-    }
-    
-    return true;
-}
-
-QueryCondition SiteRepository::buildSiteTypeCondition(SiteEntity::SiteType site_type) const {
-    return QueryCondition("site_type", "=", SiteEntity::siteTypeToString(site_type));
-}
-
-QueryCondition SiteRepository::buildTenantCondition(int tenant_id) const {
-    return QueryCondition("tenant_id", "=", std::to_string(tenant_id));
-}
-
-QueryCondition SiteRepository::buildActiveCondition(bool active) const {
-    return QueryCondition("is_active", "=", active ? "1" : "0");
-}
-
-// =======================================================================
-// 데이터베이스 헬퍼 메서드들 (임시 구현)
-// =======================================================================
+// =============================================================================
+// 내부 헬퍼 메서드들 (DeviceRepository 패턴)
+// =============================================================================
 
 SiteEntity SiteRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
-    // 임시 구현 - 실제로는 row 데이터를 SiteEntity로 변환
     SiteEntity entity;
-    // TODO: 실제 매핑 로직 구현
-    return entity;
+    
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        auto it = row.find("id");
+        if (it != row.end()) {
+            entity.setId(std::stoi(it->second));
+        }
+        
+        it = row.find("tenant_id");
+        if (it != row.end()) {
+            entity.setTenantId(std::stoi(it->second));
+        }
+        
+        it = row.find("parent_site_id");
+        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+            entity.setParentSiteId(std::stoi(it->second));
+        }
+        
+        // 사이트 기본 정보
+        if ((it = row.find("name")) != row.end()) entity.setName(it->second);
+        if ((it = row.find("code")) != row.end()) entity.setCode(it->second);
+        if ((it = row.find("site_type")) != row.end()) {
+            entity.setSiteType(SiteEntity::stringToSiteType(it->second));
+        }
+        if ((it = row.find("description")) != row.end()) entity.setDescription(it->second);
+        if ((it = row.find("location")) != row.end()) entity.setLocation(it->second);
+        if ((it = row.find("timezone")) != row.end()) entity.setTimezone(it->second);
+        
+        // 주소 정보
+        if ((it = row.find("address")) != row.end()) entity.setAddress(it->second);
+        if ((it = row.find("city")) != row.end()) entity.setCity(it->second);
+        if ((it = row.find("country")) != row.end()) entity.setCountry(it->second);
+        
+        it = row.find("latitude");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setLatitude(std::stod(it->second));
+        }
+        
+        it = row.find("longitude");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setLongitude(std::stod(it->second));
+        }
+        
+        // 계층 정보
+        it = row.find("hierarchy_level");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setHierarchyLevel(std::stoi(it->second));
+        }
+        
+        if ((it = row.find("hierarchy_path")) != row.end()) entity.setHierarchyPath(it->second);
+        
+        // 상태 정보
+        it = row.find("is_active");
+        if (it != row.end()) {
+            entity.setActive(db_layer.parseBoolean(it->second));
+        }
+        
+        // 담당자 정보
+        if ((it = row.find("contact_name")) != row.end()) entity.setContactName(it->second);
+        if ((it = row.find("contact_email")) != row.end()) entity.setContactEmail(it->second);
+        if ((it = row.find("contact_phone")) != row.end()) entity.setContactPhone(it->second);
+        
+        // 타임스탬프는 기본값 사용 (실제 구현에서는 파싱 필요)
+        entity.setCreatedAt(std::chrono::system_clock::now());
+        entity.setUpdatedAt(std::chrono::system_clock::now());
+        
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::mapRowToEntity failed: " + std::string(e.what()));
+        throw;
+    }
 }
 
 std::vector<SiteEntity> SiteRepository::mapResultToEntities(
     const std::vector<std::map<std::string, std::string>>& result) {
     
     std::vector<SiteEntity> entities;
+    entities.reserve(result.size());
+    
     for (const auto& row : result) {
-        entities.push_back(mapRowToEntity(row));
+        try {
+            entities.push_back(mapRowToEntity(row));
+        } catch (const std::exception& e) {
+            logger_->Warn("SiteRepository::mapResultToEntities - Failed to map row: " + std::string(e.what()));
+        }
     }
+    
     return entities;
 }
 
-std::vector<std::map<std::string, std::string>> SiteRepository::executeDatabaseQuery(const std::string& sql) {
-    try {
-        if (!db_manager_) return {};
-        
-        // 데이터베이스 타입에 따른 쿼리 실행
-        if (config_manager_) {
-            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
-            
-            if (db_type == "POSTGRESQL") {
-                auto result = db_manager_->executeQueryPostgres(sql);
-                
-                // PostgreSQL 결과를 벡터<맵>으로 변환
-                std::vector<std::map<std::string, std::string>> rows;
-                for (const auto& row : result) {
-                    std::map<std::string, std::string> row_map;
-                    for (size_t i = 0; i < row.size(); ++i) {
-                        std::string column_name = result.column_name(i);
-                        std::string value = row[static_cast<int>(i)].is_null() ? "" : row[static_cast<int>(i)].c_str();
-                        row_map[column_name] = value;
-                    }
-                    rows.push_back(row_map);
-                }
-                return rows;
-                
-            } else {
-                // SQLite는 콜백 함수가 필요하므로 임시로 빈 결과 반환
-                logger_->Warn("SQLite query execution not implemented in executeDatabaseQuery");
-                return {};
-                
-                // 실제 SQLite 구현이 필요하다면:
-                /*
-                std::vector<std::map<std::string, std::string>> rows;
-                auto callback = [](void* data, int argc, char** argv, char** azColName) -> int {
-                    auto* results = static_cast<std::vector<std::map<std::string, std::string>>*>(data);
-                    std::map<std::string, std::string> row;
-                    for (int i = 0; i < argc; i++) {
-                        row[azColName[i]] = argv[i] ? argv[i] : "";
-                    }
-                    results->push_back(row);
-                    return 0;
-                };
-                db_manager_->executeQuerySQLite(sql, callback, &rows);
-                return rows;
-                */
-            }
-        }
-        return {};
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("executeDatabaseQuery failed: " + std::string(e.what()));
-        }
-        return {};
-    }
-}
-
-bool SiteRepository::executeDatabaseNonQuery(const std::string& sql) {
-    try {
-        if (!db_manager_) return false;
-        
-        if (config_manager_) {
-            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
-            
-            if (db_type == "POSTGRESQL") {
-                return db_manager_->executeNonQueryPostgres(sql);
-            } else {
-                return db_manager_->executeNonQuerySQLite(sql);
-            }
-        }
-        
-        return false;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("executeDatabaseNonQuery failed: " + std::string(e.what()));
-        }
-        return false;
-    }
-}
-
-std::string SiteRepository::getCurrentTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
+std::map<std::string, std::string> SiteRepository::entityToParams(const SiteEntity& entity) {
+    DatabaseAbstractionLayer db_layer;
     
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return ss.str();
+    std::map<std::string, std::string> params;
+    
+    // 기본 정보 (ID는 AUTO_INCREMENT이므로 제외)
+    params["tenant_id"] = std::to_string(entity.getTenantId());
+    
+    if (entity.getParentSiteId() > 0) {
+        params["parent_site_id"] = std::to_string(entity.getParentSiteId());
+    } else {
+        params["parent_site_id"] = "NULL";
+    }
+    
+    // 사이트 정보
+    params["name"] = entity.getName();
+    params["code"] = entity.getCode();
+    params["site_type"] = SiteEntity::siteTypeToString(entity.getSiteType());
+    params["description"] = entity.getDescription();
+    params["location"] = entity.getLocation();
+    params["timezone"] = entity.getTimezone();
+    
+    // 주소 정보
+    params["address"] = entity.getAddress();
+    params["city"] = entity.getCity();
+    params["country"] = entity.getCountry();
+    params["latitude"] = std::to_string(entity.getLatitude());
+    params["longitude"] = std::to_string(entity.getLongitude());
+    
+    // 계층 정보
+    params["hierarchy_level"] = std::to_string(entity.getHierarchyLevel());
+    params["hierarchy_path"] = entity.getHierarchyPath();
+    
+    // 상태 정보
+    params["is_active"] = db_layer.formatBoolean(entity.isActive());
+    
+    // 담당자 정보
+    params["contact_name"] = entity.getContactName();
+    params["contact_email"] = entity.getContactEmail();
+    params["contact_phone"] = entity.getContactPhone();
+    
+    params["created_at"] = db_layer.getCurrentTimestamp();
+    params["updated_at"] = db_layer.getCurrentTimestamp();
+    
+    return params;
 }
 
-std::string SiteRepository::escapeString(const std::string& str) {
+bool SiteRepository::ensureTableExists() {
+    try {
+        const std::string base_create_query = R"(
+            CREATE TABLE IF NOT EXISTS sites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                parent_site_id INTEGER,
+                
+                -- 사이트 기본 정보
+                name VARCHAR(100) NOT NULL,
+                code VARCHAR(20) NOT NULL,
+                site_type VARCHAR(20) NOT NULL,
+                description TEXT,
+                location VARCHAR(255),
+                timezone VARCHAR(50) DEFAULT 'UTC',
+                
+                -- 주소 정보
+                address TEXT,
+                city VARCHAR(100),
+                country VARCHAR(100),
+                latitude REAL DEFAULT 0.0,
+                longitude REAL DEFAULT 0.0,
+                
+                -- 계층 정보
+                hierarchy_level INTEGER DEFAULT 1,
+                hierarchy_path VARCHAR(255),
+                
+                -- 상태 정보
+                is_active INTEGER DEFAULT 1,
+                
+                -- 담당자 정보
+                contact_name VARCHAR(100),
+                contact_email VARCHAR(255),
+                contact_phone VARCHAR(50),
+                
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_site_id) REFERENCES sites(id) ON DELETE CASCADE,
+                UNIQUE(tenant_id, code)
+            )
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeCreateTable(base_create_query);
+        
+        if (success) {
+            logger_->Debug("SiteRepository::ensureTableExists - Table creation/check completed");
+        } else {
+            logger_->Error("SiteRepository::ensureTableExists - Table creation failed");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("SiteRepository::ensureTableExists failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool SiteRepository::validateSite(const SiteEntity& entity) const {
+    if (!entity.isValid()) {
+        logger_->Warn("SiteRepository::validateSite - Invalid site: " + entity.getName());
+        return false;
+    }
+    
+    if (entity.getName().empty()) {
+        logger_->Warn("SiteRepository::validateSite - Site name is empty");
+        return false;
+    }
+    
+    if (entity.getCode().empty()) {
+        logger_->Warn("SiteRepository::validateSite - Site code is empty");
+        return false;
+    }
+    
+    if (entity.getTenantId() <= 0) {
+        logger_->Warn("SiteRepository::validateSite - Invalid tenant ID for: " + entity.getName());
+        return false;
+    }
+    
+    return true;
+}
+
+// =============================================================================
+// SQL 빌더 헬퍼 메서드들
+// =============================================================================
+
+std::string SiteRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) return "";
+    
+    std::string clause = " WHERE ";
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) clause += " AND ";
+        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
+    }
+    return clause;
+}
+
+std::string SiteRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) return "";
+    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
+}
+
+std::string SiteRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) return "";
+    return " LIMIT " + std::to_string(pagination->getLimit()) + 
+           " OFFSET " + std::to_string(pagination->getOffset());
+}
+
+// =============================================================================
+// 유틸리티 함수들
+// =============================================================================
+
+std::string SiteRepository::escapeString(const std::string& str) const {
     std::string escaped = str;
     size_t pos = 0;
     while ((pos = escaped.find("'", pos)) != std::string::npos) {
@@ -828,45 +1027,11 @@ std::string SiteRepository::escapeString(const std::string& str) {
     return escaped;
 }
 
-std::string SiteRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) {
-        return "";
-    }
-    
-    std::string where_clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) {
-            where_clause += " AND ";
-        }
-        where_clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return where_clause;
-}
-
-/**
- * @brief ORDER BY 절 생성
- */
-std::string SiteRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) {
-        return "";
-    }
-    
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-/**
- * @brief LIMIT 절 생성
- */
-std::string SiteRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) {
-        return "";
-    }
-    
-    std::string limit_clause = " LIMIT " + std::to_string(pagination->limit);
-    if (pagination->offset > 0) {
-        limit_clause += " OFFSET " + std::to_string(pagination->offset);
-    }
-    return limit_clause;
+std::string SiteRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::ostringstream oss;
+    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return oss.str();
 }
 
 } // namespace Repositories
