@@ -18,6 +18,9 @@
 #include <chrono>
 #include <future>
 
+// ✅ 새로 추가: DataQuality 타입 사용을 위해 Enums.h include
+#include "Common/Enums.h"
+#include "Common/BasicTypes.h"
 // 🔧 중요: 전역 네임스페이스에서 전방선언 (PulseOne:: 제거)
 class LogManager;
 class ConfigManager;
@@ -95,7 +98,11 @@ public:
     FactoryStats GetFactoryStats() const;
     std::string GetFactoryStatsString() const;
     void RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator);
-
+    bool ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_point,
+                                       const PulseOne::BasicTypes::DataVariant& new_value) const;
+    void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point, 
+                         const PulseOne::BasicTypes::DataVariant& new_value,
+                         PulseOne::Enums::DataQuality new_quality = PulseOne::Enums::DataQuality::GOOD) const;
 private:
     WorkerFactory() = default;
     ~WorkerFactory() = default;
@@ -106,6 +113,9 @@ private:
     // ✅ 전방 선언된 타입 사용
     PulseOne::Structs::DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
     std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
+    
+    // ✅ 새로 추가: 데이터 품질 헬퍼 함수
+    std::string DataQualityToString(PulseOne::Enums::DataQuality quality) const;
 
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;
