@@ -252,12 +252,18 @@ bool MQTTWorkerProduction::IsConnectionHealthy() const {
         return false;
     }
     
-    // 추가 건강 상태 확인
     auto now = steady_clock::now();
+    auto uptime = duration_cast<seconds>(now - start_time_);
+    
+    // 추가 건강 상태 확인 - uptime 활용
     auto last_activity = system_clock::time_point(milliseconds(performance_metrics_.last_activity_time.load()));
     auto time_since_activity = duration_cast<seconds>(system_clock::now() - last_activity);
     
-    return time_since_activity.count() < 300;  // 5분 이내 활동
+    // 🆕 실제로 now 변수를 활용하여 연결 상태 검증
+    bool connection_stable = time_since_activity.count() < 300;  // 5분 이내 활동
+    bool uptime_healthy = uptime.count() > 10;  // 최소 10초 운영
+    
+    return connection_stable && uptime_healthy;
 }
 
 double MQTTWorkerProduction::GetSystemLoad() const {

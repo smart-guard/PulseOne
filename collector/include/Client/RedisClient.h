@@ -27,7 +27,7 @@ public:
     using MessageCallback = std::function<void(const std::string& channel, const std::string& message)>;
     
     // =============================================================================
-    // 기본 연결 관리 (기존 인터페이스 유지)
+    // 기본 연결 관리
     // =============================================================================
     
     /**
@@ -51,58 +51,64 @@ public:
     virtual bool isConnected() const = 0;
     
     // =============================================================================
-    // 기본 Key-Value 조작 (기존 인터페이스 확장)
+    // 기본 Key-Value 조작
     // =============================================================================
     
     /**
-     * @brief 키-값 설정 (기존)
+     * @brief 키-값 설정
+     * @param key 키
+     * @param value 값
+     * @return 성공 시 true
      */
     virtual bool set(const std::string& key, const std::string& value) = 0;
     
     /**
-     * @brief 값 조회 (기존)
+     * @brief 키-값 설정 (만료 시간 포함)
+     * @param key 키
+     * @param value 값
+     * @param expire_seconds 만료 시간 (초)
+     * @return 성공 시 true
+     */
+    virtual bool setex(const std::string& key, const std::string& value, int expire_seconds) = 0;
+    
+    /**
+     * @brief 키 조회
+     * @param key 키
+     * @return 값 (없으면 빈 문자열)
      */
     virtual std::string get(const std::string& key) = 0;
     
     /**
-     * @brief TTL과 함께 키-값 설정
+     * @brief 키 삭제
      * @param key 키
-     * @param value 값
-     * @param ttl_seconds TTL (초)
-     * @return 성공 시 true
+     * @return 삭제된 키 수
      */
-    virtual bool setex(const std::string& key, const std::string& value, int ttl_seconds) = 0;
+    virtual int del(const std::string& key) = 0;
     
     /**
      * @brief 키 존재 확인
-     * @param key 확인할 키
+     * @param key 키
      * @return 존재하면 true
      */
     virtual bool exists(const std::string& key) = 0;
     
     /**
-     * @brief 키 삭제
-     * @param key 삭제할 키
-     * @return 삭제된 키의 수
+     * @brief 키 만료 시간 설정
+     * @param key 키
+     * @param seconds 만료 시간 (초)
+     * @return 성공 시 true
      */
-    virtual int del(const std::string& key) = 0;
+    virtual bool expire(const std::string& key, int seconds) = 0;
     
     /**
-     * @brief 다중 키 삭제
-     * @param keys 삭제할 키들
-     * @return 삭제된 키의 수
-     */
-    virtual int del(const StringList& keys) = 0;
-    
-    /**
-     * @brief 키의 TTL 조회
-     * @param key 확인할 키
-     * @return TTL (초), -1: 만료시간 없음, -2: 키 없음
+     * @brief 키 TTL 조회
+     * @param key 키
+     * @return TTL (초), -1이면 만료 없음, -2면 키 없음
      */
     virtual int ttl(const std::string& key) = 0;
     
     // =============================================================================
-    // Hash 조작 (PulseOne 데이터 구조용)
+    // Hash 조작
     // =============================================================================
     
     /**
@@ -118,64 +124,71 @@ public:
      * @brief Hash 필드 조회
      * @param key Hash 키
      * @param field 필드명
-     * @return 필드 값 (없으면 빈 문자열)
+     * @return 값 (없으면 빈 문자열)
      */
     virtual std::string hget(const std::string& key, const std::string& field) = 0;
     
     /**
      * @brief Hash 전체 조회
      * @param key Hash 키
-     * @return 모든 필드-값 쌍
+     * @return 필드-값 맵
      */
     virtual StringMap hgetall(const std::string& key) = 0;
     
     /**
-     * @brief Hash 다중 필드 설정
-     * @param key Hash 키
-     * @param field_values 필드-값 쌍들
-     * @return 성공 시 true
-     */
-    virtual bool hmset(const std::string& key, const StringMap& field_values) = 0;
-    
-    /**
      * @brief Hash 필드 삭제
      * @param key Hash 키
-     * @param field 삭제할 필드
+     * @param field 필드명
      * @return 삭제된 필드 수
      */
     virtual int hdel(const std::string& key, const std::string& field) = 0;
     
+    /**
+     * @brief Hash 필드 존재 확인
+     * @param key Hash 키
+     * @param field 필드명
+     * @return 존재하면 true
+     */
+    virtual bool hexists(const std::string& key, const std::string& field) = 0;
+    
+    /**
+     * @brief Hash 필드 수 조회
+     * @param key Hash 키
+     * @return 필드 수
+     */
+    virtual int hlen(const std::string& key) = 0;
+    
     // =============================================================================
-    // List 조작 (큐/로그용)
+    // List 조작
     // =============================================================================
     
     /**
-     * @brief List 왼쪽에 값 추가
+     * @brief List 왼쪽에 추가
      * @param key List 키
-     * @param value 추가할 값
-     * @return List 길이
+     * @param value 값
+     * @return 리스트 길이
      */
     virtual int lpush(const std::string& key, const std::string& value) = 0;
     
     /**
-     * @brief List 오른쪽에 값 추가
-     * @param key List 키  
-     * @param value 추가할 값
-     * @return List 길이
+     * @brief List 오른쪽에 추가
+     * @param key List 키
+     * @param value 값
+     * @return 리스트 길이
      */
     virtual int rpush(const std::string& key, const std::string& value) = 0;
     
     /**
-     * @brief List 왼쪽에서 값 제거 후 반환
+     * @brief List 왼쪽에서 제거
      * @param key List 키
-     * @return 제거된 값 (리스트가 비어있으면 빈 문자열)
+     * @return 제거된 값 (없으면 빈 문자열)
      */
     virtual std::string lpop(const std::string& key) = 0;
     
     /**
-     * @brief List 오른쪽에서 값 제거 후 반환
+     * @brief List 오른쪽에서 제거
      * @param key List 키
-     * @return 제거된 값 (리스트가 비어있으면 빈 문자열)
+     * @return 제거된 값 (없으면 빈 문자열)
      */
     virtual std::string rpop(const std::string& key) = 0;
     
@@ -183,7 +196,7 @@ public:
      * @brief List 범위 조회
      * @param key List 키
      * @param start 시작 인덱스
-     * @param stop 끝 인덱스 (-1: 끝까지)
+     * @param stop 끝 인덱스
      * @return 값들의 리스트
      */
     virtual StringList lrange(const std::string& key, int start, int stop) = 0;
@@ -191,70 +204,118 @@ public:
     /**
      * @brief List 길이 조회
      * @param key List 키
-     * @return List 길이
+     * @return 리스트 길이
      */
     virtual int llen(const std::string& key) = 0;
     
     // =============================================================================
-    // Sorted Set 조작 (시계열 데이터용)
+    // Set 조작
     // =============================================================================
     
     /**
-     * @brief Sorted Set에 값 추가
+     * @brief Set에 멤버 추가
      * @param key Set 키
-     * @param score 점수 (정렬 기준)
      * @param member 멤버
-     * @return 새로 추가된 멤버 수
+     * @return 추가된 멤버 수
+     */
+    virtual int sadd(const std::string& key, const std::string& member) = 0;
+    
+    /**
+     * @brief Set에서 멤버 제거
+     * @param key Set 키
+     * @param member 멤버
+     * @return 제거된 멤버 수
+     */
+    virtual int srem(const std::string& key, const std::string& member) = 0;
+    
+    /**
+     * @brief Set 멤버 확인
+     * @param key Set 키
+     * @param member 멤버
+     * @return 존재하면 true
+     */
+    virtual bool sismember(const std::string& key, const std::string& member) = 0;
+    
+    /**
+     * @brief Set 모든 멤버 조회
+     * @param key Set 키
+     * @return 멤버들의 리스트
+     */
+    virtual StringList smembers(const std::string& key) = 0;
+    
+    /**
+     * @brief Set 크기 조회
+     * @param key Set 키
+     * @return Set 크기
+     */
+    virtual int scard(const std::string& key) = 0;
+    
+    // =============================================================================
+    // Sorted Set 조작
+    // =============================================================================
+    
+    /**
+     * @brief Sorted Set에 멤버 추가
+     * @param key Sorted Set 키
+     * @param score 점수
+     * @param member 멤버
+     * @return 추가된 멤버 수
      */
     virtual int zadd(const std::string& key, double score, const std::string& member) = 0;
     
     /**
-     * @brief Sorted Set 범위 조회 (점수 기준)
-     * @param key Set 키
-     * @param min_score 최소 점수
-     * @param max_score 최대 점수
+     * @brief Sorted Set에서 멤버 제거
+     * @param key Sorted Set 키
+     * @param member 멤버
+     * @return 제거된 멤버 수
+     */
+    virtual int zrem(const std::string& key, const std::string& member) = 0;
+    
+    /**
+     * @brief Sorted Set 범위 조회 (점수 순)
+     * @param key Sorted Set 키
+     * @param start 시작 인덱스
+     * @param stop 끝 인덱스
      * @return 멤버들의 리스트
      */
-    virtual StringList zrangebyscore(const std::string& key, double min_score, double max_score) = 0;
+    virtual StringList zrange(const std::string& key, int start, int stop) = 0;
     
     /**
      * @brief Sorted Set 크기 조회
-     * @param key Set 키
+     * @param key Sorted Set 키
      * @return Set 크기
      */
     virtual int zcard(const std::string& key) = 0;
     
-    /**
-     * @brief Sorted Set에서 점수 범위의 멤버 삭제
-     * @param key Set 키
-     * @param min_score 최소 점수
-     * @param max_score 최대 점수
-     * @return 삭제된 멤버 수
-     */
-    virtual int zremrangebyscore(const std::string& key, double min_score, double max_score) = 0;
-    
     // =============================================================================
-    // Pub/Sub 메시징 (기존 확장)
+    // Pub/Sub
     // =============================================================================
     
     /**
-     * @brief 메시지 발행 (기존)
-     */
-    virtual bool publish(const std::string& channel, const std::string& message) = 0;
-    
-    /**
-     * @brief 채널 구독 (기존)
+     * @brief 채널 구독
+     * @param channel 채널명
+     * @return 성공 시 true
      */
     virtual bool subscribe(const std::string& channel) = 0;
     
     /**
-     * @brief 채널 구독 해제 (기존)
+     * @brief 채널 구독 해제
+     * @param channel 채널명
+     * @return 성공 시 true
      */
     virtual bool unsubscribe(const std::string& channel) = 0;
     
     /**
+     * @brief 메시지 발행
+     * @param channel 채널명
+     * @param message 메시지
+     * @return 수신한 구독자 수
+     */
+    virtual int publish(const std::string& channel, const std::string& message) = 0;
+    
+    /**
      * @brief 패턴 구독
-     * @param pattern 구독할 패턴 (예: "pulseone.*")
+     * @param pattern 패턴 ("channel:*")
      * @return 성공 시 true
      */
     virtual bool psubscribe(const std::string& pattern) = 0;
@@ -348,4 +409,4 @@ public:
     virtual ~RedisClient() = default;
 };
 
-#endif // REDIS_CLIENT_H
+#endif // REDIS_CLIENT_H    

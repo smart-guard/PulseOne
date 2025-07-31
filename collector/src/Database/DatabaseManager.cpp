@@ -538,6 +538,87 @@ bool DatabaseManager::isMSSQLConnected() {
 }
 #endif
 
+bool DatabaseManager::executeQuery(const std::string& query, std::vector<std::vector<std::string>>& results) {
+    try {
+        // 🔧 수정: config_manager_ -> ConfigManager::getInstance() 직접 사용
+        auto& config = ConfigManager::getInstance();
+        std::string db_type = config.getOrDefault("DATABASE_TYPE", "SQLITE");
+        
+        if (db_type == "POSTGRESQL") {
+            // 🔧 수정: executeQueryPostgres 결과를 results로 변환
+            auto pg_result = executeQueryPostgres(query);
+            
+            // pqxx::result를 std::vector<std::vector<std::string>>로 변환
+            results.clear();
+            for (const auto& row : pg_result) {
+                std::vector<std::string> row_data;
+                for (const auto& field : row) {
+                    row_data.push_back(field.is_null() ? "" : field.c_str());
+                }
+                results.push_back(row_data);
+            }
+            return true;
+        }
+        else if (db_type == "SQLITE") {
+            // 🔧 수정: SQLite 콜백 함수를 사용하여 results 채우기
+            results.clear();
+            
+            auto sqlite_callback = [](void* data, int argc, char** argv, char** azColName) -> int {
+                auto* results_ptr = static_cast<std::vector<std::vector<std::string>>*>(data);
+                std::vector<std::string> row_data;
+                
+                for (int i = 0; i < argc; i++) {
+                    row_data.push_back(argv[i] ? argv[i] : "");
+                }
+                results_ptr->push_back(row_data);
+                return 0;
+            };
+            
+            return executeQuerySQLite(query, sqlite_callback, &results);
+        }
+        else if (db_type == "MYSQL") {
+            return executeQueryMySQL(query, results);
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "executeQuery failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 🔧 수정: executeNonQuery 함수 (895줄 부근) - config_manager_ 제거  
+// =============================================================================
+
+bool DatabaseManager::executeNonQuery(const std::string& query) {
+    try {
+        // 🔧 수정: config_manager_ -> ConfigManager::getInstance() 직접 사용
+        auto& config = ConfigManager::getInstance();
+        std::string db_type = config.getOrDefault("DATABASE_TYPE", "SQLITE");
+        
+        if (db_type == "POSTGRESQL") {
+            return executeNonQueryPostgres(query);
+        }
+        else if (db_type == "SQLITE") {
+            return executeNonQuerySQLite(query);
+        }
+        else if (db_type == "MYSQL") {
+            return executeNonQueryMySQL(query);
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "executeNonQuery failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+
 // =============================================================================
 // Redis 구현 (기존과 동일)
 // =============================================================================

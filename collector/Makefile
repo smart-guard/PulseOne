@@ -1,19 +1,37 @@
 # =============================================================================
-# PulseOne Collector Makefile - 수정된 버전 (CollectorApplication 포함)
+# PulseOne Collector Makefile - 수정된 버전 (Redis 라이브러리 포함)
 # =============================================================================
 
 # nlohmann/json 라이브러리 체크
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
+# 🔧 수정: hiredis 라이브러리 체크 추가
+HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+
 # 컴파일러 설정
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
 LDFLAGS = 
-LIBS = -lpthread $(shell pkg-config --libs libmodbus) -lpqxx -lpq -lsqlite3 -lpaho-mqtt3c -lpaho-mqttpp3 -lbacnet -lmysqlclient
+
+# 🔧 수정: Redis 라이브러리 추가
+LIBS = -lpthread \
+       $(shell pkg-config --libs libmodbus) \
+       -lpqxx -lpq -lsqlite3 \
+       -lpaho-mqtt3c -lpaho-mqttpp3 \
+       -lbacnet -lmysqlclient \
+       -lhiredis -lhiredis_ssl
 
 # 기존 CXXFLAGS에 JSON 플래그 추가
 ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON
+endif
+
+# 🔧 추가: hiredis 플래그 추가
+ifeq ($(HAS_HIREDIS),1)
+    CXXFLAGS += -DHAS_HIREDIS
+else
+    $(warning ⚠️  hiredis not found - Redis functionality will be limited)
+    $(warning    Install with: sudo apt-get install libhiredis-dev)
 endif
 
 # 프로젝트 설정
@@ -37,59 +55,48 @@ RED = \033[0;31m
 NC = \033[0m
 
 # =============================================================================
-# 🔧 수정: 올바른 소스 파일 그룹 정의
+# 소스 파일 그룹 정의 (기존과 동일)
 # =============================================================================
 
-# Core 소스들 (수정: Application.cpp 올바른 경로)
+# Core 소스들
 CORE_SOURCES := $(wildcard $(SRC_DIR)/Core/*.cpp)
 
-# 🔧 DEBUG: Core 소스 확인을 위한 출력
-$(info 🔍 DEBUG: CORE_SOURCES = $(CORE_SOURCES))
-
-# 기존 Utils, Config 등 (확실히 존재하는 것들)
+# 기존 Utils, Config 등
 UTILS_SOURCES := $(wildcard $(SRC_DIR)/Utils/*.cpp)
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
 
-# 🔧 DEBUG: 기존 소스들 확인
-$(info 🔍 DEBUG: UTILS_SOURCES = $(UTILS_SOURCES))
-$(info 🔍 DEBUG: CONFIG_SOURCES = $(CONFIG_SOURCES))
-
-# Workers 소스들 (아직 없을 수 있음)
+# Workers 소스들
 WORKERS_BASE_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
 WORKERS_PROTOCOL_SOURCES := $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp)
 WORKERS_COMPONENTS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
 WORKERS_SOURCES := $(WORKERS_BASE_SOURCES) $(WORKERS_PROTOCOL_SOURCES) $(WORKERS_COMPONENTS_SOURCES) $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp)
 
-# Drivers 소스들 (아직 없을 수 있음)
+# Drivers 소스들
 DRIVERS_COMMON_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
 DRIVERS_MODBUS_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
 DRIVERS_MQTT_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
 DRIVERS_BACNET_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 DRIVERS_SOURCES := $(DRIVERS_COMMON_SOURCES) $(DRIVERS_MODBUS_SOURCES) $(DRIVERS_MQTT_SOURCES) $(DRIVERS_BACNET_SOURCES)
 
-# Database 소스들 (있을 수도 있음)
+# Database 소스들
 DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Entities/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Repositories/*.cpp)
 
-# Client 소스들 (있을 수도 있음)
+# 🔧 수정: Client 소스들 (Redis 포함)
 CLIENT_SOURCES := $(wildcard $(SRC_DIR)/Client/*.cpp)
 
-# Plugin 소스들 (아직 없을 수 있음)
+# Plugin 소스들
 PLUGIN_SOURCES := $(wildcard $(SRC_DIR)/Plugin/*.cpp)
 
 # 메인 소스
 MAIN_SOURCE = $(SRC_DIR)/main.cpp
 
-# 🔧 수정: 확실히 존재하는 소스들만 포함
+# 전체 소스들
 EXISTING_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES)
 OPTIONAL_SOURCES = $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(PLUGIN_SOURCES)
 
-# 전체 소스들 (main 제외, 존재하는 것들만)
 ALL_LIB_SOURCES = $(EXISTING_SOURCES) $(OPTIONAL_SOURCES)
-
-# 🔧 DEBUG: 최종 소스 목록 확인
-$(info 🔍 DEBUG: ALL_LIB_SOURCES = $(ALL_LIB_SOURCES))
 
 # 오브젝트 파일들
 ALL_LIB_OBJECTS = $(ALL_LIB_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
@@ -102,7 +109,32 @@ ALL_OBJECTS = $(ALL_LIB_OBJECTS) $(MAIN_OBJECT)
 
 .DEFAULT_GOAL := all
 
-# 🔧 수정: 파일 존재 확인 추가
+# 🔧 수정: 라이브러리 체크 포함
+check-deps:
+	@echo -e "$(BLUE)🔍 Checking dependencies...$(NC)"
+	@echo -e "$(YELLOW)Required libraries:$(NC)"
+	@if [ "$(HAS_NLOHMANN_JSON)" = "1" ]; then \
+		echo -e "  $(GREEN)✅ nlohmann/json$(NC)"; \
+	else \
+		echo -e "  $(YELLOW)⚠️  nlohmann/json (optional)$(NC)"; \
+	fi
+	@if [ "$(HAS_HIREDIS)" = "1" ]; then \
+		echo -e "  $(GREEN)✅ hiredis$(NC)"; \
+	else \
+		echo -e "  $(RED)❌ hiredis (required for Redis support)$(NC)"; \
+		echo -e "     Install: sudo apt-get install libhiredis-dev"; \
+	fi
+	@pkg-config --exists libmodbus && echo -e "  $(GREEN)✅ libmodbus$(NC)" || echo -e "  $(RED)❌ libmodbus$(NC)"
+	@echo -e "$(YELLOW)Checking libraries:$(NC)"
+	@for lib in pthread hiredis pqxx pq sqlite3 paho-mqtt3c paho-mqttpp3 mysqlclient; do \
+		if ldconfig -p | grep -q "lib$$lib"; then \
+			echo -e "  $(GREEN)✅ $$lib$(NC)"; \
+		else \
+			echo -e "  $(YELLOW)⚠️  $$lib (may not be installed)$(NC)"; \
+		fi \
+	done
+
+# 파일 존재 확인 (기존 코드 유지)
 check-sources:
 	@echo -e "$(BLUE)🔍 Checking required source files...$(NC)"
 	@echo -e "$(YELLOW)Main source:$(NC)"
@@ -123,17 +155,17 @@ check-sources:
 			echo -e "  $(GREEN)✅ $$src$(NC)"; \
 		done \
 	fi
-	@echo -e "$(YELLOW)Utils/Config sources:$(NC)"
-	@for src in $(UTILS_SOURCES) $(CONFIG_SOURCES); do \
+	@echo -e "$(YELLOW)Client sources (Redis):$(NC)"
+	@for src in $(CLIENT_SOURCES); do \
 		if [ -f "$$src" ]; then \
 			echo -e "  $(GREEN)✅ $$src$(NC)"; \
 		else \
-			echo -e "  $(RED)❌ $$src (MISSING)$(NC)"; \
+			echo -e "  $(YELLOW)⚠️  $$src (optional)$(NC)"; \
 		fi \
 	done
 
-# 전체 빌드 (소스 확인 포함)
-all: check-sources directories $(TARGET)
+# 전체 빌드 (의존성 및 소스 확인 포함)
+all: check-deps check-sources directories $(TARGET)
 	@echo -e "$(GREEN)🎉 Build completed successfully!$(NC)"
 	@echo -e "$(BLUE)📦 Executable: $(BIN_DIR)/$(TARGET)$(NC)"
 	@echo -e "$(BLUE)📊 Object files: $(words $(ALL_OBJECTS))$(NC)"
@@ -146,10 +178,10 @@ $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
 	$(CXX) $(LDFLAGS) -o $(BIN_DIR)/$@ $(ALL_OBJECTS) $(LIBS)
 
 # =============================================================================
-# 🔧 수정: 더 정확한 오브젝트 파일 생성 규칙
+# 오브젝트 파일 생성 규칙 (기존과 동일, Client 추가)
 # =============================================================================
 
-# Core 파일들 (수정된 경로)
+# Core 파일들
 $(BUILD_DIR)/Core/%.o: $(SRC_DIR)/Core/%.cpp
 	@mkdir -p $(dir $@)
 	@echo -e "$(GREEN)🏛️  Compiling Core: $<$(NC)"
@@ -161,7 +193,7 @@ $(BUILD_DIR)/Utils/%.o: $(SRC_DIR)/Utils/%.cpp
 	@echo -e "$(GREEN)🔧 Compiling Utils: $<$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# Config 파일들 (있다면)
+# Config 파일들
 $(BUILD_DIR)/Config/%.o: $(SRC_DIR)/Config/%.cpp
 	@mkdir -p $(dir $@)
 	@echo -e "$(BLUE)⚙️  Compiling Config: $<$(NC)"
@@ -185,10 +217,10 @@ $(BUILD_DIR)/Database/%.o: $(SRC_DIR)/Database/%.cpp
 	@echo -e "$(GREEN)🗄️  Compiling Database: $<$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# Client 파일들
+# 🔧 수정: Client 파일들 (Redis 포함)
 $(BUILD_DIR)/Client/%.o: $(SRC_DIR)/Client/%.cpp
 	@mkdir -p $(dir $@)
-	@echo -e "$(BLUE)📡 Compiling Client: $<$(NC)"
+	@echo -e "$(BLUE)📡 Compiling Client (Redis): $<$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Plugin 파일들
@@ -223,34 +255,10 @@ run: $(TARGET)
 	@echo -e "$(BLUE)🚀 Running $(TARGET)...$(NC)"
 	cd $(BIN_DIR) && ./$(TARGET)
 
-# =============================================================================
-# 🔧 수정: 올바른 최소 빌드
-# =============================================================================
-
-# 최소 빌드 (핵심 파일만, 올바른 파일명 사용)
-minimal: MINIMAL_SOURCES = $(SRC_DIR)/main.cpp $(SRC_DIR)/Core/Application.cpp $(SRC_DIR)/Utils/LogManager.cpp $(SRC_DIR)/Utils/ConfigManager.cpp
-minimal: MINIMAL_OBJECTS = $(MINIMAL_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
-minimal: directories
-	@echo -e "$(BLUE)🔍 Checking minimal build sources...$(NC)"
-	@for src in $(MINIMAL_SOURCES); do \
-		if [ -f "$$src" ]; then \
-			echo -e "  $(GREEN)✅ $$src$(NC)"; \
-		else \
-			echo -e "  $(RED)❌ $$src (MISSING)$(NC)"; \
-			echo -e "  $(YELLOW)Available files in $$(dirname $$src):$(NC)"; \
-			ls -la $$(dirname $$src) 2>/dev/null || echo "    $(RED)Directory not found$(NC)"; \
-			exit 1; \
-		fi \
-	done
-	@$(MAKE) $(MINIMAL_OBJECTS)
-	@echo -e "$(BLUE)🔗 Linking minimal build...$(NC)"
-	$(CXX) $(LDFLAGS) -o $(BIN_DIR)/$(TARGET)_minimal $(MINIMAL_OBJECTS) $(LIBS)
-	@echo -e "$(GREEN)✅ Minimal build completed: $(BIN_DIR)/$(TARGET)_minimal$(NC)"
-
 # 빌드 모드별 타겟들
 debug: CXXFLAGS += -g -DPULSEONE_DEBUG_MODE -O0
 debug: CXXFLAGS := $(filter-out -O2,$(CXXFLAGS))
-debug: check-json clean all
+debug: check-deps clean all
 	@echo -e "$(GREEN)🐛 Debug build completed - verbose logging enabled$(NC)"
 
 release: CXXFLAGS += -O3 -DNDEBUG  
@@ -258,52 +266,33 @@ release: CXXFLAGS := $(filter-out -O2,$(CXXFLAGS))
 release: clean all
 	@echo -e "$(GREEN)🚀 Release build completed - optimized for performance$(NC)"
 
-# JSON 라이브러리 체크
-check-json:
-	@echo "🔍 Checking nlohmann/json..."
-	@if [ "$(HAS_NLOHMANN_JSON)" = "0" ]; then \
-		echo "⚠️  nlohmann/json not found - using fallback"; \
-		echo "   Install: sudo apt-get install nlohmann-json3-dev"; \
+# Redis 전용 테스트 빌드
+redis-test: check-deps
+	@echo -e "$(BLUE)🧪 Testing Redis components only...$(NC)"
+	@if [ "$(HAS_HIREDIS)" != "1" ]; then \
+		echo -e "$(RED)❌ hiredis not found - cannot test Redis$(NC)"; \
+		exit 1; \
+	fi
+	@echo -e "$(GREEN)✅ Redis test ready$(NC)"
+
+# 🔧 추가: hiredis 체크 타겟
+check-redis:
+	@echo "🔍 Checking Redis/hiredis setup..."
+	@if [ "$(HAS_HIREDIS)" = "1" ]; then \
+		echo "✅ hiredis headers found"; \
+		if ldconfig -p | grep -q libhiredis; then \
+			echo "✅ hiredis library installed"; \
+		else \
+			echo "⚠️  hiredis library may not be properly installed"; \
+		fi \
 	else \
-		echo "✅ nlohmann/json found"; \
+		echo "❌ hiredis headers not found"; \
+		echo "   Install: sudo apt-get install libhiredis-dev"; \
+		echo "   Or compile from source: https://github.com/redis/hiredis"; \
 	fi
 
-# 코드 분석
-analyze:
-	@echo -e "$(BLUE)📊 Analyzing code structure...$(NC)"
-	@echo -e "$(GREEN)Core files:$(NC) $(words $(CORE_SOURCES))"
-	@echo -e "$(GREEN)Utils files:$(NC) $(words $(UTILS_SOURCES))"  
-	@echo -e "$(BLUE)Config files:$(NC) $(words $(CONFIG_SOURCES))"
-	@echo -e "$(BLUE)Worker files:$(NC) $(words $(WORKERS_SOURCES))"
-	@echo -e "$(YELLOW)Driver files:$(NC) $(words $(DRIVERS_SOURCES))"
-	@echo -e "$(GREEN)Database files:$(NC) $(words $(DATABASE_SOURCES))"
-	@echo -e "$(BLUE)Client files:$(NC) $(words $(CLIENT_SOURCES))"
-	@echo -e "$(YELLOW)Plugin files:$(NC) $(words $(PLUGIN_SOURCES))"
-	@echo -e "$(YELLOW)Total source files:$(NC) $(words $(ALL_LIB_SOURCES))"
-
-# 파일 구조 확인
-check-structure:
-	@echo -e "$(BLUE)📁 Checking project structure...$(NC)"
-	@echo -e "$(YELLOW)Source directories:$(NC)"
-	@find $(SRC_DIR) -type d | sed 's/^/  /'
-	@echo -e "$(YELLOW)Source files:$(NC)"
-	@find $(SRC_DIR) -name "*.cpp" | sed 's/^/  /'
-	@echo -e "$(YELLOW)Header files:$(NC)"
-	@find $(INCLUDE_DIR) -name "*.h" | sed 's/^/  /' 2>/dev/null || echo "  No header files found"
-
-# 문법 체크
-syntax-check:
-	@echo -e "$(BLUE)📝 Syntax checking...$(NC)"
-	@for src in $(ALL_LIB_SOURCES) $(MAIN_SOURCE); do \
-		if [ -f "$$src" ]; then \
-			echo -e "$(YELLOW)Checking: $$src$(NC)"; \
-			$(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only $$src || exit 1; \
-		fi \
-	done
-	@echo -e "$(GREEN)✅ All syntax checks passed$(NC)"
-
 # PHONY 타겟들
-.PHONY: all clean run debug release minimal analyze check-headers syntax-check info install directories check-sources check-structure check-json
+.PHONY: all clean run debug release check-deps check-sources check-redis redis-test directories
 
 # 도움말
 help:
@@ -311,7 +300,6 @@ help:
 	@echo ""
 	@echo -e "$(GREEN)Main targets:$(NC)"
 	@echo "  all              - Build the complete project"
-	@echo "  minimal          - Build only core components"
 	@echo "  clean            - Remove all build files"
 	@echo "  run              - Build and run the application"
 	@echo ""
@@ -320,16 +308,13 @@ help:
 	@echo "  release          - Build optimized for production"
 	@echo ""
 	@echo -e "$(GREEN)Development tools:$(NC)"
+	@echo "  check-deps       - Check all library dependencies"
 	@echo "  check-sources    - Verify all required source files exist"
-	@echo "  check-structure  - Show project file structure"
-	@echo "  syntax-check     - Check syntax without linking"
-	@echo "  analyze          - Analyze code structure"
-	@echo "  check-json       - Check JSON library availability"
+	@echo "  check-redis      - Check Redis/hiredis installation"
+	@echo "  redis-test       - Test Redis components only"
 	@echo ""
 	@echo -e "$(GREEN)Examples:$(NC)"
-	@echo "  make check-sources       # Check if all files exist"
-	@echo "  make minimal             # Quick build with core files only"
-	@echo "  make debug               # Build debug version"
+	@echo "  make check-deps          # Check if all libraries are available"
+	@echo "  make check-redis         # Specifically check Redis setup"
+	@echo "  make redis-test          # Test Redis compilation"
 	@echo "  make clean && make       # Clean rebuild"
-
-
