@@ -210,23 +210,30 @@ namespace PulseOne::Structs {
     // =========================================================================
     
     /**
-     * @brief 통합 데이터 포인트 
+     * @brief 통합 데이터 포인트 구조체 (완성본)
      * - Database::DataPointInfo (DB 저장용)
      * - Drivers::DataPoint (드라이버용)
-     * - 추가 필드들 통합
+     * - WorkerFactory 완전 호환
+     * - 현재값/품질코드 필드 추가 완료
      */
     struct DataPoint {
+        // =======================================================================
         // 🔥 공통 핵심 필드들
+        // =======================================================================
         UUID id;                                     // point_id (Database) + id (Drivers)
         UUID device_id;
         std::string name;
         std::string description = "";
         
+        // =======================================================================
         // 🔥 주소 정보 (두 방식 모두 지원)
+        // =======================================================================
         int address = 0;                             // Drivers 방식 (정수)
         std::string address_string = "";             // Database 방식 (문자열)
         
+        // =======================================================================
         // 🔥 데이터 타입 및 변환
+        // =======================================================================
         std::string data_type = "UNKNOWN";           // Database 방식 (문자열)
         std::string unit = "";
         double scaling_factor = 1.0;
@@ -234,43 +241,82 @@ namespace PulseOne::Structs {
         double min_value = std::numeric_limits<double>::lowest();
         double max_value = std::numeric_limits<double>::max();
         
+        // =======================================================================
         // 🔥 설정 (Database + Drivers 통합)
+        // =======================================================================
         bool is_enabled = true;
         bool is_writable = false;
         int scan_rate_ms = 0;                        // Database 방식
         double deadband = 0.0;
         
+        // =======================================================================
         // 🔥 로깅 설정 (Database에서 추가)
+        // =======================================================================
         bool log_enabled = true;
         int log_interval_ms = 0;
         double log_deadband = 0.0;
         
+        // =======================================================================
         // 🔥 메타데이터 (Database + Drivers 통합)
+        // =======================================================================
         std::vector<std::string> tags;               // Database 방식
         std::map<std::string, std::string> tag_map;  // Drivers 방식 (호환용)
         JsonType metadata;
         std::string config_json = "";                // 추가 설정
         
+        // =======================================================================
         // 🔥 상태 정보
+        // =======================================================================
         Timestamp last_read_time;
         Timestamp last_write_time;
         uint64_t read_count = 0;
         uint64_t write_count = 0;
         uint64_t error_count = 0;
         
+        // =======================================================================
         // 🔥 Database 시간 필드들
+        // =======================================================================
         Timestamp created_at;
         Timestamp updated_at;
         
+        // =======================================================================
+        // 🔥 ✅ 새로 추가: 현재값 및 품질 관리 (WorkerFactory 필수 필드들)
+        // =======================================================================
+        
+        /**
+         * @brief 현재값 (실시간 데이터)
+         * WorkerFactory에서 필수로 사용하는 필드
+         */
+        DataVariant current_value;
+        
+        /**
+         * @brief 데이터 품질 코드
+         * WorkerFactory에서 필수로 사용하는 필드
+         */
+        DataQuality quality_code;
+        
+        /**
+         * @brief 품질 변경 시각
+         * 품질이 변경된 마지막 시점 추적용
+         */
+        Timestamp quality_timestamp;
+        
+        // =======================================================================
         // ✅ 생성자 - Utils 네임스페이스 사용
+        // =======================================================================
         DataPoint() 
             : last_read_time(Utils::GetCurrentTimestamp())
             , last_write_time(Utils::GetCurrentTimestamp())
             , created_at(Utils::GetCurrentTimestamp())
             , updated_at(Utils::GetCurrentTimestamp())
+            , current_value(0.0)                                    // ✅ 기본값 설정
+            , quality_code(DataQuality::GOOD)                       // ✅ 기본 품질
+            , quality_timestamp(Utils::GetCurrentTimestamp())       // ✅ 품질 시각
         {}
         
+        // =======================================================================
         // 🔥 호환성을 위한 연산자들 (STL 컨테이너용)
+        // =======================================================================
         bool operator<(const DataPoint& other) const {
             return id < other.id;
         }
@@ -279,7 +325,14 @@ namespace PulseOne::Structs {
             return id == other.id;
         }
         
-        // 🔥 호환성 메서드들
+        // =======================================================================
+        // 🔥 실용적 메서드들
+        // =======================================================================
+        
+        /**
+         * @brief 주소 필드 동기화
+         * address와 address_string 간의 일관성 보장
+         */
         void SyncAddressFields() {
             if (address != 0 && address_string.empty()) {
                 address_string = std::to_string(address);
@@ -290,6 +343,126 @@ namespace PulseOne::Structs {
                     address = 0;
                 }
             }
+        }
+        
+        /**
+         * @brief 현재값 업데이트 (품질과 함께)
+         * @param new_value 새로운 값
+         * @param new_quality 새로운 품질 (기본값: GOOD)
+         */
+        void UpdateCurrentValue(const DataVariant& new_value, 
+                               DataQuality new_quality = DataQuality::GOOD) {
+            current_value = new_value;
+            last_read_time = Utils::GetCurrentTimestamp();
+            
+            // 품질이 변경된 경우에만 품질 시각 업데이트
+            if (quality_code != new_quality) {
+                quality_code = new_quality;
+                quality_timestamp = last_read_time;
+            }
+            
+            read_count++;
+        }
+        
+        /**
+         * @brief 값이 로깅 조건을 만족하는지 확인
+         * @param new_value 새로운 값
+         * @return 로깅해야 하면 true
+         */
+        bool ShouldLog(const DataVariant& new_value) const {
+            if (!log_enabled) return false;
+            
+            // 시간 조건 확인
+            auto now = Utils::GetCurrentTimestamp();
+            auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_read_time);
+            if (time_diff.count() < log_interval_ms) {
+                return false;
+            }
+            
+            // 데드밴드 조건 확인 (숫자 타입만)
+            if (log_deadband > 0.0) {
+                try {
+                    double current_val = std::get<double>(current_value);
+                    double new_val = std::get<double>(new_value);
+                    if (std::abs(new_val - current_val) < log_deadband) {
+                        return false;
+                    }
+                } catch (const std::bad_variant_access&) {
+                    // 숫자가 아닌 타입은 데드밴드 무시
+                }
+            }
+            
+            return true;
+        }
+        
+        /**
+         * @brief 품질 상태 확인
+         * @return 품질이 좋으면 true
+         */
+        bool IsGoodQuality() const {
+            return quality_code == DataQuality::GOOD;
+        }
+        
+        /**
+         * @brief 쓰기 가능 여부 확인
+         * @return 쓰기 가능하면 true
+         */
+        bool IsWritable() const {
+            return is_writable && is_enabled;
+        }
+        
+        /**
+         * @brief 현재값을 문자열로 변환
+         * @return 현재값의 문자열 표현
+         */
+        std::string GetCurrentValueAsString() const {
+            return Utils::DataVariantToString(current_value);
+        }
+        
+        /**
+         * @brief 품질 코드를 문자열로 변환
+         * @return 품질 코드의 문자열 표현
+         */
+        std::string GetQualityCodeAsString() const {
+            switch (quality_code) {
+                case DataQuality::GOOD: return "GOOD";
+                case DataQuality::BAD: return "BAD";
+                case DataQuality::UNCERTAIN: return "UNCERTAIN";
+                case DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
+                case DataQuality::SCAN_DELAYED: return "SCAN_DELAYED";
+                case DataQuality::UNDER_MAINTENANCE: return "UNDER_MAINTENANCE";
+                case DataQuality::STALE_DATA: return "STALE_DATA";
+                case DataQuality::VERY_STALE_DATA: return "VERY_STALE_DATA";
+                case DataQuality::MAINTENANCE_BLOCKED: return "MAINTENANCE_BLOCKED";
+                case DataQuality::ENGINEER_OVERRIDE: return "ENGINEER_OVERRIDE";
+                default: return "UNKNOWN";
+            }
+        }
+        
+        /**
+         * @brief Worker용 JSON 변환 (디버깅/모니터링용)
+         * @return JSON 객체
+         */
+        JsonType ToWorkerJson() const {
+            JsonType json;
+            json["id"] = id;
+            json["device_id"] = device_id;
+            json["name"] = name;
+            json["address"] = address;
+            json["data_type"] = data_type;
+            json["unit"] = unit;
+            json["is_enabled"] = is_enabled;
+            json["is_writable"] = is_writable;
+            json["log_enabled"] = log_enabled;
+            json["log_interval_ms"] = log_interval_ms;
+            json["current_value"] = GetCurrentValueAsString();
+            json["quality_code"] = GetQualityCodeAsString();
+            json["quality_timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                quality_timestamp.time_since_epoch()).count();
+            json["read_count"] = read_count;
+            json["write_count"] = write_count;
+            json["error_count"] = error_count;
+            return json;
         }
     };
     
