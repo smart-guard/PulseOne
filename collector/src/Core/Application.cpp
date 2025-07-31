@@ -150,26 +150,37 @@ void CollectorApplication::MainLoop() {
     
     auto start_time = std::chrono::steady_clock::now();
     int loop_count = 0;
+    bool workers_created = false;
     
     while (is_running_.load()) {
         try {
             loop_count++;
+            
+            // 🔧 3초 후 Worker 생성 테스트
+            if (!workers_created && loop_count == 3) {
+                std::cout << "\n🏭 === 실제 Worker 생성 테스트 시작 ===" << std::endl;
+                logger_->Info("🏭 Testing worker creation for 5 MODBUS_TCP devices");
+                
+                auto workers = worker_factory_->CreateAllActiveWorkers();
+                
+                std::cout << "📊 생성된 Worker 수: " << workers.size() << "/5" << std::endl;
+                std::cout << "📊 예상 DataPoint 총합: 16개" << std::endl;
+                
+                workers_created = true;
+                std::cout << "=== Worker 생성 테스트 완료 ===\n" << std::endl;
+            }
             
             // 매 10초마다 통계 출력
             if (loop_count % 10 == 0) {
                 PrintRuntimeStatistics(loop_count, start_time);
             }
             
-            // 1초 대기
             std::this_thread::sleep_for(std::chrono::seconds(1));
             
         } catch (const std::exception& e) {
             logger_->Error("Exception in MainLoop: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
-    
-    std::cout << "🔄 메인 루프 종료" << std::endl;
 }
 
 void CollectorApplication::PrintRuntimeStatistics(int loop_count, const std::chrono::steady_clock::time_point& start_time) {

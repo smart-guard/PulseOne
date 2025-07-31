@@ -824,13 +824,18 @@ std::string DeviceRepository::buildSelectQuery(
     
     std::ostringstream query;
     
-    query << "SELECT id, tenant_id, site_id, name, description, protocol_type, ";
-    query << "endpoint, config, is_enabled, status, polling_interval, ";
-    query << "timeout_ms, retry_count, created_at, updated_at ";
-    query << "FROM devices";
+    // 🔧 JOIN 쿼리로 수정
+    query << "SELECT ";
+    query << "d.id, d.tenant_id, d.site_id, d.name, d.description, d.protocol_type, ";
+    query << "d.endpoint, d.config, d.is_enabled, d.polling_interval, ";
+    query << "d.timeout, d.retry_count, d.created_at, d.updated_at, ";
+    query << "COALESCE(ds.connection_status, 'disconnected') as connection_status, ";
+    query << "ds.last_communication, ds.error_count ";
+    query << "FROM devices d ";
+    query << "LEFT JOIN device_status ds ON d.id = ds.device_id";
     
-    // WHERE 절
-    query << buildWhereClause(conditions);
+    // WHERE 절 (테이블 별칭 적용 필요)
+    query << buildWhereClauseWithAlias(conditions);
     
     // ORDER BY 절
     query << buildOrderByClause(order_by);
@@ -840,6 +845,7 @@ std::string DeviceRepository::buildSelectQuery(
     
     return query.str();
 }
+
 
 // =============================================================================
 // DB 쿼리 실행 헬퍼 메서드들 (기존 로직 그대로 유지)
@@ -963,6 +969,29 @@ std::string DeviceRepository::buildLimitClause(const std::optional<Pagination>& 
     limit << " OFFSET " << pagination->getOffset();
     
     return limit.str();
+}
+
+std::string DeviceRepository::buildWhereClauseWithAlias(const std::vector<QueryCondition>& conditions) {
+    if (conditions.empty()) {
+        return "";
+    }
+    
+    std::ostringstream where_clause;
+    where_clause << " WHERE ";
+    
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) {
+            where_clause << " AND ";
+        }
+        
+        const auto& condition = conditions[i];
+        // 🔧 수정된 줄들 (989-990번째)
+        where_clause << "d." << condition.field << " "          // ✅ condition.field (not .column)
+                    << condition.operation << " '"               // ✅ condition.operation (not .operator_)
+                    << escapeString(condition.value) << "'";
+    }
+    
+    return where_clause.str();
 }
 
 } // namespace Repositories

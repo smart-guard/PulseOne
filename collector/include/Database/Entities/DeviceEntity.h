@@ -176,6 +176,12 @@ public:
         markModified(); 
     }
 
+    const std::string& getDescription() const { return device_info_.description; }
+    void setDescription(const std::string& description) { 
+        device_info_.description = description; 
+        markModified(); 
+    }
+
     // =======================================================================
     // 고급 기능 (프로토콜별 설정, 데이터포인트 관리 등)
     // =======================================================================

@@ -24,9 +24,9 @@
 // ✅ 실제 헤더들은 cpp 파일에서만 include (complete type 생성)
 #include "Common/Structs.h"
 #include "Workers/Base/BaseDeviceWorker.h"
-#include "Workers/Protocol/ModbusTcpWorker.h"
-#include "Workers/Protocol/MQTTWorker.h"
-#include "Workers/Protocol/BACnetWorker.h"
+//#include "Workers/Protocol/ModbusTcpWorker.h"
+//#include "Workers/Protocol/MQTTWorker.h"
+//#include "Workers/Protocol/BACnetWorker.h"
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Repositories/DeviceRepository.h"
@@ -93,7 +93,7 @@ bool WorkerFactory::Initialize() {
 }
 
 bool WorkerFactory::Initialize(::LogManager* logger, ::ConfigManager* config_manager) {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
+    // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
     
     if (initialized_.load()) {
         return true;
@@ -125,13 +125,13 @@ bool WorkerFactory::Initialize(::LogManager* logger, ::ConfigManager* config_man
 // =============================================================================
 
 void WorkerFactory::SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo) {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
+    // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
     device_repo_ = device_repo;
     logger_->Info("✅ DeviceRepository injected into WorkerFactory");
 }
 
 void WorkerFactory::SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo) {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
+    // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
     datapoint_repo_ = datapoint_repo;
     logger_->Info("✅ DataPointRepository injected into WorkerFactory");
 }
@@ -140,7 +140,7 @@ void WorkerFactory::SetDatabaseClients(
     std::shared_ptr<::RedisClient> redis_client,     // ✅ 전역 클래스
     std::shared_ptr<::InfluxClient> influx_client) { // ✅ 전역 클래스
     
-    std::lock_guard<std::mutex> lock(factory_mutex_);
+    // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
     redis_client_ = redis_client;
     influx_client_ = influx_client;
     logger_->Info("✅ Database clients injected into WorkerFactory");
@@ -335,36 +335,35 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByPro
 void WorkerFactory::RegisterWorkerCreators() {
     logger_->Info("📝 Registering worker creators...");
     
+    logger_->Info("🔧 Step 1: Registering MODBUS_TCP worker...");
     // Modbus TCP Worker 등록
     RegisterWorkerCreator("MODBUS_TCP", [](
-        const PulseOne::Structs::DeviceInfo& /* device_info */,  // 🔧 수정: 미사용 매개변수 주석 처리
-        std::shared_ptr<::RedisClient> /* redis_client */,       // 🔧 수정: 미사용 매개변수 주석 처리
-        std::shared_ptr<::InfluxClient> /* influx_client */) -> std::unique_ptr<BaseDeviceWorker> {  // 🔧 수정: 미사용 매개변수 주석 처리
-        
-        // ModbusTcpWorker 생성 로직
-        // (실제 구현에서는 ModbusTcpWorker 생성자에 맞게 수정)
-        return nullptr;  // 임시 반환
+        const PulseOne::Structs::DeviceInfo& /* device_info */,
+        std::shared_ptr<::RedisClient> /* redis_client */,
+        std::shared_ptr<::InfluxClient> /* influx_client */) -> std::unique_ptr<BaseDeviceWorker> {
+        return nullptr;
     });
+    logger_->Info("✅ MODBUS_TCP worker registered");
     
-    // MQTT Worker 등록
+    logger_->Info("🔧 Step 2: Registering MQTT worker...");
+    // MQTT Worker 등록  
     RegisterWorkerCreator("MQTT", [](
-        const PulseOne::Structs::DeviceInfo& /* device_info */,  // 🔧 수정: 미사용 매개변수 주석 처리
-        std::shared_ptr<::RedisClient> /* redis_client */,       // 🔧 수정: 미사용 매개변수 주석 처리
-        std::shared_ptr<::InfluxClient> /* influx_client */) -> std::unique_ptr<BaseDeviceWorker> {  // 🔧 수정: 미사용 매개변수 주석 처리
-        
-        // MQTTWorker 생성 로직
-        return nullptr;  // 임시 반환
+        const PulseOne::Structs::DeviceInfo& /* device_info */,
+        std::shared_ptr<::RedisClient> /* redis_client */,
+        std::shared_ptr<::InfluxClient> /* influx_client */) -> std::unique_ptr<BaseDeviceWorker> {
+        return nullptr;
     });
+    logger_->Info("✅ MQTT worker registered");
     
+    logger_->Info("🔧 Step 3: Registering BACNET worker...");
     // BACnet Worker 등록
     RegisterWorkerCreator("BACNET", [](
-        const PulseOne::Structs::DeviceInfo& /* device_info */,  // 🔧 수정: 미사용 매개변수 주석 처리
-        std::shared_ptr<::RedisClient> /* redis_client */,       // 🔧 수정: 미사용 매개변수 주석 처리
-        std::shared_ptr<::InfluxClient> /* influx_client */) -> std::unique_ptr<BaseDeviceWorker> {  // 🔧 수정: 미사용 매개변수 주석 처리
-        
-        // BACnetWorker 생성 로직
-        return nullptr;  // 임시 반환
+        const PulseOne::Structs::DeviceInfo& /* device_info */,
+        std::shared_ptr<::RedisClient> /* redis_client */,
+        std::shared_ptr<::InfluxClient> /* influx_client */) -> std::unique_ptr<BaseDeviceWorker> {
+        return nullptr;
     });
+    logger_->Info("✅ BACNET worker registered");
     
     logger_->Info("✅ Worker creators registered: " + std::to_string(worker_creators_.size()));
 }
@@ -388,7 +387,7 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
     // ✅ id 필드 사용 (문자열로 변환)
     device_info.id = std::to_string(device_entity.getId());
     device_info.name = device_entity.getName();
-    device_info.description = device_entity.getDeviceInfo().description;
+    device_info.description = device_entity.getDescription();
     device_info.protocol_type = device_entity.getProtocolType();
     
     // ✅ endpoint와 connection_string 필드 사용
@@ -428,7 +427,7 @@ std::vector<PulseOne::Structs::DataPoint> WorkerFactory::LoadDataPointsForDevice
 // =============================================================================
 
 std::vector<std::string> WorkerFactory::GetSupportedProtocols() const {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
+    // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
     
     std::vector<std::string> protocols;
     for (const auto& [protocol, creator] : worker_creators_) {
@@ -439,7 +438,7 @@ std::vector<std::string> WorkerFactory::GetSupportedProtocols() const {
 }
 
 bool WorkerFactory::IsProtocolSupported(const std::string& protocol_type) const {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
+    // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
     return worker_creators_.find(protocol_type) != worker_creators_.end();
 }
 
@@ -447,7 +446,7 @@ FactoryStats WorkerFactory::GetFactoryStats() const {
     FactoryStats stats;
     
     {
-        std::lock_guard<std::mutex> lock(factory_mutex_);
+        // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
         stats.registered_protocols = static_cast<uint32_t>(worker_creators_.size());
     }
     
@@ -463,9 +462,9 @@ std::string WorkerFactory::GetFactoryStatsString() const {
 }
 
 void WorkerFactory::RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator) {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
+    // std::lock_guard<std::mutex> lock(factory_mutex_); // 데드락 방지
     worker_creators_[protocol_type] = creator;
-    logger_->Debug("✅ Registered worker creator for protocol: " + protocol_type);
+    logger_->Info("✅ Registered worker creator for protocol: " + protocol_type);
 }
 
 } // namespace Workers

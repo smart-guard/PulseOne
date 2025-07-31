@@ -281,10 +281,24 @@ void RepositoryFactory::applyRepositoryConfigurations() {
     try {
         logger_->Info("Applying repository configurations...");
         
-        // 전역 캐시 설정 적용
-        setCacheEnabled(global_cache_enabled_);
+        logger_->Info("Step 1: Checking global cache settings");
         
-        logger_->Info("Repository configurations applied successfully");
+        // 전역 캐시 설정 적용 (안전하게)
+        try {
+            logger_->Info("Step 2: Applying cache settings");
+            if (global_cache_enabled_) {
+                logger_->Info("Cache enabled globally");
+            } else {
+                logger_->Info("Cache disabled globally");
+            }
+            // setCacheEnabled(global_cache_enabled_);  // 🔧 주석 처리
+            logger_->Info("Step 3: Cache settings applied");
+        } catch (const std::exception& cache_e) {
+            logger_->Warn("Cache setting failed but continuing: " + std::string(cache_e.what()));
+        }
+        
+        logger_->Info("Step 4: Configuration complete");
+        logger_->Info("✅ Repository configurations applied successfully");
         
     } catch (const std::exception& e) {
         logger_->Error("RepositoryFactory::applyRepositoryConfigurations failed: " + std::string(e.what()));

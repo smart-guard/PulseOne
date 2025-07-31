@@ -23,6 +23,7 @@
 #include <mutex>
 #include <chrono>
 #include <atomic>
+#include <sstream>      // std::ostringstream용
 
 // ✅ 필수 타입만 include
 #include "Database/DatabaseTypes.h"
@@ -367,6 +368,128 @@ protected:
             max_cache_size_ = 1000;
             enable_bulk_optimization_ = true;
         }
+    }
+
+    /**
+     * @brief WHERE 절 빌드 (기본 테이블용)
+     * @param conditions 쿼리 조건들
+     * @return WHERE 절 문자열 ("WHERE ..." 형태)
+     */
+    virtual std::string buildWhereClause(const std::vector<QueryCondition>& conditions) {
+        if (conditions.empty()) {
+            return "";
+        }
+        
+        std::ostringstream where_clause;
+        where_clause << " WHERE ";
+        
+        for (size_t i = 0; i < conditions.size(); ++i) {
+            if (i > 0) {
+                where_clause << " AND ";
+            }
+            
+            const auto& condition = conditions[i];
+            // ✅ 정확한 필드명 사용: field, operation, value
+            where_clause << condition.field << " "
+                        << condition.operation << " '"
+                        << escapeString(condition.value) << "'";
+        }
+        
+        return where_clause.str();
+    }
+
+    /**
+     * @brief WHERE 절 빌드 (테이블 별칭 포함 - JOIN용)
+     * @param conditions 쿼리 조건들
+     * @param table_alias 테이블 별칭 (예: "d", "dp")
+     * @return WHERE 절 문자열
+     */
+    virtual std::string buildWhereClauseWithAlias(
+        const std::vector<QueryCondition>& conditions,
+        const std::string& table_alias = "") {
+        
+        if (conditions.empty()) {
+            return "";
+        }
+        
+        std::ostringstream where_clause;
+        where_clause << " WHERE ";
+        
+        for (size_t i = 0; i < conditions.size(); ++i) {
+            if (i > 0) {
+                where_clause << " AND ";
+            }
+            
+            const auto& condition = conditions[i];
+            
+            if (!table_alias.empty()) {
+                // ✅ 정확한 필드명 사용
+                where_clause << table_alias << "." << condition.field << " "
+                            << condition.operation << " '"
+                            << escapeString(condition.value) << "'";
+            } else {
+                where_clause << condition.field << " "
+                            << condition.operation << " '"
+                            << escapeString(condition.value) << "'";
+            }
+        }
+        
+        return where_clause.str();
+    }
+
+    /**
+     * @brief ORDER BY 절 빌드
+     * @param order_by 정렬 조건
+     * @return ORDER BY 절 문자열
+     */
+    virtual std::string buildOrderByClause(const std::optional<OrderBy>& order_by) {
+        if (!order_by.has_value()) {
+            return "";
+        }
+        
+        return " ORDER BY " + order_by->field + 
+               (order_by->ascending ? " ASC" : " DESC");
+    }
+    
+    /**
+     * @brief LIMIT/OFFSET 절 빌드
+     * @param pagination 페이징 조건
+     * @return LIMIT 절 문자열
+     */
+    virtual std::string buildLimitClause(const std::optional<Pagination>& pagination) {
+        if (!pagination.has_value()) {
+            return "";
+        }
+        
+        std::ostringstream limit_clause;
+        limit_clause << " LIMIT " << pagination->limit;
+        
+        if (pagination->offset > 0) {
+            limit_clause << " OFFSET " << pagination->offset;
+        }
+        
+        return limit_clause.str();
+    }
+    
+    /**
+     * @brief 문자열 이스케이프 처리 (SQL Injection 방지)
+     * @param str 이스케이프할 문자열
+     * @return 이스케이프된 문자열
+     */
+    virtual std::string escapeString(const std::string& str) const {
+        std::string escaped = str;
+        
+        // 기본적인 SQL Injection 방지
+        std::string search = "'";
+        std::string replace = "''";
+        
+        size_t pos = 0;
+        while ((pos = escaped.find(search, pos)) != std::string::npos) {
+            escaped.replace(pos, search.length(), replace);
+            pos += replace.length();
+        }
+        
+        return escaped;
     }
 
 protected:
