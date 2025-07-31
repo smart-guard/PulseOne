@@ -3,8 +3,6 @@
 #define REDIS_CLIENT_IMPL_H
 
 #include "Client/RedisClient.h"
-#include <hiredis/hiredis.h>        // ✅ hiredis 라이브러리 사용
-#include <hiredis/async.h>          // 비동기 지원
 #include <string>
 #include <memory>
 #include <vector>
@@ -14,21 +12,37 @@
 #include <condition_variable>
 #include <queue>
 #include <unordered_set>
+#include <chrono>
+#include <map>
+
+// 🔧 조건부 hiredis 포함
+#ifdef HAS_HIREDIS
+#include <hiredis/hiredis.h>
+#include <hiredis/async.h>
+#else
+// hiredis가 없을 때의 fallback 구조체들
+struct redisContext;
+struct redisAsyncContext;
+struct redisReply;
+#endif
 
 /**
- * @brief hiredis 라이브러리를 사용한 완전한 RedisClient 구현체
- * @details 실제 프로덕션 환경에서 사용 가능한 고성능 Redis 클라이언트
- * @author PulseOne Development Team
- * @date 2025-07-31
+ * @brief 간소화된 RedisClient 구현체 (에러 해결용)
+ * @details 기존 구현 파일과 완전히 호환되는 헤더
  */
 class RedisClientImpl : public RedisClient {
 private:
     // =============================================================================
-    // hiredis 연결 관리
+    // 멤버 변수들 (구현 파일에 사용된 모든 변수들)
     // =============================================================================
     
+#ifdef HAS_HIREDIS
     std::unique_ptr<redisContext, void(*)(redisContext*)> context_;
     std::unique_ptr<redisAsyncContext, void(*)(redisAsyncContext*)> async_context_;
+#else
+    void* context_;
+    void* async_context_;
+#endif
     
     // 연결 정보
     std::string host_;
@@ -82,226 +96,8 @@ private:
     std::chrono::steady_clock::time_point connect_time_;
     std::chrono::steady_clock::time_point last_command_time_;
     
-    // 연결 풀 지원 (향후 확장용)
-    static constexpr size_t MAX_POOL_SIZE = 10;
-    bool pool_enabled_{false};
-
-public:
     // =============================================================================
-    // 생성자/소멸자
-    // =============================================================================
-    
-    RedisClientImpl();
-    virtual ~RedisClientImpl();
-    
-    // 복사/이동 생성자 삭제
-    RedisClientImpl(const RedisClientImpl&) = delete;
-    RedisClientImpl& operator=(const RedisClientImpl&) = delete;
-    RedisClientImpl(RedisClientImpl&&) = delete;
-    RedisClientImpl& operator=(RedisClientImpl&&) = delete;
-    
-    // =============================================================================
-    // RedisClient 인터페이스 구현
-    // =============================================================================
-    
-    // 기본 연결 관리
-    bool connect(const std::string& host, int port, const std::string& password = "") override;
-    void disconnect() override;
-    bool isConnected() const override;
-    
-    // 기본 Key-Value 조작
-    bool set(const std::string& key, const std::string& value) override;
-    std::string get(const std::string& key) override;
-    bool setex(const std::string& key, const std::string& value, int ttl_seconds) override;
-    bool exists(const std::string& key) override;
-    int del(const std::string& key) override;
-    int del(const StringList& keys) override;
-    int ttl(const std::string& key) override;
-    
-    // Hash 조작
-    bool hset(const std::string& key, const std::string& field, const std::string& value) override;
-    std::string hget(const std::string& key, const std::string& field) override;
-    StringMap hgetall(const std::string& key) override;
-    bool hmset(const std::string& key, const StringMap& field_values) override;
-    int hdel(const std::string& key, const std::string& field) override;
-    
-    // List 조작
-    int lpush(const std::string& key, const std::string& value) override;
-    int rpush(const std::string& key, const std::string& value) override;
-    std::string lpop(const std::string& key) override;
-    std::string rpop(const std::string& key) override;
-    StringList lrange(const std::string& key, int start, int stop) override;
-    int llen(const std::string& key) override;
-    
-    // Sorted Set 조작
-    int zadd(const std::string& key, double score, const std::string& member) override;
-    StringList zrangebyscore(const std::string& key, double min_score, double max_score) override;
-    int zcard(const std::string& key) override;
-    int zremrangebyscore(const std::string& key, double min_score, double max_score) override;
-    
-    // Pub/Sub 메시징
-    bool publish(const std::string& channel, const std::string& message) override;
-    bool subscribe(const std::string& channel) override;
-    bool unsubscribe(const std::string& channel) override;
-    bool psubscribe(const std::string& pattern) override;
-    bool punsubscribe(const std::string& pattern) override;
-    void setMessageCallback(MessageCallback callback) override;
-    
-    // 배치 처리
-    bool mset(const StringMap& key_values) override;
-    StringList mget(const StringList& keys) override;
-    
-    // 트랜잭션 지원
-    bool multi() override;
-    bool exec() override;
-    bool discard() override;
-    
-    // 상태 및 진단
-    StringMap info() override;
-    bool ping() override;
-    bool select(int db_index) override;
-    int dbsize() override;
-    
-    // =============================================================================
-    // hiredis 특화 고급 기능들
-    // =============================================================================
-    
-    /**
-     * @brief 파이프라인 모드 시작
-     * @return 성공 시 true
-     * @details 여러 명령어를 배치로 전송하여 네트워크 라운트트립 최소화
-     */
-    bool startPipeline();
-    
-    /**
-     * @brief 파이프라인에 명령어 추가
-     * @param command Redis 명령어
-     * @return 성공 시 true
-     */
-    bool addToPipeline(const std::string& command);
-    
-    /**
-     * @brief 파이프라인 실행
-     * @return 모든 응답의 벡터
-     */
-    std::vector<std::unique_ptr<redisReply, void(*)(redisReply*)>> executePipeline();
-    
-    /**
-     * @brief 스크립트 실행 (Lua)
-     * @param script Lua 스크립트
-     * @param keys 키 목록
-     * @param args 인수 목록
-     * @return 스크립트 실행 결과
-     */
-    std::string evalScript(const std::string& script, 
-                          const StringList& keys = StringList{},
-                          const StringList& args = StringList{});
-    
-    /**
-     * @brief 스크립트 SHA1 해시로 실행
-     * @param sha1 스크립트 SHA1 해시
-     * @param keys 키 목록
-     * @param args 인수 목록
-     * @return 스크립트 실행 결과
-     */
-    std::string evalSha(const std::string& sha1,
-                       const StringList& keys = StringList{},
-                       const StringList& args = StringList{});
-    
-    /**
-     * @brief 스크립트 로드
-     * @param script Lua 스크립트
-     * @return SHA1 해시
-     */
-    std::string scriptLoad(const std::string& script);
-    
-    /**
-     * @brief 키 스캔 (커서 기반)
-     * @param cursor 스캔 커서 (0부터 시작)
-     * @param pattern 매칭 패턴 (선택사항)
-     * @param count 한 번에 가져올 키 수 (선택사항)
-     * @return {새로운 커서, 키 목록} 쌍
-     */
-    std::pair<std::string, StringList> scan(const std::string& cursor = "0",
-                                           const std::string& pattern = "",
-                                           int count = 10);
-    
-    /**
-     * @brief Hash 필드 스캔
-     * @param key Hash 키
-     * @param cursor 스캔 커서
-     * @param pattern 매칭 패턴 (선택사항)
-     * @param count 한 번에 가져올 필드 수 (선택사항)
-     * @return {새로운 커서, 필드-값 맵} 쌍
-     */
-    std::pair<std::string, StringMap> hscan(const std::string& key,
-                                           const std::string& cursor = "0",
-                                           const std::string& pattern = "",
-                                           int count = 10);
-    
-    /**
-     * @brief Sorted Set 스캔
-     * @param key Sorted Set 키
-     * @param cursor 스캔 커서
-     * @param pattern 매칭 패턴 (선택사항)
-     * @param count 한 번에 가져올 멤버 수 (선택사항)
-     * @return {새로운 커서, 멤버-점수 맵} 쌍
-     */
-    std::pair<std::string, std::map<std::string, double>> zscan(const std::string& key,
-                                                               const std::string& cursor = "0",
-                                                               const std::string& pattern = "",
-                                                               int count = 10);
-    
-    // =============================================================================
-    // 성능 및 모니터링
-    // =============================================================================
-    
-    /**
-     * @brief 연결 통계 조회
-     */
-    struct ConnectionStats {
-        uint64_t total_commands;
-        uint64_t successful_commands;
-        uint64_t failed_commands;
-        double success_rate;
-        std::chrono::milliseconds uptime;
-        std::chrono::milliseconds last_command_latency;
-        int reconnect_attempts;
-        bool is_connected;
-        bool pubsub_active;
-        size_t subscribed_channels_count;
-        size_t subscribed_patterns_count;
-    };
-    
-    ConnectionStats getConnectionStats() const;
-    
-    /**
-     * @brief 통계 리셋
-     */
-    void resetStats();
-    
-    /**
-     * @brief 연결 풀 활성화/비활성화
-     * @param enable 풀 사용 여부
-     */
-    void enableConnectionPool(bool enable) { pool_enabled_ = enable; }
-    
-    /**
-     * @brief 자동 재연결 설정
-     * @param enable 자동 재연결 사용 여부
-     */
-    void setAutoReconnect(bool enable) { auto_reconnect_ = enable; }
-    
-    /**
-     * @brief 타임아웃 설정
-     * @param connect_timeout_ms 연결 타임아웃 (밀리초)
-     * @param command_timeout_ms 명령어 타임아웃 (밀리초)
-     */
-    void setTimeouts(int connect_timeout_ms, int command_timeout_ms);
-
-private:
-    // =============================================================================
-    // 내부 헬퍼 메서드들
+    // 내부 헬퍼 메서드들 (구현 파일에 있는 모든 메서드들)
     // =============================================================================
     
     // 연결 관리
@@ -312,15 +108,23 @@ private:
     bool selectDatabase(int db_index);
     
     // 명령어 실행
+#ifdef HAS_HIREDIS
     std::unique_ptr<redisReply, void(*)(redisReply*)> executeCommand(const char* format, ...);
     std::unique_ptr<redisReply, void(*)(redisReply*)> executeCommandArgv(int argc, const char** argv, const size_t* argvlen);
-    bool executeCommandNoReply(const char* format, ...);
+#else
+    void* executeCommand(const char* format, ...);
+    void* executeCommandArgv(int argc, const char** argv, const size_t* argvlen);
+#endif
     
     // Pub/Sub 관리
     void startPubSubThread();
-    void stopPubSubThread();
+    void stopPubSubThread();  
     void pubsubThreadWorker();
+#ifdef HAS_HIREDIS
     void handlePubSubMessage(redisReply* reply);
+#else
+    void handlePubSubMessage(void* reply);
+#endif
     
     // 비동기 작업 관리
     void startAsyncThread();
@@ -328,18 +132,27 @@ private:
     void asyncThreadWorker();
     
     // 에러 처리
-    void logError(const std::string& operation, const std::string& error_message);
+    void logError(const std::string& operation, const std::string& error_message) const;
     void logRedisError(const std::string& operation, redisContext* ctx);
     bool handleConnectionError();
     bool isConnectionError(redisContext* ctx) const;
     
     // 유틸리티
-    std::string replyToString(redisReply* reply);
-    long long replyToInteger(redisReply* reply);
-    StringList replyToStringList(redisReply* reply);
-    StringMap replyToStringMap(redisReply* reply);
+#ifdef HAS_HIREDIS
+    std::string replyToString(redisReply* reply) const;
+    long long replyToInteger(redisReply* reply) const;
+    StringList replyToStringList(redisReply* reply) const;
+    StringMap replyToStringMap(redisReply* reply) const;
     bool isReplyOK(redisReply* reply);
     bool isReplyError(redisReply* reply);
+#else
+    std::string replyToString(void* reply) const;
+    long long replyToInteger(void* reply) const;
+    StringList replyToStringList(void* reply) const;
+    StringMap replyToStringMap(void* reply) const;
+    bool isReplyOK(void* reply);
+    bool isReplyError(void* reply);
+#endif
     
     // 문자열 처리
     std::string escapeString(const std::string& str);
@@ -354,6 +167,140 @@ private:
     static void freeRedisReply(redisReply* reply);
     static void freeRedisContext(redisContext* ctx);
     static void freeRedisAsyncContext(redisAsyncContext* ctx);
+    
+    // 추가 메서드들 (구현 파일에 있는 것들)
+    bool hmset(const std::string& key, const StringMap& field_values);
+    int del(const StringList& keys);
+    StringList zrangebyscore(const std::string& key, double min_score, double max_score);
+    int zremrangebyscore(const std::string& key, double min_score, double max_score);
+    std::string evalScript(const std::string& script, const StringList& keys = StringList{}, const StringList& args = StringList{});
+    std::string evalSha(const std::string& sha1, const StringList& keys = StringList{}, const StringList& args = StringList{});
+    std::string scriptLoad(const std::string& script);
+    std::pair<std::string, StringList> scan(const std::string& cursor = "0", const std::string& pattern = "", int count = 10);
+    std::pair<std::string, StringMap> hscan(const std::string& key, const std::string& cursor = "0", const std::string& pattern = "", int count = 10);
+    std::pair<std::string, std::map<std::string, double>> zscan(const std::string& key, const std::string& cursor = "0", const std::string& pattern = "", int count = 10);
+    void setTimeouts(int connect_timeout_ms, int command_timeout_ms);
+    bool startPipeline();
+    bool addToPipeline(const std::string& command);
+#ifdef HAS_HIREDIS
+    std::vector<std::unique_ptr<redisReply, void(*)(redisReply*)>> executePipeline();
+#else
+    std::vector<void*> executePipeline();
+#endif
+
+public:
+    // =============================================================================
+    // 생성자/소멸자
+    // =============================================================================
+    
+    RedisClientImpl();
+    ~RedisClientImpl() override;
+    
+    // 복사/이동 생성자 및 대입 연산자 삭제
+    RedisClientImpl(const RedisClientImpl&) = delete;
+    RedisClientImpl& operator=(const RedisClientImpl&) = delete;
+    RedisClientImpl(RedisClientImpl&&) = delete;
+    RedisClientImpl& operator=(RedisClientImpl&&) = delete;
+    
+    // =============================================================================
+    // RedisClient 인터페이스 구현
+    // =============================================================================
+    
+    // 연결 관리
+    bool connect(const std::string& host, int port, const std::string& password = "") override;
+    void disconnect() override;
+    bool isConnected() const override;
+    
+    // Key-Value 조작
+    bool set(const std::string& key, const std::string& value) override;
+    bool setex(const std::string& key, const std::string& value, int expire_seconds) override;
+    std::string get(const std::string& key) override;
+    int del(const std::string& key) override;
+    bool exists(const std::string& key) override;
+    bool expire(const std::string& key, int seconds) override;
+    int ttl(const std::string& key) override;
+    
+    // Hash 조작
+    bool hset(const std::string& key, const std::string& field, const std::string& value) override;
+    std::string hget(const std::string& key, const std::string& field) override;
+    StringMap hgetall(const std::string& key) override;
+    int hdel(const std::string& key, const std::string& field) override;
+    bool hexists(const std::string& key, const std::string& field) override;
+    int hlen(const std::string& key) override;
+    
+    // List 조작
+    int lpush(const std::string& key, const std::string& value) override;
+    int rpush(const std::string& key, const std::string& value) override;
+    std::string lpop(const std::string& key) override;
+    std::string rpop(const std::string& key) override;
+    StringList lrange(const std::string& key, int start, int stop) override;
+    int llen(const std::string& key) override;
+    
+    // Set 조작
+    int sadd(const std::string& key, const std::string& member) override;
+    int srem(const std::string& key, const std::string& member) override;
+    bool sismember(const std::string& key, const std::string& member) override;
+    StringList smembers(const std::string& key) override;
+    int scard(const std::string& key) override;
+    
+    // Sorted Set 조작
+    int zadd(const std::string& key, double score, const std::string& member) override;
+    int zrem(const std::string& key, const std::string& member) override;
+    StringList zrange(const std::string& key, int start, int stop) override;
+    int zcard(const std::string& key) override;
+    
+    // Pub/Sub
+    bool subscribe(const std::string& channel) override;
+    bool unsubscribe(const std::string& channel) override;
+    int publish(const std::string& channel, const std::string& message) override;
+    bool psubscribe(const std::string& pattern) override;
+    bool punsubscribe(const std::string& pattern) override;
+    void setMessageCallback(MessageCallback callback) override;
+    
+    // 배치 처리
+    bool mset(const StringMap& key_values) override;
+    StringList mget(const StringList& keys) override;
+    
+    // 트랜잭션
+    bool multi() override;
+    bool exec() override;
+    bool discard() override;
+    
+    // 상태 및 진단
+    StringMap info() override;
+    bool ping() override;
+    bool select(int db_index) override;
+    int dbsize() override;
+    
+    // =============================================================================
+    // 추가 기능 (구현체 전용)
+    // =============================================================================
+    
+    /**
+     * @brief 통계 구조체
+     */
+    struct ConnectionStats {
+        uint64_t total_commands;
+        uint64_t successful_commands;
+        uint64_t failed_commands;
+        std::chrono::steady_clock::time_point connect_time;
+        std::chrono::steady_clock::time_point last_command_time;
+        bool is_connected;
+        std::string host;
+        int port;
+        int selected_db;
+    };
+    
+    /**
+     * @brief 통계 조회
+     * @return 연결 통계
+     */
+    ConnectionStats getConnectionStats() const;
+    
+    /**
+     * @brief 통계 리셋
+     */
+    void resetStats();
 };
 
 #endif // REDIS_CLIENT_IMPL_H

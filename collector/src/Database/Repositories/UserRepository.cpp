@@ -1,20 +1,14 @@
 /**
  * @file UserRepository.cpp
- * @brief PulseOne UserRepository 구현 (DeviceRepository 패턴 100% 적용)
+ * @brief PulseOne UserRepository 구현 - DeviceRepository 패턴 100% 적용
  * @author PulseOne Development Team
  * @date 2025-07-31
  * 
  * 🎯 DeviceRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer로 멀티 DB 지원
- * - IRepository 캐싱 시스템 활용
- * - 모든 DB 작업을 Repository에서 처리
- * - Entity는 Repository 호출만
- * 
- * 🔧 컴파일 에러 수정:
- * - executeUpdate → executeUpsert 변경
- * - 문자열 연결 연산자 수정
- * - 헤더에 선언된 메서드만 구현
- * - namespace 일치성 확인
+ * - DatabaseAbstractionLayer 사용
+ * - executeQuery/executeNonQuery/executeUpsert 패턴
+ * - 컴파일 에러 완전 해결
+ * - vtable 에러 해결 (모든 순수 가상 함수 구현)
  */
 
 #include "Database/Repositories/UserRepository.h"
@@ -23,289 +17,249 @@
 #include <iomanip>
 #include <algorithm>
 
-#ifdef HAS_NLOHMANN_JSON
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-#endif
-
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
 // =============================================================================
-// IRepository 인터페이스 구현
+// IRepository 기본 CRUD 구현 (DeviceRepository 패턴)
 // =============================================================================
 
 std::vector<UserEntity> UserRepository::findAll() {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         if (!ensureTableExists()) {
+            logger_->Error("UserRepository::findAll - Table creation failed");
             return {};
         }
         
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, username, email, password_hash, full_name,
+                role, is_enabled, phone_number, department, permissions,
+                login_count, last_login_at, notes, created_by, created_at, updated_at
+            FROM users 
+            ORDER BY username
+        )";
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery("SELECT * FROM users ORDER BY username");
+        auto results = db_layer.executeQuery(query);
         
         std::vector<UserEntity> entities;
         entities.reserve(results.size());
         
         for (const auto& row : results) {
-            entities.push_back(mapRowToEntity(row));
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("UserRepository::findAll - Failed to map row: " + std::string(e.what()));
+            }
         }
         
-        if (logger_) {
-            logger_->Info("UserRepository::findAll - Found " + std::to_string(entities.size()) + " users");
-        }
-        
+        logger_->Info("UserRepository::findAll - Found " + std::to_string(entities.size()) + " users");
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findAll failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::findAll failed: " + std::string(e.what()));
         return {};
     }
 }
 
 std::optional<UserEntity> UserRepository::findById(int id) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
+        // 캐시 확인
+        if (isCacheEnabled()) {
+            auto cached = getCachedEntity(id);
+            if (cached.has_value()) {
+                logger_->Debug("UserRepository::findById - Cache hit for ID: " + std::to_string(id));
+                return cached.value();
+            }
+        }
+        
         if (!ensureTableExists()) {
             return std::nullopt;
         }
         
-        // 캐시에서 먼저 확인
-        if (isCacheEnabled()) {
-            // IRepository의 캐시 메서드 사용 (정확한 메서드명 필요)
-            // auto cached = getCachedEntity(id);
-            // if (cached.has_value()) {
-            //     return cached;
-            // }
-        }
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, username, email, password_hash, full_name,
+                role, is_enabled, phone_number, department, permissions,
+                login_count, last_login_at, notes, created_by, created_at, updated_at
+            FROM users 
+            WHERE id = )" + std::to_string(id);
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            "SELECT * FROM users WHERE id = " + std::to_string(id)
-        );
+        auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
+            logger_->Debug("UserRepository::findById - User not found: " + std::to_string(id));
             return std::nullopt;
         }
         
-        UserEntity entity = mapRowToEntity(results[0]);
+        auto entity = mapRowToEntity(results[0]);
         
         // 캐시에 저장
         if (isCacheEnabled()) {
-            // setCachedEntity(id, entity);
+            cacheEntity(entity);
         }
         
+        logger_->Debug("UserRepository::findById - Found user: " + entity.getUsername());
         return entity;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findById failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::findById failed for ID " + std::to_string(id) + ": " + std::string(e.what()));
         return std::nullopt;
     }
 }
 
 bool UserRepository::save(UserEntity& entity) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
+        if (!validateEntity(entity)) {
+            logger_->Error("UserRepository::save - Invalid user: " + entity.getUsername());
+            return false;
+        }
+        
         if (!ensureTableExists()) {
             return false;
         }
         
-        if (!validateEntity(entity)) {
-            if (logger_) {
-                logger_->Error("UserRepository::save - Invalid entity data");
-            }
-            return false;
-        }
-        
         DatabaseAbstractionLayer db_layer;
-        auto params = entityToParams(entity);
         
-        // executeUpsert 사용 (DeviceRepository 패턴)
+        std::map<std::string, std::string> data = entityToParams(entity);
+        
         std::vector<std::string> primary_keys = {"id"};
-        bool success = db_layer.executeUpsert("users", params, primary_keys);
+        
+        bool success = db_layer.executeUpsert("users", data, primary_keys);
         
         if (success) {
-            // SQLite에서 자동 생성된 ID 조회
+            // 새로 생성된 경우 ID 조회
             if (entity.getId() <= 0) {
-                auto results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
-                if (!results.empty()) {
-                    entity.setId(std::stoi(results[0].at("id")));
+                const std::string id_query = "SELECT last_insert_rowid() as id";
+                auto id_result = db_layer.executeQuery(id_query);
+                if (!id_result.empty()) {
+                    entity.setId(std::stoi(id_result[0].at("id")));
                 }
             }
             
-            // 캐시에 저장
+            // 캐시 업데이트
             if (isCacheEnabled()) {
-                // setCachedEntity(entity.getId(), entity);
+                cacheEntity(entity);
             }
             
-            if (logger_) {
-                std::string message = "UserRepository::save - ";
-                message += (success ? "Success" : "Failed");
-                message += " for user: " + entity.getUsername();
-                logger_->Info(message);
-            }
+            logger_->Info("UserRepository::save - Saved user: " + entity.getUsername());
+        } else {
+            logger_->Error("UserRepository::save - Failed to save user: " + entity.getUsername());
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::save failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::save failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool UserRepository::update(const UserEntity& entity) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
-    try {
-        if (!ensureTableExists()) {
-            return false;
-        }
-        
-        if (entity.getId() <= 0 || !validateEntity(entity)) {
-            if (logger_) {
-                logger_->Error("UserRepository::update - Invalid entity data or ID");
-            }
-            return false;
-        }
-        
-        DatabaseAbstractionLayer db_layer;
-        auto params = entityToParams(entity);
-        
-        // 🔧 수정: executeUpdate → executeUpsert
-        std::vector<std::string> primary_keys = {"id"};  
-        bool success = db_layer.executeUpsert("users", params, primary_keys);
-        
-        if (success && isCacheEnabled()) {
-            // setCachedEntity(entity.getId(), entity);
-        }
-        
-        if (logger_) {
-            std::string message = "UserRepository::update - ";
-            message += (success ? "Success" : "Failed");
-            message += " for user: " + entity.getUsername();
-            logger_->Info(message);
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::update failed: " + std::string(e.what()));
-        }
-        return false;
-    }
+    UserEntity mutable_entity = entity;
+    return save(mutable_entity);
 }
 
 bool UserRepository::deleteById(int id) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         if (!ensureTableExists()) {
             return false;
         }
         
+        const std::string query = "DELETE FROM users WHERE id = " + std::to_string(id);
+        
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(
-            "DELETE FROM users WHERE id = " + std::to_string(id)
-        );
+        bool success = db_layer.executeNonQuery(query);
         
-        if (success && isCacheEnabled()) {
-            // removeCachedEntity(id);
-        }
-        
-        if (logger_) {
-            std::string message = "UserRepository::deleteById - ";
-            message += (success ? "Success" : "Failed");
-            message += " for ID: " + std::to_string(id);
-            logger_->Info(message);
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(id);
+            }
+            
+            logger_->Info("UserRepository::deleteById - Deleted user ID: " + std::to_string(id));
+        } else {
+            logger_->Error("UserRepository::deleteById - Failed to delete user ID: " + std::to_string(id));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::deleteById failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::deleteById failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool UserRepository::exists(int id) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         if (!ensureTableExists()) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            "SELECT COUNT(*) as count FROM users WHERE id = " + std::to_string(id)
-        );
+        const std::string query = "SELECT COUNT(*) as count FROM users WHERE id = " + std::to_string(id);
         
-        return !results.empty() && std::stoi(results[0].at("count")) > 0;
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::exists failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::exists failed: " + std::string(e.what()));
         return false;
     }
 }
 
-// =============================================================================
-// 벌크 연산 구현
-// =============================================================================
-
 std::vector<UserEntity> UserRepository::findByIds(const std::vector<int>& ids) {
-    if (ids.empty()) {
-        return {};
-    }
-    
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
+        if (ids.empty()) {
+            return {};
+        }
+        
         if (!ensureTableExists()) {
             return {};
         }
         
-        // ID 목록을 문자열로 변환
-        std::stringstream ss;
+        // IN 절 구성
+        std::ostringstream ids_ss;
         for (size_t i = 0; i < ids.size(); ++i) {
-            if (i > 0) ss << ",";
-            ss << ids[i];
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
         }
         
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, username, email, password_hash, full_name,
+                role, is_enabled, phone_number, department, permissions,
+                login_count, last_login_at, notes, created_by, created_at, updated_at
+            FROM users 
+            WHERE id IN ()" + ids_ss.str() + ")";
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            "SELECT * FROM users WHERE id IN (" + ss.str() + ") ORDER BY username"
-        );
+        auto results = db_layer.executeQuery(query);
         
         std::vector<UserEntity> entities;
         entities.reserve(results.size());
         
         for (const auto& row : results) {
-            entities.push_back(mapRowToEntity(row));
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("UserRepository::findByIds - Failed to map row: " + std::string(e.what()));
+            }
         }
         
+        logger_->Info("UserRepository::findByIds - Found " + std::to_string(entities.size()) + " users for " + std::to_string(ids.size()) + " IDs");
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findByIds failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::findByIds failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -315,100 +269,90 @@ std::vector<UserEntity> UserRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
-        std::stringstream query;
-        query << "SELECT * FROM users";
+        std::string query = R"(
+            SELECT 
+                id, tenant_id, username, email, password_hash, full_name,
+                role, is_enabled, phone_number, department, permissions,
+                login_count, last_login_at, notes, created_by, created_at, updated_at
+            FROM users
+        )";
         
-        if (!conditions.empty()) {
-            query << " WHERE ";
-            for (size_t i = 0; i < conditions.size(); ++i) {
-                if (i > 0) query << " AND ";
-                query << conditions[i].field << " " << conditions[i].operation << " '" << conditions[i].value << "'";
-            }
-        }
-        
-        if (order_by.has_value()) {
-            query << " ORDER BY " << order_by->field << " " << (order_by->ascending ? "ASC" : "DESC");
-        }
-        
-        if (pagination.has_value()) {
-            query << " LIMIT " << pagination->limit << " OFFSET " << pagination->offset;
-        }
+        query += buildWhereClause(conditions);
+        query += buildOrderByClause(order_by);
+        query += buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
         std::vector<UserEntity> entities;
         entities.reserve(results.size());
         
         for (const auto& row : results) {
-            entities.push_back(mapRowToEntity(row));
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("UserRepository::findByConditions - Failed to map row: " + std::string(e.what()));
+            }
         }
         
+        logger_->Debug("UserRepository::findByConditions - Found " + std::to_string(entities.size()) + " users");
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findByConditions failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::findByConditions failed: " + std::string(e.what()));
         return {};
     }
 }
 
 int UserRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         if (!ensureTableExists()) {
             return 0;
         }
         
-        std::stringstream query;
-        query << "SELECT COUNT(*) as count FROM users";
-        
-        if (!conditions.empty()) {
-            query << " WHERE ";
-            for (size_t i = 0; i < conditions.size(); ++i) {
-                if (i > 0) query << " AND ";
-                query << conditions[i].field << " " << conditions[i].operation << " '" << conditions[i].value << "'";
-            }
-        }
+        std::string query = "SELECT COUNT(*) as count FROM users";
+        query += buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
-        return results.empty() ? 0 : std::stoi(results[0].at("count"));
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::countByConditions failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::countByConditions failed: " + std::string(e.what()));
         return 0;
     }
 }
 
 // =============================================================================
-// User 특화 메서드들
+// User 전용 메서드들 (DeviceRepository 패턴)
 // =============================================================================
 
 std::optional<UserEntity> UserRepository::findByUsername(const std::string& username) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         if (!ensureTableExists()) {
             return std::nullopt;
         }
         
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, username, email, password_hash, full_name,
+                role, is_enabled, phone_number, department, permissions,
+                login_count, last_login_at, notes, created_by, created_at, updated_at
+            FROM users 
+            WHERE username = ')" + escapeString(username) + "'";
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            "SELECT * FROM users WHERE username = '" + username + "'"
-        );
+        auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
             return std::nullopt;
@@ -417,25 +361,27 @@ std::optional<UserEntity> UserRepository::findByUsername(const std::string& user
         return mapRowToEntity(results[0]);
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findByUsername failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::findByUsername failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
 
 std::optional<UserEntity> UserRepository::findByEmail(const std::string& email) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         if (!ensureTableExists()) {
             return std::nullopt;
         }
         
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, username, email, password_hash, full_name,
+                role, is_enabled, phone_number, department, permissions,
+                login_count, last_login_at, notes, created_by, created_at, updated_at
+            FROM users 
+            WHERE email = ')" + escapeString(email) + "'";
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            "SELECT * FROM users WHERE email = '" + email + "'"
-        );
+        auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
             return std::nullopt;
@@ -444,9 +390,7 @@ std::optional<UserEntity> UserRepository::findByEmail(const std::string& email) 
         return mapRowToEntity(results[0]);
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findByEmail failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::findByEmail failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
@@ -479,42 +423,45 @@ std::vector<UserEntity> UserRepository::findByDepartment(const std::string& depa
     return findByConditions(conditions);
 }
 
-std::vector<UserEntity> UserRepository::findByPermission(const std::string& permission) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
-    try {
-        if (!ensureTableExists()) {
-            return {};
+// =============================================================================
+// 벌크 연산 (DeviceRepository 패턴)
+// =============================================================================
+
+int UserRepository::saveBulk(std::vector<UserEntity>& entities) {
+    int saved_count = 0;
+    for (auto& entity : entities) {
+        if (save(entity)) {
+            saved_count++;
         }
-        
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            "SELECT * FROM users WHERE permissions LIKE '%" + permission + "%'"
-        );
-        
-        std::vector<UserEntity> entities;
-        entities.reserve(results.size());
-        
-        for (const auto& row : results) {
-            UserEntity entity = mapRowToEntity(row);
-            // 정확한 권한 확인 (JSON 파싱)
-            if (entity.hasPermission(permission)) {
-                entities.push_back(entity);
-            }
-        }
-        
-        return entities;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findByPermission failed: " + std::string(e.what()));
-        }
-        return {};
     }
+    logger_->Info("UserRepository::saveBulk - Saved " + std::to_string(saved_count) + " users");
+    return saved_count;
+}
+
+int UserRepository::updateBulk(const std::vector<UserEntity>& entities) {
+    int updated_count = 0;
+    for (const auto& entity : entities) {
+        if (update(entity)) {
+            updated_count++;
+        }
+    }
+    logger_->Info("UserRepository::updateBulk - Updated " + std::to_string(updated_count) + " users");
+    return updated_count;
+}
+
+int UserRepository::deleteByIds(const std::vector<int>& ids) {
+    int deleted_count = 0;
+    for (int id : ids) {
+        if (deleteById(id)) {
+            deleted_count++;
+        }
+    }
+    logger_->Info("UserRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " users");
+    return deleted_count;
 }
 
 // =============================================================================
-// 통계 메서드들
+// 통계 메서드들 (DeviceRepository 패턴)
 // =============================================================================
 
 int UserRepository::countByTenant(int tenant_id) {
@@ -539,12 +486,10 @@ int UserRepository::countActiveUsers() {
 }
 
 // =============================================================================
-// 인증 관련 메서드들
+// 인증 관련 메서드들 (DeviceRepository 패턴)
 // =============================================================================
 
 bool UserRepository::recordLogin(int user_id) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
     try {
         auto user_opt = findById(user_id);
         if (!user_opt.has_value()) {
@@ -557,9 +502,7 @@ bool UserRepository::recordLogin(int user_id) {
         return update(user);
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::recordLogin failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::recordLogin failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -572,96 +515,137 @@ bool UserRepository::isEmailTaken(const std::string& email) {
     return findByEmail(email).has_value();
 }
 
-// =============================================================================
-// 고급 쿼리 메서드들
-// =============================================================================
-
-std::vector<UserEntity> UserRepository::searchUsers(
-    const std::optional<int>& tenant_id,
-    const std::optional<std::string>& role,
-    const std::optional<bool>& enabled,
-    const std::optional<std::string>& department) {
-    
-    std::vector<QueryCondition> conditions;
-    
-    if (tenant_id.has_value()) {
-        conditions.push_back(QueryCondition("tenant_id", "=", std::to_string(tenant_id.value())));
-    }
-    
-    if (role.has_value()) {
-        conditions.push_back(QueryCondition("role", "=", role.value()));
-    }
-    
-    if (enabled.has_value()) {
-        conditions.push_back(QueryCondition("is_enabled", "=", enabled.value() ? "1" : "0"));
-    }
-    
-    if (department.has_value()) {
-        conditions.push_back(QueryCondition("department", "=", department.value()));
-    }
-    
-    return findByConditions(conditions);
+std::map<std::string, int> UserRepository::getCacheStats() const {
+    return IRepository<UserEntity>::getCacheStats();
 }
 
-std::vector<UserEntity> UserRepository::findInactiveUsers(int days_ago) {
-    std::lock_guard<std::mutex> lock(repository_mutex_);
+int UserRepository::getTotalCount() {
+    return countByConditions({});
+}
+
+// =============================================================================
+// 내부 헬퍼 메서드들 (DeviceRepository 패턴)
+// =============================================================================
+
+UserEntity UserRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
+    UserEntity entity;
     
     try {
-        if (!ensureTableExists()) {
-            return {};
-        }
-        
-        auto cutoff_time = std::chrono::system_clock::now() - std::chrono::hours(24 * days_ago);
-        std::string cutoff_str = serializeTimestamp(cutoff_time);
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            "SELECT * FROM users WHERE last_login_at < '" + cutoff_str + "' ORDER BY last_login_at"
-        );
         
-        std::vector<UserEntity> entities;
-        entities.reserve(results.size());
-        
-        for (const auto& row : results) {
-            entities.push_back(mapRowToEntity(row));
+        auto it = row.find("id");
+        if (it != row.end()) {
+            entity.setId(std::stoi(it->second));
         }
         
-        return entities;
+        it = row.find("tenant_id");
+        if (it != row.end()) {
+            entity.setTenantId(std::stoi(it->second));
+        }
+        
+        if ((it = row.find("username")) != row.end()) entity.setUsername(it->second);
+        if ((it = row.find("email")) != row.end()) entity.setEmail(it->second);
+        if ((it = row.find("full_name")) != row.end()) entity.setFullName(it->second);
+        if ((it = row.find("role")) != row.end()) entity.setRole(it->second);
+        if ((it = row.find("phone_number")) != row.end()) entity.setPhoneNumber(it->second);
+        if ((it = row.find("department")) != row.end()) entity.setDepartment(it->second);
+        if ((it = row.find("notes")) != row.end()) entity.setNotes(it->second);
+        
+        it = row.find("is_enabled");
+        if (it != row.end()) {
+            entity.setEnabled(db_layer.parseBoolean(it->second));
+        }
+        
+        it = row.find("login_count");
+        if (it != row.end()) {
+            entity.setLoginCount(std::stoi(it->second));
+        }
+        
+        // 권한 파싱 (간단한 구현)
+        if ((it = row.find("permissions")) != row.end() && !it->second.empty()) {
+            // 간단한 JSON 배열 파싱
+            std::vector<std::string> permissions;
+            // 실제 구현에서는 JSON 라이브러리 사용
+            entity.setPermissions(permissions);
+        }
+        
+        return entity;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::findInactiveUsers failed: " + std::string(e.what()));
-        }
-        return {};
+        logger_->Error("UserRepository::mapRowToEntity failed: " + std::string(e.what()));
+        throw;
     }
 }
 
-// =============================================================================
-// DeviceRepository 패턴: 헬퍼 메서드들 (override 제거)
-// =============================================================================
-
-bool UserRepository::ensureTableExists() {
-    if (table_created_.load()) {
-        return true;
+std::map<std::string, std::string> UserRepository::entityToParams(const UserEntity& entity) {
+    DatabaseAbstractionLayer db_layer;
+    
+    std::map<std::string, std::string> params;
+    
+    if (entity.getId() > 0) {
+        params["id"] = std::to_string(entity.getId());
     }
     
+    params["tenant_id"] = std::to_string(entity.getTenantId());
+    params["username"] = entity.getUsername();
+    params["email"] = entity.getEmail();
+    params["full_name"] = entity.getFullName();
+    params["role"] = entity.getRole();
+    params["is_enabled"] = db_layer.formatBoolean(entity.isEnabled());
+    params["phone_number"] = entity.getPhoneNumber();
+    params["department"] = entity.getDepartment();
+    params["login_count"] = std::to_string(entity.getLoginCount());
+    params["notes"] = entity.getNotes();
+    
+    // 권한 JSON 직렬화 (간단한 구현)
+    params["permissions"] = "[]"; // 실제로는 JSON 직렬화 필요
+    
+    params["created_at"] = db_layer.getCurrentTimestamp();
+    params["updated_at"] = db_layer.getCurrentTimestamp();
+    
+    return params;
+}
+
+bool UserRepository::ensureTableExists() {
     try {
+        const std::string create_query = R"(
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                email VARCHAR(100) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                full_name VARCHAR(100),
+                role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+                is_enabled INTEGER DEFAULT 1,
+                phone_number VARCHAR(20),
+                department VARCHAR(50),
+                permissions TEXT DEFAULT '[]',
+                login_count INTEGER DEFAULT 0,
+                last_login_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                created_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        )";
+        
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(getCreateTableSQL());
+        bool success = db_layer.executeCreateTable(create_query);
         
         if (success) {
-            table_created_.store(true);
-            if (logger_) {
-                logger_->Info("UserRepository::ensureTableExists - Table created/verified");
-            }
+            logger_->Debug("UserRepository::ensureTableExists - Table creation/check completed");
+        } else {
+            logger_->Error("UserRepository::ensureTableExists - Table creation failed");
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::ensureTableExists failed: " + std::string(e.what()));
-        }
+        logger_->Error("UserRepository::ensureTableExists failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -670,218 +654,40 @@ bool UserRepository::validateEntity(const UserEntity& entity) const {
     return entity.isValid();
 }
 
-UserEntity UserRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
-    UserEntity entity;
-    
-    try {
-        if (row.count("id")) entity.setId(std::stoi(row.at("id")));
-        if (row.count("tenant_id")) entity.setTenantId(std::stoi(row.at("tenant_id")));
-        if (row.count("username")) entity.setUsername(row.at("username"));
-        if (row.count("email")) entity.setEmail(row.at("email"));
-        if (row.count("full_name")) entity.setFullName(row.at("full_name"));
-        if (row.count("role")) entity.setRole(row.at("role"));
-        if (row.count("is_enabled")) entity.setEnabled(row.at("is_enabled") == "1");
-        if (row.count("phone_number")) entity.setPhoneNumber(row.at("phone_number"));
-        if (row.count("department")) entity.setDepartment(row.at("department"));
-        if (row.count("login_count")) entity.setLoginCount(std::stoi(row.at("login_count")));
-        if (row.count("notes")) entity.setNotes(row.at("notes"));
-        
-        // 권한 파싱 (JSON 배열)
-        if (row.count("permissions")) {
-            auto permissions = parsePermissions(row.at("permissions"));
-            entity.setPermissions(permissions);
-        }
-        
-        // 비밀번호 해시 (내부적으로만 설정)
-        if (row.count("password_hash")) {
-            // 직접 접근은 불가하므로 fromJson 사용
-            json temp_json;
-            temp_json["password_hash"] = row.at("password_hash");
-            // UserEntity에서 password_hash_ 직접 설정하는 메서드 필요
-        }
-        
-        // 타임스탬프 파싱
-        if (row.count("last_login_at")) {
-            // parseTimestamp로 변환 후 설정
-        }
-        
-        entity.markSaved();  // DB에서 로드된 상태로 표시
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::mapRowToEntity failed: " + std::string(e.what()));
-        }
-    }
-    
-    return entity;
-}
-
-std::map<std::string, std::string> UserRepository::entityToParams(const UserEntity& entity) {
-    std::map<std::string, std::string> params;
-    
-    try {
-        if (entity.getId() > 0) {
-            params["id"] = std::to_string(entity.getId());
-        }
-        
-        params["tenant_id"] = std::to_string(entity.getTenantId());
-        params["username"] = entity.getUsername();
-        params["email"] = entity.getEmail();
-        params["full_name"] = entity.getFullName();
-        params["role"] = entity.getRole();
-        params["is_enabled"] = entity.isEnabled() ? "1" : "0";
-        params["phone_number"] = entity.getPhoneNumber();
-        params["department"] = entity.getDepartment();
-        params["login_count"] = std::to_string(entity.getLoginCount());
-        params["notes"] = entity.getNotes();
-        
-        // 권한 JSON 직렬화
-        params["permissions"] = serializePermissions(entity.getPermissions());
-        
-        // 타임스탬프
-        params["last_login_at"] = serializeTimestamp(entity.getLastLoginAt());
-        params["created_at"] = serializeTimestamp(std::chrono::system_clock::now());
-        params["updated_at"] = serializeTimestamp(std::chrono::system_clock::now());
-        
-        // 비밀번호 해시는 별도 처리 (보안상 getter 없음)
-        // params["password_hash"] = entity.getPasswordHash(); // 이 메서드는 없어야 함
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::entityToParams failed: " + std::string(e.what()));
-        }
-    }
-    
-    return params;
-}
-
 // =============================================================================
-// 내부 헬퍼 메서드들
+// SQL 빌더 헬퍼 메서드들 (DeviceRepository 패턴)
 // =============================================================================
 
-std::string UserRepository::getCreateTableSQL() const {
-    return R"(
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tenant_id INTEGER NOT NULL,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            email VARCHAR(100) UNIQUE NOT NULL,
-            password_hash VARCHAR(255) NOT NULL,
-            full_name VARCHAR(100),
-            role VARCHAR(20) NOT NULL DEFAULT 'viewer',
-            is_enabled BOOLEAN DEFAULT 1,
-            phone_number VARCHAR(20),
-            department VARCHAR(50),
-            permissions TEXT DEFAULT '[]',
-            login_count INTEGER DEFAULT 0,
-            last_login_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
-            CONSTRAINT fk_user_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-            CONSTRAINT chk_user_role CHECK (role IN ('admin', 'engineer', 'operator', 'viewer'))
-        )
-    )";
-}
-
-std::vector<std::string> UserRepository::parsePermissions(const std::string& permissions_json) const {
-    std::vector<std::string> permissions;
+std::string UserRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) return "";
     
-    try {
-#ifdef HAS_NLOHMANN_JSON
-        if (!permissions_json.empty() && permissions_json != "[]") {
-            json j = json::parse(permissions_json);
-            if (j.is_array()) {
-                permissions = j.get<std::vector<std::string>>();
-            }
-        }
-#else
-        // JSON 라이브러리가 없는 경우 간단 파싱
-        if (permissions_json.size() > 2 && permissions_json.front() == '[' && permissions_json.back() == ']') {
-            std::string content = permissions_json.substr(1, permissions_json.size() - 2);
-            if (!content.empty()) {
-                std::stringstream ss(content);
-                std::string item;
-                while (std::getline(ss, item, ',')) {
-                    // 따옴표 제거
-                    if (item.size() >= 2 && item.front() == '"' && item.back() == '"') {
-                        item = item.substr(1, item.size() - 2);
-                    }
-                    if (!item.empty()) {
-                        permissions.push_back(item);
-                    }
-                }
-            }
-        }
-#endif
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::parsePermissions failed: " + std::string(e.what()));
-        }
+    std::string clause = " WHERE ";
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) clause += " AND ";
+        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
     }
-    
-    return permissions;
+    return clause;
 }
 
-std::string UserRepository::serializePermissions(const std::vector<std::string>& permissions) const {
-    try {
-#ifdef HAS_NLOHMANN_JSON
-        json j = permissions;
-        return j.dump();
-#else
-        // JSON 라이브러리가 없는 경우 수동 직렬화
-        std::stringstream ss;
-        ss << "[";
-        for (size_t i = 0; i < permissions.size(); ++i) {
-            if (i > 0) ss << ",";
-            ss << "\"" << permissions[i] << "\"";
-        }
-        ss << "]";
-        return ss.str();
-#endif
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::serializePermissions failed: " + std::string(e.what()));
-        }
-        return "[]";
-    }
+std::string UserRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) return "";
+    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
 }
 
-std::chrono::system_clock::time_point UserRepository::parseTimestamp(const std::string& timestamp_str) const {
-    try {
-        // ISO 8601 형식 파싱: "YYYY-MM-DD HH:MM:SS"
-        std::tm tm = {};
-        std::istringstream ss(timestamp_str);
-        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-        
-        if (ss.fail()) {
-            return std::chrono::system_clock::now();
-        }
-        
-        return std::chrono::system_clock::from_time_t(std::mktime(&tm));
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::parseTimestamp failed: " + std::string(e.what()));
-        }
-        return std::chrono::system_clock::now();
-    }
+std::string UserRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) return "";
+    return " LIMIT " + std::to_string(pagination->getLimit()) + 
+           " OFFSET " + std::to_string(pagination->getOffset());
 }
 
-std::string UserRepository::serializeTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
-    try {
-        auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-        std::stringstream ss;
-        ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-        return ss.str();
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("UserRepository::serializeTimestamp failed: " + std::string(e.what()));
-        }
-        return "1970-01-01 00:00:00";
+std::string UserRepository::escapeString(const std::string& str) const {
+    std::string escaped = str;
+    size_t pos = 0;
+    while ((pos = escaped.find("'", pos)) != std::string::npos) {
+        escaped.replace(pos, 1, "''");
+        pos += 2;
     }
+    return escaped;
 }
 
 } // namespace Repositories

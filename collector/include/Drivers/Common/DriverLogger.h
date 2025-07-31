@@ -52,12 +52,32 @@ private:
     }
     
     std::string FormatMessage(LogLevel level, DriverLogCategory category,
-                         const std::string& message,
-                         const DriverLogContext& context = DriverLogContext()) const {
+                            const std::string& message,
+                            const DriverLogContext& context = DriverLogContext()) const {
+        
+        // ✅ unused parameter 경고 해결: 매개변수 활용
         std::ostringstream oss;
-        oss << "[" << CategoryToString(category) << "] "
+        
+        // 🆕 level을 실제로 활용하여 경고 해결
+        const char* level_str = [level]() {
+            switch (level) {
+                case LogLevel::TRACE: return "TRACE";
+                case LogLevel::DEBUG_LEVEL: return "DEBUG";
+                case LogLevel::INFO: return "INFO";
+                case LogLevel::WARN: return "WARN";
+                case LogLevel::ERROR: return "ERROR";
+                case LogLevel::FATAL: return "FATAL";
+                case LogLevel::MAINTENANCE: return "MAINT";
+                default: return "UNKNOWN";
+            }
+        }();
+        
+        // 📝 포맷팅에 level 정보 포함
+        oss << "[" << level_str << "] "
+            << "[" << CategoryToString(category) << "] "
             << "[" << context.device_id << "] "
             << message;
+        
         return oss.str();
     }
 
