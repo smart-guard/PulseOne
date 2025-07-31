@@ -9,7 +9,6 @@
 #include <iomanip>
 #include <algorithm>
 
-
 namespace PulseOne {
 namespace Database {
 namespace Entities {
@@ -35,7 +34,9 @@ AlarmConfigEntity::AlarmConfigEntity()
     , is_enabled_(true)
     , auto_acknowledge_(false)
     , delay_seconds_(0)
-    , message_template_("Alarm: {{ALARM_NAME}} - Value: {{CURRENT_VALUE}}") {
+    , message_template_("Alarm: {{ALARM_NAME}} - Value: {{CURRENT_VALUE}}")
+    , created_at_(std::chrono::system_clock::now())
+    , updated_at_(std::chrono::system_clock::now()) {
 }
 
 AlarmConfigEntity::AlarmConfigEntity(int alarm_id) 
@@ -55,7 +56,9 @@ AlarmConfigEntity::AlarmConfigEntity(int alarm_id)
     , is_enabled_(true)
     , auto_acknowledge_(false)
     , delay_seconds_(0)
-    , message_template_("Alarm: {{ALARM_NAME}} - Value: {{CURRENT_VALUE}}") {
+    , message_template_("Alarm: {{ALARM_NAME}} - Value: {{CURRENT_VALUE}}")
+    , created_at_(std::chrono::system_clock::now())
+    , updated_at_(std::chrono::system_clock::now()) {
 }
 
 // =============================================================================
@@ -209,6 +212,17 @@ bool AlarmConfigEntity::isValid() const {
     }
     
     return true;
+}
+
+// =============================================================================
+// 🔥 중요: timestampToString() 메서드 구현 (DeviceEntity 패턴)
+// =============================================================================
+
+std::string AlarmConfigEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
+    std::time_t time_t = std::chrono::system_clock::to_time_t(tp);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
 }
 
 // =============================================================================

@@ -63,7 +63,7 @@ public:
     // =======================================================================
     // IRepository 인터페이스 구현
     // =======================================================================
-    
+    std::map<std::string, int> getCacheStats() const override;
     std::vector<TenantEntity> findAll() override;
     std::optional<TenantEntity> findById(int id) override;
     bool save(TenantEntity& entity) override;

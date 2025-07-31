@@ -1,15 +1,23 @@
 /**
  * @file AlarmConfigRepository.cpp  
- * @brief PulseOne AlarmConfigRepository 구현 - DeviceEntity/DataPointEntity 패턴 100% 준수
+ * @brief PulseOne AlarmConfigRepository 구현 - DeviceRepository 패턴 100% 준수
  * @author PulseOne Development Team
  * @date 2025-07-28
+ * 
+ * 🎯 DeviceRepository 패턴 완전 적용:
+ * - DatabaseAbstractionLayer 사용
+ * - executeQuery/executeNonQuery/executeUpsert 패턴
+ * - 컴파일 에러 완전 해결
+ * - 깔끔하고 유지보수 가능한 코드
  */
 
 #include "Database/Repositories/AlarmConfigRepository.h"
+#include "Database/DatabaseAbstractionLayer.h"
 #include "Utils/LogManager.h"
 #include <chrono>
 #include <algorithm>
 #include <sstream>
+#include <iomanip>
 
 namespace PulseOne {
 namespace Database {
@@ -18,112 +26,263 @@ namespace Repositories {
 using AlarmConfigEntity = Entities::AlarmConfigEntity;
 
 // =======================================================================
+// 🔥 DeviceRepository 패턴 - initializeDependencies() 메서드 추가
+// =======================================================================
+
+void AlarmConfigRepository::initializeDependencies() {
+    db_manager_ = &DatabaseManager::getInstance();
+    logger_ = &LogManager::getInstance();
+    config_manager_ = &ConfigManager::getInstance();
+}
+
+// =======================================================================
 // IRepository 인터페이스 구현 (DeviceRepository 패턴 100% 동일)
 // =======================================================================
 
 std::vector<AlarmConfigEntity> AlarmConfigRepository::findAll() {
-    logger_->Debug("🔍 AlarmConfigRepository::findAll() - Fetching all alarm configs");
-    
-    return findByConditions({}, OrderBy("alarm_name", "ASC"));
+    try {
+        if (!ensureTableExists()) {
+            logger_->Error("AlarmConfigRepository::findAll - Table creation failed");
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, data_point_id, virtual_point_id,
+                alarm_name, description, severity, condition_type,
+                threshold_value, high_limit, low_limit, timeout_seconds,
+                is_enabled, auto_acknowledge, delay_seconds, message_template,
+                created_at, updated_at
+            FROM alarm_definitions 
+            ORDER BY alarm_name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmConfigEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("AlarmConfigRepository::findAll - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("AlarmConfigRepository::findAll - Found " + std::to_string(entities.size()) + " alarm configs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::findAll failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
 std::optional<AlarmConfigEntity> AlarmConfigRepository::findById(int id) {
-    logger_->Debug("🔍 AlarmConfigRepository::findById(" + std::to_string(id) + ")");
-    
-    // 캐시는 IRepository에서 내부적으로 처리됨
-    // 직접 DB에서 조회 (내부적으로 캐시 확인됨)
-    auto configs = findByConditions({QueryCondition("id", "=", std::to_string(id))});
-    if (!configs.empty()) {
-        logger_->Debug("✅ Alarm config found: " + configs[0].getName());
-        cacheEntity(configs[0]);  // 수동으로 캐시에 저장
-        return configs[0];
+    try {
+        // 🔥 DeviceRepository 패턴 - 캐시 먼저 확인
+        if (isCacheEnabled()) {
+            auto cached = getCachedEntity(id);
+            if (cached.has_value()) {
+                logger_->Debug("✅ Cache HIT for alarm config ID: " + std::to_string(id));
+                return cached.value();
+            }
+        }
+        
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, data_point_id, virtual_point_id,
+                alarm_name, description, severity, condition_type,
+                threshold_value, high_limit, low_limit, timeout_seconds,
+                is_enabled, auto_acknowledge, delay_seconds, message_template,
+                created_at, updated_at
+            FROM alarm_definitions 
+            WHERE id = )" + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("AlarmConfigRepository::findById - Alarm config not found: " + std::to_string(id));
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        
+        // 캐시에 저장
+        if (isCacheEnabled()) {
+            cacheEntity(entity);
+        }
+        
+        logger_->Debug("AlarmConfigRepository::findById - Found alarm config: " + entity.getName());
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::findById failed for ID " + std::to_string(id) + ": " + std::string(e.what()));
+        return std::nullopt;
     }
-    
-    logger_->Debug("❌ Alarm config not found: " + std::to_string(id));
-    return std::nullopt;
 }
 
 bool AlarmConfigRepository::save(AlarmConfigEntity& entity) {
-    logger_->Info("💾 AlarmConfigRepository::save() - " + entity.getName());  // ✅ getName() 사용
-    
-    if (!validateAlarmConfig(entity)) {
-        logger_->Error("❌ Invalid alarm config data");
+    try {
+        if (!validateAlarmConfig(entity)) {
+            logger_->Error("AlarmConfigRepository::save - Invalid alarm config: " + entity.getName());
+            return false;
+        }
+        
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🔧 수정: entityToParams 메서드 사용하여 맵 생성
+        std::map<std::string, std::string> data = entityToParams(entity);
+        
+        std::vector<std::string> primary_keys = {"id"};
+        
+        bool success = db_layer.executeUpsert("alarm_definitions", data, primary_keys);
+        
+        if (success) {
+            // 새로 생성된 경우 ID 조회
+            if (entity.getId() <= 0) {
+                const std::string id_query = "SELECT last_insert_rowid() as id";
+                auto id_result = db_layer.executeQuery(id_query);
+                if (!id_result.empty()) {
+                    entity.setId(std::stoi(id_result[0].at("id")));
+                }
+            }
+            
+            // 캐시 업데이트
+            if (isCacheEnabled()) {
+                cacheEntity(entity);
+            }
+            
+            logger_->Info("AlarmConfigRepository::save - Saved alarm config: " + entity.getName());
+        } else {
+            logger_->Error("AlarmConfigRepository::save - Failed to save alarm config: " + entity.getName());
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::save failed: " + std::string(e.what()));
         return false;
     }
-    
-    if (isAlarmNameTaken(entity.getName(), entity.getTenantId())) {  // ✅ getName() 사용
-        logger_->Error("❌ Alarm name already exists: " + entity.getName());  // ✅ getName() 사용
-        return false;
-    }
-    
-    return IRepository<AlarmConfigEntity>::save(entity);
 }
 
 bool AlarmConfigRepository::update(const AlarmConfigEntity& entity) {
-    logger_->Info("📝 AlarmConfigRepository::update() - " + entity.getName());  // ✅ getName() 사용
-    
-    if (!validateAlarmConfig(entity)) {
-        logger_->Error("❌ Invalid alarm config data");
-        return false;
-    }
-    
-    if (isAlarmNameTaken(entity.getName(), entity.getTenantId(), entity.getId())) {  // ✅ getName() 사용
-        logger_->Error("❌ Alarm name already exists: " + entity.getName());  // ✅ getName() 사용
-        return false;
-    }
-    
-    return IRepository<AlarmConfigEntity>::update(entity);
+    AlarmConfigEntity mutable_entity = entity;
+    return save(mutable_entity);
 }
 
 bool AlarmConfigRepository::deleteById(int id) {
-    logger_->Info("🗑️ AlarmConfigRepository::deleteById(" + std::to_string(id) + ")");
-    
-    return IRepository<AlarmConfigEntity>::deleteById(id);
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "DELETE FROM alarm_definitions WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(id);
+            }
+            
+            logger_->Info("AlarmConfigRepository::deleteById - Deleted alarm config ID: " + std::to_string(id));
+        } else {
+            logger_->Error("AlarmConfigRepository::deleteById - Failed to delete alarm config ID: " + std::to_string(id));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::deleteById failed: " + std::string(e.what()));
+        return false;
+    }
 }
 
 bool AlarmConfigRepository::exists(int id) {
-    return IRepository<AlarmConfigEntity>::exists(id);
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "SELECT COUNT(*) as count FROM alarm_definitions WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::exists failed: " + std::string(e.what()));
+        return false;
+    }
 }
 
 std::vector<AlarmConfigEntity> AlarmConfigRepository::findByIds(const std::vector<int>& ids) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByIds() - " + std::to_string(ids.size()) + " IDs");
-    
-    return IRepository<AlarmConfigEntity>::findByIds(ids);
-}
-
-int AlarmConfigRepository::saveBulk(std::vector<AlarmConfigEntity>& entities) {
-    logger_->Info("💾 AlarmConfigRepository::saveBulk() - " + std::to_string(entities.size()) + " configs");
-    
-    // 유효성 검사
-    int valid_count = 0;
-    for (const auto& config : entities) {
-        if (validateAlarmConfig(config) &&
-            !isAlarmNameTaken(config.getName(), config.getTenantId())) {  // ✅ getName() 사용
-            valid_count++;
+    try {
+        if (ids.empty()) {
+            return {};
         }
+        
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        // IN 절 구성
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, data_point_id, virtual_point_id,
+                alarm_name, description, severity, condition_type,
+                threshold_value, high_limit, low_limit, timeout_seconds,
+                is_enabled, auto_acknowledge, delay_seconds, message_template,
+                created_at, updated_at
+            FROM alarm_definitions 
+            WHERE id IN ()" + ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmConfigEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("AlarmConfigRepository::findByIds - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("AlarmConfigRepository::findByIds - Found " + std::to_string(entities.size()) + " alarm configs for " + std::to_string(ids.size()) + " IDs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::findByIds failed: " + std::string(e.what()));
+        return {};
     }
-    
-    if (valid_count != static_cast<int>(entities.size())) {
-        logger_->Warn("⚠️ Some alarm configs failed validation. Valid: " +
-                      std::to_string(valid_count) + "/" + std::to_string(entities.size()));
-    }
-    
-    // IRepository의 표준 saveBulk 구현 사용
-    return IRepository<AlarmConfigEntity>::saveBulk(entities);
-}
-
-int AlarmConfigRepository::updateBulk(const std::vector<AlarmConfigEntity>& entities) {
-    logger_->Info("🔄 AlarmConfigRepository::updateBulk() - " + std::to_string(entities.size()) + " configs");
-    
-    // IRepository의 표준 updateBulk 구현 사용
-    return IRepository<AlarmConfigEntity>::updateBulk(entities);
-}
-
-int AlarmConfigRepository::deleteByIds(const std::vector<int>& ids) {
-    logger_->Info("🗑️ AlarmConfigRepository::deleteByIds() - " + std::to_string(ids.size()) + " configs");
-    
-    // IRepository의 표준 deleteByIds 구현 사용
-    return IRepository<AlarmConfigEntity>::deleteByIds(ids);
 }
 
 std::vector<AlarmConfigEntity> AlarmConfigRepository::findByConditions(
@@ -131,397 +290,559 @@ std::vector<AlarmConfigEntity> AlarmConfigRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    // IRepository의 표준 findByConditions 구현 사용
-    return IRepository<AlarmConfigEntity>::findByConditions(conditions, order_by, pagination);
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, data_point_id, virtual_point_id,
+                alarm_name, description, severity, condition_type,
+                threshold_value, high_limit, low_limit, timeout_seconds,
+                is_enabled, auto_acknowledge, delay_seconds, message_template,
+                created_at, updated_at
+            FROM alarm_definitions
+        )";
+        
+        query += buildWhereClause(conditions);
+        query += buildOrderByClause(order_by);
+        query += buildLimitClause(pagination);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmConfigEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("AlarmConfigRepository::findByConditions - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Debug("AlarmConfigRepository::findByConditions - Found " + std::to_string(entities.size()) + " alarm configs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::findByConditions failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
 int AlarmConfigRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    // IRepository의 표준 countByConditions 구현 사용
-    return IRepository<AlarmConfigEntity>::countByConditions(conditions);
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM alarm_definitions";
+        query += buildWhereClause(conditions);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::countByConditions failed: " + std::string(e.what()));
+        return 0;
+    }
+}
+
+// =============================================================================
+// 벌크 연산 (DeviceRepository 패턴)
+// =============================================================================
+
+int AlarmConfigRepository::saveBulk(std::vector<AlarmConfigEntity>& entities) {
+    int saved_count = 0;
+    for (auto& entity : entities) {
+        if (save(entity)) {
+            saved_count++;
+        }
+    }
+    logger_->Info("AlarmConfigRepository::saveBulk - Saved " + std::to_string(saved_count) + " alarm configs");
+    return saved_count;
+}
+
+int AlarmConfigRepository::updateBulk(const std::vector<AlarmConfigEntity>& entities) {
+    int updated_count = 0;
+    for (const auto& entity : entities) {
+        if (update(entity)) {
+            updated_count++;
+        }
+    }
+    logger_->Info("AlarmConfigRepository::updateBulk - Updated " + std::to_string(updated_count) + " alarm configs");
+    return updated_count;
+}
+
+int AlarmConfigRepository::deleteByIds(const std::vector<int>& ids) {
+    int deleted_count = 0;
+    for (int id : ids) {
+        if (deleteById(id)) {
+            deleted_count++;
+        }
+    }
+    logger_->Info("AlarmConfigRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " alarm configs");
+    return deleted_count;
 }
 
 int AlarmConfigRepository::getTotalCount() {
     return countByConditions({});
 }
 
-// =======================================================================
-// 알람 설정 전용 조회 메서드들 (DeviceRepository 패턴)
-// =======================================================================
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findByDataPoint(int data_point_id) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByDataPoint(" + std::to_string(data_point_id) + ")");
-    
-    return findByConditions({QueryCondition("data_point_id", "=", std::to_string(data_point_id))},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findByVirtualPoint(int virtual_point_id) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByVirtualPoint(" + std::to_string(virtual_point_id) + ")");
-    
-    return findByConditions({QueryCondition("virtual_point_id", "=", std::to_string(virtual_point_id))},
-                           OrderBy("alarm_name", "ASC"));
-}
+// =============================================================================
+// 알람 설정 전용 메서드들 (DeviceRepository 패턴)
+// =============================================================================
 
 std::vector<AlarmConfigEntity> AlarmConfigRepository::findByTenant(int tenant_id) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByTenant(" + std::to_string(tenant_id) + ")");
-    
-    return findByConditions({QueryCondition("tenant_id", "=", std::to_string(tenant_id))},
-                           OrderBy("alarm_name", "ASC"));
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, data_point_id, virtual_point_id,
+                alarm_name, description, severity, condition_type,
+                threshold_value, high_limit, low_limit, timeout_seconds,
+                is_enabled, auto_acknowledge, delay_seconds, message_template,
+                created_at, updated_at
+            FROM alarm_definitions 
+            WHERE tenant_id = )" + std::to_string(tenant_id) + R"(
+            ORDER BY alarm_name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmConfigEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("AlarmConfigRepository::findByTenant - Found " + std::to_string(entities.size()) + " alarm configs for tenant " + std::to_string(tenant_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::findByTenant failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findBySite(int site_id) {
-    logger_->Debug("🔍 AlarmConfigRepository::findBySite(" + std::to_string(site_id) + ")");
-    
-    return findByConditions({QueryCondition("site_id", "=", std::to_string(site_id))},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findBySeverity(AlarmConfigEntity::Severity severity) {
-    logger_->Debug("🔍 AlarmConfigRepository::findBySeverity()");
-    
-    return findByConditions({buildSeverityCondition(severity)},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findByConditionType(AlarmConfigEntity::ConditionType condition_type) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByConditionType()");
-    
-    std::string condition_str = AlarmConfigEntity::conditionTypeToString(condition_type);
-    return findByConditions({QueryCondition("condition_type", "=", condition_str)},
-                           OrderBy("alarm_name", "ASC"));
+std::vector<AlarmConfigEntity> AlarmConfigRepository::findByDataPoint(int data_point_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, data_point_id, virtual_point_id,
+                alarm_name, description, severity, condition_type,
+                threshold_value, high_limit, low_limit, timeout_seconds,
+                is_enabled, auto_acknowledge, delay_seconds, message_template,
+                created_at, updated_at
+            FROM alarm_definitions 
+            WHERE data_point_id = )" + std::to_string(data_point_id) + R"( AND is_enabled = 1
+            ORDER BY alarm_name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmConfigEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("AlarmConfigRepository::findByDataPoint - Found " + std::to_string(entities.size()) + " alarm configs for data point " + std::to_string(data_point_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::findByDataPoint failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
 std::vector<AlarmConfigEntity> AlarmConfigRepository::findActiveAlarms() {
-    logger_->Debug("🔍 AlarmConfigRepository::findActiveAlarms()");
-    
-    return findByConditions({QueryCondition("is_enabled", "=", "1")},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findAutoAcknowledgeAlarms() {
-    logger_->Debug("🔍 AlarmConfigRepository::findAutoAcknowledgeAlarms()");
-    
-    return findByConditions({QueryCondition("auto_acknowledge", "=", "1")},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findByNamePattern(const std::string& name_pattern) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByNamePattern(" + name_pattern + ")");
-    
-    return findByConditions({QueryCondition("alarm_name", "LIKE", name_pattern)},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-// =======================================================================
-// 추가 비즈니스 로직 메서드들
-// =======================================================================
-
-std::optional<AlarmConfigEntity> AlarmConfigRepository::findByName(const std::string& name, int tenant_id) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByName(" + name + ", " + std::to_string(tenant_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("alarm_name", "=", name),
-        QueryCondition("tenant_id", "=", std::to_string(tenant_id))
-    };
-    
-    auto configs = findByConditions(conditions);
-    return configs.empty() ? std::nullopt : std::make_optional(configs[0]);
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findActiveConfigs() {
-    logger_->Debug("🔍 AlarmConfigRepository::findActiveConfigs()");
-    
-    return findByConditions({QueryCondition("is_enabled", "=", "1")},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findByDevice(int device_id) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByDevice(" + std::to_string(device_id) + ")");
-    
-    // 디바이스의 데이터포인트들을 통해 간접 조회 (실제로는 JOIN 필요)
-    std::string query = "SELECT ac.* FROM alarm_configs ac "
-                       "INNER JOIN data_points dp ON ac.data_point_id = dp.id "
-                       "WHERE dp.device_id = " + std::to_string(device_id) +
-                       " ORDER BY ac.alarm_name";
-    
-    // 간단한 조건으로 대체 (실제 환경에서는 JOIN 쿼리 필요)
-    return findByConditions({}, OrderBy("alarm_name", "ASC"));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findByPriorityRange(int min_priority, int max_priority) {
-    logger_->Debug("🔍 AlarmConfigRepository::findByPriorityRange(" + 
-                  std::to_string(min_priority) + "-" + std::to_string(max_priority) + ")");
-    
-    // 우선순위 필드가 없으므로 심각도로 대체
-    return findByConditions({}, OrderBy("alarm_name", "ASC"));
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, data_point_id, virtual_point_id,
+                alarm_name, description, severity, condition_type,
+                threshold_value, high_limit, low_limit, timeout_seconds,
+                is_enabled, auto_acknowledge, delay_seconds, message_template,
+                created_at, updated_at
+            FROM alarm_definitions 
+            WHERE is_enabled = 1
+            ORDER BY severity DESC, alarm_name ASC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmConfigEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("AlarmConfigRepository::findActiveAlarms - Found " + std::to_string(entities.size()) + " active alarm configs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::findActiveAlarms failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
 bool AlarmConfigRepository::isAlarmNameTaken(const std::string& name, int tenant_id, int exclude_id) {
-    logger_->Debug("🔍 AlarmConfigRepository::isAlarmNameTaken(" + name + ", " + 
-                  std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("alarm_name", "=", name),
-        QueryCondition("tenant_id", "=", std::to_string(tenant_id))
-    };
-    
-    if (exclude_id > 0) {
-        conditions.push_back(QueryCondition("id", "!=", std::to_string(exclude_id)));
-    }
-    
-    auto configs = findByConditions(conditions);
-    bool is_taken = !configs.empty();
-    
-    logger_->Debug(is_taken ? "❌ Alarm name is taken" : "✅ Alarm name is available");
-    return is_taken;
-}
-
-bool AlarmConfigRepository::enableConfig(int config_id, bool enabled) {
-    logger_->Info("🔄 AlarmConfigRepository::enableConfig(" + std::to_string(config_id) + 
-                 ", " + (enabled ? "true" : "false") + ")");
-    
-    auto config = findById(config_id);
-    if (!config.has_value()) {
-        logger_->Error("❌ Alarm config not found: " + std::to_string(config_id));
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM alarm_definitions WHERE alarm_name = '" + 
+                           escapeString(name) + "' AND tenant_id = " + std::to_string(tenant_id);
+        
+        if (exclude_id > 0) {
+            query += " AND id != " + std::to_string(exclude_id);
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::isAlarmNameTaken failed: " + std::string(e.what()));
         return false;
     }
-    
-    config->setEnabled(enabled);
-    return update(*config);
-}
-
-bool AlarmConfigRepository::updateThresholds(int config_id, double low_threshold, double high_threshold) {
-    logger_->Info("🔄 AlarmConfigRepository::updateThresholds(" + std::to_string(config_id) + 
-                 ", " + std::to_string(low_threshold) + ", " + std::to_string(high_threshold) + ")");
-    
-    auto config = findById(config_id);
-    if (!config.has_value()) {
-        logger_->Error("❌ Alarm config not found: " + std::to_string(config_id));
-        return false;
-    }
-    
-    config->setLowLimit(low_threshold);
-    config->setHighLimit(high_threshold);
-    return update(*config);
-}
-
-bool AlarmConfigRepository::updatePriority(int config_id, int new_priority) {
-    logger_->Info("🔄 AlarmConfigRepository::updatePriority(" + std::to_string(config_id) + 
-                 ", " + std::to_string(new_priority) + ")");
-    
-    auto config = findById(config_id);
-    if (!config.has_value()) {
-        logger_->Error("❌ Alarm config not found: " + std::to_string(config_id));
-        return false;
-    }
-    
-    // 우선순위 필드가 없으므로 로그만 출력
-    logger_->Info("✅ Priority update simulated for: " + config->getName());  // ✅ getName() 사용
-    return true;
-}
-
-bool AlarmConfigRepository::updateSeverity(int config_id, AlarmConfigEntity::Severity new_severity) {
-    logger_->Info("🔄 AlarmConfigRepository::updateSeverity(" + std::to_string(config_id) + ")");
-    
-    auto config = findById(config_id);
-    if (!config.has_value()) {
-        logger_->Error("❌ Alarm config not found: " + std::to_string(config_id));
-        return false;
-    }
-    
-    config->setSeverity(new_severity);
-    return update(*config);
-}
-
-// =======================================================================
-// 통계 메서드들
-// =======================================================================
-
-int AlarmConfigRepository::countByTenant(int tenant_id) {
-    return countByConditions({QueryCondition("tenant_id", "=", std::to_string(tenant_id))});
-}
-
-int AlarmConfigRepository::countByDataPoint(int data_point_id) {
-    return countByConditions({QueryCondition("data_point_id", "=", std::to_string(data_point_id))});
-}
-
-std::map<std::string, int> AlarmConfigRepository::getTypeStats() {
-    std::map<std::string, int> stats;
-    
-    // 조건 타입별 통계 (실제로는 GROUP BY 쿼리 필요)
-    stats["GREATER_THAN"] = 0;
-    stats["LESS_THAN"] = 0;
-    stats["EQUAL"] = 0;
-    stats["NOT_EQUAL"] = 0;
-    stats["BETWEEN"] = 0;
-    stats["OUT_OF_RANGE"] = 0;
-    stats["RATE_OF_CHANGE"] = 0;
-    
-    return stats;
-}
-
-std::map<std::string, int> AlarmConfigRepository::getSeverityStats() {
-    std::map<std::string, int> stats;
-    
-    // 심각도별 통계 (실제로는 GROUP BY 쿼리 필요)
-    stats["LOW"] = countByConditions({QueryCondition("severity", "=", "LOW")});
-    stats["MEDIUM"] = countByConditions({QueryCondition("severity", "=", "MEDIUM")});
-    stats["HIGH"] = countByConditions({QueryCondition("severity", "=", "HIGH")});
-    stats["CRITICAL"] = countByConditions({QueryCondition("severity", "=", "CRITICAL")});
-    
-    return stats;
-}
-
-std::map<std::string, int> AlarmConfigRepository::getStatusStats() {
-    std::map<std::string, int> stats;
-    
-    stats["enabled"] = countByConditions({QueryCondition("is_enabled", "=", "1")});
-    stats["disabled"] = countByConditions({QueryCondition("is_enabled", "=", "0")});
-    
-    return stats;
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findTopPriorityConfigs(int limit) {
-    logger_->Debug("🔍 AlarmConfigRepository::findTopPriorityConfigs(" + std::to_string(limit) + ")");
-    
-    // 심각도 순으로 정렬
-    return findByConditions({QueryCondition("is_enabled", "=", "1")},
-                           OrderBy("severity", "DESC"),
-                           Pagination(0, limit));
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findRecentConfigs(int limit) {
-    logger_->Debug("🔍 AlarmConfigRepository::findRecentConfigs(" + std::to_string(limit) + ")");
-    
-    return findByConditions({},
-                           OrderBy("created_at", "DESC"),
-                           Pagination(0, limit));
-}
-
-bool AlarmConfigRepository::deployToDevice(int config_id, int device_id) {
-    logger_->Info("🚀 AlarmConfigRepository::deployToDevice(" + std::to_string(config_id) + 
-                 ", " + std::to_string(device_id) + ")");
-    
-    auto config = findById(config_id);
-    if (!config.has_value()) {
-        logger_->Error("❌ Alarm config not found: " + std::to_string(config_id));
-        return false;
-    }
-    
-    // 실제 디바이스 배포 로직은 별도 서비스에서 처리
-    logger_->Info("✅ Alarm config deployment initiated: " + config->getName());  // ✅ getName() 사용
-    return true;
-}
-
-bool AlarmConfigRepository::syncWithDevice(int config_id) {
-    logger_->Info("🔄 AlarmConfigRepository::syncWithDevice(" + std::to_string(config_id) + ")");
-    
-    auto config = findById(config_id);
-    if (!config.has_value()) {
-        logger_->Error("❌ Alarm config not found: " + std::to_string(config_id));
-        return false;
-    }
-    
-    // 실제 동기화 로직은 별도 서비스에서 처리
-    logger_->Info("✅ Alarm config sync initiated: " + config->getName());  // ✅ getName() 사용
-    return true;
-}
-
-std::vector<AlarmConfigEntity> AlarmConfigRepository::findConfigsNeedingSync() {
-    logger_->Debug("🔄 AlarmConfigRepository::findConfigsNeedingSync()");
-    
-    // 수정된 후 동기화되지 않은 설정들 조회 (실제로는 별도 필드 필요)
-    return findByConditions({QueryCondition("is_enabled", "=", "1")},
-                           OrderBy("alarm_name", "ASC"));
-}
-
-bool AlarmConfigRepository::markSyncCompleted(int config_id) {
-    logger_->Info("✅ AlarmConfigRepository::markSyncCompleted(" + std::to_string(config_id) + ")");
-    
-    auto config = findById(config_id);
-    if (!config.has_value()) {
-        logger_->Error("❌ Alarm config not found: " + std::to_string(config_id));
-        return false;
-    }
-    
-    // 동기화 완료 마킹 (실제로는 별도 필드 필요)
-    logger_->Info("✅ Sync completed for: " + config->getName());  // ✅ getName() 사용
-    return true;
 }
 
 // =============================================================================
-// IRepository 캐시 관리 (자동 위임)
+// 캐시 관리 (DeviceRepository 패턴)
 // =============================================================================
 
 void AlarmConfigRepository::setCacheEnabled(bool enabled) {
-    // 🔥 IRepository의 캐시 관리 위임
     IRepository<AlarmConfigEntity>::setCacheEnabled(enabled);
-    logger_->Info("AlarmConfigRepository cache " + std::string(enabled ? "enabled" : "disabled"));
+    if (logger_) {
+        logger_->Info("AlarmConfigRepository cache " + std::string(enabled ? "enabled" : "disabled"));
+    }
 }
 
 bool AlarmConfigRepository::isCacheEnabled() const {
-    // 🔥 IRepository의 캐시 상태 위임
     return IRepository<AlarmConfigEntity>::isCacheEnabled();
 }
 
 void AlarmConfigRepository::clearCache() {
-    // 🔥 IRepository의 캐시 클리어 위임
     IRepository<AlarmConfigEntity>::clearCache();
-    logger_->Info("AlarmConfigRepository cache cleared");
+    if (logger_) {
+        logger_->Info("AlarmConfigRepository cache cleared");
+    }
 }
 
 void AlarmConfigRepository::clearCacheForId(int id) {
-    // 🔥 IRepository의 개별 캐시 클리어 위임
     IRepository<AlarmConfigEntity>::clearCacheForId(id);
-    logger_->Debug("AlarmConfigRepository cache cleared for ID: " + std::to_string(id));
+    if (logger_) {
+        logger_->Debug("AlarmConfigRepository cache cleared for ID: " + std::to_string(id));
+    }
 }
 
 std::map<std::string, int> AlarmConfigRepository::getCacheStats() const {
-    // 🔥 IRepository의 캐시 통계 위임
     return IRepository<AlarmConfigEntity>::getCacheStats();
 }
 
-
-// =======================================================================
+// =============================================================================
 // 내부 헬퍼 메서드들 (DeviceRepository 패턴)
-// =======================================================================
+// =============================================================================
 
-bool AlarmConfigRepository::validateAlarmConfig(const AlarmConfigEntity& config) const {
-    // 이름 검사
-    if (config.getName().empty() || config.getName().length() > 100) {  // ✅ getName() 사용
+AlarmConfigEntity AlarmConfigRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
+    AlarmConfigEntity entity;
+    
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        auto it = row.find("id");
+        if (it != row.end()) {
+            entity.setId(std::stoi(it->second));
+        }
+        
+        it = row.find("tenant_id");
+        if (it != row.end()) {
+            entity.setTenantId(std::stoi(it->second));
+        }
+        
+        it = row.find("site_id");
+        if (it != row.end()) {
+            entity.setSiteId(std::stoi(it->second));
+        }
+        
+        it = row.find("data_point_id");
+        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+            entity.setDataPointId(std::stoi(it->second));
+        }
+        
+        it = row.find("virtual_point_id");
+        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+            entity.setVirtualPointId(std::stoi(it->second));
+        }
+        
+        // 알람 기본 정보
+        if ((it = row.find("alarm_name")) != row.end()) entity.setName(it->second);
+        if ((it = row.find("description")) != row.end()) entity.setDescription(it->second);
+        
+        if ((it = row.find("severity")) != row.end()) {
+            entity.setSeverity(AlarmConfigEntity::stringToSeverity(it->second));
+        }
+        
+        if ((it = row.find("condition_type")) != row.end()) {
+            entity.setConditionType(AlarmConfigEntity::stringToConditionType(it->second));
+        }
+        
+        // 임계값들
+        if ((it = row.find("threshold_value")) != row.end()) {
+            entity.setThresholdValue(std::stod(it->second));
+        }
+        if ((it = row.find("high_limit")) != row.end()) {
+            entity.setHighLimit(std::stod(it->second));
+        }
+        if ((it = row.find("low_limit")) != row.end()) {
+            entity.setLowLimit(std::stod(it->second));
+        }
+        if ((it = row.find("timeout_seconds")) != row.end()) {
+            entity.setTimeoutSeconds(std::stoi(it->second));
+        }
+        
+        // 제어 설정
+        it = row.find("is_enabled");
+        if (it != row.end()) {
+            entity.setEnabled(db_layer.parseBoolean(it->second));
+        }
+        
+        it = row.find("auto_acknowledge");
+        if (it != row.end()) {
+            entity.setAutoAcknowledge(db_layer.parseBoolean(it->second));
+        }
+        
+        if ((it = row.find("delay_seconds")) != row.end()) {
+            entity.setDelaySeconds(std::stoi(it->second));
+        }
+        if ((it = row.find("message_template")) != row.end()) {
+            entity.setMessageTemplate(it->second);
+        }
+        
+        // 타임스탬프는 DB에서 자동 설정됨 (DATETIME DEFAULT CURRENT_TIMESTAMP)
+        // DB에서 읽어온 값을 파싱해야 하지만, 현재는 기본값 사용
+        // entity.setCreatedAt(std::chrono::system_clock::now());
+        // entity.setUpdatedAt(std::chrono::system_clock::now());
+        
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::mapRowToEntity failed: " + std::string(e.what()));
+        throw;
+    }
+}
+
+std::vector<AlarmConfigEntity> AlarmConfigRepository::mapResultToEntities(
+    const std::vector<std::map<std::string, std::string>>& result) {
+    
+    std::vector<AlarmConfigEntity> entities;
+    entities.reserve(result.size());
+    
+    for (const auto& row : result) {
+        try {
+            entities.push_back(mapRowToEntity(row));
+        } catch (const std::exception& e) {
+            logger_->Warn("AlarmConfigRepository::mapResultToEntities - Failed to map row: " + std::string(e.what()));
+        }
+    }
+    
+    return entities;
+}
+
+std::map<std::string, std::string> AlarmConfigRepository::entityToParams(const AlarmConfigEntity& entity) {
+    DatabaseAbstractionLayer db_layer;
+    
+    std::map<std::string, std::string> params;
+    
+    // 기본 정보
+    params["tenant_id"] = std::to_string(entity.getTenantId());
+    params["site_id"] = std::to_string(entity.getSiteId());
+    
+    if (entity.getDataPointId() > 0) {
+        params["data_point_id"] = std::to_string(entity.getDataPointId());
+    } else {
+        params["data_point_id"] = "NULL";
+    }
+    
+    if (entity.getVirtualPointId() > 0) {
+        params["virtual_point_id"] = std::to_string(entity.getVirtualPointId());
+    } else {
+        params["virtual_point_id"] = "NULL";
+    }
+    
+    // 알람 정보
+    params["alarm_name"] = entity.getName();
+    params["description"] = entity.getDescription();
+    params["severity"] = AlarmConfigEntity::severityToString(entity.getSeverity());
+    params["condition_type"] = AlarmConfigEntity::conditionTypeToString(entity.getConditionType());
+    
+    // 임계값들
+    params["threshold_value"] = std::to_string(entity.getThresholdValue());
+    params["high_limit"] = std::to_string(entity.getHighLimit());
+    params["low_limit"] = std::to_string(entity.getLowLimit());
+    params["timeout_seconds"] = std::to_string(entity.getTimeoutSeconds());
+    
+    // 제어 설정
+    params["is_enabled"] = db_layer.formatBoolean(entity.isEnabled());
+    params["auto_acknowledge"] = db_layer.formatBoolean(entity.isAutoAcknowledge());
+    params["delay_seconds"] = std::to_string(entity.getDelaySeconds());
+    params["message_template"] = entity.getMessageTemplate();
+    
+    params["created_at"] = db_layer.getCurrentTimestamp();
+    params["updated_at"] = db_layer.getCurrentTimestamp();
+    
+    return params;
+}
+
+bool AlarmConfigRepository::ensureTableExists() {
+    try {
+        const std::string base_create_query = R"(
+            CREATE TABLE IF NOT EXISTS alarm_definitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                site_id INTEGER,
+                data_point_id INTEGER,
+                virtual_point_id INTEGER,
+                
+                -- 알람 기본 정보
+                alarm_name VARCHAR(100) NOT NULL,
+                description TEXT,
+                severity VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+                condition_type VARCHAR(30) NOT NULL DEFAULT 'GREATER_THAN',
+                
+                -- 임계값 설정
+                threshold_value REAL NOT NULL DEFAULT 0.0,
+                high_limit REAL DEFAULT 100.0,
+                low_limit REAL DEFAULT 0.0,
+                timeout_seconds INTEGER DEFAULT 30,
+                
+                -- 제어 설정
+                is_enabled BOOLEAN DEFAULT 1,
+                auto_acknowledge BOOLEAN DEFAULT 0,
+                delay_seconds INTEGER DEFAULT 0,
+                message_template TEXT DEFAULT 'Alarm: {{ALARM_NAME}} - Value: {{CURRENT_VALUE}}',
+                
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+                FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+                FOREIGN KEY (data_point_id) REFERENCES data_points(id) ON DELETE CASCADE,
+                FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
+            )
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeCreateTable(base_create_query);
+        
+        if (success) {
+            logger_->Debug("AlarmConfigRepository::ensureTableExists - Table creation/check completed");
+        } else {
+            logger_->Error("AlarmConfigRepository::ensureTableExists - Table creation failed");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("AlarmConfigRepository::ensureTableExists failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool AlarmConfigRepository::validateAlarmConfig(const AlarmConfigEntity& entity) const {
+    if (!entity.isValid()) {
+        logger_->Warn("AlarmConfigRepository::validateAlarmConfig - Invalid alarm config: " + entity.getName());
         return false;
     }
     
-    // 테넌트 ID 검사
-    if (config.getTenantId() <= 0) {
+    if (entity.getName().empty()) {
+        logger_->Warn("AlarmConfigRepository::validateAlarmConfig - Alarm name is empty");
+        return false;
+    }
+    
+    if (entity.getTenantId() <= 0) {
+        logger_->Warn("AlarmConfigRepository::validateAlarmConfig - Invalid tenant ID for: " + entity.getName());
         return false;
     }
     
     // 데이터포인트 또는 가상포인트 중 하나는 있어야 함
-    if (config.getDataPointId() <= 0 && config.getVirtualPointId() <= 0) {
+    if (entity.getDataPointId() <= 0 && entity.getVirtualPointId() <= 0) {
+        logger_->Warn("AlarmConfigRepository::validateAlarmConfig - No data point or virtual point for: " + entity.getName());
         return false;
-    }
-    
-    // 타임아웃과 지연시간 검사
-    if (config.getTimeoutSeconds() < 0 || config.getDelaySeconds() < 0) {
-        return false;
-    }
-    
-    // 범위 조건일 때 상한값과 하한값 검사
-    auto condition_type = config.getConditionType();
-    if (condition_type == AlarmConfigEntity::ConditionType::BETWEEN ||
-        condition_type == AlarmConfigEntity::ConditionType::OUT_OF_RANGE) {
-        if (config.getLowLimit() >= config.getHighLimit()) {
-            return false;
-        }
     }
     
     return true;
+}
+
+// =============================================================================
+// SQL 빌더 헬퍼 메서드들
+// =============================================================================
+
+std::string AlarmConfigRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) return "";
+    
+    std::string clause = " WHERE ";
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) clause += " AND ";
+        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
+    }
+    return clause;
+}
+
+std::string AlarmConfigRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) return "";
+    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
+}
+
+std::string AlarmConfigRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) return "";
+    return " LIMIT " + std::to_string(pagination->getLimit()) + 
+           " OFFSET " + std::to_string(pagination->getOffset());
 }
 
 QueryCondition AlarmConfigRepository::buildSeverityCondition(AlarmConfigEntity::Severity severity) const {
     std::string severity_str = AlarmConfigEntity::severityToString(severity);
     return QueryCondition("severity", "=", severity_str);
+}
+
+// =============================================================================
+// 유틸리티 함수들
+// =============================================================================
+
+std::string AlarmConfigRepository::escapeString(const std::string& str) const {
+    std::string escaped = str;
+    size_t pos = 0;
+    while ((pos = escaped.find("'", pos)) != std::string::npos) {
+        escaped.replace(pos, 1, "''");
+        pos += 2;
+    }
+    return escaped;
+}
+
+std::string AlarmConfigRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::ostringstream oss;
+    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return oss.str();
 }
 
 } // namespace Repositories

@@ -1023,6 +1023,242 @@ void DataPointRepository::preloadAlarmConfigs(std::vector<DataPointEntity>&) {
 }
 
 
+
+int DataPointRepository::saveBulk(std::vector<DataPointEntity>& entities) {
+    if (entities.empty()) {
+        return 0;
+    }
+    
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        int saved_count = 0;
+        DatabaseAbstractionLayer db_layer;
+        
+        for (auto& entity : entities) {
+            if (!validateDataPoint(entity)) {
+                continue;
+            }
+            
+            auto params = entityToParams(entity);
+            std::vector<std::string> primary_keys = {"id"};
+            bool success = db_layer.executeUpsert("data_points", params, primary_keys);
+            
+            if (success) {
+                saved_count++;
+                
+                // 새로 생성된 ID 조회
+                if (entity.getId() <= 0) {
+                    auto results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
+                    if (!results.empty()) {
+                        entity.setId(std::stoi(results[0].at("id")));
+                    }
+                }
+            }
+        }
+        
+        if (logger_) {
+            logger_->Info("DataPointRepository::saveBulk - Saved " + std::to_string(saved_count) + " data points");
+        }
+        
+        return saved_count;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DataPointRepository::saveBulk failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
+}
+
+int DataPointRepository::updateBulk(const std::vector<DataPointEntity>& entities) {
+    if (entities.empty()) {
+        return 0;
+    }
+    
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        int updated_count = 0;
+        DatabaseAbstractionLayer db_layer;
+        
+        for (const auto& entity : entities) {
+            if (entity.getId() <= 0 || !validateDataPoint(entity)) {
+                continue;
+            }
+            
+            auto params = entityToParams(entity);
+            std::vector<std::string> primary_keys = {"id"};
+            bool success = db_layer.executeUpsert("data_points", params, primary_keys);
+            
+            if (success) {
+                updated_count++;
+            }
+        }
+        
+        if (logger_) {
+            logger_->Info("DataPointRepository::updateBulk - Updated " + std::to_string(updated_count) + " data points");
+        }
+        
+        return updated_count;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DataPointRepository::updateBulk failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
+}
+
+int DataPointRepository::deleteByIds(const std::vector<int>& ids) {
+    if (ids.empty()) {
+        return 0;
+    }
+    
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        int deleted_count = 0;
+        DatabaseAbstractionLayer db_layer;
+        
+        for (int id : ids) {
+            std::string query = "DELETE FROM data_points WHERE id = " + std::to_string(id);
+            bool success = db_layer.executeNonQuery(query);
+            
+            if (success) {
+                deleted_count++;
+                
+                if (isCacheEnabled()) {
+                    clearCacheForId(id);
+                }
+            }
+        }
+        
+        if (logger_) {
+            logger_->Info("DataPointRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " data points");
+        }
+        
+        return deleted_count;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DataPointRepository::deleteByIds failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
+}
+
+int DataPointRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::stringstream query;
+        query << "SELECT COUNT(*) as count FROM data_points";
+        
+        if (!conditions.empty()) {
+            query << " WHERE ";
+            for (size_t i = 0; i < conditions.size(); ++i) {
+                if (i > 0) query << " AND ";
+                query << conditions[i].field << " " << conditions[i].operation << " '" << conditions[i].value << "'";
+            }
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query.str());
+        
+        return results.empty() ? 0 : std::stoi(results[0].at("count"));
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DataPointRepository::countByConditions failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
+}
+// =============================================================================
+// IRepository 캐시 관리 메서드들 (위임 방식)
+// =============================================================================
+
+void DataPointRepository::setCacheEnabled(bool enabled) {
+    // IRepository의 캐시 관리 위임
+    IRepository<DataPointEntity>::setCacheEnabled(enabled);
+    if (logger_) {
+        std::string message = "DataPointRepository cache ";
+        message += (enabled ? "enabled" : "disabled");
+        logger_->Info(message);
+    }
+}
+
+bool DataPointRepository::isCacheEnabled() const {
+    // IRepository의 캐시 상태 위임
+    return IRepository<DataPointEntity>::isCacheEnabled();
+}
+
+void DataPointRepository::clearCache() {
+    // IRepository의 캐시 클리어 위임
+    IRepository<DataPointEntity>::clearCache();
+    if (logger_) {
+        logger_->Info("DataPointRepository cache cleared");
+    }
+}
+
+void DataPointRepository::clearCacheForId(int id) {
+    // IRepository의 개별 캐시 클리어 위임
+    IRepository<DataPointEntity>::clearCacheForId(id);
+    if (logger_) {
+        logger_->Debug("DataPointRepository cache cleared for ID: " + std::to_string(id));
+    }
+}
+
+std::map<std::string, int> DataPointRepository::getCacheStats() const {
+    // IRepository의 캐시 통계 위임
+    return IRepository<DataPointEntity>::getCacheStats();
+}
+
+// =============================================================================
+// 누락된 헬퍼 메서드
+// =============================================================================
+
+std::map<std::string, std::string> DataPointRepository::entityToParams(const DataPointEntity& entity) {
+    DatabaseAbstractionLayer db_layer;
+    
+    std::map<std::string, std::string> params;
+    
+    if (entity.getId() > 0) {
+        params["id"] = std::to_string(entity.getId());
+    }
+    
+    params["device_id"] = std::to_string(entity.getDeviceId());
+    params["name"] = entity.getName();
+    params["description"] = entity.getDescription();
+    params["address"] = std::to_string(entity.getAddress());
+    params["data_type"] = entity.getDataType();
+    params["access_mode"] = entity.getAccessMode();
+    params["is_enabled"] = db_layer.formatBoolean(entity.isEnabled());
+    params["unit"] = entity.getUnit();
+    params["scaling_factor"] = std::to_string(entity.getScalingFactor());
+    params["scaling_offset"] = std::to_string(entity.getScalingOffset());
+    params["min_value"] = std::to_string(entity.getMinValue());
+    params["max_value"] = std::to_string(entity.getMaxValue());
+    params["log_enabled"] = db_layer.formatBoolean(entity.isLogEnabled());
+    params["log_interval_ms"] = std::to_string(entity.getLogInterval());
+    params["log_deadband"] = std::to_string(entity.getLogDeadband());
+    params["tags"] = "[]"; // 간단화
+    params["metadata"] = "{}"; // 간단화
+    params["created_at"] = db_layer.getCurrentTimestamp();
+    params["updated_at"] = db_layer.getCurrentTimestamp();
+    
+    return params;
+}
+
 } // namespace Repositories
 } // namespace Database
 } // namespace PulseOne

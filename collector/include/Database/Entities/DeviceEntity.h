@@ -462,18 +462,12 @@ public:
     // 헬퍼 메서드들 (CPP에서 구현)
     // =======================================================================
     
-    std::string formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const;
     std::string dateToString(const std::chrono::system_clock::time_point& date) const;
     std::string timestampToString(const std::chrono::system_clock::time_point& timestamp) const;
     
     // Repository 접근자 (CPP에서 구현)
     std::shared_ptr<Repositories::DeviceRepository> getRepository() const;
     
-    // 추가 메서드들 (컴파일 에러 해결용 - CPP에서 구현)
-    std::map<std::string, std::string> entityToParams(const DeviceEntity& entity) const;
-    std::vector<DeviceEntity> findEnabledDevices() const;
-    std::map<std::string, std::vector<DeviceEntity>> groupByProtocol() const;
-
 private:
     // =======================================================================
     // 멤버 변수들 (정규화된 스키마와 1:1 매핑)
