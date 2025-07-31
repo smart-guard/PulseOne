@@ -1,20 +1,31 @@
 // =============================================================================
 // collector/src/Database/Entities/AlarmConfigEntity.cpp
-// PulseOne 알람설정 엔티티 구현 - DeviceEntity 패턴 100% 준수
+// PulseOne 알람설정 엔티티 구현 - DeviceEntity 패턴 100% 적용
 // =============================================================================
 
+/**
+ * @file AlarmConfigEntity.cpp
+ * @brief PulseOne AlarmConfigEntity 구현 - DeviceEntity 패턴 100% 적용
+ * @author PulseOne Development Team
+ * @date 2025-07-31
+ * 
+ * 🎯 DeviceEntity 패턴 완전 적용:
+ * - 헤더에서는 선언만, CPP에서 Repository 호출
+ * - Repository include는 CPP에서만 (순환 참조 방지)
+ * - BaseEntity 순수 가상 함수 구현만 포함
+ * - Repository Factory 패턴 사용
+ */
+
 #include "Database/Entities/AlarmConfigEntity.h"
-#include "Common/Constants.h"
-#include <sstream>
-#include <iomanip>
-#include <algorithm>
+#include "Database/RepositoryFactory.h"
+#include "Database/Repositories/AlarmConfigRepository.h"
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
 
 // =============================================================================
-// 생성자 및 소멸자
+// 생성자 구현 (CPP에서 구현하여 중복 제거)
 // =============================================================================
 
 AlarmConfigEntity::AlarmConfigEntity() 
@@ -40,25 +51,8 @@ AlarmConfigEntity::AlarmConfigEntity()
 }
 
 AlarmConfigEntity::AlarmConfigEntity(int alarm_id) 
-    : BaseEntity<AlarmConfigEntity>(alarm_id)
-    , tenant_id_(0)
-    , site_id_(0)
-    , data_point_id_(0)
-    , virtual_point_id_(0)
-    , alarm_name_("")
-    , description_("")
-    , severity_(Severity::MEDIUM)
-    , condition_type_(ConditionType::GREATER_THAN)
-    , threshold_value_(0.0)
-    , high_limit_(100.0)
-    , low_limit_(0.0)
-    , timeout_seconds_(30)
-    , is_enabled_(true)
-    , auto_acknowledge_(false)
-    , delay_seconds_(0)
-    , message_template_("Alarm: {{ALARM_NAME}} - Value: {{CURRENT_VALUE}}")
-    , created_at_(std::chrono::system_clock::now())
-    , updated_at_(std::chrono::system_clock::now()) {
+    : AlarmConfigEntity() {  // 위임 생성자 사용
+    setId(alarm_id);
 }
 
 // =============================================================================
@@ -66,35 +60,33 @@ AlarmConfigEntity::AlarmConfigEntity(int alarm_id)
 // =============================================================================
 
 bool AlarmConfigEntity::loadFromDatabase() {
-    if (id_ <= 0) {
-        logger_->Error("AlarmConfigEntity::loadFromDatabase - Invalid alarm config ID: " + std::to_string(id_));
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::loadFromDatabase - Invalid alarm config ID: " + std::to_string(getId()));
+        }
         markError();
         return false;
     }
     
     try {
-        std::string query = "SELECT * FROM " + getTableName() + " WHERE id = " + std::to_string(id_);
-        
-        // 🔥 DeviceEntity와 동일한 방식으로 executeUnifiedQuery 사용
-        auto results = executeUnifiedQuery(query);
-        
-        if (results.empty()) {
-            logger_->Warn("AlarmConfigEntity::loadFromDatabase - Alarm config not found: " + std::to_string(id_));
-            return false;
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getAlarmConfigRepository();
+        if (repo) {
+            auto loaded = repo->findById(getId());
+            if (loaded.has_value()) {
+                *this = loaded.value();
+                markSaved();
+                if (logger_) {
+                    logger_->Info("AlarmConfigEntity - Loaded alarm config: " + alarm_name_);
+                }
+                return true;
+            }
         }
-        
-        // 첫 번째 행을 엔티티로 변환
-        bool success = mapRowToEntity(results[0]);
-        
-        if (success) {
-            markSaved();  // DeviceEntity 패턴
-            logger_->Info("AlarmConfigEntity::loadFromDatabase - Loaded alarm config: " + alarm_name_);
-        }
-        
-        return success;
-        
+        return false;
     } catch (const std::exception& e) {
-        logger_->Error("AlarmConfigEntity::loadFromDatabase failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::loadFromDatabase failed: " + std::string(e.what()));
+        }
         markError();
         return false;
     }
@@ -102,87 +94,111 @@ bool AlarmConfigEntity::loadFromDatabase() {
 
 bool AlarmConfigEntity::saveToDatabase() {
     if (!isValid()) {
-        logger_->Error("AlarmConfigEntity::saveToDatabase - Invalid alarm config data");
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::saveToDatabase - Invalid alarm config data");
+        }
         return false;
     }
     
     try {
-        std::string sql = buildInsertSQL();  // DeviceEntity 패턴
-        
-        bool success = executeUnifiedNonQuery(sql);
-        
-        if (success) {
-            // SQLite인 경우 마지막 INSERT ID 조회
-            std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
-            if (db_type == "SQLITE") {
-                auto results = executeUnifiedQuery("SELECT last_insert_rowid() as id");
-                if (!results.empty()) {
-                    id_ = std::stoi(results[0]["id"]);
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getAlarmConfigRepository();
+        if (repo) {
+            bool success = repo->save(*this);
+            if (success) {
+                markSaved();
+                if (logger_) {
+                    logger_->Info("AlarmConfigEntity - Saved alarm config: " + alarm_name_);
                 }
             }
-            
-            markSaved();  // DeviceEntity 패턴
-            logger_->Info("AlarmConfigEntity::saveToDatabase - Saved alarm config: " + alarm_name_);
+            return success;
         }
-        
-        return success;
-        
+        return false;
     } catch (const std::exception& e) {
-        logger_->Error("AlarmConfigEntity::saveToDatabase failed: " + std::string(e.what()));
-        markError();
-        return false;
-    }
-}
-
-bool AlarmConfigEntity::updateToDatabase() {
-    if (id_ <= 0 || !isValid()) {
-        logger_->Error("AlarmConfigEntity::updateToDatabase - Invalid alarm config data or ID");
-        return false;
-    }
-    
-    try {
-        std::string sql = buildUpdateSQL();  // DeviceEntity 패턴
-        
-        bool success = executeUnifiedNonQuery(sql);
-        
-        if (success) {
-            markSaved();  // DeviceEntity 패턴
-            logger_->Info("AlarmConfigEntity::updateToDatabase - Updated alarm config: " + alarm_name_);
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::saveToDatabase failed: " + std::string(e.what()));
         }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("AlarmConfigEntity::updateToDatabase failed: " + std::string(e.what()));
         markError();
         return false;
     }
 }
 
 bool AlarmConfigEntity::deleteFromDatabase() {
-    if (id_ <= 0) {
-        logger_->Error("AlarmConfigEntity::deleteFromDatabase - Invalid alarm config ID");
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::deleteFromDatabase - Invalid alarm config ID");
+        }
         return false;
     }
     
     try {
-        std::string sql = "DELETE FROM " + getTableName() + " WHERE id = " + std::to_string(id_);
-        
-        bool success = executeUnifiedNonQuery(sql);
-        
-        if (success) {
-            markDeleted();  // DeviceEntity 패턴
-            logger_->Info("AlarmConfigEntity::deleteFromDatabase - Deleted alarm config: " + alarm_name_);
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getAlarmConfigRepository();
+        if (repo) {
+            bool success = repo->deleteById(getId());
+            if (success) {
+                markDeleted();
+                if (logger_) {
+                    logger_->Info("AlarmConfigEntity - Deleted alarm config: " + alarm_name_);
+                }
+            }
+            return success;
         }
-        
-        return success;
-        
+        return false;
     } catch (const std::exception& e) {
-        logger_->Error("AlarmConfigEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        }
         markError();
         return false;
     }
 }
+
+bool AlarmConfigEntity::updateToDatabase() {
+    if (getId() <= 0 || !isValid()) {
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::updateToDatabase - Invalid alarm config data or ID");
+        }
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getAlarmConfigRepository();
+        if (repo) {
+            bool success = repo->update(*this);
+            if (success) {
+                markSaved();
+                if (logger_) {
+                    logger_->Info("AlarmConfigEntity - Updated alarm config: " + alarm_name_);
+                }
+            }
+            return success;
+        }
+        return false;
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::updateToDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+// =============================================================================
+// 🔥 DeviceEntity 패턴 추가: timestampToString 메서드
+// =============================================================================
+
+std::string AlarmConfigEntity::timestampToString(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
+// =============================================================================
+// 유효성 검사
+// =============================================================================
 
 bool AlarmConfigEntity::isValid() const {
     // 기본 유효성 검사
@@ -215,18 +231,7 @@ bool AlarmConfigEntity::isValid() const {
 }
 
 // =============================================================================
-// 🔥 중요: timestampToString() 메서드 구현 (DeviceEntity 패턴)
-// =============================================================================
-
-std::string AlarmConfigEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
-    std::time_t time_t = std::chrono::system_clock::to_time_t(tp);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return ss.str();
-}
-
-// =============================================================================
-// JSON 직렬화 (DataPointEntity 패턴)
+// JSON 직렬화 (DeviceEntity 패턴)
 // =============================================================================
 
 json AlarmConfigEntity::toJson() const {
@@ -234,7 +239,7 @@ json AlarmConfigEntity::toJson() const {
     
     try {
         // 기본 정보
-        j["id"] = id_;
+        j["id"] = getId();
         j["tenant_id"] = tenant_id_;
         j["site_id"] = site_id_;
         j["data_point_id"] = data_point_id_;
@@ -258,12 +263,14 @@ json AlarmConfigEntity::toJson() const {
         j["delay_seconds"] = delay_seconds_;
         j["message_template"] = message_template_;
         
-        // 시간 정보 (DeviceEntity 패턴)
+        // 🔥 DeviceEntity 패턴 적용: timestampToString 사용
         j["created_at"] = timestampToString(created_at_);
         j["updated_at"] = timestampToString(updated_at_);
         
     } catch (const std::exception& e) {
-        logger_->Error("AlarmConfigEntity::toJson failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::toJson failed: " + std::string(e.what()));
+        }
     }
     
     return j;
@@ -271,7 +278,7 @@ json AlarmConfigEntity::toJson() const {
 
 bool AlarmConfigEntity::fromJson(const json& data) {
     try {
-        if (data.contains("id")) id_ = data["id"];
+        if (data.contains("id")) setId(data["id"]);
         if (data.contains("tenant_id")) tenant_id_ = data["tenant_id"];
         if (data.contains("site_id")) site_id_ = data["site_id"];
         if (data.contains("data_point_id")) data_point_id_ = data["data_point_id"];
@@ -293,7 +300,9 @@ bool AlarmConfigEntity::fromJson(const json& data) {
         return true;
         
     } catch (const std::exception& e) {
-        logger_->Error("AlarmConfigEntity::fromJson failed: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("AlarmConfigEntity::fromJson failed: " + std::string(e.what()));
+        }
         markError();
         return false;
     }
@@ -302,7 +311,7 @@ bool AlarmConfigEntity::fromJson(const json& data) {
 std::string AlarmConfigEntity::toString() const {
     std::stringstream ss;
     ss << "AlarmConfigEntity{";
-    ss << "id=" << id_;
+    ss << "id=" << getId();
     ss << ", name='" << alarm_name_ << "'";
     ss << ", severity='" << severityToString(severity_) << "'";
     ss << ", condition='" << conditionTypeToString(condition_type_) << "'";
@@ -441,7 +450,7 @@ json AlarmConfigEntity::extractConfiguration() const {
 
 json AlarmConfigEntity::getEvaluationContext() const {
     json context;
-    context["alarm_id"] = id_;
+    context["alarm_id"] = getId();
     context["alarm_name"] = alarm_name_;
     context["condition_type"] = conditionTypeToString(condition_type_);
     context["threshold_value"] = threshold_value_;
@@ -455,7 +464,7 @@ json AlarmConfigEntity::getEvaluationContext() const {
 
 json AlarmConfigEntity::getAlarmInfo() const {
     json info;
-    info["alarm_id"] = id_;
+    info["alarm_id"] = getId();
     info["alarm_name"] = alarm_name_;
     info["description"] = description_;
     info["severity"] = severityToString(severity_);
@@ -468,90 +477,8 @@ json AlarmConfigEntity::getAlarmInfo() const {
 }
 
 // =============================================================================
-// 내부 헬퍼 메서드들 (DeviceEntity 패턴)
+// private 헬퍼 메서드들
 // =============================================================================
-
-bool AlarmConfigEntity::mapRowToEntity(const std::map<std::string, std::string>& row) {
-    try {
-        if (row.count("id")) id_ = std::stoi(row.at("id"));
-        if (row.count("tenant_id")) tenant_id_ = std::stoi(row.at("tenant_id"));
-        if (row.count("site_id")) site_id_ = std::stoi(row.at("site_id"));
-        if (row.count("data_point_id")) data_point_id_ = std::stoi(row.at("data_point_id"));
-        if (row.count("virtual_point_id")) virtual_point_id_ = std::stoi(row.at("virtual_point_id"));
-        if (row.count("alarm_name")) alarm_name_ = row.at("alarm_name");
-        if (row.count("description")) description_ = row.at("description");
-        if (row.count("severity")) severity_ = stringToSeverity(row.at("severity"));
-        if (row.count("condition_type")) condition_type_ = stringToConditionType(row.at("condition_type"));
-        if (row.count("threshold_value")) threshold_value_ = std::stod(row.at("threshold_value"));
-        if (row.count("high_limit")) high_limit_ = std::stod(row.at("high_limit"));
-        if (row.count("low_limit")) low_limit_ = std::stod(row.at("low_limit"));
-        if (row.count("timeout_seconds")) timeout_seconds_ = std::stoi(row.at("timeout_seconds"));
-        if (row.count("is_enabled")) is_enabled_ = (row.at("is_enabled") == "1" || row.at("is_enabled") == "true");
-        if (row.count("auto_acknowledge")) auto_acknowledge_ = (row.at("auto_acknowledge") == "1" || row.at("auto_acknowledge") == "true");
-        if (row.count("delay_seconds")) delay_seconds_ = std::stoi(row.at("delay_seconds"));
-        if (row.count("message_template")) message_template_ = row.at("message_template");
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("AlarmConfigEntity::mapRowToEntity failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::string AlarmConfigEntity::buildInsertSQL() const {
-    std::stringstream ss;
-    ss << "INSERT INTO " << getTableName() << " ";
-    ss << "(tenant_id, site_id, data_point_id, virtual_point_id, alarm_name, description, ";
-    ss << "severity, condition_type, threshold_value, high_limit, low_limit, timeout_seconds, ";
-    ss << "is_enabled, auto_acknowledge, delay_seconds, message_template, created_at, updated_at) ";
-    ss << "VALUES (";
-    ss << tenant_id_ << ", ";
-    ss << site_id_ << ", ";
-    ss << data_point_id_ << ", ";
-    ss << virtual_point_id_ << ", '";
-    ss << alarm_name_ << "', '";
-    ss << description_ << "', '";
-    ss << severityToString(severity_) << "', '";
-    ss << conditionTypeToString(condition_type_) << "', ";
-    ss << threshold_value_ << ", ";
-    ss << high_limit_ << ", ";
-    ss << low_limit_ << ", ";
-    ss << timeout_seconds_ << ", ";
-    ss << (is_enabled_ ? 1 : 0) << ", ";
-    ss << (auto_acknowledge_ ? 1 : 0) << ", ";
-    ss << delay_seconds_ << ", '";
-    ss << message_template_ << "', '";
-    ss << timestampToString(created_at_) << "', '";
-    ss << timestampToString(updated_at_) << "')";
-    
-    return ss.str();
-}
-
-std::string AlarmConfigEntity::buildUpdateSQL() const {
-    std::stringstream ss;
-    ss << "UPDATE " << getTableName() << " SET ";
-    ss << "tenant_id = " << tenant_id_ << ", ";
-    ss << "site_id = " << site_id_ << ", ";
-    ss << "data_point_id = " << data_point_id_ << ", ";
-    ss << "virtual_point_id = " << virtual_point_id_ << ", ";
-    ss << "alarm_name = '" << alarm_name_ << "', ";
-    ss << "description = '" << description_ << "', ";
-    ss << "severity = '" << severityToString(severity_) << "', ";
-    ss << "condition_type = '" << conditionTypeToString(condition_type_) << "', ";
-    ss << "threshold_value = " << threshold_value_ << ", ";
-    ss << "high_limit = " << high_limit_ << ", ";
-    ss << "low_limit = " << low_limit_ << ", ";
-    ss << "timeout_seconds = " << timeout_seconds_ << ", ";
-    ss << "is_enabled = " << (is_enabled_ ? 1 : 0) << ", ";
-    ss << "auto_acknowledge = " << (auto_acknowledge_ ? 1 : 0) << ", ";
-    ss << "delay_seconds = " << delay_seconds_ << ", ";
-    ss << "message_template = '" << message_template_ << "', ";
-    ss << "updated_at = '" << timestampToString(updated_at_) << "' ";
-    ss << "WHERE id = " << id_;
-    
-    return ss.str();
-}
 
 std::string AlarmConfigEntity::replaceTemplateVariables(const std::string& template_str, double value) const {
     std::string result = template_str;

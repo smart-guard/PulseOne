@@ -1,33 +1,578 @@
 // =============================================================================
 // collector/src/Database/Repositories/VirtualPointRepository.cpp
-// PulseOne VirtualPointRepository 구현 - SiteRepository 패턴 100% 준수
+// PulseOne VirtualPointRepository 구현 - DeviceRepository 패턴 100% 적용
 // =============================================================================
 
 /**
  * @file VirtualPointRepository.cpp
- * @brief PulseOne VirtualPointRepository 구현 - SiteRepository 패턴 100% 준수
+ * @brief PulseOne VirtualPointRepository 구현 - DeviceRepository 패턴 100% 적용
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-31
+ * 
+ * 🎯 DeviceRepository 패턴 완전 적용:
+ * - DatabaseAbstractionLayer 사용
+ * - executeQuery/executeNonQuery/executeUpsert 패턴
+ * - formatTimestamp, entityToParams, ensureTableExists 구현
+ * - 컴파일 에러 완전 해결
  */
 
-// 🔥 헤더 파일 include 필수 - 이게 빠져서 컴파일 에러 발생!
 #include "Database/Repositories/VirtualPointRepository.h"
-#include "Utils/LogManager.h"
-#include <chrono>
-#include <algorithm>
+#include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
+#include <iomanip>
+#include <algorithm>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 기존 패턴 준수 - using 선언 필수 (cpp에도 필요)
-using VirtualPointEntity = Entities::VirtualPointEntity;
+// =============================================================================
+// IRepository 기본 CRUD 구현 (DeviceRepository 패턴)
+// =============================================================================
 
+std::vector<VirtualPointEntity> VirtualPointRepository::findAll() {
+    try {
+        if (!ensureTableExists()) {
+            logger_->Error("VirtualPointRepository::findAll - Table creation failed");
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points 
+            ORDER BY id
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("VirtualPointRepository::findAll - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("VirtualPointRepository::findAll - Found " + std::to_string(entities.size()) + " virtual points");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findAll failed: " + std::string(e.what()));
+        return {};
+    }
+}
 
-// =======================================================================
-// 캐시 관리 메서드들 (SiteRepository 패턴)
-// =======================================================================
+std::optional<VirtualPointEntity> VirtualPointRepository::findById(int id) {
+    try {
+        // 캐시 확인
+        if (isCacheEnabled()) {
+            auto cached = getCachedEntity(id);
+            if (cached.has_value()) {
+                logger_->Debug("VirtualPointRepository::findById - Cache hit for ID: " + std::to_string(id));
+                return cached.value();
+            }
+        }
+        
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points 
+            WHERE id = )" + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("VirtualPointRepository::findById - Virtual point not found: " + std::to_string(id));
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        
+        // 캐시에 저장
+        if (isCacheEnabled()) {
+            cacheEntity(entity);
+        }
+        
+        logger_->Debug("VirtualPointRepository::findById - Found virtual point: " + entity.getName());
+        return entity;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findById failed for ID " + std::to_string(id) + ": " + std::string(e.what()));
+        return std::nullopt;
+    }
+}
+
+bool VirtualPointRepository::save(VirtualPointEntity& entity) {
+    try {
+        if (!validateVirtualPoint(entity)) {
+            logger_->Error("VirtualPointRepository::save - Invalid virtual point: " + entity.getName());
+            return false;
+        }
+        
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🔧 DeviceRepository 패턴: entityToParams 메서드 사용
+        std::map<std::string, std::string> data = entityToParams(entity);
+        
+        std::vector<std::string> primary_keys = {"id"};
+        
+        bool success = db_layer.executeUpsert("virtual_points", data, primary_keys);
+        
+        if (success) {
+            // 새로 생성된 경우 ID 조회
+            if (entity.getId() <= 0) {
+                const std::string id_query = "SELECT last_insert_rowid() as id";
+                auto id_result = db_layer.executeQuery(id_query);
+                if (!id_result.empty()) {
+                    entity.setId(std::stoi(id_result[0].at("id")));
+                }
+            }
+            
+            // 캐시 업데이트
+            if (isCacheEnabled()) {
+                cacheEntity(entity);
+            }
+            
+            logger_->Info("VirtualPointRepository::save - Saved virtual point: " + entity.getName());
+        } else {
+            logger_->Error("VirtualPointRepository::save - Failed to save virtual point: " + entity.getName());
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::save failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool VirtualPointRepository::update(const VirtualPointEntity& entity) {
+    VirtualPointEntity mutable_entity = entity;
+    return save(mutable_entity);
+}
+
+bool VirtualPointRepository::deleteById(int id) {
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "DELETE FROM virtual_points WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(id);
+            }
+            
+            logger_->Info("VirtualPointRepository::deleteById - Deleted virtual point ID: " + std::to_string(id));
+        } else {
+            logger_->Error("VirtualPointRepository::deleteById - Failed to delete virtual point ID: " + std::to_string(id));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::deleteById failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool VirtualPointRepository::exists(int id) {
+    try {
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "SELECT COUNT(*) as count FROM virtual_points WHERE id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::exists failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::vector<VirtualPointEntity> VirtualPointRepository::findByIds(const std::vector<int>& ids) {
+    try {
+        if (ids.empty()) {
+            return {};
+        }
+        
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        // IN 절 구성
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points 
+            WHERE id IN ()" + ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("VirtualPointRepository::findByIds - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("VirtualPointRepository::findByIds - Found " + std::to_string(entities.size()) + " virtual points for " + std::to_string(ids.size()) + " IDs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findByIds failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<VirtualPointEntity> VirtualPointRepository::findByConditions(
+    const std::vector<QueryCondition>& conditions,
+    const std::optional<OrderBy>& order_by,
+    const std::optional<Pagination>& pagination) {
+    
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points
+        )";
+        
+        query += buildWhereClause(conditions);
+        query += buildOrderByClause(order_by);
+        query += buildLimitClause(pagination);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("VirtualPointRepository::findByConditions - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Debug("VirtualPointRepository::findByConditions - Found " + std::to_string(entities.size()) + " virtual points");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findByConditions failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+int VirtualPointRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM virtual_points";
+        query += buildWhereClause(conditions);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::countByConditions failed: " + std::string(e.what()));
+        return 0;
+    }
+}
+
+// =============================================================================
+// VirtualPoint 전용 메서드들 (DeviceRepository 패턴)
+// =============================================================================
+
+std::vector<VirtualPointEntity> VirtualPointRepository::findByTenant(int tenant_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points 
+            WHERE tenant_id = )" + std::to_string(tenant_id) + R"(
+            ORDER BY name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("VirtualPointRepository::findByTenant - Found " + std::to_string(entities.size()) + " virtual points for tenant " + std::to_string(tenant_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findByTenant failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<VirtualPointEntity> VirtualPointRepository::findBySite(int site_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points 
+            WHERE site_id = )" + std::to_string(site_id) + R"(
+            ORDER BY name
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("VirtualPointRepository::findBySite - Found " + std::to_string(entities.size()) + " virtual points for site " + std::to_string(site_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findBySite failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<VirtualPointEntity> VirtualPointRepository::findEnabledPoints(int tenant_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points 
+            WHERE is_enabled = 1
+        )";
+        
+        if (tenant_id > 0) {
+            query += " AND tenant_id = " + std::to_string(tenant_id);
+        }
+        
+        query += " ORDER BY name";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("VirtualPointRepository::findEnabledPoints - Found " + std::to_string(entities.size()) + " enabled virtual points");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findEnabledPoints failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::optional<VirtualPointEntity> VirtualPointRepository::findByName(const std::string& name, int tenant_id) {
+    try {
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, name, description, formula,
+                data_type, unit, calculation_interval, calculation_trigger,
+                is_enabled, category, tags, created_by, created_at, updated_at
+            FROM virtual_points 
+            WHERE name = ')" + escapeString(name) + R"(' AND tenant_id = )" + std::to_string(tenant_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            return std::nullopt;
+        }
+        
+        return mapRowToEntity(results[0]);
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::findByName failed: " + std::string(e.what()));
+        return std::nullopt;
+    }
+}
+
+// =============================================================================
+// 벌크 연산 (DeviceRepository 패턴)
+// =============================================================================
+
+int VirtualPointRepository::saveBulk(std::vector<VirtualPointEntity>& entities) {
+    int saved_count = 0;
+    for (auto& entity : entities) {
+        if (save(entity)) {
+            saved_count++;
+        }
+    }
+    logger_->Info("VirtualPointRepository::saveBulk - Saved " + std::to_string(saved_count) + " virtual points");
+    return saved_count;
+}
+
+int VirtualPointRepository::updateBulk(const std::vector<VirtualPointEntity>& entities) {
+    int updated_count = 0;
+    for (const auto& entity : entities) {
+        if (update(entity)) {
+            updated_count++;
+        }
+    }
+    logger_->Info("VirtualPointRepository::updateBulk - Updated " + std::to_string(updated_count) + " virtual points");
+    return updated_count;
+}
+
+int VirtualPointRepository::deleteByIds(const std::vector<int>& ids) {
+    int deleted_count = 0;
+    for (int id : ids) {
+        if (deleteById(id)) {
+            deleted_count++;
+        }
+    }
+    logger_->Info("VirtualPointRepository::deleteByIds - Deleted " + std::to_string(deleted_count) + " virtual points");
+    return deleted_count;
+}
+
+// =============================================================================
+// 실시간 가상포인트 관리 (DeviceRepository 패턴)
+// =============================================================================
+
+bool VirtualPointRepository::enableVirtualPoint(int point_id) {
+    return updateVirtualPointStatus(point_id, true);
+}
+
+bool VirtualPointRepository::disableVirtualPoint(int point_id) {
+    return updateVirtualPointStatus(point_id, false);
+}
+
+bool VirtualPointRepository::updateVirtualPointStatus(int point_id, bool is_enabled) {
+    try {
+        const std::string query = R"(
+            UPDATE virtual_points 
+            SET is_enabled = )" + std::string(is_enabled ? "1" : "0") + R"(,
+                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+            WHERE id = )" + std::to_string(point_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(point_id);
+            }
+            logger_->Info("VirtualPointRepository::updateVirtualPointStatus - " + 
+                         std::string(is_enabled ? "Enabled" : "Disabled") + 
+                         " virtual point ID: " + std::to_string(point_id));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::updateVirtualPointStatus failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool VirtualPointRepository::updateFormula(int point_id, const std::string& formula) {
+    try {
+        const std::string query = R"(
+            UPDATE virtual_points 
+            SET formula = ')" + escapeString(formula) + R"(',
+                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+            WHERE id = )" + std::to_string(point_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            if (isCacheEnabled()) {
+                clearCacheForId(point_id);
+            }
+            logger_->Info("VirtualPointRepository::updateFormula - Updated formula for virtual point ID: " + std::to_string(point_id));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::updateFormula failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 캐시 관리 메서드들 (DeviceRepository 패턴)
+// =============================================================================
 
 void VirtualPointRepository::setCacheEnabled(bool enabled) {
     IRepository<VirtualPointEntity>::setCacheEnabled(enabled);
@@ -52,380 +597,246 @@ std::map<std::string, int> VirtualPointRepository::getCacheStats() const {
     return IRepository<VirtualPointEntity>::getCacheStats();
 }
 
-// =======================================================================
-// IRepository 인터페이스 구현 (SiteRepository 패턴)
-// =======================================================================
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findAll() {
-    logger_->Debug("🔍 VirtualPointRepository::findAll() - Fetching all virtual points");
-    
-    return findByConditions({}, OrderBy("name", "ASC"));
-}
-
-std::optional<VirtualPointEntity> VirtualPointRepository::findById(int id) {
-    logger_->Debug("🔍 VirtualPointRepository::findById(" + std::to_string(id) + ")");
-    
-    auto cached = getCachedEntity(id);
-    if (cached.has_value()) {
-        logger_->Debug("Cache hit for VirtualPoint ID: " + std::to_string(id));
-        return cached;
-    }
-    
-    auto points = findByConditions({QueryCondition("id", "=", std::to_string(id))});
-    if (!points.empty()) {
-        cacheEntity(points[0]);
-        return points[0];
-    }
-    
-    return std::nullopt;
-}
-
-bool VirtualPointRepository::save(VirtualPointEntity& entity) {
-    logger_->Debug("💾 VirtualPointRepository::save() - " + entity.getName());
-    
-    if (!validateVirtualPoint(entity)) {
-        logger_->Error("❌ VirtualPoint validation failed: " + entity.getName());
-        return false;
-    }
-    
-    if (isPointNameTaken(entity.getName(), entity.getTenantId(), entity.getId())) {
-        logger_->Error("❌ VirtualPoint name already taken: " + entity.getName());
-        return false;
-    }
-    
-    if (!validateFormula(entity)) {
-        logger_->Error("❌ VirtualPoint formula validation failed: " + entity.getName());
-        return false;
-    }
-    
-    try {
-        // INSERT 또는 UPDATE 수행
-        if (entity.getId() == 0) {
-            // INSERT
-            if (IRepository<VirtualPointEntity>::save(entity)) {
-                cacheEntity(entity);
-                logger_->Info("✅ VirtualPoint created: " + entity.getName());
-                return true;
-            }
-        } else {
-            // UPDATE
-            if (IRepository<VirtualPointEntity>::update(entity)) {
-                cacheEntity(entity);
-                logger_->Info("✅ VirtualPoint updated: " + entity.getName());
-                return true;
-            }
-        }
-    } catch (const std::exception& e) {
-        logger_->Error("❌ VirtualPoint save failed: " + entity.getName() + " - " + e.what());
-    }
-    
-    return false;
-}
-
-bool VirtualPointRepository::update(const VirtualPointEntity& entity) {
-    logger_->Debug("🔄 VirtualPointRepository::update() - " + entity.getName());
-    
-    if (!validateVirtualPoint(entity)) {
-        logger_->Error("❌ VirtualPoint validation failed: " + entity.getName());
-        return false;
-    }
-    
-    if (isPointNameTaken(entity.getName(), entity.getTenantId(), entity.getId())) {
-        logger_->Error("❌ VirtualPoint name already taken: " + entity.getName());
-        return false;
-    }
-    
-    if (!validateFormula(entity)) {
-        logger_->Error("❌ VirtualPoint formula validation failed: " + entity.getName());
-        return false;
-    }
-    
-    try {
-        if (IRepository<VirtualPointEntity>::update(entity)) {
-            clearCacheForId(entity.getId());
-            logger_->Info("✅ VirtualPoint updated: " + entity.getName());
-            return true;
-        }
-    } catch (const std::exception& e) {
-        logger_->Error("❌ VirtualPoint update failed: " + entity.getName() + " - " + e.what());
-    }
-    
-    return false;
-}
-
-bool VirtualPointRepository::deleteById(int id) {
-    logger_->Debug("🗑️ VirtualPointRepository::deleteById(" + std::to_string(id) + ")");
-    
-    try {
-        if (IRepository<VirtualPointEntity>::deleteById(id)) {
-            clearCacheForId(id);
-            logger_->Info("✅ VirtualPoint deleted: " + std::to_string(id));
-            return true;
-        }
-    } catch (const std::exception& e) {
-        logger_->Error("❌ VirtualPoint delete failed: " + std::to_string(id) + " - " + e.what());
-    }
-    
-    return false;
-}
-
-bool VirtualPointRepository::exists(int id) {
-    logger_->Debug("🔍 VirtualPointRepository::exists(" + std::to_string(id) + ")");
-    
-    return IRepository<VirtualPointEntity>::exists(id);
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findByIds(const std::vector<int>& ids) {
-    logger_->Debug("🔍 VirtualPointRepository::findByIds() - " + std::to_string(ids.size()) + " virtual points");
-    
-    return IRepository<VirtualPointEntity>::findByIds(ids);
-}
-
-int VirtualPointRepository::saveBulk(std::vector<VirtualPointEntity>& entities) {
-    logger_->Info("💾 VirtualPointRepository::saveBulk() - " + std::to_string(entities.size()) + " virtual points");
-    
-    int valid_count = 0;
-    for (const auto& entity : entities) {
-        if (validateVirtualPoint(entity)) {
-            valid_count++;
-        }
-    }
-    
-    if (valid_count != entities.size()) {
-        logger_->Warn("⚠️ Some virtual points failed validation. Valid: " + std::to_string(valid_count) + "/" + std::to_string(entities.size()));
-    }
-    
-    return IRepository<VirtualPointEntity>::saveBulk(entities);
-}
-
-int VirtualPointRepository::updateBulk(const std::vector<VirtualPointEntity>& entities) {
-    logger_->Info("🔄 VirtualPointRepository::updateBulk() - " + std::to_string(entities.size()) + " virtual points");
-    
-    return IRepository<VirtualPointEntity>::updateBulk(entities);
-}
-
-int VirtualPointRepository::deleteByIds(const std::vector<int>& ids) {
-    logger_->Info("🗑️ VirtualPointRepository::deleteByIds() - " + std::to_string(ids.size()) + " virtual points");
-    
-    return IRepository<VirtualPointEntity>::deleteByIds(ids);
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findByConditions(
-    const std::vector<QueryCondition>& conditions,
-    const std::optional<OrderBy>& order_by,
-    const std::optional<Pagination>& pagination) {
-    
-    return IRepository<VirtualPointEntity>::findByConditions(conditions, order_by, pagination);
-}
-
-int VirtualPointRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    return IRepository<VirtualPointEntity>::countByConditions(conditions);
-}
-
 int VirtualPointRepository::getTotalCount() {
-    try {
-        return countByConditions({});
-    } catch (const std::exception& e) {
-        logger_->Error("❌ VirtualPointRepository::getTotalCount() failed: " + std::string(e.what()));
-        return 0;
-    }
+    return countByConditions({});
 }
 
-// =======================================================================
-// VirtualPoint 전용 메서드들 (SiteRepository 패턴)
-// =======================================================================
+// =============================================================================
+// 내부 헬퍼 메서드들 (DeviceRepository 패턴)
+// =============================================================================
 
-std::vector<VirtualPointEntity> VirtualPointRepository::findByTenant(int tenant_id) {
-    logger_->Debug("🔍 VirtualPointRepository::findByTenant(" + std::to_string(tenant_id) + ")");
-    
-    return findByConditions({buildTenantCondition(tenant_id)}, OrderBy("name", "ASC"));
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findBySite(int site_id) {
-    logger_->Debug("🔍 VirtualPointRepository::findBySite(" + std::to_string(site_id) + ")");
-    
-    return findByConditions({buildSiteCondition(site_id)}, OrderBy("name", "ASC"));
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findEnabledPoints(int tenant_id) {
-    logger_->Debug("🔍 VirtualPointRepository::findEnabledPoints(" + std::to_string(tenant_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {buildEnabledCondition(true)};
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-std::optional<VirtualPointEntity> VirtualPointRepository::findByName(const std::string& name, int tenant_id) {
-    logger_->Debug("🔍 VirtualPointRepository::findByName(" + name + ", " + std::to_string(tenant_id) + ")");
-    
-    auto points = findByConditions({
-        QueryCondition("name", "=", name),
-        buildTenantCondition(tenant_id)
-    });
-    
-    return points.empty() ? std::nullopt : std::make_optional(points[0]);
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findByCategory(const std::string& category, int tenant_id) {
-    logger_->Debug("🔍 VirtualPointRepository::findByCategory(" + category + ", " + std::to_string(tenant_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("category", "=", category)
-    };
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findByDataType(VirtualPointEntity::DataType data_type, int tenant_id) {
-    logger_->Debug("🔍 VirtualPointRepository::findByDataType(" + VirtualPointEntity::dataTypeToString(data_type) + ", " + std::to_string(tenant_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {buildDataTypeCondition(data_type)};
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findByNamePattern(const std::string& name_pattern, int tenant_id) {
-    logger_->Debug("🔍 VirtualPointRepository::findByNamePattern(" + name_pattern + ", " + std::to_string(tenant_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("name", "LIKE", name_pattern)
-    };
-    
-    if (tenant_id > 0) {
-        conditions.push_back(buildTenantCondition(tenant_id));
-    }
-    
-    return findByConditions(conditions, OrderBy("name", "ASC"));
-}
-
-// =======================================================================
-// 비즈니스 로직 메서드들 (VirtualPoint 전용)
-// =======================================================================
-
-bool VirtualPointRepository::isPointNameTaken(const std::string& name, int tenant_id, int exclude_id) {
-    logger_->Debug("🔍 VirtualPointRepository::isPointNameTaken(" + name + ", " + std::to_string(tenant_id) + ", " + std::to_string(exclude_id) + ")");
-    
-    std::vector<QueryCondition> conditions = {
-        QueryCondition("name", "=", name),
-        buildTenantCondition(tenant_id)
-    };
-    
-    if (exclude_id > 0) {
-        conditions.push_back(QueryCondition("id", "!=", std::to_string(exclude_id)));
-    }
-    
-    return countByConditions(conditions) > 0;
-}
-
-std::vector<VirtualPointEntity> VirtualPointRepository::findPointsNeedingCalculation(int limit) {
-    logger_->Debug("🔍 VirtualPointRepository::findPointsNeedingCalculation(" + std::to_string(limit) + ")");
-    
-    std::vector<QueryCondition> conditions = {buildEnabledCondition(true)};
-    
-    // 실제 구현에서는 calculation_trigger, calculation_interval 등을 고려해야 함
-    // 여기서는 기본적으로 모든 활성화된 포인트를 반환
-    std::optional<Pagination> pagination = std::nullopt;
-    if (limit > 0) {
-        pagination = Pagination{0, limit};
-    }
-    
-    return findByConditions(conditions, OrderBy("calculation_interval", "ASC"), pagination);
-}
-
-bool VirtualPointRepository::validateFormula(const VirtualPointEntity& entity) {
-    logger_->Debug("🔍 VirtualPointRepository::validateFormula() - " + entity.getName());
-    
-    // VirtualPointEntity의 validateFormula 메서드 호출
-    return entity.validateFormula();
-}
-
-// =======================================================================
-// 계산 관련 메서드들 (VirtualPoint 전용)
-// =======================================================================
-
-std::optional<double> VirtualPointRepository::executeCalculation(int point_id, bool force_calculation) {
-    logger_->Debug("🔢 VirtualPointRepository::executeCalculation(" + std::to_string(point_id) + ", " + (force_calculation ? "force" : "normal") + ")");
-    
-    auto point = findById(point_id);
-    if (!point.has_value()) {
-        logger_->Error("❌ VirtualPoint not found for calculation: " + std::to_string(point_id));
-        return std::nullopt;
-    }
-    
-    // 계산이 필요한지 확인 (강제가 아닌 경우)
-    if (!force_calculation && !point->needsCalculation()) {
-        logger_->Debug("⏭️ VirtualPoint calculation not needed: " + std::to_string(point_id));
-        return point->getLastCalculatedValue();
-    }
-    
-    // 실제 계산 실행
-    // 여기서는 간단한 예시로 빈 input_values로 계산
-    std::map<std::string, double> input_values; // 실제로는 다른 데이터포인트에서 값을 가져와야 함
-    
-    auto result = point->calculateValue(input_values);
-    if (result.has_value()) {
-        updateCalculatedValue(point_id, result.value());
-        logger_->Info("✅ VirtualPoint calculation successful: " + std::to_string(point_id) + " = " + std::to_string(result.value()));
-    } else {
-        logger_->Error("❌ VirtualPoint calculation failed: " + std::to_string(point_id));
-    }
-    
-    return result;
-}
-
-bool VirtualPointRepository::updateCalculatedValue(int point_id, double value, const std::string& quality) {
-    logger_->Debug("💾 VirtualPointRepository::updateCalculatedValue(" + std::to_string(point_id) + ", " + std::to_string(value) + ", " + quality + ")");
+VirtualPointEntity VirtualPointRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
+    VirtualPointEntity entity;
     
     try {
-        // 실제 구현에서는 current_values 테이블에 업데이트하거나
-        // VirtualPointEntity의 캐시된 값을 업데이트해야 함
+        DatabaseAbstractionLayer db_layer;
         
-        // 캐시에서 엔티티 제거 (다음 조회 시 최신 값으로 로드되도록)
-        clearCacheForId(point_id);
+        auto it = row.find("id");
+        if (it != row.end()) {
+            entity.setId(std::stoi(it->second));
+        }
         
-        logger_->Info("✅ VirtualPoint calculated value updated: " + std::to_string(point_id));
-        return true;
+        it = row.find("tenant_id");
+        if (it != row.end()) {
+            entity.setTenantId(std::stoi(it->second));
+        }
+        
+        it = row.find("site_id");
+        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+            entity.setSiteId(std::stoi(it->second));
+        }
+        
+        // 가상포인트 기본 정보
+        if ((it = row.find("name")) != row.end()) entity.setName(it->second);
+        if ((it = row.find("description")) != row.end()) entity.setDescription(it->second);
+        if ((it = row.find("formula")) != row.end()) entity.setFormula(it->second);
+        if ((it = row.find("data_type")) != row.end()) entity.setDataType(VirtualPointEntity::stringToDataType(it->second));
+        if ((it = row.find("unit")) != row.end()) entity.setUnit(it->second);
+        if ((it = row.find("category")) != row.end()) entity.setCategory(it->second);
+        
+        // 계산 설정
+        it = row.find("calculation_interval");
+        if (it != row.end()) {
+            entity.setCalculationInterval(std::stoi(it->second));
+        }
+        
+        if ((it = row.find("calculation_trigger")) != row.end()) {
+            entity.setCalculationTrigger(VirtualPointEntity::stringToCalculationTrigger(it->second));
+        }
+        
+        // 상태 정보
+        it = row.find("is_enabled");
+        if (it != row.end()) {
+            entity.setEnabled(db_layer.parseBoolean(it->second));
+        }
+        
+        it = row.find("created_by");
+        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+            entity.setCreatedBy(std::stoi(it->second));
+        }
+        
+        // 타임스탬프는 기본값 사용 (실제 구현에서는 파싱 필요)
+        entity.setCreatedAt(std::chrono::system_clock::now());
+        entity.setUpdatedAt(std::chrono::system_clock::now());
+        
+        return entity;
         
     } catch (const std::exception& e) {
-        logger_->Error("❌ VirtualPoint calculated value update failed: " + std::to_string(point_id) + " - " + e.what());
+        logger_->Error("VirtualPointRepository::mapRowToEntity failed: " + std::string(e.what()));
+        throw;
+    }
+}
+
+std::vector<VirtualPointEntity> VirtualPointRepository::mapResultToEntities(
+    const std::vector<std::map<std::string, std::string>>& result) {
+    
+    std::vector<VirtualPointEntity> entities;
+    entities.reserve(result.size());
+    
+    for (const auto& row : result) {
+        try {
+            entities.push_back(mapRowToEntity(row));
+        } catch (const std::exception& e) {
+            logger_->Warn("VirtualPointRepository::mapResultToEntities - Failed to map row: " + std::string(e.what()));
+        }
+    }
+    
+    return entities;
+}
+
+std::map<std::string, std::string> VirtualPointRepository::entityToParams(const VirtualPointEntity& entity) {
+    DatabaseAbstractionLayer db_layer;
+    
+    std::map<std::string, std::string> params;
+    
+    // 기본 정보 (ID는 AUTO_INCREMENT이므로 제외)
+    params["tenant_id"] = std::to_string(entity.getTenantId());
+    params["site_id"] = std::to_string(entity.getSiteId());
+    
+    // 가상포인트 정보
+    params["name"] = entity.getName();
+    params["description"] = entity.getDescription();
+    params["formula"] = entity.getFormula();
+    params["data_type"] = VirtualPointEntity::dataTypeToString(entity.getDataType());
+    params["unit"] = entity.getUnit();
+    params["calculation_interval"] = std::to_string(entity.getCalculationInterval());
+    params["calculation_trigger"] = VirtualPointEntity::calculationTriggerToString(entity.getCalculationTrigger());
+    params["category"] = entity.getCategory();
+    
+    // 태그 배열을 JSON 문자열로 변환
+    std::ostringstream tags_ss;
+    tags_ss << "[";
+    const auto& tags = entity.getTags();
+    for (size_t i = 0; i < tags.size(); ++i) {
+        if (i > 0) tags_ss << ", ";
+        tags_ss << "\"" << escapeString(tags[i]) << "\"";
+    }
+    tags_ss << "]";
+    params["tags"] = tags_ss.str();
+    
+    // 상태 정보
+    params["is_enabled"] = db_layer.formatBoolean(entity.isEnabled());
+    params["created_by"] = std::to_string(entity.getCreatedBy());
+    
+    params["created_at"] = db_layer.getCurrentTimestamp();
+    params["updated_at"] = db_layer.getCurrentTimestamp();
+    
+    return params;
+}
+
+bool VirtualPointRepository::ensureTableExists() {
+    try {
+        const std::string base_create_query = R"(
+            CREATE TABLE IF NOT EXISTS virtual_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                site_id INTEGER,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                formula TEXT NOT NULL,
+                data_type VARCHAR(20) DEFAULT 'float',
+                unit VARCHAR(20),
+                calculation_interval INTEGER DEFAULT 1000,
+                calculation_trigger VARCHAR(20) DEFAULT 'timer',
+                is_enabled INTEGER DEFAULT 1,
+                category VARCHAR(50),
+                tags TEXT,
+                created_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+                FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeCreateTable(base_create_query);
+        
+        if (success) {
+            logger_->Debug("VirtualPointRepository::ensureTableExists - Table creation/check completed");
+        } else {
+            logger_->Error("VirtualPointRepository::ensureTableExists - Table creation failed");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("VirtualPointRepository::ensureTableExists failed: " + std::string(e.what()));
         return false;
     }
 }
 
-// =======================================================================
-// private 헬퍼 메서드들 (SiteRepository 패턴)
-// =======================================================================
-
-bool VirtualPointRepository::validateVirtualPoint(const VirtualPointEntity& point) const {
-    return point.isValid();
+bool VirtualPointRepository::validateVirtualPoint(const VirtualPointEntity& entity) const {
+    if (!entity.isValid()) {
+        logger_->Warn("VirtualPointRepository::validateVirtualPoint - Invalid virtual point: " + entity.getName());
+        return false;
+    }
+    
+    if (entity.getName().empty()) {
+        logger_->Warn("VirtualPointRepository::validateVirtualPoint - Virtual point name is empty");
+        return false;
+    }
+    
+    if (entity.getFormula().empty()) {
+        logger_->Warn("VirtualPointRepository::validateVirtualPoint - Formula is empty for: " + entity.getName());
+        return false;
+    }
+    
+    if (entity.getTenantId() <= 0) {
+        logger_->Warn("VirtualPointRepository::validateVirtualPoint - Invalid tenant ID for: " + entity.getName());
+        return false;
+    }
+    
+    return true;
 }
 
-QueryCondition VirtualPointRepository::buildTenantCondition(int tenant_id) const {
-    return QueryCondition("tenant_id", "=", std::to_string(tenant_id));
+// =============================================================================
+// SQL 빌더 헬퍼 메서드들 (DeviceRepository 패턴)
+// =============================================================================
+
+std::string VirtualPointRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
+    if (conditions.empty()) return "";
+    
+    std::string clause = " WHERE ";
+    for (size_t i = 0; i < conditions.size(); ++i) {
+        if (i > 0) clause += " AND ";
+        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
+    }
+    return clause;
 }
 
-QueryCondition VirtualPointRepository::buildSiteCondition(int site_id) const {
-    return QueryCondition("site_id", "=", std::to_string(site_id));
+std::string VirtualPointRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
+    if (!order_by.has_value()) return "";
+    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
 }
 
-QueryCondition VirtualPointRepository::buildEnabledCondition(bool enabled) const {
-    return QueryCondition("is_enabled", "=", enabled ? "1" : "0");
+std::string VirtualPointRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
+    if (!pagination.has_value()) return "";
+    return " LIMIT " + std::to_string(pagination->getLimit()) + 
+           " OFFSET " + std::to_string(pagination->getOffset());
 }
 
-QueryCondition VirtualPointRepository::buildDataTypeCondition(VirtualPointEntity::DataType data_type) const {
-    return QueryCondition("data_type", "=", VirtualPointEntity::dataTypeToString(data_type));
+// =============================================================================
+// 유틸리티 함수들 (DeviceRepository 패턴)
+// =============================================================================
+
+std::string VirtualPointRepository::escapeString(const std::string& str) const {
+    std::string escaped = str;
+    size_t pos = 0;
+    while ((pos = escaped.find("'", pos)) != std::string::npos) {
+        escaped.replace(pos, 1, "''");
+        pos += 2;
+    }
+    return escaped;
+}
+
+std::string VirtualPointRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::ostringstream oss;
+    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return oss.str();
 }
 
 } // namespace Repositories

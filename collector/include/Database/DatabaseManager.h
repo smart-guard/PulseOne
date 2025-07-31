@@ -15,7 +15,7 @@
 #endif
 
 // NoSQL/시계열 DB 관련
-#include "Client/RedisClient.h"
+#include "Client/RedisClientImpl.h"
 #include "Client/InfluxClient.h"
 #include "Utils/LogManager.h"
 
@@ -23,6 +23,7 @@
  * @brief 통합 멀티 데이터베이스 매니저
  * 지원 DB: PostgreSQL, SQLite, MySQL/MariaDB, MSSQL, Redis, InfluxDB
  */
+
 class DatabaseManager {
 public:
     // =======================================================================
@@ -67,7 +68,6 @@ public:
     bool isSQLiteConnected();
     bool isMySQLConnected();     // 🔧 추가
     bool isMSSQLConnected();     // 🔧 추가
-    bool isRedisConnected();
     bool isInfluxConnected();
     
     // =======================================================================
@@ -105,9 +105,22 @@ public:
     // =======================================================================
     // Redis 관련
     // =======================================================================
+    /**
+     * @brief Redis 클라이언트 인스턴스 반환
+     * @return RedisClient 포인터 (hiredis 기반 구현체)
+     */
     RedisClient* getRedisClient() { return redis_client_.get(); }
     bool connectRedis();
     void disconnectRedis();
+    
+    // 🔥 새로 추가: Redis 연결 상태 확인
+    bool isRedisConnected();
+    
+    // 🔥 새로 추가: Redis 연결 테스트
+    bool testRedisConnection();
+    
+    // 🔥 새로 추가: Redis 서버 정보 조회
+    std::map<std::string, std::string> getRedisInfo();
     
     // =======================================================================
     // InfluxDB 관련
@@ -169,7 +182,7 @@ private:
 #endif
     
     // Redis
-    std::unique_ptr<RedisClient> redis_client_;
+    std::unique_ptr<RedisClientImpl> redis_client_;
     
     // InfluxDB
     std::unique_ptr<InfluxClient> influx_client_;
