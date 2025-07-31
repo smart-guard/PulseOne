@@ -3,64 +3,116 @@
 
 /**
  * @file VirtualPointRepository.h
- * @brief PulseOne VirtualPoint Repository - 가상포인트 관리 Repository (SiteRepository 패턴 100% 준수)
+ * @brief PulseOne VirtualPointRepository - DeviceRepository 패턴 100% 적용
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-31
  * 
- * 🔥 데이터베이스 스키마 (virtual_points 테이블):
- * - id: PRIMARY KEY AUTOINCREMENT
- * - tenant_id: INTEGER NOT NULL (FK to tenants)
- * - site_id: INTEGER (FK to sites, nullable)
- * - name: VARCHAR(100) NOT NULL
- * - description: TEXT
- * - formula: TEXT NOT NULL (JavaScript 계산식)
- * - data_type: VARCHAR(20) DEFAULT 'float'
- * - unit: VARCHAR(20)
- * - calculation_interval: INTEGER DEFAULT 1000 (ms)
- * - is_enabled: BOOLEAN DEFAULT true
- * - created_at: DATETIME DEFAULT CURRENT_TIMESTAMP
- * - updated_at: DATETIME DEFAULT CURRENT_TIMESTAMP
+ * 🔥 DeviceRepository 패턴 완전 적용:
+ * - DatabaseAbstractionLayer 사용
+ * - executeQuery/executeNonQuery 패턴
+ * - 컴파일 에러 완전 해결
+ * - BaseEntity 상속 패턴 지원
  */
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/VirtualPointEntity.h"
-#include "Database/DatabaseTypes.h"
+#include "Database/DatabaseManager.h"
 #include "Utils/LogManager.h"
-#include <vector>
-#include <string>
-#include <optional>
 #include <memory>
 #include <map>
+#include <string>
+#include <mutex>
+#include <vector>
+#include <optional>
+#include <chrono>
+#include <atomic>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 🔥 기존 패턴 준수 - using 선언 필수
-using VirtualPointEntity = Entities::VirtualPointEntity;
+// 타입 별칭 정의 (DeviceRepository 패턴)
+using VirtualPointEntity = PulseOne::Database::Entities::VirtualPointEntity;
 
 /**
- * @brief VirtualPoint Repository 클래스 (IRepository 템플릿 상속)
+ * @brief VirtualPoint Repository 클래스 (DeviceRepository 패턴 적용)
+ * 
+ * 기능:
+ * - INTEGER ID 기반 CRUD 연산
+ * - 수식별 가상포인트 조회
+ * - DatabaseAbstractionLayer 사용
+ * - 캐싱 및 벌크 연산 지원 (IRepository에서 자동 제공)
  */
 class VirtualPointRepository : public IRepository<VirtualPointEntity> {
 public:
     // =======================================================================
-    // 생성자 및 소멸자 (SiteRepository 패턴)
+    // 생성자 및 소멸자
     // =======================================================================
     
     VirtualPointRepository() : IRepository<VirtualPointEntity>("VirtualPointRepository") {
-        // 🔥 의존성 초기화를 여기서 호출
         initializeDependencies();
         
         if (logger_) {
-            logger_->Info("🏭 VirtualPointRepository initialized with IRepository caching system");
+            logger_->Info("🏭 VirtualPointRepository initialized with BaseEntity pattern");
             logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
         }
     }
+    
     virtual ~VirtualPointRepository() = default;
 
     // =======================================================================
-    // 캐시 관리 메서드들 (SiteRepository 패턴)
+    // IRepository 인터페이스 구현
+    // =======================================================================
+    
+    std::vector<VirtualPointEntity> findAll() override;
+    std::optional<VirtualPointEntity> findById(int id) override;
+    bool save(VirtualPointEntity& entity) override;
+    bool update(const VirtualPointEntity& entity) override;
+    bool deleteById(int id) override;
+    bool exists(int id) override;
+
+    // =======================================================================
+    // 벌크 연산
+    // =======================================================================
+    
+    std::vector<VirtualPointEntity> findByIds(const std::vector<int>& ids) override;
+    
+    std::vector<VirtualPointEntity> findByConditions(
+        const std::vector<QueryCondition>& conditions,
+        const std::optional<OrderBy>& order_by = std::nullopt,
+        const std::optional<Pagination>& pagination = std::nullopt
+    ) override;
+    
+    int countByConditions(const std::vector<QueryCondition>& conditions) override;
+
+    // =======================================================================
+    // VirtualPoint 전용 메서드들
+    // =======================================================================
+    
+    std::vector<VirtualPointEntity> findByTenant(int tenant_id);
+    std::vector<VirtualPointEntity> findBySite(int site_id);
+    std::vector<VirtualPointEntity> findEnabledPoints(int tenant_id = 0);
+    std::optional<VirtualPointEntity> findByName(const std::string& name, int tenant_id);
+
+    // =======================================================================
+    // 벌크 연산 (DeviceRepository 패턴)
+    // =======================================================================
+    
+    int saveBulk(std::vector<VirtualPointEntity>& entities);
+    int updateBulk(const std::vector<VirtualPointEntity>& entities);
+    int deleteByIds(const std::vector<int>& ids);
+
+    // =======================================================================
+    // 실시간 가상포인트 관리
+    // =======================================================================
+    
+    bool enableVirtualPoint(int point_id);
+    bool disableVirtualPoint(int point_id);
+    bool updateVirtualPointStatus(int point_id, bool is_enabled);
+    bool updateFormula(int point_id, const std::string& formula);
+
+    // =======================================================================
+    // 캐시 관리
     // =======================================================================
     
     void setCacheEnabled(bool enabled) override;
@@ -70,170 +122,96 @@ public:
     std::map<std::string, int> getCacheStats() const override;
 
     // =======================================================================
-    // IRepository 인터페이스 구현 (SiteRepository 패턴)
+    // Worker용 최적화 메서드들 (DeviceRepository 패턴)
     // =======================================================================
     
-    std::vector<VirtualPointEntity> findAll() override;
-    std::optional<VirtualPointEntity> findById(int id) override;
-    bool save(VirtualPointEntity& entity) override;
-    bool update(const VirtualPointEntity& entity) override;
-    bool deleteById(int id) override;
-    bool exists(int id) override;
-    std::vector<VirtualPointEntity> findByIds(const std::vector<int>& ids) override;
-    int saveBulk(std::vector<VirtualPointEntity>& entities) override;
-    int updateBulk(const std::vector<VirtualPointEntity>& entities) override;
-    int deleteByIds(const std::vector<int>& ids) override;
-    std::vector<VirtualPointEntity> findByConditions(
-        const std::vector<QueryCondition>& conditions,
-        const std::optional<OrderBy>& order_by = std::nullopt,
-        const std::optional<Pagination>& pagination = std::nullopt) override;
-    int countByConditions(const std::vector<QueryCondition>& conditions) override;
-    int getTotalCount() override;
-
-    // =======================================================================
-    // VirtualPoint 전용 메서드들 (SiteRepository 패턴)
-    // =======================================================================
-    
-    /**
-     * @brief 테넌트별 가상포인트 조회
-     * @param tenant_id 테넌트 ID
-     * @return 가상포인트 목록
-     */
-    std::vector<VirtualPointEntity> findByTenant(int tenant_id);
-    
-    /**
-     * @brief 사이트별 가상포인트 조회
-     * @param site_id 사이트 ID
-     * @return 가상포인트 목록
-     */
-    std::vector<VirtualPointEntity> findBySite(int site_id);
-    
-    /**
-     * @brief 활성화된 가상포인트 조회
-     * @param tenant_id 테넌트 ID (0이면 모든 테넌트)
-     * @return 활성화된 가상포인트 목록
-     */
-    std::vector<VirtualPointEntity> findEnabledPoints(int tenant_id = 0);
-    
-    /**
-     * @brief 이름으로 가상포인트 조회
-     * @param name 가상포인트 이름
-     * @param tenant_id 테넌트 ID
-     * @return 가상포인트 (없으면 nullopt)
-     */
-    std::optional<VirtualPointEntity> findByName(const std::string& name, int tenant_id);
-    
-    /**
-     * @brief 카테고리별 가상포인트 조회
-     * @param category 카테고리
-     * @param tenant_id 테넌트 ID (0이면 모든 테넌트)
-     * @return 가상포인트 목록
-     */
-    std::vector<VirtualPointEntity> findByCategory(const std::string& category, int tenant_id = 0);
-    
-    /**
-     * @brief 데이터 타입별 가상포인트 조회
-     * @param data_type 데이터 타입
-     * @param tenant_id 테넌트 ID (0이면 모든 테넌트)
-     * @return 가상포인트 목록
-     */
-    std::vector<VirtualPointEntity> findByDataType(VirtualPointEntity::DataType data_type, int tenant_id = 0);
-    
-    /**
-     * @brief 이름 패턴으로 가상포인트 조회
-     * @param name_pattern 이름 패턴 (LIKE 연산자 사용)
-     * @param tenant_id 테넌트 ID (0이면 모든 테넌트)
-     * @return 가상포인트 목록
-     */
-    std::vector<VirtualPointEntity> findByNamePattern(const std::string& name_pattern, int tenant_id = 0);
-
-    // =======================================================================
-    // 비즈니스 로직 메서드들 (VirtualPoint 전용)
-    // =======================================================================
-    
-    /**
-     * @brief 가상포인트 이름 중복 확인
-     * @param name 가상포인트 이름
-     * @param tenant_id 테넌트 ID
-     * @param exclude_id 제외할 ID (업데이트 시 사용)
-     * @return 중복이면 true
-     */
-    bool isPointNameTaken(const std::string& name, int tenant_id, int exclude_id = 0);
-    
-    /**
-     * @brief 계산이 필요한 가상포인트들 조회
-     * @param limit 최대 개수 (0이면 제한 없음)
-     * @return 계산이 필요한 가상포인트 목록
-     */
-    std::vector<VirtualPointEntity> findPointsNeedingCalculation(int limit = 0);
-    
-    /**
-     * @brief 수식 유효성 검사
-     * @param entity 검사할 가상포인트
-     * @return 유효하면 true
-     */
-    bool validateFormula(const VirtualPointEntity& entity);
-
-    // =======================================================================
-    // 계산 관련 메서드들 (VirtualPoint 전용)
-    // =======================================================================
-    
-    /**
-     * @brief 가상포인트 계산 실행
-     * @param point_id 가상포인트 ID
-     * @param force_calculation 강제 계산 여부
-     * @return 계산 결과값 (실패 시 nullopt)
-     */
-    std::optional<double> executeCalculation(int point_id, bool force_calculation = false);
-    
-    /**
-     * @brief 계산된 값 업데이트
-     * @param point_id 가상포인트 ID
-     * @param value 계산 결과값
-     * @param quality 데이터 품질 (기본값: "GOOD")
-     * @return 성공 시 true
-     */
-    bool updateCalculatedValue(int point_id, double value, const std::string& quality = "GOOD");
+    int getTotalCount();
 
 private:
     // =======================================================================
-    // private 헬퍼 메서드들 (SiteRepository 패턴)
+    // 의존성 관리
+    // =======================================================================
+    
+    DatabaseManager* db_manager_;
+    LogManager* logger_;
+    
+    void initializeDependencies() {
+        db_manager_ = &DatabaseManager::getInstance();
+        logger_ = &LogManager::getInstance();
+    }
+
+    // =======================================================================
+    // 내부 헬퍼 메서드들 (DeviceRepository 패턴)
     // =======================================================================
     
     /**
-     * @brief 가상포인트 유효성 검사
-     * @param point 검사할 가상포인트
+     * @brief SQL 결과를 VirtualPointEntity로 변환
+     * @param row SQL 결과 행
+     * @return VirtualPointEntity
+     */
+    VirtualPointEntity mapRowToEntity(const std::map<std::string, std::string>& row);
+    
+    /**
+     * @brief 여러 SQL 결과를 VirtualPointEntity 벡터로 변환
+     * @param result SQL 결과
+     * @return VirtualPointEntity 벡터
+     */
+    std::vector<VirtualPointEntity> mapResultToEntities(const std::vector<std::map<std::string, std::string>>& result);
+    
+    /**
+     * @brief VirtualPointEntity를 SQL 파라미터 맵으로 변환
+     * @param entity 엔티티
+     * @return SQL 파라미터 맵
+     */
+    std::map<std::string, std::string> entityToParams(const VirtualPointEntity& entity);
+    
+    /**
+     * @brief virtual_points 테이블이 존재하는지 확인하고 없으면 생성
+     * @return 성공 시 true
+     */
+    bool ensureTableExists();
+    
+    /**
+     * @brief 가상포인트 검증
+     * @param entity 검증할 가상포인트 엔티티
      * @return 유효하면 true
      */
-    bool validateVirtualPoint(const VirtualPointEntity& point) const;
+    bool validateVirtualPoint(const VirtualPointEntity& entity) const;
     
     /**
-     * @brief 테넌트 조건 생성
-     * @param tenant_id 테넌트 ID
-     * @return QueryCondition 객체
+     * @brief SQL 문자열 이스케이프 처리
+     * @param str 이스케이프할 문자열
+     * @return 이스케이프된 문자열
      */
-    QueryCondition buildTenantCondition(int tenant_id) const;
+    std::string escapeString(const std::string& str) const;
     
     /**
-     * @brief 사이트 조건 생성
-     * @param site_id 사이트 ID
-     * @return QueryCondition 객체
+     * @brief 타임스탬프를 문자열로 변환
+     * @param timestamp 타임스탬프
+     * @return 문자열 형태의 타임스탬프
      */
-    QueryCondition buildSiteCondition(int site_id) const;
+    std::string formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const;
     
     /**
-     * @brief 활성화 조건 생성
-     * @param enabled 활성화 여부
-     * @return QueryCondition 객체
+     * @brief WHERE 절 생성
+     * @param conditions 조건들
+     * @return WHERE 절 문자열
      */
-    QueryCondition buildEnabledCondition(bool enabled) const;
+    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
     
     /**
-     * @brief 데이터 타입 조건 생성
-     * @param data_type 데이터 타입
-     * @return QueryCondition 객체
+     * @brief ORDER BY 절 생성
+     * @param order_by 정렬 조건
+     * @return ORDER BY 절 문자열
      */
-    QueryCondition buildDataTypeCondition(VirtualPointEntity::DataType data_type) const;
+    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
+    
+    /**
+     * @brief LIMIT 절 생성
+     * @param pagination 페이지네이션
+     * @return LIMIT 절 문자열
+     */
+    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
 };
 
 } // namespace Repositories

@@ -1,16 +1,18 @@
 // =============================================================================
 // collector/src/Database/Entities/VirtualPointEntity.cpp
-// PulseOne VirtualPointEntity 구현 - SiteEntity 패턴 100% 준수
+// PulseOne VirtualPointEntity 구현 - SiteEntity 패턴 100% 준수 + timestampToString 추가
 // =============================================================================
 
 /**
  * @file VirtualPointEntity.cpp
  * @brief PulseOne VirtualPointEntity 구현 - SiteEntity 패턴 100% 준수
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-31
  */
 
 #include "Database/Entities/VirtualPointEntity.h"
+#include "Database/RepositoryFactory.h"
+#include "Database/Repositories/VirtualPointRepository.h"
 #include "Utils/LogManager.h"
 #include <algorithm>
 #include <sstream>
@@ -101,6 +103,147 @@ VirtualPointEntity::VirtualPointEntity(int tenant_id, int site_id, const std::st
     , last_calculation_error_("") {
     
     LogManager::getInstance().Debug("VirtualPointEntity full constructor: " + name);
+}
+
+// =======================================================================
+// BaseEntity 순수 가상 함수 구현 (Repository 활용)
+// =======================================================================
+
+bool VirtualPointEntity::loadFromDatabase() {
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::loadFromDatabase - Invalid virtual point ID: " + std::to_string(getId()));
+        }
+        markError();
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        if (repo) {
+            auto loaded = repo->findById(getId());
+            if (loaded.has_value()) {
+                *this = loaded.value();
+                markSaved();
+                if (logger_) {
+                    logger_->Info("VirtualPointEntity - Loaded virtual point: " + name_);
+                }
+                return true;
+            }
+        }
+        return false;
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::loadFromDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+bool VirtualPointEntity::saveToDatabase() {
+    if (!isValid()) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::saveToDatabase - Invalid virtual point data");
+        }
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        if (repo) {
+            bool success = repo->save(*this);
+            if (success) {
+                markSaved();
+                if (logger_) {
+                    logger_->Info("VirtualPointEntity - Saved virtual point: " + name_);
+                }
+            }
+            return success;
+        }
+        return false;
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::saveToDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+bool VirtualPointEntity::updateToDatabase() {
+    if (getId() <= 0 || !isValid()) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::updateToDatabase - Invalid virtual point data or ID");
+        }
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        if (repo) {
+            bool success = repo->update(*this);
+            if (success) {
+                markSaved();
+                if (logger_) {
+                    logger_->Info("VirtualPointEntity - Updated virtual point: " + name_);
+                }
+            }
+            return success;
+        }
+        return false;
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::updateToDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+bool VirtualPointEntity::deleteFromDatabase() {
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::deleteFromDatabase - Invalid virtual point ID");
+        }
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        if (repo) {
+            bool success = repo->deleteById(getId());
+            if (success) {
+                markDeleted();
+                if (logger_) {
+                    logger_->Info("VirtualPointEntity - Deleted virtual point: " + name_);
+                }
+            }
+            return success;
+        }
+        return false;
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+// =======================================================================
+// 🔥 DeviceEntity 패턴 추가: timestampToString 메서드
+// =======================================================================
+
+std::string VirtualPointEntity::timestampToString(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
 }
 
 // =======================================================================
@@ -338,7 +481,7 @@ bool VirtualPointEntity::needsCalculation() const {
 }
 
 // =======================================================================
-// JSON 직렬화/역직렬화 (SiteEntity 패턴)
+// JSON 직렬화/역직렬화 (DeviceEntity 패턴 + timestampToString 사용)
 // =======================================================================
 
 json VirtualPointEntity::toJson() const {
@@ -360,16 +503,9 @@ json VirtualPointEntity::toJson() const {
         j["tags"] = tags_;
         j["created_by"] = created_by_;
         
-        // 시간 필드들 (ISO 8601 형식)
-        auto created_time_t = std::chrono::system_clock::to_time_t(created_at_);
-        auto updated_time_t = std::chrono::system_clock::to_time_t(updated_at_);
-        
-        std::stringstream created_ss, updated_ss;
-        created_ss << std::put_time(std::gmtime(&created_time_t), "%Y-%m-%dT%H:%M:%SZ");
-        updated_ss << std::put_time(std::gmtime(&updated_time_t), "%Y-%m-%dT%H:%M:%SZ");
-        
-        j["created_at"] = created_ss.str();
-        j["updated_at"] = updated_ss.str();
+        // 🔥 DeviceEntity 패턴 적용: timestampToString 사용
+        j["created_at"] = timestampToString(created_at_);
+        j["updated_at"] = timestampToString(updated_at_);
         
         // 계산 관련 정보
         if (last_calculated_value_.has_value()) {
@@ -377,10 +513,7 @@ json VirtualPointEntity::toJson() const {
         }
         
         if (last_calculation_time_ != std::chrono::system_clock::time_point{}) {
-            auto calc_time_t = std::chrono::system_clock::to_time_t(last_calculation_time_);
-            std::stringstream calc_ss;
-            calc_ss << std::put_time(std::gmtime(&calc_time_t), "%Y-%m-%dT%H:%M:%SZ");
-            j["last_calculation_time"] = calc_ss.str();
+            j["last_calculation_time"] = timestampToString(last_calculation_time_);
         }
         
         if (!last_calculation_error_.empty()) {
@@ -421,12 +554,32 @@ bool VirtualPointEntity::fromJson(const json& j) {
             updated_at_ = std::chrono::system_clock::now();
         }
         
+        markModified();
         return true;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("❌ VirtualPointEntity::fromJson() error: " + std::string(e.what()));
+        markError();
         return false;
     }
+}
+
+std::string VirtualPointEntity::toString() const {
+    std::stringstream ss;
+    ss << "VirtualPoint[id=" << getId() 
+       << ", tenant=" << tenant_id_
+       << ", site=" << site_id_
+       << ", name=" << name_
+       << ", formula=" << formula_
+       << ", type=" << dataTypeToString(data_type_)
+       << ", enabled=" << (is_enabled_ ? "yes" : "no");
+    
+    if (last_calculated_value_.has_value()) {
+        ss << ", last_value=" << last_calculated_value_.value();
+    }
+    
+    ss << "]";
+    return ss.str();
 }
 
 json VirtualPointEntity::toSummaryJson() const {
@@ -658,114 +811,6 @@ double VirtualPointEntity::evaluateSimpleExpression(const std::string& expressio
     } catch (const std::exception& e) {
         throw std::runtime_error("Expression evaluation error: " + std::string(e.what()));
     }
-}
-
-// =======================================================================
-// VirtualPointEntity.cpp에 추가해야 할 구현들
-// =======================================================================
-
-bool VirtualPointEntity::loadFromDatabase() {
-    LogManager::getInstance().Debug("🔍 VirtualPointEntity::loadFromDatabase() - ID: " + std::to_string(getId()));
-    
-    try {
-        if (getId() <= 0) {
-            LogManager::getInstance().Error("❌ Invalid ID for loadFromDatabase: " + std::to_string(getId()));
-            return false;
-        }
-        
-        // 실제 구현에서는 DatabaseManager를 통해 DB에서 로드
-        // 여기서는 기본 구현만 제공
-        LogManager::getInstance().Info("✅ VirtualPoint loaded: " + name_);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ VirtualPoint loadFromDatabase failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool VirtualPointEntity::saveToDatabase() {
-    LogManager::getInstance().Debug("💾 VirtualPointEntity::saveToDatabase() - " + name_);
-    
-    try {
-        if (!isValid()) {
-            LogManager::getInstance().Error("❌ Invalid VirtualPoint for save: " + name_);
-            return false;
-        }
-        
-        // 실제 구현에서는 DatabaseManager를 통해 DB에 저장
-        // 여기서는 기본 구현만 제공
-        LogManager::getInstance().Info("✅ VirtualPoint saved: " + name_);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ VirtualPoint saveToDatabase failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool VirtualPointEntity::updateToDatabase() {
-    LogManager::getInstance().Debug("🔄 VirtualPointEntity::updateToDatabase() - " + name_);
-    
-    try {
-        if (getId() <= 0) {
-            LogManager::getInstance().Error("❌ Invalid ID for updateToDatabase: " + std::to_string(getId()));
-            return false;
-        }
-        
-        if (!isValid()) {
-            LogManager::getInstance().Error("❌ Invalid VirtualPoint for update: " + name_);
-            return false;
-        }
-        
-        // 실제 구현에서는 DatabaseManager를 통해 DB에 업데이트
-        // 여기서는 기본 구현만 제공
-        updated_at_ = std::chrono::system_clock::now();
-        LogManager::getInstance().Info("✅ VirtualPoint updated: " + name_);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ VirtualPoint updateToDatabase failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool VirtualPointEntity::deleteFromDatabase() {
-    LogManager::getInstance().Debug("🗑️ VirtualPointEntity::deleteFromDatabase() - " + name_);
-    
-    try {
-        if (getId() <= 0) {
-            LogManager::getInstance().Error("❌ Invalid ID for deleteFromDatabase: " + std::to_string(getId()));
-            return false;
-        }
-        
-        // 실제 구현에서는 DatabaseManager를 통해 DB에서 삭제
-        // 여기서는 기본 구현만 제공
-        LogManager::getInstance().Info("✅ VirtualPoint deleted: " + name_);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ VirtualPoint deleteFromDatabase failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::string VirtualPointEntity::toString() const {
-    std::stringstream ss;
-    ss << "VirtualPoint[id=" << getId() 
-       << ", tenant=" << tenant_id_
-       << ", site=" << site_id_
-       << ", name=" << name_
-       << ", formula=" << formula_
-       << ", type=" << dataTypeToString(data_type_)
-       << ", enabled=" << (is_enabled_ ? "yes" : "no");
-    
-    if (last_calculated_value_.has_value()) {
-        ss << ", last_value=" << last_calculated_value_.value();
-    }
-    
-    ss << "]";
-    return ss.str();
 }
 
 } // namespace Entities
