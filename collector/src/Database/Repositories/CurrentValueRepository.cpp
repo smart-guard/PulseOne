@@ -1,85 +1,59 @@
 /**
- * @file CurrentValueRepository.cpp
- * @brief PulseOne Current Value Repository 구현 (기존 패턴 100% 준수)
+ * @file CurrentValueRepository.cpp - DataPointRepository 패턴 100% 적용
+ * @brief PulseOne CurrentValueRepository 구현 - DatabaseAbstractionLayer 사용
  * @author PulseOne Development Team
- * @date 2025-07-28
+ * @date 2025-07-31
+ * 
+ * 🎯 DataPointRepository 패턴 완전 적용:
+ * - DatabaseAbstractionLayer 사용으로 멀티 DB 지원
+ * - executeQuery/executeNonQuery/executeUpsert 패턴
+ * - 기존 직접 DB 호출 제거
+ * - 깔끔하고 유지보수 가능한 코드
  */
 
 #include "Database/Repositories/CurrentValueRepository.h"
-#include "Client/RedisClientImpl.h"
-#include <algorithm>
+#include "Database/DatabaseAbstractionLayer.h"
+#include "Common/Utils.h"
 #include <sstream>
-#include <set>
+#include <iomanip>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
 // =============================================================================
-// 생성자 및 소멸자
-// =============================================================================
-
-CurrentValueRepository::~CurrentValueRepository() {
-    logger_->Info("🗄️ CurrentValueRepository shutting down...");
-    
-    // 주기적 저장 스레드 중지
-    stopPeriodicSaver();
-    
-    // Redis 연결 해제
-    if (redis_client_) {
-        redis_client_->disconnect();
-    }
-    
-    logger_->Info("✅ CurrentValueRepository shutdown complete");
-}
-
-// =============================================================================
-// Redis 클라이언트 초기화 (기존 패턴)
-// =============================================================================
-
-bool CurrentValueRepository::initializeRedisClient() {
-    try {
-        redis_client_ = std::make_unique<RedisClientImpl>();
-        
-        std::string redis_host = config_manager_->getOrDefault("REDIS_PRIMARY_HOST", "localhost");
-        std::string redis_port_str = config_manager_->getOrDefault("REDIS_PRIMARY_PORT", "6379");
-        int redis_port = std::stoi(redis_port_str);
-        std::string redis_password = config_manager_->getOrDefault("REDIS_PRIMARY_PASSWORD", "");
-        
-        bool connected = redis_client_->connect(redis_host, redis_port, redis_password);
-        
-        if (connected) {
-            logger_->Info("✅ Redis client connected: " + redis_host + ":" + std::to_string(redis_port));
-            return true;
-        } else {
-            logger_->Error("❌ Failed to connect to Redis: " + redis_host + ":" + std::to_string(redis_port));
-            redis_enabled_ = false;
-            return false;
-        }
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::initializeRedisClient failed: " + std::string(e.what()));
-        redis_enabled_ = false;
-        return false;
-    }
-}
-
-bool CurrentValueRepository::isRedisConnected() const {
-    return redis_enabled_ && redis_client_ && 
-           static_cast<RedisClientImpl*>(redis_client_.get())->isConnected();
-}
-
-// =============================================================================
-// IRepository 기본 CRUD 구현 (캐시 자동 적용)
+// 🎯 간단하고 깔끔한 구현 - DB 차이점은 추상화 레이어가 처리
 // =============================================================================
 
 std::vector<CurrentValueEntity> CurrentValueRepository::findAll() {
     try {
-        std::string sql = "SELECT * FROM current_values ORDER BY data_point_id";
-        auto result = executeDatabaseQuery(sql);
-        auto entities = mapResultToEntities(result);
+        if (!ensureTableExists()) {
+            logger_->Error("CurrentValueRepository::findAll - Table creation failed");
+            return {};
+        }
         
-        db_read_count_++;
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            ORDER BY point_id
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<CurrentValueEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("CurrentValueRepository::findAll - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
         logger_->Info("CurrentValueRepository::findAll - Found " + std::to_string(entities.size()) + " current values");
         return entities;
         
@@ -90,50 +64,87 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findAll() {
 }
 
 std::optional<CurrentValueEntity> CurrentValueRepository::findById(int id) {
-    if (id <= 0) {
-        logger_->Warn("CurrentValueRepository::findById - Invalid ID: " + std::to_string(id));
-        return std::nullopt;
-    }
-    
     try {
-        std::string sql = "SELECT * FROM current_values WHERE id = " + std::to_string(id);
-        auto result = executeDatabaseQuery(sql);
+        // 캐시 확인
+        if (isCacheEnabled()) {
+            auto cached = getCachedEntity(id);
+            if (cached.has_value()) {
+                logger_->Debug("CurrentValueRepository::findById - Cache hit for point_id: " + std::to_string(id));
+                return cached.value();
+            }
+        }
         
-        if (result.empty()) {
-            logger_->Debug("CurrentValueRepository::findById - Current value not found: " + std::to_string(id));
+        if (!ensureTableExists()) {
             return std::nullopt;
         }
         
-        CurrentValueEntity entity = mapRowToEntity(result[0]);
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            WHERE point_id = )" + std::to_string(id);
         
-        // 🔥 IRepository의 캐시 자동 저장
-        cacheEntity(entity);
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
         
-        db_read_count_++;
-        logger_->Debug("CurrentValueRepository::findById - Found current value: " + std::to_string(id));
+        if (results.empty()) {
+            logger_->Debug("CurrentValueRepository::findById - Current value not found for point_id: " + std::to_string(id));
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        
+        // 캐시에 저장
+        if (isCacheEnabled()) {
+            cacheEntity(entity);
+        }
+        
+        logger_->Debug("CurrentValueRepository::findById - Found current value for point_id: " + std::to_string(id));
         return entity;
         
     } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::findById failed: " + std::string(e.what()));
+        logger_->Error("CurrentValueRepository::findById failed for point_id " + std::to_string(id) + ": " + std::string(e.what()));
         return std::nullopt;
     }
 }
 
 bool CurrentValueRepository::save(CurrentValueEntity& entity) {
     try {
-        bool success = entity.saveToDatabase();
+        if (!validateCurrentValue(entity)) {
+            logger_->Error("CurrentValueRepository::save - Invalid current value for point_id: " + std::to_string(entity.getPointId()));
+            return false;
+        }
+        
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        std::map<std::string, std::string> data = {
+            {"point_id", std::to_string(entity.getPointId())},
+            {"value", std::to_string(entity.getValue())},
+            {"raw_value", std::to_string(entity.getRawValue())},
+            {"string_value", entity.getStringValue()},
+            {"quality", entity.getQualityString()},
+            {"timestamp", PulseOne::Utils::TimestampToDBString(entity.getTimestamp())},
+            {"updated_at", PulseOne::Utils::TimestampToDBString(entity.getUpdatedAt())}
+        };
+        
+        std::vector<std::string> primary_keys = {"point_id"};
+        
+        bool success = db_layer.executeUpsert("current_values", data, primary_keys);
         
         if (success) {
-            // 🔥 IRepository의 캐시 자동 업데이트
-            cacheEntity(entity);
-            
-            // Redis에도 저장 (활성화된 경우)
-            if (isRedisConnected()) {
-                saveToRedis(entity, default_ttl_seconds_);
+            // 캐시 업데이트
+            if (isCacheEnabled()) {
+                cacheEntity(entity);
             }
             
-            db_write_count_++;
-            logger_->Debug("CurrentValueRepository::save - Saved current value: " + std::to_string(entity.getId()));
+            logger_->Info("CurrentValueRepository::save - Saved current value for point_id: " + std::to_string(entity.getPointId()));
+        } else {
+            logger_->Error("CurrentValueRepository::save - Failed to save current value for point_id: " + std::to_string(entity.getPointId()));
         }
         
         return success;
@@ -145,52 +156,29 @@ bool CurrentValueRepository::save(CurrentValueEntity& entity) {
 }
 
 bool CurrentValueRepository::update(const CurrentValueEntity& entity) {
-    if (entity.getId() <= 0) {
-        logger_->Error("CurrentValueRepository::update - Invalid ID for update");
-        return false;
-    }
-    
-    try {
-        CurrentValueEntity mutable_entity = entity; // const 제거를 위한 복사
-        bool success = mutable_entity.updateToDatabase();
-        
-        if (success) {
-            // 🔥 IRepository의 캐시 자동 업데이트
-            cacheEntity(mutable_entity);
-            
-            // Redis에도 업데이트 (활성화된 경우)
-            if (isRedisConnected()) {
-                saveToRedis(mutable_entity, default_ttl_seconds_);
-            }
-            
-            db_write_count_++;
-            logger_->Debug("CurrentValueRepository::update - Updated current value: " + std::to_string(entity.getId()));
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::update failed: " + std::string(e.what()));
-        return false;
-    }
+    CurrentValueEntity mutable_entity = entity;
+    return save(mutable_entity);
 }
 
 bool CurrentValueRepository::deleteById(int id) {
-    if (id <= 0) {
-        logger_->Error("CurrentValueRepository::deleteById - Invalid ID");
-        return false;
-    }
-    
     try {
-        std::string sql = "DELETE FROM current_values WHERE id = " + std::to_string(id);
-        bool success = executeDatabaseNonQuery(sql);
+        if (!ensureTableExists()) {
+            return false;
+        }
+        
+        const std::string query = "DELETE FROM current_values WHERE point_id = " + std::to_string(id);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
-            // 🔥 IRepository의 캐시에서 제거
-            clearCacheForId(id);
+            if (isCacheEnabled()) {
+                clearCacheForId(id);
+            }
             
-            db_write_count_++;
-            logger_->Debug("CurrentValueRepository::deleteById - Deleted current value and cleared cache: " + std::to_string(id));
+            logger_->Info("CurrentValueRepository::deleteById - Deleted current value for point_id: " + std::to_string(id));
+        } else {
+            logger_->Error("CurrentValueRepository::deleteById - Failed to delete current value for point_id: " + std::to_string(id));
         }
         
         return success;
@@ -202,36 +190,68 @@ bool CurrentValueRepository::deleteById(int id) {
 }
 
 bool CurrentValueRepository::exists(int id) {
-    return findById(id).has_value();
-}
-
-// =============================================================================
-// 벌크 연산 구현 (캐시 자동 적용)
-// =============================================================================
-
-std::vector<CurrentValueEntity> CurrentValueRepository::findByIds(const std::vector<int>& ids) {
-    if (ids.empty()) return {};
-    
-    std::string id_list;
-    for (size_t i = 0; i < ids.size(); ++i) {
-        if (i > 0) id_list += ",";
-        id_list += std::to_string(ids[i]);
-    }
-    
     try {
-        std::string sql = "SELECT * FROM current_values WHERE id IN (" + id_list + ")";
-        auto result = executeDatabaseQuery(sql);
-        auto entities = mapResultToEntities(result);
-        
-        // 🔥 IRepository의 캐시 자동 저장
-        for (const auto& entity : entities) {
-            cacheEntity(entity);
+        if (!ensureTableExists()) {
+            return false;
         }
         
-        db_read_count_++;
-        logger_->Info("CurrentValueRepository::findByIds - Found " + 
-                    std::to_string(entities.size()) + "/" + std::to_string(ids.size()) + " current values");
+        const std::string query = "SELECT COUNT(*) as count FROM current_values WHERE point_id = " + std::to_string(id);
         
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("CurrentValueRepository::exists failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::vector<CurrentValueEntity> CurrentValueRepository::findByIds(const std::vector<int>& ids) {
+    try {
+        if (ids.empty()) {
+            return {};
+        }
+        
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        // IN 절 구성
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            WHERE point_id IN ()" + ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<CurrentValueEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("CurrentValueRepository::findByIds - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("CurrentValueRepository::findByIds - Found " + std::to_string(entities.size()) + " current values for " + std::to_string(ids.size()) + " point IDs");
         return entities;
         
     } catch (const std::exception& e) {
@@ -246,18 +266,49 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByConditions(
     const std::optional<Pagination>& pagination) {
     
     try {
-        std::string sql = "SELECT * FROM current_values";
-        sql += buildWhereClause(conditions);
-        sql += buildOrderByClause(order_by);
-        sql += buildLimitClause(pagination);
+        if (!ensureTableExists()) {
+            return {};
+        }
         
-        auto result = executeDatabaseQuery(sql);
-        auto entities = mapResultToEntities(result);
+        std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values
+        )";
         
-        db_read_count_++;
-        logger_->Debug("CurrentValueRepository::findByConditions - Found " + 
-                     std::to_string(entities.size()) + " current values");
+        // WHERE 절 추가
+        if (!conditions.empty()) {
+            query += buildWhereClause(conditions);
+        }
         
+        // ORDER BY 절 추가
+        if (order_by.has_value()) {
+            query += buildOrderByClause(order_by);
+        } else {
+            query += " ORDER BY updated_at DESC";
+        }
+        
+        // LIMIT 절 추가
+        if (pagination.has_value()) {
+            query += buildLimitClause(pagination);
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<CurrentValueEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("CurrentValueRepository::findByConditions - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Debug("CurrentValueRepository::findByConditions - Found " + std::to_string(entities.size()) + " current values");
         return entities;
         
     } catch (const std::exception& e) {
@@ -266,465 +317,138 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByConditions(
     }
 }
 
-// =============================================================================
-// CurrentValue 전용 조회 메서드들
-// =============================================================================
-
-std::optional<CurrentValueEntity> CurrentValueRepository::findByDataPointId(int data_point_id) {
-    if (data_point_id <= 0) {
-        logger_->Warn("CurrentValueRepository::findByDataPointId - Invalid data point ID: " + std::to_string(data_point_id));
-        return std::nullopt;
-    }
-    
-    // Redis에서 먼저 확인
-    if (isRedisConnected()) {
-        auto redis_entity = loadFromRedis(data_point_id);
-        if (redis_entity.has_value()) {
-            redis_read_count_++;
-            logger_->Debug("CurrentValueRepository::findByDataPointId - Redis hit for data point: " + std::to_string(data_point_id));
-            return redis_entity;
-        }
-    }
-    
+int CurrentValueRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
     try {
-        std::string sql = "SELECT * FROM current_values WHERE data_point_id = " + std::to_string(data_point_id);
-        auto result = executeDatabaseQuery(sql);
-        
-        if (result.empty()) {
-            logger_->Debug("CurrentValueRepository::findByDataPointId - Current value not found for data point: " + std::to_string(data_point_id));
-            return std::nullopt;
+        if (!ensureTableExists()) {
+            return 0;
         }
         
-        CurrentValueEntity entity = mapRowToEntity(result[0]);
+        std::string query = "SELECT COUNT(*) as count FROM current_values";
         
-        // 캐시 및 Redis 저장
-        cacheEntity(entity);
-        if (isRedisConnected()) {
-            saveToRedis(entity, default_ttl_seconds_);
+        if (!conditions.empty()) {
+            query += buildWhereClause(conditions);
         }
         
-        db_read_count_++;
-        logger_->Debug("CurrentValueRepository::findByDataPointId - Found current value for data point: " + std::to_string(data_point_id));
-        return entity;
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
         
     } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::findByDataPointId failed: " + std::string(e.what()));
-        return std::nullopt;
-    }
-}
-
-std::vector<CurrentValueEntity> CurrentValueRepository::findByDataPointIds(const std::vector<int>& data_point_ids) {
-    if (data_point_ids.empty()) return {};
-    
-    // Redis에서 배치 로드 시도
-    std::vector<CurrentValueEntity> redis_entities;
-    std::vector<int> missing_ids;
-    
-    if (isRedisConnected()) {
-        redis_entities = loadMultipleFromRedis(data_point_ids);
-        
-        // Redis에서 찾지 못한 ID들 확인
-        std::set<int> found_ids;
-        for (const auto& entity : redis_entities) {
-            found_ids.insert(entity.getDataPointId());
-        }
-        
-        for (int id : data_point_ids) {
-            if (found_ids.find(id) == found_ids.end()) {
-                missing_ids.push_back(id);
-            }
-        }
-    } else {
-        missing_ids = data_point_ids;
-    }
-    
-    // DB에서 누락된 데이터 조회
-    std::vector<CurrentValueEntity> db_entities;
-    if (!missing_ids.empty()) {
-        std::string id_list;
-        for (size_t i = 0; i < missing_ids.size(); ++i) {
-            if (i > 0) id_list += ",";
-            id_list += std::to_string(missing_ids[i]);
-        }
-        
-        try {
-            std::string sql = "SELECT * FROM current_values WHERE data_point_id IN (" + id_list + ")";
-            auto result = executeDatabaseQuery(sql);
-            db_entities = mapResultToEntities(result);
-            
-            // 캐시 및 Redis 저장
-            for (const auto& entity : db_entities) {
-                cacheEntity(entity);
-                if (isRedisConnected()) {
-                    saveToRedis(entity, default_ttl_seconds_);
-                }
-            }
-            
-            db_read_count_++;
-            
-        } catch (const std::exception& e) {
-            logger_->Error("CurrentValueRepository::findByDataPointIds - DB query failed: " + std::string(e.what()));
-        }
-    }
-    
-    // Redis와 DB 결과 합치기
-    std::vector<CurrentValueEntity> all_entities;
-    all_entities.insert(all_entities.end(), redis_entities.begin(), redis_entities.end());
-    all_entities.insert(all_entities.end(), db_entities.begin(), db_entities.end());
-    
-    if (!redis_entities.empty()) redis_read_count_++;
-    
-    logger_->Info("CurrentValueRepository::findByDataPointIds - Found " + 
-                std::to_string(all_entities.size()) + "/" + std::to_string(data_point_ids.size()) + 
-                " current values (Redis: " + std::to_string(redis_entities.size()) + 
-                ", DB: " + std::to_string(db_entities.size()) + ")");
-    
-    return all_entities;
-}
-
-std::vector<CurrentValueEntity> CurrentValueRepository::findByVirtualPointId(int virtual_point_id) {
-    if (virtual_point_id <= 0) return {};
-    
-    try {
-        std::string sql = "SELECT * FROM current_values WHERE virtual_point_id = " + std::to_string(virtual_point_id);
-        auto result = executeDatabaseQuery(sql);
-        auto entities = mapResultToEntities(result);
-        
-        db_read_count_++;
-        logger_->Debug("CurrentValueRepository::findByVirtualPointId - Found " + 
-                     std::to_string(entities.size()) + " current values for virtual point: " + std::to_string(virtual_point_id));
-        
-        return entities;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::findByVirtualPointId failed: " + std::string(e.what()));
-        return {};
-    }
-}
-
-std::vector<CurrentValueEntity> CurrentValueRepository::findByQuality(PulseOne::Enums::DataQuality quality) {
-    try {
-        std::string quality_str = CurrentValueEntity::qualityToString(quality);
-        std::string sql = "SELECT * FROM current_values WHERE quality = '" + quality_str + "'";
-        auto result = executeDatabaseQuery(sql);
-        auto entities = mapResultToEntities(result);
-        
-        db_read_count_++;
-        logger_->Debug("CurrentValueRepository::findByQuality - Found " + 
-                     std::to_string(entities.size()) + " current values with quality: " + quality_str);
-        
-        return entities;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::findByQuality failed: " + std::string(e.what()));
-        return {};
-    }
-}
-
-std::vector<CurrentValueEntity> CurrentValueRepository::findByTimeRange(
-    const std::chrono::system_clock::time_point& start_time,
-    const std::chrono::system_clock::time_point& end_time) {
-    
-    try {
-        // 시간을 SQL 형식으로 변환 (SQLite 기준)
-        auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
-        auto end_time_t = std::chrono::system_clock::to_time_t(end_time);
-        
-        std::string sql = "SELECT * FROM current_values WHERE timestamp BETWEEN " +
-                         std::string("datetime(") + std::to_string(start_time_t) + ", 'unixepoch') AND " +
-                         std::string("datetime(") + std::to_string(end_time_t) + ", 'unixepoch') " +
-                         "ORDER BY timestamp";
-        
-        auto result = executeDatabaseQuery(sql);
-        auto entities = mapResultToEntities(result);
-        
-        db_read_count_++;
-        logger_->Debug("CurrentValueRepository::findByTimeRange - Found " + 
-                     std::to_string(entities.size()) + " current values in time range");
-        
-        return entities;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::findByTimeRange failed: " + std::string(e.what()));
-        return {};
-    }
-}
-
-// =============================================================================
-// Redis 연동 핵심 메서드들
-// =============================================================================
-
-std::optional<CurrentValueEntity> CurrentValueRepository::loadFromRedis(int data_point_id) {
-    if (!isRedisConnected()) return std::nullopt;
-    
-    try {
-        std::string redis_key = generateRedisKey(data_point_id);
-        std::string redis_value = redis_client_->get(redis_key);
-        
-        if (redis_value.empty()) {
-            logger_->Debug("CurrentValueRepository::loadFromRedis - Key not found: " + redis_key);
-            return std::nullopt;
-        }
-        
-        // JSON 파싱
-        json redis_data = json::parse(redis_value);
-        
-        CurrentValueEntity entity;
-        if (entity.fromRedisJson(redis_data)) {
-            redis_read_count_++;
-            logger_->Debug("CurrentValueRepository::loadFromRedis - Loaded from Redis: " + redis_key);
-            return entity;
-        } else {
-            logger_->Error("CurrentValueRepository::loadFromRedis - Failed to parse Redis data for: " + redis_key);
-            return std::nullopt;
-        }
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::loadFromRedis failed: " + std::string(e.what()));
-        return std::nullopt;
-    }
-}
-
-bool CurrentValueRepository::saveToRedis(const CurrentValueEntity& entity, int /* ttl_seconds */) {
-    if (!isRedisConnected()) return false;
-    
-    try {
-        std::string redis_key = generateRedisKey(entity.getDataPointId());
-        json redis_data = entity.toRedisJson();
-        std::string redis_value = redis_data.dump();
-        
-        bool success = redis_client_->set(redis_key, redis_value);
-        
-        if (success) {
-            redis_write_count_++;
-            logger_->Debug("CurrentValueRepository::saveToRedis - Saved to Redis: " + redis_key);
-        } else {
-            logger_->Error("CurrentValueRepository::saveToRedis - Failed to save to Redis: " + redis_key);
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::saveToRedis failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::vector<CurrentValueEntity> CurrentValueRepository::loadMultipleFromRedis(const std::vector<int>& data_point_ids) {
-    std::vector<CurrentValueEntity> entities;
-    
-    if (!isRedisConnected() || data_point_ids.empty()) return entities;
-    
-    try {
-        for (int data_point_id : data_point_ids) {
-            auto entity = loadFromRedis(data_point_id);
-            if (entity.has_value()) {
-                entities.push_back(entity.value());
-            }
-        }
-        
-        if (!entities.empty()) {
-            logger_->Debug("CurrentValueRepository::loadMultipleFromRedis - Loaded " + 
-                         std::to_string(entities.size()) + "/" + std::to_string(data_point_ids.size()) + " from Redis");
-        }
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::loadMultipleFromRedis failed: " + std::string(e.what()));
-    }
-    
-    return entities;
-}
-
-int CurrentValueRepository::saveMultipleToRedis(const std::vector<CurrentValueEntity>& entities, int ttl_seconds) {
-    if (!isRedisConnected() || entities.empty()) return 0;
-    
-    int success_count = 0;
-    
-    try {
-        for (const auto& entity : entities) {
-            if (saveToRedis(entity, ttl_seconds)) {
-                success_count++;
-            }
-        }
-        
-        logger_->Debug("CurrentValueRepository::saveMultipleToRedis - Saved " + 
-                     std::to_string(success_count) + "/" + std::to_string(entities.size()) + " to Redis");
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::saveMultipleToRedis failed: " + std::string(e.what()));
-    }
-    
-    return success_count;
-}
-
-bool CurrentValueRepository::syncRedisToRDB(bool force_sync) {
-    if (!isRedisConnected()) {
-        logger_->Warn("CurrentValueRepository::syncRedisToRDB - Redis not connected");
-        return false;
-    }
-    
-    try {
-        // 현재는 간단한 구현만 제공
-        // 실제로는 Redis에서 모든 키를 스캔하고 RDB와 동기화해야 함
-        std::string sync_type = force_sync ? "forced" : "normal";
-        logger_->Info("CurrentValueRepository::syncRedisToRDB - Sync " + sync_type);
-        
-        // TODO: 실제 동기화 로직 구현
-        // 1. Redis SCAN으로 모든 current_value 키 조회
-        // 2. 각 키의 데이터를 RDB와 비교
-        // 3. 차이점이 있으면 RDB 업데이트
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::syncRedisToRDB failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-// =============================================================================
-// 주기적 저장 시스템
-// =============================================================================
-
-bool CurrentValueRepository::startPeriodicSaver(int interval_seconds) {
-    if (periodic_save_running_.load()) {
-        logger_->Warn("CurrentValueRepository::startPeriodicSaver - Already running");
-        return true;
-    }
-    
-    try {
-        periodic_save_interval_ = interval_seconds;
-        periodic_save_running_.store(true);
-        
-        periodic_save_thread_ = std::make_unique<std::thread>(&CurrentValueRepository::periodicSaveWorker, this);
-        
-        logger_->Info("✅ Periodic saver started with interval: " + std::to_string(interval_seconds) + " seconds");
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::startPeriodicSaver failed: " + std::string(e.what()));
-        periodic_save_running_.store(false);
-        return false;
-    }
-}
-
-void CurrentValueRepository::stopPeriodicSaver() {
-    if (!periodic_save_running_.load()) return;
-    
-    logger_->Info("🛑 Stopping periodic saver...");
-    
-    periodic_save_running_.store(false);
-    periodic_save_cv_.notify_all();
-    
-    if (periodic_save_thread_ && periodic_save_thread_->joinable()) {
-        periodic_save_thread_->join();
-    }
-    
-    periodic_save_thread_.reset();
-    logger_->Info("✅ Periodic saver stopped");
-}
-
-bool CurrentValueRepository::isPeriodicSaverRunning() const {
-    return periodic_save_running_.load();
-}
-
-int CurrentValueRepository::executePeriodicSave() {
-    try {
-        // Redis에서 모든 현재값 조회하여 RDB에 저장
-        // 현재는 기본 구현만 제공
-        logger_->Debug("CurrentValueRepository::executePeriodicSave - Executing periodic save");
-        
-        // TODO: 실제 주기적 저장 로직 구현
-        // 1. Redis에서 변경된 데이터 확인
-        // 2. 주기적 저장이 필요한 데이터 식별
-        // 3. 배치로 RDB에 저장
-        
-        return 0; // 임시
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::executePeriodicSave failed: " + std::string(e.what()));
+        logger_->Error("CurrentValueRepository::countByConditions failed: " + std::string(e.what()));
         return 0;
     }
 }
 
-// =============================================================================
-// 배치 처리 최적화
-// =============================================================================
-
-int CurrentValueRepository::saveBatch(const std::vector<CurrentValueEntity>& entities) {
-    if (entities.empty()) return 0;
+int CurrentValueRepository::saveBulk(std::vector<CurrentValueEntity>& entities) {
+    if (entities.empty()) {
+        return 0;
+    }
     
     try {
-        // UPSERT 배치 쿼리 생성
-        std::stringstream ss;
-        ss << "INSERT OR REPLACE INTO current_values ("
-           << "id, data_point_id, virtual_point_id, value, raw_value, quality, "
-           << "timestamp, redis_key, updated_at) VALUES ";
-        
-        for (size_t i = 0; i < entities.size(); ++i) {
-            if (i > 0) ss << ", ";
-            ss << entities[i].getValuesForBatchInsert();
+        if (!ensureTableExists()) {
+            return 0;
         }
         
-        bool success = executeDatabaseNonQuery(ss.str());
+        DatabaseAbstractionLayer db_layer;
+        int success_count = 0;
         
-        if (success) {
-            // 캐시 업데이트
-            for (const auto& entity : entities) {
-                cacheEntity(entity);
+        // 배치 크기 설정 (성능 최적화)
+        const size_t batch_size = 100;
+        
+        for (size_t i = 0; i < entities.size(); i += batch_size) {
+            size_t end = std::min(i + batch_size, entities.size());
+            
+            // UPSERT 배치 쿼리 생성
+            std::ostringstream query;
+            query << "INSERT OR REPLACE INTO current_values (point_id, value, raw_value, string_value, quality, timestamp, updated_at) VALUES ";
+            
+            for (size_t j = i; j < end; ++j) {
+                if (j > i) query << ", ";
+                
+                const auto& entity = entities[j];
+                query << "(" 
+                      << entity.getPointId() << ", "
+                      << entity.getValue() << ", "
+                      << entity.getRawValue() << ", '"
+                      << escapeString(entity.getStringValue()) << "', '"
+                      << entity.getQualityString() << "', '"
+                      << PulseOne::Utils::TimestampToDBString(entity.getTimestamp()) << "', '"
+                      << PulseOne::Utils::TimestampToDBString(entity.getUpdatedAt()) << "')";
             }
             
-            batch_save_count_++;
-            db_write_count_++;
+            if (db_layer.executeNonQuery(query.str())) {
+                success_count += (end - i);
+                
+                // 캐시 업데이트
+                if (isCacheEnabled()) {
+                    for (size_t j = i; j < end; ++j) {
+                        cacheEntity(entities[j]);
+                    }
+                }
+            }
+        }
+        
+        logger_->Info("CurrentValueRepository::saveBulk - Saved " + std::to_string(success_count) + "/" + std::to_string(entities.size()) + " current values");
+        return success_count;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("CurrentValueRepository::saveBulk failed: " + std::string(e.what()));
+        return 0;
+    }
+}
+
+int CurrentValueRepository::updateBulk(const std::vector<CurrentValueEntity>& entities) {
+    // UPDATE는 일반적으로 UPSERT로 처리하는 것이 효율적
+    std::vector<CurrentValueEntity> mutable_entities = entities;
+    return saveBulk(mutable_entities);
+}
+
+int CurrentValueRepository::deleteByIds(const std::vector<int>& ids) {
+    try {
+        if (ids.empty() || !ensureTableExists()) {
+            return 0;
+        }
+        
+        // IN 절 구성
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        const std::string query = "DELETE FROM current_values WHERE point_id IN (" + ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            // 캐시에서 제거
+            if (isCacheEnabled()) {
+                for (int id : ids) {
+                    clearCacheForId(id);
+                }
+            }
             
-            logger_->Info("CurrentValueRepository::saveBatch - Saved " + std::to_string(entities.size()) + " entities");
-            return static_cast<int>(entities.size());
+            logger_->Info("CurrentValueRepository::deleteByIds - Deleted current values for " + std::to_string(ids.size()) + " point IDs");
+            return static_cast<int>(ids.size());
         } else {
-            logger_->Error("CurrentValueRepository::saveBatch - Batch save failed");
+            logger_->Error("CurrentValueRepository::deleteByIds - Failed to delete current values");
             return 0;
         }
         
     } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::saveBatch failed: " + std::string(e.what()));
-        return 0;
-    }
-}
-
-int CurrentValueRepository::updateBatch(const std::vector<CurrentValueEntity>& entities) {
-    // UPDATE는 일반적으로 UPSERT로 처리하는 것이 효율적
-    return saveBatch(entities);
-}
-
-int CurrentValueRepository::saveOnChange(const std::vector<CurrentValueEntity>& entities, double deadband) {
-    if (entities.empty()) return 0;
-    
-    std::vector<CurrentValueEntity> changed_entities;
-    
-    try {
-        for (const auto& entity : entities) {
-            if (entity.needsOnChangeSave(deadband)) {
-                changed_entities.push_back(entity);
-            }
-        }
-        
-        if (!changed_entities.empty()) {
-            int saved_count = saveBatch(changed_entities);
-            logger_->Debug("CurrentValueRepository::saveOnChange - Saved " + 
-                         std::to_string(saved_count) + "/" + std::to_string(entities.size()) + 
-                         " changed entities (deadband: " + std::to_string(deadband) + ")");
-            return saved_count;
-        }
-        
-        return 0;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::saveOnChange failed: " + std::string(e.what()));
+        logger_->Error("CurrentValueRepository::deleteByIds failed: " + std::string(e.what()));
         return 0;
     }
 }
 
 // =============================================================================
-// 캐시 관리 메서드들 (IRepository 오버라이드)
+// 캐시 관리 메서드들 (DataPointRepository 패턴)
 // =============================================================================
 
 void CurrentValueRepository::setCacheEnabled(bool enabled) {
@@ -744,220 +468,403 @@ void CurrentValueRepository::clearCache() {
 
 void CurrentValueRepository::clearCacheForId(int id) {
     IRepository::clearCacheForId(id);
-    logger_->Debug("CurrentValueRepository cache cleared for ID: " + std::to_string(id));
+    logger_->Debug("CurrentValueRepository cache cleared for point_id: " + std::to_string(id));
 }
 
 std::map<std::string, int> CurrentValueRepository::getCacheStats() const {
-    auto base_stats = IRepository::getCacheStats();
-    
-    // 추가 통계 정보
-    base_stats["redis_read_count"] = redis_read_count_.load();
-    base_stats["redis_write_count"] = redis_write_count_.load();
-    base_stats["db_read_count"] = db_read_count_.load();
-    base_stats["db_write_count"] = db_write_count_.load();
-    base_stats["batch_save_count"] = batch_save_count_.load();
-    
-    return base_stats;
+    return IRepository::getCacheStats();
+}
+
+int CurrentValueRepository::getTotalCount() {
+    return countByConditions({});
 }
 
 // =============================================================================
-// 통계 및 모니터링
+// CurrentValue 전용 조회 메서드들 (DataPointRepository 패턴)
 // =============================================================================
 
-json CurrentValueRepository::getRepositoryStats() const {
-    json stats = json::object();
-    
-    try {
-        std::lock_guard<std::mutex> lock(stats_mutex_);
-        
-        stats["repository_name"] = "CurrentValueRepository";
-        stats["redis_enabled"] = redis_enabled_;
-        stats["redis_connected"] = isRedisConnected();
-        stats["cache_enabled"] = isCacheEnabled();
-        stats["periodic_saver_running"] = isPeriodicSaverRunning();
-        stats["periodic_save_interval"] = periodic_save_interval_;
-        
-        // 성능 통계
-        stats["performance"] = {
-            {"redis_read_count", redis_read_count_.load()},
-            {"redis_write_count", redis_write_count_.load()},
-            {"db_read_count", db_read_count_.load()},
-            {"db_write_count", db_write_count_.load()},
-            {"batch_save_count", batch_save_count_.load()}
-        };
-        
-        // 캐시 통계
-        stats["cache"] = getCacheStats();
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::getRepositoryStats failed: " + std::string(e.what()));
-    }
-    
-    return stats;
+std::vector<CurrentValueEntity> CurrentValueRepository::findByDataPointIds(const std::vector<int>& point_ids) {
+    return findByIds(point_ids);  // point_id가 primary key이므로 동일
 }
 
-json CurrentValueRepository::getRedisStats() const {
-    json stats = json::object();
-    
-    if (!isRedisConnected()) {
-        stats["status"] = "disconnected";
-        return stats;
-    }
-    
+std::optional<CurrentValueEntity> CurrentValueRepository::findByDataPointId(int data_point_id) {
     try {
-        stats["status"] = "connected";
-        stats["prefix"] = redis_prefix_;
-        stats["default_ttl"] = default_ttl_seconds_;
-        stats["read_count"] = redis_read_count_.load();
-        stats["write_count"] = redis_write_count_.load();
-        
-        // TODO: Redis INFO 명령어로 실제 서버 통계 조회
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::getRedisStats failed: " + std::string(e.what()));
-    }
-    
-    return stats;
-}
-
-json CurrentValueRepository::getPerformanceMetrics() const {
-    json metrics = json::object();
-    
-    try {
-        auto cache_stats = getCacheStats();
-        
-        metrics["cache_hit_rate"] = cache_stats.count("cache_hits") && cache_stats.count("cache_requests") ?
-            (cache_stats["cache_requests"] > 0 ? 
-                static_cast<double>(cache_stats["cache_hits"]) / cache_stats["cache_requests"] * 100.0 : 0.0) : 0.0;
-        
-        metrics["redis_efficiency"] = redis_read_count_.load() + redis_write_count_.load();
-        metrics["db_efficiency"] = db_read_count_.load() + db_write_count_.load();
-        
-        metrics["batch_operations"] = batch_save_count_.load();
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::getPerformanceMetrics failed: " + std::string(e.what()));
-    }
-    
-    return metrics;
-}
-
-// =============================================================================
-// 내부 헬퍼 메서드들 (기존 패턴)
-// =============================================================================
-
-std::vector<std::map<std::string, std::string>> CurrentValueRepository::executeDatabaseQuery(const std::string& sql) {
-    try {
-        std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
-        
-        if (db_type == "POSTGRESQL") {
-            auto result = db_manager_->executeQueryPostgres(sql);
-            std::vector<std::map<std::string, std::string>> results;
-            
-            for (const auto& row : result) {
-                std::map<std::string, std::string> row_map;
-                for (size_t i = 0; i < row.size(); ++i) {
-                    std::string column_name = result.column_name(i);
-                    std::string value = row[static_cast<int>(i)].is_null() ? 
-                                      "" : row[static_cast<int>(i)].as<std::string>();
-                    row_map[column_name] = value;
-                }
-                results.push_back(row_map);
-            }
-            return results;
-        } else {
-            // SQLite용 구조체 변환
-            struct SQLiteCallbackData {
-                std::vector<std::map<std::string, std::string>>* results;
-                std::vector<std::string> column_names;
-            };
-            
-            SQLiteCallbackData callback_data;
-            callback_data.results = new std::vector<std::map<std::string, std::string>>();
-            
-            auto callback = [](void* data, int argc, char** argv, char** azColName) -> int {
-                auto* cb_data = static_cast<SQLiteCallbackData*>(data);
-                
-                if (cb_data->column_names.empty()) {
-                    for (int i = 0; i < argc; i++) {
-                        cb_data->column_names.push_back(azColName[i] ? azColName[i] : "");
-                    }
-                }
-                
-                std::map<std::string, std::string> row;
-                for (int i = 0; i < argc; i++) {
-                    std::string col_name = cb_data->column_names[i];
-                    std::string value = argv[i] ? argv[i] : "";
-                    row[col_name] = value;
-                }
-                cb_data->results->push_back(row);
-                return 0;
-            };
-            
-            bool success = db_manager_->executeQuerySQLite(sql, callback, &callback_data);
-            auto results = *callback_data.results;
-            delete callback_data.results;
-            
-            return success ? results : std::vector<std::map<std::string, std::string>>{};
+        if (data_point_id <= 0) {
+            logger_->Warn("CurrentValueRepository::findByDataPointId - Invalid data point ID: " + std::to_string(data_point_id));
+            return std::nullopt;
         }
         
+        // 캐시 확인
+        if (isCacheEnabled()) {
+            auto cached = getCachedEntity(data_point_id);
+            if (cached.has_value()) {
+                logger_->Debug("CurrentValueRepository::findByDataPointId - Cache hit for point_id: " + std::to_string(data_point_id));
+                return cached.value();
+            }
+        }
+        
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            WHERE point_id = )" + std::to_string(data_point_id);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (results.empty()) {
+            logger_->Debug("CurrentValueRepository::findByDataPointId - Current value not found for point_id: " + std::to_string(data_point_id));
+            return std::nullopt;
+        }
+        
+        auto entity = mapRowToEntity(results[0]);
+        
+        // 캐시에 저장
+        if (isCacheEnabled()) {
+            cacheEntity(entity);
+        }
+        
+        logger_->Debug("CurrentValueRepository::findByDataPointId - Found current value for point_id: " + std::to_string(data_point_id));
+        return entity;
+        
     } catch (const std::exception& e) {
-        logger_->Error("executeDatabaseQuery failed: " + std::string(e.what()));
+        logger_->Error("CurrentValueRepository::findByDataPointId failed for point_id " + std::to_string(data_point_id) + ": " + std::string(e.what()));
+        return std::nullopt;
+    }
+}
+
+std::vector<CurrentValueEntity> CurrentValueRepository::findByQuality(PulseOne::Enums::DataQuality quality) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string quality_str = CurrentValueEntity::qualityToString(quality);
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            WHERE quality = ')" + quality_str + R"('
+            ORDER BY updated_at DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<CurrentValueEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("CurrentValueRepository::findByQuality - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("CurrentValueRepository::findByQuality - Found " + std::to_string(entities.size()) + " current values with quality: " + quality_str);
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("CurrentValueRepository::findByQuality failed: " + std::string(e.what()));
         return {};
     }
 }
 
-bool CurrentValueRepository::executeDatabaseNonQuery(const std::string& sql) {
+std::vector<CurrentValueEntity> CurrentValueRepository::findByTimeRange(
+    const std::chrono::system_clock::time_point& start_time,
+    const std::chrono::system_clock::time_point& end_time) {
+    
     try {
-        std::string db_type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
-        
-        if (db_type == "POSTGRESQL") {
-            return db_manager_->executeNonQueryPostgres(sql);
-        } else {
-            return db_manager_->executeNonQuerySQLite(sql);
+        if (!ensureTableExists()) {
+            return {};
         }
         
+        std::string start_str = PulseOne::Utils::TimestampToDBString(start_time);
+        std::string end_str = PulseOne::Utils::TimestampToDBString(end_time);
+        
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            WHERE timestamp BETWEEN ')" + start_str + "' AND '" + end_str + R"('
+            ORDER BY timestamp DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<CurrentValueEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("CurrentValueRepository::findByTimeRange - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("CurrentValueRepository::findByTimeRange - Found " + std::to_string(entities.size()) + " current values in time range");
+        return entities;
+        
     } catch (const std::exception& e) {
-        logger_->Error("executeDatabaseNonQuery failed: " + std::string(e.what()));
-        return false;
+        logger_->Error("CurrentValueRepository::findByTimeRange failed: " + std::string(e.what()));
+        return {};
     }
 }
+
+std::vector<CurrentValueEntity> CurrentValueRepository::findRecentlyUpdated(int minutes) {
+    auto cutoff_time = std::chrono::system_clock::now() - std::chrono::minutes(minutes);
+    auto now = std::chrono::system_clock::now();
+    return findByTimeRange(cutoff_time, now);
+}
+
+std::vector<CurrentValueEntity> CurrentValueRepository::findStaleValues(int hours) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        auto cutoff_time = std::chrono::system_clock::now() - std::chrono::hours(hours);
+        std::string cutoff_str = PulseOne::Utils::TimestampToDBString(cutoff_time);
+        
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            WHERE updated_at < ')" + cutoff_str + R"('
+            ORDER BY updated_at ASC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<CurrentValueEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("CurrentValueRepository::findStaleValues - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("CurrentValueRepository::findStaleValues - Found " + std::to_string(entities.size()) + " stale current values (older than " + std::to_string(hours) + " hours)");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("CurrentValueRepository::findStaleValues failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<CurrentValueEntity> CurrentValueRepository::findBadQualityValues() {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        const std::string query = R"(
+            SELECT 
+                point_id, value, raw_value, string_value, quality,
+                timestamp, updated_at
+            FROM current_values 
+            WHERE quality IN ('bad', 'uncertain', 'not_connected')
+            ORDER BY updated_at DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<CurrentValueEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("CurrentValueRepository::findBadQualityValues - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        logger_->Info("CurrentValueRepository::findBadQualityValues - Found " + std::to_string(entities.size()) + " current values with bad quality");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("CurrentValueRepository::findBadQualityValues failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::map<std::string, int> CurrentValueRepository::getStatistics() {
+    std::map<std::string, int> stats;
+    
+    try {
+        // 총 현재값 개수
+        stats["total_values"] = getTotalCount();
+        
+        // 품질별 개수
+        const std::string quality_query = "SELECT quality, COUNT(*) as count FROM current_values GROUP BY quality";
+        DatabaseAbstractionLayer db_layer;
+        auto quality_result = db_layer.executeQuery(quality_query);
+        
+        for (const auto& row : quality_result) {
+            stats["quality_" + row.at("quality")] = std::stoi(row.at("count"));
+        }
+        
+        // 최근 업데이트 개수 (1시간 이내)
+        auto recent_count = findRecentlyUpdated(60).size();
+        stats["recent_updates_1h"] = static_cast<int>(recent_count);
+        
+        // 오래된 값 개수 (24시간 이전)
+        auto stale_count = findStaleValues(24).size();
+        stats["stale_values_24h"] = static_cast<int>(stale_count);
+        
+        logger_->Debug("CurrentValueRepository::getStatistics - Generated statistics");
+        
+    } catch (const std::exception& e) {
+        logger_->Error("CurrentValueRepository::getStatistics failed: " + std::string(e.what()));
+    }
+    
+    return stats;
+}
+
+int CurrentValueRepository::bulkUpsert(std::vector<CurrentValueEntity>& entities) {
+    return saveBulk(entities);  // saveBulk가 이미 upsert 방식으로 구현됨
+}
+
+// =============================================================================
+// 내부 헬퍼 메서드들 - 🎯 DataPointRepository 패턴 완전 준수
+// =============================================================================
 
 CurrentValueEntity CurrentValueRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
     CurrentValueEntity entity;
     
     try {
-        // 기본 필드들
-        if (row.count("id")) entity.setId(std::stoi(row.at("id")));
-        if (row.count("data_point_id")) entity.setDataPointId(std::stoi(row.at("data_point_id")));
-        if (row.count("virtual_point_id")) entity.setVirtualPointId(std::stoi(row.at("virtual_point_id")));
-        if (row.count("value")) entity.setValue(std::stod(row.at("value")));
-        if (row.count("raw_value")) entity.setRawValue(std::stod(row.at("raw_value")));
-        if (row.count("quality")) entity.setQualityFromString(row.at("quality"));
-        if (row.count("redis_key")) entity.setRedisKey(row.at("redis_key"));
+        auto it = row.find("point_id");
+        if (it != row.end()) {
+            entity.setPointId(std::stoi(it->second));
+        }
         
-        // 타임스탬프 파싱 (현재는 간단히 현재 시간 사용)
-        entity.setTimestamp(std::chrono::system_clock::now());
+        it = row.find("value");
+        if (it != row.end()) {
+            entity.setValue(std::stod(it->second));
+        }
+        
+        it = row.find("raw_value");
+        if (it != row.end()) {
+            entity.setRawValue(std::stod(it->second));
+        }
+        
+        it = row.find("string_value");
+        if (it != row.end()) {
+            entity.setStringValue(it->second);
+        }
+        
+        it = row.find("quality");
+        if (it != row.end()) {
+            entity.setQuality(CurrentValueEntity::stringToQuality(it->second));
+        }
+        
+        it = row.find("timestamp");
+        if (it != row.end()) {
+            entity.setTimestamp(PulseOne::Utils::ParseTimestampFromString(it->second));
+        }
+        
+        it = row.find("updated_at");
+        if (it != row.end()) {
+            entity.setUpdatedAt(PulseOne::Utils::ParseTimestampFromString(it->second));
+        }
+        
+        return entity;
         
     } catch (const std::exception& e) {
         logger_->Error("CurrentValueRepository::mapRowToEntity failed: " + std::string(e.what()));
+        throw;
     }
-    
-    return entity;
 }
 
-std::vector<CurrentValueEntity> CurrentValueRepository::mapResultToEntities(
-    const std::vector<std::map<std::string, std::string>>& result) {
-    
-    std::vector<CurrentValueEntity> entities;
-    entities.reserve(result.size());
-    
-    for (const auto& row : result) {
-        entities.push_back(mapRowToEntity(row));
+bool CurrentValueRepository::ensureTableExists() {
+    try {
+        const std::string base_create_query = R"(
+            CREATE TABLE IF NOT EXISTS current_values (
+                point_id INTEGER PRIMARY KEY,
+                value DECIMAL(15,4),
+                raw_value DECIMAL(15,4),
+                string_value TEXT,
+                quality VARCHAR(20) DEFAULT 'good',
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE
+            )
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeCreateTable(base_create_query);
+        
+        if (success) {
+            // 인덱스 생성
+            std::vector<std::string> indexes = {
+                "CREATE INDEX IF NOT EXISTS idx_current_values_timestamp ON current_values(timestamp DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_current_values_updated_at ON current_values(updated_at)",
+                "CREATE INDEX IF NOT EXISTS idx_current_values_quality ON current_values(quality)"
+            };
+            
+            for (const auto& idx_query : indexes) {
+                db_layer.executeNonQuery(idx_query);
+            }
+            
+            logger_->Debug("CurrentValueRepository::ensureTableExists - Table creation/check completed");
+        } else {
+            logger_->Error("CurrentValueRepository::ensureTableExists - Table creation failed");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("CurrentValueRepository::ensureTableExists failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool CurrentValueRepository::validateCurrentValue(const CurrentValueEntity& entity) const {
+    if (!entity.isValid()) {
+        logger_->Warn("CurrentValueRepository::validateCurrentValue - Invalid current value for point_id: " + std::to_string(entity.getPointId()));
+        return false;
     }
     
-    return entities;
+    if (entity.getPointId() <= 0) {
+        logger_->Warn("CurrentValueRepository::validateCurrentValue - Invalid point_id: " + std::to_string(entity.getPointId()));
+        return false;
+    }
+    
+    return true;
 }
+
+std::string CurrentValueRepository::escapeString(const std::string& str) const {
+    std::string escaped = str;
+    size_t pos = 0;
+    while ((pos = escaped.find("'", pos)) != std::string::npos) {
+        escaped.replace(pos, 1, "''");
+        pos += 2;
+    }
+    return escaped;
+}
+
+// =============================================================================
+// SQL 빌더 헬퍼 메서드들 (DataPointRepository 패턴)
+// =============================================================================
 
 std::string CurrentValueRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
     if (conditions.empty()) return "";
@@ -977,64 +884,8 @@ std::string CurrentValueRepository::buildOrderByClause(const std::optional<Order
 
 std::string CurrentValueRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
     if (!pagination.has_value()) return "";
-    
-    std::string clause = " LIMIT " + std::to_string(pagination->limit);
-    if (pagination->offset > 0) {
-        clause += " OFFSET " + std::to_string(pagination->offset);
-    }
-    return clause;
-}
-
-std::string CurrentValueRepository::generateRedisKey(int data_point_id) const {
-    return redis_prefix_ + "dp:" + std::to_string(data_point_id);
-}
-
-void CurrentValueRepository::periodicSaveWorker() {
-    logger_->Info("🔄 Periodic save worker started");
-    
-    while (periodic_save_running_.load()) {
-        try {
-            std::unique_lock<std::mutex> lock(periodic_save_mutex_);
-            
-            // 지정된 간격만큼 대기
-            periodic_save_cv_.wait_for(lock, std::chrono::seconds(periodic_save_interval_), 
-                [this] { return !periodic_save_running_.load(); });
-            
-            if (!periodic_save_running_.load()) break;
-            
-            // 주기적 저장 실행
-            int saved_count = executePeriodicSave();
-            if (saved_count > 0) {
-                logger_->Debug("Periodic save completed: " + std::to_string(saved_count) + " entities");
-            }
-            
-        } catch (const std::exception& e) {
-            logger_->Error("Periodic save worker error: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::seconds(5)); // 에러 시 잠깐 대기
-        }
-    }
-    
-    logger_->Info("🔄 Periodic save worker stopped");
-}
-
-void CurrentValueRepository::loadConfiguration() {
-    try {
-        // Redis 설정
-        std::string redis_enabled_str = config_manager_->getOrDefault("REDIS_PRIMARY_ENABLED", "true");
-        redis_enabled_ = (redis_enabled_str == "true" || redis_enabled_str == "1");
-        redis_prefix_ = config_manager_->getOrDefault("REDIS_CV_PREFIX", "cv:");
-        std::string ttl_str = config_manager_->getOrDefault("REDIS_CV_TTL_SEC", "300");
-        default_ttl_seconds_ = std::stoi(ttl_str);
-        
-        // 주기적 저장 설정
-        std::string interval_str = config_manager_->getOrDefault("CV_PERIODIC_SAVE_INTERVAL_SEC", "60");
-        periodic_save_interval_ = std::stoi(interval_str);
-        
-        logger_->Debug("CurrentValueRepository configuration loaded");
-        
-    } catch (const std::exception& e) {
-        logger_->Error("CurrentValueRepository::loadConfiguration failed: " + std::string(e.what()));
-    }
+    return " LIMIT " + std::to_string(pagination->getLimit()) + 
+           " OFFSET " + std::to_string(pagination->getOffset());
 }
 
 } // namespace Repositories
