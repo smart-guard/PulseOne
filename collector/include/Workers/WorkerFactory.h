@@ -43,7 +43,8 @@ namespace Entities {
 namespace Repositories {
     class DeviceRepository;
     class DataPointRepository;
-}
+    class CurrentValueRepository;
+}   
 }
 
 namespace Workers {
@@ -82,6 +83,7 @@ public:
     
     void SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo);
     void SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo);
+    void SetCurrentValueRepository(std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo);
     void SetDatabaseClients(
         std::shared_ptr<::RedisClient> redis_client,     // ✅ 전역 클래스
         std::shared_ptr<::InfluxClient> influx_client    // ✅ 전역 클래스
@@ -126,7 +128,8 @@ private:
     
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo_;
-    
+    std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo_;
+
     // ✅ 전역 클래스 shared_ptr
     std::shared_ptr<::RedisClient> redis_client_;
     std::shared_ptr<::InfluxClient> influx_client_;

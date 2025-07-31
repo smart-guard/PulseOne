@@ -4,6 +4,8 @@
 // =============================================================================
 
 #include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/CurrentValueRepository.h" 
+#include "Common/Structs.h"
 #include "Common/Utils.h"
 #include <sstream>
 #include <iomanip>
@@ -707,6 +709,131 @@ std::string DataPointRepository::escapeString(const std::string& str) {
         pos += 2;
     }
     return escaped;
+}
+
+// CurrentValueRepository 의존성 주입 구현
+void DataPointRepository::setCurrentValueRepository(std::shared_ptr<CurrentValueRepository> current_value_repo) {
+    current_value_repo_ = current_value_repo;
+    logger_->Info("✅ CurrentValueRepository injected into DataPointRepository");
+}
+
+// 🔥 핵심 메서드: 현재값이 포함된 완성된 DataPoint 조회
+std::vector<PulseOne::Structs::DataPoint> DataPointRepository::getDataPointsWithCurrentValues(int device_id, bool enabled_only) {
+    std::vector<PulseOne::Structs::DataPoint> result;
+    
+    try {
+        logger_->Debug("🔍 Loading DataPoints with current values for device: " + std::to_string(device_id));
+        
+        // 1. DataPointEntity들 조회 (기존 메서드 재사용)
+        auto entities = findByDeviceId(device_id, enabled_only);
+        
+        logger_->Debug("📊 Found " + std::to_string(entities.size()) + " DataPoint entities");
+        
+        // 2. 각 Entity를 Structs::DataPoint로 변환 + 현재값 추가
+        for (const auto& entity : entities) {
+            
+            // 🎯 핵심: Entity의 toDataPointStruct() 메서드 활용
+            PulseOne::Structs::DataPoint data_point = entity.toDataPointStruct();
+            
+            // =======================================================================
+            // 🔥 현재값 조회 및 설정 (Repository 패턴 준수)
+            // =======================================================================
+            
+            if (current_value_repo_) {
+                try {
+                    // CurrentValueRepository에서 현재값 조회
+                    auto current_value = current_value_repo_->findByDataPointId(entity.getId());
+                    
+                    if (current_value.has_value()) {
+                        // 현재값이 존재하는 경우
+                        data_point.current_value = PulseOne::BasicTypes::DataVariant(current_value->getValue());
+                        data_point.quality_code = current_value->getQuality();
+                        data_point.quality_timestamp = current_value->getTimestamp();
+                        
+                        logger_->Debug("💡 Current value loaded: " + data_point.name + 
+                                      " = " + data_point.GetCurrentValueAsString() + 
+                                      " (Quality: " + data_point.GetQualityCodeAsString() + ")");
+                    } else {
+                        // 현재값이 없는 경우 기본값 설정
+                        data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
+                        data_point.quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;
+                        data_point.quality_timestamp = std::chrono::system_clock::now();
+                        
+                        logger_->Debug("⚠️ No current value found for: " + data_point.name + " (using defaults)");
+                    }
+                    
+                } catch (const std::exception& e) {
+                    logger_->Debug("❌ Current value query failed for " + data_point.name + ": " + std::string(e.what()));
+                    
+                    // 에러 시 BAD 품질로 설정
+                    data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
+                    data_point.quality_code = PulseOne::Enums::DataQuality::BAD;
+                    data_point.quality_timestamp = std::chrono::system_clock::now();
+                }
+            } else {
+                // CurrentValueRepository가 주입되지 않은 경우
+                logger_->Warn("⚠️ CurrentValueRepository not injected, using default values");
+                
+                data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
+                data_point.quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;
+                data_point.quality_timestamp = std::chrono::system_clock::now();
+            }
+            
+            // 3. 주소 필드 동기화 (기존 메서드 활용)
+            data_point.SyncAddressFields();
+            
+            // 4. Worker 컨텍스트 정보 추가
+            try {
+                auto worker_context = entity.getWorkerContext();
+                if (!worker_context.empty()) {
+                    data_point.metadata = worker_context;  // JSON을 metadata에 직접 할당
+                }
+            } catch (const std::exception& e) {
+                logger_->Debug("Worker context not available: " + std::string(e.what()));
+            }
+            
+            result.push_back(data_point);
+            
+            // ✅ 풍부한 로깅 - 새로운 필드들 포함
+            logger_->Debug("✅ Converted DataPoint: " + data_point.name + 
+                          " (Address: " + std::to_string(data_point.address) + 
+                          ", Type: " + data_point.data_type + 
+                          ", Writable: " + (data_point.IsWritable() ? "true" : "false") + 
+                          ", LogEnabled: " + (data_point.log_enabled ? "true" : "false") + 
+                          ", LogInterval: " + std::to_string(data_point.log_interval_ms) + "ms" + 
+                          ", CurrentValue: " + data_point.GetCurrentValueAsString() + 
+                          ", Quality: " + data_point.GetQualityCodeAsString() + ")");
+        }
+        
+        logger_->Info("✅ Successfully loaded " + std::to_string(result.size()) + 
+                     " complete data points for device: " + std::to_string(device_id));
+        
+        // =======================================================================
+        // 🔥 통계 출력 - 완성된 필드들 활용
+        // =======================================================================
+        int writable_count = 0;
+        int log_enabled_count = 0;
+        int good_quality_count = 0;
+        int connected_count = 0;
+        
+        for (const auto& dp : result) {
+            if (dp.IsWritable()) writable_count++;
+            if (dp.log_enabled) log_enabled_count++;
+            if (dp.IsGoodQuality()) good_quality_count++;
+            if (dp.quality_code != PulseOne::Enums::DataQuality::NOT_CONNECTED) connected_count++;
+        }
+        
+        logger_->Debug("📊 DataPoint Statistics: " + 
+                      std::to_string(writable_count) + " writable, " + 
+                      std::to_string(log_enabled_count) + " log-enabled, " + 
+                      std::to_string(good_quality_count) + " good-quality, " + 
+                      std::to_string(connected_count) + " connected");
+        
+    } catch (const std::exception& e) {
+        logger_->Error("DataPointRepository::getDataPointsWithCurrentValues failed: " + std::string(e.what()));
+    }
+    
+    return result;
 }
 
 } // namespace Repositories

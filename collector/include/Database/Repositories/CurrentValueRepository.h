@@ -25,7 +25,7 @@
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
-#include "Common/UnifiedCommonTypes.h"
+#include "Common/Enums.h"
 #include "Client/RedisClient.h"  // 🔥 추가
 #include <memory>
 #include <map>
@@ -191,7 +191,7 @@ public:
      * @param quality 데이터 품질
      * @return 현재값 목록
      */
-    std::vector<CurrentValueEntity> findByQuality(CurrentValueEntity::DataQuality quality);
+    std::vector<CurrentValueEntity> findByQuality(PulseOne::Enums::DataQuality quality);
     
     /**
      * @brief 시간 범위로 현재값들 조회

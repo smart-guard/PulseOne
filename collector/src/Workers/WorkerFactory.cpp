@@ -32,6 +32,7 @@
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/CurrentValueRepository.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include "Common/Constants.h"
@@ -136,7 +137,27 @@ void WorkerFactory::SetDeviceRepository(std::shared_ptr<Database::Repositories::
 void WorkerFactory::SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo) {
     std::lock_guard<std::mutex> lock(factory_mutex_);
     datapoint_repo_ = datapoint_repo;
+    
+    // 🔥 핵심: CurrentValueRepository가 이미 있으면 자동 연결
+    if (datapoint_repo_ && current_value_repo_) {
+        datapoint_repo_->setCurrentValueRepository(current_value_repo_);
+        logger_->Info("✅ CurrentValueRepository auto-connected to DataPointRepository");
+    }
+    
     logger_->Info("✅ DataPointRepository injected into WorkerFactory");
+}
+
+void WorkerFactory::SetCurrentValueRepository(std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo) {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    current_value_repo_ = current_value_repo;
+    
+    // 🔥 핵심: DataPointRepository에 CurrentValueRepository 자동 주입
+    if (datapoint_repo_ && current_value_repo_) {
+        datapoint_repo_->setCurrentValueRepository(current_value_repo_);
+        logger_->Info("✅ CurrentValueRepository auto-injected into DataPointRepository");
+    }
+    
+    logger_->Info("✅ CurrentValueRepository injected into WorkerFactory");
 }
 
 void WorkerFactory::SetDatabaseClients(
@@ -501,112 +522,26 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
 // =============================================================================
 
 std::vector<PulseOne::Structs::DataPoint> WorkerFactory::LoadDataPointsForDevice(int device_id) const {
-    std::vector<PulseOne::Structs::DataPoint> data_points;
-    
     if (!datapoint_repo_) {
-        logger_->Warn("DataPointRepository not set");
-        return data_points;
+        logger_->Error("DataPointRepository not set");
+        return {};
     }
     
     try {
         logger_->Debug("🔍 Loading DataPoints for device ID: " + std::to_string(device_id));
         
-        // ✅ DataPointRepository를 사용하여 실제 DataPoint들 로드
-        auto datapoint_entities = datapoint_repo_->findByDeviceId(device_id, true); // enabled_only = true
+        // ✅ 모든 로직을 DataPointRepository에 완전 위임
+        auto data_points = datapoint_repo_->getDataPointsWithCurrentValues(device_id, true);
         
-        logger_->Debug("📊 Found " + std::to_string(datapoint_entities.size()) + " DataPoint entities");
+        logger_->Info("✅ Loaded " + std::to_string(data_points.size()) + 
+                     " complete data points for device: " + std::to_string(device_id));
         
-        // ✅ Entity → Structs::DataPoint 변환 - Entity의 toDataPointStruct() 메서드 활용!
-        for (const auto& entity : datapoint_entities) {
-            
-            // 🎯 핵심: Entity가 제공하는 변환 메서드 사용
-            PulseOne::Structs::DataPoint data_point = entity.toDataPointStruct();
-            
-            // =======================================================================
-            // 🔥 ✅ 새로 추가된 필드들 설정 (현재값/품질코드)
-            // =======================================================================
-            
-            // 1. 현재값 조회 및 설정
-            try {
-                // CurrentValueEntity를 통해 현재값 조회 (향후 Repository 패턴 적용)
-                PulseOne::Database::Entities::CurrentValueEntity current_value_entity;
-                
-                // 🔧 임시: 기본값으로 초기화 (실제로는 DB에서 조회)
-                // current_value_entity.loadByDataPointId(entity.getId());
-                
-                // ✅ 완성된 필드 사용!
-                data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);  // 기본값
-                data_point.quality_code = PulseOne::Enums::DataQuality::GOOD;       // 기본 품질
-                data_point.quality_timestamp = std::chrono::system_clock::now();     // 현재 시각
-                
-                logger_->Debug("💡 Current value fields initialized: " + 
-                              data_point.GetCurrentValueAsString() + 
-                              " (Quality: " + data_point.GetQualityCodeAsString() + ")");
-                
-            } catch (const std::exception& e) {
-                logger_->Debug("Current value not found, using defaults: " + std::string(e.what()));
-                
-                // ✅ 에러 시 BAD 품질로 설정
-                data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
-                data_point.quality_code = PulseOne::Enums::DataQuality::BAD;
-                data_point.quality_timestamp = std::chrono::system_clock::now();
-            }
-            
-            // 2. 주소 필드 동기화 (기존 메서드 활용)
-            data_point.SyncAddressFields();
-            
-            // 3. Worker 컨텍스트 정보 추가 (metadata에서 제거 - 이제 직접 필드 사용)
-            try {
-                auto worker_context = entity.getWorkerContext();
-                if (!worker_context.empty()) {
-                    data_point.metadata = worker_context;  // JSON을 metadata에 직접 할당
-                }
-            } catch (const std::exception& e) {
-                logger_->Debug("Worker context not available: " + std::string(e.what()));
-            }
-            
-            data_points.push_back(data_point);
-            
-            // ✅ 풍부한 로깅 - 새로운 필드들 포함
-            logger_->Debug("✅ Converted DataPoint: " + data_point.name + 
-                          " (Address: " + std::to_string(data_point.address) + 
-                          ", Type: " + data_point.data_type + 
-                          ", Writable: " + (data_point.IsWritable() ? "true" : "false") + 
-                          ", LogEnabled: " + (data_point.log_enabled ? "true" : "false") + 
-                          ", LogInterval: " + std::to_string(data_point.log_interval_ms) + "ms" + 
-                          ", CurrentValue: " + data_point.GetCurrentValueAsString() + 
-                          ", Quality: " + data_point.GetQualityCodeAsString() + ")");
-        }
-        
-        logger_->Info("✅ Successfully loaded " + std::to_string(data_points.size()) + 
-                     " active data points for device: " + std::to_string(device_id));
-        
-        // =======================================================================
-        // 🔥 ✅ 새로운 통계 출력 - 완성된 필드들 활용
-        // =======================================================================
-        int writable_count = 0;
-        int log_enabled_count = 0;
-        int good_quality_count = 0;
-        int total_read_count = 0;
-        
-        for (const auto& dp : data_points) {
-            if (dp.IsWritable()) writable_count++;           // ✅ 새 메서드 사용
-            if (dp.log_enabled) log_enabled_count++;
-            if (dp.IsGoodQuality()) good_quality_count++;   // ✅ 새 메서드 사용
-            total_read_count += dp.read_count;
-        }
-        
-        logger_->Debug("📊 DataPoint Statistics: " + 
-                      std::to_string(writable_count) + " writable, " + 
-                      std::to_string(log_enabled_count) + " log-enabled, " + 
-                      std::to_string(good_quality_count) + " good-quality, " + 
-                      "total reads: " + std::to_string(total_read_count));
+        return data_points;
         
     } catch (const std::exception& e) {
         logger_->Error("Exception in LoadDataPointsForDevice: " + std::string(e.what()));
+        return {};
     }
-    
-    return data_points;
 }
 
 // =============================================================================

@@ -402,7 +402,7 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByVirtualPointId(int
     }
 }
 
-std::vector<CurrentValueEntity> CurrentValueRepository::findByQuality(CurrentValueEntity::DataQuality quality) {
+std::vector<CurrentValueEntity> CurrentValueRepository::findByQuality(PulseOne::Enums::DataQuality quality) {
     try {
         std::string quality_str = CurrentValueEntity::qualityToString(quality);
         std::string sql = "SELECT * FROM current_values WHERE quality = '" + quality_str + "'";
