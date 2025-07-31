@@ -36,15 +36,16 @@ namespace Structs {
 }
 
 namespace Database {
-namespace Entities {
-    class DeviceEntity;
-    class DataPointEntity;
-}
-namespace Repositories {
-    class DeviceRepository;
-    class DataPointRepository;
-    class CurrentValueRepository;
-}   
+    class RepositoryFactory;
+    namespace Entities {
+        class DeviceEntity;
+        class DataPointEntity;
+    }
+    namespace Repositories {
+        class DeviceRepository;
+        class DataPointRepository;
+        class CurrentValueRepository;
+    }   
 }
 
 namespace Workers {
@@ -81,6 +82,7 @@ public:
     bool Initialize();  // 기본 버전 - 내부에서 싱글톤들 가져오기
     bool Initialize(::LogManager* logger, ::ConfigManager* config_manager);  // 직접 주입 버전
     
+    void SetRepositoryFactory(std::shared_ptr<Database::RepositoryFactory> repo_factory);
     void SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo);
     void SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo);
     void SetCurrentValueRepository(std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo);
@@ -126,6 +128,7 @@ private:
     ::LogManager* logger_ = nullptr;
     ::ConfigManager* config_manager_ = nullptr;
     
+    std::shared_ptr<Database::RepositoryFactory> repo_factory_;
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo_;

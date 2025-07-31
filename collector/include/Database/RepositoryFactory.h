@@ -164,7 +164,7 @@ private:
     bool createRepositoryInstances();
     void applyRepositoryConfigurations();
     bool injectDependencies();
-
+    void connectRepositoryDependencies();
     // =============================================================================
     // 데이터 멤버들
     // =============================================================================

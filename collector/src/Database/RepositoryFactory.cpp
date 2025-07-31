@@ -95,6 +95,8 @@ bool RepositoryFactory::initialize() {
             return false;
         }
         
+        connectRepositoryDependencies();
+
         // 3. 의존성 주입
         if (!injectDependencies()) {
             logger_->Error("Failed to inject dependencies");
@@ -320,6 +322,32 @@ bool RepositoryFactory::injectDependencies() {
         logger_->Error("RepositoryFactory::injectDependencies failed: " + std::string(e.what()));
         error_count_.fetch_add(1);
         return false;
+    }
+}
+
+void RepositoryFactory::connectRepositoryDependencies() {
+    try {
+        logger_->Info("Connecting repository dependencies...");
+        
+        // 🔥 핵심: DataPointRepository에 CurrentValueRepository 자동 주입
+        if (data_point_repository_ && current_value_repository_) {
+            data_point_repository_->setCurrentValueRepository(current_value_repository_);
+            logger_->Info("✅ CurrentValueRepository connected to DataPointRepository");
+        }
+        
+        // 🔥 향후 추가 연결들
+        // if (alarm_repository_ && data_point_repository_) {
+        //     alarm_repository_->setDataPointRepository(data_point_repository_);
+        // }
+        // if (virtual_point_repository_ && data_point_repository_) {
+        //     virtual_point_repository_->setDataPointRepository(data_point_repository_);
+        // }
+        
+        logger_->Info("✅ Repository dependencies connected successfully");
+        
+    } catch (const std::exception& e) {
+        logger_->Error("Failed to connect repository dependencies: " + std::string(e.what()));
+        error_count_.fetch_add(1);
     }
 }
 
