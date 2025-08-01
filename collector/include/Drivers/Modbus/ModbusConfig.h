@@ -1,37 +1,11 @@
 /**
- * 🔧 공통 ModbusConfig 헤더 파일
- * 
- * 파일: include/Drivers/Modbus/ModbusConfig.h
- * 
- * 용도: ModbusRtuWorker, ModbusTcpWorker, ModbusDriver에서 공통 사용
- */
-
-#ifndef PULSEONE_DRIVERS_MODBUS_CONFIG_H
-#define PULSEONE_DRIVERS_MODBUS_CONFIG_H
-
-#include <string>
-#include <cstdint>
-
-namespace PulseOne {
-namespace Drivers {
-
-/**
- * @brief Modbus 공통 설정 구조체
- * @details 모든 Modbus 관련 클래스에서 공통 사용
- * 
- * 사용처:
- * - ModbusTcpWorker
- * - ModbusRtuWorker  
- * - ModbusDriver
- */
-/**
- * 🔧 확장된 공통 ModbusConfig 헤더 파일
+ * 🔧 공통 ModbusConfig 헤더 파일 - 수정된 버전
  * 
  * 파일: include/Drivers/Modbus/ModbusConfig.h
  * 
  * 용도: ModbusRtuWorker, ModbusTcpWorker, ModbusDriver에서 공통 사용
  * 
- * 🆕 변경사항: Worker 레벨 필드들 추가하여 중복 제거
+ * 🚨 수정사항: 헤더 가드 중복 및 네임스페이스 중복 제거
  */
 
 #ifndef PULSEONE_DRIVERS_MODBUS_CONFIG_H
@@ -52,11 +26,11 @@ namespace Drivers {
  * - ModbusRtuWorker  
  * - ModbusDriver
  * 
- * 🆕 포함 사항:
+ * 포함 사항:
  * - 프로토콜 기본 설정
  * - 통신 타이밍 설정
  * - RTU 전용 설정
- * - Worker 레벨 설정 (새로 추가)
+ * - Worker 레벨 설정
  */
 struct ModbusConfig {
     // =======================================================================
@@ -76,7 +50,7 @@ struct ModbusConfig {
     uint8_t max_retries = 3;                     ///< 최대 재시도 횟수 (max_retry_count)
     
     // =======================================================================
-    // 🆕 Worker 레벨 설정 (중복 제거를 위해 추가)
+    // Worker 레벨 설정 (중복 제거를 위해 추가)
     // =======================================================================
     uint32_t default_polling_interval_ms = 1000; ///< 기본 폴링 간격
     
@@ -106,7 +80,7 @@ struct ModbusConfig {
                            (max_retries <= 10) &&
                            (max_registers_per_group >= 1 && max_registers_per_group <= 125) &&
                            (byte_order == "big_endian" || byte_order == "little_endian") &&
-                           (default_polling_interval_ms >= 100 && default_polling_interval_ms <= 60000); // 🆕 추가
+                           (default_polling_interval_ms >= 100 && default_polling_interval_ms <= 60000);
         
         if (!common_valid) return false;
         
@@ -116,7 +90,7 @@ struct ModbusConfig {
                    (parity == 'N' || parity == 'E' || parity == 'O') &&
                    (data_bits == 7 || data_bits == 8) &&
                    (stop_bits == 1 || stop_bits == 2) &&
-                   (frame_delay_ms >= 10 && frame_delay_ms <= 500); // 🆕 추가
+                   (frame_delay_ms >= 10 && frame_delay_ms <= 500);
         }
         
         return true;
@@ -134,15 +108,15 @@ struct ModbusConfig {
                            ", timeout=" + std::to_string(timeout_ms) + "ms" +
                            ", max_registers=" + std::to_string(max_registers_per_group) +
                            ", max_retries=" + std::to_string(max_retries) +
-                           ", polling_interval=" + std::to_string(default_polling_interval_ms) + "ms" + // 🆕 추가
-                           ", auto_group=" + (auto_group_creation ? "true" : "false"); // 🆕 추가
+                           ", polling_interval=" + std::to_string(default_polling_interval_ms) + "ms" +
+                           ", auto_group=" + (auto_group_creation ? "true" : "false");
         
         if (is_rtu) {
             result += ", baud_rate=" + std::to_string(baud_rate) +
                      ", parity=" + std::string(1, parity) +
                      ", data_bits=" + std::to_string(data_bits) +
                      ", stop_bits=" + std::to_string(stop_bits) +
-                     ", frame_delay=" + std::to_string(frame_delay_ms) + "ms"; // 🆕 추가
+                     ", frame_delay=" + std::to_string(frame_delay_ms) + "ms";
         }
         
         result += "}";
@@ -161,7 +135,7 @@ struct ModbusConfig {
         response_timeout_ms = 1000;
         byte_timeout_ms = 100;
         max_retries = 3;
-        default_polling_interval_ms = 1000; // 🆕 추가
+        default_polling_interval_ms = 1000;
     }
     
     /**
@@ -178,7 +152,7 @@ struct ModbusConfig {
         frame_delay_ms = 50;
         response_timeout_ms = 500;  // RTU는 더 짧게
         byte_timeout_ms = 50;       // RTU는 더 짧게
-        default_polling_interval_ms = 1000; // 🆕 RTU 기본값
+        default_polling_interval_ms = 1000;
     }
     
     /**
@@ -189,7 +163,7 @@ struct ModbusConfig {
     }
     
     // =======================================================================
-    // 🆕 Worker 레벨 편의 메서드들
+    // Worker 레벨 편의 메서드들
     // =======================================================================
     
     /**
@@ -227,25 +201,7 @@ struct ModbusConfig {
     }
 };
 
-
 } // namespace Drivers
 } // namespace PulseOne
 
 #endif // PULSEONE_DRIVERS_MODBUS_CONFIG_H
-
-/**
- * 🔧 이제 각 파일에서 include 하도록 수정:
- * 
- * 1. ModbusDriver.h:
- *    #include "Drivers/Modbus/ModbusConfig.h"
- *    
- * 2. ModbusTcpWorker.h:
- *    #include "Drivers/Modbus/ModbusConfig.h"
- *    // 기존 ModbusConfig 구조체 정의 제거
- *    
- * 3. ModbusRtuWorker.h:
- *    #include "Drivers/Modbus/ModbusConfig.h"
- * 
- * 4. 네임스페이스 통일:
- *    모든 곳에서 PulseOne::Drivers::ModbusConfig 사용
- */

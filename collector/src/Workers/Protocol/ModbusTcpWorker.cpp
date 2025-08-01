@@ -8,6 +8,8 @@
 
 #include "Workers/Protocol/ModbusTcpWorker.h"
 #include "Utils/LogManager.h"
+#include "Common/Enums.h"
+#include "Common/Structs.h"
 #include <sstream>
 #include <iomanip>
 #include <thread>
@@ -15,7 +17,6 @@
 #include <nlohmann/json.hpp>
 
 using namespace std::chrono;
-using namespace PulseOne::Drivers;
 using json = nlohmann::json;
 
 namespace PulseOne {
@@ -703,12 +704,12 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         // 🔥 2단계: 파싱된 설정을 DriverConfig로 변환
         // =====================================================================
         
-        PulseOne::DriverConfig driver_config;
+        PulseOne::Structs::DriverConfig driver_config;
         
         // 기본 디바이스 정보
         driver_config.device_id = device_info_.name;  // device_info_.id는 UUID, name이 더 적합
         driver_config.endpoint = device_info_.endpoint;
-        driver_config.protocol = PulseOne::ProtocolType::MODBUS_TCP;
+        driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
         
         // 타이밍 설정 (파싱된 ModbusConfig 사용)
         driver_config.timeout_ms = modbus_config_.timeout_ms;
