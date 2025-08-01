@@ -847,22 +847,6 @@ void WorkerFactory::RegisterWorkerCreator(const std::string& protocol_type, Work
 // 헬퍼 함수들
 // =============================================================================
 
-std::string WorkerFactory::DataQualityToString(PulseOne::Enums::DataQuality quality) const {
-    switch (quality) {
-        case PulseOne::Enums::DataQuality::GOOD: return "GOOD";
-        case PulseOne::Enums::DataQuality::BAD: return "BAD";
-        case PulseOne::Enums::DataQuality::UNCERTAIN: return "UNCERTAIN";
-        case PulseOne::Enums::DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
-        case PulseOne::Enums::DataQuality::SCAN_DELAYED: return "SCAN_DELAYED";
-        case PulseOne::Enums::DataQuality::UNDER_MAINTENANCE: return "UNDER_MAINTENANCE";
-        case PulseOne::Enums::DataQuality::STALE_DATA: return "STALE_DATA";
-        case PulseOne::Enums::DataQuality::VERY_STALE_DATA: return "VERY_STALE_DATA";
-        case PulseOne::Enums::DataQuality::MAINTENANCE_BLOCKED: return "MAINTENANCE_BLOCKED";
-        case PulseOne::Enums::DataQuality::ENGINEER_OVERRIDE: return "ENGINEER_OVERRIDE";
-        default: return "UNKNOWN";
-    }
-}
-
 /**
  * @brief Worker에서 DataPoint 현재값 업데이트 헬퍼
  * @param data_point 업데이트할 DataPoint

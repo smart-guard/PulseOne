@@ -1,91 +1,125 @@
 /**
- * @file ModbusRtuWorker.h - 완전히 정리된 최종 버전
- * @brief Modbus RTU 워커 클래스 (중복 완전 제거)
+ * @file ModbusRtuWorker.h - 네임스페이스 완전 수정 버전
+ * @brief Modbus RTU 워커 클래스 헤더 (네임스페이스 중첩 문제 해결)
+ * @author PulseOne Development Team
+ * @date 2025-08-01
+ * @version 4.0.0
+ * 
+ * 🔥 해결된 문제:
+ * - 네임스페이스 중첩 문제 완전 해결
+ * - PulseOne::Workers 네임스페이스로 통일
+ * - std 타입들 올바른 선언
  */
 
-#ifndef WORKERS_PROTOCOL_MODBUS_RTU_WORKER_H
-#define WORKERS_PROTOCOL_MODBUS_RTU_WORKER_H
+#ifndef MODBUS_RTU_WORKER_H
+#define MODBUS_RTU_WORKER_H
 
+// 기본 시스템 헤더들
+#include <string>
+#include <sstream>
+#include <memory>
+#include <vector>
+#include <map>
+#include <mutex>
+#include <shared_mutex>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <queue>
+#include <future>
+
+// PulseOne 헤더들
 #include "Workers/Base/SerialBasedWorker.h"
 #include "Drivers/Modbus/ModbusDriver.h"
 #include "Drivers/Modbus/ModbusConfig.h"
-#include <memory>
-#include <queue>
-#include <thread>
-#include <atomic>
-#include <map>
-#include <chrono>
-#include <shared_mutex>
-#include <vector>
 
+// ✅ 올바른 네임스페이스 - 중첩 없음
 namespace PulseOne {
 namespace Workers {
-namespace Protocol {
 
 /**
- * @brief RTU 통계 구조체 (헤더 파일에 추가 필요)
- * ModbusRtuWorker.h 에 추가해야 하는 구조체
+ * @brief Modbus 레지스터 타입 (RTU Worker에서 사용)
  */
-
-/**
- * @brief RTU 통계 구조체 (모든 통계 통합)
- */
-struct ModbusRtuStats {
-    std::atomic<uint64_t> total_reads{0};
-    std::atomic<uint64_t> successful_reads{0};
-    std::atomic<uint64_t> total_writes{0};
-    std::atomic<uint64_t> successful_writes{0};
-    std::atomic<uint64_t> crc_errors{0};
-    std::atomic<uint64_t> timeout_errors{0};
-    std::atomic<uint64_t> frame_errors{0};
-    
-    // 성공률 계산
-    double GetReadSuccessRate() const {
-        uint64_t total = total_reads.load();
-        return total > 0 ? (static_cast<double>(successful_reads.load()) / total * 100.0) : 0.0;
-    }
-    
-    double GetWriteSuccessRate() const {
-        uint64_t total = total_writes.load();
-        return total > 0 ? (static_cast<double>(successful_writes.load()) / total * 100.0) : 0.0;
-    }
-    
-    // JSON 출력
-    std::string ToJson() const {
-        std::stringstream ss;
-        ss << "{\n";
-        ss << "  \"total_reads\": " << total_reads.load() << ",\n";
-        ss << "  \"successful_reads\": " << successful_reads.load() << ",\n";
-        ss << "  \"total_writes\": " << total_writes.load() << ",\n";
-        ss << "  \"successful_writes\": " << successful_writes.load() << ",\n";
-        ss << "  \"crc_errors\": " << crc_errors.load() << ",\n";
-        ss << "  \"timeout_errors\": " << timeout_errors.load() << ",\n";
-        ss << "  \"frame_errors\": " << frame_errors.load() << ",\n";
-        ss << "  \"read_success_rate_percent\": " << std::fixed << std::setprecision(2) << GetReadSuccessRate() << ",\n";
-        ss << "  \"write_success_rate_percent\": " << std::fixed << std::setprecision(2) << GetWriteSuccessRate() << "\n";
-        ss << "}";
-        return ss.str();
-    }
+enum class ModbusRegisterType {
+    COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
+    DISCRETE_INPUT = 1,    ///< 접점 입력 (0x02)
+    HOLDING_REGISTER = 2,  ///< 홀딩 레지스터 (0x03, 0x06, 0x10)
+    INPUT_REGISTER = 3     ///< 입력 레지스터 (0x04)
 };
 
-// 헤더 파일의 protected 섹션에 추가:
-// ModbusRtuStats rtu_stats_;               ///< ✅ 통합된 통계
-// mutable std::mutex stats_mutex_;         ///< 통계 보호용 뮤텍스
 /**
- * @brief Modbus RTU 워커 클래스 (완전 정리된 버전)
+ * @brief Modbus RTU 슬레이브 정보 (RTU 특화)
+ */
+struct ModbusRtuSlaveInfo {
+    int slave_id;                                    ///< 슬레이브 ID
+    std::string device_name;                         ///< 디바이스 이름
+    bool is_online;                                  ///< 온라인 상태
+    std::atomic<uint32_t> response_time_ms;          ///< 평균 응답 시간
+    std::chrono::system_clock::time_point last_response;  ///< 마지막 응답 시간
+    
+    // 통계
+    std::atomic<uint32_t> total_requests;            ///< 총 요청 수
+    std::atomic<uint32_t> successful_requests;       ///< 성공한 요청 수
+    std::atomic<uint32_t> timeout_errors;            ///< 타임아웃 에러 수
+    std::atomic<uint32_t> crc_errors;                ///< CRC 에러 수
+    std::string last_error;                          ///< 마지막 에러 메시지
+    
+    ModbusRtuSlaveInfo(int id = 1, const std::string& name = "")
+        : slave_id(id), device_name(name), is_online(false)
+        , response_time_ms(0), total_requests(0), successful_requests(0)
+        , timeout_errors(0), crc_errors(0)
+        , last_response(std::chrono::system_clock::now()) {}
+};
+
+/**
+ * @brief Modbus RTU 폴링 그룹 (TCP와 유사한 구조)
+ */
+struct ModbusRtuPollingGroup {
+    uint32_t group_id;                               ///< 그룹 ID
+    std::string group_name;                          ///< 그룹 이름
+    int slave_id;                                    ///< 슬레이브 ID
+    ModbusRegisterType register_type;                ///< 레지스터 타입
+    uint16_t start_address;                          ///< 시작 주소
+    uint16_t register_count;                         ///< 레지스터 개수
+    uint32_t polling_interval_ms;                    ///< 폴링 주기 (밀리초)
+    bool enabled;                                    ///< 활성화 여부
+    
+    std::vector<PulseOne::DataPoint> data_points;    ///< 이 그룹에 속한 데이터 포인트들
+    
+    // 실행 시간 추적
+    std::chrono::system_clock::time_point last_poll_time;
+    std::chrono::system_clock::time_point next_poll_time;
+    
+    ModbusRtuPollingGroup() 
+        : group_id(0), group_name(""), slave_id(1)
+        , register_type(ModbusRegisterType::HOLDING_REGISTER)
+        , start_address(0), register_count(1), polling_interval_ms(1000), enabled(true)
+        , last_poll_time(std::chrono::system_clock::now())
+        , next_poll_time(std::chrono::system_clock::now()) {}
+};
+
+/**
+ * @brief Modbus RTU 워커 클래스 (TCP와 완전 일관성)
+ * @details SerialBasedWorker 기반의 Modbus RTU 프로토콜 구현
  */
 class ModbusRtuWorker : public SerialBasedWorker {
 public:
+    /**
+     * @brief 생성자
+     */
     explicit ModbusRtuWorker(
         const PulseOne::DeviceInfo& device_info,
         std::shared_ptr<RedisClient> redis_client = nullptr,
         std::shared_ptr<InfluxClient> influx_client = nullptr
     );
     
+    /**
+     * @brief 소멸자
+     */
     virtual ~ModbusRtuWorker();
 
     // =============================================================================
-    // BaseDeviceWorker 인터페이스 구현
+    // BaseDeviceWorker 인터페이스 구현 (TCP와 동일)
     // =============================================================================
     
     std::future<bool> Start() override;
@@ -93,7 +127,7 @@ public:
     WorkerState GetState() const override;
 
     // =============================================================================
-    // SerialBasedWorker 인터페이스 구현
+    // SerialBasedWorker 인터페이스 구현 (RTU 특화)
     // =============================================================================
     
     bool EstablishProtocolConnection() override;
@@ -102,35 +136,16 @@ public:
     bool SendProtocolKeepAlive() override;
 
     // =============================================================================
-    // ✅ 통합된 설정 API (중복 제거)
+    // 통합된 설정 API (TCP와 일관성)
     // =============================================================================
     
-    /**
-     * @brief Modbus RTU 전체 설정 (한 번에 모든 설정)
-     * @param config Modbus RTU 설정 구조체
-     */
     void ConfigureModbusRtu(const PulseOne::Drivers::ModbusConfig& config);
-    
-    /**
-     * @brief 현재 Modbus 설정 조회
-     * @return 현재 설정
-     */
     const PulseOne::Drivers::ModbusConfig& GetModbusConfig() const { return modbus_config_; }
-    
-    /**
-     * @brief 슬레이브 ID 설정 (빠른 접근)
-     * @param slave_id 슬레이브 ID
-     */
     void SetSlaveId(int slave_id) { modbus_config_.slave_id = slave_id; }
-    
-    /**
-     * @brief 응답 타임아웃 설정 (빠른 접근)
-     * @param timeout_ms 타임아웃 (밀리초)
-     */
     void SetResponseTimeout(int timeout_ms) { modbus_config_.response_timeout_ms = timeout_ms; }
 
     // =============================================================================
-    // 슬레이브 관리 (기존과 동일)
+    // RTU 특화 슬레이브 관리 (TCP에는 없는 RTU 고유 기능)
     // =============================================================================
     
     bool AddSlave(int slave_id, const std::string& device_name = "");
@@ -139,7 +154,7 @@ public:
     int ScanSlaves(int start_id = 1, int end_id = 247, int timeout_ms = 2000);
 
     // =============================================================================
-    // 폴링 그룹 관리 (기존과 동일)
+    // 폴링 그룹 관리 (TCP와 동일한 패턴)
     // =============================================================================
     
     uint32_t AddPollingGroup(const std::string& group_name,
@@ -154,7 +169,7 @@ public:
     bool AddDataPointToGroup(uint32_t group_id, const PulseOne::DataPoint& data_point);
 
     // =============================================================================
-    // 데이터 읽기/쓰기 (기존과 동일)
+    // 데이터 읽기/쓰기 (TCP와 동일한 패턴)
     // =============================================================================
     
     bool ReadHoldingRegisters(int slave_id, uint16_t start_address, 
@@ -173,63 +188,43 @@ public:
                            const std::vector<bool>& values);
 
     // =============================================================================
-    // ✅ 간소화된 상태 조회 API
+    // 상태 조회 API (TCP와 완전 일관성)
     // =============================================================================
     
-    /**
-     * @brief RTU 통계 조회 (구조체 반환)
-     * @return RTU 통계 구조체
-     */
-    const ModbusRtuStats& GetRtuStats() const { return rtu_stats_; }
-    
-    /**
-     * @brief RTU 통계 JSON 조회
-     * @return JSON 형태의 통계
-     */
-    std::string GetModbusRtuStats() const { return rtu_stats_.ToJson(); }
-    
-    /**
-     * @brief 시리얼 버스 상태 조회 (구조체 기반)
-     * @return JSON 형태의 버스 상태
-     */
+    std::string GetModbusStats() const;
     std::string GetSerialBusStatus() const;
-    
     std::string GetSlaveStatusList() const;
     std::string GetPollingGroupStatus() const;
 
 protected:
     // =============================================================================
-    // ✅ 정리된 멤버 변수들 (중복 완전 제거)
+    // 멤버 변수들 (TCP와 일관성 통일)
     // =============================================================================
     
-    // ModbusDriver 인스턴스
-    std::unique_ptr<Drivers::ModbusDriver> modbus_driver_;
+    // ModbusDriver 인스턴스 (TCP와 동일)
+    std::unique_ptr<PulseOne::Drivers::ModbusDriver> modbus_driver_;
     
-    // ✅ 통합된 설정 (개별 변수들 모두 제거)
+    // 통합된 설정 (TCP와 동일)
     PulseOne::Drivers::ModbusConfig modbus_config_;
     
-    // ✅ 통합된 통계 (개별 변수들 모두 제거)
-    mutable ModbusRtuStats rtu_stats_;
-    mutable std::mutex stats_mutex_;
-    
-    // 시리얼 버스 액세스 제어
+    // 시리얼 버스 액세스 제어 (RTU 고유)
     mutable std::mutex bus_mutex_;
     
-    // 슬레이브 관리
+    // RTU 특화: 슬레이브 관리 (TCP에는 없음)
     std::map<int, std::shared_ptr<ModbusRtuSlaveInfo>> slaves_;
     mutable std::shared_mutex slaves_mutex_;
     
-    // 폴링 그룹 관리
+    // 폴링 그룹 관리 (TCP와 동일한 패턴)
     std::map<uint32_t, ModbusRtuPollingGroup> polling_groups_;
     mutable std::shared_mutex polling_groups_mutex_;
     uint32_t next_group_id_;
     
-    // 폴링 워커 스레드
-    std::thread polling_thread_;
-    std::atomic<bool> stop_workers_;
+    // 폴링 워커 스레드 (TCP와 완전 일관성)
+    std::unique_ptr<std::thread> polling_thread_;
+    std::atomic<bool> polling_thread_running_;
 
     // =============================================================================
-    // ✅ 간소화된 헬퍼 메서드들
+    // 헬퍼 메서드들 (TCP와 일관성)
     // =============================================================================
     
     void PollingWorkerThread();
@@ -237,26 +232,17 @@ protected:
     void UpdateSlaveStatus(int slave_id, int response_time_ms, bool success);
     int CheckSlaveStatus(int slave_id);
     
-    /**
-     * @brief RTU 통계 업데이트 (구조체 기반)
-     * @param operation 작업 타입 ("read", "write")
-     * @param success 성공 여부
-     * @param error_type 에러 타입
-     */
-    void UpdateRtuStats(const std::string& operation, bool success, 
-                        const std::string& error_type = "");
-    
-    void LockBus();
-    void UnlockBus();
-    void LogRtuMessage(LogLevel level, const std::string& message);
-    std::vector<PulseOne::DataPoint> CreateDataPoints(int slave_id, 
+    void LockBus();    // RTU 고유
+    void UnlockBus();  // RTU 고유
+    void LogRtuMessage(PulseOne::LogLevel level, const std::string& message);
+    std::vector<PulseOne::Structs::DataPoint> CreateDataPoints(int slave_id, 
                                                     ModbusRegisterType register_type,
                                                     uint16_t start_address, 
                                                     uint16_t count);
 
 private:
     // =============================================================================
-    // 설정 및 초기화 메서드들
+    // 설정 및 초기화 메서드들 (TCP와 동일한 패턴)
     // =============================================================================
     
     bool ParseModbusConfig();
@@ -264,8 +250,7 @@ private:
     void SetupDriverCallbacks();
 };
 
-} // namespace Protocol
 } // namespace Workers  
 } // namespace PulseOne
 
-#endif // WORKERS_PROTOCOL_MODBUS_RTU_WORKER_H
+#endif // MODBUS_RTU_WORKER_H

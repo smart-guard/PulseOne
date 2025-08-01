@@ -10,7 +10,6 @@
 #include <chrono>
 #include <sstream>
 
-using namespace PulseOne::Drivers;
 using namespace std::chrono;
 
 namespace PulseOne {
