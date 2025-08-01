@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Drivers/Mqtt/MqttDriver.h
-// MQTT 프로토콜 드라이버 헤더 (기존 구조 호환)
+// MQTT 프로토콜 드라이버 헤더 - 완전 구현 지원
 // =============================================================================
 
 #ifndef PULSEONE_DRIVERS_MQTT_DRIVER_H
@@ -16,43 +16,41 @@
 #include <queue>
 #include <optional>
 #include <condition_variable>
+#include <deque>
+#include <future>
+
+#ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
-/*
-// MQTT 라이브러리는 나중에 추가 (현재는 포인터 타입으로 전방 선언)
-namespace mqtt {
-    class async_client;
-    class callback;
-    class iaction_listener;
-    class token;
-    class message;
-    class delivery_token;
-    
-    // 포인터 타입들
-    using const_message_ptr = std::shared_ptr<const message>;
-    using delivery_token_ptr = std::shared_ptr<delivery_token>;
-}
-*/
+#endif
+
+// Eclipse Paho MQTT C++ 헤더들
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
 #include <mqtt/iaction_listener.h>
 #include <mqtt/connect_options.h>
 #include <mqtt/message.h>
-#include <mqtt/token.h>    
+#include <mqtt/token.h>
 
 namespace PulseOne {
 namespace Drivers {
 
+// 전방 선언
+class MqttCallbackImpl;
+class MqttActionListener;
+
 /**
- * @brief MQTT 프로토콜 드라이버
- * 
- * 현재는 스텁 구현으로, 나중에 실제 MQTT 기능을 추가할 예정
+ * @brief MQTT 프로토콜 드라이버 - 완전 구현
+ * @details MQTTWorker의 모든 고급 기능을 지원하는 완전한 MQTT 드라이버
  */
 class MqttDriver : public IProtocolDriver {
 public:
     MqttDriver();
     virtual ~MqttDriver();
     
+    // =============================================================================
     // IProtocolDriver 인터페이스 구현
+    // =============================================================================
+    
     bool Initialize(const DriverConfig& config) override;
     bool Connect() override;
     bool Disconnect() override;
@@ -68,13 +66,23 @@ public:
         const Structs::DataValue& value
     ) override;
     
+    Enums::ProtocolType GetProtocolType() const override;
+    Structs::DriverStatus GetStatus() const override;
+    Structs::ErrorInfo GetLastError() const override;
+    const DriverStatistics& GetStatistics() const override;
+    void ResetStatistics() override;
+
+    // =============================================================================
+    // MQTT 데이터 포인트 정보 구조체
+    // =============================================================================
+    
     struct MqttDataPointInfo {
         std::string point_id;           ///< 데이터 포인트 고유 ID
         std::string name;               ///< 데이터 포인트 이름  
         std::string description;        ///< 데이터 포인트 설명
         std::string topic;              ///< MQTT 토픽
         int qos;                        ///< QoS 레벨 (0, 1, 2)
-        Structs::DataType data_type;             ///< 데이터 타입
+        Structs::DataType data_type;   ///< 데이터 타입
         std::string unit;               ///< 단위 (예: "°C", "%RH")
         double scaling_factor;          ///< 스케일링 팩터
         double scaling_offset;          ///< 스케일링 오프셋
@@ -109,9 +117,9 @@ public:
         , is_writable(false)
         , auto_subscribe(true) {}
         
-    /**
-     * @brief 전체 설정 생성자
-     */
+        /**
+         * @brief 전체 설정 생성자
+         */
         MqttDataPointInfo(const std::string& id, const std::string& point_name,
                      const std::string& desc, const std::string& mqtt_topic,
                      int qos_level, Structs::DataType type, const std::string& point_unit,
@@ -130,14 +138,9 @@ public:
         , auto_subscribe(auto_sub) {}
     };
     
-    ProtocolType GetProtocolType() const override;
-    Structs::DriverStatus GetStatus() const override;
-    ErrorInfo GetLastError() const override;
-    const DriverStatistics& GetStatistics() const override;
-    void ResetStatistics() override;
-    // GetDiagnostics() 메소드를 override하지 않음 (기본 구현 사용)
-    
-    // MQTT 특화 메소드들
+    // =============================================================================
+    // 기본 MQTT 기능
+    // =============================================================================
     
     /**
      * @brief 토픽 구독
@@ -173,8 +176,10 @@ public:
      * @param retained Retained 메시지 여부
      * @return 성공 시 true
      */
+#ifdef HAS_NLOHMANN_JSON
     bool PublishJson(const std::string& topic, const nlohmann::json& json_data,
                      int qos = 1, bool retained = false);
+#endif
     
     /**
      * @brief 데이터 포인트를 JSON으로 발행
@@ -185,7 +190,64 @@ public:
     bool PublishDataPoints(const std::vector<std::pair<Structs::DataPoint, TimestampedValue>>& data_points,
                           const std::string& base_topic = "data");
 
-    // ✅ 여기에 새 메소드들 추가 ✅
+    // =============================================================================
+    // 고급 MQTT 기능 (MQTTWorker 지원용)
+    // =============================================================================
+    
+    /**
+     * @brief 비동기 메시지 발행
+     * @param topic 발행할 토픽
+     * @param payload 메시지 내용
+     * @param qos QoS 레벨
+     * @param retained Retained 메시지 여부
+     * @return 결과를 반환하는 future
+     */
+    std::future<bool> PublishAsync(const std::string& topic, const std::string& payload,
+                                  int qos = 1, bool retained = false);
+    
+    /**
+     * @brief 배치 메시지 발행
+     * @param messages 토픽-페이로드 쌍의 벡터
+     * @param qos QoS 레벨
+     * @param retained Retained 메시지 여부
+     * @return 모든 메시지 발행 성공 시 true
+     */
+    bool PublishBatch(const std::vector<std::pair<std::string, std::string>>& messages,
+                     int qos = 1, bool retained = false);
+    
+    /**
+     * @brief 상태 메시지 발행 (온라인/오프라인)
+     * @param status 상태 문자열
+     * @return 성공 시 true
+     */
+    bool PublishStatus(const std::string& status);
+    
+    // =============================================================================
+    // 연결 품질 및 모니터링
+    // =============================================================================
+    
+    /**
+     * @brief 연결 상태 건강성 확인
+     * @return 연결이 건강하면 true
+     */
+    bool IsHealthy() const;
+    
+    /**
+     * @brief 연결 품질 점수 계산
+     * @return 0.0(최악) ~ 1.0(최고) 품질 점수
+     */
+    double GetConnectionQuality() const;
+    
+    /**
+     * @brief 연결 정보 문자열 반환
+     * @return 연결 상태 정보
+     */
+    std::string GetConnectionInfo() const;
+    
+    // =============================================================================
+    // 데이터 포인트 관리
+    // =============================================================================
+    
     /**
      * @brief 토픽으로 데이터 포인트 정보 찾기
      * @param topic 검색할 토픽
@@ -204,48 +266,84 @@ public:
      * @brief 로드된 포인트 수 반환
      * @return 현재 로드된 MQTT 데이터 포인트 개수
      */
-    size_t GetLoadedPointCount() const;                      
+    size_t GetLoadedPointCount() const;
     
-    // MQTT 콜백 인터페이스 구현 (스텁)
-    virtual void connected(const std::string& cause);
-    virtual void connection_lost(const std::string& cause);
-    virtual void message_arrived(mqtt::const_message_ptr msg);
-    virtual void delivery_complete(mqtt::delivery_token_ptr tok);
+    /**
+     * @brief 토픽의 포인트 이름 반환
+     * @param topic 토픽 이름
+     * @return 포인트 이름 (없으면 토픽 이름)
+     */
+    std::string GetTopicPointName(const std::string& topic) const;
     
-    // MQTT 액션 리스너 인터페이스 구현 (스텁)
-    virtual void on_failure(const mqtt::token& tok);
-    virtual void on_success(const mqtt::token& tok);
-
-    // 진단 메소드들
+    // =============================================================================
+    // 진단 및 로깅
+    // =============================================================================
+    
+    /**
+     * @brief 진단 기능 활성화
+     * @param log_manager 로그 매니저 참조
+     * @param packet_log 패킷 로깅 활성화 여부
+     * @param console 콘솔 출력 활성화 여부
+     * @return 성공 시 true
+     */
     bool EnableDiagnostics(LogManager& log_manager, 
                           bool packet_log = true, bool console = false);
+    
+    /**
+     * @brief 진단 기능 비활성화
+     */
     void DisableDiagnostics();
+    
+    /**
+     * @brief 진단 정보를 JSON으로 반환
+     * @return JSON 형식의 진단 정보
+     */
     std::string GetDiagnosticsJSON() const;
-    std::string GetTopicPointName(const std::string& topic) const;
-
-        // ✅ 이 위치에 MQTT 콜백 메소드들 추가
+    
+    // =============================================================================
+    // MQTT 콜백 인터페이스 구현
+    // =============================================================================
+    
+    /**
+     * @brief MQTT 연결 성공 콜백
+     * @param cause 연결 성공 원인
+     */
+    virtual void connected(const std::string& cause);
+    
     /**
      * @brief MQTT 연결 끊김 콜백
      * @param cause 연결 끊김 원인
      */
-    void OnConnectionLost(const std::string& cause);
+    virtual void connection_lost(const std::string& cause);
     
     /**
      * @brief MQTT 메시지 수신 콜백
      * @param msg 수신된 메시지
      */
-    void OnMessageArrived(mqtt::const_message_ptr msg);
+    virtual void message_arrived(mqtt::const_message_ptr msg);
     
     /**
      * @brief MQTT 메시지 전송 완료 콜백
      * @param token 전송 토큰
      */
-    void OnDeliveryComplete(mqtt::delivery_token_ptr token);
+    virtual void delivery_complete(mqtt::delivery_token_ptr token);
+    
+    /**
+     * @brief MQTT 작업 실패 콜백
+     * @param token 실패한 작업의 토큰
+     */
+    virtual void on_failure(const mqtt::token& token);
+    
+    /**
+     * @brief MQTT 작업 성공 콜백
+     * @param token 성공한 작업의 토큰
+     */
+    virtual void on_success(const mqtt::token& token);
 
 private:
-    // ==========================================================================
+    // =============================================================================
     // 내부 구조체 및 열거형
-    // ==========================================================================
+    // =============================================================================
     
     struct MqttConfig {
         std::string broker_url;                 ///< 브로커 URL (mqtt://localhost:1883)
@@ -259,7 +357,7 @@ private:
         bool auto_reconnect;                    ///< 자동 재연결 플래그
         bool use_ssl;                           ///< SSL 사용 여부
         int qos_level;                          ///< 기본 QoS 레벨
-        std::string ca_cert_path;              ///< 🆕 추가: CA 인증서 경로
+        std::string ca_cert_path;              ///< CA 인증서 경로
         
         MqttConfig() 
             : broker_url("mqtt://localhost:1883")
@@ -273,7 +371,7 @@ private:
             , qos_level(1) {}
     } mqtt_config_;
     
-    // 구독 정보 구조체 수정
+    // 구독 정보 구조체
     struct SubscriptionInfo {
         int qos;                                ///< QoS 레벨
         Timestamp subscribed_at;                ///< 구독 시간
@@ -285,6 +383,7 @@ private:
         }
     };
     
+    // 발행 요청 구조체
     struct PublishRequest {
         std::string topic;
         std::string payload;
@@ -298,8 +397,7 @@ private:
               request_time(std::chrono::system_clock::now()) {}
     };
     
-
-    
+    // 패킷 로그 구조체
     struct MqttPacketLog {
         std::string direction;        // "PUBLISH", "SUBSCRIBE", "RECEIVE"
         Timestamp timestamp;
@@ -313,11 +411,13 @@ private:
         std::string raw_payload;      // 원시 페이로드 (일부)
     };
     
-    // ==========================================================================
+    // =============================================================================
     // 내부 메소드들
-    // ==========================================================================
+    // =============================================================================
     
+    // 설정 관련
     bool ParseConfig(const DriverConfig& config);
+    bool ParseAdvancedConfig(const std::string& connection_string);
     bool SetupSslOptions();
     bool CreateMqttClient();
     bool SetupCallbacks();
@@ -326,29 +426,31 @@ private:
     bool EstablishConnection();
     void HandleReconnection();
     void ProcessReconnection();
+    void RestoreSubscriptions();
     
     // 메시지 처리
     void ProcessIncomingMessage(mqtt::const_message_ptr msg);
     Structs::DataValue ParseMessagePayload(const std::string& payload, Structs::DataType expected_type);
-    nlohmann::json CreateDataPointJson(const Structs::DataPoint& point, const TimestampedValue& value);
+    std::string DataValueToString(const Structs::DataValue& value);
     
-    // 구독 관리
-    void RestoreSubscriptions();
-    void UpdateSubscriptionStatus(const std::string& topic, bool subscribed);
-    void ProcessReceivedMessage(const std::string& topic, const std::string& payload, int qos);
-    // 에러 처리
-    void SetError(ErrorCode code, const std::string& message);
+#ifdef HAS_NLOHMANN_JSON
+    nlohmann::json CreateDataPointJson(const Structs::DataPoint& point, const TimestampedValue& value);
+#endif
+    
+    // 에러 처리 및 통계
+    void SetError(Enums::ErrorCode code, const std::string& message);
     void UpdateStatistics(const std::string& operation, bool success, double duration_ms = 0);
     
-    // 진단 및 상태
-    void UpdateDiagnostics();
-    void CleanupResources();
-    
-    // 비동기 작업 관리
+    // 백그라운드 작업
     void StartBackgroundTasks();
     void StopBackgroundTasks();
     void PublishWorkerLoop();
     void ReconnectWorkerLoop();
+    
+    // 진단 및 상태
+    void UpdateDiagnostics();
+    void CleanupResources();
+    bool LoadMqttPointsFromDB();
     
     // 진단 헬퍼 메소드들
     void LogMqttPacket(const std::string& direction, const std::string& topic,
@@ -359,17 +461,18 @@ private:
                                const std::string& payload) const;
     
     std::string FormatMqttPacketForConsole(const MqttPacketLog& log) const;
-    bool LoadMqttPointsFromDB();
     
-    // ==========================================================================
+    // =============================================================================
     // 멤버 변수들
-    // ==========================================================================
+    // =============================================================================
     
     // 설정
     DriverConfig config_;
     
-    // MQTT 클라이언트 (나중에 구현)
-    // std::unique_ptr<mqtt::async_client> client_;
+    // MQTT 클라이언트 및 콜백
+    std::unique_ptr<mqtt::async_client> mqtt_client_;
+    std::unique_ptr<MqttCallbackImpl> mqtt_callback_;
+    mqtt::connect_options connect_options_;
     
     // 상태 관리
     std::atomic<Structs::DriverStatus> status_;
@@ -378,7 +481,7 @@ private:
     
     // 에러 및 통계
     mutable std::mutex error_mutex_;
-    ErrorInfo last_error_;
+    Structs::ErrorInfo last_error_;
     mutable std::mutex stats_mutex_;
     DriverStatistics statistics_;
     
@@ -386,14 +489,14 @@ private:
     mutable std::mutex subscriptions_mutex_;
     std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
     
-    // 데이터 포인트 매핑 (토픽 -> 데이터 포인트)std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
+    // 데이터 포인트 매핑
     mutable std::mutex data_mapping_mutex_;
     std::unordered_map<std::string, std::vector<Structs::DataPoint>> topic_to_datapoints_;
-    std::unordered_map<UUID, std::string> datapoint_to_topic_;
+    std::unordered_map<std::string, std::string> datapoint_to_topic_;
     
     // 최신 값 저장
     mutable std::mutex values_mutex_;
-    std::unordered_map<UUID, TimestampedValue> latest_values_;
+    std::unordered_map<std::string, TimestampedValue> latest_values_;
     
     // 비동기 작업 관리
     std::thread publish_worker_;
@@ -414,9 +517,6 @@ private:
     // 로깅
     std::unique_ptr<DriverLogger> logger_;
     
-    // 진단 정보
-    mutable std::mutex diagnostics_mutex_;
-    
     // 성능 추적
     Timestamp last_successful_operation_;
     std::atomic<uint64_t> total_messages_received_;
@@ -431,25 +531,14 @@ private:
     
     LogManager* log_manager_;
     
-    mutable std::mutex mqtt_diagnostics_mutex_;
     mutable std::mutex mqtt_points_mutex_;
     mutable std::mutex mqtt_packet_log_mutex_;
     
     std::map<std::string, MqttDataPointInfo> mqtt_point_info_map_;
     std::deque<MqttPacketLog> mqtt_packet_history_;
-
-    std::unique_ptr<mqtt::async_client> mqtt_client_;
-    std::unique_ptr<mqtt::callback> mqtt_callback_;
-    mqtt::connect_options connect_options_;
-    std::mutex connection_mutex_;               ///< 연결 상태 뮤텍스
-
-    mutable std::mutex message_queue_mutex_;
-    std::queue<std::pair<std::string, std::string>> incoming_messages_; // topic, payload
-    std::condition_variable message_queue_cv_;
 };
 
 } // namespace Drivers
 } // namespace PulseOne
 
 #endif // PULSEONE_DRIVERS_MQTT_DRIVER_H
-
