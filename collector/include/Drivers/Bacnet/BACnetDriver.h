@@ -17,6 +17,34 @@
 #include <condition_variable>
 #include <future>
 
+// =============================================================================
+// 🔥 JSON 라이브러리 (기존 패턴 100% 준수)
+// =============================================================================
+#ifdef HAS_NLOHMANN_JSON
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+#else
+// JSON 라이브러리가 없는 경우 기본 구현 사용 (다른 클래스들과 동일)
+struct json {
+    template<typename T> T get() const { return T{}; }
+    bool contains(const std::string&) const { return false; }
+    std::string dump() const { return "{}"; }
+    static json parse(const std::string&) { return json{}; }
+    static json object() { return json{}; }
+    static json array() { return json{}; }
+    json& operator[](const std::string& key) { return *this; }
+    json& operator=(const std::string& value) { return *this; }
+    json& operator=(bool value) { return *this; }
+    json& operator=(int value) { return *this; }
+    json& operator=(double value) { return *this; }
+    json& operator=(const json& other) { return *this; }
+    bool empty() const { return true; }
+    void push_back(const json& item) {}
+    template<typename T>
+    T value(const std::string& key, const T& default_value) const { return default_value; }
+};
+#endif
+
 // 🔥 실제 존재하는 BACnet Stack 헤더들만 include
 #ifdef HAS_BACNET_STACK
 extern "C" {
@@ -370,7 +398,7 @@ private:
     
     void HandleError(BACNET_ADDRESS* src, uint8_t invoke_id,
                     BACNET_ERROR_CLASS error_class, BACNET_ERROR_CODE error_code);
-    void HandleAbort(BACNET_ADDRESS* src, uint8_t invoke_id, uint8_t abort_reason);
+    void HandleAbort(BACNET_ADDRESS* src, uint8_t invoke_id, uint8_t abort_reason, bool server);
     void HandleReject(BACNET_ADDRESS* src, uint8_t invoke_id, uint8_t reject_reason);
 #endif
     
