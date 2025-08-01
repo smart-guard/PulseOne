@@ -14,6 +14,12 @@
 
 using namespace std::chrono;
 
+// 🔥 필수 using 선언들
+using BACnetDeviceInfo = PulseOne::Drivers::BACnetDeviceInfo;
+using BACnetObjectInfo = PulseOne::Drivers::BACnetObjectInfo;
+using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
+using DataPointEntity = PulseOne::Database::Entities::DataPointEntity;
+using DataType = PulseOne::Enums::DataType;
 namespace PulseOne {
 namespace Workers {
 
@@ -175,135 +181,131 @@ void BACnetDiscoveryService::OnValueChanged(const std::string& object_id, const 
 
 bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(const Drivers::BACnetDeviceInfo& device) {
     try {
-        // 기존 디바이스 조회
-        auto existing_devices = device_repository_->findByProtocol("BACNET_IP");  // ✅ 수정
-        for (auto& dev : existing_devices) {
-            try {
-                auto config = dev.getConfigAsJson();
-                if (config.contains("device_id") && 
-                    config["device_id"].get<uint32_t>() == device.device_id) {
-                    
-                    // 기존 디바이스 업데이트
-                    dev.setEnabled(true);  // ✅ 수정
-                    // ❌ setLastSeen 제거 (DeviceEntity에 없음)
-                    return device_repository_->update(dev);
-                }
-            } catch (...) {
-                // JSON 파싱 실패 시 무시
-                continue;
+        // 기존 디바이스 확인
+        int existing_device_id = FindDeviceIdInDatabase(device.device_id);
+        
+        if (existing_device_id > 0) {
+            // 기존 디바이스 업데이트
+            auto existing_device = device_repository_->findById(existing_device_id);
+            if (existing_device.has_value()) {
+                existing_device->setName(device.device_name);
+                existing_device->setEndpoint(device.ip_address + ":" + std::to_string(device.port));
+                // 🔥 수정: setLastSeen 제거 (DeviceEntity에 없음)
+                // existing_device->setLastSeen(std::chrono::system_clock::now());
+                
+                return device_repository_->update(existing_device.value());
             }
         }
         
-        // 새 디바이스 생성
-        Database::Entities::DeviceEntity new_device;
+        // 새 디바이스 생성 - 🔥 수정: 실제 메서드명 사용
+        DeviceEntity new_device;
         new_device.setName(device.device_name);
-        new_device.setProtocolType("BACNET_IP");  // ✅ 수정
-        new_device.setEndpoint(device.ip_address + ":47808");
-        new_device.setEnabled(true);  // ✅ 수정
-        new_device.setDescription("Auto-discovered BACnet device");
-        // ❌ setLastSeen 제거 (DeviceEntity에 없음)
+        new_device.setProtocolType("BACNET_IP");
+        new_device.setEndpoint(device.ip_address + ":" + std::to_string(device.port));
+        // 🔥 수정: DeviceEntity에 없는 메서드들 제거
+        // new_device.setPollingInterval(5000);  // DeviceEntity에 없음
+        // new_device.setTimeout(3000);          // DeviceEntity에 없음
+        new_device.setEnabled(true);             // setIsEnabled → setEnabled
         
-        // 설정 JSON 생성 - BACnetDeviceInfo에 실제 존재하는 필드만 사용
+        // BACnet 특화 설정 JSON 생성
         std::ostringstream config_json;
         config_json << "{"
-                   << "\"device_id\":" << device.device_id << ","
+                   << "\"bacnet_device_id\":" << device.device_id << ","
                    << "\"ip_address\":\"" << device.ip_address << "\","
                    << "\"port\":" << device.port << ","
                    << "\"max_apdu_length\":" << device.max_apdu_length << ","
-                   << "\"segmentation_supported\":" << device.segmentation_supported
+                   << "\"segmentation_supported\":" << (device.segmentation_supported ? "true" : "false")
                    << "}";
         
-        new_device.setConfigAsJson(config_json.str());  // ✅ 수정
+        new_device.setConfig(config_json.str());
         
-        // 데이터베이스에 저장 
-        return device_repository_->save(new_device);  // ✅ 수정
+        bool success = device_repository_->save(new_device);
+        
+        // 🔥 수정: logger_ 대신 LogManager 사용, DATABASE 제거
+        if (success) {
+            auto& logger = LogManager::getInstance();
+            logger.Info("BACnet device saved to database: " + device.device_name + 
+                       " (ID: " + std::to_string(device.device_id) + ")");
+        }
+        
+        return success;
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.Error("SaveDiscoveredDeviceToDatabase failed: " + std::string(e.what()));
+        logger.Error("Failed to save BACnet device to database: " + std::string(e.what()));
         return false;
     }
 }
 
-bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects) {
+bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(uint32_t device_id, 
+                                                           const std::vector<Drivers::BACnetObjectInfo>& objects) {
     try {
-        // 데이터베이스에서 디바이스 ID 조회
-        int db_device_id = FindDeviceIdInDatabase(device_id);
-        if (db_device_id <= 0) {
+        // 디바이스 ID 조회
+        int internal_device_id = FindDeviceIdInDatabase(device_id);
+        if (internal_device_id <= 0) {
             auto& logger = LogManager::getInstance();
-            logger.Error("Device not found in database: " + std::to_string(device_id));
+            logger.Error("Device not found in database for BACnet device ID: " + std::to_string(device_id));
             return false;
         }
         
+        bool overall_success = true;
+        
         for (const auto& object : objects) {
-            // 고유 DataPoint ID 생성
-            std::string datapoint_id = GenerateDataPointId(device_id, object);
-            
-            // 기존 DataPoint 조회 - metadata 기반으로 검색 ✅
-            auto existing_datapoints = datapoint_repository_->findByDeviceId(db_device_id);
-            bool found_existing = false;
-            
-            for (auto& dp : existing_datapoints) {
-                const auto& metadata_map = dp.getMetadata();  // ✅ map 타입
+            try {
+                // 🔥 수정: CreateDataPointId → GenerateDataPointId
+                std::string point_id = GenerateDataPointId(device_id, object);
                 
-                // map에서 original_datapoint_id 찾기
-                auto it = metadata_map.find("original_datapoint_id");
-                if (it != metadata_map.end() && it->second == datapoint_id) {
-                    // 기존 DataPoint 업데이트
-                    dp.setEnabled(true);  // ✅ 수정
-                    // ❌ setLastSeen 제거 (DataPointEntity에 없음)
-                    datapoint_repository_->update(dp);
-                    found_existing = true;
-                    break;
-                }
-            }
-            
-            if (!found_existing) {
-                // 새 DataPoint 생성
-                Database::Entities::DataPointEntity new_datapoint;
-                new_datapoint.setDeviceId(db_device_id);
-                new_datapoint.setName(object.object_name);
-                new_datapoint.setDescription(ObjectTypeToString(static_cast<int>(object.object_type)) + " - Auto-discovered");
+                // 🔥 수정: 완전한 네임스페이스 사용
+                DataPointEntity new_datapoint;
+                new_datapoint.setDeviceId(internal_device_id);
+                new_datapoint.setName(object.object_name.empty() ? 
+                                     ("Object_" + std::to_string(object.object_instance)) : 
+                                     object.object_name);
+                new_datapoint.setAddress(static_cast<int64_t>(object.object_instance));
                 
-                // ⚠️ address는 int 타입이므로 hash 값으로 변환 ✅
-                std::hash<std::string> hasher;
-                size_t hash_value = hasher(datapoint_id);
-                new_datapoint.setAddress(static_cast<int>(hash_value & 0x7FFFFFFF));  // 양수로 제한
+                // 🔥 수정: DataType enum 값과 메서드명 정정
+                DataType data_type = DetermineDataType(static_cast<int>(object.value.tag));
+                new_datapoint.setDataType(DataTypeToString(data_type));  // string 변환 필요
                 
-                new_datapoint.setDataType(DetermineDataType(static_cast<int>(object.value.tag)));
-                new_datapoint.setEnabled(true);  // ✅ 수정
-                new_datapoint.setUnit("");
-                // ❌ setLastSeen 제거 (DataPointEntity에 없음)
+                new_datapoint.setUnit(object.units.empty() ? "" : object.units);
+                new_datapoint.setEnabled(true);     // setIsEnabled → setEnabled
+                // new_datapoint.setPollingEnabled(true);  // DataPointEntity에 없음
                 
-                // 메타데이터 JSON 생성 - map이 아닌 JSON 문자열로 변환 후 map으로 설정
+                // BACnet 특화 설정
                 std::ostringstream config_json;
                 config_json << "{"
-                           << "\"bacnet_object_type\":" << static_cast<int>(object.object_type) << ","
-                           << "\"bacnet_instance\":" << object.object_instance << ","
-                           << "\"original_datapoint_id\":\"" << datapoint_id << "\""
+                           << "\"object_type\":" << static_cast<int>(object.object_type) << ","
+                           << "\"object_instance\":" << object.object_instance << ","
+                           << "\"property_id\":" << static_cast<int>(object.property_id) << ","
+                           << "\"array_index\":" << object.array_index << ","
+                           << "\"writable\":" << (object.writable ? "true" : "false")
                            << "}";
                 
-                // JSON 문자열을 map으로 변환
-                std::map<std::string, std::string> metadata_map;
-                metadata_map["bacnet_object_type"] = std::to_string(static_cast<int>(object.object_type));
-                metadata_map["bacnet_instance"] = std::to_string(object.object_instance);
-                metadata_map["original_datapoint_id"] = datapoint_id;
+                // 🔥 수정: setConfig 제거 (DataPointEntity에 없음)
+                // new_datapoint.setConfig(config_json.str());  // DataPointEntity에 없음
                 
-                new_datapoint.setMetadata(metadata_map);  // ✅ 수정
-                
-                if (!datapoint_repository_->save(new_datapoint)) {  // ✅ 수정
+                if (!datapoint_repository_->save(new_datapoint)) {
+                    overall_success = false;
                     auto& logger = LogManager::getInstance();
-                    logger.Error("Failed to save DataPoint: " + new_datapoint.getName());
-                    return false;
+                    logger.Error("Failed to save data point: " + object.object_name);
                 }
+                
+            } catch (const std::exception& e) {
+                overall_success = false;
+                auto& logger = LogManager::getInstance();
+                logger.Error("Exception saving object " + object.object_name + ": " + std::string(e.what()));
             }
         }
         
-        return true;
+        auto& logger = LogManager::getInstance();
+        logger.Info("Saved " + std::to_string(objects.size()) + 
+                   " BACnet objects for device " + std::to_string(device_id));
+        
+        return overall_success;
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.Error("SaveDiscoveredObjectsToDatabase failed: " + std::string(e.what()));
+        logger.Error("Failed to save BACnet objects to database: " + std::string(e.what()));
         return false;
     }
 }
@@ -426,17 +428,30 @@ std::string BACnetDiscoveryService::ObjectTypeToString(int type) {
     }
 }
 
-std::string BACnetDiscoveryService::DetermineDataType(int tag) {
+DataType BACnetDiscoveryService::DetermineDataType(int tag) {
     switch (tag) {
-        case 1:  return "BOOLEAN";       // BACNET_APPLICATION_TAG_BOOLEAN
-        case 2:  return "UINT32";        // BACNET_APPLICATION_TAG_UNSIGNED_INT
-        case 3:  return "INT32";         // BACNET_APPLICATION_TAG_SIGNED_INT
-        case 4:  return "FLOAT";         // BACNET_APPLICATION_TAG_REAL
-        case 5:  return "DOUBLE";        // BACNET_APPLICATION_TAG_DOUBLE
-        case 7:  return "STRING";        // BACNET_APPLICATION_TAG_CHARACTER_STRING
-        default: return "VARIANT";
+        case 1:  return DataType::BOOL;          // BACNET_APPLICATION_TAG_BOOLEAN
+        case 2:  return DataType::UINT32;        // BACNET_APPLICATION_TAG_UNSIGNED_INT
+        case 3:  return DataType::INT32;         // BACNET_APPLICATION_TAG_SIGNED_INT
+        case 4:  return DataType::FLOAT32;       // BACNET_APPLICATION_TAG_REAL
+        case 5:  return DataType::FLOAT64;       // BACNET_APPLICATION_TAG_DOUBLE
+        case 7:  return DataType::STRING;        // BACNET_APPLICATION_TAG_CHARACTER_STRING
+        default: return DataType::UNKNOWN;       // 알 수 없는 타입
     }
 }
+
+std::string BACnetDiscoveryService::DataTypeToString(DataType type) {
+    switch (type) {
+        case DataType::BOOL:     return "BOOL";
+        case DataType::INT32:    return "INT32";
+        case DataType::UINT32:   return "UINT32";
+        case DataType::FLOAT32:  return "FLOAT32";
+        case DataType::FLOAT64:  return "FLOAT64";
+        case DataType::STRING:   return "STRING";
+        default:                 return "UNKNOWN";
+    }
+}
+
 
 std::string BACnetDiscoveryService::ConvertDataValueToString(const PulseOne::Structs::DataValue& value) {
     try {

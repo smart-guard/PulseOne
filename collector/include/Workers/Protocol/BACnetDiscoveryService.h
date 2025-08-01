@@ -1,9 +1,7 @@
-/**
- * @file BACnetDiscoveryService.h
- * @brief BACnet 발견 서비스 헤더 - BACnet 헤더 의존성 제거
- * @author PulseOne Development Team
- * @date 2025-08-01
- */
+// =============================================================================
+// include/Workers/Protocol/BACnetDiscoveryService.h 
+// 누락된 메서드 선언 추가
+// =============================================================================
 
 #ifndef BACNET_DISCOVERY_SERVICE_H
 #define BACNET_DISCOVERY_SERVICE_H
@@ -12,7 +10,7 @@
 #include "Database/Repositories/DeviceRepository.h" 
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
-#include "Common/Structs.h"
+#include "Common/UnifiedCommonTypes.h"  // 🔥 수정: Structs.h 대신
 #include <memory>
 #include <mutex>
 #include <chrono>
@@ -20,15 +18,6 @@
 namespace PulseOne {
 namespace Workers {
 
-/**
- * @brief BACnet 디바이스/객체 발견을 데이터베이스에 저장하는 서비스
- * 
- * 🎯 핵심 기능:
- * - BACnetWorker의 콜백을 등록하여 발견 이벤트 수신
- * - 발견된 디바이스를 devices 테이블에 저장
- * - 발견된 객체를 data_points 테이블에 저장  
- * - 값 변경을 current_values 테이블에 저장
- */
 class BACnetDiscoveryService {
 public:
     // =======================================================================
@@ -52,49 +41,34 @@ public:
     
     explicit BACnetDiscoveryService(
         std::shared_ptr<Database::Repositories::DeviceRepository> device_repo,
-        std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo,  
+        std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo,
         std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo = nullptr
     );
     
     ~BACnetDiscoveryService();
 
     // =======================================================================
-    // 서비스 제어
+    // 공개 메서드들
     // =======================================================================
     
-    /**
-     * @brief BACnetWorker에 콜백 등록
-     */
     bool RegisterToWorker(std::shared_ptr<BACnetWorker> worker);
-    
-    /**
-     * @brief BACnetWorker에서 콜백 해제
-     */
     void UnregisterFromWorker();
     
-    /**
-     * @brief 서비스 활성 상태 확인
-     */
-    bool IsActive() const;
-
-    // =======================================================================
-    // 통계 조회
-    // =======================================================================
-    
     Statistics GetStatistics() const;
+    bool IsActive() const;
     void ResetStatistics();
 
-private:
     // =======================================================================
-    // 콜백 핸들러들 (BACnetWorker에서 호출됨)
+    // 콜백 핸들러들 (public으로 변경)
     // =======================================================================
     
     void OnDeviceDiscovered(const Drivers::BACnetDeviceInfo& device);
     void OnObjectDiscovered(uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects);
     void OnValueChanged(const std::string& object_id, const TimestampedValue& value);
 
+private:
     // =======================================================================
-    // 데이터베이스 저장 로직
+    // 데이터베이스 저장 메서드들
     // =======================================================================
     
     bool SaveDiscoveredDeviceToDatabase(const Drivers::BACnetDeviceInfo& device);
@@ -102,13 +76,14 @@ private:
     bool UpdateCurrentValueInDatabase(const std::string& object_id, const TimestampedValue& value);
 
     // =======================================================================
-    // 헬퍼 메서드들 - int 타입으로 간소화
+    // 🔥 추가: 누락된 헬퍼 메서드 선언들
     // =======================================================================
     
     int FindDeviceIdInDatabase(uint32_t bacnet_device_id);
     std::string GenerateDataPointId(uint32_t device_id, const Drivers::BACnetObjectInfo& object);
-    std::string ObjectTypeToString(int object_type);  // ✅ int로 변경
-    std::string DetermineDataType(int tag);            // ✅ int로 변경
+    std::string ObjectTypeToString(int type);
+    PulseOne::Enums::DataType DetermineDataType(int tag);  // 🔥 수정: 올바른 반환 타입
+    std::string DataTypeToString(PulseOne::Enums::DataType type);  // 🔥 추가: 새 헬퍼 함수
     std::string ConvertDataValueToString(const PulseOne::Structs::DataValue& value);
     void HandleError(const std::string& context, const std::string& error);
 
@@ -116,16 +91,16 @@ private:
     // 멤버 변수들
     // =======================================================================
     
-    // Repository 인스턴스들
+    // Repository 참조들
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repository_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repository_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repository_;
     
-    // 등록된 워커 (약한 참조로 순환 참조 방지)
+    // Worker 참조 (weak_ptr로 순환 참조 방지)
     std::weak_ptr<BACnetWorker> registered_worker_;
     
-    // 서비스 상태
-    bool is_active_;
+    // 상태 관리
+    std::atomic<bool> is_active_;
     
     // 통계 (스레드 안전)
     mutable std::mutex stats_mutex_;
