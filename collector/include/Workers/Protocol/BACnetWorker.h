@@ -133,6 +133,61 @@ public:
      */
     std::string GetDiscoveredDevices() const;
 
+    // =============================================================================
+    // 콜백 인터페이스 (외부 서비스와 연동)
+    // =============================================================================
+    
+    /**
+     * @brief 디바이스 발견 콜백 타입
+     * @param device 발견된 디바이스 정보
+     */
+    using DeviceDiscoveredCallback = std::function<void(const Drivers::BACnetDeviceInfo& device)>;
+    
+    /**
+     * @brief 객체 발견 콜백 타입
+     * @param device_id 디바이스 ID
+     * @param objects 발견된 객체들
+     */
+    using ObjectDiscoveredCallback = std::function<void(uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects)>;
+    
+    /**
+     * @brief 값 변경 콜백 타입
+     * @param object_id 객체 식별자 (device_id:object_type:instance)
+     * @param value 변경된 값
+     */
+    using ValueChangedCallback = std::function<void(const std::string& object_id, const PulseOne::TimestampedValue& value)>;
+    
+    /**
+     * @brief 디바이스 발견 콜백 등록
+     * @param callback 콜백 함수
+     */
+    void SetDeviceDiscoveredCallback(DeviceDiscoveredCallback callback);
+    
+    /**
+     * @brief 객체 발견 콜백 등록
+     * @param callback 콜백 함수
+     */
+    void SetObjectDiscoveredCallback(ObjectDiscoveredCallback callback);
+    
+    /**
+     * @brief 값 변경 콜백 등록
+     * @param callback 콜백 함수
+     */
+    void SetValueChangedCallback(ValueChangedCallback callback);
+    
+    /**
+     * @brief 발견된 디바이스 목록 반환 (외부 접근용)
+     * @return 디바이스 정보 벡터
+     */
+    std::vector<Drivers::BACnetDeviceInfo> GetDiscoveredDevices() const;
+    
+    /**
+     * @brief 특정 디바이스의 객체 목록 반환
+     * @param device_id 디바이스 ID
+     * @return 객체 정보 벡터
+     */
+    std::vector<Drivers::BACnetObjectInfo> GetDiscoveredObjects(uint32_t device_id) const;    
+
 protected:
     // =============================================================================
     // UdpBasedWorker 순수 가상 함수 구현
@@ -192,11 +247,6 @@ protected:
     /// 디바이스 맵 뮤텍스
     mutable std::mutex devices_mutex_;
 
-private:
-    // =============================================================================
-    // 내부 메서드
-    // =============================================================================
-    
  private:
     // =============================================================================
     // 내부 메서드 (이미 있는 것들은 그대로 두고 누락된 것만 추가)
@@ -242,6 +292,34 @@ private:
      * @return 성공 시 true
      */
     bool PerformPolling();
+
+    // =============================================================================
+    // 콜백 함수들
+    // =============================================================================
+    DeviceDiscoveredCallback on_device_discovered_;
+    ObjectDiscoveredCallback on_object_discovered_;
+    ValueChangedCallback on_value_changed_;
+    
+    // =============================================================================
+    // 발견된 객체 저장 맵 (추가)
+    // =============================================================================
+    /// 디바이스별 객체 정보 (Device ID -> Objects)
+    std::map<uint32_t, std::vector<Drivers::BACnetObjectInfo>> discovered_objects_;
+    
+    /// 객체별 현재 값 (Object ID -> Value)
+    std::map<std::string, PulseOne::TimestampedValue> current_values_;
+    
+    // =============================================================================
+    // 헬퍼 메서드들
+    // =============================================================================
+    
+    /**
+     * @brief 객체 ID 생성 (device_id:object_type:instance)
+     * @param device_id 디바이스 ID
+     * @param object_info 객체 정보
+     * @return 객체 식별자 문자열
+     */
+    std::string CreateObjectId(uint32_t device_id, const Drivers::BACnetObjectInfo& object_info) const;    
 
 };
 

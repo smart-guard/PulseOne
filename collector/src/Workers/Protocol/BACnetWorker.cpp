@@ -702,11 +702,23 @@ bool BACnetWorker::PerformDiscovery() {
                               " (ID: " + std::to_string(device.device_id) + 
                               ", IP: " + device.ip_address + ")");
                     
-                    // 🔥 콜백으로만 알림 (DB 저장은 외부에서)
-                    // TODO: 콜백 인터페이스 구현 시 여기서 호출
-                    // if (on_device_discovered_callback_) {
-                    //     on_device_discovered_callback_(device);
-                    // }
+                    discovered_devices_[device.device_id] = device;
+                    new_devices++;
+                    
+                    LogMessage(PulseOne::LogLevel::INFO, 
+                              "🆕 New BACnet device discovered: " + device.device_name + 
+                              " (ID: " + std::to_string(device.device_id) + 
+                              ", IP: " + device.ip_address + ")");
+                    
+                    // 🔥 콜백 호출 추가
+                    if (on_device_discovered_) {
+                        try {
+                            on_device_discovered_(device);
+                        } catch (const std::exception& e) {
+                            LogMessage(PulseOne::LogLevel::ERROR, 
+                                      "Device discovered callback failed: " + std::string(e.what()));
+                        }
+                    }
                 }
             }
             
@@ -773,11 +785,93 @@ bool BACnetWorker::PerformPolling() {
                         
                         successful_reads++;
                         
-                        // 🔥 콜백으로만 알림 (DB 저장은 외부에서)
-                        // TODO: 콜백 인터페이스 구현 시 여기서 호출
-                        // if (on_object_discovered_callback_) {
-                        //     on_object_discovered_callback_(device_id, {obj});
-                        // }
+                        auto objects = bacnet_driver_->GetDeviceObjects(device_id);
+                        total_objects += objects.size();
+                        successful_reads += objects.size();
+                        
+                        if (!objects.empty()) {
+                            LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+                                    "Device " + std::to_string(device_id) + " has " + 
+                                    std::to_string(objects.size()) + " objects");
+                            
+                            // 🔥 객체 저장 및 콜백 호출
+                            {
+                                std::lock_guard<std::mutex> lock(devices_mutex_);
+                                
+                                // 기존 객체와 비교하여 새로운 객체만 콜백 호출
+                                auto& existing_objects = discovered_objects_[device_id];
+                                bool objects_changed = (existing_objects.size() != objects.size());
+                                
+                                if (objects_changed) {
+                                    existing_objects = objects;
+                                    
+                                    // 객체 발견 콜백 호출
+                                    if (on_object_discovered_) {
+                                        try {
+                                            on_object_discovered_(device_id, objects);
+                                        } catch (const std::exception& e) {
+                                            LogMessage(PulseOne::LogLevel::ERROR, 
+                                                    "Object discovered callback failed: " + std::string(e.what()));
+                                        }
+                                    }
+                                }
+                                
+                                // 각 객체의 값 변경 확인 및 콜백 호출
+                                for (const auto& obj : objects) {
+                                    std::string object_id = CreateObjectId(device_id, obj);
+                                    
+                                    // 값이 변경된 경우 콜백 호출
+                                    auto it = current_values_.find(object_id);
+                                    bool value_changed = false;
+                                    
+                                    if (it == current_values_.end()) {
+                                        // 새로운 객체
+                                        value_changed = true;
+                                    } else {
+                                        // 기존 객체 - 값 비교 (간단히 타임스탬프로 비교)
+                                        value_changed = (obj.timestamp != it->second.timestamp);
+                                    }
+                                    
+                                    if (value_changed) {
+                                        // TimestampedValue 생성 (BACnet 값을 DataValue로 변환)
+                                        PulseOne::TimestampedValue timestamped_value;
+                                        timestamped_value.timestamp = obj.timestamp;
+                                        timestamped_value.quality = obj.quality;
+                                        
+                                        // BACnet 값을 DataValue로 간단 변환
+                                        switch (obj.value.tag) {
+                                            case BACNET_APPLICATION_TAG_BOOLEAN:
+                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<bool>(obj.value.type.Boolean));
+                                                break;
+                                            case BACNET_APPLICATION_TAG_UNSIGNED_INT:
+                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<uint32_t>(obj.value.type.Unsigned_Int));
+                                                break;
+                                            case BACNET_APPLICATION_TAG_SIGNED_INT:
+                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<int32_t>(obj.value.type.Signed_Int));
+                                                break;
+                                            case BACNET_APPLICATION_TAG_REAL:
+                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<float>(obj.value.type.Real));
+                                                break;
+                                            default:
+                                                timestamped_value.value = PulseOne::Structs::DataValue(std::string("BACnet_Value"));
+                                                break;
+                                        }
+                                        
+                                        current_values_[object_id] = timestamped_value;
+                                        
+                                        // 값 변경 콜백 호출
+                                        if (on_value_changed_) {
+                                            try {
+                                                on_value_changed_(object_id, timestamped_value);
+                                            } catch (const std::exception& e) {
+                                                LogMessage(PulseOne::LogLevel::ERROR, 
+                                                        "Value changed callback failed: " + std::string(e.what()));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 
@@ -826,6 +920,53 @@ void BACnetWorker::UpdateWorkerStats(const std::string& operation, bool success)
     }
 }
 
+
+// =============================================================================
+// 콜백 인터페이스 구현
+// =============================================================================
+
+void BACnetWorker::SetDeviceDiscoveredCallback(DeviceDiscoveredCallback callback) {
+    on_device_discovered_ = callback;
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Device discovery callback registered");
+}
+
+void BACnetWorker::SetObjectDiscoveredCallback(ObjectDiscoveredCallback callback) {
+    on_object_discovered_ = callback;
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Object discovery callback registered");
+}
+
+void BACnetWorker::SetValueChangedCallback(ValueChangedCallback callback) {
+    on_value_changed_ = callback;
+    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Value changed callback registered");
+}
+
+std::vector<Drivers::BACnetDeviceInfo> BACnetWorker::GetDiscoveredDevices() const {
+    std::lock_guard<std::mutex> lock(devices_mutex_);
+    
+    std::vector<Drivers::BACnetDeviceInfo> devices;
+    for (const auto& [device_id, device_info] : discovered_devices_) {
+        devices.push_back(device_info);
+    }
+    
+    return devices;
+}
+
+std::vector<Drivers::BACnetObjectInfo> BACnetWorker::GetDiscoveredObjects(uint32_t device_id) const {
+    std::lock_guard<std::mutex> lock(devices_mutex_);
+    
+    auto it = discovered_objects_.find(device_id);
+    if (it != discovered_objects_.end()) {
+        return it->second;
+    }
+    
+    return {};
+}
+
+std::string BACnetWorker::CreateObjectId(uint32_t device_id, const Drivers::BACnetObjectInfo& object_info) const {
+    return std::to_string(device_id) + ":" + 
+           std::to_string(static_cast<int>(object_info.object_type)) + ":" + 
+           std::to_string(object_info.object_instance);
+}
 
 } // namespace Workers
 } // namespace PulseOne
