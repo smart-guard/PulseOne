@@ -132,10 +132,8 @@ bool MQTTWorkerProduction::PublishWithPriority(const std::string& topic,
             return false;
         }
         
-        // MQTTDriver가 int를 받는다면 변환해서 사용
-        int qos_int = MQTTWorker::QosToInt(qos);
-        bool success = PublishMessage(topic, payload, qos_int, false);
-        
+        int qos_int = MQTTWorker::QosToInt(qos);  // enum을 int로 변환
+        bool success = PublishMessage(topic, payload, qos_int, false);  // ✅ 개별 파라미터 버전
         if (success) {
             performance_metrics_.messages_sent++;
             performance_metrics_.bytes_sent += payload.size();
@@ -353,11 +351,17 @@ void MQTTWorkerProduction::PriorityQueueProcessorLoop() {
             }
             
             if (!batch.empty()) {
-                MessageMetadata metadata;
-                metadata.timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-                
                 for (const auto& message : batch) {
-                    PublishWithPriority(message.topic, message.payload, 8, message.qos, metadata);
+                    // ✅ 수정: MQTTWorker의 개별 파라미터 버전 사용
+                    int qos_int = MQTTWorker::QosToInt(message.qos);  // enum을 int로 변환
+                    bool success = PublishMessage(message.topic, message.payload, qos_int, message.retain);
+                    
+                    if (success) {
+                        performance_metrics_.messages_sent++;
+                        performance_metrics_.bytes_sent += message.payload.size();
+                    } else {
+                        performance_metrics_.error_count++;
+                    }
                 }
             }
             
