@@ -132,12 +132,6 @@ public:
      * @return JSON 형태의 디바이스 목록
      */
     std::string GetDiscoveredDevices() const;
-    
-    /**
-     * @brief 수동 디스커버리 수행
-     * @return 성공 시 true
-     */
-    bool PerformDiscovery();
 
 protected:
     // =============================================================================
@@ -203,22 +197,27 @@ private:
     // 내부 메서드
     // =============================================================================
     
+ private:
+    // =============================================================================
+    // 내부 메서드 (이미 있는 것들은 그대로 두고 누락된 것만 추가)
+    // =============================================================================
+    
     /**
      * @brief BACnet 워커 설정 파싱
      * @details device_info의 config_json에서 BACnet 워커 설정 추출
      * @return 성공 시 true
      */
-    bool ParseBACnetWorkerConfig();
+    bool ParseBACnetWorkerConfig();  // ✅ 이미 선언되어 있음
     
     /**
      * @brief 디스커버리 스레드 함수
      */
-    void DiscoveryThreadFunction();
+    void DiscoveryThreadFunction();  // ❌ 추가 필요
     
     /**
      * @brief 폴링 스레드 함수
      */
-    void PollingThreadFunction();
+    void PollingThreadFunction(); 
     
     /**
      * @brief BACnet 드라이버 설정 생성
@@ -227,11 +226,23 @@ private:
     PulseOne::Structs::DriverConfig CreateDriverConfig();
     
     /**
+     * @brief Discovery 비즈니스 로직 수행
+     * @return 성공 시 true
+     */
+    bool PerformDiscovery();
+    
+    /**
      * @brief 통계 업데이트
      * @param operation 작업 타입
      * @param success 성공 여부
      */
-    void UpdateWorkerStats(const std::string& operation, bool success);
+    void UpdateWorkerStats(const std::string& operation, bool success);  // ❌ 추가 필요
+    /**
+     * @brief Polling 비즈니스 로직 수행
+     * @return 성공 시 true
+     */
+    bool PerformPolling();
+
 };
 
 } // namespace Workers
