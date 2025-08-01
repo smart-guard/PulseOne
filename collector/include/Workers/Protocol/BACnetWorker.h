@@ -131,7 +131,7 @@ public:
      * @brief 발견된 디바이스 목록 조회
      * @return JSON 형태의 디바이스 목록
      */
-    std::string GetDiscoveredDevices() const;
+    std::string GetDiscoveredDevicesAsJson() const;
 
     // =============================================================================
     // 콜백 인터페이스 (외부 서비스와 연동)

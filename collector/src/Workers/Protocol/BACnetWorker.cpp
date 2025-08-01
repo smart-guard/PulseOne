@@ -230,7 +230,7 @@ void BACnetWorker::ResetBACnetWorkerStats() {
     LogMessage(PulseOne::LogLevel::INFO, "BACnet worker statistics reset");
 }
 
-std::string BACnetWorker::GetDiscoveredDevices() const {
+std::string BACnetWorker::GetDiscoveredDevicesAsJson() const {
     std::lock_guard<std::mutex> lock(devices_mutex_);
     
     std::stringstream ss;
