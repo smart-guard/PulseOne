@@ -8,6 +8,7 @@
 
 #include "Drivers/Common/IProtocolDriver.h"
 #include "Drivers/Common/DriverLogger.h"
+#include "Drivers/Modbus/ModbusConfig.h" 
 #include "Utils/LogManager.h"
 #include "Database/DatabaseManager.h"
 
@@ -247,6 +248,8 @@ private:
     
     // 드라이버 로거
     std::unique_ptr<DriverLogger> logger_;
+
+    PulseOne::Drivers::ModbusConfig modbus_config_;
 
     // ==========================================================================
     // Private 메소드 선언들

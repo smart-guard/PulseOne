@@ -136,22 +136,56 @@ namespace PulseOne::Utils {
     }
     
     /**
-     * @brief 데이터 품질을 문자열로 변환
+     * @brief 🎯 유일한 표준 변환 함수 (인라인)
+     * @param quality 데이터 품질 enum 값
+     * @param lowercase true면 소문자, false면 대문자 (기본값)
+     * @return 품질 코드의 문자열 표현
      */
-    inline std::string DataQualityToString(DataQuality quality) {
+    inline std::string DataQualityToString(DataQuality quality, bool lowercase = false) {
+        std::string result;
+        
         switch (quality) {
-            case DataQuality::GOOD: return "GOOD";
-            case DataQuality::BAD: return "BAD";
-            case DataQuality::UNCERTAIN: return "UNCERTAIN";
-            case DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
-            case DataQuality::SCAN_DELAYED: return "SCAN_DELAYED";
-            case DataQuality::UNDER_MAINTENANCE: return "UNDER_MAINTENANCE";
-            case DataQuality::STALE_DATA: return "STALE_DATA";
-            case DataQuality::VERY_STALE_DATA: return "VERY_STALE_DATA";
-            case DataQuality::MAINTENANCE_BLOCKED: return "MAINTENANCE_BLOCKED";
-            case DataQuality::ENGINEER_OVERRIDE: return "ENGINEER_OVERRIDE";
-            default: return "UNKNOWN";
+            case DataQuality::GOOD: result = "GOOD"; break;
+            case DataQuality::BAD: result = "BAD"; break;
+            case DataQuality::UNCERTAIN: result = "UNCERTAIN"; break;
+            case DataQuality::NOT_CONNECTED: result = "NOT_CONNECTED"; break;
+            case DataQuality::TIMEOUT: result = "TIMEOUT"; break;           // 🆕 NEW!
+            case DataQuality::SCAN_DELAYED: result = "SCAN_DELAYED"; break;
+            case DataQuality::UNDER_MAINTENANCE: result = "UNDER_MAINTENANCE"; break;
+            case DataQuality::STALE_DATA: result = "STALE_DATA"; break;
+            case DataQuality::VERY_STALE_DATA: result = "VERY_STALE_DATA"; break;
+            case DataQuality::MAINTENANCE_BLOCKED: result = "MAINTENANCE_BLOCKED"; break;
+            case DataQuality::ENGINEER_OVERRIDE: result = "ENGINEER_OVERRIDE"; break;
+            default: result = "UNKNOWN"; break;
         }
+        
+        if (lowercase) {
+            std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+        }
+        
+        return result;
+    }
+    
+    /**
+     * @brief 🎯 문자열을 DataQuality로 변환 (역변환)
+     */
+    inline DataQuality StringToDataQuality(const std::string& str) {
+        std::string upper = str;
+        std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+        
+        if (upper == "GOOD") return DataQuality::GOOD;
+        if (upper == "BAD") return DataQuality::BAD;
+        if (upper == "UNCERTAIN") return DataQuality::UNCERTAIN;
+        if (upper == "NOT_CONNECTED") return DataQuality::NOT_CONNECTED;
+        if (upper == "TIMEOUT") return DataQuality::TIMEOUT;             // 🆕 NEW!
+        if (upper == "SCAN_DELAYED") return DataQuality::SCAN_DELAYED;
+        if (upper == "UNDER_MAINTENANCE") return DataQuality::UNDER_MAINTENANCE;
+        if (upper == "STALE_DATA") return DataQuality::STALE_DATA;
+        if (upper == "VERY_STALE_DATA") return DataQuality::VERY_STALE_DATA;
+        if (upper == "MAINTENANCE_BLOCKED") return DataQuality::MAINTENANCE_BLOCKED;
+        if (upper == "ENGINEER_OVERRIDE") return DataQuality::ENGINEER_OVERRIDE;
+        
+        return DataQuality::BAD; // 기본값
     }
     
     /**

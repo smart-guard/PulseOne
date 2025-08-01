@@ -117,6 +117,13 @@ private:
     
     // ✅ 전방 선언된 타입 사용
     PulseOne::Structs::DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
+    // 🔥 새로 추가: DataPoint 변환 메서드
+    PulseOne::Structs::DataPoint ConvertToDataPoint(
+        const Database::Entities::DataPointEntity& datapoint_entity,
+        const std::string& device_id_string) const;
+    
+    // 🔥 새로 추가: 현재값 로드 헬퍼
+    void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const;
     std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
     
     // ✅ 새로 추가: 데이터 품질 헬퍼 함수

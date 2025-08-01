@@ -12,6 +12,8 @@
 
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cctype>  
 namespace PulseOne::Enums {
     
     /**
@@ -37,17 +39,20 @@ namespace PulseOne::Enums {
      * @brief 데이터 품질 상태 (현장 점검 상황 반영)
      */
     enum class DataQuality : uint8_t {
-        GOOD = 0,                    // 정상 데이터
-        BAD = 1,                     // 불량 데이터
-        UNCERTAIN = 2,               // 불확실한 데이터
-        NOT_CONNECTED = 3,           // 연결 끊김
-        SCAN_DELAYED = 4,            // 🆕 스캔 지연 (오래된 데이터)
-        UNDER_MAINTENANCE = 5,       // 🆕 점검 중 (신뢰할 수 없음)
-        STALE_DATA = 6,              // 🆕 오래된 데이터 (30초 이상)
-        VERY_STALE_DATA = 7,         // 🆕 매우 오래된 데이터 (5분 이상)
-        MAINTENANCE_BLOCKED = 8,     // 🆕 점검으로 인한 차단
-        ENGINEER_OVERRIDE = 9        // 🆕 엔지니어 수동 값 설정
+        GOOD = 0,
+        BAD = 1,
+        UNCERTAIN = 2,
+        NOT_CONNECTED = 3,
+        TIMEOUT = 4,                 // 🆕 NEW!
+        SCAN_DELAYED = 5,
+        UNDER_MAINTENANCE = 6,
+        STALE_DATA = 7,
+        VERY_STALE_DATA = 8,
+        MAINTENANCE_BLOCKED = 9,
+        ENGINEER_OVERRIDE = 10
     };
+    
+
 
     enum class StorageType {
         IMMEDIATE,          // 즉시 저장

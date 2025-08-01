@@ -14,6 +14,7 @@
 
 #include "Workers/Base/TcpBasedWorker.h"
 #include "Drivers/Modbus/ModbusDriver.h"
+#include "Drivers/Modbus/ModbusConfig.h" 
 #include <memory>
 #include <vector>
 #include <map>
@@ -191,6 +192,8 @@ private:
     uint32_t default_polling_interval_ms_;
     uint16_t max_registers_per_group_;
     bool auto_group_creation_enabled_;
+
+    PulseOne::Drivers::ModbusConfig modbus_config_;
 
     // =============================================================================
     // 내부 메서드 (Worker 고유 로직)

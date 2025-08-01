@@ -380,11 +380,11 @@ namespace PulseOne::Structs {
     // =========================================================================
     
     /**
-     * @brief 통합 데이터 포인트 구조체 (완성본)
+     * @brief 통합 데이터 포인트 구조체 (완성본 v2)
      * - Database::DataPointInfo (DB 저장용)
-     * - Drivers::DataPoint (드라이버용)
+     * - Drivers::DataPoint (드라이버용)  
      * - WorkerFactory 완전 호환
-     * - 현재값/품질코드 필드 추가 완료
+     * - 현재값/품질코드/통계 필드 추가 완료
      */
     struct DataPoint {
         // =======================================================================
@@ -396,92 +396,78 @@ namespace PulseOne::Structs {
         std::string description = "";
         
         // =======================================================================
-        // 🔥 주소 정보 (두 방식 모두 지원)
+        // 🔥 주소 정보 (정규화)
         // =======================================================================
-        int address = 0;                             // Drivers 방식 (정수)
-        std::string address_string = "";             // Database 방식 (문자열)
+        uint32_t address = 0;                        // 숫자 주소 (Modbus 레지스터, BACnet 인스턴스 등)
+        std::string address_string = "";             // 문자열 주소 (MQTT 토픽, OPC UA NodeId 등)
         
         // =======================================================================
-        // 🔥 데이터 타입 및 변환
+        // 🔥 데이터 타입 및 접근성
         // =======================================================================
-        std::string data_type = "UNKNOWN";           // Database 방식 (문자열)
-        std::string unit = "";
-        double scaling_factor = 1.0;
-        double scaling_offset = 0.0;
-        double min_value = std::numeric_limits<double>::lowest();
-        double max_value = std::numeric_limits<double>::max();
-        
-        // =======================================================================
-        // 🔥 설정 (Database + Drivers 통합)
-        // =======================================================================
+        std::string data_type = "UNKNOWN";           // INT16, UINT32, FLOAT, BOOL, STRING 등
+        std::string access_mode = "read";            // read, write, read_write
         bool is_enabled = true;
-        bool is_writable = false;
-        int scan_rate_ms = 0;                        // Database 방식
-        double deadband = 0.0;
+        bool is_writable = false;                    // 쓰기 가능 여부 (계산된 필드)
         
         // =======================================================================
-        // 🔥 로깅 설정 (Database에서 추가)
+        // 🔥 엔지니어링 단위 및 스케일링
         // =======================================================================
-        bool log_enabled = true;
-        int log_interval_ms = 0;
-        double log_deadband = 0.0;
+        std::string unit = "";                       // 단위 (°C, %, kW 등)
+        double scaling_factor = 1.0;                 // 스케일링 팩터
+        double scaling_offset = 0.0;                 // 스케일링 오프셋
+        double min_value = 0.0;                      // 최솟값 제한
+        double max_value = 0.0;                      // 최댓값 제한
         
         // =======================================================================
-        // 🔥 메타데이터 (Database + Drivers 통합)
+        // 🔥 로깅 설정 (새로 추가)
         // =======================================================================
-        std::vector<std::string> tags;               // Database 방식
-        std::map<std::string, std::string> tag_map;  // Drivers 방식 (호환용)
-        JsonType metadata;
-        std::string config_json = "";                // 추가 설정
+        bool log_enabled = true;                     // 로깅 활성화 여부
+        uint32_t log_interval_ms = 0;                // 로깅 간격 (0=변화 시에만)
+        double log_deadband = 0.0;                   // 로깅 데드밴드
+        Timestamp last_log_time = {};                // 마지막 로그 시간
         
         // =======================================================================
-        // 🔥 상태 정보
+        // 🔥 메타데이터 및 태그
         // =======================================================================
-        Timestamp last_read_time;
-        Timestamp last_write_time;
-        uint64_t read_count = 0;
-        uint64_t write_count = 0;
-        uint64_t error_count = 0;
+        std::vector<std::string> tags;               // 태그 목록
+        std::map<std::string, std::string> metadata; // 추가 메타데이터
+        std::map<std::string, std::string> properties; // 프로토콜별 속성
         
         // =======================================================================
-        // 🔥 Database 시간 필드들
+        // 🔥 시간 정보
         // =======================================================================
-        Timestamp created_at;
-        Timestamp updated_at;
-        
-        // =======================================================================
-        // 🔥 ✅ 새로 추가: 현재값 및 품질 관리 (WorkerFactory 필수 필드들)
-        // =======================================================================
-        
-        /**
-         * @brief 현재값 (실시간 데이터)
-         * WorkerFactory에서 필수로 사용하는 필드
-         */
-        DataVariant current_value;
-        
-        /**
-         * @brief 데이터 품질 코드
-         * WorkerFactory에서 필수로 사용하는 필드
-         */
-        DataQuality quality_code;
-        
-        /**
-         * @brief 품질 변경 시각
-         * 품질이 변경된 마지막 시점 추적용
-         */
-        Timestamp quality_timestamp;
+        Timestamp created_at = {};
+        Timestamp updated_at = {};
+        Timestamp last_read_time = {};               // 마지막 읽기 시간
+        Timestamp last_write_time = {};              // 마지막 쓰기 시간
         
         // =======================================================================
-        // ✅ 생성자 - Utils 네임스페이스 사용
+        // 🔥 현재값 관리 (WorkerFactory 필수 필드들) - 새로 추가
+        // =======================================================================
+        DataVariant current_value;                   // 현재값 (실시간 데이터)
+        DataQuality quality_code = DataQuality::GOOD; // 데이터 품질 코드
+        Timestamp value_timestamp = {};              // 값 타임스탬프
+        Timestamp quality_timestamp = {};            // 품질 변경 시각
+        
+        // =======================================================================
+        // 🔥 통계 정보 (새로 추가)
+        // =======================================================================
+        uint64_t read_count = 0;                     // 읽기 횟수
+        uint64_t write_count = 0;                    // 쓰기 횟수
+        uint64_t error_count = 0;                    // 오류 횟수
+        
+        // =======================================================================
+        // ✅ 생성자
         // =======================================================================
         DataPoint() 
-            : last_read_time(Utils::GetCurrentTimestamp())
-            , last_write_time(Utils::GetCurrentTimestamp())
-            , created_at(Utils::GetCurrentTimestamp())
-            , updated_at(Utils::GetCurrentTimestamp())
-            , current_value(0.0)                                    // ✅ 기본값 설정
-            , quality_code(DataQuality::GOOD)                       // ✅ 기본 품질
-            , quality_timestamp(Utils::GetCurrentTimestamp())       // ✅ 품질 시각
+            : last_log_time(std::chrono::system_clock::now())
+            , created_at(std::chrono::system_clock::now())
+            , updated_at(std::chrono::system_clock::now())
+            , last_read_time(std::chrono::system_clock::now())
+            , last_write_time(std::chrono::system_clock::now())
+            , current_value(0.0)                                    // 기본값 설정
+            , value_timestamp(std::chrono::system_clock::now())
+            , quality_timestamp(std::chrono::system_clock::now())
         {}
         
         // =======================================================================
@@ -496,19 +482,18 @@ namespace PulseOne::Structs {
         }
         
         // =======================================================================
-        // 🔥 실용적 메서드들
+        // 🔥 핵심 실용 메서드들 (새로 추가)
         // =======================================================================
         
         /**
          * @brief 주소 필드 동기화
-         * address와 address_string 간의 일관성 보장
          */
         void SyncAddressFields() {
             if (address != 0 && address_string.empty()) {
                 address_string = std::to_string(address);
             } else if (address == 0 && !address_string.empty()) {
                 try {
-                    address = std::stoi(address_string);
+                    address = std::stoul(address_string);
                 } catch (...) {
                     address = 0;
                 }
@@ -516,49 +501,101 @@ namespace PulseOne::Structs {
         }
         
         /**
-         * @brief 현재값 업데이트 (품질과 함께)
-         * @param new_value 새로운 값
-         * @param new_quality 새로운 품질 (기본값: GOOD)
+         * @brief 현재값을 문자열로 변환
          */
-        void UpdateCurrentValue(const DataVariant& new_value, 
-                               DataQuality new_quality = DataQuality::GOOD) {
-            current_value = new_value;
-            last_read_time = Utils::GetCurrentTimestamp();
-            
-            // 품질이 변경된 경우에만 품질 시각 업데이트
-            if (quality_code != new_quality) {
-                quality_code = new_quality;
-                quality_timestamp = last_read_time;
+        std::string GetCurrentValueAsString() const {
+            try {
+                return std::visit([](const auto& value) -> std::string {
+                    using T = std::decay_t<decltype(value)>;
+                    if constexpr (std::is_same_v<T, std::string>) {
+                        return value;
+                    } else if constexpr (std::is_same_v<T, bool>) {
+                        return value ? "true" : "false";
+                    } else if constexpr (std::is_arithmetic_v<T>) {
+                        return std::to_string(value);
+                    } else {
+                        return "unknown";
+                    }
+                }, current_value);
+            } catch (...) {
+                return "error";
             }
-            
-            read_count++;
         }
         
         /**
-         * @brief 값이 로깅 조건을 만족하는지 확인
-         * @param new_value 새로운 값
-         * @return 로깅해야 하면 true
+         * @brief 품질 코드를 문자열로 변환
+         */
+        std::string GetQualityCodeAsString() const {
+            return PulseOne::Utils::DataQualityToString(quality_code);
+        }
+        
+        /**
+         * @brief 현재값 업데이트 (품질과 함께)
+         */
+        void UpdateCurrentValue(const DataVariant& new_value, DataQuality new_quality = DataQuality::GOOD) {
+            current_value = new_value;
+            
+            // 품질이 변경된 경우에만 타임스탬프 업데이트
+            if (quality_code != new_quality) {
+                quality_code = new_quality;
+                quality_timestamp = std::chrono::system_clock::now();
+            }
+            
+            value_timestamp = std::chrono::system_clock::now();
+            updated_at = std::chrono::system_clock::now();
+            
+            // 통계 업데이트
+            read_count++;
+            if (new_quality == DataQuality::BAD || new_quality == DataQuality::TIMEOUT) {
+                error_count++;
+            }
+        }
+        
+        /**
+         * @brief 쓰기 가능 여부 확인
+         */
+        bool IsWritable() const {
+            return is_writable || access_mode == "write" || access_mode == "read_write";
+        }
+        
+        /**
+         * @brief 로깅이 필요한지 확인 (interval + deadband 기반)
          */
         bool ShouldLog(const DataVariant& new_value) const {
             if (!log_enabled) return false;
             
-            // 시간 조건 확인
-            auto now = Utils::GetCurrentTimestamp();
-            auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_read_time);
-            if (time_diff.count() < log_interval_ms) {
-                return false;
+            // 시간 간격 체크
+            auto now = std::chrono::system_clock::now();
+            auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time).count();
+            
+            if (log_interval_ms > 0 && time_diff < static_cast<int64_t>(log_interval_ms)) {
+                return false; // 아직 로깅 간격이 안됨
             }
             
-            // 데드밴드 조건 확인 (숫자 타입만)
+            // 데드밴드 체크 (숫자 값만)
             if (log_deadband > 0.0) {
                 try {
-                    double current_val = std::get<double>(current_value);
-                    double new_val = std::get<double>(new_value);
+                    double current_val = std::visit([](const auto& val) -> double {
+                        using T = std::decay_t<decltype(val)>;
+                        if constexpr (std::is_arithmetic_v<T>) {
+                            return static_cast<double>(val);
+                        }
+                        return 0.0;
+                    }, current_value);
+                    
+                    double new_val = std::visit([](const auto& val) -> double {
+                        using T = std::decay_t<decltype(val)>;
+                        if constexpr (std::is_arithmetic_v<T>) {
+                            return static_cast<double>(val);
+                        }
+                        return 0.0;
+                    }, new_value);
+                    
                     if (std::abs(new_val - current_val) < log_deadband) {
-                        return false;
+                        return false; // 변화량이 데드밴드 미만
                     }
-                } catch (const std::bad_variant_access&) {
-                    // 숫자가 아닌 타입은 데드밴드 무시
+                } catch (...) {
+                    // 숫자가 아닌 경우 데드밴드 무시
                 }
             }
             
@@ -566,73 +603,96 @@ namespace PulseOne::Structs {
         }
         
         /**
-         * @brief 품질 상태 확인
-         * @return 품질이 좋으면 true
+         * @brief 스케일링된 값 계산
          */
-        bool IsGoodQuality() const {
-            return quality_code == DataQuality::GOOD;
-        }
-        
-        /**
-         * @brief 쓰기 가능 여부 확인
-         * @return 쓰기 가능하면 true
-         */
-        bool IsWritable() const {
-            return is_writable && is_enabled;
-        }
-        
-        /**
-         * @brief 현재값을 문자열로 변환
-         * @return 현재값의 문자열 표현
-         */
-        std::string GetCurrentValueAsString() const {
-            return Utils::DataVariantToString(current_value);
-        }
-        
-        /**
-         * @brief 품질 코드를 문자열로 변환
-         * @return 품질 코드의 문자열 표현
-         */
-        std::string GetQualityCodeAsString() const {
-            switch (quality_code) {
-                case DataQuality::GOOD: return "GOOD";
-                case DataQuality::BAD: return "BAD";
-                case DataQuality::UNCERTAIN: return "UNCERTAIN";
-                case DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
-                case DataQuality::SCAN_DELAYED: return "SCAN_DELAYED";
-                case DataQuality::UNDER_MAINTENANCE: return "UNDER_MAINTENANCE";
-                case DataQuality::STALE_DATA: return "STALE_DATA";
-                case DataQuality::VERY_STALE_DATA: return "VERY_STALE_DATA";
-                case DataQuality::MAINTENANCE_BLOCKED: return "MAINTENANCE_BLOCKED";
-                case DataQuality::ENGINEER_OVERRIDE: return "ENGINEER_OVERRIDE";
-                default: return "UNKNOWN";
+        double GetScaledValue(const DataVariant& raw_value) const {
+            try {
+                double raw_num = std::visit([](const auto& val) -> double {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_arithmetic_v<T>) {
+                        return static_cast<double>(val);
+                    }
+                    return 0.0;
+                }, raw_value);
+                
+                return (raw_num * scaling_factor) + scaling_offset;
+            } catch (...) {
+                return 0.0;
             }
         }
         
         /**
-         * @brief Worker용 JSON 변환 (디버깅/모니터링용)
-         * @return JSON 객체
+         * @brief 유효성 검사
          */
-        JsonType ToWorkerJson() const {
-            JsonType json;
-            json["id"] = id;
-            json["device_id"] = device_id;
-            json["name"] = name;
-            json["address"] = address;
-            json["data_type"] = data_type;
-            json["unit"] = unit;
-            json["is_enabled"] = is_enabled;
-            json["is_writable"] = is_writable;
-            json["log_enabled"] = log_enabled;
-            json["log_interval_ms"] = log_interval_ms;
-            json["current_value"] = GetCurrentValueAsString();
-            json["quality_code"] = GetQualityCodeAsString();
-            json["quality_timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                quality_timestamp.time_since_epoch()).count();
-            json["read_count"] = read_count;
-            json["write_count"] = write_count;
-            json["error_count"] = error_count;
-            return json;
+        bool IsValid() const {
+            return !id.empty() && 
+                !device_id.empty() && 
+                !name.empty() && 
+                scaling_factor != 0.0 &&
+                min_value <= max_value;
+        }
+        
+        /**
+         * @brief 디버깅용 문자열 출력
+         */
+        std::string ToDebugString() const {
+            std::ostringstream oss;
+            oss << "DataPoint{" 
+                << "id='" << id << "'"
+                << ", name='" << name << "'"
+                << ", address=" << address
+                << ", value=" << GetCurrentValueAsString()
+                << ", quality=" << GetQualityCodeAsString()
+                << ", writable=" << (IsWritable() ? "true" : "false")
+                << ", log_enabled=" << (log_enabled ? "true" : "false")
+                << ", read_count=" << read_count
+                << ", error_count=" << error_count
+                << "}";
+            return oss.str();
+        }
+        /**
+         * @brief 품질이 양호한지 확인
+         */
+        bool IsGoodQuality() const {
+            return quality_code == DataQuality::GOOD;
+        }
+
+        /**
+         * @brief 품질이 나쁜지 확인
+         */
+        bool IsBadQuality() const {
+            return quality_code == DataQuality::BAD || 
+                quality_code == DataQuality::NOT_CONNECTED ||
+                quality_code == DataQuality::TIMEOUT;
+        }
+
+        /**
+         * @brief 현재값이 유효한지 확인 (품질 + 범위 체크)
+         */
+        bool IsCurrentValueValid() const {
+            if (!IsGoodQuality()) return false;
+            
+            try {
+                double value = std::visit([](const auto& val) -> double {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_arithmetic_v<T>) {
+                        return static_cast<double>(val);
+                    }
+                    return 0.0;
+                }, current_value);
+                
+                // 범위 체크 (min_value와 max_value가 설정된 경우만)
+                if (min_value != std::numeric_limits<double>::lowest() && value < min_value) {
+                    return false;
+                }
+                if (max_value != std::numeric_limits<double>::max() && value > max_value) {
+                    return false;
+                }
+                
+                return true;
+            } catch (...) {
+                return false;
+            }
         }
     };
     
