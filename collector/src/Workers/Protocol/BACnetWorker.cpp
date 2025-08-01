@@ -692,7 +692,7 @@ bool BACnetWorker::PerformDiscovery() {
             std::lock_guard<std::mutex> lock(devices_mutex_);
             size_t new_devices = 0;
             
-            for (const auto& device : driver_devices) {
+            for (const auto& [device_id, device] : driver_devices) { 
                 if (discovered_devices_.find(device.device_id) == discovered_devices_.end()) {
                     discovered_devices_[device.device_id] = device;
                     new_devices++;
