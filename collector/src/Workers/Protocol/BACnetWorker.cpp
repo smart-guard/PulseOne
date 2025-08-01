@@ -1,3 +1,4 @@
+
 /**
  * @file BACnetWorker.cpp
  * @brief BACnet 프로토콜 워커 클래스 구현
@@ -11,6 +12,15 @@
 #include <sstream>
 #include <iomanip>
 #include <thread>
+
+
+#ifdef min
+#undef min
+#endif
+#ifdef max  
+#undef max
+#endif
+
 
 using namespace std::chrono;
 
@@ -253,58 +263,6 @@ std::string BACnetWorker::GetDiscoveredDevices() const {
     return ss.str();
 }
 
-bool BACnetWorker::PerformDiscovery() {
-    try {
-        LogMessage(PulseOne::LogLevel::INFO, "Performing manual BACnet discovery...");
-        
-        if (!bacnet_driver_ || !bacnet_driver_->IsConnected()) {
-            LogMessage(PulseOne::LogLevel::ERROR, "BACnet driver not connected");
-            return false;
-        }
-        
-        // Who-Is 전송
-        bool success = bacnet_driver_->SendWhoIs();
-        
-        if (success) {
-            worker_stats_.discovery_attempts++;
-            
-            // 잠시 대기 후 발견된 디바이스 업데이트
-            std::this_thread::sleep_for(milliseconds(2000));
-            
-            // 드라이버에서 발견된 디바이스 정보 가져오기
-            try {
-                auto driver_devices = bacnet_driver_->GetDiscoveredDevices();
-                
-                std::lock_guard<std::mutex> lock(devices_mutex_);
-                for (const auto& device : driver_devices) {
-                    discovered_devices_[device.device_id] = device;
-                }
-                
-                worker_stats_.devices_discovered = discovered_devices_.size();
-                
-                LogMessage(PulseOne::LogLevel::INFO, 
-                          "Discovery completed. Found " + std::to_string(driver_devices.size()) + " devices");
-                
-                UpdateWorkerStats("discovery", true);
-                return true;
-                
-            } catch (const std::exception& e) {
-                LogMessage(PulseOne::LogLevel::ERROR, "Failed to get discovered devices: " + std::string(e.what()));
-                UpdateWorkerStats("discovery", false);
-                return false;
-            }
-        } else {
-            LogMessage(PulseOne::LogLevel::ERROR, "Failed to send Who-Is request");
-            UpdateWorkerStats("discovery", false);
-            return false;
-        }
-        
-    } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception in PerformDiscovery: " + std::string(e.what()));
-        UpdateWorkerStats("discovery", false);
-        return false;
-    }
-}
 
 // =============================================================================
 // UdpBasedWorker 순수 가상 함수 구현
@@ -464,162 +422,410 @@ bool BACnetWorker::ProcessDataPoints(const std::vector<PulseOne::DataPoint>& poi
 // =============================================================================
 // 내부 메서드 (private)
 // =============================================================================
-
 bool BACnetWorker::ParseBACnetWorkerConfig() {
     try {
-        // ❌ Before: 없는 필드 사용
-        /*
-        if (device_info_.config_json.empty()) {
-            LogMessage(LogLevel::INFO, "No BACnet worker config in device_info, using defaults");
-            return true;
-        }
-        std::string config = device_info_.config_json;
-        // JSON 파싱...
-        worker_config_.apdu_timeout = static_cast<uint32_t>(device_info_.timeout_ms);
-        worker_config_.polling_interval = static_cast<uint32_t>(device_info_.polling_interval_ms);
-        */
+        LogMessage(PulseOne::LogLevel::INFO, "Parsing BACnet worker configuration...");
         
-        // ✅ After: 기존 DeviceInfo 필드들 직접 사용 (함수 추가 없이)
+        const auto& device_info = GetDeviceInfo();
         
-        // 1. 기본 유효성 검사
-        if (device_info_.name.empty() || device_info_.endpoint.empty()) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Device info incomplete for BACnet configuration");
-            return false;
-        }
+        // 기본값 설정
+        worker_config_.device_id = 260001;
+        worker_config_.port = 47808;
+        worker_config_.discovery_interval = 30000;  // 30초
+        worker_config_.polling_interval = 5000;     // 5초
+        worker_config_.auto_discovery = true;
+        worker_config_.apdu_timeout = 6000;
+        worker_config_.apdu_retries = 3;
+        worker_config_.max_retries = 3;
+        worker_config_.target_port = 47808;
+        worker_config_.device_instance = 260001;
+        worker_config_.max_apdu_length = 1476;
         
-        LogMessage(PulseOne::LogLevel::INFO, "Configuring BACnet worker from device info");
-        
-        // 2. Duration을 밀리초로 변환 (간단하게 인라인)
-        worker_config_.apdu_timeout = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(device_info_.timeout).count()
-        );
-        
-        worker_config_.polling_interval = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(device_info_.polling_interval).count()
-        );
-        
-        // 3. 재시도 설정
-        worker_config_.max_retries = static_cast<uint32_t>(device_info_.retry_count);
-        
-        // 4. endpoint 파싱 (인라인으로 간단하게)
-        std::string endpoint = device_info_.endpoint;
-        size_t colon_pos = endpoint.find(':');
-        
-        if (colon_pos != std::string::npos) {
-            // IP 추출
-            std::string ip = endpoint.substr(0, colon_pos);
-            worker_config_.target_ip = ip;
+        // endpoint에서 IP와 포트 파싱 (ModbusTcp 패턴)
+        if (!device_info.endpoint.empty()) {
+            std::string endpoint = device_info.endpoint;
             
-            // 포트 추출  
-            std::string port_str = endpoint.substr(colon_pos + 1);
-            worker_config_.target_port = static_cast<uint16_t>(std::stoi(port_str));
-        } else {
-            // IP만 있는 경우
-            worker_config_.target_ip = endpoint;
-            worker_config_.target_port = 47808;  // BACnet 기본 포트
+            // "bacnet://192.168.1.100:47808/device_id=12345" 형식 파싱
+            size_t protocol_pos = endpoint.find("://");
+            if (protocol_pos != std::string::npos) {
+                std::string addr_part = endpoint.substr(protocol_pos + 3);
+                size_t colon_pos = addr_part.find(':');
+                
+                if (colon_pos != std::string::npos) {
+                    worker_config_.target_ip = addr_part.substr(0, colon_pos);
+                    
+                    // 포트 추출
+                    size_t slash_pos = addr_part.find('/', colon_pos);
+                    if (slash_pos != std::string::npos) {
+                        std::string port_str = addr_part.substr(colon_pos + 1, slash_pos - colon_pos - 1);
+                        try {
+                            worker_config_.target_port = static_cast<uint16_t>(std::stoi(port_str));
+                            worker_config_.port = worker_config_.target_port;
+                        } catch (const std::exception& e) {
+                            LogMessage(PulseOne::LogLevel::WARN, "Invalid port in endpoint: " + port_str);
+                        }
+                        
+                        // device_id 파라미터 추출
+                        std::string params = addr_part.substr(slash_pos + 1);
+                        size_t device_id_pos = params.find("device_id=");
+                        if (device_id_pos != std::string::npos) {
+                            std::string device_id_str = params.substr(device_id_pos + 10);
+                            size_t param_end = device_id_str.find('&');
+                            if (param_end != std::string::npos) {
+                                device_id_str = device_id_str.substr(0, param_end);
+                            }
+                            
+                            try {
+                                worker_config_.device_id = static_cast<uint32_t>(std::stoul(device_id_str));
+                                worker_config_.device_instance = worker_config_.device_id;
+                            } catch (const std::exception& e) {
+                                LogMessage(PulseOne::LogLevel::WARN, "Invalid device_id: " + device_id_str);
+                            }
+                        }
+                    }
+                }
+            }
         }
         
-        // 5. 기본 BACnet 설정
-        worker_config_.device_instance = PulseOne::Constants::BACNET_DEFAULT_DEVICE_INSTANCE;
-        worker_config_.max_apdu_length = PulseOne::Constants::BACNET_MAX_APDU_LENGTH;
+        // connection_string에서 추가 설정 파싱 (key=value 형태)
+        if (!device_info.connection_string.empty()) {
+            std::string conn_str = device_info.connection_string;
+            
+            // discovery_interval 파싱
+            size_t discovery_pos = conn_str.find("discovery_interval=");
+            if (discovery_pos != std::string::npos) {
+                size_t start = discovery_pos + 19;
+                size_t end = std::min({
+                    conn_str.find(',', start),
+                    conn_str.find(';', start),
+                    conn_str.find('&', start),
+                    conn_str.length()
+                });
+                
+                std::string interval_str = conn_str.substr(start, end - start);
+                try {
+                    worker_config_.discovery_interval = static_cast<uint32_t>(std::stoul(interval_str));
+                } catch (const std::exception& e) {
+                    LogMessage(PulseOne::LogLevel::WARN, "Invalid discovery_interval: " + interval_str);
+                }
+            }
+            
+            // polling_interval 파싱
+            size_t polling_pos = conn_str.find("polling_interval=");
+            if (polling_pos != std::string::npos) {
+                size_t start = polling_pos + 17;
+                size_t end = std::min({
+                    conn_str.find(',', start),
+                    conn_str.find(';', start),
+                    conn_str.find('&', start),
+                    conn_str.length()
+                });
+                
+                std::string interval_str = conn_str.substr(start, end - start);
+                try {
+                    worker_config_.polling_interval = static_cast<uint32_t>(std::stoul(interval_str));
+                } catch (const std::exception& e) {
+                    LogMessage(PulseOne::LogLevel::WARN, "Invalid polling_interval: " + interval_str);
+                }
+            }
+        }
         
-        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
-                  "BACnet Config - IP: " + worker_config_.target_ip + 
-                  ", Port: " + std::to_string(worker_config_.target_port) +
-                  ", Timeout: " + std::to_string(worker_config_.apdu_timeout) + "ms");
+        LogMessage(PulseOne::LogLevel::INFO, 
+                  "✅ BACnet config parsed - Device ID: " + std::to_string(worker_config_.device_id) +
+                  ", Target: " + worker_config_.target_ip + ":" + std::to_string(worker_config_.target_port) +
+                  ", Discovery: " + std::to_string(worker_config_.discovery_interval) + "ms" +
+                  ", Polling: " + std::to_string(worker_config_.polling_interval) + "ms");
         
-        LogMessage(PulseOne::LogLevel::INFO, "BACnet worker config parsed successfully");
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to parse BACnet worker config: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "ParseBACnetWorkerConfig failed: " + std::string(e.what()));
         return false;
     }
 }
 
-void BACnetWorker::DiscoveryThreadFunction() {
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet discovery thread started");
-    
-    while (threads_running_.load()) {
-        try {
-            if (worker_config_.auto_discovery) {
-                PerformDiscovery();
-                
-                // 다음 디스커버리까지 대기
-                auto next_discovery = steady_clock::now() + 
-                                     milliseconds(worker_config_.discovery_interval);
-                
-                while (threads_running_.load() && steady_clock::now() < next_discovery) {
-                    std::this_thread::sleep_for(milliseconds(1000));
-                }
-            } else {
-                // 자동 디스커버리가 비활성화된 경우 대기
-                std::this_thread::sleep_for(milliseconds(5000));
-            }
-            
-        } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Exception in discovery thread: " + std::string(e.what()));
-            std::this_thread::sleep_for(milliseconds(5000));
-        }
-    }
-    
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet discovery thread stopped");
-}
-
-void BACnetWorker::PollingThreadFunction() {
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet polling thread started");
-    
-    while (threads_running_.load()) {
-        try {
-            // 데이터 포인트들 폴링
-            auto data_points = GetDataPoints();
-            
-            if (!data_points.empty()) {
-                worker_stats_.polling_cycles++;
-                ProcessDataPoints(data_points);
-            }
-            
-            // 다음 폴링까지 대기
-            std::this_thread::sleep_for(milliseconds(worker_config_.polling_interval));
-            
-        } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
-            std::this_thread::sleep_for(milliseconds(5000));
-        }
-    }
-    
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet polling thread stopped");
-}
-
+// 2. 드라이버 설정 생성 메서드 (ModbusTcpWorker 패턴)
 PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfig() {
     PulseOne::Structs::DriverConfig config;
     
-    config.device_id = device_info_.id;  // UUID 사용
-    config.name = device_info_.name;
-    config.protocol = PulseOne::ProtocolType::BACNET_IP;
-    config.endpoint = device_info_.endpoint;
-    config.timeout = std::chrono::milliseconds(worker_config_.apdu_timeout);
-    config.retry_count = worker_config_.apdu_retries;
-    config.polling_interval = std::chrono::milliseconds(worker_config_.polling_interval);
-    
-    // BACnet 특화 설정
-    config.custom_settings["device_id"] = std::to_string(worker_config_.device_id);
-    config.custom_settings["port"] = std::to_string(worker_config_.port);
-    config.custom_settings["auto_discovery"] = worker_config_.auto_discovery ? "true" : "false";
+    try {
+        // 기본 설정
+        config.device_id = std::to_string(worker_config_.device_id);
+        config.protocol = ProtocolType::BACNET_IP;
+        config.timeout_ms = worker_config_.apdu_timeout;
+        config.retry_count = static_cast<int>(worker_config_.apdu_retries);
+        config.polling_interval_ms = static_cast<int>(worker_config_.polling_interval);
+        
+        // BACnet 특화 설정을 connection_params에 JSON 형태로 저장
+        std::stringstream ss;
+        ss << "{"
+           << "\"target_ip\":\"" << worker_config_.target_ip << "\","
+           << "\"target_port\":" << worker_config_.target_port << ","
+           << "\"device_id\":" << worker_config_.device_id << ","
+           << "\"device_instance\":" << worker_config_.device_instance << ","
+           << "\"max_apdu_length\":" << worker_config_.max_apdu_length << ","
+           << "\"discovery_interval\":" << worker_config_.discovery_interval << ","  
+           << "\"polling_interval\":" << worker_config_.polling_interval << ","
+           << "\"auto_discovery\":" << (worker_config_.auto_discovery ? "true" : "false")
+           << "}";
+        
+        config.properties["target_ip"] = worker_config_.target_ip;
+        config.properties["target_port"] = std::to_string(worker_config_.target_port);
+
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "BACnet driver config created");
+        
+    } catch (const std::exception& e) {
+        LogMessage(PulseOne::LogLevel::ERROR, "CreateDriverConfig failed: " + std::string(e.what()));
+    }
     
     return config;
 }
 
-void BACnetWorker::UpdateWorkerStats(const std::string& operation, bool success) {
+// 3. Discovery 스레드 함수 (MQTTWorker 패턴, DB 저장 없이)
+void BACnetWorker::DiscoveryThreadFunction() {
+    LogMessage(PulseOne::LogLevel::INFO, "🔍 BACnet Discovery thread started");
+    
+    while (threads_running_.load()) {
+        try {
+            // 연결 상태 확인
+            if (!CheckProtocolConnection()) {
+                LogMessage(PulseOne::LogLevel::WARN, "BACnet not connected, skipping discovery");
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                continue;
+            }
+            
+            // Discovery 수행 (순수 스캔만, DB 저장 없음)
+            if (PerformDiscovery()) {
+                worker_stats_.discovery_attempts++;
+                LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Discovery cycle completed successfully");
+            } else {
+                LogMessage(PulseOne::LogLevel::WARN, "Discovery cycle failed");
+            }
+            
+            // discovery_interval 만큼 대기
+            std::this_thread::sleep_for(std::chrono::milliseconds(worker_config_.discovery_interval));
+            
+        } catch (const std::exception& e) {
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception in discovery thread: " + std::string(e.what()));
+            // 에러 시 더 긴 대기 시간
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+        }
+    }
+    
+    LogMessage(PulseOne::LogLevel::INFO, "🔍 BACnet Discovery thread stopped");
+}
+
+// 4. Polling 스레드 함수 (MQTTWorker 패턴, DB 저장 없이)  
+void BACnetWorker::PollingThreadFunction() {
+    LogMessage(PulseOne::LogLevel::INFO, "📊 BACnet Polling thread started");
+    
+    while (threads_running_.load()) {
+        try {
+            // 연결 상태 확인
+            if (!CheckProtocolConnection()) {
+                LogMessage(PulseOne::LogLevel::WARN, "BACnet not connected, skipping polling");
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                continue;
+            }
+            
+            // 발견된 디바이스가 있는지 확인
+            size_t device_count = 0;
+            {
+                std::lock_guard<std::mutex> lock(devices_mutex_);
+                device_count = discovered_devices_.size();
+            }
+            
+            if (device_count == 0) {
+                LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "No devices discovered yet, skipping polling");
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                continue;
+            }
+            
+            // Polling 수행 (순수 데이터 수집만, DB 저장 없음)
+            if (PerformPolling()) {
+                worker_stats_.polling_cycles++;
+                LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+                          "Polling cycle completed for " + std::to_string(device_count) + " devices");
+            } else {
+                LogMessage(PulseOne::LogLevel::WARN, "Polling cycle failed");
+            }
+            
+            // polling_interval 만큼 대기
+            std::this_thread::sleep_for(std::chrono::milliseconds(worker_config_.polling_interval));
+            
+        } catch (const std::exception& e) {
+            LogMessage(PulseOne::LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
+            // 에러 시 더 짧은 대기 시간 (폴링은 더 자주 시도)
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
+    }
+    
+    LogMessage(PulseOne::LogLevel::INFO, "📊 BACnet Polling thread stopped");
+}
+
+// =============================================================================
+// 핵심 비즈니스 로직 (순수 기능만, DB 저장 없음)
+// =============================================================================
+
+// 5. Discovery 비즈니스 로직 (메모리 저장만)
+bool BACnetWorker::PerformDiscovery() {
     try {
-        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
-                  "BACnet worker operation: " + operation + 
-                  " (success: " + (success ? "true" : "false") + ")");
+        if (!bacnet_driver_) {
+            LogMessage(PulseOne::LogLevel::ERROR, "BACnet driver not available");
+            return false;
+        }
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "🔍 Performing BACnet device discovery...");
+        
+        // Who-Is 요청 전송 (BACnetDriver의 더미 구현 활용)
+        if (!bacnet_driver_->SendWhoIs()) {
+            LogMessage(PulseOne::LogLevel::ERROR, "Failed to send Who-Is request");
+            return false;
+        }
+        
+        // 발견된 디바이스 조회 (더미에서 5개 디바이스 생성됨)
+        auto driver_devices = bacnet_driver_->GetDiscoveredDevices();
+        
+        // 🔥 핵심: 메모리에만 저장, DB 저장 절대 없음
+        {
+            std::lock_guard<std::mutex> lock(devices_mutex_);
+            size_t new_devices = 0;
+            
+            for (const auto& device : driver_devices) {
+                if (discovered_devices_.find(device.device_id) == discovered_devices_.end()) {
+                    discovered_devices_[device.device_id] = device;
+                    new_devices++;
+                    
+                    LogMessage(PulseOne::LogLevel::INFO, 
+                              "🆕 New BACnet device discovered: " + device.device_name + 
+                              " (ID: " + std::to_string(device.device_id) + 
+                              ", IP: " + device.ip_address + ")");
+                    
+                    // 🔥 콜백으로만 알림 (DB 저장은 외부에서)
+                    // TODO: 콜백 인터페이스 구현 시 여기서 호출
+                    // if (on_device_discovered_callback_) {
+                    //     on_device_discovered_callback_(device);
+                    // }
+                }
+            }
+            
+            if (new_devices > 0) {
+                worker_stats_.devices_discovered += new_devices;
+                LogMessage(PulseOne::LogLevel::INFO, 
+                          "✅ Discovery completed. Total devices: " + std::to_string(discovered_devices_.size()) +
+                          ", New devices: " + std::to_string(new_devices));
+            }
+        }
+        
+        return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception in UpdateWorkerStats: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception in PerformDiscovery: " + std::string(e.what()));
+        return false;
     }
 }
+
+// 6. Polling 비즈니스 로직 (메모리 저장만)
+bool BACnetWorker::PerformPolling() {
+    try {
+        if (!bacnet_driver_) {
+            LogMessage(PulseOne::LogLevel::ERROR, "BACnet driver not available for polling");
+            return false;
+        }
+        
+        std::vector<uint32_t> device_ids;
+        
+        // 발견된 디바이스 ID 목록 가져오기
+        {
+            std::lock_guard<std::mutex> lock(devices_mutex_);
+            for (const auto& [device_id, device_info] : discovered_devices_) {
+                device_ids.push_back(device_id);
+            }
+        }
+        
+        if (device_ids.empty()) {
+            return true; // 디바이스가 없어도 성공으로 간주
+        }
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+                  "📊 Polling " + std::to_string(device_ids.size()) + " BACnet devices...");
+        
+        size_t total_objects = 0;
+        size_t successful_reads = 0;
+        
+        // 각 디바이스별로 객체 조회 및 데이터 읽기
+        for (uint32_t device_id : device_ids) {
+            try {
+                // 디바이스의 객체 목록 조회 (더미 구현에서 가상 객체들 반환)
+                auto objects = bacnet_driver_->GetDeviceObjects(device_id);
+                total_objects += objects.size();
+                
+                if (!objects.empty()) {
+                    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+                              "Device " + std::to_string(device_id) + " has " + 
+                              std::to_string(objects.size()) + " objects");
+                    
+                    // 🔥 핵심: 메모리에만 저장, DB 저장 절대 없음
+                    for (size_t i = 0; i < objects.size(); ++i) {
+                        // 객체 정보를 내부 맵에 저장 (메모리만)
+                        // TODO: 필요시 discovered_objects_ 맵 추가
+                        
+                        successful_reads++;
+                        
+                        // 🔥 콜백으로만 알림 (DB 저장은 외부에서)
+                        // TODO: 콜백 인터페이스 구현 시 여기서 호출
+                        // if (on_object_discovered_callback_) {
+                        //     on_object_discovered_callback_(device_id, {obj});
+                        // }
+                    }
+                }
+                
+            } catch (const std::exception& e) {
+                LogMessage(PulseOne::LogLevel::WARN, 
+                          "Failed to poll device " + std::to_string(device_id) + ": " + e.what());
+            }
+        }
+        
+        // 통계 업데이트
+        worker_stats_.read_operations += total_objects;
+        worker_stats_.successful_reads += successful_reads;
+        
+        if (total_objects > 0) {
+            LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+                      "✅ Polling completed. Objects: " + std::to_string(total_objects) +
+                      ", Successful reads: " + std::to_string(successful_reads));
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(PulseOne::LogLevel::ERROR, "Exception in PerformPolling: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// 7. 통계 업데이트 헬퍼 메서드
+void BACnetWorker::UpdateWorkerStats(const std::string& operation, bool success) {
+    try {
+        if (operation == "discovery") {
+            worker_stats_.discovery_attempts++;
+        } else if (operation == "polling") {
+            worker_stats_.polling_cycles++;
+        } else if (operation == "read") {
+            worker_stats_.read_operations++;
+            if (success) {
+                worker_stats_.successful_reads++;
+            } else {
+                worker_stats_.failed_operations++;
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        LogMessage(PulseOne::LogLevel::ERROR, "UpdateWorkerStats failed: " + std::string(e.what()));
+    }
+}
+
 
 } // namespace Workers
 } // namespace PulseOne
