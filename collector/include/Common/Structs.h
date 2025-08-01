@@ -704,48 +704,46 @@ namespace PulseOne::Structs {
      * @brief 통합 드라이버 설정 (여러 DriverConfig 통합)
      */
     struct DriverConfig {
-        // 🔥 공통 필드들 (모든 버전에서 공통)
-        UUID device_id;                              // 일부는 string, 일부는 int였음 -> UUID로 통일
+        // 🔥 기존 필드들 (현재 있음)
+        UUID device_id;
         std::string name = "";
         ProtocolType protocol = ProtocolType::UNKNOWN;
         std::string endpoint = "";
-        
-        // 🔥 타이밍 설정
         Duration timeout = std::chrono::seconds(5);
         int retry_count = 3;
         Duration polling_interval = std::chrono::seconds(1);
-        
-        // 🔥 추가 설정들
-        std::map<std::string, std::string> properties;  // 🔥 BACnetDriver에서 사용하는 필드
+        std::map<std::string, std::string> properties;
         std::map<std::string, std::string> custom_settings;
         JsonType config_json;
-        
-        // 🔥 호환성 필드들 (일부 코드에서 요구)
-        uint32_t timeout_ms = 5000;                 // Duration과 동기화
-        uint32_t polling_interval_ms = 1000;        // Duration과 동기화  
+        uint32_t timeout_ms = 5000;
+        uint32_t polling_interval_ms = 1000;
         bool auto_reconnect = true;
-        int device_instance = 0;                    // BACnet용 호환 필드
+        int device_instance = 0;
 
-        // 🔥 생성자에서 필드 동기화
-        DriverConfig() {
-            SyncDurationFields();
-        }
+        // ✅ 추가 필요한 필드들 (MqttDriver에서 요구)
         
-        // 🔥 Duration 필드와 ms 필드 동기화
-        void SyncDurationFields() {
-            timeout_ms = static_cast<uint32_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count()
-            );
-            polling_interval_ms = static_cast<uint32_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(polling_interval).count()
-            );
-        }
+        // 1. 설정 문자열 필드 (가장 중요!)
+        std::string connection_string = "";     // MQTTWorker에서 JSON 파싱용
+        std::string extra_config = "";          // 추가 설정용 (JSON 문자열)
         
-        // 🔥 ms 필드에서 Duration으로 역동기화
-        void SyncFromMs() {
-            timeout = std::chrono::milliseconds(timeout_ms);
-            polling_interval = std::chrono::milliseconds(polling_interval_ms);
-        }
+        // 2. MQTT 특화 필드들
+        std::string username = "";              // MQTT 인증 사용자명
+        std::string password = "";              // MQTT 인증 비밀번호
+        std::string client_id = "";             // MQTT 클라이언트 ID
+        bool use_ssl = false;                   // SSL/TLS 사용 여부
+        int keep_alive_interval = 60;           // Keep-alive 간격 (초)
+        bool clean_session = true;              // Clean session 플래그
+        int qos_level = 1;                      // 기본 QoS 레벨
+        
+        // 3. 프로토콜별 공통 필드들
+        std::string protocol_version = "";      // 프로토콜 버전
+        std::map<std::string, JsonType> protocol_settings;  // 프로토콜별 설정들
+        
+        // 4. 로깅 및 진단 필드들
+        bool enable_logging = true;             // 로깅 활성화
+        bool enable_diagnostics = false;        // 진단 모드
+        bool enable_debug = false;              // 디버그 모드
+        std::string log_level = "INFO";         // 로그 레벨
     };
     
     /**
