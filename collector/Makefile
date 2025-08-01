@@ -8,9 +8,12 @@ HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x
 # 🔧 수정: hiredis 라이브러리 체크 추가
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
+# BACnet Stack 체크 (기존 hiredis 체크 밑에 추가)
+HAS_BACNET_STACK := $(shell pkg-config --exists bacnet && echo "1" || echo "0")
+
 # 컴파일러 설정
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus)
+CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus) -I/usr/local/include/bacnet
 LDFLAGS = 
 
 # 🔧 수정: Redis 라이브러리 추가
@@ -32,6 +35,13 @@ ifeq ($(HAS_HIREDIS),1)
 else
     $(warning ⚠️  hiredis not found - Redis functionality will be limited)
     $(warning    Install with: sudo apt-get install libhiredis-dev)
+endif
+
+ifeq ($(HAS_BACNET_STACK), 1)
+    CXXFLAGS += -DHAS_BACNET_STACK=1
+    LIBS += -lbacnet -lm
+else
+    CXXFLAGS += -DHAS_BACNET_STACK=0
 endif
 
 # 프로젝트 설정
