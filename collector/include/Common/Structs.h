@@ -86,6 +86,25 @@ namespace PulseOne::Structs {
     };
     
     // =========================================================================
+    // 🔥 에러 정보 구조체 (먼저 정의 - 다른 구조체에서 사용하기 위해)
+    // =========================================================================
+    
+    /**
+     * @brief 에러 정보 구조체
+     */
+    struct ErrorInfo {
+        ErrorCode code = ErrorCode::SUCCESS;
+        std::string message = "";
+        std::string details = "";
+        Timestamp occurred_at;
+        
+        // ✅ 생성자들 - Utils 네임스페이스 사용
+        ErrorInfo() : occurred_at(Utils::GetCurrentTimestamp()) {}
+        ErrorInfo(ErrorCode err_code, const std::string& msg) 
+            : code(err_code), message(msg), occurred_at(Utils::GetCurrentTimestamp()) {}
+    };
+    
+    // =========================================================================
     // 점검 관련 구조체들 (🆕 새로운 기능)
     // =========================================================================
     
@@ -747,6 +766,20 @@ namespace PulseOne::Structs {
     };
     
     /**
+     * @brief 드라이버 상태 정보 (자세한 정보 포함)
+     */
+    struct DriverState {
+        bool is_connected = false;
+        ErrorInfo last_error;  // 🔥 Structs:: 제거 - 같은 네임스페이스 내에서는 직접 참조
+        Timestamp connection_time;
+        std::map<std::string, std::string> additional_info;
+        
+        // 기본 생성자
+        DriverState() 
+            : connection_time(Utils::GetCurrentTimestamp()) {}
+    };
+    
+    /**
      * @brief 드라이버 통계 (기존 CommonTypes.h + 확장)
      */
     struct DriverStatistics {
@@ -876,21 +909,6 @@ namespace PulseOne::Structs {
         double GetErrorRate() const {
             return (total_logs > 0) ? (static_cast<double>(error_count) / total_logs) * 100.0 : 0.0;
         }
-    };
-    
-    /**
-     * @brief 에러 정보 구조체
-     */
-    struct ErrorInfo {
-        ErrorCode code = ErrorCode::SUCCESS;
-        std::string message = "";
-        std::string details = "";
-        Timestamp occurred_at;
-        
-        // ✅ 생성자들 - Utils 네임스페이스 사용
-        ErrorInfo() : occurred_at(Utils::GetCurrentTimestamp()) {}
-        ErrorInfo(ErrorCode err_code, const std::string& msg) 
-            : code(err_code), message(msg), occurred_at(Utils::GetCurrentTimestamp()) {}
     };
     
 } // namespace PulseOne::Structs
