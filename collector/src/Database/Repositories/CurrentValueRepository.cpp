@@ -544,7 +544,7 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByQuality(PulseOne::
             return {};
         }
         
-        std::string quality_str = CurrentValueEntity::qualityToString(quality);
+        std::string quality_str = PulseOne::Utils::DataQualityToString(quality, true);
         const std::string query = R"(
             SELECT 
                 point_id, value, raw_value, string_value, quality,
@@ -773,7 +773,7 @@ CurrentValueEntity CurrentValueRepository::mapRowToEntity(const std::map<std::st
         
         it = row.find("quality");
         if (it != row.end()) {
-            entity.setQuality(CurrentValueEntity::stringToQuality(it->second));
+            entity.setQuality(PulseOne::Utils::StringToDataQuality(it->second));
         }
         
         it = row.find("timestamp");

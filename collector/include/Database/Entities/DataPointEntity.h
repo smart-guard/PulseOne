@@ -192,7 +192,8 @@ public:
     // 시간 정보
     const std::chrono::system_clock::time_point& getCreatedAt() const { return created_at_; }
     const std::chrono::system_clock::time_point& getUpdatedAt() const { return updated_at_; }
-
+    std::chrono::system_clock::time_point getLastReadTime() const { return last_read_time_; }
+    std::chrono::system_clock::time_point getLastWriteTime() const { return last_write_time_; }
     // =======================================================================
     // Setter 메서드들 (인라인 구현)
     // =======================================================================

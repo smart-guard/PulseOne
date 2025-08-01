@@ -187,31 +187,7 @@ public:
      * @brief 품질 상태를 문자열로 변환
      */
     std::string getQualityString() const {
-        return qualityToString(quality_);
-    }
-    
-    /**
-     * @brief 데이터 품질 enum을 문자열로 변환 (static)
-     */
-    static std::string qualityToString(PulseOne::Enums::DataQuality quality) {
-        switch (quality) {
-            case PulseOne::Enums::DataQuality::GOOD: return "good";
-            case PulseOne::Enums::DataQuality::BAD: return "bad";
-            case PulseOne::Enums::DataQuality::UNCERTAIN: return "uncertain";
-            case PulseOne::Enums::DataQuality::NOT_CONNECTED: return "not_connected";
-            default: return "unknown";
-        }
-    }
-    
-    /**
-     * @brief 문자열을 데이터 품질 enum으로 변환 (static)
-     */
-    static PulseOne::Enums::DataQuality stringToQuality(const std::string& quality_str) {
-        if (quality_str == "good") return PulseOne::Enums::DataQuality::GOOD;
-        if (quality_str == "bad") return PulseOne::Enums::DataQuality::BAD;
-        if (quality_str == "uncertain") return PulseOne::Enums::DataQuality::UNCERTAIN;
-        if (quality_str == "not_connected") return PulseOne::Enums::DataQuality::NOT_CONNECTED;
-        return PulseOne::Enums::DataQuality::BAD;  // 기본값
+        return PulseOne::Utils::DataQualityToString(quality_);
     }
     
     /**

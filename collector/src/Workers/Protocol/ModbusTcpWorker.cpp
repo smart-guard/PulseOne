@@ -7,7 +7,6 @@
  */
 
 #include "Workers/Protocol/ModbusTcpWorker.h"
-#include "Drivers/Modbus/ModbusDriver.h"
 #include "Utils/LogManager.h"
 #include <sstream>
 #include <iomanip>
@@ -450,68 +449,347 @@ size_t ModbusTcpWorker::OptimizePollingGroups() {
 // 내부 메서드 (Worker 고유 로직)
 // =============================================================================
 
+/**
+ * @brief ParseModbusConfig() 완전 구현
+ * @details 문서 가이드라인에 따른 5단계 파싱 프로세스
+ * 
+ * 🔥 구현 전략:
+ * 1단계: connection_string에서 프로토콜별 설정 JSON 파싱
+ * 2단계: Modbus 특화 설정 추출 (프로토콜별)
+ * 3단계: DeviceInfo에서 공통 통신 설정 가져오기
+ * 4단계: Worker 레벨 설정 적용
+ * 5단계: 설정 검증 및 안전한 기본값 적용
+ */
+
 bool ModbusTcpWorker::ParseModbusConfig() {
     try {
-        // DeviceInfo에서 설정 JSON 가져오기
-        const std::string config_json = "{}";  // device_info_.config_json not available
+        LogMessage(PulseOne::LogLevel::INFO, "🔧 Starting Modbus configuration parsing...");
         
-        if (config_json.empty()) {
-            LogMessage(PulseOne::LogLevel::INFO, "No configuration found, using default Modbus configuration");
-            return true;
+        // =====================================================================
+        // 🔥 1단계: connection_string에서 프로토콜별 설정 JSON 파싱
+        // =====================================================================
+        
+        nlohmann::json protocol_config_json;
+        std::string config_source = device_info_.connection_string;
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+                   "📋 Raw connection_string: '" + config_source + "'");
+        
+        // connection_string이 JSON 형태인지 확인
+        if (!config_source.empty() && 
+            (config_source.front() == '{' || config_source.find("slave_id") != std::string::npos)) {
+            try {
+                protocol_config_json = nlohmann::json::parse(config_source);
+                LogMessage(PulseOne::LogLevel::INFO, 
+                          "✅ Parsed protocol config from connection_string: " + config_source);
+            } catch (const std::exception& e) {
+                LogMessage(PulseOne::LogLevel::WARN, 
+                          "⚠️ Failed to parse protocol config JSON, using defaults: " + std::string(e.what()));
+                protocol_config_json = nlohmann::json::object();
+            }
+        } else {
+            LogMessage(PulseOne::LogLevel::INFO, 
+                      "ℹ️ No protocol JSON config found in connection_string, using defaults");
+            protocol_config_json = nlohmann::json::object();
         }
         
-        json config = json::parse(config_json);
-        
-        // 설정 파싱
-        if (config.contains("polling_interval_ms")) {
-            default_polling_interval_ms_ = config["polling_interval_ms"].get<uint32_t>();
+        // 프로토콜 기본값 설정 (JSON이 비어있을 때)
+        if (protocol_config_json.empty()) {
+            protocol_config_json = {
+                {"slave_id", 1},
+                {"byte_order", "big_endian"},
+                {"max_registers_per_group", 125},
+                {"auto_group_creation", true}
+            };
+            LogMessage(PulseOne::LogLevel::INFO, 
+                      "📝 Applied default Modbus protocol configuration");
         }
         
-        if (config.contains("max_registers_per_group")) {
-            max_registers_per_group_ = config["max_registers_per_group"].get<uint16_t>();
+        // =====================================================================
+        // 🔥 2단계: Modbus 특화 설정 추출 (프로토콜별)
+        // =====================================================================
+        
+        modbus_config_.slave_id = protocol_config_json.value("slave_id", 1);
+        modbus_config_.byte_order = protocol_config_json.value("byte_order", "big_endian");
+        modbus_config_.max_registers_per_group = protocol_config_json.value("max_registers_per_group", 125);
+        modbus_config_.auto_group_creation = protocol_config_json.value("auto_group_creation", true);
+        
+        // 🔥 문자열 연결 문제 해결: std::string으로 명시적 변환
+        std::string debug_msg = "🔌 Extracted protocol-specific config:\n";
+        debug_msg += "   - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
+        debug_msg += "   - byte_order: " + modbus_config_.byte_order + "\n";
+        debug_msg += "   - max_registers_per_group: " + std::to_string(modbus_config_.max_registers_per_group);
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, debug_msg);
+        
+        // =====================================================================
+        // 🔥 3단계: DeviceInfo에서 공통 통신 설정 가져오기 (이미 매핑됨!)
+        // =====================================================================
+        
+        modbus_config_.timeout_ms = device_info_.connection_timeout_ms;
+        modbus_config_.response_timeout_ms = device_info_.read_timeout_ms;
+        modbus_config_.byte_timeout_ms = std::min(device_info_.read_timeout_ms / 10, 1000);
+        modbus_config_.max_retries = static_cast<uint8_t>(device_info_.max_retry_count);
+        
+        std::string comm_msg = "⚙️ Mapped communication settings from DeviceInfo:\n";
+        comm_msg += "   - connection_timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
+        comm_msg += "   - read_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
+        comm_msg += "   - byte_timeout: " + std::to_string(modbus_config_.byte_timeout_ms) + "ms\n";
+        comm_msg += "   - max_retries: " + std::to_string(modbus_config_.max_retries);
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, comm_msg);
+        
+        // =====================================================================
+        // 🔥 4단계: Worker 레벨 설정 적용 (DeviceInfo에서 직접)
+        // =====================================================================
+        
+        default_polling_interval_ms_ = device_info_.polling_interval_ms;
+        
+        // scan_rate_override가 있으면 우선 적용
+        if (device_info_.scan_rate_override.has_value()) {
+            default_polling_interval_ms_ = device_info_.scan_rate_override.value();
+            LogMessage(PulseOne::LogLevel::INFO, 
+                      "📊 Using scan_rate_override: " + std::to_string(default_polling_interval_ms_) + "ms");
         }
         
-        if (config.contains("auto_group_creation")) {
-            auto_group_creation_enabled_ = config["auto_group_creation"].get<bool>();
+        // 프로토콜 config에서 오버라이드가 있으면 최종 적용
+        if (protocol_config_json.contains("polling_interval_ms")) {
+            default_polling_interval_ms_ = protocol_config_json["polling_interval_ms"].get<uint32_t>();
+            LogMessage(PulseOne::LogLevel::INFO, 
+                      "📊 Protocol config override polling_interval: " + std::to_string(default_polling_interval_ms_) + "ms");
         }
         
-        LogMessage(PulseOne::LogLevel::INFO, "Modbus configuration parsed successfully");
+        max_registers_per_group_ = modbus_config_.max_registers_per_group;
+        auto_group_creation_enabled_ = modbus_config_.auto_group_creation;
+        
+        // =====================================================================
+        // 🔥 5단계: 설정 검증 및 안전한 기본값 적용
+        // =====================================================================
+        
+        bool validation_errors = false;
+        
+        // Modbus 프로토콜별 검증
+        if (modbus_config_.slave_id < 1 || modbus_config_.slave_id > 247) {
+            LogMessage(PulseOne::LogLevel::ERROR, 
+                      "❌ Invalid slave_id: " + std::to_string(modbus_config_.slave_id) + 
+                      " (valid range: 1-247)");
+            modbus_config_.slave_id = 1;
+            validation_errors = true;
+        }
+        
+        if (modbus_config_.timeout_ms < 100 || modbus_config_.timeout_ms > 30000) {
+            LogMessage(PulseOne::LogLevel::WARN, 
+                      "⚠️ Invalid timeout: " + std::to_string(modbus_config_.timeout_ms) + 
+                      "ms (valid range: 100-30000ms), using 3000ms");
+            modbus_config_.timeout_ms = 3000;
+            validation_errors = true;
+        }
+        
+        if (modbus_config_.response_timeout_ms < 100 || modbus_config_.response_timeout_ms > 10000) {
+            LogMessage(PulseOne::LogLevel::WARN, 
+                      "⚠️ Invalid response_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + 
+                      "ms (valid range: 100-10000ms), using 1000ms");
+            modbus_config_.response_timeout_ms = 1000;
+            validation_errors = true;
+        }
+        
+        if (modbus_config_.byte_order != "big_endian" && modbus_config_.byte_order != "little_endian") {
+            LogMessage(PulseOne::LogLevel::WARN, 
+                      "⚠️ Invalid byte_order: " + modbus_config_.byte_order + 
+                      " (valid: big_endian, little_endian), using big_endian");
+            modbus_config_.byte_order = "big_endian";
+            validation_errors = true;
+        }
+        
+        if (max_registers_per_group_ < 1 || max_registers_per_group_ > 125) {
+            LogMessage(PulseOne::LogLevel::WARN, 
+                      "⚠️ Invalid max_registers_per_group: " + std::to_string(max_registers_per_group_) + 
+                      " (valid range: 1-125), using 125");
+            max_registers_per_group_ = 125;
+            validation_errors = true;
+        }
+        
+        if (default_polling_interval_ms_ < 100 || default_polling_interval_ms_ > 60000) {
+            LogMessage(PulseOne::LogLevel::WARN, 
+                      "⚠️ Invalid polling_interval: " + std::to_string(default_polling_interval_ms_) + 
+                      "ms (valid range: 100-60000ms), using 1000ms");
+            default_polling_interval_ms_ = 1000;
+            validation_errors = true;
+        }
+        
+        if (modbus_config_.max_retries > 10) {
+            LogMessage(PulseOne::LogLevel::WARN, 
+                      "⚠️ Invalid max_retries: " + std::to_string(modbus_config_.max_retries) + 
+                      " (valid range: 0-10), using 3");
+            modbus_config_.max_retries = 3;
+            validation_errors = true;
+        }
+        
+        // =====================================================================
+        // 최종 결과 로깅 - 문자열 연결 문제 해결
+        // =====================================================================
+        
+        std::string result_msg = "✅ Modbus config parsed successfully";
+        if (validation_errors) {
+            result_msg += " (with corrections)";
+        }
+        result_msg += ":\n";
+        result_msg += "   🔌 Protocol settings (from connection_string):\n";
+        result_msg += "      - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
+        result_msg += "      - byte_order: " + modbus_config_.byte_order + "\n";
+        result_msg += "      - max_registers_per_group: " + std::to_string(max_registers_per_group_) + "\n";
+        result_msg += "      - auto_group_creation: " + (auto_group_creation_enabled_ ? std::string("enabled") : std::string("disabled")) + "\n";
+        result_msg += "   ⚙️  Communication settings (from DeviceSettings):\n";
+        result_msg += "      - connection_timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
+        result_msg += "      - read_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
+        result_msg += "      - byte_timeout: " + std::to_string(modbus_config_.byte_timeout_ms) + "ms\n";
+        result_msg += "      - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
+        result_msg += "      - polling_interval: " + std::to_string(default_polling_interval_ms_) + "ms\n";
+        result_msg += "      - keep_alive: " + (device_info_.keep_alive_enabled ? std::string("enabled") : std::string("disabled"));
+        
+        LogMessage(PulseOne::LogLevel::INFO, result_msg);
+        
+        // ModbusConfig 자체 검증 수행
+        if (!modbus_config_.IsValid()) {
+            LogMessage(PulseOne::LogLevel::ERROR, 
+                      "❌ ModbusConfig validation failed even after corrections!");
+            modbus_config_.ResetToDefaults();
+            LogMessage(PulseOne::LogLevel::WARN, 
+                      "🔄 Reset to safe defaults: " + modbus_config_.ToString());
+        }
+        
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception parsing Modbus config: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, 
+                   "❌ Exception in ParseModbusConfig: " + std::string(e.what()));
+        
+        // 예외 시 안전한 기본값 설정
+        modbus_config_.ResetToDefaults();
+        default_polling_interval_ms_ = 1000;
+        max_registers_per_group_ = 125;
+        auto_group_creation_enabled_ = true;
+        
+        LogMessage(PulseOne::LogLevel::WARN, 
+                   "🔄 Applied emergency defaults after exception: " + modbus_config_.ToString());
+        
         return false;
     }
 }
 
+/**
+ * @brief InitializeModbusDriver() 완전 구현
+ * @details 파싱된 ModbusConfig를 DriverConfig로 변환하여 ModbusDriver 초기화
+ */
+
 bool ModbusTcpWorker::InitializeModbusDriver() {
     try {
-        // ModbusDriver 생성
-        modbus_driver_ = std::make_unique<ModbusDriver>();
+        LogMessage(PulseOne::LogLevel::INFO, "🔧 Initializing ModbusDriver...");
         
-        // Driver 설정 구성
-        DriverConfig driver_config;
-        driver_config.device_id = std::hash<std::string>{}(device_info_.id); // UUID를 해시로 변환
-        driver_config.protocol = ProtocolType::MODBUS_TCP;
-        driver_config.endpoint = device_info_.endpoint;
-        driver_config.timeout = std::chrono::milliseconds(device_info_.timeout_ms);
-        driver_config.retry_count = device_info_.retry_count;
+        // =====================================================================
+        // 🔥 1단계: ModbusDriver 인스턴스 생성
+        // =====================================================================
         
-        // ModbusDriver 초기화
-        if (!modbus_driver_->Initialize(driver_config)) {
-            const auto& error = modbus_driver_->GetLastError();
-            LogMessage(PulseOne::LogLevel::ERROR, "Failed to initialize ModbusDriver: " + error.message);
+        modbus_driver_ = std::make_unique<PulseOne::Drivers::ModbusDriver>();
+        
+        if (!modbus_driver_) {
+            LogMessage(PulseOne::LogLevel::ERROR, "❌ Failed to create ModbusDriver instance");
             return false;
         }
         
-        // Driver 콜백 설정
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "✅ ModbusDriver instance created");
+        
+        // =====================================================================
+        // 🔥 2단계: 파싱된 설정을 DriverConfig로 변환
+        // =====================================================================
+        
+        PulseOne::DriverConfig driver_config;
+        
+        // 기본 디바이스 정보
+        driver_config.device_id = device_info_.name;  // device_info_.id는 UUID, name이 더 적합
+        driver_config.endpoint = device_info_.endpoint;
+        driver_config.protocol = PulseOne::ProtocolType::MODBUS_TCP;
+        
+        // 타이밍 설정 (파싱된 ModbusConfig 사용)
+        driver_config.timeout_ms = modbus_config_.timeout_ms;
+        
+        std::string config_msg = "📋 DriverConfig prepared:\n";
+        config_msg += "   - device_id: " + driver_config.device_id + "\n";
+        config_msg += "   - endpoint: " + driver_config.endpoint + "\n";
+        config_msg += "   - protocol: MODBUS_TCP\n";
+        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms";
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, config_msg);
+        
+        // =====================================================================
+        // 🔥 3단계: 프로토콜별 설정을 custom_settings로 전달 (필드명 수정)
+        // =====================================================================
+        
+        driver_config.custom_settings["slave_id"] = std::to_string(modbus_config_.slave_id);
+        driver_config.custom_settings["byte_order"] = modbus_config_.byte_order;
+        driver_config.custom_settings["max_retries"] = std::to_string(modbus_config_.max_retries);
+        driver_config.custom_settings["response_timeout_ms"] = std::to_string(modbus_config_.response_timeout_ms);
+        driver_config.custom_settings["byte_timeout_ms"] = std::to_string(modbus_config_.byte_timeout_ms);
+        driver_config.custom_settings["max_registers_per_group"] = std::to_string(modbus_config_.max_registers_per_group);
+        
+        std::string protocol_msg = "🔧 Protocol settings configured:\n";
+        protocol_msg += "   - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
+        protocol_msg += "   - byte_order: " + modbus_config_.byte_order + "\n";
+        protocol_msg += "   - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
+        protocol_msg += "   - response_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms";
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, protocol_msg);
+        
+        // =====================================================================
+        // 🔥 4단계: ModbusDriver 초기화 수행
+        // =====================================================================
+        
+        if (!modbus_driver_->Initialize(driver_config)) {
+            const auto& error = modbus_driver_->GetLastError();
+            LogMessage(PulseOne::LogLevel::ERROR, 
+                      "❌ ModbusDriver initialization failed: " + error.message + 
+                      " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
+            return false;
+        }
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "✅ ModbusDriver initialization successful");
+        
+        // =====================================================================
+        // 🔥 5단계: Driver 콜백 설정 (선택적)
+        // =====================================================================
+        
+        // 필요시 ModbusDriver에 콜백 함수들 등록
+        // 예: 연결 상태 변경, 에러 발생 시 처리 등
         SetupDriverCallbacks();
         
-        LogMessage(PulseOne::LogLevel::INFO, "ModbusDriver initialized successfully");
+        // =====================================================================
+        // 최종 결과 로깅 - 문자열 연결 문제 해결
+        // =====================================================================
+        
+        std::string final_msg = "✅ ModbusDriver initialized successfully:\n";
+        final_msg += "   📡 Connection details:\n";
+        final_msg += "      - endpoint: " + device_info_.endpoint + "\n";
+        final_msg += "      - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
+        final_msg += "      - timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
+        final_msg += "   ⚙️  Advanced settings:\n";
+        final_msg += "      - byte_order: " + modbus_config_.byte_order + "\n";
+        final_msg += "      - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
+        final_msg += "      - response_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
+        final_msg += "      - max_registers_per_group: " + std::to_string(modbus_config_.max_registers_per_group);
+        
+        LogMessage(PulseOne::LogLevel::INFO, final_msg);
+        
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception initializing ModbusDriver: " + std::string(e.what()));
+        LogMessage(PulseOne::LogLevel::ERROR, 
+                   "❌ Exception during ModbusDriver initialization: " + std::string(e.what()));
+        
+        // 예외 발생 시 driver 정리
+        if (modbus_driver_) {
+            modbus_driver_.reset();
+        }
+        
         return false;
     }
 }
@@ -730,16 +1008,53 @@ ModbusTcpPollingGroup ModbusTcpWorker::MergePollingGroups(const ModbusTcpPolling
 // ModbusDriver 콜백 메서드들 (Driver → Worker)
 // =============================================================================
 
+/**
+ * @brief Driver 콜백 설정 (선택적 구현)
+ * @details ModbusDriver의 이벤트들을 Worker에서 처리하기 위한 콜백 등록
+ */
 void ModbusTcpWorker::SetupDriverCallbacks() {
     if (!modbus_driver_) {
         return;
     }
     
-    // 콜백 설정 (ModbusDriver가 이러한 콜백을 지원한다고 가정)
-    // 실제 구현에서는 ModbusDriver의 API에 따라 달라질 수 있음
-    
-    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "ModbusDriver callbacks configured");
+    try {
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "🔗 Setting up ModbusDriver callbacks...");
+        
+        // 예시: 연결 상태 변경 콜백
+        // modbus_driver_->SetConnectionStatusCallback([this](bool connected) {
+        //     if (connected) {
+        //         LogMessage(PulseOne::LogLevel::INFO, "📡 Modbus connection established");
+        //         OnProtocolConnected();
+        //     } else {
+        //         LogMessage(PulseOne::LogLevel::WARN, "📡 Modbus connection lost");
+        //         OnProtocolDisconnected();
+        //     }
+        // });
+        
+        // 예시: 에러 발생 콜백
+        // modbus_driver_->SetErrorCallback([this](const ErrorInfo& error) {
+        //     LogMessage(PulseOne::LogLevel::ERROR, 
+        //               "🚨 Modbus error: " + error.message + 
+        //               " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
+        //     OnProtocolError(error);
+        // });
+        
+        // 예시: 데이터 수신 콜백  
+        // modbus_driver_->SetDataReceivedCallback([this](const std::vector<TimestampedValue>& values) {
+        //     LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+        //               "📊 Received " + std::to_string(values.size()) + " Modbus values");
+        //     OnDataReceived(values);
+        // });
+        
+        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "✅ ModbusDriver callbacks configured");
+        
+    } catch (const std::exception& e) {
+        LogMessage(PulseOne::LogLevel::WARN, 
+                   "⚠️ Failed to setup driver callbacks: " + std::string(e.what()));
+        // 콜백 설정 실패는 치명적이지 않으므로 계속 진행
+    }
 }
+
 
 void ModbusTcpWorker::OnConnectionStatusChanged(void* worker_ptr, bool connected,
                                                const std::string& error_message) {
