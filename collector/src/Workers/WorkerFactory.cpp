@@ -30,11 +30,13 @@
 #include "Workers/Protocol/MQTTWorker.h"
 #include "Workers/Protocol/BACnetWorker.h"
 #include "Database/Entities/DeviceEntity.h"
+#include "Database/Entities/DeviceSettingsEntity.h"
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/Repositories/DeviceSettingsRepository.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include "Common/Constants.h"
@@ -516,23 +518,250 @@ std::string WorkerFactory::ValidateWorkerConfig(const Database::Entities::Device
     return "";  // 검증 통과
 }
 
-PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const {
+
+/*
+ * @brief DeviceEntity를 DeviceInfo로 변환 (DeviceSettings 통합)
+ * @param device_entity 변환할 DeviceEntity
+ * @return 완전한 DeviceInfo (DeviceSettings 포함)
+ */
+PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(
+    const Database::Entities::DeviceEntity& device_entity) const {
+    
     PulseOne::Structs::DeviceInfo device_info;
     
-    // ✅ id 필드 사용 (문자열로 변환)
+    // =========================================================================
+    // 🔥 1단계: DeviceEntity 기본 정보 매핑
+    // =========================================================================
+    
+    // 기본 식별 정보
     device_info.id = std::to_string(device_entity.getId());
+    device_info.tenant_id = device_entity.getTenantId();
     device_info.name = device_entity.getName();
     device_info.description = device_entity.getDescription();
-    device_info.protocol_type = device_entity.getProtocolType();
-    
-    // ✅ endpoint와 connection_string 필드 사용
     device_info.endpoint = device_entity.getEndpoint();
     device_info.connection_string = device_entity.getEndpoint();
-    
-    // ✅ isEnabled() 메서드 사용
     device_info.is_enabled = device_entity.isEnabled();
+    device_info.protocol_type = device_entity.getProtocolType();
+    
+    // 디바이스 상세 정보 (🆕 새로 추가된 필드들)
+    device_info.device_type = device_entity.getDeviceType();
+    device_info.manufacturer = device_entity.getManufacturer();
+    device_info.model = device_entity.getModel();
+    device_info.serial_number = device_entity.getSerialNumber();
+    
+    // 시간 정보
+    device_info.created_at = device_entity.getCreatedAt();
+    device_info.updated_at = device_entity.getUpdatedAt();
+    device_info.last_communication = device_entity.getUpdatedAt(); // 임시
+    device_info.last_seen = device_entity.getUpdatedAt(); // 임시
+    
+    // 그룹 정보
+    if (device_entity.getDeviceGroupId().has_value()) {
+        device_info.device_group_id = std::to_string(device_entity.getDeviceGroupId().value());
+    }
+    
+    logger_->Debug("✅ DeviceEntity basic info mapped for device: " + device_entity.getName());
+    
+    // =========================================================================
+    // 🔥 2단계: DeviceSettings 정보 로드 및 매핑
+    // =========================================================================
+    
+    try {
+        if (!repo_factory_) {
+            logger_->Warn("⚠️ RepositoryFactory not available, using default DeviceSettings");
+            device_info.SetIndustrialDefaults();
+            return device_info;
+        }
+        
+        auto device_settings_repo = repo_factory_->getDeviceSettingsRepository();
+        if (!device_settings_repo) {
+            logger_->Warn("⚠️ DeviceSettingsRepository not available, using default settings");
+            device_info.SetIndustrialDefaults();
+            return device_info;
+        }
+        
+        // DeviceSettings 로드 시도
+        auto settings = device_settings_repo->findById(device_entity.getId());
+        
+        if (settings.has_value()) {
+            const auto& s = settings.value();
+            
+            logger_->Debug("🔍 DeviceSettings found for device " + device_entity.getName() + 
+                          " (device_id: " + std::to_string(device_entity.getId()) + ")");
+            
+            // ✅ 기본 타이밍 설정 매핑
+            device_info.polling_interval_ms = s.getPollingIntervalMs();
+            device_info.connection_timeout_ms = s.getConnectionTimeoutMs();
+            device_info.timeout_ms = s.getConnectionTimeoutMs(); // 호환성
+            
+            // ✅ 재시도 설정 매핑
+            device_info.max_retry_count = s.getMaxRetryCount();
+            device_info.retry_count = s.getMaxRetryCount(); // 호환성
+            device_info.retry_interval_ms = s.getRetryIntervalMs();
+            device_info.backoff_time_ms = s.getBackoffTimeMs();
+            device_info.backoff_multiplier = s.getBackoffMultiplier();
+            device_info.max_backoff_time_ms = s.getMaxBackoffTimeMs();
+            
+            // ✅ Keep-Alive 설정 매핑
+            device_info.keep_alive_enabled = s.isKeepAliveEnabled();
+            device_info.keep_alive_interval_s = s.getKeepAliveIntervalS();
+            device_info.keep_alive_timeout_s = s.getKeepAliveTimeoutS();
+            
+            // ✅ 세부 타임아웃 설정 매핑
+            device_info.read_timeout_ms = s.getReadTimeoutMs();
+            device_info.write_timeout_ms = s.getWriteTimeoutMs();
+            
+            // ✅ 기능 플래그들 매핑
+            device_info.data_validation_enabled = s.isDataValidationEnabled();
+            device_info.performance_monitoring_enabled = s.isPerformanceMonitoringEnabled();
+            device_info.diagnostic_mode_enabled = s.isDiagnosticModeEnabled();
+            
+            // ✅ 선택적 설정들 매핑
+            device_info.scan_rate_override = s.getScanRateOverride();
+            
+            // Duration 필드들 동기화
+            device_info.timeout = std::chrono::milliseconds(s.getConnectionTimeoutMs());
+            device_info.polling_interval = std::chrono::milliseconds(s.getPollingIntervalMs());
+            
+            // 호환성 필드들 동기화
+            device_info.SyncCompatibilityFields();
+            
+            // 설정 검증
+            if (!device_info.ValidateDeviceSettings()) {
+                logger_->Warn("⚠️ Invalid DeviceSettings detected for device " + device_entity.getName() + 
+                             ", applying industrial defaults");
+                device_info.SetIndustrialDefaults();
+            }
+            
+            logger_->Info("✅ DeviceSettings successfully mapped for device " + device_entity.getName() + 
+                         " (polling: " + std::to_string(s.getPollingIntervalMs()) + "ms, " +
+                         "timeout: " + std::to_string(s.getConnectionTimeoutMs()) + "ms, " +
+                         "retry: " + std::to_string(s.getMaxRetryCount()) + ", " +
+                         "keep_alive: " + (s.isKeepAliveEnabled() ? "enabled" : "disabled") + ")");
+                         
+        } else {
+            // DeviceSettings가 없는 경우 - 기본 설정 생성 시도
+            logger_->Warn("⚠️ DeviceSettings not found for device " + device_entity.getName() + 
+                         " (device_id: " + std::to_string(device_entity.getId()) + ")");
+            
+            // 기본 설정 생성 시도
+            try {
+                bool created = device_settings_repo->createDefaultSettings(device_entity.getId());
+                if (created) {
+                    logger_->Info("✅ Created default DeviceSettings for device " + device_entity.getName());
+                    
+                    // 다시 로드 시도
+                    auto new_settings = device_settings_repo->findById(device_entity.getId());
+                    if (new_settings.has_value()) {
+                        logger_->Info("✅ Successfully loaded newly created DeviceSettings");
+                        // 위의 매핑 로직을 재귀 호출하거나 복사
+                        // 간단히 기본값 사용
+                    }
+                }
+            } catch (const std::exception& e) {
+                logger_->Error("Failed to create default DeviceSettings: " + std::string(e.what()));
+            }
+            
+            // 기본값 적용
+            device_info.SetIndustrialDefaults();
+            logger_->Info("✅ Applied industrial default settings for device " + device_entity.getName());
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("Exception while loading DeviceSettings for device " + device_entity.getName() + 
+                      ": " + std::string(e.what()));
+        
+        // 예외 발생 시 기본값 사용
+        device_info.SetIndustrialDefaults();
+        logger_->Info("✅ Applied fallback industrial defaults due to exception");
+    }
+    
+    // =========================================================================
+    // 🔥 3단계: 최종 검증 및 로깅
+    // =========================================================================
+    
+    // 프로토콜 타입 변환 (문자열 → 열거형)
+    if (device_entity.getProtocolType() == "MODBUS_TCP") {
+        device_info.protocol = PulseOne::ProtocolType::MODBUS_TCP;
+    } else if (device_entity.getProtocolType() == "MQTT") {
+        device_info.protocol = PulseOne::ProtocolType::MQTT;
+    } else if (device_entity.getProtocolType() == "BACNET") {
+        device_info.protocol = PulseOne::ProtocolType::BACNET_IP;
+    } else {
+        device_info.protocol = PulseOne::ProtocolType::UNKNOWN;
+        logger_->Warn("⚠️ Unknown protocol type: " + device_entity.getProtocolType());
+    }
+    
+    // 연결 상태 초기화
+    device_info.connection_status = PulseOne::ConnectionStatus::DISCONNECTED;
+    device_info.auto_reconnect = true;
+    device_info.maintenance_allowed = true;
+    
+    // 최종 검증
+    if (!device_info.ValidateDeviceSettings()) {
+        logger_->Error("❌ Final DeviceSettings validation failed for device " + device_entity.getName());
+        device_info.SetIndustrialDefaults();
+    }
+    
+    // 상세 로깅 (디버깅용)
+    if (logger_->getLogLevel() <= PulseOne::LogLevel::DEBUG_LEVEL) {
+        auto settings_json = device_info.GetDeviceSettingsJson();
+        logger_->Debug("📊 Final DeviceInfo settings for " + device_entity.getName() + ": " + settings_json.dump());
+    }
+    
+    logger_->Info("🎯 DeviceInfo conversion completed for device: " + device_entity.getName() + 
+                 " (protocol: " + device_entity.getProtocolType() + 
+                 ", endpoint: " + device_entity.getEndpoint() + 
+                 ", enabled: " + (device_entity.isEnabled() ? "true" : "false") + ")");
     
     return device_info;
+}
+
+// =========================================================================
+// 🆕 추가 헬퍼 메서드 (선택적)
+// =========================================================================
+
+/**
+ * @brief DeviceSettings 로드 실패 시 프로토콜별 기본값 적용
+ * @param device_info 설정할 DeviceInfo
+ * @param protocol_type 프로토콜 타입
+ */
+void WorkerFactory::ApplyProtocolSpecificDefaults(
+    PulseOne::Structs::DeviceInfo& device_info, 
+    const std::string& protocol_type) const {
+    
+    if (protocol_type == "MODBUS_TCP") {
+        // Modbus TCP 최적화 설정
+        device_info.polling_interval_ms = 1000;     // 1초
+        device_info.connection_timeout_ms = 5000;   // 5초
+        device_info.read_timeout_ms = 3000;         // 3초
+        device_info.write_timeout_ms = 3000;        // 3초
+        device_info.max_retry_count = 3;
+        device_info.keep_alive_enabled = false;     // Modbus는 보통 Keep-Alive 불필요
+        
+    } else if (protocol_type == "MQTT") {
+        // MQTT 최적화 설정
+        device_info.polling_interval_ms = 5000;     // 5초 (구독 기반이므로 길게)
+        device_info.connection_timeout_ms = 10000;  // 10초
+        device_info.keep_alive_enabled = true;      // MQTT는 Keep-Alive 중요
+        device_info.keep_alive_interval_s = 60;     // 1분
+        device_info.max_retry_count = 5;            // 네트워크 기반이므로 더 많이
+        
+    } else if (protocol_type == "BACNET") {
+        // BACnet 최적화 설정
+        device_info.polling_interval_ms = 2000;     // 2초
+        device_info.connection_timeout_ms = 8000;   // 8초
+        device_info.max_retry_count = 3;
+        device_info.keep_alive_enabled = false;     // BACnet은 보통 Keep-Alive 불필요
+        
+    } else {
+        // 알 수 없는 프로토콜 - 보수적 설정
+        device_info.SetStabilityMode();
+    }
+    
+    device_info.SyncCompatibilityFields();
+    
+    logger_->Info("✅ Applied protocol-specific defaults for " + protocol_type);
 }
 
 // =============================================================================

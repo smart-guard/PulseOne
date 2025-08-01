@@ -114,9 +114,10 @@ namespace PulseOne::Structs {
     // =========================================================================
     
     /**
-     * @brief 통합 디바이스 정보
+     * @brief 통합 디바이스 정보 (🔥 DeviceSettings 필드들 통합 완료)
      * - Database::DeviceInfo (DB 저장용)
      * - Drivers::DeviceInfo (드라이버용) 
+     * - DeviceSettings 모든 필드 포함
      * - 점검 기능 추가
      */
     struct DeviceInfo {
@@ -134,12 +135,45 @@ namespace PulseOne::Structs {
         JsonType connection_config;                  // JSON 설정
         std::string status = "disconnected";         // 문자열 상태
         
-        // 🔥 통신 설정 (Duration + 호환용 int)
+        // =========================================================================
+        // 🆕 DeviceSettings 통합 필드들 (새로 추가)
+        // =========================================================================
+        
+        // 🔥 기본 타이밍 설정 (기존 + DeviceSettings)
         Duration timeout = std::chrono::milliseconds(5000);
         int timeout_ms = 5000;                       // 기존 코드 호환용
+        int connection_timeout_ms = 10000;           // 🆕 DeviceSettings - 연결 타임아웃
         Duration polling_interval = std::chrono::milliseconds(1000);
-        int polling_interval_ms = 1000;              // 기존 코드 호환용
-        int retry_count = 3;
+        int polling_interval_ms = 1000;              // 기존 + DeviceSettings
+        
+        // 🔥 재시도 설정 (기존 + DeviceSettings 확장)
+        int retry_count = 3;                         // 기존 (호환성)
+        int max_retry_count = 3;                     // 🆕 DeviceSettings - 최대 재시도 횟수
+        int retry_interval_ms = 5000;                // 🆕 DeviceSettings - 재시도 간격
+        int backoff_time_ms = 60000;                 // 🆕 DeviceSettings - 백오프 시간 (1분)
+        double backoff_multiplier = 1.5;             // 🆕 DeviceSettings - 백오프 배수
+        int max_backoff_time_ms = 300000;            // 🆕 DeviceSettings - 최대 백오프 시간 (5분)
+        
+        // 🔥 Keep-Alive 설정 (🆕 DeviceSettings에서 추가)
+        bool keep_alive_enabled = true;              // 🆕 Keep-Alive 활성화
+        int keep_alive_interval_s = 30;              // 🆕 Keep-Alive 간격 (30초)
+        int keep_alive_timeout_s = 10;               // 🆕 Keep-Alive 타임아웃 (10초)
+        
+        // 🔥 세부 타임아웃 설정 (🆕 DeviceSettings에서 추가)
+        int read_timeout_ms = 5000;                  // 🆕 읽기 타임아웃 (5초)
+        int write_timeout_ms = 5000;                 // 🆕 쓰기 타임아웃 (5초)
+        
+        // 🔥 고급 기능 플래그들 (🆕 DeviceSettings에서 추가)
+        bool data_validation_enabled = true;         // 🆕 데이터 검증 활성화
+        bool performance_monitoring_enabled = true;  // 🆕 성능 모니터링 활성화
+        bool diagnostic_mode_enabled = false;        // 🆕 진단 모드 활성화
+        
+        // 🔥 선택적 설정들 (🆕 DeviceSettings에서 추가)
+        std::optional<int> scan_rate_override;       // 🆕 개별 스캔 레이트 오버라이드
+        
+        // =========================================================================
+        // 🔥 기존 필드들 (변경 없음)
+        // =========================================================================
         
         // 🔥 연결 상태 관리
         ConnectionStatus connection_status = ConnectionStatus::DISCONNECTED;
@@ -162,12 +196,33 @@ namespace PulseOne::Structs {
         std::vector<std::string> tags;
         JsonType metadata;
         
-        // ✅ 생성자 - Utils 네임스페이스 사용
+        // 🔥 디바이스 상세 정보 (DeviceEntity에서 가져올 필드들)
+        std::string device_type = "";                // 🆕 DeviceEntity.getDeviceType()
+        std::string manufacturer = "";               // 🆕 DeviceEntity.getManufacturer()
+        std::string model = "";                      // 🆕 DeviceEntity.getModel()
+        std::string serial_number = "";              // 🆕 DeviceEntity.getSerialNumber()
+
+        // ✅ 생성자 - Utils 네임스페이스 사용 + 새 필드들 초기화
         DeviceInfo() 
             : timeout(std::chrono::milliseconds(5000))
             , timeout_ms(5000)
+            , connection_timeout_ms(10000)           // 🆕 초기값 설정
             , polling_interval(std::chrono::milliseconds(1000))
             , polling_interval_ms(1000)
+            , retry_count(3)
+            , max_retry_count(3)                     // 🆕 초기값 설정
+            , retry_interval_ms(5000)                // 🆕 초기값 설정
+            , backoff_time_ms(60000)                 // 🆕 초기값 설정 (1분)
+            , backoff_multiplier(1.5)                // 🆕 초기값 설정
+            , max_backoff_time_ms(300000)            // 🆕 초기값 설정 (5분)
+            , keep_alive_enabled(true)               // 🆕 초기값 설정
+            , keep_alive_interval_s(30)              // 🆕 초기값 설정 (30초)
+            , keep_alive_timeout_s(10)               // 🆕 초기값 설정 (10초)
+            , read_timeout_ms(5000)                  // 🆕 초기값 설정 (5초)
+            , write_timeout_ms(5000)                 // 🆕 초기값 설정 (5초)
+            , data_validation_enabled(true)          // 🆕 초기값 설정
+            , performance_monitoring_enabled(true)   // 🆕 초기값 설정
+            , diagnostic_mode_enabled(false)         // 🆕 초기값 설정
             , last_communication(Utils::GetCurrentTimestamp())
             , last_seen(Utils::GetCurrentTimestamp())
             , created_at(Utils::GetCurrentTimestamp())
@@ -176,7 +231,7 @@ namespace PulseOne::Structs {
             SyncCompatibilityFields();
         }
         
-        // 🔥 호환성 메서드들
+        // 🔥 호환성 메서드들 (기존 + 새 필드 동기화)
         int GetTimeoutMs() const {
             return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
         }
@@ -184,16 +239,32 @@ namespace PulseOne::Structs {
         void SetTimeoutMs(int ms) {
             timeout_ms = ms;
             timeout = std::chrono::milliseconds(ms);
+            // 🆕 connection_timeout_ms와 동기화할지 결정 (기본적으로 별개)
         }
         
         void SyncTimeoutFields() {
             timeout_ms = GetTimeoutMs();
         }
         
+        // 🆕 새로운 동기화 메서드들
+        void SyncRetryFields() {
+            retry_count = max_retry_count;  // 호환성을 위한 동기화
+        }
+        
+        void SyncPollingFields() {
+            polling_interval_ms = static_cast<int>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(polling_interval).count());
+        }
+        
         void SyncCompatibilityFields() {
             connection_string = endpoint;
             protocol_type = "unknown";  // 간단화
             last_seen = last_communication;
+            
+            // 🆕 새 필드들 동기화
+            SyncRetryFields();
+            SyncPollingFields();
+            SyncTimeoutFields();
             
             switch(connection_status) {
                 case ConnectionStatus::CONNECTED: status = "connected"; break;
@@ -202,6 +273,105 @@ namespace PulseOne::Structs {
                 case ConnectionStatus::ERROR: status = "error"; break;
                 default: status = "disconnected"; break;
             }
+        }
+        
+        // =========================================================================
+        // 🆕 DeviceSettings 관련 헬퍼 메서드들
+        // =========================================================================
+        
+        /**
+         * @brief DeviceSettings 값들이 유효한지 검증
+         */
+        bool ValidateDeviceSettings() const {
+            if (polling_interval_ms <= 0) return false;
+            if (connection_timeout_ms <= 0) return false;
+            if (max_retry_count < 0) return false;
+            if (retry_interval_ms <= 0) return false;
+            if (backoff_time_ms <= 0) return false;
+            if (keep_alive_interval_s <= 0) return false;
+            if (read_timeout_ms <= 0) return false;
+            if (write_timeout_ms <= 0) return false;
+            if (backoff_multiplier <= 0.0) return false;
+            if (max_backoff_time_ms <= 0) return false;
+            if (keep_alive_timeout_s <= 0) return false;
+            return true;
+        }
+        
+        /**
+         * @brief 산업용 기본값으로 설정
+         */
+        void SetIndustrialDefaults() {
+            polling_interval_ms = 1000;          // 1초
+            connection_timeout_ms = 10000;       // 10초
+            max_retry_count = 3;
+            retry_interval_ms = 5000;            // 5초
+            backoff_time_ms = 60000;             // 1분
+            keep_alive_enabled = true;
+            keep_alive_interval_s = 30;          // 30초
+            read_timeout_ms = 5000;              // 5초
+            write_timeout_ms = 5000;             // 5초
+            backoff_multiplier = 1.5;
+            max_backoff_time_ms = 300000;        // 5분
+            keep_alive_timeout_s = 10;           // 10초
+            data_validation_enabled = true;
+            performance_monitoring_enabled = true;
+            diagnostic_mode_enabled = false;
+            
+            SyncCompatibilityFields();
+        }
+        
+        /**
+         * @brief 고속 모드 설정
+         */
+        void SetHighSpeedMode() {
+            polling_interval_ms = 500;           // 500ms
+            connection_timeout_ms = 3000;        // 3초
+            read_timeout_ms = 2000;              // 2초
+            write_timeout_ms = 2000;             // 2초
+            retry_interval_ms = 2000;            // 2초 간격
+            keep_alive_interval_s = 10;          // 10초 주기
+            
+            SyncCompatibilityFields();
+        }
+        
+        /**
+         * @brief 안정성 모드 설정
+         */
+        void SetStabilityMode() {
+            polling_interval_ms = 5000;          // 5초
+            connection_timeout_ms = 30000;       // 30초
+            max_retry_count = 5;                 // 5회 재시도
+            retry_interval_ms = 10000;           // 10초 간격
+            backoff_time_ms = 120000;            // 2분 백오프
+            keep_alive_interval_s = 60;          // 1분 주기
+            
+            SyncCompatibilityFields();
+        }
+        
+        /**
+         * @brief DeviceSettings 정보를 JSON으로 출력 (디버깅용)
+         */
+        JsonType GetDeviceSettingsJson() const {
+            JsonType json;
+            json["polling_interval_ms"] = polling_interval_ms;
+            json["connection_timeout_ms"] = connection_timeout_ms;
+            json["max_retry_count"] = max_retry_count;
+            json["retry_interval_ms"] = retry_interval_ms;
+            json["backoff_time_ms"] = backoff_time_ms;
+            json["backoff_multiplier"] = backoff_multiplier;
+            json["max_backoff_time_ms"] = max_backoff_time_ms;
+            json["keep_alive_enabled"] = keep_alive_enabled;
+            json["keep_alive_interval_s"] = keep_alive_interval_s;
+            json["keep_alive_timeout_s"] = keep_alive_timeout_s;
+            json["read_timeout_ms"] = read_timeout_ms;
+            json["write_timeout_ms"] = write_timeout_ms;
+            json["data_validation_enabled"] = data_validation_enabled;
+            json["performance_monitoring_enabled"] = performance_monitoring_enabled;
+            json["diagnostic_mode_enabled"] = diagnostic_mode_enabled;
+            if (scan_rate_override.has_value()) {
+                json["scan_rate_override"] = scan_rate_override.value();
+            }
+            return json;
         }
     };
     

@@ -107,6 +107,7 @@ public:
     void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point, 
                          const PulseOne::BasicTypes::DataVariant& new_value,
                          PulseOne::Enums::DataQuality new_quality = PulseOne::Enums::DataQuality::GOOD) const;
+
 private:
     WorkerFactory() = default;
     ~WorkerFactory() = default;
@@ -121,6 +122,8 @@ private:
     // ✅ 새로 추가: 데이터 품질 헬퍼 함수
     std::string DataQualityToString(PulseOne::Enums::DataQuality quality) const;
 
+    void ApplyProtocolSpecificDefaults(PulseOne::Structs::DeviceInfo& device_info, 
+                                      const std::string& protocol_type) const;
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;
     
