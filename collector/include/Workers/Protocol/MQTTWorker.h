@@ -93,29 +93,7 @@ struct MQTTPublishTask {
 };
 
 /**
- * @brief 오프라인 메시지 (프로덕션 모드용)
- */
-struct OfflineMessage {
-    std::string topic;
-    std::string payload;
-    MqttQoS qos;
-    bool retain;
-    std::chrono::system_clock::time_point timestamp;
-    int priority = 5;
-    
-    OfflineMessage(const std::string& t, const std::string& p, MqttQoS q = MqttQoS::AT_LEAST_ONCE, bool r = false, int prio = 5)
-        : topic(t), payload(p), qos(q), retain(r), timestamp(std::chrono::system_clock::now()), priority(prio) {}
-    
-    bool operator<(const OfflineMessage& other) const {
-        if (priority != other.priority) {
-            return priority < other.priority;
-        }
-        return timestamp > other.timestamp;
-    }
-};
-
-/**
- * @brief 성능 메트릭스 (프로덕션 모드용)
+ * @brief 성능 메트릭스 (프로덕션 모드용) - 복사 가능한 버전
  */
 struct PerformanceMetrics {
     std::atomic<uint64_t> messages_sent{0};
@@ -134,6 +112,49 @@ struct PerformanceMetrics {
     std::atomic<uint32_t> queue_size{0};
     std::atomic<uint32_t> max_queue_size{0};
     
+    // 기본 생성자
+    PerformanceMetrics() = default;
+    
+    // 복사 생성자 - atomic 값들을 로드해서 복사
+    PerformanceMetrics(const PerformanceMetrics& other) 
+        : messages_sent(other.messages_sent.load())
+        , messages_received(other.messages_received.load())
+        , messages_dropped(other.messages_dropped.load())
+        , bytes_sent(other.bytes_sent.load())
+        , bytes_received(other.bytes_received.load())
+        , peak_throughput_bps(other.peak_throughput_bps.load())
+        , avg_throughput_bps(other.avg_throughput_bps.load())
+        , connection_count(other.connection_count.load())
+        , error_count(other.error_count.load())
+        , retry_count(other.retry_count.load())
+        , avg_latency_ms(other.avg_latency_ms.load())
+        , max_latency_ms(other.max_latency_ms.load())
+        , min_latency_ms(other.min_latency_ms.load())
+        , queue_size(other.queue_size.load())
+        , max_queue_size(other.max_queue_size.load()) {}
+    
+    // 복사 할당 연산자
+    PerformanceMetrics& operator=(const PerformanceMetrics& other) {
+        if (this != &other) {
+            messages_sent = other.messages_sent.load();
+            messages_received = other.messages_received.load();
+            messages_dropped = other.messages_dropped.load();
+            bytes_sent = other.bytes_sent.load();
+            bytes_received = other.bytes_received.load();
+            peak_throughput_bps = other.peak_throughput_bps.load();
+            avg_throughput_bps = other.avg_throughput_bps.load();
+            connection_count = other.connection_count.load();
+            error_count = other.error_count.load();
+            retry_count = other.retry_count.load();
+            avg_latency_ms = other.avg_latency_ms.load();
+            max_latency_ms = other.max_latency_ms.load();
+            min_latency_ms = other.min_latency_ms.load();
+            queue_size = other.queue_size.load();
+            max_queue_size = other.max_queue_size.load();
+        }
+        return *this;
+    }
+    
     void Reset() {
         messages_sent = 0;
         messages_received = 0;
@@ -150,6 +171,35 @@ struct PerformanceMetrics {
         min_latency_ms = 999999;
         queue_size = 0;
         max_queue_size = 0;
+    }
+};
+
+
+
+/**
+ * @brief 오프라인 메시지 (프로덕션 모드용)
+ */
+struct OfflineMessage {
+    std::string topic;
+    std::string payload;
+    MqttQoS qos;
+    bool retain;
+    std::chrono::system_clock::time_point timestamp;
+    int priority = 5;
+    
+    OfflineMessage(const std::string& t, const std::string& p, MqttQoS q = MqttQoS::AT_LEAST_ONCE, bool r = false, int prio = 5)
+        : topic(t), payload(p), qos(q), retain(r), timestamp(std::chrono::system_clock::now()), priority(prio) {}
+};
+
+/**
+ * @brief OfflineMessage 커스텀 comparator
+ */
+struct OfflineMessageComparator {
+    bool operator()(const OfflineMessage& lhs, const OfflineMessage& rhs) const {
+        if (lhs.priority != rhs.priority) {
+            return lhs.priority < rhs.priority;
+        }
+        return lhs.timestamp > rhs.timestamp;
     }
 };
 
@@ -451,7 +501,7 @@ private:
     mutable PerformanceMetrics performance_metrics_;
     
     // 오프라인 메시지 큐 (프로덕션 모드)
-    std::priority_queue<OfflineMessage, std::vector<OfflineMessage>, std::greater<OfflineMessage>> offline_messages_;
+    std::priority_queue<OfflineMessage, std::vector<OfflineMessage>, OfflineMessageComparator> offline_messages_;
     mutable std::mutex offline_messages_mutex_;
     
     // 프로덕션 전용 스레드
