@@ -97,24 +97,38 @@ public:
      * @brief Modbus 연결 객체
      */
     struct ModbusConnection {
-        std::unique_ptr<modbus_t, void(*)(modbus_t*)> ctx;
-        std::atomic<bool> is_connected{false};
-        std::atomic<bool> is_busy{false};
-        std::atomic<uint64_t> total_operations{0};
-        std::atomic<uint64_t> successful_operations{0};
-        std::atomic<double> avg_response_time_ms{0.0};
-        std::chrono::system_clock::time_point last_used;
-        std::chrono::system_clock::time_point created_at;
-        std::string endpoint;
-        int connection_id;
-        
-        ModbusConnection(int id);
-        
-        double GetSuccessRate() const;
-        bool IsHealthy() const;
-        std::chrono::milliseconds GetIdleTime() const;
-        void UpdateStats(bool success, double response_time_ms);
-    };
+    // 1. 스마트 포인터 (첫 번째)
+    std::unique_ptr<modbus_t, void(*)(modbus_t*)> ctx;
+    
+    // 2. atomic 멤버들 (소스 파일 순서와 일치)
+    std::atomic<bool> is_connected{false};
+    std::atomic<bool> is_busy{false};
+    std::atomic<uint64_t> total_operations{0};
+    std::atomic<uint64_t> successful_operations{0};
+    std::atomic<double> avg_response_time_ms{0.0};
+    
+    // 3. 시간 관련 멤버들 (소스 파일 순서와 일치)
+    std::chrono::system_clock::time_point last_used;
+    std::chrono::system_clock::time_point created_at;
+    
+    // 4. 문자열 멤버
+    std::string endpoint;
+    
+    // 5. 정수 멤버
+    int connection_id;
+    
+    // 6. 누락된 멤버 추가 (로드밸런싱용)
+    double weight{1.0};
+    
+    // 생성자
+    ModbusConnection(int id);
+    
+    // 메서드들
+    double GetSuccessRate() const;
+    bool IsHealthy() const;
+    std::chrono::milliseconds GetIdleTime() const;
+    void UpdateStats(bool success, double response_time_ms);
+};
     
     /**
      * @brief 로드 밸런싱 전략
