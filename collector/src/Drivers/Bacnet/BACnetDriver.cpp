@@ -43,7 +43,7 @@ BACnetDriver::BACnetDriver() {
     statistics_.last_connection_time = system_clock::now();
     
     // 에러 초기화
-    last_error_.code = Enums::ErrorCode::SUCCESS;
+    last_error_.code = Structs::ErrorCode::SUCCESS;
     last_error_.message = "";
     
     // 상태 초기화
@@ -112,7 +112,7 @@ bool BACnetDriver::Initialize(const DriverConfig& config) {
         
         // BACnet Stack 초기화
         if (!InitializeBACnetStack()) {
-            SetError(Enums::ErrorCode::INTERNAL_ERROR, "Failed to initialize BACnet Stack");
+            SetError(Structs::ErrorCode::INTERNAL_ERROR, "Failed to initialize BACnet Stack");
             current_status_.store(Structs::DriverStatus::ERROR);
             return false;
         }
@@ -121,7 +121,7 @@ bool BACnetDriver::Initialize(const DriverConfig& config) {
         return true;
         
     } catch (const std::exception& e) {
-        SetError(Enums::ErrorCode::INVALID_PARAMETER, 
+        SetError(Structs::ErrorCode::INVALID_PARAMETER, 
                 std::string("Configuration error: ") + e.what());
         current_status_.store(Structs::DriverStatus::ERROR);
         return false;
@@ -164,13 +164,13 @@ bool BACnetDriver::Connect() {
         return true;
         
     } catch (const std::exception& e) {
-        SetError(Enums::ErrorCode::CONNECTION_FAILED, 
+        SetError(Structs::ErrorCode::CONNECTION_FAILED, 
                 std::string("Connection failed: ") + e.what());
         current_status_.store(Structs::DriverStatus::ERROR);
         return false;
     }
 #else
-    SetError(Enums::ErrorCode::INTERNAL_ERROR, "BACnet Stack library not available");
+    SetError(Structs::ErrorCode::INTERNAL_ERROR, "BACnet Stack library not available");
     current_status_.store(Structs::DriverStatus::ERROR);
     return false;
 #endif
@@ -220,7 +220,7 @@ bool BACnetDriver::IsConnected() const {
 bool BACnetDriver::ReadValues(const std::vector<Structs::DataPoint>& points,
                              std::vector<TimestampedValue>& values) {
     if (!IsConnected()) {
-        SetError(Enums::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
+        SetError(Structs::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
         return false;
     }
     
@@ -301,7 +301,7 @@ bool BACnetDriver::ReadValues(const std::vector<Structs::DataPoint>& points,
 bool BACnetDriver::WriteValue(const Structs::DataPoint& point, 
                              const Structs::DataValue& value) {
     if (!IsConnected()) {
-        SetError(Enums::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
+        SetError(Structs::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
         return false;
     }
     
@@ -352,7 +352,7 @@ bool BACnetDriver::WriteValue(const Structs::DataPoint& point,
         return success;
         
     } catch (const std::exception& e) {
-        SetError(Enums::ErrorCode::DATA_FORMAT_ERROR, 
+        SetError(Structs::ErrorCode::DATA_FORMAT_ERROR, 
                 std::string("Write error: ") + e.what());
         return false;
     }
@@ -472,7 +472,7 @@ void BACnetDriver::ProcessBACnetMessages() {
 // 유틸리티 메서드들
 // =============================================================================
 
-void BACnetDriver::SetError(Enums::ErrorCode code, const std::string& message) {
+void BACnetDriver::SetError(Structs::ErrorCode code, const std::string& message) {
     last_error_.code = code;
     last_error_.message = message;
     last_error_.occurred_at = std::chrono::system_clock::now();
@@ -811,7 +811,7 @@ bool BACnetDriver::ReadBACnetProperty(uint32_t device_id,
                                      TimestampedValue& result,
                                      uint32_t array_index) {
     if (!IsConnected()) {
-        SetError(Enums::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
+        SetError(Structs::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
         return false;
     }
     
@@ -821,13 +821,13 @@ bool BACnetDriver::ReadBACnetProperty(uint32_t device_id,
         uint8_t invoke_id = SendReadPropertyRequest(device_id, obj_type, obj_instance, 
                                                    prop_id, array_index);
         if (invoke_id == 0) {
-            SetError(Enums::ErrorCode::PROTOCOL_ERROR, "Failed to send Read Property request");
+            SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Failed to send Read Property request");
             return false;
         }
         
         // 응답 대기
         if (!WaitForResponse(invoke_id, 5000)) {
-            SetError(Enums::ErrorCode::CONNECTION_TIMEOUT, "Read Property request timeout");
+            SetError(Structs::ErrorCode::CONNECTION_TIMEOUT, "Read Property request timeout");
             return false;
         }
         
@@ -848,11 +848,11 @@ bool BACnetDriver::ReadBACnetProperty(uint32_t device_id,
             }
         }
         
-        SetError(Enums::ErrorCode::DATA_FORMAT_ERROR, "Invalid response data");
+        SetError(Structs::ErrorCode::DATA_FORMAT_ERROR, "Invalid response data");
         return false;
         
     } catch (const std::exception& e) {
-        SetError(Enums::ErrorCode::INTERNAL_ERROR, 
+        SetError(Structs::ErrorCode::INTERNAL_ERROR, 
                 std::string("Read Property error: ") + e.what());
         return false;
     }
@@ -880,7 +880,7 @@ bool BACnetDriver::WriteBACnetProperty(uint32_t device_id,
                                       uint8_t priority,
                                       uint32_t array_index) {
     if (!IsConnected()) {
-        SetError(Enums::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
+        SetError(Structs::ErrorCode::CONNECTION_LOST, "Not connected to BACnet network");
         return false;
     }
     
@@ -889,7 +889,7 @@ bool BACnetDriver::WriteBACnetProperty(uint32_t device_id,
         // PulseOne DataValue를 BACnet 값으로 변환
         BACNET_APPLICATION_DATA_VALUE bacnet_value;
         if (!ConvertToBACnetValue(value, bacnet_value)) {
-            SetError(Enums::ErrorCode::DATA_FORMAT_ERROR, "Failed to convert value format");
+            SetError(Structs::ErrorCode::DATA_FORMAT_ERROR, "Failed to convert value format");
             return false;
         }
         
@@ -897,13 +897,13 @@ bool BACnetDriver::WriteBACnetProperty(uint32_t device_id,
         uint8_t invoke_id = SendWritePropertyRequest(device_id, obj_type, obj_instance,
                                                     prop_id, bacnet_value, priority, array_index);
         if (invoke_id == 0) {
-            SetError(Enums::ErrorCode::PROTOCOL_ERROR, "Failed to send Write Property request");
+            SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Failed to send Write Property request");
             return false;
         }
         
         // 응답 대기
         if (!WaitForResponse(invoke_id, 5000)) {
-            SetError(Enums::ErrorCode::CONNECTION_TIMEOUT, "Write Property request timeout");
+            SetError(Structs::ErrorCode::CONNECTION_TIMEOUT, "Write Property request timeout");
             return false;
         }
         
@@ -915,7 +915,7 @@ bool BACnetDriver::WriteBACnetProperty(uint32_t device_id,
         return true;
         
     } catch (const std::exception& e) {
-        SetError(Enums::ErrorCode::INTERNAL_ERROR, 
+        SetError(Structs::ErrorCode::INTERNAL_ERROR, 
                 std::string("Write Property error: ") + e.what());
         return false;
     }
@@ -944,7 +944,7 @@ bool BACnetDriver::SendWhoIs() {
         // Who-Is 브로드캐스트 전송
         uint8_t invoke_id = SendWhoIsRequest();
         if (invoke_id == 0) {
-            SetError(Enums::ErrorCode::PROTOCOL_ERROR, "Failed to send Who-Is request");
+            SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Failed to send Who-Is request");
             return false;
         }
         
@@ -952,7 +952,7 @@ bool BACnetDriver::SendWhoIs() {
         return true;
         
     } catch (const std::exception& e) {
-        SetError(Enums::ErrorCode::INTERNAL_ERROR, 
+        SetError(Structs::ErrorCode::INTERNAL_ERROR, 
                 std::string("SendWhoIs error: ") + e.what());
         return false;
     }

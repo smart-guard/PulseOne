@@ -58,7 +58,7 @@ ModbusDriver::ModbusDriver()
     }
 
     // 통계 초기화
-    statistics_ = DriverStatistics("MODBUS");
+    // statistics_ 초기화는 생성자에서 수행됨
     
     // 에러 초기화
     last_error_.code = ErrorCode::SUCCESS;
@@ -697,8 +697,8 @@ uint16_t ModbusDriver::ConvertToModbusValue(
     else if (std::holds_alternative<int16_t>(value)) {
         result = static_cast<uint16_t>(std::get<int16_t>(value));
     } 
-    else if (std::holds_alternative<uint16_t>(value)) {
-        result = std::get<uint16_t>(value);
+    else if (std::holds_alternative<unsigned int>(value)) {
+        result = std::get<unsigned int>(value);
     }
     else if (std::holds_alternative<int32_t>(value)) {
         result = static_cast<uint16_t>(std::get<int32_t>(value));
@@ -876,20 +876,20 @@ std::string ModbusDriver::GetModbusErrorName() const {
 
 void ModbusDriver::HandleModbusError(int modbus_error, const std::string& context) {
     // 🔥 Modbus 에러를 PulseOne 표준 에러로 변환 (추가)
-    last_error_ = ModbusErrorConverter::ConvertModbusError(modbus_error, context);
+    // TODO: ModbusErrorConverter 구현 필요
     
     if (last_error_.IsFailure()) {
         statistics_.IncrementProtocolCounter("total_errors");
         
         // 에러 타입별 세부 통계
         switch (last_error_.code) {
-            case ErrorCode::TIMEOUT:
+            case ErrorCode::CONNECTION_TIMEOUT:
                 statistics_.IncrementProtocolCounter("timeout_errors");
                 break;
             case ErrorCode::CHECKSUM_ERROR:
                 statistics_.IncrementProtocolCounter("crc_errors");
                 break;
-            case ErrorCode::DEVICE_BUSY:
+            case ErrorCode::MAINTENANCE_ACTIVE:
                 statistics_.IncrementProtocolCounter("slave_busy_errors");
                 break;
             case ErrorCode::INVALID_PARAMETER:
@@ -1652,7 +1652,7 @@ bool ModbusDriver::ReadHoldingRegistersBulk(int slave_id, uint16_t start_addr,
     }
     
     // 최종 실패
-    SetError(ErrorCode::TIMEOUT, "Bulk read failed after " + std::to_string(max_retries) + " retries");
+    SetError(ErrorCode::CONNECTION_TIMEOUT, "Bulk read failed after " + std::to_string(max_retries) + " retries");
     return false;
 }
 

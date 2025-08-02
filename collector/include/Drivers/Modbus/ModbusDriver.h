@@ -252,8 +252,7 @@ public:
     const DriverStatistics& GetStatistics() const override;
     
     // 🔥 하이브리드 에러 시스템
-    std::string GetDetailedErrorInfo() const override;
-    std::string GetErrorJson() const override;
+    std::string GetErrorJson() const;
     
     // Modbus 전용 에러 메서드
     int GetModbusErrorCode() const;
@@ -362,7 +361,28 @@ public:
     std::vector<uint64_t> GetResponseTimeHistogram() const;
     std::string GetRegisterAccessReport() const;
     std::string GetModbusHealthReport() const;
-
+    // ConnectionPool 관련
+    bool PerformReadWithConnectionPool(const std::vector<Structs::DataPoint>& points,
+                                     std::vector<TimestampedValue>& values);
+    bool PerformWriteWithConnectionPool(const Structs::DataPoint& point, 
+                                      const Structs::DataValue& value);
+    
+    // 진단 및 통계
+    void UpdateRegisterAccessPattern(uint16_t address, bool is_read, bool is_write);
+    void UpdateResponseTimeHistogram(double response_time_ms);
+    
+    // 대량 읽기
+    bool ReadHoldingRegistersBulk(int slave_id, uint16_t start_addr, uint16_t count,
+                                std::vector<uint16_t>& values, int max_retries = 3);
+    
+    // 새로운 에러 API
+    std::string GetDetailedErrorInfo() const;
+    DriverErrorCode GetDriverErrorCode() const;
+    
+    // 연결 관리
+    bool PerformReadWithConnection(ModbusConnection* conn,
+                                 const std::vector<Structs::DataPoint>& points,
+                                 std::vector<TimestampedValue>& values);
 private:
     // ==========================================================================
     // 기존 멤버 변수들
@@ -412,7 +432,6 @@ private:
     std::atomic<uint64_t> crc_errors_{0};
     std::array<std::atomic<uint64_t>, 5> response_time_buckets_;
 
-    PulseOne::Structs::ErrorInfo last_error_;
     struct RegisterAccessPattern {
         std::atomic<uint64_t> read_count{0};
         std::atomic<uint64_t> write_count{0};
@@ -430,7 +449,7 @@ private:
     // 연결 풀 관리
     std::vector<std::unique_ptr<ModbusConnection>> connection_pool_;
     std::queue<int> available_connections_;
-    std::mutex pool_mutex_;
+    mutable std::mutex pool_mutex_;
     std::condition_variable pool_cv_;
     
     // 스케일링 설정 및 상태
@@ -521,8 +540,6 @@ private:
     double CalculateConnectionScore(const ModbusConnection* conn) const;
     
     // 실제 작업 수행 (풀 지원)
-    bool PerformReadWithConnection(ModbusConnection* conn, const std::vector<Structs::DataPoint>& points,
-                                  std::vector<TimestampedValue>& values);
     bool PerformWriteWithConnection(ModbusConnection* conn, const Structs::DataPoint& point,
                                    const Structs::DataValue& value);
     

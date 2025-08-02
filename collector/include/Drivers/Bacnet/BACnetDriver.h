@@ -441,7 +441,7 @@ private:
     // =============================================================================
     // 유틸리티 메서드들
     // =============================================================================
-    void SetError(Enums::ErrorCode code, const std::string& message);
+    void SetError(Structs::ErrorCode code, const std::string& message);
     void UpdateStatistics(bool success, double response_time_ms);
     void CompleteRequest(uint8_t invoke_id, bool success);
     bool WaitForResponse(uint8_t invoke_id, int timeout_ms);
@@ -479,6 +479,41 @@ private:
                     uint8_t abort_reason, bool server);
     void HandleReject(BACNET_ADDRESS* src, uint8_t invoke_id,
                      uint8_t reject_reason);
+
+    // ConnectionPool 관련 함수들
+//     bool PerformReadWithConnectionPool(const std::vector<Structs::DataPoint>& points,
+//                                    std::vector<TimestampedValue>& values);
+    bool PerformWriteWithConnectionPool(const Structs::DataPoint& point, 
+                                    const Structs::DataValue& value);
+
+    // SingleConnection 방식 함수들  
+    bool PerformReadWithSingleConnection(const std::vector<Structs::DataPoint>& points,
+                                    std::vector<TimestampedValue>& values);
+    bool PerformWriteWithSingleConnection(const Structs::DataPoint& point, 
+                                        const Structs::DataValue& value);
+
+    // 진단 및 통계 관련
+    void UpdateRegisterAccessPattern(uint16_t address, bool is_read, bool is_write);
+    void UpdateResponseTimeHistogram(double response_time_ms);
+    void UpdatePoolStatistics();
+
+    // 연결 관리
+// // // //     BACnetConnection* GetAvailableConnection(std::chrono::milliseconds timeout);
+// // // //     bool PerformReadWithConnection(BACnetConnection* conn,
+// //                                 const std::vector<Structs::DataPoint>& points,
+// //                                 std::vector<TimestampedValue>& values);
+// 
+    // 대량 읽기
+    bool ReadHoldingRegistersBulk(int slave_id, uint16_t start_addr, uint16_t count,
+                                std::vector<uint16_t>& values, int max_retries = 3);
+
+    // 에러 변환
+    void ConvertModbusError(int modbus_error, const std::string& context);
+
+    // 새로운 에러 API
+    std::string GetDetailedErrorInfo() const;
+    std::string GetErrorJson() const;
+    DriverErrorCode GetDriverErrorCode() const;                     
 
 private:
     // =============================================================================
