@@ -193,7 +193,7 @@ std::string BACnetWorker::GetBACnetWorkerStats() const {
     // BACnet 드라이버 통계 추가
     if (bacnet_driver_) {
         try {
-            auto driver_stats = bacnet_driver_->GetStatistics();
+            const auto& driver_stats = bacnet_driver_->GetStatistics();
             ss << "  \"bacnet_driver_statistics\": {\n";
             ss << "    \"successful_connections\": " << driver_stats.successful_connections << ",\n";
             ss << "    \"failed_connections\": " << driver_stats.failed_connections << ",\n";

@@ -8,6 +8,7 @@
 
 #include "Drivers/Common/IProtocolDriver.h"
 #include "Drivers/Common/DriverLogger.h"
+#include "Common/DriverError.h"
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -33,7 +34,9 @@
 
 namespace PulseOne {
 namespace Drivers {
-
+    using ErrorCode = PulseOne::Structs::ErrorCode;
+    using ErrorInfo = PulseOne::Structs::ErrorInfo;
+    using DriverErrorCode = PulseOne::Structs::DriverErrorCode;
 // 전방 선언
 class MqttCallbackImpl;
 class MqttActionListener;

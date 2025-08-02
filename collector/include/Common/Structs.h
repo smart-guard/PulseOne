@@ -18,6 +18,8 @@
 #include "Enums.h"
 #include "Constants.h"
 #include "Utils.h"
+#include "DriverStatistics.h"
+#include "DriverError.h"
 #include <vector>
 #include <optional>
 #include <mutex>
@@ -84,25 +86,7 @@ namespace PulseOne::Structs {
         CRASHED = 10,
         MAINTENANCE = 11  // 🆕 점검 모드 추가
     };
-    
-    // =========================================================================
-    // 🔥 에러 정보 구조체 (먼저 정의 - 다른 구조체에서 사용하기 위해)
-    // =========================================================================
-    
-    /**
-     * @brief 에러 정보 구조체
-     */
-    struct ErrorInfo {
-        ErrorCode code = ErrorCode::SUCCESS;
-        std::string message = "";
-        std::string details = "";
-        Timestamp occurred_at;
-        
-        // ✅ 생성자들 - Utils 네임스페이스 사용
-        ErrorInfo() : occurred_at(Utils::GetCurrentTimestamp()) {}
-        ErrorInfo(ErrorCode err_code, const std::string& msg) 
-            : code(err_code), message(msg), occurred_at(Utils::GetCurrentTimestamp()) {}
-    };
+
     
     // =========================================================================
     // 점검 관련 구조체들 (🆕 새로운 기능)
@@ -777,74 +761,6 @@ namespace PulseOne::Structs {
         // 기본 생성자
         DriverState() 
             : connection_time(Utils::GetCurrentTimestamp()) {}
-    };
-    
-    /**
-     * @brief 드라이버 통계 (기존 CommonTypes.h + 확장)
-     */
-    struct DriverStatistics {
-        uint64_t total_reads = 0;
-        uint64_t total_writes = 0;
-        uint64_t successful_reads = 0;
-        uint64_t successful_writes = 0;
-        uint64_t failed_reads = 0;
-        uint64_t failed_writes = 0;
-        
-        // 🔥 BACnetWorker에서 요구하는 필드들 추가
-        uint64_t successful_connections = 0;
-        uint64_t failed_connections = 0;
-        uint64_t total_operations = 0;
-        uint64_t successful_operations = 0;
-        uint64_t failed_operations = 0;
-        uint64_t consecutive_failures = 0;
-        
-        // 🔥 시간 관련 필드들
-        Timestamp last_read_time;
-        Timestamp last_write_time;
-        Timestamp last_error_time;
-        Timestamp start_time;
-        Duration average_response_time = std::chrono::milliseconds(0);
-        
-        // 🔥 IProtocolDriver에서 요구하는 필드들
-        uint64_t uptime_seconds = 0;
-        double avg_response_time_ms = 0.0;
-        double max_response_time_ms = 0.0;
-        double min_response_time_ms = 0.0;
-        Timestamp last_success_time;
-        Timestamp last_connection_time;
-        double success_rate = 0.0;
-        
-        // ✅ 생성자 - Utils 네임스페이스 사용
-        DriverStatistics() 
-            : last_read_time(Utils::GetCurrentTimestamp())
-            , last_write_time(Utils::GetCurrentTimestamp())
-            , last_error_time(Utils::GetCurrentTimestamp())
-            , start_time(Utils::GetCurrentTimestamp()) 
-        {}
-        
-        double GetSuccessRate() const {
-            uint64_t total = total_reads + total_writes;
-            if (total == 0) return 100.0;
-            uint64_t successful = successful_reads + successful_writes;
-            double rate = (static_cast<double>(successful) / total) * 100.0;
-            // success_rate 필드도 동기화
-            const_cast<DriverStatistics*>(this)->success_rate = rate;
-            return rate;
-        }
-        
-        // 🔥 avg_response_time_ms 동기화
-        void SyncResponseTime() {
-            avg_response_time_ms = static_cast<double>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(average_response_time).count()
-            );
-        }
-        
-        // 🔥 total_operations 계산
-        void UpdateTotalOperations() {
-            total_operations = total_reads + total_writes;
-            successful_operations = successful_reads + successful_writes;
-            failed_operations = failed_reads + failed_writes;
-        }
     };
     
     // =========================================================================

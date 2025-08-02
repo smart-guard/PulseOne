@@ -8,6 +8,7 @@
 
 #include "Drivers/Common/IProtocolDriver.h"
 #include "Common/UnifiedCommonTypes.h"
+#include "Common/DriverError.h"
 #include <memory>
 #include <atomic>
 #include <vector>
@@ -265,7 +266,9 @@ namespace Enums = PulseOne::Enums;
 
 namespace PulseOne {
 namespace Drivers {
-
+    using ErrorCode = PulseOne::Structs::ErrorCode;
+    using ErrorInfo = PulseOne::Structs::ErrorInfo;
+    using DriverErrorCode = PulseOne::Structs::DriverErrorCode;
 // 🔥 전역 BACnet 버퍼 선언 (외부에서 정의)
 #ifdef HAS_BACNET_STACK
 extern uint8_t Rx_Buf[MAX_MPDU];
