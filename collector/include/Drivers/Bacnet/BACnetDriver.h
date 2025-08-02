@@ -1,111 +1,243 @@
-// =============================================================================
-// collector/include/Drivers/Bacnet/BACnetDriver.h
-// 🔥 완성된 BACnet 드라이버 헤더 - 기존 호환성 + 고급 기능
-// =============================================================================
+/**
+ * @file BACnetDriver.h  
+ * @brief BACnet 프로토콜 드라이버 - 모든 타입 불일치 해결
+ * @author PulseOne Development Team
+ * @date 2025-08-02
+ */
 
 #ifndef BACNET_DRIVER_H
 #define BACNET_DRIVER_H
 
-#include "Drivers/Common/IProtocolDriver.h"
-#include "Drivers/Bacnet/BACnetErrorMapper.h"
-#include "Drivers/Bacnet/BACnetStatisticsManager.h"
-#include "Drivers/Bacnet/BACnetCommonTypes.h"
+// =============================================================================
+// 🔥 실제 PulseOne 프로젝트 구조에 맞춘 include 경로
+// =============================================================================
 #include "Common/UnifiedCommonTypes.h"
-#include <memory>
-#include <mutex>
-#include <thread>
+#include "Drivers/Common/IProtocolDriver.h"
 #include <atomic>
+#include <mutex>
+#include <memory>
 #include <map>
-#include <condition_variable>
+#include <vector>
+#include <string>
+#include <chrono>
+
+// =============================================================================
+// 🔥 정확한 BACnet 헤더 경로 - 조건부 컴파일
+// =============================================================================
 
 #ifdef HAS_BACNET_STACK
-extern "C" {
+    // 실제 설치된 BACnet 스택 헤더 경로들
     #include <bacnet/config.h>
     #include <bacnet/bacdef.h>
     #include <bacnet/bacenum.h>
-    #include <bacnet/bacerror.h>
-    #include <bacnet/bactext.h>
     #include <bacnet/bacapp.h>
     #include <bacnet/bacdcode.h>
     #include <bacnet/bacaddr.h>
     #include <bacnet/npdu.h>
     #include <bacnet/apdu.h>
-    #include <bacnet/datalink/datalink.h>
-    #include <bacnet/datalink/bip.h>
-    #include <bacnet/basic/client/bac-rw.h>
-    #include <bacnet/wp.h>
-    #include <bacnet/rp.h>
-    #include <bacnet/whois.h>
-    #include <bacnet/iam.h>
-    #include <bacnet/device.h>
-    #include <bacnet/basic/tsm/tsm.h>
-    #include <bacnet/basic/client/bac-discover.h>
-}
+    
+    // BACnet 서비스 헤더들
+    #include <bacnet/rp.h>           // Read Property
+    #include <bacnet/wp.h>           // Write Property
+    #include <bacnet/rpm.h>          // Read Property Multiple
+    #include <bacnet/wpm.h>          // Write Property Multiple
+    #include <bacnet/whois.h>        // Who-Is
+    #include <bacnet/iam.h>          // I-Am
+    #include <bacnet/cov.h>          // Change of Value
+    #include <bacnet/dcc.h>          // Device Communication Control
+    
+    // BACnet 데이터링크 (조건부 - 파일이 있는지 확인)
+    #if __has_include(<bacnet/datalink/datalink.h>)
+        #include <bacnet/datalink/datalink.h>
+    #endif
+    #if __has_include(<bacnet/datalink/bip.h>)
+        #include <bacnet/datalink/bip.h>
+    #endif
+    
+    // BACnet 기본 서비스들 (조건부)
+    #if __has_include(<bacnet/basic/services.h>)
+        #include <bacnet/basic/services.h>
+    #endif
+    #if __has_include(<bacnet/basic/tsm/tsm.h>)
+        #include <bacnet/basic/tsm/tsm.h>
+    #endif
+    
+    // 🎯 핵심: device.h (정확한 경로 확인됨)
+    #include <bacnet/basic/object/device.h>
+    
+    #define BACNET_HEADERS_AVAILABLE 1
 #else
-// BACnet 스택이 없는 경우를 위한 더미 정의들
-typedef enum {
-    OBJECT_ANALOG_INPUT = 0,
-    OBJECT_ANALOG_OUTPUT = 1,
-    OBJECT_BINARY_INPUT = 3,
-    OBJECT_BINARY_OUTPUT = 4,
-    OBJECT_ANALOG_VALUE = 2,
-    OBJECT_BINARY_VALUE = 5,
-    OBJECT_DEVICE = 8
-} BACNET_OBJECT_TYPE;
+    #define BACNET_HEADERS_AVAILABLE 0
+#endif
 
-typedef enum {
-    PROP_PRESENT_VALUE = 85,
-    PROP_OUT_OF_SERVICE = 81,
-    PROP_OBJECT_NAME = 77,
-    PROP_OBJECT_LIST = 76
-} BACNET_PROPERTY_ID;
+// =============================================================================
+// BACnet 타입 정의 (헤더가 없을 때 사용할 더미 타입들)
+// =============================================================================
 
-#define BACNET_ARRAY_ALL (-1)
-#define MAX_MPDU 1476
-#define BACNET_MAX_INSTANCE 0x3FFFFF
+#if !BACNET_HEADERS_AVAILABLE
+    // BACnet 스택이 없을 때 사용할 더미 타입들
+    typedef enum {
+        OBJECT_ANALOG_INPUT = 0,
+        OBJECT_ANALOG_OUTPUT = 1, 
+        OBJECT_ANALOG_VALUE = 2,
+        OBJECT_BINARY_INPUT = 3,
+        OBJECT_BINARY_OUTPUT = 4,
+        OBJECT_BINARY_VALUE = 5,
+        OBJECT_DEVICE = 8,
+        OBJECT_MULTI_STATE_INPUT = 13,
+        OBJECT_MULTI_STATE_OUTPUT = 14,
+        OBJECT_MULTI_STATE_VALUE = 19,
+        OBJECT_PROPRIETARY_MIN = 128
+    } BACNET_OBJECT_TYPE;
+
+    typedef enum {
+        PROP_PRESENT_VALUE = 85,
+        PROP_OBJECT_NAME = 77,
+        PROP_DESCRIPTION = 28,
+        PROP_UNITS = 117
+    } BACNET_PROPERTY_ID;
+
+    typedef struct {
+        uint8_t net;
+        uint8_t len;
+        uint8_t adr[6];
+    } BACNET_ADDRESS;
+
+    typedef uint8_t BACNET_APPLICATION_DATA_VALUE;
+    typedef uint8_t BACNET_READ_PROPERTY_DATA;
+    typedef uint8_t BACNET_WRITE_PROPERTY_DATA;
 #endif
 
 namespace PulseOne {
 namespace Drivers {
 
-// 전방 선언
-class BACnetServiceManager;
-class BACnetCOVManager;
-class BACnetObjectMapper;
+// =============================================================================
+// 🔥 네임스페이스 별칭 정의 (타입 불일치 해결)
+// =============================================================================
+using DataPoint = PulseOne::Structs::DataPoint;
+using DataValue = PulseOne::Structs::DataValue;
+using TimestampedValue = PulseOne::Structs::TimestampedValue;
+using DriverConfig = PulseOne::Structs::DriverConfig;
+using DriverStatistics = PulseOne::DriverStatistics;
+
+// =============================================================================
+// BACnet 전용 구조체들
+// =============================================================================
 
 /**
- * @brief 완성된 BACnet 드라이버 클래스
+ * @brief BACnet 디바이스 정보
+ */
+struct BACnetDeviceInfo {
+    uint32_t device_id = 0;
+    std::string device_name;
+    std::string ip_address;
+    uint16_t port = 47808;
+    uint16_t max_apdu_length = 1476;
+    bool segmentation_supported = true;
+    uint16_t vendor_id = 0;
+    uint8_t protocol_version = 1;
+    uint8_t protocol_revision = 14;
+    std::chrono::system_clock::time_point last_seen;
+    
+    BACnetDeviceInfo() : last_seen(std::chrono::system_clock::now()) {}
+};
+
+/**
+ * @brief BACnet 객체 정보 - 🔥 멤버 수정 (property_id, array_index 제거)
+ */
+struct BACnetObjectInfo {
+    BACNET_OBJECT_TYPE object_type = OBJECT_ANALOG_INPUT;
+    uint32_t object_instance = 0;
+    std::string object_name;
+    std::string description;
+    std::string units;
+    
+    // 🔥 property_id, array_index 제거 (컴파일 오류 해결)
+    // BACNET_PROPERTY_ID property_id = PROP_PRESENT_VALUE;  // 제거
+    // uint32_t array_index = 0;                            // 제거
+    
+    BACnetObjectInfo() = default;
+    BACnetObjectInfo(BACNET_OBJECT_TYPE type, uint32_t instance, 
+                    const std::string& name = "") 
+        : object_type(type), object_instance(instance), object_name(name) {}
+};
+
+/**
+ * @brief BACnet 특화 통계
+ */
+struct BACnetStatistics {
+    std::atomic<uint64_t> whois_sent{0};
+    std::atomic<uint64_t> iam_received{0};
+    std::atomic<uint64_t> devices_discovered{0};
+    std::atomic<uint64_t> objects_read{0};
+    std::atomic<uint64_t> objects_written{0};
+    std::atomic<uint64_t> cov_subscriptions{0};
+    std::atomic<uint64_t> cov_notifications{0};
+    std::atomic<uint64_t> timeouts{0};
+    std::atomic<uint64_t> errors{0};
+    
+    // 성능 지표
+    std::atomic<double> avg_response_time_ms{0.0};
+    std::atomic<uint32_t> max_response_time_ms{0};
+    std::atomic<uint32_t> min_response_time_ms{0};
+    
+    void Reset() {
+        whois_sent = 0;
+        iam_received = 0;
+        devices_discovered = 0;
+        objects_read = 0;
+        objects_written = 0;
+        cov_subscriptions = 0;
+        cov_notifications = 0;
+        timeouts = 0;
+        errors = 0;
+        avg_response_time_ms = 0.0;
+        max_response_time_ms = 0;
+        min_response_time_ms = 0;
+    }
+    
+    double GetSuccessRate() const {
+        uint64_t total = objects_read + objects_written;
+        return total > 0 ? (1.0 - static_cast<double>(errors) / total) * 100.0 : 100.0;
+    }
+    
+    uint32_t GetAverageResponseTime() const {
+        return static_cast<uint32_t>(avg_response_time_ms.load());
+    }
+};
+
+/**
+ * @brief BACnet 프로토콜 드라이버 클래스
  * 
- * 기능:
- * - 기존 BACnetWorker와 완전 호환
- * - IProtocolDriver 인터페이스 완전 구현
- * - 실제 BACnet 스택 연동
- * - 모듈화된 구조 (에러 매퍼, 통계 관리자 등)
- * - 고급 BACnet 서비스 지원 (RPM, WPM, COV 등)
- * - 멀티스레드 안전성
- * - 디바이스 발견 및 객체 매핑
+ * BACnet/IP 프로토콜을 지원하는 드라이버로, 다음 기능을 제공합니다:
+ * - 디바이스 발견 (Who-Is/I-Am)
+ * - 객체 읽기/쓰기 (Read/Write Property)
+ * - 다중 객체 처리 (Read/Write Property Multiple)
+ * - COV 구독 및 알림
+ * - 고급 통계 및 성능 모니터링
  */
 class BACnetDriver : public IProtocolDriver {
 public:
     // ==========================================================================
     // 생성자 및 소멸자
     // ==========================================================================
+    
     BACnetDriver();
     virtual ~BACnetDriver();
-    
-    // 복사/이동 방지
+
+    // 복사 및 이동 방지
     BACnetDriver(const BACnetDriver&) = delete;
     BACnetDriver& operator=(const BACnetDriver&) = delete;
     BACnetDriver(BACnetDriver&&) = delete;
     BACnetDriver& operator=(BACnetDriver&&) = delete;
-    
+
     // ==========================================================================
-    // IProtocolDriver 필수 인터페이스 구현
+    // IProtocolDriver 필수 구현 메서드들
     // ==========================================================================
     
     /**
      * @brief 드라이버 초기화
-     * @param config 드라이버 설정 (device_id, target_ip, port 등)
+     * @param config 설정 정보 (device_id, target_ip, port 등)
      * @return 성공 시 true
      */
     bool Initialize(const DriverConfig& config) override;
@@ -117,8 +249,8 @@ public:
     bool Connect() override;
     
     /**
-     * @brief 연결 해제 및 리소스 정리
-     * @return 성공 시 true
+     * @brief BACnet 네트워크 연결 해제
+     * @return 성공 시 true  
      */
     bool Disconnect() override;
     
@@ -129,44 +261,43 @@ public:
     bool IsConnected() const override;
     
     /**
-     * @brief 다중 BACnet 포인트 읽기
-     * @param points 읽을 데이터 포인트들 (주소: "device123.AI.0.PV" 형식)
+     * @brief 여러 데이터 포인트 읽기 (배치 처리)
+     * @param points 읽을 데이터 포인트 목록
      * @param values 읽은 값들이 저장될 벡터
-     * @return 성공 시 true (부분 실패도 포함)
+     * @return 성공 시 true
      */
-    bool ReadValues(const std::vector<Structs::DataPoint>& points,
+    bool ReadValues(const std::vector<DataPoint>& points, 
                    std::vector<TimestampedValue>& values) override;
     
     /**
-     * @brief 단일 BACnet 포인트 쓰기
+     * @brief 단일 데이터 포인트 쓰기 - 🔥 타입 수정
      * @param point 쓸 데이터 포인트
      * @param value 쓸 값
      * @return 성공 시 true
      */
-    bool WriteValue(const Structs::DataPoint& point,
-                   const Structs::DataValue& value) override;
+    bool WriteValue(const DataPoint& point, const DataValue& value) override;
     
     /**
      * @brief 프로토콜 타입 반환
-     * @return BACNET_IP
+     * @return BACnet 프로토콜 타입
      */
     Enums::ProtocolType GetProtocolType() const override;
     
     /**
-     * @brief 현재 드라이버 상태 반환
-     * @return 드라이버 상태 (UNINITIALIZED, INITIALIZED, RUNNING, ERROR 등)
+     * @brief 드라이버 상태 반환
+     * @return 현재 상태
      */
     Structs::DriverStatus GetStatus() const override;
     
     /**
-     * @brief 마지막 에러 정보 반환
-     * @return 에러 정보 (코드, 메시지, 타임스탬프 등)
+     * @brief 마지막 오류 정보 반환
+     * @return 오류 정보 구조체
      */
     Structs::ErrorInfo GetLastError() const override;
     
     /**
-     * @brief 표준 드라이버 통계 반환
-     * @return 읽기/쓰기 통계, 에러 카운트 등
+     * @brief 드라이버 통계 반환 - 🔥 반환 타입 수정 (참조로 반환)
+     * @return 표준 드라이버 통계
      */
     const DriverStatistics& GetStatistics() const override;
     
@@ -240,261 +371,213 @@ public:
                              std::vector<TimestampedValue>& results);
     
     /**
-     * @brief Write Property Multiple 서비스
+     * @brief Write Property Multiple 서비스 - 🔥 타입 수정
      * @param device_id 대상 디바이스 ID
      * @param values 쓸 값들의 맵 (객체 정보 -> 값)
      * @return 성공 시 true
      */
     bool WritePropertyMultiple(uint32_t device_id,
-                              const std::map<BACnetObjectInfo, Structs::DataValue>& values);
+                              const std::map<BACnetObjectInfo, DataValue>& values);
     
     /**
-     * @brief 복잡한 객체 매핑 (가상 포인트 생성용)
-     * @param object_identifier 객체 식별자 (사용자 정의)
-     * @param device_id 디바이스 ID
-     * @param object_type 객체 타입
-     * @param object_instance 객체 인스턴스
-     * @param properties 읽을 속성 목록 (기본: Present Value만)
-     * @return 성공 시 true
-     */
-    bool MapComplexObject(const std::string& object_identifier,
-                         uint32_t device_id, BACNET_OBJECT_TYPE object_type,
-                         uint32_t object_instance,
-                         const std::vector<BACNET_PROPERTY_ID>& properties = {});
-    
-    /**
-     * @brief BACnet 특화 통계 정보 반환
-     * @return BACnet 프로토콜 전용 통계
+     * @brief BACnet 특화 통계 반환
+     * @return BACnet 전용 통계 정보
      */
     const BACnetStatistics& GetBACnetStatistics() const;
     
-    // ==========================================================================
-    // 🔥 기존 BACnetWorker 호환 메서드들 (레거시 지원)
-    // ==========================================================================
-    
     /**
-     * @brief 단일 데이터 읽기 (기존 BACnetWorker 호환)
-     * @param address BACnet 주소 문자열
-     * @return 읽은 값
+     * @brief 복잡한 객체 매핑 (가상 포인트 지원)
+     * @param virtual_point_id 가상 포인트 ID
+     * @param device_id BACnet 디바이스 ID
+     * @param object_type 객체 타입
+     * @param object_instance 객체 인스턴스
+     * @return 성공 시 true
      */
-    Structs::DataValue ReadData(const std::string& address);
+    bool MapComplexObject(const std::string& virtual_point_id,
+                         uint32_t device_id,
+                         BACNET_OBJECT_TYPE object_type, 
+                         uint32_t object_instance);
+
+    // ==========================================================================
+    // 🔥 레거시 호환성 메서드들 (BACnetWorker와의 호환성) - 타입 수정
+    // ==========================================================================
     
     /**
-     * @brief 단일 데이터 쓰기 (기존 BACnetWorker 호환)
-     * @param address BACnet 주소 문자열
+     * @brief 단일 데이터 읽기 (레거시 호환)
+     * @param address BACnet 주소 (예: "device12345.AI.0.PV")
+     * @return 읽은 데이터 값
+     */
+    DataValue ReadData(const std::string& address);
+    
+    /**
+     * @brief 단일 데이터 쓰기 (레거시 호환)
+     * @param address BACnet 주소
      * @param value 쓸 값
      * @return 성공 시 true
      */
-    bool WriteData(const std::string& address, const Structs::DataValue& value);
+    bool WriteData(const std::string& address, const DataValue& value);
     
     /**
-     * @brief 다중 주소 읽기 (기존 BACnetWorker 호환)
-     * @param addresses 주소 목록
-     * @return 주소별 값 맵
-     */
-    std::map<std::string, Structs::DataValue> ReadMultiple(
-        const std::vector<std::string>& addresses);
-    
-    /**
-     * @brief 디바이스 발견 (기존 호환, 문자열 목록 반환)
-     * @return 발견된 디바이스들의 주소 목록
+     * @brief 디바이스 발견 (레거시 호환)
+     * @return 발견된 디바이스 주소 목록
      */
     std::vector<std::string> DiscoverDevices();
-    
-    // ==========================================================================
-    // 정적 인스턴스 접근 (기존 BACnetWorker 호환)
-    // ==========================================================================
-    
-    /**
-     * @brief 싱글톤 인스턴스 접근
-     * @return 현재 활성 인스턴스 (없으면 nullptr)
-     */
-    static BACnetDriver* GetInstance() {
-        std::lock_guard<std::mutex> lock(instance_mutex_);
-        return instance_;
-    }
 
 protected:
     // ==========================================================================
-    // IProtocolDriver 보호된 메서드들
+    // 보호된 메서드들
     // ==========================================================================
     
     /**
-     * @brief 드라이버 시작 (백그라운드 작업 시작)
+     * @brief 드라이버 시작 시 추가 작업
      * @return 성공 시 true
      */
-    bool DoStart() override;
+    virtual bool DoStart();
     
     /**
-     * @brief 드라이버 정지 (백그라운드 작업 정지)
+     * @brief 드라이버 정지 시 추가 작업  
      * @return 성공 시 true
      */
-    bool DoStop() override;
+    virtual bool DoStop();
 
 private:
     // ==========================================================================
-    // 🔥 내부 구조체 및 타입 정의
+    // 비공개 멤버 변수들
     // ==========================================================================
     
-    /**
-     * @brief BACnet 주소 파싱 결과
-     */
-    struct BACnetAddress {
-        uint32_t device_id;
-        BACNET_OBJECT_TYPE object_type;
-        uint32_t object_instance;
-        BACNET_PROPERTY_ID property_id;
-        int32_t array_index = BACNET_ARRAY_ALL;
-    };
+    // 기본 설정
+    uint32_t local_device_id_;           ///< 로컬 BACnet 디바이스 ID
+    std::string target_ip_;              ///< 대상 IP 주소
+    uint16_t target_port_;               ///< 대상 포트 (기본: 47808)
+    uint32_t max_apdu_length_;           ///< 최대 APDU 길이
+    uint32_t timeout_ms_;                ///< 응답 타임아웃 (ms)
+    uint32_t retry_count_;               ///< 재시도 횟수
     
-    /**
-     * @brief 펜딩 요청 정보
-     */
-    struct PendingRequest {
-        uint8_t invoke_id;
-        std::chrono::system_clock::time_point timeout;
-        uint8_t service_choice;
-        uint32_t target_device_id;
-        TimestampedValue response_value;
-        std::atomic<bool> completed{false};
-        std::atomic<bool> success{false};
-    };
-    
-    // ==========================================================================
-    // 🔥 모듈화된 컴포넌트들
-    // ==========================================================================
-    
-    // 핵심 매니저들
-    std::unique_ptr<BACnetErrorMapper> error_mapper_;
-    std::unique_ptr<BACnetStatisticsManager> statistics_manager_;
-    
-    // 고급 서비스 매니저들 (필요시 활성화)
-    std::unique_ptr<BACnetServiceManager> service_manager_;
-    std::unique_ptr<BACnetCOVManager> cov_manager_;
-    std::unique_ptr<BACnetObjectMapper> object_mapper_;
-    
-    // ==========================================================================
     // 상태 관리
-    // ==========================================================================
+    std::atomic<bool> is_connected_;     ///< 연결 상태
+    std::atomic<bool> is_initialized_;   ///< 초기화 상태
+    std::atomic<bool> should_stop_;      ///< 정지 요청 플래그
     
-    std::atomic<Structs::DriverStatus> status_{Structs::DriverStatus::UNINITIALIZED};
-    std::atomic<bool> is_connected_{false};
-    std::atomic<bool> should_stop_{false};
+    // 통계 및 오류
+    mutable std::mutex error_mutex_;     ///< 오류 정보 뮤텍스
+    Structs::ErrorInfo last_error_;      ///< 마지막 오류 정보
+    mutable DriverStatistics statistics_;///< 드라이버 통계
     
-    // 설정
-    DriverConfig config_;
-    uint32_t local_device_id_;
-    std::string target_ip_;
-    uint16_t target_port_;
-    
-    // ==========================================================================
-    // 네트워크 및 스레드 관리
-    // ==========================================================================
-    
-    std::atomic<bool> network_thread_running_{false};
-    std::atomic<bool> is_bacnet_initialized_{false};
-    std::thread network_thread_;
-    std::mutex network_mutex_;
-    std::condition_variable network_condition_;
-    int socket_fd_;
+    // BACnet 특화 통계
+    std::unique_ptr<BACnetStatistics> bacnet_stats_;
     
     // ==========================================================================
-    // 에러 및 요청 관리
+    // 비공개 헬퍼 메서드들
     // ==========================================================================
     
-    mutable std::mutex error_mutex_;
-    mutable Structs::ErrorInfo last_error_;
-    
-    std::mutex request_mutex_;
-    std::map<uint8_t, std::unique_ptr<PendingRequest>> pending_requests_;
-    
-    // 발견된 디바이스 캐시
-    std::mutex devices_mutex_;
-    std::map<uint32_t, BACnetDeviceInfo> discovered_devices_;
-    std::chrono::system_clock::time_point last_discovery_time_;
-    
-    // ==========================================================================
-    // 정적 멤버들 (싱글톤 지원)
-    // ==========================================================================
-    
-    static BACnetDriver* instance_;
-    static std::mutex instance_mutex_;
-    
-    // ==========================================================================
-    // 🔥 비공개 헬퍼 메서드들
-    // ==========================================================================
-    
-    // 초기화 및 정리
+    /**
+     * @brief 설정 파싱
+     * @param config 드라이버 설정
+     */
     void ParseDriverConfig(const DriverConfig& config);
+    
+    /**
+     * @brief BACnet 주소 파싱
+     * @param address 주소 문자열 (예: "device12345.AI.0.PV")
+     * @param device_id 파싱된 디바이스 ID [출력]
+     * @param object_type 파싱된 객체 타입 [출력]
+     * @param object_instance 파싱된 객체 인스턴스 [출력]
+     * @return 파싱 성공 시 true
+     */
+    bool ParseBACnetAddress(const std::string& address, 
+                           uint32_t& device_id,
+                           BACNET_OBJECT_TYPE& object_type,
+                           uint32_t& object_instance);
+    
+    /**
+     * @brief BACnet 주소 생성
+     * @param device_id 디바이스 ID
+     * @param object_type 객체 타입
+     * @param object_instance 객체 인스턴스
+     * @return 생성된 주소 문자열
+     */
+    std::string CreateBACnetAddress(uint32_t device_id,
+                                   BACNET_OBJECT_TYPE object_type,
+                                   uint32_t object_instance);
+    
+    /**
+     * @brief 오류 설정
+     * @param code 오류 코드
+     * @param message 오류 메시지
+     * @param context 추가 컨텍스트 (선택사항)
+     */
+    void SetError(Enums::ErrorCode code, const std::string& message, 
+                  const std::string& context = "");
+    
+    /**
+     * @brief 통계 업데이트
+     * @param operation 수행된 작업
+     * @param success 성공 여부
+     * @param response_time_ms 응답 시간 (ms)
+     */
+    void UpdateStatistics(const std::string& operation, bool success, 
+                         uint32_t response_time_ms = 0);
+
+#if BACNET_HEADERS_AVAILABLE
+    // ==========================================================================
+    // BACnet 스택 전용 메서드들 (실제 구현) - 🔥 타입 수정
+    // ==========================================================================
+    
+    /**
+     * @brief BACnet 스택 초기화
+     * @return 성공 시 true
+     */
     bool InitializeBACnetStack();
+    
+    /**
+     * @brief BACnet 스택 정리
+     */
     void CleanupBACnetStack();
     
-    // 네트워크 관리
-    bool StartNetworkThread();
-    void StopNetworkThread();
-    void NetworkThreadFunction();
-    void ProcessIncomingMessages();
-    void ManageTimeouts();
+    /**
+     * @brief Who-Is 요청 전송
+     * @param low_limit 하위 디바이스 ID 제한 (선택사항)
+     * @param high_limit 상위 디바이스 ID 제한 (선택사항)
+     * @return 성공 시 true
+     */
+    bool SendWhoIs(uint32_t low_limit = 0, uint32_t high_limit = 4194303);
     
-    // 읽기/쓰기 구현
-    bool ReadSingleValue(const Structs::DataPoint& point, TimestampedValue& value);
-    bool WriteSingleValue(const Structs::DataPoint& point, const Structs::DataValue& value);
+    /**
+     * @brief I-Am 응답 처리
+     * @param device_id 디바이스 ID
+     * @param max_apdu 최대 APDU 길이
+     * @param segmentation 분할 지원 여부
+     * @param vendor_id 벤더 ID
+     */
+    void HandleIAmResponse(uint32_t device_id, unsigned max_apdu, 
+                          int segmentation, unsigned vendor_id);
     
-    // BACnet 주소 파싱
-    bool ParseBACnetAddress(const std::string& address, BACnetAddress& addr);
+    /**
+     * @brief Read Property 요청 - 🔥 타입 수정
+     * @param device_id 대상 디바이스 ID
+     * @param object_type 객체 타입
+     * @param object_instance 객체 인스턴스
+     * @param property_id 속성 ID
+     * @param value 읽은 값 [출력]
+     * @return 성공 시 true
+     */
+    bool ReadProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
+                     uint32_t object_instance, BACNET_PROPERTY_ID property_id,
+                     DataValue& value);
     
-#ifdef HAS_BACNET_STACK
-    // BACnet 스택 인터페이스
-    uint8_t SendReadPropertyRequest(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
-                                   uint32_t object_instance, BACNET_PROPERTY_ID property_id);
-    uint8_t SendWritePropertyRequest(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
-                                    uint32_t object_instance, BACNET_PROPERTY_ID property_id,
-                                    const Structs::DataValue& value, int32_t array_index = BACNET_ARRAY_ALL,
-                                    uint8_t priority = 16);
-    
-    // 타입 변환
-    void ConvertDataValueToBACnet(const Structs::DataValue& value, 
-                                 BACNET_APPLICATION_DATA_VALUE& bacnet_value);
-    bool ConvertBACnetToDataValue(const BACNET_APPLICATION_DATA_VALUE& bacnet_value,
-                                 Structs::DataValue& value);
-    
-    // 응답 처리
-    bool CheckResponseReceived(uint8_t invoke_id, TimestampedValue& value);
-    bool CheckWriteResponseReceived(uint8_t invoke_id);
-    
-    // BACnet 콜백 함수들 (정적)
-    static void ReadPropertyAckHandler(uint8_t* service_request, uint16_t service_len,
-                                      BACNET_ADDRESS* src, BACNET_CONFIRMED_SERVICE_ACK_DATA* service_data);
-    static void ErrorHandler(BACNET_ADDRESS* src, uint8_t invoke_id, BACNET_ERROR_CLASS error_class,
-                            BACNET_ERROR_CODE error_code);
-    static void AbortHandler(BACNET_ADDRESS* src, uint8_t invoke_id, uint8_t abort_reason, bool server);
-    static void RejectHandler(BACNET_ADDRESS* src, uint8_t invoke_id, uint8_t reject_reason);
-    static void IAMHandler(uint8_t* service_request, uint16_t service_len, BACNET_ADDRESS* src);
+    /**
+     * @brief Write Property 요청 - 🔥 타입 수정
+     * @param device_id 대상 디바이스 ID
+     * @param object_type 객체 타입
+     * @param object_instance 객체 인스턴스
+     * @param property_id 속성 ID
+     * @param value 쓸 값
+     * @return 성공 시 true
+     */
+    bool WriteProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
+                      uint32_t object_instance, BACNET_PROPERTY_ID property_id,
+                      const DataValue& value);
 #endif
-    
-    // 에러 관리
-    void SetError(Enums::ErrorCode code, const std::string& message);
-    void SetBACnetError(uint8_t error_class, uint8_t error_code, const std::string& context = "");
-    
-    // 유틸리티
-    std::string AddressToString(const BACnetAddress& addr) const;
-    std::string ObjectTypeToString(BACNET_OBJECT_TYPE type) const;
-    std::string PropertyIdToString(BACNET_PROPERTY_ID prop) const;
-    
-    // 검증
-    bool ValidateDriverConfig(const DriverConfig& config) const;
-    bool ValidateBACnetAddress(const std::string& address) const;
-    
-    // 디바이스 캐시 관리
-    void UpdateDeviceCache(const BACnetDeviceInfo& device);
-    bool GetCachedDevice(uint32_t device_id, BACnetDeviceInfo& device) const;
-    void ClearDeviceCache();
-    
-    // 통계 헬퍼
-    void UpdateConnectionStatistics(bool success);
-    void UpdateOperationStatistics(const std::string& operation, bool success, 
-                                  std::chrono::milliseconds duration);
-};
 };
 
 } // namespace Drivers
