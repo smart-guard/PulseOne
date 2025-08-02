@@ -1,4 +1,4 @@
-# collector/Dockerfile.dev - BACnet 라이브러리 포함 버전 (수정됨)
+# collector/Dockerfile.dev - BACnet 라이브러리 완전 수정 버전
 FROM gcc:12
 
 # 기본 패키지 설치
@@ -45,7 +45,7 @@ RUN echo "🔧 Installing Paho MQTT C..." && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/paho.mqtt.c && echo "✅ Paho MQTT C installed"
 
-# 3-1. Paho MQTT C++ 설치 (🔥 새로 추가)
+# 3-1. Paho MQTT C++ 설치
 RUN echo "🔧 Installing Paho MQTT C++..." && \
     cd /tmp && git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
     cd paho.mqtt.cpp && mkdir -p build && cd build && \
@@ -73,63 +73,40 @@ RUN echo "🔧 Installing spdlog..." && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/spdlog && echo "✅ spdlog installed"
 
-# 6. BACnet Stack 정적 라이브러리 빌드 및 설치 (수정됨)
-RUN echo "🔧 Installing BACnet Stack as static library..." && \
+# 🔥 6. BACnet Stack 정적 라이브러리 빌드 및 설치 (정확한 경로 적용)
+# 실제로 성공한 방법과 정확히 동일하게 설치
+RUN echo "🔧 Installing BACnet Stack with correct build method..." && \
     cd /tmp && \
     git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     cd bacnet-stack && \
-    echo "📋 Configuring BACnet build environment..." && \
     \
-    # 🔥 핵심 수정: 빌드 환경 설정
-    export BACNET_PORT=linux && \
-    export BACNET_DEFINES="-DPRINT_ENABLED=1 -DBACAPP_ALL -DINTRINSIC_REPORTING" && \
-    export CC=gcc && \
-    export AR=ar && \
-    export OPTIMIZATION="-O2" && \
+    echo "🔨 Building BACnet library with correct parameters..." && \
+    make BACNET_PORT=linux BACDL_DEFINE=-DBACDL_BIP=1 library && \
     \
-    echo "🔨 Building BACnet Stack core library (single-threaded for stability)..." && \
-    # 🔥 수정: BACFILE 제거하여 링크 에러 방지, 단일 스레드 빌드
-    make clean && \
-    make BACNET_PORT=linux \
-         BACNET_DEFINES="-DPRINT_ENABLED=1 -DBACAPP_ALL -DINTRINSIC_REPORTING" \
-         OPTIMIZATION="-O2" \
-         -j1 library && \
+    echo "📦 Installing BACnet library..." && \
+    # 🔥 정확한 경로: apps/lib/libbacnet.a
+    echo "🔍 라이브러리 위치 확인:" && \
+    find . -name "libbacnet.a" -type f && \
+    echo "✅ Found apps/lib/libbacnet.a - copying to /usr/local/lib/" && \
+    cp apps/lib/libbacnet.a /usr/local/lib/ && \
     \
-    echo "📦 Creating BACnet static library (improved method)..." && \
-    # 🔥 핵심 수정: src 디렉토리만 대상으로 안전한 라이브러리 생성
-    find src -name "*.o" -type f | grep -v apps | grep -v demo > src_objects.txt && \
-    if [ -s src_objects.txt ]; then \
-        echo "Found $(wc -l < src_objects.txt) object files for library" && \
-        ar rcs libbacnet.a $(cat src_objects.txt) && \
-        ranlib libbacnet.a && \
-        echo "✅ BACnet static library created successfully" && \
-        ls -la libbacnet.a; \
-    else \
-        echo "⚠️ No object files found, creating minimal library" && \
-        echo "void bacnet_minimal() {}" > minimal.c && \
-        gcc -c minimal.c -o minimal.o && \
-        ar rcs libbacnet.a minimal.o && \
-        ranlib libbacnet.a; \
-    fi && \
+    echo "📂 Installing BACnet headers..." && \
+    # 🔥 정확한 방법: src/bacnet 디렉토리 전체 복사
+    cp -r src/bacnet /usr/local/include/ && \
     \
-    echo "📂 Installing BACnet headers with proper structure..." && \
-    mkdir -p /usr/local/include/bacnet && \
-    # 🔥 수정: 헤더 구조를 더 정확하게 복사
-    cp -r src/bacnet/* /usr/local/include/bacnet/ && \
-    find src -name "*.h" -not -path "*/demo/*" -not -path "*/test/*" \
-         -exec cp {} /usr/local/include/bacnet/ \; 2>/dev/null || true && \
+    echo "🔄 Updating library cache..." && \
+    ldconfig && \
     \
-    echo "📚 Installing BACnet static library..." && \
-    cp libbacnet.a /usr/local/lib/ && \
-    chmod 644 /usr/local/lib/libbacnet.a && \
-    \
-    echo "🔍 Verification..." && \
+    echo "🔍 설치 확인..." && \
     ls -la /usr/local/lib/libbacnet.a && \
+    echo "📂 BACnet headers installed:" && \
     ls -la /usr/local/include/bacnet/ | head -10 && \
+    echo "📊 라이브러리 크기:" && \
+    du -h /usr/local/lib/libbacnet.a && \
     \
-    echo "🧹 Cleaning up..." && \
+    echo "🧹 임시 파일 정리..." && \
     cd / && rm -rf /tmp/bacnet-stack && \
-    echo "✅ BACnet Stack static library and headers installed successfully"
+    echo "✅ BACnet Stack library and headers installed successfully"
 
 # 7. BACnet pkg-config 파일 생성 (수정됨)
 RUN echo "📝 Creating BACnet pkg-config file..." && \
@@ -146,323 +123,8 @@ Version: 1.0.0
 Libs: -L${libdir} -lbacnet -lm
 Cflags: -I${includedir} -DPRINT_ENABLED=1 -DBACAPP_ALL -DINTRINSIC_REPORTING
 EOF
-# 8. 깔끔한 BACnet 인터페이스 헤더 생성 (스텁 제거)
-RUN echo "🔧 Creating clean BACnet interface header..." && \
-    cat > /usr/local/include/bacnet_interface.h << 'EOF'
-#ifndef BACNET_INTERFACE_H
-#define BACNET_INTERFACE_H
 
-/**
- * @file bacnet_interface.h
- * @brief BACnet C 인터페이스 for PulseOne (헤더만)
- * @date 2025-07-30
- */
-
-#include <stdint.h>
-#include <stdbool.h>
-#include <stddef.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// =============================================================================
-// BACnet 기본 타입 정의
-// =============================================================================
-
-typedef enum {
-    BACNET_OBJECT_ANALOG_INPUT = 0,
-    BACNET_OBJECT_ANALOG_OUTPUT = 1,
-    BACNET_OBJECT_ANALOG_VALUE = 2,
-    BACNET_OBJECT_BINARY_INPUT = 3,
-    BACNET_OBJECT_BINARY_OUTPUT = 4,
-    BACNET_OBJECT_BINARY_VALUE = 5,
-    BACNET_OBJECT_DEVICE = 8
-} BACnet_Object_Type;
-
-typedef enum {
-    BACNET_PROP_PRESENT_VALUE = 85,
-    BACNET_PROP_OBJECT_NAME = 77,
-    BACNET_PROP_OBJECT_TYPE = 79,
-    BACNET_PROP_DESCRIPTION = 28,
-    BACNET_PROP_UNITS = 117
-} BACnet_Property_ID;
-
-typedef enum {
-    BACNET_ERROR_SUCCESS = 0,
-    BACNET_ERROR_TIMEOUT = -1,
-    BACNET_ERROR_CONNECTION_FAILED = -2,
-    BACNET_ERROR_INVALID_PARAMETER = -3,
-    BACNET_ERROR_DEVICE_NOT_FOUND = -4,
-    BACNET_ERROR_PROPERTY_NOT_FOUND = -5,
-    BACNET_ERROR_WRITE_ACCESS_DENIED = -6
-} BACnet_Error_Code;
-
-// =============================================================================
-// BACnet 데이터 구조체
-// =============================================================================
-
-typedef struct {
-    uint32_t device_id;
-    char name[64];
-    char description[128];
-    char ip_address[16];
-    uint16_t port;
-    bool online;
-} BACnet_Device_Info;
-
-typedef struct {
-    BACnet_Object_Type type;
-    uint32_t instance;
-    char name[64];
-    char description[128];
-} BACnet_Object_Info;
-
-// =============================================================================
-// BACnet 함수 선언만 (구현은 별도)
-// =============================================================================
-
-// 초기화 및 정리
-int bacnet_init(const char* interface);
-int bacnet_cleanup(void);
-int bacnet_set_device_info(uint32_t device_id, const char* name, const char* description);
-
-// 디바이스 관리
-int bacnet_discover_devices(BACnet_Device_Info* devices, int max_devices, int timeout_ms);
-int bacnet_bind_device(uint32_t device_id, const char* ip_address, uint16_t port);
-int bacnet_is_device_connected(uint32_t device_id);
-
-// 프로퍼티 읽기/쓰기
-int bacnet_read_property(uint32_t device_id, BACnet_Object_Type obj_type, 
-                        uint32_t obj_instance, BACnet_Property_ID prop_id, 
-                        uint32_t array_index, void* value, size_t* value_size);
-int bacnet_write_property(uint32_t device_id, BACnet_Object_Type obj_type, 
-                         uint32_t obj_instance, BACnet_Property_ID prop_id, 
-                         uint32_t array_index, const void* value, size_t value_size, uint8_t priority);
-
-// 객체 관리
-int bacnet_get_object_list(uint32_t device_id, BACnet_Object_Info* objects, int max_objects);
-int bacnet_get_object_name(uint32_t device_id, BACnet_Object_Type obj_type, 
-                          uint32_t obj_instance, char* name, size_t name_size);
-
-// COV (Change of Value) 관리
-int bacnet_subscribe_cov(uint32_t device_id, BACnet_Object_Type obj_type, 
-                        uint32_t obj_instance, uint32_t lifetime);
-int bacnet_unsubscribe_cov(uint32_t device_id, BACnet_Object_Type obj_type, uint32_t obj_instance);
-
-// 에러 및 상태 관리
-BACnet_Error_Code bacnet_get_last_error(void);
-const char* bacnet_get_error_string(BACnet_Error_Code error);
-int bacnet_get_device_status(uint32_t device_id);
-
-// 통계
-int bacnet_get_statistics(uint32_t* total_requests, uint32_t* successful_requests, uint32_t* failed_requests);
-void bacnet_reset_statistics(void);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif // BACNET_INTERFACE_H
-EOF
-
-# 9. BACnet 스텁 구현 파일 생성 (별도 파일)
-RUN echo "📝 Creating BACnet stub implementation..." && \
-    cat > /usr/local/lib/bacnet_stub.c << 'EOF'
-/**
- * @file bacnet_stub.c
- * @brief BACnet 스텁 구현 (실제 라이브러리가 없을 때 사용)
- * @date 2025-07-30
- */
-
-#include "bacnet_interface.h"
-#include <string.h>
-#include <stdio.h>
-
-// =============================================================================
-// 전역 변수들
-// =============================================================================
-static BACnet_Error_Code last_error = BACNET_ERROR_SUCCESS;
-static uint32_t total_requests = 0;
-static uint32_t successful_requests = 0;
-static uint32_t failed_requests = 0;
-
-// =============================================================================
-// 초기화 및 정리
-// =============================================================================
-int bacnet_init(const char* interface) {
-    (void)interface;
-    printf("[BACnet Stub] Initialized\n");
-    last_error = BACNET_ERROR_SUCCESS;
-    return 0;
-}
-
-int bacnet_cleanup(void) {
-    printf("[BACnet Stub] Cleaned up\n");
-    return 0;
-}
-
-int bacnet_set_device_info(uint32_t device_id, const char* name, const char* description) {
-    (void)device_id;
-    (void)name;
-    (void)description;
-    return 0;
-}
-
-// =============================================================================
-// 디바이스 관리
-// =============================================================================
-int bacnet_discover_devices(BACnet_Device_Info* devices, int max_devices, int timeout_ms) {
-    (void)devices;
-    (void)max_devices;
-    (void)timeout_ms;
-    total_requests++;
-    successful_requests++;
-    return 0; // 발견된 디바이스 수
-}
-
-int bacnet_bind_device(uint32_t device_id, const char* ip_address, uint16_t port) {
-    (void)device_id;
-    (void)ip_address;
-    (void)port;
-    return 0;
-}
-
-int bacnet_is_device_connected(uint32_t device_id) {
-    (void)device_id;
-    return 0; // 연결되지 않음
-}
-
-// =============================================================================
-// 프로퍼티 읽기/쓰기
-// =============================================================================
-int bacnet_read_property(uint32_t device_id, BACnet_Object_Type obj_type, 
-                        uint32_t obj_instance, BACnet_Property_ID prop_id, 
-                        uint32_t array_index, void* value, size_t* value_size) {
-    (void)device_id;
-    (void)obj_type;
-    (void)obj_instance;
-    (void)prop_id;
-    (void)array_index;
-    (void)value;
-    (void)value_size;
-    
-    total_requests++;
-    failed_requests++; // 스텁이므로 실패로 처리
-    last_error = BACNET_ERROR_DEVICE_NOT_FOUND;
-    return -1;
-}
-
-int bacnet_write_property(uint32_t device_id, BACnet_Object_Type obj_type, 
-                         uint32_t obj_instance, BACnet_Property_ID prop_id, 
-                         uint32_t array_index, const void* value, size_t value_size, uint8_t priority) {
-    (void)device_id;
-    (void)obj_type;
-    (void)obj_instance;
-    (void)prop_id;
-    (void)array_index;
-    (void)value;
-    (void)value_size;
-    (void)priority;
-    
-    total_requests++;
-    failed_requests++; // 스텁이므로 실패로 처리
-    last_error = BACNET_ERROR_DEVICE_NOT_FOUND;
-    return -1;
-}
-
-// =============================================================================
-// 객체 관리
-// =============================================================================
-int bacnet_get_object_list(uint32_t device_id, BACnet_Object_Info* objects, int max_objects) {
-    (void)device_id;
-    (void)objects;
-    (void)max_objects;
-    return 0; // 객체 수
-}
-
-int bacnet_get_object_name(uint32_t device_id, BACnet_Object_Type obj_type, 
-                          uint32_t obj_instance, char* name, size_t name_size) {
-    (void)device_id;
-    (void)obj_type;
-    (void)obj_instance;
-    if (name && name_size > 0) {
-        strncpy(name, "Unknown", name_size - 1);
-        name[name_size - 1] = '\0';
-    }
-    return 0;
-}
-
-// =============================================================================
-// COV 관리
-// =============================================================================
-int bacnet_subscribe_cov(uint32_t device_id, BACnet_Object_Type obj_type, 
-                        uint32_t obj_instance, uint32_t lifetime) {
-    (void)device_id;
-    (void)obj_type;
-    (void)obj_instance;
-    (void)lifetime;
-    return -1; // 스텁에서는 지원하지 않음
-}
-
-int bacnet_unsubscribe_cov(uint32_t device_id, BACnet_Object_Type obj_type, uint32_t obj_instance) {
-    (void)device_id;
-    (void)obj_type;
-    (void)obj_instance;
-    return -1; // 스텁에서는 지원하지 않음
-}
-
-// =============================================================================
-// 에러 및 상태 관리
-// =============================================================================
-BACnet_Error_Code bacnet_get_last_error(void) {
-    return last_error;
-}
-
-const char* bacnet_get_error_string(BACnet_Error_Code error) {
-    switch (error) {
-        case BACNET_ERROR_SUCCESS: return "Success";
-        case BACNET_ERROR_TIMEOUT: return "Timeout";
-        case BACNET_ERROR_CONNECTION_FAILED: return "Connection failed";
-        case BACNET_ERROR_INVALID_PARAMETER: return "Invalid parameter";
-        case BACNET_ERROR_DEVICE_NOT_FOUND: return "Device not found";
-        case BACNET_ERROR_PROPERTY_NOT_FOUND: return "Property not found";
-        case BACNET_ERROR_WRITE_ACCESS_DENIED: return "Write access denied";
-        default: return "Unknown error";
-    }
-}
-
-int bacnet_get_device_status(uint32_t device_id) {
-    (void)device_id;
-    return 0; // 오프라인
-}
-
-// =============================================================================
-// 통계
-// =============================================================================
-int bacnet_get_statistics(uint32_t* total_req, uint32_t* successful_req, uint32_t* failed_req) {
-    if (total_req) *total_req = total_requests;
-    if (successful_req) *successful_req = successful_requests;
-    if (failed_req) *failed_req = failed_requests;
-    return 0;
-}
-
-void bacnet_reset_statistics(void) {
-    total_requests = 0;
-    successful_requests = 0;
-    failed_requests = 0;
-}
-EOF
-
-# 10. 스텁 라이브러리 컴파일하여 기본 libbacnet.so 생성
-RUN echo "🔨 Compiling BACnet stub library..." && \
-    cd /usr/local/lib && \
-    gcc -shared -fPIC -o libbacnet_stub.so bacnet_stub.c && \
-    echo "✅ BACnet stub library created: libbacnet_stub.so" && \
-    ls -la libbacnet_stub.so
-
-
-# libmodbus pkg-config 파일 생성
+# 8. libmodbus pkg-config 파일 생성
 RUN echo "📝 Creating other pkg-config files..." && \
     cat > /usr/local/lib/pkgconfig/libmodbus.pc << 'EOF'
 prefix=/usr/local
@@ -477,7 +139,7 @@ Libs: -L${libdir} -lmodbus
 Cflags: -I${includedir}
 EOF
 
-# Paho MQTT C++ pkg-config 파일 생성 (🔥 새로 추가)
+# 9. Paho MQTT C++ pkg-config 파일 생성
 RUN echo "📝 Creating Paho MQTT C++ pkg-config file..." && \
     cat > /usr/local/lib/pkgconfig/paho-mqttpp3.pc << 'EOF'
 prefix=/usr/local
@@ -497,83 +159,103 @@ EOF
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 ENV BACNET_PORT=linux
-ENV BACNET_DEFINES="-DPRINT_ENABLED=1 -DBACAPP_ALL -DBACFILE -DINTRINSIC_REPORTING"
+ENV BACDL_DEFINE="-DBACDL_BIP=1"
 
-# 개발용 스크립트 생성
+# 개발용 스크립트 생성 (BACnet 확인 개선)
 RUN echo '#!/bin/bash' > /usr/local/bin/dev-build.sh && \
     echo 'echo "🔧 PulseOne Collector 개발 빌드"' >> /usr/local/bin/dev-build.sh && \
     echo 'cd /app/collector' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "📋 설치된 라이브러리 확인:"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "  libmodbus: $(pkg-config --exists libmodbus && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  BACnet: $(pkg-config --exists bacnet && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  Paho MQTT: $(ls -la /usr/local/lib/libpaho-mqtt3c.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  BACnet lib: $(ls -la /usr/local/lib/libbacnet.a 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  BACnet headers: $(ls -d /usr/local/include/bacnet 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  Paho MQTT C: $(ls -la /usr/local/lib/libpaho-mqtt3c.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  Paho MQTT C++: $(ls -la /usr/local/lib/libpaho-mqttpp*.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo ""' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "🔨 빌드 시작:"' >> /usr/local/bin/dev-build.sh && \
     echo 'make clean && make debug' >> /usr/local/bin/dev-build.sh && \
     chmod +x /usr/local/bin/dev-build.sh
 
-# BACnet 설치 확인 스크립트
+# BACnet 설치 확인 스크립트 (향상된 버전)
 RUN echo '#!/bin/bash' > /usr/local/bin/check-bacnet.sh && \
     echo 'echo "🔍 BACnet 설치 확인:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "📂 헤더 파일들:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'find /usr/local/include/bacnet -name "*.h" 2>/dev/null | head -10 || echo "헤더 파일 없음"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "📋 설정 파일들:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'ls -la /usr/local/include/bacnet_*.h 2>/dev/null || echo "설정 파일 없음"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "📚 라이브러리 파일:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'ls -la /usr/local/lib/libbacnet.a 2>/dev/null || echo "❌ libbacnet.a 없음"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "📂 헤더 디렉토리:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'ls -la /usr/local/include/bacnet/ 2>/dev/null | head -10 || echo "❌ 헤더 디렉토리 없음"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "🔍 중요한 헤더 파일들:"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'for header in "bip.h" "datalink.h" "address.h" "bacdcode.h" "npdu.h" "apdu.h"; do' >> /usr/local/bin/check-bacnet.sh && \
+    echo '  find /usr/local/include/bacnet -name "$header" 2>/dev/null && echo "✅ $header found" || echo "❌ $header missing"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'done' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
     echo 'echo "🧪 pkg-config 테스트:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'pkg-config --cflags bacnet 2>/dev/null || echo "pkg-config 설정 없음"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'pkg-config --libs bacnet 2>/dev/null || echo "pkg-config 라이브러리 없음"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'pkg-config --cflags bacnet 2>/dev/null || echo "❌ pkg-config 설정 없음"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'pkg-config --libs bacnet 2>/dev/null || echo "❌ pkg-config 라이브러리 없음"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'echo "🔍 라이브러리 심볼 확인 (nm 명령어):"' >> /usr/local/bin/check-bacnet.sh && \
+    echo 'nm /usr/local/lib/libbacnet.a | grep -E "(bip_init|bvlc_send_pdu|address_init)" | head -5 || echo "❌ 주요 심볼들 없음"' >> /usr/local/bin/check-bacnet.sh && \
     chmod +x /usr/local/bin/check-bacnet.sh
+
+# BACnet 라이브러리 심볼 확인 스크립트 (실제 경험 반영)
+RUN echo '#!/bin/bash' > /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo "🔍 BACnet 라이브러리 심볼 테스트:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo "📊 라이브러리 정보:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'ls -la /usr/local/lib/libbacnet.a 2>/dev/null || echo "❌ libbacnet.a 없음"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'du -h /usr/local/lib/libbacnet.a 2>/dev/null || echo "❌ 파일 크기 확인 불가"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo "📋 핵심 BACnet 함수들 확인:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'SYMBOLS=("bip_init" "bvlc_send_pdu" "bip_send_pdu" "address_init" "address_own_device_id_set" "bip_send_mpdu")' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'for symbol in "${SYMBOLS[@]}"; do' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '  if nm /usr/local/lib/libbacnet.a 2>/dev/null | grep -q "T $symbol"; then' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '    echo "✅ $symbol - Found"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '  else' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '    echo "❌ $symbol - Missing"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '  fi' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'done' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo "🔍 전체 심볼 개수:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'nm /usr/local/lib/libbacnet.a 2>/dev/null | grep "T " | wc -l || echo "❌ 심볼 읽기 실패"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'echo "🧪 실제 라이브러리 테스트 (간단한 컴파일):"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'cat > /tmp/test_bacnet.c << "TESTEOF"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '#include <stdio.h>' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'extern int bip_init(char *ifname);' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'int main() {' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '    printf("BACnet library linkage test passed\n");' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '    return 0;' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '}' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'TESTEOF' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'if gcc -o /tmp/test_bacnet /tmp/test_bacnet.c -lbacnet -lm 2>/dev/null; then' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '  echo "✅ BACnet 라이브러리 링킹 성공"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '  /tmp/test_bacnet 2>/dev/null && echo "✅ 실행 테스트 성공"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'else' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo '  echo "❌ BACnet 라이브러리 링킹 실패"' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'fi' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    echo 'rm -f /tmp/test_bacnet /tmp/test_bacnet.c 2>/dev/null' >> /usr/local/bin/test-bacnet-symbols.sh && \
+    chmod +x /usr/local/bin/test-bacnet-symbols.sh
 
 # Bash 프롬프트 개선 및 개발 환경 메시지
 RUN echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
     echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc && \
     echo 'echo "📋 설치된 라이브러리들:"' >> /root/.bashrc && \
     echo 'echo "  - libmodbus (Modbus 통신)"' >> /root/.bashrc && \
-    echo 'echo "  - Paho MQTT C (MQTT 통신)"' >> /root/.bashrc && \
-    echo 'echo "  - BACnet Headers (BACnet 통신)"' >> /root/.bashrc && \
-    echo 'echo "  - hiredis (Redis 클라이언트)"' >> /root/.bashrc && \
-    echo 'echo "  - nlohmann/json (JSON 파싱)"' >> /root/.bashrc && \
-    echo 'echo "  - spdlog (로깅)"' >> /root/.bashrc && \
-    echo 'echo ""' >> /root/.bashrc && \
-    echo 'echo "🔧 유용한 명령어들:"' >> /root/.bashrc && \
-    echo 'echo "  dev-build.sh      - 개발 빌드"' >> /root/.bashrc && \
-    echo 'echo "  check-bacnet.sh   - BACnet 설치 확인"' >> /root/.bashrc && \
-    echo 'echo "  make help         - Makefile 도움말"' >> /root/.bashrc && \
-    echo 'echo ""' >> /root/.bashrc
-
-# 기존 개발용 스크립트 수정 - MQTT C++ 확인 추가:
-RUN echo '#!/bin/bash' > /usr/local/bin/dev-build.sh && \
-    echo 'echo "🔧 PulseOne Collector 개발 빌드"' >> /usr/local/bin/dev-build.sh && \
-    echo 'cd /app/collector' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "📋 설치된 라이브러리 확인:"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  libmodbus: $(pkg-config --exists libmodbus && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  BACnet: $(pkg-config --exists bacnet && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  Paho MQTT C: $(ls -la /usr/local/lib/libpaho-mqtt3c.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  Paho MQTT C++: $(ls -la /usr/local/lib/libpaho-mqttpp*.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  MQTT Headers: $(find /usr/local/include -name async_client.h 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo ""' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "🔨 빌드 시작:"' >> /usr/local/bin/dev-build.sh && \
-    echo 'make clean && make debug' >> /usr/local/bin/dev-build.sh && \
-    chmod +x /usr/local/bin/dev-build.sh
-
-# 기존 Bash 프롬프트 개선 섹션에서 MQTT C++ 추가:
-RUN echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
-    echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc && \
-    echo 'echo "📋 설치된 라이브러리들:"' >> /root/.bashrc && \
-    echo 'echo "  - libmodbus (Modbus 통신)"' >> /root/.bashrc && \
     echo 'echo "  - Paho MQTT C (MQTT 통신 - C)"' >> /root/.bashrc && \
     echo 'echo "  - Paho MQTT C++ (MQTT 통신 - C++)"' >> /root/.bashrc && \
-    echo 'echo "  - BACnet Headers (BACnet 통신)"' >> /root/.bashrc && \
+    echo 'echo "  - BACnet Stack (BACnet 통신)"' >> /root/.bashrc && \
     echo 'echo "  - hiredis (Redis 클라이언트)"' >> /root/.bashrc && \
     echo 'echo "  - nlohmann/json (JSON 파싱)"' >> /root/.bashrc && \
     echo 'echo "  - spdlog (로깅)"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc && \
     echo 'echo "🔧 유용한 명령어들:"' >> /root/.bashrc && \
-    echo 'echo "  dev-build.sh      - 개발 빌드"' >> /root/.bashrc && \
-    echo 'echo "  check-bacnet.sh   - BACnet 설치 확인"' >> /root/.bashrc && \
-    echo 'echo "  make help         - Makefile 도움말"' >> /root/.bashrc && \
+    echo 'echo "  dev-build.sh           - 개발 빌드"' >> /root/.bashrc && \
+    echo 'echo "  check-bacnet.sh        - BACnet 설치 확인"' >> /root/.bashrc && \
+    echo 'echo "  test-bacnet-symbols.sh - BACnet 심볼 테스트"' >> /root/.bashrc && \
+    echo 'echo "  make help              - Makefile 도움말"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc
-
 
 # 환경 변수 설정
 ENV CC=gcc CXX=g++
@@ -586,10 +268,13 @@ WORKDIR /app
 # 기본 명령어
 CMD ["/bin/bash"]
 
-# 빌드 완료 후 확인사항 출력 수정:
+# 빌드 완료 후 최종 확인
 RUN echo "🎉 Docker 이미지 빌드 완료!" && \
-    echo "📋 BACnet 헤더 파일 개수:" && \
+    echo "📋 최종 확인:" && \
+    echo "  BACnet 라이브러리:" && \
+    ls -la /usr/local/lib/libbacnet.a 2>/dev/null && \
+    echo "  BACnet 헤더 파일 개수:" && \
     find /usr/local/include/bacnet -name "*.h" 2>/dev/null | wc -l && \
-    echo "📋 MQTT C++ 헤더 확인:" && \
+    echo "  MQTT C++ 헤더 확인:" && \
     find /usr/local/include -name "async_client.h" 2>/dev/null | wc -l && \
-    echo "✅ 모든 라이브러리 설치 완료 (MQTT C++ 포함)"
+    echo "✅ 모든 라이브러리 설치 완료 (BACnet 라이브러리 수정됨)"

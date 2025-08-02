@@ -39,7 +39,6 @@ endif
 
 ifeq ($(HAS_BACNET_STACK), 1)
     CXXFLAGS += -DHAS_BACNET_STACK=1
-    LIBS += -lbacnet -lm
 else
     CXXFLAGS += -DHAS_BACNET_STACK=0
 endif
