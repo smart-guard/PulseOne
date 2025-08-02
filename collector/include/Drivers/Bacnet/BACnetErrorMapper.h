@@ -244,7 +244,7 @@ public:
             full_message += " [" + GetErrorCodeName(error_class, error_code) + "]";
         }
         
-        Structs::ErrorInfo error_info(mapped_code, full_message);
+        Structs::ErrorInfo error_info(static_cast<Structs::ErrorCode>(mapped_code), full_message);
         
         // BACnet 특화 정보 추가 (DriverError 시스템 활용)
         if (error_class != 0) {

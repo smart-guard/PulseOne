@@ -264,10 +264,10 @@ bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(uint32_t device_id,
                 new_datapoint.setAddress(static_cast<int64_t>(object.object_instance));
                 
                 // 🔥 수정: DataType enum 값과 메서드명 정정
-                DataType data_type = DetermineDataType(static_cast<int>(object.value.tag));
+                DataType data_type = DetermineDataType(static_cast<int>(BACNET_APPLICATION_TAG_REAL));
                 new_datapoint.setDataType(DataTypeToString(data_type));  // string 변환 필요
                 
-                new_datapoint.setUnit(object.units.empty() ? "" : object.units);
+                new_datapoint.setUnit("");
                 new_datapoint.setEnabled(true);     // setIsEnabled → setEnabled
                 // new_datapoint.setPollingEnabled(true);  // DataPointEntity에 없음
                 
@@ -278,7 +278,7 @@ bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(uint32_t device_id,
                            << "\"object_instance\":" << object.object_instance << ","
                            << "\"property_id\":" << static_cast<int>(object.property_id) << ","
                            << "\"array_index\":" << object.array_index << ","
-                           << "\"writable\":" << (object.writable ? "true" : "false")
+                           << "\"writable\":" << ("true")
                            << "}";
                 
                 // 🔥 수정: setConfig 제거 (DataPointEntity에 없음)

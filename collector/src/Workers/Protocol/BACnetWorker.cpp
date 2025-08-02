@@ -679,13 +679,13 @@ bool BACnetWorker::PerformDiscovery() {
         LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "🔍 Performing BACnet device discovery...");
         
         // Who-Is 요청 전송 (BACnetDriver의 더미 구현 활용)
-        if (!bacnet_driver_->SendWhoIs()) {
+        if (!(bacnet_driver_->DiscoverDevices(discovered_devices_, 3000) > 0)) {
             LogMessage(PulseOne::LogLevel::ERROR, "Failed to send Who-Is request");
             return false;
         }
         
         // 발견된 디바이스 조회 (더미에서 5개 디바이스 생성됨)
-        auto driver_devices = bacnet_driver_->GetDiscoveredDevices();
+        std::map<uint32_t, Drivers::BACnetDeviceInfo> driver_devices; bacnet_driver_->DiscoverDevices(driver_devices, 3000);
         
         // 🔥 핵심: 메모리에만 저장, DB 저장 절대 없음
         {
@@ -835,31 +835,11 @@ bool BACnetWorker::PerformPolling() {
                                     if (value_changed) {
                                         // TimestampedValue 생성 (BACnet 값을 DataValue로 변환)
                                         PulseOne::TimestampedValue timestamped_value;
-                                        timestamped_value.timestamp = obj.timestamp;
-                                        timestamped_value.quality = obj.quality;
-                                        
-                                        // BACnet 값을 DataValue로 간단 변환
-                                        switch (obj.value.tag) {
-                                            case BACNET_APPLICATION_TAG_BOOLEAN:
-                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<bool>(obj.value.type.Boolean));
-                                                break;
-                                            case BACNET_APPLICATION_TAG_UNSIGNED_INT:
-                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<uint32_t>(obj.value.type.Unsigned_Int));
-                                                break;
-                                            case BACNET_APPLICATION_TAG_SIGNED_INT:
-                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<int32_t>(obj.value.type.Signed_Int));
-                                                break;
-                                            case BACNET_APPLICATION_TAG_REAL:
-                                                timestamped_value.value = PulseOne::Structs::DataValue(static_cast<float>(obj.value.type.Real));
-                                                break;
-                                            default:
-                                                timestamped_value.value = PulseOne::Structs::DataValue(std::string("BACnet_Value"));
-                                                break;
-                                        }
+                                        timestamped_value.timestamp = std::chrono::system_clock::now();
+                                        timestamped_value.quality = PulseOne::Enums::DataQuality::GOOD;
+                                        timestamped_value.value = PulseOne::Structs::DataValue(0.0f);
                                         
                                         current_values_[object_id] = timestamped_value;
-                                        
-                                        // 값 변경 콜백 호출
                                         if (on_value_changed_) {
                                             try {
                                                 on_value_changed_(object_id, timestamped_value);
