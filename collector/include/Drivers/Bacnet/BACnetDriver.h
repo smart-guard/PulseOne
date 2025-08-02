@@ -27,12 +27,12 @@ extern "C" {
     #include <bacnet/bacaddr.h>
     #include <bacnet/npdu.h>
     #include <bacnet/apdu.h>
-    #include <bacnet/datalink.h>
-    #include <bacnet/bip.h>
-    #include <bacnet/basic/client/bac-rp.h>
-    #include <bacnet/basic/client/bac-wp.h>
-    #include <bacnet/basic/client/bac-whois.h>
-    #include <bacnet/basic/client/bac-cov.h>
+    #include <bacnet/datalink/datalink.h>
+    #include <bacnet/datalink/bip.h>
+    #include <bacnet/basic/client/bac-rw.h>
+    #include <bacnet/wp.h>
+    #include <bacnet/basic/client/bac-discover.h>
+    #include <bacnet/basic/client/bac-rw.h>
 }
 #endif
 
