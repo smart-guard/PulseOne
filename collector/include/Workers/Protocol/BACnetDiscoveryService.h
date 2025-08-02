@@ -14,6 +14,7 @@ namespace Workers {
 }
 }
 //#include "Workers/Protocol/BACnetWorker.h"
+#include "Drivers/Bacnet/BACnetDriver.h"
 #include "Database/Repositories/DeviceRepository.h" 
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
