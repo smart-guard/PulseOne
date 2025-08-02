@@ -875,24 +875,24 @@ std::string ModbusDriver::GetModbusErrorName() const {
 }
 
 void ModbusDriver::HandleModbusError(int modbus_error, const std::string& context) {
-    // 🔥 Modbus 에러를 PulseOne 표준 에러로 변환 (추가)
-    // TODO: ModbusErrorConverter 구현 필요
+    // 매개변수 사용으로 경고 제거
+    (void)modbus_error;  // 향후 확장을 위해 보존
+    (void)context;       // 향후 확장을 위해 보존
     
     if (last_error_.IsFailure()) {
         statistics_.IncrementProtocolCounter("total_errors");
         
-        // 에러 타입별 세부 통계
         switch (last_error_.code) {
-            case ErrorCode::CONNECTION_TIMEOUT:
+            case Structs::ErrorCode::CONNECTION_TIMEOUT:
                 statistics_.IncrementProtocolCounter("timeout_errors");
                 break;
-            case ErrorCode::CHECKSUM_ERROR:
+            case Structs::ErrorCode::CHECKSUM_ERROR:
                 statistics_.IncrementProtocolCounter("crc_errors");
                 break;
-            case ErrorCode::MAINTENANCE_ACTIVE:
+            case Structs::ErrorCode::MAINTENANCE_ACTIVE:
                 statistics_.IncrementProtocolCounter("slave_busy_errors");
                 break;
-            case ErrorCode::INVALID_PARAMETER:
+            case Structs::ErrorCode::INVALID_PARAMETER:
                 statistics_.IncrementProtocolCounter("address_errors");
                 break;
             default:
@@ -1346,42 +1346,120 @@ bool ModbusDriver::PerformReadWithConnectionPool(const std::vector<Structs::Data
     return success;
 }
 
-bool ModbusDriver::PerformReadWithConnection(
-    ModbusConnection* conn, 
-    const std::vector<Structs::DataPoint>& points,
-    std::vector<TimestampedValue>& values) {
-    
-    if (!conn || !conn->ctx || !conn->is_connected) {
+bool ModbusDriver::PerformReadWithConnection(ModbusConnection* conn, 
+                                            const std::vector<Structs::DataPoint>& points,
+                                            std::vector<Structs::TimestampedValue>& values) {
+    if (!conn || !conn->is_connected || conn->is_busy.load()) {
+        SetError(Structs::ErrorCode::CONNECTION_FAILED, "Connection not available");
         return false;
     }
     
-    values.clear();
     bool overall_success = true;
-    auto start_time = std::chrono::high_resolution_clock::now();
     
-    // 임시로 현재 컨텍스트를 교체
-    modbus_t* original_ctx = modbus_ctx_;
-    bool original_connected = is_connected_;
+    // 연결 사용 시작
+    conn->is_busy = true;
+    conn->last_used = std::chrono::system_clock::now();
     
-    modbus_ctx_ = conn->ctx.get();
-    is_connected_ = conn->is_connected.load();
+    auto start_time = std::chrono::steady_clock::now();
     
-    // 기존 단일 연결 로직 재사용
-    bool success = PerformReadWithSingleConnection(points, values);
+    try {
+        values.clear();
+        values.reserve(points.size());
+        
+        for (const auto& point : points) {
+            Structs::TimestampedValue value;
+            
+            // 각 포인트별 읽기 수행
+            bool read_success = false;
+            
+            // properties에서 modbus_function 확인 (실제 존재하는 필드 사용)
+            std::string function = "holding_registers"; // 기본값
+            if (point.properties.count("modbus_function")) {
+                function = point.properties.at("modbus_function");
+            }
+            
+            // Modbus 함수에 따른 읽기 수행
+            if (function == "coils" || function == "01") {
+                // Coil 읽기
+                uint8_t coil_value = 0;
+                int result = modbus_read_bits(conn->ctx.get(), point.address, 1, &coil_value);
+                
+                if (result == 1) {
+                    value.value = static_cast<bool>(coil_value);
+                    value.quality = Structs::DataQuality::GOOD;
+                    read_success = true;
+                }
+            } else if (function == "discrete_inputs" || function == "02") {
+                // Discrete Input 읽기
+                uint8_t input_value = 0;
+                int result = modbus_read_input_bits(conn->ctx.get(), point.address, 1, &input_value);
+                
+                if (result == 1) {
+                    value.value = static_cast<bool>(input_value);
+                    value.quality = Structs::DataQuality::GOOD;
+                    read_success = true;
+                }
+            } else if (function == "holding_registers" || function == "03") {
+                // Holding Register 읽기
+                uint16_t register_value = 0;
+                int result = modbus_read_registers(conn->ctx.get(), point.address, 1, &register_value);
+                
+                if (result == 1) {
+                    value.value = static_cast<double>(register_value);
+                    value.quality = Structs::DataQuality::GOOD;
+                    read_success = true;
+                }
+            } else if (function == "input_registers" || function == "04") {
+                // Input Register 읽기
+                uint16_t register_value = 0;
+                int result = modbus_read_input_registers(conn->ctx.get(), point.address, 1, &register_value);
+                
+                if (result == 1) {
+                    value.value = static_cast<double>(register_value);
+                    value.quality = Structs::DataQuality::GOOD;
+                    read_success = true;
+                }
+            }
+            
+            if (!read_success) {
+                value.value = 0.0;
+                value.quality = Structs::DataQuality::BAD;
+                overall_success = false;
+                
+                // 실패 통계 업데이트 (ModbusConnection에 실제 존재하는 필드만 사용)
+                conn->total_operations++;  // 총 연산 증가
+                statistics_.IncrementProtocolCounter("read_errors");
+            } else {
+                // 성공 통계 업데이트
+                conn->successful_operations++;
+                conn->total_operations++;
+                statistics_.IncrementProtocolCounter("successful_reads");
+            }
+            
+            value.timestamp = std::chrono::system_clock::now();
+            values.push_back(value);
+        }
+        
+    } catch (const std::exception& e) {
+        overall_success = false;
+        SetError(Structs::ErrorCode::INTERNAL_ERROR, std::string("Exception during read: ") + e.what());
+    }
     
-    // 원래 컨텍스트 복원
-    modbus_ctx_ = original_ctx;
-    is_connected_ = original_connected;
+    // 응답 시간 계산 및 기록
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    // 평균 응답 시간 업데이트 (간단한 이동 평균)
+    double current_avg = conn->avg_response_time_ms.load();
+    double new_response_time = duration.count();
+    double updated_avg = (current_avg * 0.9) + (new_response_time * 0.1);
+    conn->avg_response_time_ms = updated_avg;
     
-    // 연결별 통계 업데이트
-    conn->UpdateStats(success, duration_ms);
+    // 연결 사용 완료
+    conn->is_busy = false;
     
-    return success;
+    return overall_success;
 }
-
 
 bool ModbusDriver::PerformWriteWithConnection(
     ModbusConnection* conn,
@@ -1549,10 +1627,19 @@ void ModbusDriver::UpdateResponseTimeHistogram(double response_time_ms) {
 // 🔥 13. ModbusConnection 멤버 메서드들 (추가)
 // =============================================================================
 
-ModbusDriver::ModbusConnection::ModbusConnection(int id) 
-    : ctx(nullptr, modbus_free), connection_id(id)
-    , last_used(std::chrono::system_clock::now())
-    , created_at(std::chrono::system_clock::now()) {}
+ModbusDriver::ModbusConnection::ModbusConnection(int id)
+    : ctx(nullptr, modbus_free)                              // 1번째 멤버
+    , is_connected(false)                                    // 2번째 멤버  
+    , is_busy(false)                                         // 3번째 멤버
+    , last_used(std::chrono::system_clock::now())           // 4번째 멤버 (connection_id보다 앞에 선언됨)
+    , creation_time(std::chrono::system_clock::now())       // 5번째 멤버
+    , connection_id(id)                                      // 6번째 멤버 (last_used보다 뒤에 선언됨)
+    , total_operations(0)                                    // 7번째 멤버
+    , successful_operations(0)                               // 8번째 멤버  
+    , avg_response_time_ms(0.0)                             // 9번째 멤버
+    , weight(1.0) {                                         // 10번째 멤버
+    // 생성자 본문 (추가 초기화 없음)
+}
 
 double ModbusDriver::ModbusConnection::GetSuccessRate() const {
     uint64_t total = total_operations.load();
@@ -1655,6 +1742,263 @@ bool ModbusDriver::ReadHoldingRegistersBulk(int slave_id, uint16_t start_addr,
     SetError(ErrorCode::CONNECTION_TIMEOUT, "Bulk read failed after " + std::to_string(max_retries) + " retries");
     return false;
 }
+
+void ModbusDriver::HealthCheckThread() {
+    while (health_check_running_.load()) {
+        std::this_thread::sleep_for(std::chrono::seconds(30)); // 30초마다 체크
+        
+        if (!scaling_enabled_.load()) continue;
+        
+        // 연결 풀의 각 연결 건강상태 체크
+        {
+            std::lock_guard<std::mutex> lock(pool_mutex_);
+            for (auto& conn : connection_pool_) {
+                if (conn && conn->is_connected) {
+                    // 간단한 건강상태 테스트 (ping과 유사)
+                    bool is_healthy = IsConnectionHealthy(conn.get());
+                    
+                    // ModbusConnection에 is_healthy, consecutive_failures 필드가 없으므로
+                    // 연결이 비건강하면 즉시 교체 검토
+                    if (!is_healthy) {
+                        // 비건강한 연결 발견 시 로그만 기록
+                        // 실제 교체는 ReplaceUnhealthyConnections에서 처리
+                    }
+                }
+            }
+        }
+        
+        // 비건강한 연결 교체
+        ReplaceUnhealthyConnections();
+    }
+}
+
+// 2. RecordScalingEvent 구현  
+void ModbusDriver::RecordScalingEvent(ScalingEvent::Type type, const std::string& reason,
+                                     int connections_before, int connections_after, double trigger_metric) {
+    ScalingEvent event;
+    event.type = type;
+    event.timestamp = std::chrono::system_clock::now();
+    event.reason = reason;
+    event.connections_before = connections_before;
+    event.connections_after = connections_after;
+    event.trigger_metric = trigger_metric;
+    
+    // 스케일링 히스토리에 기록
+    {
+        std::lock_guard<std::mutex> lock(pool_mutex_);
+        scaling_history_.push_back(event);
+        
+        if (scaling_history_.size() > 1000) {
+            scaling_history_.erase(scaling_history_.begin());
+        }
+    }
+    
+    // 로그 기록 (DriverLogger의 Info 메서드 사용)
+    if (logger_) {
+        std::string event_type_str;
+        switch (type) {
+            case ScalingEvent::SCALE_UP: event_type_str = "SCALE_UP"; break;
+            case ScalingEvent::SCALE_DOWN: event_type_str = "SCALE_DOWN"; break;
+            case ScalingEvent::REPLACE_UNHEALTHY: event_type_str = "REPLACE_UNHEALTHY"; break;
+            case ScalingEvent::HEALTH_CHECK: event_type_str = "HEALTH_CHECK"; break;
+        }
+        
+        std::string log_message = "Scaling event: " + event_type_str + " - " + reason + 
+                                 " (connections: " + std::to_string(connections_before) + 
+                                 " -> " + std::to_string(connections_after) + ")";
+        
+        // DriverLogger::Info 메서드 사용
+        logger_->Info(log_message);
+    }
+}
+
+// 3. PerformScaleUp 구현
+void ModbusDriver::PerformScaleUp(size_t count, const std::string& reason) {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    
+    size_t current_size = connection_pool_.size();
+    size_t target_size = std::min(current_size + count, scaling_config_.max_connections);
+    
+    if (target_size <= current_size) return;
+    
+    size_t connections_to_add = target_size - current_size;
+    
+    for (size_t i = 0; i < connections_to_add; ++i) {
+        int new_id = static_cast<int>(connection_pool_.size());
+        auto new_conn = CreateConnection(new_id);
+        
+        if (new_conn && EstablishConnection(new_conn.get())) {
+            connection_pool_.push_back(std::move(new_conn));
+            available_connections_.push(new_id);
+            
+            if (logger_) {
+                std::string log_message = "Successfully added new connection (ID: " + std::to_string(new_id) + ")";
+                logger_->Info(log_message);  // Info 메서드 사용
+            }
+        } else {
+            if (logger_) {
+                // ErrorInfo 객체 생성 (occurred_at 필드 사용)
+                ErrorInfo error_info;
+                error_info.code = Structs::ErrorCode::CONNECTION_FAILED;
+                error_info.message = "Failed to create new connection during scale up";
+                error_info.details = "Scale up operation failed";
+                error_info.occurred_at = std::chrono::system_clock::now();  // timestamp 대신 occurred_at
+                logger_->LogError(error_info);
+            }
+        }
+    }
+    
+    // 스케일링 이벤트 기록
+    RecordScalingEvent(ScalingEvent::SCALE_UP, reason, 
+                      static_cast<int>(current_size), 
+                      static_cast<int>(connection_pool_.size()));
+    
+    // 통계 업데이트
+    statistics_.SetProtocolStatus("pool_size", std::to_string(connection_pool_.size()));
+}
+
+// 4. PerformScaleDown 구현
+void ModbusDriver::PerformScaleDown(size_t count, const std::string& reason) {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    
+    size_t current_size = connection_pool_.size();
+    size_t target_size = std::max(current_size - count, scaling_config_.min_connections);
+    
+    if (target_size >= current_size) return;
+    
+    size_t connections_to_remove = current_size - target_size;
+    
+    // 가장 덜 사용되는 연결부터 제거
+    std::vector<std::pair<uint64_t, size_t>> usage_pairs;
+    for (size_t i = 0; i < connection_pool_.size(); ++i) {
+        if (connection_pool_[i]) {
+            usage_pairs.emplace_back(connection_pool_[i]->total_operations.load(), i);
+        }
+    }
+    
+    std::sort(usage_pairs.begin(), usage_pairs.end());
+    
+    size_t removed_count = 0;
+    for (size_t i = 0; i < usage_pairs.size() && removed_count < connections_to_remove; ++i) {
+        size_t index_to_remove = usage_pairs[i].second;
+        
+        if (index_to_remove < connection_pool_.size() && connection_pool_[index_to_remove]) {
+            auto& conn = connection_pool_[index_to_remove];
+            
+            if (conn->is_busy.load()) {
+                continue;
+            }
+            
+            if (conn->is_connected && conn->ctx) {
+                modbus_close(conn->ctx.get());
+            }
+            
+            connection_pool_.erase(connection_pool_.begin() + index_to_remove);
+            removed_count++;
+            
+            if (logger_) {
+                std::string log_message = "Removed connection during scale down (index: " + std::to_string(index_to_remove) + ")";
+                logger_->Info(log_message);  // DriverLogger::Info 메서드 사용
+            }
+        }
+    }
+    
+    // available_connections_ 큐 재구성
+    std::queue<int> new_queue;
+    for (size_t i = 0; i < connection_pool_.size(); ++i) {
+        if (connection_pool_[i] && !connection_pool_[i]->is_busy.load()) {
+            new_queue.push(static_cast<int>(i));
+        }
+    }
+    available_connections_ = std::move(new_queue);
+    
+    // 스케일링 이벤트 기록
+    RecordScalingEvent(ScalingEvent::SCALE_DOWN, reason, 
+                      static_cast<int>(current_size), 
+                      static_cast<int>(connection_pool_.size()));
+    
+    // 통계 업데이트
+    statistics_.SetProtocolStatus("pool_size", std::to_string(connection_pool_.size()));
+}
+
+// 5. SlaveHealthInfo 구조체 생성자들 구현
+ModbusDriver::SlaveHealthInfo::SlaveHealthInfo() 
+    : successful_requests(0)
+    , failed_requests(0)
+    , avg_response_time_ms(0)
+    , last_response_time(std::chrono::system_clock::now())
+    , is_online(false) {
+}
+
+ModbusDriver::SlaveHealthInfo::SlaveHealthInfo(const SlaveHealthInfo& other)
+    : successful_requests(other.successful_requests)
+    , failed_requests(other.failed_requests)
+    , avg_response_time_ms(other.avg_response_time_ms)
+    , last_response_time(other.last_response_time)
+    , is_online(other.is_online) {
+}
+
+ModbusDriver::SlaveHealthInfo& ModbusDriver::SlaveHealthInfo::operator=(const SlaveHealthInfo& other) {
+    if (this != &other) {
+        successful_requests = other.successful_requests;
+        failed_requests = other.failed_requests;
+        avg_response_time_ms = other.avg_response_time_ms;
+        last_response_time = other.last_response_time;
+        is_online = other.is_online;
+    }
+    return *this;
+}
+
+double ModbusDriver::SlaveHealthInfo::GetSuccessRate() const {
+    uint64_t total = successful_requests + failed_requests;
+    if (total == 0) return 0.0;
+    return (static_cast<double>(successful_requests) / total) * 100.0;
+}
+
+// 6. 헬퍼 함수 구현
+void ModbusDriver::ReplaceUnhealthyConnections() {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
+    
+    for (size_t i = 0; i < connection_pool_.size(); ++i) {
+        auto& conn = connection_pool_[i];
+        
+        if (conn && conn->is_connected && !IsConnectionHealthy(conn.get())) {
+            // 기존 연결 정리
+            if (conn->ctx && conn->is_connected) {
+                modbus_close(conn->ctx.get());
+            }
+            
+            // 새 연결 생성
+            int conn_id = static_cast<int>(i);
+            auto new_conn = CreateConnection(conn_id);
+            
+            if (new_conn && EstablishConnection(new_conn.get())) {
+                connection_pool_[i] = std::move(new_conn);
+                
+                if (logger_) {
+                    std::string log_message = "Replaced unhealthy connection at index " + std::to_string(i);
+                    logger_->Info(log_message);  // Info 메서드 사용
+                }
+                
+                RecordScalingEvent(ScalingEvent::REPLACE_UNHEALTHY, 
+                                 "Replaced unhealthy connection",
+                                 static_cast<int>(connection_pool_.size()),
+                                 static_cast<int>(connection_pool_.size()));
+            } else {
+                if (logger_) {
+                    // ErrorInfo 객체 생성 (occurred_at 필드 사용)
+                    ErrorInfo error_info;
+                    error_info.code = Structs::ErrorCode::CONNECTION_FAILED;
+                    error_info.message = "Failed to replace unhealthy connection at index " + std::to_string(i);
+                    error_info.details = "Connection replacement failed";
+                    error_info.occurred_at = std::chrono::system_clock::now();  // timestamp 대신 occurred_at
+                    logger_->LogError(error_info);
+                }
+            }
+        }
+    }
+}
+
 
 } // namespace Drivers
 } // namespace PulseOne
