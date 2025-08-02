@@ -13,7 +13,7 @@
 #include <sstream>
 #include <condition_variable>
 #include <algorithm>
-
+constexpr size_t PulseOne::Drivers::ModbusDriver::MAX_SCALING_HISTORY;
 using namespace std::chrono;
 
 namespace PulseOne {
@@ -1628,17 +1628,17 @@ void ModbusDriver::UpdateResponseTimeHistogram(double response_time_ms) {
 // =============================================================================
 
 ModbusDriver::ModbusConnection::ModbusConnection(int id)
-    : ctx(nullptr, modbus_free)                              // 1번째 멤버
-    , is_connected(false)                                    // 2번째 멤버  
-    , is_busy(false)                                         // 3번째 멤버
-    , last_used(std::chrono::system_clock::now())           // 4번째 멤버 (connection_id보다 앞에 선언됨)
-    , creation_time(std::chrono::system_clock::now())       // 5번째 멤버
-    , connection_id(id)                                      // 6번째 멤버 (last_used보다 뒤에 선언됨)
-    , total_operations(0)                                    // 7번째 멤버
-    , successful_operations(0)                               // 8번째 멤버  
-    , avg_response_time_ms(0.0)                             // 9번째 멤버
-    , weight(1.0) {                                         // 10번째 멤버
-    // 생성자 본문 (추가 초기화 없음)
+    : ctx(nullptr, modbus_free)                              // 1번째: 스마트 포인터
+    , is_connected(false)                                    // 2번째: atomic bool
+    , is_busy(false)                                         // 3번째: atomic bool
+    , total_operations(0)                                    // 4번째: atomic uint64_t
+    , successful_operations(0)                               // 5번째: atomic uint64_t
+    , avg_response_time_ms(0.0)                             // 6번째: atomic double
+    , last_used(std::chrono::system_clock::now())           // 7번째: time_point
+    , created_at(std::chrono::system_clock::now())          // 8번째: time_point  
+    , connection_id(id)                                      // 9번째: int (endpoint 다음에 위치)
+    , weight(1.0) {                                         // 10번째: double
+    // 생성자 본문은 비어있음
 }
 
 double ModbusDriver::ModbusConnection::GetSuccessRate() const {
@@ -1666,11 +1666,10 @@ void ModbusDriver::ModbusConnection::UpdateStats(bool success, double response_t
     
     // 이동 평균으로 응답시간 업데이트
     double current_avg = avg_response_time_ms.load();
-    double new_avg = (current_avg == 0.0) ? response_time_ms : 
-                     (current_avg * 0.9 + response_time_ms * 0.1);
+    double new_avg = (current_avg == 0.0) ? 
+        response_time_ms : 
+        (current_avg * 0.9 + response_time_ms * 0.1);
     avg_response_time_ms.store(new_avg);
-    
-    last_used = std::chrono::system_clock::now();
 }
 
 // =============================================================================
@@ -1996,6 +1995,40 @@ void ModbusDriver::ReplaceUnhealthyConnections() {
                 }
             }
         }
+    }
+}
+
+bool ModbusDriver::IsConnectionHealthy(const ModbusConnection* conn) const {
+    if (!conn) {
+        return false;
+    }
+    
+    // 기본 연결 상태 확인
+    if (!conn->is_connected.load()) {
+        return false;
+    }
+    
+    // 성공률 확인 (80% 이상)
+    double success_rate = conn->GetSuccessRate();
+    if (success_rate < 80.0) {
+        return false;
+    }
+    
+    // 평균 응답시간 확인 (1초 미만)
+    double avg_response = conn->avg_response_time_ms.load();
+    if (avg_response > 1000.0) {
+        return false;
+    }
+    
+    return true;
+}
+
+void ModbusDriver::TrimScalingHistory() {
+    std::lock_guard<std::mutex> lock(scaling_history_mutex_);
+    
+    if (scaling_history_.size() > MAX_SCALING_HISTORY) {
+        size_t excess = scaling_history_.size() - MAX_SCALING_HISTORY;
+        scaling_history_.erase(scaling_history_.begin(), scaling_history_.begin() + excess);
     }
 }
 
