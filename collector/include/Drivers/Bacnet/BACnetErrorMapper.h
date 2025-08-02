@@ -261,9 +261,11 @@ public:
         return error_info;
     }
 
+    friend class std::default_delete<BACnetErrorMapper>;
+    ~BACnetErrorMapper() = default;
 private:
     BACnetErrorMapper() = default;
-    ~BACnetErrorMapper() = default;
+    
 };
 
 } // namespace Drivers

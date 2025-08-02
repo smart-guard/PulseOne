@@ -6,7 +6,14 @@
 #ifndef BACNET_DISCOVERY_SERVICE_H
 #define BACNET_DISCOVERY_SERVICE_H
 
-#include "Workers/Protocol/BACnetWorker.h"
+
+// 전방 선언
+namespace PulseOne {
+namespace Workers {
+    class BACnetWorker;
+}
+}
+//#include "Workers/Protocol/BACnetWorker.h"
 #include "Database/Repositories/DeviceRepository.h" 
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
