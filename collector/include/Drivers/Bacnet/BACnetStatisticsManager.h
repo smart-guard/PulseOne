@@ -1,30 +1,36 @@
 // =============================================================================
 // collector/include/Drivers/Bacnet/BACnetStatisticsManager.h
-// 🔥 기존 DriverStatistics를 활용하는 BACnet 통계 관리자
+// 🔥 BACnet 통계 관리자 - 성능 및 상태 모니터링
 // =============================================================================
 
 #ifndef BACNET_STATISTICS_MANAGER_H
 #define BACNET_STATISTICS_MANAGER_H
 
-#include "Common/DriverStatistics.h"
-#include "Common/DriverError.h"
-#include <memory>
+#include "Common/UnifiedCommonTypes.h"
+#include "Drivers/Bacnet/BACnetCommonTypes.h"
+#include <atomic>
+#include <mutex>
 #include <chrono>
-#include <string>
+#include <deque>
+#include <memory>
 
 namespace PulseOne {
 namespace Drivers {
 
 /**
- * @brief BACnet 통계 관리자 (DriverStatistics 활용)
+ * @brief BACnet 통계 관리자
  * 
- * 기존 DriverStatistics의 protocol_counters/metrics 기능을 활용하여
- * BACnet 특화 통계를 관리합니다.
+ * 기능:
+ * - 실시간 성능 통계 수집
+ * - 표준 DriverStatistics 생성
+ * - BACnet 특화 통계 관리
+ * - 히스토리 데이터 관리
+ * - 성능 임계값 모니터링
  */
 class BACnetStatisticsManager {
 public:
     // ==========================================================================
-    // 생성자 및 기본 관리
+    // 생성자 및 소멸자
     // ==========================================================================
     BACnetStatisticsManager();
     ~BACnetStatisticsManager() = default;
@@ -34,247 +40,310 @@ public:
     BACnetStatisticsManager& operator=(const BACnetStatisticsManager&) = delete;
     
     // ==========================================================================
-    // 🔥 통계 수집 메서드들 (DriverStatistics에 위임)
+    // 🔥 통계 업데이트 메서드들
     // ==========================================================================
     
-    void StartOperation(const std::string& operation_type);
-    void CompleteOperation(const std::string& operation_type, bool success);
+    /**
+     * @brief 읽기 작업 통계 업데이트
+     * @param total_points 시도한 총 포인트 수
+     * @param successful_points 성공한 포인트 수
+     * @param duration 소요 시간
+     */
+    void UpdateReadStatistics(size_t total_points, size_t successful_points, 
+                             std::chrono::milliseconds duration);
     
-    // BACnet 특화 카운터 업데이트
-    void RecordWhoIsSent() { 
-        driver_stats_->IncrementProtocolCounter("who_is_sent"); 
-    }
+    /**
+     * @brief 쓰기 작업 통계 업데이트
+     * @param total_points 시도한 총 포인트 수
+     * @param successful_points 성공한 포인트 수
+     * @param duration 소요 시간
+     */
+    void UpdateWriteStatistics(size_t total_points, size_t successful_points,
+                              std::chrono::milliseconds duration);
     
-    void RecordIAmReceived(uint32_t device_id) { 
-        driver_stats_->IncrementProtocolCounter("i_am_received");
-        driver_stats_->SetProtocolStatus("last_discovered_device", std::to_string(device_id));
-    }
+    /**
+     * @brief 연결 시도 통계 업데이트
+     * @param success 연결 성공 여부
+     */
+    void IncrementConnectionAttempts(bool success = true);
     
-    void RecordReadPropertyRequest() { 
-        driver_stats_->IncrementProtocolCounter("read_property_requests");
-        driver_stats_->RecordReadOperation(true, 0.0); // 일단 성공으로 기록, 나중에 실제 결과로 업데이트
-    }
+    /**
+     * @brief 에러 카운트 증가
+     * @param error_type 에러 타입 (선택적)
+     */
+    void IncrementErrorCount(const std::string& error_type = "");
     
-    void RecordReadPropertyResponse(double response_time_ms) { 
-        driver_stats_->IncrementProtocolCounter("read_property_responses");
-        driver_stats_->SetProtocolMetric("avg_read_response_time", response_time_ms);
-    }
+    /**
+     * @brief 네트워크 메시지 통계 업데이트
+     */
+    void IncrementMessagesReceived();
+    void IncrementMessagesSent();
     
-    void RecordWritePropertyRequest() { 
-        driver_stats_->IncrementProtocolCounter("write_property_requests");
-        driver_stats_->RecordWriteOperation(true, 0.0);
-    }
+    /**
+     * @brief 연결 상태 설정
+     * @param connected 연결 상태
+     */
+    void SetConnectionStatus(bool connected);
     
-    void RecordWritePropertyResponse(double response_time_ms) { 
-        driver_stats_->IncrementProtocolCounter("write_property_responses");
-        driver_stats_->SetProtocolMetric("avg_write_response_time", response_time_ms);
-    }
-    
-    void RecordRPMRequest(size_t object_count) { 
-        driver_stats_->IncrementProtocolCounter("rpm_requests");
-        driver_stats_->SetProtocolMetric("avg_rpm_objects", static_cast<double>(object_count));
-    }
-    
-    void RecordWPMRequest(size_t object_count) { 
-        driver_stats_->IncrementProtocolCounter("wpm_requests");
-        driver_stats_->SetProtocolMetric("avg_wpm_objects", static_cast<double>(object_count));
-    }
-    
-    // COV 통계
-    void RecordCOVSubscription(uint32_t device_id, uint32_t object_instance) { 
-        driver_stats_->IncrementProtocolCounter("cov_subscriptions");
-        driver_stats_->SetProtocolStatus("last_cov_device", std::to_string(device_id) + "_" + std::to_string(object_instance));
-    }
-    
-    void RecordCOVNotification(uint32_t device_id, uint32_t object_instance) { 
-        driver_stats_->IncrementProtocolCounter("cov_notifications");
-        (void)device_id; (void)object_instance; // 사용하지 않는 매개변수 경고 제거
-    }
-    
-    void RecordCOVTimeout() { 
-        driver_stats_->IncrementProtocolCounter("cov_timeouts"); 
-    }
-    
-    // 에러 통계
-    void RecordProtocolError() { 
-        driver_stats_->IncrementProtocolCounter("protocol_errors"); 
-    }
-    
-    void RecordTimeoutError() { 
-        driver_stats_->IncrementProtocolCounter("timeout_errors"); 
-    }
-    
-    void RecordDeviceNotFoundError() { 
-        driver_stats_->IncrementProtocolCounter("device_not_found_errors"); 
-    }
-    
-    void RecordNetworkError() { 
-        driver_stats_->IncrementProtocolCounter("network_errors"); 
-    }
-    
-    // 디바이스 및 객체 통계
-    void RecordDeviceDiscovered(uint32_t device_id) { 
-        driver_stats_->IncrementProtocolCounter("devices_discovered");
-        driver_stats_->SetProtocolStatus("last_discovered_device", std::to_string(device_id));
-    }
-    
-    void RecordObjectDiscovered(uint32_t device_id, uint32_t object_instance) { 
-        driver_stats_->IncrementProtocolCounter("objects_discovered");
-        (void)device_id; (void)object_instance;
-    }
+    /**
+     * @brief 네트워크 통계 업데이트 (주기적 호출)
+     */
+    void UpdateNetworkStatistics();
     
     // ==========================================================================
     // 🔥 통계 조회 메서드들
     // ==========================================================================
     
     /**
-     * @brief 표준 DriverStatistics 반환
+     * @brief 표준 드라이버 통계 반환
+     * @return IProtocolDriver 호환 통계
      */
-    const Structs::DriverStatistics* GetStandardStatistics() const {
-        return driver_stats_.get();
-    }
+    const DriverStatistics& GetStandardStatistics() const;
     
     /**
-     * @brief BACnet 특화 카운터 조회
+     * @brief BACnet 특화 통계 반환
+     * @return BACnet 프로토콜 전용 통계
      */
-    uint64_t GetBACnetCounter(const std::string& counter_name) const {
-        return driver_stats_->GetProtocolCounter(counter_name);
-    }
+    const BACnetStatistics& GetBACnetStatistics() const;
     
     /**
-     * @brief BACnet 특화 메트릭 조회
+     * @brief 성능 히스토리 반환
+     * @param duration 조회할 기간 (기본: 1시간)
+     * @return 성능 히스토리 데이터
      */
-    double GetBACnetMetric(const std::string& metric_name) const {
-        return driver_stats_->GetProtocolMetric(metric_name);
-    }
+    std::vector<PerformanceSnapshot> GetPerformanceHistory(
+        std::chrono::minutes duration = std::chrono::minutes(60)) const;
     
     /**
-     * @brief BACnet 요약 보고서
+     * @brief 현재 성능 지표 반환
+     * @return 실시간 성능 정보
      */
-    std::string GetBACnetSummary() const {
-        std::ostringstream oss;
-        oss << "BACnet Stats: ";
-        oss << "Devices: " << GetBACnetCounter("devices_discovered") << ", ";
-        oss << "Objects: " << GetBACnetCounter("objects_discovered") << ", ";
-        oss << "COV: " << GetBACnetCounter("cov_subscriptions") << ", ";
-        oss << "Errors: " << GetBACnetCounter("protocol_errors");
-        return oss.str();
-    }
+    PerformanceMetrics GetCurrentPerformance() const;
     
     /**
-     * @brief JSON 형식 통계 반환 (DriverStatistics 위임)
+     * @brief 에러 분석 결과 반환
+     * @return 에러 타입별 통계
      */
-    std::string GetStatisticsJson() const {
-        return driver_stats_->ToJsonString();
-    }
+    std::map<std::string, uint64_t> GetErrorAnalysis() const;
     
     // ==========================================================================
-    // 통계 관리
+    // 관리 메서드들
     // ==========================================================================
-    void ResetStatistics() {
-        driver_stats_->ResetStatistics();
-        start_time_ = std::chrono::system_clock::now();
-    }
+    
+    /**
+     * @brief 모든 통계 초기화
+     */
+    void Reset();
+    
+    /**
+     * @brief 히스토리 데이터 정리
+     * @param max_age 보관할 최대 기간
+     */
+    void CleanupHistory(std::chrono::hours max_age = std::chrono::hours(24));
+    
+    /**
+     * @brief 통계를 JSON 형태로 내보내기
+     * @return JSON 문자열
+     */
+    std::string ExportToJson() const;
 
 private:
+    // ==========================================================================
+    // 내부 구조체들
+    // ==========================================================================
+    
+    /**
+     * @brief 성능 스냅샷 (시점별 성능 기록)
+     */
+    struct PerformanceSnapshot {
+        std::chrono::system_clock::time_point timestamp;
+        double read_success_rate;
+        double write_success_rate;
+        double avg_response_time_ms;
+        uint64_t messages_per_second;
+        uint64_t active_connections;
+        uint64_t error_rate_per_minute;
+    };
+    
+    /**
+     * @brief 누적 통계 데이터
+     */
+    struct CumulativeStats {
+        // 읽기 통계
+        std::atomic<uint64_t> total_read_requests{0};
+        std::atomic<uint64_t> successful_reads{0};
+        std::atomic<uint64_t> failed_reads{0};
+        std::atomic<uint64_t> total_read_time_ms{0};
+        
+        // 쓰기 통계
+        std::atomic<uint64_t> total_write_requests{0};
+        std::atomic<uint64_t> successful_writes{0};
+        std::atomic<uint64_t> failed_writes{0};
+        std::atomic<uint64_t> total_write_time_ms{0};
+        
+        // 연결 통계
+        std::atomic<uint64_t> connection_attempts{0};
+        std::atomic<uint64_t> successful_connections{0};
+        std::atomic<uint64_t> connection_failures{0};
+        
+        // 네트워크 통계
+        std::atomic<uint64_t> messages_sent{0};
+        std::atomic<uint64_t> messages_received{0};
+        std::atomic<uint64_t> bytes_sent{0};
+        std::atomic<uint64_t> bytes_received{0};
+        
+        // 에러 통계
+        std::atomic<uint64_t> total_errors{0};
+        std::atomic<uint64_t> timeout_errors{0};
+        std::atomic<uint64_t> protocol_errors{0};
+        std::atomic<uint64_t> connection_errors{0};
+        
+        // 상태
+        std::atomic<bool> is_connected{false};
+        std::chrono::system_clock::time_point start_time;
+        std::chrono::system_clock::time_point last_update_time;
+    };
+    
     // ==========================================================================
     // 멤버 변수들
     // ==========================================================================
     
-    std::unique_ptr<Structs::DriverStatistics> driver_stats_;
-    std::chrono::system_clock::time_point start_time_;
+    // 통계 데이터
+    CumulativeStats cumulative_stats_;
     
-    // 작업 추적용
-    struct OperationTracker {
-        std::chrono::steady_clock::time_point start_time;
-        std::string operation_type;
-    };
-    std::map<std::string, OperationTracker> active_operations_;
-    std::mutex operations_mutex_;
+    // 표준 통계 (캐시)
+    mutable std::mutex standard_stats_mutex_;
+    mutable std::unique_ptr<DriverStatistics> standard_statistics_cache_;
+    mutable std::chrono::system_clock::time_point last_standard_update_;
+    
+    // BACnet 특화 통계 (캐시)
+    mutable std::mutex bacnet_stats_mutex_;
+    mutable BACnetStatistics bacnet_statistics_cache_;
+    mutable std::chrono::system_clock::time_point last_bacnet_update_;
+    
+    // 성능 히스토리
+    mutable std::mutex history_mutex_;
+    std::deque<PerformanceSnapshot> performance_history_;
+    std::chrono::system_clock::time_point last_snapshot_time_;
+    
+    // 에러 분석
+    std::mutex error_analysis_mutex_;
+    std::map<std::string, std::atomic<uint64_t>> error_counts_by_type_;
+    
+    // 실시간 성능 추적
+    std::mutex performance_mutex_;
+    std::deque<std::chrono::milliseconds> recent_response_times_;
+    std::deque<std::chrono::system_clock::time_point> recent_operations_;
+    
+    static constexpr size_t MAX_RECENT_OPERATIONS = 1000;
+    static constexpr size_t MAX_HISTORY_ENTRIES = 1440; // 24시간 (분 단위)
+    static constexpr auto CACHE_REFRESH_INTERVAL = std::chrono::seconds(5);
+    static constexpr auto SNAPSHOT_INTERVAL = std::chrono::minutes(1);
     
     // ==========================================================================
-    // 내부 헬퍼 메서드들
+    // 비공개 헬퍼 메서드들
     // ==========================================================================
     
-    void InitializeBACnetCounters();
+    /**
+     * @brief 표준 통계 캐시 업데이트
+     */
+    void UpdateStandardStatisticsCache() const;
+    
+    /**
+     * @brief BACnet 특화 통계 캐시 업데이트
+     */
+    void UpdateBACnetStatisticsCache() const;
+    
+    /**
+     * @brief 성능 스냅샷 생성 및 히스토리에 추가
+     */
+    void CreatePerformanceSnapshot();
+    
+    /**
+     * @brief 최근 응답 시간 관리
+     */
+    void AddResponseTime(std::chrono::milliseconds duration);
+    void CleanupRecentData();
+    
+    /**
+     * @brief 평균 응답 시간 계산
+     */
+    double CalculateAverageResponseTime() const;
+    
+    /**
+     * @brief 초당 메시지 수 계산
+     */
+    double CalculateMessagesPerSecond() const;
+    
+    /**
+     * @brief 성공률 계산
+     */
+    double CalculateSuccessRate(uint64_t successful, uint64_t total) const;
+    
+    /**
+     * @brief 런타임 계산
+     */
+    std::chrono::seconds GetRuntime() const;
+    
+    /**
+     * @brief 캐시 만료 확인
+     */
+    bool IsCacheExpired(std::chrono::system_clock::time_point last_update) const;
 };
 
 // =============================================================================
-// 🔥 간단한 BACnet 통계 구조체 (기존 호환성용)
+// 인라인 구현들
 // =============================================================================
 
-/**
- * @brief 기존 코드 호환성을 위한 BACnet 통계 구조체
- * @details 실제로는 DriverStatistics 데이터를 참조
- */
-struct BACnetStatistics {
-    std::atomic<uint64_t> who_is_sent{0};
-    std::atomic<uint64_t> i_am_received{0};
-    std::atomic<uint64_t> read_property_requests{0};
-    std::atomic<uint64_t> read_property_responses{0};
-    std::atomic<uint64_t> write_property_requests{0};
-    std::atomic<uint64_t> write_property_responses{0};
-    std::atomic<uint64_t> rpm_requests{0};
-    std::atomic<uint64_t> wpm_requests{0};
+inline void BACnetStatisticsManager::IncrementConnectionAttempts(bool success) {
+    cumulative_stats_.connection_attempts.fetch_add(1);
+    if (success) {
+        cumulative_stats_.successful_connections.fetch_add(1);
+    } else {
+        cumulative_stats_.connection_failures.fetch_add(1);
+    }
+    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
+}
+
+inline void BACnetStatisticsManager::IncrementErrorCount(const std::string& error_type) {
+    cumulative_stats_.total_errors.fetch_add(1);
     
-    std::atomic<uint64_t> cov_subscriptions{0};
-    std::atomic<uint64_t> cov_notifications_received{0};
-    std::atomic<uint64_t> cov_timeouts{0};
-    std::atomic<uint64_t> active_cov_subscriptions{0};
-    
-    std::atomic<uint64_t> protocol_errors{0};
-    std::atomic<uint64_t> timeout_errors{0};
-    std::atomic<uint64_t> device_not_found_errors{0};
-    std::atomic<uint64_t> network_errors{0};
-    
-    std::atomic<double> avg_response_time_ms{0.0};
-    std::atomic<uint32_t> discovered_devices{0};
-    std::atomic<uint32_t> mapped_objects{0};
-    
-    std::chrono::system_clock::time_point start_time;
-    
-    BACnetStatistics() : start_time(std::chrono::system_clock::now()) {}
-    
-    void Reset() {
-        who_is_sent = 0;
-        i_am_received = 0;
-        read_property_requests = 0;
-        read_property_responses = 0;
-        write_property_requests = 0;
-        write_property_responses = 0;
-        rpm_requests = 0;
-        wpm_requests = 0;
-        
-        cov_subscriptions = 0;
-        cov_notifications_received = 0;
-        cov_timeouts = 0;
-        active_cov_subscriptions = 0;
-        
-        protocol_errors = 0;
-        timeout_errors = 0;
-        device_not_found_errors = 0;
-        network_errors = 0;
-        
-        avg_response_time_ms = 0.0;
-        discovered_devices = 0;
-        mapped_objects = 0;
-        
-        start_time = std::chrono::system_clock::now();
+    if (!error_type.empty()) {
+        std::lock_guard<std::mutex> lock(error_analysis_mutex_);
+        error_counts_by_type_[error_type].fetch_add(1);
     }
     
-    double GetSuccessRate() const {
-        uint64_t total_requests = read_property_requests.load() + write_property_requests.load();
-        if (total_requests == 0) return 100.0;
-        
-        uint64_t total_responses = read_property_responses.load() + write_property_responses.load();
-        return (static_cast<double>(total_responses) / total_requests) * 100.0;
-    }
-    
-    std::chrono::seconds GetUptime() const {
-        return std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now() - start_time);
-    }
-};
+    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
+}
+
+inline void BACnetStatisticsManager::IncrementMessagesReceived() {
+    cumulative_stats_.messages_received.fetch_add(1);
+    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
+}
+
+inline void BACnetStatisticsManager::IncrementMessagesSent() {
+    cumulative_stats_.messages_sent.fetch_add(1);
+    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
+}
+
+inline void BACnetStatisticsManager::SetConnectionStatus(bool connected) {
+    cumulative_stats_.is_connected.store(connected);
+    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
+}
+
+inline double BACnetStatisticsManager::CalculateSuccessRate(uint64_t successful, uint64_t total) const {
+    return total > 0 ? (static_cast<double>(successful) / total) * 100.0 : 0.0;
+}
+
+inline std::chrono::seconds BACnetStatisticsManager::GetRuntime() const {
+    auto now = std::chrono::system_clock::now();
+    return std::chrono::duration_cast<std::chrono::seconds>(now - cumulative_stats_.start_time);
+}
+
+inline bool BACnetStatisticsManager::IsCacheExpired(std::chrono::system_clock::time_point last_update) const {
+    auto now = std::chrono::system_clock::now();
+    return (now - last_update) > CACHE_REFRESH_INTERVAL;
+}
 
 } // namespace Drivers
 } // namespace PulseOne
