@@ -11,11 +11,11 @@
 #define DRIVERS_IPROTOCOL_DRIVER_H
 
 #include "Common/UnifiedCommonTypes.h"
+#include "Common/DriverError.h"
 // Utils 네임스페이스 별칭
 namespace Utils = PulseOne::Utils;
 namespace Constants = PulseOne::Constants;
 namespace Structs = PulseOne::Structs;
-
 
 // Utils 네임스페이스 별칭
 namespace Utils = PulseOne::Utils;
@@ -34,9 +34,8 @@ namespace Structs = PulseOne::Structs;
 namespace PulseOne {
 namespace Drivers {
 
-// =============================================================================
-// 전방 선언 및 타입 정의
-// =============================================================================
+
+
 
 class IProtocolDriver;
 
@@ -133,8 +132,17 @@ struct AsyncWriteRequest {
  * - 비동기 처리 지원
  * - 기존 PulseOne 아키텍처와의 호환성
  */
+
+// =============================================================================
+// 전방 선언 및 타입 정의
+// =============================================================================
+using ErrorCode = PulseOne::Structs::ErrorCode;
+using ErrorInfo = PulseOne::Structs::ErrorInfo;
+using DriverErrorCode = PulseOne::Structs::DriverErrorCode;
+
 class IProtocolDriver {
 public:
+    IProtocolDriver() : last_error_(ErrorCode::SUCCESS, "No error") {}
     /**
      * @brief 가상 소멸자
      */
@@ -463,7 +471,7 @@ protected:
     mutable DriverStatistics statistics_;            ///< 통계 정보
     std::atomic<Structs::DriverStatus> status_{Structs::DriverStatus::UNINITIALIZED}; ///< 드라이버 상태
     std::atomic<ConnectionStatus> current_connection_status_{ConnectionStatus::DISCONNECTED}; ///< 연결 상태
-    ErrorInfo last_error_{ErrorCode::SUCCESS, "No error"}; ///< 마지막 에러 정보
+    ErrorInfo last_error_;
     
     // 로깅 시스템 (기존 LogManager와 호환)
     mutable DriverLogger logger_;                     ///< 드라이버 전용 로거
