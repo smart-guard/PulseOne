@@ -205,8 +205,8 @@ bool MqttDriver::Initialize(const DriverConfig& config) {
         return true;
         
     } catch (const std::exception& e) {
-        last_error_ = Structs::ErrorInfo(Enums::ErrorCode::INTERNAL_ERROR,
-                               "MQTT initialization failed: " + std::string(e.what()));
+        last_error_ = Structs::ErrorInfo(Structs::ErrorCode::INTERNAL_ERROR,
+                               "MQTT initialization failed: " + std::string(e.what()), "");
         logger_->Error("MQTT initialization error: " + std::string(e.what()), DriverLogCategory::GENERAL);
         return false;
     }
@@ -424,7 +424,7 @@ bool MqttDriver::Connect() {
             UpdateStatistics("connect", true);
             return true;
         } else {
-            SetError(Enums::ErrorCode::CONNECTION_FAILED, "MQTT connection failed or timeout");
+            SetError(Structs::ErrorCode::CONNECTION_FAILED, "MQTT connection failed or timeout");
             if (logger_) {
                 logger_->Error("MQTT connection failed", DriverLogCategory::CONNECTION);
             }
@@ -434,7 +434,7 @@ bool MqttDriver::Connect() {
         
     } catch (const mqtt::exception& e) {
         connection_in_progress_ = false;
-        SetError(Enums::ErrorCode::CONNECTION_FAILED, "MQTT connection error: " + std::string(e.what()));
+        SetError(Structs::ErrorCode::CONNECTION_FAILED, "MQTT connection error: " + std::string(e.what()));
         if (logger_) {
             logger_->Error("MQTT connection error: " + std::string(e.what()), 
                           DriverLogCategory::CONNECTION);
@@ -443,7 +443,7 @@ bool MqttDriver::Connect() {
         return false;
     } catch (const std::exception& e) {
         connection_in_progress_ = false;
-        SetError(Enums::ErrorCode::INTERNAL_ERROR, "Unexpected connection error: " + std::string(e.what()));
+        SetError(Structs::ErrorCode::INTERNAL_ERROR, "Unexpected connection error: " + std::string(e.what()));
         if (logger_) {
             logger_->Error("Unexpected connection error: " + std::string(e.what()), 
                           DriverLogCategory::ERROR_HANDLING);
@@ -807,7 +807,7 @@ void MqttDriver::connection_lost(const std::string& cause) {
     }
     reconnect_cv_.notify_one();
     
-    SetError(Enums::ErrorCode::CONNECTION_LOST, "Connection lost: " + cause);
+    SetError(Structs::ErrorCode::CONNECTION_LOST, "Connection lost: " + cause);
 }
 
 void MqttDriver::message_arrived(mqtt::const_message_ptr msg) {
@@ -874,7 +874,7 @@ void MqttDriver::on_failure(const mqtt::token& token) {
             logger_->Error(error_msg, DriverLogCategory::ERROR_HANDLING);
         }
         
-        SetError(Enums::ErrorCode::INTERNAL_ERROR, error_msg);
+        SetError(Structs::ErrorCode::INTERNAL_ERROR, error_msg);
         
     } catch (const std::exception& e) {
         if (logger_) {
@@ -918,7 +918,7 @@ bool MqttDriver::CreateMqttClient() {
         return true;
         
     } catch (const std::exception& e) {
-        SetError(Enums::ErrorCode::INTERNAL_ERROR, "Failed to create MQTT client: " + std::string(e.what()));
+        SetError(Structs::ErrorCode::INTERNAL_ERROR, "Failed to create MQTT client: " + std::string(e.what()));
         if (logger_) {
             logger_->Error("Failed to create MQTT client: " + std::string(e.what()), 
                           DriverLogCategory::CONNECTION);
@@ -1296,7 +1296,7 @@ bool MqttDriver::PublishStatus(const std::string& status) {
 void MqttDriver::ResetStatistics() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     
-    statistics_ = DriverStatistics{};
+    // statistics_ 리셋은 개별 필드로 수행
     
     // MQTT 특화 통계 초기화
     total_messages_received_ = 0;
@@ -1331,7 +1331,7 @@ void MqttDriver::UpdateStatistics(const std::string& operation, bool success, do
     //statistics_.last_activity_time = system_clock::now();
 }
 
-void MqttDriver::SetError(Enums::ErrorCode code, const std::string& message) {
+void MqttDriver::SetError(Structs::ErrorCode code, const std::string& message) {
     std::lock_guard<std::mutex> lock(error_mutex_);
     
     last_error_.code = code;
@@ -1670,13 +1670,13 @@ std::string MqttDriver::GetDiagnosticsJSON() const {
         json stats;
         {
             std::lock_guard<std::mutex> lock(stats_mutex_);
-            stats["total_operations"] = statistics_.total_operations;
-            stats["successful_operations"] = statistics_.successful_operations;
-            stats["failed_operations"] = statistics_.failed_operations;
+            stats["total_operations"] = statistics_.total_operations.load();
+            stats["successful_operations"] = statistics_.successful_operations.load();
+            stats["failed_operations"] = statistics_.failed_operations.load();
             double avg_response = (statistics_.total_operations > 0) ? 
                 (statistics_.max_response_time_ms / statistics_.total_operations) : 0.0;
             stats["avg_response_time_ms"] = avg_response;
-            stats["max_response_time_ms"] = statistics_.max_response_time_ms;
+            stats["max_response_time_ms"] = statistics_.max_response_time_ms.load();
         }
         
         stats["messages_sent"] = total_messages_sent_.load();
@@ -1765,7 +1765,7 @@ std::string MqttDriver::GetDiagnosticsJSON() const {
         // 에러 정보
         {
             std::lock_guard<std::mutex> lock(error_mutex_);
-            if (last_error_.code != Enums::ErrorCode::SUCCESS) {
+            if (last_error_.code != Structs::ErrorCode::SUCCESS) {
                 json error_info;
                 error_info["code"] = static_cast<int>(last_error_.code);
                 error_info["message"] = last_error_.message;
@@ -2002,7 +2002,7 @@ bool MqttDriver::IsHealthy() const {
     
     // 에러 상태 확인
     std::lock_guard<std::mutex> lock(error_mutex_);
-    if (last_error_.code != Enums::ErrorCode::SUCCESS) {
+    if (last_error_.code != Structs::ErrorCode::SUCCESS) {
         auto time_since_error = duration_cast<minutes>(now - last_error_.occurred_at);
         if (time_since_error.count() < 1) { // 1분 이내 에러
             return false;

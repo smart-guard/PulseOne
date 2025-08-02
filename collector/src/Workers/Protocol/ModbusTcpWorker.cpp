@@ -303,12 +303,12 @@ std::string ModbusTcpWorker::GetModbusStats() const {
     json stats;
     
     // Driver 통계 (실제 구조체 필드에 맞춘 수정)
-    stats["driver"]["total_operations"] = driver_stats.total_operations;
-    stats["driver"]["successful_operations"] = driver_stats.successful_operations;
-    stats["driver"]["failed_operations"] = driver_stats.failed_operations;
-    stats["driver"]["success_rate"] = driver_stats.success_rate;
-    stats["driver"]["avg_response_time_ms"] = driver_stats.avg_response_time_ms;
-    stats["driver"]["max_response_time_ms"] = driver_stats.avg_response_time_ms;
+    stats["driver"]["total_operations"] = driver_stats.total_operations.load();
+    stats["driver"]["successful_operations"] = driver_stats.successful_operations.load();
+    stats["driver"]["failed_operations"] = driver_stats.failed_operations.load();
+    stats["driver"]["success_rate"] = driver_stats.success_rate.load();
+    stats["driver"]["avg_response_time_ms"] = driver_stats.avg_response_time_ms.load();
+    stats["driver"]["max_response_time_ms"] = driver_stats.avg_response_time_ms.load();
     
     // Worker 통계
     std::lock_guard<std::mutex> lock(polling_groups_mutex_);

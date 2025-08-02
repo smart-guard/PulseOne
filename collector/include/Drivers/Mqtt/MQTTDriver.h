@@ -441,7 +441,7 @@ private:
 #endif
     
     // 에러 처리 및 통계
-    void SetError(Enums::ErrorCode code, const std::string& message);
+    void SetError(Structs::ErrorCode code, const std::string& message);
     void UpdateStatistics(const std::string& operation, bool success, double duration_ms = 0);
     
     // 백그라운드 작업
