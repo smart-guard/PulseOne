@@ -15,24 +15,7 @@
 #include "Common/DriverError.h"
 #include "Utils/LogManager.h"
 
-// BACnet Stack 조건부 인클루드 (실제 설치된 SourceForge 버전)
-#ifdef HAS_BACNET_STACK
-extern "C" {
-    // 핵심 BACnet 헤더들 (실제 확인된 경로)
-    #include <bacnet/bacdef.h>
-    #include <bacnet/config.h>
-    #include <bacnet/bactext.h>
-    #include <bacnet/bacerror.h>
-    #include <bacnet/bacenum.h>
-    #include <bacnet/bacdcode.h>
-    #include <bacnet/bacapp.h>
-    #include <bacnet/version.h>
-    
-    // 네트워크 및 프로토콜 레이어
-    #include <bacnet/npdu.h>
-    #include <bacnet/apdu.h>
-    
-    // 서비스 관련 (SourceForge 실제 구조)
+제 구조)
     #include <bacnet/rp.h>                    // ReadProperty
     #include <bacnet/wp.h>                    // WriteProperty
     #include <bacnet/rpm.h>                   // ReadPropertyMultiple  
@@ -119,54 +102,12 @@ namespace Drivers {
 class BACnetWorker;
 class BACnetErrorMapper;
 
-// =============================================================================
-// BACnet 특화 구조체들
-// =============================================================================
-
-/**
- * @brief BACnet 디바이스 정보
- */
-struct BACnetDeviceInfo {
-    uint32_t device_id = 0;
-    std::string device_name = "";
-    std::string ip_address = "";
-    uint16_t port = 47808;
-    uint32_t vendor_id = 0;
-    uint16_t max_apdu_length = 1476;
-    bool segmentation_supported = true;
-    uint8_t protocol_version = 1;
-    uint8_t protocol_revision = 14;
-    std::chrono::system_clock::time_point last_seen;
-    bool is_online = false;
-};
-
-/**
- * @brief BACnet 읽기 요청
- */
-struct BACnetReadRequest {
-    uint32_t device_id;
-    BACNET_OBJECT_TYPE object_type;
-    uint32_t object_instance;
-    BACNET_PROPERTY_ID property_id;
-    int32_t array_index = BACNET_ARRAY_ALL;
-    std::string point_id;
-    std::chrono::milliseconds timeout = std::chrono::milliseconds(5000);
-};
-
-/**
- * @brief BACnet 쓰기 요청
- */
-struct BACnetWriteRequest {
-    uint32_t device_id;
-    BACNET_OBJECT_TYPE object_type;
-    uint32_t object_instance;
-    BACNET_PROPERTY_ID property_id;
-    PulseOne::Structs::DataValue value;
-    int32_t array_index = BACNET_ARRAY_ALL;
-    uint8_t priority = 16;
-    std::string point_id;
-    std::chrono::milliseconds timeout = std::chrono::milliseconds(5000);
-};
+// ✅ BACnet 구조체들은 BACnetCommonTypes.h에서 정의됨
+// 여기서는 using 선언만 사용
+using BACnetDeviceInfo = PulseOne::Drivers::BACnetDeviceInfo;
+using BACnetObjectInfo = PulseOne::Drivers::BACnetObjectInfo;
+using BACnetReadRequest = PulseOne::Drivers::BACnetReadRequest;
+using BACnetWriteRequest = PulseOne::Drivers::BACnetWriteRequest;
 
 // =============================================================================
 // BACnet 드라이버 클래스
@@ -395,7 +336,7 @@ private:
 // =============================================================================
 
 inline PulseOne::Enums::ProtocolType BACnetDriver::GetProtocolType() const {
-    return PulseOne::Enums::ProtocolType::BACNET;
+    return PulseOne::Enums::ProtocolType::BACNET_IP;  // ✅ BACNET → BACNET_IP
 }
 
 inline PulseOne::Structs::DriverStatus BACnetDriver::GetStatus() const {
