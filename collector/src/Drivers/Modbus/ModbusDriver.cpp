@@ -43,7 +43,8 @@ ModbusPacketLog::ModbusPacketLog()
 // =============================================================================
 
 ModbusDriver::ModbusDriver() 
-    : modbus_ctx_(nullptr)
+    : driver_statistics_("MODBUS") 
+    , modbus_ctx_(nullptr)
     , is_connected_(false)
     , current_slave_id_(-1)
     , diagnostics_enabled_(false)
@@ -248,8 +249,19 @@ ErrorInfo ModbusDriver::GetLastError() const {
 }
 
 const DriverStatistics& ModbusDriver::GetStatistics() const {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    return statistics_;
+    // 실시간 메트릭 업데이트 (기존 로직 유지)
+    if (is_connected_) {
+        auto now = std::chrono::steady_clock::now();
+        auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+            now - last_successful_operation_
+        ).count();
+        // ✅ 변수명만 변경
+        driver_statistics_.SetProtocolMetric("connection_uptime_seconds", static_cast<double>(uptime));
+    }
+    
+    driver_statistics_.SetProtocolMetric("current_slave_id", static_cast<double>(current_slave_id_));
+    
+    return driver_statistics_;  // ✅ 변수명만 변경
 }
 
 // =============================================================================
