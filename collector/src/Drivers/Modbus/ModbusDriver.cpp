@@ -576,15 +576,20 @@ void ModbusDriver::RecordSlaveRequest(int slave_id, bool success, uint32_t respo
 // Private 헬퍼 메소드들
 // =============================================================================
 
-void ModbusDriver::SetError(ErrorCode code, const std::string& message) {
-    // 🔥 하이브리드 에러 정보 설정 (변경)
+void ModbusDriver::SetError(Structs::ErrorCode code, const std::string& message) {
+    // ✅ 표준 에러 정보 설정
     last_error_.code = code;
     last_error_.message = message;
     last_error_.protocol = "MODBUS";
     last_error_.occurred_at = std::chrono::system_clock::now();
     
-    // 🔥 통계 업데이트 (추가)
-    statistics_.IncrementProtocolCounter("total_errors");
+    // ✅ 통계 업데이트 - 에러 카운터 증가
+    driver_statistics_.IncrementProtocolCounter("total_errors", 1);
+    driver_statistics_.SetProtocolStatus("last_error_type", "MODBUS_ERROR");
+    driver_statistics_.SetProtocolStatus("last_error_message", message);
+    
+    // 에러 시간 업데이트
+    driver_statistics_.last_error_time = Utils::GetCurrentTimestamp();
     
     // 기존 로깅 (그대로 유지)
     if (log_manager_) {
@@ -593,29 +598,107 @@ void ModbusDriver::SetError(ErrorCode code, const std::string& message) {
 }
 
 
-void ModbusDriver::UpdateStatistics(bool success, double response_time_ms) {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    
-    statistics_.total_operations++;
-    
-    if (success) {
-        statistics_.successful_operations++;
-    } else {
-        statistics_.failed_operations++;
+void ModbusDriver::UpdateStats(bool success, double response_time_ms, const std::string& operation) {
+    // ✅ 1. 표준 필드 업데이트 (기본 읽기/쓰기 통계)
+    if (operation == "read" || operation.empty()) {
+        driver_statistics_.total_reads.fetch_add(1);
+        if (success) {
+            driver_statistics_.successful_reads.fetch_add(1);
+        } else {
+            driver_statistics_.failed_reads.fetch_add(1);
+        }
+    } else if (operation == "write") {
+        driver_statistics_.total_writes.fetch_add(1);
+        if (success) {
+            driver_statistics_.successful_writes.fetch_add(1);
+        } else {
+            driver_statistics_.failed_writes.fetch_add(1);
+        }
     }
     
-    statistics_.success_rate = 
-        (double)statistics_.successful_operations / statistics_.total_operations * 100.0;
+    // ✅ 2. Modbus 특화 프로토콜 카운터 업데이트
+    driver_statistics_.IncrementProtocolCounter("total_operations", 1);
     
-    statistics_.last_connection_time = system_clock::now();
+    if (operation == "read" || operation.empty()) {
+        driver_statistics_.IncrementProtocolCounter("register_reads", 1);
+    } else if (operation == "write") {
+        driver_statistics_.IncrementProtocolCounter("register_writes", 1);
+    }
     
-    if (response_time_ms > 0) {
-        if (statistics_.avg_response_time_ms == 0.0) {
-            statistics_.avg_response_time_ms = response_time_ms;
-        } else {
-            statistics_.avg_response_time_ms = 
-                (statistics_.avg_response_time_ms * 0.9) + (response_time_ms * 0.1);
+    // CRC 체크 카운터 (모든 Modbus 통신에서 발생)
+    driver_statistics_.IncrementProtocolCounter("crc_checks", 1);
+    
+    if (success) {
+        driver_statistics_.IncrementProtocolCounter("successful_operations", 1);
+        
+        // ✅ 3. 응답 시간 메트릭 업데이트
+        if (response_time_ms > 0) {
+            // 기존 지수 이동 평균 로직 유지
+            double current_avg = driver_statistics_.GetProtocolMetric("avg_response_time_ms");
+            if (current_avg == 0.0) {
+                driver_statistics_.SetProtocolMetric("avg_response_time_ms", response_time_ms);
+            } else {
+                double new_avg = (current_avg * 0.9) + (response_time_ms * 0.1);
+                driver_statistics_.SetProtocolMetric("avg_response_time_ms", new_avg);
+            }
+            
+            // 최소/최대 응답 시간 업데이트
+            double min_time = driver_statistics_.GetProtocolMetric("min_response_time_ms");
+            double max_time = driver_statistics_.GetProtocolMetric("max_response_time_ms");
+            
+            if (min_time == 0.0 || response_time_ms < min_time) {
+                driver_statistics_.SetProtocolMetric("min_response_time_ms", response_time_ms);
+            }
+            if (response_time_ms > max_time) {
+                driver_statistics_.SetProtocolMetric("max_response_time_ms", response_time_ms);
+            }
         }
+        
+        // 성공 시간 업데이트
+        driver_statistics_.last_success_time = Utils::GetCurrentTimestamp();
+        
+    } else {
+        // ✅ 4. 실패 시 에러 카운터 업데이트
+        driver_statistics_.IncrementProtocolCounter("failed_operations", 1);
+        driver_statistics_.IncrementProtocolCounter("slave_errors", 1);
+        
+        // 연속 실패 카운터 증가
+        driver_statistics_.consecutive_failures.fetch_add(1);
+        
+        // 에러 시간 업데이트
+        driver_statistics_.last_error_time = Utils::GetCurrentTimestamp();
+    }
+    
+    // ✅ 5. 성공률 계산 및 업데이트
+    uint64_t total_ops = driver_statistics_.GetProtocolCounter("total_operations");
+    uint64_t successful_ops = driver_statistics_.GetProtocolCounter("successful_operations");
+    
+    if (total_ops > 0) {
+        double success_rate = (static_cast<double>(successful_ops) / total_ops) * 100.0;
+        driver_statistics_.SetProtocolMetric("success_rate", success_rate);
+        driver_statistics_.success_rate.store(success_rate);
+    }
+    
+    // ✅ 6. 마지막 연결 시간 업데이트 (기존 로직 유지)
+    driver_statistics_.last_connection_time = std::chrono::system_clock::now();
+    
+    // ✅ 7. 표준 통계 동기화 (기존 호환성 유지)
+    driver_statistics_.UpdateTotalOperations();
+    driver_statistics_.SyncResponseTime();
+    
+    // ✅ 8. Modbus 특화 상태 정보 업데이트
+    if (success) {
+        driver_statistics_.SetProtocolStatus("last_operation_status", "SUCCESS");
+        // 연속 실패 카운터 리셋
+        driver_statistics_.consecutive_failures.store(0);
+    } else {
+        driver_statistics_.SetProtocolStatus("last_operation_status", "FAILED");
+        driver_statistics_.SetProtocolStatus("last_error_type", "MODBUS_ERROR");
+    }
+    
+    // 현재 슬레이브 ID 상태 업데이트
+    if (current_slave_id_ > 0) {
+        driver_statistics_.SetProtocolStatus("current_slave_id", std::to_string(current_slave_id_));
     }
 }
 

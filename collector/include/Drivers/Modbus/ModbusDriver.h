@@ -7,13 +7,13 @@
 #define PULSEONE_DRIVERS_MODBUS_DRIVER_H
 
 #include "Drivers/Common/IProtocolDriver.h"
-#include "Common/DriverStatistics.h"  // ✅ 유일한 추가 사항
-#include "Common/PulseOneStructs.h"
+#include "Common/DriverStatistics.h"  
+#include "Common/Structs.h"
 #include "Common/DriverError.h"
 #include "Utils/LogManager.h"
 #include "Database/DatabaseManager.h"
 
-#include <modbus.h>
+#include <modbus/modbus.h>
 #include <memory>
 #include <atomic>
 #include <mutex>

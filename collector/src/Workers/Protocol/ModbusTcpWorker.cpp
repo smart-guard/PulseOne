@@ -293,45 +293,56 @@ bool ModbusTcpWorker::SetPollingGroupEnabled(uint32_t group_id, bool enabled) {
 
 std::string ModbusTcpWorker::GetModbusStats() const {
     if (!modbus_driver_) {
-        return "{}";
+        return "{\"error\":\"driver_not_initialized\"}";
     }
     
-    // ModbusDriver에서 통계 정보 가져오기
-    const auto& driver_stats = modbus_driver_->GetStatistics();
-    const auto& driver_diagnostics = modbus_driver_->GetDiagnostics();
+    // ✅ 수정: GetDiagnostics() → GetDiagnosticsJSON() 사용
+    std::string json_diagnostics = modbus_driver_->GetDiagnosticsJSON();
     
-    json stats;
+    std::ostringstream oss;
+    oss << "{\n";
+    oss << "  \"worker_type\": \"ModbusTcpWorker\",\n";
+    oss << "  \"device_id\": \"" << device_info_.id << "\",\n";          // device_id → id 수정
+    oss << "  \"device_name\": \"" << device_info_.name << "\",\n";
+    oss << "  \"endpoint\": \"" << device_info_.endpoint << "\",\n";
     
-    // Driver 통계 (실제 구조체 필드에 맞춘 수정)
-    stats["driver"]["total_operations"] = driver_stats.total_operations.load();
-    stats["driver"]["successful_operations"] = driver_stats.successful_operations.load();
-    stats["driver"]["failed_operations"] = driver_stats.failed_operations.load();
-    stats["driver"]["success_rate"] = driver_stats.success_rate.load();
-    stats["driver"]["avg_response_time_ms"] = driver_stats.avg_response_time_ms.load();
-    stats["driver"]["max_response_time_ms"] = driver_stats.avg_response_time_ms.load();
+    // ✅ 표준화된 통계 정보 (DriverStatistics 사용)
+    const auto& stats = modbus_driver_->GetStatistics();
+    oss << "  \"statistics\": {\n";
+    oss << "    \"total_reads\": " << stats.total_reads.load() << ",\n";
+    oss << "    \"successful_reads\": " << stats.successful_reads.load() << ",\n";
+    oss << "    \"failed_reads\": " << stats.failed_reads.load() << ",\n";
+    oss << "    \"total_writes\": " << stats.total_writes.load() << ",\n";
+    oss << "    \"successful_writes\": " << stats.successful_writes.load() << ",\n";
+    oss << "    \"failed_writes\": " << stats.failed_writes.load() << ",\n";
+    oss << "    \"success_rate\": " << stats.GetSuccessRate() << ",\n";
     
-    // Worker 통계
-    std::lock_guard<std::mutex> lock(polling_groups_mutex_);
-    stats["worker"]["total_polling_groups"] = polling_groups_.size();
+    // ✅ Modbus 특화 통계 (프로토콜 카운터)
+    oss << "    \"register_reads\": " << stats.GetProtocolCounter("register_reads") << ",\n";
+    oss << "    \"register_writes\": " << stats.GetProtocolCounter("register_writes") << ",\n";
+    oss << "    \"crc_checks\": " << stats.GetProtocolCounter("crc_checks") << ",\n";
+    oss << "    \"slave_errors\": " << stats.GetProtocolCounter("slave_errors") << ",\n";
+    oss << "    \"avg_response_time_ms\": " << stats.GetProtocolMetric("avg_response_time_ms") << "\n";
+    oss << "  },\n";
     
-    size_t enabled_groups = 0;
-    size_t total_data_points = 0;
-    for (const auto& pair : polling_groups_) {
-        if (pair.second.enabled) {
-            enabled_groups++;
-        }
-        total_data_points += pair.second.data_points.size();
-    }
+    // ✅ 드라이버 진단 정보 (JSON 문자열 직접 삽입)
+    oss << "  \"driver_diagnostics\": " << json_diagnostics << ",\n";
     
-    stats["worker"]["enabled_polling_groups"] = enabled_groups;
-    stats["worker"]["total_data_points"] = total_data_points;
+    // TCP Worker 특화 정보
+    oss << "  \"worker_info\": {\n";
+    oss << "    \"default_polling_interval_ms\": " << default_polling_interval_ms_ << ",\n";
+    oss << "    \"modbus_config\": {\n";
+    oss << "      \"slave_id\": " << modbus_config_.slave_id << ",\n";
+    oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms << ",\n";
+    oss << "      \"response_timeout_ms\": " << modbus_config_.response_timeout_ms << ",\n";
+    oss << "      \"byte_timeout_ms\": " << modbus_config_.byte_timeout_ms << ",\n";
+    oss << "      \"max_retries\": " << static_cast<int>(modbus_config_.max_retries) << "\n";
+    oss << "    }\n";
+    oss << "  }\n";
     
-    // 진단 정보
-    for (const auto& diag_pair : driver_diagnostics) {
-        stats["diagnostics"][diag_pair.first] = diag_pair.second;
-    }
+    oss << "}";
     
-    return stats.dump(2);
+    return oss.str();
 }
 
 // =============================================================================
