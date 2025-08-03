@@ -67,8 +67,9 @@ struct ModbusRtuSlaveInfo {
     ModbusRtuSlaveInfo(int id = 1, const std::string& name = "")
         : slave_id(id), device_name(name), is_online(false)
         , response_time_ms(0), total_requests(0), successful_requests(0)
-        , timeout_errors(0), crc_errors(0)
-        , last_response(std::chrono::system_clock::now()) {}
+        , timeout_errors(0)
+        , last_response(std::chrono::system_clock::now())
+        , crc_errors(0) {}
 };
 
 /**
@@ -244,7 +245,6 @@ private:
     // =============================================================================
     // 설정 및 초기화 메서드들 (TCP와 동일한 패턴)
     // =============================================================================
-    
     bool ParseModbusConfig();
     bool InitializeModbusDriver();
     void SetupDriverCallbacks();

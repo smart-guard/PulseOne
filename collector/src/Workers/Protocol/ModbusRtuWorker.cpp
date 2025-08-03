@@ -500,57 +500,61 @@ bool ModbusRtuWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address,
 
 std::string ModbusRtuWorker::GetModbusStats() const {
     if (!modbus_driver_) {
-        return "{}";
+        return "{\"error\":\"driver_not_initialized\"}";
     }
     
-    const auto& driver_stats = modbus_driver_->GetStatistics();
-    const auto& driver_diagnostics = modbus_driver_->GetDiagnostics();
+    // ✅ 문제 1 해결: GetDiagnosticsJSON() 사용 (JSON 문자열 반환)
+    std::string json_diagnostics = modbus_driver_->GetDiagnosticsJSON();
     
-    json stats;
+    std::ostringstream oss;
+    oss << "{\n";
+    oss << "  \"worker_type\": \"ModbusRtuWorker\",\n";
     
-    // Driver 통계
-    stats["driver"]["total_operations"] = driver_stats.total_operations.load();
-    stats["driver"]["successful_operations"] = driver_stats.successful_operations.load();
-    stats["driver"]["failed_operations"] = driver_stats.failed_operations.load();
-    stats["driver"]["success_rate"] = driver_stats.success_rate.load();
-    stats["driver"]["avg_response_time_ms"] = driver_stats.avg_response_time_ms.load();
+    // ✅ 문제 2 해결: DeviceInfo 필드명 수정 (device_id → id)
+    oss << "  \"device_id\": \"" << device_info_.id << "\",\n";
+    oss << "  \"device_name\": \"" << device_info_.name << "\",\n";
+    oss << "  \"endpoint\": \"" << device_info_.endpoint << "\",\n";
     
-    // Worker 통계
-    {
-        std::shared_lock<std::shared_mutex> slaves_lock(slaves_mutex_);
-        stats["worker"]["total_slaves"] = slaves_.size();
-        
-        size_t online_slaves = 0;
-        for (const auto& [slave_id, slave_info] : slaves_) {
-            if (slave_info->is_online) {
-                online_slaves++;
-            }
-        }
-        stats["worker"]["online_slaves"] = online_slaves;
-    }
+    // ✅ 표준화된 통계 정보 (DriverStatistics 사용)
+    const auto& stats = modbus_driver_->GetStatistics();
+    oss << "  \"statistics\": {\n";
+    oss << "    \"total_reads\": " << stats.total_reads.load() << ",\n";
+    oss << "    \"successful_reads\": " << stats.successful_reads.load() << ",\n";
+    oss << "    \"failed_reads\": " << stats.failed_reads.load() << ",\n";
+    oss << "    \"total_writes\": " << stats.total_writes.load() << ",\n";
+    oss << "    \"successful_writes\": " << stats.successful_writes.load() << ",\n";
+    oss << "    \"failed_writes\": " << stats.failed_writes.load() << ",\n";
+    oss << "    \"success_rate\": " << stats.GetSuccessRate() << ",\n";
     
-    {
-        std::shared_lock<std::shared_mutex> groups_lock(polling_groups_mutex_);
-        stats["worker"]["total_polling_groups"] = polling_groups_.size();
-        
-        size_t enabled_groups = 0;
-        size_t total_data_points = 0;
-        for (const auto& [group_id, group] : polling_groups_) {
-            if (group.enabled) {
-                enabled_groups++;
-            }
-            total_data_points += group.data_points.size();
-        }
-        stats["worker"]["enabled_polling_groups"] = enabled_groups;
-        stats["worker"]["total_data_points"] = total_data_points;
-    }
+    // ✅ Modbus 특화 통계 (프로토콜 카운터)
+    oss << "    \"register_reads\": " << stats.GetProtocolCounter("register_reads") << ",\n";
+    oss << "    \"register_writes\": " << stats.GetProtocolCounter("register_writes") << ",\n";
+    oss << "    \"crc_checks\": " << stats.GetProtocolCounter("crc_checks") << ",\n";
+    oss << "    \"slave_errors\": " << stats.GetProtocolCounter("slave_errors") << ",\n";
+    oss << "    \"avg_response_time_ms\": " << stats.GetProtocolMetric("avg_response_time_ms") << "\n";
+    oss << "  },\n";
     
-    // 진단 정보
-    for (const auto& [key, value] : driver_diagnostics) {
-        stats["diagnostics"][key] = value;
-    }
+    // ✅ 드라이버 진단 정보 추가 (JSON 문자열을 직접 삽입)
+    oss << "  \"driver_diagnostics\": " << json_diagnostics << ",\n";
     
-    return stats.dump(2);
+    // ✅ 문제 3,4 해결: 실제 존재하는 멤버 변수들 사용
+    oss << "  \"worker_info\": {\n";
+    oss << "    \"polling_thread_running\": " << (polling_thread_running_.load() ? "true" : "false") << ",\n";
+    oss << "    \"next_group_id\": " << next_group_id_ << ",\n";
+    
+    // RTU 특화 정보 (실제 존재하는 변수들만 사용)
+    oss << "    \"modbus_config\": {\n";
+    oss << "      \"slave_id\": " << modbus_config_.slave_id << ",\n";
+    oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms << ",\n";
+    oss << "      \"response_timeout_ms\": " << modbus_config_.response_timeout_ms << ",\n";
+    oss << "      \"byte_timeout_ms\": " << modbus_config_.byte_timeout_ms << ",\n";
+    oss << "      \"max_retries\": " << static_cast<int>(modbus_config_.max_retries) << "\n";
+    oss << "    }\n";
+    
+    oss << "  }\n";
+    oss << "}";
+    
+    return oss.str();
 }
 
 std::string ModbusRtuWorker::GetSerialBusStatus() const {
