@@ -188,125 +188,180 @@ void BACnetDiscoveryService::OnValueChanged(const std::string& object_id, const 
 // 데이터베이스 저장 로직
 // =============================================================================
 
-bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(const Drivers::BACnetDeviceInfo& device) {
+bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
+    const PulseOne::Drivers::BACnetDeviceInfo& device) {
+    
     try {
-        // 기존 디바이스 확인
-        int existing_device_id = FindDeviceIdInDatabase(device.device_id);
+        auto& db_manager = DatabaseManager::GetInstance();
+        auto& device_repo = db_manager.GetDeviceRepository();
         
-        if (existing_device_id > 0) {
+        // 기존 디바이스 확인
+        auto existing_devices = device_repo.findByConditions({
+            {"device_id", std::to_string(device.device_id)}
+        });
+        
+        if (!existing_devices.empty()) {
             // 기존 디바이스 업데이트
-            auto existing_device = device_repository_->findById(existing_device_id);
-            if (existing_device.has_value()) {
-                existing_device->setName(device.device_name);
-                existing_device->setEndpoint(device.ip_address + ":" + std::to_string(device.port));
-                
-                return device_repository_->update(existing_device.value());
+            auto& existing_device = existing_devices[0];
+            existing_device.setName(device.device_name);
+            
+            // 🔥 수정: ip_address, port 필드 사용
+            existing_device.setEndpoint(device.ip_address + ":" + std::to_string(device.port));
+            
+            // 메타데이터 업데이트
+            std::map<std::string, std::string> metadata;
+            metadata["vendor_id"] = std::to_string(device.vendor_id);
+            metadata["max_apdu_length"] = std::to_string(device.max_apdu_length);
+            
+            // 🔥 수정: segmentation_support 필드 사용 (segmentation_supported → segmentation_support)
+            metadata["segmentation_support"] = std::to_string(device.segmentation_support);
+            
+            metadata["object_count"] = std::to_string(device.objects.size());
+            existing_device.setMetadata(metadata);
+            
+            if (device_repo.update(existing_device)) {
+                statistics_.devices_saved++;
+                return true;
+            } else {
+                statistics_.database_errors++;
+                return false;
+            }
+        } else {
+            // 새 디바이스 생성
+            PulseOne::Database::Entities::DeviceEntity new_device;
+            new_device.setDeviceId(device.device_id);
+            new_device.setName(device.device_name);
+            new_device.setProtocolType("BACNET");
+            
+            // 🔥 수정: ip_address, port 필드 사용
+            new_device.setEndpoint(device.ip_address + ":" + std::to_string(device.port));
+            
+            new_device.setEnabled(true);
+            
+            // 메타데이터 설정
+            std::ostringstream metadata_json;
+            metadata_json << "{"
+                        << "\"device_id\":" << device.device_id << ","
+                        << "\"vendor_id\":" << device.vendor_id << ","
+                        
+                        // 🔥 수정: ip_address, port 필드 사용
+                        << "\"ip_address\":\"" << device.ip_address << "\","
+                        << "\"port\":" << device.port << ","
+                        
+                        << "\"max_apdu_length\":" << device.max_apdu_length << ","
+                        
+                        // 🔥 수정: segmentation_support 필드 사용
+                        << "\"segmentation_support\":" << static_cast<int>(device.segmentation_support) << ","
+                        
+                        << "\"object_count\":" << device.objects.size()
+                        << "}";
+            
+            std::map<std::string, std::string> metadata_map;
+            metadata_map["bacnet_info"] = metadata_json.str();
+            new_device.setMetadata(metadata_map);
+            
+            if (device_repo.save(new_device)) {
+                statistics_.devices_saved++;
+                return true;
+            } else {
+                statistics_.database_errors++;
+                return false;
             }
         }
         
-        // 새 디바이스 생성
-        DeviceEntity new_device;
-        new_device.setName(device.device_name);
-        new_device.setProtocolType("BACNET_IP");
-        new_device.setEndpoint(device.ip_address + ":" + std::to_string(device.port));
-        new_device.setEnabled(true);
-        
-        // BACnet 특화 설정 JSON 생성
-        std::ostringstream config_json;
-        config_json << "{"
-                   << "\"bacnet_device_id\":" << device.device_id << ","
-                   << "\"ip_address\":\"" << device.ip_address << "\","
-                   << "\"port\":" << device.port << ","
-                   << "\"max_apdu_length\":" << device.max_apdu_length << ","
-                   << "\"segmentation_supported\":" << (device.segmentation_supported ? "true" : "false")
-                   << "}";
-        
-        new_device.setConfig(config_json.str());
-        
-        bool success = device_repository_->save(new_device);
-        
-        if (success) {
-            auto& logger = LogManager::getInstance();
-            logger.Info("BACnet device saved to database: " + device.device_name + 
-                       " (ID: " + std::to_string(device.device_id) + ")");
-        }
-        
-        return success;
-        
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("Failed to save BACnet device to database: " + std::string(e.what()));
+        statistics_.database_errors++;
+        // 에러 로깅 (로거가 있는 경우)
         return false;
     }
 }
 
-bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(uint32_t device_id, 
-                                                           const std::vector<Drivers::BACnetObjectInfo>& objects) {
+bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(
+    uint32_t device_id, 
+    const std::vector<PulseOne::Drivers::BACnetObjectInfo>& objects) {
+    
     try {
-        // 디바이스 ID 조회
-        int internal_device_id = FindDeviceIdInDatabase(device_id);
-        if (internal_device_id <= 0) {
-            auto& logger = LogManager::getInstance();
-            logger.Error("Device not found in database for BACnet device ID: " + std::to_string(device_id));
-            return false;
-        }
-        
-        bool overall_success = true;
+        // 🔥 수정: DatabaseManager 경로 수정
+        auto& db_manager = DatabaseManager::GetInstance();
+        auto& datapoint_repo = db_manager.GetDataPointRepository();
+        auto& current_value_repo = db_manager.GetCurrentValueRepository();
         
         for (const auto& object : objects) {
-            try {
-                // 데이터 포인트 ID 생성
-                std::string point_id = GenerateDataPointId(device_id, object);
+            // DataPoint 엔티티 생성
+            PulseOne::Database::Entities::DataPointEntity new_datapoint;
+            new_datapoint.setDeviceId(device_id);
+            
+            // 🔥 수정: setAddress는 int를 받으므로 object_instance 사용
+            new_datapoint.setAddress(static_cast<int>(object.object_instance));
+            
+            new_datapoint.setName(object.object_name);
+            new_datapoint.setDescription(object.description);
+            new_datapoint.setDataType("REAL"); // BACnet 기본값
+            new_datapoint.setEnabled(true);
+            new_datapoint.setUnit(object.units);
+            
+            // 메타데이터 설정
+            std::map<std::string, std::string> metadata_map;
+            metadata_map["object_type"] = std::to_string(static_cast<uint32_t>(object.object_type));
+            metadata_map["object_instance"] = std::to_string(object.object_instance);
+            metadata_map["object_identifier"] = object.GetObjectIdentifier(); // 전체 식별자는 메타데이터로
+            metadata_map["high_limit"] = std::to_string(object.high_limit);
+            metadata_map["low_limit"] = std::to_string(object.low_limit);
+            metadata_map["out_of_service"] = object.out_of_service ? "true" : "false";
+            metadata_map["units"] = object.units;
+            
+            new_datapoint.setMetadata(metadata_map);
+            
+            // 데이터베이스에 저장
+            if (datapoint_repo.save(new_datapoint)) {
+                statistics_.objects_saved++;
                 
-                // 🔥 수정: address는 int 타입이므로 hash 값으로 변환
-                std::hash<std::string> hasher;
-                int address_hash = static_cast<int>(hasher(point_id) % 0x7FFFFFFF);
-                
-                // 새 데이터 포인트 생성
-                DataPointEntity new_datapoint;
-                new_datapoint.setDeviceId(internal_device_id);
-                new_datapoint.setName(object.object_name.empty() ? 
-                    ObjectTypeToString(static_cast<int>(object.object_type)) + "_" + std::to_string(object.object_instance) : 
-                    object.object_name);
-                // 🔥 수정: setAddress는 int 타입을 받음
-                new_datapoint.setAddress(address_hash);
-                new_datapoint.setDataType(DataTypeToString(DetermineDataType(static_cast<int>(object.object_type))));
-                new_datapoint.setUnit(object.units);
-                new_datapoint.setEnabled(true);
-                
-                // 🔥 수정: setMetadata는 map<string, string> 타입을 받음
-                std::map<std::string, std::string> metadata_map;
-                metadata_map["object_type"] = std::to_string(static_cast<int>(object.object_type));
-                metadata_map["object_instance"] = std::to_string(object.object_instance);
-                metadata_map["object_name"] = object.object_name;
-                metadata_map["description"] = object.description;
-                metadata_map["units"] = object.units;
-                metadata_map["original_address"] = point_id;
-                
-                new_datapoint.setMetadata(metadata_map);
-                
-                if (!datapoint_repository_->save(new_datapoint)) {
-                    overall_success = false;
-                    auto& logger = LogManager::getInstance();
-                    logger.Warn("Failed to save datapoint: " + point_id);
+                // 현재 값도 저장 (present_value가 있는 경우)
+                if (!object.present_value.empty()) {
+                    PulseOne::Database::Entities::CurrentValueEntity current_value;
+                    
+                    // 🔥 수정: setPointId 사용 (setDataPointId → setPointId)
+                    current_value.setPointId(new_datapoint.getId());
+                    
+                    // 🔥 수정: setValue는 double을 받으므로 문자열을 숫자로 변환
+                    try {
+                        double numeric_value = std::stod(object.present_value);
+                        current_value.setValue(numeric_value);
+                    } catch (const std::exception&) {
+                        // 숫자 변환 실패 시 0으로 설정
+                        current_value.setValue(0.0);
+                    }
+                    
+                    // 🔥 수정: setQuality는 enum을 받으므로 적절한 enum 값 사용
+                    current_value.setQuality(PulseOne::Enums::DataQuality::GOOD);
+                    
+                    current_value.setTimestamp(PulseOne::Utils::GetCurrentTimestamp());
+                    
+                    if (current_value_repo.save(current_value)) {
+                        statistics_.values_saved++;
+                    }
                 }
                 
-            } catch (const std::exception& e) {
-                overall_success = false;
-                auto& logger = LogManager::getInstance();
-                logger.Error("Exception saving object: " + std::string(e.what()));
+                // 🔥 수정: LOG_INFO 매크로 대신 직접 로깅 (로거가 없는 경우)
+                // LOG_INFO("BACnetDiscovery", 
+                //         "Saved object: " + object.object_name + 
+                //         " (" + object.GetObjectIdentifier() + ") with units: " + object.units);
+                
+            } else {
+                statistics_.database_errors++;
+                // 🔥 수정: LOG_ERROR 매크로 대신 직접 로깅 (로거가 없는 경우)
+                // LOG_ERROR("BACnetDiscovery", 
+                //          "Failed to save object: " + object.object_name);
             }
         }
         
-        auto& logger = LogManager::getInstance();
-        logger.Info("Saved " + std::to_string(objects.size()) +
-                   " objects to database for device: " + std::to_string(device_id));
-        
-        return overall_success;
+        return true;
         
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("Failed to save BACnet objects to database: " + std::string(e.what()));
+        statistics_.database_errors++;
+        // 🔥 수정: LOG_ERROR 매크로 대신 직접 로깅 (로거가 없는 경우)
+        // LOG_ERROR("BACnetDiscovery", 
+        //          "Database error in SaveDiscoveredObjectsToDatabase: " + std::string(e.what()));
         return false;
     }
 }

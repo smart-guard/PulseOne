@@ -1,169 +1,133 @@
 // =============================================================================
-// collector/include/Drivers/Bacnet/BACnetStatisticsManager.h
-// 🔥 BACnet 통계 관리자 - 성능 및 상태 모니터링
+// collector/include/Drivers/Bacnet/BACnetStatisticsManager.h (부분 수정)
+// PerformanceSnapshot 타입 불일치 해결
 // =============================================================================
 
 #ifndef BACNET_STATISTICS_MANAGER_H
 #define BACNET_STATISTICS_MANAGER_H
 
+#include "Drivers/Bacnet/BACnetCommonTypes.h"  // BACnetStatistics, PerformanceMetrics 정의 포함
 #include "Common/UnifiedCommonTypes.h"
-#include "Drivers/Bacnet/BACnetCommonTypes.h"
-#include <atomic>
-#include <mutex>
 #include <chrono>
+#include <mutex>
+#include <atomic>
+#include <vector>
 #include <deque>
-#include <memory>
 
 namespace PulseOne {
 namespace Drivers {
 
 /**
- * @brief BACnet 통계 관리자
- * 
- * 기능:
- * - 실시간 성능 통계 수집
- * - 표준 DriverStatistics 생성
- * - BACnet 특화 통계 관리
- * - 히스토리 데이터 관리
- * - 성능 임계값 모니터링
+ * @brief BACnet 드라이버 통계 관리자
+ * @details 성능 모니터링, 통계 수집, 캐싱 기능 제공
  */
 class BACnetStatisticsManager {
 public:
     // ==========================================================================
     // 생성자 및 소멸자
     // ==========================================================================
-    BACnetStatisticsManager();
-    ~BACnetStatisticsManager() = default;
+    
+    explicit BACnetStatisticsManager(std::chrono::seconds cache_ttl = std::chrono::seconds(30));
+    ~BACnetStatisticsManager();
     
     // 복사/이동 방지
     BACnetStatisticsManager(const BACnetStatisticsManager&) = delete;
     BACnetStatisticsManager& operator=(const BACnetStatisticsManager&) = delete;
     
     // ==========================================================================
-    // 🔥 통계 업데이트 메서드들
+    // 통계 조회 인터페이스
     // ==========================================================================
     
     /**
-     * @brief 읽기 작업 통계 업데이트
-     * @param total_points 시도한 총 포인트 수
-     * @param successful_points 성공한 포인트 수
-     * @param duration 소요 시간
+     * @brief 표준 드라이버 통계 반환 (캐시됨)
      */
-    void UpdateReadStatistics(size_t total_points, size_t successful_points, 
-                             std::chrono::milliseconds duration);
+    const PulseOne::Structs::DriverStatistics& GetStandardStatistics() const;
     
     /**
-     * @brief 쓰기 작업 통계 업데이트
-     * @param total_points 시도한 총 포인트 수
-     * @param successful_points 성공한 포인트 수
-     * @param duration 소요 시간
-     */
-    void UpdateWriteStatistics(size_t total_points, size_t successful_points,
-                              std::chrono::milliseconds duration);
-    
-    /**
-     * @brief 연결 시도 통계 업데이트
-     * @param success 연결 성공 여부
-     */
-    void IncrementConnectionAttempts(bool success = true);
-    
-    /**
-     * @brief 에러 카운트 증가
-     * @param error_type 에러 타입 (선택적)
-     */
-    void IncrementErrorCount(const std::string& error_type = "");
-    
-    /**
-     * @brief 네트워크 메시지 통계 업데이트
-     */
-    void IncrementMessagesReceived();
-    void IncrementMessagesSent();
-    
-    /**
-     * @brief 연결 상태 설정
-     * @param connected 연결 상태
-     */
-    void SetConnectionStatus(bool connected);
-    
-    /**
-     * @brief 네트워크 통계 업데이트 (주기적 호출)
-     */
-    void UpdateNetworkStatistics();
-    
-    // ==========================================================================
-    // 🔥 통계 조회 메서드들
-    // ==========================================================================
-    
-    /**
-     * @brief 표준 드라이버 통계 반환
-     * @return IProtocolDriver 호환 통계
-     */
-    const DriverStatistics& GetStandardStatistics() const;
-    
-    /**
-     * @brief BACnet 특화 통계 반환
-     * @return BACnet 프로토콜 전용 통계
+     * @brief BACnet 특화 통계 반환 (캐시됨)
      */
     const BACnetStatistics& GetBACnetStatistics() const;
     
     /**
-     * @brief 성능 히스토리 반환
-     * @param duration 조회할 기간 (기본: 1시간)
-     * @return 성능 히스토리 데이터
+     * @brief 성능 히스토리 조회
+     * @param duration 조회할 기간
+     * @return 성능 스냅샷 목록
      */
+    // 🔥 수정: BACnetCommonTypes.h의 PerformanceSnapshot 사용
     std::vector<PerformanceSnapshot> GetPerformanceHistory(
-        std::chrono::minutes duration = std::chrono::minutes(60)) const;
+        std::chrono::minutes duration = std::chrono::minutes(60)
+    ) const;
     
     /**
-     * @brief 현재 성능 지표 반환
-     * @return 실시간 성능 정보
+     * @brief 현재 성능 메트릭스 반환
      */
     PerformanceMetrics GetCurrentPerformance() const;
     
+    // ==========================================================================
+    // 통계 업데이트 인터페이스
+    // ==========================================================================
+    
     /**
-     * @brief 에러 분석 결과 반환
-     * @return 에러 타입별 통계
+     * @brief 읽기 작업 완료 기록
      */
-    std::map<std::string, uint64_t> GetErrorAnalysis() const;
+    void RecordReadOperation(bool success, std::chrono::milliseconds duration);
+    
+    /**
+     * @brief 쓰기 작업 완료 기록
+     */
+    void RecordWriteOperation(bool success, std::chrono::milliseconds duration);
+    
+    /**
+     * @brief BACnet 서비스 요청 기록
+     */
+    void RecordBACnetService(const std::string& service_name, bool success);
+    
+    /**
+     * @brief BACnet 에러 기록
+     */
+    void RecordBACnetError(BACNET_ERROR_CLASS error_class, BACNET_ERROR_CODE error_code);
+    
+    /**
+     * @brief 네트워크 통계 업데이트
+     */
+    void RecordNetworkActivity(size_t bytes_sent, size_t bytes_received, bool is_broadcast);
+    
+    /**
+     * @brief Discovery 결과 기록
+     */
+    void RecordDiscoveryResult(size_t devices_found, size_t objects_found);
+    
+    /**
+     * @brief 캐시 사용 기록
+     */
+    void RecordCacheAccess(bool hit);
     
     // ==========================================================================
-    // 관리 메서드들
+    // 제어 인터페이스
     // ==========================================================================
     
     /**
      * @brief 모든 통계 초기화
      */
-    void Reset();
+    void ResetAllStatistics();
     
     /**
-     * @brief 히스토리 데이터 정리
-     * @param max_age 보관할 최대 기간
+     * @brief 캐시 강제 업데이트
      */
-    void CleanupHistory(std::chrono::hours max_age = std::chrono::hours(24));
+    void ForceUpdateCache();
     
     /**
-     * @brief 통계를 JSON 형태로 내보내기
-     * @return JSON 문자열
+     * @brief 성능 히스토리 저장 시작/중지
      */
-    std::string ExportToJson() const;
-
+    void EnablePerformanceHistory(bool enable);
+    
 private:
     // ==========================================================================
-    // 내부 구조체들
+    // 내부 타입 정의 (BACnetCommonTypes.h와 중복 제거)
     // ==========================================================================
     
-    /**
-     * @brief 성능 스냅샷 (시점별 성능 기록)
-     */
-    struct PerformanceSnapshot {
-        std::chrono::system_clock::time_point timestamp;
-        double read_success_rate;
-        double write_success_rate;
-        double avg_response_time_ms;
-        uint64_t messages_per_second;
-        uint64_t active_connections;
-        uint64_t error_rate_per_minute;
-    };
+    // 🔥 제거: PerformanceSnapshot은 BACnetCommonTypes.h에서 정의됨
+    // struct PerformanceSnapshot { ... }  // 삭제됨
     
     /**
      * @brief 누적 통계 데이터
@@ -208,142 +172,43 @@ private:
     // 멤버 변수들
     // ==========================================================================
     
-    // 통계 데이터
+    // 설정
+    std::chrono::seconds cache_ttl_;
+    bool performance_history_enabled_;
+    
+    // 누적 통계
     CumulativeStats cumulative_stats_;
     
-    // 표준 통계 (캐시)
+    // 캐시된 통계 (스레드 안전성을 위한 뮤텍스와 함께)
     mutable std::mutex standard_stats_mutex_;
-    mutable std::unique_ptr<DriverStatistics> standard_statistics_cache_;
-    mutable std::chrono::system_clock::time_point last_standard_update_;
-    
-    // BACnet 특화 통계 (캐시)
     mutable std::mutex bacnet_stats_mutex_;
+    mutable std::mutex history_mutex_;
+    
+    mutable std::unique_ptr<PulseOne::Structs::DriverStatistics> standard_statistics_cache_;
     mutable BACnetStatistics bacnet_statistics_cache_;
-    mutable std::chrono::system_clock::time_point last_bacnet_update_;
     
     // 성능 히스토리
-    mutable std::mutex history_mutex_;
-    std::deque<PerformanceSnapshot> performance_history_;
-    std::chrono::system_clock::time_point last_snapshot_time_;
+    mutable std::deque<PerformanceSnapshot> performance_history_;
+    static constexpr size_t MAX_HISTORY_SIZE = 1440; // 24시간 (1분 간격)
     
-    // 에러 분석
-    std::mutex error_analysis_mutex_;
-    std::map<std::string, std::atomic<uint64_t>> error_counts_by_type_;
-    
-    // 실시간 성능 추적
-    std::mutex performance_mutex_;
-    std::deque<std::chrono::milliseconds> recent_response_times_;
-    std::deque<std::chrono::system_clock::time_point> recent_operations_;
-    
-    static constexpr size_t MAX_RECENT_OPERATIONS = 1000;
-    static constexpr size_t MAX_HISTORY_ENTRIES = 1440; // 24시간 (분 단위)
-    static constexpr auto CACHE_REFRESH_INTERVAL = std::chrono::seconds(5);
-    static constexpr auto SNAPSHOT_INTERVAL = std::chrono::minutes(1);
+    // 캐시 유효성 추적
+    mutable std::chrono::system_clock::time_point last_standard_update_;
+    mutable std::chrono::system_clock::time_point last_bacnet_update_;
     
     // ==========================================================================
-    // 비공개 헬퍼 메서드들
+    // 내부 헬퍼 메서드들
     // ==========================================================================
     
-    /**
-     * @brief 표준 통계 캐시 업데이트
-     */
+    bool IsCacheExpired(const std::chrono::system_clock::time_point& last_update) const;
     void UpdateStandardStatisticsCache() const;
-    
-    /**
-     * @brief BACnet 특화 통계 캐시 업데이트
-     */
     void UpdateBACnetStatisticsCache() const;
+    void AddPerformanceSnapshot();
     
-    /**
-     * @brief 성능 스냅샷 생성 및 히스토리에 추가
-     */
-    void CreatePerformanceSnapshot();
-    
-    /**
-     * @brief 최근 응답 시간 관리
-     */
-    void AddResponseTime(std::chrono::milliseconds duration);
-    void CleanupRecentData();
-    
-    /**
-     * @brief 평균 응답 시간 계산
-     */
-    double CalculateAverageResponseTime() const;
-    
-    /**
-     * @brief 초당 메시지 수 계산
-     */
-    double CalculateMessagesPerSecond() const;
-    
-    /**
-     * @brief 성공률 계산
-     */
+    // 계산 헬퍼들
     double CalculateSuccessRate(uint64_t successful, uint64_t total) const;
-    
-    /**
-     * @brief 런타임 계산
-     */
+    double CalculateAverageResponseTime() const;
     std::chrono::seconds GetRuntime() const;
-    
-    /**
-     * @brief 캐시 만료 확인
-     */
-    bool IsCacheExpired(std::chrono::system_clock::time_point last_update) const;
 };
-
-// =============================================================================
-// 인라인 구현들
-// =============================================================================
-
-inline void BACnetStatisticsManager::IncrementConnectionAttempts(bool success) {
-    cumulative_stats_.connection_attempts.fetch_add(1);
-    if (success) {
-        cumulative_stats_.successful_connections.fetch_add(1);
-    } else {
-        cumulative_stats_.connection_failures.fetch_add(1);
-    }
-    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
-}
-
-inline void BACnetStatisticsManager::IncrementErrorCount(const std::string& error_type) {
-    cumulative_stats_.total_errors.fetch_add(1);
-    
-    if (!error_type.empty()) {
-        std::lock_guard<std::mutex> lock(error_analysis_mutex_);
-        error_counts_by_type_[error_type].fetch_add(1);
-    }
-    
-    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
-}
-
-inline void BACnetStatisticsManager::IncrementMessagesReceived() {
-    cumulative_stats_.messages_received.fetch_add(1);
-    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
-}
-
-inline void BACnetStatisticsManager::IncrementMessagesSent() {
-    cumulative_stats_.messages_sent.fetch_add(1);
-    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
-}
-
-inline void BACnetStatisticsManager::SetConnectionStatus(bool connected) {
-    cumulative_stats_.is_connected.store(connected);
-    cumulative_stats_.last_update_time = std::chrono::system_clock::now();
-}
-
-inline double BACnetStatisticsManager::CalculateSuccessRate(uint64_t successful, uint64_t total) const {
-    return total > 0 ? (static_cast<double>(successful) / total) * 100.0 : 0.0;
-}
-
-inline std::chrono::seconds BACnetStatisticsManager::GetRuntime() const {
-    auto now = std::chrono::system_clock::now();
-    return std::chrono::duration_cast<std::chrono::seconds>(now - cumulative_stats_.start_time);
-}
-
-inline bool BACnetStatisticsManager::IsCacheExpired(std::chrono::system_clock::time_point last_update) const {
-    auto now = std::chrono::system_clock::now();
-    return (now - last_update) > CACHE_REFRESH_INTERVAL;
-}
 
 } // namespace Drivers
 } // namespace PulseOne
