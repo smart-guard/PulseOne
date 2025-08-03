@@ -1,98 +1,65 @@
-/**
- * @file BACnetDriver.h
- * @brief BACnet 프로토콜 드라이버 - 🔥 모든 누락된 멤버 추가 완료
- * @author PulseOne Development Team
- * @date 2025-08-03
- * @version 1.0.0
- * 
- * 🔥 주요 수정사항:
- * 1. 누락된 멤버 변수들 모두 추가 (is_connected_, should_stop_ 등)
- * 2. 누락된 메서드들 모두 선언
- * 3. 전방 선언 문제 해결
- * 4. 표준 DriverStatistics 사용
- */
+//=============================================================================
+// collector/include/Drivers/Bacnet/BACnetDriver.h
+// BACnet 프로토콜 드라이버 헤더 - inline 함수 중복 제거
+//=============================================================================
 
-#ifndef BACNET_DRIVER_H
-#define BACNET_DRIVER_H
+#ifndef PULSEONE_DRIVERS_BACNET_DRIVER_H
+#define PULSEONE_DRIVERS_BACNET_DRIVER_H
 
+// =============================================================================
+// 필수 헤더 포함
+// =============================================================================
 #include "Drivers/Common/IProtocolDriver.h"
+#include "Common/UnifiedCommonTypes.h"
 #include "Drivers/Bacnet/BACnetCommonTypes.h"
-#include "Common/DriverStatistics.h"
-#include "Common/Structs.h"
-#include "Common/Enums.h"
-#include "Common/Utils.h"
+#include "Drivers/Bacnet/BACnetErrorMapper.h"
 #include "Utils/LogManager.h"
-
-// ✅ BACnet 스택 조건부 인클루드
-#ifdef HAS_BACNET_STACK
-extern "C" {
-    #include <bacnet/bacdef.h>
-    #include <bacnet/bacenum.h>
-    #include <bacnet/rp.h>
-    #include <bacnet/wp.h>
-    #include <bacnet/iam.h>
-    #include <bacnet/whois.h>
-    #include <bacnet/basic/tsm/tsm.h>
-    #include <bacnet/basic/binding/address.h>
-    #include <bacnet/basic/object/device.h>
-}
-#else
-// 시뮬레이션을 위한 더미 정의들
-typedef enum {
-    OBJECT_DEVICE = 8,
-    OBJECT_ANALOG_INPUT = 0,
-    OBJECT_ANALOG_OUTPUT = 1,
-    OBJECT_ANALOG_VALUE = 2,
-    OBJECT_BINARY_INPUT = 3,
-    OBJECT_BINARY_OUTPUT = 4,
-    OBJECT_BINARY_VALUE = 5
-} BACNET_OBJECT_TYPE;
-
-typedef enum {
-    PROP_PRESENT_VALUE = 85,
-    PROP_OBJECT_NAME = 77,
-    PROP_OBJECT_TYPE = 79
-} BACNET_PROPERTY_ID;
-
-typedef struct {
-    uint8_t net;
-    uint8_t len;
-    uint8_t adr[6];
-} BACNET_ADDRESS;
-#endif
 
 #include <memory>
 #include <mutex>
-#include <atomic>
 #include <thread>
-#include <vector>
-#include <map>
-#include <string>
+#include <atomic>
+#include <unordered_map>
+#include <queue>
+#include <future>
 #include <chrono>
-#include <condition_variable>
-#include <functional>
+
+// BACnet 스택 조건부 포함
+#ifdef HAS_BACNET_STACK
+extern "C" {
+    // 핵심 BACnet 헤더들 (실제 확인된 경로)
+    #include <bacnet/bacdef.h>
+    #include <bacnet/config.h>
+    #include <bacnet/bacerror.h>
+    #include <bacnet/bacenum.h>
+    #include <bacnet/bacdcode.h>
+    #include <bacnet/bacapp.h>
+    
+    // 네트워크 및 프로토콜 레이어
+    #include <bacnet/npdu.h>
+    #include <bacnet/apdu.h>
+    
+    // 서비스 관련 (실제 확인된 파일들)
+    #include <bacnet/rp.h>                    // ReadProperty
+    #include <bacnet/wp.h>                    // WriteProperty
+    #include <bacnet/rpm.h>                   // ReadPropertyMultiple  
+    #include <bacnet/wpm.h>                   // WritePropertyMultiple
+    #include <bacnet/cov.h>                   // Change of Value
+    #include <bacnet/iam.h>                   // I-Am
+    #include <bacnet/whois.h>                 // Who-Is
+    
+    // 데이터링크 레이어 (계층적 구조 - 실제 경로!)
+    #include <bacnet/datalink/bip.h>          // BACnet/IP
+    
+    // 기본 서비스 (계층적 구조 - 실제 경로!)
+    #include <bacnet/basic/tsm/tsm.h>         // Transaction State Machine
+    #include <bacnet/basic/binding/address.h> // Address binding
+    #include <bacnet/basic/object/device.h>   // Device object
+}
+#endif
 
 namespace PulseOne {
 namespace Drivers {
-
-// =============================================================================
-// 전방 선언들 (순환 의존성 방지)
-// =============================================================================
-// ✅ BACnetWorker와 BACnetErrorMapper 제거 - 순환 의존성 방지
-
-// =============================================================================
-// BACnet 주소 정보 구조체
-// =============================================================================
-struct BACnetAddressInfo {
-    uint32_t device_id = 0;
-    BACNET_OBJECT_TYPE object_type = OBJECT_ANALOG_INPUT;
-    uint32_t object_instance = 0;
-    BACNET_PROPERTY_ID property_id = PROP_PRESENT_VALUE;
-};
-
-// =============================================================================
-// BACnet 드라이버 클래스
-// =============================================================================
 
 /**
  * @brief BACnet 프로토콜 드라이버
@@ -118,7 +85,7 @@ public:
     BACnetDriver& operator=(BACnetDriver&&) = delete;
 
     // =============================================================================
-    // IProtocolDriver 인터페이스 구현
+    // IProtocolDriver 인터페이스 구현 (모든 함수 선언만)
     // =============================================================================
     
     bool Initialize(const PulseOne::Structs::DriverConfig& config) override;
@@ -140,51 +107,68 @@ public:
     PulseOne::Structs::ErrorInfo GetLastError() const override;
     
     const PulseOne::Structs::DriverStatistics& GetStatistics() const override;
-    void SetError(PulseOne::Enums::ErrorCode code, const std::string& message) override;
+    void SetError(PulseOne::Enums::ErrorCode code, const std::string& message);
     
     // =============================================================================
     // BACnet 특화 공개 메서드들
     // =============================================================================
     
     /**
-     * @brief 싱글턴 인스턴스 접근
+     * @brief 싱글톤 인스턴스 반환
      */
-    static BACnetDriver* GetInstance();
+    static BACnetDriver& GetInstance();
     
     /**
-     * @brief 디바이스 발견 콜백 설정
+     * @brief BACnet 디바이스 검색
      */
-    void SetDeviceDiscoveredCallback(std::function<void(const BACnetDeviceInfo&)> callback);
+    std::vector<BACnetDeviceInfo> DiscoverDevices(uint32_t timeout_ms = 5000);
     
     /**
-     * @brief COV 알림 콜백 설정
+     * @brief COV (Change of Value) 구독
      */
-    void SetCovNotificationCallback(std::function<void(const std::string&, const PulseOne::Structs::TimestampedValue&)> callback);
+    bool SubscribeCOV(uint32_t device_id, BACnetObjectType object_type, 
+                     uint32_t object_instance, uint32_t property_id);
     
     /**
-     * @brief 발견된 디바이스 목록 조회
+     * @brief COV 구독 해제
      */
-    std::vector<BACnetDeviceInfo> GetDiscoveredDevices() const;
-    
-    /**
-     * @brief Who-Is 브로드캐스트 전송
-     */
-    bool SendWhoIs(uint32_t low_limit = 0, uint32_t high_limit = 0xFFFFFF);
+    bool UnsubscribeCOV(uint32_t device_id, BACnetObjectType object_type, 
+                       uint32_t object_instance, uint32_t property_id);
 
 private:
     // =============================================================================
-    // 내부 메서드들
+    // 상태 관리 멤버 변수들 (선언 순서 수정)
+    // =============================================================================
+    mutable PulseOne::Structs::DriverStatistics driver_statistics_;
+    std::atomic<PulseOne::Structs::DriverStatus> status_;
+    std::atomic<bool> is_connected_;                    // ✅ 위치 수정
+    std::atomic<bool> should_stop_;
+    mutable std::mutex error_mutex_;
+    PulseOne::Structs::ErrorInfo last_error_;
+    
+    // =============================================================================
+    // BACnet 특화 설정들
+    // =============================================================================
+    uint32_t local_device_id_;
+    std::string target_ip_;
+    uint16_t target_port_;
+    uint32_t max_apdu_length_;
+    bool segmentation_support_;
+    
+    // =============================================================================
+    // 네트워킹 관련
+    // =============================================================================
+    int socket_fd_;                                     // ✅ 위치 수정
+    std::thread network_thread_;
+    
+    // =============================================================================
+    // BACnet 특화 비공개 메서드들 (선언만)
     // =============================================================================
     
     /**
-     * @brief 설정 파싱
+     * @brief 드라이버 설정 파싱
      */
     void ParseDriverConfig(const PulseOne::Structs::DriverConfig& config);
-    
-    /**
-     * @brief BACnet 특화 통계 초기화
-     */
-    void InitializeBACnetStatistics();
     
     /**
      * @brief BACnet 스택 초기화
@@ -192,9 +176,9 @@ private:
     bool InitializeBACnetStack();
     
     /**
-     * @brief BACnet 스택 정리
+     * @brief BACnet 특화 통계 초기화
      */
-    void CleanupBACnetStack();
+    void InitializeBACnetStatistics();
     
     /**
      * @brief UDP 소켓 생성
@@ -202,91 +186,24 @@ private:
     bool CreateSocket();
     
     /**
-     * @brief UDP 소켓 해제
+     * @brief 소켓 해제
      */
     void CloseSocket();
     
     /**
      * @brief 단일 속성 읽기
      */
-    bool ReadSingleProperty(const PulseOne::Structs::DataPoint& point,
+    bool ReadSingleProperty(const PulseOne::Structs::DataPoint& point, 
                            PulseOne::Structs::TimestampedValue& value);
     
     /**
      * @brief 단일 속성 쓰기
      */
-    bool WriteSingleProperty(const PulseOne::Structs::DataPoint& point,
-                            const PulseOne::Structs::DataValue& value);
-    
-    /**
-     * @brief BACnet 주소 파싱
-     */
-    BACnetAddressInfo ParseBACnetAddress(const std::string& address) const;
-
-    // =============================================================================
-    // 멤버 변수들
-    // =============================================================================
-
-private:
-    // ✅ 표준 통계 구조
-    mutable PulseOne::Structs::DriverStatistics driver_statistics_;
-    
-    // 기본 설정
-    PulseOne::Structs::DriverConfig config_;
-    uint32_t local_device_id_;
-    std::string target_ip_;
-    uint16_t target_port_;
-    uint16_t max_apdu_length_;
-    bool segmentation_support_;
-    
-    // ✅ 상태 관리 (누락된 멤버들)
-    std::atomic<PulseOne::Structs::DriverStatus> status_{PulseOne::Structs::DriverStatus::UNINITIALIZED};
-    std::atomic<bool> is_connected_{false};                    // ✅ 추가
-    std::atomic<bool> should_stop_{false};                     // ✅ 추가
-    std::atomic<bool> is_bacnet_initialized_{false};           // ✅ 추가
-    PulseOne::Structs::ErrorInfo last_error_;
-    mutable std::mutex error_mutex_;                            // ✅ 추가
-    
-    // ✅ 네트워크 관리 (누락된 멤버들)
-    int socket_fd_;
-    std::thread network_thread_;                                // ✅ 추가
-    std::atomic<bool> network_thread_running_{false};          // ✅ 추가
-    std::mutex network_mutex_;
-    std::condition_variable network_cv_;                        // ✅ 추가
-    
-    // 발견된 디바이스들
-    std::map<uint32_t, BACnetDeviceInfo> discovered_devices_;
-    mutable std::mutex devices_mutex_;
-    
-    // ✅ 콜백들 (누락된 멤버들)
-    std::function<void(const BACnetDeviceInfo&)> device_discovered_callback_;
-    std::function<void(const std::string&, const PulseOne::Structs::TimestampedValue&)> cov_notification_callback_;
-    std::mutex callback_mutex_;
+    bool WriteSingleProperty(const PulseOne::Structs::DataPoint& point, 
+                           const PulseOne::Structs::DataValue& value);
 };
-
-// =============================================================================
-// 인라인 메서드 구현
-// =============================================================================
-
-inline PulseOne::Enums::ProtocolType BACnetDriver::GetProtocolType() const {
-    return PulseOne::Enums::ProtocolType::BACNET_IP;
-}
-
-inline PulseOne::Structs::DriverStatus BACnetDriver::GetStatus() const {
-    return status_.load();
-}
-
-inline PulseOne::Structs::ErrorInfo BACnetDriver::GetLastError() const {
-    std::lock_guard<std::mutex> lock(error_mutex_);
-    return last_error_;
-}
-
-inline BACnetDriver* BACnetDriver::GetInstance() {
-    std::lock_guard<std::mutex> lock(instance_mutex_);
-    return instance_;
-}
 
 } // namespace Drivers
 } // namespace PulseOne
 
-#endif // BACNET_DRIVER_H
+#endif // PULSEONE_DRIVERS_BACNET_DRIVER_H
