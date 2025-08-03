@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Drivers/Bacnet/BACnetDriver.h
-// 🔥 완성된 BACnet 드라이버 헤더 - 표준 DriverStatistics 사용
+// 🔥 완전 수정된 BACnet 드라이버 헤더 - 모든 컴파일 에러 해결
 // =============================================================================
 
 #ifndef BACNET_DRIVER_H
@@ -15,7 +15,11 @@
 #include "Common/DriverError.h"
 #include "Utils/LogManager.h"
 
-제 구조)
+// ✅ BACnet 스택 조건부 인클루드 (깔끔한 구조)
+#ifdef HAS_BACNET_STACK
+extern "C" {
+    #include <bacnet/bacdef.h>                // 기본 정의
+    #include <bacnet/bacenum.h>               // 열거형들
     #include <bacnet/rp.h>                    // ReadProperty
     #include <bacnet/wp.h>                    // WriteProperty
     #include <bacnet/rpm.h>                   // ReadPropertyMultiple  
@@ -138,197 +142,186 @@ public:
     BACnetDriver& operator=(BACnetDriver&&) = delete;
 
     // =============================================================================
-    // IProtocolDriver 인터페이스 구현
+    // IProtocolDriver 인터페이스 구현 (완전한 시그니처)
     // =============================================================================
     
-    // 기본 라이프사이클
     bool Initialize(const PulseOne::Structs::DriverConfig& config) override;
-    bool Start() override;                                    // ✅ 새로 추가
-    bool Stop() override;                                     // ✅ 새로 추가
     bool Connect() override;
     bool Disconnect() override;
     bool IsConnected() const override;
     
-    // 데이터 읽기/쓰기
-    bool ReadValues(
-        const std::vector<PulseOne::Structs::DataPoint>& points,
-        std::vector<PulseOne::Structs::TimestampedValue>& values
-    ) override;
+    bool ReadValues(const std::vector<PulseOne::Structs::DataPoint>& points,
+                   std::vector<PulseOne::Structs::TimestampedValue>& values) override;
     
-    bool WriteValue(
-        const PulseOne::Structs::DataPoint& point,
-        const PulseOne::Structs::DataValue& value
-    ) override;
+    bool WriteValue(const PulseOne::Structs::DataPoint& point, 
+                   const PulseOne::Structs::DataValue& value) override;
     
-    bool WriteValues(
-        const std::map<PulseOne::Structs::DataPoint, PulseOne::Structs::DataValue>& points_and_values
-    ) override;
+    // ✅ 누락된 필수 메서드들 추가
+    bool Start() override;
+    bool Stop() override;
     
-    // 상태 및 정보
     PulseOne::Enums::ProtocolType GetProtocolType() const override;
     PulseOne::Structs::DriverStatus GetStatus() const override;
-    const PulseOne::Structs::DriverStatistics& GetStatistics() const override;  // ✅ 표준 구조 반환
     PulseOne::Structs::ErrorInfo GetLastError() const override;
-    void SetError(PulseOne::Enums::ErrorCode code, const std::string& message) override;  // ✅ 새로 추가
-    std::string GetDiagnosticInfo() const override;
-    bool HealthCheck() override;
+    
+    // ✅ SetError 메서드 (override 제거 - IProtocolDriver에 없음)
+    void SetError(PulseOne::Enums::ErrorCode code, const std::string& message);
+    
+    // ✅ 통계 관련 (표준 DriverStatistics 사용)
+    const DriverStatistics& GetStatistics() const override;
+    void ResetStatistics() override;
 
     // =============================================================================
-    // BACnet 특화 기능들
+    // BACnet 특화 메서드들
     // =============================================================================
     
     /**
-     * @brief 단일 BACnet 속성 읽기 (핵심 기능만)
-     * @param device_id 대상 디바이스 ID
-     * @param object_type BACnet 객체 타입
-     * @param object_instance 객체 인스턴스
-     * @param property_id 속성 ID
-     * @param value 읽은 값이 저장될 변수
-     * @return 성공 여부
+     * @brief BACnet 디바이스 발견 (Who-Is 브로드캐스트)
      */
-    bool ReadSingleProperty(uint32_t device_id, 
-                           BACNET_OBJECT_TYPE object_type,
-                           uint32_t object_instance, 
-                           BACNET_PROPERTY_ID property_id,
-                           PulseOne::Structs::DataValue& value);
+    bool DiscoverDevices(uint32_t low_limit = 0, uint32_t high_limit = BACNET_MAX_INSTANCE);
     
     /**
-     * @brief 단일 BACnet 속성 쓰기 (핵심 기능만)
-     * @param device_id 대상 디바이스 ID
-     * @param object_type BACnet 객체 타입
-     * @param object_instance 객체 인스턴스
-     * @param property_id 속성 ID
-     * @param value 쓸 값
-     * @param priority 쓰기 우선순위 (1-16)
-     * @return 성공 여부
+     * @brief 특정 디바이스의 객체 목록 읽기
      */
-    bool WriteSingleProperty(uint32_t device_id, 
-                            BACNET_OBJECT_TYPE object_type,
-                            uint32_t object_instance, 
-                            BACNET_PROPERTY_ID property_id,
-                            const PulseOne::Structs::DataValue& value,
-                            uint8_t priority = 16);
+    bool ReadObjectList(uint32_t device_id, std::vector<BACnetObjectInfo>& objects);
     
     /**
-     * @brief 싱글턴 인스턴스 접근
+     * @brief 단일 속성 읽기
+     */
+    bool ReadProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_type, 
+                     uint32_t object_instance, BACNET_PROPERTY_ID property_id,
+                     PulseOne::Structs::DataValue& value);
+    
+    /**
+     * @brief 단일 속성 쓰기
+     */
+    bool WriteProperty(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
+                      uint32_t object_instance, BACNET_PROPERTY_ID property_id,
+                      const PulseOne::Structs::DataValue& value, uint8_t priority = 16);
+    
+    /**
+     * @brief COV 구독
+     */
+    bool SubscribeCOV(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
+                     uint32_t object_instance, uint32_t lifetime_seconds = 3600);
+    
+    /**
+     * @brief COV 구독 해제
+     */
+    bool UnsubscribeCOV(uint32_t device_id, BACNET_OBJECT_TYPE object_type,
+                       uint32_t object_instance);
+
+    // =============================================================================
+    // 콜백 및 이벤트 핸들링
+    // =============================================================================
+    
+    /**
+     * @brief 디바이스 발견 콜백 등록
+     */
+    void SetDeviceDiscoveredCallback(std::function<void(const BACnetDeviceInfo&)> callback);
+    
+    /**
+     * @brief COV 알림 콜백 등록
+     */
+    void SetCOVNotificationCallback(std::function<void(const std::string&, const PulseOne::Structs::TimestampedValue&)> callback);
+
+    // =============================================================================
+    // 상태 조회 및 설정
+    // =============================================================================
+    
+    /**
+     * @brief 로컬 디바이스 ID 설정
+     */
+    void SetLocalDeviceId(uint32_t device_id) { local_device_id_ = device_id; }
+    
+    /**
+     * @brief 로컬 디바이스 ID 조회
+     */
+    uint32_t GetLocalDeviceId() const { return local_device_id_; }
+    
+    /**
+     * @brief 발견된 디바이스 목록 조회
+     */
+    std::vector<BACnetDeviceInfo> GetDiscoveredDevices() const;
+    
+    /**
+     * @brief 싱글턴 인스턴스 조회 (BACnet 스택 전역 상태용)
      */
     static BACnetDriver* GetInstance();
 
 protected:
     // =============================================================================
-    // 보호된 메서드들 (서브클래스 오버라이드 가능)
+    // 내부 구현 메서드들
     // =============================================================================
-    virtual bool DoStart();
-    virtual bool DoStop();
+    
+    /**
+     * @brief 설정 파싱
+     */
+    void ParseDriverConfig(const PulseOne::Structs::DriverConfig& config);
+    
+    /**
+     * @brief BACnet 스택 초기화
+     */
+    bool InitializeBACnetStack();
+    
+    /**
+     * @brief BACnet 스택 정리
+     */
+    void CleanupBACnetStack();
+    
+    /**
+     * @brief 네트워크 처리 스레드
+     */
+    void NetworkProcessingThread();
+    
+    /**
+     * @brief BACnet 특화 통계 초기화
+     */
+    void InitializeBACnetStatistics();
+    
+    /**
+     * @brief 에러 처리
+     */
+    void HandleBACnetError(uint8_t error_class, uint8_t error_code, const std::string& context);
 
-private:
     // =============================================================================
     // 멤버 변수들
     // =============================================================================
+
+private:
+    // ✅ 표준 통계 구조 (DriverStatistics 사용)
+    mutable DriverStatistics driver_statistics_;
     
-    // 설정
+    // 기본 설정
     PulseOne::Structs::DriverConfig config_;
-    uint32_t local_device_id_ = 1234;
-    std::string target_ip_ = "";
-    uint16_t target_port_ = 47808;
-    uint32_t max_apdu_length_ = 1476;
-    bool segmentation_support_ = true;
+    uint32_t local_device_id_;
+    std::string target_ip_;
+    uint16_t target_port_;
+    uint16_t max_apdu_length_;
+    bool segmentation_support_;
     
     // 상태 관리
-    mutable std::atomic<PulseOne::Structs::DriverStatus> status_{PulseOne::Structs::DriverStatus::UNINITIALIZED};
-    std::atomic<bool> is_connected_{false};
+    std::atomic<PulseOne::Structs::DriverStatus> status_{PulseOne::Structs::DriverStatus::UNINITIALIZED};
     std::atomic<bool> should_stop_{false};
     PulseOne::Structs::ErrorInfo last_error_;
     
-    // ✅ 표준 통계 구조 직접 사용 (중복 제거)
-    mutable PulseOne::Structs::DriverStatistics driver_statistics_;
-    
-    // BACnet 스택 관련
-    std::atomic<bool> is_bacnet_initialized_{false};
-    int socket_fd_ = -1;
-    std::atomic<bool> network_thread_running_{false};
+    // 네트워크
+    int socket_fd_;
     std::thread network_thread_;
+    std::mutex network_mutex_;
     
-    // 워커 및 헬퍼 클래스들 (핵심 기능만)
+    // 발견된 디바이스들
+    std::map<uint32_t, BACnetDeviceInfo> discovered_devices_;
+    mutable std::mutex devices_mutex_;
+    
+    // 헬퍼 클래스들
     std::unique_ptr<BACnetWorker> worker_;
     std::unique_ptr<BACnetErrorMapper> error_mapper_;
     
-    // 🔥 고급 기능들은 별도 클래스로 분리 (필요시 주입)
-    // std::unique_ptr<BACnetServiceManager> service_manager_;      // COV, 알람, 스케줄링
-    // std::unique_ptr<BACnetDiscoveryManager> discovery_manager_;  // 디바이스/객체 검색
-    // std::unique_ptr<BACnetObjectMapper> object_mapper_;          // 객체 매핑
-    // std::unique_ptr<BACnetNetworkManager> network_manager_;      // 네트워크 관리
-    
-    // 동기화
-    mutable std::mutex driver_mutex_;
-    mutable std::mutex statistics_mutex_;
-    mutable std::mutex network_mutex_;
-    std::condition_variable network_cv_;
-    
-    // =============================================================================
-    // 내부 헬퍼 메서드들
-    // =============================================================================
-    
-    // 설정 및 초기화
-    void ParseDriverConfig(const PulseOne::Structs::DriverConfig& config);
-    bool InitializeBACnetStack();
-    void CleanupBACnetStack();
-    bool SetupLocalDevice();
-    void InitializeBACnetStatistics();                      // ✅ BACnet 특화 통계 초기화
-    
-    // 네트워크 관리
-    bool StartNetworkThread();
-    void StopNetworkThread();
-    void NetworkThreadFunction();
-    void ProcessIncomingMessages();
-    
-    // 읽기/쓰기 헬퍼들
-    bool ReadSingleValue(const PulseOne::Structs::DataPoint& point, 
-                        PulseOne::Structs::TimestampedValue& value);
-    bool WriteSingleValue(const PulseOne::Structs::DataPoint& point, 
-                         const PulseOne::Structs::DataValue& value);
-    
-    // BACnet 프로토콜 레벨 메서드들
-    uint8_t SendReadPropertyRequest(uint32_t device_id,
-                                   BACNET_OBJECT_TYPE object_type,
-                                   uint32_t object_instance,
-                                   BACNET_PROPERTY_ID property_id);
-    
-    uint8_t SendWritePropertyRequest(uint32_t device_id,
-                                    BACNET_OBJECT_TYPE object_type,
-                                    uint32_t object_instance,
-                                    BACNET_PROPERTY_ID property_id,
-                                    const PulseOne::Structs::DataValue& value,
-                                    int32_t array_index = BACNET_ARRAY_ALL,
-                                    uint8_t priority = 16);
-    
-    // Discovery 헬퍼들
-    void SendWhoIsRequest();
-    void ProcessIAmResponse(uint32_t device_id, const BACNET_ADDRESS& address);
-    
-    // ✅ 표준 통계 업데이트 메서드들
-    void UpdateReadStatistics(bool success, std::chrono::milliseconds duration);
-    void UpdateWriteStatistics(bool success, std::chrono::milliseconds duration);
-    void UpdateErrorStatistics(const std::string& error_type);
-    void UpdateConnectionStatistics(bool connected);
-    
-    // 유틸리티 메서드들
-    std::string BACnetValueToString(const PulseOne::Structs::DataValue& value) const;
-    PulseOne::Structs::DataValue ParseBACnetValue(const std::string& str, BACNET_OBJECT_TYPE type) const;
-    bool IsValidBACnetAddress(const std::string& address) const;
-    BACNET_OBJECT_TYPE StringToObjectType(const std::string& type_str) const;
-    BACNET_PROPERTY_ID StringToPropertyID(const std::string& prop_str) const;
-    std::string ObjectTypeToString(BACNET_OBJECT_TYPE type) const;
-    std::string PropertyIDToString(BACNET_PROPERTY_ID prop) const;
-    
-    // 주소 관리
-    bool ResolveDeviceAddress(uint32_t device_id, BACNET_ADDRESS& address);
-    void CacheDeviceAddress(uint32_t device_id, const BACNET_ADDRESS& address);
-    
-    // 에러 변환
-    PulseOne::Structs::ErrorInfo ConvertBACnetError(int bacnet_error_class, 
-                                                   int bacnet_error_code, 
-                                                   const std::string& context = "") const;
+    // 콜백들
+    std::function<void(const BACnetDeviceInfo&)> device_discovered_callback_;
+    std::function<void(const std::string&, const PulseOne::Structs::TimestampedValue&)> cov_notification_callback_;
+    std::mutex callback_mutex_;
 };
 
 // =============================================================================
@@ -336,7 +329,7 @@ private:
 // =============================================================================
 
 inline PulseOne::Enums::ProtocolType BACnetDriver::GetProtocolType() const {
-    return PulseOne::Enums::ProtocolType::BACNET_IP;  // ✅ BACNET → BACNET_IP
+    return PulseOne::Enums::ProtocolType::BACNET_IP;  // ✅ 수정: BACNET → BACNET_IP
 }
 
 inline PulseOne::Structs::DriverStatus BACnetDriver::GetStatus() const {
@@ -344,7 +337,6 @@ inline PulseOne::Structs::DriverStatus BACnetDriver::GetStatus() const {
 }
 
 inline PulseOne::Structs::ErrorInfo BACnetDriver::GetLastError() const {
-    std::lock_guard<std::mutex> lock(driver_mutex_);
     return last_error_;
 }
 

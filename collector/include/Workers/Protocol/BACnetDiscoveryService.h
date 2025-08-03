@@ -1,11 +1,10 @@
 // =============================================================================
 // include/Workers/Protocol/BACnetDiscoveryService.h 
-// 누락된 메서드 선언 추가
+// 🔥 누락된 메서드 선언 완전 추가
 // =============================================================================
 
 #ifndef BACNET_DISCOVERY_SERVICE_H
 #define BACNET_DISCOVERY_SERVICE_H
-
 
 // 전방 선언
 namespace PulseOne {
@@ -13,12 +12,13 @@ namespace Workers {
     class BACnetWorker;
 }
 }
-//#include "Workers/Protocol/BACnetWorker.h"
+
 #include "Drivers/Bacnet/BACnetDriver.h"
 #include "Database/Repositories/DeviceRepository.h" 
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
-#include "Common/UnifiedCommonTypes.h"  // 🔥 수정: Structs.h 대신
+#include "Database/DatabaseTypes.h"    // 🔥 QueryCondition 포함
+#include "Common/UnifiedCommonTypes.h"
 #include <memory>
 #include <mutex>
 #include <chrono>
@@ -72,7 +72,7 @@ public:
     
     void OnDeviceDiscovered(const Drivers::BACnetDeviceInfo& device);
     void OnObjectDiscovered(uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects);
-    void OnValueChanged(const std::string& object_id, const TimestampedValue& value);
+    void OnValueChanged(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
 private:
     // =======================================================================
@@ -81,38 +81,73 @@ private:
     
     bool SaveDiscoveredDeviceToDatabase(const Drivers::BACnetDeviceInfo& device);
     bool SaveDiscoveredObjectsToDatabase(uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects);
-    bool UpdateCurrentValueInDatabase(const std::string& object_id, const TimestampedValue& value);
+    bool UpdateCurrentValueInDatabase(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
     // =======================================================================
-    // 🔥 추가: 누락된 헬퍼 메서드 선언들
+    // 🔥 누락된 유틸리티 함수 선언들 추가
     // =======================================================================
     
+    /**
+     * @brief 데이터베이스에서 BACnet 디바이스 ID로 실제 디바이스 ID 찾기
+     */
     int FindDeviceIdInDatabase(uint32_t bacnet_device_id);
+    
+    /**
+     * @brief 데이터포인트 ID 생성
+     */
     std::string GenerateDataPointId(uint32_t device_id, const Drivers::BACnetObjectInfo& object);
+    
+    /**
+     * @brief 객체 타입을 문자열로 변환
+     */
     std::string ObjectTypeToString(int type);
-    PulseOne::Enums::DataType DetermineDataType(int tag);  // 🔥 수정: 올바른 반환 타입
-    std::string DataTypeToString(PulseOne::Enums::DataType type);  // 🔥 추가: 새 헬퍼 함수
+    
+    /**
+     * @brief BACnet 객체 타입으로부터 데이터 타입 결정
+     */
+    PulseOne::Enums::DataType DetermineDataType(int type);
+    
+    /**
+     * @brief 데이터 타입을 문자열로 변환
+     */
+    std::string DataTypeToString(PulseOne::Enums::DataType type);
+    
+    /**
+     * @brief 데이터 값을 문자열로 변환
+     */
     std::string ConvertDataValueToString(const PulseOne::Structs::DataValue& value);
+    
+    /**
+     * @brief BACnet 주소를 IP 문자열로 변환
+     */
+    std::string BACnetAddressToString(const BACNET_ADDRESS& address);
+    
+    /**
+     * @brief DataValue를 double로 변환 (CurrentValueEntity용)
+     */
+    double ConvertDataValueToDouble(const PulseOne::Structs::DataValue& value);
+    
+    /**
+     * @brief 에러 처리
+     */
     void HandleError(const std::string& context, const std::string& error);
 
     // =======================================================================
     // 멤버 변수들
     // =======================================================================
     
-    // Repository 참조들
+    // Repository들
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repository_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repository_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repository_;
     
-    // Worker 참조 (weak_ptr로 순환 참조 방지)
+    // 워커 연결
     std::weak_ptr<BACnetWorker> registered_worker_;
-    
-    // 상태 관리
     std::atomic<bool> is_active_;
     
-    // 통계 (스레드 안전)
+    // 통계 및 동기화
+    mutable Statistics statistics_;
     mutable std::mutex stats_mutex_;
-    Statistics statistics_;
 };
 
 } // namespace Workers
