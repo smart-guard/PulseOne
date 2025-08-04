@@ -28,6 +28,10 @@ namespace PulseOne::Drivers {
     struct SlaveHealthInfo;
     struct RegisterAccessPattern;
     struct ModbusPacketLog;
+    
+    // 타입 별칭 (IProtocolDriver 호환성)
+    using ProtocolType = PulseOne::Enums::ProtocolType;
+    using ErrorInfo = PulseOne::Structs::ErrorInfo;
 }
 
 namespace PulseOne {
@@ -38,7 +42,7 @@ namespace Drivers {
  * @details 핵심 통신 기능 + 선택적 고급 기능 활성화
  * 
  * 🎯 설계 목표:
- * - BACnetDriver와 동일한 심플함
+ * - BACnetDriver와 동일한 심플함 (300줄 목표)
  * - Worker와 100% 호환성 유지
  * - 선택적 고급 기능 활성화
  * - 메모리 효율성 (사용하지 않는 기능은 로드하지 않음)
@@ -71,84 +75,71 @@ public:
     bool Connect() override;
     bool Disconnect() override;
     bool IsConnected() const override;
+    bool ReadValues(const std::vector<Structs::DataPoint>& points, 
+                    std::vector<Structs::TimestampedValue>& values) override;
+    bool WriteValue(const Structs::DataPoint& point, 
+                    const Structs::DataValue& value) override;
     
-    bool ReadValues(const std::vector<Structs::DataPoint>& points,
-                   std::vector<Structs::TimestampedValue>& values) override;
-    bool WriteValue(const Structs::DataPoint& point,
-                   const Structs::DataValue& value) override;
-    
-    Enums::ProtocolType GetProtocolType() const override;
-    Structs::DriverStatus GetStatus() const override;
-    Structs::ErrorInfo GetLastError() const override;
-    
-    // 표준화된 통계 인터페이스
+    // 표준 통계 인터페이스 (DriverStatistics 사용)
     const DriverStatistics& GetStatistics() const override;
     void ResetStatistics() override;
     
+    // IProtocolDriver 필수 구현 메서드들
+    ProtocolType GetProtocolType() const override;
+    Structs::DriverStatus GetStatus() const override;
+    ErrorInfo GetLastError() const override;
+    
     // =======================================================================
-    // 기본 Modbus 통신 메서드 (Core 기능 - 항상 사용 가능)
+    // 기본 Modbus 통신 (Core 기능 - 변경 없음)
     // =======================================================================
     
-    // 연결 관리
-    bool SetSlaveId(int slave_id);
-    int GetSlaveId() const;
-    bool TestConnection();
-    
-    // 레지스터 읽기/쓰기 (기본 Modbus 기능)
-    bool ReadHoldingRegisters(int slave_id, uint16_t start_addr, uint16_t count, std::vector<uint16_t>& values);
-    bool ReadInputRegisters(int slave_id, uint16_t start_addr, uint16_t count, std::vector<uint16_t>& values);
-    bool ReadCoils(int slave_id, uint16_t start_addr, uint16_t count, std::vector<bool>& values);
-    bool ReadDiscreteInputs(int slave_id, uint16_t start_addr, uint16_t count, std::vector<bool>& values);
+    bool ReadHoldingRegisters(int slave_id, uint16_t start_addr, uint16_t count, 
+                              std::vector<uint16_t>& values);
+    bool ReadInputRegisters(int slave_id, uint16_t start_addr, uint16_t count, 
+                            std::vector<uint16_t>& values);
+    bool ReadCoils(int slave_id, uint16_t start_addr, uint16_t count, 
+                   std::vector<uint8_t>& values);
+    bool ReadDiscreteInputs(int slave_id, uint16_t start_addr, uint16_t count, 
+                            std::vector<uint8_t>& values);
     
     bool WriteHoldingRegister(int slave_id, uint16_t address, uint16_t value);
-    bool WriteHoldingRegisters(int slave_id, uint16_t start_addr, const std::vector<uint16_t>& values);
+    bool WriteHoldingRegisters(int slave_id, uint16_t start_addr, 
+                               const std::vector<uint16_t>& values);
     bool WriteCoil(int slave_id, uint16_t address, bool value);
-    bool WriteCoils(int slave_id, uint16_t start_addr, const std::vector<bool>& values);
+    bool WriteCoils(int slave_id, uint16_t start_addr, 
+                    const std::vector<uint8_t>& values);
     
-    // 대량 읽기 (최적화된 배치 읽기)
-    bool ReadHoldingRegistersBulk(int slave_id, uint16_t start_addr, uint16_t count,
-                                 std::vector<uint16_t>& values, int max_retries = 3);
+    // Slave ID 관리
+    void SetSlaveId(int slave_id);
+    int GetSlaveId() const;
     
     // =======================================================================
-    // 🔧 진단 기능 (선택적 활성화) - EnableDiagnostics() 호출 시 활성화
+    // 🔧 고급 기능 - 선택적 활성화 API (Facade 패턴)
     // =======================================================================
     
+    // 진단 기능 (옵션) - EnableDiagnostics() 호출 시 활성화
     bool EnableDiagnostics(bool packet_logging = true, bool console_output = false);
     void DisableDiagnostics();
     bool IsDiagnosticsEnabled() const;
     
-    // 진단 API (활성화된 경우에만 동작, 비활성화시 기본값 반환)
+    // 진단 API (활성화된 경우에만 동작)
     std::string GetDiagnosticsJSON() const;
     std::map<std::string, std::string> GetDiagnostics() const;
     std::vector<uint64_t> GetResponseTimeHistogram() const;
-    std::map<uint8_t, uint64_t> GetExceptionCodeStats() const;
     double GetCrcErrorRate() const;
-    std::map<int, SlaveHealthInfo> GetSlaveHealthStatus() const;
     
-    // 패킷 로깅 (진단 기능의 일부)
-    void TogglePacketLogging();
-    void ToggleConsoleMonitoring();
-    std::string GetRecentPacketsJSON(int count = 100) const;
-    
-    // =======================================================================
-    // 🏊 연결 풀링 기능 (선택적 활성화) - EnableConnectionPooling() 호출 시 활성화
-    // =======================================================================
-    
+    // 연결 풀링 기능 (옵션) - EnableConnectionPooling() 호출 시 활성화
     bool EnableConnectionPooling(size_t pool_size = 5, int timeout_seconds = 30);
     void DisableConnectionPooling();
     bool IsConnectionPoolingEnabled() const;
     
-    // 자동 스케일링 (연결 풀링의 고급 기능)
+    // 자동 스케일링 (연결 풀링의 하위 기능)
     bool EnableAutoScaling(double load_threshold = 0.8, size_t max_connections = 20);
     void DisableAutoScaling();
-    bool IsAutoScalingEnabled() const;
     ConnectionPoolStats GetConnectionPoolStats() const;
     
-    // =======================================================================
-    // 🔄 페일오버 기능 (선택적 활성화) - EnableFailover() 호출 시 활성화
-    // =======================================================================
-    
-    bool EnableFailover(int failure_threshold = 3, int recovery_check_interval_seconds = 60);
+    // 페일오버 기능 (옵션) - EnableFailover() 호출 시 활성화
+    bool EnableFailover(int failure_threshold = 3, int recovery_check_interval = 60);
     void DisableFailover();
     bool IsFailoverEnabled() const;
     
@@ -156,12 +147,8 @@ public:
     bool AddBackupEndpoint(const std::string& endpoint);
     void RemoveBackupEndpoint(const std::string& endpoint);
     std::vector<std::string> GetActiveEndpoints() const;
-    std::string GetCurrentEndpoint() const;
     
-    // =======================================================================
-    // ⚡ 성능 최적화 기능 (선택적 활성화) - EnablePerformanceMode() 호출 시 활성화
-    // =======================================================================
-    
+    // 성능 최적화 기능 (옵션) - EnablePerformanceMode() 호출 시 활성화
     bool EnablePerformanceMode();
     void DisablePerformanceMode();
     bool IsPerformanceModeEnabled() const;
@@ -169,48 +156,31 @@ public:
     // 성능 튜닝
     void SetReadBatchSize(size_t batch_size);
     void SetWriteBatchSize(size_t batch_size);
-    size_t GetReadBatchSize() const;
-    size_t GetWriteBatchSize() const;
-    
-    // 연결 품질 및 실시간 모니터링
     int TestConnectionQuality();
     bool StartRealtimeMonitoring(int interval_seconds = 5);
     void StopRealtimeMonitoring();
-    bool IsRealtimeMonitoringEnabled() const;
-    
-    // 동적 설정 변경
-    bool UpdateTimeout(int timeout_ms);
-    bool UpdateRetryCount(int retry_count);
-    bool UpdateSlaveResponseDelay(int delay_ms);
 
 private:
     // =======================================================================
-    // Core 멤버 변수 (항상 존재 - 기본 메모리 사용량 최소화)
+    // Core 멤버 변수 (항상 존재)
     // =======================================================================
     
-    // 표준 통계 및 에러 정보
-    mutable DriverStatistics driver_statistics_{"MODBUS"};
+    DriverStatistics driver_statistics_{"MODBUS"};
     Structs::ErrorInfo last_error_;
-    
-    // Modbus 연결 관련
     modbus_t* modbus_ctx_;
     std::atomic<bool> is_connected_;
-    mutable std::mutex connection_mutex_;
-    mutable std::mutex operation_mutex_;
+    std::mutex connection_mutex_;
     int current_slave_id_;
-    
-    // 드라이버 설정 및 상태
     DriverConfig config_;
-    std::chrono::steady_clock::time_point last_successful_operation_;
     
     // =======================================================================
-    // 고급 기능 모듈 (선택적 생성 - nullptr이면 비활성화, 메모리 절약)
+    // 고급 기능 멤버 (선택적 생성 - std::unique_ptr 사용)
     // =======================================================================
     
-    std::unique_ptr<ModbusDiagnostics> diagnostics_;        // 진단 기능
-    std::unique_ptr<ModbusConnectionPool> connection_pool_; // 연결 풀링 & 스케일링
-    std::unique_ptr<ModbusFailover> failover_;             // 페일오버 & 복구
-    std::unique_ptr<ModbusPerformance> performance_;       // 성능 최적화
+    std::unique_ptr<ModbusDiagnostics> diagnostics_;        // nullptr이면 비활성화
+    std::unique_ptr<ModbusConnectionPool> connection_pool_; // nullptr이면 비활성화  
+    std::unique_ptr<ModbusFailover> failover_;             // nullptr이면 비활성화
+    std::unique_ptr<ModbusPerformance> performance_;       // nullptr이면 비활성화
     
     // =======================================================================
     // Core 내부 메서드 (항상 사용 가능)
