@@ -374,44 +374,66 @@ bool MqttDriver::Unsubscribe(const std::string& topic) {
 
 bool MqttDriver::Publish(const std::string& topic, const std::string& payload, int qos, bool retain) {
     if (!IsConnected()) {
-        SetError("MQTT client not connected");
+        SetError("발행 실패: 브로커에 연결되지 않음");
+        UpdateStats("publish", false);
         return false;
     }
     
-    auto start_time = steady_clock::now();
+    auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
-        auto msg = mqtt::make_message(topic, payload);
+        // 🚀 로드밸런싱이 활성화된 경우 토픽별 최적 브로커 확인
+        if (load_balancer_ && load_balancer_->IsLoadBalancingEnabled()) {
+            std::string optimal_broker = load_balancer_->SelectBroker(topic, payload.size());
+            
+            if (!optimal_broker.empty() && optimal_broker != broker_url_) {
+                LogMessage("DEBUG", "토픽 " + topic + "을 위한 최적 브로커: " + optimal_broker, "MQTT");
+                
+                // 필요시 브로커 전환 (고급 기능 - 선택사항)
+                if (SwitchBroker(optimal_broker)) {
+                    LogMessage("INFO", "브로커 전환 완료: " + optimal_broker, "MQTT");
+                }
+            }
+        }
+        
+        // MQTT 메시지 생성 및 발행
+        mqtt::message_ptr msg = mqtt::make_message(topic, payload);
         msg->set_qos(qos);
         msg->set_retained(retain);
         
-        auto token = mqtt_client_->publish(msg);
-        bool success = token->wait_for(std::chrono::milliseconds(timeout_ms_));
+        mqtt::delivery_token_ptr delivery_token = mqtt_client_->publish(msg);
+        bool success = delivery_token->wait_for(std::chrono::milliseconds(timeout_ms_));
         
-        auto end_time = steady_clock::now();
-        double duration_ms = duration_cast<milliseconds>(end_time - start_time).count();
+        // 성능 측정
+        auto end_time = std::chrono::high_resolution_clock::now();
+        double duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+        
+        // 🚀 로드밸런서에 성능 정보 업데이트
+        if (load_balancer_ && success) {
+            load_balancer_->UpdateBrokerLoad(broker_url_, 0, duration_ms, 0.0, 0.0);
+        }
+        
+        // 통계 업데이트
+        UpdateStats("publish", success, duration_ms);
         
         if (success) {
-            UpdateStats("publish", true, duration_ms);
-            driver_statistics_.IncrementProtocolCounter("published_messages", 1);
+            // QoS별 통계
+            switch(qos) {
+                case 0: driver_statistics_.IncrementProtocolCounter("qos0_messages", 1); break;
+                case 1: driver_statistics_.IncrementProtocolCounter("qos1_messages", 1); break;
+                case 2: driver_statistics_.IncrementProtocolCounter("qos2_messages", 1); break;
+            }
             
             if (retain) {
                 driver_statistics_.IncrementProtocolCounter("retained_messages", 1);
             }
-            
-            LogMessage("DEBUG", "Published to topic: " + topic, "MQTT");
-            return true;
-        } else {
-            UpdateStats("publish", false, duration_ms);
-            SetError("Publish timeout for topic: " + topic);
-            return false;
         }
         
+        return success;
+        
     } catch (const std::exception& e) {
-        auto end_time = steady_clock::now();
-        double duration_ms = duration_cast<milliseconds>(end_time - start_time).count();
-        UpdateStats("publish", false, duration_ms);
-        SetError("Failed to publish to topic " + topic + ": " + std::string(e.what()));
+        SetError("메시지 발행 중 예외 발생: " + std::string(e.what()));
+        UpdateStats("publish", false);
         return false;
     }
 }
