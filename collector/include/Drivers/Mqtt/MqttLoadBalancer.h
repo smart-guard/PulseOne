@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Drivers/Mqtt/MqttLoadBalancer.h
-// MQTT 로드밸런싱 및 다중 브로커 관리
+// MQTT 로드밸런싱 및 다중 브로커 관리 (컴파일 에러 해결)
 // =============================================================================
 
 #ifndef PULSEONE_MQTT_LOADBALANCER_H
@@ -15,6 +15,8 @@
 #include <functional>
 #include <memory>
 #include <queue>
+#include <thread>         // 누락된 헤더 추가
+#include <condition_variable>  // 누락된 헤더 추가
 
 namespace PulseOne {
 namespace Drivers {
@@ -54,6 +56,48 @@ struct BrokerLoad {
     std::atomic<bool> is_healthy{true};         // 헬스 상태
     std::chrono::system_clock::time_point last_update;
     
+    // 복사 생성자와 대입 연산자 삭제 (atomic 멤버 때문에)
+    BrokerLoad() = default;
+    BrokerLoad(const BrokerLoad&) = delete;
+    BrokerLoad& operator=(const BrokerLoad&) = delete;
+    
+    // 이동 생성자와 이동 대입 연산자 정의
+    BrokerLoad(BrokerLoad&& other) noexcept
+        : broker_url(std::move(other.broker_url))
+        , name(std::move(other.name))
+        , weight(other.weight)
+        , active_connections(other.active_connections.load())
+        , total_messages(other.total_messages.load())
+        , pending_messages(other.pending_messages.load())
+        , avg_response_time_ms(other.avg_response_time_ms.load())
+        , cpu_usage(other.cpu_usage.load())
+        , memory_usage(other.memory_usage.load())
+        , is_healthy(other.is_healthy.load())
+        , last_update(other.last_update)
+    {}
+    
+    BrokerLoad& operator=(BrokerLoad&& other) noexcept {
+        if (this != &other) {
+            broker_url = std::move(other.broker_url);
+            name = std::move(other.name);
+            weight = other.weight;
+            active_connections = other.active_connections.load();
+            total_messages = other.total_messages.load();
+            pending_messages = other.pending_messages.load();
+            avg_response_time_ms = other.avg_response_time_ms.load();
+            cpu_usage = other.cpu_usage.load();
+            memory_usage = other.memory_usage.load();
+            is_healthy = other.is_healthy.load();
+            last_update = other.last_update;
+        }
+        return *this;
+    }
+    
+    // 편의 생성자
+    BrokerLoad(const std::string& url, const std::string& broker_name = "", int w = 1)
+        : broker_url(url), name(broker_name.empty() ? url : broker_name), weight(w)
+        , last_update(std::chrono::system_clock::now()) {}
+    
     // 부하 점수 계산 (낮을수록 좋음)
     double CalculateLoadScore() const {
         double base_score = 0.0;
@@ -80,11 +124,6 @@ struct BrokerLoad {
         
         return base_score;
     }
-    
-    BrokerLoad() : last_update(std::chrono::system_clock::now()) {}
-    BrokerLoad(const std::string& url, const std::string& broker_name = "", int w = 1)
-        : broker_url(url), name(broker_name.empty() ? url : broker_name), weight(w)
-        , last_update(std::chrono::system_clock::now()) {}
 };
 
 /**
@@ -115,7 +154,32 @@ struct LoadBalancingStats {
     std::map<LoadBalanceAlgorithm, uint64_t> algorithm_usage_count;
     std::chrono::system_clock::time_point start_time;
     
+    // 복사 생성자와 대입 연산자 삭제 (atomic 멤버 때문에)
     LoadBalancingStats() : start_time(std::chrono::system_clock::now()) {}
+    LoadBalancingStats(const LoadBalancingStats&) = delete;
+    LoadBalancingStats& operator=(const LoadBalancingStats&) = delete;
+    
+    // 이동 생성자와 이동 대입 연산자 정의
+    LoadBalancingStats(LoadBalancingStats&& other) noexcept
+        : total_requests(other.total_requests.load())
+        , successful_routes(other.successful_routes.load())
+        , failed_routes(other.failed_routes.load())
+        , broker_usage_count(std::move(other.broker_usage_count))
+        , algorithm_usage_count(std::move(other.algorithm_usage_count))
+        , start_time(other.start_time)
+    {}
+    
+    LoadBalancingStats& operator=(LoadBalancingStats&& other) noexcept {
+        if (this != &other) {
+            total_requests = other.total_requests.load();
+            successful_routes = other.successful_routes.load();
+            failed_routes = other.failed_routes.load();
+            broker_usage_count = std::move(other.broker_usage_count);
+            algorithm_usage_count = std::move(other.algorithm_usage_count);
+            start_time = other.start_time;
+        }
+        return *this;
+    }
     
     double GetSuccessRate() const {
         uint64_t total = total_requests.load();
@@ -162,34 +226,22 @@ public:
     MqttLoadBalancer& operator=(const MqttLoadBalancer&) = delete;
     
     // =======================================================================
-    // 설정 및 제어
+    // 브로커 관리
     // =======================================================================
-    
-    /**
-     * @brief 브로커 목록 설정
-     * @param brokers 브로커 부하 정보 리스트
-     */
-    void SetBrokers(const std::vector<BrokerLoad>& brokers);
     
     /**
      * @brief 브로커 추가
      * @param broker_url 브로커 URL
      * @param name 브로커 이름 (선택사항)
-     * @param weight 가중치 (1-100)
+     * @param weight 가중치 (1-100, 기본값: 1)
      */
     void AddBroker(const std::string& broker_url, const std::string& name = "", int weight = 1);
     
     /**
      * @brief 브로커 제거
-     * @param broker_url 브로커 URL
+     * @param broker_url 제거할 브로커 URL
      */
     void RemoveBroker(const std::string& broker_url);
-    
-    /**
-     * @brief 기본 로드밸런싱 알고리즘 설정
-     * @param algorithm 로드밸런싱 알고리즘
-     */
-    void SetDefaultAlgorithm(LoadBalanceAlgorithm algorithm);
     
     /**
      * @brief 라우팅 규칙 추가
@@ -199,9 +251,20 @@ public:
     
     /**
      * @brief 라우팅 규칙 제거
-     * @param rule_name 규칙 이름
+     * @param rule_name 제거할 규칙 이름
      */
     void RemoveRoutingRule(const std::string& rule_name);
+    
+    /**
+     * @brief 부하 모니터링 활성화/비활성화
+     * @param enable 활성화 여부
+     * @param interval_ms 모니터링 간격 (기본값: 5초)
+     */
+    void EnableLoadMonitoring(bool enable, int interval_ms = 5000);
+    
+    // =======================================================================
+    // 로드밸런싱 제어
+    // =======================================================================
     
     /**
      * @brief 로드밸런싱 활성화/비활성화
@@ -210,110 +273,45 @@ public:
     void EnableLoadBalancing(bool enable);
     
     /**
-     * @brief 자동 부하 모니터링 활성화/비활성화
-     * @param enable 활성화 여부
-     * @param interval_ms 모니터링 간격 (밀리초)
+     * @brief 기본 로드밸런싱 알고리즘 설정
+     * @param algorithm 로드밸런싱 알고리즘
      */
-    void EnableLoadMonitoring(bool enable, int interval_ms = 5000);
-    
-    // =======================================================================
-    // 콜백 설정
-    // =======================================================================
-    
-    /**
-     * @brief 부하 업데이트 콜백 설정
-     * @param callback 부하 정보 업데이트 시 호출될 콜백
-     */
-    void SetLoadUpdateCallback(LoadUpdateCallback callback);
-    
-    /**
-     * @brief 라우팅 결정 콜백 설정
-     * @param callback 라우팅 결정 시 호출될 콜백
-     */
-    void SetRouteDecisionCallback(RouteDecisionCallback callback);
-    
-    // =======================================================================
-    // 로드밸런싱 메서드들
-    // =======================================================================
+    void SetDefaultAlgorithm(LoadBalanceAlgorithm algorithm);
     
     /**
      * @brief 토픽에 대한 최적 브로커 선택
      * @param topic 토픽명
      * @param message_size 메시지 크기 (선택사항)
-     * @return 선택된 브로커 URL (빈 문자열 = 선택 실패)
+     * @return 선택된 브로커 URL
      */
     std::string SelectBroker(const std::string& topic, size_t message_size = 0);
-    
-    /**
-     * @brief 발행용 브로커 선택
-     * @param topic 토픽명
-     * @param qos QoS 레벨
-     * @param message_size 메시지 크기
-     * @return 선택된 브로커 URL
-     */
-    std::string SelectBrokerForPublish(const std::string& topic, int qos, size_t message_size);
-    
-    /**
-     * @brief 구독용 브로커 선택
-     * @param topic 토픽명
-     * @param qos QoS 레벨
-     * @return 선택된 브로커 URL
-     */
-    std::string SelectBrokerForSubscribe(const std::string& topic, int qos);
-    
-    /**
-     * @brief 부하 재분산 트리거
-     * @param force_rebalance 강제 재분산 여부
-     * @return 재분산 수행 여부
-     */
-    bool TriggerRebalancing(bool force_rebalance = false);
-    
-    // =======================================================================
-    // 부하 정보 업데이트
-    // =======================================================================
     
     /**
      * @brief 브로커 부하 정보 업데이트
      * @param broker_url 브로커 URL
      * @param connections 활성 연결 수
      * @param response_time_ms 평균 응답 시간
-     * @param cpu_usage CPU 사용률 (0-100)
-     * @param memory_usage 메모리 사용률 (0-100)
+     * @param cpu_usage CPU 사용률
+     * @param memory_usage 메모리 사용률
      */
-    void UpdateBrokerLoad(const std::string& broker_url, uint64_t connections, 
-                         double response_time_ms, double cpu_usage = 0.0, double memory_usage = 0.0);
-    
-    /**
-     * @brief 메시지 처리 완료 알림
-     * @param broker_url 브로커 URL
-     * @param topic 토픽명
-     * @param success 성공 여부
-     * @param processing_time_ms 처리 시간
-     */
-    void NotifyMessageProcessed(const std::string& broker_url, const std::string& topic, 
-                               bool success, double processing_time_ms);
-    
-    /**
-     * @brief 브로커 헬스 상태 업데이트
-     * @param broker_url 브로커 URL
-     * @param is_healthy 헬스 상태
-     */
-    void UpdateBrokerHealth(const std::string& broker_url, bool is_healthy);
+    void UpdateBrokerLoad(const std::string& broker_url, uint64_t connections,
+                         double response_time_ms, double cpu_usage, double memory_usage);
     
     // =======================================================================
     // 상태 조회
     // =======================================================================
     
     /**
-     * @brief 모든 브로커 부하 정보 조회
-     * @return 브로커 부하 정보 리스트
+     * @brief 사용 가능한 브로커 목록 조회
+     * @param preferred_brokers 선호 브로커 목록 (선택사항)
+     * @return 사용 가능한 브로커 URL 목록
      */
-    std::vector<BrokerLoad> GetAllBrokerLoads() const;
+    std::vector<std::string> GetAvailableBrokers(const std::vector<std::string>& preferred_brokers = {}) const;
     
     /**
-     * @brief 특정 브로커 부하 정보 조회
+     * @brief 특정 브로커의 부하 정보 조회
      * @param broker_url 브로커 URL
-     * @return 브로커 부하 정보 (찾지 못하면 빈 구조체)
+     * @return 브로커 부하 정보
      */
     BrokerLoad GetBrokerLoad(const std::string& broker_url) const;
     
@@ -340,6 +338,48 @@ public:
      * @return 활성화 상태
      */
     bool IsLoadBalancingEnabled() const;
+    
+    /**
+     * @brief 기본 로드밸런싱 알고리즘 조회
+     * @return 현재 기본 알고리즘
+     */
+    LoadBalanceAlgorithm GetDefaultAlgorithm() const;
+    
+    /**
+     * @brief 총 브로커 수 조회
+     * @return 브로커 수
+     */
+    size_t GetBrokerCount() const;
+    
+    /**
+     * @brief 건강한 브로커 수 조회
+     * @return 건강한 브로커 수
+     */
+    size_t GetHealthyBrokerCount() const;
+    
+    /**
+     * @brief 토픽 패턴 매칭 확인
+     * @param pattern 패턴 문자열
+     * @param topic 토픽 문자열
+     * @return 매칭 여부
+     */
+    bool MatchTopicPattern(const std::string& pattern, const std::string& topic) const;
+    
+    // =======================================================================
+    // 콜백 설정
+    // =======================================================================
+    
+    /**
+     * @brief 부하 업데이트 콜백 설정
+     * @param callback 콜백 함수
+     */
+    void SetLoadUpdateCallback(LoadUpdateCallback callback);
+    
+    /**
+     * @brief 라우팅 결정 콜백 설정
+     * @param callback 콜백 함수
+     */
+    void SetRouteDecisionCallback(RouteDecisionCallback callback);
 
 private:
     // =======================================================================
@@ -392,6 +432,13 @@ private:
     void LoadMonitoringLoop();
     
     /**
+     * @brief 브로커 헬스 상태 업데이트
+     * @param broker_url 브로커 URL
+     * @return 헬스 상태
+     */
+    bool UpdateBrokerHealth(const std::string& broker_url);
+    
+    /**
      * @brief 라운드 로빈 알고리즘으로 브로커 선택
      * @param available_brokers 사용 가능한 브로커 목록
      * @return 선택된 브로커 URL
@@ -406,14 +453,14 @@ private:
     std::string SelectByLeastConnections(const std::vector<std::string>& available_brokers);
     
     /**
-     * @brief 가중 라운드 로빈 알고리즘으로 브로커 선택
+     * @brief 가중치 기반 라운드 로빈 알고리즘으로 브로커 선택
      * @param available_brokers 사용 가능한 브로커 목록
      * @return 선택된 브로커 URL
      */
     std::string SelectByWeightedRoundRobin(const std::vector<std::string>& available_brokers);
     
     /**
-     * @brief 응답 시간 기반 알고리즘으로 브로커 선택
+     * @brief 응답시간 기반 알고리즘으로 브로커 선택
      * @param available_brokers 사용 가능한 브로커 목록
      * @return 선택된 브로커 URL
      */
@@ -435,42 +482,19 @@ private:
     std::string SelectByHash(const std::string& topic, const std::vector<std::string>& available_brokers);
     
     /**
-     * @brief 토픽에 적용할 라우팅 규칙 찾기
+     * @brief 라우팅 규칙 적용
      * @param topic 토픽명
-     * @return 매칭되는 라우팅 규칙 포인터 (nullptr = 없음)
+     * @param available_brokers 사용 가능한 브로커 목록
+     * @return 규칙에 의해 선택된 브로커 URL (없으면 빈 문자열)
      */
-    const RoutingRule* FindMatchingRule(const std::string& topic) const;
+    std::string ApplyRoutingRules(const std::string& topic, const std::vector<std::string>& available_brokers);
     
     /**
-     * @brief 사용 가능한 브로커 목록 필터링
-     * @param preferred_brokers 선호 브로커 목록 (빈 벡터 = 모든 브로커)
-     * @return 사용 가능한 브로커 URL 목록
-     */
-    std::vector<std::string> GetAvailableBrokers(const std::vector<std::string>& preferred_brokers = {}) const;
-    
-    /**
-     * @brief 브로커 찾기
-     * @param broker_url 브로커 URL
-     * @return 브로커 부하 정보 포인터 (nullptr = 없음)
-     */
-    BrokerLoad* FindBroker(const std::string& broker_url);
-    const BrokerLoad* FindBroker(const std::string& broker_url) const;
-    
-    /**
-     * @brief 토픽 패턴 매칭 (와일드카드 지원)
-     * @param pattern 패턴 문자열
+     * @brief 토픽에 대한 규칙의 알고리즘 조회
      * @param topic 토픽명
-     * @return 매칭 여부
+     * @return 적용될 알고리즘
      */
-    bool MatchTopicPattern(const std::string& pattern, const std::string& topic) const;
-    
-    /**
-     * @brief 라우팅 결정 통계 업데이트
-     * @param broker_url 선택된 브로커 URL
-     * @param algorithm 사용된 알고리즘
-     * @param success 성공 여부
-     */
-    void UpdateRoutingStats(const std::string& broker_url, LoadBalanceAlgorithm algorithm, bool success);
+    LoadBalanceAlgorithm GetRuleAlgorithm(const std::string& topic) const;
 };
 
 } // namespace Drivers

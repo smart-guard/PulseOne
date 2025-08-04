@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Drivers/Mqtt/MqttLoadBalancer.cpp
-// MQTT 로드밸런싱 및 다중 브로커 관리 구현
+// MQTT 로드밸런싱 및 다중 브로커 관리 구현 (LogManager 호출 수정)
 // =============================================================================
 
 #include "Drivers/Mqtt/MqttLoadBalancer.h"
@@ -11,6 +11,7 @@
 #include <sstream>
 #include <chrono>
 #include <thread>
+#include <condition_variable>
 #include <cmath>
 #include <functional>
 
@@ -29,14 +30,13 @@ MqttLoadBalancer::MqttLoadBalancer(MqttDriver* parent_driver)
         throw std::invalid_argument("MqttLoadBalancer: parent_driver cannot be null");
     }
     
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "로드밸런서 초기화 완료 - 기본 알고리즘: Round Robin");
+    LogManager::getInstance().Info("로드밸런서 초기화 완료 - 기본 알고리즘: Round Robin");
 }
 
 MqttLoadBalancer::~MqttLoadBalancer() {
     // 모니터링 스레드 종료
     if (monitoring_running_.load()) {
-        DisableLoadMonitoring();
+        EnableLoadMonitoring(false);
     }
     
     // 브로커 정리
@@ -45,24 +45,21 @@ MqttLoadBalancer::~MqttLoadBalancer() {
         brokers_.clear();
     }
     
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "로드밸런서 정리 완료");
+    LogManager::getInstance().Info("로드밸런서 정리 완료");
 }
 
 // =============================================================================
-// 브로커 관리
+// 브로커 관리 (헤더 파일 시그니처에 맞춰 void 반환)
 // =============================================================================
 
-bool MqttLoadBalancer::AddBroker(const std::string& broker_url, const std::string& name, int weight) {
+void MqttLoadBalancer::AddBroker(const std::string& broker_url, const std::string& name, int weight) {
     if (broker_url.empty()) {
-        PulseOne::LogManager::Instance().Error("MqttLoadBalancer", 
-            "브로커 URL이 비어있음");
-        return false;
+        LogManager::getInstance().Error("브로커 URL이 비어있음");
+        return;
     }
     
     if (weight < 1 || weight > 100) {
-        PulseOne::LogManager::Instance().Warning("MqttLoadBalancer", 
-            "잘못된 가중치 값 (" + std::to_string(weight) + "), 기본값 1로 설정");
+        LogManager::getInstance().Warn("잘못된 가중치 값 (" + std::to_string(weight) + "), 기본값 1로 설정");
         weight = 1;
     }
     
@@ -76,29 +73,24 @@ bool MqttLoadBalancer::AddBroker(const std::string& broker_url, const std::strin
         it->second.name = name.empty() ? broker_url : name;
         it->second.last_update = std::chrono::system_clock::now();
         
-        PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-            "브로커 정보 업데이트: " + broker_url + " (가중치: " + std::to_string(weight) + ")");
-        return true;
+        LogManager::getInstance().Info("브로커 정보 업데이트: " + broker_url + " (가중치: " + std::to_string(weight) + ")");
+        return;
     }
     
     // 새 브로커 추가
     BrokerLoad new_broker(broker_url, name.empty() ? broker_url : name, weight);
-    brokers_[broker_url] = new_broker;
+    brokers_[broker_url] = std::move(new_broker);
     
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "새 브로커 추가: " + broker_url + " (가중치: " + std::to_string(weight) + ")");
-    
-    return true;
+    LogManager::getInstance().Info("새 브로커 추가: " + broker_url + " (가중치: " + std::to_string(weight) + ")");
 }
 
-bool MqttLoadBalancer::RemoveBroker(const std::string& broker_url) {
+void MqttLoadBalancer::RemoveBroker(const std::string& broker_url) {
     std::lock_guard<std::mutex> lock(brokers_mutex_);
     
     auto it = brokers_.find(broker_url);
     if (it == brokers_.end()) {
-        PulseOne::LogManager::Instance().Warning("MqttLoadBalancer", 
-            "제거할 브로커를 찾을 수 없음: " + broker_url);
-        return false;
+        LogManager::getInstance().Warn("제거할 브로커를 찾을 수 없음: " + broker_url);
+        return;
     }
     
     brokers_.erase(it);
@@ -115,16 +107,30 @@ bool MqttLoadBalancer::RemoveBroker(const std::string& broker_url) {
         }
     }
     
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "브로커 제거 완료: " + broker_url);
-        
-    return true;
+    LogManager::getInstance().Info("브로커 제거 완료: " + broker_url);
 }
 
-std::vector<std::string> MqttLoadBalancer::GetAvailableBrokers() const {
+std::vector<std::string> MqttLoadBalancer::GetAvailableBrokers(const std::vector<std::string>& preferred_brokers) const {
     std::lock_guard<std::mutex> lock(brokers_mutex_);
     
     std::vector<std::string> available_brokers;
+    
+    // 선호 브로커가 지정된 경우 우선 확인
+    if (!preferred_brokers.empty()) {
+        for (const auto& preferred : preferred_brokers) {
+            auto it = brokers_.find(preferred);
+            if (it != brokers_.end() && it->second.is_healthy.load()) {
+                available_brokers.push_back(preferred);
+            }
+        }
+        
+        // 선호 브로커 중 사용 가능한 것이 있으면 반환
+        if (!available_brokers.empty()) {
+            return available_brokers;
+        }
+    }
+    
+    // 모든 사용 가능한 브로커 반환
     for (const auto& [url, broker] : brokers_) {
         if (broker.is_healthy.load()) {
             available_brokers.push_back(url);
@@ -134,19 +140,17 @@ std::vector<std::string> MqttLoadBalancer::GetAvailableBrokers() const {
     return available_brokers;
 }
 
-void MqttLoadBalancer::UpdateBrokerLoad(const std::string& broker_url, const BrokerLoad& load) {
+void MqttLoadBalancer::UpdateBrokerLoad(const std::string& broker_url, uint64_t connections,
+                                      double response_time_ms, double cpu_usage, double memory_usage) {
     std::lock_guard<std::mutex> lock(brokers_mutex_);
     
     auto it = brokers_.find(broker_url);
     if (it != brokers_.end()) {
         // 부하 정보 업데이트
-        it->second.active_connections = load.active_connections.load();
-        it->second.total_messages = load.total_messages.load();
-        it->second.pending_messages = load.pending_messages.load();
-        it->second.avg_response_time_ms = load.avg_response_time_ms.load();
-        it->second.cpu_usage = load.cpu_usage.load();
-        it->second.memory_usage = load.memory_usage.load();
-        it->second.is_healthy = load.is_healthy.load();
+        it->second.active_connections = connections;
+        it->second.avg_response_time_ms = response_time_ms;
+        it->second.cpu_usage = cpu_usage;
+        it->second.memory_usage = memory_usage;
         it->second.last_update = std::chrono::system_clock::now();
         
         // 콜백 호출
@@ -157,22 +161,22 @@ void MqttLoadBalancer::UpdateBrokerLoad(const std::string& broker_url, const Bro
 }
 
 // =============================================================================
-// 로드밸런싱 알고리즘
+// 로드밸런싱 브로커 선택 (헤더 파일 시그니처에 맞춤)
 // =============================================================================
 
-std::string MqttLoadBalancer::SelectBroker(const std::string& topic, LoadBalanceAlgorithm algorithm) {
+std::string MqttLoadBalancer::SelectBroker(const std::string& topic, size_t /* message_size */) {
     statistics_.total_requests.fetch_add(1);
     
     // 사용 가능한 브로커 목록 가져오기
     auto available_brokers = GetAvailableBrokers();
     if (available_brokers.empty()) {
         statistics_.failed_routes.fetch_add(1);
-        PulseOne::LogManager::Instance().Error("MqttLoadBalancer", 
-            "사용 가능한 브로커가 없음");
+        LogManager::getInstance().Error("사용 가능한 브로커가 없음");
         return "";
     }
     
     std::string selected_broker;
+    LoadBalanceAlgorithm algorithm = default_algorithm_;
     
     // 라우팅 규칙 확인
     selected_broker = ApplyRoutingRules(topic, available_brokers);
@@ -180,9 +184,7 @@ std::string MqttLoadBalancer::SelectBroker(const std::string& topic, LoadBalance
         algorithm = GetRuleAlgorithm(topic);
     } else {
         // 기본 알고리즘 사용
-        algorithm = default_algorithm_;
-        
-        switch (algorithm) {
+        switch (default_algorithm_) {
             case LoadBalanceAlgorithm::ROUND_ROBIN:
                 selected_broker = SelectByRoundRobin(available_brokers);
                 break;
@@ -209,8 +211,7 @@ std::string MqttLoadBalancer::SelectBroker(const std::string& topic, LoadBalance
     
     if (selected_broker.empty()) {
         statistics_.failed_routes.fetch_add(1);
-        PulseOne::LogManager::Instance().Error("MqttLoadBalancer", 
-            "브로커 선택 실패 - 토픽: " + topic);
+        LogManager::getInstance().Error("브로커 선택 실패 - 토픽: " + topic);
         return "";
     }
     
@@ -224,11 +225,14 @@ std::string MqttLoadBalancer::SelectBroker(const std::string& topic, LoadBalance
         route_decision_callback_(topic, selected_broker, algorithm);
     }
     
-    PulseOne::LogManager::Instance().Debug("MqttLoadBalancer", 
-        "브로커 선택 완료 - 토픽: " + topic + ", 브로커: " + selected_broker);
+    LogManager::getInstance().Debug("브로커 선택 완료 - 토픽: " + topic + ", 브로커: " + selected_broker);
     
     return selected_broker;
 }
+
+// =============================================================================
+// 로드밸런싱 알고리즘 구현
+// =============================================================================
 
 std::string MqttLoadBalancer::SelectByRoundRobin(const std::vector<std::string>& available_brokers) {
     if (available_brokers.empty()) return "";
@@ -358,14 +362,13 @@ std::string MqttLoadBalancer::SelectByHash(const std::string& topic, const std::
 }
 
 // =============================================================================
-// 라우팅 규칙 관리
+// 라우팅 규칙 관리 (헤더 파일 시그니처에 맞춰 void 반환)
 // =============================================================================
 
-bool MqttLoadBalancer::AddRoutingRule(const RoutingRule& rule) {
+void MqttLoadBalancer::AddRoutingRule(const RoutingRule& rule) {
     if (rule.rule_name.empty() || rule.topic_pattern.empty()) {
-        PulseOne::LogManager::Instance().Error("MqttLoadBalancer", 
-            "라우팅 규칙 이름 또는 토픽 패턴이 비어있음");
-        return false;
+        LogManager::getInstance().Error("라우팅 규칙 이름 또는 토픽 패턴이 비어있음");
+        return;
     }
     
     std::lock_guard<std::mutex> lock(rules_mutex_);
@@ -379,13 +382,11 @@ bool MqttLoadBalancer::AddRoutingRule(const RoutingRule& rule) {
     if (it != routing_rules_.end()) {
         // 기존 규칙 업데이트
         *it = rule;
-        PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-            "라우팅 규칙 업데이트: " + rule.rule_name);
+        LogManager::getInstance().Info("라우팅 규칙 업데이트: " + rule.rule_name);
     } else {
         // 새 규칙 추가
         routing_rules_.push_back(rule);
-        PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-            "새 라우팅 규칙 추가: " + rule.rule_name);
+        LogManager::getInstance().Info("새 라우팅 규칙 추가: " + rule.rule_name);
     }
     
     // 우선순위별 정렬
@@ -393,11 +394,9 @@ bool MqttLoadBalancer::AddRoutingRule(const RoutingRule& rule) {
         [](const RoutingRule& a, const RoutingRule& b) {
             return a.priority > b.priority;
         });
-    
-    return true;
 }
 
-bool MqttLoadBalancer::RemoveRoutingRule(const std::string& rule_name) {
+void MqttLoadBalancer::RemoveRoutingRule(const std::string& rule_name) {
     std::lock_guard<std::mutex> lock(rules_mutex_);
     
     auto it = std::find_if(routing_rules_.begin(), routing_rules_.end(),
@@ -406,16 +405,12 @@ bool MqttLoadBalancer::RemoveRoutingRule(const std::string& rule_name) {
         });
     
     if (it == routing_rules_.end()) {
-        PulseOne::LogManager::Instance().Warning("MqttLoadBalancer", 
-            "제거할 라우팅 규칙을 찾을 수 없음: " + rule_name);
-        return false;
+        LogManager::getInstance().Warn("제거할 라우팅 규칙을 찾을 수 없음: " + rule_name);
+        return;
     }
     
     routing_rules_.erase(it);
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "라우팅 규칙 제거 완료: " + rule_name);
-    
-    return true;
+    LogManager::getInstance().Info("라우팅 규칙 제거 완료: " + rule_name);
 }
 
 std::string MqttLoadBalancer::ApplyRoutingRules(const std::string& topic, const std::vector<std::string>& available_brokers) {
@@ -425,12 +420,11 @@ std::string MqttLoadBalancer::ApplyRoutingRules(const std::string& topic, const 
         if (!rule.enabled) continue;
         
         // 토픽 패턴 매칭 (간단한 와일드카드 지원)
-        if (MatchTopicPattern(topic, rule.topic_pattern)) {
+        if (MatchTopicPattern(rule.topic_pattern, topic)) {
             // 선호 브로커 중 사용 가능한 브로커 찾기
             for (const auto& preferred_broker : rule.preferred_brokers) {
                 if (std::find(available_brokers.begin(), available_brokers.end(), preferred_broker) != available_brokers.end()) {
-                    PulseOne::LogManager::Instance().Debug("MqttLoadBalancer", 
-                        "라우팅 규칙 적용: " + rule.rule_name + " -> " + preferred_broker);
+                    LogManager::getInstance().Debug("라우팅 규칙 적용: " + rule.rule_name + " -> " + preferred_broker);
                     return preferred_broker;
                 }
             }
@@ -440,7 +434,7 @@ std::string MqttLoadBalancer::ApplyRoutingRules(const std::string& topic, const 
     return ""; // 적용된 규칙 없음
 }
 
-bool MqttLoadBalancer::MatchTopicPattern(const std::string& topic, const std::string& pattern) {
+bool MqttLoadBalancer::MatchTopicPattern(const std::string& pattern, const std::string& topic) const {
     // 간단한 와일드카드 패턴 매칭
     // "*" = 모든 문자, "?" = 단일 문자
     
@@ -453,11 +447,11 @@ bool MqttLoadBalancer::MatchTopicPattern(const std::string& topic, const std::st
     return false;
 }
 
-LoadBalanceAlgorithm MqttLoadBalancer::GetRuleAlgorithm(const std::string& topic) {
+LoadBalanceAlgorithm MqttLoadBalancer::GetRuleAlgorithm(const std::string& topic) const {
     std::lock_guard<std::mutex> lock(rules_mutex_);
     
     for (const auto& rule : routing_rules_) {
-        if (rule.enabled && MatchTopicPattern(topic, rule.topic_pattern)) {
+        if (rule.enabled && MatchTopicPattern(rule.topic_pattern, topic)) {
             return rule.algorithm;
         }
     }
@@ -466,46 +460,43 @@ LoadBalanceAlgorithm MqttLoadBalancer::GetRuleAlgorithm(const std::string& topic
 }
 
 // =============================================================================
-// 부하 모니터링
+// 부하 모니터링 (헤더 파일 시그니처에 맞춤)
 // =============================================================================
 
-void MqttLoadBalancer::EnableLoadMonitoring(int interval_ms) {
-    if (monitoring_running_.load()) {
-        PulseOne::LogManager::Instance().Warning("MqttLoadBalancer", 
-            "부하 모니터링이 이미 실행 중");
-        return;
+void MqttLoadBalancer::EnableLoadMonitoring(bool enable, int interval_ms) {
+    if (enable) {
+        if (monitoring_running_.load()) {
+            LogManager::getInstance().Warn("부하 모니터링이 이미 실행 중");
+            return;
+        }
+        
+        monitoring_interval_ms_ = std::max(1000, interval_ms); // 최소 1초
+        load_monitoring_enabled_ = true;
+        monitoring_running_ = true;
+        
+        load_monitoring_thread_ = std::thread(&MqttLoadBalancer::LoadMonitoringLoop, this);
+        
+        LogManager::getInstance().Info("부하 모니터링 시작 - 간격: " + std::to_string(monitoring_interval_ms_) + "ms");
+    } else {
+        if (!monitoring_running_.load()) {
+            return;
+        }
+        
+        load_monitoring_enabled_ = false;
+        monitoring_running_ = false;
+        
+        // 모니터링 스레드 깨우기
+        {
+            std::lock_guard<std::mutex> lock(monitoring_mutex_);
+            monitoring_cv_.notify_all();
+        }
+        
+        if (load_monitoring_thread_.joinable()) {
+            load_monitoring_thread_.join();
+        }
+        
+        LogManager::getInstance().Info("부하 모니터링 중지");
     }
-    
-    monitoring_interval_ms_ = std::max(1000, interval_ms); // 최소 1초
-    load_monitoring_enabled_ = true;
-    monitoring_running_ = true;
-    
-    load_monitoring_thread_ = std::thread(&MqttLoadBalancer::LoadMonitoringLoop, this);
-    
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "부하 모니터링 시작 - 간격: " + std::to_string(monitoring_interval_ms_) + "ms");
-}
-
-void MqttLoadBalancer::DisableLoadMonitoring() {
-    if (!monitoring_running_.load()) {
-        return;
-    }
-    
-    load_monitoring_enabled_ = false;
-    monitoring_running_ = false;
-    
-    // 모니터링 스레드 깨우기
-    {
-        std::lock_guard<std::mutex> lock(monitoring_mutex_);
-        monitoring_cv_.notify_all();
-    }
-    
-    if (load_monitoring_thread_.joinable()) {
-        load_monitoring_thread_.join();
-    }
-    
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "부하 모니터링 중지");
 }
 
 void MqttLoadBalancer::LoadMonitoringLoop() {
@@ -522,7 +513,7 @@ void MqttLoadBalancer::LoadMonitoringLoop() {
             
             for (const auto& broker_url : broker_urls) {
                 // 브로커 헬스 체크 (실제 구현은 MqttDriver와 연동 필요)
-                bool is_healthy = TestBrokerHealth(broker_url);
+                bool is_healthy = UpdateBrokerHealth(broker_url);
                 
                 {
                     std::lock_guard<std::mutex> lock(brokers_mutex_);
@@ -539,13 +530,12 @@ void MqttLoadBalancer::LoadMonitoringLoop() {
             monitoring_cv_.wait_for(lock, std::chrono::milliseconds(monitoring_interval_ms_));
             
         } catch (const std::exception& e) {
-            PulseOne::LogManager::Instance().Error("MqttLoadBalancer", 
-                "부하 모니터링 오류: " + std::string(e.what()));
+            LogManager::getInstance().Error("부하 모니터링 오류: " + std::string(e.what()));
         }
     }
 }
 
-bool MqttLoadBalancer::TestBrokerHealth(const std::string& broker_url) {
+bool MqttLoadBalancer::UpdateBrokerHealth(const std::string& /* broker_url */) {
     // TODO: 실제 브로커 헬스 체크 구현
     // 현재는 항상 true 반환 (placeholder)
     return true;
@@ -557,8 +547,7 @@ bool MqttLoadBalancer::TestBrokerHealth(const std::string& broker_url) {
 
 void MqttLoadBalancer::SetDefaultAlgorithm(LoadBalanceAlgorithm algorithm) {
     default_algorithm_ = algorithm;
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "기본 로드밸런싱 알고리즘 변경: " + std::to_string(static_cast<int>(algorithm)));
+    LogManager::getInstance().Info("기본 로드밸런싱 알고리즘 변경: " + std::to_string(static_cast<int>(algorithm)));
 }
 
 LoadBalanceAlgorithm MqttLoadBalancer::GetDefaultAlgorithm() const {
@@ -567,8 +556,7 @@ LoadBalanceAlgorithm MqttLoadBalancer::GetDefaultAlgorithm() const {
 
 void MqttLoadBalancer::EnableLoadBalancing(bool enable) {
     load_balancing_enabled_ = enable;
-    PulseOne::LogManager::Instance().Info("MqttLoadBalancer", 
-        "로드밸런싱 " + std::string(enable ? "활성화" : "비활성화"));
+    LogManager::getInstance().Info("로드밸런싱 " + std::string(enable ? "활성화" : "비활성화"));
 }
 
 bool MqttLoadBalancer::IsLoadBalancingEnabled() const {
@@ -593,20 +581,46 @@ size_t MqttLoadBalancer::GetHealthyBrokerCount() const {
     return healthy_count;
 }
 
+// BrokerLoad 반환 시 복사 생성자 문제 해결 - 개별 값들만 복사하여 새 객체 생성
 BrokerLoad MqttLoadBalancer::GetBrokerLoad(const std::string& broker_url) const {
     std::lock_guard<std::mutex> lock(brokers_mutex_);
     
     auto it = brokers_.find(broker_url);
     if (it != brokers_.end()) {
-        return it->second;
+        // atomic 멤버들의 값을 복사하여 새 BrokerLoad 객체 생성
+        BrokerLoad copy_broker;
+        copy_broker.broker_url = it->second.broker_url;
+        copy_broker.name = it->second.name;
+        copy_broker.weight = it->second.weight;
+        copy_broker.active_connections = it->second.active_connections.load();
+        copy_broker.total_messages = it->second.total_messages.load();
+        copy_broker.pending_messages = it->second.pending_messages.load();
+        copy_broker.avg_response_time_ms = it->second.avg_response_time_ms.load();
+        copy_broker.cpu_usage = it->second.cpu_usage.load();
+        copy_broker.memory_usage = it->second.memory_usage.load();
+        copy_broker.is_healthy = it->second.is_healthy.load();
+        copy_broker.last_update = it->second.last_update;
+        
+        return copy_broker;
     }
     
     return BrokerLoad(); // 빈 브로커 정보 반환
 }
 
+// LoadBalancingStats 반환 시 복사 생성자 문제 해결
 LoadBalancingStats MqttLoadBalancer::GetStatistics() const {
     std::lock_guard<std::mutex> lock(stats_mutex_);
-    return statistics_;
+    
+    // atomic 멤버들의 값을 복사하여 새 LoadBalancingStats 객체 생성
+    LoadBalancingStats copy_stats;
+    copy_stats.total_requests = statistics_.total_requests.load();
+    copy_stats.successful_routes = statistics_.successful_routes.load();
+    copy_stats.failed_routes = statistics_.failed_routes.load();
+    copy_stats.broker_usage_count = statistics_.broker_usage_count;
+    copy_stats.algorithm_usage_count = statistics_.algorithm_usage_count;
+    copy_stats.start_time = statistics_.start_time;
+    
+    return copy_stats;
 }
 
 std::vector<RoutingRule> MqttLoadBalancer::GetRoutingRules() const {
