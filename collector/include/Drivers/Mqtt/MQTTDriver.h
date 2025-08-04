@@ -1,16 +1,16 @@
 // =============================================================================
 // collector/include/Drivers/Mqtt/MqttDriver.h
-// MQTT 프로토콜 드라이버 헤더 - 표준화 완성본 + 확장성 준비
+// MQTT 프로토콜 드라이버 헤더 - 컴파일 에러 수정 완료
 // =============================================================================
 
 #ifndef PULSEONE_DRIVERS_MQTT_DRIVER_H
 #define PULSEONE_DRIVERS_MQTT_DRIVER_H
 
 #include "Drivers/Common/IProtocolDriver.h"
-#include "Drivers/Common/DriverLogger.h"
 #include "Common/DriverError.h"
-#include "Common/DriverStatistics.h"  // ✅ 표준 통계 구조
-#include "Common/Structs.h"           // ✅ DataPoint, DataValue, TimestampedValue 등
+#include "Common/DriverStatistics.h"
+#include "Common/Structs.h"
+#include "Common/Enums.h"  // ✅ DataQuality enum 포함
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -22,6 +22,7 @@
 #include <deque>
 #include <future>
 #include <set>
+#include <chrono>
 
 #ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
@@ -46,34 +47,20 @@ namespace Drivers {
     using TimestampedValue = PulseOne::Structs::TimestampedValue;
 
 // =============================================================================
-// 전방 선언 (기존 + 확장 준비)
+// 전방 선언
 // =============================================================================
 class MqttCallbackImpl;
 class MqttActionListener;
 
-// ✅ 고급 기능 클래스들 전방 선언 (확장성 준비)
-class MqttDiagnostics;
-class MqttLoadBalancer;
-class MqttFailover;
-class MqttSecurity;
-class MqttPerformance;
-
-// 고급 기능 관련 구조체들
-struct QosAnalysis;
-struct BrokerStats;
-struct FailoverConfig;
-struct SecurityConfig;
-struct PerformanceConfig;
-
 /**
  * @brief MQTT 프로토콜 드라이버 - 표준화 완성본
- * @details Eclipse Paho C++ 기반 + 표준 DriverStatistics + 확장성 준비
+ * @details Eclipse Paho C++ 기반 + 표준 DriverStatistics
  * 
- * 🎯 주요 개선사항:
- * - ✅ 표준 DriverStatistics 완全 적용
- * - ✅ 중복 통계 필드 제거 (메모리 효율성)
- * - ✅ 고급 기능 확장성 준비 (Facade 패턴)
+ * 🎯 주요 특징:
+ * - ✅ 표준 DriverStatistics 완전 적용
+ * - ✅ Eclipse Paho C++ 기반 MQTT 3.1.1/5.0 지원
  * - ✅ ModbusDriver와 동일한 아키텍처 패턴
+ * - ✅ 멀티스레드 안전성 보장
  * 
  * 사용 예시:
  * auto driver = std::make_shared<MqttDriver>();
@@ -84,11 +71,6 @@ struct PerformanceConfig;
  * const auto& stats = driver->GetStatistics();
  * uint64_t reads = stats.total_reads.load();
  * uint64_t mqtt_messages = stats.GetProtocolCounter("mqtt_messages");
- * 
- * // 향후 고급 기능 (2단계에서 구현)
- * // driver->EnableDiagnostics();
- * // driver->EnableLoadBalancing(broker_urls);
- * // driver->EnableFailover();
  */
 class MqttDriver : public IProtocolDriver {
 public:
@@ -121,112 +103,127 @@ public:
     void ResetStatistics() override;
     
     bool Start() override;
+    bool Stop() override;
 
     // ✅ IProtocolDriver 순수 가상 함수들 구현
     ProtocolType GetProtocolType() const override;
     Structs::DriverStatus GetStatus() const override;
     ErrorInfo GetLastError() const override;
-    bool Stop() override;
-    void SetError(const std::string& error_message);
     
     // =======================================================================
-    // MQTT 핵심 기능 (현재 구현된 기능들 유지)
+    // MQTT 특화 인터페이스
     // =======================================================================
     
-    // 연결 관리
-    bool ConnectWithOptions(const std::string& broker_url, const std::string& client_id);
-    bool SetConnectionOptions(int keep_alive_seconds, bool clean_session, bool auto_reconnect);
-    
-    // 발행/구독
-    bool Publish(const std::string& topic, const std::string& payload, int qos = 0, bool retain = false);
+    /**
+     * @brief MQTT 토픽 구독
+     * @param topic 구독할 토픽
+     * @param qos QoS 레벨 (0, 1, 2)
+     * @return 성공 여부
+     */
     bool Subscribe(const std::string& topic, int qos = 0);
+    
+    /**
+     * @brief MQTT 토픽 구독 해제
+     * @param topic 구독 해제할 토픽
+     * @return 성공 여부
+     */
     bool Unsubscribe(const std::string& topic);
-    bool UnsubscribeAll();
     
-    // 메시지 처리
-    void SetMessageCallback(std::function<void(const std::string&, const std::string&, int)> callback);
-    void SetConnectionCallback(std::function<void(bool, const std::string&)> callback);
+    /**
+     * @brief MQTT 메시지 발행
+     * @param topic 발행할 토픽
+     * @param payload 메시지 내용
+     * @param qos QoS 레벨
+     * @param retain 유지 여부
+     * @return 성공 여부
+     */
+    bool Publish(const std::string& topic, const std::string& payload, int qos = 0, bool retain = false);
     
-    // 상태 조회
+    // =======================================================================
+    // 설정 및 상태 조회
+    // =======================================================================
+    
+    /**
+     * @brief 브로커 URL 조회
+     */
     std::string GetBrokerUrl() const;
+    
+    /**
+     * @brief 클라이언트 ID 조회
+     */
     std::string GetClientId() const;
+    
+    /**
+     * @brief 구독 중인 토픽 목록 조회
+     */
     std::vector<std::string> GetSubscribedTopics() const;
+    
+    /**
+     * @brief 특정 토픽 구독 여부 확인
+     */
     bool IsSubscribed(const std::string& topic) const;
     
-    // 설정 관리
-    void SetQoS(int default_qos);
-    void SetKeepAlive(int seconds);
-    void SetRetryCount(int count);
-    void SetTimeout(int timeout_ms);
-    
-    // 진단 및 유지보수 (기존 기능 유지)
+    /**
+     * @brief 진단 정보 JSON 형태로 조회
+     */
     std::string GetDiagnosticsJSON() const;
-    std::string GetConnectionInfo() const;
-    bool TestConnection() const;
-    void ResetConnection();
     
     // =======================================================================
-    // 고급 기능 확장 준비 (2단계에서 구현 예정)
+    // 콜백 메서드들 (Eclipse Paho 콜백에서 호출)
     // =======================================================================
     
-    // 📊 진단 기능 (향후 구현)
-    // bool EnableDiagnostics(bool message_tracking = true, bool qos_analysis = true);
-    // void DisableDiagnostics();
-    // bool IsDiagnosticsEnabled() const;
-    // double GetMessageLossRate() const;
-    // double GetAverageLatency() const;
+    /**
+     * @brief 연결 성공 콜백
+     */
+    void OnConnected(const std::string& cause);
     
-    // ⚖️ 로드 밸런싱 (향후 구현)
-    // bool EnableLoadBalancing(const std::vector<std::string>& broker_urls);
-    // void DisableLoadBalancing();
-    // std::string GetCurrentBroker() const;
-    // BrokerStats GetBrokerStats() const;
+    /**
+     * @brief 연결 끊김 콜백
+     */
+    void OnConnectionLost(const std::string& cause);
     
-    // 🔄 페일오버 (향후 구현)
-    // bool EnableFailover(int failure_threshold = 3);
-    // void AddBackupBroker(const std::string& broker_url);
-    // std::vector<std::string> GetBackupBrokers() const;
+    /**
+     * @brief 메시지 수신 콜백
+     */
+    void OnMessageArrived(mqtt::const_message_ptr msg);
     
-    // 🔐 고급 보안 (향후 구현)
-    // bool EnableSecurity(const SecurityConfig& config);
-    // bool LoadCertificate(const std::string& cert_path);
-    // void SetTokenAuthentication(const std::string& token);
+    /**
+     * @brief 메시지 전송 완료 콜백
+     */
+    void OnDeliveryComplete(mqtt::delivery_token_ptr token);
     
-    // ⚡ 성능 최적화 (향후 구현)
-    // bool EnablePerformanceMode(const PerformanceConfig& config);
-    // void SetBatchSize(size_t batch_size);
-    // void SetCompressionLevel(int level);
-
-    // =======================================================================
-    // 콜백 및 이벤트 처리 (Eclipse Paho 연동)
-    // =======================================================================
-    void connected(const std::string& cause);
-    void connection_lost(const std::string& cause);
-    void message_arrived(mqtt::const_message_ptr msg);
-    void delivery_complete(mqtt::delivery_token_ptr token);
-    void on_failure(const mqtt::token& token);
-    void on_success(const mqtt::token& token);
+    /**
+     * @brief 액션 실패 콜백
+     */
+    void OnActionFailure(const mqtt::token& token);
+    
+    /**
+     * @brief 액션 성공 콜백
+     */
+    void OnActionSuccess(const mqtt::token& token);
 
 private:
     // =======================================================================
-    // Core 멤버 변수들 - 최적화된 구조
+    // Core 멤버 변수들 (필수)
     // =======================================================================
     
-    // ✅ 표준 통계 (DriverStatistics 사용 - 중복 제거됨)
-    DriverStatistics driver_statistics_{"MQTT"};
+    // ✅ 표준 통계 구조체 (ModbusDriver와 동일)
+    DriverStatistics driver_statistics_;
     
-    // 상태 관리
+    // 드라이버 상태 관리
     std::atomic<Structs::DriverStatus> status_;
     std::atomic<bool> is_connected_;
     std::atomic<bool> connection_in_progress_;
-    std::atomic<bool> stop_workers_;
-    std::atomic<bool> need_reconnect_;
     
-    // 에러 정보
+    // 에러 관리
     mutable std::mutex error_mutex_;
     ErrorInfo last_error_;
     
-    // MQTT 클라이언트 및 콜백
+    // =======================================================================
+    // MQTT 클라이언트 관련
+    // =======================================================================
+    
+    // Eclipse Paho MQTT 클라이언트
     std::unique_ptr<mqtt::async_client> mqtt_client_;
     std::shared_ptr<MqttCallbackImpl> mqtt_callback_;
     std::shared_ptr<MqttActionListener> mqtt_action_listener_;
@@ -236,102 +233,126 @@ private:
     std::string client_id_;
     int default_qos_;
     int keep_alive_seconds_;
-    int retry_count_;
     int timeout_ms_;
     bool clean_session_;
     bool auto_reconnect_;
     
+    // =======================================================================
     // 구독 관리
+    // =======================================================================
+    
     mutable std::mutex subscriptions_mutex_;
-    std::map<std::string, int> subscriptions_;  // topic -> qos
+    std::unordered_map<std::string, int> subscriptions_;  // topic -> qos
     
-    // 메시지 처리
-    std::function<void(const std::string&, const std::string&, int)> message_callback_;
-    std::function<void(bool, const std::string&)> connection_callback_;
-    
+    // =======================================================================
     // 스레드 관리
-    std::thread connection_monitor_thread_;
-    std::atomic<bool> connection_monitor_running_;
-    std::condition_variable connection_cv_;
-    std::mutex connection_mutex_;
+    // =======================================================================
     
-    // 메시지 큐 및 처리
-    std::queue<std::pair<std::string, std::string>> message_queue_;
+    // 메시지 처리 스레드
+    std::atomic<bool> message_processor_running_;
+    std::thread message_processor_thread_;
     std::mutex message_queue_mutex_;
     std::condition_variable message_queue_cv_;
-    std::thread message_processor_thread_;
-    std::atomic<bool> message_processor_running_;
+    std::queue<std::pair<std::string, std::string>> message_queue_;  // topic, payload
     
-    // 진단 및 로깅
-    std::shared_ptr<DriverLogger> logger_;
-    std::atomic<bool> diagnostics_enabled_;
-    std::atomic<bool> packet_logging_enabled_;
+    // 연결 모니터링 스레드
+    std::atomic<bool> connection_monitor_running_;
+    std::thread connection_monitor_thread_;
+    std::mutex connection_mutex_;
+    std::condition_variable connection_cv_;
+    
+    // =======================================================================
+    // 로깅 및 진단
+    // =======================================================================
+    
     std::atomic<bool> console_output_enabled_;
-    
-    // 시간 추적
-    std::chrono::system_clock::time_point last_successful_operation_;
+    std::atomic<bool> packet_logging_enabled_;
     std::chrono::system_clock::time_point connection_start_time_;
     
     // =======================================================================
-    // ❌ 제거된 중복 통계 필드들 (DriverStatistics로 대체됨)
-    // =======================================================================
-    // mutable std::mutex stats_mutex_;                    // 삭제 - DriverStatistics 내장
-    // std::atomic<uint64_t> total_messages_received_;     // 삭제 - statistics_.total_reads 사용
-    // std::atomic<uint64_t> total_messages_sent_;         // 삭제 - statistics_.total_writes 사용  
-    // std::atomic<uint64_t> total_bytes_received_;        // 삭제 - protocol_counters 사용
-    // std::atomic<uint64_t> total_bytes_sent_;            // 삭제 - protocol_counters 사용
-    
-    // =======================================================================
-    // 고급 기능 확장 슬롯 (2단계에서 구현)
-    // =======================================================================
-    // std::unique_ptr<MqttDiagnostics> diagnostics_;      // 향후 구현
-    // std::unique_ptr<MqttLoadBalancer> load_balancer_;   // 향후 구현
-    // std::unique_ptr<MqttFailover> failover_;            // 향후 구현
-    // std::unique_ptr<MqttSecurity> security_;            // 향후 구현
-    // std::unique_ptr<MqttPerformance> performance_;      // 향후 구현
-    
-    // =======================================================================
-    // Private 헬퍼 메서드들
+    // 내부 메서드들
     // =======================================================================
     
-    // 초기화 및 정리
-    bool InitializeMqttClient();
-    void CleanupMqttClient();
-    bool ParseDriverConfig(const DriverConfig& config);
+    /**
+     * @brief MQTT 특화 통계 카운터들 초기화
+     */
     void InitializeMqttCounters();
     
-    // 통계 관리 (표준화됨)
+    /**
+     * @brief 통계 업데이트
+     */
     void UpdateStats(const std::string& operation, bool success, double duration_ms = 0.0);
-    void UpdateMessageStats(const std::string& operation, size_t payload_size, int qos, bool success);
-    void UpdateConnectionStats(bool connected, const std::string& reason = "");
     
-    // 연결 관리
+    /**
+     * @brief 에러 설정
+     */
+    void SetError(const std::string& error_message);
+    
+    /**
+     * @brief 로그 메시지 출력
+     */
+    void LogMessage(const std::string& level, const std::string& message, const std::string& category = "MQTT") const;
+    
+    /**
+     * @brief 패킷 로깅
+     */
+    void LogPacket(const std::string& direction, const std::string& topic, 
+                   const std::string& payload, int qos) const;
+    
+    /**
+     * @brief MQTT 연결 수립
+     */
     bool EstablishConnection();
-    void HandleConnectionLoss(const std::string& cause);
+    
+    /**
+     * @brief MQTT 클라이언트 초기화
+     */
+    bool InitializeMqttClient();
+    
+    /**
+     * @brief MQTT 클라이언트 정리
+     */
+    void CleanupMqttClient();
+    
+    /**
+     * @brief 드라이버 설정 파싱
+     */
+    bool ParseDriverConfig(const DriverConfig& config);
+    
+    /**
+     * @brief 클라이언트 ID 생성
+     */
+    std::string GenerateClientId() const;
+    
+    /**
+     * @brief 메시지 처리 루프
+     */
+    void MessageProcessorLoop();
+    
+    /**
+     * @brief 수신된 메시지 처리
+     */
+    void ProcessReceivedMessage(const std::string& topic, const std::string& payload, int qos);
+    
+    /**
+     * @brief 연결 모니터링 루프
+     */
     void ConnectionMonitorLoop();
+    
+    /**
+     * @brief 재연결 필요 여부 확인
+     */
     bool ShouldReconnect() const;
     
-    // 메시지 처리
-    void MessageProcessorLoop();
-    void ProcessReceivedMessage(const std::string& topic, const std::string& payload, int qos);
-    bool SendMessage(const std::string& topic, const std::string& payload, int qos, bool retain);
-    
-    // 구독 관리
+    /**
+     * @brief 구독 복원
+     */
     bool RestoreSubscriptions();
-    void ClearSubscriptions();
     
-    // 유틸리티
-    std::string GenerateClientId() const;
-    bool ValidateTopicName(const std::string& topic) const;
-    std::string FormatConnectionInfo() const;
-    
-    // 진단 및 로깅
-    void LogMessage(const std::string& level, const std::string& message, const std::string& category = "MQTT") const;
-    void LogPacket(const std::string& direction, const std::string& topic, const std::string& payload, int qos) const;
-    
-    // 확장성 헬퍼 (향후 사용)
-    // bool IsAdvancedFeatureEnabled(const std::string& feature_name) const;
-    // void NotifyAdvancedFeatures(const std::string& event, const std::map<std::string, std::string>& data);
+    /**
+     * @brief 연결 끊김 처리
+     */
+    void HandleConnectionLoss(const std::string& cause);
 };
 
 } // namespace Drivers
