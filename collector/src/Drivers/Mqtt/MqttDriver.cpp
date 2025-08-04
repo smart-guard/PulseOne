@@ -120,6 +120,7 @@ MqttDriver::MqttDriver()
     , console_output_enabled_(false)
     , packet_logging_enabled_(false)
     , connection_start_time_(system_clock::now())
+    , load_balancer_(nullptr)
 {
     // ✅ MQTT 특화 통계 카운터 초기화
     InitializeMqttCounters();
@@ -135,7 +136,11 @@ MqttDriver::~MqttDriver() {
     Stop();
     Disconnect();
     CleanupMqttClient();
-    
+    // 🚀 로드밸런서 정리 (새로 추가)
+    if (load_balancer_) {
+        load_balancer_->EnableLoadBalancing(false);
+    }
+    load_balancer_.reset();
     LogMessage("INFO", "MqttDriver destroyed", "MQTT");
 }
 
@@ -730,6 +735,16 @@ void MqttDriver::LogPacket(const std::string& direction, const std::string& topi
 // =============================================================================
 
 bool MqttDriver::EstablishConnection() {
+    // 🚀 로드밸런싱 브로커 선택 (맨 앞에 추가)
+    std::string target_broker = broker_url_;
+    if (load_balancer_ && load_balancer_->IsLoadBalancingEnabled()) {
+        std::string selected_broker = load_balancer_->SelectBroker("connection");
+        if (!selected_broker.empty()) {
+            target_broker = selected_broker;
+            LogMessage("INFO", "로드밸런서에서 브로커 선택: " + target_broker, "MQTT");
+        }
+    }
+    
     if (connection_in_progress_) {
         return false;
     }
@@ -738,6 +753,24 @@ bool MqttDriver::EstablishConnection() {
     auto start_time = steady_clock::now();
     
     try {
+        // 🚀 중요: 선택된 브로커로 클라이언트 재생성 (새로 추가)
+        if (!mqtt_client_ || target_broker != broker_url_) {
+            // 기존 클라이언트 정리
+            if (mqtt_client_) {
+                mqtt_client_.reset();
+            }
+            
+            // 선택된 브로커로 새 클라이언트 생성
+            mqtt_client_ = std::make_unique<mqtt::async_client>(target_broker, client_id_);
+            
+            // 콜백 재설정 (필요시)
+            if (mqtt_callback_) {
+                mqtt_client_->set_callback(*mqtt_callback_);
+            }
+            
+            LogMessage("DEBUG", "MQTT 클라이언트 재생성: " + target_broker, "MQTT");
+        }
+        
         if (!mqtt_client_) {
             SetError("MQTT client not initialized");
             connection_in_progress_ = false;
@@ -760,9 +793,22 @@ bool MqttDriver::EstablishConnection() {
         if (success) {
             is_connected_ = true;
             status_ = Structs::DriverStatus::RUNNING;
+            
+            // 🚀 성공 시 브로커 URL 업데이트 및 로드밸런서 알림
+            broker_url_ = target_broker;  // 성공한 브로커로 업데이트
+            
+            if (load_balancer_) {
+                load_balancer_->UpdateBrokerLoad(target_broker, 1, duration_ms, 0.0, 0.0);
+            }
+            
             LogMessage("INFO", "Successfully connected to MQTT broker: " + broker_url_, "MQTT");
         } else {
-            SetError("Failed to connect to MQTT broker");
+            // 🚀 실패 시 로드밸런서에 알림
+            if (load_balancer_) {
+                load_balancer_->UpdateBrokerLoad(target_broker, 0, 0.0, 100.0, 0.0);
+            }
+            
+            SetError("Failed to connect to MQTT broker: " + target_broker);
         }
         
         connection_in_progress_ = false;
@@ -773,6 +819,12 @@ bool MqttDriver::EstablishConnection() {
         double duration_ms = duration_cast<milliseconds>(end_time - start_time).count();
         
         UpdateStats("connect", false, duration_ms);
+        
+        // 🚀 예외 발생 시 로드밸런서에 알림
+        if (load_balancer_) {
+            load_balancer_->UpdateBrokerLoad(target_broker, 0, 0.0, 100.0, 0.0);
+        }
+        
         SetError("MQTT connection exception: " + std::string(e.what()));
         connection_in_progress_ = false;
         return false;
@@ -1212,6 +1264,148 @@ std::string MqttDriver::GetDiagnosticsJSON() const {
 #endif
 }
 
+bool MqttDriver::EnableLoadBalancing(const std::vector<std::string>& brokers, 
+                                    LoadBalanceAlgorithm algorithm) {
+    if (brokers.empty()) {
+        SetError("로드밸런싱 활성화 실패: 브로커 목록이 비어있음");
+        return false;
+    }
+    
+    try {
+        // 로드밸런서 생성
+        if (!load_balancer_) {
+            load_balancer_ = std::make_unique<MqttLoadBalancer>(this);
+        }
+        
+        // 기존 브로커들 정리
+        load_balancer_->EnableLoadBalancing(false);
+        
+        // 새 브로커들 추가
+        for (size_t i = 0; i < brokers.size(); ++i) {
+            const auto& broker = brokers[i];
+            if (!broker.empty()) {
+                // 첫 번째 브로커에 높은 우선순위
+                int weight = (i == 0) ? 10 : 5;
+                load_balancer_->AddBroker(broker, "Broker-" + std::to_string(i + 1), weight);
+            }
+        }
+        
+        // 알고리즘 설정 및 활성화
+        load_balancer_->SetDefaultAlgorithm(algorithm);
+        load_balancer_->EnableLoadBalancing(true);
+        
+        // 부하 모니터링 시작 (5초 간격)
+        load_balancer_->EnableLoadMonitoring(true, 5000);
+        
+        LogMessage("INFO", "MQTT 로드밸런싱 활성화됨 - 브로커 수: " + std::to_string(brokers.size()), "MQTT");
+        
+        // 통계 업데이트
+        driver_statistics_.IncrementProtocolCounter("loadbalancer_activations", 1);
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        SetError("로드밸런싱 활성화 실패: " + std::string(e.what()));
+        return false;
+    }
+}
+
+void MqttDriver::DisableLoadBalancing() {
+    if (load_balancer_) {
+        load_balancer_->EnableLoadBalancing(false);
+        load_balancer_->EnableLoadMonitoring(false);
+    }
+    load_balancer_.reset();
+    
+    LogMessage("INFO", "MQTT 로드밸런싱 비활성화됨", "MQTT");
+    
+    // 통계 업데이트
+    driver_statistics_.IncrementProtocolCounter("loadbalancer_deactivations", 1);
+}
+
+bool MqttDriver::IsLoadBalancingEnabled() const {
+    return load_balancer_ && load_balancer_->IsLoadBalancingEnabled();
+}
+
+std::string MqttDriver::GetLoadBalancingStatusJSON() const {
+    if (load_balancer_) {
+        return load_balancer_->GetStatusJSON();
+    }
+    
+    return "{\"load_balancing_enabled\":false,\"broker_count\":0}";
+}
+
+std::string MqttDriver::SelectOptimalBroker(const std::string& topic, size_t message_size) {
+    if (load_balancer_ && load_balancer_->IsLoadBalancingEnabled()) {
+        return load_balancer_->SelectBroker(topic, message_size);
+    }
+    
+    // 로드밸런싱이 비활성화된 경우 기본 브로커 반환
+    return broker_url_;
+}
+
+
+// =============================================================================
+// 6. 헬퍼 메서드들 구현
+// =============================================================================
+
+bool MqttDriver::SwitchBroker(const std::string& new_broker_url) {
+    if (new_broker_url == broker_url_) {
+        return true; // 이미 연결된 브로커
+    }
+    
+    try {
+        LogMessage("INFO", "브로커 전환 시도: " + broker_url_ + " → " + new_broker_url, "MQTT");
+        
+        // 현재 연결 종료
+        if (IsConnected()) {
+            mqtt_client_->disconnect()->wait_for(std::chrono::milliseconds(timeout_ms_));
+            is_connected_.store(false);
+        }
+        
+        // 새 브로커로 연결
+        broker_url_ = new_broker_url;
+        bool success = Connect();
+        
+        if (success) {
+            LogMessage("INFO", "브로커 전환 성공: " + new_broker_url, "MQTT");
+            driver_statistics_.IncrementProtocolCounter("broker_switches", 1);
+        } else {
+            LogMessage("ERROR", "브로커 전환 실패: " + new_broker_url, "MQTT");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        SetError("브로커 전환 중 예외 발생: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MqttDriver::CreateMqttClientForBroker(const std::string& broker_url) {
+    try {
+        // 기존 클라이언트 정리
+        if (mqtt_client_) {
+            mqtt_client_.reset();
+        }
+        
+        // 새 클라이언트 생성
+        mqtt_client_ = std::make_unique<mqtt::async_client>(broker_url, client_id_);
+        
+        // 콜백 설정
+        if (!mqtt_callback_) {
+            mqtt_callback_ = std::make_unique<MqttCallbackImpl>(this);
+        }
+        mqtt_client_->set_callback(*mqtt_callback_);
+        
+        LogMessage("DEBUG", "MQTT 클라이언트 생성 완료: " + broker_url, "MQTT");
+        return true;
+        
+    } catch (const std::exception& e) {
+        SetError("MQTT 클라이언트 생성 실패: " + std::string(e.what()));
+        return false;
+    }
+}
 
 } // namespace Drivers
 } // namespace PulseOne
