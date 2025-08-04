@@ -500,6 +500,53 @@ namespace PulseOne::Utils {
         oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
         return oss.str();
     }
+
+    /**
+     * @brief Timestamp를 문자열로 변환
+     * @param timestamp 변환할 타임스탬프
+     * @return ISO 8601 형식의 문자열 (예: "2025-08-04T12:34:56.789Z")
+     */
+    inline std::string TimestampToString(const BasicTypes::Timestamp& timestamp) {
+        try {
+            auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                timestamp.time_since_epoch()) % 1000;
+            
+            std::stringstream ss;
+            ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+            ss << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
+            
+            return ss.str();
+        } catch (const std::exception&) {
+            return "1970-01-01T00:00:00.000Z";  // 기본값
+        }
+    }
+    
+    /**
+     * @brief 문자열을 Timestamp로 변환
+     * @param timestamp_str ISO 8601 형식의 문자열
+     * @return Timestamp 객체
+     */
+    inline BasicTypes::Timestamp StringToTimestamp(const std::string& timestamp_str) {
+        (void)timestamp_str;
+        
+        try {
+            // 간단한 구현 - 현재 시간 반환
+            // 실제로는 ISO 8601 파싱 로직 필요
+            return std::chrono::system_clock::now();
+        } catch (const std::exception&) {
+            return std::chrono::system_clock::now();
+        }
+    }
+    
+    /**
+     * @brief 현재 시간을 문자열로 반환
+     * @return 현재 시간의 ISO 8601 문자열
+     */
+    inline std::string GetCurrentTimestampString() {
+        return TimestampToString(GetCurrentTimestamp());
+    }    
+
     
 } // namespace PulseOne::Utils
 

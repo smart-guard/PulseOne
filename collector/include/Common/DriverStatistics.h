@@ -1,10 +1,4 @@
-/**
- * @file DriverStatistics.h
- * @brief PulseOne 표준화된 드라이버 통계 구조
- * @author PulseOne Development Team  
- * @date 2025-08-02
- * @version 2.0.0 - 모든 프로토콜 지원 통합 버전
- */
+// collector/include/Common/DriverStatistics.h 수정된 전체 구조
 
 #ifndef PULSEONE_UNIFIED_DRIVER_STATISTICS_H
 #define PULSEONE_UNIFIED_DRIVER_STATISTICS_H
@@ -27,6 +21,11 @@
 
 namespace PulseOne {
 namespace Structs {
+
+// =============================================================================
+// 전방 선언
+// =============================================================================
+struct DriverStatisticsSnapshot;
 
 /**
  * @brief 통합 드라이버 통계 구조체
@@ -86,6 +85,23 @@ struct DriverStatistics {
     explicit DriverStatistics(const std::string& protocol_type) : DriverStatistics() {
         InitializeProtocolSpecificCounters(protocol_type);
     }
+    
+    // ===== 복사/이동 방지 (std::atomic 때문에) =====
+    DriverStatistics(const DriverStatistics&) = delete;
+    DriverStatistics& operator=(const DriverStatistics&) = delete;
+    DriverStatistics(DriverStatistics&&) = delete;
+    DriverStatistics& operator=(DriverStatistics&&) = delete;
+    
+    // ===== 소멸자 =====
+    ~DriverStatistics() = default;
+    
+    // ===== 복사를 위한 별도 메서드 제공 =====
+    
+    /**
+     * @brief 통계 스냅샷 생성 (복사용)
+     * @return 현재 통계의 스냅샷
+     */
+    DriverStatisticsSnapshot CreateSnapshot() const;
     
     // ===== 기존 호환성 메서드들 =====
     double GetSuccessRate() const {
@@ -193,228 +209,369 @@ struct DriverStatistics {
         return (it != protocol_status.end()) ? it->second : "";
     }
     
-    // ===== 작업 기록 메서드들 =====
-    void RecordReadOperation(bool success, double response_time_ms) {
-        total_reads++;
-        if (success) {
-            successful_reads++;
-            last_success_time = Utils::GetCurrentTimestamp();
-            consecutive_failures = 0;
-        } else {
-            failed_reads++;
-            consecutive_failures++;
-            last_error_time = Utils::GetCurrentTimestamp();
-        }
-        
-        last_read_time = Utils::GetCurrentTimestamp();
-        UpdateResponseTimeStats(response_time_ms);
-        UpdateTotalOperations();
-    }
-    
-    void RecordWriteOperation(bool success, double response_time_ms) {
-        total_writes++;
-        if (success) {
-            successful_writes++;
-            last_success_time = Utils::GetCurrentTimestamp();
-            consecutive_failures = 0;
-        } else {
-            failed_writes++;
-            consecutive_failures++;
-            last_error_time = Utils::GetCurrentTimestamp();
-        }
-        
-        last_write_time = Utils::GetCurrentTimestamp();
-        UpdateResponseTimeStats(response_time_ms);
-        UpdateTotalOperations();
-    }
-    
-    void RecordConnectionAttempt(bool success) {
-        if (success) {
-            successful_connections++;
-            last_connection_time = Utils::GetCurrentTimestamp();
-        } else {
-            failed_connections++;
-        }
-    }
-    
-    // ===== JSON 출력 =====
-    std::string ToJsonString() const {
-#ifdef HAS_NLOHMANN_JSON
-        json stats_json;
-        
-        // 기본 작업 통계
-        stats_json["basic_operations"] = {
-            {"total_reads", total_reads.load()},
-            {"total_writes", total_writes.load()},
-            {"successful_reads", successful_reads.load()},
-            {"successful_writes", successful_writes.load()},
-            {"failed_reads", failed_reads.load()},
-            {"failed_writes", failed_writes.load()}
-        };
-        
-        // 통합 통계
-        stats_json["aggregated_operations"] = {
-            {"total_operations", total_operations.load()},
-            {"successful_operations", successful_operations.load()},
-            {"failed_operations", failed_operations.load()},
-            {"success_rate", success_rate.load()}
-        };
-        
-        // 성능 통계
-        stats_json["performance"] = {
-            {"avg_response_time_ms", avg_response_time_ms.load()},
-            {"min_response_time_ms", min_response_time_ms.load()},
-            {"max_response_time_ms", max_response_time_ms.load()}
-        };
-        
-        // 프로토콜별 확장 통계
-        {
-            std::lock_guard<std::mutex> lock(extension_mutex_);
-            
-            if (!protocol_counters.empty()) {
-                json protocol_counters_json;
-                for (const auto& [name, counter] : protocol_counters) {
-                    protocol_counters_json[name] = counter.load();
-                }
-                stats_json["protocol_counters"] = protocol_counters_json;
-            }
-            
-            if (!protocol_metrics.empty()) {
-                json protocol_metrics_json;
-                for (const auto& [name, metric] : protocol_metrics) {
-                    protocol_metrics_json[name] = metric.load();
-                }
-                stats_json["protocol_metrics"] = protocol_metrics_json;
-            }
-            
-            if (!protocol_status.empty()) {
-                stats_json["protocol_status"] = protocol_status;
-            }
-        }
-        
-        return stats_json.dump(2);
-#else
-        return "{\"message\":\"JSON library not available\"}";
-#endif
-    }
-    
-    std::string GetSummary() const {
-        std::ostringstream oss;
-        oss << "Operations: " << total_operations.load() 
-            << " (Success: " << successful_operations.load() 
-            << ", Failed: " << failed_operations.load() 
-            << "), Success Rate: " << std::fixed << std::setprecision(1) 
-            << success_rate.load() << "%, Avg Response: " 
-            << std::setprecision(2) << avg_response_time_ms.load() << "ms";
-        return oss.str();
-    }
-
-private:
-    void UpdateResponseTimeStats(double response_time_ms) {
-        double current_avg = avg_response_time_ms.load();
-        double new_avg = (current_avg == 0.0) ? response_time_ms : 
-                        (current_avg * 0.9 + response_time_ms * 0.1);
-        avg_response_time_ms.store(new_avg);
-        
-        double current_min = min_response_time_ms.load();
-        while (response_time_ms < current_min) {
-            if (min_response_time_ms.compare_exchange_weak(current_min, response_time_ms)) {
-                break;
-            }
-        }
-        
-        double current_max = max_response_time_ms.load();
-        while (response_time_ms > current_max) {
-            if (max_response_time_ms.compare_exchange_weak(current_max, response_time_ms)) {
-                break;
-            }
-        }
-        
-        average_response_time = std::chrono::milliseconds(static_cast<long long>(new_avg));
-    }
-    
+    // ===== 프로토콜별 초기화 메서드 =====
     void InitializeProtocolSpecificCounters(const std::string& protocol_type) {
         std::lock_guard<std::mutex> lock(extension_mutex_);
         
         if (protocol_type == "MODBUS") {
-            // Modbus 특화 카운터
             protocol_counters["register_reads"] = 0;
             protocol_counters["coil_reads"] = 0;
-            protocol_counters["discrete_input_reads"] = 0;
-            protocol_counters["holding_register_writes"] = 0;
+            protocol_counters["register_writes"] = 0;
             protocol_counters["coil_writes"] = 0;
             protocol_counters["slave_errors"] = 0;
-            protocol_counters["timeout_errors"] = 0;
-            protocol_counters["crc_errors"] = 0;
-            protocol_counters["exception_responses"] = 0;
-            
-            protocol_metrics["avg_slave_response_time"] = 0.0;
-            protocol_metrics["packet_loss_rate"] = 0.0;
-            protocol_metrics["error_rate"] = 0.0;
-            
-            protocol_status["current_slave_id"] = "1";
-            protocol_status["connection_type"] = protocol_type;
+            protocol_counters["crc_checks"] = 0;
+            protocol_metrics["avg_response_time_ms"] = 0.0;
+            protocol_status["connection_status"] = "disconnected";
             
         } else if (protocol_type == "MQTT") {
-            // MQTT 특화 카운터
-            protocol_counters["messages_published"] = 0;
-            protocol_counters["messages_received"] = 0;
+            protocol_counters["mqtt_messages"] = 0;
+            protocol_counters["published_messages"] = 0;
+            protocol_counters["received_messages"] = 0;
             protocol_counters["qos0_messages"] = 0;
             protocol_counters["qos1_messages"] = 0;
             protocol_counters["qos2_messages"] = 0;
             protocol_counters["retained_messages"] = 0;
-            protocol_counters["broker_disconnections"] = 0;
-            protocol_counters["subscription_count"] = 0;
-            protocol_counters["publish_failures"] = 0;
-            
-            protocol_metrics["avg_publish_latency"] = 0.0;
-            protocol_metrics["message_loss_rate"] = 0.0;
-            protocol_metrics["connection_uptime"] = 0.0;
-            
+            protocol_counters["connection_failures"] = 0;
+            protocol_metrics["avg_message_size_bytes"] = 0.0;
+            protocol_metrics["connection_uptime_seconds"] = 0.0;
             protocol_status["broker_status"] = "disconnected";
-            protocol_status["client_id"] = "";
-            protocol_status["last_will_topic"] = "";
             
-        } else if (protocol_type == "BACNET" || protocol_type == "BACNET_IP") {
-            // BACnet 특화 카운터
-            protocol_counters["who_is_sent"] = 0;
-            protocol_counters["i_am_received"] = 0;
+        } else if (protocol_type == "BACNET") {
             protocol_counters["read_property_requests"] = 0;
             protocol_counters["write_property_requests"] = 0;
-            protocol_counters["cov_subscriptions"] = 0;
-            protocol_counters["cov_notifications"] = 0;
-            protocol_counters["devices_discovered"] = 0;
-            protocol_counters["objects_discovered"] = 0;
-            protocol_counters["segmented_messages"] = 0;
-            
-            protocol_metrics["discovery_success_rate"] = 0.0;
-            protocol_metrics["avg_apdu_response_time"] = 0.0;
-            protocol_metrics["network_load"] = 0.0;
-            
-            protocol_status["network_number"] = "0";
-            protocol_status["device_instance"] = "0";
-            protocol_status["max_apdu_length"] = "1476";
-            
-        } else if (protocol_type == "OPCUA") {
-            // OPC-UA 특화 카운터
-            protocol_counters["subscriptions_active"] = 0;
-            protocol_counters["monitored_items"] = 0;
-            protocol_counters["data_change_notifications"] = 0;
-            protocol_counters["method_calls"] = 0;
-            protocol_counters["browse_requests"] = 0;
-            protocol_counters["certificate_errors"] = 0;
-            protocol_counters["security_violations"] = 0;
-            
-            protocol_metrics["session_timeout"] = 0.0;
-            protocol_metrics["subscription_interval"] = 0.0;
-            protocol_metrics["publishing_interval"] = 0.0;
-            
-            protocol_status["security_mode"] = "none";
-            protocol_status["security_policy"] = "none";
-            protocol_status["session_state"] = "closed";
+            protocol_counters["device_discoveries"] = 0;
+            protocol_counters["object_discoveries"] = 0;
+            protocol_counters["network_errors"] = 0;
+            protocol_metrics["network_response_time_ms"] = 0.0;
+            protocol_metrics["discovery_success_rate"] = 100.0;
+            protocol_status["network_status"] = "offline";
         }
     }
+    /**
+     * @brief 모든 프로토콜 카운터 맵 반환 (읽기 전용)
+     * @return 프로토콜 카운터들의 복사본
+     */
+    std::map<std::string, uint64_t> GetProtocolCounters() const {
+        std::lock_guard<std::mutex> lock(extension_mutex_);
+        
+        std::map<std::string, uint64_t> counters_copy;
+        for (const auto& [key, value] : protocol_counters) {
+            counters_copy[key] = value.load();
+        }
+        return counters_copy;
+    }
+    
+    /**
+     * @brief 모든 프로토콜 메트릭 맵 반환 (읽기 전용)
+     * @return 프로토콜 메트릭들의 복사본
+     */
+    std::map<std::string, double> GetProtocolMetrics() const {
+        std::lock_guard<std::mutex> lock(extension_mutex_);
+        
+        std::map<std::string, double> metrics_copy;
+        for (const auto& [key, value] : protocol_metrics) {
+            metrics_copy[key] = value.load();
+        }
+        return metrics_copy;
+    }
+    
+    /**
+     * @brief 모든 프로토콜 상태 맵 반환 (읽기 전용)
+     * @return 프로토콜 상태들의 복사본
+     */
+    std::map<std::string, std::string> GetProtocolStatuses() const {
+        std::lock_guard<std::mutex> lock(extension_mutex_);
+        return protocol_status;  // string 맵이므로 복사 안전
+    }
+    
+    /**
+     * @brief 평균 응답 시간 반환 (호환성 메서드)
+     * @return 평균 응답 시간 (밀리초)
+     */
+    double GetAverageResponseTime() const {
+        return avg_response_time_ms.load();
+    }
+    
+    /**
+     * @brief 최소 응답 시간 반환
+     * @return 최소 응답 시간 (밀리초)
+     */
+    double GetMinResponseTime() const {
+        return min_response_time_ms.load();
+    }
+    
+    /**
+     * @brief 최대 응답 시간 반환
+     * @return 최대 응답 시간 (밀리초)
+     */
+    double GetMaxResponseTime() const {
+        return max_response_time_ms.load();
+    }
+    
+    /**
+     * @brief 연결 성공률 계산
+     * @return 연결 성공률 (0.0 ~ 100.0)
+     */
+    double GetConnectionSuccessRate() const {
+        uint64_t total_conn = successful_connections.load() + failed_connections.load();
+        if (total_conn == 0) return 100.0;
+        
+        return (static_cast<double>(successful_connections.load()) / total_conn) * 100.0;
+    }
+    
+    /**
+     * @brief 전체 작업 수 반환
+     * @return 전체 읽기 + 쓰기 작업 수
+     */
+    uint64_t GetTotalOperations() const {
+        return total_reads.load() + total_writes.load();
+    }
+    
+    /**
+     * @brief 전체 성공 작업 수 반환
+     * @return 전체 성공한 읽기 + 쓰기 작업 수
+     */
+    uint64_t GetTotalSuccessfulOperations() const {
+        return successful_reads.load() + successful_writes.load();
+    }
+    
+    /**
+     * @brief 전체 실패 작업 수 반환
+     * @return 전체 실패한 읽기 + 쓰기 작업 수
+     */
+    uint64_t GetTotalFailedOperations() const {
+        return failed_reads.load() + failed_writes.load();
+    }
+    
+    /**
+     * @brief 프로토콜별 특정 카운터가 존재하는지 확인
+     * @param counter_name 카운터 이름
+     * @return 존재 여부
+     */
+    bool HasProtocolCounter(const std::string& counter_name) const {
+        std::lock_guard<std::mutex> lock(extension_mutex_);
+        return protocol_counters.find(counter_name) != protocol_counters.end();
+    }
+    
+    /**
+     * @brief 프로토콜별 특정 메트릭이 존재하는지 확인
+     * @param metric_name 메트릭 이름
+     * @return 존재 여부
+     */
+    bool HasProtocolMetric(const std::string& metric_name) const {
+        std::lock_guard<std::mutex> lock(extension_mutex_);
+        return protocol_metrics.find(metric_name) != protocol_metrics.end();
+    }
+    
+    /**
+     * @brief 시작 시간부터 현재까지의 업타임 계산 (초)
+     * @return 업타임 (초)
+     */
+    uint64_t GetUptimeSeconds() const {
+        auto now = Utils::GetCurrentTimestamp();
+        auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
+        return static_cast<uint64_t>(duration.count());
+    }
+    
+    /**
+     * @brief 마지막 성공한 작업 이후 경과 시간 (초)
+     * @return 경과 시간 (초)
+     */
+    uint64_t GetSecondsSinceLastSuccess() const {
+        auto now = Utils::GetCurrentTimestamp();
+        auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - last_success_time);
+        return static_cast<uint64_t>(duration.count());
+    }
+    
+    /**
+     * @brief 통계를 JSON 형태의 문자열로 변환
+     * @return JSON 문자열
+     */
+    std::string ToJsonString() const {
+#ifdef HAS_NLOHMANN_JSON
+        try {
+            json stats_json;
+            
+            // 기본 통계
+            stats_json["total_reads"] = total_reads.load();
+            stats_json["successful_reads"] = successful_reads.load();
+            stats_json["failed_reads"] = failed_reads.load();
+            stats_json["total_writes"] = total_writes.load();
+            stats_json["successful_writes"] = successful_writes.load();
+            stats_json["failed_writes"] = failed_writes.load();
+            stats_json["success_rate"] = GetSuccessRate();
+            stats_json["avg_response_time_ms"] = avg_response_time_ms.load();
+            
+            // 연결 통계
+            stats_json["successful_connections"] = successful_connections.load();
+            stats_json["failed_connections"] = failed_connections.load();
+            stats_json["connection_success_rate"] = GetConnectionSuccessRate();
+            
+            // 시간 정보
+            stats_json["uptime_seconds"] = GetUptimeSeconds();
+            stats_json["last_read_time"] = Utils::TimestampToString(last_read_time);
+            stats_json["last_write_time"] = Utils::TimestampToString(last_write_time);
+            stats_json["start_time"] = Utils::TimestampToString(start_time);
+            
+            // 프로토콜별 통계
+            if (!protocol_counters.empty()) {
+                stats_json["protocol_counters"] = GetProtocolCounters();
+            }
+            if (!protocol_metrics.empty()) {
+                stats_json["protocol_metrics"] = GetProtocolMetrics();
+            }
+            if (!protocol_status.empty()) {
+                stats_json["protocol_status"] = GetProtocolStatuses();
+            }
+            
+            return stats_json.dump(2);
+            
+        } catch (const std::exception& e) {
+            return "{\"error\":\"Failed to serialize statistics: " + std::string(e.what()) + "\"}";
+        }
+#else
+        // JSON 라이브러리가 없는 경우 간단한 형태
+        std::ostringstream oss;
+        oss << "{"
+            << "\"total_reads\":" << total_reads.load() << ","
+            << "\"successful_reads\":" << successful_reads.load() << ","
+            << "\"failed_reads\":" << failed_reads.load() << ","
+            << "\"success_rate\":" << std::fixed << std::setprecision(2) << GetSuccessRate() << ","
+            << "\"uptime_seconds\":" << GetUptimeSeconds()
+            << "}";
+        return oss.str();
+#endif
+    }
+
 };
+
+// =============================================================================
+// 복사 가능한 스냅샷 구조체 정의
+// =============================================================================
+
+/**
+ * @brief 복사 가능한 드라이버 통계 스냅샷 구조체
+ * @details std::atomic을 사용하지 않아 복사 생성자가 가능함
+ */
+struct DriverStatisticsSnapshot {
+    // 기본 통계들 (일반 타입)
+    uint64_t total_reads{0};
+    uint64_t successful_reads{0};
+    uint64_t failed_reads{0};
+    uint64_t total_writes{0};
+    uint64_t successful_writes{0};
+    uint64_t failed_writes{0};
+    uint64_t total_connections{0};
+    uint64_t successful_connections{0};
+    uint64_t failed_connections{0};
+    uint64_t total_operations{0};
+    uint64_t successful_operations{0};
+    uint64_t failed_operations{0};
+    uint64_t total_bytes_sent{0};
+    uint64_t total_bytes_received{0};
+    
+    // 계산된 메트릭들
+    double success_rate{100.0};
+    double avg_response_time_ms{0.0};
+    uint32_t min_response_time_ms{UINT32_MAX};
+    uint32_t max_response_time_ms{0};
+    
+    // 시간 정보들 - string 타입
+    std::string last_read_time;
+    std::string last_write_time;
+    std::string last_error_time;
+    std::string start_time;
+    std::string last_success_time;
+    std::string last_connection_time;
+    
+    // 프로토콜별 확장
+    std::map<std::string, uint64_t> protocol_counters;
+    std::map<std::string, double> protocol_metrics;
+    std::map<std::string, std::string> protocol_status;
+    
+    // 복사 생성자 허용 (모든 멤버가 복사 가능)
+    DriverStatisticsSnapshot() = default;
+    DriverStatisticsSnapshot(const DriverStatisticsSnapshot&) = default;
+    DriverStatisticsSnapshot& operator=(const DriverStatisticsSnapshot&) = default;
+    DriverStatisticsSnapshot(DriverStatisticsSnapshot&&) = default;
+    DriverStatisticsSnapshot& operator=(DriverStatisticsSnapshot&&) = default;
+    ~DriverStatisticsSnapshot() = default;
+    
+    /**
+     * @brief 성공률 계산
+     */
+    double GetSuccessRate() const {
+        uint64_t total = total_reads + total_writes;
+        if (total == 0) return 100.0;
+        uint64_t successful = successful_reads + successful_writes;
+        return (static_cast<double>(successful) / total) * 100.0;
+    }
+    
+    /**
+     * @brief 평균 응답 시간 반환
+     */
+    double GetAverageResponseTime() const {
+        return avg_response_time_ms;
+    }
+};
+
+// =============================================================================
+// CreateSnapshot 메서드 구현 (인라인)
+// =============================================================================
+
+inline DriverStatisticsSnapshot DriverStatistics::CreateSnapshot() const {
+    std::lock_guard<std::mutex> lock(calculation_mutex_);
+    
+    DriverStatisticsSnapshot snapshot;
+    
+    // 기본 통계들 복사
+    snapshot.total_reads = total_reads.load();
+    snapshot.successful_reads = successful_reads.load();
+    snapshot.failed_reads = failed_reads.load();
+    snapshot.total_writes = total_writes.load();
+    snapshot.successful_writes = successful_writes.load();
+    snapshot.failed_writes = failed_writes.load();
+    snapshot.total_operations = total_operations.load();
+    snapshot.successful_operations = successful_operations.load();
+    snapshot.failed_operations = failed_operations.load();
+    
+    // 연결 통계 복사
+    snapshot.successful_connections = successful_connections.load();
+    snapshot.failed_connections = failed_connections.load();
+    snapshot.total_connections = successful_connections.load() + failed_connections.load();
+    
+    // 바이트 통계는 기본값으로 설정 (기존 DriverStatistics에 없는 필드)
+    snapshot.total_bytes_sent = 0;
+    snapshot.total_bytes_received = 0;
+    
+    // 응답 시간 메트릭들
+    snapshot.success_rate = success_rate.load();
+    snapshot.avg_response_time_ms = avg_response_time_ms.load();
+    snapshot.min_response_time_ms = static_cast<uint32_t>(min_response_time_ms.load());
+    snapshot.max_response_time_ms = static_cast<uint32_t>(max_response_time_ms.load());
+    
+    // 시간 정보들 - Timestamp를 string으로 변환
+    snapshot.last_read_time = Utils::TimestampToString(last_read_time);
+    snapshot.last_write_time = Utils::TimestampToString(last_write_time);
+    snapshot.last_error_time = Utils::TimestampToString(last_error_time);
+    snapshot.start_time = Utils::TimestampToString(start_time);
+    snapshot.last_success_time = Utils::TimestampToString(last_success_time);
+    snapshot.last_connection_time = Utils::TimestampToString(last_connection_time);
+    
+    // 프로토콜별 카운터들 복사
+    {
+        std::lock_guard<std::mutex> ext_lock(extension_mutex_);
+        for (const auto& [key, value] : protocol_counters) {
+            snapshot.protocol_counters[key] = value.load();
+        }
+        for (const auto& [key, value] : protocol_metrics) {
+            snapshot.protocol_metrics[key] = value.load();
+        }
+        snapshot.protocol_status = protocol_status;
+    }
+    
+    return snapshot;
+}
 
 } // namespace Structs
 } // namespace PulseOne

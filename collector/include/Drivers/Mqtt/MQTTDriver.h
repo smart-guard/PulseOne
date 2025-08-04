@@ -422,7 +422,6 @@ public:
      */
     bool EnableBatchProcessing(bool enable = true, size_t batch_size = 100, int batch_timeout_ms = 1000);
 
-
 private:
     // =======================================================================
     // Core 멤버 변수들 (필수)

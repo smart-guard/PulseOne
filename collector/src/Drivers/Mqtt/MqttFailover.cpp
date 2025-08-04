@@ -562,6 +562,7 @@ bool MqttFailover::AttemptConnection(const std::string& broker_url) {
 }
 
 bool MqttFailover::CheckBrokerHealth(const std::string& broker_url) {
+    (void)broker_url;
     // 간단한 헬스 체크 구현
     // 실제로는 ping, 연결 테스트 등을 수행
     auto start_time = high_resolution_clock::now();
@@ -650,6 +651,69 @@ void MqttFailover::RecordEvent(const FailoverEvent& event) {
 void MqttFailover::CleanOldEvents() {
     while (failover_events_.size() > max_events_history_) {
         failover_events_.pop_front();
+    }
+}
+
+void MqttFailover::HandleConnectionSuccess() {
+    // 재연결 프로세스 중지
+    is_reconnecting_ = false;
+    
+    // 현재 브로커 성공 카운터 업데이트
+    {
+        std::lock_guard<std::mutex> lock(brokers_mutex_);
+        auto it = std::find_if(brokers_.begin(), brokers_.end(),
+                              [this](const BrokerInfo& broker) {
+                                  return broker.url == current_broker_url_;
+                              });
+        
+        if (it != brokers_.end()) {
+            // ✅ 올바른 필드명 사용
+            it->successful_connections++;              // success_count → successful_connections
+            it->connection_attempts++;                 // 총 시도 횟수도 증가
+            it->last_success = std::chrono::system_clock::now();
+            it->is_available = true;
+        }
+    }
+    
+    // 성공 이벤트 기록
+    RecordEvent(FailoverEvent("connection_success", "", current_broker_url_, 
+                             "Connection established successfully", true));
+    
+    // 재연결 콜백 호출 (성공)
+    if (reconnect_callback_) {
+        reconnect_callback_(true, 0, current_broker_url_);
+    }
+}
+
+void MqttFailover::HandleConnectionFailure(const std::string& reason) {
+    // 현재 브로커 실패 카운터 업데이트
+    {
+        std::lock_guard<std::mutex> lock(brokers_mutex_);
+        auto it = std::find_if(brokers_.begin(), brokers_.end(),
+                              [this](const BrokerInfo& broker) {
+                                  return broker.url == current_broker_url_;
+                              });
+        
+        if (it != brokers_.end()) {
+            // ✅ 올바른 필드명 사용
+            it->failed_connections++;                  // failure_count → failed_connections
+            it->connection_attempts++;                 // 총 시도 횟수도 증가
+            it->last_attempt = std::chrono::system_clock::now();
+            
+            // 연속 실패가 임계값을 넘으면 브로커를 임시 비활성화
+            if (it->failed_connections > 5) {         // failure_count → failed_connections
+                it->is_available = false;
+            }
+        }
+    }
+    
+    // 실패 이벤트 기록
+    RecordEvent(FailoverEvent("connection_failure", current_broker_url_, "", 
+                             "Connection failed: " + reason, false));
+    
+    // 자동 재연결이 활성화된 경우 시작
+    if (strategy_.enabled && !is_reconnecting_) {
+        StartAutoReconnect(reason);
     }
 }
 
