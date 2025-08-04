@@ -269,6 +269,23 @@ public:
      * @return JSON 형태의 통계 정보
      */
     std::string GetStatisticsJSON() const;
+    /**
+     * @brief 연결 성공 시 호출
+     * @details MqttDriver에서 연결 성공 시 호출하여 페일오버 상태를 업데이트
+     */
+    void HandleConnectionSuccess();
+    
+    /**
+     * @brief 연결 실패 시 호출
+     * @param reason 실패 원인
+     */
+    void HandleConnectionFailure(const std::string& reason);
+    
+    /**
+     * @brief 연결 복구 시 호출 (alias for HandleConnectionSuccess)
+     * @deprecated HandleConnectionSuccess 사용 권장
+     */
+    void OnConnectionRestored() { HandleConnectionSuccess(); }    
 
 private:
     // =======================================================================

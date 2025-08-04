@@ -213,44 +213,42 @@ bool MqttDriver::IsConnected() const {
     return is_connected_.load() && mqtt_client_ && mqtt_client_->is_connected();
 }
 
-bool MqttDriver::ReadValues(const std::vector<DataPoint>& points, 
+bool MqttDriver::ReadValues(const std::vector<DataPoint>& points,
                            std::vector<TimestampedValue>& values) {
     if (!IsConnected()) {
-        SetError("MQTT client not connected");
         return false;
     }
     
-    auto start_time = steady_clock::now();
-    
     try {
+        values.clear();
         values.reserve(points.size());
         
+        // message_queue_mutex_ 사용 (올바른 뮤텍스)
+        std::lock_guard<std::mutex> lock(message_queue_mutex_);
+        
         for (const auto& point : points) {
-            TimestampedValue value;
-            // ✅ point_id → 없음, TimestampedValue는 value, quality, timestamp만 가짐
-            value.timestamp = system_clock::now();
+            TimestampedValue result_value;
             
-            // MQTT에서는 구독된 토픽의 마지막 값을 반환
-            // 실제 구현에서는 메시지 캐시에서 값을 조회
-            value.value = std::string("subscribed");  // ✅ DataValue는 variant 자체
-            value.quality = DataQuality::GOOD;  // ✅ enum 사용
+            // ✅ 타입 일치: UUID = std::string = std::string
+            result_value.source_id = point.id;  // 완벽하게 호환됨!
             
-            values.push_back(value);
+            result_value.value = DataValue(0.0);  // 기본값
+            result_value.timestamp = Utils::GetCurrentTimestamp();
+            result_value.quality = DataQuality::BAD;
+            
+            values.push_back(result_value);
         }
         
-        auto end_time = steady_clock::now();
-        double duration_ms = duration_cast<milliseconds>(end_time - start_time).count();
-        
         // 통계 업데이트
-        UpdateStats("read", true, duration_ms);
+        driver_statistics_.total_reads.fetch_add(1);
+        driver_statistics_.successful_reads.fetch_add(1);
         
         return true;
         
     } catch (const std::exception& e) {
-        auto end_time = steady_clock::now();
-        double duration_ms = duration_cast<milliseconds>(end_time - start_time).count();
-        UpdateStats("read", false, duration_ms);
-        SetError("Exception during read: " + std::string(e.what()));
+        LogMessage("ERROR", "Failed to read MQTT values: " + std::string(e.what()), "MQTT");
+        driver_statistics_.total_reads.fetch_add(1);
+        driver_statistics_.failed_reads.fetch_add(1);
         return false;
     }
 }
@@ -451,6 +449,10 @@ void MqttDriver::OnConnected(const std::string& cause) {
     is_connected_ = true;
     status_ = Structs::DriverStatus::RUNNING;
     connection_start_time_ = system_clock::now();
+
+    // 통계 업데이트
+    //driver_statistics_.total_connections.fetch_add(1);
+    driver_statistics_.successful_connections.fetch_add(1);
     
     LogMessage("INFO", "MQTT connected: " + cause, "MQTT");
     
@@ -459,16 +461,17 @@ void MqttDriver::OnConnected(const std::string& cause) {
     // 진단 기능에 연결 이벤트 기록
     if (diagnostics_) {
         diagnostics_->RecordConnectionEvent(true, broker_url_);
-        diagnostics_->RecordOperation("connect", true, 0.0);
     }
     
-    // 페일오버에 연결 복구 알림 - ✅ 메서드명 수정
+    // ✅ 페일오버에 연결 성공 알림 - 메서드명 수정됨
     if (failover_) {
-        failover_->HandleConnectionSuccess();  // OnConnectionRestored 대신
+        failover_->HandleConnectionSuccess();
     }
     
     // 구독 복원
     RestoreSubscriptions();
+    // 연결 변화 알림
+    NotifyConnectionChange(true, broker_url_, cause);
 }
 
 // OnConnectionLost 함수 수정 (기존 함수 내용에 추가)
@@ -591,18 +594,28 @@ void MqttDriver::RecordDiagnosticEvent(const std::string& operation, bool succes
     (void)details;
 }
 
-void MqttDriver::NotifyConnectionChange(bool connected, const std::string& broker_url, 
-                                       const std::string& reason) {
-    if (diagnostics_) {
-        diagnostics_->RecordConnectionEvent(connected, broker_url);
-    }
+void MqttDriver::NotifyConnectionChange(bool connected, const std::string& broker_url, const std::string& reason) {
+    // 사용하지 않는 매개변수 경고 방지
+    (void)reason;
     
-    if (failover_) {
-        if (connected) {
-            failover_->HandleConnectionSuccess();  // ✅ 메서드명 수정
-        } else {
-            failover_->TriggerFailover(reason);
+    if (connected) {
+        // 연결 성공 시
+        if (failover_) {
+            failover_->HandleConnectionSuccess();
         }
+        
+        // ✅ connection_callback_ 필드가 없으므로 제거 또는 다른 방식으로 처리
+        // 연결 성공 로깅만 수행
+        LogMessage("INFO", "Connection established to broker: " + broker_url, "MQTT");
+        
+    } else {
+        // 연결 실패 시
+        if (failover_) {
+            failover_->HandleConnectionFailure(reason);
+        }
+        
+        // 연결 실패 로깅
+        LogMessage("WARN", "Connection failed to broker: " + broker_url + ", reason: " + reason, "MQTT");
     }
 }
 
@@ -1128,100 +1141,77 @@ bool MqttDriver::SwitchToOptimalBroker() {
     return failover_->SwitchToBestBroker();  // SwitchToOptimalBroker 대신
 }
 
-// =============================================================================
-// ReadValues 메서드에서 unused variable 경고 수정
-// =============================================================================
 
-bool MqttDriver::ReadValues(const std::vector<Structs::DataPoint>& points,
-                           std::vector<Structs::TimestampedValue>& values) {
-    if (!IsConnected()) {
-        SetError("MQTT client not connected");
-        return false;
-    }
+std::string MqttDriver::GetDiagnosticsJSON() const {
+    // ✅ 참조로 사용하여 복사 생성자 문제 해결
+    const auto& stats = GetStatistics();
     
-    auto start_time = steady_clock::now();
-    
+#ifdef HAS_NLOHMANN_JSON
     try {
-        values.reserve(points.size());
+        json diagnostics;
         
-        for (const auto& point : points) {
-            // ✅ unused variable 경고 방지
-            (void)point;  // point 사용하지 않으므로 경고 방지
-            
-            TimestampedValue value;
-            value.timestamp = system_clock::now();
-            
-            // MQTT에서는 구독된 토픽의 마지막 값을 반환
-            // 실제 구현에서는 메시지 캐시에서 값을 조회
-            value.value = std::string("subscribed");  // DataValue는 variant 자체
-            value.quality = DataQuality::GOOD;  // enum 사용
-            
-            values.push_back(value);
-        }
+        // 기본 통계 (참조 사용)
+        json basic_stats;
+        basic_stats["total_reads"] = stats.total_reads.load();
+        basic_stats["successful_reads"] = stats.successful_reads.load();
+        basic_stats["failed_reads"] = stats.failed_reads.load();
+        basic_stats["total_writes"] = stats.total_writes.load();
+        basic_stats["successful_writes"] = stats.successful_writes.load();
+        basic_stats["failed_writes"] = stats.failed_writes.load();
+        basic_stats["success_rate"] = stats.GetSuccessRate();
+        // ✅ GetAverageResponseTime() → avg_response_time_ms.load() 수정
+        basic_stats["avg_response_time_ms"] = stats.avg_response_time_ms.load();
         
-        auto end_time = steady_clock::now();
-        double duration_ms = duration_cast<milliseconds>(end_time - start_time).count();
+        diagnostics["basic_statistics"] = basic_stats;
         
-        // 통계 업데이트
-        UpdateStats("read", true, duration_ms);
+        // MQTT 특화 통계
+        json mqtt_stats;
+        // ✅ GetProtocolCounters() → 개별 GetProtocolCounter() 호출로 수정
+        mqtt_stats["mqtt_messages"] = stats.GetProtocolCounter("mqtt_messages");
+        mqtt_stats["published_messages"] = stats.GetProtocolCounter("published_messages");
+        mqtt_stats["received_messages"] = stats.GetProtocolCounter("received_messages");
+        mqtt_stats["qos0_messages"] = stats.GetProtocolCounter("qos0_messages");
+        mqtt_stats["qos1_messages"] = stats.GetProtocolCounter("qos1_messages");
+        mqtt_stats["qos2_messages"] = stats.GetProtocolCounter("qos2_messages");
+        mqtt_stats["connection_failures"] = stats.GetProtocolCounter("connection_failures");
         
-        return true;
+        // ✅ GetProtocolMetrics() → 개별 GetProtocolMetric() 호출로 수정
+        mqtt_stats["avg_message_size_bytes"] = stats.GetProtocolMetric("avg_message_size_bytes");
+        mqtt_stats["connection_uptime_seconds"] = stats.GetProtocolMetric("connection_uptime_seconds");
+        
+        diagnostics["mqtt_statistics"] = mqtt_stats;
+        
+        // 연결 정보
+        json connection_info;
+        connection_info["broker_url"] = broker_url_;
+        connection_info["client_id"] = client_id_;
+        connection_info["is_connected"] = is_connected_.load();
+        connection_info["auto_reconnect"] = auto_reconnect_;
+        // ✅ keep_alive_interval_ → keep_alive_seconds_ 수정
+        connection_info["keep_alive_seconds"] = keep_alive_seconds_;
+        
+        diagnostics["connection_info"] = connection_info;
+        
+        return diagnostics.dump(2);
         
     } catch (const std::exception& e) {
-        auto end_time = steady_clock::now();
-        double duration_ms = duration_cast<milliseconds>(end_time - start_time).count();
-        UpdateStats("read", false, duration_ms);
-        SetError("Exception during read: " + std::string(e.what()));
-        return false;
+        return "{\"error\":\"Failed to generate diagnostics JSON: " + std::string(e.what()) + "\"}";
     }
-}
-
-#ifdef HAS_NLOHMANN_JSON
-
-std::string MqttDriver::GetDiagnosticsJSON() const {
-    json diag;
-    
-    // 기본 정보
-    diag["driver_type"] = "MQTT";
-    diag["broker_url"] = broker_url_;
-    diag["client_id"] = client_id_;
-    diag["is_connected"] = IsConnected();
-    diag["timestamp"] = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-    
-    // 기본 통계
-    auto stats = GetStatistics();
-    diag["basic_stats"]["total_operations"] = stats.total_operations.load();
-    diag["basic_stats"]["successful_operations"] = stats.successful_operations.load();
-    diag["basic_stats"]["failed_operations"] = stats.failed_operations.load();
-    
-    // MQTT 특화 통계
-    diag["mqtt_stats"]["messages_published"] = stats.GetProtocolCounter("mqtt_messages_published");
-    diag["mqtt_stats"]["messages_received"] = stats.GetProtocolCounter("mqtt_messages_received");
-    
-    // 고급 기능 상태
-    diag["advanced_features"]["diagnostics_enabled"] = IsDiagnosticsEnabled();
-    diag["advanced_features"]["failover_enabled"] = IsFailoverEnabled();
-    
-    // 상세 진단 정보 (활성화된 경우)
-    if (IsDiagnosticsEnabled()) {
-        diag["detailed_diagnostics"] = json::parse(GetDetailedDiagnosticsJSON());
-    }
-    
-    // 페일오버 통계 (활성화된 경우)  
-    if (IsFailoverEnabled()) {
-        diag["failover_stats"] = json::parse(GetFailoverStatistics());
-    }
-    
-    return diag.dump(4);
-}
-
 #else
-
-std::string MqttDriver::GetDiagnosticsJSON() const {
-    return "{\"error\":\"JSON support not available\"}";
+    // JSON 라이브러리가 없는 경우 간단한 문자열 포맷
+    std::ostringstream oss;
+    oss << "{"
+        << "\"total_reads\":" << stats.total_reads.load() << ","
+        << "\"successful_reads\":" << stats.successful_reads.load() << ","
+        << "\"failed_reads\":" << stats.failed_reads.load() << ","
+        << "\"success_rate\":" << std::fixed << std::setprecision(2) << stats.GetSuccessRate() << ","
+        << "\"broker_url\":\"" << broker_url_ << "\","
+        << "\"is_connected\":" << (is_connected_.load() ? "true" : "false")
+        << "}";
+    return oss.str();
+#endif
 }
 
-#endif
 
 } // namespace Drivers
 } // namespace PulseOne
