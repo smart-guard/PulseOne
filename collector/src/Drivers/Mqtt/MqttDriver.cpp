@@ -453,6 +453,19 @@ void MqttDriver::OnConnected(const std::string& cause) {
     connection_start_time_ = system_clock::now();
     
     LogMessage("INFO", "MQTT connected: " + cause, "MQTT");
+
+    // ===== 고급 기능들에 연결 성공 알림 =====
+    
+    // 진단 기능에 연결 이벤트 기록
+    if (diagnostics_) {
+        diagnostics_->RecordConnectionEvent(true, broker_url_);
+        diagnostics_->RecordOperation("connect", true, 0.0);
+    }
+    
+    // 페일오버에 연결 복구 알림
+    if (failover_) {
+        failover_->OnConnectionRestored();
+    }
     
     // 구독 복원
     RestoreSubscriptions();
@@ -464,7 +477,18 @@ void MqttDriver::OnConnectionLost(const std::string& cause) {
     
     LogMessage("WARN", "MQTT connection lost: " + cause, "MQTT");
     
-    if (auto_reconnect_) {
+    // ===== 고급 기능들에 연결 끊김 알림 =====
+    
+    // 진단 기능에 연결 끊김 기록
+    if (diagnostics_) {
+        diagnostics_->RecordConnectionEvent(false, broker_url_);
+        diagnostics_->RecordOperation("connection_lost", false, 0.0);
+    }
+    
+    // 페일오버 트리거 (자동 재연결)
+    if (failover_ && failover_->IsFailoverEnabled()) {
+        failover_->TriggerFailover("Connection lost: " + cause);
+    } else if (auto_reconnect_) {
         HandleConnectionLoss(cause);
     }
 }
@@ -487,17 +511,33 @@ void MqttDriver::OnMessageArrived(mqtt::const_message_ptr msg) {
             case 1: driver_statistics_.IncrementProtocolCounter("qos1_messages", 1); break;
             case 2: driver_statistics_.IncrementProtocolCounter("qos2_messages", 1); break;
         }
+        // ===== 고급 기능들에 메시지 수신 알림 =====
         
+        // 진단 기능에 메시지 분석 정보 기록
+        if (diagnostics_) {
+            diagnostics_->RecordOperation("message_received", true, 0.0);
+            diagnostics_->RecordQosPerformance(qos, true, 0.0);
+        }        
         LogPacket("RECV", topic, payload, qos);
         
     } catch (const std::exception& e) {
         LogMessage("ERROR", "Exception in message handler: " + std::string(e.what()), "MQTT");
+        // 진단 기능에 에러 기록
+        if (diagnostics_) {
+            diagnostics_->RecordOperation("message_error", false, 0.0);
+        }    
     }
 }
 
 void MqttDriver::OnDeliveryComplete(mqtt::delivery_token_ptr token) {
     // 메시지 전송 완료
     LogMessage("DEBUG", "Message delivery complete", "MQTT");
+    // ===== 고급 기능들에 전송 완료 알림 =====
+    
+    // 진단 기능에 전송 성공 기록
+    if (diagnostics_) {
+        diagnostics_->RecordOperation("message_delivered", true, 0.0);
+    }
     (void)token;  // 경고 방지
 }
 
@@ -511,6 +551,61 @@ void MqttDriver::OnActionFailure(const mqtt::token& token) {
 void MqttDriver::OnActionSuccess(const mqtt::token& token) {
     LogMessage("DEBUG", "MQTT operation successful", "MQTT");
     (void)token;  // 경고 방지
+}
+
+// =============================================================================
+// 고급 기능 관련 내부 메서드들 구현
+// =============================================================================
+
+void MqttDriver::NotifyAdvancedFeatures(const std::string& event_type, const std::string& data) {
+    // 모든 고급 기능들에 이벤트 전파
+    if (diagnostics_) {
+        // 진단 기능에 이벤트 알림 (필요시 추가 구현)
+    }
+    
+    if (failover_) {
+        // 페일오버에 이벤트 알림 (필요시 추가 구현)  
+    }
+    
+    // 경고 방지
+    (void)event_type;
+    (void)data;
+}
+
+void MqttDriver::RecordDiagnosticEvent(const std::string& operation, bool success, 
+                                      double duration_ms, const std::string& details) {
+    if (diagnostics_) {
+        diagnostics_->RecordOperation(operation, success, duration_ms);
+    }
+    
+    // 경고 방지
+    (void)details;
+}
+
+void MqttDriver::NotifyConnectionChange(bool connected, const std::string& broker_url, 
+                                       const std::string& reason) {
+    if (diagnostics_) {
+        diagnostics_->RecordConnectionEvent(connected, broker_url);
+    }
+    
+    if (failover_) {
+        if (connected) {
+            failover_->OnConnectionRestored();
+        } else {
+            failover_->TriggerFailover(reason);
+        }
+    }
+}
+
+void MqttDriver::NotifyMessageProcessing(const std::string& broker_url, const std::string& topic, 
+                                        bool success, double processing_time_ms) {
+    if (diagnostics_) {
+        std::string operation = "process_" + topic;
+        diagnostics_->RecordOperation(operation, success, processing_time_ms);
+    }
+    
+    // 경고 방지
+    (void)broker_url;
 }
 
 // =============================================================================
@@ -830,6 +925,244 @@ void MqttDriver::HandleConnectionLoss(const std::string& cause) {
     
     // 재연결 로직은 ConnectionMonitorLoop에서 처리
 }
+
+bool MqttDriver::EnableDiagnostics(bool enable, bool packet_logging, bool console_output) {
+    try {
+        if (enable && !diagnostics_) {
+            diagnostics_ = std::make_unique<MqttDiagnostics>(this);
+            
+            // 진단 옵션 설정
+            diagnostics_->EnableMessageTracking(true);
+            diagnostics_->EnableQosAnalysis(true);
+            diagnostics_->SetMaxHistorySize(1000);
+            
+            LogMessage("INFO", "MQTT diagnostics enabled", "MQTT-DRIVER");
+            return true;
+            
+        } else if (!enable && diagnostics_) {
+            diagnostics_.reset();
+            LogMessage("INFO", "MQTT diagnostics disabled", "MQTT-DRIVER");
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        SetError("Failed to enable MQTT diagnostics: " + std::string(e.what()));
+        return false;
+    }
+}
+
+void MqttDriver::DisableDiagnostics() {
+    diagnostics_.reset();
+    LogMessage("INFO", "MQTT diagnostics disabled", "MQTT-DRIVER");
+}
+
+bool MqttDriver::IsDiagnosticsEnabled() const {
+    return diagnostics_ != nullptr;
+}
+
+bool MqttDriver::EnableFailover(const std::vector<std::string>& backup_brokers, 
+                               const ReconnectStrategy& strategy) {
+    try {
+        if (!failover_) {
+            failover_ = std::make_unique<MqttFailover>(this);
+        }
+        
+        // 재연결 전략 설정
+        failover_->SetReconnectStrategy(strategy);
+        
+        // 백업 브로커들 추가
+        for (const auto& broker_url : backup_brokers) {
+            failover_->AddBroker(broker_url);
+        }
+        
+        // 페일오버 활성화
+        failover_->EnableFailover(true);
+        
+        LogMessage("INFO", "MQTT failover enabled with " + 
+                  std::to_string(backup_brokers.size()) + " backup brokers", "MQTT-DRIVER");
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        SetError("Failed to enable MQTT failover: " + std::string(e.what()));
+        return false;
+    }
+}
+
+void MqttDriver::DisableFailover() {
+    if (failover_) {
+        failover_->EnableFailover(false);
+        failover_.reset();
+        LogMessage("INFO", "MQTT failover disabled", "MQTT-DRIVER");
+    }
+}
+
+bool MqttDriver::IsFailoverEnabled() const {
+    return failover_ && failover_->IsFailoverEnabled();
+}
+
+bool MqttDriver::TriggerManualFailover(const std::string& reason) {
+    if (!failover_) {
+        SetError("Failover not enabled");
+        return false;
+    }
+    
+    return failover_->TriggerFailover(reason);
+}
+
+std::string MqttDriver::GetFailoverStatistics() const {
+    if (!failover_) {
+        return "{\"error\":\"Failover not enabled\"}";
+    }
+    
+    return failover_->GetStatisticsJSON();
+}
+
+
+// =============================================================================
+// 진단 정보 조회 메서드들
+// =============================================================================
+
+std::string MqttDriver::GetDetailedDiagnosticsJSON() const {
+    if (!diagnostics_) {
+        return "{\"error\":\"Diagnostics not enabled\"}";
+    }
+    
+    return diagnostics_->GetDiagnosticsJSON();
+}
+
+double MqttDriver::GetMessageLossRate() const {
+    if (!diagnostics_) {
+        return 0.0;
+    }
+    
+    return diagnostics_->GetMessageLossRate();
+}
+
+std::map<int, QosAnalysis> MqttDriver::GetQosAnalysis() const {
+    if (!diagnostics_) {
+        return {};
+    }
+    
+    return diagnostics_->GetQosAnalysis();
+}
+
+std::map<std::string, TopicStats> MqttDriver::GetDetailedTopicStats() const {
+    if (!diagnostics_) {
+        return {};
+    }
+    
+    return diagnostics_->GetTopicStatistics();
+}
+
+// =============================================================================
+// 페일오버 관련 메서드들
+// =============================================================================
+
+void MqttDriver::AddBackupBroker(const std::string& broker_url, const std::string& name, int priority) {
+    if (!failover_) {
+        // 페일오버가 비활성화된 경우 자동 활성화
+        std::vector<std::string> backup_brokers = {broker_url};
+        EnableFailover(backup_brokers);
+    } else {
+        failover_->AddBroker(broker_url, name, priority);
+    }
+}
+
+BrokerInfo MqttDriver::GetCurrentBrokerInfo() const {
+    BrokerInfo info;
+    info.url = broker_url_;
+    info.name = "Primary";
+    info.is_connected = IsConnected();
+    info.priority = 0;
+    
+    if (failover_) {
+        // 페일오버에서 현재 브로커 정보 가져오기
+        auto brokers = failover_->GetAllBrokers();
+        for (const auto& broker : brokers) {
+            if (broker.url == broker_url_) {
+                return broker;
+            }
+        }
+    }
+    
+    return info;
+}
+
+std::vector<BrokerInfo> MqttDriver::GetAllBrokerStatus() const {
+    std::vector<BrokerInfo> brokers;
+    
+    // 기본 브로커 추가
+    brokers.push_back(GetCurrentBrokerInfo()); 
+    
+    // 페일오버 브로커들 추가
+    if (failover_) {
+        auto failover_brokers = failover_->GetAllBrokers();
+        brokers.insert(brokers.end(), failover_brokers.begin(), failover_brokers.end());
+    }
+    
+    return brokers;
+}
+
+bool MqttDriver::SwitchToOptimalBroker() {
+    if (!failover_) {
+        return false;
+    }
+    
+    return failover_->SwitchToOptimalBroker();
+}
+
+// =============================================================================
+// JSON 직렬화 지원 (nlohmann/json 사용)
+// =============================================================================
+
+#ifdef HAS_NLOHMANN_JSON
+
+std::string MqttDriver::GetDiagnosticsJSON() const {
+    json diag;
+    
+    // 기본 정보
+    diag["driver_type"] = "MQTT";
+    diag["broker_url"] = broker_url_;
+    diag["client_id"] = client_id_;
+    diag["is_connected"] = IsConnected();
+    diag["timestamp"] = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    
+    // 기본 통계
+    auto stats = GetStatistics();
+    diag["basic_stats"]["total_operations"] = stats.total_operations.load();
+    diag["basic_stats"]["successful_operations"] = stats.successful_operations.load();
+    diag["basic_stats"]["failed_operations"] = stats.failed_operations.load();
+    
+    // MQTT 특화 통계
+    diag["mqtt_stats"]["messages_published"] = stats.GetProtocolCounter("mqtt_messages_published");
+    diag["mqtt_stats"]["messages_received"] = stats.GetProtocolCounter("mqtt_messages_received");
+    
+    // 고급 기능 상태
+    diag["advanced_features"]["diagnostics_enabled"] = IsDiagnosticsEnabled();
+    diag["advanced_features"]["failover_enabled"] = IsFailoverEnabled();
+    
+    // 상세 진단 정보 (활성화된 경우)
+    if (IsDiagnosticsEnabled()) {
+        diag["detailed_diagnostics"] = json::parse(GetDetailedDiagnosticsJSON());
+    }
+    
+    // 페일오버 통계 (활성화된 경우)  
+    if (IsFailoverEnabled()) {
+        diag["failover_stats"] = json::parse(GetFailoverStatistics());
+    }
+    
+    return diag.dump(4);
+}
+
+#else
+
+std::string MqttDriver::GetDiagnosticsJSON() const {
+    return "{\"error\":\"JSON support not available\"}";
+}
+
+#endif
 
 } // namespace Drivers
 } // namespace PulseOne
