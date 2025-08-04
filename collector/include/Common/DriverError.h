@@ -76,6 +76,12 @@ enum class ErrorCode : int32_t {
     DEVICE_ERROR = 505,
     INVALID_PARAMETER = 506,
     
+    // I/O 관련 에러 (600-699)
+    READ_FAILED = 600,
+    WRITE_FAILED = 601,
+    IO_TIMEOUT = 602,
+    IO_ERROR = 603,
+
     // 드라이버 시스템용 추가 에러들
     WARNING_DATA_STALE = 1000,
     WARNING_PARTIAL_SUCCESS = 1001,

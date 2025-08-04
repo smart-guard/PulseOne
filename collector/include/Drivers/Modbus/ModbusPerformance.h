@@ -1,33 +1,49 @@
 // =============================================================================
-// collector/include/Drivers/Modbus/ModbusPerformance.h
-// Modbus 성능 최적화 클래스 (기본 골격)  
+// collector/include/Drivers/Modbus/ModbusPerformance.h  
 // =============================================================================
+
 #ifndef PULSEONE_MODBUS_PERFORMANCE_H
 #define PULSEONE_MODBUS_PERFORMANCE_H
+
+#include <cstddef>
 
 namespace PulseOne {
 namespace Drivers {
 
-class ModbusDriver; // 전방 선언
+class ModbusDriver;
 
 class ModbusPerformance {
 public:
     explicit ModbusPerformance(ModbusDriver* parent_driver);
     ~ModbusPerformance();
     
-    // 성능 최적화
-    bool EnablePerformanceMode() { return true; }
-    void DisablePerformanceMode() {}
-    bool IsPerformanceModeEnabled() const { return false; }
+    ModbusPerformance(const ModbusPerformance&) = delete;
+    ModbusPerformance& operator=(const ModbusPerformance&) = delete;
     
-    // 배치 크기 설정
-    void SetReadBatchSize(size_t batch_size) {}
-    void SetWriteBatchSize(size_t batch_size) {}
-    size_t GetReadBatchSize() const { return 10; }
-    size_t GetWriteBatchSize() const { return 5; }
+    bool EnablePerformanceMode();
+    void DisablePerformanceMode();
+    bool IsPerformanceModeEnabled() const;
+    
+    void SetReadBatchSize(size_t batch_size);
+    void SetWriteBatchSize(size_t batch_size);
+    size_t GetReadBatchSize() const;
+    size_t GetWriteBatchSize() const;
+    
+    int TestConnectionQuality();
+    bool StartRealtimeMonitoring(int interval_seconds = 5);
+    void StopRealtimeMonitoring();
+    bool IsRealtimeMonitoringEnabled() const;
+    
+    bool UpdateTimeout(int timeout_ms);
+    bool UpdateRetryCount(int retry_count);
+    bool UpdateSlaveResponseDelay(int delay_ms);
 
 private:
     ModbusDriver* parent_driver_;
+    bool performance_mode_enabled_;
+    bool realtime_monitoring_enabled_;
+    size_t read_batch_size_;
+    size_t write_batch_size_;
 };
 
 } // namespace Drivers
