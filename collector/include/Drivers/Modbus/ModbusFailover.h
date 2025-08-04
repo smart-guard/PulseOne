@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Drivers/Modbus/ModbusFailover.h
-// Modbus 페일오버 및 복구 기능 (스텁 구현)
+// Modbus 페일오버 및 복구 기능 (스텁 구현) - 수정된 버전
 // =============================================================================
 
 #ifndef PULSEONE_MODBUS_FAILOVER_H
@@ -37,7 +37,7 @@ public:
     
     bool EnableFailover(int failure_threshold = 3, int recovery_check_interval = 60);
     void DisableFailover();
-    bool IsEnabled() const;
+    bool IsFailoverEnabled() const;  // ✅ 구현 파일과 일치하도록 수정
     
     bool AddBackupEndpoint(const std::string& endpoint);
     void RemoveBackupEndpoint(const std::string& endpoint);
@@ -45,11 +45,13 @@ public:
     
     bool SwitchToBackup();
     bool CheckPrimaryRecovery();
+    std::string GetCurrentEndpoint() const;  // ✅ 누락된 메서드 추가
 
 private:
     ModbusDriver* parent_driver_;
-    std::atomic<bool> enabled_{false};
+    std::atomic<bool> failover_enabled_{false};  // ✅ 구현 파일과 일치하도록 수정
     std::vector<std::string> backup_endpoints_;
+    std::string current_endpoint_;  // ✅ 누락된 멤버 변수 추가
 };
 
 } // namespace Drivers
