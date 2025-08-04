@@ -421,7 +421,43 @@ public:
      * @return 성공 여부
      */
     bool EnableBatchProcessing(bool enable = true, size_t batch_size = 100, int batch_timeout_ms = 1000);
-
+    // =======================================================================
+    // 🚀 로드밸런싱 기능 (새로 추가)
+    // =======================================================================
+    
+    /**
+     * @brief 로드밸런싱 기능 활성화
+     * @param brokers 브로커 URL 목록
+     * @param algorithm 로드밸런싱 알고리즘 (기본: ROUND_ROBIN)
+     * @return 성공 여부
+     */
+    bool EnableLoadBalancing(const std::vector<std::string>& brokers, 
+                            LoadBalanceAlgorithm algorithm = LoadBalanceAlgorithm::ROUND_ROBIN);
+    
+    /**
+     * @brief 로드밸런싱 기능 비활성화
+     */
+    void DisableLoadBalancing();
+    
+    /**
+     * @brief 로드밸런싱 활성화 여부 확인
+     * @return 활성화 상태
+     */
+    bool IsLoadBalancingEnabled() const;
+    
+    /**
+     * @brief 로드밸런싱 상태 JSON 조회
+     * @return JSON 형태의 상태 정보
+     */
+    std::string GetLoadBalancingStatusJSON() const;
+    
+    /**
+     * @brief 특정 토픽에 대한 최적 브로커 선택
+     * @param topic 토픽명
+     * @param message_size 메시지 크기 (선택사항)
+     * @return 선택된 브로커 URL
+     */
+    std::string SelectOptimalBroker(const std::string& topic, size_t message_size = 0);
 private:
     // =======================================================================
     // Core 멤버 변수들 (필수)
@@ -629,7 +665,9 @@ private:
      * @brief 연결 끊김 처리
      */
     void HandleConnectionLoss(const std::string& cause);
-
+    // 브로커 전환을 위한 헬퍼 메서드들
+    bool SwitchBroker(const std::string& new_broker_url);
+    bool CreateMqttClientForBroker(const std::string& broker_url);
 
 };
 
