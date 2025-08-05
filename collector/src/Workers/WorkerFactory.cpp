@@ -115,11 +115,24 @@ WorkerFactory& WorkerFactory::getInstance() {  // ✅ getInstance (소문자 g)
 // =============================================================================
 
 bool WorkerFactory::Initialize() {
-    // 매개변수 없는 버전 - 싱글톤들을 직접 가져오기
-    ::LogManager* logger = &::LogManager::getInstance();
-    ::ConfigManager* config_manager = &::ConfigManager::getInstance();
+    std::lock_guard<std::mutex> lock(factory_mutex_);
     
-    return Initialize(logger, config_manager);
+    if (initialized_.load()) {
+        logger_->Debug("WorkerFactory already initialized, skipping");
+        return true;
+    }
+    
+    logger_->Info("🏭 Initializing WorkerFactory");
+    
+    try {
+        RegisterWorkerCreators();
+        initialized_.store(true);
+        logger_->Info("✅ WorkerFactory initialized successfully");
+        return true;
+    } catch (const std::exception& e) {
+        logger_->Error("❌ WorkerFactory initialization failed: " + std::string(e.what()));
+        return false;
+    }
 }
 
 bool WorkerFactory::Initialize(::LogManager* logger, ::ConfigManager* config_manager) {
@@ -169,7 +182,7 @@ void WorkerFactory::SetDataPointRepository(std::shared_ptr<Database::Repositorie
     std::lock_guard<std::mutex> lock(factory_mutex_);
     datapoint_repo_ = datapoint_repo;
     
-    // 🔥 핵심: CurrentValueRepository가 이미 있으면 자동 연결
+    // CurrentValueRepository가 이미 있으면 자동 연결
     if (datapoint_repo_ && current_value_repo_) {
         datapoint_repo_->setCurrentValueRepository(current_value_repo_);
         logger_->Info("✅ CurrentValueRepository auto-connected to DataPointRepository");
@@ -182,10 +195,10 @@ void WorkerFactory::SetCurrentValueRepository(std::shared_ptr<Database::Reposito
     std::lock_guard<std::mutex> lock(factory_mutex_);
     current_value_repo_ = current_value_repo;
     
-    // 🔥 핵심: DataPointRepository에 CurrentValueRepository 자동 주입
+    // DataPointRepository가 이미 있으면 자동 연결
     if (datapoint_repo_ && current_value_repo_) {
         datapoint_repo_->setCurrentValueRepository(current_value_repo_);
-        logger_->Info("✅ CurrentValueRepository auto-injected into DataPointRepository");
+        logger_->Info("✅ CurrentValueRepository auto-connected to DataPointRepository");
     }
     
     logger_->Info("✅ CurrentValueRepository injected into WorkerFactory");
@@ -206,168 +219,78 @@ void WorkerFactory::SetDatabaseClients(
 // =============================================================================
 
 std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::Entities::DeviceEntity& device_entity) {
-    if (!initialized_.load()) {
-        logger_->Error("WorkerFactory not initialized");
-        creation_failures_++;
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    
+    if (!IsInitialized()) {
+        logger_->Error("❌ WorkerFactory not initialized");
         return nullptr;
     }
     
-    // 🔧 추가: using 선언으로 네임스페이스 명확화
-    using std::chrono::steady_clock;
-    using std::chrono::duration_cast;
-    using std::chrono::milliseconds;
-    
-    auto start_time = steady_clock::now();
-    
     try {
-        logger_->Debug("🏭 Creating worker for device: " + device_entity.getName());
+        // 1. DeviceEntity를 DeviceInfo로 변환
+        auto device_info = ConvertToDeviceInfo(device_entity);
         
-        // 1. 프로토콜 타입 추출
-        std::string protocol_type = device_entity.getProtocolType();
-        if (protocol_type.empty()) {
-            logger_->Error("Empty protocol type for device: " + device_entity.getName());
-            creation_failures_++;
-            return nullptr;
-        }
+        // 2. DataPoint들 로드
+        auto data_points = LoadDataPointsForDevice(device_entity.getId());
         
-        // 2. 프로토콜 지원 여부 확인
-        if (!IsProtocolSupported(protocol_type)) {
-            logger_->Error("Unsupported protocol: " + protocol_type + " for device: " + device_entity.getName());
-            creation_failures_++;
-            return nullptr;
-        }
-        
-        // 3. Worker 설정 검증
-        std::string validation_error = ValidateWorkerConfig(device_entity);
-        if (!validation_error.empty()) {
-            logger_->Error("Worker config validation failed: " + validation_error);
-            creation_failures_++;
-            return nullptr;
-        }
-        
-        // 4. DeviceEntity → DeviceInfo 변환
-        PulseOne::Structs::DeviceInfo device_info = ConvertToDeviceInfo(device_entity);
-        
-        // 5. 해당 디바이스의 DataPoint들 로드
-        std::vector<PulseOne::Structs::DataPoint> data_points = LoadDataPointsForDevice(device_entity.getId());
-        logger_->Debug("   Loaded " + std::to_string(data_points.size()) + " data points");
-        
-        // 🔧 추가: DataPoint가 없는 경우 경고
         if (data_points.empty()) {
-            logger_->Warn("⚠️ No data points found for device: " + device_entity.getName() + 
-                         " - Worker will be created but without data points");
+            logger_->Warn("⚠️ No DataPoints found for Device ID: " + std::to_string(device_entity.getId()));
+            return nullptr;
         }
         
-        // 6. WorkerCreator 실행
+        // 3. 프로토콜 타입 확인
+        std::string protocol_type = device_entity.getProtocolType();
         auto creator_it = worker_creators_.find(protocol_type);
+        
         if (creator_it == worker_creators_.end()) {
-            logger_->Error("No creator found for protocol: " + protocol_type);
-            creation_failures_++;
+            logger_->Error("❌ No worker creator found for protocol: " + protocol_type);
             return nullptr;
         }
         
-        auto worker = creator_it->second(device_info, redis_client_, influx_client_);
-        if (!worker) {
-            logger_->Error("Worker creation failed for device: " + device_entity.getName());
-            creation_failures_++;
-            return nullptr;
-        }
+        // 4. Worker 생성
+        auto worker = creator_it->second(device_info, data_points);
         
-        // =======================================================================
-        // 🔥 7. DataPoint들을 Worker에 추가 - 기존 로직 유지하되 컴파일 에러 수정
-        // =======================================================================
-        int added_points = 0;
-        int failed_points = 0;
-        
-        for (const auto& data_point : data_points) {
-            try {
-                // ✅ 타입이 일치함: PulseOne::Structs::DataPoint -> PulseOne::DataPoint (별칭)
-                if (worker->AddDataPoint(data_point)) {
-                    added_points++;
-                    
-                    // 🔥 수정: 메서드 이름 수정 (isWritable 사용)
-                    logger_->Debug("✅ Added DataPoint: " + data_point.name + 
-                                  " (writable=" + (data_point.isWritable() ? "true" : "false") + 
-                                  ", log_enabled=" + (data_point.log_enabled ? "true" : "false") + 
-                                  ", interval=" + std::to_string(data_point.log_interval_ms) + "ms" + 
-                                  ", current_value=" + GetCurrentValueAsString(data_point) + 
-                                  ", quality=" + DataQualityToString(data_point.quality_code) + ")");
-                } else {
-                    failed_points++;
-                    logger_->Warn("Failed to add data point: " + data_point.name + " to worker");
+        if (worker) {
+            // 5. 통계 로깅
+            int good_quality_count = 0;
+            for (const auto& data_point : data_points) {
+                if (data_point.quality_code == PulseOne::Enums::DataQuality::GOOD) {
+                    good_quality_count++;
                 }
-            } catch (const std::exception& e) {
-                failed_points++;
-                logger_->Warn("Exception adding data point " + data_point.name + ": " + std::string(e.what()));
             }
+            
+            logger_->Info("✅ Created " + protocol_type + " Worker for Device '" + device_entity.getName() + 
+                         "' with " + std::to_string(data_points.size()) + " DataPoints" +
+                         " (Good Quality: " + std::to_string(good_quality_count) + ")");
         }
-        
-        // DataPoint 추가 결과 로깅
-        if (failed_points > 0) {
-            logger_->Warn("⚠️ Failed to add " + std::to_string(failed_points) + 
-                         " out of " + std::to_string(data_points.size()) + " data points");
-        }
-        
-        // 8. 통계 업데이트
-        workers_created_++;
-        auto end_time = steady_clock::now();
-        auto creation_time = duration_cast<milliseconds>(end_time - start_time);
-        
-        // =======================================================================
-        // 🔥 9. Worker별 통계 출력 - 기존 로직 유지하되 메서드 수정
-        // =======================================================================
-        int enabled_points = 0;
-        int writable_points = 0;
-        int log_enabled_points = 0;
-        int good_quality_points = 0;
-        
-        for (const auto& dp : data_points) {
-            try {
-                if (dp.is_enabled) enabled_points++;
-                if (dp.isWritable()) writable_points++;         // 🔥 수정: IsWritable() → isWritable()
-                if (dp.log_enabled) log_enabled_points++;
-                if (dp.quality_code == DataQuality::GOOD) good_quality_points++;  // 🔥 수정: IsGoodQuality() → 직접 비교
-            } catch (const std::exception& e) {
-                logger_->Debug("Exception in statistics calculation: " + std::string(e.what()));
-            }
-        }
-        
-        logger_->Info("✅ Worker created successfully for device: " + device_entity.getName() + 
-                     " (Protocol: " + protocol_type + 
-                     ", DataPoints: " + std::to_string(data_points.size()) + 
-                     ", Added: " + std::to_string(added_points) +
-                     ", Enabled: " + std::to_string(enabled_points) +
-                     ", Writable: " + std::to_string(writable_points) +
-                     ", LogEnabled: " + std::to_string(log_enabled_points) +
-                     ", GoodQuality: " + std::to_string(good_quality_points) +
-                     ", Time: " + std::to_string(creation_time.count()) + "ms)");
         
         return worker;
         
     } catch (const std::exception& e) {
-        logger_->Error("Exception in CreateWorker: " + std::string(e.what()));
-        creation_failures_++;
+        logger_->Error("❌ Failed to create worker for Device ID " + std::to_string(device_entity.getId()) + 
+                      ": " + std::string(e.what()));
         return nullptr;
     }
 }
 
 std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorkerById(int device_id) {
-    if (!repo_factory_) {
-        logger_->Error("RepositoryFactory not set");
+    if (!device_repo_) {
+        logger_->Error("❌ DeviceRepository not injected");
         return nullptr;
     }
     
     try {
         auto device = device_repo_->findById(device_id);
-        if (!device) {
-            logger_->Error("Device not found: " + std::to_string(device_id));
+        if (!device.has_value()) {
+            logger_->Error("❌ Device not found with ID: " + std::to_string(device_id));
             return nullptr;
         }
         
-        return CreateWorker(*device);
+        return CreateWorker(device.value());
         
     } catch (const std::exception& e) {
-        logger_->Error("Exception in CreateWorkerById: " + std::string(e.what()));
+        logger_->Error("❌ Failed to create worker by ID " + std::to_string(device_id) + 
+                      ": " + std::string(e.what()));
         return nullptr;
     }
 }
@@ -376,84 +299,74 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWor
     return CreateAllActiveWorkers(0);  // tenant_id = 0 (기본값)
 }
 
-std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWorkers(int /* tenant_id */) {
+std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWorkers(int max_workers) {
     std::vector<std::unique_ptr<BaseDeviceWorker>> workers;
     
-    std::shared_ptr<Database::Repositories::DeviceRepository> device_repo;
-    if (repo_factory_) {
-        device_repo = repo_factory_->getDeviceRepository();
-    } else if (device_repo_) {
-        device_repo = device_repo_;
-    } else {
-        logger_->Error("No DeviceRepository available (neither RepositoryFactory nor individual repo)");
+    if (!device_repo_) {
+        logger_->Error("❌ DeviceRepository not injected");
         return workers;
     }
-
+    
     try {
-        logger_->Info("🏭 Creating workers for all active devices");
+        auto devices = device_repo_->findAll();
         
-        // 🔧 수정: device_repo_ → device_repo
-        auto devices = device_repo->findAll();
-        
+        int created_count = 0;
         for (const auto& device : devices) {
-            if (device.isEnabled()) {
-                auto worker = CreateWorker(device);
-                if (worker) {
-                    workers.push_back(std::move(worker));
-                } else {
-                    logger_->Warn("Failed to create worker for device: " + device.getName());
+            if (!device.isEnabled()) continue;
+            
+            auto worker = CreateWorker(device);
+            if (worker) {
+                workers.push_back(std::move(worker));
+                created_count++;
+                
+                if (max_workers > 0 && created_count >= max_workers) {
+                    logger_->Info("🚫 Worker creation limit reached: " + std::to_string(max_workers));
+                    break;
                 }
             }
         }
         
-        logger_->Info("✅ Created " + std::to_string(workers.size()) + " workers from " +
-                     std::to_string(devices.size()) + " devices");
-        
+        logger_->Info("✅ Created " + std::to_string(created_count) + " active workers");
         return workers;
         
     } catch (const std::exception& e) {
-        logger_->Error("Exception in CreateAllActiveWorkers: " + std::string(e.what()));
+        logger_->Error("❌ Failed to create active workers: " + std::string(e.what()));
         return workers;
     }
 }
 
-std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByProtocol(
-    const std::string& protocol_type, int /* tenant_id */) {
-    
+std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByProtocol(const std::string& protocol_type, int max_workers) {
     std::vector<std::unique_ptr<BaseDeviceWorker>> workers;
     
-    std::shared_ptr<Database::Repositories::DeviceRepository> device_repo;
-    if (repo_factory_) {
-        device_repo = repo_factory_->getDeviceRepository();
-    } else if (device_repo_) {
-        device_repo = device_repo_;
-    } else {
-        logger_->Error("No DeviceRepository available (neither RepositoryFactory nor individual repo)");
+    if (!device_repo_) {
+        logger_->Error("❌ DeviceRepository not injected");
         return workers;
     }
     
     try {
-        logger_->Info("🏭 Creating workers for protocol: " + protocol_type);
-        
         auto devices = device_repo_->findAll();
         
+        int created_count = 0;
         for (const auto& device : devices) {
-            if (device.isEnabled() && device.getProtocolType() == protocol_type) {  // 🔧 수정: getIsEnabled() → isEnabled()
-                auto worker = CreateWorker(device);
-                if (worker) {
-                    workers.push_back(std::move(worker));
-                } else {
-                    logger_->Warn("Failed to create worker for device: " + device.getName());
+            if (!device.isEnabled() || device.getProtocolType() != protocol_type) continue;
+            
+            auto worker = CreateWorker(device);
+            if (worker) {
+                workers.push_back(std::move(worker));
+                created_count++;
+                
+                if (max_workers > 0 && created_count >= max_workers) {
+                    logger_->Info("🚫 Protocol worker creation limit reached: " + std::to_string(max_workers));
+                    break;
                 }
             }
         }
         
-        logger_->Info("✅ Created " + std::to_string(workers.size()) + " workers for protocol: " + protocol_type);
-        
+        logger_->Info("✅ Created " + std::to_string(created_count) + " " + protocol_type + " workers");
         return workers;
         
     } catch (const std::exception& e) {
-        logger_->Error("Exception in CreateWorkersByProtocol: " + std::string(e.what()));
+        logger_->Error("❌ Failed to create " + protocol_type + " workers: " + std::string(e.what()));
         return workers;
     }
 }
@@ -463,103 +376,39 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByPro
 // =============================================================================
 
 void WorkerFactory::RegisterWorkerCreators() {
-    logger_->Info("📝 Registering worker creators...");
-    
-    logger_->Info("🔧 Step 1: Registering MODBUS_TCP worker...");
-    // 🔧 완전 수정: MODBUS_TCP Worker 실제 생성 - 정확한 네임스페이스 사용
-    RegisterWorkerCreator("MODBUS_TCP", [](
-        const PulseOne::Structs::DeviceInfo& device_info,
-        std::shared_ptr<::RedisClient> redis_client,
-        std::shared_ptr<::InfluxClient> influx_client) -> std::unique_ptr<BaseDeviceWorker> {
-        
-        try {
-            // DeviceInfo 타입 변환 (Structs::DeviceInfo → DeviceInfo)
-            PulseOne::DeviceInfo converted_info;
-            converted_info.id = device_info.id;
-            converted_info.name = device_info.name;
-            converted_info.description = device_info.description;
-            converted_info.protocol_type = device_info.protocol_type;
-            converted_info.endpoint = device_info.endpoint;
-            converted_info.connection_string = device_info.connection_string;
-            converted_info.is_enabled = device_info.is_enabled;
-            
-            // ✅ 정확한 네임스페이스: PulseOne::Workers::ModbusTcpWorker
-            auto worker = std::make_unique<PulseOne::Workers::ModbusTcpWorker>(
-                converted_info,
-                redis_client,
-                influx_client
-            );
-            return std::unique_ptr<BaseDeviceWorker>(worker.release());
-        } catch (const std::exception&) {
-            return nullptr; // 예외 발생 시 nullptr 반환
-        }
+    // ModbusTcp Worker
+    RegisterWorkerCreator("modbus_tcp", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+                                               const std::vector<PulseOne::Structs::DataPoint>& data_points) {
+        return std::make_unique<ModbusTcpWorker>(device_info, data_points);
     });
-    logger_->Info("✅ MODBUS_TCP worker registered");
     
-    logger_->Info("🔧 Step 2: Registering MQTT worker...");
-    // 🔧 완전 수정: MQTT Worker 실제 생성 - 정확한 네임스페이스 사용
-    RegisterWorkerCreator("MQTT", [](
-        const PulseOne::Structs::DeviceInfo& device_info,
-        std::shared_ptr<::RedisClient> redis_client,
-        std::shared_ptr<::InfluxClient> influx_client) -> std::unique_ptr<BaseDeviceWorker> {
-        
-        try {
-            // DeviceInfo 타입 변환
-            PulseOne::DeviceInfo converted_info;
-            converted_info.id = device_info.id;
-            converted_info.name = device_info.name;
-            converted_info.description = device_info.description;
-            converted_info.protocol_type = device_info.protocol_type;
-            converted_info.endpoint = device_info.endpoint;
-            converted_info.connection_string = device_info.connection_string;
-            converted_info.is_enabled = device_info.is_enabled;
-            
-            // ✅ 정확한 네임스페이스: PulseOne::Workers::MQTTWorker
-            auto worker = std::make_unique<PulseOne::Workers::MQTTWorker>(
-                converted_info,
-                redis_client,
-                influx_client
-            );
-            return std::unique_ptr<BaseDeviceWorker>(worker.release());
-        } catch (const std::exception&) {
-            return nullptr; // 예외 발생 시 nullptr 반환
-        }
+    // ModbusRtu Worker
+    RegisterWorkerCreator("modbus_rtu", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+                                               const std::vector<PulseOne::Structs::DataPoint>& data_points) {
+        return std::make_unique<ModbusRtuWorker>(device_info, data_points);
     });
-    logger_->Info("✅ MQTT worker registered");
     
-    logger_->Info("🔧 Step 3: Registering BACNET worker...");
-    // 🔧 완전 수정: BACNET Worker 실제 생성 - 정확한 네임스페이스 사용
-    RegisterWorkerCreator("BACNET", [](
-        const PulseOne::Structs::DeviceInfo& device_info,
-        std::shared_ptr<::RedisClient> redis_client,
-        std::shared_ptr<::InfluxClient> influx_client) -> std::unique_ptr<BaseDeviceWorker> {
-        
-        try {
-            // DeviceInfo 타입 변환
-            PulseOne::DeviceInfo converted_info;
-            converted_info.id = device_info.id;
-            converted_info.name = device_info.name;
-            converted_info.description = device_info.description;
-            converted_info.protocol_type = device_info.protocol_type;
-            converted_info.endpoint = device_info.endpoint;
-            converted_info.connection_string = device_info.connection_string;
-            converted_info.is_enabled = device_info.is_enabled;
-            
-            // ✅ 정확한 네임스페이스: PulseOne::Workers::BACnetWorker
-            auto worker = std::make_unique<PulseOne::Workers::BACnetWorker>(
-                converted_info,
-                redis_client,
-                influx_client
-            );
-            return std::unique_ptr<BaseDeviceWorker>(worker.release());
-        } catch (const std::exception&) {
-            return nullptr; // 예외 발생 시 nullptr 반환
-        }
+    // MQTT Worker
+    RegisterWorkerCreator("mqtt", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+                                         const std::vector<PulseOne::Structs::DataPoint>& data_points) {
+        return std::make_unique<MqttWorker>(device_info, data_points);
     });
-    logger_->Info("✅ BACNET worker registered");
     
-    logger_->Info("✅ Worker creators registered: " + std::to_string(worker_creators_.size()));
+    // BACnet Worker  
+    RegisterWorkerCreator("bacnet", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+                                           const std::vector<PulseOne::Structs::DataPoint>& data_points) {
+        return std::make_unique<BACnetWorker>(device_info, data_points);
+    });
+    
+    // Virtual Point Worker
+    RegisterWorkerCreator("virtual", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+                                            const std::vector<PulseOne::Structs::DataPoint>& data_points) {
+        return std::make_unique<VirtualPointWorker>(device_info, data_points);
+    });
+    
+    logger_->Info("✅ Worker creators registered for all protocols");
 }
+
 
 std::string WorkerFactory::ValidateWorkerConfig(const Database::Entities::DeviceEntity& device_entity) const {
     // 기본 검증 로직
@@ -580,194 +429,138 @@ std::string WorkerFactory::ValidateWorkerConfig(const Database::Entities::Device
  * @param device_entity 변환할 DeviceEntity
  * @return 완전한 DeviceInfo (DeviceSettings 포함)
  */
-PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(
-    const Database::Entities::DeviceEntity& device_entity) const {
-    
+PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const {
     PulseOne::Structs::DeviceInfo device_info;
     
-    // =========================================================================
-    // 🔥 1단계: DeviceEntity 기본 정보 매핑 (기존 로직 유지)
-    // =========================================================================
-    
-    // 기본 식별 정보
-    device_info.id = std::to_string(device_entity.getId());
-    device_info.tenant_id = device_entity.getTenantId();
+    // 기본 정보 복사
+    device_info.id = std::to_string(device_entity.getId());  // UUID는 string이므로 변환
     device_info.name = device_entity.getName();
     device_info.description = device_entity.getDescription();
-    device_info.endpoint = device_entity.getEndpoint();
-    device_info.connection_string = device_entity.getEndpoint();
+    device_info.protocol_type = device_entity.getProtocolType();  // 문자열로 저장
     device_info.is_enabled = device_entity.isEnabled();
-    device_info.protocol_type = device_entity.getProtocolType();
     
-    // 디바이스 상세 정보 (🆕 새로 추가된 필드들)
+    // 연결 정보
+    device_info.endpoint = device_entity.getEndpoint();
+    device_info.connection_string = device_entity.getEndpoint();  // 별칭 동기화
+    device_info.polling_interval_ms = device_entity.getPollingInterval();
+    device_info.timeout_ms = device_entity.getTimeout();
+    device_info.retry_count = device_entity.getMaxRetryCount();
+    
+    // 추가 DeviceEntity 필드들
     device_info.device_type = device_entity.getDeviceType();
     device_info.manufacturer = device_entity.getManufacturer();
     device_info.model = device_entity.getModel();
     device_info.serial_number = device_entity.getSerialNumber();
+    device_info.firmware_version = device_entity.getFirmwareVersion();
     
     // 시간 정보
     device_info.created_at = device_entity.getCreatedAt();
     device_info.updated_at = device_entity.getUpdatedAt();
     
-    // 🔥 수정: last_communication, last_seen 필드 추가 (컴파일 에러 수정)
-    device_info.properties["last_communication"] = PulseOne::Utils::TimestampToString(device_entity.getUpdatedAt());
-    device_info.properties["last_seen"] = PulseOne::Utils::TimestampToString(device_entity.getUpdatedAt());
-    
-    // 그룹 정보 - 🔥 수정: device_group_id 타입 변환 수정
-    if (device_entity.getDeviceGroupId().has_value()) {
-        device_info.properties["device_group_id"] = std::to_string(device_entity.getDeviceGroupId().value());
-    }
-    
-    logger_->Debug("✅ DeviceEntity basic info mapped for device: " + device_entity.getName());
-    
-    // =========================================================================
-    // 🔥 2단계: DeviceSettings 정보 로드 및 매핑 (기존 로직 유지)
-    // =========================================================================
-    
-    try {
-        if (!repo_factory_) {
-            logger_->Warn("⚠️ RepositoryFactory not available, using default DeviceSettings");
-            ApplyProtocolSpecificDefaults(device_info, device_entity.getProtocolType());
-            return device_info;
-        }
-        
-        auto device_settings_repo = repo_factory_->getDeviceSettingsRepository();
-        if (!device_settings_repo) {
-            logger_->Warn("⚠️ DeviceSettingsRepository not available, using default settings");
-            ApplyProtocolSpecificDefaults(device_info, device_entity.getProtocolType());
-            return device_info;
-        }
-        
-        // DeviceSettings 로드 시도
-        auto settings = device_settings_repo->findById(device_entity.getId());
-        
+    // 추가 설정 로드 (DeviceSettingsRepository 사용)
+    if (device_settings_repo_) {
+        auto settings = device_settings_repo_->findById(device_entity.getId());
         if (settings.has_value()) {
-            const auto& s = settings.value();
+            // DeviceSettings의 properties를 DeviceInfo의 properties로 복사
+            device_info.properties = settings->getProperties();
             
-            logger_->Debug("🔍 DeviceSettings found for device " + device_entity.getName() + 
-                          " (device_id: " + std::to_string(device_entity.getId()) + ")");
-            
-            // ✅ 기본 타이밍 설정 매핑
-            device_info.polling_interval_ms = s.getPollingIntervalMs();
-            device_info.timeout_ms = s.getConnectionTimeoutMs();
-            
-            // 🔥 수정: 추가 필드들을 properties로 저장 (컴파일 에러 해결)
-            device_info.properties["retry_interval_ms"] = std::to_string(s.getRetryIntervalMs());
-            device_info.properties["backoff_time_ms"] = std::to_string(s.getBackoffTimeMs());
-            device_info.properties["backoff_multiplier"] = std::to_string(s.getBackoffMultiplier());
-            device_info.properties["max_backoff_time_ms"] = std::to_string(s.getMaxBackoffTimeMs());
-            
-            // Keep-Alive 설정
-            device_info.properties["keep_alive_interval_s"] = std::to_string(s.getKeepAliveIntervalS());
-            device_info.properties["keep_alive_timeout_s"] = std::to_string(s.getKeepAliveTimeoutS());
-            
-            // 추가 타이밍
-            device_info.properties["write_timeout_ms"] = std::to_string(s.getWriteTimeoutMs());
-            
-            // 기능 플래그들
-            device_info.properties["data_validation_enabled"] = s.isDataValidationEnabled() ? "true" : "false";
-            device_info.properties["performance_monitoring_enabled"] = s.isPerformanceMonitoringEnabled() ? "true" : "false";
-            device_info.properties["diagnostic_mode_enabled"] = s.isDiagnosticModeEnabled() ? "true" : "false";
-            
+            logger_->Debug("✅ DeviceSettings loaded for device: " + device_entity.getName());
         } else {
-            // DeviceSettings가 없는 경우 - 기본 설정 생성 시도
-            logger_->Warn("⚠️ DeviceSettings not found for device " + device_entity.getName() + 
-                         " (device_id: " + std::to_string(device_entity.getId()) + ")");
-            
-            // 기본값 적용
-            ApplyProtocolSpecificDefaults(device_info, device_entity.getProtocolType());
-            logger_->Info("✅ Applied industrial default settings for device " + device_entity.getName());
+            logger_->Debug("⚠️ No DeviceSettings found for device: " + device_entity.getName());
         }
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Exception while loading DeviceSettings for device " + device_entity.getName() + 
-                      ": " + std::string(e.what()));
-        
-        // 예외 발생 시 기본값 사용
-        ApplyProtocolSpecificDefaults(device_info, device_entity.getProtocolType());
-        logger_->Info("✅ Applied fallback industrial defaults due to exception");
-    }
-    
-    // =========================================================================
-    // 🔥 3단계: 최종 검증 및 로깅 (기존 로직 유지)
-    // =========================================================================
-    
-    // 프로토콜 타입 변환 (문자열 → 열거형) - 🔥 수정: properties 사용
-    if (device_entity.getProtocolType() == "MODBUS_TCP") {
-        device_info.properties["protocol"] = "MODBUS_TCP";
-    } else if (device_entity.getProtocolType() == "MQTT") {
-        device_info.properties["protocol"] = "MQTT";
-    } else if (device_entity.getProtocolType() == "BACNET_IP") {
-        device_info.properties["protocol"] = "BACNET_IP";
     } else {
-        device_info.properties["protocol"] = "UNKNOWN";
-        logger_->Warn("⚠️ Unknown protocol type: " + device_entity.getProtocolType());
+        logger_->Debug("⚠️ DeviceSettingsRepository not available");
     }
     
-    // 연결 상태 초기화
-    device_info.properties["connection_status"] = "DISCONNECTED";
-    device_info.properties["auto_reconnect"] = "true";  
-    device_info.properties["maintenance_allowed"] = "true";
+    // 프로토콜별 기본값 적용
+    ApplyProtocolSpecificDefaults(device_info, device_entity.getProtocolType());
     
-    // 최종 검증 - 🔥 수정: ValidateDeviceSettings 제거하고 기본 검증
-    if (device_info.timeout_ms <= 0) {
-        device_info.timeout_ms = 5000;
-    }
-    if (device_info.polling_interval_ms <= 0) {
-        device_info.polling_interval_ms = 1000;
-    }
-    
-    logger_->Info("🎯 DeviceInfo conversion completed for device: " + device_entity.getName() + 
-                 " (protocol: " + device_entity.getProtocolType() + 
-                 ", endpoint: " + device_entity.getEndpoint() + 
-                 ", enabled: " + (device_entity.isEnabled() ? "true" : "false") + ")");
+    logger_->Debug("✅ DeviceInfo conversion completed for: " + device_entity.getName() + 
+                  " (protocol: " + device_entity.getProtocolType() + 
+                  ", endpoint: " + device_entity.getEndpoint() + ")");
     
     return device_info;
 }
 
-
-// =========================================================================
-// 🆕 추가 헬퍼 메서드 (선택적)
-// =========================================================================
-
-/**
- * @brief DeviceSettings 로드 실패 시 프로토콜별 기본값 적용
- * @param device_info 설정할 DeviceInfo
- * @param protocol_type 프로토콜 타입
- */
-void WorkerFactory::ApplyProtocolSpecificDefaults(PulseOne::Structs::DeviceInfo& device_info, 
-                                                  const std::string& protocol_type) const {
-    if (protocol_type == "MODBUS_TCP" || protocol_type == "MODBUS_RTU") {
-        // Line 774: write_timeout_ms → properties 사용
-        // device_info.write_timeout_ms = 3000;
-        device_info.properties["write_timeout_ms"] = "3000";
-        
-        device_info.timeout_ms = 5000;
-        device_info.polling_interval_ms = 1000;
+void WorkerFactory::ApplyProtocolSpecificDefaults(PulseOne::Structs::DeviceInfo& device_info, const std::string& protocol_type) const {
+    // 기본 타이밍 설정 (모든 프로토콜 공통)
+    if (device_info.polling_interval_ms == 0) {
+        device_info.polling_interval_ms = 1000;  // 1초
+    }
+    if (device_info.timeout_ms == 0) {
+        device_info.timeout_ms = 5000;  // 5초
+    }
+    if (device_info.retry_count == 0) {
         device_info.retry_count = 3;
-        
-    } else if (protocol_type == "MQTT") {
-        // Line 783: keep_alive_interval_s → properties 사용
-        // device_info.keep_alive_interval_s = 60;
-        device_info.properties["keep_alive_interval_s"] = "60";
-        
-        device_info.timeout_ms = 10000;
-        device_info.polling_interval_ms = 5000;
-        device_info.retry_count = 5;
-        
-    } else if (protocol_type == "BACNET_IP" || protocol_type == "BACNET_MSTP") {
-        device_info.timeout_ms = 15000;
-        device_info.polling_interval_ms = 2000;
-        device_info.retry_count = 2;
-        
-        // Line 795: SetStabilityMode() → 직접 구현
-        // device_info.SetStabilityMode();
-        device_info.properties["stability_mode"] = "true";
     }
     
-    // Line 798: SyncCompatibilityFields() → 직접 구현
-    // device_info.SyncCompatibilityFields();
-    SyncDeviceInfoFields(device_info);
+    // 프로토콜별 기본값
+    if (protocol_type == "modbus_tcp" || protocol_type == "MODBUS_TCP") {
+        if (device_info.properties.find("slave_id") == device_info.properties.end()) {
+            device_info.properties["slave_id"] = "1";
+        }
+        if (device_info.properties.find("unit_id") == device_info.properties.end()) {
+            device_info.properties["unit_id"] = "1";
+        }
+        if (device_info.timeout_ms == 5000) {  // 기본값인 경우에만 변경
+            device_info.timeout_ms = 3000;  // Modbus는 3초가 적당
+        }
+    }
+    else if (protocol_type == "modbus_rtu" || protocol_type == "MODBUS_RTU") {
+        if (device_info.properties.find("slave_id") == device_info.properties.end()) {
+            device_info.properties["slave_id"] = "1";
+        }
+        if (device_info.properties.find("baud_rate") == device_info.properties.end()) {
+            device_info.properties["baud_rate"] = "9600";
+        }
+        if (device_info.properties.find("parity") == device_info.properties.end()) {
+            device_info.properties["parity"] = "N";
+        }
+        if (device_info.properties.find("data_bits") == device_info.properties.end()) {
+            device_info.properties["data_bits"] = "8";
+        }
+        if (device_info.properties.find("stop_bits") == device_info.properties.end()) {
+            device_info.properties["stop_bits"] = "1";
+        }
+    }
+    else if (protocol_type == "mqtt" || protocol_type == "MQTT") {
+        if (device_info.properties.find("client_id") == device_info.properties.end()) {
+            device_info.properties["client_id"] = "pulseone_" + device_info.id;
+        }
+        if (device_info.properties.find("qos") == device_info.properties.end()) {
+            device_info.properties["qos"] = "1";
+        }
+        if (device_info.properties.find("clean_session") == device_info.properties.end()) {
+            device_info.properties["clean_session"] = "true";
+        }
+        if (device_info.properties.find("keep_alive") == device_info.properties.end()) {
+            device_info.properties["keep_alive"] = "60";
+        }
+    }
+    else if (protocol_type == "bacnet" || protocol_type == "BACNET_IP") {
+        if (device_info.properties.find("device_instance") == device_info.properties.end()) {
+            device_info.properties["device_instance"] = "0";
+        }
+        if (device_info.properties.find("max_apdu_length") == device_info.properties.end()) {
+            device_info.properties["max_apdu_length"] = "128";
+        }
+        if (device_info.properties.find("network_number") == device_info.properties.end()) {
+            device_info.properties["network_number"] = "0";
+        }
+        if (device_info.polling_interval_ms == 1000) {  // 기본값인 경우에만 변경
+            device_info.polling_interval_ms = 5000;  // BACnet은 5초가 적당
+        }
+    }
+    
+    // 공통 기본 속성들
+    if (device_info.properties.find("auto_reconnect") == device_info.properties.end()) {
+        device_info.properties["auto_reconnect"] = "true";
+    }
+    if (device_info.properties.find("log_level") == device_info.properties.end()) {
+        device_info.properties["log_level"] = "INFO";
+    }
+    
+    logger_->Debug("✅ Applied protocol-specific defaults for " + protocol_type);
 }
 
 // =============================================================================
@@ -809,8 +602,8 @@ std::string WorkerFactory::GetFactoryStatsString() const {
     return GetFactoryStats().ToString();
 }
 
-void WorkerFactory::RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator) {
-    // 🔧 수정: 이미 factory_mutex_ 잠금이 RegisterWorkerCreators()에서 발생했으므로 여기서는 불필요
+void WorkerFactory::RegisterWorkerCreator(const std::string& protocol_type, WorkerCreatorFunction creator) {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
     worker_creators_[protocol_type] = creator;
     logger_->Info("✅ Registered worker creator for protocol: " + protocol_type);
 }
@@ -829,39 +622,21 @@ void WorkerFactory::UpdateDataPointValue(PulseOne::Structs::DataPoint& data_poin
                                          const PulseOne::BasicTypes::DataVariant& new_value,
                                          PulseOne::Enums::DataQuality new_quality) const {
     try {
-        // 🔥 수정: UpdateCurrentValue 메서드 대신 직접 필드 업데이트
-        auto now = std::chrono::system_clock::now();
-        
-        // properties에 값 저장
-        data_point.properties["current_value"] = PulseOne::Utils::DataVariantToString(new_value);
-        data_point.properties["quality_code"] = std::to_string(static_cast<int>(new_quality));
-        data_point.properties["value_timestamp"] = std::to_string(
-            std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
-        data_point.properties["quality_timestamp"] = std::to_string(
-            std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
+        // 새로운 DataPoint 구조체의 메서드 사용
+        data_point.UpdateCurrentValue(new_value, new_quality);
         
         logger_->Debug("📊 Updated DataPoint value: " + data_point.name + 
-                      " = " + GetCurrentValueAsString(data_point) +
-                      " (Quality: " + DataQualityToString(new_quality) + ")");
-                      
+                      " = " + data_point.GetCurrentValueAsString() +
+                      " (Quality: " + data_point.GetQualityCodeAsString() + ")");
+        
     } catch (const std::exception& e) {
-        logger_->Error("Failed to update data point value: " + std::string(e.what()));
+        logger_->Error("Failed to update DataPoint value: " + std::string(e.what()));
         
-        // 에러 발생 시 BAD 품질로 설정
-        data_point.properties["quality_code"] = std::to_string(static_cast<int>(DataQuality::BAD));
-        data_point.properties["quality_timestamp"] = std::to_string(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count());
-        
-        // 에러 카운트 증가
-        auto error_count_it = data_point.properties.find("error_count");
-        int error_count = 0;
-        if (error_count_it != data_point.properties.end()) {
-            error_count = std::stoi(error_count_it->second);
-        }
-        data_point.properties["error_count"] = std::to_string(error_count + 1);
+        // 에러 시 BAD 품질로 설정
+        data_point.SetErrorState(PulseOne::Enums::DataQuality::BAD);
     }
 }
+
 
 
 /**
@@ -870,53 +645,47 @@ void WorkerFactory::UpdateDataPointValue(PulseOne::Structs::DataPoint& data_poin
  * @param new_value 새로운 값
  * @return 로깅해야 하면 true
  */
-bool WorkerFactory::ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_point,
+bool WorkerFactory::ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_point, 
                                        const PulseOne::BasicTypes::DataVariant& new_value) const {
-    try {
-        // 🔥 수정: ShouldLog 메서드 대신 직접 구현
-        if (!data_point.log_enabled) {
-            return false;
+    // 로그 활성화 확인
+    if (!data_point.log_enabled) return false;
+        
+    // 로그 간격 확인
+    if (data_point.log_interval_ms > 0) {
+        auto current_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        auto last_log_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            data_point.last_log_time.time_since_epoch()).count();
+        
+        if (current_ms - last_log_ms < data_point.log_interval_ms) {
+            return false;  // 아직 로그 간격이 지나지 않음
         }
-        
-        // 시간 간격 체크
-        auto now = std::chrono::system_clock::now();
-        
-        // 🔥 수정: last_log_time 필드 대신 properties 사용
-        auto last_log_it = data_point.properties.find("last_log_time");
-        if (last_log_it != data_point.properties.end()) {
-            auto last_log_ms = std::stoull(last_log_it->second);
-            auto current_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now.time_since_epoch()).count();
-            
-            if (current_ms - last_log_ms < data_point.log_interval_ms) {
-                return false;
-            }
-        }
-        
-        // Deadband 체크 (숫자 값인 경우)
-        if (std::holds_alternative<double>(new_value)) {
-            auto current_value_it = data_point.properties.find("current_value");
-            if (current_value_it != data_point.properties.end()) {
-                try {
-                    double new_val = std::get<double>(new_value);
-                    double old_val = std::stod(current_value_it->second);
-                    double diff = std::abs(new_val - old_val);
-                    
-                    if (diff < data_point.log_deadband) {
-                        return false;
-                    }
-                } catch (...) {
-                    // 타입 변환 실패 시 로깅 허용
-                }
-            }
-        }
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Failed to check logging condition: " + std::string(e.what()));
-        return false;
     }
+    
+    // Deadband 확인 (값 변화가 충분한지 확인)
+    if (data_point.log_deadband > 0.0) {
+        double current_value = std::visit([](const auto& v) -> double {
+            if constexpr (std::is_arithmetic_v<std::decay_t<decltype(v)>>) {
+                return static_cast<double>(v);
+            } else {
+                return 0.0;  // 문자열은 0으로 처리
+            }
+        }, data_point.current_value);
+        
+        double new_double_value = std::visit([](const auto& v) -> double {
+            if constexpr (std::is_arithmetic_v<std::decay_t<decltype(v)>>) {
+                return static_cast<double>(v);
+            } else {
+                return 0.0;  // 문자열은 0으로 처리
+            }
+        }, new_value);
+        
+        if (std::abs(new_double_value - current_value) < data_point.log_deadband) {
+            return false;  // 변화량이 deadband 미만
+        }
+    }
+    
+    return true;
 }
 
 /**
@@ -928,174 +697,159 @@ bool WorkerFactory::ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_
 /**
  * @brief ConvertToDataPoint 메서드 (헤더에서 선언했다고 가정)
  */
-PulseOne::Structs::DataPoint WorkerFactory::ConvertToDataPoint(
-    const Database::Entities::DataPointEntity& datapoint_entity,
-    const std::string& device_id_string) const {
-    
+PulseOne::Structs::DataPoint WorkerFactory::ConvertToDataPoint(const Database::Entities::DataPointEntity& datapoint_entity, const std::string& device_id_string) const {
     PulseOne::Structs::DataPoint data_point;
     
-    // =======================================================================
     // 기본 식별 정보
-    // =======================================================================
     data_point.id = std::to_string(datapoint_entity.getId());
-    data_point.device_id = device_id_string;
+    data_point.device_id = device_id_string.empty() ? std::to_string(datapoint_entity.getDeviceId()) : device_id_string;
     data_point.name = datapoint_entity.getName();
     data_point.description = datapoint_entity.getDescription();
     
-    // =======================================================================
-    // 주소 및 타입 정보
-    // =======================================================================
-    data_point.address = datapoint_entity.getAddress();
-    data_point.data_type = StringToDataType(datapoint_entity.getDataType());
-    data_point.access_mode = StringToAccessMode(datapoint_entity.getAccessMode());
+    // 주소 정보
+    data_point.address = static_cast<uint32_t>(datapoint_entity.getAddress());
+    data_point.address_string = std::to_string(datapoint_entity.getAddress());
     
-    // =======================================================================
-    // 스케일링 및 범위
-    // =======================================================================
+    // 데이터 타입 및 접근성
+    data_point.data_type = PulseOne::Utils::StringToDataType(datapoint_entity.getDataType());
+    data_point.access_mode = PulseOne::Utils::StringToAccessMode(datapoint_entity.getAccessMode());
+    data_point.is_enabled = datapoint_entity.isEnabled();
+    data_point.is_writable = (data_point.access_mode == PulseOne::Enums::AccessMode::READ_write || 
+                              data_point.access_mode == PulseOne::Enums::AccessMode::write_only);
+    
+    // 엔지니어링 정보
     data_point.unit = datapoint_entity.getUnit();
     data_point.scaling_factor = datapoint_entity.getScalingFactor();
     data_point.scaling_offset = datapoint_entity.getScalingOffset();
     data_point.min_value = datapoint_entity.getMinValue();
     data_point.max_value = datapoint_entity.getMaxValue();
     
-    // =======================================================================
-    // 로깅 설정 (수정된 버전)
-    // =======================================================================
+    // 로깅 설정 (필드명 수정)
     data_point.log_enabled = datapoint_entity.isLogEnabled();
-    data_point.log_interval_ms = datapoint_entity.getLogIntervalMs();
+    data_point.log_interval_ms = static_cast<uint32_t>(datapoint_entity.getLogInterval());  // getLogIntervalMs → getLogInterval
     data_point.log_deadband = datapoint_entity.getLogDeadband();
-    data_point.last_log_time = std::chrono::system_clock::now();
     
-    // =======================================================================
-    // 메타데이터 (타입 변환 수정)
-    // =======================================================================
-    // 🔥 수정: vector<string> → string 변환
-    auto tags = datapoint_entity.getTags();
-    if (!tags.empty()) {
-        std::ostringstream tag_stream;
-        for (size_t i = 0; i < tags.size(); ++i) {
-            if (i > 0) tag_stream << ",";
-            tag_stream << tags[i];
-        }
-        data_point.tags = tag_stream.str();
-    }
+    // 메타데이터
+    data_point.tags = datapoint_entity.getTags();
+    data_point.metadata = datapoint_entity.getMetadata();
     
-    // 🔥 수정: map<string,string> → string 변환 (JSON)
-    auto metadata = datapoint_entity.getMetadata();
-    if (!metadata.empty()) {
-        std::ostringstream meta_stream;
-        meta_stream << "{";
-        bool first = true;
-        for (const auto& [key, value] : metadata) {
-            if (!first) meta_stream << ",";
-            meta_stream << "\"" << key << "\":\"" << value << "\"";
-            first = false;
-        }
-        meta_stream << "}";
-        data_point.metadata = meta_stream.str();
-    }
+    // 시간 정보
+    data_point.created_at = datapoint_entity.getCreatedAt();
+    data_point.updated_at = datapoint_entity.getUpdatedAt();
     
-    // =======================================================================
-    // 통계 정보 (수정된 버전)
-    // =======================================================================
-    data_point.last_read_time = datapoint_entity.getLastReadTime();
-    data_point.last_write_time = datapoint_entity.getLastWriteTime();
-    data_point.read_count = datapoint_entity.getReadCount();
-    data_point.write_count = datapoint_entity.getWriteCount();
-    data_point.error_count = datapoint_entity.getErrorCount();
-    
-    // =======================================================================
-    // 기본값 설정 (수정된 버전)
-    // =======================================================================
-    data_point.current_value = DataVariant(0.0);
-    data_point.quality_code = DataQuality::NOT_CONNECTED;
+    // 실제 값 필드 초기화 (properties 제거!)
+    data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
+    data_point.raw_value = PulseOne::BasicTypes::DataVariant(0.0);
+    data_point.quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;
     data_point.value_timestamp = std::chrono::system_clock::now();
-    data_point.quality_timestamp = std::chrono::system_clock::now();
+    data_point.quality_timestamp = data_point.value_timestamp;
+    data_point.last_log_time = data_point.value_timestamp;
+    data_point.last_read_time = data_point.value_timestamp;
+    data_point.last_write_time = data_point.value_timestamp;
+    
+    logger_->Debug("✅ DataPoint converted: " + data_point.name + 
+                  " (device_id: " + device_id_string + 
+                  ", address: " + std::to_string(data_point.address) + ")");
     
     return data_point;
 }
-/**
- * @brief DataPoint에 현재값 로드 (별도 메서드로 분리)
- * @param data_point 현재값을 로드할 DataPoint (참조)
- */
+
+
 void WorkerFactory::LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const {
     try {
-        auto factory = Database::RepositoryFactory::getInstance();
-        auto current_value_repo = factory->getCurrentValueRepository();
+        if (!current_value_repo_) {
+            logger_->Warn("⚠️ CurrentValueRepository not injected, using default values");
+            data_point.quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;
+            data_point.quality_timestamp = std::chrono::system_clock::now();
+            return;
+        }
         
-        int data_point_id = std::stoi(data_point.id);
-        auto current_value = current_value_repo->findByDataPointId(data_point_id);
+        auto current_value = current_value_repo_->findByDataPointId(std::stoi(data_point.id));
         
         if (current_value.has_value()) {
-            // 현재 값 설정 (properties 대신 직접 필드 사용)
-            data_point.current_value = DataVariant(current_value->getValue());
+            // 현재값이 존재하는 경우 - 직접 필드에 저장
+            data_point.current_value = PulseOne::BasicTypes::DataVariant(current_value->getValue());
             data_point.quality_code = current_value->getQuality();
             data_point.value_timestamp = current_value->getTimestamp();
             data_point.quality_timestamp = current_value->getUpdatedAt();
             
-            logger_->Debug("📊 Loaded current value for: " + data_point.name + 
-                          " = " + GetCurrentValueAsString(data_point) +
-                          " (Quality: " + DataQualityToString(data_point.quality_code) + ")");
+            logger_->Debug("✅ Loaded current value for DataPoint '" + data_point.name + 
+                          " = " + data_point.GetCurrentValueAsString() +
+                          " (Quality: " + data_point.GetQualityCodeAsString() + ")");
         } else {
-            // 기본값 설정
-            data_point.quality_code = DataQuality::BAD;
-            data_point.quality_timestamp = std::chrono::system_clock::now();
+            logger_->Debug("⚠️ No current value found for DataPoint: " + data_point.name);
             
-            logger_->Debug("⚠️ No current value found for: " + data_point.name);
+            data_point.quality_code = PulseOne::Enums::DataQuality::BAD;
+            data_point.quality_timestamp = std::chrono::system_clock::now();
         }
         
     } catch (const std::exception& e) {
-        logger_->Error("Failed to load current value: " + std::string(e.what()));
+        logger_->Error("Failed to load current value for DataPoint '" + data_point.name + "': " + std::string(e.what()));
         
-        // 에러 시 기본값
-        data_point.quality_code = DataQuality::BAD;
+        // 에러 시 기본값 설정
+        data_point.quality_code = PulseOne::Enums::DataQuality::BAD;
         data_point.quality_timestamp = std::chrono::system_clock::now();
     }
 }
 
-
-/**
- * @brief LoadDataPointsForDevice 메서드 개선 (ConvertToDataPoint 사용)
- */
 std::vector<PulseOne::Structs::DataPoint> WorkerFactory::LoadDataPointsForDevice(int device_id) const {
     std::vector<PulseOne::Structs::DataPoint> data_points;
     
     try {
-        auto factory = Database::RepositoryFactory::getInstance();
-        auto datapoint_repo = factory->getDataPointRepository();
-        
-        auto datapoint_entities = datapoint_repo->findByDeviceId(device_id);
-        
-        data_points.reserve(datapoint_entities.size());
-        
-        int good_quality_count = 0;
-        for (const auto& entity : datapoint_entities) {
-            try {
-                auto dp = ConvertToDataPoint(entity, std::to_string(device_id));
-                LoadCurrentValueForDataPoint(dp);
-                
-                // 품질 통계 (수정된 버전)
-                if (dp.quality_code == DataQuality::GOOD) {
-                    good_quality_count++;
-                }
-                
-                data_points.push_back(std::move(dp));
-                
-            } catch (const std::exception& e) {
-                logger_->Warn("Failed to convert DataPoint: " + std::string(e.what()));
-            }
+        if (!datapoint_repo_) {
+            logger_->Error("❌ DataPointRepository not injected");
+            return data_points;
         }
         
-        logger_->Info("📊 Loaded " + std::to_string(data_points.size()) + 
-                     " data points for device " + std::to_string(device_id) +
-                     " (good quality: " + std::to_string(good_quality_count) + ")");
+        // Repository 패턴 사용
+        auto datapoint_entities = datapoint_repo_->findByDeviceId(device_id, true);  // enabled_only = true
+        
+        for (const auto& entity : datapoint_entities) {
+            auto data_point = ConvertToDataPoint(entity, std::to_string(device_id));
+            LoadCurrentValueForDataPoint(data_point);
+            data_points.push_back(data_point);
+        }
+        
+        // 통계 로깅
+        if (!data_points.empty()) {
+            int total_count = static_cast<int>(data_points.size());
+            int writable_count = 0;
+            int good_quality_count = 0;
+            int connected_count = 0;
+            
+            for (const auto& dp : data_points) {
+                if (dp.is_writable) writable_count++;
+                
+                if (dp.quality_code == PulseOne::Enums::DataQuality::GOOD) {
+                    good_quality_count++;
+                }
+                if (dp.quality_code != PulseOne::Enums::DataQuality::NOT_CONNECTED) {
+                    connected_count++;
+                }
+            }
+            
+            logger_->Info("📊 Loaded " + std::to_string(total_count) + " DataPoints for Device " + std::to_string(device_id) +
+                         " (Writable: " + std::to_string(writable_count) + 
+                         ", Good Quality: " + std::to_string(good_quality_count) +
+                         ", Connected: " + std::to_string(connected_count) + ")");
+        }
         
     } catch (const std::exception& e) {
-        logger_->Error("Failed to load data points: " + std::string(e.what()));
+        logger_->Error("Failed to load DataPoints for Device " + std::to_string(device_id) + ": " + std::string(e.what()));
     }
     
     return data_points;
 }
+
+
+std::string WorkerFactory::GetCurrentValueAsString(const PulseOne::Structs::DataPoint& data_point) const {
+    return data_point.GetCurrentValueAsString();
+}
+
+std::string WorkerFactory::GetQualityString(const PulseOne::Structs::DataPoint& data_point) const {
+    return data_point.GetQualityCodeAsString();
+}
+
 
 } // namespace Workers
 } // namespace PulseOne
