@@ -222,30 +222,30 @@ namespace Structs {
     // =========================================================================
     
     /**
-     * @brief 통합 데이터 포인트 구조체
+     * @brief 통합 데이터 포인트 구조체 (완전판)
      * @details 
-     * - Database::DataPointEntity.toDataPointStruct() 호환
-     * - Drivers::DataPoint 호환
-     * - UnifiedDataPoint 호환
-     * - 프로토콜별 편의 메서드 포함
+     * - 설정 정보 + 실제 값 통합
+     * - Database::DataPointEntity 호환
+     * - Worker에서 직접 사용 가능
+     * - Properties 맵 제거하고 직접 필드 사용
      */
     struct DataPoint {
         // =======================================================================
-        // 🔥 기본 식별 정보 (기존 호환)
+        // 🔥 기본 식별 정보 (설정)
         // =======================================================================
-        UUID id;                                  // point_id (Database) + id (Drivers)
+        UUID id;                                  // point_id
         UUID device_id;                           // 소속 디바이스 ID
         std::string name = "";                    // 표시 이름
         std::string description = "";             // 설명
         
         // =======================================================================
-        // 🔥 주소 정보 (기존 호환)
+        // 🔥 주소 정보 (설정)
         // =======================================================================
         uint32_t address = 0;                     // 숫자 주소 (Modbus 레지스터, BACnet 인스턴스 등)
         std::string address_string = "";          // 문자열 주소 (MQTT 토픽, OPC UA NodeId 등)
         
         // =======================================================================
-        // 🔥 데이터 타입 및 접근성 (기존 호환)
+        // 🔥 데이터 타입 및 접근성 (설정)
         // =======================================================================
         std::string data_type = "UNKNOWN";        // INT16, UINT32, FLOAT, BOOL, STRING 등
         std::string access_mode = "read";         // read, write, read_write
@@ -253,56 +253,444 @@ namespace Structs {
         bool is_writable = false;                 // 쓰기 가능 여부
         
         // =======================================================================
-        // 🔥 엔지니어링 단위 및 스케일링 (기존 호환)
+        // 🔥 엔지니어링 단위 및 스케일링 (설정)
         // =======================================================================
         std::string unit = "";                    // 단위 (℃, %, kW 등)
-        double scaling_factor = 1.0;              // 스케일 인수 (기존 필드명)
-        double scale_factor = 1.0;                // 별칭
-        double scaling_offset = 0.0;              // 오프셋 (기존 필드명)
-        double offset = 0.0;                      // 별칭
+        double scaling_factor = 1.0;              // 스케일 인수
+        double scaling_offset = 0.0;              // 오프셋
         double min_value = 0.0;                   // 최소값
         double max_value = 0.0;                   // 최대값
         
         // =======================================================================
-        // 🔥 로깅 및 수집 설정 (기존 호환)
+        // 🔥 로깅 및 수집 설정 (설정)
         // =======================================================================
         bool log_enabled = true;                  // 로깅 활성화
         uint32_t log_interval_ms = 0;             // 로깅 간격
         double log_deadband = 0.0;                // 로깅 데드밴드
-        uint32_t polling_interval_ms = 0;         // 개별 폴링 간격 (0이면 디바이스 기본값)
+        uint32_t polling_interval_ms = 0;         // 개별 폴링 간격
         
         // =======================================================================
-        // 🔥 메타데이터 (기존 호환)
+        // 🔥 메타데이터 (설정)
         // =======================================================================
         std::string group = "";                   // 그룹명
-        std::string tags = "";                    // JSON 배열 형태 (기존 호환)
-        std::string metadata = "";                // JSON 객체 형태 (기존 호환)
-        
-        // =======================================================================
-        // 🔥 프로토콜별 설정 (신규 - 편의성 향상)
-        // =======================================================================
+        std::string tags = "";                    // JSON 배열 형태
+        std::string metadata = "";                // JSON 객체 형태
         std::map<std::string, std::string> protocol_params;  // 프로토콜 특화 매개변수
         
         // =======================================================================
-        // 🔥 시간 정보 (기존 호환)
+        // 🔥 실제 값 필드들 (실시간 데이터) - 새로 추가!
         // =======================================================================
-        Timestamp created_at;
-        Timestamp updated_at;
+        
+        /**
+         * @brief 현재 값 (실제 데이터)
+         * @details DataVariant = std::variant<bool, int16_t, uint16_t, int32_t, uint32_t, float, double, string>
+         */
+        PulseOne::BasicTypes::DataVariant current_value{0.0};
+        
+        /**
+         * @brief 원시 값 (스케일링 적용 전)
+         */
+        PulseOne::BasicTypes::DataVariant raw_value{0.0};
+        
+        /**
+         * @brief 데이터 품질 코드
+         */
+        PulseOne::Enums::DataQuality quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;
+        
+        /**
+         * @brief 값 타임스탬프 (마지막 값 업데이트 시간)
+         */
+        PulseOne::BasicTypes::Timestamp value_timestamp;
+        
+        /**
+         * @brief 품질 타임스탬프 (마지막 품질 변경 시간)
+         */
+        PulseOne::BasicTypes::Timestamp quality_timestamp;
+        
+        /**
+         * @brief 마지막 로그 시간
+         */
+        PulseOne::BasicTypes::Timestamp last_log_time;
+        
+        // =======================================================================
+        // 🔥 통계 필드들 (실시간 데이터) - atomic 제거
+        // =======================================================================
+        
+        /**
+         * @brief 마지막 읽기 시간
+         */
+        PulseOne::BasicTypes::Timestamp last_read_time;
+        
+        /**
+         * @brief 마지막 쓰기 시간
+         */
+        PulseOne::BasicTypes::Timestamp last_write_time;
+        
+        /**
+         * @brief 읽기 카운트 (atomic 제거, 단순 uint64_t 사용)
+         */
+        uint64_t read_count = 0;
+        
+        /**
+         * @brief 쓰기 카운트 (atomic 제거, 단순 uint64_t 사용)
+         */
+        uint64_t write_count = 0;
+        
+        /**
+         * @brief 에러 카운트 (atomic 제거, 단순 uint64_t 사용)
+         */
+        uint64_t error_count = 0;
+        
+        // =======================================================================
+        // 🔥 시간 정보 (설정)
+        // =======================================================================
+        PulseOne::BasicTypes::Timestamp created_at;
+        PulseOne::BasicTypes::Timestamp updated_at;
         
         // =======================================================================
         // 🔥 생성자들
         // =======================================================================
         DataPoint() {
-            created_at = std::chrono::system_clock::now();
-            updated_at = created_at;
-            
-            // 기존 호환성을 위한 별칭 동기화
-            scale_factor = scaling_factor;
-            offset = scaling_offset;
+            auto now = std::chrono::system_clock::now();
+            created_at = now;
+            updated_at = now;
+            value_timestamp = now;
+            quality_timestamp = now;
+            last_log_time = now;
+            last_read_time = now;
+            last_write_time = now;
+        }
+        
+        // 복사 생성자 (명시적 구현)
+        DataPoint(const DataPoint& other)
+            : id(other.id)
+            , device_id(other.device_id)
+            , name(other.name)
+            , description(other.description)
+            , address(other.address)
+            , address_string(other.address_string)
+            , data_type(other.data_type)
+            , access_mode(other.access_mode)
+            , is_enabled(other.is_enabled)
+            , is_writable(other.is_writable)
+            , unit(other.unit)
+            , scaling_factor(other.scaling_factor)
+            , scaling_offset(other.scaling_offset)
+            , min_value(other.min_value)
+            , max_value(other.max_value)
+            , log_enabled(other.log_enabled)
+            , log_interval_ms(other.log_interval_ms)
+            , log_deadband(other.log_deadband)
+            , polling_interval_ms(other.polling_interval_ms)
+            , group(other.group)
+            , tags(other.tags)
+            , metadata(other.metadata)
+            , protocol_params(other.protocol_params)
+            , current_value(other.current_value)
+            , raw_value(other.raw_value)
+            , quality_code(other.quality_code)
+            , value_timestamp(other.value_timestamp)
+            , quality_timestamp(other.quality_timestamp)
+            , last_log_time(other.last_log_time)
+            , last_read_time(other.last_read_time)
+            , last_write_time(other.last_write_time)
+            , read_count(other.read_count)
+            , write_count(other.write_count)
+            , error_count(other.error_count)
+            , created_at(other.created_at)
+            , updated_at(other.updated_at) {
+        }
+        
+        // 이동 생성자
+        DataPoint(DataPoint&& other) noexcept
+            : id(std::move(other.id))
+            , device_id(std::move(other.device_id))
+            , name(std::move(other.name))
+            , description(std::move(other.description))
+            , address(other.address)
+            , address_string(std::move(other.address_string))
+            , data_type(std::move(other.data_type))
+            , access_mode(std::move(other.access_mode))
+            , is_enabled(other.is_enabled)
+            , is_writable(other.is_writable)
+            , unit(std::move(other.unit))
+            , scaling_factor(other.scaling_factor)
+            , scaling_offset(other.scaling_offset)
+            , min_value(other.min_value)
+            , max_value(other.max_value)
+            , log_enabled(other.log_enabled)
+            , log_interval_ms(other.log_interval_ms)
+            , log_deadband(other.log_deadband)
+            , polling_interval_ms(other.polling_interval_ms)
+            , group(std::move(other.group))
+            , tags(std::move(other.tags))
+            , metadata(std::move(other.metadata))
+            , protocol_params(std::move(other.protocol_params))
+            , current_value(std::move(other.current_value))
+            , raw_value(std::move(other.raw_value))
+            , quality_code(other.quality_code)
+            , value_timestamp(other.value_timestamp)
+            , quality_timestamp(other.quality_timestamp)
+            , last_log_time(other.last_log_time)
+            , last_read_time(other.last_read_time)
+            , last_write_time(other.last_write_time)
+            , read_count(other.read_count)
+            , write_count(other.write_count)
+            , error_count(other.error_count)
+            , created_at(other.created_at)
+            , updated_at(other.updated_at) {
+        }
+        
+        // 복사 할당 연산자
+        DataPoint& operator=(const DataPoint& other) {
+            if (this != &other) {
+                id = other.id;
+                device_id = other.device_id;
+                name = other.name;
+                description = other.description;
+                address = other.address;
+                address_string = other.address_string;
+                data_type = other.data_type;
+                access_mode = other.access_mode;
+                is_enabled = other.is_enabled;
+                is_writable = other.is_writable;
+                unit = other.unit;
+                scaling_factor = other.scaling_factor;
+                scaling_offset = other.scaling_offset;
+                min_value = other.min_value;
+                max_value = other.max_value;
+                log_enabled = other.log_enabled;
+                log_interval_ms = other.log_interval_ms;
+                log_deadband = other.log_deadband;
+                polling_interval_ms = other.polling_interval_ms;
+                group = other.group;
+                tags = other.tags;
+                metadata = other.metadata;
+                protocol_params = other.protocol_params;
+                current_value = other.current_value;
+                raw_value = other.raw_value;
+                quality_code = other.quality_code;
+                value_timestamp = other.value_timestamp;
+                quality_timestamp = other.quality_timestamp;
+                last_log_time = other.last_log_time;
+                last_read_time = other.last_read_time;
+                last_write_time = other.last_write_time;
+                read_count = other.read_count;
+                write_count = other.write_count;
+                error_count = other.error_count;
+                created_at = other.created_at;
+                updated_at = other.updated_at;
+            }
+            return *this;
+        }
+        
+        // 이동 할당 연산자
+        DataPoint& operator=(DataPoint&& other) noexcept {
+            if (this != &other) {
+                id = std::move(other.id);
+                device_id = std::move(other.device_id);
+                name = std::move(other.name);
+                description = std::move(other.description);
+                address = other.address;
+                address_string = std::move(other.address_string);
+                data_type = std::move(other.data_type);
+                access_mode = std::move(other.access_mode);
+                is_enabled = other.is_enabled;
+                is_writable = other.is_writable;
+                unit = std::move(other.unit);
+                scaling_factor = other.scaling_factor;
+                scaling_offset = other.scaling_offset;
+                min_value = other.min_value;
+                max_value = other.max_value;
+                log_enabled = other.log_enabled;
+                log_interval_ms = other.log_interval_ms;
+                log_deadband = other.log_deadband;
+                polling_interval_ms = other.polling_interval_ms;
+                group = std::move(other.group);
+                tags = std::move(other.tags);
+                metadata = std::move(other.metadata);
+                protocol_params = std::move(other.protocol_params);
+                current_value = std::move(other.current_value);
+                raw_value = std::move(other.raw_value);
+                quality_code = other.quality_code;
+                value_timestamp = other.value_timestamp;
+                quality_timestamp = other.quality_timestamp;
+                last_log_time = other.last_log_time;
+                last_read_time = other.last_read_time;
+                last_write_time = other.last_write_time;
+                read_count = other.read_count;
+                write_count = other.write_count;
+                error_count = other.error_count;
+                created_at = other.created_at;
+                updated_at = other.updated_at;
+            }
+            return *this;
         }
         
         // =======================================================================
-        // 🔥 프로토콜별 편의 메서드들 (신규)
+        // 🔥 실제 값 관리 메서드들 (핵심!)
+        // =======================================================================
+        
+        /**
+         * @brief 현재값 업데이트 (Worker에서 호출)
+         * @param new_value 새로운 값
+         * @param new_quality 새로운 품질 (기본: GOOD)
+         * @param apply_scaling 스케일링 적용 여부 (기본: true)
+         */
+        void UpdateCurrentValue(const PulseOne::BasicTypes::DataVariant& new_value, 
+                               PulseOne::Enums::DataQuality new_quality = PulseOne::Enums::DataQuality::GOOD,
+                               bool apply_scaling = true) {
+            
+            // 원시값 저장
+            raw_value = new_value;
+            
+            // 스케일링 적용 (숫자 타입만)
+            if (apply_scaling) {
+                current_value = std::visit([this](const auto& v) -> PulseOne::BasicTypes::DataVariant {
+                    if constexpr (std::is_arithmetic_v<std::decay_t<decltype(v)>>) {
+                        double scaled = (static_cast<double>(v) * scaling_factor) + scaling_offset;
+                        return PulseOne::BasicTypes::DataVariant{scaled};
+                    } else {
+                        return v;  // 문자열은 그대로
+                    }
+                }, new_value);
+            } else {
+                current_value = new_value;
+            }
+            
+            // 품질 업데이트
+            if (quality_code != new_quality) {
+                quality_code = new_quality;
+                quality_timestamp = std::chrono::system_clock::now();
+            }
+            
+            // 값 타임스탬프 업데이트
+            value_timestamp = std::chrono::system_clock::now();
+            updated_at = value_timestamp;
+            
+            // 읽기 카운트 증가 (atomic 제거)
+            read_count++;
+            last_read_time = value_timestamp;
+        }
+        
+        /**
+         * @brief 에러 상태로 설정
+         * @param error_quality 에러 품질 (기본: BAD)
+         */
+        void SetErrorState(PulseOne::Enums::DataQuality error_quality = PulseOne::Enums::DataQuality::BAD) {
+            quality_code = error_quality;
+            quality_timestamp = std::chrono::system_clock::now();
+            error_count++;
+        }
+        
+        /**
+         * @brief 쓰기 작업 기록
+         * @param written_value 쓴 값
+         * @param success 성공 여부
+         */
+        void RecordWriteOperation(const PulseOne::BasicTypes::DataVariant& written_value, bool success) {
+            if (success) {
+                // 쓰기 성공 시 현재값도 업데이트 (단방향 쓰기가 아닌 경우)
+                if (access_mode == "write" || access_mode == "read_write") {
+                    UpdateCurrentValue(written_value, PulseOne::Enums::DataQuality::GOOD, false);
+                }
+                write_count++;
+            } else {
+                error_count++;
+            }
+            last_write_time = std::chrono::system_clock::now();
+        }
+        
+        /**
+         * @brief 현재값을 문자열로 반환
+         */
+        std::string GetCurrentValueAsString() const {
+            return std::visit([](const auto& v) -> std::string {
+                if constexpr (std::is_same_v<std::decay_t<decltype(v)>, bool>) {
+                    return v ? "true" : "false";
+                } else if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>) {
+                    return v;
+                } else {
+                    return std::to_string(v);
+                }
+            }, current_value);
+        }
+        
+        /**
+         * @brief 품질을 문자열로 반환
+         */
+        std::string GetQualityCodeAsString() const {
+            switch (quality_code) {
+                case PulseOne::Enums::DataQuality::GOOD: return "GOOD";
+                case PulseOne::Enums::DataQuality::BAD: return "BAD";
+                case PulseOne::Enums::DataQuality::UNCERTAIN: return "UNCERTAIN";
+                case PulseOne::Enums::DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
+                case PulseOne::Enums::DataQuality::TIMEOUT: return "TIMEOUT";
+                default: return "UNKNOWN";
+            }
+        }
+        
+        /**
+         * @brief 품질이 양호한지 확인
+         */
+        bool IsGoodQuality() const {
+            return quality_code == PulseOne::Enums::DataQuality::GOOD;
+        }
+        
+        /**
+         * @brief 값이 유효 범위 내인지 확인
+         */
+        bool IsValueInRange() const {
+            if (max_value <= min_value) return true;  // 범위 설정되지 않음
+            
+            return std::visit([this](const auto& v) -> bool {
+                if constexpr (std::is_arithmetic_v<std::decay_t<decltype(v)>>) {
+                    double val = static_cast<double>(v);
+                    return val >= min_value && val <= max_value;
+                } else {
+                    return true;  // 문자열은 항상 유효
+                }
+            }, current_value);
+        }
+        
+        /**
+         * @brief TimestampedValue로 변환 (IProtocolDriver 인터페이스 호환)
+         */
+        TimestampedValue ToTimestampedValue() const {
+            TimestampedValue tv;
+            tv.value = current_value;
+            tv.timestamp = value_timestamp;
+            tv.quality = quality_code;
+            tv.source = name;
+            return tv;
+        }
+        
+        /**
+         * @brief TimestampedValue에서 값 업데이트
+         */
+        void FromTimestampedValue(const TimestampedValue& tv) {
+            current_value = tv.value;
+            value_timestamp = tv.timestamp;
+            quality_code = tv.quality;
+            read_count++;
+            last_read_time = tv.timestamp;
+        }
+        
+        // =======================================================================
+        // 🔥 기존 호환성 메서드들 (Properties 맵 제거)
+        // =======================================================================
+        
+        bool isWritable() const { return is_writable; }
+        void setWritable(bool writable) { is_writable = writable; }
+        
+        std::string getDataType() const { return data_type; }
+        void setDataType(const std::string& type) { data_type = type; }
+        
+        std::string getUnit() const { return unit; }
+        void setUnit(const std::string& u) { unit = u; }
+        
+        // =======================================================================
+        // 🔥 프로토콜별 편의 메서드들
         // =======================================================================
         
         /**
@@ -340,71 +728,68 @@ namespace Structs {
         }
         
         /**
-         * @brief 프로토콜 매개변수 조회
-         */
-        template<typename T>
-        T GetProtocolParam(const std::string& key, const T& default_value = T{}) const {
-            auto it = protocol_params.find(key);
-            if (it != protocol_params.end()) {
-                if constexpr (std::is_same_v<T, int>) {
-                    return std::stoi(it->second);
-                } else if constexpr (std::is_same_v<T, double>) {
-                    return std::stod(it->second);
-                } else if constexpr (std::is_same_v<T, bool>) {
-                    return it->second == "true" || it->second == "1";
-                } else {
-                    return T(it->second);
-                }
-            }
-            return default_value;
-        }
-        
-        /**
-         * @brief 값 유효성 검증
-         */
-        bool IsValueInRange(double value) const {
-            if (max_value > min_value) {
-                return value >= min_value && value <= max_value;
-            }
-            return true;  // 범위가 설정되지 않은 경우
-        }
-        
-        /**
          * @brief 스케일링 적용
          */
-        double ApplyScaling(double raw_value) const {
-            return (raw_value * scaling_factor) + scaling_offset;
+        double ApplyScaling(double raw_val) const {
+            return (raw_val * scaling_factor) + scaling_offset;
         }
         
         /**
          * @brief 역스케일링 적용 (쓰기 시 사용)
          */
-        double RemoveScaling(double scaled_value) const {
-            return (scaled_value - scaling_offset) / scaling_factor;
-        }
-        
-        /**
-         * @brief 별칭 필드 동기화
-         */
-        void SyncAliasFields() {
-            scale_factor = scaling_factor;
-            offset = scaling_offset;
+        double RemoveScaling(double scaled_val) const {
+            return (scaled_val - scaling_offset) / scaling_factor;
         }
         
         // =======================================================================
-        // 🔥 기존 DataPointEntity 호환 메서드들
+        // 🔥 JSON 직렬화 (현재값 포함)
         // =======================================================================
         
-        bool isWritable() const { return is_writable; }
-        void setWritable(bool writable) { is_writable = writable; }
-        
-        std::string getDataType() const { return data_type; }
-        void setDataType(const std::string& type) { data_type = type; }
-        
-        std::string getUnit() const { return unit; }
-        void setUnit(const std::string& u) { unit = u; }
+        JsonType ToJson() const {
+            JsonType j;
+            
+            // 기본 정보
+            j["id"] = id;
+            j["device_id"] = device_id;
+            j["name"] = name;
+            j["description"] = description;
+            
+            // 주소 정보
+            j["address"] = address;
+            j["address_string"] = address_string;
+            
+            // 데이터 타입
+            j["data_type"] = data_type;
+            j["access_mode"] = access_mode;
+            j["is_enabled"] = is_enabled;
+            j["is_writable"] = is_writable;
+            
+            // 엔지니어링 정보
+            j["unit"] = unit;
+            j["scaling_factor"] = scaling_factor;
+            j["scaling_offset"] = scaling_offset;
+            j["min_value"] = min_value;
+            j["max_value"] = max_value;
+            
+            // 실제 값 (핵심!)
+            j["current_value"] = GetCurrentValueAsString();
+            j["quality_code"] = static_cast<int>(quality_code);
+            j["quality_string"] = GetQualityCodeAsString();
+            
+            // 타임스탬프들 (milliseconds)
+            j["value_timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                value_timestamp.time_since_epoch()).count();
+            j["quality_timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                quality_timestamp.time_since_epoch()).count();
+            
+            // 통계
+            j["read_count"] = read_count;
+            j["write_count"] = write_count;
+            j["error_count"] = error_count;
+            
+            return j;
+        }
     };
-
     // =========================================================================
     // 🔥 Phase 1: 스마트 포인터 기반 DriverConfig (Union 대체)
     // =========================================================================
