@@ -55,7 +55,7 @@ DataPointEntity::DataPointEntity(int point_id)
     : DataPointEntity() {  // 위임 생성자 사용
     setId(point_id);
 }
-
+/*
 DataPointEntity::DataPointEntity(const DataPoint& data_point) 
     : BaseEntity<DataPointEntity>()
     , device_id_(0)  // device_id는 문자열에서 변환 필요
@@ -101,7 +101,7 @@ DataPointEntity::DataPointEntity(const DataPoint& data_point)
         }
     }
 }
-
+*/
 // =============================================================================
 // BaseEntity 순수 가상 함수 구현 (Repository 활용)
 // =============================================================================

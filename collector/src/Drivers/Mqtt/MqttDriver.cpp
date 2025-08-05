@@ -218,7 +218,7 @@ bool MqttDriver::IsConnected() const {
 }
 
 bool MqttDriver::ReadValues(const std::vector<DataPoint>& points,
-                           std::vector<TimestampedValue>& values) {
+                          std::vector<TimestampedValue>& values) {
     if (!IsConnected()) {
         return false;
     }
@@ -233,17 +233,16 @@ bool MqttDriver::ReadValues(const std::vector<DataPoint>& points,
         for (const auto& point : points) {
             TimestampedValue result_value;
             
-            // ✅ 타입 일치: UUID = std::string = std::string
-            result_value.source_id = point.id;  // 완벽하게 호환됨!
-            
-            result_value.value = DataValue(0.0);  // 기본값
+            // ✅ 수정: source_id → source (Structs.h의 실제 필드명에 맞춤)
+            result_value.source = point.id;  // source_id에서 source로 변경
+            result_value.value = DataValue(0.0); // 기본값
             result_value.timestamp = Utils::GetCurrentTimestamp();
             result_value.quality = DataQuality::BAD;
             
             values.push_back(result_value);
         }
         
-        // 통계 업데이트
+        // 통계 업데이트 (기존 방식 유지)
         driver_statistics_.total_reads.fetch_add(1);
         driver_statistics_.successful_reads.fetch_add(1);
         
@@ -894,50 +893,195 @@ void MqttDriver::CleanupMqttClient() {
 
 bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
     try {
+        // =================================================================
+        // 1. 기본 연결 정보 설정 (기존 필드만 사용)
+        // =================================================================
+        
+        // 브로커 URL 설정 (endpoint 우선)
         if (!config.endpoint.empty()) {
             broker_url_ = config.endpoint;
-        }
-        
-        if (config.name.empty()) {
-            client_id_ = GenerateClientId();
+            LogMessage("INFO", "Using endpoint as broker URL: " + broker_url_, "MQTT");
         } else {
-            client_id_ = config.name + "_" + std::to_string(std::time(nullptr));
+            // 기본값 설정
+            broker_url_ = "tcp://localhost:1883";
+            LogMessage("WARN", "No endpoint specified, using default: " + broker_url_, "MQTT");
         }
         
-        // JSON 설정이 있다면 파싱
-        if (!config.connection_string.empty()) {
+        // 클라이언트 ID 설정
+        if (!config.name.empty()) {
+            client_id_ = config.name + "_" + std::to_string(std::time(nullptr));
+        } else {
+            client_id_ = GenerateClientId();
+        }
+        
+        // 기본 타이밍 설정
+        timeout_ms_ = config.timeout_ms;
+        auto_reconnect_ = config.auto_reconnect;
+        
+        LogMessage("INFO", "Basic MQTT config set: client_id=" + client_id_ + 
+                  ", timeout=" + std::to_string(timeout_ms_) + "ms", "MQTT");
+        
+        // =================================================================
+        // 2. JSON 설정 파싱 (endpoint를 JSON으로 처리)
+        // =================================================================
+        
+        std::string json_config_str;
+        bool has_json_config = false;
+        
+        // endpoint가 JSON 형태인지 확인
+        if (!config.endpoint.empty() && 
+            config.endpoint.front() == '{' && 
+            config.endpoint.back() == '}') {
+            json_config_str = config.endpoint;
+            has_json_config = true;
+            LogMessage("DEBUG", "Using endpoint as JSON config", "MQTT");
+        }
+        
+        // JSON 설정이 있다면 파싱 (기존 필드들만 사용)
+        if (has_json_config) {
             try {
-                auto json_config = json::parse(config.connection_string);
+                auto json_config = json::parse(json_config_str);
                 
+                // =============================================================
+                // MQTT 특화 설정들 파싱 (기존 필드만)
+                // =============================================================
+                
+                // QoS 설정
                 if (json_config.contains("qos")) {
-                    default_qos_ = json_config["qos"];
+                    default_qos_ = json_config["qos"].get<int>();
+                    if (default_qos_ < 0 || default_qos_ > 2) {
+                        LogMessage("WARN", "Invalid QoS value, using default: 0", "MQTT");
+                        default_qos_ = 0;
+                    }
                 }
+                
+                // Keep Alive 설정
                 if (json_config.contains("keep_alive")) {
-                    keep_alive_seconds_ = json_config["keep_alive"];
+                    keep_alive_seconds_ = json_config["keep_alive"].get<int>();
+                    if (keep_alive_seconds_ < 10 || keep_alive_seconds_ > 300) {
+                        LogMessage("WARN", "Keep alive out of range (10-300s), using 60s", "MQTT");
+                        keep_alive_seconds_ = 60;
+                    }
                 }
+                
+                // Clean Session 설정
                 if (json_config.contains("clean_session")) {
-                    clean_session_ = json_config["clean_session"];
+                    clean_session_ = json_config["clean_session"].get<bool>();
                 }
+                
+                // Auto Reconnect 설정 (JSON이 config보다 우선)
                 if (json_config.contains("auto_reconnect")) {
-                    auto_reconnect_ = json_config["auto_reconnect"];
+                    auto_reconnect_ = json_config["auto_reconnect"].get<bool>();
                 }
+                
+                // Timeout 설정 (JSON이 config보다 우선)
                 if (json_config.contains("timeout_ms")) {
-                    timeout_ms_ = json_config["timeout_ms"];
+                    timeout_ms_ = json_config["timeout_ms"].get<int>();
+                    if (timeout_ms_ < 1000 || timeout_ms_ > 60000) {
+                        LogMessage("WARN", "Timeout out of range (1-60s), using 30s", "MQTT");
+                        timeout_ms_ = 30000;
+                    }
+                }
+                
+                // =============================================================
+                // 브로커 설정 오버라이드 (JSON이 endpoint보다 우선)
+                // =============================================================
+                
+                if (json_config.contains("broker_host")) {
+                    std::string broker_host = json_config["broker_host"].get<std::string>();
+                    int broker_port = json_config.value("broker_port", 1883);
+                    
+                    // URL 재구성 (기본 tcp 프로토콜 사용)
+                    broker_url_ = "tcp://" + broker_host + ":" + std::to_string(broker_port);
+                    
+                    LogMessage("INFO", "Broker URL updated from JSON: " + broker_url_, "MQTT");
+                }
+                
+                // 전체 broker_url이 JSON에 있으면 사용
+                if (json_config.contains("broker_url")) {
+                    broker_url_ = json_config["broker_url"].get<std::string>();
+                    LogMessage("INFO", "Broker URL from JSON: " + broker_url_, "MQTT");
+                }
+                
+                // =============================================================
+                // 클라이언트 ID 오버라이드
+                // =============================================================
+                
+                if (json_config.contains("client_id")) {
+                    std::string json_client_id = json_config["client_id"].get<std::string>();
+                    if (!json_client_id.empty()) {
+                        client_id_ = json_client_id;
+                    } else {
+                        LogMessage("WARN", "Empty client_id in JSON, keeping generated: " + client_id_, "MQTT");
+                    }
+                }
+                
+                // =============================================================
+                // 로그 출력을 위한 추가 정보 (실제 기능은 구현하지 않음)
+                // =============================================================
+                
+                bool use_ssl = json_config.value("use_ssl", false);
+                std::string username = json_config.value("username", std::string(""));
+                
+                LogMessage("INFO", "MQTT JSON configuration parsed successfully", "MQTT");
+                
+                // SSL 및 인증 정보 로그 (실제 적용은 안함)
+                if (use_ssl) {
+                    LogMessage("INFO", "  SSL requested (not implemented in current driver)", "MQTT");
+                }
+                if (!username.empty()) {
+                    LogMessage("INFO", "  Authentication requested (not implemented in current driver)", "MQTT");
                 }
                 
             } catch (const json::exception& e) {
-                LogMessage("WARN", "Failed to parse JSON config: " + std::string(e.what()), "MQTT");
+                LogMessage("WARN", "Failed to parse JSON config: " + std::string(e.what()) + 
+                          ", using basic configuration", "MQTT");
+                // JSON 파싱 실패해도 기본 설정으로 계속 진행
             }
+        } else {
+            LogMessage("INFO", "No JSON configuration found, using basic settings", "MQTT");
         }
         
-        LogMessage("INFO", "MQTT configuration parsed successfully", "MQTT");
+        // =================================================================
+        // 3. 설정 검증 및 최종 조정
+        // =================================================================
+        
+        // 브로커 URL 검증
+        if (broker_url_.find("://") == std::string::npos) {
+            // 프로토콜이 없으면 기본 프로토콜 추가
+            broker_url_ = "tcp://" + broker_url_;
+            LogMessage("INFO", "Added protocol to broker URL: " + broker_url_, "MQTT");
+        }
+        
+        // 클라이언트 ID 최종 검증
+        if (client_id_.empty()) {
+            client_id_ = GenerateClientId();
+            LogMessage("WARN", "Client ID was empty, generated: " + client_id_, "MQTT");
+        }
+        
+        // =================================================================
+        // 4. 최종 로그 및 성공 반환 (기존 필드만 사용)
+        // =================================================================
+        
+        LogMessage("INFO", "MQTT configuration completed successfully:", "MQTT");
+        LogMessage("INFO", "  Broker: " + broker_url_, "MQTT");
+        LogMessage("INFO", "  Client ID: " + client_id_, "MQTT");
+        LogMessage("INFO", "  QoS: " + std::to_string(default_qos_), "MQTT");
+        LogMessage("INFO", "  Keep Alive: " + std::to_string(keep_alive_seconds_) + "s", "MQTT");
+        LogMessage("INFO", "  Clean Session: " + std::string(clean_session_ ? "true" : "false"), "MQTT");
+        LogMessage("INFO", "  Auto Reconnect: " + std::string(auto_reconnect_ ? "true" : "false"), "MQTT");
+        LogMessage("INFO", "  Timeout: " + std::to_string(timeout_ms_) + "ms", "MQTT");
+        
         return true;
         
     } catch (const std::exception& e) {
-        SetError("Failed to parse driver config: " + std::string(e.what()));
+        std::string error_msg = "Failed to parse driver config: " + std::string(e.what());
+        SetError(error_msg);
+        LogMessage("ERROR", error_msg, "MQTT");
         return false;
     }
 }
+
 
 void MqttDriver::ProcessReceivedMessage(const std::string& topic, const std::string& payload, int qos) {
     // 기본 메시지 처리 로직
