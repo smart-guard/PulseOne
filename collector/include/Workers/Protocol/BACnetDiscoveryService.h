@@ -18,7 +18,6 @@ namespace Workers {
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/DatabaseTypes.h"    // 🔥 QueryCondition 포함
-#include "Common/UnifiedCommonTypes.h"
 #include <memory>
 #include <mutex>
 #include <chrono>

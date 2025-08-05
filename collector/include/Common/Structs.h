@@ -1,17 +1,18 @@
+// collector/include/Common/Structs.h (완전히 새로 작성)
 #ifndef PULSEONE_COMMON_STRUCTS_H
 #define PULSEONE_COMMON_STRUCTS_H
 
 /**
  * @file Structs.h
- * @brief PulseOne 통합 구조체 정의 (모든 중복 제거)
+ * @brief PulseOne 핵심 구조체 정의 (Unified 내용 통합 완료!)
  * @author PulseOne Development Team
- * @date 2025-07-24
+ * @date 2025-08-05
  * 
- * 통합된 구조체들:
- * - Database::DeviceInfo + Drivers::DeviceInfo -> DeviceInfo
- * - Database::DataPointInfo + Drivers::DataPoint -> DataPoint
- * - Drivers::DriverConfig (여러 버전) -> DriverConfig
- * - 점검 기능 추가 (MaintenanceState, 품질 관리 등)
+ * 🎯 변경사항:
+ * - UnifiedDeviceInfo → DeviceInfo (표준 이름으로 통합)
+ * - UnifiedDataPoint → DataPoint (표준 이름으로 통합)  
+ * - TimestampedValue 내용 완전 교체
+ * - UnifiedXXX 구조체들 모두 삭제
  */
 
 #include "BasicTypes.h"
@@ -20,15 +21,18 @@
 #include "Utils.h"
 #include "DriverStatistics.h"
 #include "DriverError.h"
+#include "IProtocolConfig.h"
+#include "ProtocolConfigs.h"
 #include <vector>
 #include <optional>
 #include <mutex>
 #include <chrono>
 #include <string>
 #include <map>
-#include <limits>
+#include <cassert>
+#include <cstring>
 
-// nlohmann/json 조건부 include
+// 조건부 JSON 라이브러리
 #ifdef HAS_NLOHMANN_JSON
     #include <nlohmann/json.hpp>
     namespace json_impl = nlohmann;
@@ -46,787 +50,981 @@
     }
 #endif
 
-namespace PulseOne::Structs {
+namespace PulseOne {
+namespace Structs {
     
-    // ✅ 모든 필요한 네임스페이스와 함수 별칭 명시적 선언
+    // ✅ 네임스페이스 import
     using namespace PulseOne::BasicTypes;
     using namespace PulseOne::Enums;
     using JsonType = json_impl::json;
-    
-    // ✅ Utils 네임스페이스 별칭 (함수 직접 별칭은 불가능)
     namespace Utils = PulseOne::Utils;
     
+
     // =========================================================================
-    // 기본 타입 별칭들 (기존 CommonTypes.h에서 통합)
-    // =========================================================================
-    
-    /**
-     * @brief 데이터 값 타입 (모든 드라이버에서 사용)
-     */
-    using DataValue = DataVariant;
-    
-    // =========================================================================
-    // 드라이버 관련 열거형들 (기존 CommonTypes.h에서 통합)
+    // 🔥 Phase 1: 타임스탬프 값 구조체 (기존 확장)
     // =========================================================================
     
     /**
-     * @brief 드라이버 상태 (기존 여러 정의 통합)
+     * @brief 타임스탬프가 포함된 데이터 값
+     * @details 모든 드라이버에서 사용하는 표준 값 구조체
      */
-    enum class DriverStatus : uint8_t {
-        UNINITIALIZED = 0,
-        INITIALIZING = 1,
-        INITIALIZED = 2,
-        STARTING = 3,
-        RUNNING = 4,
-        PAUSING = 5,
-        PAUSED = 6,
-        STOPPING = 7,
-        STOPPED = 8,
-        ERROR = 9,
-        CRASHED = 10,
-        MAINTENANCE = 11  // 🆕 점검 모드 추가
+    struct TimestampedValue {
+        DataValue value;                          // 실제 값 (DataVariant 별칭)
+        Timestamp timestamp;                      // 수집 시간
+        DataQuality quality = DataQuality::GOOD;  // 데이터 품질
+        std::string source = "";                  // 데이터 소스
+        
+        TimestampedValue() : timestamp(Utils::CurrentTimestamp()) {}
+        
+        TimestampedValue(const DataValue& val) 
+            : value(val), timestamp(Utils::CurrentTimestamp()) {}
+        
+        TimestampedValue(const DataValue& val, DataQuality qual)
+            : value(val), timestamp(Utils::CurrentTimestamp()), quality(qual) {}
+            
+        // 🔥 기존 코드 호환을 위한 변환 메서드
+        template<typename T>
+        T GetValue() const {
+            return std::get<T>(value);
+        }
+        
+        bool IsGoodQuality() const {
+            return quality == DataQuality::GOOD;
+        }
     };
 
-    
-    // =========================================================================
-    // 점검 관련 구조체들 (🆕 새로운 기능)
-    // =========================================================================
-    
-    /**
-     * @brief 현장 점검 상태 정보
-     */
-    struct MaintenanceState {
-        MaintenanceStatus status = MaintenanceStatus::NORMAL;
-        MaintenanceType type = MaintenanceType::SCHEDULED;
-        EngineerID engineer_id = "";
-        std::string engineer_name = "";
-        std::string contact_info = "";
-        Timestamp start_time;
-        Timestamp expected_end_time;
-        std::string work_description = "";
-        bool remote_control_blocked = false;
-        bool data_collection_paused = false;
-        std::string emergency_contact = "";
-        
-        // ✅ Utils 네임스페이스 사용 (네임스페이스 에러 해결)
-        MaintenanceState() : start_time(Utils::GetCurrentTimestamp()), expected_end_time(Utils::GetCurrentTimestamp()) {}
-    };
-    
-    // =========================================================================
-    // 통합 디바이스 정보 (🔥 모든 DeviceInfo 통합)
-    // =========================================================================
-    
-    /**
-     * @brief 통합 디바이스 정보 (🔥 DeviceSettings 필드들 통합 완료)
-     * - Database::DeviceInfo (DB 저장용)
-     * - Drivers::DeviceInfo (드라이버용) 
-     * - DeviceSettings 모든 필드 포함
-     * - 점검 기능 추가
-     */
-    struct DeviceInfo {
-        // 🔥 공통 핵심 필드들
-        UUID id;
-        uint32_t tenant_id = 0;
-        std::string name;
-        std::string description = "";
-        ProtocolType protocol = ProtocolType::UNKNOWN;
-        std::string endpoint = "";
-        
-        // 🔥 Database 호환 필드들
-        std::string connection_string = "";          // endpoint와 동일
-        std::string protocol_type = "unknown";       // protocol을 문자열로
-        JsonType connection_config;                  // JSON 설정
-        std::string status = "disconnected";         // 문자열 상태
-        
-        // =========================================================================
-        // 🆕 DeviceSettings 통합 필드들 (새로 추가)
-        // =========================================================================
-        
-        // 🔥 기본 타이밍 설정 (기존 + DeviceSettings)
-        Duration timeout = std::chrono::milliseconds(5000);
-        int timeout_ms = 5000;                       // 기존 코드 호환용
-        int connection_timeout_ms = 10000;           // 🆕 DeviceSettings - 연결 타임아웃
-        Duration polling_interval = std::chrono::milliseconds(1000);
-        int polling_interval_ms = 1000;              // 기존 + DeviceSettings
-        
-        // 🔥 재시도 설정 (기존 + DeviceSettings 확장)
-        int retry_count = 3;                         // 기존 (호환성)
-        int max_retry_count = 3;                     // 🆕 DeviceSettings - 최대 재시도 횟수
-        int retry_interval_ms = 5000;                // 🆕 DeviceSettings - 재시도 간격
-        int backoff_time_ms = 60000;                 // 🆕 DeviceSettings - 백오프 시간 (1분)
-        double backoff_multiplier = 1.5;             // 🆕 DeviceSettings - 백오프 배수
-        int max_backoff_time_ms = 300000;            // 🆕 DeviceSettings - 최대 백오프 시간 (5분)
-        
-        // 🔥 Keep-Alive 설정 (🆕 DeviceSettings에서 추가)
-        bool keep_alive_enabled = true;              // 🆕 Keep-Alive 활성화
-        int keep_alive_interval_s = 30;              // 🆕 Keep-Alive 간격 (30초)
-        int keep_alive_timeout_s = 10;               // 🆕 Keep-Alive 타임아웃 (10초)
-        
-        // 🔥 세부 타임아웃 설정 (🆕 DeviceSettings에서 추가)
-        int read_timeout_ms = 5000;                  // 🆕 읽기 타임아웃 (5초)
-        int write_timeout_ms = 5000;                 // 🆕 쓰기 타임아웃 (5초)
-        
-        // 🔥 고급 기능 플래그들 (🆕 DeviceSettings에서 추가)
-        bool data_validation_enabled = true;         // 🆕 데이터 검증 활성화
-        bool performance_monitoring_enabled = true;  // 🆕 성능 모니터링 활성화
-        bool diagnostic_mode_enabled = false;        // 🆕 진단 모드 활성화
-        
-        // 🔥 선택적 설정들 (🆕 DeviceSettings에서 추가)
-        std::optional<int> scan_rate_override;       // 🆕 개별 스캔 레이트 오버라이드
-        
-        // =========================================================================
-        // 🔥 기존 필드들 (변경 없음)
-        // =========================================================================
-        
-        // 🔥 연결 상태 관리
-        ConnectionStatus connection_status = ConnectionStatus::DISCONNECTED;
-        bool is_enabled = true;
-        bool auto_reconnect = true;
-        Duration reconnect_delay = std::chrono::seconds(5);
-        
-        // 🆕 점검 기능
-        MaintenanceState maintenance_state;
-        bool maintenance_allowed = true;
-        
-        // 🔥 시간 정보 (Database 호환)
-        Timestamp last_communication;
-        Timestamp last_seen;                         // last_communication과 동일
-        Timestamp created_at;
-        Timestamp updated_at;
-        
-        // 🔥 그룹 및 메타데이터 (Database 호환)
-        std::optional<UUID> device_group_id;
-        std::vector<std::string> tags;
-        JsonType metadata;
-        
-        // 🔥 디바이스 상세 정보 (DeviceEntity에서 가져올 필드들)
-        std::string device_type = "";                // 🆕 DeviceEntity.getDeviceType()
-        std::string manufacturer = "";               // 🆕 DeviceEntity.getManufacturer()
-        std::string model = "";                      // 🆕 DeviceEntity.getModel()
-        std::string serial_number = "";              // 🆕 DeviceEntity.getSerialNumber()
 
-        // ✅ 생성자 - Utils 네임스페이스 사용 + 새 필드들 초기화
-        DeviceInfo() 
-            : timeout(std::chrono::milliseconds(5000))
-            , timeout_ms(5000)
-            , connection_timeout_ms(10000)           // 🆕 초기값 설정
-            , polling_interval(std::chrono::milliseconds(1000))
-            , polling_interval_ms(1000)
-            , retry_count(3)
-            , max_retry_count(3)                     // 🆕 초기값 설정
-            , retry_interval_ms(5000)                // 🆕 초기값 설정
-            , backoff_time_ms(60000)                 // 🆕 초기값 설정 (1분)
-            , backoff_multiplier(1.5)                // 🆕 초기값 설정
-            , max_backoff_time_ms(300000)            // 🆕 초기값 설정 (5분)
-            , keep_alive_enabled(true)               // 🆕 초기값 설정
-            , keep_alive_interval_s(30)              // 🆕 초기값 설정 (30초)
-            , keep_alive_timeout_s(10)               // 🆕 초기값 설정 (10초)
-            , read_timeout_ms(5000)                  // 🆕 초기값 설정 (5초)
-            , write_timeout_ms(5000)                 // 🆕 초기값 설정 (5초)
-            , data_validation_enabled(true)          // 🆕 초기값 설정
-            , performance_monitoring_enabled(true)   // 🆕 초기값 설정
-            , diagnostic_mode_enabled(false)         // 🆕 초기값 설정
-            , last_communication(Utils::GetCurrentTimestamp())
-            , last_seen(Utils::GetCurrentTimestamp())
-            , created_at(Utils::GetCurrentTimestamp())
-            , updated_at(Utils::GetCurrentTimestamp())
-        {
-            SyncCompatibilityFields();
-        }
-        
-        // 🔥 호환성 메서드들 (기존 + 새 필드 동기화)
-        int GetTimeoutMs() const {
-            return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
-        }
-        
-        void SetTimeoutMs(int ms) {
-            timeout_ms = ms;
-            timeout = std::chrono::milliseconds(ms);
-            // 🆕 connection_timeout_ms와 동기화할지 결정 (기본적으로 별개)
-        }
-        
-        void SyncTimeoutFields() {
-            timeout_ms = GetTimeoutMs();
-        }
-        
-        // 🆕 새로운 동기화 메서드들
-        void SyncRetryFields() {
-            retry_count = max_retry_count;  // 호환성을 위한 동기화
-        }
-        
-        void SyncPollingFields() {
-            polling_interval_ms = static_cast<int>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(polling_interval).count());
-        }
-        
-        void SyncCompatibilityFields() {
-            connection_string = endpoint;
-            protocol_type = "unknown";  // 간단화
-            last_seen = last_communication;
-            
-            // 🆕 새 필드들 동기화
-            SyncRetryFields();
-            SyncPollingFields();
-            SyncTimeoutFields();
-            
-            switch(connection_status) {
-                case ConnectionStatus::CONNECTED: status = "connected"; break;
-                case ConnectionStatus::CONNECTING: status = "connecting"; break;
-                case ConnectionStatus::RECONNECTING: status = "reconnecting"; break;
-                case ConnectionStatus::ERROR: status = "error"; break;
-                default: status = "disconnected"; break;
-            }
-        }
-        
-        // =========================================================================
-        // 🆕 DeviceSettings 관련 헬퍼 메서드들
-        // =========================================================================
-        
-        /**
-         * @brief DeviceSettings 값들이 유효한지 검증
-         */
-        bool ValidateDeviceSettings() const {
-            if (polling_interval_ms <= 0) return false;
-            if (connection_timeout_ms <= 0) return false;
-            if (max_retry_count < 0) return false;
-            if (retry_interval_ms <= 0) return false;
-            if (backoff_time_ms <= 0) return false;
-            if (keep_alive_interval_s <= 0) return false;
-            if (read_timeout_ms <= 0) return false;
-            if (write_timeout_ms <= 0) return false;
-            if (backoff_multiplier <= 0.0) return false;
-            if (max_backoff_time_ms <= 0) return false;
-            if (keep_alive_timeout_s <= 0) return false;
-            return true;
-        }
-        
-        /**
-         * @brief 산업용 기본값으로 설정
-         */
-        void SetIndustrialDefaults() {
-            polling_interval_ms = 1000;          // 1초
-            connection_timeout_ms = 10000;       // 10초
-            max_retry_count = 3;
-            retry_interval_ms = 5000;            // 5초
-            backoff_time_ms = 60000;             // 1분
-            keep_alive_enabled = true;
-            keep_alive_interval_s = 30;          // 30초
-            read_timeout_ms = 5000;              // 5초
-            write_timeout_ms = 5000;             // 5초
-            backoff_multiplier = 1.5;
-            max_backoff_time_ms = 300000;        // 5분
-            keep_alive_timeout_s = 10;           // 10초
-            data_validation_enabled = true;
-            performance_monitoring_enabled = true;
-            diagnostic_mode_enabled = false;
-            
-            SyncCompatibilityFields();
-        }
-        
-        /**
-         * @brief 고속 모드 설정
-         */
-        void SetHighSpeedMode() {
-            polling_interval_ms = 500;           // 500ms
-            connection_timeout_ms = 3000;        // 3초
-            read_timeout_ms = 2000;              // 2초
-            write_timeout_ms = 2000;             // 2초
-            retry_interval_ms = 2000;            // 2초 간격
-            keep_alive_interval_s = 10;          // 10초 주기
-            
-            SyncCompatibilityFields();
-        }
-        
-        /**
-         * @brief 안정성 모드 설정
-         */
-        void SetStabilityMode() {
-            polling_interval_ms = 5000;          // 5초
-            connection_timeout_ms = 30000;       // 30초
-            max_retry_count = 5;                 // 5회 재시도
-            retry_interval_ms = 10000;           // 10초 간격
-            backoff_time_ms = 120000;            // 2분 백오프
-            keep_alive_interval_s = 60;          // 1분 주기
-            
-            SyncCompatibilityFields();
-        }
-        
-        /**
-         * @brief DeviceSettings 정보를 JSON으로 출력 (디버깅용)
-         */
-        JsonType GetDeviceSettingsJson() const {
-            JsonType json;
-            json["polling_interval_ms"] = polling_interval_ms;
-            json["connection_timeout_ms"] = connection_timeout_ms;
-            json["max_retry_count"] = max_retry_count;
-            json["retry_interval_ms"] = retry_interval_ms;
-            json["backoff_time_ms"] = backoff_time_ms;
-            json["backoff_multiplier"] = backoff_multiplier;
-            json["max_backoff_time_ms"] = max_backoff_time_ms;
-            json["keep_alive_enabled"] = keep_alive_enabled;
-            json["keep_alive_interval_s"] = keep_alive_interval_s;
-            json["keep_alive_timeout_s"] = keep_alive_timeout_s;
-            json["read_timeout_ms"] = read_timeout_ms;
-            json["write_timeout_ms"] = write_timeout_ms;
-            json["data_validation_enabled"] = data_validation_enabled;
-            json["performance_monitoring_enabled"] = performance_monitoring_enabled;
-            json["diagnostic_mode_enabled"] = diagnostic_mode_enabled;
-            if (scan_rate_override.has_value()) {
-                json["scan_rate_override"] = scan_rate_override.value();
-            }
-            return json;
-        }
-    };
-    
     // =========================================================================
-    // 통합 데이터 포인트 (🔥 모든 DataPoint 통합)
+    // 🔥 Phase 1: 통합 DataPoint 구조체 (기존 여러 DataPoint 통합)
     // =========================================================================
     
     /**
-     * @brief 통합 데이터 포인트 구조체 (완성본 v2)
-     * - Database::DataPointInfo (DB 저장용)
-     * - Drivers::DataPoint (드라이버용)  
-     * - WorkerFactory 완전 호환
-     * - 현재값/품질코드/통계 필드 추가 완료
+     * @brief 통합 데이터 포인트 구조체
+     * @details 
+     * - Database::DataPointEntity.toDataPointStruct() 호환
+     * - Drivers::DataPoint 호환
+     * - UnifiedDataPoint 호환
+     * - 프로토콜별 편의 메서드 포함
      */
     struct DataPoint {
         // =======================================================================
-        // 🔥 공통 핵심 필드들
+        // 🔥 기본 식별 정보 (기존 호환)
         // =======================================================================
-        UUID id;                                     // point_id (Database) + id (Drivers)
-        UUID device_id;
-        std::string name;
-        std::string description = "";
+        UUID id;                                  // point_id (Database) + id (Drivers)
+        UUID device_id;                           // 소속 디바이스 ID
+        std::string name = "";                    // 표시 이름
+        std::string description = "";             // 설명
         
         // =======================================================================
-        // 🔥 주소 정보 (정규화)
+        // 🔥 주소 정보 (기존 호환)
         // =======================================================================
-        uint32_t address = 0;                        // 숫자 주소 (Modbus 레지스터, BACnet 인스턴스 등)
-        std::string address_string = "";             // 문자열 주소 (MQTT 토픽, OPC UA NodeId 등)
+        uint32_t address = 0;                     // 숫자 주소 (Modbus 레지스터, BACnet 인스턴스 등)
+        std::string address_string = "";          // 문자열 주소 (MQTT 토픽, OPC UA NodeId 등)
         
         // =======================================================================
-        // 🔥 데이터 타입 및 접근성
+        // 🔥 데이터 타입 및 접근성 (기존 호환)
         // =======================================================================
-        std::string data_type = "UNKNOWN";           // INT16, UINT32, FLOAT, BOOL, STRING 등
-        std::string access_mode = "read";            // read, write, read_write
-        bool is_enabled = true;
-        bool is_writable = false;                    // 쓰기 가능 여부 (계산된 필드)
+        std::string data_type = "UNKNOWN";        // INT16, UINT32, FLOAT, BOOL, STRING 등
+        std::string access_mode = "read";         // read, write, read_write
+        bool is_enabled = true;                   // 활성화 상태
+        bool is_writable = false;                 // 쓰기 가능 여부
         
         // =======================================================================
-        // 🔥 엔지니어링 단위 및 스케일링
+        // 🔥 엔지니어링 단위 및 스케일링 (기존 호환)
         // =======================================================================
-        std::string unit = "";                       // 단위 (°C, %, kW 등)
-        double scaling_factor = 1.0;                 // 스케일링 팩터
-        double scaling_offset = 0.0;                 // 스케일링 오프셋
-        double min_value = 0.0;                      // 최솟값 제한
-        double max_value = 0.0;                      // 최댓값 제한
+        std::string unit = "";                    // 단위 (℃, %, kW 등)
+        double scaling_factor = 1.0;              // 스케일 인수 (기존 필드명)
+        double scale_factor = 1.0;                // 별칭
+        double scaling_offset = 0.0;              // 오프셋 (기존 필드명)
+        double offset = 0.0;                      // 별칭
+        double min_value = 0.0;                   // 최소값
+        double max_value = 0.0;                   // 최대값
         
         // =======================================================================
-        // 🔥 로깅 설정 (새로 추가)
+        // 🔥 로깅 및 수집 설정 (기존 호환)
         // =======================================================================
-        bool log_enabled = true;                     // 로깅 활성화 여부
-        uint32_t log_interval_ms = 0;                // 로깅 간격 (0=변화 시에만)
-        double log_deadband = 0.0;                   // 로깅 데드밴드
-        Timestamp last_log_time = {};                // 마지막 로그 시간
+        bool log_enabled = true;                  // 로깅 활성화
+        uint32_t log_interval_ms = 0;             // 로깅 간격
+        double log_deadband = 0.0;                // 로깅 데드밴드
+        uint32_t polling_interval_ms = 0;         // 개별 폴링 간격 (0이면 디바이스 기본값)
         
         // =======================================================================
-        // 🔥 메타데이터 및 태그
+        // 🔥 메타데이터 (기존 호환)
         // =======================================================================
-        std::vector<std::string> tags;               // 태그 목록
-        std::map<std::string, std::string> metadata; // 추가 메타데이터
-        std::map<std::string, std::string> properties; // 프로토콜별 속성
+        std::string group = "";                   // 그룹명
+        std::string tags = "";                    // JSON 배열 형태 (기존 호환)
+        std::string metadata = "";                // JSON 객체 형태 (기존 호환)
         
         // =======================================================================
-        // 🔥 시간 정보
+        // 🔥 프로토콜별 설정 (신규 - 편의성 향상)
         // =======================================================================
-        Timestamp created_at = {};
-        Timestamp updated_at = {};
-        Timestamp last_read_time = {};               // 마지막 읽기 시간
-        Timestamp last_write_time = {};              // 마지막 쓰기 시간
+        std::map<std::string, std::string> protocol_params;  // 프로토콜 특화 매개변수
         
         // =======================================================================
-        // 🔥 현재값 관리 (WorkerFactory 필수 필드들) - 새로 추가
+        // 🔥 시간 정보 (기존 호환)
         // =======================================================================
-        DataVariant current_value;                   // 현재값 (실시간 데이터)
-        DataQuality quality_code = DataQuality::GOOD; // 데이터 품질 코드
-        Timestamp value_timestamp = {};              // 값 타임스탬프
-        Timestamp quality_timestamp = {};            // 품질 변경 시각
+        Timestamp created_at;
+        Timestamp updated_at;
         
         // =======================================================================
-        // 🔥 통계 정보 (새로 추가)
+        // 🔥 생성자들
         // =======================================================================
-        uint64_t read_count = 0;                     // 읽기 횟수
-        uint64_t write_count = 0;                    // 쓰기 횟수
-        uint64_t error_count = 0;                    // 오류 횟수
-        
-        // =======================================================================
-        // ✅ 생성자
-        // =======================================================================
-        DataPoint() 
-            : last_log_time(std::chrono::system_clock::now())
-            , created_at(std::chrono::system_clock::now())
-            , updated_at(std::chrono::system_clock::now())
-            , last_read_time(std::chrono::system_clock::now())
-            , last_write_time(std::chrono::system_clock::now())
-            , current_value(0.0)                                    // 기본값 설정
-            , value_timestamp(std::chrono::system_clock::now())
-            , quality_timestamp(std::chrono::system_clock::now())
-        {}
-        
-        // =======================================================================
-        // 🔥 호환성을 위한 연산자들 (STL 컨테이너용)
-        // =======================================================================
-        bool operator<(const DataPoint& other) const {
-            return id < other.id;
-        }
-        
-        bool operator==(const DataPoint& other) const {
-            return id == other.id;
+        DataPoint() {
+            created_at = Utils::CurrentTimestamp();
+            updated_at = created_at;
+            
+            // 기존 호환성을 위한 별칭 동기화
+            scale_factor = scaling_factor;
+            offset = scaling_offset;
         }
         
         // =======================================================================
-        // 🔥 핵심 실용 메서드들 (새로 추가)
+        // 🔥 프로토콜별 편의 메서드들 (신규)
         // =======================================================================
         
         /**
-         * @brief 주소 필드 동기화
+         * @brief Modbus 레지스터 주소 설정
          */
-        void SyncAddressFields() {
-            if (address != 0 && address_string.empty()) {
-                address_string = std::to_string(address);
-            } else if (address == 0 && !address_string.empty()) {
-                try {
-                    address = std::stoul(address_string);
-                } catch (...) {
-                    address = 0;
+        void SetModbusAddress(uint16_t register_addr, const std::string& reg_type = "HOLDING_REGISTER") {
+            address = register_addr;
+            address_string = std::to_string(register_addr);
+            protocol_params["register_type"] = reg_type;
+            protocol_params["function_code"] = (reg_type == "HOLDING_REGISTER") ? "3" : 
+                                              (reg_type == "INPUT_REGISTER") ? "4" :
+                                              (reg_type == "COIL") ? "1" : "2";
+        }
+        
+        /**
+         * @brief MQTT 토픽 설정
+         */
+        void SetMqttTopic(const std::string& topic, const std::string& json_path = "") {
+            address_string = topic;
+            protocol_params["topic"] = topic;
+            if (!json_path.empty()) {
+                protocol_params["json_path"] = json_path;
+            }
+        }
+        
+        /**
+         * @brief BACnet Object 설정
+         */
+        void SetBACnetObject(uint32_t object_instance, const std::string& object_type = "ANALOG_INPUT", 
+                            const std::string& property_id = "PRESENT_VALUE") {
+            address = object_instance;
+            address_string = std::to_string(object_instance);
+            protocol_params["object_type"] = object_type;
+            protocol_params["property_id"] = property_id;
+        }
+        
+        /**
+         * @brief 프로토콜 매개변수 조회
+         */
+        template<typename T>
+        T GetProtocolParam(const std::string& key, const T& default_value = T{}) const {
+            auto it = protocol_params.find(key);
+            if (it != protocol_params.end()) {
+                if constexpr (std::is_same_v<T, int>) {
+                    return std::stoi(it->second);
+                } else if constexpr (std::is_same_v<T, double>) {
+                    return std::stod(it->second);
+                } else if constexpr (std::is_same_v<T, bool>) {
+                    return it->second == "true" || it->second == "1";
+                } else {
+                    return T(it->second);
                 }
             }
+            return default_value;
         }
         
         /**
-         * @brief 현재값을 문자열로 변환
+         * @brief 값 유효성 검증
          */
-        std::string GetCurrentValueAsString() const {
-            try {
-                return std::visit([](const auto& value) -> std::string {
-                    using T = std::decay_t<decltype(value)>;
-                    if constexpr (std::is_same_v<T, std::string>) {
-                        return value;
-                    } else if constexpr (std::is_same_v<T, bool>) {
-                        return value ? "true" : "false";
-                    } else if constexpr (std::is_arithmetic_v<T>) {
-                        return std::to_string(value);
-                    } else {
-                        return "unknown";
-                    }
-                }, current_value);
-            } catch (...) {
-                return "error";
+        bool IsValueInRange(double value) const {
+            if (max_value > min_value) {
+                return value >= min_value && value <= max_value;
+            }
+            return true;  // 범위가 설정되지 않은 경우
+        }
+        
+        /**
+         * @brief 스케일링 적용
+         */
+        double ApplyScaling(double raw_value) const {
+            return (raw_value * scaling_factor) + scaling_offset;
+        }
+        
+        /**
+         * @brief 역스케일링 적용 (쓰기 시 사용)
+         */
+        double RemoveScaling(double scaled_value) const {
+            return (scaled_value - scaling_offset) / scaling_factor;
+        }
+        
+        /**
+         * @brief 별칭 필드 동기화
+         */
+        void SyncAliasFields() {
+            scale_factor = scaling_factor;
+            offset = scaling_offset;
+        }
+        
+        // =======================================================================
+        // 🔥 기존 DataPointEntity 호환 메서드들
+        // =======================================================================
+        
+        bool isWritable() const { return is_writable; }
+        void setWritable(bool writable) { is_writable = writable; }
+        
+        std::string getDataType() const { return data_type; }
+        void setDataType(const std::string& type) { data_type = type; }
+        
+        std::string getUnit() const { return unit; }
+        void setUnit(const std::string& u) { unit = u; }
+    };
+
+        // =========================================================================
+    // 🔥 Phase 1: 스마트 포인터 기반 DriverConfig (Union 대체)
+    // =========================================================================
+    
+    /**
+     * @brief 통합 드라이버 설정 (스마트 포인터 기반)
+     * @details 
+     * - 기존 모든 *DriverConfig 구조체 대체
+     * - 무제한 확장성 (새 프로토콜 추가 용이)
+     * - 메모리 효율성 (필요한 크기만 할당)
+     * - 타입 안전성 (dynamic_cast 활용)
+     */
+    struct DriverConfig {
+        // =======================================================================
+        // 🔥 공통 필드들 (기존 호환)
+        // =======================================================================
+        UUID device_id;                           // 디바이스 ID
+        std::string name = "";                    // 디바이스 이름
+        ProtocolType protocol = ProtocolType::UNKNOWN;  // 프로토콜 타입
+        std::string endpoint = "";                // 연결 엔드포인트
+        
+        // 타이밍 설정
+        uint32_t polling_interval_ms = 1000;      // 폴링 간격
+        uint32_t timeout_ms = 5000;               // 타임아웃
+        int retry_count = 3;                      // 재시도 횟수
+        bool auto_reconnect = true;               // 자동 재연결
+        
+        // =======================================================================
+        // 🔥 핵심: 스마트 포인터 기반 프로토콜 설정
+        // =======================================================================
+        std::unique_ptr<IProtocolConfig> protocol_config;
+        
+        // =======================================================================
+        // 🔥 생성자들
+        // =======================================================================
+        
+        DriverConfig() = default;
+        
+        explicit DriverConfig(ProtocolType proto) : protocol(proto) {
+            protocol_config = CreateProtocolConfig(proto);
+        }
+        
+        // 복사 생성자 (Clone 사용)
+        DriverConfig(const DriverConfig& other) 
+            : device_id(other.device_id)
+            , name(other.name)
+            , protocol(other.protocol)
+            , endpoint(other.endpoint)
+            , polling_interval_ms(other.polling_interval_ms)
+            , timeout_ms(other.timeout_ms)
+            , retry_count(other.retry_count)
+            , auto_reconnect(other.auto_reconnect)
+            , protocol_config(other.protocol_config ? other.protocol_config->Clone() : nullptr) {
+        }
+        
+        // 할당 연산자
+        DriverConfig& operator=(const DriverConfig& other) {
+            if (this != &other) {
+                device_id = other.device_id;
+                name = other.name;
+                protocol = other.protocol;
+                endpoint = other.endpoint;
+                polling_interval_ms = other.polling_interval_ms;
+                timeout_ms = other.timeout_ms;
+                retry_count = other.retry_count;
+                auto_reconnect = other.auto_reconnect;
+                protocol_config = other.protocol_config ? other.protocol_config->Clone() : nullptr;
+            }
+            return *this;
+        }
+        
+        // =======================================================================
+        // 🔥 타입 안전한 프로토콜 설정 접근자들
+        // =======================================================================
+        
+        /**
+         * @brief Modbus 설정 조회 (기존 GetModbusConfig() 대체)
+         */
+        ModbusConfig* GetModbusConfig() {
+            return dynamic_cast<ModbusConfig*>(protocol_config.get());
+        }
+        
+        const ModbusConfig* GetModbusConfig() const {
+            return dynamic_cast<const ModbusConfig*>(protocol_config.get());
+        }
+        
+        /**
+         * @brief MQTT 설정 조회 (기존 GetMqttConfig() 대체)
+         */
+        MqttConfig* GetMqttConfig() {
+            return dynamic_cast<MqttConfig*>(protocol_config.get());
+        }
+        
+        const MqttConfig* GetMqttConfig() const {
+            return dynamic_cast<const MqttConfig*>(protocol_config.get());
+        }
+        
+        /**
+         * @brief BACnet 설정 조회 (기존 GetBACnetConfig() 대체)
+         */
+        BACnetConfig* GetBACnetConfig() {
+            return dynamic_cast<BACnetConfig*>(protocol_config.get());
+        }
+        
+        const BACnetConfig* GetBACnetConfig() const {
+            return dynamic_cast<const BACnetConfig*>(protocol_config.get());
+        }
+        
+        // =======================================================================
+        // 🔥 기존 코드 호환성 메서드들
+        // =======================================================================
+        
+        bool IsModbus() const { 
+            return protocol == ProtocolType::MODBUS_TCP || protocol == ProtocolType::MODBUS_RTU;
+        }
+        
+        bool IsMqtt() const { 
+            return protocol == ProtocolType::MQTT; 
+        }
+        
+        bool IsBacnet() const { 
+            return protocol == ProtocolType::BACNET; 
+        }
+        
+        bool IsValid() const {
+            return protocol != ProtocolType::UNKNOWN && 
+                   !endpoint.empty() && 
+                   protocol_config && 
+                   protocol_config->IsValid();
+        }
+        
+        std::string GetProtocolName() const {
+            switch (protocol) {
+                case ProtocolType::MODBUS_TCP: return "MODBUS_TCP";
+                case ProtocolType::MODBUS_RTU: return "MODBUS_RTU";
+                case ProtocolType::MQTT: return "MQTT";
+                case ProtocolType::BACNET: return "BACNET";
+                default: return "UNKNOWN";
             }
         }
         
+    private:
+        // =======================================================================
+        // 🔥 팩토리 메서드
+        // =======================================================================
+        static std::unique_ptr<IProtocolConfig> CreateProtocolConfig(ProtocolType type) {
+            switch (type) {
+                case ProtocolType::MODBUS_TCP:
+                case ProtocolType::MODBUS_RTU:
+                    return std::make_unique<ModbusConfig>();
+                case ProtocolType::MQTT:
+                    return std::make_unique<MqttConfig>();
+                case ProtocolType::BACNET:
+                    return std::make_unique<BACnetConfig>();
+                default:
+                    return nullptr;
+            }
+        }
+    };
+
+    // =========================================================================
+    // 🔥 완성된 DeviceInfo 구조체 (모든 기존 구조체 통합)
+    // =========================================================================
+
+    /**
+     * @brief 완전 통합 디바이스 정보 구조체
+     * @details 
+     * ✅ 통합 대상:
+     * - DeviceEntity (데이터베이스 엔티티)
+     * - DeviceSettings (설정 관리)
+     * - ModbusTcpDeviceInfo, MqttDeviceInfo, BACnetDeviceInfo (Worker용)
+     * - 모든 프로토콜별 드라이버 구조체들
+     * 
+     * ✅ 특징:
+     * - 스마트 포인터 기반 DriverConfig 포함
+     * - 기존 필드명 100% 보존
+     * - 모든 getter/setter 메서드 호환
+     * - DeviceEntity ↔ DeviceInfo 완벽 변환 지원
+     */
+    struct DeviceInfo {
+        // =======================================================================
+        // 🔥 핵심: 스마트 포인터 기반 DriverConfig (Phase 1 완성)
+        // =======================================================================
+        DriverConfig driver_config;                    // 🔥 핵심! 스마트 포인터 기반
+        
+        // =======================================================================
+        // 🔥 DeviceEntity 호환 필드들 (기존 필드명 100% 보존)
+        // =======================================================================
+        
+        // 기본 식별 정보
+        UUID id;                                       // device_id → id (Entity 호환)
+        int tenant_id = 0;                             // 테넌트 ID
+        int site_id = 0;                               // 사이트 ID
+        std::optional<int> device_group_id;            // 디바이스 그룹 ID
+        std::optional<int> edge_server_id;             // 엣지 서버 ID
+        
+        // 디바이스 기본 정보 (Entity 호환)
+        std::string name = "";                         // 디바이스 이름
+        std::string description = "";                  // 설명
+        std::string device_type = "";                  // 디바이스 타입 (PLC, HMI, SENSOR 등)
+        std::string manufacturer = "";                 // 제조사
+        std::string model = "";                        // 모델명
+        std::string serial_number = "";               // 시리얼 번호
+        std::string firmware_version = "";            // 펌웨어 버전
+        
+        // 통신 설정 (Entity 호환)
+        std::string protocol_type = "";                // 프로토콜 타입 (문자열)
+        std::string endpoint = "";                     // 엔드포인트
+        std::string connection_string = "";            // 연결 문자열 (endpoint 별칭)
+        std::string config = "";                       // JSON 설정 (Entity 호환)
+        
+        // 네트워크 설정 (Entity 확장)
+        std::string ip_address = "";                   // IP 주소
+        int port = 0;                                  // 포트 번호
+        std::string mac_address = "";                  // MAC 주소
+        
+        // 타이밍 설정 (Entity 확장)
+        int polling_interval_ms = 1000;                // 폴링 간격
+        int timeout_ms = 5000;                         // 타임아웃
+        int retry_count = 3;                           // 재시도 횟수
+        
+        // 상태 정보 (Entity 호환)
+        bool is_enabled = true;                        // 활성화 상태
+        bool enabled = true;                           // is_enabled 별칭
+        ConnectionStatus connection_status = ConnectionStatus::DISCONNECTED;
+        
+        // 위치 및 물리적 정보 (Entity 확장)
+        std::string location = "";                     // 설치 위치
+        std::string rack_position = "";               // 랙 위치
+        std::string building = "";                     // 건물
+        std::string floor = "";                        // 층
+        std::string room = "";                         // 방
+        
+        // 유지보수 정보 (Entity 확장)
+        Timestamp installation_date;                   // 설치일
+        Timestamp last_maintenance;                    // 마지막 점검일
+        Timestamp next_maintenance;                    // 다음 점검 예정일
+        std::string maintenance_notes = "";           // 점검 메모
+        
+        // 메타데이터 (Entity + DeviceSettings 호환)
+        std::string tags = "";                         // JSON 배열 형태
+        std::vector<std::string> tag_list;            // 태그 목록
+        std::map<std::string, std::string> metadata;  // 추가 메타데이터
+        std::map<std::string, std::string> properties; // 커스텀 속성들
+        
+        // 시간 정보 (Entity 호환)
+        Timestamp created_at;
+        Timestamp updated_at;
+        int created_by = 0;                           // 생성자 ID
+        
+        // 성능 및 모니터링 (DeviceSettings 호환)
+        bool monitoring_enabled = true;               // 모니터링 활성화
+        std::string log_level = "INFO";               // 로그 레벨
+        bool diagnostics_enabled = false;            // 진단 모드
+        bool performance_monitoring = true;          // 성능 모니터링
+        
+        // 보안 설정 (DeviceSettings 확장)
+        std::string security_level = "NORMAL";        // 보안 레벨
+        bool encryption_enabled = false;             // 암호화 사용
+        std::string certificate_path = "";           // 인증서 경로
+        
+        // =======================================================================
+        // 🔥 생성자들
+        // =======================================================================
+        
+        DeviceInfo() {
+            id = Utils::GenerateUUID();
+            created_at = Utils::CurrentTimestamp();
+            updated_at = created_at;
+            installation_date = created_at;
+            last_maintenance = created_at;
+            next_maintenance = created_at;
+            
+            // 별칭 동기화
+            enabled = is_enabled;
+            connection_string = endpoint;
+        }
+        
+        explicit DeviceInfo(ProtocolType protocol) : DeviceInfo() {
+            driver_config = DriverConfig(protocol);
+            protocol_type = driver_config.GetProtocolName();
+        }
+        
+        // =======================================================================
+        // 🔥 DriverConfig 위임 메서드들 (Phase 1 호환)
+        // =======================================================================
+        
         /**
-         * @brief 품질 코드를 문자열로 변환
+         * @brief 스마트 포인터 기반 Modbus 설정 접근
          */
-        std::string GetQualityCodeAsString() const {
-            return PulseOne::Utils::DataQualityToString(quality_code);
+        ModbusConfig* GetModbusConfig() {
+            return driver_config.GetModbusConfig();
+        }
+        const ModbusConfig* GetModbusConfig() const {
+            return driver_config.GetModbusConfig();
         }
         
         /**
-         * @brief 현재값 업데이트 (품질과 함께)
+         * @brief 스마트 포인터 기반 MQTT 설정 접근
          */
-        void UpdateCurrentValue(const DataVariant& new_value, DataQuality new_quality = DataQuality::GOOD) {
-            current_value = new_value;
-            
-            // 품질이 변경된 경우에만 타임스탬프 업데이트
-            if (quality_code != new_quality) {
-                quality_code = new_quality;
-                quality_timestamp = std::chrono::system_clock::now();
-            }
-            
-            value_timestamp = std::chrono::system_clock::now();
-            updated_at = std::chrono::system_clock::now();
-            
-            // 통계 업데이트
-            read_count++;
-            if (new_quality == DataQuality::BAD || new_quality == DataQuality::TIMEOUT) {
-                error_count++;
-            }
+        MqttConfig* GetMqttConfig() {
+            return driver_config.GetMqttConfig();
+        }
+        const MqttConfig* GetMqttConfig() const {
+            return driver_config.GetMqttConfig();
         }
         
         /**
-         * @brief 쓰기 가능 여부 확인
+         * @brief 스마트 포인터 기반 BACnet 설정 접근
          */
-        bool IsWritable() const {
-            return is_writable || access_mode == "write" || access_mode == "read_write";
+        BACnetConfig* GetBACnetConfig() {
+            return driver_config.GetBACnetConfig();
+        }
+        const BACnetConfig* GetBACnetConfig() const {
+            return driver_config.GetBACnetConfig();
         }
         
         /**
-         * @brief 로깅이 필요한지 확인 (interval + deadband 기반)
+         * @brief IProtocolDriver 호환 - DriverConfig 접근
          */
-        bool ShouldLog(const DataVariant& new_value) const {
-            if (!log_enabled) return false;
+        DriverConfig& GetDriverConfig() {
+            SyncToDriverConfig();  // 동기화 후 반환
+            return driver_config;
+        }
+        const DriverConfig& GetDriverConfig() const {
+            return driver_config;
+        }
+        
+        // =======================================================================
+        // 🔥 DeviceEntity 호환 getter/setter 메서드들 (기존 API 100% 보존)
+        // =======================================================================
+        
+        // 식별 정보
+        const UUID& getId() const { return id; }
+        void setId(const UUID& device_id) { id = device_id; }
+        
+        int getTenantId() const { return tenant_id; }
+        void setTenantId(int tenant) { tenant_id = tenant; }
+        
+        int getSiteId() const { return site_id; }
+        void setSiteId(int site) { site_id = site; }
+        
+        std::optional<int> getDeviceGroupId() const { return device_group_id; }
+        void setDeviceGroupId(const std::optional<int>& group_id) { device_group_id = group_id; }
+        void setDeviceGroupId(int group_id) { device_group_id = group_id; }
+        
+        std::optional<int> getEdgeServerId() const { return edge_server_id; }
+        void setEdgeServerId(const std::optional<int>& server_id) { edge_server_id = server_id; }
+        void setEdgeServerId(int server_id) { edge_server_id = server_id; }
+        
+        // 기본 정보
+        const std::string& getName() const { return name; }
+        void setName(const std::string& device_name) { 
+            name = device_name;
+            driver_config.name = device_name;  // 동기화
+        }
+        
+        const std::string& getDescription() const { return description; }
+        void setDescription(const std::string& desc) { description = desc; }
+        
+        const std::string& getDeviceType() const { return device_type; }
+        void setDeviceType(const std::string& type) { device_type = type; }
+        
+        const std::string& getManufacturer() const { return manufacturer; }
+        void setManufacturer(const std::string& mfg) { manufacturer = mfg; }
+        
+        const std::string& getModel() const { return model; }
+        void setModel(const std::string& device_model) { model = device_model; }
+        
+        const std::string& getSerialNumber() const { return serial_number; }
+        void setSerialNumber(const std::string& serial) { serial_number = serial; }
+        
+        const std::string& getFirmwareVersion() const { return firmware_version; }
+        void setFirmwareVersion(const std::string& version) { firmware_version = version; }
+        
+        // 통신 설정
+        const std::string& getProtocolType() const { return protocol_type; }
+        void setProtocolType(const std::string& protocol) { 
+            protocol_type = protocol;
+            // TODO: driver_config.protocol 동기화 로직 필요
+        }
+        
+        const std::string& getEndpoint() const { return endpoint; }
+        void setEndpoint(const std::string& ep) { 
+            endpoint = ep;
+            connection_string = ep;  // 별칭 동기화
+            driver_config.endpoint = ep;  // 동기화
+        }
+        
+        const std::string& getConfig() const { return config; }
+        void setConfig(const std::string& cfg) { config = cfg; }
+        
+        const std::string& getIpAddress() const { return ip_address; }
+        void setIpAddress(const std::string& ip) { ip_address = ip; }
+        
+        int getPort() const { return port; }
+        void setPort(int port_num) { port = port_num; }
+        
+        // 상태 정보
+        bool isEnabled() const { return is_enabled; }
+        void setEnabled(bool enable) { 
+            is_enabled = enable;
+            enabled = enable;  // 별칭 동기화
+        }
+        
+        bool getEnabled() const { return enabled; }  // 별칭 메서드
+        
+        ConnectionStatus getConnectionStatus() const { return connection_status; }
+        void setConnectionStatus(ConnectionStatus status) { connection_status = status; }
+        
+        // 위치 정보
+        const std::string& getLocation() const { return location; }
+        void setLocation(const std::string& loc) { location = loc; }
+        
+        const std::string& getBuilding() const { return building; }
+        void setBuilding(const std::string& bldg) { building = bldg; }
+        
+        const std::string& getFloor() const { return floor; }
+        void setFloor(const std::string& fl) { floor = fl; }
+        
+        const std::string& getRoom() const { return room; }
+        void setRoom(const std::string& rm) { room = rm; }
+        
+        // 시간 정보
+        const Timestamp& getCreatedAt() const { return created_at; }
+        void setCreatedAt(const Timestamp& timestamp) { created_at = timestamp; }
+        
+        const Timestamp& getUpdatedAt() const { return updated_at; }
+        void setUpdatedAt(const Timestamp& timestamp) { updated_at = timestamp; }
+        
+        int getCreatedBy() const { return created_by; }
+        void setCreatedBy(int user_id) { created_by = user_id; }
+        
+        // =======================================================================
+        // 🔥 Worker 호환 메서드들 (기존 Worker 클래스들 호환)
+        // =======================================================================
+        
+        // 프로토콜 타입 확인 (기존 Worker 코드 호환)
+        bool IsModbus() const { return driver_config.IsModbus(); }
+        bool IsMqtt() const { return driver_config.IsMqtt(); }
+        bool IsBacnet() const { return driver_config.IsBacnet(); }
+        
+        // 타이밍 설정 (Worker에서 사용)
+        uint32_t GetPollingInterval() const { 
+            return static_cast<uint32_t>(polling_interval_ms); 
+        }
+        void SetPollingInterval(uint32_t interval_ms) { 
+            polling_interval_ms = static_cast<int>(interval_ms);
+            driver_config.polling_interval_ms = interval_ms;
+        }
+        
+        uint32_t GetTimeout() const { 
+            return static_cast<uint32_t>(timeout_ms); 
+        }
+        void SetTimeout(uint32_t timeout) { 
+            timeout_ms = static_cast<int>(timeout);
+            driver_config.timeout_ms = timeout;
+        }
+        
+        // =======================================================================
+        // 🔥 변환 및 동기화 메서드들
+        // =======================================================================
+        
+        /**
+         * @brief DeviceEntity로부터 데이터 로드
+         */
+        void LoadFromDeviceEntity(const Database::Entities::DeviceEntity& entity) {
+            // 기본 정보
+            setId(std::to_string(entity.getId()));
+            setTenantId(entity.getTenantId());
+            setSiteId(entity.getSiteId());
+            setDeviceGroupId(entity.getDeviceGroupId());
+            setEdgeServerId(entity.getEdgeServerId());
             
-            // 시간 간격 체크
-            auto now = std::chrono::system_clock::now();
-            auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time).count();
+            // 디바이스 정보
+            setName(entity.getName());
+            setDescription(entity.getDescription());
+            setDeviceType(entity.getDeviceType());
+            setManufacturer(entity.getManufacturer());
+            setModel(entity.getModel());
+            setSerialNumber(entity.getSerialNumber());
+            setFirmwareVersion(entity.getFirmwareVersion());
             
-            if (log_interval_ms > 0 && time_diff < static_cast<int64_t>(log_interval_ms)) {
-                return false; // 아직 로깅 간격이 안됨
-            }
+            // 통신 설정
+            setProtocolType(entity.getProtocolType());
+            setEndpoint(entity.getEndpoint());
+            setConfig(entity.getConfig());
+            setIpAddress(entity.getIpAddress());
+            setPort(entity.getPort());
             
-            // 데드밴드 체크 (숫자 값만)
-            if (log_deadband > 0.0) {
-                try {
-                    double current_val = std::visit([](const auto& val) -> double {
-                        using T = std::decay_t<decltype(val)>;
-                        if constexpr (std::is_arithmetic_v<T>) {
-                            return static_cast<double>(val);
-                        }
-                        return 0.0;
-                    }, current_value);
-                    
-                    double new_val = std::visit([](const auto& val) -> double {
-                        using T = std::decay_t<decltype(val)>;
-                        if constexpr (std::is_arithmetic_v<T>) {
-                            return static_cast<double>(val);
-                        }
-                        return 0.0;
-                    }, new_value);
-                    
-                    if (std::abs(new_val - current_val) < log_deadband) {
-                        return false; // 변화량이 데드밴드 미만
-                    }
-                } catch (...) {
-                    // 숫자가 아닌 경우 데드밴드 무시
-                }
-            }
+            // 상태 정보
+            setEnabled(entity.isEnabled());
             
-            return true;
+            // 위치 정보
+            setLocation(entity.getLocation());
+            setBuilding(entity.getBuilding());
+            setFloor(entity.getFloor());
+            setRoom(entity.getRoom());
+            
+            // 시간 정보
+            setCreatedAt(entity.getCreatedAt());
+            setUpdatedAt(entity.getUpdatedAt());
+            setCreatedBy(entity.getCreatedBy());
+            
+            // DriverConfig 동기화
+            SyncToDriverConfig();
         }
         
         /**
-         * @brief 스케일링된 값 계산
+         * @brief DeviceEntity로 데이터 저장
          */
-        double GetScaledValue(const DataVariant& raw_value) const {
-            try {
-                double raw_num = std::visit([](const auto& val) -> double {
-                    using T = std::decay_t<decltype(val)>;
-                    if constexpr (std::is_arithmetic_v<T>) {
-                        return static_cast<double>(val);
-                    }
-                    return 0.0;
-                }, raw_value);
-                
-                return (raw_num * scaling_factor) + scaling_offset;
-            } catch (...) {
-                return 0.0;
-            }
+        void SaveToDeviceEntity(Database::Entities::DeviceEntity& entity) const {
+            // 기본 정보
+            entity.setTenantId(getTenantId());
+            entity.setSiteId(getSiteId());
+            entity.setDeviceGroupId(getDeviceGroupId());
+            entity.setEdgeServerId(getEdgeServerId());
+            
+            // 디바이스 정보
+            entity.setName(getName());
+            entity.setDescription(getDescription());
+            entity.setDeviceType(getDeviceType());
+            entity.setManufacturer(getManufacturer());
+            entity.setModel(getModel());
+            entity.setSerialNumber(getSerialNumber());
+            entity.setFirmwareVersion(getFirmwareVersion());
+            
+            // 통신 설정
+            entity.setProtocolType(getProtocolType());
+            entity.setEndpoint(getEndpoint());
+            entity.setConfig(getConfig());
+            entity.setIpAddress(getIpAddress());
+            entity.setPort(getPort());
+            
+            // 상태 정보
+            entity.setEnabled(isEnabled());
+            
+            // 위치 정보
+            entity.setLocation(getLocation());
+            entity.setBuilding(getBuilding());
+            entity.setFloor(getFloor());
+            entity.setRoom(getRoom());
+            
+            // 시간 정보
+            entity.setCreatedBy(getCreatedBy());
         }
         
         /**
-         * @brief 유효성 검사
+         * @brief 필드 동기화 (별칭 필드들 동기화)
+         */
+        void SyncAliasFields() {
+            enabled = is_enabled;
+            connection_string = endpoint;
+            
+            // DriverConfig와 동기화
+            driver_config.name = name;
+            driver_config.endpoint = endpoint;
+            driver_config.polling_interval_ms = static_cast<uint32_t>(polling_interval_ms);
+            driver_config.timeout_ms = static_cast<uint32_t>(timeout_ms);
+            driver_config.retry_count = retry_count;
+        }
+        
+        /**
+         * @brief DriverConfig로 동기화
+         */
+        void SyncToDriverConfig() {
+            SyncAliasFields();
+            driver_config.device_id = id;
+            
+            // 프로토콜별 설정 동기화 (필요시 구현)
+            // if (IsModbus()) { /* Modbus 특화 동기화 */ }
+            // if (IsMqtt()) { /* MQTT 특화 동기화 */ }
+            // if (IsBacnet()) { /* BACnet 특화 동기화 */ }
+        }
+        
+        /**
+         * @brief 유효성 검증
          */
         bool IsValid() const {
-            return !id.empty() && 
-                !device_id.empty() && 
-                !name.empty() && 
-                scaling_factor != 0.0 &&
-                min_value <= max_value;
+            return !name.empty() && 
+                !protocol_type.empty() && 
+                !endpoint.empty() && 
+                driver_config.IsValid();
         }
         
         /**
-         * @brief 디버깅용 문자열 출력
+         * @brief JSON 직렬화 (DeviceEntity 호환)
          */
-        std::string ToDebugString() const {
-            std::ostringstream oss;
-            oss << "DataPoint{" 
-                << "id='" << id << "'"
-                << ", name='" << name << "'"
-                << ", address=" << address
-                << ", value=" << GetCurrentValueAsString()
-                << ", quality=" << GetQualityCodeAsString()
-                << ", writable=" << (IsWritable() ? "true" : "false")
-                << ", log_enabled=" << (log_enabled ? "true" : "false")
-                << ", read_count=" << read_count
-                << ", error_count=" << error_count
-                << "}";
-            return oss.str();
-        }
-        /**
-         * @brief 품질이 양호한지 확인
-         */
-        bool IsGoodQuality() const {
-            return quality_code == DataQuality::GOOD;
-        }
-
-        /**
-         * @brief 품질이 나쁜지 확인
-         */
-        bool IsBadQuality() const {
-            return quality_code == DataQuality::BAD || 
-                quality_code == DataQuality::NOT_CONNECTED ||
-                quality_code == DataQuality::TIMEOUT;
-        }
-
-        /**
-         * @brief 현재값이 유효한지 확인 (품질 + 범위 체크)
-         */
-        bool IsCurrentValueValid() const {
-            if (!IsGoodQuality()) return false;
+        JsonType ToJson() const {
+            JsonType j;
             
+            // 기본 정보
+            j["id"] = id;
+            j["tenant_id"] = tenant_id;
+            j["site_id"] = site_id;
+            if (device_group_id.has_value()) j["device_group_id"] = device_group_id.value();
+            if (edge_server_id.has_value()) j["edge_server_id"] = edge_server_id.value();
+            
+            // 디바이스 정보
+            j["name"] = name;
+            j["description"] = description;
+            j["device_type"] = device_type;
+            j["manufacturer"] = manufacturer;
+            j["model"] = model;
+            j["serial_number"] = serial_number;
+            j["firmware_version"] = firmware_version;
+            
+            // 통신 설정
+            j["protocol_type"] = protocol_type;
+            j["endpoint"] = endpoint;
+            j["config"] = config;
+            j["ip_address"] = ip_address;
+            j["port"] = port;
+            
+            // 상태 정보
+            j["is_enabled"] = is_enabled;
+            j["connection_status"] = static_cast<int>(connection_status);
+            
+            // 위치 정보
+            j["location"] = location;
+            j["building"] = building;
+            j["floor"] = floor;
+            j["room"] = room;
+            
+            // 시간 정보
+            j["created_at"] = Utils::TimestampToString(created_at);
+            j["updated_at"] = Utils::TimestampToString(updated_at);
+            j["created_by"] = created_by;
+            
+            return j;
+        }
+        
+        /**
+         * @brief JSON에서 역직렬화
+         */
+        bool FromJson(const JsonType& j) {
             try {
-                double value = std::visit([](const auto& val) -> double {
-                    using T = std::decay_t<decltype(val)>;
-                    if constexpr (std::is_arithmetic_v<T>) {
-                        return static_cast<double>(val);
-                    }
-                    return 0.0;
-                }, current_value);
+                // 기본 정보
+                if (j.contains("id")) id = j["id"];
+                if (j.contains("tenant_id")) tenant_id = j["tenant_id"];
+                if (j.contains("site_id")) site_id = j["site_id"];
+                if (j.contains("device_group_id")) device_group_id = j["device_group_id"];
+                if (j.contains("edge_server_id")) edge_server_id = j["edge_server_id"];
                 
-                // 범위 체크 (min_value와 max_value가 설정된 경우만)
-                if (min_value != std::numeric_limits<double>::lowest() && value < min_value) {
-                    return false;
-                }
-                if (max_value != std::numeric_limits<double>::max() && value > max_value) {
-                    return false;
-                }
+                // 디바이스 정보
+                if (j.contains("name")) name = j["name"];
+                if (j.contains("description")) description = j["description"];
+                if (j.contains("device_type")) device_type = j["device_type"];
+                if (j.contains("manufacturer")) manufacturer = j["manufacturer"];
+                if (j.contains("model")) model = j["model"];
+                if (j.contains("serial_number")) serial_number = j["serial_number"];
+                if (j.contains("firmware_version")) firmware_version = j["firmware_version"];
+                
+                // 통신 설정
+                if (j.contains("protocol_type")) protocol_type = j["protocol_type"];
+                if (j.contains("endpoint")) endpoint = j["endpoint"];
+                if (j.contains("config")) config = j["config"];
+                if (j.contains("ip_address")) ip_address = j["ip_address"];
+                if (j.contains("port")) port = j["port"];
+                
+                // 상태 정보
+                if (j.contains("is_enabled")) is_enabled = j["is_enabled"];
+                if (j.contains("connection_status")) connection_status = static_cast<ConnectionStatus>(j["connection_status"]);
+                
+                // 위치 정보
+                if (j.contains("location")) location = j["location"];
+                if (j.contains("building")) building = j["building"];
+                if (j.contains("floor")) floor = j["floor"];
+                if (j.contains("room")) room = j["room"];
+                
+                // 시간 정보
+                if (j.contains("created_by")) created_by = j["created_by"];
+                
+                // 별칭 동기화
+                SyncAliasFields();
                 
                 return true;
             } catch (...) {
                 return false;
             }
         }
+        
+        // =======================================================================
+        // 🔥 기존 typedef 호환성 (기존 코드에서 사용하던 타입명들)
+        // =======================================================================
+        
+        // Worker에서 사용하던 별칭들
+        std::string GetProtocolName() const { return driver_config.GetProtocolName(); }
+        ProtocolType GetProtocol() const { return driver_config.protocol; }
     };
-    
     // =========================================================================
-    // 드라이버 관련 구조체들 (기존 CommonTypes.h에서 통합)
+    // 🔥 기존 코드 호환성을 위한 별칭들
     // =========================================================================
     
-    /**
-     * @brief 통합 드라이버 설정 (여러 DriverConfig 통합)
-     */
-    struct DriverConfig {
-        // 🔥 기존 필드들 (현재 있음)
+    // 기존 Database, Drivers 네임스페이스 호환성
+    namespace Database {
+        using DeviceInfo = Structs::DeviceInfo;
+        using DataPoint = Structs::DataPoint;
+    }
+    
+    // 메시지 전송용 확장 (향후 사용)
+    struct DeviceDataMessage {
+        std::string type = "device_data";
         UUID device_id;
-        std::string name = "";
-        ProtocolType protocol = ProtocolType::UNKNOWN;
-        std::string endpoint = "";
-        Duration timeout = std::chrono::seconds(5);
-        int retry_count = 3;
-        Duration polling_interval = std::chrono::seconds(1);
-        std::map<std::string, std::string> properties;
-        std::map<std::string, std::string> custom_settings;
-        JsonType config_json;
-        uint32_t timeout_ms = 5000;
-        uint32_t polling_interval_ms = 1000;
-        bool auto_reconnect = true;
-        int device_instance = 0;
-
-        // ✅ 추가 필요한 필드들 (MqttDriver에서 요구)
-        
-        // 1. 설정 문자열 필드 (가장 중요!)
-        std::string connection_string = "";     // MQTTWorker에서 JSON 파싱용
-        std::string extra_config = "";          // 추가 설정용 (JSON 문자열)
-        
-        // 2. MQTT 특화 필드들
-        std::string username = "";              // MQTT 인증 사용자명
-        std::string password = "";              // MQTT 인증 비밀번호
-        std::string client_id = "";             // MQTT 클라이언트 ID
-        bool use_ssl = false;                   // SSL/TLS 사용 여부
-        int keep_alive_interval = 60;           // Keep-alive 간격 (초)
-        bool clean_session = true;              // Clean session 플래그
-        int qos_level = 1;                      // 기본 QoS 레벨
-        
-        // 3. 프로토콜별 공통 필드들
-        std::string protocol_version = "";      // 프로토콜 버전
-        std::map<std::string, JsonType> protocol_settings;  // 프로토콜별 설정들
-        
-        // 4. 로깅 및 진단 필드들
-        bool enable_logging = true;             // 로깅 활성화
-        bool enable_diagnostics = false;        // 진단 모드
-        bool enable_debug = false;              // 디버그 모드
-        std::string log_level = "INFO";         // 로그 레벨
-    };
-    
-    /**
-     * @brief 드라이버 상태 정보 (자세한 정보 포함)
-     */
-    struct DriverState {
-        bool is_connected = false;
-        ErrorInfo last_error;  // 🔥 Structs:: 제거 - 같은 네임스페이스 내에서는 직접 참조
-        Timestamp connection_time;
-        std::map<std::string, std::string> additional_info;
-        
-        // 기본 생성자
-        DriverState() 
-            : connection_time(Utils::GetCurrentTimestamp()) {}
-    };
-    
-    // =========================================================================
-    // 기타 구조체들
-    // =========================================================================
-    
-    /**
-     * @brief 타임스탬프가 포함된 데이터 값
-     */
-    struct TimestampedValue {
-        DataVariant value;
-        DataQuality quality = DataQuality::GOOD;
+        std::string protocol;
+        std::vector<TimestampedValue> points;
         Timestamp timestamp;
-        UUID source_id = "";
         
-        // 🆕 점검 기능 관련
-        Duration age_ms = std::chrono::milliseconds(0);
-        bool under_maintenance = false;
-        std::string engineer_id = "";
+        DeviceDataMessage() : timestamp(Utils::CurrentTimestamp()) {}
         
-        // ✅ 생성자들 - Utils 네임스페이스 사용
-        TimestampedValue() : timestamp(Utils::GetCurrentTimestamp()) {}
-        TimestampedValue(const DataVariant& val, DataQuality qual = DataQuality::GOOD)
-            : value(val), quality(qual), timestamp(Utils::GetCurrentTimestamp()) {}
-        
-        bool IsValid() const noexcept {
-            return quality == DataQuality::GOOD || quality == DataQuality::UNCERTAIN;
+        std::string ToJSON() const {
+            JsonType j;
+            j["type"] = type;
+            j["device_id"] = device_id;
+            j["protocol"] = protocol;
+            j["timestamp"] = Utils::TimestampToString(timestamp);
+            
+            j["points"] = JsonType::array();
+            for (const auto& point : points) {
+                JsonType point_json = JsonType::parse(point.ToJSON());
+                j["points"].push_back(point_json);
+            }
+            
+            return j.dump();
         }
     };
-    
-    /**
-     * @brief 드라이버 로그 컨텍스트
-     */
-    struct DriverLogContext {
-        UUID device_id = "";
-        std::string device_name = "";
-        ProtocolType protocol = ProtocolType::UNKNOWN;
-        std::string endpoint = "";
-        std::string worker_id = "";
-        
-        DriverLogContext() = default;
-        DriverLogContext(const UUID& dev_id, const std::string& dev_name, ProtocolType proto)
-            : device_id(dev_id), device_name(dev_name), protocol(proto) {}
-    };
-    
-    /**
-     * @brief 로그 통계 정보
-     */
-    struct LogStatistics {
-        uint64_t total_logs = 0;
-        uint64_t error_count = 0;
-        uint64_t warning_count = 0;
-        uint64_t info_count = 0;
-        uint64_t debug_count = 0;
-        uint64_t trace_count = 0;
-        uint64_t maintenance_count = 0;
-        Timestamp last_reset_time;
-        
-        // ✅ 생성자 - Utils 네임스페이스 사용
-        LogStatistics() : last_reset_time(Utils::GetCurrentTimestamp()) {}
-        
-        double GetErrorRate() const {
-            return (total_logs > 0) ? (static_cast<double>(error_count) / total_logs) * 100.0 : 0.0;
-        }
-    };
-    
-} // namespace PulseOne::Structs
+
+} // namespace Structs
+
+// =========================================================================
+// 🔥 전역 네임스페이스 호환성 (최상위 PulseOne에서 직접 사용 가능)
+// =========================================================================
+using DeviceInfo = Structs::DeviceInfo;
+using DataPoint = Structs::DataPoint;
+using TimestampedValue = Structs::TimestampedValue;
+
+// Drivers 네임스페이스 호환성 유지
+namespace Drivers {
+    using DeviceInfo = PulseOne::DeviceInfo;
+    using DataPoint = PulseOne::DataPoint;
+    using TimestampedValue = PulseOne::TimestampedValue;
+}
+
+} // namespace PulseOne
 
 #endif // PULSEONE_COMMON_STRUCTS_H

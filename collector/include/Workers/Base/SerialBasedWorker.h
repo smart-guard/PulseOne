@@ -11,7 +11,6 @@
 #define WORKERS_SERIAL_BASED_WORKER_H
 
 #include "Workers/Base/BaseDeviceWorker.h"
-#include "Common/UnifiedCommonTypes.h"
 #include <string>
 #include <atomic>
 #include <chrono>
