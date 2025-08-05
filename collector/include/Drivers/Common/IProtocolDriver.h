@@ -148,6 +148,8 @@ protected:
     }
     
     virtual void UpdateReadStats(bool success, double duration_ms = 0.0) {
+        (void)success;      // unused parameter 경고 방지
+        (void)duration_ms;  // unused parameter 경고 방지
         statistics_.total_reads.fetch_add(1);
         if (success) {
             statistics_.successful_reads.fetch_add(1);
@@ -157,6 +159,8 @@ protected:
     }
     
     virtual void UpdateWriteStats(bool success, double duration_ms = 0.0) {
+        (void)success;      // unused parameter 경고 방지
+        (void)duration_ms;  // unused parameter 경고 방지
         statistics_.total_writes.fetch_add(1);
         if (success) {
             statistics_.successful_writes.fetch_add(1);

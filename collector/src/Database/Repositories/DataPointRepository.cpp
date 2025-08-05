@@ -844,7 +844,21 @@ std::vector<PulseOne::Structs::DataPoint> DataPointRepository::getDataPointsWith
         for (const auto& entity : entities) {
             
             // 🎯 핵심: Entity의 toDataPointStruct() 메서드 활용
-            PulseOne::Structs::DataPoint data_point = entity.toDataPointStruct();
+            PulseOne::Structs::DataPoint data_point;
+            data_point.id = std::to_string(entity.getId());
+            data_point.device_id = std::to_string(entity.getDeviceId());
+            data_point.name = entity.getName();
+            data_point.description = entity.getDescription();
+            data_point.address = entity.getAddress();
+            data_point.data_type = entity.getDataType();
+            data_point.access_mode = entity.getAccessMode();
+            data_point.is_enabled = entity.isEnabled();
+            data_point.unit = entity.getUnit();
+            data_point.scaling_factor = entity.getScalingFactor();
+            data_point.scaling_offset = entity.getScalingOffset();
+            data_point.min_value = entity.getMinValue();
+            data_point.max_value = entity.getMaxValue();
+            data_point.polling_interval_ms = entity.getLogInterval();
             
             // =======================================================================
             // 🔥 현재값 조회 및 설정 (Repository 패턴 준수)
@@ -891,7 +905,9 @@ std::vector<PulseOne::Structs::DataPoint> DataPointRepository::getDataPointsWith
             }
             
             // 3. 주소 필드 동기화 (기존 메서드 활용)
-            data_point.SyncAddressFields();
+            if (data_point.address_string.empty()) {
+                data_point.address_string = std::to_string(data_point.address);
+            }
             
             // 4. Worker 컨텍스트 정보 추가
             try {
@@ -909,7 +925,7 @@ std::vector<PulseOne::Structs::DataPoint> DataPointRepository::getDataPointsWith
             logger_->Debug("✅ Converted DataPoint: " + data_point.name + 
                           " (Address: " + std::to_string(data_point.address) + 
                           ", Type: " + data_point.data_type + 
-                          ", Writable: " + (data_point.IsWritable() ? "true" : "false") + 
+                          ", Writable: " + (data_point.isWritable() ? "true" : "false") + 
                           ", LogEnabled: " + (data_point.log_enabled ? "true" : "false") + 
                           ", LogInterval: " + std::to_string(data_point.log_interval_ms) + "ms" + 
                           ", CurrentValue: " + data_point.GetCurrentValueAsString() + 
