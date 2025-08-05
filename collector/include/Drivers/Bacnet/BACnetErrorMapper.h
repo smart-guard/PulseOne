@@ -74,10 +74,10 @@ public:
                 return Enums::ErrorCode::UNSUPPORTED_FUNCTION;
                 
             case ERROR_CLASS_VT:
-                return Enums::ErrorCode::PROTOCOL_ERROR;
+                return Enums::ErrorCode::UNSUPPORTED_FUNCTION;
                 
             case ERROR_CLASS_COMMUNICATION:
-                return Enums::ErrorCode::CONNECTION_FAILED;
+                return Enums::ErrorCode::INVALID_ENDPOINT;
                 
             default:
                 // Error Code 기반 세부 매핑
@@ -85,9 +85,9 @@ public:
                     case ERROR_CODE_UNKNOWN_OBJECT:
                         return Enums::ErrorCode::DEVICE_NOT_FOUND;
                     case ERROR_CODE_UNKNOWN_PROPERTY:
-                        return Enums::ErrorCode::INVALID_PARAMETER;
+                        return Enums::ErrorCode::CONFIGURATION_ERROR;
                     case ERROR_CODE_UNSUPPORTED_OBJECT_TYPE:
-                        return Enums::ErrorCode::UNSUPPORTED_FUNCTION;
+                        return Enums::ErrorCode::PROTOCOL_ERROR;
                     case ERROR_CODE_VALUE_OUT_OF_RANGE:
                         return Enums::ErrorCode::DATA_OUT_OF_RANGE;
                     case ERROR_CODE_WRITE_ACCESS_DENIED:
@@ -119,21 +119,21 @@ public:
             case REJECT_REASON_BUFFER_OVERFLOW:
                 return Enums::ErrorCode::RESOURCE_EXHAUSTED;
             case REJECT_REASON_INCONSISTENT_PARAMETERS:
-                return Enums::ErrorCode::INVALID_PARAMETER;
+                return Enums::ErrorCode::CONFIGURATION_ERROR;
             case REJECT_REASON_INVALID_PARAMETER_DATA_TYPE:
                 return Enums::ErrorCode::DATA_TYPE_MISMATCH;
             case REJECT_REASON_INVALID_TAG:
                 return Enums::ErrorCode::DATA_FORMAT_ERROR;
             case REJECT_REASON_MISSING_REQUIRED_PARAMETER:
-                return Enums::ErrorCode::INVALID_PARAMETER;
+                return Enums::ErrorCode::CONFIGURATION_ERROR;
             case REJECT_REASON_PARAMETER_OUT_OF_RANGE:
                 return Enums::ErrorCode::DATA_OUT_OF_RANGE;
             case REJECT_REASON_TOO_MANY_ARGUMENTS:
-                return Enums::ErrorCode::INVALID_PARAMETER;
+                return Enums::ErrorCode::CONFIGURATION_ERROR;
             case REJECT_REASON_UNDEFINED_ENUMERATION:
                 return Enums::ErrorCode::DATA_FORMAT_ERROR;
             case REJECT_REASON_UNRECOGNIZED_SERVICE:
-                return Enums::ErrorCode::UNSUPPORTED_FUNCTION;
+                return Enums::ErrorCode::PROTOCOL_ERROR;
             default:
                 return Enums::ErrorCode::PROTOCOL_ERROR;
         }
@@ -158,7 +158,7 @@ public:
             case ABORT_REASON_PREEMPTED_BY_HIGHER_PRIORITY_TASK:
                 return Enums::ErrorCode::MAINTENANCE_ACTIVE;
             case ABORT_REASON_SEGMENTATION_NOT_SUPPORTED:
-                return Enums::ErrorCode::UNSUPPORTED_FUNCTION;
+                return Enums::ErrorCode::PROTOCOL_ERROR;
             default:
                 return Enums::ErrorCode::PROTOCOL_ERROR;
         }
@@ -182,9 +182,9 @@ public:
             case ECONNRESET:
                 return Enums::ErrorCode::CONNECTION_LOST;
             case EHOSTUNREACH:
-                return Enums::ErrorCode::INVALID_ENDPOINT;
+                return Enums::ErrorCode::CONNECTION_FAILED;
             case ENETUNREACH:
-                return Enums::ErrorCode::INVALID_ENDPOINT;
+                return Enums::ErrorCode::CONNECTION_FAILED;
             case ENOBUFS:
                 return Enums::ErrorCode::RESOURCE_EXHAUSTED;
             default:

@@ -13,10 +13,14 @@
  * - Forward Declaration 불필요
  */
 
-#include "Common/UnifiedCommonTypes.h"
+
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
+#include "Common/BasicTypes.h"           // UUID, Timestamp 등
+#include "Common/Enums.h"                // ProtocolType, ConnectionStatus 등  
+#include "Common/Structs.h"              // DeviceInfo, DataPoint 등
+#include "Common/DriverStatistics.h"     // DriverStatistics
 #include <string>
 #include <optional>
 #include <chrono>

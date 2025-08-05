@@ -216,6 +216,7 @@ namespace Enums {
         INVALID_REQUEST = 102,
         INVALID_RESPONSE = 103,
         CHECKSUM_ERROR = 104,
+        INVALID_ENDPOINT = 104,
         FRAME_ERROR = 105,
         
         // 데이터 관련 에러 (200-299)
@@ -223,6 +224,7 @@ namespace Enums {
         DATA_TYPE_MISMATCH = 201,
         DATA_OUT_OF_RANGE = 202,
         DATA_FORMAT_ERROR = 203,
+        UNSUPPORTED_FUNCTION = 203,
         DATA_STALE = 204,
         
         // 디바이스 관련 에러 (300-399)
@@ -242,6 +244,7 @@ namespace Enums {
         RESOURCE_EXHAUSTED = 501,
         INTERNAL_ERROR = 502,
         FILE_ERROR = 503,
+        INVALID_PARAMETER = 506,
         
         // 🆕 점검 관련 에러 (600-699)
         MAINTENANCE_ACTIVE = 600,
