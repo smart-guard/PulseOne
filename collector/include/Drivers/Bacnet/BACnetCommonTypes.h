@@ -1,7 +1,7 @@
 #ifndef BACNET_COMMON_TYPES_H
 #define BACNET_COMMON_TYPES_H
 
-#include "Drivers/Bacnet/Safe/BACnetHeaders.h"
+
 #include "Common/Structs.h"  // 🔥 통합 DeviceInfo, DataPoint 사용
 
 namespace PulseOne {
