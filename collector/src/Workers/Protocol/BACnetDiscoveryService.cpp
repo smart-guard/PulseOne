@@ -132,14 +132,14 @@ void BACnetDiscoveryService::OnDeviceDiscovered(const Drivers::DeviceInfo& devic
         statistics_.last_activity = system_clock::now();
         
         auto& logger = LogManager::getInstance();
-        logger.Debug("🔄 BACnet device discovered: " + device.device_name + 
-                     " (ID: " + std::to_string(device.device_id) + ")");
+        logger.Debug("🔄 BACnet device discovered: " + device.name + 
+                     " (ID: " + device.id + ")");
         
         if (SaveDiscoveredDeviceToDatabase(device)) {
             statistics_.devices_saved++;
         } else {
             statistics_.database_errors++;
-            logger.Warn("❌ Failed to save device: " + device.device_name);
+            logger.Warn("❌ Failed to save device: " + device.name);
         }
         
     } catch (const std::exception& e) {
@@ -221,7 +221,7 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
         // 🔥 수정 3: QueryCondition 올바른 초기화 (3개 매개변수)
         std::vector<QueryCondition> conditions = {
             QueryCondition("device_type", "=", "BACNET"),
-            QueryCondition("name", "=", device.device_name)
+            QueryCondition("name", "=", device.name)
         };
         
         auto existing_devices = device_repository_->findByConditions(conditions);
@@ -229,22 +229,22 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
         if (!existing_devices.empty()) {
             // 기존 디바이스 업데이트
             auto& existing_device = existing_devices[0];
-            existing_device.setName(device.device_name);
+            existing_device.setName(device.name);
             existing_device.setDescription("BACnet Device - Updated by Discovery");
             
             // 🔥 수정 4: BACNET_ADDRESS를 문자열로 변환
-            std::string endpoint = BACnetAddressToString(device.endpoint) + ":" + std::to_string(static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1))));
+            std::string endpoint = device.endpoint + ":" + std::to_string(static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1))));
             existing_device.setEndpoint(endpoint);
             
             // 🔥 수정 5: DeviceEntity에는 setMetadata가 없으므로 config로 저장
             json metadata_json;
-            metadata_json["bacnet_device_id"] = device.device_id;
+            metadata_json["bacnet_device_id"] = device.id;
             metadata_json["vendor_id"] = std::stoi(device.properties.at("vendor_id"));
-            metadata_json["address"] = BACnetAddressToString(device.endpoint);
+            metadata_json["address"] = device.endpoint;
             metadata_json["port"] = static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1)));
             metadata_json["max_apdu_length"] = std::stoi(device.properties.at("max_apdu_length"));
             metadata_json["segmentation_support"] = std::stoi(device.properties.at("segmentation_support"));
-            metadata_json["object_count"] = device.data_points.size();
+            metadata_json["object_count"] = 0;
             
             existing_device.setConfig(metadata_json.dump());
             
@@ -264,7 +264,7 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
             // 🔥 수정 6: setDeviceId 없음, 대신 기본 필드들 설정
             new_device.setTenantId(1);  // 기본값
             new_device.setSiteId(1);    // 기본값
-            new_device.setName(device.device_name);
+            new_device.setName(device.name);
             new_device.setDescription("BACnet Device - Discovered automatically");
             new_device.setDeviceType("BACNET");  // device_type 설정
             new_device.setManufacturer("Unknown");
@@ -273,19 +273,19 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
             
             // 통신 설정
             new_device.setProtocolType("BACNET_IP");
-            std::string endpoint = BACnetAddressToString(device.endpoint) + ":" + std::to_string(static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1))));
+            std::string endpoint = device.endpoint + ":" + std::to_string(static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1))));
             new_device.setEndpoint(endpoint);
             new_device.setEnabled(true);
             
             // 메타데이터를 config JSON으로 저장
             json config_json;
-            config_json["bacnet_device_id"] = device.device_id;
+            config_json["bacnet_device_id"] = device.id;
             config_json["vendor_id"] = std::stoi(device.properties.at("vendor_id"));
-            config_json["address"] = BACnetAddressToString(device.endpoint);
+            config_json["address"] = device.endpoint;
             config_json["port"] = static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1)));
             config_json["max_apdu_length"] = std::stoi(device.properties.at("max_apdu_length"));
             config_json["segmentation_support"] = std::stoi(device.properties.at("segmentation_support"));
-            config_json["object_count"] = device.data_points.size();
+            config_json["object_count"] = 0;
             
             new_device.setConfig(config_json.dump());
             
@@ -335,25 +335,44 @@ bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(
             new_datapoint.setDeviceId(db_device_id);
             
             // 🔥 수정: address는 int이므로 object_instance 사용
-            new_datapoint.setAddress(static_cast<int>(object.object_instance));
-            new_datapoint.setName(object.object_name);
-            new_datapoint.setDescription(point.description);
-            new_datapoint.setDataType(DataTypeToString(DetermineDataType(static_cast<int>(object.object_type))));
-            new_datapoint.setEnabled(true);
-            new_datapoint.setUnit(point.unit);
+            new_datapoint.setAddress(static_cast<int>(object.address));
+            new_datapoint.setName(object.name);
+            new_datapoint.setDescription(object.description);
             
-            // 🔥 수정: DataPointEntity에는 setConfig가 없으므로 description에 추가 정보 저장
-            std::string full_description = point.description;
-            if (!object.object_name.empty() && object.object_name != point.description) {
-                full_description += " [" + object.object_name + "]";
+            
+int object_type = 0;  // 기본값
+            auto object_type_it = object.protocol_params.find("object_type");
+            if (object_type_it != object.protocol_params.end()) {
+                try {
+                    object_type = std::stoi(object_type_it->second);
+                } catch (...) {
+                    object_type = 0;  // 변환 실패 시 기본값
+                }
             }
-            full_description += " (Type: " + std::to_string(static_cast<int>(object.object_type)) + ")";
+            
+            // 데이터 타입 결정 (한 번만!)
+            PulseOne::Enums::DataType data_type_enum = DetermineDataType(object_type);
+            std::string data_type_string = DataTypeToString(data_type_enum);
+            new_datapoint.setDataType(data_type_string);
+            
+            new_datapoint.setEnabled(true);
+            new_datapoint.setUnit(object.unit);
+            
+            // BACnet 특화 정보를 description에 추가
+            std::string full_description = object.description;
+            if (!object.name.empty() && object.name != object.description) {
+                full_description += " [" + object.name + "]";
+            }
+            
+            std::string object_type_name = ObjectTypeToString(object_type);
+            full_description += " (" + object_type_name + " Type: " + std::to_string(object_type) + ")";
+            full_description += " (Instance: " + std::to_string(object.address) + ")";
             new_datapoint.setDescription(full_description);
             
             // 저장
             if (!datapoint_repository_->save(new_datapoint)) {
                 auto& logger = LogManager::getInstance();
-                logger.Warn("Failed to save DataPoint: " + object.object_name);
+                logger.Warn("Failed to save DataPoint: " + object.name);
                 continue;
             }
             
@@ -538,8 +557,8 @@ double BACnetDiscoveryService::ConvertDataValueToDouble(const PulseOne::Structs:
 
 std::string BACnetDiscoveryService::GenerateDataPointId(uint32_t device_id, const Drivers::DataPoint& object) {
     return std::to_string(device_id) + ":" + 
-           std::to_string(static_cast<int>(object.object_type)) + ":" + 
-           std::to_string(object.object_instance);
+           std::to_string(static_cast<int>(std::stoi(object.protocol_params.at("bacnet_object_type")))) + ":" + 
+           std::to_string(object.address);
 }
 
 std::string BACnetDiscoveryService::ObjectTypeToString(int type) {
@@ -632,6 +651,38 @@ void BACnetDiscoveryService::HandleError(const std::string& context, const std::
     auto& logger = LogManager::getInstance();
     logger.Error("BACnetDiscoveryService::" + context + " - " + error);
 }
+
+int BACnetDiscoveryService::GuessObjectTypeFromName(const std::string& object_name) {
+    if (object_name.empty()) return -1;
+    
+    // 대소문자 구분 없이 검사
+    std::string upper_name = object_name;
+    std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(), ::toupper);
+    
+    // "AI", "AO", "AV" 등으로 시작하는지 확인
+    if (upper_name.length() >= 2) {
+        std::string prefix = upper_name.substr(0, 2);
+        
+        if (prefix == "AI") return 0;   // ANALOG_INPUT
+        if (prefix == "AO") return 1;   // ANALOG_OUTPUT
+        if (prefix == "AV") return 2;   // ANALOG_VALUE
+        if (prefix == "BI") return 3;   // BINARY_INPUT
+        if (prefix == "BO") return 4;   // BINARY_OUTPUT
+        if (prefix == "BV") return 5;   // BINARY_VALUE
+        if (prefix == "MI") return 13;  // MULTI_STATE_INPUT
+        if (prefix == "MO") return 14;  // MULTI_STATE_OUTPUT
+        if (prefix == "MV") return 19;  // MULTI_STATE_VALUE
+    }
+    
+    // 전체 이름으로 확인
+    if (upper_name.find("ANALOG") != std::string::npos) return 0;
+    if (upper_name.find("BINARY") != std::string::npos) return 3;
+    if (upper_name.find("MULTI") != std::string::npos) return 13;
+    if (upper_name.find("DEVICE") != std::string::npos) return 8;
+    
+    return -1;  // 추정 불가
+}
+
 
 } // namespace Workers
 } // namespace PulseOne

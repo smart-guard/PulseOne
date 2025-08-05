@@ -9,15 +9,7 @@
 // =============================================================================
 // 필수 헤더 포함
 // =============================================================================
-#include "Drivers/Common/IProtocolDriver.h"
-#include "Common/BasicTypes.h"           // UUID, Timestamp 등
-#include "Common/Enums.h"                // ProtocolType, ConnectionStatus 등  
-#include "Common/Structs.h"              // DeviceInfo, DataPoint 등
-#include "Common/DriverStatistics.h"     // DriverStatistics
-#include "Drivers/Bacnet/BACnetCommonTypes.h"
-#include "Drivers/Bacnet/BACnetErrorMapper.h"
-#include "Utils/LogManager.h"
-
+#include <algorithm>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -26,6 +18,22 @@
 #include <queue>
 #include <future>
 #include <chrono>
+
+#ifdef min
+#undef min
+#endif
+#ifdef max  
+#undef max
+#endif
+
+#include "Drivers/Common/IProtocolDriver.h"
+#include "Common/BasicTypes.h"           // UUID, Timestamp 등
+#include "Common/Enums.h"                // ProtocolType, ConnectionStatus 등  
+#include "Common/Structs.h"              // DeviceInfo, DataPoint 등
+#include "Common/DriverStatistics.h"     // DriverStatistics
+#include "Drivers/Bacnet/BACnetErrorMapper.h"
+#include "Utils/LogManager.h"
+
 
 // BACnet 스택 조건부 포함
 #ifdef HAS_BACNET_STACK
@@ -59,6 +67,15 @@ extern "C" {
     #include <bacnet/basic/binding/address.h> // Address binding
     #include <bacnet/basic/object/device.h>   // Device object
 }
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
+
 #endif
 
 namespace PulseOne {

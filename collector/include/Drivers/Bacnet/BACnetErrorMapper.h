@@ -17,6 +17,15 @@ extern "C" {
     #include <bacnet/bacenum.h>
     #include <bacnet/bacerror.h>
 }
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
+
 #endif
 
 namespace PulseOne {

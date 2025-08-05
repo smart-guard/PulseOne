@@ -16,7 +16,6 @@
 #define BACNET_WORKER_H
 
 #include "Workers/Base/UdpBasedWorker.h"                    // ✅ 부모 클래스
-#include "Drivers/Bacnet/BACnetCommonTypes.h"               // ✅ BACnet 타입들
 #include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetDriver.h"                    // ✅ BACnet 드라이버
 #include "Common/DriverStatistics.h"                       // ✅ 표준 통계 구조                     // ✅ 공통 타입들
