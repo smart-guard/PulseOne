@@ -136,7 +136,7 @@ namespace PulseOne::Utils {
     }
     
     /**
-     * @brief 🎯 유일한 표준 변환 함수 (인라인)
+     * @brief 데이터 품질을 문자열로 변환
      * @param quality 데이터 품질 enum 값
      * @param lowercase true면 소문자, false면 대문자 (기본값)
      * @return 품질 코드의 문자열 표현
@@ -145,17 +145,26 @@ namespace PulseOne::Utils {
         std::string result;
         
         switch (quality) {
+            // 기본 품질 상태 (0-7)
+            case DataQuality::UNKNOWN: result = "UNKNOWN"; break;
             case DataQuality::GOOD: result = "GOOD"; break;
             case DataQuality::BAD: result = "BAD"; break;
             case DataQuality::UNCERTAIN: result = "UNCERTAIN"; break;
+            case DataQuality::STALE: result = "STALE"; break;
+            case DataQuality::MAINTENANCE: result = "MAINTENANCE"; break;
+            case DataQuality::SIMULATED: result = "SIMULATED"; break;
+            case DataQuality::MANUAL: result = "MANUAL"; break;
+            
+            // 확장 품질 상태 (8-15)
             case DataQuality::NOT_CONNECTED: result = "NOT_CONNECTED"; break;
-            case DataQuality::TIMEOUT: result = "TIMEOUT"; break;           // 🆕 NEW!
+            case DataQuality::TIMEOUT: result = "TIMEOUT"; break;
             case DataQuality::SCAN_DELAYED: result = "SCAN_DELAYED"; break;
             case DataQuality::UNDER_MAINTENANCE: result = "UNDER_MAINTENANCE"; break;
             case DataQuality::STALE_DATA: result = "STALE_DATA"; break;
             case DataQuality::VERY_STALE_DATA: result = "VERY_STALE_DATA"; break;
             case DataQuality::MAINTENANCE_BLOCKED: result = "MAINTENANCE_BLOCKED"; break;
             case DataQuality::ENGINEER_OVERRIDE: result = "ENGINEER_OVERRIDE"; break;
+            
             default: result = "UNKNOWN"; break;
         }
         
@@ -165,19 +174,28 @@ namespace PulseOne::Utils {
         
         return result;
     }
-    
+
+        
     /**
-     * @brief 🎯 문자열을 DataQuality로 변환 (역변환)
+     * @brief 문자열을 데이터 품질로 변환 (역변환)
      */
     inline DataQuality StringToDataQuality(const std::string& str) {
         std::string upper = str;
         std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
         
+        // 기본 품질 상태
+        if (upper == "UNKNOWN") return DataQuality::UNKNOWN;
         if (upper == "GOOD") return DataQuality::GOOD;
         if (upper == "BAD") return DataQuality::BAD;
         if (upper == "UNCERTAIN") return DataQuality::UNCERTAIN;
+        if (upper == "STALE") return DataQuality::STALE;
+        if (upper == "MAINTENANCE") return DataQuality::MAINTENANCE;
+        if (upper == "SIMULATED") return DataQuality::SIMULATED;
+        if (upper == "MANUAL") return DataQuality::MANUAL;
+        
+        // 확장 품질 상태
         if (upper == "NOT_CONNECTED") return DataQuality::NOT_CONNECTED;
-        if (upper == "TIMEOUT") return DataQuality::TIMEOUT;             // 🆕 NEW!
+        if (upper == "TIMEOUT") return DataQuality::TIMEOUT;
         if (upper == "SCAN_DELAYED") return DataQuality::SCAN_DELAYED;
         if (upper == "UNDER_MAINTENANCE") return DataQuality::UNDER_MAINTENANCE;
         if (upper == "STALE_DATA") return DataQuality::STALE_DATA;
@@ -185,7 +203,7 @@ namespace PulseOne::Utils {
         if (upper == "MAINTENANCE_BLOCKED") return DataQuality::MAINTENANCE_BLOCKED;
         if (upper == "ENGINEER_OVERRIDE") return DataQuality::ENGINEER_OVERRIDE;
         
-        return DataQuality::BAD; // 기본값
+        return DataQuality::BAD; // 기본값 (알 수 없는 문자열은 BAD로)
     }
     
     /**
@@ -198,7 +216,7 @@ namespace PulseOne::Utils {
             case ConnectionStatus::CONNECTED: return "CONNECTED";
             case ConnectionStatus::RECONNECTING: return "RECONNECTING";
             case ConnectionStatus::ERROR: return "ERROR";
-            case ConnectionStatus::MAINTENANCE_MODE: return "MAINTENANCE_MODE";
+            case ConnectionStatus::MAINTENANCE: return "MAINTENANCE_MODE";
             default: return "UNKNOWN";
         }
     }
@@ -209,11 +227,12 @@ namespace PulseOne::Utils {
     inline std::string MaintenanceStatusToString(MaintenanceStatus status) {
         switch (status) {
             case MaintenanceStatus::NORMAL: return "NORMAL";
-            case MaintenanceStatus::MAINTENANCE_REQUESTED: return "MAINTENANCE_REQUESTED";
-            case MaintenanceStatus::UNDER_MAINTENANCE: return "UNDER_MAINTENANCE";
-            case MaintenanceStatus::MAINTENANCE_COMPLETED: return "MAINTENANCE_COMPLETED";
-            case MaintenanceStatus::EMERGENCY_STOP: return "EMERGENCY_STOP";
-            case MaintenanceStatus::REMOTE_BLOCKED: return "REMOTE_BLOCKED";
+            case MaintenanceStatus::SCHEDULED: return "SCHEDULED";           // 변경
+            case MaintenanceStatus::IN_PROGRESS: return "IN_PROGRESS";       // 변경
+            case MaintenanceStatus::PAUSED: return "PAUSED";                 // 추가
+            case MaintenanceStatus::COMPLETED: return "COMPLETED";           // 변경
+            case MaintenanceStatus::CANCELLED: return "CANCELLED";           // 추가
+            case MaintenanceStatus::EMERGENCY: return "EMERGENCY";           // 변경
             default: return "UNKNOWN";
         }
     }
@@ -223,17 +242,63 @@ namespace PulseOne::Utils {
      */
     inline std::string ErrorCodeToString(ErrorCode code) {
         switch (code) {
+            // 공통 성공/실패
             case ErrorCode::SUCCESS: return "SUCCESS";
+            case ErrorCode::UNKNOWN_ERROR: return "UNKNOWN_ERROR";
+            
+            // 연결 관련 에러 (10-15)
             case ErrorCode::CONNECTION_FAILED: return "CONNECTION_FAILED";
             case ErrorCode::CONNECTION_TIMEOUT: return "CONNECTION_TIMEOUT";
+            case ErrorCode::CONNECTION_REFUSED: return "CONNECTION_REFUSED";
             case ErrorCode::CONNECTION_LOST: return "CONNECTION_LOST";
+            case ErrorCode::AUTHENTICATION_FAILED: return "AUTHENTICATION_FAILED";
+            case ErrorCode::AUTHORIZATION_FAILED: return "AUTHORIZATION_FAILED";
+            
+            // 통신 관련 에러 (100-105)
+            case ErrorCode::TIMEOUT: return "TIMEOUT";
             case ErrorCode::PROTOCOL_ERROR: return "PROTOCOL_ERROR";
+            case ErrorCode::INVALID_REQUEST: return "INVALID_REQUEST";
+            case ErrorCode::INVALID_RESPONSE: return "INVALID_RESPONSE";
+            case ErrorCode::CHECKSUM_ERROR: return "CHECKSUM_ERROR";
+            case ErrorCode::FRAME_ERROR: return "FRAME_ERROR";
+            
+            // 데이터 관련 에러 (200-204)
+            case ErrorCode::INVALID_DATA: return "INVALID_DATA";
+            case ErrorCode::DATA_TYPE_MISMATCH: return "DATA_TYPE_MISMATCH";
+            case ErrorCode::DATA_OUT_OF_RANGE: return "DATA_OUT_OF_RANGE";
             case ErrorCode::DATA_FORMAT_ERROR: return "DATA_FORMAT_ERROR";
-            case ErrorCode::MAINTENANCE_ACTIVE: return "MAINTENANCE_ACTIVE";
-            case ErrorCode::REMOTE_CONTROL_BLOCKED: return "REMOTE_CONTROL_BLOCKED";
-            case ErrorCode::INSUFFICIENT_PERMISSION: return "INSUFFICIENT_PERMISSION";
+            case ErrorCode::DATA_STALE: return "DATA_STALE";
+            
+            // 디바이스 관련 에러 (300-304)
+            case ErrorCode::DEVICE_NOT_RESPONDING: return "DEVICE_NOT_RESPONDING";
+            case ErrorCode::DEVICE_BUSY: return "DEVICE_BUSY";
+            case ErrorCode::DEVICE_ERROR: return "DEVICE_ERROR";
+            case ErrorCode::DEVICE_NOT_FOUND: return "DEVICE_NOT_FOUND";
+            case ErrorCode::DEVICE_OFFLINE: return "DEVICE_OFFLINE";
+            
+            // 설정 관련 에러 (400-402)
+            case ErrorCode::INVALID_CONFIGURATION: return "INVALID_CONFIGURATION";
+            case ErrorCode::MISSING_CONFIGURATION: return "MISSING_CONFIGURATION";
+            case ErrorCode::CONFIGURATION_ERROR: return "CONFIGURATION_ERROR";
+            
+            // 시스템 관련 에러 (500-503)
+            case ErrorCode::MEMORY_ERROR: return "MEMORY_ERROR";
             case ErrorCode::RESOURCE_EXHAUSTED: return "RESOURCE_EXHAUSTED";
             case ErrorCode::INTERNAL_ERROR: return "INTERNAL_ERROR";
+            case ErrorCode::FILE_ERROR: return "FILE_ERROR";
+            
+            // 점검 관련 에러 (600-604)
+            case ErrorCode::MAINTENANCE_ACTIVE: return "MAINTENANCE_ACTIVE";
+            case ErrorCode::MAINTENANCE_PERMISSION_DENIED: return "MAINTENANCE_PERMISSION_DENIED";
+            case ErrorCode::MAINTENANCE_TIMEOUT: return "MAINTENANCE_TIMEOUT";
+            case ErrorCode::REMOTE_CONTROL_BLOCKED: return "REMOTE_CONTROL_BLOCKED";
+            case ErrorCode::INSUFFICIENT_PERMISSION: return "INSUFFICIENT_PERMISSION";
+            
+            // 프로토콜 특화 에러 (1000+)
+            case ErrorCode::MODBUS_EXCEPTION: return "MODBUS_EXCEPTION";
+            case ErrorCode::MQTT_PUBLISH_FAILED: return "MQTT_PUBLISH_FAILED";
+            case ErrorCode::BACNET_SERVICE_ERROR: return "BACNET_SERVICE_ERROR";
+            
             default: return "UNKNOWN_ERROR";
         }
     }
@@ -301,10 +366,21 @@ namespace PulseOne::Utils {
     /**
      * @brief 현재 시간 가져오기
      */
+    /**
+     * @brief 현재 타임스탬프 얻기 (기본)
+     */
     inline Timestamp GetCurrentTimestamp() {
-        return std::chrono::system_clock::now();
+        auto now = std::chrono::system_clock::now();
+        auto duration = now.time_since_epoch();
+        return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
     }
     
+    /**
+     * @brief 현재 타임스탬프 얻기 (별칭 - 기존 코드 호환성)
+     */
+    inline Timestamp CurrentTimestamp() {
+        return GetCurrentTimestamp();
+    }
     /**
      * @brief 두 시간 사이의 간격 계산
      */

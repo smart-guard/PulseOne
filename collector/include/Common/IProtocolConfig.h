@@ -20,7 +20,7 @@
 #include <string>
 
 namespace PulseOne::Structs {
-    
+    using ProtocolType = PulseOne::Enums::ProtocolType;
     /**
      * @brief 프로토콜별 설정 기본 인터페이스
      * @details 모든 프로토콜 설정 클래스의 기본 클래스

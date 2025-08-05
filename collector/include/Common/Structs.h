@@ -54,8 +54,11 @@ namespace PulseOne {
 namespace Structs {
     
     // ✅ 네임스페이스 import
-    using namespace PulseOne::BasicTypes;
-    using namespace PulseOne::Enums;
+    using DataValue = PulseOne::BasicTypes::DataVariant;
+    using Timestamp = PulseOne::BasicTypes::Timestamp;
+    using UUID = PulseOne::BasicTypes::UUID;
+    using ProtocolType = PulseOne::Enums::ProtocolType;
+    using DataQuality = PulseOne::Enums::DataQuality;
     using JsonType = json_impl::json;
     namespace Utils = PulseOne::Utils;
     
@@ -1007,6 +1010,46 @@ namespace Structs {
             
             return j.dump();
         }
+    };
+
+    /**
+     * @brief 로그 통계 구조체
+     */
+    struct LogStatistics {
+        std::atomic<uint64_t> trace_count{0};
+        std::atomic<uint64_t> debug_count{0};
+        std::atomic<uint64_t> info_count{0};
+        std::atomic<uint64_t> warn_count{0};
+        std::atomic<uint64_t> warning_count{0};  // warn_count 별칭
+        std::atomic<uint64_t> error_count{0};
+        std::atomic<uint64_t> fatal_count{0};
+        std::atomic<uint64_t> maintenance_count{0};
+        
+        Timestamp start_time;
+        Timestamp last_log_time;
+        
+        LogStatistics() {
+            start_time = PulseOne::Utils::GetCurrentTimestamp();
+            last_log_time = start_time;
+        }
+    };
+    
+    /**
+     * @brief 드라이버 로그 컨텍스트
+     */
+    struct DriverLogContext {
+        UUID device_id;
+        std::string device_name;
+        ProtocolType protocol;
+        std::string endpoint;
+        std::string thread_id;
+        std::string operation;
+        
+        DriverLogContext() = default;
+        
+        DriverLogContext(const UUID& dev_id, const std::string& dev_name, 
+                        ProtocolType proto, const std::string& ep)
+            : device_id(dev_id), device_name(dev_name), protocol(proto), endpoint(ep) {}
     };
 
 } // namespace Structs

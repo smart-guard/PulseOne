@@ -37,6 +37,7 @@ namespace Enums {
         MODBUS_ASCII = 3,      // 향후 확장
         MQTT = 4,
         MQTT_5 = 5,            // MQTT 5.0 명시적 지원
+        BACNET = 6,
         BACNET_IP = 6,
         BACNET_MSTP = 7,
         OPC_UA = 8,            // 향후 확장
@@ -59,6 +60,7 @@ namespace Enums {
     enum class LogLevel : uint8_t {
         TRACE = 0,     // 가장 상세한 디버그 정보
         DEBUG = 1,     // 디버그 정보
+        DEBUG_LEVEL = 1, // DEBUG 와 같음 호환성 때문에 DEBUG_LEVEL 이름을 쓰는것 뿐임
         INFO = 2,      // 일반 정보 (기본값)
         WARN = 3,      // 경고
         ERROR = 4,     // 에러
@@ -100,7 +102,7 @@ namespace Enums {
         DISCONNECTING = 4,     // 연결 해제 중
         ERROR = 5,             // 연결 에러
         TIMEOUT = 6,           // 연결 타임아웃
-        MAINTENANCE = 7        // 🆕 점검 모드 (연결 차단)
+        MAINTENANCE = 7,       // 🆕 점검 모드 (연결 차단)
     };
     
     /**
@@ -127,18 +129,29 @@ namespace Enums {
     // =========================================================================
     
     /**
-     * @brief 데이터 품질 상태
-     * @details OPC-UA, BACnet 등에서 사용하는 품질 정보
+     * @brief 데이터 품질 상태 (확장)
+     * @details Utils.h 함수들과 완전 호환되도록 확장
      */
     enum class DataQuality : uint8_t {
-        UNKNOWN = 0,           // 알 수 없음
-        GOOD = 1,             // 정상
-        BAD = 2,              // 불량
-        UNCERTAIN = 3,        // 불확실
-        STALE = 4,            // 오래된 데이터
-        MAINTENANCE = 5,      // 🆕 점검 중 (데이터 신뢰성 낮음)
-        SIMULATED = 6,        // 시뮬레이션 데이터
-        MANUAL = 7            // 수동 입력 데이터
+        // 기본 품질 상태 (0-7)
+        UNKNOWN = 0,                    // 알 수 없음
+        GOOD = 1,                       // 정상
+        BAD = 2,                        // 불량
+        UNCERTAIN = 3,                  // 불확실
+        STALE = 4,                      // 오래된 데이터
+        MAINTENANCE = 5,                // 점검 중
+        SIMULATED = 6,                  // 시뮬레이션 데이터
+        MANUAL = 7,                     // 수동 입력 데이터
+        
+        // 확장 품질 상태 (8-15) - Utils.h 함수 호환
+        NOT_CONNECTED = 8,              // 연결 안됨
+        TIMEOUT = 9,                    // 타임아웃
+        SCAN_DELAYED = 10,              // 스캔 지연
+        UNDER_MAINTENANCE = 11,         // 점검 중 (상세)
+        STALE_DATA = 12,                // 부실한 데이터
+        VERY_STALE_DATA = 13,           // 매우 부실한 데이터
+        MAINTENANCE_BLOCKED = 14,       // 점검으로 차단됨
+        ENGINEER_OVERRIDE = 15          // 엔지니어 오버라이드
     };
     
     /**
@@ -209,7 +222,7 @@ namespace Enums {
         INVALID_DATA = 200,
         DATA_TYPE_MISMATCH = 201,
         DATA_OUT_OF_RANGE = 202,
-        DATA_NOT_AVAILABLE = 203,
+        DATA_FORMAT_ERROR = 203,
         DATA_STALE = 204,
         
         // 디바이스 관련 에러 (300-399)
@@ -226,14 +239,16 @@ namespace Enums {
         
         // 시스템 관련 에러 (500-599)
         MEMORY_ERROR = 500,
-        RESOURCE_ERROR = 501,
-        THREAD_ERROR = 502,
+        RESOURCE_EXHAUSTED = 501,
+        INTERNAL_ERROR = 502,
         FILE_ERROR = 503,
         
         // 🆕 점검 관련 에러 (600-699)
-        MAINTENANCE_MODE_ACTIVE = 600,
+        MAINTENANCE_ACTIVE = 600,
         MAINTENANCE_PERMISSION_DENIED = 601,
         MAINTENANCE_TIMEOUT = 602,
+        REMOTE_CONTROL_BLOCKED = 603,
+        INSUFFICIENT_PERMISSION = 604,
         
         // 프로토콜 특화 에러 (1000+)
         MODBUS_EXCEPTION = 1000,

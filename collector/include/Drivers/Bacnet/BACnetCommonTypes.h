@@ -22,8 +22,6 @@
 #undef min
 #endif
 
-#include "Common/UnifiedCommonTypes.h"
-
 // BACnet 스택이 있는 경우 타입 포함
 #ifdef HAS_BACNET_STACK
 extern "C" {
