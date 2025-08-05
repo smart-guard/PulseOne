@@ -187,7 +187,7 @@ namespace Enums {
         WRITE_ONLY = 1,       // 쓰기 전용  
         READ_WRITE = 2,       // 읽기/쓰기
         READ_WRITE_MAINTENANCE_ONLY = 3  // 🆕 점검 시에만 쓰기 가능
-    };
+    };    
 
     // =========================================================================
     // 🔥 에러 및 결과 관련 열거형들 (중복 제거)
@@ -349,6 +349,16 @@ namespace Enums {
         CRITICAL = 4,        // 치명적 알람
         EMERGENCY = 5        // 비상 알람
     };
+
+    /**
+     * @brief 접근 모드 (DataPoint 전용) - WorkerFactory 호환
+     */
+    enum class AccessMode : uint8_t {
+        read = 0,           // 읽기 전용
+        write = 1,          // 쓰기 전용
+        read_write = 2      // 읽기/쓰기
+    };
+
 
 } // namespace Enums
 } // namespace PulseOne

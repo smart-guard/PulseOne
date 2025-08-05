@@ -620,7 +620,94 @@ namespace PulseOne::Utils {
      */
     inline std::string GetCurrentTimestampString() {
         return TimestampToString(GetCurrentTimestamp());
-    }    
+    }
+    
+    /**
+     * @brief 접근 모드를 문자열로 변환
+     */
+    inline std::string AccessModeToString(PulseOne::Enums::AccessMode mode) {
+        switch (mode) {
+            case PulseOne::Enums::AccessMode::read: return "read";
+            case PulseOne::Enums::AccessMode::write: return "write";
+            case PulseOne::Enums::AccessMode::read_write: return "read_write";
+            default: return "read";
+        }
+    }
+
+    /**
+     * @brief 문자열을 접근 모드로 변환
+     */
+    inline PulseOne::Enums::AccessMode StringToAccessMode(const std::string& str) {
+        if (str == "write") return PulseOne::Enums::AccessMode::write;
+        if (str == "read_write") return PulseOne::Enums::AccessMode::read_write;
+        return PulseOne::Enums::AccessMode::read;  // 기본값
+    }
+
+    /**
+     * @brief 데이터 타입을 문자열로 변환 (WorkerFactory에서 사용)
+     */
+    inline std::string DataTypeToString(PulseOne::Enums::DataType type) {
+        switch (type) {
+            case PulseOne::Enums::DataType::BOOL: return "BOOLEAN";
+            case PulseOne::Enums::DataType::INT8: return "INT8";
+            case PulseOne::Enums::DataType::UINT8: return "UINT8";
+            case PulseOne::Enums::DataType::INT16: return "INT16";
+            case PulseOne::Enums::DataType::UINT16: return "UINT16";
+            case PulseOne::Enums::DataType::INT32: return "INT32";
+            case PulseOne::Enums::DataType::UINT32: return "UINT32";
+            case PulseOne::Enums::DataType::INT64: return "INT64";
+            case PulseOne::Enums::DataType::UINT64: return "UINT64";
+            case PulseOne::Enums::DataType::FLOAT32: return "FLOAT";
+            case PulseOne::Enums::DataType::FLOAT64: return "DOUBLE";
+            case PulseOne::Enums::DataType::STRING: return "STRING";
+            case PulseOne::Enums::DataType::BINARY: return "BINARY";
+            case PulseOne::Enums::DataType::DATETIME: return "DATETIME";
+            case PulseOne::Enums::DataType::JSON: return "JSON";
+            case PulseOne::Enums::DataType::ARRAY: return "ARRAY";
+            case PulseOne::Enums::DataType::OBJECT: return "OBJECT";
+            default: return "UNKNOWN";
+        }
+    }
+
+    /**
+     * @brief 문자열을 데이터 타입으로 변환 (WorkerFactory에서 사용)
+     */
+    inline PulseOne::Enums::DataType StringToDataType(const std::string& str) {
+        std::string upper = str;
+        std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+        
+        if (upper == "BOOLEAN" || upper == "BOOL") return PulseOne::Enums::DataType::BOOL;
+        if (upper == "INT8") return PulseOne::Enums::DataType::INT8;
+        if (upper == "UINT8") return PulseOne::Enums::DataType::UINT8;
+        if (upper == "INT16") return PulseOne::Enums::DataType::INT16;
+        if (upper == "UINT16") return PulseOne::Enums::DataType::UINT16;
+        if (upper == "INT32") return PulseOne::Enums::DataType::INT32;
+        if (upper == "UINT32") return PulseOne::Enums::DataType::UINT32;
+        if (upper == "INT64") return PulseOne::Enums::DataType::INT64;
+        if (upper == "UINT64") return PulseOne::Enums::DataType::UINT64;
+        if (upper == "FLOAT" || upper == "FLOAT32") return PulseOne::Enums::DataType::FLOAT32;
+        if (upper == "DOUBLE" || upper == "FLOAT64") return PulseOne::Enums::DataType::FLOAT64;
+        if (upper == "STRING") return PulseOne::Enums::DataType::STRING;
+        if (upper == "BINARY") return PulseOne::Enums::DataType::BINARY;
+        if (upper == "DATETIME") return PulseOne::Enums::DataType::DATETIME;
+        if (upper == "JSON") return PulseOne::Enums::DataType::JSON;
+        if (upper == "ARRAY") return PulseOne::Enums::DataType::ARRAY;
+        if (upper == "OBJECT") return PulseOne::Enums::DataType::OBJECT;
+        
+        return PulseOne::Enums::DataType::UNKNOWN;
+    }
+
+    /**
+     * @brief 프로토콜 타입을 문자열로 변환 (문자열 버전 - WorkerFactory 호환)
+     */
+    inline std::string ProtocolTypeToString(const std::string& protocol) {
+        return protocol;  // 이미 문자열이므로 그대로 반환
+    }
+
+    /**
+     * @brief 프로토콜 타입을 문자열로 변환 (enum 버전 - 기존 함수 유지)
+     */
+    // 기존 ProtocolTypeToString(ProtocolType type) 함수는 그대로 유지    
 
     
 } // namespace PulseOne::Utils
