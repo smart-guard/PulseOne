@@ -48,31 +48,6 @@ enum class ModbusRegisterType {
 };
 
 /**
- * @brief Modbus RTU 슬레이브 정보 (RTU 특화)
- */
-struct DeviceInfo {
-    int slave_id;                                    ///< 슬레이브 ID
-    std::string device_name;                         ///< 디바이스 이름
-    bool is_online;                                  ///< 온라인 상태
-    std::atomic<uint32_t> response_time_ms;          ///< 평균 응답 시간
-    std::chrono::system_clock::time_point last_response;  ///< 마지막 응답 시간
-    
-    // 통계
-    std::atomic<uint32_t> total_requests;            ///< 총 요청 수
-    std::atomic<uint32_t> successful_requests;       ///< 성공한 요청 수
-    std::atomic<uint32_t> timeout_errors;            ///< 타임아웃 에러 수
-    std::atomic<uint32_t> crc_errors;                ///< CRC 에러 수
-    std::string last_error;                          ///< 마지막 에러 메시지
-    
-    DeviceInfo(int id = 1, const std::string& name = "")
-        : slave_id(id), device_name(name), is_online(false)
-        , response_time_ms(0), total_requests(0), successful_requests(0)
-        , timeout_errors(0)
-        , last_response(std::chrono::system_clock::now())
-        , crc_errors(0) {}
-};
-
-/**
  * @brief Modbus RTU 폴링 그룹 (TCP와 유사한 구조)
  */
 struct ModbusRtuPollingGroup {
@@ -235,7 +210,7 @@ protected:
     
     void LockBus();    // RTU 고유
     void UnlockBus();  // RTU 고유
-    void LogRtuMessage(PulseOne::LogLevel level, const std::string& message);
+    void LogRtuMessage(PulseOne::Enums::LogLevel level, const std::string& message);
     std::vector<PulseOne::Structs::DataPoint> CreateDataPoints(int slave_id, 
                                                     ModbusRegisterType register_type,
                                                     uint16_t start_address, 
@@ -248,6 +223,10 @@ private:
     bool ParseModbusConfig();
     bool InitializeModbusDriver();
     void SetupDriverCallbacks();
+
+    std::string GetPropertyValue(const std::map<std::string, std::string>& properties, 
+                           const std::string& key, 
+                           const std::string& default_value = "");
 };
 
 } // namespace Workers  

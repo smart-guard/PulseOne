@@ -131,6 +131,12 @@ private:
      */
     void HandleError(const std::string& context, const std::string& error);
 
+    /**
+     * @brief Object 이름에서 Object Type 추정
+     * @param object_name 객체 이름 ("AI1", "BO5" 등)
+     * @return 추정된 객체 타입
+     */
+    int GuessObjectTypeFromName(const std::string& object_name);
     // =======================================================================
     // 멤버 변수들
     // =======================================================================

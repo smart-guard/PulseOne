@@ -759,7 +759,7 @@ bool MQTTWorker::ParseMQTTConfig() {
         
         // 재시도 횟수
         if (protocol_config_json.contains("max_retry_count")) {
-            mqtt_config_.retry_count = protocol_config_json["max_retry_count"].get<int>();
+            mqtt_config_.max_retry_count = protocol_config_json["max_retry_count"].get<int>();
         }
         
         LogMessage(LogLevel::INFO, 
@@ -857,7 +857,7 @@ bool MQTTWorker::InitializeMQTTDriver() {
         mqtt_driver_ = std::make_unique<PulseOne::Drivers::MqttDriver>();
         
         // 드라이버 설정 생성
-        PulseOne::DriverConfig driver_config;
+        PulseOne::Structs::DriverConfig driver_config;
         driver_config.device_id = device_info_.id;
         driver_config.name = device_info_.name;
         driver_config.endpoint = mqtt_config_.broker_url;

@@ -248,28 +248,33 @@ std::string BACnetWorker::GetDiscoveredDevicesAsJson() const {
     std::lock_guard<std::mutex> lock(devices_mutex_);
     
     std::stringstream ss;
-    ss << "{\n";
-    ss << "  \"devices\": [\n";
+    ss << "{\n  \"devices\": [\n";
     
     bool first = true;
     for (const auto& [device_id, device] : discovered_devices_) {
-        if (!first) ss << ",\n";
+        if (!first) {
+            ss << ",\n";
+        }
         first = false;
         
         ss << "    {\n";
         ss << "      \"device_id\": " << device_id << ",\n";
-        // ✅ 올바른 멤버명 사용
-        ss << "      \"device_name\": \"" << device.device_name << "\",\n";
-        ss << "      \"vendor_id\": " << std::stoi(device.properties.at("vendor_id")) << ",\n";  // ✅ vendor_name → vendor_id
-        ss << "      \"ip_address\": \"" << device.ip_address << "\",\n";
-        ss << "      \"port\": " << device.port << ",\n";
-        ss << "      \"max_apdu_length\": " << std::stoi(device.properties.at("max_apdu_length")) << ",\n";
-        ss << "      \"segmentation_support\": " << static_cast<int>(std::stoi(device.properties.at("segmentation_support"))) << ",\n";  // ✅ segmentation_supported → segmentation_support
+        ss << "      \"device_name\": \"" << device.name << "\",\n";  // ✅ 수정
+        ss << "      \"endpoint\": \"" << device.endpoint << "\",\n";
+        ss << "      \"protocol_type\": \"" << device.protocol_type << "\",\n";
+        ss << "      \"is_enabled\": " << (device.is_enabled ? "true" : "false") << ",\n";
         
-        // 마지막 발견 시간
-        auto last_seen = std::chrono::duration_cast<std::chrono::seconds>(
-            device.last_seen.time_since_epoch()).count();
-        ss << "      \"last_seen_timestamp\": " << last_seen << "\n";
+        // ✅ last_seen 수정
+        auto last_seen_it = device.properties.find("last_seen");
+        if (last_seen_it != device.properties.end()) {
+            ss << "      \"last_seen\": " << last_seen_it->second << ",\n";
+        } else {
+            auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            ss << "      \"last_seen\": " << now << ",\n";
+        }
+        
+        ss << "      \"connection_status\": \"" << static_cast<int>(device.connection_status) << "\"\n";
         ss << "    }";
     }
     
@@ -325,16 +330,42 @@ std::vector<DeviceInfo> BACnetWorker::GetDiscoveredDevices() const {
     return devices;
 }
 
-std::vector<DataPoint> BACnetWorker::GetDiscoveredObjects(uint32_t device_id) const {
+std::vector<PulseOne::Structs::DataPoint> BACnetWorker::GetDiscoveredObjects(uint32_t device_id) const {
     std::lock_guard<std::mutex> lock(devices_mutex_);
     
-    // TODO: 실제 객체 목록 반환 구현
-    std::vector<DataPoint> objects;
+    std::vector<PulseOne::Structs::DataPoint> objects;
     
     auto it = discovered_devices_.find(device_id);
     if (it != discovered_devices_.end()) {
-        // TODO: 디바이스별 객체 목록 구현
-        objects = it->second.objects;  // DeviceInfo에 objects 벡터가 있다고 가정
+        // ✅ properties에서 discovered_objects 찾기
+        auto objects_it = it->second.properties.find("discovered_objects");
+        if (objects_it != it->second.properties.end()) {
+            try {
+                json objects_json = json::parse(objects_it->second);
+                for (const auto& obj : objects_json) {
+                    PulseOne::Structs::DataPoint data_point;
+                    
+                    // JSON에서 DataPoint 복원
+                    if (obj.contains("name")) data_point.name = obj["name"];
+                    if (obj.contains("description")) data_point.description = obj["description"];
+                    if (obj.contains("address")) data_point.address = obj["address"];
+                    if (obj.contains("data_type")) data_point.data_type = obj["data_type"];
+                    if (obj.contains("unit")) data_point.unit = obj["unit"];
+                    
+                    // protocol_params 복원
+                    if (obj.contains("protocol_params")) {
+                        for (const auto& [key, value] : obj["protocol_params"].items()) {
+                            data_point.protocol_params[key] = value;
+                        }
+                    }
+                    
+                    objects.push_back(data_point);
+                }
+            } catch (const std::exception& e) {
+                // JSON 파싱 실패 시 빈 벡터 반환
+                objects.clear();
+            }
+        }
     }
     
     return objects;
@@ -618,11 +649,23 @@ void BACnetWorker::UpdateWorkerStats(const std::string& operation, bool success)
     }
 }
 
-std::string BACnetWorker::CreateObjectId(const std::string& device_id, const DataPoint& object_info) const {
-    // ✅ UUID string과 올바른 멤버명 사용
-    return device_id + ":" + 
-           std::to_string(static_cast<int>(object_info.object_type)) + ":" + 
-           std::to_string(object_info.object_instance);
+std::string BACnetWorker::CreateObjectId(const std::string& device_id, const PulseOne::Workers::DataPoint& object_info) const {
+    
+    // protocol_params에서 object_type 추출
+    std::string object_type_str = "0";  // 기본값
+    auto object_type_it = object_info.protocol_params.find("object_type");
+    if (object_type_it != object_info.protocol_params.end()) {
+        object_type_str = object_type_it->second;
+    }
+    
+    // protocol_params에서 object_instance 추출 또는 address 사용
+    std::string object_instance_str = std::to_string(object_info.address);
+    auto object_instance_it = object_info.protocol_params.find("object_instance");
+    if (object_instance_it != object_info.protocol_params.end()) {
+        object_instance_str = object_instance_it->second;
+    }
+    
+    return device_id + ":" + object_type_str + ":" + object_instance_str;
 }
 
 } // namespace Workers

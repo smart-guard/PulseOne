@@ -6,7 +6,6 @@
 #ifndef BACNET_SERVICE_MANAGER_H
 #define BACNET_SERVICE_MANAGER_H
 
-#include "Drivers/Bacnet/BACnetCommonTypes.h"
 #include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetStatisticsManager.h"
 #include <memory>
