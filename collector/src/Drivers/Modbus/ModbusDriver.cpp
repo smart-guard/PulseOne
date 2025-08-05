@@ -1002,5 +1002,90 @@ void ModbusDriver::StopRealtimeMonitoring() {
     }
 }
 
+bool ModbusDriver::Start() {
+    std::lock_guard<std::mutex> lock(driver_mutex_);
+    
+    if (is_started_) {
+        if (logger_) {
+            logger_->Debug("ModbusDriver already started for endpoint: " + config_.endpoint);
+        }
+        return true;
+    }
+    
+    if (logger_) {
+        logger_->Info("🚀 Starting ModbusDriver for endpoint: " + config_.endpoint);
+    }
+    
+    try {
+        // 연결 상태 확인 및 연결 시도
+        if (!IsConnected()) {
+            if (!Connect()) {
+                if (logger_) {
+                    logger_->Error("Failed to connect during ModbusDriver::Start()");
+                }
+                return false;
+            }
+        }
+        
+        // 시작 상태로 변경
+        is_started_ = true;
+        status_ = Structs::DriverStatus::RUNNING;
+        
+        // 통계 업데이트
+        statistics_.last_activity = std::chrono::steady_clock::now();
+        statistics_.start_time = statistics_.last_activity;
+        
+        if (logger_) {
+            logger_->Info("✅ ModbusDriver started successfully");
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("Exception in ModbusDriver::Start(): " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+bool ModbusDriver::Stop() {
+    std::lock_guard<std::mutex> lock(driver_mutex_);
+    
+    if (!is_started_) {
+        if (logger_) {
+            logger_->Debug("ModbusDriver already stopped for endpoint: " + config_.endpoint);
+        }
+        return true;
+    }
+    
+    if (logger_) {
+        logger_->Info("🛑 Stopping ModbusDriver for endpoint: " + config_.endpoint);
+    }
+    
+    try {
+        // 연결 해제
+        if (IsConnected()) {
+            Disconnect();
+        }
+        
+        // 중지 상태로 변경
+        is_started_ = false;
+        status_ = Structs::DriverStatus::STOPPED;
+        
+        if (logger_) {
+            logger_->Info("✅ ModbusDriver stopped successfully");
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("Exception in ModbusDriver::Stop(): " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
 } // namespace Drivers
 } // namespace PulseOne

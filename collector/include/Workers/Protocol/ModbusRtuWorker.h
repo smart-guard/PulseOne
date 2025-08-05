@@ -215,6 +215,9 @@ protected:
                                                     ModbusRegisterType register_type,
                                                     uint16_t start_address, 
                                                     uint16_t count);
+    std::string GetPropertyValue(const std::map<std::string, std::string>& properties, 
+                           const std::string& key, 
+                           const std::string& default_value = "");
 
 private:
     // =============================================================================
@@ -224,9 +227,6 @@ private:
     bool InitializeModbusDriver();
     void SetupDriverCallbacks();
 
-    std::string GetPropertyValue(const std::map<std::string, std::string>& properties, 
-                           const std::string& key, 
-                           const std::string& default_value = "");
 };
 
 } // namespace Workers  

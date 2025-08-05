@@ -66,12 +66,13 @@ public:
     // 복사/이동 방지 (리소스 관리를 위해)
     ModbusDriver(const ModbusDriver&) = delete;
     ModbusDriver& operator=(const ModbusDriver&) = delete;
-    
     // =======================================================================
     // IProtocolDriver 인터페이스 구현 (Core 기능 - 항상 사용 가능)
     // =======================================================================
     
     bool Initialize(const DriverConfig& config) override;
+    bool Start() override;                    
+    bool Stop() override;                     
     bool Connect() override;
     bool Disconnect() override;
     bool IsConnected() const override;
@@ -172,7 +173,7 @@ private:
     std::mutex connection_mutex_;
     int current_slave_id_;
     DriverConfig config_;
-    
+    std::atomic<bool> is_started_{false};
     // =======================================================================
     // 고급 기능 멤버 (선택적 생성 - std::unique_ptr 사용)
     // =======================================================================
