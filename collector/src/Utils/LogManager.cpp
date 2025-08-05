@@ -158,14 +158,38 @@ void LogManager::updateStatistics(LogLevel level) {
     std::lock_guard<std::mutex> lock(mutex_);
     
     switch (level) {
-        case LogLevel::TRACE: statistics_.debug_count++; break;  // TRACE를 debug로 카운트
-        case LogLevel::DEBUG_LEVEL: statistics_.debug_count++; break;
-        case LogLevel::INFO: statistics_.info_count++; break;
-        case LogLevel::WARN: statistics_.warning_count++; break;
-        case LogLevel::ERROR: statistics_.error_count++; break;
-        case LogLevel::FATAL: statistics_.error_count++; break;
-        case LogLevel::MAINTENANCE: statistics_.maintenance_count++; break;
+        case LogLevel::TRACE:
+            statistics_.trace_count++;
+            break;
+        case LogLevel::DEBUG:
+            statistics_.debug_count++;
+            break;
+        case LogLevel::INFO:
+            statistics_.info_count++;
+            break;
+        case LogLevel::WARN:
+            statistics_.warn_count++;
+            statistics_.warning_count++;  // 별칭 동기화
+            break;
+        case LogLevel::ERROR:
+            statistics_.error_count++;
+            break;
+        case LogLevel::FATAL:
+            statistics_.fatal_count++;
+            break;
+        case LogLevel::MAINTENANCE:
+            statistics_.maintenance_count++;
+            break;
+        case LogLevel::OFF:  // 🔥 추가: OFF 케이스 처리
+            // 로그가 비활성화된 경우, 통계에 포함하지 않음
+            break;
+        default:
+            // 알 수 없는 로그 레벨의 경우도 처리
+            break;
     }
+
+    statistics_.total_logs++;
+    statistics_.last_log_time = std::chrono::system_clock::now();
 }
 
 // =============================================================================
@@ -229,9 +253,11 @@ void LogManager::logMaintenance(const UUID& device_id, const EngineerID& enginee
 
 void LogManager::logMaintenanceStart(const DeviceInfo& device, const EngineerID& engineer_id) {
     std::ostringstream oss;
-    oss << "MAINTENANCE STARTED - Device: " << device.name 
-        << " (" << device.id << "), Protocol: " << Utils::ProtocolTypeToString(device.protocol);
-    logMaintenance(device.id, engineer_id, oss.str());
+    oss << "🔧 [MAINTENANCE START] Device: " << device.getName() 
+        << " (" << device.getId() << "), Protocol: " << Utils::ProtocolTypeToString(device.GetProtocol())  // 🔥 수정
+        << ", Engineer: " << engineer_id;
+    
+    log("maintenance", LogLevel::MAINTENANCE, oss.str());
 }
 
 void LogManager::logMaintenanceEnd(const DeviceInfo& device, const EngineerID& engineer_id) {
@@ -316,19 +342,15 @@ LogLevel LogManager::getCategoryLogLevel(DriverLogCategory category) const {
 
 LogStatistics LogManager::getStatistics() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return statistics_;
+    
+    // 🔥 수정: 명시적 복사 생성자 사용
+    LogStatistics copy(statistics_);
+    return copy;
 }
 
 void LogManager::resetStatistics() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    statistics_.total_logs = 0;
-    statistics_.error_count = 0;
-    statistics_.warning_count = 0;
-    statistics_.info_count = 0;
-    statistics_.debug_count = 0;
-    statistics_.trace_count = 0;
-    statistics_.maintenance_count = 0;
-    statistics_.last_reset_time = PulseOne::Utils::GetCurrentTimestamp();
+    // 🔥 수정: ResetAllCounters 메소드 사용하거나 개별 리셋
+    statistics_.ResetAllCounters();
 }
 
 void LogManager::flushAll() {

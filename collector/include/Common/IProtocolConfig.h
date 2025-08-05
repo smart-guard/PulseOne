@@ -12,15 +12,27 @@
  * - Union 방식의 한계 극복
  * - 무제한 프로토콜 추가 지원
  * - 타입 안전성 확보
+ * 
+ * 🔥 의존성 해결:
+ * - ProtocolType 타입 별칭 명시적 선언
+ * - 순환 참조 방지
  */
 
-#include "BasicTypes.h"
-#include "Enums.h"
 #include <memory>
 #include <string>
 
+// 🔥 순환 참조 방지: 전방 선언 후 필요한 타입만 별칭
+namespace PulseOne {
+namespace Enums {
+    enum class ProtocolType : uint8_t;  // 전방 선언
+}
+}
+
 namespace PulseOne::Structs {
+    
+    // 🔥 타입 별칭으로 의존성 최소화
     using ProtocolType = PulseOne::Enums::ProtocolType;
+    
     /**
      * @brief 프로토콜별 설정 기본 인터페이스
      * @details 모든 프로토콜 설정 클래스의 기본 클래스

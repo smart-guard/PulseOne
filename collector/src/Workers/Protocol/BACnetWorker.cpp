@@ -15,6 +15,7 @@
 
 #include "Workers/Protocol/BACnetWorker.h"
 #include "Utils/LogManager.h"
+#include "Common/Enums.h"
 #include <sstream>
 #include <iomanip>
 #include <thread>
@@ -29,6 +30,7 @@
 
 using namespace std::chrono;
 
+using LogLevel = PulseOne::Enums::LogLevel;
 namespace PulseOne {
 namespace Workers {
 
@@ -47,11 +49,11 @@ BACnetWorker::BACnetWorker(
     worker_stats_.start_time = system_clock::now();
     worker_stats_.last_reset = worker_stats_.start_time;
     
-    LogMessage(PulseOne::LogLevel::INFO, "BACnetWorker created for device: " + device_info.name);
+    LogMessage(LogLevel::INFO, "BACnetWorker created for device: " + device_info.name);
     
     // device_info에서 BACnet 워커 설정 파싱
     if (!ParseBACnetWorkerConfig()) {
-        LogMessage(PulseOne::LogLevel::WARN, "Failed to parse BACnet worker config, using defaults");
+        LogMessage(LogLevel::WARN, "Failed to parse BACnet worker config, using defaults");
     }
     
     // BACnet 드라이버 생성
@@ -74,7 +76,7 @@ BACnetWorker::~BACnetWorker() {
     // BACnet 드라이버 정리
     ShutdownBACnetDriver();
     
-    LogMessage(PulseOne::LogLevel::INFO, "BACnetWorker destroyed for device: " + device_info_.name);
+    LogMessage(LogLevel::INFO, "BACnetWorker destroyed for device: " + device_info_.name);
 }
 
 // =============================================================================
@@ -83,11 +85,11 @@ BACnetWorker::~BACnetWorker() {
 
 std::future<bool> BACnetWorker::Start() {
     return std::async(std::launch::async, [this]() -> bool {
-        LogMessage(PulseOne::LogLevel::INFO, "Starting BACnetWorker...");
+        LogMessage(LogLevel::INFO, "Starting BACnetWorker...");
         
         // 1. BACnet 워커 설정 파싱
         if (!ParseBACnetWorkerConfig()) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Failed to parse BACnet worker configuration");
+            LogMessage(LogLevel::ERROR, "Failed to parse BACnet worker configuration");
             return false;
         }
         
@@ -96,7 +98,7 @@ std::future<bool> BACnetWorker::Start() {
         
         // 3. UDP 연결 수립 (부모 클래스)
         if (!EstablishConnection()) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Failed to establish UDP connection");
+            LogMessage(LogLevel::ERROR, "Failed to establish UDP connection");
             return false;
         }
         
@@ -113,14 +115,14 @@ std::future<bool> BACnetWorker::Start() {
             polling_thread_ = std::make_unique<std::thread>(&BACnetWorker::PollingThreadFunction, this);
         }
         
-        LogMessage(PulseOne::LogLevel::INFO, "BACnetWorker started successfully");
+        LogMessage(LogLevel::INFO, "BACnetWorker started successfully");
         return true;
     });
 }
 
 std::future<bool> BACnetWorker::Stop() {
     return std::async(std::launch::async, [this]() -> bool {
-        LogMessage(PulseOne::LogLevel::INFO, "Stopping BACnetWorker...");
+        LogMessage(LogLevel::INFO, "Stopping BACnetWorker...");
         
         // 1. 스레드들 정리
         if (threads_running_.load()) {
@@ -140,7 +142,7 @@ std::future<bool> BACnetWorker::Stop() {
         // 3. UDP 연결 해제 (부모 클래스)
         CloseConnection();
         
-        LogMessage(PulseOne::LogLevel::INFO, "BACnetWorker stopped successfully");
+        LogMessage(LogLevel::INFO, "BACnetWorker stopped successfully");
         return true;
     });
 }
@@ -150,23 +152,23 @@ std::future<bool> BACnetWorker::Stop() {
 // =============================================================================
 
 bool BACnetWorker::EstablishProtocolConnection() {
-    LogMessage(PulseOne::LogLevel::INFO, "Establishing BACnet protocol connection...");
+    LogMessage(LogLevel::INFO, "Establishing BACnet protocol connection...");
     
     if (!InitializeBACnetDriver()) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to initialize BACnet driver");
+        LogMessage(LogLevel::ERROR, "Failed to initialize BACnet driver");
         return false;
     }
     
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet protocol connection established");
+    LogMessage(LogLevel::INFO, "BACnet protocol connection established");
     return true;
 }
 
 bool BACnetWorker::CloseProtocolConnection() {
-    LogMessage(PulseOne::LogLevel::INFO, "Closing BACnet protocol connection...");
+    LogMessage(LogLevel::INFO, "Closing BACnet protocol connection...");
     
     ShutdownBACnetDriver();
     
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet protocol connection closed");
+    LogMessage(LogLevel::INFO, "BACnet protocol connection closed");
     return true;
 }
 
@@ -188,7 +190,7 @@ bool BACnetWorker::SendProtocolKeepAlive() {
 
 bool BACnetWorker::ProcessReceivedPacket(const UdpPacket& packet) {
     try {
-        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+        LogMessage(LogLevel::DEBUG_LEVEL, 
                   "Processing BACnet packet (" + std::to_string(packet.data.size()) + " bytes)");
         
         // BACnet 드라이버가 UDP 패킷 처리를 담당하지 않으므로
@@ -198,7 +200,7 @@ bool BACnetWorker::ProcessReceivedPacket(const UdpPacket& packet) {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception in ProcessReceivedPacket: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception in ProcessReceivedPacket: " + std::string(e.what()));
         UpdateWorkerStats("packet_received", false);
         return false;
     }
@@ -210,7 +212,7 @@ bool BACnetWorker::ProcessReceivedPacket(const UdpPacket& packet) {
 
 void BACnetWorker::ConfigureBACnetWorker(const BACnetWorkerConfig& config) {
     worker_config_ = config;
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet worker configuration updated");
+    LogMessage(LogLevel::INFO, "BACnet worker configuration updated");
 }
 
 std::string BACnetWorker::GetBACnetWorkerStats() const {
@@ -239,7 +241,7 @@ std::string BACnetWorker::GetBACnetWorkerStats() const {
 
 void BACnetWorker::ResetBACnetWorkerStats() {
     worker_stats_.Reset();
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet worker statistics reset");
+    LogMessage(LogLevel::INFO, "BACnet worker statistics reset");
 }
 
 std::string BACnetWorker::GetDiscoveredDevicesAsJson() const {
@@ -283,10 +285,10 @@ std::string BACnetWorker::GetDiscoveredDevicesAsJson() const {
 // =============================================================================
 
 bool BACnetWorker::StartDiscovery() {
-    LogMessage(PulseOne::LogLevel::INFO, "Starting BACnet device discovery...");
+    LogMessage(LogLevel::INFO, "Starting BACnet device discovery...");
     
     if (!bacnet_driver_ || !bacnet_driver_->IsConnected()) {
-        LogMessage(PulseOne::LogLevel::ERROR, "BACnet driver not connected");
+        LogMessage(LogLevel::ERROR, "BACnet driver not connected");
         return false;
     }
     
@@ -303,7 +305,7 @@ bool BACnetWorker::StartDiscovery() {
 }
 
 void BACnetWorker::StopDiscovery() {
-    LogMessage(PulseOne::LogLevel::INFO, "Stopping BACnet device discovery...");
+    LogMessage(LogLevel::INFO, "Stopping BACnet device discovery...");
     
     worker_config_.auto_device_discovery = false;
     
@@ -360,7 +362,7 @@ void BACnetWorker::SetValueChangedCallback(ValueChangedCallback callback) {
 
 bool BACnetWorker::ParseBACnetWorkerConfig() {
     try {
-        LogMessage(PulseOne::LogLevel::INFO, "Parsing BACnet worker configuration...");
+        LogMessage(LogLevel::INFO, "Parsing BACnet worker configuration...");
         
         // ✅ 사용하지 않는 변수 주석 처리
         // const auto& device_info = device_info_;  // 직접 멤버 접근
@@ -368,11 +370,11 @@ bool BACnetWorker::ParseBACnetWorkerConfig() {
         // 기본값 설정 (구조체 초기화)
         worker_config_.local_device_id = 260001;
         worker_config_.target_port = 47808;
-        worker_config_.timeout_ms = 5000;
+        worker_config_.timeout_ms_ms = 5000;
         worker_config_.retry_count = 3;
         worker_config_.discovery_interval_seconds = 300;  // 5분
         worker_config_.auto_device_discovery = true;
-        worker_config_.polling_interval_ms = 1000;
+        worker_config_.polling_interval_ms_ms = 1000;
         worker_config_.verbose_logging = false;
         
         // properties에서 BACnet 특화 설정 읽기 (안전하게)
@@ -380,11 +382,11 @@ bool BACnetWorker::ParseBACnetWorkerConfig() {
         
         // 설정 유효성 검사
         if (!worker_config_.Validate()) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Invalid BACnet worker configuration");
+            LogMessage(LogLevel::ERROR, "Invalid BACnet worker configuration");
             return false;
         }
         
-        LogMessage(PulseOne::LogLevel::INFO, 
+        LogMessage(LogLevel::INFO, 
                   "BACnet worker configured - Device ID: " + 
                   std::to_string(worker_config_.local_device_id) +
                   ", Port: " + std::to_string(worker_config_.target_port));
@@ -392,7 +394,7 @@ bool BACnetWorker::ParseBACnetWorkerConfig() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception parsing BACnet config: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception parsing BACnet config: " + std::string(e.what()));
         return false;
     }
 }
@@ -403,13 +405,13 @@ PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfig() {
     // 기본 설정
     config.device_id = device_info_.id;
     config.endpoint = device_info_.endpoint;
-    config.timeout = device_info_.timeout;
+    config.timeout_ms = device_info_.timeout_ms;
     config.retry_count = static_cast<int>(worker_config_.retry_count);
     
     // BACnet 특화 설정들을 properties에 추가
     config.properties["device_id"] = std::to_string(worker_config_.local_device_id);
     config.properties["target_port"] = std::to_string(worker_config_.target_port);
-    config.properties["timeout_ms"] = std::to_string(worker_config_.timeout_ms);
+    config.properties["timeout_ms"] = std::to_string(worker_config_.timeout_ms_ms);
     config.properties["enable_cov"] = worker_config_.enable_cov ? "true" : "false";
     config.properties["enable_bulk_read"] = worker_config_.enable_bulk_read ? "true" : "false";
     config.properties["max_apdu_length"] = std::to_string(worker_config_.max_apdu_length);
@@ -420,10 +422,10 @@ PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfig() {
 
 bool BACnetWorker::InitializeBACnetDriver() {
     try {
-        LogMessage(PulseOne::LogLevel::INFO, "Initializing BACnet driver...");
+        LogMessage(LogLevel::INFO, "Initializing BACnet driver...");
         
         if (!bacnet_driver_) {
-            LogMessage(PulseOne::LogLevel::ERROR, "BACnet driver is null");
+            LogMessage(LogLevel::ERROR, "BACnet driver is null");
             return false;
         }
         
@@ -432,21 +434,21 @@ bool BACnetWorker::InitializeBACnetDriver() {
         
         // 드라이버 초기화
         if (!bacnet_driver_->Initialize(driver_config)) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Failed to initialize BACnet driver");
+            LogMessage(LogLevel::ERROR, "Failed to initialize BACnet driver");
             return false;
         }
         
         // 드라이버 연결
         if (!bacnet_driver_->Connect()) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Failed to connect BACnet driver");
+            LogMessage(LogLevel::ERROR, "Failed to connect BACnet driver");
             return false;
         }
         
-        LogMessage(PulseOne::LogLevel::INFO, "BACnet driver initialized successfully");
+        LogMessage(LogLevel::INFO, "BACnet driver initialized successfully");
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception initializing BACnet driver: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception initializing BACnet driver: " + std::string(e.what()));
         return false;
     }
 }
@@ -456,10 +458,10 @@ void BACnetWorker::ShutdownBACnetDriver() {
         if (bacnet_driver_) {
             bacnet_driver_->Disconnect();
             bacnet_driver_.reset();
-            LogMessage(PulseOne::LogLevel::INFO, "BACnet driver shutdown complete");
+            LogMessage(LogLevel::INFO, "BACnet driver shutdown complete");
         }
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception shutting down BACnet driver: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception shutting down BACnet driver: " + std::string(e.what()));
     }
 }
 
@@ -468,51 +470,51 @@ void BACnetWorker::ShutdownBACnetDriver() {
 // =============================================================================
 
 void BACnetWorker::DiscoveryThreadFunction() {
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet discovery thread started");
+    LogMessage(LogLevel::INFO, "BACnet discovery thread started");
     
     while (threads_running_.load()) {
         try {
             if (PerformDiscovery()) {
                 worker_stats_.discovery_attempts++;
-                LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Discovery cycle completed");
+                LogMessage(LogLevel::DEBUG_LEVEL, "Discovery cycle completed");
             }
             
             // 설정된 간격만큼 대기
             std::this_thread::sleep_for(std::chrono::seconds(worker_config_.discovery_interval_seconds));
             
         } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Exception in discovery thread: " + std::string(e.what()));
+            LogMessage(LogLevel::ERROR, "Exception in discovery thread: " + std::string(e.what()));
             worker_stats_.failed_operations++;
         }
     }
     
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet discovery thread stopped");
+    LogMessage(LogLevel::INFO, "BACnet discovery thread stopped");
 }
 
 void BACnetWorker::PollingThreadFunction() {
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet polling thread started");
+    LogMessage(LogLevel::INFO, "BACnet polling thread started");
     
     while (threads_running_.load()) {
         try {
             if (PerformPolling()) {
                 worker_stats_.polling_cycles++;
-                LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Polling cycle completed");
+                LogMessage(LogLevel::DEBUG_LEVEL, "Polling cycle completed");
             }
             
             // 설정된 간격만큼 대기
-            std::this_thread::sleep_for(std::chrono::milliseconds(worker_config_.polling_interval_ms));
+            std::this_thread::sleep_for(std::chrono::milliseconds(worker_config_.polling_interval_ms_ms));
             
         } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
+            LogMessage(LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
             worker_stats_.failed_operations++;
         }
     }
     
-    LogMessage(PulseOne::LogLevel::INFO, "BACnet polling thread stopped");
+    LogMessage(LogLevel::INFO, "BACnet polling thread stopped");
 }
 
 bool BACnetWorker::PerformDiscovery() {
-    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Performing BACnet device discovery...");
+    LogMessage(LogLevel::DEBUG_LEVEL, "Performing BACnet device discovery...");
     
     try {
         if (!bacnet_driver_ || !bacnet_driver_->IsConnected()) {
@@ -526,13 +528,13 @@ bool BACnetWorker::PerformDiscovery() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception in PerformDiscovery: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception in PerformDiscovery: " + std::string(e.what()));
         return false;
     }
 }
 
 bool BACnetWorker::PerformPolling() {
-    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Performing BACnet data polling...");
+    LogMessage(LogLevel::DEBUG_LEVEL, "Performing BACnet data polling...");
     
     try {
         if (!bacnet_driver_ || !bacnet_driver_->IsConnected()) {
@@ -546,7 +548,7 @@ bool BACnetWorker::PerformPolling() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception in PerformPolling: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception in PerformPolling: " + std::string(e.what()));
         return false;
     }
 }
@@ -554,11 +556,11 @@ bool BACnetWorker::PerformPolling() {
 bool BACnetWorker::ProcessDataPoints(const std::vector<PulseOne::DataPoint>& points) {
     try {
         if (!bacnet_driver_ || !bacnet_driver_->IsConnected()) {
-            LogMessage(PulseOne::LogLevel::WARN, "BACnet driver not connected for data point processing");
+            LogMessage(LogLevel::WARN, "BACnet driver not connected for data point processing");
             return false;
         }
         
-        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+        LogMessage(LogLevel::DEBUG_LEVEL, 
                   "Processing " + std::to_string(points.size()) + " data points");
         
         // 여러 포인트를 한 번에 읽기
@@ -586,7 +588,7 @@ bool BACnetWorker::ProcessDataPoints(const std::vector<PulseOne::DataPoint>& poi
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception processing data points: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception processing data points: " + std::string(e.what()));
         worker_stats_.failed_operations++;
         return false;
     }
