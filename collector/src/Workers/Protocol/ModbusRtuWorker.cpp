@@ -896,7 +896,7 @@ void ModbusRtuWorker::SetupDriverCallbacks() {
 
 std::string ModbusRtuWorker::GetPropertyValue(const std::map<std::string, std::string>& properties, 
                            const std::string& key, 
-                           const std::string& default_value = "") {
+                           const std::string& default_value) {
     auto it = properties.find(key);
     return (it != properties.end()) ? it->second : default_value;
 }

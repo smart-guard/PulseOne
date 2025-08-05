@@ -432,7 +432,7 @@ namespace Structs {
         int retry_count = 3;                      // 재시도 횟수
         bool auto_reconnect = true;               // 자동 재연결
         std::map<std::string, std::string> properties; // 🔥 프로토콜별 속성 저장 (통합 시스템 핵심)
-
+        std::map<std::string, std::string> custom_settings;
         // =======================================================================
         // 🔥 핵심: 스마트 포인터 기반 프로토콜 설정
         // =======================================================================
@@ -458,6 +458,8 @@ namespace Structs {
             , timeout_ms(other.timeout_ms)
             , retry_count(other.retry_count)
             , auto_reconnect(other.auto_reconnect)
+            , properties(other.properties)
+            , custom_settings(other.custom_settings)
             , protocol_config(other.protocol_config ? other.protocol_config->Clone() : nullptr) {
         }
         
@@ -472,6 +474,8 @@ namespace Structs {
                 timeout_ms = other.timeout_ms;
                 retry_count = other.retry_count;
                 auto_reconnect = other.auto_reconnect;
+                properties = other.properties;
+                custom_settings = other.custom_settings;
                 protocol_config = other.protocol_config ? other.protocol_config->Clone() : nullptr;
             }
             return *this;
@@ -624,6 +628,10 @@ namespace Structs {
         bool encryption_enabled = false;             // 암호화 사용
         std::string certificate_path = "";           // 인증서 경로
         
+        std::optional<int> connection_timeout_ms;   // ✅ 추가 필요
+        std::optional<int> read_timeout_ms;         // ✅ 추가 필요
+        std::optional<int> scan_rate_override;      // ✅ 추가 필요
+        bool keep_alive_enabled = true;             // ✅ 추가 필요
         // =======================================================================
         // 🔥 생성자들
         // =======================================================================
@@ -750,7 +758,27 @@ namespace Structs {
         
         int getCreatedBy() const { return created_by; }
         void setCreatedBy(int user_id) { created_by = user_id; }
+        int getConnectionTimeoutMs() const {
+            if (connection_timeout_ms.has_value()) {
+                return connection_timeout_ms.value();
+            }
+            return timeout_ms;  // 기존 timeout_ms 사용
+        }
         
+        int getReadTimeoutMs() const {
+            if (read_timeout_ms.has_value()) {
+                return read_timeout_ms.value();
+            }
+            return timeout_ms;  // 기존 timeout_ms 사용
+        }
+        
+        void setConnectionTimeoutMs(int timeout) {
+            connection_timeout_ms = timeout;
+        }
+        
+        void setReadTimeoutMs(int timeout) {
+            read_timeout_ms = timeout;
+        }
         // =======================================================================
         // 🔥 Worker 호환 메서드들 (기존 Worker 클래스들 호환)
         // =======================================================================

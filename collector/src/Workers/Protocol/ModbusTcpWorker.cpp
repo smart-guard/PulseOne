@@ -540,9 +540,23 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         // 🔥 3단계: DeviceInfo에서 공통 통신 설정 가져오기 (이미 매핑됨!)
         // =====================================================================
         
-        modbus_config_.timeout_ms = device_info_.connection_timeout_ms;
-        modbus_config_.response_timeout_ms = device_info_.read_timeout_ms;
-        modbus_config_.byte_timeout_ms = std::min(device_info_.read_timeout_ms / 10, 1000);
+        if (device_info_.connection_timeout_ms.has_value()) {
+            modbus_config_.timeout_ms = static_cast<uint32_t>(device_info_.connection_timeout_ms.value());
+        } else {
+            modbus_config_.timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);  // 기본값 사용
+        }
+
+        if (device_info_.read_timeout_ms.has_value()) {
+            modbus_config_.response_timeout_ms = static_cast<uint32_t>(device_info_.read_timeout_ms.value());
+            modbus_config_.byte_timeout_ms = static_cast<uint32_t>(
+                std::min(device_info_.read_timeout_ms.value() / 10, 1000)
+            );
+        } else {
+            modbus_config_.response_timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);
+            modbus_config_.byte_timeout_ms = static_cast<uint32_t>(
+                std::min(device_info_.timeout_ms / 10, 1000)
+            );
+        }
         modbus_config_.max_retries = static_cast<uint8_t>(device_info_.retry_count);
         
         std::string comm_msg = "⚙️ Mapped communication settings from DeviceInfo:\n";
@@ -561,7 +575,7 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         
         // scan_rate_override가 있으면 우선 적용
         if (device_info_.scan_rate_override.has_value()) {
-            default_polling_interval_ms_ = device_info_.scan_rate_override.value();
+            default_polling_interval_ms_ = static_cast<uint32_t>(device_info_.scan_rate_override.value());
             LogMessage(LogLevel::INFO, 
                       "📊 Using scan_rate_override: " + std::to_string(default_polling_interval_ms_) + "ms");
         }
