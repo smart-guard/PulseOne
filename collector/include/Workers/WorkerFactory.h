@@ -103,10 +103,10 @@ public:
     std::string GetFactoryStatsString() const;
     void RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator);
     bool ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_point,
-                                       const PulseOne::BasicTypes::DataVariant& new_value) const;
-    void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point, 
-                         const PulseOne::BasicTypes::DataVariant& new_value,
-                         PulseOne::Enums::DataQuality new_quality = PulseOne::Enums::DataQuality::GOOD) const;
+        const PulseOne::BasicTypes::DataVariant& new_value) const;
+    void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point,
+        const PulseOne::BasicTypes::DataVariant& new_value,
+        PulseOne::Enums::DataQuality new_quality) const;
 
 private:
     WorkerFactory() = default;
@@ -123,7 +123,7 @@ private:
         const std::string& device_id_string) const;
     
     // 🔥 새로 추가: 현재값 로드 헬퍼
-    void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const;
+    void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const; 
     std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
     
     // ✅ 새로 추가: 데이터 품질 헬퍼 함수
