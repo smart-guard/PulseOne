@@ -15,7 +15,6 @@
  */
 
 #include "Database/Entities/BaseEntity.h"
-#include "Common/UnifiedCommonTypes.h"
 #include <string>
 #include <vector>
 #include <optional>
@@ -268,8 +267,8 @@ public:
         dp.log_enabled = log_enabled_;
         dp.log_interval_ms = log_interval_ms_;
         dp.log_deadband = log_deadband_;
-        dp.tags = tags_;
-        dp.metadata = metadata_;
+            if (data.contains("tags")) { setTags(data["tags"].get<std::vector<std::string>>()); }
+            if (data.contains("metadata")) { setMetadata(data["metadata"].get<std::map<std::string, std::string>>()); }
         dp.created_at = created_at_;
         dp.updated_at = updated_at_;
         return dp;

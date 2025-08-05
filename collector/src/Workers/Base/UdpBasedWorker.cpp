@@ -124,7 +124,7 @@ std::string UdpBasedWorker::GetUdpStats() const {
     ss << "    \"bytes_received\": " << udp_stats_.bytes_received.load() << ",\n";
     ss << "    \"send_errors\": " << udp_stats_.send_errors.load() << ",\n";
     ss << "    \"receive_errors\": " << udp_stats_.receive_errors.load() << ",\n";
-    ss << "    \"timeouts\": " << udp_stats_.timeout_ms_mss.load() << ",\n";
+    ss << "    \"timeouts\": " << udp_stats_.timeouts.load() << ",\n";
     ss << "    \"broadcast_packets\": " << udp_stats_.broadcast_packets.load() << ",\n";
     ss << "    \"multicast_packets\": " << udp_stats_.multicast_packets.load() << ",\n";
     
@@ -156,7 +156,7 @@ void UdpBasedWorker::ResetUdpStats() {
     udp_stats_.bytes_received = 0;
     udp_stats_.send_errors = 0;
     udp_stats_.receive_errors = 0;
-    udp_stats_.timeout_ms_mss = 0;
+    udp_stats_.timeouts = 0;
     udp_stats_.broadcast_packets = 0;
     udp_stats_.multicast_packets = 0;
     udp_stats_.last_reset = system_clock::now();
@@ -480,7 +480,7 @@ bool UdpBasedWorker::ReceiveUdpData(UdpPacket& packet, uint32_t timeout_ms) {
     }
     
     // 타임아웃
-    udp_stats_.timeout_ms_mss++;
+    udp_stats_.timeouts++;
     return false;
 }
 
@@ -541,13 +541,13 @@ std::string UdpBasedWorker::CalculateBroadcastAddress(const std::string& interfa
 
 bool UdpBasedWorker::ParseUdpConfig() {
     try {
-         // 1. endpoint에서 정보 파싱 (config_json 대신)
+        // 1. endpoint에서 정보 파싱
         if (device_info_.endpoint.empty()) {
             LogMessage(LogLevel::WARN, "No UDP endpoint configured, using defaults");
             return true;
         }
         
-        // 2. endpoint 파싱
+        // 2. endpoint 파싱 (IP:PORT 형식)
         std::string endpoint = device_info_.endpoint;
         size_t colon_pos = endpoint.find(':');
         
@@ -559,20 +559,28 @@ bool UdpBasedWorker::ParseUdpConfig() {
             udp_config_.remote_port = 502;  // 기본 포트
         }
         
-        // 3. Duration을 밀리초로 변환 (timeout_ms 대신)
-        udp_config_.socket_timeout_ms = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(device_info_.timeout_ms_ms).count()
-        );
+        // 3. ✅ DeviceInfo의 int 필드 직접 사용 (Duration 아님)
+        udp_config_.socket_timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);
         
-        // 4. 폴링 간격도 Duration에서 변환 (polling_interval_ms 대신)
-        udp_config_.polling_interval_ms_ms_ms = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(device_info_.polling_interval_ms_ms).count()
-        );
+        // 4. ✅ DeviceInfo의 int 필드 직접 사용 (Duration 아님)
+        udp_config_.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
         
         // 5. 재시도 횟수는 그대로 사용
         udp_config_.max_retries = static_cast<uint32_t>(device_info_.retry_count);
         
-        LogMessage(LogLevel::INFO, "UDP config parsed from DeviceInfo successfully");
+        // 6. 기본값 검증 및 보정
+        if (udp_config_.socket_timeout_ms == 0) {
+            udp_config_.socket_timeout_ms = 5000;  // 5초 기본값
+        }
+        
+        if (udp_config_.polling_interval_ms == 0) {
+            udp_config_.polling_interval_ms = 1000;  // 1초 기본값
+        }
+        
+        LogMessage(LogLevel::INFO, 
+                  "UDP config parsed - timeout: " + std::to_string(udp_config_.socket_timeout_ms) + 
+                  "ms, polling: " + std::to_string(udp_config_.polling_interval_ms) + "ms");
+        
         return true;
         
     } catch (const std::exception& e) {
@@ -580,6 +588,7 @@ bool UdpBasedWorker::ParseUdpConfig() {
         return false;
     }
 }
+
 
 bool UdpBasedWorker::SetSocketOptions() {
     if (udp_connection_.socket_fd == -1) {

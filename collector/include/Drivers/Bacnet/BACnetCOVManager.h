@@ -6,7 +6,7 @@
 #ifndef BACNET_COV_MANAGER_H
 #define BACNET_COV_MANAGER_H
 
-#include "Common/UnifiedCommonTypes.h"
+
 #include "Drivers/Bacnet/BACnetCommonTypes.h"
 #include "Drivers/Bacnet/BACnetStatisticsManager.h"
 #include <map>

@@ -10,7 +10,10 @@
 // 필수 헤더 포함
 // =============================================================================
 #include "Drivers/Common/IProtocolDriver.h"
-#include "Common/UnifiedCommonTypes.h"
+#include "Common/BasicTypes.h"           // UUID, Timestamp 등
+#include "Common/Enums.h"                // ProtocolType, ConnectionStatus 등  
+#include "Common/Structs.h"              // DeviceInfo, DataPoint 등
+#include "Common/DriverStatistics.h"     // DriverStatistics
 #include "Drivers/Bacnet/BACnetCommonTypes.h"
 #include "Drivers/Bacnet/BACnetErrorMapper.h"
 #include "Utils/LogManager.h"

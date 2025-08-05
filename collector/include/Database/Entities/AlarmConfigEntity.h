@@ -15,7 +15,6 @@
  */
 
 #include "Database/Entities/BaseEntity.h"
-#include "Common/UnifiedCommonTypes.h"
 #include <string>
 #include <chrono>
 #include <optional>
