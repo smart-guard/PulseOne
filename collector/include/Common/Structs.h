@@ -1379,6 +1379,7 @@ namespace Structs {
         std::string protocol;
         std::vector<TimestampedValue> points;
         Timestamp timestamp;
+        uint32_t priority = 0;
         
         DeviceDataMessage() : timestamp(std::chrono::system_clock::now()) {}
         
@@ -1405,6 +1406,54 @@ namespace Structs {
                 JsonType point_json = JsonType::parse(point.ToJSON());
                 j["points"].push_back(point_json);
             }
+            
+            return j.dump();
+        }
+    };
+    /**
+     * @brief 알람 이벤트 구조체
+     * @details RabbitMQ로 전송되는 알람 정보
+     */    
+    struct AlarmEvent {
+        UUID device_id;
+        std::string point_id;
+        DataValue current_value;
+        std::string severity;           // "LOW", "MEDIUM", "HIGH", "CRITICAL"
+        Timestamp timestamp;
+        std::string message;
+        double threshold_value = 0.0;
+        std::string alarm_type = "THRESHOLD";  // "THRESHOLD", "COMMUNICATION", "QUALITY"
+        
+        AlarmEvent() : timestamp(std::chrono::system_clock::now()) {}
+        
+        /**
+         * @brief JSON 직렬화
+         */
+        std::string ToJSON() const {
+            JsonType j;
+            j["device_id"] = device_id;
+            j["point_id"] = point_id;
+            j["severity"] = severity;
+            j["message"] = message;
+            j["threshold_value"] = threshold_value;
+            j["alarm_type"] = alarm_type;
+            
+            // variant 값 처리
+            std::visit([&j](const auto& v) {
+                j["current_value"] = v;
+            }, current_value);
+            
+            // 타임스탬프를 ISO 문자열로 변환
+            auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+            std::tm tm_buf;
+            #ifdef _WIN32
+                gmtime_s(&tm_buf, &time_t);
+            #else
+                gmtime_r(&time_t, &tm_buf);
+            #endif
+            char buffer[32];
+            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+            j["timestamp"] = std::string(buffer);
             
             return j.dump();
         }
@@ -1505,7 +1554,92 @@ namespace Structs {
             warning_count.store(warn_count.load());
         }
     };
-    
+    /**
+     * @brief 파이프라인 통계 구조체
+     * @details WorkerPipelineManager 성능 모니터링용
+     */
+    struct PipelineStatistics {
+        std::atomic<uint64_t> total_processed{0};         // 총 처리된 데이터 포인트 수
+        std::atomic<uint64_t> total_dropped{0};           // 큐 오버플로우로 버려진 수
+        std::atomic<uint64_t> redis_writes{0};            // Redis 쓰기 횟수
+        std::atomic<uint64_t> influx_writes{0};           // InfluxDB 쓰기 횟수
+        std::atomic<uint64_t> rabbitmq_publishes{0};      // RabbitMQ 발행 횟수
+        std::atomic<uint64_t> alarm_events{0};            // 알람 이벤트 수
+        std::atomic<uint64_t> high_priority_events{0};    // 높은 우선순위 이벤트 수
+        std::atomic<size_t> current_queue_size{0};        // 현재 큐 크기
+        std::atomic<double> avg_processing_time_ms{0.0};  // 평균 처리 시간
+        std::chrono::system_clock::time_point start_time; // 시작 시간
+        
+        PipelineStatistics() : start_time(std::chrono::system_clock::now()) {}
+        
+        /**
+         * @brief 성공률 계산
+         */
+        double GetSuccessRate() const {
+            uint64_t total = total_processed.load();
+            uint64_t dropped = total_dropped.load();
+            if (total == 0) return 100.0;
+            return ((double)(total - dropped) / total) * 100.0;
+        }
+        
+        /**
+         * @brief 초당 처리량 계산
+         */
+        double GetThroughputPerSecond() const {
+            auto now = std::chrono::system_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
+            if (duration.count() == 0) return 0.0;
+            return static_cast<double>(total_processed.load()) / duration.count();
+        }
+        
+        /**
+         * @brief 통계 초기화
+         */
+        void Reset() {
+            total_processed = 0;
+            total_dropped = 0;
+            redis_writes = 0;
+            influx_writes = 0;
+            rabbitmq_publishes = 0;
+            alarm_events = 0;
+            high_priority_events = 0;
+            current_queue_size = 0;
+            avg_processing_time_ms = 0.0;
+            start_time = std::chrono::system_clock::now();
+        }
+        
+        /**
+         * @brief JSON 직렬화
+         */
+        std::string ToJSON() const {
+            JsonType j;
+            j["total_processed"] = total_processed.load();
+            j["total_dropped"] = total_dropped.load();
+            j["redis_writes"] = redis_writes.load();
+            j["influx_writes"] = influx_writes.load();
+            j["rabbitmq_publishes"] = rabbitmq_publishes.load();
+            j["alarm_events"] = alarm_events.load();
+            j["high_priority_events"] = high_priority_events.load();
+            j["current_queue_size"] = current_queue_size.load();
+            j["avg_processing_time_ms"] = avg_processing_time_ms.load();
+            j["success_rate"] = GetSuccessRate();
+            j["throughput_per_second"] = GetThroughputPerSecond();
+            
+            // 시작 시간
+            auto time_t = std::chrono::system_clock::to_time_t(start_time);
+            std::tm tm_buf;
+            #ifdef _WIN32
+                gmtime_s(&tm_buf, &time_t);
+            #else
+                gmtime_r(&time_t, &tm_buf);
+            #endif
+            char buffer[32];
+            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+            j["start_time"] = std::string(buffer);
+            
+            return j.dump();
+        }
+    };    
     /**
      * @brief 드라이버 로그 컨텍스트
      */
