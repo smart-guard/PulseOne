@@ -10,7 +10,6 @@
 #ifndef WORKERS_BASE_DEVICE_WORKER_H
 #define WORKERS_BASE_DEVICE_WORKER_H
 
-#include "Common/UnifiedCommonTypes.h"
 #include "Utils/LogManager.h"
 #include "Client/InfluxClient.h"
 #include "Client/RedisClient.h"

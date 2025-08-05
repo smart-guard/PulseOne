@@ -4,7 +4,6 @@
 // =============================================================================
 
 #include "Drivers/Mqtt/MqttDriver.h"
-#include "Common/UnifiedCommonTypes.h"
 #include "Drivers/Common/DriverFactory.h"
 #include <optional>
 #include <sstream>
