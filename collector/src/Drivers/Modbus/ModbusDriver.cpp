@@ -29,8 +29,8 @@ using TimestampedValue = PulseOne::Structs::TimestampedValue;
 ModbusDriver::ModbusDriver()
     : modbus_ctx_(nullptr)
     , is_connected_(false)
-    , current_slave_id_(1)
     , driver_statistics_("MODBUS")
+    , current_slave_id_(1)
     , diagnostics_(nullptr)
     , connection_pool_(nullptr)
     , failover_(nullptr)
@@ -38,6 +38,7 @@ ModbusDriver::ModbusDriver()
 {
     // Core 통계 초기화 - 프로토콜 특화 카운터는 나중에 동적으로 추가
     // driver_statistics_.IncrementProtocolCounter() 메서드로 필요시 자동 생성됨
+    logger_ = &LogManager::getInstance();
 }
 
 ModbusDriver::~ModbusDriver() {
@@ -1029,11 +1030,11 @@ bool ModbusDriver::Start() {
         
         // 시작 상태로 변경
         is_started_ = true;
-        status_ = Structs::DriverStatus::RUNNING;
+        status_ = PulseOne::Enums::ConnectionStatus::CONNECTED;
         
         // 통계 업데이트
-        statistics_.last_activity = std::chrono::steady_clock::now();
-        statistics_.start_time = statistics_.last_activity;
+        //statistics_.last_activity = std::chrono::steady_clock::now();
+        statistics_.start_time = std::chrono::system_clock::now();
         
         if (logger_) {
             logger_->Info("✅ ModbusDriver started successfully");
@@ -1071,7 +1072,7 @@ bool ModbusDriver::Stop() {
         
         // 중지 상태로 변경
         is_started_ = false;
-        status_ = Structs::DriverStatus::STOPPED;
+        status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;
         
         if (logger_) {
             logger_->Info("✅ ModbusDriver stopped successfully");

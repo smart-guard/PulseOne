@@ -21,6 +21,7 @@
 // ✅ 새로 추가: DataQuality 타입 사용을 위해 Enums.h include
 #include "Common/Enums.h"
 #include "Common/BasicTypes.h"
+#include "Utils/LogManager.h"
 // 🔧 중요: 전역 네임스페이스에서 전방선언 (PulseOne:: 제거)
 class LogManager;
 class ConfigManager;
@@ -55,8 +56,7 @@ class BaseDeviceWorker;
 // ✅ WorkerCreator 타입 정의 - 전역 클래스 사용
 using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(
     const PulseOne::Structs::DeviceInfo& device_info,
-    std::shared_ptr<::RedisClient> redis_client,    // ✅ 전역 클래스
-    std::shared_ptr<::InfluxClient> influx_client   // ✅ 전역 클래스
+    const std::vector<PulseOne::Structs::DataPoint>& data_points  // 🔥 이것으로 변경
 )>;
 
 struct FactoryStats {
@@ -86,10 +86,8 @@ public:
     void SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo);
     void SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo);
     void SetCurrentValueRepository(std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo);
-    void SetDatabaseClients(
-        std::shared_ptr<::RedisClient> redis_client,     // ✅ 전역 클래스
-        std::shared_ptr<::InfluxClient> influx_client    // ✅ 전역 클래스
-    );
+    void SetDatabaseClients(std::shared_ptr<RedisClient> redis_client, 
+                       std::shared_ptr<InfluxClient> influx_client);
 
     std::unique_ptr<BaseDeviceWorker> CreateWorker(const Database::Entities::DeviceEntity& device_entity);
     std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
@@ -152,6 +150,10 @@ private:
     mutable std::atomic<uint64_t> workers_created_{0};
     mutable std::atomic<uint64_t> creation_failures_{0};
     std::chrono::system_clock::time_point factory_start_time_;
+
+    std::string GetCurrentValueAsString(const PulseOne::Structs::DataPoint& data_point) const;
+    std::string GetQualityString(const PulseOne::Structs::DataPoint& data_point) const;
+    bool IsInitialized() const { return initialized_.load(); }
 };
 
 } // namespace Workers

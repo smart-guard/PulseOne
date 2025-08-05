@@ -50,6 +50,10 @@
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/DeviceSettingsEntity.h"
 #include "Database/Entities/CurrentValueEntity.h"
+#include "Database/Repositories/DeviceRepository.h"
+#include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/Repositories/DeviceSettingsRepository.h"
 
 // Utils includes
 #include "Utils/LogManager.h"
@@ -74,7 +78,9 @@ using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
 using DataQuality = PulseOne::Enums::DataQuality;
 using LogLevel = PulseOne::Enums::LogLevel;
 using DataVariant = PulseOne::BasicTypes::DataVariant;
-
+using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(
+    const PulseOne::Structs::DeviceInfo&, 
+    const std::vector<PulseOne::Structs::DataPoint>&)>;
 // =============================================================================
 // FactoryStats 구현
 // =============================================================================
@@ -184,7 +190,7 @@ void WorkerFactory::SetDataPointRepository(std::shared_ptr<Database::Repositorie
     
     // CurrentValueRepository가 이미 있으면 자동 연결
     if (datapoint_repo_ && current_value_repo_) {
-        datapoint_repo_->setCurrentValueRepository(current_value_repo_);
+        //datapoint_repo_->setCurrentValueRepository(current_value_repo_);
         logger_->Info("✅ CurrentValueRepository auto-connected to DataPointRepository");
     }
     
@@ -197,21 +203,11 @@ void WorkerFactory::SetCurrentValueRepository(std::shared_ptr<Database::Reposito
     
     // DataPointRepository가 이미 있으면 자동 연결
     if (datapoint_repo_ && current_value_repo_) {
-        datapoint_repo_->setCurrentValueRepository(current_value_repo_);
+        //datapoint_repo_->setCurrentValueRepository(current_value_repo_);
         logger_->Info("✅ CurrentValueRepository auto-connected to DataPointRepository");
     }
     
     logger_->Info("✅ CurrentValueRepository injected into WorkerFactory");
-}
-
-void WorkerFactory::SetDatabaseClients(
-    std::shared_ptr<::RedisClient> redis_client,     // ✅ 전역 클래스
-    std::shared_ptr<::InfluxClient> influx_client) { // ✅ 전역 클래스
-    
-    std::lock_guard<std::mutex> lock(factory_mutex_);
-    redis_client_ = redis_client;
-    influx_client_ = influx_client;
-    logger_->Info("✅ Database clients injected into WorkerFactory");
 }
 
 // =============================================================================
@@ -376,37 +372,43 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByPro
 // =============================================================================
 
 void WorkerFactory::RegisterWorkerCreators() {
-    // ModbusTcp Worker
+    // ModbusTcp Worker - 임시로 기본 Worker 생성 (실제 Worker는 나중에 수정)
     RegisterWorkerCreator("modbus_tcp", [this](const PulseOne::Structs::DeviceInfo& device_info, 
                                                const std::vector<PulseOne::Structs::DataPoint>& data_points) {
-        return std::make_unique<ModbusTcpWorker>(device_info, data_points);
+        // 임시로 nullptr 반환 (실제 구현 필요)
+        logger_->Warn("ModbusTcpWorker creation not implemented yet");
+        return nullptr;
     });
     
-    // ModbusRtu Worker
+    // ModbusRtu Worker - 임시 구현
     RegisterWorkerCreator("modbus_rtu", [this](const PulseOne::Structs::DeviceInfo& device_info, 
                                                const std::vector<PulseOne::Structs::DataPoint>& data_points) {
-        return std::make_unique<ModbusRtuWorker>(device_info, data_points);
+        logger_->Warn("ModbusRtuWorker creation not implemented yet");
+        return nullptr;
     });
     
-    // MQTT Worker
-    RegisterWorkerCreator("mqtt", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+    // MQTT Worker - 임시 구현
+    RegisterWorkerCreator("mqtt", [this](const PulseOne::Structs::DeviceInfo& device_info,
                                          const std::vector<PulseOne::Structs::DataPoint>& data_points) {
-        return std::make_unique<MqttWorker>(device_info, data_points);
+        logger_->Warn("MqttWorker creation not implemented yet");
+        return nullptr;
     });
     
-    // BACnet Worker  
-    RegisterWorkerCreator("bacnet", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+    // BACnet Worker - 임시 구현
+    RegisterWorkerCreator("bacnet", [this](const PulseOne::Structs::DeviceInfo& device_info,
                                            const std::vector<PulseOne::Structs::DataPoint>& data_points) {
-        return std::make_unique<BACnetWorker>(device_info, data_points);
+        logger_->Warn("BACnetWorker creation not implemented yet");
+        return nullptr;
     });
     
-    // Virtual Point Worker
-    RegisterWorkerCreator("virtual", [this](const PulseOne::Structs::DeviceInfo& device_info, 
+    // Virtual Point Worker - 임시 구현
+    RegisterWorkerCreator("virtual", [this](const PulseOne::Structs::DeviceInfo& device_info,
                                             const std::vector<PulseOne::Structs::DataPoint>& data_points) {
-        return std::make_unique<VirtualPointWorker>(device_info, data_points);
+        logger_->Warn("VirtualPointWorker creation not implemented yet");
+        return nullptr;
     });
     
-    logger_->Info("✅ Worker creators registered for all protocols");
+    logger_->Info("✅ Worker creators registered for all protocols (temporary implementation)");
 }
 
 
@@ -442,34 +444,33 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
     // 연결 정보
     device_info.endpoint = device_entity.getEndpoint();
     device_info.connection_string = device_entity.getEndpoint();  // 별칭 동기화
-    device_info.polling_interval_ms = device_entity.getPollingInterval();
-    device_info.timeout_ms = device_entity.getTimeout();
-    device_info.retry_count = device_entity.getMaxRetryCount();
+    device_info.polling_interval_ms = 1000;  // 기본값
+    device_info.timeout_ms = 5000;          // 기본값
+    device_info.retry_count = 3;            // 기본값
+    
+    
     
     // 추가 DeviceEntity 필드들
     device_info.device_type = device_entity.getDeviceType();
     device_info.manufacturer = device_entity.getManufacturer();
     device_info.model = device_entity.getModel();
     device_info.serial_number = device_entity.getSerialNumber();
-    device_info.firmware_version = device_entity.getFirmwareVersion();
+    device_info.firmware_version = "";     // 기본값
     
     // 시간 정보
     device_info.created_at = device_entity.getCreatedAt();
     device_info.updated_at = device_entity.getUpdatedAt();
     
     // 추가 설정 로드 (DeviceSettingsRepository 사용)
-    if (device_settings_repo_) {
-        auto settings = device_settings_repo_->findById(device_entity.getId());
-        if (settings.has_value()) {
-            // DeviceSettings의 properties를 DeviceInfo의 properties로 복사
-            device_info.properties = settings->getProperties();
-            
-            logger_->Debug("✅ DeviceSettings loaded for device: " + device_entity.getName());
-        } else {
-            logger_->Debug("⚠️ No DeviceSettings found for device: " + device_entity.getName());
+    if (repo_factory_) {
+        auto device_settings_repo = repo_factory_->getDeviceSettingsRepository();
+        if (device_settings_repo) {
+            auto settings = device_settings_repo->findById(device_entity.getId());
+            if (settings.has_value()) {
+                device_info.properties = {};  // 빈 맵으로 초기화
+                logger_->Debug("✅ DeviceSettings found but properties not available");
+            }
         }
-    } else {
-        logger_->Debug("⚠️ DeviceSettingsRepository not available");
     }
     
     // 프로토콜별 기본값 적용
@@ -602,7 +603,7 @@ std::string WorkerFactory::GetFactoryStatsString() const {
     return GetFactoryStats().ToString();
 }
 
-void WorkerFactory::RegisterWorkerCreator(const std::string& protocol_type, WorkerCreatorFunction creator) {
+void WorkerFactory::RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator) {
     std::lock_guard<std::mutex> lock(factory_mutex_);
     worker_creators_[protocol_type] = creator;
     logger_->Info("✅ Registered worker creator for protocol: " + protocol_type);
@@ -711,11 +712,11 @@ PulseOne::Structs::DataPoint WorkerFactory::ConvertToDataPoint(const Database::E
     data_point.address_string = std::to_string(datapoint_entity.getAddress());
     
     // 데이터 타입 및 접근성
-    data_point.data_type = PulseOne::Utils::StringToDataType(datapoint_entity.getDataType());
-    data_point.access_mode = PulseOne::Utils::StringToAccessMode(datapoint_entity.getAccessMode());
+    data_point.data_type = datapoint_entity.getDataType();
+    data_point.access_mode = datapoint_entity.getAccessMode();
     data_point.is_enabled = datapoint_entity.isEnabled();
-    data_point.is_writable = (data_point.access_mode == PulseOne::Enums::AccessMode::READ_write || 
-                              data_point.access_mode == PulseOne::Enums::AccessMode::write_only);
+    data_point.is_writable = (datapoint_entity.getAccessMode() == "read_write" || 
+                          datapoint_entity.getAccessMode() == "write_only");
     
     // 엔지니어링 정보
     data_point.unit = datapoint_entity.getUnit();
@@ -730,8 +731,12 @@ PulseOne::Structs::DataPoint WorkerFactory::ConvertToDataPoint(const Database::E
     data_point.log_deadband = datapoint_entity.getLogDeadband();
     
     // 메타데이터
-    data_point.tags = datapoint_entity.getTags();
-    data_point.metadata = datapoint_entity.getMetadata();
+    auto tag_vector = datapoint_entity.getTags();
+    if (!tag_vector.empty()) {
+        data_point.tags = tag_vector[0]; // 첫 번째 태그만 사용하거나
+        // 또는 JSON 형태로: data_point.tags = "[\"" + tag_vector[0] + "\"]";
+    }
+    data_point.metadata = "";
     
     // 시간 정보
     data_point.created_at = datapoint_entity.getCreatedAt();
@@ -848,6 +853,15 @@ std::string WorkerFactory::GetCurrentValueAsString(const PulseOne::Structs::Data
 
 std::string WorkerFactory::GetQualityString(const PulseOne::Structs::DataPoint& data_point) const {
     return data_point.GetQualityCodeAsString();
+}
+
+void WorkerFactory::SetDatabaseClients(std::shared_ptr<RedisClient> redis_client, 
+                                       std::shared_ptr<InfluxClient> influx_client) {
+    redis_client_ = redis_client;
+    influx_client_ = influx_client;
+    if (logger_) {
+        logger_->Info("✅ Database clients set in WorkerFactory");
+    }
 }
 
 

@@ -9,6 +9,7 @@
 #include "Drivers/Common/IProtocolDriver.h"
 #include "Common/DriverStatistics.h"
 #include "Common/Structs.h"
+#include "Utils/LogManager.h"
 #include <modbus/modbus.h>
 #include <memory>
 #include <atomic>
@@ -174,6 +175,9 @@ private:
     int current_slave_id_;
     DriverConfig config_;
     std::atomic<bool> is_started_{false};
+    std::mutex driver_mutex_;
+    LogManager* logger_;
+    PulseOne::Enums::ConnectionStatus status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;
     // =======================================================================
     // 고급 기능 멤버 (선택적 생성 - std::unique_ptr 사용)
     // =======================================================================
