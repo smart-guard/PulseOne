@@ -8,6 +8,8 @@
 
 #include "Workers/Base/SerialBasedWorker.h"
 #include "Utils/LogManager.h"
+#include "Common/Enums.h"
+#include "Common/Enums.h"
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -19,7 +21,8 @@
 #include <sys/ioctl.h>  // ioctl
 
 using namespace std::chrono;
-
+using LogLevel = PulseOne::Enums::LogLevel;
+using LogLevel = PulseOne::Enums::LogLevel;
 namespace PulseOne {
 namespace Workers {
 
@@ -45,12 +48,12 @@ SerialBasedWorker::SerialBasedWorker(const PulseOne::DeviceInfo& device_info,
     settings.keep_alive_interval_seconds = 45;  // 시리얼 Keep-alive
     UpdateReconnectionSettings(settings);
     
-    LogMessage(PulseOne::LogLevel::INFO, "SerialBasedWorker created for device: " + device_info_.name);
+    LogMessage(LogLevel::INFO, "SerialBasedWorker created for device: " + device_info_.name);
 }
 
 SerialBasedWorker::~SerialBasedWorker() {
     CloseSerialPort();
-    LogMessage(PulseOne::LogLevel::INFO, "SerialBasedWorker destroyed");
+    LogMessage(LogLevel::INFO, "SerialBasedWorker destroyed");
 }
 
 // =============================================================================
@@ -58,33 +61,33 @@ SerialBasedWorker::~SerialBasedWorker() {
 // =============================================================================
 
 bool SerialBasedWorker::EstablishConnection() {
-    LogMessage(PulseOne::LogLevel::INFO, "Establishing serial connection to " + serial_config_.port_name);
+    LogMessage(LogLevel::INFO, "Establishing serial connection to " + serial_config_.port_name);
     
     // 시리얼 설정 검증
     if (!ValidateSerialConfig()) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid serial configuration");
+        LogMessage(LogLevel::ERROR, "Invalid serial configuration");
         return false;
     }
     
     // 시리얼 포트 열기
     if (!OpenSerialPort()) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to open serial port");
+        LogMessage(LogLevel::ERROR, "Failed to open serial port");
         return false;
     }
     
     // 파생 클래스의 프로토콜별 연결 수립
     if (!EstablishProtocolConnection()) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to establish protocol connection");
+        LogMessage(LogLevel::ERROR, "Failed to establish protocol connection");
         CloseSerialPort();
         return false;
     }
     
-    LogMessage(PulseOne::LogLevel::INFO, "Serial connection established successfully");
+    LogMessage(LogLevel::INFO, "Serial connection established successfully");
     return true;
 }
 
 bool SerialBasedWorker::CloseConnection() {
-    LogMessage(PulseOne::LogLevel::INFO, "Closing serial connection");
+    LogMessage(LogLevel::INFO, "Closing serial connection");
     
     // 프로토콜별 연결 해제 먼저
     CloseProtocolConnection();
@@ -92,7 +95,7 @@ bool SerialBasedWorker::CloseConnection() {
     // 시리얼 포트 해제
     CloseSerialPort();
     
-    LogMessage(PulseOne::LogLevel::INFO, "Serial connection closed");
+    LogMessage(LogLevel::INFO, "Serial connection closed");
     return true;
 }
 
@@ -109,7 +112,7 @@ bool SerialBasedWorker::CheckConnection() {
 bool SerialBasedWorker::SendKeepAlive() {
     // 시리얼 포트 상태 먼저 확인
     if (!IsSerialPortOpen()) {
-        LogMessage(PulseOne::LogLevel::WARN, "Serial port not open for keep-alive");
+        LogMessage(LogLevel::WARN, "Serial port not open for keep-alive");
         return false;
     }
     
@@ -124,7 +127,7 @@ bool SerialBasedWorker::SendKeepAlive() {
 void SerialBasedWorker::ConfigureSerial(const SerialConfig& config) {
     serial_config_ = config;
     
-    LogMessage(PulseOne::LogLevel::INFO, 
+    LogMessage(LogLevel::INFO, 
                "Serial configured - " + config.port_name + 
                " " + std::to_string(config.baud_rate) + 
                "-" + std::to_string(config.data_bits) + 
@@ -172,27 +175,27 @@ std::string SerialBasedWorker::GetSerialStats() const {
 
 bool SerialBasedWorker::ValidateSerialConfig() const {
     if (!ValidateSerialPort(serial_config_.port_name)) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid serial port name: " + serial_config_.port_name);
+        LogMessage(LogLevel::ERROR, "Invalid serial port name: " + serial_config_.port_name);
         return false;
     }
     
     if (!ValidateBaudRate(serial_config_.baud_rate)) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid baud rate: " + std::to_string(serial_config_.baud_rate));
+        LogMessage(LogLevel::ERROR, "Invalid baud rate: " + std::to_string(serial_config_.baud_rate));
         return false;
     }
     
     if (serial_config_.data_bits != 7 && serial_config_.data_bits != 8) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid data bits: " + std::to_string(serial_config_.data_bits));
+        LogMessage(LogLevel::ERROR, "Invalid data bits: " + std::to_string(serial_config_.data_bits));
         return false;
     }
     
     if (serial_config_.stop_bits != 1 && serial_config_.stop_bits != 2) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid stop bits: " + std::to_string(serial_config_.stop_bits));
+        LogMessage(LogLevel::ERROR, "Invalid stop bits: " + std::to_string(serial_config_.stop_bits));
         return false;
     }
     
     if (serial_config_.parity != 'N' && serial_config_.parity != 'E' && serial_config_.parity != 'O') {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid parity: " + std::string(1, serial_config_.parity));
+        LogMessage(LogLevel::ERROR, "Invalid parity: " + std::string(1, serial_config_.parity));
         return false;
     }
     
@@ -206,7 +209,7 @@ bool SerialBasedWorker::OpenSerialPort() {
     // 시리얼 포트 열기
     serial_fd_ = open(serial_config_.port_name.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
     if (serial_fd_ < 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, 
+        LogMessage(LogLevel::ERROR, 
                    "Failed to open serial port " + serial_config_.port_name + 
                    ": " + std::string(strerror(errno)));
         return false;
@@ -218,7 +221,7 @@ bool SerialBasedWorker::OpenSerialPort() {
     
     // 기존 터미널 설정 백업
     if (tcgetattr(serial_fd_, &original_termios_) != 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to get terminal attributes: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::ERROR, "Failed to get terminal attributes: " + std::string(strerror(errno)));
         CloseSerialPort();
         return false;
     }
@@ -226,14 +229,14 @@ bool SerialBasedWorker::OpenSerialPort() {
     // 새로운 터미널 설정
     struct termios tty;
     if (!ConfigureTermios(tty)) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to configure terminal attributes");
+        LogMessage(LogLevel::ERROR, "Failed to configure terminal attributes");
         CloseSerialPort();
         return false;
     }
     
     // 터미널 설정 적용
     if (tcsetattr(serial_fd_, TCSANOW, &tty) != 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to set terminal attributes: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::ERROR, "Failed to set terminal attributes: " + std::string(strerror(errno)));
         CloseSerialPort();
         return false;
     }
@@ -241,7 +244,7 @@ bool SerialBasedWorker::OpenSerialPort() {
     // 버퍼 플러시
     FlushSerialPort(true, true);
     
-    LogMessage(PulseOne::LogLevel::INFO, "Serial port opened successfully: " + serial_config_.port_name);
+    LogMessage(LogLevel::INFO, "Serial port opened successfully: " + serial_config_.port_name);
     return true;
 }
 
@@ -253,7 +256,7 @@ void SerialBasedWorker::CloseSerialPort() {
         // 포트 닫기
         close(serial_fd_);
         serial_fd_ = -1;
-        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Serial port closed");
+        LogMessage(LogLevel::DEBUG_LEVEL, "Serial port closed");
     }
 }
 
@@ -273,26 +276,26 @@ bool SerialBasedWorker::IsSerialPortOpen() const {
 
 ssize_t SerialBasedWorker::WriteSerialData(const void* data, size_t length) {
     if (serial_fd_ < 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Cannot write data: serial port not open");
+        LogMessage(LogLevel::ERROR, "Cannot write data: serial port not open");
         return -1;
     }
     
     ssize_t written = write(serial_fd_, data, length);
     if (written < 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Serial write failed: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::ERROR, "Serial write failed: " + std::string(strerror(errno)));
         return -1;
     }
     
     // 전송 완료 대기
     tcdrain(serial_fd_);
     
-    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Sent " + std::to_string(written) + " bytes via serial");
+    LogMessage(LogLevel::DEBUG_LEVEL, "Sent " + std::to_string(written) + " bytes via serial");
     return written;
 }
 
 ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
     if (serial_fd_ < 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Cannot read data: serial port not open");
+        LogMessage(LogLevel::ERROR, "Cannot read data: serial port not open");
         return -1;
     }
     
@@ -309,7 +312,7 @@ ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
     int select_result = select(serial_fd_ + 1, &read_fds, NULL, NULL, &timeout);
     
     if (select_result < 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Serial select failed: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::ERROR, "Serial select failed: " + std::string(strerror(errno)));
         return -1;
     }
     
@@ -320,11 +323,11 @@ ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
     
     ssize_t received = read(serial_fd_, buffer, buffer_size);
     if (received < 0) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Serial read failed: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::ERROR, "Serial read failed: " + std::string(strerror(errno)));
         return -1;
     }
     
-    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Received " + std::to_string(received) + " bytes via serial");
+    LogMessage(LogLevel::DEBUG_LEVEL, "Received " + std::to_string(received) + " bytes via serial");
     return received;
 }
 
@@ -338,11 +341,11 @@ bool SerialBasedWorker::FlushSerialPort(bool flush_input, bool flush_output) {
     if (flush_output) queue_selector |= TCOFLUSH;
     
     if (tcflush(serial_fd_, queue_selector) != 0) {
-        LogMessage(PulseOne::LogLevel::WARN, "Failed to flush serial port: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::WARN, "Failed to flush serial port: " + std::string(strerror(errno)));
         return false;
     }
     
-    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Serial port flushed");
+    LogMessage(LogLevel::DEBUG_LEVEL, "Serial port flushed");
     return true;
 }
 
@@ -363,11 +366,11 @@ bool SerialBasedWorker::SendProtocolKeepAlive() {
     // DTR 신호 토글 (간단한 Keep-alive)
     int status;
     if (ioctl(serial_fd_, TIOCMGET, &status) < 0) {
-        LogMessage(PulseOne::LogLevel::WARN, "Failed to get serial status for keep-alive");
+        LogMessage(LogLevel::WARN, "Failed to get serial status for keep-alive");
         return false;
     }
     
-    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Serial keep-alive sent");
+    LogMessage(LogLevel::DEBUG_LEVEL, "Serial keep-alive sent");
     return true;
 }
 
@@ -403,7 +406,7 @@ void SerialBasedWorker::ParseEndpoint() {
             if (parts.size() >= 3) serial_config_.parity = parts[2][0];
             if (parts.size() >= 4) serial_config_.stop_bits = std::stoi(parts[3]);
             
-            LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, 
+            LogMessage(LogLevel::DEBUG_LEVEL, 
                       "Parsed serial endpoint: " + serial_config_.port_name + 
                       " " + std::to_string(serial_config_.baud_rate) + 
                       "-" + std::to_string(serial_config_.data_bits) + 
@@ -412,7 +415,7 @@ void SerialBasedWorker::ParseEndpoint() {
         } else {
             // 기본 설정으로 포트만 설정
             serial_config_.port_name = endpoint;
-            LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Using default serial settings for port: " + serial_config_.port_name);
+            LogMessage(LogLevel::DEBUG_LEVEL, "Using default serial settings for port: " + serial_config_.port_name);
         }
     }
 }

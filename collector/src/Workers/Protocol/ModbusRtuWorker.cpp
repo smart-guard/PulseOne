@@ -14,6 +14,7 @@
 
 #include "Workers/Protocol/ModbusRtuWorker.h"
 #include "Utils/LogManager.h"
+#include "Common/Enums.h"
 
 // ✅ 필수 시스템 헤더들
 #include <string>
@@ -39,6 +40,7 @@ std::string to_string_safe(T value) {
 }
 
 // ✅ 올바른 네임스페이스 - 중첩 제거! PulseOne::Workers만 사용
+using LogLevel = PulseOne::Enums::LogLevel;
 namespace PulseOne {
 namespace Workers {
 
@@ -183,7 +185,7 @@ bool ModbusRtuWorker::EstablishProtocolConnection() {
         config.device_id = device_info_.name;
         config.protocol = PulseOne::Enums::ProtocolType::MODBUS_RTU;
         config.endpoint = device_info_.endpoint;
-        config.timeout_ms = modbus_config_.timeout_ms;
+        config.timeout_ms_ms = modbus_config_.timeout_ms_ms;
         config.retry_count = modbus_config_.max_retries;
         
         // RTU 특화 설정
@@ -376,7 +378,7 @@ uint32_t ModbusRtuWorker::AddPollingGroup(const std::string& group_name,
     group.register_type = register_type;
     group.start_address = start_address;
     group.register_count = register_count;
-    group.polling_interval_ms = polling_interval_ms;
+    group.polling_interval_ms_ms = polling_interval_ms;
     group.enabled = true;
     group.last_poll_time = std::chrono::system_clock::now();
     group.next_poll_time = std::chrono::system_clock::now();
@@ -545,7 +547,7 @@ std::string ModbusRtuWorker::GetModbusStats() const {
     // RTU 특화 정보 (실제 존재하는 변수들만 사용)
     oss << "    \"modbus_config\": {\n";
     oss << "      \"slave_id\": " << modbus_config_.slave_id << ",\n";
-    oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms << ",\n";
+    oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms_ms << ",\n";
     oss << "      \"response_timeout_ms\": " << modbus_config_.response_timeout_ms << ",\n";
     oss << "      \"byte_timeout_ms\": " << modbus_config_.byte_timeout_ms << ",\n";
     oss << "      \"max_retries\": " << static_cast<int>(modbus_config_.max_retries) << "\n";
@@ -713,7 +715,7 @@ void ModbusRtuWorker::PollingWorkerThread() {
                         
                         auto& mutable_group = const_cast<ModbusRtuPollingGroup&>(group);
                         mutable_group.last_poll_time = now;
-                        mutable_group.next_poll_time = now + std::chrono::milliseconds(group.polling_interval_ms);
+                        mutable_group.next_poll_time = now + std::chrono::milliseconds(group.polling_interval_ms_ms);
                     }
                 }
             }
@@ -784,10 +786,10 @@ bool ModbusRtuWorker::ParseModbusConfig() {
         
         // DeviceInfo에서 공통 설정
         device_info_.endpoint = device_info_.endpoint;
-        modbus_config_.timeout_ms = device_info_.connection_timeout_ms;
+        modbus_config_.timeout_ms_ms = device_info_.connection_timeout_ms;
         modbus_config_.response_timeout_ms = std::min(device_info_.read_timeout_ms, 1000);
         modbus_config_.byte_timeout_ms = std::min(device_info_.read_timeout_ms / 10, 100);
-        modbus_config_.max_retries = static_cast<uint8_t>(device_info_.max_retry_count);
+        modbus_config_.max_retries = static_cast<uint8_t>(device_info_.retry_count);
         
         // 검증
         if (!modbus_config_.IsValid(true)) {
@@ -823,7 +825,7 @@ bool ModbusRtuWorker::InitializeModbusDriver() {
         driver_config.device_id = device_info_.name;
         driver_config.endpoint = device_info_.endpoint;
         driver_config.protocol = PulseOne::ProtocolType::MODBUS_RTU;
-        driver_config.timeout_ms = modbus_config_.timeout_ms;
+        driver_config.timeout_ms_ms = modbus_config_.timeout_ms_ms;
         
         // RTU 특화 설정
         driver_config.custom_settings["slave_id"] = to_string_safe(modbus_config_.slave_id);

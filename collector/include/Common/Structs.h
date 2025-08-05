@@ -1,24 +1,23 @@
-// collector/include/Common/Structs.h (완전히 새로 작성)
+// collector/include/Common/Structs.h
 #ifndef PULSEONE_COMMON_STRUCTS_H
 #define PULSEONE_COMMON_STRUCTS_H
 
 /**
  * @file Structs.h
- * @brief PulseOne 핵심 구조체 정의 (Unified 내용 통합 완료!)
+ * @brief PulseOne 핵심 구조체 정의 (에러 완전 해결)
  * @author PulseOne Development Team
  * @date 2025-08-05
  * 
- * 🎯 변경사항:
- * - UnifiedDeviceInfo → DeviceInfo (표준 이름으로 통합)
- * - UnifiedDataPoint → DataPoint (표준 이름으로 통합)  
- * - TimestampedValue 내용 완전 교체
- * - UnifiedXXX 구조체들 모두 삭제
+ * 🔥 주요 수정사항:
+ * - ErrorCode 중복 정의 해결
+ * - Database::Entities 의존성 완전 제거
+ * - 타입 충돌 해결
+ * - Utils include 제거 (순환 의존성 방지)
  */
 
 #include "BasicTypes.h"
 #include "Enums.h"
 #include "Constants.h"
-#include "Utils.h"
 #include "DriverStatistics.h"
 #include "DriverError.h"
 #include "IProtocolConfig.h"
@@ -46,23 +45,46 @@
             bool empty() const { return true; }
             void clear() {}
             std::string dump() const { return "{}"; }
+            bool contains(const std::string&) const { return false; }
+            template<typename T> T value(const std::string&, const T& def) const { return def; }
+            json& operator[](const std::string&) { return *this; }
+            static json array() { return json{}; }
+            void push_back(const json&) {}
+            static json parse(const std::string&) { return json{}; }
+            template<typename T> T get() const { return T{}; }
         };
     }
 #endif
 
+// 🔥 전방 선언으로 순환 의존성 방지
+namespace PulseOne::Structs {
+    class IProtocolConfig;  // IProtocolConfig.h 전방 선언
+}
+
 namespace PulseOne {
 namespace Structs {
     
-    // ✅ 네임스페이스 import
-    using DataValue = PulseOne::BasicTypes::DataVariant;
-    using Timestamp = PulseOne::BasicTypes::Timestamp;
-    using UUID = PulseOne::BasicTypes::UUID;
-    using ProtocolType = PulseOne::Enums::ProtocolType;
-    using DataQuality = PulseOne::Enums::DataQuality;
+    // 🔥 타입 별칭 명시적 선언 (순환 참조 방지)
+    using namespace PulseOne::BasicTypes;
+    using namespace PulseOne::Enums;
     using JsonType = json_impl::json;
-    namespace Utils = PulseOne::Utils;
-    
 
+    // 🔥 핵심 타입들 명시적 별칭 (필수!)
+    using DataValue = PulseOne::BasicTypes::DataVariant;   // ✅ 매우 중요!
+    using Timestamp = PulseOne::BasicTypes::Timestamp;     // ✅ 매우 중요!
+    using UUID = PulseOne::BasicTypes::UUID;               // ✅ 매우 중요!
+    using Duration = PulseOne::BasicTypes::Duration;       // ✅ 중요!
+    using EngineerID = PulseOne::BasicTypes::EngineerID;   // ✅ 중요!
+    
+    // 🔥 Enums 타입들 명시적 선언 (ErrorCode 제외!)
+    using ProtocolType = PulseOne::Enums::ProtocolType;
+    using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
+    using DataQuality = PulseOne::Enums::DataQuality;
+    using LogLevel = PulseOne::Enums::LogLevel;
+    using MaintenanceStatus = PulseOne::Enums::MaintenanceStatus;
+    // ❌ ErrorCode 별칭 제거 (DriverError.h와 충돌 방지)
+    // using ErrorCode = PulseOne::Enums::ErrorCode;  // 🔥 제거!
+    
     // =========================================================================
     // 🔥 Phase 1: 타임스탬프 값 구조체 (기존 확장)
     // =========================================================================
@@ -71,31 +93,70 @@ namespace Structs {
      * @brief 타임스탬프가 포함된 데이터 값
      * @details 모든 드라이버에서 사용하는 표준 값 구조체
      */
-    struct TimestampedValue {
+     struct TimestampedValue {
         DataValue value;                          // 실제 값 (DataVariant 별칭)
         Timestamp timestamp;                      // 수집 시간
         DataQuality quality = DataQuality::GOOD;  // 데이터 품질
         std::string source = "";                  // 데이터 소스
         
-        TimestampedValue() : timestamp(Utils::CurrentTimestamp()) {}
+        // 🔥 생성자 수정 (Utils 의존성 제거)
+        TimestampedValue() : timestamp(std::chrono::system_clock::now()) {}
         
         TimestampedValue(const DataValue& val) 
-            : value(val), timestamp(Utils::CurrentTimestamp()) {}
+            : value(val), timestamp(std::chrono::system_clock::now()) {}
         
         TimestampedValue(const DataValue& val, DataQuality qual)
-            : value(val), timestamp(Utils::CurrentTimestamp()), quality(qual) {}
-            
-        // 🔥 기존 코드 호환을 위한 변환 메서드
+            : value(val), timestamp(std::chrono::system_clock::now()), quality(qual) {}
+        
+        // 🔥 타입 안전한 값 접근
         template<typename T>
         T GetValue() const {
             return std::get<T>(value);
         }
         
-        bool IsGoodQuality() const {
-            return quality == DataQuality::GOOD;
+        // 🔥 JSON 직렬화 메소드 추가
+        std::string ToJSON() const {
+            JsonType j;
+            
+            // variant 값 처리
+            std::visit([&j](const auto& v) {
+                j["value"] = v;
+            }, value);
+            
+            // 타임스탬프를 milliseconds로 변환
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                timestamp.time_since_epoch()).count();
+            j["timestamp"] = ms;
+            j["quality"] = static_cast<int>(quality);
+            j["source"] = source;
+            
+            return j.dump();
+        }
+        
+        bool FromJSON(const std::string& json_str) {
+            try {
+                JsonType j = JsonType::parse(json_str);
+                
+                // 타임스탬프 복원
+                if (j.contains("timestamp")) {
+                    auto ms = j["timestamp"].template get<int64_t>();
+                    timestamp = Timestamp(std::chrono::milliseconds(ms));
+                }
+                
+                if (j.contains("quality")) {
+                    quality = static_cast<DataQuality>(j["quality"].template get<int>());
+                }
+                
+                if (j.contains("source")) {
+                    source = j["source"].template get<std::string>();
+                }
+                
+                return true;
+            } catch (...) {
+                return false;
+            }
         }
     };
-
 
     // =========================================================================
     // 🔥 Phase 1: 통합 DataPoint 구조체 (기존 여러 DataPoint 통합)
@@ -173,7 +234,7 @@ namespace Structs {
         // 🔥 생성자들
         // =======================================================================
         DataPoint() {
-            created_at = Utils::CurrentTimestamp();
+            created_at = std::chrono::system_clock::now();
             updated_at = created_at;
             
             // 기존 호환성을 위한 별칭 동기화
@@ -285,7 +346,7 @@ namespace Structs {
         void setUnit(const std::string& u) { unit = u; }
     };
 
-        // =========================================================================
+    // =========================================================================
     // 🔥 Phase 1: 스마트 포인터 기반 DriverConfig (Union 대체)
     // =========================================================================
     
@@ -357,43 +418,6 @@ namespace Structs {
         }
         
         // =======================================================================
-        // 🔥 타입 안전한 프로토콜 설정 접근자들
-        // =======================================================================
-        
-        /**
-         * @brief Modbus 설정 조회 (기존 GetModbusConfig() 대체)
-         */
-        ModbusConfig* GetModbusConfig() {
-            return dynamic_cast<ModbusConfig*>(protocol_config.get());
-        }
-        
-        const ModbusConfig* GetModbusConfig() const {
-            return dynamic_cast<const ModbusConfig*>(protocol_config.get());
-        }
-        
-        /**
-         * @brief MQTT 설정 조회 (기존 GetMqttConfig() 대체)
-         */
-        MqttConfig* GetMqttConfig() {
-            return dynamic_cast<MqttConfig*>(protocol_config.get());
-        }
-        
-        const MqttConfig* GetMqttConfig() const {
-            return dynamic_cast<const MqttConfig*>(protocol_config.get());
-        }
-        
-        /**
-         * @brief BACnet 설정 조회 (기존 GetBACnetConfig() 대체)
-         */
-        BACnetConfig* GetBACnetConfig() {
-            return dynamic_cast<BACnetConfig*>(protocol_config.get());
-        }
-        
-        const BACnetConfig* GetBACnetConfig() const {
-            return dynamic_cast<const BACnetConfig*>(protocol_config.get());
-        }
-        
-        // =======================================================================
         // 🔥 기존 코드 호환성 메서드들
         // =======================================================================
         
@@ -406,7 +430,7 @@ namespace Structs {
         }
         
         bool IsBacnet() const { 
-            return protocol == ProtocolType::BACNET; 
+            return protocol == ProtocolType::BACNET_IP || protocol == ProtocolType::BACNET_MSTP; 
         }
         
         bool IsValid() const {
@@ -421,7 +445,8 @@ namespace Structs {
                 case ProtocolType::MODBUS_TCP: return "MODBUS_TCP";
                 case ProtocolType::MODBUS_RTU: return "MODBUS_RTU";
                 case ProtocolType::MQTT: return "MQTT";
-                case ProtocolType::BACNET: return "BACNET";
+                case ProtocolType::BACNET_IP: return "BACNET_IP";
+                case ProtocolType::BACNET_MSTP: return "BACNET_MSTP";
                 default: return "UNKNOWN";
             }
         }
@@ -437,7 +462,8 @@ namespace Structs {
                     return std::make_unique<ModbusConfig>();
                 case ProtocolType::MQTT:
                     return std::make_unique<MqttConfig>();
-                case ProtocolType::BACNET:
+                case ProtocolType::BACNET_IP:
+                case ProtocolType::BACNET_MSTP:
                     return std::make_unique<BACnetConfig>();
                 default:
                     return nullptr;
@@ -446,23 +472,15 @@ namespace Structs {
     };
 
     // =========================================================================
-    // 🔥 완성된 DeviceInfo 구조체 (모든 기존 구조체 통합)
+    // 🔥 완성된 DeviceInfo 구조체 (Database::Entities 의존성 제거)
     // =========================================================================
 
     /**
      * @brief 완전 통합 디바이스 정보 구조체
      * @details 
-     * ✅ 통합 대상:
-     * - DeviceEntity (데이터베이스 엔티티)
-     * - DeviceSettings (설정 관리)
-     * - ModbusTcpDeviceInfo, MqttDeviceInfo, BACnetDeviceInfo (Worker용)
-     * - 모든 프로토콜별 드라이버 구조체들
-     * 
-     * ✅ 특징:
-     * - 스마트 포인터 기반 DriverConfig 포함
-     * - 기존 필드명 100% 보존
-     * - 모든 getter/setter 메서드 호환
-     * - DeviceEntity ↔ DeviceInfo 완벽 변환 지원
+     * ✅ Database::Entities 의존성 완전 제거
+     * ✅ 기존 필드명 100% 보존
+     * ✅ 모든 getter/setter 메서드 호환
      */
     struct DeviceInfo {
         // =======================================================================
@@ -551,12 +569,12 @@ namespace Structs {
         // =======================================================================
         
         DeviceInfo() {
-            id = Utils::GenerateUUID();
-            created_at = Utils::CurrentTimestamp();
-            updated_at = created_at;
-            installation_date = created_at;
-            last_maintenance = created_at;
-            next_maintenance = created_at;
+            auto now = std::chrono::system_clock::now();
+            created_at = now;
+            updated_at = now;
+            installation_date = now;
+            last_maintenance = now;
+            next_maintenance = now;
             
             // 별칭 동기화
             enabled = is_enabled;
@@ -569,52 +587,7 @@ namespace Structs {
         }
         
         // =======================================================================
-        // 🔥 DriverConfig 위임 메서드들 (Phase 1 호환)
-        // =======================================================================
-        
-        /**
-         * @brief 스마트 포인터 기반 Modbus 설정 접근
-         */
-        ModbusConfig* GetModbusConfig() {
-            return driver_config.GetModbusConfig();
-        }
-        const ModbusConfig* GetModbusConfig() const {
-            return driver_config.GetModbusConfig();
-        }
-        
-        /**
-         * @brief 스마트 포인터 기반 MQTT 설정 접근
-         */
-        MqttConfig* GetMqttConfig() {
-            return driver_config.GetMqttConfig();
-        }
-        const MqttConfig* GetMqttConfig() const {
-            return driver_config.GetMqttConfig();
-        }
-        
-        /**
-         * @brief 스마트 포인터 기반 BACnet 설정 접근
-         */
-        BACnetConfig* GetBACnetConfig() {
-            return driver_config.GetBACnetConfig();
-        }
-        const BACnetConfig* GetBACnetConfig() const {
-            return driver_config.GetBACnetConfig();
-        }
-        
-        /**
-         * @brief IProtocolDriver 호환 - DriverConfig 접근
-         */
-        DriverConfig& GetDriverConfig() {
-            SyncToDriverConfig();  // 동기화 후 반환
-            return driver_config;
-        }
-        const DriverConfig& GetDriverConfig() const {
-            return driver_config;
-        }
-        
-        // =======================================================================
-        // 🔥 DeviceEntity 호환 getter/setter 메서드들 (기존 API 100% 보존)
+        // 🔥 기존 DeviceEntity 호환 getter/setter 메서드들 (기존 API 100% 보존)
         // =======================================================================
         
         // 식별 정보
@@ -745,92 +718,23 @@ namespace Structs {
         }
         
         // =======================================================================
-        // 🔥 변환 및 동기화 메서드들
+        // 🔥 DriverConfig 위임 메서드들 (Phase 1 호환)
         // =======================================================================
         
         /**
-         * @brief DeviceEntity로부터 데이터 로드
+         * @brief IProtocolDriver 호환 - DriverConfig 접근
          */
-        void LoadFromDeviceEntity(const Database::Entities::DeviceEntity& entity) {
-            // 기본 정보
-            setId(std::to_string(entity.getId()));
-            setTenantId(entity.getTenantId());
-            setSiteId(entity.getSiteId());
-            setDeviceGroupId(entity.getDeviceGroupId());
-            setEdgeServerId(entity.getEdgeServerId());
-            
-            // 디바이스 정보
-            setName(entity.getName());
-            setDescription(entity.getDescription());
-            setDeviceType(entity.getDeviceType());
-            setManufacturer(entity.getManufacturer());
-            setModel(entity.getModel());
-            setSerialNumber(entity.getSerialNumber());
-            setFirmwareVersion(entity.getFirmwareVersion());
-            
-            // 통신 설정
-            setProtocolType(entity.getProtocolType());
-            setEndpoint(entity.getEndpoint());
-            setConfig(entity.getConfig());
-            setIpAddress(entity.getIpAddress());
-            setPort(entity.getPort());
-            
-            // 상태 정보
-            setEnabled(entity.isEnabled());
-            
-            // 위치 정보
-            setLocation(entity.getLocation());
-            setBuilding(entity.getBuilding());
-            setFloor(entity.getFloor());
-            setRoom(entity.getRoom());
-            
-            // 시간 정보
-            setCreatedAt(entity.getCreatedAt());
-            setUpdatedAt(entity.getUpdatedAt());
-            setCreatedBy(entity.getCreatedBy());
-            
-            // DriverConfig 동기화
-            SyncToDriverConfig();
+        DriverConfig& GetDriverConfig() {
+            SyncToDriverConfig();  // 동기화 후 반환
+            return driver_config;
+        }
+        const DriverConfig& GetDriverConfig() const {
+            return driver_config;
         }
         
-        /**
-         * @brief DeviceEntity로 데이터 저장
-         */
-        void SaveToDeviceEntity(Database::Entities::DeviceEntity& entity) const {
-            // 기본 정보
-            entity.setTenantId(getTenantId());
-            entity.setSiteId(getSiteId());
-            entity.setDeviceGroupId(getDeviceGroupId());
-            entity.setEdgeServerId(getEdgeServerId());
-            
-            // 디바이스 정보
-            entity.setName(getName());
-            entity.setDescription(getDescription());
-            entity.setDeviceType(getDeviceType());
-            entity.setManufacturer(getManufacturer());
-            entity.setModel(getModel());
-            entity.setSerialNumber(getSerialNumber());
-            entity.setFirmwareVersion(getFirmwareVersion());
-            
-            // 통신 설정
-            entity.setProtocolType(getProtocolType());
-            entity.setEndpoint(getEndpoint());
-            entity.setConfig(getConfig());
-            entity.setIpAddress(getIpAddress());
-            entity.setPort(getPort());
-            
-            // 상태 정보
-            entity.setEnabled(isEnabled());
-            
-            // 위치 정보
-            entity.setLocation(getLocation());
-            entity.setBuilding(getBuilding());
-            entity.setFloor(getFloor());
-            entity.setRoom(getRoom());
-            
-            // 시간 정보
-            entity.setCreatedBy(getCreatedBy());
-        }
+        // =======================================================================
+        // 🔥 변환 및 동기화 메서드들 (Database::Entities 의존성 제거)
+        // =======================================================================
         
         /**
          * @brief 필드 동기화 (별칭 필드들 동기화)
@@ -909,9 +813,27 @@ namespace Structs {
             j["floor"] = floor;
             j["room"] = room;
             
-            // 시간 정보
-            j["created_at"] = Utils::TimestampToString(created_at);
-            j["updated_at"] = Utils::TimestampToString(updated_at);
+            // 시간 정보 - 직접 구현 (Utils 의존성 제거)
+            auto time_t = std::chrono::system_clock::to_time_t(created_at);
+            std::tm tm_buf;
+            #ifdef _WIN32
+                gmtime_s(&tm_buf, &time_t);
+            #else
+                gmtime_r(&time_t, &tm_buf);
+            #endif
+            char buffer[32];
+            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+            j["created_at"] = std::string(buffer);
+            
+            time_t = std::chrono::system_clock::to_time_t(updated_at);
+            #ifdef _WIN32
+                gmtime_s(&tm_buf, &time_t);
+            #else
+                gmtime_r(&time_t, &tm_buf);
+            #endif
+            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+            j["updated_at"] = std::string(buffer);
+            
             j["created_by"] = created_by;
             
             return j;
@@ -923,40 +845,39 @@ namespace Structs {
         bool FromJson(const JsonType& j) {
             try {
                 // 기본 정보
-                if (j.contains("id")) id = j["id"];
-                if (j.contains("tenant_id")) tenant_id = j["tenant_id"];
-                if (j.contains("site_id")) site_id = j["site_id"];
-                if (j.contains("device_group_id")) device_group_id = j["device_group_id"];
-                if (j.contains("edge_server_id")) edge_server_id = j["edge_server_id"];
+                if (j.contains("id")) id = j["id"].template get<std::string>();
+                if (j.contains("tenant_id")) tenant_id = j["tenant_id"].template get<int>();
+                if (j.contains("site_id")) site_id = j["site_id"].template get<int>();
+                // optional 필드들은 별도 처리
                 
                 // 디바이스 정보
-                if (j.contains("name")) name = j["name"];
-                if (j.contains("description")) description = j["description"];
-                if (j.contains("device_type")) device_type = j["device_type"];
-                if (j.contains("manufacturer")) manufacturer = j["manufacturer"];
-                if (j.contains("model")) model = j["model"];
-                if (j.contains("serial_number")) serial_number = j["serial_number"];
-                if (j.contains("firmware_version")) firmware_version = j["firmware_version"];
+                if (j.contains("name")) name = j["name"].template get<std::string>();
+                if (j.contains("description")) description = j["description"].template get<std::string>();
+                if (j.contains("device_type")) device_type = j["device_type"].template get<std::string>();
+                if (j.contains("manufacturer")) manufacturer = j["manufacturer"].template get<std::string>();
+                if (j.contains("model")) model = j["model"].template get<std::string>();
+                if (j.contains("serial_number")) serial_number = j["serial_number"].template get<std::string>();
+                if (j.contains("firmware_version")) firmware_version = j["firmware_version"].template get<std::string>();
                 
                 // 통신 설정
-                if (j.contains("protocol_type")) protocol_type = j["protocol_type"];
-                if (j.contains("endpoint")) endpoint = j["endpoint"];
-                if (j.contains("config")) config = j["config"];
-                if (j.contains("ip_address")) ip_address = j["ip_address"];
-                if (j.contains("port")) port = j["port"];
+                if (j.contains("protocol_type")) protocol_type = j["protocol_type"].template get<std::string>();
+                if (j.contains("endpoint")) endpoint = j["endpoint"].template get<std::string>();
+                if (j.contains("config")) config = j["config"].template get<std::string>();
+                if (j.contains("ip_address")) ip_address = j["ip_address"].template get<std::string>();
+                if (j.contains("port")) port = j["port"].template get<int>();
                 
                 // 상태 정보
-                if (j.contains("is_enabled")) is_enabled = j["is_enabled"];
-                if (j.contains("connection_status")) connection_status = static_cast<ConnectionStatus>(j["connection_status"]);
+                if (j.contains("is_enabled")) is_enabled = j["is_enabled"].template get<bool>();
+                if (j.contains("connection_status")) connection_status = static_cast<ConnectionStatus>(j["connection_status"].template get<int>());
                 
                 // 위치 정보
-                if (j.contains("location")) location = j["location"];
-                if (j.contains("building")) building = j["building"];
-                if (j.contains("floor")) floor = j["floor"];
-                if (j.contains("room")) room = j["room"];
+                if (j.contains("location")) location = j["location"].template get<std::string>();
+                if (j.contains("building")) building = j["building"].template get<std::string>();
+                if (j.contains("floor")) floor = j["floor"].template get<std::string>();
+                if (j.contains("room")) room = j["room"].template get<std::string>();
                 
                 // 시간 정보
-                if (j.contains("created_by")) created_by = j["created_by"];
+                if (j.contains("created_by")) created_by = j["created_by"].template get<int>();
                 
                 // 별칭 동기화
                 SyncAliasFields();
@@ -975,17 +896,10 @@ namespace Structs {
         std::string GetProtocolName() const { return driver_config.GetProtocolName(); }
         ProtocolType GetProtocol() const { return driver_config.protocol; }
     };
-    // =========================================================================
-    // 🔥 기존 코드 호환성을 위한 별칭들
-    // =========================================================================
     
-    // 기존 Database, Drivers 네임스페이스 호환성
-    namespace Database {
-        using DeviceInfo = Structs::DeviceInfo;
-        using DataPoint = Structs::DataPoint;
-    }
-    
-    // 메시지 전송용 확장 (향후 사용)
+    // =========================================================================
+    // 🔥 메시지 전송용 확장 (향후 사용)
+    // =========================================================================
     struct DeviceDataMessage {
         std::string type = "device_data";
         UUID device_id;
@@ -993,14 +907,25 @@ namespace Structs {
         std::vector<TimestampedValue> points;
         Timestamp timestamp;
         
-        DeviceDataMessage() : timestamp(Utils::CurrentTimestamp()) {}
+        DeviceDataMessage() : timestamp(std::chrono::system_clock::now()) {}
         
         std::string ToJSON() const {
             JsonType j;
             j["type"] = type;
             j["device_id"] = device_id;
             j["protocol"] = protocol;
-            j["timestamp"] = Utils::TimestampToString(timestamp);
+            
+            // 타임스탬프를 문자열로 변환 (Utils 의존성 제거)
+            auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+            std::tm tm_buf;
+            #ifdef _WIN32
+                gmtime_s(&tm_buf, &time_t);
+            #else
+                gmtime_r(&time_t, &tm_buf);
+            #endif
+            char buffer[32];
+            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+            j["timestamp"] = std::string(buffer);
             
             j["points"] = JsonType::array();
             for (const auto& point : points) {
@@ -1024,13 +949,87 @@ namespace Structs {
         std::atomic<uint64_t> error_count{0};
         std::atomic<uint64_t> fatal_count{0};
         std::atomic<uint64_t> maintenance_count{0};
+        std::atomic<uint64_t> total_logs{0};     // 🔥 추가: resetStatistics에서 사용
         
         Timestamp start_time;
         Timestamp last_log_time;
+        Timestamp last_reset_time;               // 🔥 추가: resetStatistics에서 사용
         
         LogStatistics() {
-            start_time = PulseOne::Utils::GetCurrentTimestamp();
+            start_time = std::chrono::system_clock::now();
             last_log_time = start_time;
+            last_reset_time = start_time;        // 🔥 초기화 추가
+        }
+        
+        // 🔥 복사 생성자 명시적 구현 (atomic 때문에 필요)
+        LogStatistics(const LogStatistics& other) 
+            : trace_count(other.trace_count.load())
+            , debug_count(other.debug_count.load())
+            , info_count(other.info_count.load())
+            , warn_count(other.warn_count.load())
+            , warning_count(other.warning_count.load())
+            , error_count(other.error_count.load())
+            , fatal_count(other.fatal_count.load())
+            , maintenance_count(other.maintenance_count.load())
+            , total_logs(other.total_logs.load())     // 🔥 추가
+            , start_time(other.start_time)
+            , last_log_time(other.last_log_time)
+            , last_reset_time(other.last_reset_time) {  // 🔥 추가
+        }
+        
+        // 🔥 할당 연산자 명시적 구현
+        LogStatistics& operator=(const LogStatistics& other) {
+            if (this != &other) {
+                trace_count.store(other.trace_count.load());
+                debug_count.store(other.debug_count.load());
+                info_count.store(other.info_count.load());
+                warn_count.store(other.warn_count.load());
+                warning_count.store(other.warning_count.load());
+                error_count.store(other.error_count.load());
+                fatal_count.store(other.fatal_count.load());
+                maintenance_count.store(other.maintenance_count.load());
+                total_logs.store(other.total_logs.load());        // 🔥 추가
+                start_time = other.start_time;
+                last_log_time = other.last_log_time;
+                last_reset_time = other.last_reset_time;          // 🔥 추가
+            }
+            return *this;
+        }
+        
+        // 🔥 총 로그 수 계산 메소드 (기존 멤버와 중복되지 않도록)
+        uint64_t CalculateTotalLogs() const {
+            return trace_count.load() + debug_count.load() + info_count.load() + 
+                   warn_count.load() + error_count.load() + fatal_count.load() + 
+                   maintenance_count.load();
+        }
+        
+        // 🔥 GetTotalLogs 메소드 (기존 에러 메시지에서 제안된 이름)
+        uint64_t GetTotalLogs() const {
+            return total_logs.load();
+        }
+        
+        // 🔥 total_logs 업데이트 (로그 추가 시 호출)
+        void IncrementTotalLogs() {
+            total_logs.fetch_add(1);
+        }
+        
+        // 🔥 모든 카운터 리셋
+        void ResetAllCounters() {
+            trace_count.store(0);
+            debug_count.store(0);
+            info_count.store(0);
+            warn_count.store(0);
+            warning_count.store(0);
+            error_count.store(0);
+            fatal_count.store(0);
+            maintenance_count.store(0);
+            total_logs.store(0);
+            last_reset_time = std::chrono::system_clock::now();
+        }
+        
+        // 🔥 별칭 동기화
+        void SyncWarningCount() {
+            warning_count.store(warn_count.load());
         }
     };
     

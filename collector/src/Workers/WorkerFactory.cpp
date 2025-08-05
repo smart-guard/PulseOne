@@ -38,6 +38,7 @@
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Repositories/DeviceSettingsRepository.h"
 #include "Utils/LogManager.h"
+#include "Common/Enums.h"
 #include "Utils/ConfigManager.h"
 #include "Common/Constants.h"
 
@@ -50,6 +51,7 @@ using std::max;
 using std::min;
 using namespace std::chrono;
 
+using LogLevel = PulseOne::Enums::LogLevel;
 namespace PulseOne {
 namespace Workers {
 
@@ -624,12 +626,12 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(
                           " (device_id: " + std::to_string(device_entity.getId()) + ")");
             
             // ✅ 기본 타이밍 설정 매핑
-            device_info.polling_interval_ms = s.getPollingIntervalMs();
+            device_info.polling_interval_ms_ms = s.getPollingIntervalMs();
             device_info.connection_timeout_ms = s.getConnectionTimeoutMs();
-            device_info.timeout_ms = s.getConnectionTimeoutMs(); // 호환성
+            device_info.timeout_ms_ms = s.getConnectionTimeoutMs(); // 호환성
             
             // ✅ 재시도 설정 매핑
-            device_info.max_retry_count = s.getMaxRetryCount();
+            device_info.retry_count = s.getMaxRetryCount();
             device_info.retry_count = s.getMaxRetryCount(); // 호환성
             device_info.retry_interval_ms = s.getRetryIntervalMs();
             device_info.backoff_time_ms = s.getBackoffTimeMs();
@@ -654,8 +656,8 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(
             device_info.scan_rate_override = s.getScanRateOverride();
             
             // Duration 필드들 동기화
-            device_info.timeout = std::chrono::milliseconds(s.getConnectionTimeoutMs());
-            device_info.polling_interval = std::chrono::milliseconds(s.getPollingIntervalMs());
+            device_info.timeout_ms = std::chrono::milliseconds(s.getConnectionTimeoutMs());
+            device_info.polling_interval_ms = std::chrono::milliseconds(s.getPollingIntervalMs());
             
             // 호환성 필드들 동기화
             device_info.SyncCompatibilityFields();
@@ -738,7 +740,7 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(
     }
     
     // 상세 로깅 (디버깅용)
-    if (logger_->getLogLevel() <= PulseOne::LogLevel::DEBUG_LEVEL) {
+    if (logger_->getLogLevel() <= LogLevel::DEBUG_LEVEL) {
         auto settings_json = device_info.GetDeviceSettingsJson();
         logger_->Debug("📊 Final DeviceInfo settings for " + device_entity.getName() + ": " + settings_json.dump());
     }
@@ -766,26 +768,26 @@ void WorkerFactory::ApplyProtocolSpecificDefaults(
     
     if (protocol_type == "MODBUS_TCP") {
         // Modbus TCP 최적화 설정
-        device_info.polling_interval_ms = 1000;     // 1초
+        device_info.polling_interval_ms_ms = 1000;     // 1초
         device_info.connection_timeout_ms = 5000;   // 5초
         device_info.read_timeout_ms = 3000;         // 3초
         device_info.write_timeout_ms = 3000;        // 3초
-        device_info.max_retry_count = 3;
+        device_info.retry_count = 3;
         device_info.keep_alive_enabled = false;     // Modbus는 보통 Keep-Alive 불필요
         
     } else if (protocol_type == "MQTT") {
         // MQTT 최적화 설정
-        device_info.polling_interval_ms = 5000;     // 5초 (구독 기반이므로 길게)
+        device_info.polling_interval_ms_ms = 5000;     // 5초 (구독 기반이므로 길게)
         device_info.connection_timeout_ms = 10000;  // 10초
         device_info.keep_alive_enabled = true;      // MQTT는 Keep-Alive 중요
         device_info.keep_alive_interval_s = 60;     // 1분
-        device_info.max_retry_count = 5;            // 네트워크 기반이므로 더 많이
+        device_info.retry_count = 5;            // 네트워크 기반이므로 더 많이
         
     } else if (protocol_type == "BACNET") {
         // BACnet 최적화 설정
-        device_info.polling_interval_ms = 2000;     // 2초
+        device_info.polling_interval_ms_ms = 2000;     // 2초
         device_info.connection_timeout_ms = 8000;   // 8초
-        device_info.max_retry_count = 3;
+        device_info.retry_count = 3;
         device_info.keep_alive_enabled = false;     // BACnet은 보통 Keep-Alive 불필요
         
     } else {

@@ -14,6 +14,7 @@
 
 #include "Workers/Protocol/BACnetDiscoveryService.h"
 #include "Utils/LogManager.h"
+#include "Common/Enums.h"
 #include "Database/DatabaseManager.h"  // 🔥 추가: DatabaseManager include
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/Entities/DataPointEntity.h"
@@ -34,6 +35,7 @@ using DataType = PulseOne::Enums::DataType;
 using DataQuality = PulseOne::Enums::DataQuality;
 using QueryCondition = PulseOne::Database::QueryCondition;
 
+using LogLevel = PulseOne::Enums::LogLevel;
 namespace PulseOne {
 namespace Workers {
 

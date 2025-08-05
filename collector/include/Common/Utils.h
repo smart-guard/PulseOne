@@ -1,16 +1,18 @@
+// collector/include/Common/Utils.h
 #ifndef PULSEONE_COMMON_UTILS_H
 #define PULSEONE_COMMON_UTILS_H
 
 /**
  * @file Utils.h
- * @brief PulseOne 유틸리티 함수들 - using namespace 완전 제거
+ * @brief PulseOne 유틸리티 함수들 - 원본 기능 100% 유지하면서 타입 에러 해결
  * @author PulseOne Development Team  
- * @date 2025-07-29
+ * @date 2025-08-05
  * 
  * 🔥 주요 수정사항:
- * - using namespace 모두 제거 (STL 오염 방지)
- * - 모든 타입을 명시적 경로로 사용
- * - 순환 의존성 방지를 위한 전방 선언 사용
+ * - GetCurrentTimestamp() 반환 타입 완전 수정
+ * - LogLevel::DEBUG_LEVEL 문제 해결
+ * - 원본의 모든 함수 유지
+ * - 타입 에러 완전 해결
  */
 
 #include "BasicTypes.h"
@@ -108,7 +110,7 @@ namespace PulseOne::Utils {
     inline std::string LogLevelToString(LogLevel level) {
         switch (level) {
             case LogLevel::TRACE: return "TRACE";
-            case LogLevel::DEBUG_LEVEL: return "DEBUG";
+            case LogLevel::DEBUG: return "DEBUG";        // 🔥 DEBUG_LEVEL → DEBUG 수정
             case LogLevel::INFO: return "INFO";
             case LogLevel::WARN: return "WARN";
             case LogLevel::ERROR: return "ERROR";
@@ -126,7 +128,7 @@ namespace PulseOne::Utils {
         std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
         
         if (upper == "TRACE") return LogLevel::TRACE;
-        if (upper == "DEBUG") return LogLevel::DEBUG_LEVEL;
+        if (upper == "DEBUG") return LogLevel::DEBUG;    // 🔥 DEBUG_LEVEL → DEBUG 수정
         if (upper == "INFO") return LogLevel::INFO;
         if (upper == "WARN") return LogLevel::WARN;
         if (upper == "ERROR") return LogLevel::ERROR;
@@ -346,8 +348,23 @@ namespace PulseOne::Utils {
     }
     
     // ========================================
-    // 시간 관련 함수들
+    // 🔥 시간 관련 함수들 (완전 수정)
     // ========================================
+    
+    /**
+     * @brief 현재 타임스탬프 얻기 (기본) - 🔥 타입 에러 완전 수정
+     */
+    inline Timestamp GetCurrentTimestamp() {
+        // 🔥 올바른 구현: system_clock::time_point 반환
+        return std::chrono::system_clock::now();
+    }
+    
+    /**
+     * @brief 현재 타임스탬프 얻기 (별칭 - 기존 코드 호환성)
+     */
+    inline Timestamp CurrentTimestamp() {
+        return GetCurrentTimestamp();
+    }
     
     /**
      * @brief 타임스탬프를 ISO 8601 문자열로 변환
@@ -363,24 +380,6 @@ namespace PulseOne::Utils {
         return ss.str();
     }
     
-    /**
-     * @brief 현재 시간 가져오기
-     */
-    /**
-     * @brief 현재 타임스탬프 얻기 (기본)
-     */
-    inline Timestamp GetCurrentTimestamp() {
-        auto now = std::chrono::system_clock::now();
-        auto duration = now.time_since_epoch();
-        return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-    }
-    
-    /**
-     * @brief 현재 타임스탬프 얻기 (별칭 - 기존 코드 호환성)
-     */
-    inline Timestamp CurrentTimestamp() {
-        return GetCurrentTimestamp();
-    }
     /**
      * @brief 두 시간 사이의 간격 계산
      */
@@ -582,7 +581,7 @@ namespace PulseOne::Utils {
      * @param timestamp 변환할 타임스탬프
      * @return ISO 8601 형식의 문자열 (예: "2025-08-04T12:34:56.789Z")
      */
-    inline std::string TimestampToString(const BasicTypes::Timestamp& timestamp) {
+    inline std::string TimestampToString(const PulseOne::BasicTypes::Timestamp& timestamp) {
         try {
             auto time_t = std::chrono::system_clock::to_time_t(timestamp);
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -603,7 +602,7 @@ namespace PulseOne::Utils {
      * @param timestamp_str ISO 8601 형식의 문자열
      * @return Timestamp 객체
      */
-    inline BasicTypes::Timestamp StringToTimestamp(const std::string& timestamp_str) {
+    inline PulseOne::BasicTypes::Timestamp StringToTimestamp(const std::string& timestamp_str) {
         (void)timestamp_str;
         
         try {

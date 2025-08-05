@@ -8,12 +8,15 @@
 
 #include "Workers/Base/BaseDeviceWorker.h"
 #include "Utils/LogManager.h"
+#include "Common/Enums.h"
+#include "Common/Enums.h"
 #include <sstream>
 #include <iomanip>
 #include <thread>
 
 using namespace std::chrono;
-
+using LogLevel = PulseOne::Enums::LogLevel;
+using LogLevel = PulseOne::Enums::LogLevel;
 namespace PulseOne {
 namespace Workers {
 
@@ -140,7 +143,7 @@ BaseDeviceWorker::BaseDeviceWorker(const PulseOne::DeviceInfo& device_info,
     wait_start_time_ = system_clock::now();
     last_keep_alive_time_ = system_clock::now();
     
-    LogMessage(PulseOne::LogLevel::INFO, "BaseDeviceWorker created for device: " + device_info_.name);
+    LogMessage(LogLevel::INFO, "BaseDeviceWorker created for device: " + device_info_.name);
     
     // 재연결 관리 스레드 시작
     thread_running_ = true;
@@ -154,7 +157,7 @@ BaseDeviceWorker::~BaseDeviceWorker() {
         reconnection_thread_->join();
     }
     
-    LogMessage(PulseOne::LogLevel::INFO, "BaseDeviceWorker destroyed for device: " + device_info_.name);
+    LogMessage(LogLevel::INFO, "BaseDeviceWorker destroyed for device: " + device_info_.name);
 }
 
 // =============================================================================
@@ -168,14 +171,14 @@ std::future<bool> BaseDeviceWorker::Pause() {
     try {
         if (current_state_.load() == WorkerState::RUNNING) {
             ChangeState(WorkerState::PAUSED);
-            LogMessage(PulseOne::LogLevel::INFO, "Worker paused");
+            LogMessage(LogLevel::INFO, "Worker paused");
             promise->set_value(true);
         } else {
-            LogMessage(PulseOne::LogLevel::WARN, "Cannot pause worker in current state");
+            LogMessage(LogLevel::WARN, "Cannot pause worker in current state");
             promise->set_value(false);
         }
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception in Pause: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception in Pause: " + std::string(e.what()));
         promise->set_value(false);
     }
     
@@ -189,14 +192,14 @@ std::future<bool> BaseDeviceWorker::Resume() {
     try {
         if (current_state_.load() == WorkerState::PAUSED) {
             ChangeState(WorkerState::RUNNING);
-            LogMessage(PulseOne::LogLevel::INFO, "Worker resumed");
+            LogMessage(LogLevel::INFO, "Worker resumed");
             promise->set_value(true);
         } else {
-            LogMessage(PulseOne::LogLevel::WARN, "Cannot resume worker in current state");
+            LogMessage(LogLevel::WARN, "Cannot resume worker in current state");
             promise->set_value(false);
         }
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Exception in Resume: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception in Resume: " + std::string(e.what()));
         promise->set_value(false);
     }
     
@@ -209,13 +212,13 @@ bool BaseDeviceWorker::AddDataPoint(const PulseOne::DataPoint& point) {
     // 중복 확인 (GitHub 구조: point_id -> id)
     for (const auto& existing_point : data_points_) {
         if (existing_point.id == point.id) {
-            LogMessage(PulseOne::LogLevel::WARN, "Data point already exists: " + point.name);
+            LogMessage(LogLevel::WARN, "Data point already exists: " + point.name);
             return false;
         }
     }
     
     data_points_.push_back(point);
-    LogMessage(PulseOne::LogLevel::INFO, "Data point added: " + point.name);
+    LogMessage(LogLevel::INFO, "Data point added: " + point.name);
     return true;
 }
 
@@ -233,24 +236,24 @@ bool BaseDeviceWorker::UpdateReconnectionSettings(const ReconnectionSettings& se
     
     // 유효성 검사
     if (settings.retry_interval_ms < 1000 || settings.retry_interval_ms > 300000) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid retry interval: " + std::to_string(settings.retry_interval_ms));
+        LogMessage(LogLevel::ERROR, "Invalid retry interval: " + std::to_string(settings.retry_interval_ms));
         return false;
     }
     
     if (settings.max_retries_per_cycle < 0 || settings.max_retries_per_cycle > 100) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid max retries: " + std::to_string(settings.max_retries_per_cycle));
+        LogMessage(LogLevel::ERROR, "Invalid max retries: " + std::to_string(settings.max_retries_per_cycle));
         return false;
     }
     
     if (settings.wait_time_after_max_retries_ms < 10000) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Invalid wait time: " + std::to_string(settings.wait_time_after_max_retries_ms));
+        LogMessage(LogLevel::ERROR, "Invalid wait time: " + std::to_string(settings.wait_time_after_max_retries_ms));
         return false;
     }
     
     ReconnectionSettings old_settings = reconnection_settings_;
     reconnection_settings_ = settings;
     
-    LogMessage(PulseOne::LogLevel::INFO, "Reconnection settings updated");
+    LogMessage(LogLevel::INFO, "Reconnection settings updated");
     
     // Redis에 변경사항 저장 (GitHub 구조: publish -> set)
     if (redis_client_) {
@@ -259,7 +262,7 @@ bool BaseDeviceWorker::UpdateReconnectionSettings(const ReconnectionSettings& se
                                    " to: " + settings.ToJson();
             redis_client_->set(reconnection_channel_, change_msg);
         } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Failed to save settings change to Redis: " + std::string(e.what()));
+            LogMessage(LogLevel::ERROR, "Failed to save settings change to Redis: " + std::string(e.what()));
         }
     }
     
@@ -277,7 +280,7 @@ std::future<bool> BaseDeviceWorker::ForceReconnect() {
     
     std::thread([this, promise]() {
         try {
-            LogMessage(PulseOne::LogLevel::INFO, "Force reconnect requested");
+            LogMessage(LogLevel::INFO, "Force reconnect requested");
             
             // 현재 연결 강제 종료
             if (is_connected_.load()) {
@@ -292,11 +295,11 @@ std::future<bool> BaseDeviceWorker::ForceReconnect() {
             // 즉시 재연결 시도
             bool success = AttemptReconnection();
             
-            LogMessage(PulseOne::LogLevel::INFO, "Force reconnect " + std::string(success ? "successful" : "failed"));
+            LogMessage(LogLevel::INFO, "Force reconnect " + std::string(success ? "successful" : "failed"));
             promise->set_value(success);
             
         } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Exception in force reconnect: " + std::string(e.what()));
+            LogMessage(LogLevel::ERROR, "Exception in force reconnect: " + std::string(e.what()));
             promise->set_value(false);
         }
     }).detach();
@@ -332,7 +335,7 @@ void BaseDeviceWorker::ResetReconnectionState() {
     in_wait_cycle_ = false;
     wait_start_time_ = system_clock::now();
     
-    LogMessage(PulseOne::LogLevel::INFO, "Reconnection state reset");
+    LogMessage(LogLevel::INFO, "Reconnection state reset");
 }
 
 // =============================================================================
@@ -345,7 +348,7 @@ std::string BaseDeviceWorker::GetStatusJson() const {
     ss << "  \"device_info\": {\n";
     ss << "    \"device_id\": \"" << device_info_.id << "\",\n";
     ss << "    \"device_name\": \"" << device_info_.name << "\",\n";
-    ss << "    \"protocol_type\": \"" << PulseOne::Utils::ProtocolTypeToString(device_info_.protocol) << "\",\n";
+    ss << "    \"protocol_type\": \"" << PulseOne::Utils::ProtocolTypeToString(device_info_.GetProtocol()) << "\",\n";
     ss << "    \"endpoint\": \"" << device_info_.endpoint << "\"\n";
     ss << "  },\n";
     ss << "  \"status\": {\n";
@@ -366,7 +369,7 @@ void BaseDeviceWorker::ChangeState(WorkerState new_state) {
     WorkerState old_state = current_state_.exchange(new_state);
     
     if (old_state != new_state) {
-        LogMessage(PulseOne::LogLevel::INFO, "State changed: " + WorkerStateToString(old_state) + 
+        LogMessage(LogLevel::INFO, "State changed: " + WorkerStateToString(old_state) + 
                   " → " + WorkerStateToString(new_state));
         
         PublishStatusToRedis();
@@ -381,7 +384,7 @@ void BaseDeviceWorker::PublishStatusToRedis() {
         // GitHub 구조: publish -> set 사용
         redis_client_->set(status_channel_, status_json);
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to save status to Redis: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Failed to save status to Redis: " + std::string(e.what()));
     }
 }
 
@@ -394,9 +397,9 @@ void BaseDeviceWorker::SaveToInfluxDB(const std::string& point_id,
         (void)value;  // 명시적으로 사용하지 않음을 표시
         
         // InfluxDB 포인트 생성 및 저장
-        LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Data saved to InfluxDB for point: " + point_id);
+        LogMessage(LogLevel::DEBUG_LEVEL, "Data saved to InfluxDB for point: " + point_id);
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Failed to save to InfluxDB: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Failed to save to InfluxDB: " + std::string(e.what()));
     }
 }
 
@@ -405,17 +408,17 @@ void BaseDeviceWorker::SetConnectionState(bool connected) {
     
     if (old_state != connected) {
         if (connected) {
-            LogMessage(PulseOne::LogLevel::INFO, "Connection established");
+            LogMessage(LogLevel::INFO, "Connection established");
             UpdateReconnectionStats(true);
         } else {
-            LogMessage(PulseOne::LogLevel::WARN, "Connection lost");
+            LogMessage(LogLevel::WARN, "Connection lost");
             UpdateReconnectionStats(false);
         }
     }
 }
 
 void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
-    LogMessage(PulseOne::LogLevel::ERROR, "Connection error: " + error_message);
+    LogMessage(LogLevel::ERROR, "Connection error: " + error_message);
     
     SetConnectionState(false);
     
@@ -430,7 +433,7 @@ void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
 // =============================================================================
 
 void BaseDeviceWorker::ReconnectionThreadMain() {
-    LogMessage(PulseOne::LogLevel::INFO, "Reconnection management thread started");
+    LogMessage(LogLevel::INFO, "Reconnection management thread started");
     
     while (thread_running_.load()) {
         try {
@@ -448,7 +451,7 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
                             in_wait_cycle_ = false;
                             current_retry_count_ = 0;
                             reconnection_stats_.wait_cycles.fetch_add(1);
-                            LogMessage(PulseOne::LogLevel::INFO, "Wait cycle completed, resuming reconnection attempts");
+                            LogMessage(LogLevel::INFO, "Wait cycle completed, resuming reconnection attempts");
                         }
                     } else {
                         // 재연결 시도
@@ -461,7 +464,7 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
                                     ChangeState(WorkerState::RUNNING);
                                 }
                                 ResetReconnectionState();
-                                LogMessage(PulseOne::LogLevel::INFO, "Reconnection successful");
+                                LogMessage(LogLevel::INFO, "Reconnection successful");
                             } else {
                                 // 재연결 실패 - 재시도 카운터 증가
                                 current_retry_count_.fetch_add(1);
@@ -475,7 +478,7 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
                                     wait_start_time_ = system_clock::now();
                                     ChangeState(WorkerState::WAITING_RETRY);
                                     
-                                    LogMessage(PulseOne::LogLevel::WARN, 
+                                    LogMessage(LogLevel::WARN, 
                                               "Max retries exceeded (" + std::to_string(reconnection_settings_.max_retries_per_cycle) + 
                                               "), entering wait cycle for " + 
                                               std::to_string(reconnection_settings_.wait_time_after_max_retries_ms / 1000) + " seconds");
@@ -497,17 +500,17 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             
         } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Exception in reconnection thread: " + std::string(e.what()));
+            LogMessage(LogLevel::ERROR, "Exception in reconnection thread: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
     
-    LogMessage(PulseOne::LogLevel::INFO, "Reconnection management thread stopped");
+    LogMessage(LogLevel::INFO, "Reconnection management thread stopped");
 }
 
 bool BaseDeviceWorker::AttemptReconnection() {
     try {
-        LogMessage(PulseOne::LogLevel::INFO, "Attempting reconnection (attempt " + 
+        LogMessage(LogLevel::INFO, "Attempting reconnection (attempt " + 
                   std::to_string(current_retry_count_.load() + 1) + ")");
         
         reconnection_stats_.total_connections.fetch_add(1);
@@ -522,7 +525,7 @@ bool BaseDeviceWorker::AttemptReconnection() {
         }
         
     } catch (const std::exception& e) {
-        LogMessage(PulseOne::LogLevel::ERROR, "Reconnection attempt failed: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Reconnection attempt failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -532,7 +535,7 @@ bool BaseDeviceWorker::HandleWaitCycle() {
     auto wait_duration = duration_cast<milliseconds>(now - wait_start_time_).count();
     
     if (wait_duration >= reconnection_settings_.wait_time_after_max_retries_ms) {
-        LogMessage(PulseOne::LogLevel::INFO, "Wait cycle completed after " + 
+        LogMessage(LogLevel::INFO, "Wait cycle completed after " + 
                   std::to_string(wait_duration / 1000) + " seconds");
         return true;
     }
@@ -543,7 +546,7 @@ bool BaseDeviceWorker::HandleWaitCycle() {
     // 매 30초마다 대기 상태 로그 출력
     static auto last_log_time = system_clock::now();
     if (duration_cast<seconds>(now - last_log_time).count() >= 30) {
-        LogMessage(PulseOne::LogLevel::INFO, "Waiting for retry cycle completion, " + 
+        LogMessage(LogLevel::INFO, "Waiting for retry cycle completion, " + 
                   std::to_string(remaining_seconds) + " seconds remaining");
         last_log_time = now;
     }
@@ -567,15 +570,15 @@ void BaseDeviceWorker::HandleKeepAlive() {
             if (keepalive_success) {
                 // 추가로 연결 상태 확인
                 if (!CheckConnection()) {
-                    LogMessage(PulseOne::LogLevel::WARN, "Keep-alive sent but connection check failed");
+                    LogMessage(LogLevel::WARN, "Keep-alive sent but connection check failed");
                     HandleConnectionError("Keep-alive connection check failed");
                     reconnection_stats_.keep_alive_failed.fetch_add(1);
                 } else {
                     reconnection_stats_.keep_alive_sent.fetch_add(1);
-                    LogMessage(PulseOne::LogLevel::DEBUG_LEVEL, "Keep-alive successful");
+                    LogMessage(LogLevel::DEBUG_LEVEL, "Keep-alive successful");
                 }
             } else {
-                LogMessage(PulseOne::LogLevel::WARN, "Keep-alive failed");
+                LogMessage(LogLevel::WARN, "Keep-alive failed");
                 HandleConnectionError("Keep-alive send failed");
                 reconnection_stats_.keep_alive_failed.fetch_add(1);
             }
@@ -583,7 +586,7 @@ void BaseDeviceWorker::HandleKeepAlive() {
             last_keep_alive_time_ = now;
             
         } catch (const std::exception& e) {
-            LogMessage(PulseOne::LogLevel::ERROR, "Keep-alive exception: " + std::string(e.what()));
+            LogMessage(LogLevel::ERROR, "Keep-alive exception: " + std::string(e.what()));
             HandleConnectionError("Keep-alive exception: " + std::string(e.what()));
             reconnection_stats_.keep_alive_failed.fetch_add(1);
         }
