@@ -7,6 +7,7 @@
 #define BACNET_SERVICE_MANAGER_H
 
 #include "Drivers/Bacnet/BACnetCommonTypes.h"
+#include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetStatisticsManager.h"
 #include <memory>
 #include <map>
@@ -64,7 +65,7 @@ public:
      * @return 성공 여부
      */
     bool ReadPropertyMultiple(uint32_t device_id,
-                             const std::vector<BACnetObjectInfo>& objects,
+                             const std::vector<DataPoint>& objects,
                              std::vector<TimestampedValue>& results,
                              uint32_t timeout_ms = 5000);
     
@@ -97,7 +98,7 @@ public:
      * @brief Write Property Multiple 서비스
      */
     bool WritePropertyMultiple(uint32_t device_id,
-                              const std::map<BACnetObjectInfo, Structs::DataValue>& values,
+                              const std::map<DataPoint, Structs::DataValue>& values,
                               uint32_t timeout_ms = 5000);
     
     /**
@@ -139,7 +140,7 @@ public:
     /**
      * @brief 디바이스 객체 목록 조회
      */
-    std::vector<BACnetObjectInfo> GetDeviceObjects(uint32_t device_id,
+    std::vector<DataPoint> GetDeviceObjects(uint32_t device_id,
                                                   BACNET_OBJECT_TYPE filter_type = OBJECT_PROPRIETARY_MIN);
     
     // ==========================================================================
@@ -149,7 +150,7 @@ public:
     /**
      * @brief 향상된 디바이스 발견
      */
-    int DiscoverDevices(std::map<uint32_t, BACnetDeviceInfo>& devices,
+    int DiscoverDevices(std::map<uint32_t, DeviceInfo>& devices,
                        uint32_t low_limit = 0,
                        uint32_t high_limit = 4194303,
                        uint32_t timeout_ms = 3000);
@@ -157,7 +158,7 @@ public:
     /**
      * @brief 특정 디바이스 정보 조회
      */
-    bool GetDeviceInfo(uint32_t device_id, BACnetDeviceInfo& device_info);
+    bool GetDeviceInfo(uint32_t device_id, DeviceInfo& device_info);
     
     /**
      * @brief 디바이스 온라인 상태 확인
@@ -205,7 +206,7 @@ private:
     };
     
     struct RPMGroup {
-        std::vector<BACnetObjectInfo> objects;
+        std::vector<DataPoint> objects;
         std::vector<size_t> original_indices; // 원본 배열에서의 인덱스
         size_t estimated_size_bytes;
         
@@ -226,7 +227,7 @@ private:
     
     // 성능 최적화
     std::mutex optimization_mutex_;
-    std::map<uint32_t, BACnetDeviceInfo> device_cache_;
+    std::map<uint32_t, DeviceInfo> device_cache_;
     std::chrono::steady_clock::time_point last_cache_cleanup_;
     
     // RPM 최적화 설정
@@ -246,16 +247,16 @@ private:
     void TimeoutRequests();
     
     // RPM 최적화
-    std::vector<RPMGroup> OptimizeRPMGroups(const std::vector<BACnetObjectInfo>& objects);
-    size_t EstimateObjectSize(const BACnetObjectInfo& object);
-    bool CanGroupObjects(const BACnetObjectInfo& obj1, const BACnetObjectInfo& obj2);
+    std::vector<RPMGroup> OptimizeRPMGroups(const std::vector<DataPoint>& objects);
+    size_t EstimateObjectSize(const DataPoint& object);
+    bool CanGroupObjects(const DataPoint& obj1, const DataPoint& obj2);
     
     // WPM 최적화
-    std::vector<std::map<BACnetObjectInfo, Structs::DataValue>> 
-        OptimizeWPMGroups(const std::map<BACnetObjectInfo, Structs::DataValue>& values);
+    std::vector<std::map<DataPoint, Structs::DataValue>> 
+        OptimizeWPMGroups(const std::map<DataPoint, Structs::DataValue>& values);
     
     // 데이터 변환
-    BACnetObjectInfo DataPointToBACnetObject(const Structs::DataPoint& point);
+    DataPoint DataPointToBACnetObject(const Structs::DataPoint& point);
     TimestampedValue BACnetValueToTimestampedValue(const BACNET_APPLICATION_DATA_VALUE& bacnet_value);
     bool DataValueToBACnetValue(const Structs::DataValue& data_value, 
                                BACNET_APPLICATION_DATA_VALUE& bacnet_value);
@@ -265,16 +266,16 @@ private:
     void UpdateServiceStatistics(const std::string& service_type, bool success, double duration_ms);
     
     // 캐시 관리
-    void UpdateDeviceCache(uint32_t device_id, const BACnetDeviceInfo& device_info);
-    bool GetCachedDeviceInfo(uint32_t device_id, BACnetDeviceInfo& device_info);
+    void UpdateDeviceCache(uint32_t device_id, const DeviceInfo& device_info);
+    bool GetCachedDeviceInfo(uint32_t device_id, DeviceInfo& device_info);
     void CleanupDeviceCache();
     
 #ifdef HAS_BACNET_STACK
     // BACnet 스택 헬퍼들
-    bool SendRPMRequest(uint32_t device_id, const std::vector<BACnetObjectInfo>& objects, uint8_t invoke_id);
-    bool SendWPMRequest(uint32_t device_id, const std::map<BACnetObjectInfo, Structs::DataValue>& values, uint8_t invoke_id);
+    bool SendRPMRequest(uint32_t device_id, const std::vector<DataPoint>& objects, uint8_t invoke_id);
+    bool SendWPMRequest(uint32_t device_id, const std::map<DataPoint, Structs::DataValue>& values, uint8_t invoke_id);
     bool ParseRPMResponse(const uint8_t* service_data, uint16_t service_len, 
-                         const std::vector<BACnetObjectInfo>& expected_objects,
+                         const std::vector<DataPoint>& expected_objects,
                          std::vector<TimestampedValue>& results);
     bool ParseWPMResponse(const uint8_t* service_data, uint16_t service_len);
     

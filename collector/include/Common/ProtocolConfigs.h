@@ -22,15 +22,6 @@
     namespace json_impl = nlohmann;
 #else
     namespace json_impl {
-        class json {
-        public:
-            json() = default;
-            static json parse(const std::string&) { return json{}; }
-            std::string dump() const { return "{}"; }
-            template<typename T> T value(const std::string&, const T& def) const { return def; }
-            template<typename T> void operator=(const T&) {}
-            json& operator[](const std::string&) { return *this; }
-        };
     }
 #endif
 

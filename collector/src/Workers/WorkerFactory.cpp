@@ -626,9 +626,9 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(
                           " (device_id: " + std::to_string(device_entity.getId()) + ")");
             
             // ✅ 기본 타이밍 설정 매핑
-            device_info.polling_interval_ms_ms = s.getPollingIntervalMs();
+            device_info.polling_interval_ms = s.getPollingIntervalMs();
             device_info.connection_timeout_ms = s.getConnectionTimeoutMs();
-            device_info.timeout_ms_ms = s.getConnectionTimeoutMs(); // 호환성
+            device_info.timeout_ms = s.getConnectionTimeoutMs(); // 호환성
             
             // ✅ 재시도 설정 매핑
             device_info.retry_count = s.getMaxRetryCount();
@@ -768,7 +768,7 @@ void WorkerFactory::ApplyProtocolSpecificDefaults(
     
     if (protocol_type == "MODBUS_TCP") {
         // Modbus TCP 최적화 설정
-        device_info.polling_interval_ms_ms = 1000;     // 1초
+        device_info.polling_interval_ms = 1000;     // 1초
         device_info.connection_timeout_ms = 5000;   // 5초
         device_info.read_timeout_ms = 3000;         // 3초
         device_info.write_timeout_ms = 3000;        // 3초
@@ -777,7 +777,7 @@ void WorkerFactory::ApplyProtocolSpecificDefaults(
         
     } else if (protocol_type == "MQTT") {
         // MQTT 최적화 설정
-        device_info.polling_interval_ms_ms = 5000;     // 5초 (구독 기반이므로 길게)
+        device_info.polling_interval_ms = 5000;     // 5초 (구독 기반이므로 길게)
         device_info.connection_timeout_ms = 10000;  // 10초
         device_info.keep_alive_enabled = true;      // MQTT는 Keep-Alive 중요
         device_info.keep_alive_interval_s = 60;     // 1분
@@ -785,7 +785,7 @@ void WorkerFactory::ApplyProtocolSpecificDefaults(
         
     } else if (protocol_type == "BACNET") {
         // BACnet 최적화 설정
-        device_info.polling_interval_ms_ms = 2000;     // 2초
+        device_info.polling_interval_ms = 2000;     // 2초
         device_info.connection_timeout_ms = 8000;   // 8초
         device_info.retry_count = 3;
         device_info.keep_alive_enabled = false;     // BACnet은 보통 Keep-Alive 불필요

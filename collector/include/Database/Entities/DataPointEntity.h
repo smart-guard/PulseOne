@@ -5,13 +5,12 @@
  * @file DataPointEntity.h
  * @brief PulseOne DataPointEntity - DeviceSettingsEntity 패턴 100% 적용
  * @author PulseOne Development Team
- * @date 2025-07-31
+ * @date 2025-08-05 (매크로 충돌 수정)
  * 
- * 🎯 DeviceSettingsEntity 패턴 완전 적용:
- * - 헤더: 선언만 (순환 참조 방지)
- * - CPP: Repository 호출 구현
- * - BaseEntity<DataPointEntity> 상속 (CRTP)
- * - data_points 테이블과 1:1 매핑
+ * 🔥 매크로 충돌 완전 해결:
+ * - data 매개변수 → json_data로 변경
+ * - 매크로 보호 구문 추가
+ * - 문법 오류 모두 수정
  */
 
 #include "Database/Entities/BaseEntity.h"
@@ -35,6 +34,11 @@ struct json {
     static json parse(const std::string&) { return json{}; }
     static json object() { return json{}; }
 };
+#endif
+
+// 🔥 매크로 충돌 방지: data 매크로가 정의되어 있다면 제거
+#ifdef data
+#undef data
 #endif
 
 namespace PulseOne {
@@ -84,7 +88,8 @@ public:
     
     DataPointEntity();
     explicit DataPointEntity(int point_id);
-    explicit DataPointEntity(const DataPoint& data_point);
+    // 🔥 수정: DataPoint 타입 확인 필요 (UnifiedCommonTypes에서 가져와야 함)
+    // explicit DataPointEntity(const DataPoint& data_point);
     virtual ~DataPointEntity() = default;
 
     // =======================================================================
@@ -97,13 +102,13 @@ public:
     bool updateToDatabase() override;
 
     // =======================================================================
-    // JSON 직렬화/역직렬화 (인라인 구현)
+    // JSON 직렬화/역직렬화 (인라인 구현) - 🔥 매크로 충돌 수정
     // =======================================================================
     
     json toJson() const override {
         json j;
         try {
-            j["id"] = id_;
+            j["id"] = getId();                    // 🔥 수정: id_ → getId()
             j["device_id"] = device_id_;
             j["name"] = name_;
             j["description"] = description_;
@@ -137,26 +142,27 @@ public:
         return j;
     }
     
-    bool fromJson(const json& data) override {
+    // 🔥 핵심 수정: data → json_data로 매개변수명 변경
+    bool fromJson(const json& json_data) override {
         try {
-            if (data.contains("id")) id_ = data["id"];
-            if (data.contains("device_id")) device_id_ = data["device_id"];
-            if (data.contains("name")) name_ = data["name"];
-            if (data.contains("description")) description_ = data["description"];
-            if (data.contains("address")) address_ = data["address"];
-            if (data.contains("data_type")) data_type_ = data["data_type"];
-            if (data.contains("access_mode")) access_mode_ = data["access_mode"];
-            if (data.contains("is_enabled")) is_enabled_ = data["is_enabled"];
-            if (data.contains("unit")) unit_ = data["unit"];
-            if (data.contains("scaling_factor")) scaling_factor_ = data["scaling_factor"];
-            if (data.contains("scaling_offset")) scaling_offset_ = data["scaling_offset"];
-            if (data.contains("min_value")) min_value_ = data["min_value"];
-            if (data.contains("max_value")) max_value_ = data["max_value"];
-            if (data.contains("log_enabled")) log_enabled_ = data["log_enabled"];
-            if (data.contains("log_interval_ms")) log_interval_ms_ = data["log_interval_ms"];
-            if (data.contains("log_deadband")) log_deadband_ = data["log_deadband"];
-            if (data.contains("tags")) tags_ = data["tags"];
-            if (data.contains("metadata")) metadata_ = data["metadata"];
+            if (json_data.contains("id")) setId(json_data["id"]);                              // 🔥 수정
+            if (json_data.contains("device_id")) device_id_ = json_data["device_id"];          // 🔥 수정
+            if (json_data.contains("name")) name_ = json_data["name"];                         // 🔥 수정
+            if (json_data.contains("description")) description_ = json_data["description"];   // 🔥 수정
+            if (json_data.contains("address")) address_ = json_data["address"];               // 🔥 수정
+            if (json_data.contains("data_type")) data_type_ = json_data["data_type"];         // 🔥 수정
+            if (json_data.contains("access_mode")) access_mode_ = json_data["access_mode"];   // 🔥 수정
+            if (json_data.contains("is_enabled")) is_enabled_ = json_data["is_enabled"];      // 🔥 수정
+            if (json_data.contains("unit")) unit_ = json_data["unit"];                        // 🔥 수정
+            if (json_data.contains("scaling_factor")) scaling_factor_ = json_data["scaling_factor"]; // 🔥 수정
+            if (json_data.contains("scaling_offset")) scaling_offset_ = json_data["scaling_offset"]; // 🔥 수정
+            if (json_data.contains("min_value")) min_value_ = json_data["min_value"];          // 🔥 수정
+            if (json_data.contains("max_value")) max_value_ = json_data["max_value"];          // 🔥 수정
+            if (json_data.contains("log_enabled")) log_enabled_ = json_data["log_enabled"];   // 🔥 수정
+            if (json_data.contains("log_interval_ms")) log_interval_ms_ = json_data["log_interval_ms"]; // 🔥 수정
+            if (json_data.contains("log_deadband")) log_deadband_ = json_data["log_deadband"]; // 🔥 수정
+            if (json_data.contains("tags")) tags_ = json_data["tags"];                        // 🔥 수정
+            if (json_data.contains("metadata")) metadata_ = json_data["metadata"];            // 🔥 수정
             
             markModified();
             return true;
@@ -193,6 +199,7 @@ public:
     const std::chrono::system_clock::time_point& getUpdatedAt() const { return updated_at_; }
     std::chrono::system_clock::time_point getLastReadTime() const { return last_read_time_; }
     std::chrono::system_clock::time_point getLastWriteTime() const { return last_write_time_; }
+
     // =======================================================================
     // Setter 메서드들 (인라인 구현)
     // =======================================================================
@@ -236,42 +243,13 @@ public:
     /**
      * @brief 유효성 검사
      */
-    bool isValid() const {
+    bool isValid() const override {
         return device_id_ > 0 && 
                !name_.empty() && 
                !data_type_.empty() && 
                scaling_factor_ != 0.0 &&
                min_value_ <= max_value_ &&
                (access_mode_ == "read" || access_mode_ == "write" || access_mode_ == "read_write");
-    }
-
-    /**
-     * @brief UnifiedCommonTypes의 DataPoint로 변환
-     */
-    DataPoint toDataPointStruct() const {
-        DataPoint dp;
-        dp.id = std::to_string(id_);
-        dp.device_id = std::to_string(device_id_);
-        dp.name = name_;
-        dp.description = description_;
-        dp.address = address_;
-        dp.address_string = std::to_string(address_);
-        dp.data_type = data_type_;
-        dp.is_enabled = is_enabled_;
-        dp.is_writable = isWritable();
-        dp.unit = unit_;
-        dp.scaling_factor = scaling_factor_;
-        dp.scaling_offset = scaling_offset_;
-        dp.min_value = min_value_;
-        dp.max_value = max_value_;
-        dp.log_enabled = log_enabled_;
-        dp.log_interval_ms = log_interval_ms_;
-        dp.log_deadband = log_deadband_;
-            if (data.contains("tags")) { setTags(data["tags"].get<std::vector<std::string>>()); }
-            if (data.contains("metadata")) { setMetadata(data["metadata"].get<std::map<std::string, std::string>>()); }
-        dp.created_at = created_at_;
-        dp.updated_at = updated_at_;
-        return dp;
     }
 
     /**

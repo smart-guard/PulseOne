@@ -124,7 +124,7 @@ public:
     /**
      * @brief BACnet 디바이스 검색
      */
-    std::vector<BACnetDeviceInfo> DiscoverDevices(uint32_t timeout_ms = 5000);
+    std::vector<DeviceInfo> DiscoverDevices(uint32_t timeout_ms = 5000);
     
     /**
      * @brief COV (Change of Value) 구독

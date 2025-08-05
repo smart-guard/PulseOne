@@ -28,6 +28,26 @@
 #include <chrono>
 #include <string>
 #include <map>
+// JSON 라이브러리 조건부 사용
+#ifdef HAS_NLOHMANN_JSON
+#include <nlohmann/json.hpp>
+using JsonType = nlohmann::json;
+#else
+// 더미 JSON 클래스 (한 번만 정의)
+class DummyJson {
+public:
+    template<typename T> T get() const { return T{}; }
+    bool contains(const std::string&) const { return false; }
+    std::string dump() const { return "{}"; }
+    static DummyJson parse(const std::string&) { return DummyJson{}; }
+    static DummyJson object() { return DummyJson{}; }
+    static DummyJson array() { return DummyJson{}; }
+    DummyJson& operator[](const std::string&) { return *this; }
+    const DummyJson& operator[](const std::string&) const { return *this; }
+    void push_back(const DummyJson&) {}
+};
+using JsonType = DummyJson;
+#endif
 #include <cassert>
 #include <cstring>
 
@@ -37,22 +57,6 @@
     namespace json_impl = nlohmann;
 #else
     namespace json_impl {
-        class json {
-        public:
-            json() = default;
-            json(const std::string& str) { (void)str; }
-            json& operator=(const std::string& str) { (void)str; return *this; }
-            bool empty() const { return true; }
-            void clear() {}
-            std::string dump() const { return "{}"; }
-            bool contains(const std::string&) const { return false; }
-            template<typename T> T value(const std::string&, const T& def) const { return def; }
-            json& operator[](const std::string&) { return *this; }
-            static json array() { return json{}; }
-            void push_back(const json&) {}
-            static json parse(const std::string&) { return json{}; }
-            template<typename T> T get() const { return T{}; }
-        };
     }
 #endif
 
@@ -469,6 +473,9 @@ namespace Structs {
                     return nullptr;
             }
         }
+        
+        // 🔥 프로토콜별 속성 저장 (통합 시스템 핵심)
+        std::map<std::string, std::string> properties;
     };
 
     // =========================================================================
