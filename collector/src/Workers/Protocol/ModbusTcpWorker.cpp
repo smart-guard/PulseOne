@@ -335,7 +335,7 @@ std::string ModbusTcpWorker::GetModbusStats() const {
     oss << "    \"default_polling_interval_ms\": " << default_polling_interval_ms_ << ",\n";
     oss << "    \"modbus_config\": {\n";
     oss << "      \"slave_id\": " << modbus_config_.slave_id << ",\n";
-    oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms_ms << ",\n";
+    oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms << ",\n";
     oss << "      \"response_timeout_ms\": " << modbus_config_.response_timeout_ms << ",\n";
     oss << "      \"byte_timeout_ms\": " << modbus_config_.byte_timeout_ms << ",\n";
     oss << "      \"max_retries\": " << static_cast<int>(modbus_config_.max_retries) << "\n";
@@ -403,7 +403,7 @@ size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Puls
             polling_group.register_type = register_type;
             polling_group.start_address = address_temp;
             polling_group.register_count = 1;
-            polling_group.polling_interval_ms_ms = default_polling_interval_ms_;
+            polling_group.polling_interval_ms = default_polling_interval_ms_;
             polling_group.enabled = true;
             polling_group.data_points = {point};
             polling_group.last_poll_time = system_clock::now();
@@ -540,13 +540,13 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         // 🔥 3단계: DeviceInfo에서 공통 통신 설정 가져오기 (이미 매핑됨!)
         // =====================================================================
         
-        modbus_config_.timeout_ms_ms = device_info_.connection_timeout_ms;
+        modbus_config_.timeout_ms = device_info_.connection_timeout_ms;
         modbus_config_.response_timeout_ms = device_info_.read_timeout_ms;
         modbus_config_.byte_timeout_ms = std::min(device_info_.read_timeout_ms / 10, 1000);
         modbus_config_.max_retries = static_cast<uint8_t>(device_info_.retry_count);
         
         std::string comm_msg = "⚙️ Mapped communication settings from DeviceInfo:\n";
-        comm_msg += "   - connection_timeout: " + std::to_string(modbus_config_.timeout_ms_ms) + "ms\n";
+        comm_msg += "   - connection_timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
         comm_msg += "   - read_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
         comm_msg += "   - byte_timeout: " + std::to_string(modbus_config_.byte_timeout_ms) + "ms\n";
         comm_msg += "   - max_retries: " + std::to_string(modbus_config_.max_retries);
@@ -557,7 +557,7 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         // 🔥 4단계: Worker 레벨 설정 적용 (DeviceInfo에서 직접)
         // =====================================================================
         
-        default_polling_interval_ms_ = device_info_.polling_interval_ms_ms;
+        default_polling_interval_ms_ = device_info_.polling_interval_ms;
         
         // scan_rate_override가 있으면 우선 적용
         if (device_info_.scan_rate_override.has_value()) {
@@ -591,11 +591,11 @@ bool ModbusTcpWorker::ParseModbusConfig() {
             validation_errors = true;
         }
         
-        if (modbus_config_.timeout_ms_ms < 100 || modbus_config_.timeout_ms_ms > 30000) {
+        if (modbus_config_.timeout_ms < 100 || modbus_config_.timeout_ms > 30000) {
             LogMessage(LogLevel::WARN, 
-                      "⚠️ Invalid timeout: " + std::to_string(modbus_config_.timeout_ms_ms) + 
+                      "⚠️ Invalid timeout: " + std::to_string(modbus_config_.timeout_ms) + 
                       "ms (valid range: 100-30000ms), using 3000ms");
-            modbus_config_.timeout_ms_ms = 3000;
+            modbus_config_.timeout_ms = 3000;
             validation_errors = true;
         }
         
@@ -654,7 +654,7 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         result_msg += "      - max_registers_per_group: " + std::to_string(max_registers_per_group_) + "\n";
         result_msg += "      - auto_group_creation: " + (auto_group_creation_enabled_ ? std::string("enabled") : std::string("disabled")) + "\n";
         result_msg += "   ⚙️  Communication settings (from DeviceSettings):\n";
-        result_msg += "      - connection_timeout: " + std::to_string(modbus_config_.timeout_ms_ms) + "ms\n";
+        result_msg += "      - connection_timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
         result_msg += "      - read_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
         result_msg += "      - byte_timeout: " + std::to_string(modbus_config_.byte_timeout_ms) + "ms\n";
         result_msg += "      - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
@@ -725,13 +725,13 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
         
         // 타이밍 설정 (파싱된 ModbusConfig 사용)
-        driver_config.timeout_ms_ms = modbus_config_.timeout_ms_ms;
+        driver_config.timeout_ms = modbus_config_.timeout_ms;
         
         std::string config_msg = "📋 DriverConfig prepared:\n";
         config_msg += "   - device_id: " + driver_config.device_id + "\n";
         config_msg += "   - endpoint: " + driver_config.endpoint + "\n";
         config_msg += "   - protocol: MODBUS_TCP\n";
-        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms_ms) + "ms";
+        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms";
         
         LogMessage(LogLevel::DEBUG_LEVEL, config_msg);
         
@@ -784,7 +784,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         final_msg += "   📡 Connection details:\n";
         final_msg += "      - endpoint: " + device_info_.endpoint + "\n";
         final_msg += "      - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
-        final_msg += "      - timeout: " + std::to_string(modbus_config_.timeout_ms_ms) + "ms\n";
+        final_msg += "      - timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
         final_msg += "   ⚙️  Advanced settings:\n";
         final_msg += "      - byte_order: " + modbus_config_.byte_order + "\n";
         final_msg += "      - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
@@ -827,7 +827,7 @@ void ModbusTcpWorker::PollingThreadFunction() {
                         
                         // 다음 폴링 시간 업데이트
                         group.last_poll_time = current_time;
-                        group.next_poll_time = current_time + milliseconds(group.polling_interval_ms_ms);
+                        group.next_poll_time = current_time + milliseconds(group.polling_interval_ms);
                     }
                 }
             }
@@ -966,8 +966,8 @@ bool ModbusTcpWorker::ValidatePollingGroup(const ModbusTcpPollingGroup& group) {
         return false;
     }
     
-    if (group.polling_interval_ms_ms < 100) {
-        LogMessage(LogLevel::ERROR, "Polling interval too short: " + std::to_string(group.polling_interval_ms_ms) + "ms");
+    if (group.polling_interval_ms < 100) {
+        LogMessage(LogLevel::ERROR, "Polling interval too short: " + std::to_string(group.polling_interval_ms) + "ms");
         return false;
     }
     
@@ -1004,7 +1004,7 @@ ModbusTcpPollingGroup ModbusTcpWorker::MergePollingGroups(const ModbusTcpPolling
     merged.register_type = group1.register_type;
     merged.start_address = std::min(group1.start_address, group2.start_address);
     merged.register_count = group1.register_count + group2.register_count;
-    merged.polling_interval_ms_ms = std::min(group1.polling_interval_ms_ms, group2.polling_interval_ms_ms);
+    merged.polling_interval_ms = std::min(group1.polling_interval_ms, group2.polling_interval_ms);
     merged.enabled = group1.enabled && group2.enabled;
     
     // 데이터 포인트 병합

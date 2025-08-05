@@ -8,6 +8,7 @@
 
 
 #include "Drivers/Bacnet/BACnetCommonTypes.h"
+#include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetStatisticsManager.h"
 #include <map>
 #include <vector>
@@ -49,7 +50,7 @@ public:
     /**
      * @brief 확장된 BACnet 객체 정보
      */
-    struct ExtendedBACnetObjectInfo : public BACnetObjectInfo {
+    struct ExtendedDataPoint : public DataPoint {
         // 추가 메타데이터
         std::string device_name;
         std::string object_description;
@@ -72,8 +73,8 @@ public:
         std::atomic<uint64_t> write_count{0};
         std::atomic<bool> is_active{true};
         
-        ExtendedBACnetObjectInfo();
-        ExtendedBACnetObjectInfo(const BACnetObjectInfo& base);
+        ExtendedDataPoint();
+        ExtendedDataPoint(const DataPoint& base);
         
         std::string GetFullIdentifier() const;
         bool IsStale(std::chrono::minutes max_age = std::chrono::minutes(60)) const;
@@ -84,8 +85,8 @@ public:
      */
     struct MappingRule {
         std::string rule_name;
-        std::function<bool(const ExtendedBACnetObjectInfo&)> filter;
-        std::function<std::string(const ExtendedBACnetObjectInfo&)> identifier_generator;
+        std::function<bool(const ExtendedDataPoint&)> filter;
+        std::function<std::string(const ExtendedDataPoint&)> identifier_generator;
         std::vector<BACNET_PROPERTY_ID> default_properties;
         bool auto_apply = true;
         
@@ -98,7 +99,7 @@ public:
     struct DeviceObjectMap {
         uint32_t device_id;
         std::string device_name;
-        std::map<std::string, ExtendedBACnetObjectInfo> objects; // key = object_key
+        std::map<std::string, ExtendedDataPoint> objects; // key = object_key
         std::chrono::system_clock::time_point last_discovery;
         std::atomic<bool> is_complete{false};
         std::atomic<uint32_t> total_objects{0};
@@ -156,32 +157,32 @@ public:
     /**
      * @brief 매핑된 객체 조회
      */
-    bool GetMappedObject(const std::string& mapping_key, ExtendedBACnetObjectInfo& object_info) const;
+    bool GetMappedObject(const std::string& mapping_key, ExtendedDataPoint& object_info) const;
     
     /**
      * @brief DataPoint를 BACnet 객체로 변환
      */
-    bool DataPointToBACnetObject(const Structs::DataPoint& point, ExtendedBACnetObjectInfo& object_info) const;
+    bool DataPointToBACnetObject(const Structs::DataPoint& point, ExtendedDataPoint& object_info) const;
     
     /**
      * @brief BACnet 객체를 DataPoint로 변환
      */
-    bool BACnetObjectToDataPoint(const ExtendedBACnetObjectInfo& object_info, Structs::DataPoint& point) const;
+    bool BACnetObjectToDataPoint(const ExtendedDataPoint& object_info, Structs::DataPoint& point) const;
     
     /**
      * @brief 디바이스의 모든 매핑된 객체 조회
      */
-    std::vector<ExtendedBACnetObjectInfo> GetDeviceMappedObjects(uint32_t device_id) const;
+    std::vector<ExtendedDataPoint> GetDeviceMappedObjects(uint32_t device_id) const;
     
     /**
      * @brief 모든 매핑된 객체 조회
      */
-    std::vector<ExtendedBACnetObjectInfo> GetAllMappedObjects() const;
+    std::vector<ExtendedDataPoint> GetAllMappedObjects() const;
     
     /**
      * @brief 매핑 키로 객체 검색
      */
-    std::vector<ExtendedBACnetObjectInfo> SearchObjects(const std::string& search_pattern) const;
+    std::vector<ExtendedDataPoint> SearchObjects(const std::string& search_pattern) const;
     
     // ==========================================================================
     // 🔥 객체 발견 및 분석
@@ -191,7 +192,7 @@ public:
      * @brief 디바이스 객체 발견
      */
     bool DiscoverDeviceObjects(uint32_t device_id, 
-                              std::vector<BACnetObjectInfo>& discovered_objects,
+                              std::vector<DataPoint>& discovered_objects,
                               bool include_device_object = false);
     
     /**
@@ -200,7 +201,7 @@ public:
     bool GetObjectDetails(uint32_t device_id,
                          BACNET_OBJECT_TYPE object_type,
                          uint32_t object_instance,
-                         ExtendedBACnetObjectInfo& object_info);
+                         ExtendedDataPoint& object_info);
     
     /**
      * @brief 객체 프로퍼티 목록 조회
@@ -231,7 +232,7 @@ public:
     /**
      * @brief 매핑 규칙 적용
      */
-    bool ApplyMappingRules(uint32_t device_id, const std::vector<BACnetObjectInfo>& objects);
+    bool ApplyMappingRules(uint32_t device_id, const std::vector<DataPoint>& objects);
     
     // ==========================================================================
     // 🔥 매핑 통계 및 상태
@@ -304,7 +305,7 @@ private:
     
     // 매핑 저장소
     mutable std::mutex mappings_mutex_;
-    std::map<std::string, ExtendedBACnetObjectInfo> object_mappings_;  // mapping_key -> object_info
+    std::map<std::string, ExtendedDataPoint> object_mappings_;  // mapping_key -> object_info
     std::map<uint32_t, DeviceObjectMap> device_maps_;                  // device_id -> device_map
     
     // 매핑 규칙
@@ -341,7 +342,7 @@ private:
     
     // 매핑 유효성 검사
     bool ValidateMappingKey(const std::string& mapping_key) const;
-    bool ValidateObjectInfo(const ExtendedBACnetObjectInfo& object_info) const;
+    bool ValidateObjectInfo(const ExtendedDataPoint& object_info) const;
     
     // 통계 업데이트
     void UpdateMappingStatistics(const std::string& operation, bool success);
@@ -370,25 +371,25 @@ private:
 // 🔥 인라인 구현들
 // =============================================================================
 
-inline BACnetObjectMapper::ExtendedBACnetObjectInfo::ExtendedBACnetObjectInfo() {
+inline BACnetObjectMapper::ExtendedDataPoint::ExtendedDataPoint() {
     discovered_time = std::chrono::system_clock::now();
     last_accessed = discovered_time;
 }
 
-inline BACnetObjectMapper::ExtendedBACnetObjectInfo::ExtendedBACnetObjectInfo(const BACnetObjectInfo& base)
-    : BACnetObjectInfo(base) {
+inline BACnetObjectMapper::ExtendedDataPoint::ExtendedDataPoint(const DataPoint& base)
+    : DataPoint(base) {
     discovered_time = std::chrono::system_clock::now();
     last_accessed = discovered_time;
 }
 
-inline std::string BACnetObjectMapper::ExtendedBACnetObjectInfo::GetFullIdentifier() const {
+inline std::string BACnetObjectMapper::ExtendedDataPoint::GetFullIdentifier() const {
     if (!custom_identifier.empty()) {
         return custom_identifier;
     }
     return device_name + "_" + object_name + "_" + std::to_string(object_instance);
 }
 
-inline bool BACnetObjectMapper::ExtendedBACnetObjectInfo::IsStale(std::chrono::minutes max_age) const {
+inline bool BACnetObjectMapper::ExtendedDataPoint::IsStale(std::chrono::minutes max_age) const {
     auto now = std::chrono::system_clock::now();
     return (now - last_accessed) > max_age;
 }

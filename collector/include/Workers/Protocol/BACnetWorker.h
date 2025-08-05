@@ -17,6 +17,7 @@
 
 #include "Workers/Base/UdpBasedWorker.h"                    // ✅ 부모 클래스
 #include "Drivers/Bacnet/BACnetCommonTypes.h"               // ✅ BACnet 타입들
+#include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetDriver.h"                    // ✅ BACnet 드라이버
 #include "Common/DriverStatistics.h"                       // ✅ 표준 통계 구조                     // ✅ 공통 타입들
 #include <memory>
@@ -32,11 +33,13 @@ namespace Workers {
 
 // =============================================================================
 // 🔥 타입 별칭 정의 (BACnetCommonTypes.h에서 가져온 타입들)
+#include "Common/Structs.h"
 // =============================================================================
 
 // BACnet 구조체들은 BACnetCommonTypes.h에서 정의됨
-using BACnetDeviceInfo = Drivers::BACnetDeviceInfo;            // 디바이스 정보  
-using BACnetObjectInfo = Drivers::BACnetObjectInfo;            // 객체 정보
+#include "Common/Structs.h"
+using DeviceInfo = Drivers::DeviceInfo;            // 디바이스 정보  
+using DataPoint = Drivers::DataPoint;            // 객체 정보
 
 /**
  * @brief BACnet 워커 설정 구조체
@@ -111,8 +114,9 @@ struct BACnetWorkerStats {
 };
 
 // 콜백 함수 타입들 (BACnetCommonTypes.h의 구조체 사용)
-using DeviceDiscoveredCallback = std::function<void(const BACnetDeviceInfo&)>;
-using ObjectDiscoveredCallback = std::function<void(uint32_t device_id, const BACnetObjectInfo&)>;
+#include "Common/Structs.h"
+using DeviceDiscoveredCallback = std::function<void(const DeviceInfo&)>;
+using ObjectDiscoveredCallback = std::function<void(uint32_t device_id, const DataPoint&)>;
 using ValueChangedCallback = std::function<void(const std::string& object_id, const PulseOne::Structs::TimestampedValue&)>;
 
 // =============================================================================
@@ -233,12 +237,12 @@ public:
     /**
      * @brief 발견된 디바이스 목록 조회
      */
-    std::vector<BACnetDeviceInfo> GetDiscoveredDevices() const;
+    std::vector<DeviceInfo> GetDiscoveredDevices() const;
     
     /**
      * @brief 특정 디바이스의 객체 목록 조회
      */
-    std::vector<BACnetObjectInfo> GetDiscoveredObjects(uint32_t device_id) const;
+    std::vector<DataPoint> GetDiscoveredObjects(uint32_t device_id) const;
     
     /**
      * @brief 디바이스 발견 콜백 설정
@@ -313,7 +317,7 @@ private:
     /**
      * @brief 객체 ID 생성 (UUID 지원)
      */
-    std::string CreateObjectId(const std::string& device_id, const BACnetObjectInfo& object_info) const;
+    std::string CreateObjectId(const std::string& device_id, const DataPoint& object_info) const;
     
     // =============================================================================
     // 멤버 변수들
@@ -333,7 +337,7 @@ private:
     
     // 발견된 디바이스 관리
     mutable std::mutex devices_mutex_;
-    std::map<uint32_t, BACnetDeviceInfo> discovered_devices_;
+    std::map<uint32_t, DeviceInfo> discovered_devices_;
     
     // 콜백 함수들
     DeviceDiscoveredCallback on_device_discovered_;

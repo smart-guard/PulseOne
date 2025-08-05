@@ -8,6 +8,7 @@
 
 
 #include "Drivers/Bacnet/BACnetCommonTypes.h"
+#include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetStatisticsManager.h"
 #include <map>
 #include <mutex>

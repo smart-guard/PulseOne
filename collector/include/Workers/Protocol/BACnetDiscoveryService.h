@@ -69,8 +69,8 @@ public:
     // 콜백 핸들러들 (public으로 변경)
     // =======================================================================
     
-    void OnDeviceDiscovered(const Drivers::BACnetDeviceInfo& device);
-    void OnObjectDiscovered(uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects);
+    void OnDeviceDiscovered(const Drivers::DeviceInfo& device);
+    void OnObjectDiscovered(uint32_t device_id, const std::vector<Drivers::DataPoint>& objects);
     void OnValueChanged(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
 private:
@@ -78,8 +78,8 @@ private:
     // 데이터베이스 저장 메서드들
     // =======================================================================
     
-    bool SaveDiscoveredDeviceToDatabase(const Drivers::BACnetDeviceInfo& device);
-    bool SaveDiscoveredObjectsToDatabase(uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects);
+    bool SaveDiscoveredDeviceToDatabase(const Drivers::DeviceInfo& device);
+    bool SaveDiscoveredObjectsToDatabase(uint32_t device_id, const std::vector<Drivers::DataPoint>& objects);
     bool UpdateCurrentValueInDatabase(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
     // =======================================================================
@@ -94,7 +94,7 @@ private:
     /**
      * @brief 데이터포인트 ID 생성
      */
-    std::string GenerateDataPointId(uint32_t device_id, const Drivers::BACnetObjectInfo& object);
+    std::string GenerateDataPointId(uint32_t device_id, const Drivers::DataPoint& object);
     
     /**
      * @brief 객체 타입을 문자열로 변환

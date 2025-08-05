@@ -7,8 +7,8 @@
  * 
  * 🔥 주요 수정사항:
  * 1. BaseDeviceWorker Start/Stop 인터페이스로 변경
- * 2. BACnetDeviceInfo 멤버명 정확히 매칭
- * 3. BACnetObjectInfo 멤버명 정확히 매칭
+ * 2. DeviceInfo 멤버명 정확히 매칭
+ * 3. DataPoint 멤버명 정확히 매칭
  * 4. UUID vs uint32_t 타입 불일치 해결
  * 5. BACNET_ADDRESS 출력 문제 해결
  */
@@ -260,11 +260,11 @@ std::string BACnetWorker::GetDiscoveredDevicesAsJson() const {
         ss << "      \"device_id\": " << device_id << ",\n";
         // ✅ 올바른 멤버명 사용
         ss << "      \"device_name\": \"" << device.device_name << "\",\n";
-        ss << "      \"vendor_id\": " << device.vendor_id << ",\n";  // ✅ vendor_name → vendor_id
+        ss << "      \"vendor_id\": " << std::stoi(device.properties.at("vendor_id")) << ",\n";  // ✅ vendor_name → vendor_id
         ss << "      \"ip_address\": \"" << device.ip_address << "\",\n";
         ss << "      \"port\": " << device.port << ",\n";
-        ss << "      \"max_apdu_length\": " << device.max_apdu_length << ",\n";
-        ss << "      \"segmentation_support\": " << static_cast<int>(device.segmentation_support) << ",\n";  // ✅ segmentation_supported → segmentation_support
+        ss << "      \"max_apdu_length\": " << std::stoi(device.properties.at("max_apdu_length")) << ",\n";
+        ss << "      \"segmentation_support\": " << static_cast<int>(std::stoi(device.properties.at("segmentation_support"))) << ",\n";  // ✅ segmentation_supported → segmentation_support
         
         // 마지막 발견 시간
         auto last_seen = std::chrono::duration_cast<std::chrono::seconds>(
@@ -312,10 +312,10 @@ void BACnetWorker::StopDiscovery() {
     // 디스커버리 스레드 정리는 소멸자에서 처리
 }
 
-std::vector<BACnetDeviceInfo> BACnetWorker::GetDiscoveredDevices() const {
+std::vector<DeviceInfo> BACnetWorker::GetDiscoveredDevices() const {
     std::lock_guard<std::mutex> lock(devices_mutex_);
     
-    std::vector<BACnetDeviceInfo> devices;
+    std::vector<DeviceInfo> devices;
     devices.reserve(discovered_devices_.size());
     
     for (const auto& [device_id, device] : discovered_devices_) {
@@ -325,16 +325,16 @@ std::vector<BACnetDeviceInfo> BACnetWorker::GetDiscoveredDevices() const {
     return devices;
 }
 
-std::vector<BACnetObjectInfo> BACnetWorker::GetDiscoveredObjects(uint32_t device_id) const {
+std::vector<DataPoint> BACnetWorker::GetDiscoveredObjects(uint32_t device_id) const {
     std::lock_guard<std::mutex> lock(devices_mutex_);
     
     // TODO: 실제 객체 목록 반환 구현
-    std::vector<BACnetObjectInfo> objects;
+    std::vector<DataPoint> objects;
     
     auto it = discovered_devices_.find(device_id);
     if (it != discovered_devices_.end()) {
         // TODO: 디바이스별 객체 목록 구현
-        objects = it->second.objects;  // BACnetDeviceInfo에 objects 벡터가 있다고 가정
+        objects = it->second.objects;  // DeviceInfo에 objects 벡터가 있다고 가정
     }
     
     return objects;
@@ -370,11 +370,11 @@ bool BACnetWorker::ParseBACnetWorkerConfig() {
         // 기본값 설정 (구조체 초기화)
         worker_config_.local_device_id = 260001;
         worker_config_.target_port = 47808;
-        worker_config_.timeout_ms_ms = 5000;
+        worker_config_.timeout_ms = 5000;
         worker_config_.retry_count = 3;
         worker_config_.discovery_interval_seconds = 300;  // 5분
         worker_config_.auto_device_discovery = true;
-        worker_config_.polling_interval_ms_ms = 1000;
+        worker_config_.polling_interval_ms = 1000;
         worker_config_.verbose_logging = false;
         
         // properties에서 BACnet 특화 설정 읽기 (안전하게)
@@ -411,7 +411,7 @@ PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfig() {
     // BACnet 특화 설정들을 properties에 추가
     config.properties["device_id"] = std::to_string(worker_config_.local_device_id);
     config.properties["target_port"] = std::to_string(worker_config_.target_port);
-    config.properties["timeout_ms"] = std::to_string(worker_config_.timeout_ms_ms);
+    config.properties["timeout_ms"] = std::to_string(worker_config_.timeout_ms);
     config.properties["enable_cov"] = worker_config_.enable_cov ? "true" : "false";
     config.properties["enable_bulk_read"] = worker_config_.enable_bulk_read ? "true" : "false";
     config.properties["max_apdu_length"] = std::to_string(worker_config_.max_apdu_length);
@@ -502,7 +502,7 @@ void BACnetWorker::PollingThreadFunction() {
             }
             
             // 설정된 간격만큼 대기
-            std::this_thread::sleep_for(std::chrono::milliseconds(worker_config_.polling_interval_ms_ms));
+            std::this_thread::sleep_for(std::chrono::milliseconds(worker_config_.polling_interval_ms));
             
         } catch (const std::exception& e) {
             LogMessage(LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
@@ -577,7 +577,7 @@ bool BACnetWorker::ProcessDataPoints(const std::vector<PulseOne::DataPoint>& poi
                 if (on_value_changed_) {
                     // ✅ UUID (string) 타입으로 CreateObjectId 호출
                     std::string object_id = CreateObjectId(points[i].device_id, 
-                        BACnetObjectInfo{/* TODO: 객체 정보 생성 */});
+                        DataPoint{/* TODO: 객체 정보 생성 */});
                     on_value_changed_(object_id, values[i]);
                 }
             }
@@ -618,7 +618,7 @@ void BACnetWorker::UpdateWorkerStats(const std::string& operation, bool success)
     }
 }
 
-std::string BACnetWorker::CreateObjectId(const std::string& device_id, const BACnetObjectInfo& object_info) const {
+std::string BACnetWorker::CreateObjectId(const std::string& device_id, const DataPoint& object_info) const {
     // ✅ UUID string과 올바른 멤버명 사용
     return device_id + ":" + 
            std::to_string(static_cast<int>(object_info.object_type)) + ":" + 

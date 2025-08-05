@@ -50,7 +50,7 @@ enum class ModbusRegisterType {
 /**
  * @brief Modbus RTU 슬레이브 정보 (RTU 특화)
  */
-struct ModbusRtuSlaveInfo {
+struct DeviceInfo {
     int slave_id;                                    ///< 슬레이브 ID
     std::string device_name;                         ///< 디바이스 이름
     bool is_online;                                  ///< 온라인 상태
@@ -64,7 +64,7 @@ struct ModbusRtuSlaveInfo {
     std::atomic<uint32_t> crc_errors;                ///< CRC 에러 수
     std::string last_error;                          ///< 마지막 에러 메시지
     
-    ModbusRtuSlaveInfo(int id = 1, const std::string& name = "")
+    DeviceInfo(int id = 1, const std::string& name = "")
         : slave_id(id), device_name(name), is_online(false)
         , response_time_ms(0), total_requests(0), successful_requests(0)
         , timeout_errors(0)
@@ -151,7 +151,7 @@ public:
     
     bool AddSlave(int slave_id, const std::string& device_name = "");
     bool RemoveSlave(int slave_id);
-    std::shared_ptr<ModbusRtuSlaveInfo> GetSlaveInfo(int slave_id) const;
+    std::shared_ptr<DeviceInfo> GetSlaveInfo(int slave_id) const;
     int ScanSlaves(int start_id = 1, int end_id = 247, int timeout_ms = 2000);
 
     // =============================================================================
@@ -212,7 +212,7 @@ protected:
     mutable std::mutex bus_mutex_;
     
     // RTU 특화: 슬레이브 관리 (TCP에는 없음)
-    std::map<int, std::shared_ptr<ModbusRtuSlaveInfo>> slaves_;
+    std::map<int, std::shared_ptr<DeviceInfo>> slaves_;
     mutable std::shared_mutex slaves_mutex_;
     
     // 폴링 그룹 관리 (TCP와 동일한 패턴)

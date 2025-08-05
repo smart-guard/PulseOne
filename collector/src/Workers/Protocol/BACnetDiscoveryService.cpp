@@ -26,8 +26,8 @@
 using namespace std::chrono;
 
 // 🔥 필수 using 선언들
-using BACnetDeviceInfo = PulseOne::Drivers::BACnetDeviceInfo;
-using BACnetObjectInfo = PulseOne::Drivers::BACnetObjectInfo;
+using DeviceInfo = PulseOne::Drivers::DeviceInfo;
+using DataPoint = PulseOne::Drivers::DataPoint;
 using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
 using DataPointEntity = PulseOne::Database::Entities::DataPointEntity;
 using CurrentValueEntity = PulseOne::Database::Entities::CurrentValueEntity;
@@ -85,11 +85,11 @@ bool BACnetDiscoveryService::RegisterToWorker(std::shared_ptr<BACnetWorker> work
     // 실제로는 BACnetWorker.h를 include하거나 메서드 구현을 지연시켜야 함
     /*
     // 콜백 등록
-    worker->SetDeviceDiscoveredCallback([this](const Drivers::BACnetDeviceInfo& device) {
+    worker->SetDeviceDiscoveredCallback([this](const Drivers::DeviceInfo& device) {
         OnDeviceDiscovered(device);
     });
     
-    worker->SetObjectDiscoveredCallback([this](uint32_t device_id, const std::vector<Drivers::BACnetObjectInfo>& objects) {
+    worker->SetObjectDiscoveredCallback([this](uint32_t device_id, const std::vector<Drivers::DataPoint>& objects) {
         OnObjectDiscovered(device_id, objects);
     });
     
@@ -125,7 +125,7 @@ void BACnetDiscoveryService::UnregisterFromWorker() {
 // 콜백 핸들러들
 // =============================================================================
 
-void BACnetDiscoveryService::OnDeviceDiscovered(const Drivers::BACnetDeviceInfo& device) {
+void BACnetDiscoveryService::OnDeviceDiscovered(const Drivers::DeviceInfo& device) {
     try {
         std::lock_guard<std::mutex> lock(stats_mutex_);
         statistics_.devices_processed++;
@@ -150,7 +150,7 @@ void BACnetDiscoveryService::OnDeviceDiscovered(const Drivers::BACnetDeviceInfo&
 }
 
 void BACnetDiscoveryService::OnObjectDiscovered(uint32_t device_id, 
-    const std::vector<Drivers::BACnetObjectInfo>& objects) {
+    const std::vector<Drivers::DataPoint>& objects) {
     
     try {
         std::lock_guard<std::mutex> lock(stats_mutex_);
@@ -205,7 +205,7 @@ void BACnetDiscoveryService::OnValueChanged(const std::string& object_id,
 // =============================================================================
 
 bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
-    const PulseOne::Drivers::BACnetDeviceInfo& device) {
+    const PulseOne::Drivers::DeviceInfo& device) {
     
     try {
         // 🔥 수정: 사용하지 않는 변수 제거
@@ -233,18 +233,18 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
             existing_device.setDescription("BACnet Device - Updated by Discovery");
             
             // 🔥 수정 4: BACNET_ADDRESS를 문자열로 변환
-            std::string endpoint = BACnetAddressToString(device.address) + ":" + std::to_string(device.GetPort());
+            std::string endpoint = BACnetAddressToString(device.endpoint) + ":" + std::to_string(static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1))));
             existing_device.setEndpoint(endpoint);
             
             // 🔥 수정 5: DeviceEntity에는 setMetadata가 없으므로 config로 저장
             json metadata_json;
             metadata_json["bacnet_device_id"] = device.device_id;
-            metadata_json["vendor_id"] = device.vendor_id;
-            metadata_json["address"] = BACnetAddressToString(device.address);
-            metadata_json["port"] = device.GetPort();
-            metadata_json["max_apdu_length"] = device.max_apdu_length;
-            metadata_json["segmentation_support"] = device.segmentation_support;
-            metadata_json["object_count"] = device.objects.size();
+            metadata_json["vendor_id"] = std::stoi(device.properties.at("vendor_id"));
+            metadata_json["address"] = BACnetAddressToString(device.endpoint);
+            metadata_json["port"] = static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1)));
+            metadata_json["max_apdu_length"] = std::stoi(device.properties.at("max_apdu_length"));
+            metadata_json["segmentation_support"] = std::stoi(device.properties.at("segmentation_support"));
+            metadata_json["object_count"] = device.data_points.size();
             
             existing_device.setConfig(metadata_json.dump());
             
@@ -273,19 +273,19 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
             
             // 통신 설정
             new_device.setProtocolType("BACNET_IP");
-            std::string endpoint = BACnetAddressToString(device.address) + ":" + std::to_string(device.GetPort());
+            std::string endpoint = BACnetAddressToString(device.endpoint) + ":" + std::to_string(static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1))));
             new_device.setEndpoint(endpoint);
             new_device.setEnabled(true);
             
             // 메타데이터를 config JSON으로 저장
             json config_json;
             config_json["bacnet_device_id"] = device.device_id;
-            config_json["vendor_id"] = device.vendor_id;
-            config_json["address"] = BACnetAddressToString(device.address);
-            config_json["port"] = device.GetPort();
-            config_json["max_apdu_length"] = device.max_apdu_length;
-            config_json["segmentation_support"] = device.segmentation_support;
-            config_json["object_count"] = device.objects.size();
+            config_json["vendor_id"] = std::stoi(device.properties.at("vendor_id"));
+            config_json["address"] = BACnetAddressToString(device.endpoint);
+            config_json["port"] = static_cast<uint16_t>(std::stoi(device.endpoint.substr(device.endpoint.find(":") + 1)));
+            config_json["max_apdu_length"] = std::stoi(device.properties.at("max_apdu_length"));
+            config_json["segmentation_support"] = std::stoi(device.properties.at("segmentation_support"));
+            config_json["object_count"] = device.data_points.size();
             
             new_device.setConfig(config_json.dump());
             
@@ -311,7 +311,7 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(
 
 bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(
     uint32_t device_id, 
-    const std::vector<PulseOne::Drivers::BACnetObjectInfo>& objects) {
+    const std::vector<PulseOne::Drivers::DataPoint>& objects) {
     
     try {
         // 🔥 수정: Repository 멤버 변수 사용
@@ -337,14 +337,14 @@ bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(
             // 🔥 수정: address는 int이므로 object_instance 사용
             new_datapoint.setAddress(static_cast<int>(object.object_instance));
             new_datapoint.setName(object.object_name);
-            new_datapoint.setDescription(object.description);
+            new_datapoint.setDescription(point.description);
             new_datapoint.setDataType(DataTypeToString(DetermineDataType(static_cast<int>(object.object_type))));
             new_datapoint.setEnabled(true);
-            new_datapoint.setUnit(object.units);
+            new_datapoint.setUnit(point.unit);
             
             // 🔥 수정: DataPointEntity에는 setConfig가 없으므로 description에 추가 정보 저장
-            std::string full_description = object.description;
-            if (!object.object_name.empty() && object.object_name != object.description) {
+            std::string full_description = point.description;
+            if (!object.object_name.empty() && object.object_name != point.description) {
                 full_description += " [" + object.object_name + "]";
             }
             full_description += " (Type: " + std::to_string(static_cast<int>(object.object_type)) + ")";
@@ -536,7 +536,7 @@ double BACnetDiscoveryService::ConvertDataValueToDouble(const PulseOne::Structs:
     }
 }
 
-std::string BACnetDiscoveryService::GenerateDataPointId(uint32_t device_id, const Drivers::BACnetObjectInfo& object) {
+std::string BACnetDiscoveryService::GenerateDataPointId(uint32_t device_id, const Drivers::DataPoint& object) {
     return std::to_string(device_id) + ":" + 
            std::to_string(static_cast<int>(object.object_type)) + ":" + 
            std::to_string(object.object_instance);
