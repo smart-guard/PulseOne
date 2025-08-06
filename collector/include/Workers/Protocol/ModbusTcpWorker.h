@@ -13,8 +13,10 @@
 #define MODBUS_TCP_WORKER_H
 
 #include "Workers/Base/TcpBasedWorker.h"
+#include "Common/BasicTypes.h"           // PulseOne::BasicTypes::DataVariant
+#include "Common/Enums.h"                // PulseOne::Enums 타입들
+#include "Common/Structs.h"              // PulseOne::Structs::DataValue
 #include "Drivers/Modbus/ModbusDriver.h"
-#include "Drivers/Modbus/ModbusConfig.h" 
 #include <memory>
 #include <vector>
 #include <map>
@@ -25,6 +27,27 @@
 namespace PulseOne {
 namespace Workers {
 
+    // 🔥 타입 별칭 명시적 선언 (충돌 방지의 핵심!)
+    using DataValue = PulseOne::Structs::DataValue;          // ✅ 메인 타입
+    using TimestampedValue = PulseOne::Structs::TimestampedValue;
+    using DataPoint = PulseOne::Structs::DataPoint;
+    using DeviceInfo = PulseOne::Structs::DeviceInfo;
+    using ErrorInfo = PulseOne::Structs::ErrorInfo;
+    using DriverStatistics = PulseOne::Structs::DriverStatistics;
+    
+    // 열거형 타입들
+    using DataQuality = PulseOne::Enums::DataQuality;
+    using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
+    using ProtocolType = PulseOne::Enums::ProtocolType;
+    using WorkerStatus = PulseOne::Enums::WorkerStatus;
+    
+    // 기본 타입들
+    using UUID = PulseOne::BasicTypes::UUID;
+    using Timestamp = PulseOne::BasicTypes::Timestamp;
+
+    // Modbus 특화 타입들
+    using ModbusDriver = PulseOne::Drivers::ModbusDriver;
+    using ModbusRegisterType = PulseOne::Enums::ModbusRegisterType;
 /**
  * @brief Modbus 레지스터 타입 (Worker에서 사용)
  */

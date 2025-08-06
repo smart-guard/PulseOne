@@ -8,8 +8,6 @@
 
 #include "Workers/Protocol/ModbusTcpWorker.h"
 #include "Utils/LogManager.h"
-#include "Common/Enums.h"
-#include "Common/Structs.h"
 #include <sstream>
 #include <iomanip>
 #include <thread>
@@ -1361,7 +1359,8 @@ bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const Dat
         
         if (register_type == ModbusRegisterType::HOLDING_REGISTER) {
             // 🔥 std::get을 올바르게 사용 (variant에서 값 추출)
-            uint16_t modbus_value = static_cast<uint16_t>(std::get<int32_t>(value));
+            int32_t int_value = std::get<int32_t>(value);  // DataValue는 variant 타입
+            uint16_t modbus_value = static_cast<uint16_t>(int_value);
             success = WriteSingleHoldingRegister(slave_id, address, modbus_value);
             
         } else if (register_type == ModbusRegisterType::COIL) {
