@@ -98,12 +98,14 @@ CLIENT_SOURCES := $(wildcard $(SRC_DIR)/Client/*.cpp)
 # Plugin 소스들
 PLUGIN_SOURCES := $(wildcard $(SRC_DIR)/Plugin/*.cpp)
 
+PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
+
 # 메인 소스
 MAIN_SOURCE = $(SRC_DIR)/main.cpp
 
 # 전체 소스들
 EXISTING_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES)
-OPTIONAL_SOURCES = $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(PLUGIN_SOURCES)
+OPTIONAL_SOURCES = $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(PLUGIN_SOURCES) $(PIPELINE_SOURCES)
 
 ALL_LIB_SOURCES = $(EXISTING_SOURCES) $(OPTIONAL_SOURCES)
 
@@ -238,6 +240,12 @@ $(BUILD_DIR)/Plugin/%.o: $(SRC_DIR)/Plugin/%.cpp
 	@echo -e "$(YELLOW)🔌 Compiling Plugin: $<$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+# Pipeline 파일들
+$(BUILD_DIR)/Pipeline/%.o: $(SRC_DIR)/Pipeline/%.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(BLUE)🔄 Compiling Pipeline: $<$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 # 메인 파일
 $(BUILD_DIR)/main.o: $(SRC_DIR)/main.cpp
 	@mkdir -p $(dir $@)
@@ -250,7 +258,7 @@ $(BUILD_DIR)/main.o: $(SRC_DIR)/main.cpp
 
 # 디렉토리 생성
 directories:
-	@mkdir -p $(BUILD_DIR)/{Core,Workers/{Base,Protocol,Components},Drivers/{Common,Modbus,Mqtt,Bacnet},Database,Client,Utils,Config,Plugin}
+	@mkdir -p $(BUILD_DIR)/{Core,Workers/{Base,Protocol,Components},Drivers/{Common,Modbus,Mqtt,Bacnet},Database,Client,Utils,Config,Plugin,Pipeline}
 	@mkdir -p $(BIN_DIR)
 
 # 정리
