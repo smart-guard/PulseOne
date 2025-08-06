@@ -28,10 +28,8 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-ModbusTcpWorker::ModbusTcpWorker(const PulseOne::DeviceInfo& device_info,
-                                 std::shared_ptr<RedisClient> redis_client,
-                                 std::shared_ptr<InfluxClient> influx_client)
-    : TcpBasedWorker(device_info, redis_client, influx_client)
+ModbusTcpWorker::ModbusTcpWorker(const PulseOne::DeviceInfo& device_info)
+    : TcpBasedWorker(device_info)
     , modbus_driver_(nullptr)
     , polling_thread_running_(false)
     , next_group_id_(1)
@@ -906,7 +904,7 @@ bool ModbusTcpWorker::SaveDataPointValue(const PulseOne::DataPoint& data_point,
                                          const PulseOne::TimestampedValue& value) {
     try {
         // BaseDeviceWorker의 기본 저장 메서드 사용
-        SaveToInfluxDB(data_point.id, value);
+        // SaveToInfluxDB(data_point.id, value);
         // SaveToRedis는 BaseDeviceWorker에 없을 수 있으므로 제거하거나 확인 필요
         
         return true;

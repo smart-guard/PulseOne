@@ -83,11 +83,7 @@ public:
     /**
      * @brief 생성자
      */
-    explicit ModbusRtuWorker(
-        const PulseOne::DeviceInfo& device_info,
-        std::shared_ptr<RedisClient> redis_client = nullptr,
-        std::shared_ptr<InfluxClient> influx_client = nullptr
-    );
+    explicit ModbusRtuWorker(const PulseOne::DeviceInfo& device_info);
     
     /**
      * @brief 소멸자

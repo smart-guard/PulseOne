@@ -53,10 +53,8 @@ using DataPoint = PulseOne::Structs::DataPoint;
 // 생성자 및 소멸자
 // =============================================================================
 
-ModbusRtuWorker::ModbusRtuWorker(const PulseOne::DeviceInfo& device_info,
-                                 std::shared_ptr<RedisClient> redis_client,
-                                 std::shared_ptr<InfluxClient> influx_client)
-    : SerialBasedWorker(device_info, redis_client, influx_client)
+ModbusRtuWorker::ModbusRtuWorker(const PulseOne::DeviceInfo& device_info)
+    : SerialBasedWorker(device_info)
     , modbus_driver_(nullptr)
     , next_group_id_(1)          // ✅ 순서 수정: polling_thread_running_ 보다 먼저
     , polling_thread_running_(false) {

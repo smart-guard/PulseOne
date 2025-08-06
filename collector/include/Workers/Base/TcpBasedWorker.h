@@ -31,9 +31,7 @@ public:
      * @param redis_client Redis 클라이언트
      * @param influx_client InfluxDB 클라이언트
      */
-    TcpBasedWorker(const PulseOne::DeviceInfo& device_info,
-                   std::shared_ptr<RedisClient> redis_client,
-                   std::shared_ptr<InfluxClient> influx_client);
+    TcpBasedWorker(const PulseOne::DeviceInfo& device_info);
     
     /**
      * @brief 가상 소멸자

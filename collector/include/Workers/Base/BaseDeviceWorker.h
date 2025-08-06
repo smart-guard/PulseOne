@@ -10,9 +10,10 @@
 #ifndef WORKERS_BASE_DEVICE_WORKER_H
 #define WORKERS_BASE_DEVICE_WORKER_H
 
+#include "Common/Structs.h"
+#include "Common/Enums.h"
 #include "Utils/LogManager.h"
-#include "Client/InfluxClient.h"
-#include "Client/RedisClient.h"
+#include "Pipeline/PipelineManager.h"  // 🔥 전역 파이프라인 매니저
 #include <memory>
 #include <future>
 #include <atomic>
@@ -112,12 +113,8 @@ public:
     /**
      * @brief 생성자
      * @param device_info 디바이스 정보
-     * @param redis_client Redis 클라이언트
-     * @param influx_client InfluxDB 클라이언트
      */
-    BaseDeviceWorker(const PulseOne::DeviceInfo& device_info,
-                     std::shared_ptr<RedisClient> redis_client,
-                     std::shared_ptr<InfluxClient> influx_client);
+    explicit BaseDeviceWorker(const PulseOne::DeviceInfo& device_info); 
     
     /**
      * @brief 가상 소멸자
@@ -126,26 +123,12 @@ public:
     
     // 복사/이동 방지
     BaseDeviceWorker(const BaseDeviceWorker&) = delete;
-    BaseDeviceWorker& operator=(const BaseDeviceWorker&) = delete;
-    BaseDeviceWorker(BaseDeviceWorker&&) = delete;
-    BaseDeviceWorker& operator=(BaseDeviceWorker&&) = delete;
-    
+    BaseDeviceWorker& operator=(const BaseDeviceWorker&) = delete;    
     // =============================================================================
     // 순수 가상 함수들 (파생 클래스에서 구현 필수)
     // =============================================================================
-    
-    /**
-     * @brief 워커 시작
-     * @return Future<bool> 시작 결과
-     */
     virtual std::future<bool> Start() = 0;
-    
-    /**
-     * @brief 워커 정지
-     * @return Future<bool> 정지 결과
-     */
     virtual std::future<bool> Stop() = 0;
-    
     /**
      * @brief 프로토콜별 연결 수립 (파생 클래스에서 구현)
      * @return 성공 시 true
@@ -238,7 +221,7 @@ public:
      * @brief 재시도 카운터 및 대기 상태 리셋
      */
     void ResetReconnectionState();
-    
+    WorkerState GetCurrentState() const { return current_state_.load(); }
     /**
      * @brief 연결 상태 조회
      * @return 연결 상태
@@ -260,8 +243,25 @@ public:
      * @return 디바이스 정보
      */
     const PulseOne::DeviceInfo& GetDeviceInfo() const { return device_info_; }
-
-protected:
+    // ==========================================================================
+    // 🔥 파이프라인 연결 메서드들 (임시 비활성화)
+    // ==========================================================================
+    
+    /**
+     * @brief 스캔된 데이터를 전역 파이프라인에 전송
+     * @param values 스캔된 데이터 값들
+     * @param priority 우선순위 (0: 일반, 1: 높음, 2: 긴급)
+     * @return 성공 시 true
+     */
+    bool SendDataToPipeline(const std::vector<PulseOne::TimestampedValue>& values, 
+                           uint32_t priority = 0);
+    
+    /**
+     * @brief Worker ID 조회
+     */
+    const std::string& GetWorkerId() const { return worker_id_; }
+    
+ protected:
     // =============================================================================
     // 파생 클래스에서 사용할 수 있는 보호된 메서드들
     // =============================================================================
@@ -269,20 +269,7 @@ protected:
      * @brief 워커 상태 변경
      * @param new_state 새로운 상태
      */
-    void ChangeState(WorkerState new_state);
-    
-    /**
-     * @brief Redis에 상태 발행
-     */
-    void PublishStatusToRedis();
-    
-    /**
-     * @brief InfluxDB에 데이터 저장
-     * @param point_id 데이터 포인트 ID (GitHub 구조: std::string UUID)
-     * @param value 저장할 값
-     */
-    void SaveToInfluxDB(const std::string& point_id, const PulseOne::TimestampedValue& value);
-    
+    void ChangeState(WorkerState new_state);   
     /**
      * @brief 연결 상태 설정 (재연결 로직에서 사용)
      * @param connected 새로운 연결 상태
@@ -300,9 +287,7 @@ protected:
      * @param level 로그 레벨
      * @param message 메시지
      */
-    void LogMessage(LogLevel level, const std::string& message) const {
-        LogManager::getInstance().log("worker", level, message);
-    }
+    void LogMessage(LogLevel level, const std::string& message) const;
     // =============================================================================
     // WorkerState 유틸리티 함수들 (네임스페이스 레벨)
     // =============================================================================
@@ -329,15 +314,12 @@ protected:
     bool IsErrorState(WorkerState state);
 
     PulseOne::DeviceInfo device_info_;                    ///< 디바이스 정보
+    std::string worker_id_;
+
 private:
     // =============================================================================
     // 내부 데이터 멤버
     // =============================================================================
-    
-    
-    std::shared_ptr<RedisClient> redis_client_;          ///< Redis 클라이언트
-    std::shared_ptr<InfluxClient> influx_client_;        ///< InfluxDB 클라이언트
-    std::shared_ptr<LogManager> logger_;                 ///< 로거
     
     std::atomic<WorkerState> current_state_{WorkerState::STOPPED}; ///< 현재 상태
     std::atomic<bool> is_connected_{false};              ///< 연결 상태

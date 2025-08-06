@@ -9,14 +9,13 @@
 #include "Workers/Base/BaseDeviceWorker.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
-#include "Common/Enums.h"
 #include <sstream>
 #include <iomanip>
 #include <thread>
 
 using namespace std::chrono;
 using LogLevel = PulseOne::Enums::LogLevel;
-using LogLevel = PulseOne::Enums::LogLevel;
+
 namespace PulseOne {
 namespace Workers {
 
@@ -128,16 +127,16 @@ bool ReconnectionSettings::FromJson(const std::string& json_str) {
 // BaseDeviceWorker 생성자 및 소멸자
 // =============================================================================
 
-BaseDeviceWorker::BaseDeviceWorker(const PulseOne::DeviceInfo& device_info,
-                                   std::shared_ptr<RedisClient> redis_client,
-                                   std::shared_ptr<InfluxClient> influx_client)
-    : device_info_(device_info)
-    , redis_client_(redis_client)
-    , influx_client_(influx_client) {
+BaseDeviceWorker::BaseDeviceWorker(const PulseOne::DeviceInfo& device_info)
+    : device_info_(device_info) {
     
-    // Redis 채널명 초기화
-    InitializeRedisChannels();
+    // 🔥 Worker ID 생성 (기존 방식 사용)
+    std::stringstream ss;
+    ss << device_info_.protocol_type << "_" << device_info_.id;
+    worker_id_ = ss.str();
     
+    LogMessage(LogLevel::INFO, "BaseDeviceWorker 생성됨 (Worker ID: " + worker_id_ + ")");
+
     // 통계 초기화
     reconnection_stats_.first_connection_time = system_clock::now();
     wait_start_time_ = system_clock::now();
@@ -164,48 +163,6 @@ BaseDeviceWorker::~BaseDeviceWorker() {
 // 공통 인터페이스 구현
 // =============================================================================
 
-std::future<bool> BaseDeviceWorker::Pause() {
-    auto promise = std::make_shared<std::promise<bool>>();
-    auto future = promise->get_future();
-    
-    try {
-        if (current_state_.load() == WorkerState::RUNNING) {
-            ChangeState(WorkerState::PAUSED);
-            LogMessage(LogLevel::INFO, "Worker paused");
-            promise->set_value(true);
-        } else {
-            LogMessage(LogLevel::WARN, "Cannot pause worker in current state");
-            promise->set_value(false);
-        }
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in Pause: " + std::string(e.what()));
-        promise->set_value(false);
-    }
-    
-    return future;
-}
-
-std::future<bool> BaseDeviceWorker::Resume() {
-    auto promise = std::make_shared<std::promise<bool>>();
-    auto future = promise->get_future();
-    
-    try {
-        if (current_state_.load() == WorkerState::PAUSED) {
-            ChangeState(WorkerState::RUNNING);
-            LogMessage(LogLevel::INFO, "Worker resumed");
-            promise->set_value(true);
-        } else {
-            LogMessage(LogLevel::WARN, "Cannot resume worker in current state");
-            promise->set_value(false);
-        }
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in Resume: " + std::string(e.what()));
-        promise->set_value(false);
-    }
-    
-    return future;
-}
-
 bool BaseDeviceWorker::AddDataPoint(const PulseOne::DataPoint& point) {
     std::lock_guard<std::mutex> lock(data_points_mutex_);
     
@@ -228,44 +185,13 @@ std::vector<PulseOne::DataPoint> BaseDeviceWorker::GetDataPoints() const {
 }
 
 // =============================================================================
-// 재연결 관리
+// 재연결 관리 - UpdateReconnectionSettings 구현 추가
 // =============================================================================
 
 bool BaseDeviceWorker::UpdateReconnectionSettings(const ReconnectionSettings& settings) {
     std::lock_guard<std::mutex> lock(settings_mutex_);
-    
-    // 유효성 검사
-    if (settings.retry_interval_ms < 1000 || settings.retry_interval_ms > 300000) {
-        LogMessage(LogLevel::ERROR, "Invalid retry interval: " + std::to_string(settings.retry_interval_ms));
-        return false;
-    }
-    
-    if (settings.max_retries_per_cycle < 0 || settings.max_retries_per_cycle > 100) {
-        LogMessage(LogLevel::ERROR, "Invalid max retries: " + std::to_string(settings.max_retries_per_cycle));
-        return false;
-    }
-    
-    if (settings.wait_time_after_max_retries_ms < 10000) {
-        LogMessage(LogLevel::ERROR, "Invalid wait time: " + std::to_string(settings.wait_time_after_max_retries_ms));
-        return false;
-    }
-    
-    ReconnectionSettings old_settings = reconnection_settings_;
     reconnection_settings_ = settings;
-    
     LogMessage(LogLevel::INFO, "Reconnection settings updated");
-    
-    // Redis에 변경사항 저장 (GitHub 구조: publish -> set)
-    if (redis_client_) {
-        try {
-            std::string change_msg = "Settings changed from: " + old_settings.ToJson() + 
-                                   " to: " + settings.ToJson();
-            redis_client_->set(reconnection_channel_, change_msg);
-        } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Failed to save settings change to Redis: " + std::string(e.what()));
-        }
-    }
-    
     return true;
 }
 
@@ -345,18 +271,14 @@ void BaseDeviceWorker::ResetReconnectionState() {
 std::string BaseDeviceWorker::GetStatusJson() const {
     std::stringstream ss;
     ss << "{\n";
-    ss << "  \"device_info\": {\n";
-    ss << "    \"device_id\": \"" << device_info_.id << "\",\n";
-    ss << "    \"device_name\": \"" << device_info_.name << "\",\n";
-    ss << "    \"protocol_type\": \"" << PulseOne::Utils::ProtocolTypeToString(device_info_.GetProtocol()) << "\",\n";
-    ss << "    \"endpoint\": \"" << device_info_.endpoint << "\"\n";
-    ss << "  },\n";
-    ss << "  \"status\": {\n";
-    ss << "    \"state\": \"" << WorkerStateToString(current_state_.load()) << "\",\n";
-    ss << "    \"connected\": " << (is_connected_.load() ? "true" : "false") << ",\n";
-    ss << "    \"data_points_count\": " << GetDataPoints().size() << "\n";
-    ss << "  },\n";
-    ss << "  \"reconnection_settings\": " << GetReconnectionSettings().ToJson() << "\n";
+    ss << "  \"device_id\": \"" << device_info_.id << "\",\n";
+    ss << "  \"device_name\": \"" << device_info_.name << "\",\n";
+    ss << "  \"worker_id\": \"" << worker_id_ << "\",\n";
+    ss << "  \"protocol_type\": \"" << device_info_.protocol_type << "\",\n";
+    ss << "  \"endpoint\": \"" << device_info_.endpoint << "\",\n";
+    ss << "  \"state\": \"" << WorkerStateToString(current_state_.load()) << "\",\n";
+    ss << "  \"connected\": " << (is_connected_.load() ? "true" : "false") << ",\n";
+    ss << "  \"data_points_count\": " << data_points_.size() << "\n";
     ss << "}";
     return ss.str();
 }
@@ -369,60 +291,41 @@ void BaseDeviceWorker::ChangeState(WorkerState new_state) {
     WorkerState old_state = current_state_.exchange(new_state);
     
     if (old_state != new_state) {
-        LogMessage(LogLevel::INFO, "State changed: " + WorkerStateToString(old_state) + 
-                  " → " + WorkerStateToString(new_state));
+        LogMessage(LogLevel::INFO, 
+                  "상태 변경: " + WorkerStateToString(old_state) + " → " + WorkerStateToString(new_state));
         
-        PublishStatusToRedis();
-    }
-}
-
-void BaseDeviceWorker::PublishStatusToRedis() {
-    if (!redis_client_) return;
-    
-    try {
-        std::string status_json = GetStatusJson();
-        // GitHub 구조: publish -> set 사용
-        redis_client_->set(status_channel_, status_json);
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to save status to Redis: " + std::string(e.what()));
-    }
-}
-
-void BaseDeviceWorker::SaveToInfluxDB(const std::string& point_id, 
-                                      const PulseOne::TimestampedValue& value) {
-    if (!influx_client_) return;
-    
-    try {
-        // 미사용 매개변수 경고 제거
-        (void)value;  // 명시적으로 사용하지 않음을 표시
-        
-        // InfluxDB 포인트 생성 및 저장
-        LogMessage(LogLevel::DEBUG_LEVEL, "Data saved to InfluxDB for point: " + point_id);
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to save to InfluxDB: " + std::string(e.what()));
+        // 🔥 파이프라인 사용하지 않고 로깅만 수행
+        LogMessage(LogLevel::DEBUG_LEVEL, "Worker state changed to " + WorkerStateToString(new_state));
     }
 }
 
 void BaseDeviceWorker::SetConnectionState(bool connected) {
-    bool old_state = is_connected_.exchange(connected);
+    bool old_connected = is_connected_.exchange(connected);
     
-    if (old_state != connected) {
-        if (connected) {
-            LogMessage(LogLevel::INFO, "Connection established");
-            UpdateReconnectionStats(true);
-        } else {
-            LogMessage(LogLevel::WARN, "Connection lost");
-            UpdateReconnectionStats(false);
+    if (old_connected != connected) {
+        LogMessage(LogLevel::INFO, connected ? "디바이스 연결됨" : "디바이스 연결 해제됨");
+        
+        // 🔥 파이프라인 사용하지 않고 로깅만 수행
+        LogMessage(LogLevel::DEBUG_LEVEL, connected ? "Connected" : "Disconnected");
+        
+        // 상태 변경 로직
+        if (connected && current_state_.load() == WorkerState::RECONNECTING) {
+            ChangeState(WorkerState::RUNNING);
+        } else if (!connected && current_state_.load() == WorkerState::RUNNING) {
+            ChangeState(WorkerState::DEVICE_OFFLINE);
         }
     }
 }
 
 void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
-    LogMessage(LogLevel::ERROR, "Connection error: " + error_message);
+    LogMessage(LogLevel::ERROR, "연결 에러: " + error_message);
     
     SetConnectionState(false);
     
-    // 재연결이 필요한 상태로 변경 (재연결 스레드에서 처리됨)
+    // 🔥 파이프라인 사용하지 않고 로깅만 수행
+    LogMessage(LogLevel::ERROR, "Connection error: " + error_message);
+    
+    // 재연결 상태로 변경
     if (current_state_.load() == WorkerState::RUNNING) {
         ChangeState(WorkerState::RECONNECTING);
     }
@@ -433,125 +336,55 @@ void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
 // =============================================================================
 
 void BaseDeviceWorker::ReconnectionThreadMain() {
-    LogMessage(LogLevel::INFO, "Reconnection management thread started");
+    LogMessage(LogLevel::INFO, "재연결 관리 스레드 시작됨");
     
     while (thread_running_.load()) {
         try {
-            // 현재 상태 확인
             WorkerState current_state = current_state_.load();
             
             // 실행 중이고 연결이 끊어진 경우만 재연결 시도
-            if (current_state == WorkerState::RUNNING || current_state == WorkerState::RECONNECTING) {
-                if (!is_connected_.load()) {
-                    
-                    // 대기 사이클 처리
-                    if (in_wait_cycle_.load()) {
-                        if (HandleWaitCycle()) {
-                            // 대기 완료, 재연결 시도 재개
-                            in_wait_cycle_ = false;
-                            current_retry_count_ = 0;
-                            reconnection_stats_.wait_cycles.fetch_add(1);
-                            LogMessage(LogLevel::INFO, "Wait cycle completed, resuming reconnection attempts");
-                        }
-                    } else {
-                        // 재연결 시도
-                        bool reconnect_enabled = reconnection_settings_.auto_reconnect_enabled;
-                        
-                        if (reconnect_enabled) {
-                            if (AttemptReconnection()) {
-                                // 재연결 성공
-                                if (current_state == WorkerState::RECONNECTING) {
-                                    ChangeState(WorkerState::RUNNING);
-                                }
-                                ResetReconnectionState();
-                                LogMessage(LogLevel::INFO, "Reconnection successful");
-                            } else {
-                                // 재연결 실패 - 재시도 카운터 증가
-                                current_retry_count_.fetch_add(1);
-                                
-                                // 최대 재시도 횟수 확인
-                                if (reconnection_settings_.max_retries_per_cycle > 0 && 
-                                    current_retry_count_.load() >= reconnection_settings_.max_retries_per_cycle) {
-                                    
-                                    // 대기 사이클 시작
-                                    in_wait_cycle_ = true;
-                                    wait_start_time_ = system_clock::now();
-                                    ChangeState(WorkerState::WAITING_RETRY);
-                                    
-                                    LogMessage(LogLevel::WARN, 
-                                              "Max retries exceeded (" + std::to_string(reconnection_settings_.max_retries_per_cycle) + 
-                                              "), entering wait cycle for " + 
-                                              std::to_string(reconnection_settings_.wait_time_after_max_retries_ms / 1000) + " seconds");
-                                } else {
-                                    // 다음 재시도까지 대기
-                                    std::this_thread::sleep_for(
-                                        std::chrono::milliseconds(reconnection_settings_.retry_interval_ms));
-                                }
-                            }
-                        }
+            if ((current_state == WorkerState::RUNNING || current_state == WorkerState::RECONNECTING) &&
+                !is_connected_.load()) {
+                
+                LogMessage(LogLevel::DEBUG_LEVEL, "재연결 시도");
+                
+                if (AttemptReconnection()) {
+                    LogMessage(LogLevel::INFO, "재연결 성공");
+                    if (current_state == WorkerState::RECONNECTING) {
+                        ChangeState(WorkerState::RUNNING);
                     }
                 } else {
-                    // 연결된 상태 - Keep-alive 처리
-                    HandleKeepAlive();
+                    LogMessage(LogLevel::DEBUG_LEVEL, "재연결 실패, 5초 후 재시도");
                 }
             }
             
-            // 짧은 대기 (1초)
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            // 5초마다 재연결 시도
+            std::this_thread::sleep_for(std::chrono::seconds(5));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in reconnection thread: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            LogMessage(LogLevel::ERROR, "재연결 스레드 예외: " + std::string(e.what()));
+            std::this_thread::sleep_for(std::chrono::seconds(10));
         }
     }
     
-    LogMessage(LogLevel::INFO, "Reconnection management thread stopped");
+    LogMessage(LogLevel::INFO, "재연결 관리 스레드 종료됨");
 }
 
 bool BaseDeviceWorker::AttemptReconnection() {
     try {
-        LogMessage(LogLevel::INFO, "Attempting reconnection (attempt " + 
-                  std::to_string(current_retry_count_.load() + 1) + ")");
+        LogMessage(LogLevel::DEBUG_LEVEL, "연결 수립 시도");
         
-        reconnection_stats_.total_connections.fetch_add(1);
-        
-        // 프로토콜별 연결 수립 시도
         if (EstablishConnection()) {
             SetConnectionState(true);
-            reconnection_stats_.reconnection_cycles.fetch_add(1);
             return true;
         } else {
             return false;
         }
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Reconnection attempt failed: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "재연결 시도 중 예외: " + std::string(e.what()));
         return false;
     }
-}
-
-bool BaseDeviceWorker::HandleWaitCycle() {
-    auto now = system_clock::now();
-    auto wait_duration = duration_cast<milliseconds>(now - wait_start_time_).count();
-    
-    if (wait_duration >= reconnection_settings_.wait_time_after_max_retries_ms) {
-        LogMessage(LogLevel::INFO, "Wait cycle completed after " + 
-                  std::to_string(wait_duration / 1000) + " seconds");
-        return true;
-    }
-    
-    // 대기 중 - 남은 시간 계산
-    int remaining_seconds = (reconnection_settings_.wait_time_after_max_retries_ms - wait_duration) / 1000;
-    
-    // 매 30초마다 대기 상태 로그 출력
-    static auto last_log_time = system_clock::now();
-    if (duration_cast<seconds>(now - last_log_time).count() >= 30) {
-        LogMessage(LogLevel::INFO, "Waiting for retry cycle completion, " + 
-                  std::to_string(remaining_seconds) + " seconds remaining");
-        last_log_time = now;
-    }
-    
-    return false;
 }
 
 void BaseDeviceWorker::HandleKeepAlive() {
@@ -677,6 +510,61 @@ bool BaseDeviceWorker::IsErrorState(WorkerState state) {
            state == WorkerState::SENSOR_FAULT ||
            state == WorkerState::EMERGENCY_STOP ||
            state == WorkerState::MAX_RETRIES_EXCEEDED;
+}
+
+// =============================================================================
+// 🔥 파이프라인 전송 메서드 (임시로 비활성화)
+// =============================================================================
+
+bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::TimestampedValue>& values, 
+                                         uint32_t priority) {
+    if (values.empty()) {
+        LogMessage(LogLevel::DEBUG_LEVEL, "전송할 데이터가 없음");
+        return false;
+    }
+    
+    // 🔥 임시로 파이프라인 기능 비활성화 (로깅만 수행)
+    std::stringstream log_msg;
+    log_msg << values.size() << "개 데이터 포인트 수신 (우선순위: " << priority << ")";
+    LogMessage(LogLevel::DEBUG_LEVEL, log_msg.str());
+    
+    // TODO: 실제 파이프라인 구현 후 활성화
+    return true;
+}
+
+// =============================================================================
+// 🔥 라이프사이클 관리
+// =============================================================================
+
+std::future<bool> BaseDeviceWorker::Pause() {
+    return std::async(std::launch::async, [this]() -> bool {
+        if (current_state_.load() == WorkerState::RUNNING) {
+            ChangeState(WorkerState::PAUSED);
+            LogMessage(LogLevel::INFO, "Worker 일시정지됨");
+            return true;
+        } else {
+            LogMessage(LogLevel::WARN, "현재 상태에서 일시정지할 수 없음");
+            return false;
+        }
+    });
+}
+
+std::future<bool> BaseDeviceWorker::Resume() {
+    return std::async(std::launch::async, [this]() -> bool {
+        if (current_state_.load() == WorkerState::PAUSED) {
+            ChangeState(WorkerState::RUNNING);
+            LogMessage(LogLevel::INFO, "Worker 재개됨");
+            return true;
+        } else {
+            LogMessage(LogLevel::WARN, "현재 상태에서 재개할 수 없음");
+            return false;
+        }
+    });
+}
+
+void BaseDeviceWorker::LogMessage(LogLevel level, const std::string& message) const {
+    std::string prefix = "[Worker:" + device_info_.name + "] ";
+    LogManager::getInstance().log("worker", level, prefix + message);
 }
 
 } // namespace Workers
