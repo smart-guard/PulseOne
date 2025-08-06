@@ -1,25 +1,26 @@
 // =============================================================================
-// collector/include/Pipeline/PipelineManager.h - 멀티스레드 개선
+// collector/include/Pipeline/PipelineManager.h - 순수 큐 관리자 (수정됨)
+// 🔥 DataProcessingService 제거 - 순수하게 큐 관리만!
 // =============================================================================
+
 #ifndef PULSEONE_PIPELINE_MANAGER_H
 #define PULSEONE_PIPELINE_MANAGER_H
 
 #include "Common/Structs.h"
-#include "Pipeline/DataProcessingService.h"
 #include <queue>
-#include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
-#include <memory>
 #include <vector>
+#include <memory>
 
 namespace PulseOne {
 namespace Pipeline {
 
 /**
- * @brief 멀티스레드 전역 파이프라인 매니저 (싱글톤)
- * @details 🔥 병목 해결: 1개 큐 + N개 처리 스레드로 병렬 처리
+ * @brief 순수 큐 관리자 (싱글톤) - 데이터 수집 및 큐잉만 담당
+ * @details Worker들로부터 데이터를 받아서 큐에 저장하는 역할만!
+ * DataProcessingService와 완전 분리됨
  */
 class PipelineManager {
 public:
@@ -39,25 +40,12 @@ public:
     PipelineManager& operator=(PipelineManager&&) = delete;
 
     // ==========================================================================
-    // 🔥 전역 초기화
+    // 🔥 순수 큐 관리 인터페이스
     // ==========================================================================
     
-    bool Initialize(
-        std::shared_ptr<RedisClient> redis_client,
-        std::shared_ptr<InfluxClient> influx_client = nullptr,
-        size_t processing_threads = 0  // 0 = CPU 코어 수 자동
-    );
-    
-    bool Start();
-    void Shutdown();
-    
-    bool IsInitialized() const { return is_initialized_.load(); }
-    bool IsRunning() const { return is_running_.load(); }
-
-    // ==========================================================================
-    // 🔥 Worker 인터페이스 (변경 없음)
-    // ==========================================================================
-    
+    /**
+     * @brief Worker에서 데이터 전송 (큐에 추가만!)
+     */
     bool SendDeviceData(
         const std::string& device_id,
         const std::vector<Structs::TimestampedValue>& values,
@@ -65,21 +53,55 @@ public:
         uint32_t priority = 0
     );
     
+    /**
+     * @brief 큐에서 배치 데이터 가져오기 (DataProcessingService가 호출)
+     * @param max_batch_size 최대 배치 크기
+     * @param timeout_ms 타임아웃 (밀리초)
+     * @return 배치 데이터 (빈 벡터면 타임아웃)
+     */
+    std::vector<Structs::DeviceDataMessage> GetBatch(
+        size_t max_batch_size = 500,
+        uint32_t timeout_ms = 100
+    );
+    
+    /**
+     * @brief 큐가 비어있는지 확인
+     */
+    bool IsEmpty() const;
+    
+    /**
+     * @brief 현재 큐 크기
+     */
+    size_t GetQueueSize() const;
+    
+    /**
+     * @brief 큐 오버플로우 여부 확인
+     */
+    bool IsOverflowing() const;
+
     // ==========================================================================
-    // 🔥 모니터링
+    // 🔥 상태 관리
     // ==========================================================================
     
-    struct PipelineStats {
+    bool IsRunning() const { return is_running_.load(); }
+    
+    void Start();
+    void Shutdown();
+    
+    // ==========================================================================
+    // 🔥 통계 및 모니터링
+    // ==========================================================================
+    
+    struct QueueStats {
         uint64_t total_received = 0;
-        uint64_t total_processed = 0;
+        uint64_t total_delivered = 0;
         uint64_t total_dropped = 0;
         size_t current_queue_size = 0;
-        uint64_t redis_writes = 0;
-        double avg_processing_time_ms = 0.0;
-        size_t active_processing_threads = 0;  // 활성 처리 스레드 수
+        size_t max_queue_size = 0;
+        double fill_percentage = 0.0;
     };
     
-    PipelineStats GetStatistics() const;
+    QueueStats GetStatistics() const;
     void ResetStatistics();
 
 private:
@@ -87,49 +109,25 @@ private:
     ~PipelineManager() { Shutdown(); }
 
     // ==========================================================================
-    // 🔥 멀티스레드 큐 처리 시스템
+    // 🔥 순수 큐 시스템 (처리 로직 없음!)
     // ==========================================================================
     
-    // 초기화 상태
-    std::atomic<bool> is_initialized_{false};
+    // 상태 관리
     std::atomic<bool> is_running_{false};
-    std::atomic<bool> should_stop_{false};
     
-    // 🔥 공유 큐 (1개) + 멀티스레드 처리 (N개)
-    std::queue<Structs::DeviceDataMessage> global_queue_;
+    // 🔥 순수 큐 시스템
+    std::queue<Structs::DeviceDataMessage> data_queue_;
     mutable std::mutex queue_mutex_;
     std::condition_variable queue_cv_;
     
-    // 🔥 멀티 처리 스레드들
-    std::vector<std::thread> processing_threads_;
-    size_t num_processing_threads_ = 4;  // 기본 4개 스레드
-    
-    // 🔥 DataProcessingService (스레드 안전)
-    std::shared_ptr<DataProcessingService> data_processing_service_;
-    
     // 설정
-    size_t max_queue_size_ = 100000;
-    size_t batch_size_ = 500;
+    static constexpr size_t MAX_QUEUE_SIZE = 100000;
+    static constexpr size_t OVERFLOW_THRESHOLD = 90000; // 90% 임계점
     
-    // 통계
+    // 통계 (스레드 안전)
     std::atomic<uint64_t> total_received_{0};
-    std::atomic<uint64_t> total_processed_{0};
+    std::atomic<uint64_t> total_delivered_{0};
     std::atomic<uint64_t> total_dropped_{0};
-    std::atomic<size_t> current_queue_size_{0};
-    
-    // ==========================================================================
-    // 🔥 멀티스레드 처리 메서드들
-    // ==========================================================================
-    
-    /**
-     * @brief 각 처리 스레드의 루프 (N개 스레드가 병렬 실행)
-     */
-    void ProcessingThreadLoop(size_t thread_id);
-    
-    /**
-     * @brief 큐에서 배치 수집 (스레드 안전)
-     */
-    std::vector<Structs::DeviceDataMessage> CollectBatch(size_t thread_id);
 };
 
 } // namespace Pipeline
