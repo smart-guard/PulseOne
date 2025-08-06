@@ -50,6 +50,42 @@ void PipelineManager::Shutdown() {
     LogManager::getInstance().Info("✅ PipelineManager 큐 시스템 종료 완료");
 }
 
+bool PipelineManager::SendDeviceData(const Structs::DeviceDataMessage& message) {
+    if (!is_running_.load() || message.points.empty()) {
+        return false;
+    }
+    
+    try {
+        // 🔥 큐에 직접 추가 (오버플로우 체크)
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            
+            // 오버플로우 체크
+            if (data_queue_.size() >= MAX_QUEUE_SIZE) {
+                total_dropped_.fetch_add(1);
+                LogManager::getInstance().Warn("❌ 큐 오버플로우! 데이터 드롭: {} (포인트: {}개)", 
+                                             message.device_id, message.points.size());
+                return false;
+            }
+            
+            // 큐에 추가 (복사 or 이동)
+            data_queue_.push(message);
+        }
+        
+        // 대기 중인 처리기 깨우기
+        queue_cv_.notify_one();
+        
+        // 통계 업데이트
+        total_received_.fetch_add(1);
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("SendDeviceData 예외: {}", e.what());
+        return false;
+    }
+}
+
 bool PipelineManager::SendDeviceData(
     const std::string& device_id,
     const std::vector<Structs::TimestampedValue>& values,

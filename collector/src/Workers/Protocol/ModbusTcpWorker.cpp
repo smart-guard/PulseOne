@@ -9,7 +9,6 @@
 #include "Workers/Protocol/ModbusTcpWorker.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
-#include "Common/Enums.h"
 #include "Common/Structs.h"
 #include <sstream>
 #include <iomanip>
@@ -878,15 +877,10 @@ bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
         std::vector<TimestampedValue> values;
         bool success = modbus_driver_->ReadValues(group.data_points, values);
         
-        if (!success) {
-            const auto& error = modbus_driver_->GetLastError();
-            LogMessage(LogLevel::WARN, "Failed to read group " + std::to_string(group.group_id) + ": " + error.message);
-            return false;
-        }
-        
-        // 데이터베이스에 저장
-        for (size_t i = 0; i < group.data_points.size() && i < values.size(); ++i) {
-            SaveDataPointValue(group.data_points[i], values[i]);
+        if (success && !values.empty()) {
+            // 🔥 한줄로 파이프라인 전송!
+            SendValuesToPipelineWithLogging(values, "그룹 " + std::to_string(group.group_id), 0);
+            
         }
         
         LogMessage(LogLevel::DEBUG_LEVEL, "Successfully processed group " + std::to_string(group.group_id) + 
@@ -896,21 +890,6 @@ bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
         
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, "Exception processing group " + std::to_string(group.group_id) + ": " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool ModbusTcpWorker::SaveDataPointValue(const PulseOne::DataPoint& data_point,
-                                         const PulseOne::TimestampedValue& value) {
-    try {
-        // BaseDeviceWorker의 기본 저장 메서드 사용
-        // SaveToInfluxDB(data_point.id, value);
-        // SaveToRedis는 BaseDeviceWorker에 없을 수 있으므로 제거하거나 확인 필요
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to save data point " + data_point.name + ": " + std::string(e.what()));
         return false;
     }
 }
@@ -1119,6 +1098,345 @@ void ModbusTcpWorker::OnStatisticsUpdate(void* worker_ptr, const std::string& op
     worker->LogMessage(LogLevel::DEBUG_LEVEL, "Modbus " + operation + 
                        (success ? " succeeded" : " failed") + 
                        " in " + std::to_string(response_time_ms) + "ms");
+}
+
+// =============================================================================
+// 🔥 1. uint16_t 값들 (Holding/Input Register) 파이프라인 전송
+// =============================================================================
+
+bool ModbusTcpWorker::SendModbusDataToPipeline(const std::vector<uint16_t>& raw_values, 
+                                               uint16_t start_address,
+                                               const std::string& register_type,
+                                               uint32_t priority) {
+    if (raw_values.empty()) {
+        return false;
+    }
+    
+    try {
+        std::vector<TimestampedValue> timestamped_values;
+        timestamped_values.reserve(raw_values.size());
+        
+        auto timestamp = std::chrono::system_clock::now();
+        
+        for (size_t i = 0; i < raw_values.size(); ++i) {
+            TimestampedValue tv;
+            tv.value = static_cast<int32_t>(raw_values[i]);  // DataValue는 variant
+            tv.timestamp = timestamp;
+            tv.quality = DataQuality::GOOD;
+            tv.source = "modbus_" + register_type + "_" + std::to_string(start_address + i);
+            timestamped_values.push_back(tv);
+        }
+        
+        // 공통 전송 함수 호출
+        return SendValuesToPipelineWithLogging(timestamped_values, 
+                                               register_type + " registers", 
+                                               priority);
+                                               
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "SendModbusDataToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 🔥 2. uint8_t 값들 (Coil/Discrete Input) 파이프라인 전송
+// =============================================================================
+
+bool ModbusTcpWorker::SendModbusBoolDataToPipeline(const std::vector<uint8_t>& raw_values,
+                                                   uint16_t start_address,
+                                                   const std::string& register_type,
+                                                   uint32_t priority) {
+    if (raw_values.empty()) {
+        return false;
+    }
+    
+    try {
+        std::vector<TimestampedValue> timestamped_values;
+        timestamped_values.reserve(raw_values.size());
+        
+        auto timestamp = std::chrono::system_clock::now();
+        
+        for (size_t i = 0; i < raw_values.size(); ++i) {
+            TimestampedValue tv;
+            tv.value = static_cast<bool>(raw_values[i]); // DataValue는 bool 지원
+            tv.timestamp = timestamp;
+            tv.quality = DataQuality::GOOD;
+            tv.source = "modbus_" + register_type + "_" + std::to_string(start_address + i);
+            timestamped_values.push_back(tv);
+        }
+        
+        // 공통 전송 함수 호출
+        return SendValuesToPipelineWithLogging(timestamped_values,
+                                               register_type + " inputs",
+                                               priority);
+                                               
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "SendModbusBoolDataToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 🔥 3. 최종 공통 전송 함수 (로깅 포함)
+// =============================================================================
+
+bool ModbusTcpWorker::SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
+                                                      const std::string& context,
+                                                      uint32_t priority) {
+    if (values.empty()) {
+        return false;
+    }
+    
+    try {
+        // BaseDeviceWorker::SendDataToPipeline() 호출
+        bool success = SendDataToPipeline(values, priority);
+        
+        if (success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "파이프라인 전송 성공 (" + context + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        } else {
+            LogMessage(LogLevel::WARN, 
+                      "파이프라인 전송 실패 (" + context + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "SendValuesToPipelineWithLogging 예외 (" + context + "): " + 
+                  std::string(e.what()));
+        return false;
+    }
+}
+
+
+// 운영용 쓰기 함수 구현
+bool ModbusTcpWorker::WriteSingleHoldingRegister(int slave_id, uint16_t address, uint16_t value) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        // 🔥 ModbusDriver에 올바른 함수명으로 위임
+        bool success = modbus_driver_->WriteHoldingRegister(slave_id, address, value);
+        
+        // 제어 이력 기록
+        DataValue data_value = static_cast<int32_t>(value);  // 🔥 올바른 변환
+        LogWriteOperation(slave_id, address, data_value, "holding_register", success);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, 
+                      "Holding Register 쓰기 성공: 슬레이브=" + std::to_string(slave_id) + 
+                      ", 주소=" + std::to_string(address) + ", 값=" + std::to_string(value));
+        } else {
+            LogMessage(LogLevel::ERROR, "Holding Register 쓰기 실패");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteSingleHoldingRegister 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        // 🔥 ModbusDriver에 올바른 함수명으로 위임 (수정 필요시)
+        bool success = modbus_driver_->WriteCoil(slave_id, address, value);  // 🔥 함수명 확인 필요
+        
+        // 제어 이력 기록
+        DataValue data_value = value;  // 🔥 bool은 직접 할당 가능
+        LogWriteOperation(slave_id, address, data_value, "coil", success);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, 
+                      "Coil 쓰기 성공: 슬레이브=" + std::to_string(slave_id) + 
+                      ", 주소=" + std::to_string(address) + ", 값=" + (value ? "ON" : "OFF"));
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteSingleCoil 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// 디버깅용 읽기 함수 구현
+bool ModbusTcpWorker::ReadSingleHoldingRegister(int slave_id, uint16_t address, uint16_t& value) {
+    std::vector<uint16_t> values;
+    bool success = ReadHoldingRegisters(slave_id, address, 1, values);
+    
+    if (success && !values.empty()) {
+        value = values[0];
+        
+        // 디버깅 읽기도 파이프라인 전송 (낮은 우선순위)
+        TimestampedValue tv;
+        tv.value = static_cast<int32_t>(value);
+        tv.timestamp = std::chrono::system_clock::now();
+        tv.quality = DataQuality::GOOD;
+        tv.source = "debug_holding_" + std::to_string(address);
+        
+        SendValuesToPipelineWithLogging({tv}, "디버깅 읽기", 20);
+        
+        return true;
+    }
+    
+    return false;
+}
+
+bool ModbusTcpWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address, uint16_t count, 
+                                          std::vector<uint16_t>& values) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        // ModbusDriver에 위임
+        bool success = modbus_driver_->ReadHoldingRegisters(slave_id, start_address, count, values);
+        
+        if (success && !values.empty()) {
+            // 디버깅 읽기 결과도 파이프라인 전송
+            std::vector<TimestampedValue> timestamped_values;
+            timestamped_values.reserve(values.size());
+            
+            auto timestamp = std::chrono::system_clock::now();
+            for (size_t i = 0; i < values.size(); ++i) {
+                TimestampedValue tv;
+                tv.value = static_cast<int32_t>(values[i]);
+                tv.timestamp = timestamp;
+                tv.quality = DataQuality::GOOD;
+                tv.source = "debug_holding_" + std::to_string(start_address + i);
+                timestamped_values.push_back(tv);
+            }
+            
+            SendValuesToPipelineWithLogging(timestamped_values, "Holding 레지스터 범위 읽기", 15);
+            
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "Holding Register 읽기 성공: " + std::to_string(values.size()) + "개 값");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ReadHoldingRegisters 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// 고수준 DataPoint 기반 함수
+bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
+    auto data_point_opt = FindDataPointById(point_id);
+    if (!data_point_opt.has_value()) {
+        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        return false;
+    }
+    
+    const auto& data_point = data_point_opt.value();
+    
+    // DataPoint 타입에 따라 적절한 쓰기 함수 호출
+    uint8_t slave_id;
+    ModbusRegisterType register_type;
+    uint16_t address;
+    
+    if (!ParseModbusAddress(data_point, slave_id, register_type, address)) {
+        LogMessage(LogLevel::ERROR, "Invalid Modbus address: " + point_id);
+        return false;
+    }
+    
+    try {
+        bool success = false;
+        
+        if (register_type == ModbusRegisterType::HOLDING_REGISTER) {
+            // 🔥 std::get을 올바르게 사용 (variant에서 값 추출)
+            uint16_t modbus_value = static_cast<uint16_t>(std::get<int32_t>(value));
+            success = WriteSingleHoldingRegister(slave_id, address, modbus_value);
+            
+        } else if (register_type == ModbusRegisterType::COIL) {
+            // 🔥 std::get을 올바르게 사용
+            bool coil_value = std::get<bool>(value);
+            success = WriteSingleCoil(slave_id, address, coil_value);
+            
+        } else {
+            LogMessage(LogLevel::ERROR, "Read-only register type: " + point_id);
+            return false;
+        }
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "DataPoint 쓰기 성공: " + point_id);
+        }
+        
+        return success;
+        
+    } catch (const std::bad_variant_access& e) {
+        LogMessage(LogLevel::ERROR, "DataValue 타입 불일치: " + std::string(e.what()));
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// 제어 이력 기록 헬퍼
+void ModbusTcpWorker::LogWriteOperation(int slave_id, uint16_t address, const DataValue& value,
+                                       const std::string& register_type, bool success) {
+    try {
+        TimestampedValue control_log;
+        control_log.value = value;
+        control_log.timestamp = std::chrono::system_clock::now();
+        control_log.quality = success ? DataQuality::GOOD : DataQuality::BAD;
+        control_log.source = "control_" + register_type + "_" + std::to_string(address) + 
+                            "_slave" + std::to_string(slave_id);
+        
+        // 제어 이력은 높은 우선순위로 기록
+        SendValuesToPipelineWithLogging({control_log}, "제어 이력", 1);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
+    }
+}
+
+std::optional<DataPoint> ModbusTcpWorker::FindDataPointById(const std::string& point_id) {
+    // GetDataPoints()는 BaseDeviceWorker에서 제공되는 함수
+    const auto& data_points = GetDataPoints();
+    
+    for (const auto& point : data_points) {
+        if (point.id == point_id) {
+            return point;
+        }
+    }
+    
+    return std::nullopt;  // 찾지 못함
+}
+
+
+bool ModbusTcpWorker::SendSingleValueToPipeline(const DataValue& value, uint16_t address,
+                                               const std::string& register_type, int slave_id) {
+    try {
+        TimestampedValue tv;
+        tv.value = value;
+        tv.timestamp = std::chrono::system_clock::now();
+        tv.quality = DataQuality::GOOD;
+        tv.source = register_type + "_" + std::to_string(address) + "_slave" + std::to_string(slave_id);
+        
+        return SendValuesToPipelineWithLogging({tv}, "단일 값", 15);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "SendSingleValueToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
 }
 
 } // namespace Workers
