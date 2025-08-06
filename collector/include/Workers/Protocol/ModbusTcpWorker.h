@@ -142,7 +142,81 @@ public:
      * @return JSON 형태의 통계 정보
      */
     std::string GetModbusStats() const;
+    // ==========================================================================
+    // 🔥 운영용 쓰기/제어 함수들 (필수!)
+    // ==========================================================================
+    
+    bool WriteSingleHoldingRegister(int slave_id, uint16_t address, uint16_t value);
+    bool WriteSingleCoil(int slave_id, uint16_t address, bool value);
+    bool WriteMultipleHoldingRegisters(int slave_id, uint16_t start_address, 
+                                      const std::vector<uint16_t>& values);
+    bool WriteMultipleCoils(int slave_id, uint16_t start_address,
+                           const std::vector<bool>& values);
 
+    // ==========================================================================
+    // 🔥 디버깅용 개별 읽기 함수들
+    // ==========================================================================
+    
+     bool ReadSingleHoldingRegister(int slave_id, uint16_t address, uint16_t& value);
+    bool ReadSingleInputRegister(int slave_id, uint16_t address, uint16_t& value);
+    bool ReadSingleCoil(int slave_id, uint16_t address, bool& value);
+    bool ReadSingleDiscreteInput(int slave_id, uint16_t address, bool& value);
+    
+    bool ReadHoldingRegisters(int slave_id, uint16_t start_address, uint16_t count, 
+                             std::vector<uint16_t>& values);
+    bool ReadInputRegisters(int slave_id, uint16_t start_address, uint16_t count,
+                           std::vector<uint16_t>& values);
+    bool ReadCoils(int slave_id, uint16_t start_address, uint16_t count,
+                  std::vector<bool>& values);
+    bool ReadDiscreteInputs(int slave_id, uint16_t start_address, uint16_t count,
+                           std::vector<bool>& values);
+
+    // ==========================================================================
+    // 🔥 고수준 제어 함수들 (DataPoint 기반)
+    // ==========================================================================
+    
+    bool WriteDataPointValue(const std::string& point_id, const DataValue& value);
+    bool ReadDataPointValue(const std::string& point_id, TimestampedValue& value);
+
+    
+    /**
+     * @brief 여러 DataPoint 한번에 읽기 (배치 읽기)
+     * @param point_ids 데이터 포인트 ID 목록
+     * @param values 읽은 값들 (출력)
+     * @return 성공 시 true
+     */
+    bool ReadMultipleDataPoints(const std::vector<std::string>& point_ids,
+                               std::vector<TimestampedValue>& values);
+
+    // ==========================================================================
+    // 🔥 실시간 테스트/디버깅 함수들
+    // ==========================================================================
+    
+    /**
+     * @brief 연결 테스트 (ping)
+     * @param slave_id 테스트할 슬레이브 ID
+     * @return 연결 성공 시 true
+     */
+    bool TestConnection(int slave_id = 1);
+    
+    /**
+     * @brief 레지스터 스캔 (연속 주소 범위 테스트)
+     * @param slave_id 슬레이브 ID
+     * @param start_address 시작 주소
+     * @param end_address 끝 주소
+     * @param register_type 레지스터 타입
+     * @return 스캔 결과 맵 (주소 -> 값)
+     */
+    std::map<uint16_t, uint16_t> ScanRegisters(int slave_id, uint16_t start_address, 
+                                              uint16_t end_address, 
+                                              const std::string& register_type = "holding");
+    
+    /**
+     * @brief 디바이스 정보 읽기 (벤더 정보 등)
+     * @param slave_id 슬레이브 ID
+     * @return 디바이스 정보 JSON
+     */
+    std::string ReadDeviceInfo(int slave_id = 1);
 protected:
     // =============================================================================
     // 데이터 포인트 처리 (Worker 고유 로직)
@@ -229,16 +303,7 @@ private:
     std::vector<PulseOne::TimestampedValue> ConvertModbusValues(
         const ModbusTcpPollingGroup& group,
         const std::vector<uint16_t>& values);
-    
-    /**
-     * @brief 데이터베이스에 데이터 저장 (BaseDeviceWorker 기능 사용)
-     * @param data_point 데이터 포인트
-     * @param value 타임스탬프 값
-     * @return 성공 시 true
-     */
-    bool SaveDataPointValue(const PulseOne::DataPoint& data_point,
-                           const PulseOne::TimestampedValue& value);
-    
+      
     /**
      * @brief 데이터 포인트에서 Modbus 주소 파싱
      * @param data_point 데이터 포인트
@@ -316,6 +381,77 @@ private:
      */
     static void OnStatisticsUpdate(void* worker_ptr, const std::string& operation,
                                   bool success, uint32_t response_time_ms);
+
+    /**
+     * @brief Modbus 원시 데이터를 TimestampedValue로 변환 후 파이프라인 전송
+     * @param raw_values 원시 uint16_t 값들 (Holding/Input Register)
+     * @param start_address 시작 주소
+     * @param register_type 레지스터 타입 ("holding", "input", "coil", "discrete")
+     * @param priority 파이프라인 우선순위 (기본: 0)
+     * @return 전송 성공 시 true
+     */
+    bool SendModbusDataToPipeline(const std::vector<uint16_t>& raw_values, 
+                                  uint16_t start_address,
+                                  const std::string& register_type,
+                                  uint32_t priority = 0);
+    
+    /**
+     * @brief Modbus 원시 bool 데이터를 TimestampedValue로 변환 후 파이프라인 전송
+     * @param raw_values 원시 uint8_t 값들 (Coil/Discrete Input)
+     * @param start_address 시작 주소
+     * @param register_type 레지스터 타입 ("coil", "discrete")
+     * @param priority 파이프라인 우선순위 (기본: 0)
+     * @return 전송 성공 시 true
+     */
+    bool SendModbusBoolDataToPipeline(const std::vector<uint8_t>& raw_values,
+                                      uint16_t start_address,
+                                      const std::string& register_type,
+                                      uint32_t priority = 0);
+    
+    /**
+     * @brief TimestampedValue 배열을 직접 파이프라인 전송 (로깅 포함)
+     * @param values TimestampedValue 배열
+     * @param context 컨텍스트 (로깅용)
+     * @param priority 파이프라인 우선순위 (기본: 0)
+     * @return 전송 성공 시 true
+     */
+    bool SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
+                                         const std::string& context,
+                                         uint32_t priority = 0);                                  
+
+    // ==========================================================================
+    // 🔥 공통 헬퍼 함수들
+    // ==========================================================================
+    
+    /**
+     * @brief 쓰기 결과를 파이프라인에 전송 (제어 이력 기록)
+     * @param slave_id 슬레이브 ID
+     * @param address 주소
+     * @param value 쓴 값
+     * @param register_type 레지스터 타입
+     * @param success 쓰기 성공 여부
+     */
+    void LogWriteOperation(int slave_id, uint16_t address, const DataValue& value,
+                          const std::string& register_type, bool success);
+    
+    /**
+     * @brief DataPoint ID로 실제 DataPoint 찾기
+     * @param point_id 포인트 ID
+     * @return DataPoint (없으면 빈 optional)
+     */
+    std::optional<DataPoint> FindDataPointById(const std::string& point_id);
+    
+    /**
+     * @brief 타입별 파이프라인 전송 헬퍼
+     */
+    bool SendReadResultToPipeline(const std::vector<uint16_t>& values, uint16_t start_address,
+                                 const std::string& register_type, int slave_id);
+    bool SendReadResultToPipeline(const std::vector<bool>& values, uint16_t start_address,
+                                 const std::string& register_type, int slave_id);
+    bool SendSingleValueToPipeline(const DataValue& value, uint16_t address,
+                                  const std::string& register_type, int slave_id);
+
+
 };
 
 } // namespace Workers

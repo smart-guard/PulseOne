@@ -42,7 +42,12 @@ public:
     // ==========================================================================
     // 🔥 순수 큐 관리 인터페이스
     // ==========================================================================
-    
+    /**
+     * @brief Worker에서 DeviceDataMessage 전송 (메인 인터페이스)
+     * @param message DeviceDataMessage 구조체
+     * @return 성공 시 true, 큐 오버플로우 시 false
+     */
+    bool SendDeviceData(const Structs::DeviceDataMessage& message);
     /**
      * @brief Worker에서 데이터 전송 (큐에 추가만!)
      */

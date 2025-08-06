@@ -390,6 +390,9 @@ private:
      * @param connection_successful 연결 성공 여부
      */
     void UpdateReconnectionStats(bool connection_successful);
+
+    std::string GetWorkerIdString() const;
+
     
 };
 

@@ -7,6 +7,7 @@
  */
 
 #include "Workers/Base/BaseDeviceWorker.h"
+#include "Pipeline/PipelineManager.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
 #include <sstream>
@@ -519,18 +520,47 @@ bool BaseDeviceWorker::IsErrorState(WorkerState state) {
 bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::TimestampedValue>& values, 
                                          uint32_t priority) {
     if (values.empty()) {
+        LogMessage(LogLevel::DEBUG_LEVEL, "전송할 데이터가 없음");
         return false;
     }
-    
-    // 🔥 전역 파이프라인 매니저 사용 (싱글톤이 아니라면 의존성 주입)
-    // 실제 구현에서는 WorkerPipelineManager 인스턴스 참조 필요
-    
-    // WorkerPipelineManager::ProcessDeviceData() 호출
-    // return pipeline_manager_->ProcessDeviceData(device_info_.id, values, priority);
-    
-    LogMessage(LogLevel::DEBUG_LEVEL, 
-              "파이프라인 전송: " + std::to_string(values.size()) + "개 포인트");
-    return true;
+
+    try {
+        // 🔥 기존 PipelineManager 싱글톤 사용 (코드 변경 최소화!)
+        auto& pipeline_manager = Pipeline::PipelineManager::GetInstance();
+        
+        if (!pipeline_manager.IsRunning()) {
+            LogMessage(LogLevel::WARN, "파이프라인이 실행되지 않음");
+            return false;
+        }
+
+        // 🔥 DeviceDataMessage 구조체 생성 후 전송!
+        Structs::DeviceDataMessage message;
+        message.device_id = device_info_.id;
+        message.protocol = device_info_.GetProtocolName();  // 실제 프로토콜명
+        message.points = values;                            // 🔥 points 필드에 값 저장
+        message.priority = priority;
+        message.timestamp = std::chrono::system_clock::now();
+        
+        // Worker ID를 별도 필드에 저장 (message 구조체에 worker_id 필드가 있다면)
+        // message.worker_id = GetWorkerIdString();
+        
+        // 🔥 수정된 PipelineManager::SendDeviceData() 호출
+        bool success = pipeline_manager.SendDeviceData(message);
+
+        if (success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "파이프라인 전송 성공: " + std::to_string(values.size()) + "개 포인트");
+        } else {
+            LogMessage(LogLevel::WARN, "파이프라인 전송 실패 (큐 오버플로우?)");
+        }
+
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "파이프라인 전송 중 예외: " + std::string(e.what()));
+        return false;
+    }
 }
 
 // =============================================================================
