@@ -289,56 +289,21 @@ bool ModbusTcpWorker::SetPollingGroupEnabled(uint32_t group_id, bool enabled) {
 }
 
 std::string ModbusTcpWorker::GetModbusStats() const {
-    if (!modbus_driver_) {
-        return "{\"error\":\"driver_not_initialized\"}";
-    }
-    
-    // ✅ 수정: GetDiagnostics() → GetDiagnosticsJSON() 사용
-    std::string json_diagnostics = modbus_driver_->GetDiagnosticsJSON();
-    
     std::ostringstream oss;
     oss << "{\n";
     oss << "  \"worker_type\": \"ModbusTcpWorker\",\n";
-    oss << "  \"device_id\": \"" << device_info_.id << "\",\n";          // device_id → id 수정
+    oss << "  \"device_id\": \"" << device_info_.id << "\",\n";
     oss << "  \"device_name\": \"" << device_info_.name << "\",\n";
     oss << "  \"endpoint\": \"" << device_info_.endpoint << "\",\n";
-    
-    // ✅ 표준화된 통계 정보 (DriverStatistics 사용)
-    const auto& stats = modbus_driver_->GetStatistics();
-    oss << "  \"statistics\": {\n";
-    oss << "    \"total_reads\": " << stats.total_reads.load() << ",\n";
-    oss << "    \"successful_reads\": " << stats.successful_reads.load() << ",\n";
-    oss << "    \"failed_reads\": " << stats.failed_reads.load() << ",\n";
-    oss << "    \"total_writes\": " << stats.total_writes.load() << ",\n";
-    oss << "    \"successful_writes\": " << stats.successful_writes.load() << ",\n";
-    oss << "    \"failed_writes\": " << stats.failed_writes.load() << ",\n";
-    oss << "    \"success_rate\": " << stats.GetSuccessRate() << ",\n";
-    
-    // ✅ Modbus 특화 통계 (프로토콜 카운터)
-    oss << "    \"register_reads\": " << stats.GetProtocolCounter("register_reads") << ",\n";
-    oss << "    \"register_writes\": " << stats.GetProtocolCounter("register_writes") << ",\n";
-    oss << "    \"crc_checks\": " << stats.GetProtocolCounter("crc_checks") << ",\n";
-    oss << "    \"slave_errors\": " << stats.GetProtocolCounter("slave_errors") << ",\n";
-    oss << "    \"avg_response_time_ms\": " << stats.GetProtocolMetric("avg_response_time_ms") << "\n";
-    oss << "  },\n";
-    
-    // ✅ 드라이버 진단 정보 (JSON 문자열 직접 삽입)
-    oss << "  \"driver_diagnostics\": " << json_diagnostics << ",\n";
-    
-    // TCP Worker 특화 정보
-    oss << "  \"worker_info\": {\n";
-    oss << "    \"default_polling_interval_ms\": " << default_polling_interval_ms_ << ",\n";
-    oss << "    \"modbus_config\": {\n";
+    oss << "  \"modbus_config\": {\n";
+    // ✅ 수정: properties 사용
     oss << "      \"slave_id\": " << GetPropertyValue(modbus_config_.properties, "slave_id", "1") << ",\n";
     oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms << ",\n";
-    oss << "      \"response_timeout_ms\": " << modbus_config_.response_timeout_ms << ",\n";
-    oss << "      \"byte_timeout_ms\": " << modbus_config_.byte_timeout_ms << ",\n";
-    oss << "      \"max_retries\": " << static_cast<int>(modbus_config_.max_retries) << "\n";
+    oss << "      \"response_timeout_ms\": " << GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") << ",\n";
+    oss << "      \"byte_timeout_ms\": " << GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100") << ",\n";
+    oss << "      \"max_retries\": " << GetPropertyValue(modbus_config_.properties, "max_retries", "3") << "\n";
     oss << "    }\n";
-    oss << "  }\n";
-    
     oss << "}";
-    
     return oss.str();
 }
 
@@ -472,37 +437,32 @@ size_t ModbusTcpWorker::OptimizePollingGroups() {
 
 bool ModbusTcpWorker::ParseModbusConfig() {
     try {
-        LogMessage(LogLevel::INFO, "🔧 Starting Modbus configuration parsing...");
+        LogMessage(LogLevel::INFO, "🔧 Starting Modbus TCP configuration parsing...");
         
-        // =====================================================================
-        // 🔥 1단계: connection_string에서 프로토콜별 설정 JSON 파싱
-        // =====================================================================
+        // 기본 DriverConfig 설정
+        modbus_config_.device_id = device_info_.id;
+        modbus_config_.name = device_info_.name;
+        modbus_config_.endpoint = device_info_.endpoint;
+        modbus_config_.timeout_ms = device_info_.timeout_ms;
+        modbus_config_.retry_count = device_info_.retry_count;
         
+        // JSON 프로토콜 설정 파싱
         nlohmann::json protocol_config_json;
-        std::string config_source = device_info_.connection_string;
         
-        LogMessage(LogLevel::DEBUG_LEVEL, 
-                   "📋 Raw connection_string: '" + config_source + "'");
-        
-        // connection_string이 JSON 형태인지 확인
-        if (!config_source.empty() && 
-            (config_source.front() == '{' || config_source.find("slave_id") != std::string::npos)) {
+        if (!device_info_.connection_string.empty()) {
             try {
-                protocol_config_json = nlohmann::json::parse(config_source);
-                LogMessage(LogLevel::INFO, 
-                          "✅ Parsed protocol config from connection_string: " + config_source);
+                protocol_config_json = nlohmann::json::parse(device_info_.connection_string);
+                LogMessage(LogLevel::INFO, "✅ Parsed JSON protocol config from connection_string");
             } catch (const std::exception& e) {
-                LogMessage(LogLevel::WARN, 
-                          "⚠️ Failed to parse protocol config JSON, using defaults: " + std::string(e.what()));
+                LogMessage(LogLevel::WARN, "⚠️ Failed to parse protocol config JSON, using defaults: " + std::string(e.what()));
                 protocol_config_json = nlohmann::json::object();
             }
         } else {
-            LogMessage(LogLevel::INFO, 
-                      "ℹ️ No protocol JSON config found in connection_string, using defaults");
+            LogMessage(LogLevel::INFO, "ℹ️ No protocol JSON config found in connection_string, using defaults");
             protocol_config_json = nlohmann::json::object();
         }
         
-        // 프로토콜 기본값 설정 (JSON이 비어있을 때)
+        // 프로토콜 기본값 설정
         if (protocol_config_json.empty()) {
             protocol_config_json = {
                 {"slave_id", 1},
@@ -510,193 +470,139 @@ bool ModbusTcpWorker::ParseModbusConfig() {
                 {"max_registers_per_group", 125},
                 {"auto_group_creation", true}
             };
-            LogMessage(LogLevel::INFO, 
-                      "📝 Applied default Modbus protocol configuration");
+            LogMessage(LogLevel::INFO, "📝 Applied default Modbus protocol configuration");
         }
         
-        // =====================================================================
-        // 🔥 2단계: Modbus 특화 설정 추출 (프로토콜별)
-        // =====================================================================
-        
+        // ✅ 수정: properties에 저장
         modbus_config_.properties["slave_id"] = std::to_string(protocol_config_json.value("slave_id", 1));
-        modbus_config_.byte_order = protocol_config_json.value("byte_order", "big_endian");
-        modbus_config_.max_registers_per_group = protocol_config_json.value("max_registers_per_group", 125);
-        modbus_config_.auto_group_creation = protocol_config_json.value("auto_group_creation", true);
+        modbus_config_.properties["byte_order"] = protocol_config_json.value("byte_order", "big_endian");
+        modbus_config_.properties["max_registers_per_group"] = std::to_string(protocol_config_json.value("max_registers_per_group", 125));
+        modbus_config_.properties["auto_group_creation"] = protocol_config_json.value("auto_group_creation", true) ? "true" : "false";
         
-        // 🔥 문자열 연결 문제 해결: std::string으로 명시적 변환
+        // ✅ 수정: properties에서 읽기
         std::string debug_msg = "🔌 Extracted protocol-specific config:\n";
-        debug_msg += "   - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
-        debug_msg += "   - byte_order: " + modbus_config_.byte_order + "\n";
-        debug_msg += "   - max_registers_per_group: " + std::to_string(modbus_config_.max_registers_per_group);
+        debug_msg += "   - slave_id: " + GetPropertyValue(modbus_config_.properties, "slave_id", "1") + "\n";
+        debug_msg += "   - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
+        debug_msg += "   - max_registers_per_group: " + GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
         
         LogMessage(LogLevel::DEBUG_LEVEL, debug_msg);
         
-        // =====================================================================
-        // 🔥 3단계: DeviceInfo에서 공통 통신 설정 가져오기 (이미 매핑됨!)
-        // =====================================================================
-        
-        if (device_info_.connection_timeout_ms.has_value()) {
-            modbus_config_.timeout_ms = static_cast<uint32_t>(device_info_.connection_timeout_ms.value());
-        } else {
-            modbus_config_.timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);  // 기본값 사용
-        }
-
+        // ✅ 수정: properties에 통신 설정 저장
         if (device_info_.read_timeout_ms.has_value()) {
-            modbus_config_.response_timeout_ms = static_cast<uint32_t>(device_info_.read_timeout_ms.value());
-            modbus_config_.byte_timeout_ms = static_cast<uint32_t>(
-                std::min(device_info_.read_timeout_ms.value() / 10, 1000)
-            );
+            modbus_config_.properties["response_timeout_ms"] = std::to_string(device_info_.read_timeout_ms.value());
+            modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(device_info_.read_timeout_ms.value() / 10, 1000));
         } else {
-            modbus_config_.response_timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);
-            modbus_config_.byte_timeout_ms = static_cast<uint32_t>(
-                std::min(device_info_.timeout_ms / 10, 1000)
-            );
+            modbus_config_.properties["response_timeout_ms"] = std::to_string(device_info_.timeout_ms);
+            modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(device_info_.timeout_ms / 10, 1000));
         }
-        modbus_config_.max_retries = static_cast<uint8_t>(device_info_.retry_count);
+        modbus_config_.properties["max_retries"] = std::to_string(device_info_.retry_count);
         
+        // ✅ 수정: properties에서 읽기
         std::string comm_msg = "⚙️ Mapped communication settings from DeviceInfo:\n";
         comm_msg += "   - connection_timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
-        comm_msg += "   - read_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
-        comm_msg += "   - byte_timeout: " + std::to_string(modbus_config_.byte_timeout_ms) + "ms\n";
-        comm_msg += "   - max_retries: " + std::to_string(modbus_config_.max_retries);
+        comm_msg += "   - read_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms\n";
+        comm_msg += "   - byte_timeout: " + GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100") + "ms\n";
+        comm_msg += "   - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3");
         
         LogMessage(LogLevel::DEBUG_LEVEL, comm_msg);
         
-        // =====================================================================
-        // 🔥 4단계: Worker 레벨 설정 적용 (DeviceInfo에서 직접)
-        // =====================================================================
+        // Worker 전용 설정 업데이트
+        max_registers_per_group_ = std::stoi(GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125"));
+        auto_group_creation_enabled_ = (GetPropertyValue(modbus_config_.properties, "auto_group_creation", "true") == "true");
         
-        default_polling_interval_ms_ = device_info_.polling_interval_ms;
-        
-        // scan_rate_override가 있으면 우선 적용
-        if (device_info_.scan_rate_override.has_value()) {
-            default_polling_interval_ms_ = static_cast<uint32_t>(device_info_.scan_rate_override.value());
-            LogMessage(LogLevel::INFO, 
-                      "📊 Using scan_rate_override: " + std::to_string(default_polling_interval_ms_) + "ms");
-        }
-        
-        // 프로토콜 config에서 오버라이드가 있으면 최종 적용
-        if (protocol_config_json.contains("polling_interval_ms")) {
-            default_polling_interval_ms_ = protocol_config_json["polling_interval_ms"].get<uint32_t>();
-            LogMessage(LogLevel::INFO, 
-                      "📊 Protocol config override polling_interval: " + std::to_string(default_polling_interval_ms_) + "ms");
-        }
-        
-        max_registers_per_group_ = modbus_config_.max_registers_per_group;
-        auto_group_creation_enabled_ = modbus_config_.auto_group_creation;
-        
-        // =====================================================================
-        // 🔥 5단계: 설정 검증 및 안전한 기본값 적용
-        // =====================================================================
-        
+        // ✅ 수정: 설정 유효성 검사 (properties 기반)
         bool validation_errors = false;
         
-        // Modbus 프로토콜별 검증
-        if (modbus_config_.slave_id < 1 || modbus_config_.slave_id > 247) {
-            LogMessage(LogLevel::ERROR, 
-                      "❌ Invalid slave_id: " + std::to_string(modbus_config_.slave_id) + 
-                      " (valid range: 1-247)");
-            modbus_config_.slave_id = 1;
+        int slave_id = std::stoi(GetPropertyValue(modbus_config_.properties, "slave_id", "1"));
+        if (slave_id < 1 || slave_id > 247) {
+            LogMessage(LogLevel::WARN, "❌ Invalid slave_id: " + std::to_string(slave_id) + " (valid range: 1-247)");
+            modbus_config_.properties["slave_id"] = "1";
             validation_errors = true;
         }
         
         if (modbus_config_.timeout_ms < 100 || modbus_config_.timeout_ms > 30000) {
-            LogMessage(LogLevel::WARN, 
-                      "⚠️ Invalid timeout: " + std::to_string(modbus_config_.timeout_ms) + 
-                      "ms (valid range: 100-30000ms), using 3000ms");
+            LogMessage(LogLevel::WARN, "⚠️ Invalid timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms (valid range: 100-30000ms), using 3000ms");
             modbus_config_.timeout_ms = 3000;
             validation_errors = true;
         }
         
-        if (modbus_config_.response_timeout_ms < 100 || modbus_config_.response_timeout_ms > 10000) {
-            LogMessage(LogLevel::WARN, 
-                      "⚠️ Invalid response_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + 
-                      "ms (valid range: 100-10000ms), using 1000ms");
-            modbus_config_.response_timeout_ms = 1000;
+        int response_timeout = std::stoi(GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000"));
+        if (response_timeout < 100 || response_timeout > 10000) {
+            LogMessage(LogLevel::WARN, "⚠️ Invalid response_timeout: " + std::to_string(response_timeout) + "ms (valid range: 100-10000ms), using 1000ms");
+            modbus_config_.properties["response_timeout_ms"] = "1000";
             validation_errors = true;
         }
         
-        if (modbus_config_.byte_order != "big_endian" && modbus_config_.byte_order != "little_endian") {
-            LogMessage(LogLevel::WARN, 
-                      "⚠️ Invalid byte_order: " + modbus_config_.byte_order + 
-                      " (valid: big_endian, little_endian), using big_endian");
-            modbus_config_.byte_order = "big_endian";
+        std::string byte_order = GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian");
+        if (byte_order != "big_endian" && byte_order != "little_endian") {
+            LogMessage(LogLevel::WARN, "⚠️ Invalid byte_order: " + byte_order + " (valid: big_endian, little_endian), using big_endian");
+            modbus_config_.properties["byte_order"] = "big_endian";
             validation_errors = true;
         }
         
         if (max_registers_per_group_ < 1 || max_registers_per_group_ > 125) {
-            LogMessage(LogLevel::WARN, 
-                      "⚠️ Invalid max_registers_per_group: " + std::to_string(max_registers_per_group_) + 
-                      " (valid range: 1-125), using 125");
+            LogMessage(LogLevel::WARN, "⚠️ Invalid max_registers_per_group: " + std::to_string(max_registers_per_group_) + " (valid range: 1-125), using 125");
             max_registers_per_group_ = 125;
+            modbus_config_.properties["max_registers_per_group"] = "125";
             validation_errors = true;
         }
         
         if (default_polling_interval_ms_ < 100 || default_polling_interval_ms_ > 60000) {
-            LogMessage(LogLevel::WARN, 
-                      "⚠️ Invalid polling_interval: " + std::to_string(default_polling_interval_ms_) + 
-                      "ms (valid range: 100-60000ms), using 1000ms");
+            LogMessage(LogLevel::WARN, "⚠️ Invalid polling_interval: " + std::to_string(default_polling_interval_ms_) + "ms (valid range: 100-60000ms), using 1000ms");
             default_polling_interval_ms_ = 1000;
             validation_errors = true;
         }
         
-        if (modbus_config_.max_retries > 10) {
-            LogMessage(LogLevel::WARN, 
-                      "⚠️ Invalid max_retries: " + std::to_string(modbus_config_.max_retries) + 
-                      " (valid range: 0-10), using 3");
-            modbus_config_.max_retries = 3;
+        int max_retries = std::stoi(GetPropertyValue(modbus_config_.properties, "max_retries", "3"));
+        if (max_retries > 10) {
+            LogMessage(LogLevel::WARN, "⚠️ Invalid max_retries: " + std::to_string(max_retries) + " (valid range: 0-10), using 3");
+            modbus_config_.properties["max_retries"] = "3";
             validation_errors = true;
         }
         
-        // =====================================================================
-        // 최종 결과 로깅 - 문자열 연결 문제 해결
-        // =====================================================================
-        
+        // ✅ 수정: 최종 결과 로깅 (properties 기반)
         std::string result_msg = "✅ Modbus config parsed successfully";
         if (validation_errors) {
             result_msg += " (with corrections)";
         }
         result_msg += ":\n";
         result_msg += "   🔌 Protocol settings (from connection_string):\n";
-        result_msg += "      - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
-        result_msg += "      - byte_order: " + modbus_config_.byte_order + "\n";
+        result_msg += "      - slave_id: " + GetPropertyValue(modbus_config_.properties, "slave_id", "1") + "\n";
+        result_msg += "      - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
         result_msg += "      - max_registers_per_group: " + std::to_string(max_registers_per_group_) + "\n";
         result_msg += "      - auto_group_creation: " + (auto_group_creation_enabled_ ? std::string("enabled") : std::string("disabled")) + "\n";
         result_msg += "   ⚙️  Communication settings (from DeviceSettings):\n";
         result_msg += "      - connection_timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
-        result_msg += "      - read_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
-        result_msg += "      - byte_timeout: " + std::to_string(modbus_config_.byte_timeout_ms) + "ms\n";
-        result_msg += "      - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
+        result_msg += "      - read_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms\n";
+        result_msg += "      - byte_timeout: " + GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100") + "ms\n";
+        result_msg += "      - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3") + "\n";
         result_msg += "      - polling_interval: " + std::to_string(default_polling_interval_ms_) + "ms\n";
         result_msg += "      - keep_alive: " + (device_info_.keep_alive_enabled ? std::string("enabled") : std::string("disabled"));
         
         LogMessage(LogLevel::INFO, result_msg);
         
-        // ModbusConfig 자체 검증 수행
-        if (!modbus_config_.IsValid()) {
-            LogMessage(LogLevel::ERROR, 
-                      "❌ ModbusConfig validation failed even after corrections!");
-            modbus_config_.properties["slave_id"] = "1";
-            modbus_config_.properties["byte_order"] = "big_endian";
-            modbus_config_.properties["max_registers_per_group"] = "125";
-            LogMessage(LogLevel::WARN, 
-                      "🔄 Reset to safe defaults: " + modbus_config_.ToString());
-        }
+        // ✅ 수정: IsValid() 메서드 호출 제거 (DriverConfig에는 없음)
+        // if (!modbus_config_.IsValid()) { ... }  // 이 부분 제거
         
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                   "❌ Exception in ParseModbusConfig: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "❌ Exception in ParseModbusConfig: " + std::string(e.what()));
         
-        // 예외 시 안전한 기본값 설정
-        modbus_config_.ResetToDefaults();
+        // ✅ 수정: ResetToDefaults() 호출 제거, 기본값 직접 설정
+        modbus_config_.properties["slave_id"] = "1";
+        modbus_config_.properties["byte_order"] = "big_endian";
+        modbus_config_.properties["max_registers_per_group"] = "125";
+        modbus_config_.properties["auto_group_creation"] = "true";
+        modbus_config_.properties["response_timeout_ms"] = "1000";
+        modbus_config_.properties["byte_timeout_ms"] = "100";
+        modbus_config_.properties["max_retries"] = "3";
+        
         default_polling_interval_ms_ = 1000;
         max_registers_per_group_ = 125;
         auto_group_creation_enabled_ = true;
         
-        LogMessage(LogLevel::WARN, 
-                   "🔄 Applied emergency defaults after exception: " + modbus_config_.ToString());
+        LogMessage(LogLevel::WARN, "🔄 Applied emergency defaults after exception");
         
         return false;
     }
@@ -711,10 +617,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
     try {
         LogMessage(LogLevel::INFO, "🔧 Initializing ModbusDriver...");
         
-        // =====================================================================
-        // 🔥 1단계: ModbusDriver 인스턴스 생성
-        // =====================================================================
-        
+        // ModbusDriver 인스턴스 생성
         modbus_driver_ = std::make_unique<PulseOne::Drivers::ModbusDriver>();
         
         if (!modbus_driver_) {
@@ -724,18 +627,13 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         
         LogMessage(LogLevel::DEBUG_LEVEL, "✅ ModbusDriver instance created");
         
-        // =====================================================================
-        // 🔥 2단계: 파싱된 설정을 DriverConfig로 변환
-        // =====================================================================
-        
+        // 파싱된 설정을 DriverConfig로 변환
         PulseOne::Structs::DriverConfig driver_config;
         
         // 기본 디바이스 정보
-        driver_config.device_id = device_info_.name;  // device_info_.id는 UUID, name이 더 적합
+        driver_config.device_id = device_info_.name;
         driver_config.endpoint = device_info_.endpoint;
         driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
-        
-        // 타이밍 설정 (파싱된 ModbusConfig 사용)
         driver_config.timeout_ms = modbus_config_.timeout_ms;
         
         std::string config_msg = "📋 DriverConfig prepared:\n";
@@ -746,71 +644,54 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         
         LogMessage(LogLevel::DEBUG_LEVEL, config_msg);
         
-        // =====================================================================
-        // 🔥 3단계: 프로토콜별 설정을 custom_settings로 전달 (필드명 수정)
-        // =====================================================================
+        // ✅ 수정: properties에서 읽어서 custom_settings에 저장
+        driver_config.custom_settings["slave_id"] = GetPropertyValue(modbus_config_.properties, "slave_id", "1");
+        driver_config.custom_settings["byte_order"] = GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian");
+        driver_config.custom_settings["max_retries"] = GetPropertyValue(modbus_config_.properties, "max_retries", "3");
+        driver_config.custom_settings["response_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000");
+        driver_config.custom_settings["byte_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100");
+        driver_config.custom_settings["max_registers_per_group"] = GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
         
-        driver_config.custom_settings["slave_id"] = std::to_string(modbus_config_.slave_id);
-        driver_config.custom_settings["byte_order"] = modbus_config_.byte_order;
-        driver_config.custom_settings["max_retries"] = std::to_string(modbus_config_.max_retries);
-        driver_config.custom_settings["response_timeout_ms"] = std::to_string(modbus_config_.response_timeout_ms);
-        driver_config.custom_settings["byte_timeout_ms"] = std::to_string(modbus_config_.byte_timeout_ms);
-        driver_config.custom_settings["max_registers_per_group"] = std::to_string(modbus_config_.max_registers_per_group);
-        
+        // ✅ 수정: properties에서 읽기
         std::string protocol_msg = "🔧 Protocol settings configured:\n";
-        protocol_msg += "   - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
-        protocol_msg += "   - byte_order: " + modbus_config_.byte_order + "\n";
-        protocol_msg += "   - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
-        protocol_msg += "   - response_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms";
+        protocol_msg += "   - slave_id: " + GetPropertyValue(modbus_config_.properties, "slave_id", "1") + "\n";
+        protocol_msg += "   - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
+        protocol_msg += "   - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3") + "\n";
+        protocol_msg += "   - response_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms";
         
         LogMessage(LogLevel::DEBUG_LEVEL, protocol_msg);
         
-        // =====================================================================
-        // 🔥 4단계: ModbusDriver 초기화 수행
-        // =====================================================================
-        
+        // ModbusDriver 초기화 수행
         if (!modbus_driver_->Initialize(driver_config)) {
             const auto& error = modbus_driver_->GetLastError();
-            LogMessage(LogLevel::ERROR, 
-                      "❌ ModbusDriver initialization failed: " + error.message + 
-                      " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
+            LogMessage(LogLevel::ERROR, "❌ ModbusDriver initialization failed: " + error.message + " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
             return false;
         }
         
         LogMessage(LogLevel::DEBUG_LEVEL, "✅ ModbusDriver initialization successful");
         
-        // =====================================================================
-        // 🔥 5단계: Driver 콜백 설정 (선택적)
-        // =====================================================================
-        
-        // 필요시 ModbusDriver에 콜백 함수들 등록
-        // 예: 연결 상태 변경, 에러 발생 시 처리 등
+        // Driver 콜백 설정
         SetupDriverCallbacks();
         
-        // =====================================================================
-        // 최종 결과 로깅 - 문자열 연결 문제 해결
-        // =====================================================================
-        
+        // ✅ 수정: 최종 결과 로깅 (properties 기반)
         std::string final_msg = "✅ ModbusDriver initialized successfully:\n";
         final_msg += "   📡 Connection details:\n";
         final_msg += "      - endpoint: " + device_info_.endpoint + "\n";
-        final_msg += "      - slave_id: " + std::to_string(modbus_config_.slave_id) + "\n";
+        final_msg += "      - slave_id: " + GetPropertyValue(modbus_config_.properties, "slave_id", "1") + "\n";
         final_msg += "      - timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
         final_msg += "   ⚙️  Advanced settings:\n";
-        final_msg += "      - byte_order: " + modbus_config_.byte_order + "\n";
-        final_msg += "      - max_retries: " + std::to_string(modbus_config_.max_retries) + "\n";
-        final_msg += "      - response_timeout: " + std::to_string(modbus_config_.response_timeout_ms) + "ms\n";
-        final_msg += "      - max_registers_per_group: " + std::to_string(modbus_config_.max_registers_per_group);
+        final_msg += "      - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
+        final_msg += "      - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3") + "\n";
+        final_msg += "      - response_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms\n";
+        final_msg += "      - max_registers_per_group: " + GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
         
         LogMessage(LogLevel::INFO, final_msg);
         
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                   "❌ Exception during ModbusDriver initialization: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "❌ Exception during ModbusDriver initialization: " + std::string(e.what()));
         
-        // 예외 발생 시 driver 정리
         if (modbus_driver_) {
             modbus_driver_.reset();
         }
