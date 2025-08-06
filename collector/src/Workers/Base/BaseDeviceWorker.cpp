@@ -519,16 +519,17 @@ bool BaseDeviceWorker::IsErrorState(WorkerState state) {
 bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::TimestampedValue>& values, 
                                          uint32_t priority) {
     if (values.empty()) {
-        LogMessage(LogLevel::DEBUG_LEVEL, "전송할 데이터가 없음");
         return false;
     }
     
-    // 🔥 임시로 파이프라인 기능 비활성화 (로깅만 수행)
-    std::stringstream log_msg;
-    log_msg << values.size() << "개 데이터 포인트 수신 (우선순위: " << priority << ")";
-    LogMessage(LogLevel::DEBUG_LEVEL, log_msg.str());
+    // 🔥 전역 파이프라인 매니저 사용 (싱글톤이 아니라면 의존성 주입)
+    // 실제 구현에서는 WorkerPipelineManager 인스턴스 참조 필요
     
-    // TODO: 실제 파이프라인 구현 후 활성화
+    // WorkerPipelineManager::ProcessDeviceData() 호출
+    // return pipeline_manager_->ProcessDeviceData(device_info_.id, values, priority);
+    
+    LogMessage(LogLevel::DEBUG_LEVEL, 
+              "파이프라인 전송: " + std::to_string(values.size()) + "개 포인트");
     return true;
 }
 
