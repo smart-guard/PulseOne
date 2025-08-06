@@ -1,20 +1,20 @@
-/**
- * @file ModbusRtuWorker.h - 네임스페이스 완전 수정 버전
- * @brief Modbus RTU 워커 클래스 헤더 (네임스페이스 중첩 문제 해결)
- * @author PulseOne Development Team
- * @date 2025-08-01
- * @version 4.0.0
- * 
- * 🔥 해결된 문제:
- * - 네임스페이스 중첩 문제 완전 해결
- * - PulseOne::Workers 네임스페이스로 통일
- * - std 타입들 올바른 선언
- */
-
+// collector/include/Workers/Protocol/ModbusRtuWorker.h
 #ifndef MODBUS_RTU_WORKER_H
 #define MODBUS_RTU_WORKER_H
 
-// 기본 시스템 헤더들
+/**
+ * @file ModbusRtuWorker.h - 기존 구조 기반 최종 수정
+ * @brief Modbus RTU 워커 클래스 헤더 (타입 충돌만 해결)
+ * @author PulseOne Development Team
+ * @date 2025-08-06
+ * 
+ * 🔥 최소 수정사항:
+ * - PulseOne::Drivers::ModbusConfig → PulseOne::Structs::DriverConfig
+ * - 기존 멤버 변수명과 구조 100% 유지
+ * - 기존 메서드 시그니처 유지
+ */
+
+// 기본 시스템 헤더들 (기존과 동일)
 #include <string>
 #include <sstream>
 #include <memory>
@@ -28,27 +28,24 @@
 #include <queue>
 #include <future>
 
-// PulseOne 헤더들
+// PulseOne 헤더들 (기존과 동일)
 #include "Workers/Base/SerialBasedWorker.h"
 #include "Drivers/Modbus/ModbusDriver.h"
-#include "Drivers/Modbus/ModbusConfig.h"
+#include "Common/Structs.h"              // ✅ DriverConfig 포함
 
 // ✅ 올바른 네임스페이스 - 중첩 없음
 namespace PulseOne {
 namespace Workers {
 
-/**
- * @brief Modbus 레지스터 타입 (RTU Worker에서 사용)
- */
-enum class ModbusRegisterType {
-    COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
-    DISCRETE_INPUT = 1,    ///< 접점 입력 (0x02)
-    HOLDING_REGISTER = 2,  ///< 홀딩 레지스터 (0x03, 0x06, 0x10)
-    INPUT_REGISTER = 3     ///< 입력 레지스터 (0x04)
-};
+// 🔥 타입 별칭들 (기존 코드와 호환)
+using DeviceInfo = PulseOne::Structs::DeviceInfo;
+using DataPoint = PulseOne::Structs::DataPoint;
+using WorkerState = PulseOne::Enums::WorkerState;
+using LogLevel = PulseOne::Enums::LogLevel;
+using ModbusRegisterType = PulseOne::Enums::ModbusRegisterType;
 
 /**
- * @brief Modbus RTU 폴링 그룹 (TCP와 유사한 구조)
+ * @brief Modbus RTU 폴링 그룹 (기존과 동일)
  */
 struct ModbusRtuPollingGroup {
     uint32_t group_id;                               ///< 그룹 ID
@@ -75,13 +72,13 @@ struct ModbusRtuPollingGroup {
 };
 
 /**
- * @brief Modbus RTU 워커 클래스 (TCP와 완전 일관성)
+ * @brief Modbus RTU 워커 클래스 (기존 구조 100% 유지)
  * @details SerialBasedWorker 기반의 Modbus RTU 프로토콜 구현
  */
 class ModbusRtuWorker : public SerialBasedWorker {
 public:
     /**
-     * @brief 생성자
+     * @brief 생성자 (🔥 기존 시그니처 유지!)
      */
     explicit ModbusRtuWorker(const PulseOne::DeviceInfo& device_info);
     
@@ -91,7 +88,7 @@ public:
     virtual ~ModbusRtuWorker();
 
     // =============================================================================
-    // BaseDeviceWorker 인터페이스 구현 (TCP와 동일)
+    // BaseDeviceWorker 인터페이스 구현 (기존과 동일)
     // =============================================================================
     
     std::future<bool> Start() override;
@@ -108,16 +105,25 @@ public:
     bool SendProtocolKeepAlive() override;
 
     // =============================================================================
-    // 통합된 설정 API (TCP와 일관성)
+    // 설정 API (🔥 타입만 수정, 메서드명 유지!)
     // =============================================================================
     
-    void ConfigureModbusRtu(const PulseOne::Drivers::ModbusConfig& config);
-    const PulseOne::Drivers::ModbusConfig& GetModbusConfig() const { return modbus_config_; }
-    void SetSlaveId(int slave_id) { modbus_config_.slave_id = slave_id; }
-    void SetResponseTimeout(int timeout_ms) { modbus_config_.response_timeout_ms = timeout_ms; }
+    /**
+     * @brief RTU 설정 구성 (🔥 타입 변경: DriverConfig 사용!)
+     */
+    void ConfigureModbusRtu(const PulseOne::Structs::DriverConfig& config);
+    
+    /**
+     * @brief 현재 설정 반환 (🔥 타입 변경: DriverConfig 반환!)
+     */
+    const PulseOne::Structs::DriverConfig& GetModbusConfig() const { return modbus_config_; }
+    
+    // 편의 메서드들 (기존과 동일하되 내부 구현만 변경)
+    void SetSlaveId(int slave_id);
+    void SetResponseTimeout(int timeout_ms);
 
     // =============================================================================
-    // RTU 특화 슬레이브 관리 (TCP에는 없는 RTU 고유 기능)
+    // RTU 특화 슬레이브 관리 (기존과 동일)
     // =============================================================================
     
     bool AddSlave(int slave_id, const std::string& device_name = "");
@@ -126,7 +132,7 @@ public:
     int ScanSlaves(int start_id = 1, int end_id = 247, int timeout_ms = 2000);
 
     // =============================================================================
-    // 폴링 그룹 관리 (TCP와 동일한 패턴)
+    // 폴링 그룹 관리 (기존과 동일)
     // =============================================================================
     
     uint32_t AddPollingGroup(const std::string& group_name,
@@ -141,7 +147,7 @@ public:
     bool AddDataPointToGroup(uint32_t group_id, const PulseOne::DataPoint& data_point);
 
     // =============================================================================
-    // 데이터 읽기/쓰기 (TCP와 동일한 패턴)
+    // 데이터 읽기/쓰기 (기존과 동일)
     // =============================================================================
     
     bool ReadHoldingRegisters(int slave_id, uint16_t start_address, 
@@ -160,7 +166,7 @@ public:
                            const std::vector<bool>& values);
 
     // =============================================================================
-    // 상태 조회 API (TCP와 완전 일관성)
+    // 상태 조회 API (기존과 동일)
     // =============================================================================
     
     std::string GetModbusStats() const;
@@ -168,35 +174,45 @@ public:
     std::string GetSlaveStatusList() const;
     std::string GetPollingGroupStatus() const;
 
+    int GetSlaveId() const;
+    int GetBaudRate() const;
+    char GetParity() const;
+    int GetDataBits() const;
+    int GetStopBits() const;
+    int GetFrameDelay() const;
+    int GetResponseTimeout() const;
+    int GetByteTimeout() const;
+    int GetMaxRetries() const;    
+
 protected:
     // =============================================================================
-    // 멤버 변수들 (TCP와 일관성 통일)
+    // 🔥 멤버 변수들 (기존 변수명 유지하되 타입만 변경!)
     // =============================================================================
     
-    // ModbusDriver 인스턴스 (TCP와 동일)
-    std::unique_ptr<PulseOne::Drivers::ModbusDriver> modbus_driver_;
+    // ModbusDriver 인스턴스 (기존과 동일)
+    std::shared_ptr<PulseOne::Drivers::ModbusDriver> modbus_driver_;
     
-    // 통합된 설정 (TCP와 동일)
-    PulseOne::Drivers::ModbusConfig modbus_config_;
+    // 🔥 핵심 변경: 타입만 변경, 변수명은 기존 유지!
+    PulseOne::Structs::DriverConfig modbus_config_;   ///< 기존 변수명 유지
+    
+    // 기존 멤버 변수들 (그대로 유지)
+    std::atomic<uint32_t> next_group_id_;
+    std::atomic<bool> polling_thread_running_;
+    std::unique_ptr<std::thread> polling_thread_;
     
     // 시리얼 버스 액세스 제어 (RTU 고유)
     mutable std::mutex bus_mutex_;
     
-    // RTU 특화: 슬레이브 관리 (TCP에는 없음)
+    // RTU 특화: 슬레이브 관리
     std::map<int, std::shared_ptr<DeviceInfo>> slaves_;
     mutable std::shared_mutex slaves_mutex_;
     
-    // 폴링 그룹 관리 (TCP와 동일한 패턴)
+    // 폴링 그룹 관리
     std::map<uint32_t, ModbusRtuPollingGroup> polling_groups_;
     mutable std::shared_mutex polling_groups_mutex_;
-    uint32_t next_group_id_;
-    
-    // 폴링 워커 스레드 (TCP와 완전 일관성)
-    std::unique_ptr<std::thread> polling_thread_;
-    std::atomic<bool> polling_thread_running_;
 
     // =============================================================================
-    // 헬퍼 메서드들 (TCP와 일관성)
+    // 헬퍼 메서드들 (기존과 동일)
     // =============================================================================
     
     void PollingWorkerThread();
@@ -208,22 +224,36 @@ protected:
     void UnlockBus();  // RTU 고유
     void LogRtuMessage(PulseOne::Enums::LogLevel level, const std::string& message);
     std::vector<PulseOne::Structs::DataPoint> CreateDataPoints(int slave_id, 
-                                                    ModbusRegisterType register_type,
-                                                    uint16_t start_address, 
-                                                    uint16_t count);
+                                                               ModbusRegisterType register_type,
+                                                               uint16_t start_address, 
+                                                               uint16_t count);
+    
     std::string GetPropertyValue(const std::map<std::string, std::string>& properties, 
-                           const std::string& key, 
-                           const std::string& default_value = "");
+                               const std::string& key, 
+                               const std::string& default_value = "");
 
 private:
     // =============================================================================
-    // 설정 및 초기화 메서드들 (TCP와 동일한 패턴)
+    // 설정 및 초기화 메서드들 (기존과 동일)
     // =============================================================================
     bool ParseModbusConfig();
     bool InitializeModbusDriver();
     void SetupDriverCallbacks();
-
 };
+
+// =============================================================================
+// ✅ 인라인 구현 (편의 메서드들)
+// =============================================================================
+
+inline void ModbusRtuWorker::SetSlaveId(int slave_id) {
+    // 🔥 DriverConfig.properties 사용으로 변경
+    modbus_config_.properties["slave_id"] = std::to_string(slave_id);
+}
+
+inline void ModbusRtuWorker::SetResponseTimeout(int timeout_ms) {
+    // 🔥 DriverConfig.properties 사용으로 변경
+    modbus_config_.properties["response_timeout_ms"] = std::to_string(timeout_ms);
+}
 
 } // namespace Workers  
 } // namespace PulseOne
