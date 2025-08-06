@@ -1,6 +1,6 @@
 // =============================================================================
-// collector/include/Pipeline/DataProcessingService.h - 멀티스레드 처리 전용
-// 🔥 핵심! WorkerPipelineManager의 큐에 접근해서 배치로 처리
+// collector/include/Pipeline/DataProcessingService.h - 올바른 설계
+// 🔥 PipelineManager 싱글톤과 연동, TimestampedValue 필드 올바른 사용
 // =============================================================================
 
 #ifndef PULSEONE_DATA_PROCESSING_SERVICE_H
@@ -13,19 +13,17 @@
 #include <thread>
 #include <atomic>
 #include <memory>
-#include <mutex>
-#include <condition_variable>
 
 namespace PulseOne {
 namespace Pipeline {
 
 // 전방 선언
-class WorkerPipelineManager;
+class PipelineManager;
 
 /**
- * @brief DataProcessingService - 멀티스레드 데이터 처리 엔진
- * @details WorkerPipelineManager의 큐에 접근해서 배치로 데이터 처리
- * 8개 스레드가 큐에서 데이터 꺼내서 순차 처리: 가상포인트 → 알람 → Redis → InfluxDB
+ * @brief 올바른 DataProcessingService - PipelineManager 싱글톤과 연동
+ * @details PipelineManager::GetInstance()에서 배치를 가져와서 처리
+ * WorkerPipelineManager와 완전히 분리됨!
  */
 class DataProcessingService {
 public:
@@ -41,14 +39,14 @@ public:
     ~DataProcessingService();
     
     // ==========================================================================
-    // 🔥 핵심 인터페이스
+    // 🔥 올바른 인터페이스 (PipelineManager 싱글톤 사용)
     // ==========================================================================
     
     /**
-     * @brief 서비스 시작 - 멀티스레드 처리기들 시작
-     * @param pipeline_manager WorkerPipelineManager 참조 (큐 접근용)
+     * @brief 서비스 시작 - PipelineManager 싱글톤에서 데이터 가져오기
+     * WorkerPipelineManager 의존성 완전 제거!
      */
-    bool Start(std::shared_ptr<WorkerPipelineManager> pipeline_manager);
+    bool Start();
     
     /**
      * @brief 서비스 중지 - 모든 스레드 종료
@@ -69,6 +67,20 @@ public:
      * @brief 배치 크기 설정
      */
     void SetBatchSize(size_t batch_size) { batch_size_ = batch_size; }
+    
+    /**
+     * @brief 통계 정보 조회
+     */
+    struct ProcessingStats {
+        uint64_t total_batches_processed = 0;
+        uint64_t total_messages_processed = 0;
+        uint64_t redis_writes = 0;
+        uint64_t influx_writes = 0;
+        uint64_t processing_errors = 0;
+        double avg_processing_time_ms = 0.0;
+    };
+    
+    ProcessingStats GetStatistics() const;
 
 private:
     // ==========================================================================
@@ -79,8 +91,8 @@ private:
     std::shared_ptr<RedisClient> redis_client_;
     std::shared_ptr<InfluxClient> influx_client_;
     
-    // WorkerPipelineManager 참조 (큐 접근용)
-    std::weak_ptr<WorkerPipelineManager> pipeline_manager_;
+    // 🔥 WorkerPipelineManager 의존성 완전 제거!
+    // PipelineManager::GetInstance() 직접 사용
     
     // 멀티스레드 관리
     std::vector<std::thread> processing_threads_;
@@ -89,14 +101,15 @@ private:
     size_t thread_count_{8};
     size_t batch_size_{500};
     
-    // 통계
+    // 통계 (스레드 안전)
     std::atomic<uint64_t> total_batches_processed_{0};
     std::atomic<uint64_t> total_messages_processed_{0};
     std::atomic<uint64_t> redis_writes_{0};
     std::atomic<uint64_t> influx_writes_{0};
+    std::atomic<uint64_t> processing_errors_{0};
     
     // ==========================================================================
-    // 🔥 멀티스레드 처리 메서드들
+    // 🔥 올바른 멀티스레드 처리 메서드들
     // ==========================================================================
     
     /**
@@ -106,10 +119,10 @@ private:
     void ProcessingThreadLoop(size_t thread_index);
     
     /**
-     * @brief WorkerPipelineManager 큐에서 배치 수집
+     * @brief PipelineManager 싱글톤에서 배치 수집
      * @return 수집된 배치 (최대 batch_size_개)
      */
-    std::vector<Structs::DeviceDataMessage> CollectBatchFromQueue();
+    std::vector<Structs::DeviceDataMessage> CollectBatchFromPipelineManager();
     
     /**
      * @brief 수집된 배치를 순차 처리
@@ -135,7 +148,7 @@ private:
     void CheckAlarms(const std::vector<Structs::DeviceDataMessage>& all_data);
     
     /**
-     * @brief 3단계: Redis 저장 (지금 구현!)
+     * @brief 3단계: Redis 저장 (올바른 구현!)
      */
     void SaveToRedis(const std::vector<Structs::DeviceDataMessage>& batch);
     
@@ -145,7 +158,7 @@ private:
     void SaveToInfluxDB(const std::vector<Structs::DeviceDataMessage>& batch);
     
     // ==========================================================================
-    // 🔥 Redis 저장 헬퍼 메서드들
+    // 🔥 Redis 저장 헬퍼 메서드들 (필드 오류 수정!)
     // ==========================================================================
     
     /**
@@ -154,9 +167,15 @@ private:
     void WriteDeviceDataToRedis(const Structs::DeviceDataMessage& message);
     
     /**
-     * @brief TimestampedValue를 JSON으로 변환
+     * @brief TimestampedValue를 JSON으로 변환 (올바른 필드 사용!)
      */
-    std::string TimestampedValueToJson(const Structs::TimestampedValue& value);
+    std::string TimestampedValueToJson(const Structs::TimestampedValue& value, 
+                                      const std::string& point_id);
+    
+    /**
+     * @brief 통계 업데이트 헬퍼
+     */
+    void UpdateStatistics(size_t processed_count, double processing_time_ms);
 };
 
 } // namespace Pipeline
