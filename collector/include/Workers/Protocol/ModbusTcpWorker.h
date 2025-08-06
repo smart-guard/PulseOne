@@ -77,11 +77,7 @@ public:
      * @param redis_client Redis 클라이언트 (선택적)
      * @param influx_client InfluxDB 클라이언트 (선택적)
      */
-    explicit ModbusTcpWorker(
-        const PulseOne::DeviceInfo& device_info,
-        std::shared_ptr<RedisClient> redis_client = nullptr,
-        std::shared_ptr<InfluxClient> influx_client = nullptr
-    );
+    explicit ModbusTcpWorker(const PulseOne::DeviceInfo& device_info);
     
     /**
      * @brief 소멸자

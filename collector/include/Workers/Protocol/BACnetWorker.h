@@ -145,11 +145,7 @@ public:
     /**
      * @brief BACnet 워커 생성자
      */
-    explicit BACnetWorker(
-        const PulseOne::DeviceInfo& device_info,
-        std::shared_ptr<RedisClient> redis_client = nullptr,
-        std::shared_ptr<InfluxClient> influx_client = nullptr
-    );
+    explicit BACnetWorker(const PulseOne::DeviceInfo& device_info);
     
     /**
      * @brief 소멸자

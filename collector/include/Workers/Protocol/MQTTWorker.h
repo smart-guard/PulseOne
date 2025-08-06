@@ -254,10 +254,7 @@ public:
      * @param influx_client InfluxDB 클라이언트 (선택적)
      * @param mode 워커 모드 (기본값: BASIC)
      */
-    explicit MQTTWorker(
-        const PulseOne::DeviceInfo& device_info,
-        std::shared_ptr<RedisClient> redis_client = nullptr,
-        std::shared_ptr<InfluxClient> influx_client = nullptr,
+    explicit MQTTWorker(const PulseOne::DeviceInfo& device_info,
         MQTTWorkerMode mode = MQTTWorkerMode::BASIC
     );
     

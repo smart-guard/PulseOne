@@ -30,10 +30,8 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-SerialBasedWorker::SerialBasedWorker(const PulseOne::DeviceInfo& device_info,
-                                     std::shared_ptr<RedisClient> redis_client,
-                                     std::shared_ptr<InfluxClient> influx_client)
-    : BaseDeviceWorker(device_info, redis_client, influx_client)
+SerialBasedWorker::SerialBasedWorker(const PulseOne::DeviceInfo& device_info)
+    : BaseDeviceWorker(device_info)
     , serial_fd_(-1) {
     
     // endpoint에서 시리얼 설정 파싱 (device_info_는 이제 protected)

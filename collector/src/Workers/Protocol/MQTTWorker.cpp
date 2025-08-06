@@ -32,10 +32,8 @@ namespace Workers {
 // =============================================================================
 
 MQTTWorker::MQTTWorker(const PulseOne::DeviceInfo& device_info,
-                       std::shared_ptr<RedisClient> redis_client,
-                       std::shared_ptr<InfluxClient> influx_client,
                        MQTTWorkerMode mode)
-    : BaseDeviceWorker(device_info, redis_client, influx_client)
+    : BaseDeviceWorker(device_info)
     , worker_mode_(mode)
     , mqtt_driver_(nullptr)
     , next_subscription_id_(1)

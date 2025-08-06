@@ -31,10 +31,8 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-TcpBasedWorker::TcpBasedWorker(const PulseOne::DeviceInfo& device_info,
-                               std::shared_ptr<RedisClient> redis_client,
-                               std::shared_ptr<InfluxClient> influx_client)
-    : BaseDeviceWorker(device_info, redis_client, influx_client)
+TcpBasedWorker::TcpBasedWorker(const PulseOne::DeviceInfo& device_info)
+    : BaseDeviceWorker(device_info)
     , ip_address_("127.0.0.1")
     , port_(502)
     , connection_timeout_seconds_(5)

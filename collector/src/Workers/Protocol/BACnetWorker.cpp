@@ -38,11 +38,8 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-BACnetWorker::BACnetWorker(
-    const PulseOne::DeviceInfo& device_info,
-    std::shared_ptr<RedisClient> redis_client,
-    std::shared_ptr<InfluxClient> influx_client)
-    : UdpBasedWorker(device_info, redis_client, influx_client)
+BACnetWorker::BACnetWorker(const PulseOne::DeviceInfo& device_info)
+    : UdpBasedWorker(device_info)
     , threads_running_(false) {
     
     // BACnet 워커 통계 초기화
