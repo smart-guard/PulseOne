@@ -1,7 +1,8 @@
 // =============================================================================
-// collector/include/Pipeline/DataProcessingService.h - 새로 생성
-// 🔥 핵심! 멀티스레드로 실제 데이터 처리 담당
+// collector/include/Pipeline/DataProcessingService.h - 멀티스레드 처리 전용
+// 🔥 핵심! WorkerPipelineManager의 큐에 접근해서 배치로 처리
 // =============================================================================
+
 #ifndef PULSEONE_DATA_PROCESSING_SERVICE_H
 #define PULSEONE_DATA_PROCESSING_SERVICE_H
 
@@ -12,14 +13,19 @@
 #include <thread>
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 
 namespace PulseOne {
 namespace Pipeline {
 
+// 전방 선언
+class WorkerPipelineManager;
+
 /**
- * @brief DataProcessingService - 핵심 데이터 처리 엔진
- * @details WorkerPipelineManager로부터 배치를 받아 멀티스레드로 처리
- *          순차적으로: 가상포인트 → 알람 → Redis → InfluxDB
+ * @brief DataProcessingService - 멀티스레드 데이터 처리 엔진
+ * @details WorkerPipelineManager의 큐에 접근해서 배치로 데이터 처리
+ * 8개 스레드가 큐에서 데이터 꺼내서 순차 처리: 가상포인트 → 알람 → Redis → InfluxDB
  */
 class DataProcessingService {
 public:
@@ -39,18 +45,13 @@ public:
     // ==========================================================================
     
     /**
-     * @brief WorkerPipelineManager로부터 배치 받아서 처리
-     * @param batch 처리할 DeviceDataMessage 배치
+     * @brief 서비스 시작 - 멀티스레드 처리기들 시작
+     * @param pipeline_manager WorkerPipelineManager 참조 (큐 접근용)
      */
-    void ProcessBatch(const std::vector<Structs::DeviceDataMessage>& batch);
+    bool Start(std::shared_ptr<WorkerPipelineManager> pipeline_manager);
     
     /**
-     * @brief 서비스 시작
-     */
-    bool Start();
-    
-    /**
-     * @brief 서비스 중지
+     * @brief 서비스 중지 - 모든 스레드 종료
      */
     void Stop();
     
@@ -58,24 +59,65 @@ public:
      * @brief 실행 상태 확인
      */
     bool IsRunning() const { return is_running_.load(); }
+    
+    /**
+     * @brief 처리 스레드 수 설정 (시작 전에만 가능)
+     */
+    void SetThreadCount(size_t thread_count);
+    
+    /**
+     * @brief 배치 크기 설정
+     */
+    void SetBatchSize(size_t batch_size) { batch_size_ = batch_size; }
 
 private:
     // ==========================================================================
-    // 🔥 멤버 변수들
+    // 멤버 변수들
     // ==========================================================================
     
     // 클라이언트들
     std::shared_ptr<RedisClient> redis_client_;
     std::shared_ptr<InfluxClient> influx_client_;
     
-    // 실행 상태
+    // WorkerPipelineManager 참조 (큐 접근용)
+    std::weak_ptr<WorkerPipelineManager> pipeline_manager_;
+    
+    // 멀티스레드 관리
+    std::vector<std::thread> processing_threads_;
     std::atomic<bool> is_running_{false};
+    std::atomic<bool> should_stop_{false};
+    size_t thread_count_{8};
+    size_t batch_size_{500};
     
     // 통계
     std::atomic<uint64_t> total_batches_processed_{0};
     std::atomic<uint64_t> total_messages_processed_{0};
     std::atomic<uint64_t> redis_writes_{0};
     std::atomic<uint64_t> influx_writes_{0};
+    
+    // ==========================================================================
+    // 🔥 멀티스레드 처리 메서드들
+    // ==========================================================================
+    
+    /**
+     * @brief 개별 처리 스레드 메인 루프
+     * @param thread_index 스레드 인덱스 (0~7)
+     */
+    void ProcessingThreadLoop(size_t thread_index);
+    
+    /**
+     * @brief WorkerPipelineManager 큐에서 배치 수집
+     * @return 수집된 배치 (최대 batch_size_개)
+     */
+    std::vector<Structs::DeviceDataMessage> CollectBatchFromQueue();
+    
+    /**
+     * @brief 수집된 배치를 순차 처리
+     * @param batch 처리할 배치
+     * @param thread_index 처리하는 스레드 인덱스
+     */
+    void ProcessBatch(const std::vector<Structs::DeviceDataMessage>& batch, 
+                     size_t thread_index);
     
     // ==========================================================================
     // 🔥 단계별 처리 메서드들 (순차 실행)
