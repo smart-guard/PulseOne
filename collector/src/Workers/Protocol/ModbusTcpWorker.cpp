@@ -329,7 +329,7 @@ std::string ModbusTcpWorker::GetModbusStats() const {
     oss << "  \"worker_info\": {\n";
     oss << "    \"default_polling_interval_ms\": " << default_polling_interval_ms_ << ",\n";
     oss << "    \"modbus_config\": {\n";
-    oss << "      \"slave_id\": " << modbus_config_.slave_id << ",\n";
+    oss << "      \"slave_id\": " << GetPropertyValue(modbus_config_.properties, "slave_id", "1") << ",\n";
     oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms << ",\n";
     oss << "      \"response_timeout_ms\": " << modbus_config_.response_timeout_ms << ",\n";
     oss << "      \"byte_timeout_ms\": " << modbus_config_.byte_timeout_ms << ",\n";
@@ -518,7 +518,7 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         // 🔥 2단계: Modbus 특화 설정 추출 (프로토콜별)
         // =====================================================================
         
-        modbus_config_.slave_id = protocol_config_json.value("slave_id", 1);
+        modbus_config_.properties["slave_id"] = std::to_string(protocol_config_json.value("slave_id", 1));
         modbus_config_.byte_order = protocol_config_json.value("byte_order", "big_endian");
         modbus_config_.max_registers_per_group = protocol_config_json.value("max_registers_per_group", 125);
         modbus_config_.auto_group_creation = protocol_config_json.value("auto_group_creation", true);
@@ -676,7 +676,9 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         if (!modbus_config_.IsValid()) {
             LogMessage(LogLevel::ERROR, 
                       "❌ ModbusConfig validation failed even after corrections!");
-            modbus_config_.ResetToDefaults();
+            modbus_config_.properties["slave_id"] = "1";
+            modbus_config_.properties["byte_order"] = "big_endian";
+            modbus_config_.properties["max_registers_per_group"] = "125";
             LogMessage(LogLevel::WARN, 
                       "🔄 Reset to safe defaults: " + modbus_config_.ToString());
         }

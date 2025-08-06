@@ -39,18 +39,14 @@ namespace Workers {
     using DataQuality = PulseOne::Enums::DataQuality;
     using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
     using ProtocolType = PulseOne::Enums::ProtocolType;
-    using WorkerStatus = PulseOne::Enums::WorkerStatus;
-    
     // 기본 타입들
     using UUID = PulseOne::BasicTypes::UUID;
     using Timestamp = PulseOne::BasicTypes::Timestamp;
 
     // Modbus 특화 타입들
     using ModbusDriver = PulseOne::Drivers::ModbusDriver;
-    using ModbusRegisterType = PulseOne::Enums::ModbusRegisterType;
-/**
- * @brief Modbus 레지스터 타입 (Worker에서 사용)
- */
+
+
 enum class ModbusRegisterType {
     COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
     DISCRETE_INPUT = 1,    ///< 접점 입력 (0x02)
@@ -240,6 +236,13 @@ public:
      * @return 디바이스 정보 JSON
      */
     std::string ReadDeviceInfo(int slave_id = 1);
+    std::string GetPropertyValue(const std::map<std::string, std::string>& properties, 
+                            const std::string& key, 
+                            const std::string& default_value) const {
+        auto it = properties.find(key);
+        return (it != properties.end()) ? it->second : default_value;
+    }
+
 protected:
     // =============================================================================
     // 데이터 포인트 처리 (Worker 고유 로직)
@@ -286,7 +289,7 @@ private:
     uint16_t max_registers_per_group_;
     bool auto_group_creation_enabled_;
 
-    PulseOne::Drivers::ModbusConfig modbus_config_;
+    PulseOne::Drivers::DriverConfig modbus_config_;
 
     // =============================================================================
     // 내부 메서드 (Worker 고유 로직)
