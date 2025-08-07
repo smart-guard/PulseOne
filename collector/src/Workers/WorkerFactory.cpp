@@ -222,61 +222,126 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
         return nullptr;
     }
     
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
     try {
         // 1. DeviceEntity를 DeviceInfo로 변환
+        logger_->Debug("🔄 Converting DeviceEntity to DeviceInfo for: " + device_entity.getName());
         auto device_info = ConvertToDeviceInfo(device_entity);
         
+        logger_->Debug("✅ DeviceInfo conversion completed:");
+        logger_->Debug("   - Name: " + device_info.name);
+        logger_->Debug("   - Protocol: " + device_info.protocol_type);
+        logger_->Debug("   - Endpoint: " + device_info.endpoint);
+        std::string enabled_str = device_info.is_enabled ? "yes" : "no";
+        logger_->Debug("   - Enabled: " + enabled_str);
+        
         // 2. DataPoint들 로드
+        logger_->Debug("🔄 Loading DataPoints for Device ID: " + std::to_string(device_entity.getId()));
         auto data_points = LoadDataPointsForDevice(device_entity.getId());
         
         if (data_points.empty()) {
             logger_->Warn("⚠️ No DataPoints found for Device ID: " + std::to_string(device_entity.getId()));
-            // return nullptr;  // 주석 처리해서 DataPoint 없어도 Worker 생성 허용
+            logger_->Info("   Worker will be created without DataPoints (allowed)");
+        } else {
+            logger_->Debug("✅ Loaded " + std::to_string(data_points.size()) + " DataPoints");
         }
         
-        // 3. 프로토콜 타입 확인 (그대로 사용! - 이미 대문자)
-        std::string protocol_type = device_entity.getProtocolType();  // "MODBUS_TCP"
-        logger_->Debug("🔍 Looking for protocol: " + protocol_type);
+        // 3. 프로토콜 타입 확인 및 정규화
+        std::string protocol_type = device_entity.getProtocolType();
+        logger_->Debug("🔍 Original protocol: '" + protocol_type + "'");
         
+        // 프로토콜 이름 정규화 시도 (대소문자 변환)
+        std::string normalized_protocol = protocol_type;
+        std::transform(normalized_protocol.begin(), normalized_protocol.end(), 
+                      normalized_protocol.begin(), ::tolower);
+        logger_->Debug("🔍 Normalized protocol: '" + normalized_protocol + "'");
+        
+        // 4. Creator 찾기 (원본 먼저, 정규화된 버전으로 재시도)
         auto creator_it = worker_creators_.find(protocol_type);
+        std::string used_protocol = protocol_type;
         
         if (creator_it == worker_creators_.end()) {
-            logger_->Error("❌ No worker creator found for protocol: " + protocol_type);
+            logger_->Debug("🔄 Original protocol not found, trying normalized: '" + normalized_protocol + "'");
+            creator_it = worker_creators_.find(normalized_protocol);
+            used_protocol = normalized_protocol;
+        }
+        
+        if (creator_it == worker_creators_.end()) {
+            logger_->Error("❌ No worker creator found for protocol: '" + protocol_type + "'");
+            logger_->Error("   (Also tried normalized: '" + normalized_protocol + "')");
             
-            // 디버깅용: 사용 가능한 프로토콜 목록 출력
-            logger_->Error("   Available protocols:");
+            // 사용 가능한 프로토콜 목록 출력 (디버깅용)
+            logger_->Error("📋 Available protocols (" + std::to_string(worker_creators_.size()) + "):");
+            int count = 0;
             for (const auto& [proto, creator] : worker_creators_) {
-                logger_->Error("     - " + proto);
+                if (count++ < 15) {  // 최대 15개 출력
+                    logger_->Error("   - '" + proto + "'");
+                }
+            }
+            if (worker_creators_.size() > 15) {
+                logger_->Error("   ... (+" + std::to_string(worker_creators_.size() - 15) + " more)");
             }
             
+            creation_failures_.fetch_add(1);
             return nullptr;
         }
         
-        // 4. Worker 생성
-        logger_->Debug("🏭 Creating " + protocol_type + " Worker...");
-        auto worker = creator_it->second(device_info, data_points);
+        logger_->Debug("✅ Found worker creator for: '" + used_protocol + "'");
+        
+        // 5. Worker 생성 실행
+        logger_->Info("🏭 Creating " + used_protocol + " Worker for '" + device_entity.getName() + "'");
+        logger_->Debug("📊 Using DeviceInfo with " + std::to_string(data_points.size()) + " DataPoints");
+        
+        auto worker = creator_it->second(device_info);  // 🔥 DeviceInfo만 전달
+        
+        // 6. 생성 결과 검증 및 로깅
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto creation_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         if (worker) {
-            // 5. 통계 로깅
+            workers_created_.fetch_add(1);
+            
+            // 성공 통계
+            int writable_count = 0;
             int good_quality_count = 0;
             for (const auto& data_point : data_points) {
+                if (data_point.is_writable) writable_count++;
                 if (data_point.quality_code == PulseOne::Enums::DataQuality::GOOD) {
                     good_quality_count++;
                 }
             }
             
-            logger_->Info("🎉 Successfully created " + protocol_type + " Worker for Device '" + device_entity.getName() + 
-                         "' with " + std::to_string(data_points.size()) + " DataPoints" +
-                         " (Good Quality: " + std::to_string(good_quality_count) + ")");
+            logger_->Info("🎉 ✅ Worker created successfully!");
+            logger_->Info("   📝 Device: " + device_entity.getName() + " (" + used_protocol + ")");
+            logger_->Info("   📊 DataPoints: " + std::to_string(data_points.size()) + 
+                         " (Writable: " + std::to_string(writable_count) + 
+                         ", Good: " + std::to_string(good_quality_count) + ")");
+            logger_->Info("   ⏱️ Creation Time: " + std::to_string(creation_time.count()) + "ms");
+            logger_->Info("   🎯 Worker Type: " + std::string(typeid(*worker).name()));
+            
         } else {
+            creation_failures_.fetch_add(1);
             logger_->Error("❌ Worker creation returned nullptr for: " + device_entity.getName());
+            logger_->Error("   🔧 Protocol: " + used_protocol);
+            logger_->Error("   ⏱️ Failed after: " + std::to_string(creation_time.count()) + "ms");
+            logger_->Error("   💡 Check " + used_protocol + " Worker constructor implementation");
         }
         
         return worker;
         
     } catch (const std::exception& e) {
-        logger_->Error("❌ Failed to create worker for Device ID " + std::to_string(device_entity.getId()) + 
-                      ": " + std::string(e.what()));
+        creation_failures_.fetch_add(1);
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto creation_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        logger_->Error("❌ Worker creation EXCEPTION for Device ID " + std::to_string(device_entity.getId()));
+        logger_->Error("   💥 Exception: " + std::string(e.what()));
+        logger_->Error("   📝 Device: " + device_entity.getName());
+        logger_->Error("   🔧 Protocol: " + device_entity.getProtocolType());
+        logger_->Error("   ⏱️ Failed after: " + std::to_string(creation_time.count()) + "ms");
+        
         return nullptr;
     }
 }
@@ -389,90 +454,61 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByPro
 
 // 🔥 방안 1: DeviceInfo에 이미 있는 typed 필드들 사용
 void WorkerFactory::RegisterWorkerCreators() {
-    logger_->Info("🏭 Registering 5 Core Protocol Workers");
+    logger_->Info("🏭 Registering Protocol Workers (FIXED VERSION)");
     
-    // =============================================================================
-    // 🚀 MODBUS_TCP Worker 등록 (임시로 BaseDeviceWorker 사용)
-    // =============================================================================
-    worker_creators_["MODBUS_TCP"] = [this](const PulseOne::Structs::DeviceInfo& device_info) {
-        logger_->Debug("🔧 Creating MODBUS_TCP Worker (임시 구현)");
-        // 임시로 BaseDeviceWorker 직접 생성 (ModbusTcpWorker가 없으므로)
-        return std::make_unique<BaseDeviceWorker>(device_info);
+    // MODBUS_TCP - ModbusTcpWorker 직접 사용
+    worker_creators_["MODBUS_TCP"] = [this](const PulseOne::Structs::DeviceInfo& device_info) -> std::unique_ptr<BaseDeviceWorker> {
+        logger_->Debug("🔧 Creating ModbusTcpWorker for: " + device_info.name);
+        try {
+            return std::make_unique<ModbusTcpWorker>(device_info);
+        } catch (const std::exception& e) {
+            logger_->Error("❌ ModbusTcpWorker failed: " + std::string(e.what()));
+            return nullptr;
+        }
     };
     
-    // MODBUS_TCP 별칭들
-    worker_creators_["modbus_tcp"] = worker_creators_["MODBUS_TCP"];
-    worker_creators_["ModbusTcp"] = worker_creators_["MODBUS_TCP"];
-    worker_creators_["TCP"] = worker_creators_["MODBUS_TCP"];
-    
-    // =============================================================================
-    // 🚀 MODBUS_RTU Worker 등록 (실제 ModbusRtuWorker 사용)
-    // =============================================================================
-    worker_creators_["MODBUS_RTU"] = [this](const PulseOne::Structs::DeviceInfo& device_info) {
+    // MODBUS_RTU - ModbusRtuWorker 직접 사용  
+    worker_creators_["MODBUS_RTU"] = [this](const PulseOne::Structs::DeviceInfo& device_info) -> std::unique_ptr<BaseDeviceWorker> {
         logger_->Debug("🔧 Creating ModbusRtuWorker for: " + device_info.name);
-        return std::make_unique<ModbusRtuWorker>(device_info);
+        try {
+            return std::make_unique<ModbusRtuWorker>(device_info);
+        } catch (const std::exception& e) {
+            logger_->Error("❌ ModbusRtuWorker failed: " + std::string(e.what()));
+            return nullptr;
+        }
     };
     
-    // MODBUS_RTU 별칭들  
-    worker_creators_["modbus_rtu"] = worker_creators_["MODBUS_RTU"];
-    worker_creators_["ModbusRtu"] = worker_creators_["MODBUS_RTU"];
-    worker_creators_["RTU"] = worker_creators_["MODBUS_RTU"];
-    
-    // =============================================================================
-    // 🚀 mqtt Worker 등록 (실제 MQTTWorker 사용)
-    // =============================================================================
-    worker_creators_["mqtt"] = [this](const PulseOne::Structs::DeviceInfo& device_info) {
+    // MQTT - MQTTWorker 직접 사용
+    worker_creators_["mqtt"] = [this](const PulseOne::Structs::DeviceInfo& device_info) -> std::unique_ptr<BaseDeviceWorker> {
         logger_->Debug("🔧 Creating MQTTWorker for: " + device_info.name);
-        return std::make_unique<MQTTWorker>(device_info);
+        try {
+            return std::make_unique<MQTTWorker>(device_info, MQTTWorkerMode::BASIC);
+        } catch (const std::exception& e) {
+            logger_->Error("❌ MQTTWorker failed: " + std::string(e.what()));
+            return nullptr;
+        }
     };
     
-    // mqtt 별칭들
+    // BACnet - BACnetWorker 직접 사용
+    worker_creators_["bacnet"] = [this](const PulseOne::Structs::DeviceInfo& device_info) -> std::unique_ptr<BaseDeviceWorker> {
+        logger_->Debug("🔧 Creating BACnetWorker for: " + device_info.name);
+        try {
+            return std::make_unique<BACnetWorker>(device_info);
+        } catch (const std::exception& e) {
+            logger_->Error("❌ BACnetWorker failed: " + std::string(e.what()));
+            return nullptr;
+        }
+    };
+    
+    // 별칭들
+    worker_creators_["modbus_tcp"] = worker_creators_["MODBUS_TCP"];
+    worker_creators_["modbus_rtu"] = worker_creators_["MODBUS_RTU"];
     worker_creators_["MQTT"] = worker_creators_["mqtt"];
-    worker_creators_["Mqtt"] = worker_creators_["mqtt"];
-    worker_creators_["MQTT_CLIENT"] = worker_creators_["mqtt"];
-    
-    // =============================================================================
-    // 🚀 bacnet Worker 등록 (임시로 BaseDeviceWorker 사용)
-    // =============================================================================
-    worker_creators_["bacnet"] = [this](const PulseOne::Structs::DeviceInfo& device_info) {
-        logger_->Debug("🔧 Creating BACnet Worker (임시 구현)");
-        // 임시로 BaseDeviceWorker 직접 생성 (BACnetWorker가 없으므로)
-        return std::make_unique<BaseDeviceWorker>(device_info);
-    };
-    
-    // bacnet 별칭들
     worker_creators_["BACNET"] = worker_creators_["bacnet"];
-    worker_creators_["BACnet"] = worker_creators_["bacnet"];
-    worker_creators_["BACNET_IP"] = worker_creators_["bacnet"];
-    worker_creators_["BACnet/IP"] = worker_creators_["bacnet"];
     
-    // =============================================================================
-    // 🚀 BEACON Worker 등록 (실제로 없으므로 BaseDeviceWorker 사용)
-    // =============================================================================
-    worker_creators_["BEACON"] = [this](const PulseOne::Structs::DeviceInfo& device_info) {
-        logger_->Debug("🔧 Creating BEACON Worker (BeaconWorker 미구현, BaseDeviceWorker 사용)");
-        // BeaconWorker는 실제로 존재하지 않으므로 BaseDeviceWorker 사용
-        return std::make_unique<BaseDeviceWorker>(device_info);
-    };
-    
-    // BEACON 별칭들
-    worker_creators_["beacon"] = worker_creators_["BEACON"];
-    worker_creators_["Beacon"] = worker_creators_["BEACON"];
-    worker_creators_["BEACON_PROTOCOL"] = worker_creators_["BEACON"];
-    
-    // =============================================================================
-    // 🎯 등록 완료 로그 (정확한 구현 상태)
-    // =============================================================================
-    size_t total_registered = worker_creators_.size();
-    
-    logger_->Info("🏭 Protocol Workers Registration Complete (" + 
-                  std::to_string(total_registered) + " protocols)");
-    
-    #ifdef DEBUG_MODE
-    logger_->Debug("✅ 구현 완료: MODBUS_TCP, MODBUS_RTU, mqtt, bacnet");
-    logger_->Debug("🚧 미구현: BEACON (BaseDeviceWorker 사용)");
-    #endif
+    logger_->Info("✅ Registered " + std::to_string(worker_creators_.size()) + " protocol creators");
 }
+
 
 
 std::string WorkerFactory::ValidateWorkerConfig(const Database::Entities::DeviceEntity& device_entity) const {
@@ -525,26 +561,26 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
                 device_info.timeout_ms = static_cast<uint32_t>(settings.getReadTimeoutMs());
                 device_info.retry_count = static_cast<uint32_t>(settings.getMaxRetryCount());
                 device_info.connection_timeout_ms = static_cast<uint32_t>(settings.getConnectionTimeoutMs());
-                device_info.keep_alive_interval_ms = static_cast<uint32_t>(settings.getKeepAliveIntervalS() * 1000);  // 초→밀리초
+                //device_info.keep_alive_interval_ms = static_cast<uint32_t>(settings.getKeepAliveIntervalS() * 1000);  // 초→밀리초
                 
                 // 추가 설정들
-                device_info.retry_interval_ms = static_cast<uint32_t>(settings.getRetryIntervalMs());
-                device_info.write_timeout_ms = static_cast<uint32_t>(settings.getWriteTimeoutMs());
-                device_info.keep_alive_enabled = settings.isKeepAliveEnabled();
-                device_info.backoff_time_ms = static_cast<uint32_t>(settings.getBackoffTimeMs());
-                device_info.backoff_multiplier = settings.getBackoffMultiplier();
-                device_info.max_backoff_time_ms = static_cast<uint32_t>(settings.getMaxBackoffTimeMs());
+                //device_info.retry_interval_ms = static_cast<uint32_t>(settings.getRetryIntervalMs());
+                //device_info.write_timeout_ms = static_cast<uint32_t>(settings.getWriteTimeoutMs());
+                //device_info.keep_alive_enabled = settings.isKeepAliveEnabled();
+                //device_info.backoff_time_ms = static_cast<uint32_t>(settings.getBackoffTimeMs());
+                //device_info.backoff_multiplier = settings.getBackoffMultiplier();
+                //device_info.max_backoff_time_ms = static_cast<uint32_t>(settings.getMaxBackoffTimeMs());
                 
                 // 진단 설정
-                device_info.diagnostic_mode_enabled = settings.isDiagnosticModeEnabled();
-                device_info.data_validation_enabled = settings.isDataValidationEnabled();
-                device_info.performance_monitoring_enabled = settings.isPerformanceMonitoringEnabled();
+                device_info.diagnostics_enabled = settings.isDiagnosticModeEnabled();
+                //device_info.data_validation = settings.isDataValidationEnabled();
+                device_info.performance_monitoring = settings.isPerformanceMonitoringEnabled();
                 
-                logger_->Debug("✅ DeviceSettings 매핑 완료: " + 
-                              "polling=" + std::to_string(device_info.polling_interval_ms) + "ms, " +
-                              "timeout=" + std::to_string(device_info.timeout_ms) + "ms, " +
-                              "retry=" + std::to_string(device_info.retry_count));
-                
+                std::string debug_msg = "✅ DeviceSettings 매핑 완료: ";
+                debug_msg += "polling=" + std::to_string(device_info.polling_interval_ms) + "ms, ";
+                debug_msg += "timeout=" + std::to_string(device_info.timeout_ms) + "ms, ";
+                debug_msg += "retry=" + std::to_string(device_info.retry_count);
+                logger_->Debug(debug_msg);                
             } else {
                 logger_->Warn("⚠️ DeviceSettings not found for Device ID: " + std::to_string(device_entity.getId()) + " - using defaults");
                 ApplyDefaultSettings(device_info, device_entity.getProtocolType());
@@ -577,54 +613,54 @@ void WorkerFactory::ApplyDefaultSettings(PulseOne::Structs::DeviceInfo& device_i
         device_info.timeout_ms = 3000;               // 3초
         device_info.retry_count = 3;
         device_info.connection_timeout_ms = 10000;   // 10초
-        device_info.keep_alive_interval_ms = 30000;  // 30초
+        //device_info.keep_alive_interval_ms = 30000;  // 30초
         
     } else if (protocol_type == "MODBUS_RTU" || protocol_type == "modbus_rtu") {
         device_info.polling_interval_ms = 2000;      // 2초
         device_info.timeout_ms = 5000;               // 5초
         device_info.retry_count = 5;
         device_info.connection_timeout_ms = 15000;   // 15초
-        device_info.keep_alive_interval_ms = 60000;  // 60초
+        //device_info.keep_alive_interval_ms = 60000;  // 60초
         
     } else if (protocol_type == "mqtt") {
         device_info.polling_interval_ms = 500;       // 0.5초
         device_info.timeout_ms = 10000;              // 10초
         device_info.retry_count = 3;
         device_info.connection_timeout_ms = 15000;   // 15초
-        device_info.keep_alive_interval_ms = 60000;  // 60초
+        //device_info.keep_alive_interval_ms = 60000;  // 60초
         
     } else if (protocol_type == "bacnet") {
         device_info.polling_interval_ms = 5000;      // 5초
         device_info.timeout_ms = 8000;               // 8초
         device_info.retry_count = 3;
         device_info.connection_timeout_ms = 20000;   // 20초
-        device_info.keep_alive_interval_ms = 120000; // 120초
+        //device_info.keep_alive_interval_ms = 120000; // 120초
         
     } else if (protocol_type == "BEACON") {
         device_info.polling_interval_ms = 10000;     // 10초
         device_info.timeout_ms = 15000;              // 15초
         device_info.retry_count = 2;
         device_info.connection_timeout_ms = 30000;   // 30초
-        device_info.keep_alive_interval_ms = 180000; // 180초
+        //device_info.keep_alive_interval_ms = 180000; // 180초
     } else {
         // 알 수 없는 프로토콜 - 안전한 기본값
         device_info.polling_interval_ms = 5000;
         device_info.timeout_ms = 10000;
         device_info.retry_count = 3;
         device_info.connection_timeout_ms = 20000;
-        device_info.keep_alive_interval_ms = 60000;
+        //device_info.keep_alive_interval_ms = 60000;
     }
     
     // 공통 기본값들
-    device_info.retry_interval_ms = 5000;           // 5초 재시도 간격
-    device_info.write_timeout_ms = device_info.timeout_ms;  // 읽기 타임아웃과 동일
-    device_info.keep_alive_enabled = true;
-    device_info.backoff_time_ms = 60000;            // 1분 백오프
-    device_info.backoff_multiplier = 1.5;
-    device_info.max_backoff_time_ms = 300000;       // 5분 최대 백오프
-    device_info.diagnostic_mode_enabled = false;
-    device_info.data_validation_enabled = true;
-    device_info.performance_monitoring_enabled = true;
+    //device_info.retry_interval_ms = 5000;           // 5초 재시도 간격
+    //device_info.write_timeout_ms = device_info.timeout_ms;  // 읽기 타임아웃과 동일
+    //device_info.keep_alive_enabled = true;
+    //device_info.backoff_time_ms = 60000;            // 1분 백오프
+    //device_info.backoff_multiplier = 1.5;
+    //device_info.max_backoff_time_ms = 300000;       // 5분 최대 백오프
+    device_info.diagnostics_enabled = false;
+    //device_info.data_validation_enabled = true;
+    device_info.performance_monitoring = true;
     
     logger_->Debug("🔧 " + protocol_type + " 기본값 적용됨");
 }
@@ -1062,6 +1098,12 @@ void WorkerFactory::SetDatabaseClients(std::shared_ptr<RedisClient> redis_client
     }
 }
 
+
+void WorkerFactory::SetDeviceSettingsRepository(std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo) {
+    std::lock_guard<std::mutex> lock(factory_mutex_);
+    device_settings_repo_ = device_settings_repo;
+    logger_->Info("✅ DeviceSettingsRepository injected into WorkerFactory");
+}
 
 } // namespace Workers
 } // namespace PulseOne

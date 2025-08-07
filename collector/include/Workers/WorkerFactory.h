@@ -46,6 +46,7 @@ namespace Database {
         class DeviceRepository;
         class DataPointRepository;
         class CurrentValueRepository;
+        class DeviceSettingsRepository;
     }   
 }
 
@@ -86,6 +87,7 @@ public:
     void SetCurrentValueRepository(std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo);
     void SetDatabaseClients(std::shared_ptr<RedisClient> redis_client, 
                        std::shared_ptr<InfluxClient> influx_client);
+    void SetDeviceSettingsRepository(std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo);
 
     std::unique_ptr<BaseDeviceWorker> CreateWorker(const Database::Entities::DeviceEntity& device_entity);
     std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
@@ -141,7 +143,7 @@ private:
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo_;
-
+    std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo_;
     // ✅ 전역 클래스 shared_ptr
     std::shared_ptr<::RedisClient> redis_client_;
     std::shared_ptr<::InfluxClient> influx_client_;
