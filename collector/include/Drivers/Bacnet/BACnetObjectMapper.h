@@ -7,6 +7,7 @@
 #define BACNET_OBJECT_MAPPER_H
 
 #include "Common/Structs.h"
+#include "Drivers/Bacnet/BACnetTypes.h"
 #include "Drivers/Bacnet/BACnetStatisticsManager.h"
 #include <map>
 #include <vector>

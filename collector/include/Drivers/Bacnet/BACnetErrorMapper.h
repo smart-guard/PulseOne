@@ -8,6 +8,7 @@
 
 #include "Common/DriverError.h"
 #include "Common/Enums.h"
+#include "Drivers/Bacnet/BACnetTypes.h"
 #include <string>
 #include <map>
 

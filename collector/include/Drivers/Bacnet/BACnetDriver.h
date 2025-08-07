@@ -31,6 +31,7 @@
 #include "Common/Enums.h"                // ProtocolType, ConnectionStatus 등  
 #include "Common/Structs.h"              // DeviceInfo, DataPoint 등
 #include "Common/DriverStatistics.h"     // DriverStatistics
+#include "Drivers/Bacnet/BACnetTypes.h"
 #include "Drivers/Bacnet/BACnetErrorMapper.h"
 #include "Utils/LogManager.h"
 

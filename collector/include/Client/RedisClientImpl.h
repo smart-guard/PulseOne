@@ -1,4 +1,8 @@
+// =============================================================================
 // collector/include/Client/RedisClientImpl.h
+// 완전한 Redis 클라이언트 구현체 - 실제 동작하는 버전
+// =============================================================================
+
 #ifndef REDIS_CLIENT_IMPL_H
 #define REDIS_CLIENT_IMPL_H
 
@@ -15,34 +19,30 @@
 #include <chrono>
 #include <map>
 
-// 🔧 조건부 hiredis 포함
+// hiredis 헤더 포함
 #ifdef HAS_HIREDIS
 #include <hiredis/hiredis.h>
 #include <hiredis/async.h>
 #else
-// hiredis가 없을 때의 fallback 구조체들
+// hiredis가 없을 때의 forward declaration
 struct redisContext;
-struct redisAsyncContext;
+struct redisAsyncContext;  
 struct redisReply;
 #endif
 
 /**
- * @brief 간소화된 RedisClient 구현체 (에러 해결용)
- * @details 기존 구현 파일과 완전히 호환되는 헤더
+ * @brief 완전한 Redis 클라이언트 구현체
+ * @details hiredis 라이브러리를 사용한 완전한 Redis 클라이언트
  */
 class RedisClientImpl : public RedisClient {
 private:
     // =============================================================================
-    // 멤버 변수들 (구현 파일에 사용된 모든 변수들)
+    // 멤버 변수
     // =============================================================================
     
-#ifdef HAS_HIREDIS
-    std::unique_ptr<redisContext, void(*)(redisContext*)> context_;
-    std::unique_ptr<redisAsyncContext, void(*)(redisAsyncContext*)> async_context_;
-#else
-    void* context_;
-    void* async_context_;
-#endif
+    // Redis 연결 컨텍스트 (raw pointer 사용)
+    redisContext* context_;
+    redisAsyncContext* async_context_;
     
     // 연결 정보
     std::string host_;
@@ -51,11 +51,17 @@ private:
     int selected_db_{0};
     std::atomic<bool> connected_{false};
     
+    // 통계 정보
+    std::atomic<uint64_t> total_commands_{0};
+    std::atomic<uint64_t> successful_commands_{0};
+    std::atomic<uint64_t> failed_commands_{0};
+    std::chrono::steady_clock::time_point connect_time_;
+    std::chrono::steady_clock::time_point last_command_time_;
+    
     // 스레드 안전성
     mutable std::recursive_mutex connection_mutex_;
     mutable std::mutex operation_mutex_;
     mutable std::mutex pubsub_mutex_;
-    mutable std::mutex async_mutex_;
     
     // 재연결 관리
     std::atomic<bool> auto_reconnect_{true};
@@ -75,118 +81,13 @@ private:
     std::unordered_set<std::string> subscribed_channels_;
     std::unordered_set<std::string> subscribed_patterns_;
     
-    // 비동기 작업 관리
-    std::thread async_thread_;
-    std::atomic<bool> async_running_{false};
-    std::queue<std::function<void()>> async_task_queue_;
-    std::condition_variable async_cv_;
-    
-    // 트랜잭션 상태
+    // 트랜잭션 관리
     std::atomic<bool> in_transaction_{false};
-    std::vector<std::string> transaction_commands_;
+    std::queue<std::string> transaction_commands_;
     
-    // 파이프라인 지원
+    // Pipeline 관리
+    std::queue<std::string> pipeline_commands_;
     std::atomic<bool> pipeline_mode_{false};
-    std::vector<std::string> pipeline_commands_;
-    
-    // 성능 통계
-    std::atomic<uint64_t> total_commands_{0};
-    std::atomic<uint64_t> successful_commands_{0};
-    std::atomic<uint64_t> failed_commands_{0};
-    std::chrono::steady_clock::time_point connect_time_;
-    std::chrono::steady_clock::time_point last_command_time_;
-    
-    // =============================================================================
-    // 내부 헬퍼 메서드들 (구현 파일에 있는 모든 메서드들)
-    // =============================================================================
-    
-    // 연결 관리
-    bool connectInternal();
-    bool reconnect();
-    void setupContext(redisContext* ctx);
-    bool authenticateIfNeeded();
-    bool selectDatabase(int db_index);
-    
-    // 명령어 실행
-#ifdef HAS_HIREDIS
-    std::unique_ptr<redisReply, void(*)(redisReply*)> executeCommand(const char* format, ...);
-    std::unique_ptr<redisReply, void(*)(redisReply*)> executeCommandArgv(int argc, const char** argv, const size_t* argvlen);
-#else
-    void* executeCommand(const char* format, ...);
-    void* executeCommandArgv(int argc, const char** argv, const size_t* argvlen);
-#endif
-    
-    // Pub/Sub 관리
-    void startPubSubThread();
-    void stopPubSubThread();  
-    void pubsubThreadWorker();
-#ifdef HAS_HIREDIS
-    void handlePubSubMessage(redisReply* reply);
-#else
-    void handlePubSubMessage(void* reply);
-#endif
-    
-    // 비동기 작업 관리
-    void startAsyncThread();
-    void stopAsyncThread();
-    void asyncThreadWorker();
-    
-    // 에러 처리
-    void logError(const std::string& operation, const std::string& error_message) const;
-    void logRedisError(const std::string& operation, redisContext* ctx);
-    bool handleConnectionError();
-    bool isConnectionError(redisContext* ctx) const;
-    
-    // 유틸리티
-#ifdef HAS_HIREDIS
-    std::string replyToString(redisReply* reply) const;
-    long long replyToInteger(redisReply* reply) const;
-    StringList replyToStringList(redisReply* reply) const;
-    StringMap replyToStringMap(redisReply* reply) const;
-    bool isReplyOK(redisReply* reply);
-    bool isReplyError(redisReply* reply);
-#else
-    std::string replyToString(void* reply) const;
-    long long replyToInteger(void* reply) const;
-    StringList replyToStringList(void* reply) const;
-    StringMap replyToStringMap(void* reply) const;
-    bool isReplyOK(void* reply);
-    bool isReplyError(void* reply);
-#endif
-    
-    // 문자열 처리
-    std::string escapeString(const std::string& str);
-    std::vector<std::string> splitCommand(const std::string& command);
-    
-    // 성능 측정
-    void recordCommandStart();
-    void recordCommandEnd(bool success);
-    std::chrono::milliseconds calculateLatency() const;
-    
-    // 메모리 관리
-    static void freeRedisReply(redisReply* reply);
-    static void freeRedisContext(redisContext* ctx);
-    static void freeRedisAsyncContext(redisAsyncContext* ctx);
-    
-    // 추가 메서드들 (구현 파일에 있는 것들)
-    bool hmset(const std::string& key, const StringMap& field_values);
-    int del(const StringList& keys);
-    StringList zrangebyscore(const std::string& key, double min_score, double max_score);
-    int zremrangebyscore(const std::string& key, double min_score, double max_score);
-    std::string evalScript(const std::string& script, const StringList& keys = StringList{}, const StringList& args = StringList{});
-    std::string evalSha(const std::string& sha1, const StringList& keys = StringList{}, const StringList& args = StringList{});
-    std::string scriptLoad(const std::string& script);
-    std::pair<std::string, StringList> scan(const std::string& cursor = "0", const std::string& pattern = "", int count = 10);
-    std::pair<std::string, StringMap> hscan(const std::string& key, const std::string& cursor = "0", const std::string& pattern = "", int count = 10);
-    std::pair<std::string, std::map<std::string, double>> zscan(const std::string& key, const std::string& cursor = "0", const std::string& pattern = "", int count = 10);
-    void setTimeouts(int connect_timeout_ms, int command_timeout_ms);
-    bool startPipeline();
-    bool addToPipeline(const std::string& command);
-#ifdef HAS_HIREDIS
-    std::vector<std::unique_ptr<redisReply, void(*)(redisReply*)>> executePipeline();
-#else
-    std::vector<void*> executePipeline();
-#endif
 
 public:
     // =============================================================================
@@ -271,13 +172,60 @@ public:
     bool ping() override;
     bool select(int db_index) override;
     int dbsize() override;
+
+private:
+    // =============================================================================
+    // 내부 헬퍼 메서드들
+    // =============================================================================
     
+    // 연결 관리
+    bool connectInternal();
+    bool reconnect();
+    void setupContext(redisContext* ctx);
+    bool authenticateIfNeeded();
+    bool selectDatabase(int db_index);
+    bool handleConnectionError();
+    
+    // 명령 실행
+    redisReply* executeCommand(const char* format, ...);
+    redisReply* executeCommandArgv(int argc, const char** argv, const size_t* argvlen);
+    
+    // 응답 처리
+    std::string replyToString(redisReply* reply) const;
+    long long replyToInteger(redisReply* reply) const;
+    StringList replyToStringList(redisReply* reply) const;
+    StringMap replyToStringMap(redisReply* reply) const;
+    bool isReplyOK(redisReply* reply) const;
+    bool isReplyError(redisReply* reply) const;
+    
+    // 에러 처리
+    void logError(const std::string& operation, const std::string& error_message) const;
+    void logRedisError(const std::string& operation, redisContext* ctx) const;
+    bool isConnectionError(redisContext* ctx) const;
+    
+    // 통계 및 성능
+    void recordCommandStart();
+    void recordCommandEnd(bool success);
+    std::chrono::milliseconds calculateLatency() const;
+    
+    // Pub/Sub 관리
+    void startPubSubThread();
+    void stopPubSubThread();
+    void pubsubThreadWorker();
+    void handlePubSubMessage(redisReply* reply);
+    
+    // 메모리 관리
+    static void freeRedisReply(redisReply* reply);
+    static void freeRedisContext(redisContext* ctx);
+    static void freeRedisAsyncContext(redisAsyncContext* ctx);
+
+public:
     // =============================================================================
     // 추가 기능 (구현체 전용)
     // =============================================================================
     
     /**
-     * @brief 통계 구조체
+     * @brief 연결 통계 구조체
      */
     struct ConnectionStats {
         uint64_t total_commands;
@@ -292,7 +240,7 @@ public:
     };
     
     /**
-     * @brief 통계 조회
+     * @brief 연결 통계 조회
      * @return 연결 통계
      */
     ConnectionStats getConnectionStats() const;
@@ -301,6 +249,13 @@ public:
      * @brief 통계 리셋
      */
     void resetStats();
+    
+    /**
+     * @brief 다중 키 삭제 (확장 기능)
+     * @param keys 삭제할 키들
+     * @return 삭제된 키의 수
+     */
+    int del(const StringList& keys);
 };
 
 #endif // REDIS_CLIENT_IMPL_H
