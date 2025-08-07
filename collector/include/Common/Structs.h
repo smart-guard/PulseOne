@@ -925,25 +925,24 @@ namespace Structs {
     };
 
     // =========================================================================
-    // 🔥 완성된 DeviceInfo 구조체 (Database::Entities 의존성 제거)
+    // 🔥 완전한 DeviceInfo 구조체 (모든 DB 테이블 필드 포함)
     // =========================================================================
 
     /**
-     * @brief 완전 통합 디바이스 정보 구조체
+     * @brief 완전 통합 디바이스 정보 구조체 (최종 완성판)
      * @details 
-     * ✅ Database::Entities 의존성 완전 제거
-     * ✅ 기존 필드명 100% 보존
-     * ✅ 모든 getter/setter 메서드 호환
+     * ✅ DeviceEntity 모든 필드
+     * ✅ DeviceSettingsEntity 모든 필드  
+     * ✅ 프로토콜별 설정은 properties 맵에 저장
+     * ✅ 기존 DeviceInfo 호환성 100%
      */
     struct DeviceInfo {
         // =======================================================================
-        // 🔥 핵심: 스마트 포인터 기반 DriverConfig (Phase 1 완성)
+        // 🔥 Phase 1: DeviceEntity 기본 필드들 (기존 유지)
         // =======================================================================
-        DriverConfig driver_config;                    // 🔥 핵심! 스마트 포인터 기반
         
-        // =======================================================================
-        // 🔥 DeviceEntity 호환 필드들 (기존 필드명 100% 보존)
-        // =======================================================================
+        // 핵심: 스마트 포인터 기반 DriverConfig
+        DriverConfig driver_config;
         
         // 기본 식별 정보
         UUID id;                                       // device_id → id (Entity 호환)
@@ -972,10 +971,10 @@ namespace Structs {
         int port = 0;                                  // 포트 번호
         std::string mac_address = "";                  // MAC 주소
         
-        // 타이밍 설정 (Entity 확장)
-        int polling_interval_ms = 1000;                // 폴링 간격
-        int timeout_ms = 5000;                         // 타임아웃
-        int retry_count = 3;                           // 재시도 횟수
+        // 기본 타이밍 설정 (Entity 확장)
+        int polling_interval_ms = 1000;                // 폴링 간격 (기본)
+        int timeout_ms = 5000;                         // 타임아웃 (기본)
+        int retry_count = 3;                           // 재시도 횟수 (기본)
         
         // 상태 정보 (Entity 호환)
         bool is_enabled = true;                        // 활성화 상태
@@ -999,7 +998,7 @@ namespace Structs {
         std::string tags = "";                         // JSON 배열 형태
         std::vector<std::string> tag_list;            // 태그 목록
         std::map<std::string, std::string> metadata;  // 추가 메타데이터
-        std::map<std::string, std::string> properties; // 커스텀 속성들
+        std::map<std::string, std::string> properties; // 🔥 커스텀 속성들 (핵심!)
         
         // 시간 정보 (Entity 호환)
         Timestamp created_at;
@@ -1017,10 +1016,43 @@ namespace Structs {
         bool encryption_enabled = false;             // 암호화 사용
         std::string certificate_path = "";           // 인증서 경로
         
-        std::optional<int> connection_timeout_ms;   // ✅ 추가 필요
-        std::optional<int> read_timeout_ms;         // ✅ 추가 필요
-        std::optional<int> scan_rate_override;      // ✅ 추가 필요
-        bool keep_alive_enabled = true;             // ✅ 추가 필요
+        // =======================================================================
+        // 🔥 Phase 2: DeviceSettingsEntity 필드들 직접 추가!
+        // =======================================================================
+        
+        // 🔥 폴링 및 타이밍 설정 (device_settings 테이블)
+        std::optional<int> scan_rate_override;          // scan_rate_override
+        
+        // 🔥 연결 및 통신 설정 (device_settings 테이블)  
+        std::optional<int> connection_timeout_ms;       // connection_timeout_ms
+        std::optional<int> read_timeout_ms;             // read_timeout_ms
+        std::optional<int> write_timeout_ms;            // write_timeout_ms
+        
+        // 🔥 재시도 정책 (device_settings 테이블)
+        int max_retry_count = 3;                        // max_retry_count
+        int retry_interval_ms = 5000;                   // retry_interval_ms
+        double backoff_multiplier = 1.5;                // backoff_multiplier
+        int backoff_time_ms = 60000;                    // backoff_time_ms
+        int max_backoff_time_ms = 300000;               // max_backoff_time_ms
+        
+        // 🔥 Keep-alive 설정 (device_settings 테이블)
+        bool keep_alive_enabled = true;                 // keep_alive_enabled
+        int keep_alive_interval_s = 30;                 // keep_alive_interval_s
+        int keep_alive_timeout_s = 10;                  // keep_alive_timeout_s
+        
+        // 🔥 데이터 품질 관리 (device_settings 테이블)
+        bool data_validation_enabled = true;            // data_validation_enabled
+        bool outlier_detection_enabled = false;         // outlier_detection_enabled
+        bool deadband_enabled = true;                   // deadband_enabled
+        
+        // 🔥 로깅 및 진단 (device_settings 테이블)
+        bool detailed_logging_enabled = false;          // detailed_logging_enabled
+        bool performance_monitoring_enabled = true;     // performance_monitoring_enabled
+        bool diagnostic_mode_enabled = false;           // diagnostic_mode_enabled
+        
+        // 🔥 메타데이터 (device_settings 테이블)
+        int updated_by = 0;                             // updated_by
+        
         // =======================================================================
         // 🔥 생성자들
         // =======================================================================
@@ -1041,7 +1073,113 @@ namespace Structs {
         explicit DeviceInfo(ProtocolType protocol) : DeviceInfo() {
             driver_config = DriverConfig(protocol);
             protocol_type = driver_config.GetProtocolName();
+            InitializeProtocolDefaults(protocol);
         }
+        
+        // =======================================================================
+        // 🔥 프로토콜별 기본값 초기화 (properties 맵 활용)
+        // =======================================================================
+        
+        /**
+         * @brief 프로토콜별 기본 properties 설정 (기존 코드 완전 호환)
+         * @note 🔥 Phase 1: 기존 메서드들 100% 유지하면서 내부만 설정 기반으로 변경
+         */
+        void InitializeProtocolDefaults(ProtocolType protocol) {
+            // 🔥 1단계: 기존 방식 유지 (나중에 설정 기반으로 점진적 변경)
+            switch (protocol) {
+                case ProtocolType::MODBUS_TCP:
+                case ProtocolType::MODBUS_RTU:
+                    // Modbus 기본값들 (기존 Worker 코드 호환)
+                    properties["slave_id"] = "1";
+                    properties["function_code"] = "3";
+                    properties["byte_order"] = "big_endian";
+                    properties["word_order"] = "high_low";
+                    properties["register_type"] = "HOLDING_REGISTER";
+                    properties["max_registers_per_group"] = "125";
+                    properties["auto_group_creation"] = "true";
+                    break;
+                    
+                case ProtocolType::MQTT:
+                    // MQTT 기본값들 (기존 Worker 코드 호환)
+                    properties["client_id"] = "";
+                    properties["username"] = "";
+                    properties["password"] = "";
+                    properties["qos_level"] = "1";
+                    properties["clean_session"] = "true";
+                    properties["retain"] = "false";
+                    properties["keep_alive"] = "60";
+                    break;
+                    
+                case ProtocolType::BACNET:
+                    // BACnet 기본값들 (기존 Worker 코드 호환)
+                    properties["device_id"] = "1001";
+                    properties["network_number"] = "1";
+                    properties["max_apdu_length"] = "1476";
+                    properties["segmentation_support"] = "both";
+                    properties["vendor_id"] = "0";
+                    break;
+                    
+                default:
+                    // 공통 기본값들
+                    properties["auto_reconnect"] = "true";
+                    properties["ssl_enabled"] = "false";
+                    properties["validate_certificates"] = "true";
+                    break;
+            }
+            
+            // 🔥 TODO Phase 2: 나중에 ProtocolConfigRegistry로 교체
+            // PulseOne::Config::ApplyProtocolDefaults(protocol, properties);
+        }
+        
+        // =======================================================================
+        // 🔥 properties 맵 헬퍼 메서드들
+        // =======================================================================
+        
+        /**
+         * @brief properties에서 값 가져오기 (기본값 포함)
+         */
+        std::string GetProperty(const std::string& key, const std::string& default_value = "") const {
+            auto it = properties.find(key);
+            return (it != properties.end()) ? it->second : default_value;
+        }
+        
+        /**
+         * @brief properties에 값 설정
+         */
+        void SetProperty(const std::string& key, const std::string& value) {
+            properties[key] = value;
+            // DriverConfig와 동기화
+            driver_config.properties[key] = value;
+        }
+        
+        /**
+         * @brief properties에서 정수값 가져오기
+         */
+        int GetPropertyInt(const std::string& key, int default_value = 0) const {
+            std::string value = GetProperty(key);
+            if (value.empty()) return default_value;
+            try {
+                return std::stoi(value);
+            } catch (...) {
+                return default_value;
+            }
+        }
+        
+        /**
+         * @brief properties에서 불린값 가져오기
+         */
+        bool GetPropertyBool(const std::string& key, bool default_value = false) const {
+            std::string value = GetProperty(key);
+            if (value.empty()) return default_value;
+            return (value == "true" || value == "1" || value == "yes");
+        }
+        
+        // =======================================================================
+        // 🔥 프로토콜별 편의 메서드들 (범용 properties 기반 - 중복 제거!)
+        // =======================================================================
+        
+        // 🔥 이미 GetProperty(), SetProperty(), GetPropertyInt(), GetPropertyBool() 메서드들이 있으니
+        // 개별 프로토콜 메서드들은 필요 없음! 간단하게 범용 메서드만 사용하자.
         
         // =======================================================================
         // 🔥 기존 DeviceEntity 호환 getter/setter 메서드들 (기존 API 100% 보존)
@@ -1147,27 +1285,86 @@ namespace Structs {
         
         int getCreatedBy() const { return created_by; }
         void setCreatedBy(int user_id) { created_by = user_id; }
+        
+        // =======================================================================
+        // 🔥 새로 추가된 DeviceSettings 필드들 getter/setter
+        // =======================================================================
+        
+        // 타이밍 설정
         int getConnectionTimeoutMs() const {
-            if (connection_timeout_ms.has_value()) {
-                return connection_timeout_ms.value();
-            }
-            return timeout_ms;  // 기존 timeout_ms 사용
+            return connection_timeout_ms.value_or(timeout_ms);
         }
-        
-        int getReadTimeoutMs() const {
-            if (read_timeout_ms.has_value()) {
-                return read_timeout_ms.value();
-            }
-            return timeout_ms;  // 기존 timeout_ms 사용
-        }
-        
         void setConnectionTimeoutMs(int timeout) {
             connection_timeout_ms = timeout;
         }
         
+        int getReadTimeoutMs() const {
+            return read_timeout_ms.value_or(timeout_ms);
+        }
         void setReadTimeoutMs(int timeout) {
             read_timeout_ms = timeout;
         }
+        
+        int getWriteTimeoutMs() const {
+            return write_timeout_ms.value_or(timeout_ms);
+        }
+        void setWriteTimeoutMs(int timeout) {
+            write_timeout_ms = timeout;
+        }
+        
+        std::optional<int> getScanRateOverride() const { return scan_rate_override; }
+        void setScanRateOverride(int rate) { scan_rate_override = rate; }
+        
+        // 재시도 정책
+        int getMaxRetryCount() const { return max_retry_count; }
+        void setMaxRetryCount(int count) { max_retry_count = count; }
+        
+        int getRetryIntervalMs() const { return retry_interval_ms; }
+        void setRetryIntervalMs(int interval) { retry_interval_ms = interval; }
+        
+        double getBackoffMultiplier() const { return backoff_multiplier; }
+        void setBackoffMultiplier(double multiplier) { backoff_multiplier = multiplier; }
+        
+        int getBackoffTimeMs() const { return backoff_time_ms; }
+        void setBackoffTimeMs(int time) { backoff_time_ms = time; }
+        
+        int getMaxBackoffTimeMs() const { return max_backoff_time_ms; }
+        void setMaxBackoffTimeMs(int time) { max_backoff_time_ms = time; }
+        
+        // Keep-alive 설정
+        bool isKeepAliveEnabled() const { return keep_alive_enabled; }
+        void setKeepAliveEnabled(bool enabled) { keep_alive_enabled = enabled; }
+        
+        int getKeepAliveIntervalS() const { return keep_alive_interval_s; }
+        void setKeepAliveIntervalS(int interval) { keep_alive_interval_s = interval; }
+        
+        int getKeepAliveTimeoutS() const { return keep_alive_timeout_s; }
+        void setKeepAliveTimeoutS(int timeout) { keep_alive_timeout_s = timeout; }
+        
+        // 데이터 품질 관리
+        bool isDataValidationEnabled() const { return data_validation_enabled; }
+        void setDataValidationEnabled(bool enabled) { data_validation_enabled = enabled; }
+        
+        bool isOutlierDetectionEnabled() const { return outlier_detection_enabled; }
+        void setOutlierDetectionEnabled(bool enabled) { outlier_detection_enabled = enabled; }
+        
+        bool isDeadbandEnabled() const { return deadband_enabled; }
+        void setDeadbandEnabled(bool enabled) { deadband_enabled = enabled; }
+        
+        // 로깅 및 진단
+        bool isDetailedLoggingEnabled() const { return detailed_logging_enabled; }
+        void setDetailedLoggingEnabled(bool enabled) { detailed_logging_enabled = enabled; }
+        
+        bool isPerformanceMonitoringEnabled() const { return performance_monitoring_enabled; }
+        void setPerformanceMonitoringEnabled(bool enabled) { performance_monitoring_enabled = enabled; }
+        
+        bool isDiagnosticModeEnabled() const { return diagnostic_mode_enabled; }
+        void setDiagnosticModeEnabled(bool enabled) { diagnostic_mode_enabled = enabled; }
+        
+        // 메타데이터
+        int getUpdatedBy() const { return updated_by; }
+        void setUpdatedBy(int user_id) { updated_by = user_id; }
+        
         // =======================================================================
         // 🔥 Worker 호환 메서드들 (기존 Worker 클래스들 호환)
         // =======================================================================
@@ -1187,15 +1384,15 @@ namespace Structs {
         }
         
         uint32_t GetTimeout() const { 
-            return static_cast<uint32_t>(timeout_ms); 
+            return static_cast<uint32_t>(getConnectionTimeoutMs()); 
         }
         void SetTimeout(uint32_t timeout) { 
-            timeout_ms = static_cast<int>(timeout);
+            setConnectionTimeoutMs(static_cast<int>(timeout));
             driver_config.timeout_ms = timeout;
         }
         
         // =======================================================================
-        // 🔥 DriverConfig 위임 메서드들 (Phase 1 호환)
+        // 🔥 DriverConfig 위임 메서드들
         // =======================================================================
         
         /**
@@ -1210,7 +1407,7 @@ namespace Structs {
         }
         
         // =======================================================================
-        // 🔥 변환 및 동기화 메서드들 (Database::Entities 의존성 제거)
+        // 🔥 변환 및 동기화 메서드들
         // =======================================================================
         
         /**
@@ -1224,8 +1421,8 @@ namespace Structs {
             driver_config.name = name;
             driver_config.endpoint = endpoint;
             driver_config.polling_interval_ms = static_cast<uint32_t>(polling_interval_ms);
-            driver_config.timeout_ms = static_cast<uint32_t>(timeout_ms);
-            driver_config.retry_count = retry_count;
+            driver_config.timeout_ms = static_cast<uint32_t>(getConnectionTimeoutMs());
+            driver_config.retry_count = max_retry_count;
         }
         
         /**
@@ -1235,10 +1432,43 @@ namespace Structs {
             SyncAliasFields();
             driver_config.device_id = id;
             
-            // 프로토콜별 설정 동기화 (필요시 구현)
-            // if (IsModbus()) { /* Modbus 특화 동기화 */ }
-            // if (IsMqtt()) { /* MQTT 특화 동기화 */ }
-            // if (IsBacnet()) { /* BACnet 특화 동기화 */ }
+            // properties 전체를 driver_config.properties에 복사
+            driver_config.properties = properties;
+        }
+        
+        /**
+         * @brief JSON config 문자열을 properties로 파싱
+         */
+        void ParseConfigToProperties() {
+            if (config.empty() || config == "{}") return;
+            
+            try {
+                JsonType json_config = JsonType::parse(config);
+                for (auto& [key, value] : json_config.items()) {
+                    if (value.is_string()) {
+                        properties[key] = value.get<std::string>();
+                    } else if (value.is_number_integer()) {
+                        properties[key] = std::to_string(value.get<int>());
+                    } else if (value.is_number_float()) {
+                        properties[key] = std::to_string(value.get<double>());
+                    } else if (value.is_boolean()) {
+                        properties[key] = value.get<bool>() ? "true" : "false";
+                    }
+                }
+            } catch (const std::exception& e) {
+                // JSON 파싱 실패 시 무시
+            }
+        }
+        
+        /**
+         * @brief properties를 JSON config 문자열로 직렬화
+         */
+        void SerializePropertiesToConfig() {
+            JsonType json_config = JsonType::object();
+            for (const auto& [key, value] : properties) {
+                json_config[key] = value;
+            }
+            config = json_config.dump();
         }
         
         /**
@@ -1284,13 +1514,23 @@ namespace Structs {
             j["is_enabled"] = is_enabled;
             j["connection_status"] = static_cast<int>(connection_status);
             
-            // 위치 정보
-            j["location"] = location;
-            j["building"] = building;
-            j["floor"] = floor;
-            j["room"] = room;
+            // 🔥 DeviceSettings 필드들
+            j["connection_timeout_ms"] = getConnectionTimeoutMs();
+            j["read_timeout_ms"] = getReadTimeoutMs();
+            j["write_timeout_ms"] = getWriteTimeoutMs();
+            j["max_retry_count"] = max_retry_count;
+            j["retry_interval_ms"] = retry_interval_ms;
+            j["backoff_multiplier"] = backoff_multiplier;
+            j["keep_alive_enabled"] = keep_alive_enabled;
+            j["keep_alive_interval_s"] = keep_alive_interval_s;
+            j["data_validation_enabled"] = data_validation_enabled;
+            j["performance_monitoring_enabled"] = performance_monitoring_enabled;
+            j["diagnostic_mode_enabled"] = diagnostic_mode_enabled;
             
-            // 시간 정보 - 직접 구현 (Utils 의존성 제거)
+            // 🔥 properties 포함
+            j["properties"] = properties;
+            
+            // 시간 정보
             auto time_t = std::chrono::system_clock::to_time_t(created_at);
             std::tm tm_buf;
             #ifdef _WIN32
@@ -1302,67 +1542,9 @@ namespace Structs {
             std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
             j["created_at"] = std::string(buffer);
             
-            time_t = std::chrono::system_clock::to_time_t(updated_at);
-            #ifdef _WIN32
-                gmtime_s(&tm_buf, &time_t);
-            #else
-                gmtime_r(&time_t, &tm_buf);
-            #endif
-            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
-            j["updated_at"] = std::string(buffer);
-            
             j["created_by"] = created_by;
             
             return j;
-        }
-        
-        /**
-         * @brief JSON에서 역직렬화
-         */
-        bool FromJson(const JsonType& j) {
-            try {
-                // 기본 정보
-                if (j.contains("id")) id = j["id"].template get<std::string>();
-                if (j.contains("tenant_id")) tenant_id = j["tenant_id"].template get<int>();
-                if (j.contains("site_id")) site_id = j["site_id"].template get<int>();
-                // optional 필드들은 별도 처리
-                
-                // 디바이스 정보
-                if (j.contains("name")) name = j["name"].template get<std::string>();
-                if (j.contains("description")) description = j["description"].template get<std::string>();
-                if (j.contains("device_type")) device_type = j["device_type"].template get<std::string>();
-                if (j.contains("manufacturer")) manufacturer = j["manufacturer"].template get<std::string>();
-                if (j.contains("model")) model = j["model"].template get<std::string>();
-                if (j.contains("serial_number")) serial_number = j["serial_number"].template get<std::string>();
-                if (j.contains("firmware_version")) firmware_version = j["firmware_version"].template get<std::string>();
-                
-                // 통신 설정
-                if (j.contains("protocol_type")) protocol_type = j["protocol_type"].template get<std::string>();
-                if (j.contains("endpoint")) endpoint = j["endpoint"].template get<std::string>();
-                if (j.contains("config")) config = j["config"].template get<std::string>();
-                if (j.contains("ip_address")) ip_address = j["ip_address"].template get<std::string>();
-                if (j.contains("port")) port = j["port"].template get<int>();
-                
-                // 상태 정보
-                if (j.contains("is_enabled")) is_enabled = j["is_enabled"].template get<bool>();
-                if (j.contains("connection_status")) connection_status = static_cast<ConnectionStatus>(j["connection_status"].template get<int>());
-                
-                // 위치 정보
-                if (j.contains("location")) location = j["location"].template get<std::string>();
-                if (j.contains("building")) building = j["building"].template get<std::string>();
-                if (j.contains("floor")) floor = j["floor"].template get<std::string>();
-                if (j.contains("room")) room = j["room"].template get<std::string>();
-                
-                // 시간 정보
-                if (j.contains("created_by")) created_by = j["created_by"].template get<int>();
-                
-                // 별칭 동기화
-                SyncAliasFields();
-                
-                return true;
-            } catch (...) {
-                return false;
-            }
         }
         
         // =======================================================================
