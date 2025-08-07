@@ -25,6 +25,7 @@
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/DeviceSettingsRepository.h"
 
 class ComprehensiveDataValidationTest : public ::testing::Test {
 protected:
@@ -44,6 +45,7 @@ protected:
         // 3. Repository들 가져오기
         device_repo_ = repo_factory_->getDeviceRepository();
         datapoint_repo_ = repo_factory_->getDataPointRepository();
+        devicesetting_repo_ = repo_factory_->getDeviceSettingRepository();
         ASSERT_TRUE(device_repo_ && datapoint_repo_) << "Repository 생성 실패";
         
         // 4. 🔥 WorkerFactory 의존성 주입 수정
@@ -57,7 +59,7 @@ protected:
         worker_factory_->SetRepositoryFactory(repo_factory_shared);
         worker_factory_->SetDeviceRepository(device_repo_);
         worker_factory_->SetDataPointRepository(datapoint_repo_);  // 🔥 이것이 누락되어 있었음!
-        
+        worker_factory_->SetDeviceSrttingRepository(devicesetting_repo_);
         std::cout << "✅ 모든 의존성 주입 완료 (WorkerFactory 수정됨)\n";
     }
 
@@ -68,6 +70,7 @@ protected:
     PulseOne::Database::RepositoryFactory* repo_factory_;
     std::shared_ptr<PulseOne::Database::Repositories::DeviceRepository> device_repo_;
     std::shared_ptr<PulseOne::Database::Repositories::DataPointRepository> datapoint_repo_;
+    std::shared_ptr<PulseOne::Database::Repositories::DeviceSettingsRepository> devicesetting_repo_;
     PulseOne::Workers::WorkerFactory* worker_factory_;
 };
 
