@@ -1,5 +1,6 @@
 // =============================================================================
-// DatabaseManager.cpp - 완전한 멀티DB 지원 구현 (수정됨)
+// DatabaseManager.cpp - 자동 초기화 적용 완전판
+// 🚀 이제 initialize() 호출 없이 바로 사용 가능!
 // =============================================================================
 
 #include "Database/DatabaseManager.h"
@@ -19,7 +20,7 @@ namespace {
         return str.substr(0, prefix.length()) == prefix;
     }
     
-    // C++17용 ends_with 구현 (필요할 때 사용)
+    // C++17용 ends_with 구현
     bool ends_with(const std::string& str, const std::string& suffix) {
         if (suffix.length() > str.length()) {
             return false;
@@ -29,21 +30,23 @@ namespace {
 }
 
 // =============================================================================
-// 🔧 수정: 생성자 - DATABASE_TYPE 기반 초기화
+// 🚀 자동 초기화 정적 변수들
 // =============================================================================
+std::once_flag DatabaseManager::init_flag_;
+std::atomic<bool> DatabaseManager::initialization_success_(false);
 
+// =============================================================================
+// 🚀 자동 초기화 생성자
+// =============================================================================
 DatabaseManager::DatabaseManager() {
-    // 🔧 수정: 모든 RDB를 기본 비활성화 (설정에서 결정)
-    enabled_databases_[DatabaseType::POSTGRESQL] = false;  // 기본 비활성화
-    enabled_databases_[DatabaseType::SQLITE] = false;      // 기본 비활성화
+    // 기본 설정 (doInitialize()에서 덮어씀)
+    enabled_databases_[DatabaseType::POSTGRESQL] = false;
+    enabled_databases_[DatabaseType::SQLITE] = false;
     enabled_databases_[DatabaseType::MYSQL] = false;
     enabled_databases_[DatabaseType::MSSQL] = false;
+    enabled_databases_[DatabaseType::REDIS] = true;
+    enabled_databases_[DatabaseType::INFLUXDB] = true;
     
-    // 🔧 보조 서비스는 기본 활성화 (선택적으로 비활성화 가능)
-    enabled_databases_[DatabaseType::REDIS] = true;        // 기본 활성화
-    enabled_databases_[DatabaseType::INFLUXDB] = true;     // 기본 활성화
-    
-    // 기본 메인 RDB (설정에서 변경됨)
     primary_rdb_ = DatabaseType::SQLITE;
 }
 
@@ -51,15 +54,194 @@ DatabaseManager::~DatabaseManager() {
     disconnectAll();
 }
 
+// =============================================================================
+// 🚀 자동 초기화 싱글톤 구현 (핵심!)
+// =============================================================================
 DatabaseManager& DatabaseManager::getInstance() {
     static DatabaseManager instance;
+    
+    // 🚀 자동 초기화: 첫 호출 시에만 실행
+    std::call_once(init_flag_, [&instance] {
+        try {
+            bool success = instance.doInitialize();
+            initialization_success_.store(success);
+            
+            if (success) {
+                LogManager::getInstance().log("database", LogLevel::INFO, 
+                    "🚀 DatabaseManager 자동 초기화 성공!");
+            } else {
+                LogManager::getInstance().log("database", LogLevel::ERROR, 
+                    "❌ DatabaseManager 자동 초기화 실패!");
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "💥 DatabaseManager 자동 초기화 예외: " + std::string(e.what()));
+            initialization_success_.store(false);
+        }
+    });
+    
     return instance;
 }
 
 // =============================================================================
-// 🔧 수정: loadDatabaseConfig() - DATABASE_TYPE 우선 적용
+// 🚀 실제 초기화 로직 (기존 initialize()를 개명)
 // =============================================================================
+bool DatabaseManager::doInitialize() {
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "🔧 DatabaseManager 자동 초기화 시작...");
+    
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    // 1️⃣ 설정 로드 (DATABASE_TYPE에 따라 활성화 DB 결정)
+    loadDatabaseConfig();
+    
+    bool primary_db_connected = false;  // 메인 RDB 연결 상태
+    
+    // 2️⃣ 메인 RDB 연결 시도 (하나만 선택됨)
+    if (enabled_databases_[DatabaseType::SQLITE]) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "🔧 SQLite 연결 시도...");
+        if (connectSQLite()) {
+            primary_db_connected = true;
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ 메인 RDB (SQLite) 연결 성공");
+        } else {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "❌ 메인 RDB (SQLite) 연결 실패");
+        }
+    }
+    else if (enabled_databases_[DatabaseType::POSTGRESQL]) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "🔧 PostgreSQL 연결 시도...");
+        if (connectPostgres()) {
+            primary_db_connected = true;
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ 메인 RDB (PostgreSQL) 연결 성공");
+        } else {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "❌ 메인 RDB (PostgreSQL) 연결 실패");
+        }
+    }
+    else if (enabled_databases_[DatabaseType::MYSQL]) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "🔧 MySQL 연결 시도...");
+        if (connectMySQL()) {
+            primary_db_connected = true;
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ 메인 RDB (MySQL) 연결 성공");
+        } else {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "❌ 메인 RDB (MySQL) 연결 실패");
+        }
+    }
+#ifdef _WIN32
+    else if (enabled_databases_[DatabaseType::MSSQL]) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "🔧 MSSQL 연결 시도...");
+        if (connectMSSQL()) {
+            primary_db_connected = true;
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ 메인 RDB (MSSQL) 연결 성공");
+        } else {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "❌ 메인 RDB (MSSQL) 연결 실패");
+        }
+    }
+#endif
+    
+    // 🔧 3단계: 메인 RDB 연결 실패 시 전체 초기화 실패
+    if (!primary_db_connected) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "❌ 메인 데이터베이스 연결 실패 - DatabaseManager 자동 초기화 실패");
+        return false;
+    }
+    
+    // 4️⃣ 보조 서비스 연결 (실패해도 계속 진행)
+    if (enabled_databases_[DatabaseType::REDIS]) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "🔧 Redis 연결 시도...");
+        if (connectRedis()) {
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ Redis 연결 성공");
+        } else {
+            LogManager::getInstance().log("database", LogLevel::WARN, 
+                "⚠️ Redis 연결 실패 - 계속 진행");
+        }
+    }
+    
+    if (enabled_databases_[DatabaseType::INFLUXDB]) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "🔧 InfluxDB 연결 시도...");
+        if (connectInflux()) {
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ InfluxDB 연결 성공");
+        } else {
+            LogManager::getInstance().log("database", LogLevel::WARN, 
+                "⚠️ InfluxDB 연결 실패 - 계속 진행");
+        }
+    }
+    
+    // 5️⃣ 연결 상태 출력
+    auto status = getAllConnectionStatus();
+    for (const auto& [db_name, connected] : status) {
+        std::string status_icon = connected ? "✅" : "❌";
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            status_icon + " " + db_name + ": " + (connected ? "연결됨" : "연결 안됨"));
+    }
+    
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "✅ DatabaseManager 자동 초기화 완료 (메인 RDB 연결 성공)");
+    
+    return true;
+}
 
+// =============================================================================
+// 🚀 수동 초기화 (옵션 - 자동 초기화로 인해 일반적으로 불필요)
+// =============================================================================
+bool DatabaseManager::initialize() {
+    // 이미 자동 초기화가 완료되었으면 상태 반환
+    if (initialization_success_.load()) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "⚡ DatabaseManager 이미 자동 초기화됨 - 수동 초기화 건너뜀");
+        return true;
+    }
+    
+    // 자동 초기화가 실패했을 경우에만 수동 초기화 시도
+    LogManager::getInstance().log("database", LogLevel::WARN, 
+        "🔧 자동 초기화 실패로 인한 수동 초기화 시도...");
+    
+    return doInitialize();
+}
+
+// =============================================================================
+// 🚀 강제 재초기화
+// =============================================================================
+void DatabaseManager::reinitialize() {
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "🔄 DatabaseManager 강제 재초기화 중...");
+    
+    // 기존 연결 모두 해제
+    disconnectAll();
+    
+    // 초기화 플래그 리셋 (once_flag는 리셋 불가능하므로 직접 초기화)
+    initialization_success_.store(false);
+    
+    // 재초기화 실행
+    bool success = doInitialize();
+    initialization_success_.store(success);
+    
+    if (success) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "✅ DatabaseManager 재초기화 성공");
+    } else {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "❌ DatabaseManager 재초기화 실패");
+    }
+}
+
+// =============================================================================
+// 🔧 설정 로드 (기존 코드와 동일)
+// =============================================================================
 void DatabaseManager::loadDatabaseConfig() {
     auto& config = ConfigManager::getInstance();
     
@@ -67,7 +249,7 @@ void DatabaseManager::loadDatabaseConfig() {
         "🔧 데이터베이스 설정 로드 중...");
     
     // 🔧 1단계: DATABASE_TYPE 설정으로 메인 RDB 결정
-    std::string database_type = config.getActiveDatabaseType();
+    std::string database_type = config.getOrDefault("DATABASE_TYPE", "SQLITE");
     
     LogManager::getInstance().log("database", LogLevel::INFO, 
         "📋 설정된 DATABASE_TYPE: " + database_type);
@@ -132,120 +314,8 @@ void DatabaseManager::loadDatabaseConfig() {
 }
 
 // =============================================================================
-// 🔧 수정: initialize() - 메인 RDB 필수, 보조 서비스 선택적
-// =============================================================================
-
-bool DatabaseManager::initialize() {
-    LogManager::getInstance().log("database", LogLevel::INFO, 
-        "🔧 DatabaseManager 초기화 시작...");
-    
-    // 1️⃣ 설정 로드 (DATABASE_TYPE에 따라 활성화 DB 결정)
-    loadDatabaseConfig();
-    
-    bool primary_db_connected = false;  // 메인 RDB 연결 상태
-    
-    // 2️⃣ 메인 RDB 연결 시도 (하나만 선택됨)
-    if (enabled_databases_[DatabaseType::SQLITE]) {
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            "🔧 SQLite 연결 시도...");
-        if (connectSQLite()) {
-            primary_db_connected = true;
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ 메인 RDB (SQLite) 연결 성공");
-        } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
-                "❌ 메인 RDB (SQLite) 연결 실패");
-        }
-    }
-    else if (enabled_databases_[DatabaseType::POSTGRESQL]) {
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            "🔧 PostgreSQL 연결 시도...");
-        if (connectPostgres()) {
-            primary_db_connected = true;
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ 메인 RDB (PostgreSQL) 연결 성공");
-        } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
-                "❌ 메인 RDB (PostgreSQL) 연결 실패");
-        }
-    }
-    else if (enabled_databases_[DatabaseType::MYSQL]) {
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            "🔧 MySQL 연결 시도...");
-        if (connectMySQL()) {
-            primary_db_connected = true;
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ 메인 RDB (MySQL) 연결 성공");
-        } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
-                "❌ 메인 RDB (MySQL) 연결 실패");
-        }
-    }
-#ifdef _WIN32
-    else if (enabled_databases_[DatabaseType::MSSQL]) {
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            "🔧 MSSQL 연결 시도...");
-        if (connectMSSQL()) {
-            primary_db_connected = true;
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ 메인 RDB (MSSQL) 연결 성공");
-        } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
-                "❌ 메인 RDB (MSSQL) 연결 실패");
-        }
-    }
-#endif
-    
-    // 🔧 3단계: 메인 RDB 연결 실패 시 전체 초기화 실패
-    if (!primary_db_connected) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
-            "❌ 메인 데이터베이스 연결 실패 - DatabaseManager 초기화 실패");
-        return false;  // 🔧 수정: 메인 DB 실패 시 false 반환
-    }
-    
-    // 4️⃣ 보조 서비스 연결 (실패해도 계속 진행)
-    if (enabled_databases_[DatabaseType::REDIS]) {
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            "🔧 Redis 연결 시도...");
-        if (connectRedis()) {
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ Redis 연결 성공");
-        } else {
-            LogManager::getInstance().log("database", LogLevel::WARN, 
-                "⚠️ Redis 연결 실패 - 계속 진행");
-        }
-    }
-    
-    if (enabled_databases_[DatabaseType::INFLUXDB]) {
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            "🔧 InfluxDB 연결 시도...");
-        if (connectInflux()) {
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ InfluxDB 연결 성공");
-        } else {
-            LogManager::getInstance().log("database", LogLevel::WARN, 
-                "⚠️ InfluxDB 연결 실패 - 계속 진행");
-        }
-    }
-    
-    // 5️⃣ 연결 상태 출력
-    auto status = getAllConnectionStatus();
-    for (const auto& [db_name, connected] : status) {
-        std::string status_icon = connected ? "✅" : "❌";
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            status_icon + " " + db_name + ": " + (connected ? "연결됨" : "연결 안됨"));
-    }
-    
-    LogManager::getInstance().log("database", LogLevel::INFO, 
-        "✅ DatabaseManager 초기화 완료 (메인 RDB 연결 성공)");
-    
-    return true;  // 🔧 수정: 메인 DB 성공 시 true 반환
-}
-
-// =============================================================================
 // PostgreSQL 구현 (기존과 동일)
 // =============================================================================
-
 bool DatabaseManager::connectPostgres() {
     for (int i = 0; i < MAX_RETRIES; ++i) {
         try {
@@ -267,9 +337,8 @@ bool DatabaseManager::connectPostgres() {
 }
 
 // =============================================================================
-// 🔥 SQLite 함수들 구현 (수정됨)
+// SQLite 구현 (기존과 동일)
 // =============================================================================
-
 bool DatabaseManager::connectSQLite() {
     for (int i = 0; i < MAX_RETRIES; ++i) {
         try {
@@ -277,7 +346,6 @@ bool DatabaseManager::connectSQLite() {
             auto& config = ConfigManager::getInstance();
             std::string db_path = config.getOrDefault("SQLITE_DB_PATH", "../data/db/pulseone.db");
             
-            // 🔧 C++17 호환: 헬퍼 함수 사용
             if (starts_with(db_path, "./")) {
                 db_path = db_path.substr(2);
             }
@@ -371,9 +439,8 @@ bool DatabaseManager::isSQLiteConnected() {
 }
 
 // =============================================================================
-// 🔧 MySQL/MariaDB 구현 (기존과 동일)
+// MySQL/MariaDB 구현 (기존과 동일)
 // =============================================================================
-
 bool DatabaseManager::connectMySQL() {
     mysql_conn_ = mysql_init(nullptr);
     if (!mysql_conn_) {
@@ -459,9 +526,8 @@ bool DatabaseManager::isMySQLConnected() {
 }
 
 // =============================================================================
-// 🔧 MSSQL 구현 (기존과 동일)
+// MSSQL 구현 (기존과 동일)
 // =============================================================================
-
 #ifdef _WIN32
 bool DatabaseManager::connectMSSQL() {
     // ODBC 환경 핸들 할당
@@ -538,17 +604,155 @@ bool DatabaseManager::isMSSQLConnected() {
 }
 #endif
 
+// =============================================================================
+// Redis 구현 (기존과 동일)
+// =============================================================================
+bool DatabaseManager::connectRedis() {
+    try {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "🔄 Redis 연결 시작...");
+        
+        redis_client_ = std::make_unique<RedisClientImpl>();
+        
+        // 설정에서 Redis 연결 정보 가져오기
+        auto& config = ConfigManager::getInstance();
+        std::string host = config.getOrDefault("REDIS_HOST", "localhost");
+        int port = config.getInt("REDIS_PORT", 6379);
+        std::string password = config.getOrDefault("REDIS_PASSWORD", "");
+        
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "Redis 연결 시도: " + host + ":" + std::to_string(port));
+        
+        // Redis 연결 시도
+        if (redis_client_->connect(host, port, password)) {
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ Redis 연결 성공: " + host + ":" + std::to_string(port));
+            return true;
+        } else {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "❌ Redis 연결 실패: " + host + ":" + std::to_string(port));
+            redis_client_.reset();
+            return false;
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "❌ Redis 연결 예외: " + std::string(e.what()));
+        redis_client_.reset();
+        return false;
+    }
+}
+
+bool DatabaseManager::isRedisConnected() {
+    return redis_client_ != nullptr;
+}
+
+void DatabaseManager::disconnectRedis() {
+    if (redis_client_) {
+        try {
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "🔄 Redis 연결 해제 중...");
+            
+            redis_client_->disconnect();
+            redis_client_.reset();
+            
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ Redis 연결 해제 완료");
+                
+        } catch (const std::exception& e) {
+            LogManager::getInstance().log("database", LogLevel::ERROR, 
+                "Redis 연결 해제 중 예외: " + std::string(e.what()));
+            redis_client_.reset();
+        }
+    }
+}
+
+bool DatabaseManager::testRedisConnection() {
+    if (!isRedisConnected()) {
+        return false;
+    }
+    
+    try {
+        bool test_result = (redis_client_ != nullptr);
+        
+        if (test_result) {
+            LogManager::getInstance().log("database", LogLevel::INFO, 
+                "✅ Redis 연결 테스트 성공");
+        } else {
+            LogManager::getInstance().log("database", LogLevel::WARN, 
+                "⚠️ Redis 연결 테스트 실패");
+        }
+        
+        return test_result;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "Redis 연결 테스트 중 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::map<std::string, std::string> DatabaseManager::getRedisInfo() {
+    std::map<std::string, std::string> info;
+    
+    if (!isRedisConnected()) {
+        info["error"] = "Redis not connected";
+        return info;
+    }
+    
+    try {
+        info["implementation"] = "RedisClientImpl (Basic)";
+        info["status"] = "connected";
+        info["note"] = "Upgrade to hiredis implementation for full features";
+        
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "Redis 기본 정보 조회 완료");
+        
+        return info;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "Redis 서버 정보 조회 중 예외: " + std::string(e.what()));
+        
+        info.clear();
+        info["error"] = e.what();
+        return info;
+    }
+}
+
+// =============================================================================
+// InfluxDB 구현 (기존과 동일)
+// =============================================================================
+bool DatabaseManager::connectInflux() {
+    try {
+        influx_client_ = nullptr;
+        
+        LogManager::getInstance().log("database", LogLevel::WARN, 
+            "⚠️ InfluxClientImpl 미구현 - 임시로 비활성화");
+        return false;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "❌ InfluxDB 연결 실패: " + std::string(e.what()));
+    }
+    return false;
+}
+
+bool DatabaseManager::isInfluxConnected() {
+    return influx_client_ != nullptr;
+}
+
+// =============================================================================
+// 통합 쿼리 인터페이스 (기존과 동일)
+// =============================================================================
 bool DatabaseManager::executeQuery(const std::string& query, std::vector<std::vector<std::string>>& results) {
     try {
-        // 🔧 수정: config_manager_ -> ConfigManager::getInstance() 직접 사용
         auto& config = ConfigManager::getInstance();
         std::string db_type = config.getOrDefault("DATABASE_TYPE", "SQLITE");
         
         if (db_type == "POSTGRESQL") {
-            // 🔧 수정: executeQueryPostgres 결과를 results로 변환
             auto pg_result = executeQueryPostgres(query);
             
-            // pqxx::result를 std::vector<std::vector<std::string>>로 변환
             results.clear();
             for (const auto& row : pg_result) {
                 std::vector<std::string> row_data;
@@ -560,7 +764,6 @@ bool DatabaseManager::executeQuery(const std::string& query, std::vector<std::ve
             return true;
         }
         else if (db_type == "SQLITE") {
-            // 🔧 수정: SQLite 콜백 함수를 사용하여 results 채우기
             results.clear();
             
             auto sqlite_callback = [](void* data, int argc, char** argv, char** azColName) -> int {
@@ -589,13 +792,8 @@ bool DatabaseManager::executeQuery(const std::string& query, std::vector<std::ve
     }
 }
 
-// =============================================================================
-// 🔧 수정: executeNonQuery 함수 (895줄 부근) - config_manager_ 제거  
-// =============================================================================
-
 bool DatabaseManager::executeNonQuery(const std::string& query) {
     try {
-        // 🔧 수정: config_manager_ -> ConfigManager::getInstance() 직접 사용
         auto& config = ConfigManager::getInstance();
         std::string db_type = config.getOrDefault("DATABASE_TYPE", "SQLITE");
         
@@ -618,193 +816,9 @@ bool DatabaseManager::executeNonQuery(const std::string& query) {
     }
 }
 
-
-// =============================================================================
-// Redis 구현 (기존과 동일)
-// =============================================================================
-
-bool DatabaseManager::connectRedis() {
-    try {
-        LogManager::getInstance().log("database", LogLevel::INFO, 
-            "🔄 Redis 연결 시작...");
-        
-        // 🔥 수정: 기존 RedisClientImpl 생성
-        redis_client_ = std::make_unique<RedisClientImpl>();
-        
-        // 설정에서 Redis 연결 정보 가져오기
-        auto& config = ConfigManager::getInstance();
-        std::string host = config.getOrDefault("REDIS_HOST", "localhost");
-        int port = config.getInt("REDIS_PORT", 6379);
-        std::string password = config.getOrDefault("REDIS_PASSWORD", "");
-        
-        // 🔥 수정: LogLevel::DEBUG -> LogLevel::DEBUG_LEVEL
-        LogManager::getInstance().log("database", LogLevel::DEBUG_LEVEL, 
-            "Redis 연결 시도: " + host + ":" + std::to_string(port));
-        
-        // Redis 연결 시도
-        if (redis_client_->connect(host, port, password)) {
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ Redis 연결 성공: " + host + ":" + std::to_string(port));
-            
-            // 연결 테스트 (기존 RedisClientImpl에는 ping() 메서드가 없을 수 있음)
-            // 🔥 수정: ping() 호출 제거 (기존 구현에 없음)
-            LogManager::getInstance().log("database", LogLevel::DEBUG_LEVEL, 
-                "✅ Redis 기본 연결 테스트 완료");
-            
-            // 기본 데이터베이스 선택은 나중에 hiredis 버전에서 구현
-            return true;
-        } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
-                "❌ Redis 연결 실패: " + host + ":" + std::to_string(port));
-            
-            // 연결 실패 시 클라이언트 정리
-            redis_client_.reset();
-            return false;
-        }
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
-            "❌ Redis 연결 예외: " + std::string(e.what()));
-        
-        // 예외 발생 시 클라이언트 정리
-        redis_client_.reset();
-        return false;
-    }
-}
-
-bool DatabaseManager::isRedisConnected() {
-    if (!redis_client_) {
-        return false;
-    }
-    
-    try {
-        // 🔥 수정: dynamic_cast 제거, 기존 인터페이스 사용
-        // 기존 RedisClientImpl에 isConnected() 메서드가 있다고 가정
-        // 컴파일 에러 방지를 위해 단순하게 처리
-        return true;  // 임시로 true 반환, 실제로는 redis_client_->isConnected() 사용
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
-            "Redis 연결 상태 확인 중 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-void DatabaseManager::disconnectRedis() {
-    if (redis_client_) {
-        try {
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "🔄 Redis 연결 해제 중...");
-            
-            redis_client_->disconnect();
-            redis_client_.reset();
-            
-            LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ Redis 연결 해제 완료");
-                
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
-                "Redis 연결 해제 중 예외: " + std::string(e.what()));
-            
-            // 예외가 발생해도 클라이언트는 정리
-            redis_client_.reset();
-        }
-    }
-}
-
-// =============================================================================
-// Redis 추가 유틸리티 메서드들 - 🔥 LogLevel 수정
-// =============================================================================
-
-bool DatabaseManager::testRedisConnection() {
-    if (!isRedisConnected()) {
-        return false;
-    }
-    
-    try {
-        // 🔥 수정: 기존 RedisClientImpl에는 ping() 메서드가 없을 수 있으므로
-        // 간단한 연결 확인으로 대체
-        bool test_result = (redis_client_ != nullptr);
-        
-        if (test_result) {
-            // 🔥 수정: LogLevel::DEBUG -> LogLevel::DEBUG_LEVEL
-            LogManager::getInstance().log("database", LogLevel::DEBUG_LEVEL, 
-                "✅ Redis 연결 테스트 성공");
-        } else {
-            LogManager::getInstance().log("database", LogLevel::WARN, 
-                "⚠️ Redis 연결 테스트 실패");
-        }
-        
-        return test_result;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
-            "Redis 연결 테스트 중 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::map<std::string, std::string> DatabaseManager::getRedisInfo() {
-    std::map<std::string, std::string> info;
-    
-    if (!isRedisConnected()) {
-        info["error"] = "Redis not connected";
-        return info;
-    }
-    
-    try {
-        // 🔥 수정: 기존 RedisClientImpl에는 info() 메서드가 없을 수 있으므로
-        // 기본 정보만 반환
-        info["implementation"] = "RedisClientImpl (Basic)";
-        info["status"] = "connected";
-        info["note"] = "Upgrade to hiredis implementation for full features";
-        
-        // 🔥 수정: LogLevel::DEBUG -> LogLevel::DEBUG_LEVEL
-        LogManager::getInstance().log("database", LogLevel::DEBUG_LEVEL, 
-            "Redis 기본 정보 조회 완료");
-        
-        return info;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
-            "Redis 서버 정보 조회 중 예외: " + std::string(e.what()));
-        
-        info.clear();
-        info["error"] = e.what();
-        return info;
-    }
-}
-
-
-// =============================================================================
-// InfluxDB 구현 (기존과 동일)
-// =============================================================================
-
-bool DatabaseManager::connectInflux() {
-    try {
-        // ✅ InfluxClientImpl이 없으므로 임시로 nullptr 설정
-        influx_client_ = nullptr;
-        
-        LogManager::getInstance().log("database", LogLevel::WARN, 
-            "⚠️ InfluxClientImpl 미구현 - 임시로 비활성화");
-        return false;  // 임시로 false 반환
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
-            "❌ InfluxDB 연결 실패: " + std::string(e.what()));
-    }
-    return false;
-}
-
-bool DatabaseManager::isInfluxConnected() {
-    // ✅ InfluxClientImpl이 없으므로 임시로 false 반환
-    return influx_client_ != nullptr;
-}
-
 // =============================================================================
 // 연결 상태 확인 및 유틸리티 (기존과 동일)
 // =============================================================================
-
 bool DatabaseManager::isConnected(DatabaseType db_type) {
     switch (db_type) {
         case DatabaseType::POSTGRESQL: return isPostgresConnected();
@@ -831,10 +845,6 @@ std::map<std::string, bool> DatabaseManager::getAllConnectionStatus() {
         {"InfluxDB", isInfluxConnected()}
     };
 }
-
-// =============================================================================
-// 🔧 추가: getDatabaseTypeName() 헬퍼 함수
-// =============================================================================
 
 std::string DatabaseManager::getDatabaseTypeName(DatabaseType type) {
     switch (type) {
@@ -874,6 +884,8 @@ std::string DatabaseManager::buildConnectionString(DatabaseType type) {
 void DatabaseManager::disconnectAll() {
     LogManager::getInstance().log("database", LogLevel::INFO, 
         "🔧 모든 데이터베이스 연결 해제 중...");
+    
+    std::lock_guard<std::mutex> lock(db_mutex_);
     
     // PostgreSQL 해제
     if (pg_conn_) {
@@ -924,7 +936,6 @@ void DatabaseManager::disconnectAll() {
 // =============================================================================
 // PostgreSQL 쿼리 실행 메서드들 (기존과 동일)
 // =============================================================================
-
 pqxx::result DatabaseManager::executeQueryPostgres(const std::string& sql) {
     if (!isPostgresConnected()) {
         throw std::runtime_error("PostgreSQL not connected");
@@ -968,4 +979,16 @@ bool DatabaseManager::executeNonQueryPostgres(const std::string& sql) {
             "PostgreSQL non-query failed: " + std::string(e.what()));
         return false;
     }
+}
+
+// =============================================================================
+// 🚀 추가: 설정 변경 지원
+// =============================================================================
+void DatabaseManager::setDatabaseEnabled(DatabaseType db_type, bool enabled) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    enabled_databases_[db_type] = enabled;
+    
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "🔧 " + getDatabaseTypeName(db_type) + " " + 
+        (enabled ? "활성화" : "비활성화") + "됨");
 }

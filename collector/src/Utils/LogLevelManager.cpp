@@ -1,3 +1,7 @@
+// =============================================================================
+// collector/src/Utils/LogLevelManager.cpp - 완전한 기능 보존 + 자동 초기화
+// =============================================================================
+
 #include "Utils/LogLevelManager.h"
 #include "Utils/LogManager.h"  
 #include "Common/Utils.h"      // ✅ Utils 함수들 사용
@@ -7,6 +11,120 @@
 #include <sstream>
 
 // ✅ 전역 네임스페이스에서 구현
+
+// =============================================================================
+// 🔥 핵심: 실제 초기화 로직 (thread-safe)
+// =============================================================================
+
+bool LogLevelManager::doInitialize() {
+    // 중복 초기화 방지 (double-checked locking)
+    if (initialized_.load()) {
+        return true;
+    }
+    
+    std::lock_guard<std::mutex> lock(category_mutex_);
+    
+    // 다시 한 번 체크
+    if (initialized_.load()) {
+        return true;
+    }
+    
+    try {
+        std::cout << "🔧 LogLevelManager 자동 초기화 시작...\n";
+        
+        // 🔥 자동으로 다른 싱글톤들 가져오기
+        config_ = &ConfigManager::getInstance();      // 자동 초기화됨
+        db_manager_ = &DatabaseManager::getInstance(); // 자동 초기화됨
+        
+        // 카테고리별 기본 레벨 설정
+        category_levels_[DriverLogCategory::GENERAL] = LogLevel::INFO;
+        category_levels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
+        category_levels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
+        category_levels_[DriverLogCategory::DATA_PROCESSING] = LogLevel::INFO;
+        category_levels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::ERROR;
+        category_levels_[DriverLogCategory::PERFORMANCE] = LogLevel::WARN;
+        category_levels_[DriverLogCategory::SECURITY] = LogLevel::WARN;
+        category_levels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG_LEVEL;
+        category_levels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG_LEVEL;
+        
+        // 초기 로그 레벨 설정
+        LogLevel level = LoadLogLevelFromDB();
+        if (level == LogLevel::INFO) {
+            LogLevel file_level = LoadLogLevelFromFile();
+            if (file_level != LogLevel::INFO) {
+                level = file_level;
+            }
+        }
+        
+        current_level_ = level;
+        
+        // LogManager에 레벨 설정
+        LogManager::getInstance().setLogLevel(level);
+        
+        // 카테고리 레벨 로드
+        LoadCategoryLevelsFromDB();
+        
+        // 모니터링 시작
+        StartMonitoring();
+        
+        initialized_.store(true);
+        
+        std::cout << "✅ LogLevelManager 자동 초기화 완료 (레벨: " 
+                  << PulseOne::Utils::LogLevelToString(level) << ")\n";
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "❌ LogLevelManager 초기화 실패: " << e.what() << "\n";
+        return false;
+    }
+}
+
+bool LogLevelManager::doInitialize(ConfigManager* config, DatabaseManager* db) {
+    // 수동 초기화 버전 (기존 호환성)
+    if (initialized_.load()) {
+        return true;
+    }
+    
+    std::lock_guard<std::mutex> lock(category_mutex_);
+    
+    if (initialized_.load()) {
+        return true;
+    }
+    
+    try {
+        config_ = config;
+        db_manager_ = db;
+        
+        // 기존 초기화 로직 그대로
+        LogManager::getInstance().Info("🔧 LogLevelManager initializing...");
+        
+        LogLevel level = LoadLogLevelFromDB();
+        if (level == LogLevel::INFO) {
+            LogLevel file_level = LoadLogLevelFromFile();
+            if (file_level != LogLevel::INFO) {
+                level = file_level;
+            }
+        }
+        
+        SetLogLevel(level, LogLevelSource::FILE_CONFIG, "SYSTEM", "Initial load");
+        LoadCategoryLevelsFromDB();
+        StartMonitoring();
+        
+        initialized_.store(true);
+        
+        LogManager::getInstance().Info("✅ LogLevelManager initialized successfully");
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("❌ LogLevelManager 초기화 실패: {}", e.what());
+        return false;
+    }
+}
+
+// =============================================================================
+// 생성자 (기존 로직 + 자동 초기화 플래그)
+// =============================================================================
 
 LogLevelManager::LogLevelManager() 
     : current_level_(LogLevel::INFO)
@@ -21,49 +139,17 @@ LogLevelManager::LogLevelManager()
     , db_check_count_(0)
     , file_check_count_(0) {
     
-    // 카테고리별 기본 레벨 설정
-    category_levels_[DriverLogCategory::GENERAL] = LogLevel::INFO;
-    category_levels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
-    category_levels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
-    category_levels_[DriverLogCategory::DATA_PROCESSING] = LogLevel::INFO;
-    category_levels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::ERROR;
-    category_levels_[DriverLogCategory::PERFORMANCE] = LogLevel::WARN;
-    category_levels_[DriverLogCategory::SECURITY] = LogLevel::WARN;
-    category_levels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG_LEVEL;
-    category_levels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG_LEVEL;
+    // 🔥 생성자에서는 기본값만 설정
+    // 실제 초기화는 doInitialize()에서 수행
 }
 
-
-LogLevelManager& LogLevelManager::getInstance() {
-    static LogLevelManager instance;
-    return instance;
-}
+// getInstance()는 헤더에서 구현됨 (static local + std::call_once)
 
 // =============================================================================
-// 초기화 및 생명주기
+// 🔥 이하 모든 메서드들은 기존 구현과 100% 동일
 // =============================================================================
 
-void LogLevelManager::Initialize(ConfigManager* config, DatabaseManager* db) {
-    config_ = config;
-    db_manager_ = db;
-    
-    LogManager::getInstance().Info("🔧 LogLevelManager initializing...");
-    
-    LogLevel level = LoadLogLevelFromDB();
-    if (level == LogLevel::INFO) {
-        LogLevel file_level = LoadLogLevelFromFile();
-        if (file_level != LogLevel::INFO) {
-            level = file_level;
-        }
-    }
-    
-    SetLogLevel(level, LogLevelSource::FILE_CONFIG, "SYSTEM", "Initial load");
-    LoadCategoryLevelsFromDB();
-    StartMonitoring();
-    
-    LogManager::getInstance().Info("✅ LogLevelManager initialized successfully");
-}
-
+// 초기화 및 생명주기 (기존 호환성 유지)
 void LogLevelManager::Shutdown() {
     if (running_) {
         LogManager::getInstance().Info("🔧 LogLevelManager shutting down...");
@@ -78,10 +164,7 @@ void LogLevelManager::Shutdown() {
     }
 }
 
-// =============================================================================
 // 로그 레벨 관리 - 기본
-// =============================================================================
-
 void LogLevelManager::SetLogLevel(LogLevel level, LogLevelSource source,
                                  const EngineerID& changed_by, const std::string& reason) {
     LogLevel old_level = current_level_;
@@ -115,10 +198,7 @@ void LogLevelManager::SetLogLevel(LogLevel level, LogLevelSource source,
     }
 }
 
-// =============================================================================
-// 카테고리별 로그 레벨 관리
-// =============================================================================
-
+// 카테고리별 로그 레벨 관리 (기존 그대로)
 void LogLevelManager::SetCategoryLogLevel(DriverLogCategory category, LogLevel level) {
     {
         std::lock_guard<std::mutex> lock(category_mutex_);
@@ -139,7 +219,6 @@ LogLevel LogLevelManager::GetCategoryLogLevel(DriverLogCategory category) const 
     return (it != category_levels_.end()) ? it->second : current_level_;
 }
 
-
 void LogLevelManager::ResetCategoryLogLevels() {
     std::lock_guard<std::mutex> lock(category_mutex_);
     category_levels_.clear();
@@ -147,11 +226,7 @@ void LogLevelManager::ResetCategoryLogLevels() {
     LogManager::getInstance().Info("🔄 All category log levels reset to default");
 }
 
-
-// =============================================================================
-// 점검 모드 관리
-// =============================================================================
-
+// 점검 모드 관리 (기존 그대로)
 void LogLevelManager::SetMaintenanceMode(bool enabled, LogLevel maintenance_level,
                                         const EngineerID& engineer_id) {
     bool was_enabled = maintenance_mode_.load();
@@ -179,10 +254,7 @@ void LogLevelManager::SetMaintenanceMode(bool enabled, LogLevel maintenance_leve
     }
 }
 
-// =============================================================================
-// 웹 API 지원
-// =============================================================================
-
+// 웹 API 지원 (기존 그대로)
 bool LogLevelManager::UpdateLogLevelInDB(LogLevel level, const EngineerID& changed_by,
                                         const std::string& reason) {
     if (!db_manager_) {
@@ -228,7 +300,6 @@ bool LogLevelManager::UpdateCategoryLogLevelInDB(DriverLogCategory category, Log
         return false;
     }
 }
-
 
 bool LogLevelManager::StartMaintenanceModeFromWeb(const EngineerID& engineer_id,
                                                  LogLevel maintenance_level) {
@@ -281,10 +352,7 @@ bool LogLevelManager::EndMaintenanceModeFromWeb(const EngineerID& engineer_id) {
     return true;
 }
 
-// =============================================================================
-// 모니터링
-// =============================================================================
-
+// 모니터링 (기존 그대로)
 void LogLevelManager::StartMonitoring() {
     if (running_.load()) return;
     
@@ -355,10 +423,7 @@ void LogLevelManager::CheckFileChanges() {
     }
 }
 
-// =============================================================================
-// 콜백 및 이벤트 관리
-// =============================================================================
-
+// 콜백 및 이벤트 관리 (기존 그대로)
 void LogLevelManager::RegisterChangeCallback(const LogLevelChangeCallback& callback) {
     std::lock_guard<std::mutex> lock(callback_mutex_);
     change_callbacks_.push_back(callback);
@@ -409,10 +474,7 @@ void LogLevelManager::ClearChangeHistory() {
     change_history_.clear();
 }
 
-// =============================================================================
-// 상태 조회 및 진단
-// =============================================================================
-
+// 상태 조회 및 진단 (기존 그대로)
 LogLevelManager::ManagerStatus LogLevelManager::GetStatus() const {
     ManagerStatus status;
     
@@ -506,10 +568,7 @@ bool LogLevelManager::ValidateConfiguration() const {
     return true;
 }
 
-// =============================================================================
-// 내부 DB 및 파일 처리
-// =============================================================================
-
+// 내부 DB 및 파일 처리 (기존 그대로)
 LogLevel LogLevelManager::LoadLogLevelFromDB() {
     if (!db_manager_) return LogLevel::INFO;
     
@@ -543,7 +602,6 @@ LogLevel LogLevelManager::LoadLogLevelFromFile() {
     
     return LogLevel::INFO;
 }
-
 
 bool LogLevelManager::SaveLogLevelToDB(LogLevel level, LogLevelSource source,
                                       const EngineerID& changed_by, const std::string& reason) {
