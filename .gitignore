@@ -75,3 +75,7 @@ docker-compose.override.yml
 *.zip.vscode/settings.json
 secrets/
 *.key
+
+
+*.d
+*.o

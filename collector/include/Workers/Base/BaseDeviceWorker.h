@@ -238,11 +238,6 @@ public:
      */
     virtual std::string GetStatusJson() const;
     
-    /**
-     * @brief 디바이스 정보 조회
-     * @return 디바이스 정보
-     */
-    const PulseOne::DeviceInfo& GetDeviceInfo() const { return device_info_; }
     // ==========================================================================
     // 🔥 파이프라인 연결 메서드들 (임시 비활성화)
     // ==========================================================================
@@ -312,6 +307,40 @@ public:
      * @return 에러 상태이면 true
      */
     bool IsErrorState(WorkerState state);
+
+    // 프로토콜 타입은 device_info_에서 가져오기
+    std::string GetProtocolType() const { 
+        return device_info_.protocol_type;  // ✅ 이미 있음!
+    }
+    
+    void SetProtocolType(const std::string& protocol_type) { 
+        device_info_.protocol_type = protocol_type;  // ✅ DeviceInfo 직접 수정
+    }
+    
+    // 속성도 device_info_에서 가져오기
+    std::string GetProperty(const std::string& key, const std::string& default_value = "") const {
+        auto it = device_info_.properties.find(key);  // ✅ 이미 있는 properties 사용!
+        return (it != device_info_.properties.end()) ? it->second : default_value;
+    }
+    
+    void SetProperty(const std::string& key, const std::string& value) {
+        device_info_.properties[key] = value;  // ✅ DeviceInfo.properties 직접 수정
+    }
+    
+    // 기타 DeviceInfo 정보들도 직접 접근
+    const std::string& GetDeviceName() const { return device_info_.name; }
+    const std::string& GetEndpoint() const { return device_info_.endpoint; }
+    bool IsEnabled() const { return device_info_.is_enabled; }
+    uint32_t GetPollingInterval() const { return device_info_.polling_interval_ms; }
+    uint32_t GetTimeout() const { return device_info_.timeout_ms; }
+    
+    // DeviceInfo 전체 접근
+    const PulseOne::Structs::DeviceInfo& GetDeviceInfo() const { return device_info_; }
+    PulseOne::Structs::DeviceInfo& GetDeviceInfo() { return device_info_; }
+    
+    // DataPoints 접근
+    std::vector<PulseOne::Structs::DataPoint>& GetDataPoints() { return data_points_; }
+
 
     PulseOne::DeviceInfo device_info_;                    ///< 디바이스 정보
     std::string worker_id_;
