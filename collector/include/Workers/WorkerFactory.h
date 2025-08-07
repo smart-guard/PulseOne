@@ -55,9 +55,7 @@ class BaseDeviceWorker;
 
 // ✅ WorkerCreator 타입 정의 - 전역 클래스 사용
 using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(
-    const PulseOne::Structs::DeviceInfo& device_info,
-    const std::vector<PulseOne::Structs::DataPoint>& data_points  // 🔥 이것으로 변경
-)>;
+    const PulseOne::Structs::DeviceInfo& device_info)>;
 
 struct FactoryStats {
     uint64_t workers_created = 0;
@@ -126,7 +124,10 @@ private:
     
     // ✅ 새로 추가: 데이터 품질 헬퍼 함수
     std::string DataQualityToString(PulseOne::Enums::DataQuality quality) const;
+    void ApplyDefaultSettings(PulseOne::Structs::DeviceInfo& device_info, 
+                                        const std::string& protocol_type) const;
 
+    void ValidateAndCorrectSettings(PulseOne::Structs::DeviceInfo& device_info) const;
     void ApplyProtocolSpecificDefaults(PulseOne::Structs::DeviceInfo& device_info, 
                                       const std::string& protocol_type) const;
     std::atomic<bool> initialized_{false};

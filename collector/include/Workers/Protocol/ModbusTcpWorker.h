@@ -45,7 +45,7 @@ namespace Workers {
 
     // Modbus 특화 타입들
     using ModbusDriver = PulseOne::Drivers::ModbusDriver;
-
+    using ModbusRegisterType = PulseOne::Enums::ModbusRegisterType;
 
 enum class ModbusRegisterType {
     COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
@@ -90,17 +90,7 @@ struct ModbusTcpPollingGroup {
  */
 class ModbusTcpWorker : public TcpBasedWorker {
 public:
-    /**
-     * @brief 생성자
-     * @param device_info 디바이스 정보
-     * @param redis_client Redis 클라이언트 (선택적)
-     * @param influx_client InfluxDB 클라이언트 (선택적)
-     */
     explicit ModbusTcpWorker(const PulseOne::DeviceInfo& device_info);
-    
-    /**
-     * @brief 소멸자
-     */
     virtual ~ModbusTcpWorker();
 
     // =============================================================================

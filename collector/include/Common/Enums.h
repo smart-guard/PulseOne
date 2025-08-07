@@ -359,6 +359,16 @@ namespace Enums {
         read_write = 2      // 읽기/쓰기
     };
 
+    /**
+     * @brief Modbus 레지스터 타입 (공통 정의)
+     */
+    enum class ModbusRegisterType : uint8_t {
+        COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
+        DISCRETE_INPUT = 1,    ///< 접점 입력 (0x02)
+        HOLDING_REGISTER = 2,  ///< 홀딩 레지스터 (0x03, 0x06, 0x10)
+        INPUT_REGISTER = 3     ///< 입력 레지스터 (0x04)
+    };
+
 
 } // namespace Enums
 } // namespace PulseOne

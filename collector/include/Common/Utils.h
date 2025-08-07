@@ -732,8 +732,8 @@ namespace PulseOne::Utils {
         if (upper == "UINT64") return "UINT64";
         
         // 🔥 핵심: 부동소수점 정규화 (당신이 말한 float 규칙)
-        if (upper == "FLOAT" || upper == "FLOAT32") return "FLOAT";    // 32비트 → "FLOAT"
-        if (upper == "DOUBLE" || upper == "FLOAT64") return "DOUBLE";  // 64비트 → "DOUBLE"
+        if (upper == "FLOAT" || upper == "FLOAT32") return "FLOAT32";    // 32비트 → "FLOAT"
+        if (upper == "DOUBLE" || upper == "FLOAT64") return "FLOAT64";  // 64비트 → "DOUBLE"
         
         if (upper == "STRING") return "STRING";
         if (upper == "BINARY") return "BINARY";

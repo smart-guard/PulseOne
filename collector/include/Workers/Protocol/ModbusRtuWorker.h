@@ -31,23 +31,16 @@
 // PulseOne 헤더들 (기존과 동일)
 #include "Workers/Base/SerialBasedWorker.h"
 #include "Common/Structs.h"              // ✅ DriverConfig 포함
+#include "Common/Enums.h"
 
 // ✅ 네임스페이스
 namespace PulseOne {
 namespace Workers {
 
 // 🔥 실제 존재하는 타입들만 사용
-using DeviceInfo = PulseOne::Structs::DeviceInfo;
-using DataPoint = PulseOne::Structs::DataPoint;
-// WorkerState는 BaseDeviceWorker에서 상속됨 (중복 정의 제거)
-
-// 🔥 ModbusRegisterType만 정의 (실제 파일에 없으므로 여기서 정의)
-enum class ModbusRegisterType : uint8_t {
-    COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
-    DISCRETE_INPUT = 1,    ///< 접점 입력 (0x02)
-    HOLDING_REGISTER = 2,  ///< 홀딩 레지스터 (0x03, 0x06, 0x10)
-    INPUT_REGISTER = 3     ///< 입력 레지스터 (0x04)
-};
+    using DeviceInfo = PulseOne::Structs::DeviceInfo;
+    using DataPoint = PulseOne::Structs::DataPoint;
+    using ModbusRegisterType = PulseOne::Enums::ModbusRegisterType;
 
 /**
  * @brief Modbus RTU 폴링 그룹

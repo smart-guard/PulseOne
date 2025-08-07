@@ -14,6 +14,8 @@ obj/Workers/WorkerFactory.o: ../src/Workers/WorkerFactory.cpp \
  ../include/Drivers/Modbus/ModbusDriver.h \
  ../include/Drivers/Common/IProtocolDriver.h \
  ../include/Common/DriverStatistics.h \
+ ../include/Workers/Protocol/ModbusRtuWorker.h \
+ ../include/Workers/Base/SerialBasedWorker.h \
  ../include/Workers/Protocol/MqttWorker.h \
  ../include/Drivers/Mqtt/MqttDriver.h ../include/Common/DriverError.h \
  ../include/Drivers/Mqtt/MqttDiagnostics.h \
