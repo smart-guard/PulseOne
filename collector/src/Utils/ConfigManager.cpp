@@ -430,6 +430,28 @@ std::string ConfigManager::get(const std::string& key) const {
 }
 
 std::string ConfigManager::getOrDefault(const std::string& key, const std::string& defaultValue) const {
+    // SQLite 관련 키면 두 키 다 찾아보기
+    if (key == "SQLITE_DB_PATH") {
+        std::string value = get("SQLITE_DB_PATH");
+        if (!value.empty()) return value;
+        
+        value = get("SQLITE_PATH");  // 대체 키 시도
+        if (!value.empty()) return value;
+        
+        return defaultValue;
+    }
+    
+    if (key == "SQLITE_PATH") {
+        std::string value = get("SQLITE_PATH");
+        if (!value.empty()) return value;
+        
+        value = get("SQLITE_DB_PATH");  // 대체 키 시도
+        if (!value.empty()) return value;
+        
+        return defaultValue;
+    }
+    
+    // 다른 키들은 기존 로직 그대로
     std::lock_guard<std::mutex> lock(configMutex);
     auto it = configMap.find(key);
     return (it != configMap.end()) ? it->second : defaultValue;
@@ -486,7 +508,20 @@ std::string ConfigManager::getDataDirectory() const {
 }
 
 std::string ConfigManager::getSQLiteDbPath() const {
-    return get("SQLITE_DB_PATH");
+    // SQLITE_DB_PATH 먼저 찾기
+    std::string db_path = get("SQLITE_DB_PATH");
+    if (!db_path.empty()) {
+        return db_path;
+    }
+    
+    // 없으면 SQLITE_PATH 찾기
+    db_path = get("SQLITE_PATH");
+    if (!db_path.empty()) {
+        return db_path;
+    }
+    
+    // 둘 다 없으면 기본값
+    return "./data/db/pulseone.db";
 }
 
 std::string ConfigManager::getBackupDirectory() const {

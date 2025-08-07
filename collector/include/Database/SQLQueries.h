@@ -177,13 +177,7 @@ namespace Device {
             
             created_by INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-            FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
-            FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
-            FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
-            FOREIGN KEY (created_by) REFERENCES users(id)
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     )";
     
@@ -379,22 +373,19 @@ namespace DataPoint {
             address INTEGER NOT NULL,
             data_type VARCHAR(20) NOT NULL,
             access_mode VARCHAR(10) DEFAULT 'read',
-            is_enabled BOOLEAN DEFAULT true,
+            is_enabled INTEGER DEFAULT 1,
             unit VARCHAR(20),
             scaling_factor DECIMAL(10,6) DEFAULT 1.0,
             scaling_offset DECIMAL(10,6) DEFAULT 0.0,
             min_value DECIMAL(15,6),
             max_value DECIMAL(15,6),
-            log_enabled BOOLEAN DEFAULT true,
+            log_enabled INTEGER DEFAULT 1,
             log_interval_ms INTEGER DEFAULT 0,
             log_deadband DECIMAL(10,6) DEFAULT 0.0,
             tags TEXT,
             metadata TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
-            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-            UNIQUE(device_id, address)
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     )";
     
@@ -505,7 +496,7 @@ namespace DeviceSettings {
             max_retry_count INTEGER DEFAULT 3,
             retry_interval_ms INTEGER DEFAULT 5000,
             backoff_time_ms INTEGER DEFAULT 60000,
-            keep_alive_enabled BOOLEAN DEFAULT true,
+            keep_alive_enabled INTEGER DEFAULT 1,
             keep_alive_interval_s INTEGER DEFAULT 30,
             
             -- 고급 설정
@@ -515,13 +506,11 @@ namespace DeviceSettings {
             backoff_multiplier DECIMAL(3,2) DEFAULT 1.5,
             max_backoff_time_ms INTEGER DEFAULT 300000,
             keep_alive_timeout_s INTEGER DEFAULT 10,
-            data_validation_enabled BOOLEAN DEFAULT true,
-            performance_monitoring_enabled BOOLEAN DEFAULT true,
-            diagnostic_mode_enabled BOOLEAN DEFAULT false,
+            data_validation_enabled INTEGER DEFAULT 1,
+            performance_monitoring_enabled INTEGER DEFAULT 1,
+            diagnostic_mode_enabled INTEGER DEFAULT 0,
             
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
-            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     )";
     
@@ -531,7 +520,19 @@ namespace DeviceSettings {
 // 🎯 CurrentValueRepository 쿼리들  
 // =============================================================================
 namespace CurrentValue {
-    
+
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS current_values (
+            point_id INTEGER PRIMARY KEY,
+            value DECIMAL(15,4),
+            raw_value DECIMAL(15,4),
+            string_value TEXT,
+            quality VARCHAR(20) DEFAULT 'good',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    )";
+
     const std::string FIND_ALL = R"(
         SELECT 
             point_id, value, raw_value, string_value, quality,
