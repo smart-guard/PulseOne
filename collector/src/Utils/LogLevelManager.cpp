@@ -15,6 +15,40 @@
 // =============================================================================
 // 🔥 핵심: 실제 초기화 로직 (thread-safe)
 // =============================================================================
+void LogLevelManager::ensureInitialized() {
+    // 빠른 체크 (이미 초기화됨)
+    if (initialized_.load(std::memory_order_acquire)) {
+        return;
+    }
+    
+    // 느린 체크 (뮤텍스 사용)
+    std::lock_guard<std::mutex> lock(init_mutex_);
+    if (initialized_.load(std::memory_order_relaxed)) {
+        return;
+    }
+    
+    // 실제 초기화 수행
+    doInitialize(nullptr, nullptr);
+    initialized_.store(true, std::memory_order_release);
+}
+
+LogLevelManager::LogLevelManager() 
+    : initialized_(false)
+    , current_level_(LogLevel::INFO)
+    , maintenance_level_(LogLevel::TRACE)
+    , config_(nullptr)
+    , db_manager_(nullptr)
+    , running_(false)
+    , maintenance_mode_(false)
+    , level_change_count_(0)
+    , db_check_count_(0)
+    , file_check_count_(0) {
+    // 생성자에서는 기본값만 설정
+}
+
+LogLevelManager::~LogLevelManager() { 
+    Shutdown(); 
+}
 
 bool LogLevelManager::doInitialize() {
     // 중복 초기화 방지 (double-checked locking)
@@ -122,28 +156,6 @@ bool LogLevelManager::doInitialize(ConfigManager* config, DatabaseManager* db) {
     }
 }
 
-// =============================================================================
-// 생성자 (기존 로직 + 자동 초기화 플래그)
-// =============================================================================
-
-LogLevelManager::LogLevelManager() 
-    : current_level_(LogLevel::INFO)
-    , maintenance_level_(LogLevel::TRACE)
-    , config_(nullptr)
-    , db_manager_(nullptr)
-    , running_(false)
-    , maintenance_mode_(false)
-    , last_db_check_(std::chrono::steady_clock::now())
-    , last_file_check_(std::chrono::steady_clock::now())
-    , level_change_count_(0)
-    , db_check_count_(0)
-    , file_check_count_(0) {
-    
-    // 🔥 생성자에서는 기본값만 설정
-    // 실제 초기화는 doInitialize()에서 수행
-}
-
-// getInstance()는 헤더에서 구현됨 (static local + std::call_once)
 
 // =============================================================================
 // 🔥 이하 모든 메서드들은 기존 구현과 100% 동일

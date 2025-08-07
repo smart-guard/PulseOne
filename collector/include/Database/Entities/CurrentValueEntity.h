@@ -207,15 +207,17 @@ public:
     void setRawValue(const std::string& raw_value) { raw_value_ = raw_value; markModified(); }
     void setValueType(const std::string& value_type) { value_type_ = value_type; markModified(); }
     
-    void setQualityCode(PulseOne::Enums::DataQuality quality_code) { 
-        if (quality_code_ != quality_code) {
-            quality_code_ = quality_code; 
-            quality_timestamp_ = std::chrono::system_clock::now();
-            markModified(); 
-        }
+    void setQuality(PulseOne::Enums::DataQuality quality_code) {
+        quality_code_ = quality_code;
+        quality_ = PulseOne::Utils::DataQualityToString(quality_code, true); // lowercase
+        markModified();
     }
     
-    void setQuality(const std::string& quality) { quality_ = quality; markModified(); }
+    void setQuality(const std::string& quality_str) {
+        quality_ = quality_str;
+        quality_code_ = PulseOne::Utils::StringToDataQuality(quality_str);
+        markModified();
+    }
     
     // 타임스탬프 Setter들
     void setValueTimestamp(const std::chrono::system_clock::time_point& timestamp) { 
@@ -368,9 +370,7 @@ public:
     /**
      * @brief 품질 상태를 문자열로 변환
      */
-    std::string getQualityString() const {
-        return PulseOne::Utils::DataQualityToString(quality_code_);
-    }
+    std::string getQualityString() const { return quality_; }
     
     /**
      * @brief 유효성 검사
@@ -447,6 +447,24 @@ public:
         
         return stats;
     }
+    void updateValue(const PulseOne::BasicTypes::DataVariant& new_value, PulseOne::Enums::DataQuality quality);
+    void updateValueWithRaw(const PulseOne::BasicTypes::DataVariant& current_val,
+                           const PulseOne::BasicTypes::DataVariant& raw_val, 
+                           PulseOne::Enums::DataQuality quality);
+    bool shouldLog(int log_interval_ms, double deadband) const;
+    void onRead();
+    void onWrite();
+    void onError();
+    double getNumericValue() const;
+    std::string getStringValue() const;
+    void resetStatistics();
+    json getFullStatus() const;
+
+    // 🔥 타입 불일치 수정:
+    double getValue() const;           // 기존: getRawValue()와 함께 제공
+    void setValue(double value);       // 기존: setRawValue()와 함께 제공
+    void setTimestamp(const std::chrono::system_clock::time_point& timestamp);
+    std::chrono::system_clock::time_point getTimestamp() const;    
 
 private:
     // =======================================================================

@@ -17,6 +17,36 @@ using LogLevel = PulseOne::Enums::LogLevel;
 // =============================================================================
 // 🔥 핵심: 실제 초기화 로직 (thread-safe)
 // =============================================================================
+void LogManager::ensureInitialized() {
+    // 빠른 체크 (이미 초기화됨)
+    if (initialized_.load(std::memory_order_acquire)) {
+        return;
+    }
+    
+    // 느린 체크 (뮤텍스 사용)
+    std::lock_guard<std::mutex> lock(init_mutex_);
+    if (initialized_.load(std::memory_order_relaxed)) {
+        return;
+    }
+    
+    // 실제 초기화 수행
+    doInitialize();
+    initialized_.store(true, std::memory_order_release);
+}
+
+LogManager::LogManager() 
+    : initialized_(false)
+    , minLevel_(LogLevel::INFO)
+    , defaultCategory_("system")
+    , maintenance_mode_enabled_(false)
+    , max_log_size_mb_(100)
+    , max_log_files_(30) {
+    // 생성자에서는 기본값만 설정
+}
+
+LogManager::~LogManager() {
+    flushAll();
+}
 
 bool LogManager::doInitialize() {
     // 중복 초기화 방지 (double-checked locking)
@@ -63,19 +93,6 @@ bool LogManager::doInitialize() {
         std::cerr << "❌ LogManager 초기화 실패: " << e.what() << "\n";
         return false;
     }
-}
-
-// =============================================================================
-// 생성자 및 소멸자 (기존 로직 + 자동 초기화 플래그)
-// =============================================================================
-
-LogManager::LogManager() {
-    // 🔥 생성자에서는 기본값만 설정
-    // 실제 초기화는 doInitialize()에서 수행
-}
-
-LogManager::~LogManager() {
-    flushAll();
 }
 
 // =============================================================================

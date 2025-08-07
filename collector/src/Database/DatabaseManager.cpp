@@ -19,15 +19,31 @@ namespace {
         }
         return str.substr(0, prefix.length()) == prefix;
     }
-    
-    // C++17용 ends_with 구현
-    bool ends_with(const std::string& str, const std::string& suffix) {
-        if (suffix.length() > str.length()) {
-            return false;
-        }
-        return str.substr(str.length() - suffix.length()) == suffix;
-    }
 }
+
+void DatabaseManager::ensureInitialized() {
+    if (initialization_success_.load(std::memory_order_acquire)) {
+        return;
+    }
+    
+    std::call_once(init_flag_, [this] {  // ✅ this 캡처로 경고 해결
+        try {
+            bool success = doInitialize();
+            initialization_success_.store(success, std::memory_order_release);
+            
+            if (success) {
+                LogManager::getInstance().Info("🚀 DatabaseManager 자동 초기화 성공!");
+            } else {
+                LogManager::getInstance().Error("❌ DatabaseManager 자동 초기화 실패!");
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("❌ DatabaseManager 초기화 예외: {}", e.what());
+            initialization_success_.store(false, std::memory_order_release);
+        }
+    });
+}
+
+
 
 // =============================================================================
 // 🚀 자동 초기화 정적 변수들
@@ -766,7 +782,7 @@ bool DatabaseManager::executeQuery(const std::string& query, std::vector<std::ve
         else if (db_type == "SQLITE") {
             results.clear();
             
-            auto sqlite_callback = [](void* data, int argc, char** argv, char** azColName) -> int {
+            auto sqlite_callback = [](void* data, int argc, char** argv, char** /*azColName*/) -> int {
                 auto* results_ptr = static_cast<std::vector<std::vector<std::string>>*>(data);
                 std::vector<std::string> row_data;
                 

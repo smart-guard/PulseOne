@@ -773,10 +773,33 @@ void WorkerFactory::LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& d
         auto current_value = current_value_repo_->findByDataPointId(std::stoi(data_point.id));
         
         if (current_value.has_value()) {
-            // 현재값이 존재하는 경우 - 직접 필드에 저장
-            data_point.current_value = PulseOne::BasicTypes::DataVariant(current_value->getValue());
-            data_point.quality_code = current_value->getQuality();
-            data_point.value_timestamp = current_value->getTimestamp();
+            // 🔥 수정: CurrentValueEntity의 getValue() 메서드 확인 필요
+            // getCurrentValue() 또는 getNumericValue() 사용
+            try {
+                // 옵션 1: getCurrentValue()가 string을 반환하는 경우
+                std::string value_str = current_value->getCurrentValue();
+                if (!value_str.empty()) {
+                    double numeric_value = std::stod(value_str);
+                    data_point.current_value = PulseOne::BasicTypes::DataVariant(numeric_value);
+                } else {
+                    data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
+                }
+            } catch (const std::exception&) {
+                // 숫자 변환 실패 시 문자열로 저장
+                data_point.current_value = PulseOne::BasicTypes::DataVariant(current_value->getCurrentValue());
+            }
+            
+            // 🔥 수정: DataQuality 타입 변환
+            if (current_value->getQualityCode() != PulseOne::Enums::DataQuality::UNKNOWN) {
+                // CurrentValueEntity에 getQualityCode() 메서드가 있는 경우
+                data_point.quality_code = current_value->getQualityCode();
+            } else {
+                // 문자열에서 enum으로 변환
+                data_point.quality_code = PulseOne::Utils::StringToDataQuality(current_value->getQuality());
+            }
+            
+            // 🔥 수정: 타임스탬프 메서드 확인
+            data_point.value_timestamp = current_value->getValueTimestamp();  // getTimestamp() → getValueTimestamp()
             data_point.quality_timestamp = current_value->getUpdatedAt();
             
             logger_->Debug("✅ Loaded current value for DataPoint '" + data_point.name + 

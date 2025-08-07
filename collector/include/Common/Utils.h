@@ -26,6 +26,7 @@
 #include <vector>
 #include <chrono>
 #include <ctime>
+#include <set>
 
 namespace PulseOne::Utils {
     
@@ -708,7 +709,58 @@ namespace PulseOne::Utils {
      * @brief 프로토콜 타입을 문자열로 변환 (enum 버전 - 기존 함수 유지)
      */
     // 기존 ProtocolTypeToString(ProtocolType type) 함수는 그대로 유지    
+    /**
+     * @brief 데이터 타입 문자열 정규화 (모든 곳에서 사용할 표준 함수)
+     * @param data_type 원본 데이터 타입 문자열
+     * @return 정규화된 데이터 타입 문자열
+     */
+    inline std::string NormalizeDataType(const std::string& data_type) {
+        if (data_type.empty()) return "UNKNOWN";
+        
+        std::string upper = data_type;
+        std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+        
+        // 🎯 PulseOne 표준 매핑 (Common/Enums.h의 DataType enum과 일치)
+        if (upper == "BOOLEAN" || upper == "BOOL") return "BOOL";
+        if (upper == "INT8") return "INT8";
+        if (upper == "UINT8") return "UINT8"; 
+        if (upper == "INT16") return "INT16";
+        if (upper == "UINT16") return "UINT16";
+        if (upper == "INT32") return "INT32";
+        if (upper == "UINT32") return "UINT32";
+        if (upper == "INT64") return "INT64";
+        if (upper == "UINT64") return "UINT64";
+        
+        // 🔥 핵심: 부동소수점 정규화 (당신이 말한 float 규칙)
+        if (upper == "FLOAT" || upper == "FLOAT32") return "FLOAT";    // 32비트 → "FLOAT"
+        if (upper == "DOUBLE" || upper == "FLOAT64") return "DOUBLE";  // 64비트 → "DOUBLE"
+        
+        if (upper == "STRING") return "STRING";
+        if (upper == "BINARY") return "BINARY";
+        if (upper == "DATETIME") return "DATETIME";
+        if (upper == "JSON") return "JSON";
+        if (upper == "ARRAY") return "ARRAY";
+        if (upper == "OBJECT") return "OBJECT";
+        
+        return upper; // 알 수 없는 타입은 대문자로만 변환
+    }
 
+    /**
+     * @brief 데이터 타입 유효성 검증
+     * @param data_type 검증할 데이터 타입
+     * @return 유효하면 true
+     */
+    inline bool IsValidDataType(const std::string& data_type) {
+        std::string normalized = NormalizeDataType(data_type);
+        
+        static const std::set<std::string> valid_normalized_types = {
+            "BOOL", "INT8", "UINT8", "INT16", "UINT16", "INT32", "UINT32", 
+            "INT64", "UINT64", "FLOAT", "DOUBLE", "STRING", "BINARY", 
+            "DATETIME", "JSON", "ARRAY", "OBJECT"
+        };
+        
+        return valid_normalized_types.find(normalized) != valid_normalized_types.end();
+    }
     
 } // namespace PulseOne::Utils
 

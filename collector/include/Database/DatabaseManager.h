@@ -182,7 +182,7 @@ private:
     ~DatabaseManager();
     DatabaseManager(const DatabaseManager&) = delete;
     DatabaseManager& operator=(const DatabaseManager&) = delete;
-    
+    void ensureInitialized();
     /**
      * @brief 실제 초기화 작업 수행
      * @return 초기화 성공 여부

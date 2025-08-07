@@ -314,7 +314,13 @@ public:
     // 통신 설정
     const std::string& getProtocolType() const { return protocol_type_; }
     void setProtocolType(const std::string& protocol_type) { 
-        protocol_type_ = protocol_type; 
+        std::string normalized = protocol_type;
+        
+        // 소문자 변환 + 공백을 언더스코어로
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::tolower);
+        std::replace(normalized.begin(), normalized.end(), ' ', '_');
+        
+        protocol_type_ = normalized;  // 정규화된 값을 저장 
         markModified();
     }
     

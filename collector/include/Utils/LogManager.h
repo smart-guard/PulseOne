@@ -1,6 +1,6 @@
 // =============================================================================
-// collector/include/Utils/LogManager.h - 완전한 기능 보존 + 자동 초기화
-// 기존 모든 기능 100% 유지 + getInstance()에서 자동 초기화 추가
+// collector/include/Utils/LogManager.h - 경고 없는 자동 초기화 버전
+// 🔥 FIX: std::call_once 관련 모든 경고 해결
 // =============================================================================
 
 #ifndef LOG_MANAGER_H
@@ -8,17 +8,10 @@
 
 /**
  * @file LogManager.h
- * @brief PulseOne 통합 로그 관리자 (완전 최종 버전) - 자동 초기화 지원
+ * @brief PulseOne 통합 로그 관리자 (완전 최종 버전) - 안전한 자동 초기화
  * @author PulseOne Development Team
  * @date 2025-07-29
- * @version 5.1.0 - 자동 초기화 기능 추가
- * 
- * 🎯 최종 완성:
- * - 🔥 NEW: getInstance() 호출 시 자동 초기화
- * - Common/Enums.h와 Common/Structs.h 사용
- * - LogManager는 전역 네임스페이스
- * - 모든 PulseOne 타입들을 그대로 활용
- * - 확장 기능 완전 지원
+ * @version 5.1.1 - 경고 없는 자동 초기화
  */
 
 #include "Common/Enums.h"
@@ -50,13 +43,13 @@ using UUID = PulseOne::BasicTypes::UUID;
 using EngineerID = PulseOne::BasicTypes::EngineerID;
 
 /**
- * @brief 통합 로그 관리자 (싱글톤, 전역 네임스페이스) - 자동 초기화 지원
+ * @brief 통합 로그 관리자 (싱글톤, 전역 네임스페이스) - 경고 없는 자동 초기화
  * @details 파일/콘솔 출력, 포맷팅, 카테고리 관리, 점검 기능 모두 포함
  */
 class LogManager {
 public:
     // =============================================================================
-    // 🔥 핵심 개선: 자동 초기화 getInstance
+    // 🔥 FIX: 경고 없는 자동 초기화 getInstance
     // =============================================================================
     
     /**
@@ -65,13 +58,7 @@ public:
      */
     static LogManager& getInstance() {
         static LogManager instance;
-        
-        // 🔥 자동 초기화: 처음 호출 시 한 번만 실행
-        static std::once_flag initialized;
-        std::call_once(initialized, [&instance] {
-            instance.doInitialize();
-        });
-        
+        instance.ensureInitialized();
         return instance;
     }
     
@@ -80,7 +67,7 @@ public:
      * @return 초기화 완료 시 true
      */
     bool isInitialized() const {
-        return initialized_.load();
+        return initialized_.load(std::memory_order_acquire);
     }
 
     // =============================================================================
@@ -140,7 +127,7 @@ public:
     }
 
     // =============================================================================
-    // 확장된 로그 메소드들 (Complete Common Types 사용) (기존 유지)
+    // 확장된 로그 메소드들 (Complete Common Types 사용)
     // =============================================================================
     void log(const std::string& category, LogLevel level, const std::string& message);
     void log(const std::string& category, const std::string& level, const std::string& message);
@@ -167,7 +154,7 @@ public:
                        DataQuality quality, const std::string& reason = "");
 
     // =============================================================================
-    // 로그 레벨 관리 (Complete Enums 지원) (기존 유지)
+    // 로그 레벨 관리 (Complete Enums 지원)
     // =============================================================================
     void setLogLevel(LogLevel level) { 
         std::lock_guard<std::mutex> lock(mutex_);
@@ -195,7 +182,7 @@ public:
     }
 
     // =============================================================================
-    // 통계 및 상태 관리 (Complete Structs 지원) (기존 유지)
+    // 통계 및 상태 관리 (Complete Structs 지원)
     // =============================================================================
     LogStatistics getStatistics() const;
     void resetStatistics();
@@ -207,23 +194,24 @@ private:
     // =============================================================================
     // 생성자/소멸자 (싱글톤)
     // =============================================================================
+    
     LogManager();
     ~LogManager();
+    
+    // 복사/이동 방지
     LogManager(const LogManager&) = delete;
     LogManager& operator=(const LogManager&) = delete;
+    LogManager(LogManager&&) = delete;
+    LogManager& operator=(LogManager&&) = delete;
 
     // =============================================================================
-    // 🔥 핵심: 실제 초기화 로직 (내부용)
+    // 🔥 경고 없는 초기화 로직
     // =============================================================================
-    
-    /**
-     * @brief 실제 초기화 로직 (thread-safe)
-     * @return 초기화 성공 여부
-     */
+    void ensureInitialized();
     bool doInitialize();
 
     // =============================================================================
-    // 내부 유틸리티 메소드들 (기존 유지)
+    // 내부 유틸리티 메소드들
     // =============================================================================
     std::string getCurrentDate();
     std::string getCurrentTime();
@@ -243,7 +231,7 @@ private:
     void updateStatistics(LogLevel level);
 
     // =============================================================================
-    // 포맷 문자열 구현 (기존 유지)
+    // 포맷 문자열 구현
     // =============================================================================
     template<typename T>
     void formatHelper(std::stringstream& ss, const std::string& format, size_t& pos, const T& value) {
@@ -279,30 +267,34 @@ private:
     // 멤버 변수들 (Complete Types 지원 + 초기화 상태)
     // =============================================================================
     
-    /// 🔥 NEW: 초기화 상태 추적
-    std::atomic<bool> initialized_{false};
+    /// 초기화 상태 (원자적 연산)
+    std::atomic<bool> initialized_;
     
+    /// 초기화용 뮤텍스
+    mutable std::mutex init_mutex_;
+    
+    /// 메인 뮤텍스와 로그 파일들
     mutable std::mutex mutex_;
     std::map<std::string, std::ofstream> logFiles_;
-    LogLevel minLevel_ = LogLevel::INFO;
-    std::string defaultCategory_ = "system";
+    LogLevel minLevel_;
+    std::string defaultCategory_;
     
-    // ✅ 카테고리별 로그 레벨 (Complete Enums)
+    /// 카테고리별 로그 레벨 (Complete Enums)
     std::map<DriverLogCategory, LogLevel> categoryLevels_;
     
-    // ✅ 점검 모드
-    bool maintenance_mode_enabled_ = false;
+    /// 점검 모드
+    bool maintenance_mode_enabled_;
     
-    // ✅ 통계 정보 (Complete Structs)
+    /// 통계 정보 (Complete Structs)
     mutable LogStatistics statistics_;
     
-    // 로그 로테이션 설정
-    size_t max_log_size_mb_ = 100;
-    int max_log_files_ = 30;
+    /// 로그 로테이션 설정
+    size_t max_log_size_mb_;
+    int max_log_files_;
 };
 
 // =============================================================================
-// 전역 편의 함수들 (Complete Types 지원) (기존 유지)
+// 전역 편의 함수들 (Complete Types 지원)
 // =============================================================================
 
 /**

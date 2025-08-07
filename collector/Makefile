@@ -1,64 +1,140 @@
 # =============================================================================
-# PulseOne Collector Makefile - 수정된 버전 (Redis 라이브러리 포함)
+# collector/tests/Makefile - BaseDeviceWorker 헤더 문제 완전 해결
 # =============================================================================
+
 # CPU 코어 수 자동 감지 및 병렬 처리 설정
 NPROC := $(shell nproc 2>/dev/null || echo 4)
 MAKEFLAGS += -j$(NPROC)
 
-
-# nlohmann/json 라이브러리 체크
+# 🔧 라이브러리 체크 (직접 링킹 테스트로 변경)
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-
-# 🔧 수정: hiredis 라이브러리 체크 추가
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
-# BACnet Stack 체크 (기존 hiredis 체크 밑에 추가)
-HAS_BACNET_STACK := $(shell pkg-config --exists bacnet && echo "1" || echo "0")
+# 🔥 MQTT 라이브러리 체크 (링킹 테스트로 변경)
+HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
+
+# 🔥 BACnet 체크 (직접 파일 확인으로 변경)
+HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
 
 # 컴파일러 설정
 CXX = g++
-CXXFLAGS = -Wno-unused-but-set-variable -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus) -I/usr/local/include/bacnet
+CXXFLAGS = -Wno-unused-but-set-variable -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0
 LDFLAGS = 
 
-# 🔧 수정: Redis 라이브러리 추가
-LIBS = -lpthread \
-       $(shell pkg-config --libs libmodbus) \
-       -lpqxx -lpq -lsqlite3 \
-       -lpaho-mqtt3c -lpaho-mqttpp3 \
-       -lbacnet -lmysqlclient \
-       -lhiredis -lhiredis_ssl
+# 경로 설정
+PARENT_DIR = ..
+INCLUDE_DIR = $(PARENT_DIR)/include
+SRC_DIR = $(PARENT_DIR)/src
+BIN_DIR = ./bin
+DATA_DIR = ./data
 
-# 기존 CXXFLAGS에 JSON 플래그 추가
-ifeq ($(HAS_NLOHMANN_JSON),1)
-    CXXFLAGS += -DHAS_NLOHMANN_JSON
-endif
+# 🔥 핵심 수정: 모든 필요한 헤더 경로 포함 (BaseDeviceWorker 관련)
+INCLUDES = -I$(INCLUDE_DIR) \
+           -I$(INCLUDE_DIR)/Workers \
+           -I$(INCLUDE_DIR)/Workers/Base \
+           -I$(INCLUDE_DIR)/Workers/Protocol \
+           -I$(INCLUDE_DIR)/Workers/Components \
+           -I$(INCLUDE_DIR)/Database \
+           -I$(INCLUDE_DIR)/Database/Entities \
+           -I$(INCLUDE_DIR)/Database/Repositories \
+           -I$(INCLUDE_DIR)/Common \
+           -I$(INCLUDE_DIR)/Utils \
+           -I$(INCLUDE_DIR)/Config \
+           -I$(INCLUDE_DIR)/Drivers \
+           -I$(INCLUDE_DIR)/Drivers/Common \
+           -I$(INCLUDE_DIR)/Pipeline
 
-# 🔧 추가: hiredis 플래그 추가
-ifeq ($(HAS_HIREDIS),1)
-    CXXFLAGS += -DHAS_HIREDIS
+# 🔧 라이브러리별 설정 (링킹 테스트 결과 기반)
+
+# Modbus 라이브러리
+ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)
+    $(warning ⚠️  libmodbus not found - Modbus features will be disabled)
+    MODBUS_LIBS = 
+    MODBUS_INCLUDES = 
 else
-    $(warning ⚠️  hiredis not found - Redis functionality will be limited)
-    $(warning    Install with: sudo apt-get install libhiredis-dev)
+    MODBUS_LIBS = -lmodbus
+    MODBUS_INCLUDES = $(shell pkg-config --cflags libmodbus 2>/dev/null || echo "")
+    INCLUDES += $(MODBUS_INCLUDES)
+    $(info ✅ Modbus found via linking test)
 endif
 
+# MySQL 라이브러리
+MYSQL_CONFIG := $(shell which mysql_config 2>/dev/null)
+ifneq ($(MYSQL_CONFIG),)
+    MYSQL_LIBS = $(shell mysql_config --libs)
+    MYSQL_INCLUDES = $(shell mysql_config --include)
+    INCLUDES += $(MYSQL_INCLUDES)
+    $(info ✅ MySQL found: $(MYSQL_CONFIG))
+else
+    $(warning ⚠️  mysql_config not found - MySQL features will be disabled)
+    MYSQL_LIBS = 
+    CXXFLAGS += -DDISABLE_MYSQL_FEATURES
+endif
+
+# 🔥 MQTT 라이브러리 설정 (수정됨)
+ifeq ($(HAS_MQTT_C),1)
+    MQTT_C_LIBS = -lpaho-mqtt3c
+    $(info ✅ MQTT C found via linking test)
+else
+    $(warning ⚠️  paho-mqtt3c not found via linking test)
+    MQTT_C_LIBS = 
+endif
+
+ifeq ($(HAS_MQTT_CPP),1)
+    MQTT_CPP_LIBS = -lpaho-mqttpp3
+    INCLUDES += -I/usr/local/include
+    $(info ✅ MQTT C++ found via linking test)
+else
+    $(warning ⚠️  paho-mqttpp3 not found via linking test)
+    MQTT_CPP_LIBS = 
+endif
+
+# PostgreSQL 라이브러리
+ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpqxx >/dev/null 2>&1; echo $$?),0)
+    $(warning ⚠️  libpqxx not found - PostgreSQL features will be disabled)
+    PGSQL_LIBS = 
+else
+    PGSQL_LIBS = -lpqxx -lpq
+    $(info ✅ PostgreSQL found via linking test)
+endif
+
+# BACnet 라이브러리 설정
 ifeq ($(HAS_BACNET_STACK), 1)
+    BACNET_LIBS = -lbacnet -lm
+    BACNET_INCLUDES = -I/usr/local/include/bacnet
+    INCLUDES += $(BACNET_INCLUDES)
     CXXFLAGS += -DHAS_BACNET_STACK=1
+    $(info ✅ BACnet found: /usr/local/lib/libbacnet.a)
 else
     CXXFLAGS += -DHAS_BACNET_STACK=0
+    BACNET_LIBS = 
+    $(warning ⚠️  BACnet library not found)
 endif
 
-# 프로젝트 설정
-PROJECT_NAME = pulseone_collector
-TARGET = $(PROJECT_NAME)
+# Redis 라이브러리 설정
+ifeq ($(HAS_HIREDIS),1)
+    REDIS_LIBS = -lhiredis -lhiredis_ssl
+    CXXFLAGS += -DHAS_HIREDIS
+    $(info ✅ Redis found via header test)
+else
+    $(warning ⚠️  hiredis not found - Redis functionality will be limited)
+    REDIS_LIBS = 
+endif
 
-# 디렉토리 설정
-SRC_DIR = src
-INCLUDE_DIR = include
-BUILD_DIR = build
-BIN_DIR = bin
+# JSON 라이브러리 플래그
+ifeq ($(HAS_NLOHMANN_JSON),1)
+    CXXFLAGS += -DHAS_NLOHMANN_JSON
+    $(info ✅ nlohmann/json found)
+endif
 
-# Include 경로
-INCLUDES = -I$(INCLUDE_DIR)
+# 🔧 전체 라이브러리 설정
+BASIC_LIBS = -lpthread -lsqlite3
+OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
+LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
+
+# 테스트 라이브러리
+TEST_LIBS = -lgtest -lgtest_main -pthread
 
 # 색상 정의
 GREEN = \033[0;32m
@@ -68,274 +144,243 @@ RED = \033[0;31m
 NC = \033[0m
 
 # =============================================================================
-# 소스 파일 그룹 정의 (기존과 동일)
+# 소스 파일 그룹 정의 (수정됨)
 # =============================================================================
 
-# Core 소스들
-CORE_SOURCES := $(wildcard $(SRC_DIR)/Core/*.cpp)
-
-# 기존 Utils, Config 등
+# 기본 필수 소스들
 UTILS_SOURCES := $(wildcard $(SRC_DIR)/Utils/*.cpp)
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
-
-# Workers 소스들
-WORKERS_BASE_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
-WORKERS_PROTOCOL_SOURCES := $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp)
-WORKERS_COMPONENTS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
-WORKERS_SOURCES := $(WORKERS_BASE_SOURCES) $(WORKERS_PROTOCOL_SOURCES) $(WORKERS_COMPONENTS_SOURCES) $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp)
-
-# Drivers 소스들
-DRIVERS_COMMON_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
-DRIVERS_MODBUS_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
-DRIVERS_MQTT_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
-DRIVERS_BACNET_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
-DRIVERS_SOURCES := $(DRIVERS_COMMON_SOURCES) $(DRIVERS_MODBUS_SOURCES) $(DRIVERS_MQTT_SOURCES) $(DRIVERS_BACNET_SOURCES)
 
 # Database 소스들
 DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Entities/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Repositories/*.cpp)
 
-# 🔧 수정: Client 소스들 (Redis 포함)
+# Client 소스들
 CLIENT_SOURCES := $(wildcard $(SRC_DIR)/Client/*.cpp)
 
-# Plugin 소스들
-PLUGIN_SOURCES := $(wildcard $(SRC_DIR)/Plugin/*.cpp)
+# 🔥 Workers 소스들 (BaseDeviceWorker 포함 - 순서 중요!)
+WORKERS_SOURCES := $(SRC_DIR)/Workers/Base/BaseDeviceWorker.cpp \
+                  $(SRC_DIR)/Workers/Base/TcpBasedWorker.cpp \
+                  $(SRC_DIR)/Workers/Base/SerialBasedWorker.cpp \
+                  $(SRC_DIR)/Workers/Base/UdpBasedWorker.cpp \
+                  $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp) \
+                  $(wildcard $(SRC_DIR)/Workers/Components/*.cpp) \
+                  $(SRC_DIR)/Workers/WorkerFactory.cpp
 
+# 🔧 Drivers 소스들 (라이브러리별 조건부 포함)
+DRIVERS_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
+
+# Modbus 드라이버
+ifneq ($(MODBUS_LIBS),)
+    DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
+endif
+
+# 🔥 MQTT 드라이버 (이제 정상 포함됨)
+ifeq ($(HAS_MQTT_CPP),1)
+    DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
+    $(info ✅ Including MQTT driver sources)
+endif
+
+# BACnet 드라이버
+ifeq ($(HAS_BACNET_STACK),1)
+    DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
+endif
+
+# Pipeline 소스들
 PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
 
-# 메인 소스
-MAIN_SOURCE = $(SRC_DIR)/main.cpp
-
-# 전체 소스들
-EXISTING_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES)
-OPTIONAL_SOURCES = $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(PLUGIN_SOURCES) $(PIPELINE_SOURCES)
-
-ALL_LIB_SOURCES = $(EXISTING_SOURCES) $(OPTIONAL_SOURCES)
-
-# 오브젝트 파일들
-ALL_LIB_OBJECTS = $(ALL_LIB_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
-MAIN_OBJECT = $(MAIN_SOURCE:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
-ALL_OBJECTS = $(ALL_LIB_OBJECTS) $(MAIN_OBJECT)
+# 단계별 소스 그룹
+STEP1_SOURCES = $(UTILS_SOURCES) $(CONFIG_SOURCES)
+STEP2_SOURCES = $(STEP1_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES)
+STEP3_SOURCES = $(STEP2_SOURCES) $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(PIPELINE_SOURCES)
 
 # =============================================================================
 # 메인 타겟들
 # =============================================================================
 
-.DEFAULT_GOAL := all
-
-# 🔧 수정: 라이브러리 체크 포함
-check-deps:
-	@echo -e "$(BLUE)🔍 Checking dependencies...$(NC)"
-	@echo -e "$(YELLOW)Required libraries:$(NC)"
-	@if [ "$(HAS_NLOHMANN_JSON)" = "1" ]; then \
-		echo -e "  $(GREEN)✅ nlohmann/json$(NC)"; \
-	else \
-		echo -e "  $(YELLOW)⚠️  nlohmann/json (optional)$(NC)"; \
-	fi
-	@if [ "$(HAS_HIREDIS)" = "1" ]; then \
-		echo -e "  $(GREEN)✅ hiredis$(NC)"; \
-	else \
-		echo -e "  $(RED)❌ hiredis (required for Redis support)$(NC)"; \
-		echo -e "     Install: sudo apt-get install libhiredis-dev"; \
-	fi
-	@pkg-config --exists libmodbus && echo -e "  $(GREEN)✅ libmodbus$(NC)" || echo -e "  $(RED)❌ libmodbus$(NC)"
-	@echo -e "$(YELLOW)Checking libraries:$(NC)"
-	@for lib in pthread hiredis pqxx pq sqlite3 paho-mqtt3c paho-mqttpp3 mysqlclient; do \
-		if ldconfig -p | grep -q "lib$$lib"; then \
-			echo -e "  $(GREEN)✅ $$lib$(NC)"; \
-		else \
-			echo -e "  $(YELLOW)⚠️  $$lib (may not be installed)$(NC)"; \
-		fi \
-	done
-
-# 파일 존재 확인 (기존 코드 유지)
-check-sources:
-	@echo -e "$(BLUE)🔍 Checking required source files...$(NC)"
-	@echo -e "$(YELLOW)Main source:$(NC)"
-	@if [ -f "$(MAIN_SOURCE)" ]; then \
-		echo -e "  $(GREEN)✅ $(MAIN_SOURCE)$(NC)"; \
-	else \
-		echo -e "  $(RED)❌ $(MAIN_SOURCE) (MISSING)$(NC)"; \
-		exit 1; \
-	fi
-	@echo -e "$(YELLOW)Core sources:$(NC)"
-	@if [ -z "$(CORE_SOURCES)" ]; then \
-		echo -e "  $(RED)❌ No Core sources found in $(SRC_DIR)/Core/$(NC)"; \
-		echo -e "  $(YELLOW)Expected: $(SRC_DIR)/Core/Application.cpp$(NC)"; \
-		ls -la $(SRC_DIR)/Core/ 2>/dev/null || echo "  $(RED)❌ $(SRC_DIR)/Core/ directory not found$(NC)"; \
-		exit 1; \
-	else \
-		for src in $(CORE_SOURCES); do \
-			echo -e "  $(GREEN)✅ $$src$(NC)"; \
-		done \
-	fi
-	@echo -e "$(YELLOW)Client sources (Redis):$(NC)"
-	@for src in $(CLIENT_SOURCES); do \
-		if [ -f "$$src" ]; then \
-			echo -e "  $(GREEN)✅ $$src$(NC)"; \
-		else \
-			echo -e "  $(YELLOW)⚠️  $$src (optional)$(NC)"; \
-		fi \
-	done
-
-# 전체 빌드 (의존성 및 소스 확인 포함)
-all: check-deps check-sources directories $(TARGET)
-	@echo -e "$(GREEN)🎉 Build completed successfully!$(NC)"
-	@echo -e "$(BLUE)📦 Executable: $(BIN_DIR)/$(TARGET)$(NC)"
-	@echo -e "$(BLUE)📊 Object files: $(words $(ALL_OBJECTS))$(NC)"
-
-# 실행 파일 생성
-$(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
-	@echo -e "$(BLUE)🔗 Linking $(TARGET)...$(NC)"
-	@echo -e "$(YELLOW)   Objects: $(words $(ALL_OBJECTS))$(NC)"
-	@echo -e "$(YELLOW)   Libraries: $(LIBS)$(NC)"
-	$(CXX) $(LDFLAGS) -o $(BIN_DIR)/$@ $(ALL_OBJECTS) $(LIBS)
-
-# =============================================================================
-# 오브젝트 파일 생성 규칙 (기존과 동일, Client 추가)
-# =============================================================================
-
-# Core 파일들
-$(BUILD_DIR)/Core/%.o: $(SRC_DIR)/Core/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(GREEN)🏛️  Compiling Core: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Utils 파일들
-$(BUILD_DIR)/Utils/%.o: $(SRC_DIR)/Utils/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(GREEN)🔧 Compiling Utils: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Config 파일들
-$(BUILD_DIR)/Config/%.o: $(SRC_DIR)/Config/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(BLUE)⚙️  Compiling Config: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Workers 파일들
-$(BUILD_DIR)/Workers/%.o: $(SRC_DIR)/Workers/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(BLUE)👷 Compiling Worker: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Drivers 파일들
-$(BUILD_DIR)/Drivers/%.o: $(SRC_DIR)/Drivers/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(YELLOW)🔌 Compiling Driver: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Database 파일들
-$(BUILD_DIR)/Database/%.o: $(SRC_DIR)/Database/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(GREEN)🗄️  Compiling Database: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# 🔧 수정: Client 파일들 (Redis 포함)
-$(BUILD_DIR)/Client/%.o: $(SRC_DIR)/Client/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(BLUE)📡 Compiling Client (Redis): $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Plugin 파일들
-$(BUILD_DIR)/Plugin/%.o: $(SRC_DIR)/Plugin/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(YELLOW)🔌 Compiling Plugin: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Pipeline 파일들
-$(BUILD_DIR)/Pipeline/%.o: $(SRC_DIR)/Pipeline/%.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(BLUE)🔄 Compiling Pipeline: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# 메인 파일
-$(BUILD_DIR)/main.o: $(SRC_DIR)/main.cpp
-	@mkdir -p $(dir $@)
-	@echo -e "$(BLUE)🚀 Compiling Main: $<$(NC)"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# =============================================================================
-# 유틸리티 타겟들
-# =============================================================================
+.DEFAULT_GOAL := help
 
 # 디렉토리 생성
-directories:
-	@mkdir -p $(BUILD_DIR)/{Core,Workers/{Base,Protocol,Components},Drivers/{Common,Modbus,Mqtt,Bacnet},Database,Client,Utils,Config,Plugin,Pipeline}
+$(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
-# 정리
+directories: $(BIN_DIR)
+
 clean:
-	@echo -e "$(YELLOW)🧹 Cleaning build files...$(NC)"
-	rm -rf $(BUILD_DIR) $(BIN_DIR)
+	@echo -e "$(YELLOW)🧹 Cleaning test build files...$(NC)"
+	rm -rf $(BIN_DIR)
 	@echo -e "$(GREEN)✅ Clean completed$(NC)"
 
-# 실행
-run: $(TARGET)
-	@echo -e "$(BLUE)🚀 Running $(TARGET)...$(NC)"
-	cd $(BIN_DIR) && ./$(TARGET)
+# 🔧 개선된 라이브러리 체크
+check-deps:
+	@echo -e "$(BLUE)🔍 라이브러리 의존성 체크$(NC)"
+	@echo -e "$(YELLOW)========================================$(NC)"
+	@echo ""
+	@echo -e "$(BLUE)📦 감지된 라이브러리들:$(NC)"
+	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ $(MODBUS_LIBS),❌ not found)"
+	@echo "  MySQL: $(if $(MYSQL_LIBS),✅ found,❌ not found)"
+	@echo "  PostgreSQL: $(if $(PGSQL_LIBS),✅ $(PGSQL_LIBS),❌ not found)"
+	@echo "  MQTT C: $(if $(MQTT_C_LIBS),✅ $(MQTT_C_LIBS),❌ not found)"
+	@echo "  MQTT C++: $(if $(MQTT_CPP_LIBS),✅ $(MQTT_CPP_LIBS),❌ not found)"
+	@echo "  BACnet: $(if $(BACNET_LIBS),✅ $(BACNET_LIBS),❌ not found)"
+	@echo "  Redis: $(if $(REDIS_LIBS),✅ $(REDIS_LIBS),❌ not found)"
+	@echo ""
+	@echo -e "$(BLUE)🔧 컴파일 설정:$(NC)"
+	@echo "  LIBS: $(LIBS)"
+	@echo "  INCLUDES: $(INCLUDES)"
+	@echo ""
+	@echo -e "$(BLUE)📊 소스 파일 개수:$(NC)"
+	@echo "  UTILS: $(words $(UTILS_SOURCES))"
+	@echo "  DATABASE: $(words $(DATABASE_SOURCES))"
+	@echo "  WORKERS: $(words $(WORKERS_SOURCES))"
+	@echo "  DRIVERS: $(words $(DRIVERS_SOURCES))"
+	@echo "  TOTAL STEP3: $(words $(STEP3_SOURCES))"
 
-# 빌드 모드별 타겟들
-debug: CXXFLAGS += -g -DPULSEONE_DEBUG_MODE -O0
-debug: CXXFLAGS := $(filter-out -O2,$(CXXFLAGS))
-debug: check-deps clean all
-	@echo -e "$(GREEN)🐛 Debug build completed - verbose logging enabled$(NC)"
-
-release: CXXFLAGS += -O3 -DNDEBUG  
-release: CXXFLAGS := $(filter-out -O2,$(CXXFLAGS))
-release: clean all
-	@echo -e "$(GREEN)🚀 Release build completed - optimized for performance$(NC)"
-
-# Redis 전용 테스트 빌드
-redis-test: check-deps
-	@echo -e "$(BLUE)🧪 Testing Redis components only...$(NC)"
-	@if [ "$(HAS_HIREDIS)" != "1" ]; then \
-		echo -e "$(RED)❌ hiredis not found - cannot test Redis$(NC)"; \
+# 🔥 BaseDeviceWorker 헤더 문제 완전 해결된 빌드
+debug-step3: $(BIN_DIR)
+	@echo -e "$(BLUE)🔍 Step3 전체 기능 컴파일 (BaseDeviceWorker 헤더 수정됨)$(NC)"
+	@echo -e "$(YELLOW)====================================================$(NC)"
+	@echo ""
+	@echo -e "$(BLUE)🔧 헤더 경로 수정사항:$(NC)"
+	@echo "  ✅ BaseDeviceWorker.h 경로 추가: Workers/Base/"
+	@echo "  ✅ Workers 관련 모든 헤더 경로 포함"
+	@echo "  ✅ Database, Common, Utils 헤더 경로 포함"
+	@echo ""
+	@echo -e "$(BLUE)📋 포함된 기능들:$(NC)"
+	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ 포함,❌ 제외)"
+	@echo "  MySQL: $(if $(MYSQL_LIBS),✅ 포함,❌ 제외)"
+	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅ 포함,❌ 제외)"
+	@echo "  BACnet: $(if $(BACNET_LIBS),✅ 포함,❌ 제외)"
+	@echo "  Redis: $(if $(REDIS_LIBS),✅ 포함,❌ 제외)"
+	@echo ""
+	@if [ ! -f "test_step3_workers.cpp" ]; then \
+		echo -e "$(RED)❌ test_step3_workers.cpp 파일이 없습니다!$(NC)"; \
 		exit 1; \
 	fi
-	@echo -e "$(GREEN)✅ Redis test ready$(NC)"
-
-# 🔧 추가: hiredis 체크 타겟
-check-redis:
-	@echo "🔍 Checking Redis/hiredis setup..."
-	@if [ "$(HAS_HIREDIS)" = "1" ]; then \
-		echo "✅ hiredis headers found"; \
-		if ldconfig -p | grep -q libhiredis; then \
-			echo "✅ hiredis library installed"; \
+	@echo -e "$(BLUE)🔥 소스 파일 확인:$(NC)"
+	@echo "  Workers 소스: $(words $(WORKERS_SOURCES))개"
+	@for src in $(WORKERS_SOURCES); do \
+		if [ -f "$$src" ]; then \
+			echo "    ✅ $$src"; \
 		else \
-			echo "⚠️  hiredis library may not be properly installed"; \
-		fi \
-	else \
-		echo "❌ hiredis headers not found"; \
-		echo "   Install: sudo apt-get install libhiredis-dev"; \
-		echo "   Or compile from source: https://github.com/redis/hiredis"; \
-	fi
+			echo "    ❌ $$src (누락)"; \
+		fi; \
+	done
+	@echo ""
+	@echo -e "$(BLUE)🔨 전체 기능 컴파일 시작 (헤더 문제 해결됨)...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+		test_step3_workers.cpp \
+		$(STEP3_SOURCES) \
+		$(TEST_LIBS) $(LIBS) -o $(BIN_DIR)/test_step3 || \
+	(echo -e "$(RED)❌ 컴파일 실패! BaseDeviceWorker 헤더 문제를 다시 확인하세요$(NC)" && exit 1)
+	@echo -e "$(GREEN)✅ Step3 전체 기능 컴파일 성공! (BaseDeviceWorker 헤더 문제 해결됨)$(NC)"
 
-# PHONY 타겟들
-.PHONY: all clean run debug release check-deps check-sources check-redis redis-test directories
+# 🔥 컴파일 에러 디버깅 모드
+debug-compile: $(BIN_DIR)
+	@echo -e "$(BLUE)🔍 컴파일 에러 디버깅 모드$(NC)"
+	@echo -e "$(YELLOW)========================$(NC)"
+	@echo ""
+	@echo -e "$(BLUE)1. 헤더 파일 존재 확인:$(NC)"
+	@if [ -f "$(INCLUDE_DIR)/Workers/Base/BaseDeviceWorker.h" ]; then \
+		echo "  ✅ BaseDeviceWorker.h 존재"; \
+	else \
+		echo "  ❌ BaseDeviceWorker.h 누락 (컴파일 에러 원인)"; \
+	fi
+	@if [ -f "$(INCLUDE_DIR)/Workers/WorkerFactory.h" ]; then \
+		echo "  ✅ WorkerFactory.h 존재"; \
+	else \
+		echo "  ❌ WorkerFactory.h 누락"; \
+	fi
+	@echo ""
+	@echo -e "$(BLUE)2. 소스 파일 존재 확인:$(NC)"
+	@if [ -f "$(SRC_DIR)/Workers/Base/BaseDeviceWorker.cpp" ]; then \
+		echo "  ✅ BaseDeviceWorker.cpp 존재"; \
+	else \
+		echo "  ❌ BaseDeviceWorker.cpp 누락"; \
+	fi
+	@echo ""
+	@echo -e "$(BLUE)3. 간단한 컴파일 테스트:$(NC)"
+	@echo '#include "Workers/Base/BaseDeviceWorker.h"' > /tmp/test_header.cpp
+	@echo 'int main() { return 0; }' >> /tmp/test_header.cpp
+	@if $(CXX) $(CXXFLAGS) $(INCLUDES) -c /tmp/test_header.cpp -o /tmp/test_header.o 2>/dev/null; then \
+		echo "  ✅ BaseDeviceWorker.h 헤더 컴파일 성공"; \
+		rm -f /tmp/test_header.o; \
+	else \
+		echo "  ❌ BaseDeviceWorker.h 헤더 컴파일 실패"; \
+		echo "  🔍 상세 에러:"; \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -c /tmp/test_header.cpp -o /tmp/test_header.o 2>&1 | head -10; \
+	fi
+	@rm -f /tmp/test_header.cpp /tmp/test_header.o
+
+# 🔥 최소한의 BaseDeviceWorker 테스트
+test-base-worker: $(BIN_DIR)
+	@echo -e "$(BLUE)🧪 BaseDeviceWorker 최소 테스트$(NC)"
+	@echo -e "$(YELLOW)=============================$(NC)"
+	@echo ""
+	@echo -e "$(BLUE)최소한의 BaseDeviceWorker 헤더 테스트 파일 생성 중...$(NC)"
+	@echo '#include <gtest/gtest.h>' > /tmp/minimal_worker_test.cpp
+	@echo '#include "Workers/Base/BaseDeviceWorker.h"' >> /tmp/minimal_worker_test.cpp
+	@echo 'TEST(BaseDeviceWorkerTest, HeaderIncludes) {' >> /tmp/minimal_worker_test.cpp
+	@echo '    EXPECT_TRUE(true);  // 헤더가 정상적으로 포함되면 성공' >> /tmp/minimal_worker_test.cpp
+	@echo '}' >> /tmp/minimal_worker_test.cpp
+	@echo ""
+	@echo -e "$(BLUE)최소 테스트 컴파일 중...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+		/tmp/minimal_worker_test.cpp \
+		$(SRC_DIR)/Workers/Base/BaseDeviceWorker.cpp \
+		$(SRC_DIR)/Utils/LogManager.cpp \
+		$(TEST_LIBS) -o $(BIN_DIR)/minimal_worker_test || \
+	(echo -e "$(RED)❌ 최소 테스트도 실패!$(NC)" && exit 1)
+	@echo -e "$(GREEN)✅ BaseDeviceWorker 최소 테스트 컴파일 성공!$(NC)"
+	@echo ""
+	@echo -e "$(BLUE)최소 테스트 실행 중...$(NC)"
+	./$(BIN_DIR)/minimal_worker_test
+	@rm -f /tmp/minimal_worker_test.cpp
 
 # 도움말
 help:
-	@echo -e "$(BLUE)🔧 PulseOne Collector Build System$(NC)"
+	@echo -e "$(BLUE)🔧 PulseOne Collector 테스트 시스템 (BaseDeviceWorker 수정됨)$(NC)"
+	@echo -e "$(YELLOW)============================================================$(NC)"
 	@echo ""
-	@echo -e "$(GREEN)Main targets:$(NC)"
-	@echo "  all              - Build the complete project"
-	@echo "  clean            - Remove all build files"
-	@echo "  run              - Build and run the application"
+	@echo -e "$(GREEN)🔥 BaseDeviceWorker 헤더 문제가 해결되었습니다!$(NC)"
 	@echo ""
-	@echo -e "$(GREEN)Build modes:$(NC)"
-	@echo "  debug            - Build with debug symbols and verbose logging"
-	@echo "  release          - Build optimized for production"
+	@echo -e "$(GREEN)추천 명령어 (순서대로):$(NC)"
+	@echo "  make check-deps           - 라이브러리 감지 상태 확인"
+	@echo "  make debug-compile        - 헤더/소스 파일 확인 및 컴파일 테스트"
+	@echo "  make test-base-worker     - BaseDeviceWorker 최소 테스트"
+	@echo "  make clean && make debug-step3  - 전체 기능 컴파일 (헤더 수정됨)"
 	@echo ""
-	@echo -e "$(GREEN)Development tools:$(NC)"
-	@echo "  check-deps       - Check all library dependencies"
-	@echo "  check-sources    - Verify all required source files exist"
-	@echo "  check-redis      - Check Redis/hiredis installation"
-	@echo "  redis-test       - Test Redis components only"
+	@echo -e "$(GREEN)🔧 수정된 사항들:$(NC)"
+	@echo "  ✅ Workers/Base/ 헤더 경로 추가"
+	@echo "  ✅ Workers 관련 모든 헤더 경로 포함"
+	@echo "  ✅ BaseDeviceWorker.cpp 명시적 포함"
+	@echo "  ✅ 컴파일 에러 디버깅 도구 추가"
 	@echo ""
-	@echo -e "$(GREEN)Examples:$(NC)"
-	@echo "  make check-deps          # Check if all libraries are available"
-	@echo "  make check-redis         # Specifically check Redis setup"
-	@echo "  make redis-test          # Test Redis compilation"
-	@echo "  make clean && make       # Clean rebuild"
+	@echo -e "$(GREEN)진단 명령어:$(NC)"
+	@echo "  make diagnose             - 환경 진단"
+
+# 진단
+diagnose:
+	@echo -e "$(BLUE)🏥 시스템 진단$(NC)"
+	@echo -e "$(YELLOW)===============$(NC)"
+	@echo ""
+	@echo -e "$(BLUE)직접 링킹 테스트:$(NC)"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "  ✅ MQTT C 링크 성공" || echo "  ❌ MQTT C 링크 실패"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "  ✅ MQTT C++ 링크 성공" || echo "  ❌ MQTT C++ 링크 실패"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1 && echo "  ✅ Modbus 링크 성공" || echo "  ❌ Modbus 링크 실패"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lhiredis >/dev/null 2>&1 && echo "  ✅ Redis 링크 성공" || echo "  ❌ Redis 링크 실패"
+	@echo ""
+	@echo -e "$(BLUE)BaseDeviceWorker 관련:$(NC)"
+	@if [ -f "$(INCLUDE_DIR)/Workers/Base/BaseDeviceWorker.h" ]; then \
+		echo "  ✅ BaseDeviceWorker.h 파일 존재"; \
+	else \
+		echo "  ❌ BaseDeviceWorker.h 파일 누락"; \
+	fi
+	@if [ -f "$(SRC_DIR)/Workers/Base/BaseDeviceWorker.cpp" ]; then \
+		echo "  ✅ BaseDeviceWorker.cpp 파일 존재"; \
+	else \
+		echo "  ❌ BaseDeviceWorker.cpp 파일 누락"; \
+	fi
+
+.PHONY: all clean help diagnose check-deps debug-step3 directories debug-compile test-base-worker

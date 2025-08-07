@@ -1012,6 +1012,158 @@ std::map<std::string, std::string> DataPointRepository::entityToParams(const Dat
     return params;
 }
 
+PulseOne::Structs::DataPoint DataPointRepository::mapToStructDataPoint(
+    const DataPointEntity& entity, 
+    const std::map<std::string, std::string>& current_values_row) {
+    
+    PulseOne::Structs::DataPoint data_point;
+    
+    // 🔥 기본 식별 정보 매핑
+    data_point.id = entity.getId();
+    data_point.device_id = entity.getDeviceId();
+    data_point.name = entity.getName();
+    data_point.description = entity.getDescription();
+    
+    // 🔥 주소 정보 매핑
+    data_point.address = static_cast<uint32_t>(entity.getAddress());
+    data_point.address_string = entity.getAddressString();
+    
+    // 🔥 데이터 타입 및 접근성 매핑
+    data_point.data_type = entity.getDataType();
+    data_point.access_mode = entity.getAccessMode();
+    data_point.is_enabled = entity.isEnabled();
+    data_point.is_writable = entity.isWritable();
+    
+    // 🔥 엔지니어링 단위 및 스케일링 매핑
+    data_point.unit = entity.getUnit();
+    data_point.scaling_factor = entity.getScalingFactor();
+    data_point.scaling_offset = entity.getScalingOffset();
+    data_point.min_value = entity.getMinValue();
+    data_point.max_value = entity.getMaxValue();
+    
+    // 🔥🔥🔥 로깅 및 수집 설정 매핑
+    data_point.log_enabled = entity.isLogEnabled();
+    data_point.log_interval_ms = static_cast<uint32_t>(entity.getLogInterval());
+    data_point.log_deadband = entity.getLogDeadband();
+    data_point.polling_interval_ms = static_cast<uint32_t>(entity.getPollingInterval());
+    
+    // 🔥🔥🔥 메타데이터 매핑
+    data_point.group = entity.getGroup();
+    
+    // tags 배열을 문자열로 변환 (첫 번째만 사용하거나 JSON 형태로)
+    auto tag_vector = entity.getTags();
+    if (!tag_vector.empty()) {
+        json tags_json(tag_vector);
+        data_point.tags = tags_json.dump();
+    }
+    
+    // metadata 맵을 문자열로 변환
+    auto metadata_map = entity.getMetadata();
+    if (!metadata_map.empty()) {
+        json metadata_json(metadata_map);
+        data_point.metadata = metadata_json.dump();
+    }
+    
+    // protocol_params 매핑
+    data_point.protocol_params = entity.getProtocolParams();
+    
+    // 🔥 시간 정보 매핑
+    data_point.created_at = entity.getCreatedAt();
+    data_point.updated_at = entity.getUpdatedAt();
+    
+    // 🔥🔥🔥 실시간 값 매핑 (current_values 테이블에서)
+    if (!current_values_row.empty()) {
+        auto it = current_values_row.find("active_value_type");
+        if (it != current_values_row.end()) {
+            std::string value_type = it->second;
+            
+            // active_value_type에 따라 적절한 current_value_* 컬럼에서 값 가져오기
+            if (value_type == "bool") {
+                it = current_values_row.find("current_value_bool");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = static_cast<bool>(std::stoi(it->second));
+                }
+            } else if (value_type == "int16") {
+                it = current_values_row.find("current_value_int16");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = static_cast<int16_t>(std::stoi(it->second));
+                }
+            } else if (value_type == "uint16") {
+                it = current_values_row.find("current_value_uint16");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = static_cast<uint16_t>(std::stoi(it->second));
+                }
+            } else if (value_type == "int32") {
+                it = current_values_row.find("current_value_int32");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = static_cast<int32_t>(std::stoi(it->second));
+                }
+            } else if (value_type == "uint32") {
+                it = current_values_row.find("current_value_uint32");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = static_cast<uint32_t>(std::stoul(it->second));
+                }
+            } else if (value_type == "float") {
+                it = current_values_row.find("current_value_float");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = static_cast<float>(std::stof(it->second));
+                }
+            } else if (value_type == "double") {
+                it = current_values_row.find("current_value_double");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = std::stod(it->second);
+                }
+            } else if (value_type == "string") {
+                it = current_values_row.find("current_value_string");
+                if (it != current_values_row.end()) {
+                    data_point.current_value = it->second;
+                }
+            }
+        }
+        
+        // raw_value도 비슷하게 처리
+        it = current_values_row.find("raw_value_float");
+        if (it != current_values_row.end()) {
+            data_point.raw_value = std::stod(it->second);
+        }
+        
+        // 품질 코드 매핑
+        it = current_values_row.find("quality_code");
+        if (it != current_values_row.end()) {
+            data_point.quality_code = static_cast<PulseOne::Enums::DataQuality>(std::stoi(it->second));
+        }
+        
+        // 타임스탬프들 매핑
+        it = current_values_row.find("value_timestamp");
+        if (it != current_values_row.end()) {
+            data_point.value_timestamp = PulseOne::Utils::ParseTimestampFromString(it->second);
+        }
+        
+        it = current_values_row.find("last_read_time");
+        if (it != current_values_row.end()) {
+            data_point.last_read_time = PulseOne::Utils::ParseTimestampFromString(it->second);
+        }
+        
+        // 카운터들 매핑
+        it = current_values_row.find("read_count");
+        if (it != current_values_row.end()) {
+            data_point.read_count = std::stoull(it->second);
+        }
+        
+        it = current_values_row.find("write_count");
+        if (it != current_values_row.end()) {
+            data_point.write_count = std::stoull(it->second);
+        }
+        
+        it = current_values_row.find("error_count");
+        if (it != current_values_row.end()) {
+            data_point.error_count = std::stoull(it->second);
+        }
+    }
+    
+    return data_point;
+}
+
 
 bool DataPointRepository::ensureTableExists() {
     try {
@@ -1103,13 +1255,40 @@ std::vector<PulseOne::Structs::DataPoint> DataPointRepository::getDataPointsWith
                     auto current_value = current_value_repo_->findByDataPointId(entity.getId());
                     
                     if (current_value.has_value()) {
-                        data_point.current_value = PulseOne::BasicTypes::DataVariant(current_value->getValue());
-                        data_point.quality_code = current_value->getQuality();
-                        data_point.quality_timestamp = current_value->getTimestamp();
+                        // 🔥 getValue() 메서드 확인 필요
+                        try {
+                            // CurrentValueEntity의 getCurrentValue()가 string을 반환하는 경우
+                            std::string value_str = current_value->getCurrentValue();
+                            if (!value_str.empty()) {
+                                double numeric_value = std::stod(value_str);
+                                data_point.current_value = PulseOne::BasicTypes::DataVariant(numeric_value);
+                            } else {
+                                data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
+                            }
+                        } catch (const std::exception&) {
+                            // 변환 실패 시 문자열 그대로
+                            data_point.current_value = PulseOne::BasicTypes::DataVariant(current_value->getCurrentValue());
+                        }
+                        
+                        // 🔥 DataQuality 타입 변환 (핵심 수정!)
+                        if (current_value->getQualityCode() != PulseOne::Enums::DataQuality::UNKNOWN) {
+                            // getQualityCode() enum 메서드가 있는 경우
+                            data_point.quality_code = current_value->getQualityCode();
+                        } else {
+                            // 문자열에서 enum으로 변환
+                            data_point.quality_code = PulseOne::Utils::StringToDataQuality(current_value->getQuality());
+                        }
+                        
+                        // 🔥 타임스탬프 메서드 확인
+                        if (current_value->getValueTimestamp() != std::chrono::system_clock::time_point{}) {
+                            data_point.quality_timestamp = current_value->getValueTimestamp();
+                        } else {
+                            data_point.quality_timestamp = current_value->getUpdatedAt();
+                        }
                         
                         logger_->Debug("💡 Current value loaded: " + data_point.name + 
-                                      " = " + data_point.GetCurrentValueAsString() + 
-                                      " (Quality: " + data_point.GetQualityCodeAsString() + ")");
+                                    " = " + data_point.GetCurrentValueAsString() + 
+                                    " (Quality: " + data_point.GetQualityCodeAsString() + ")");
                     } else {
                         data_point.current_value = PulseOne::BasicTypes::DataVariant(0.0);
                         data_point.quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;

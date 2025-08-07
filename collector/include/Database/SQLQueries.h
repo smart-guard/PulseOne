@@ -461,30 +461,6 @@ namespace DataPoint {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 6: FIND_WITH_CURRENT_VALUES (getDataPointsWithCurrentValues 사용)
-    const std::string FIND_WITH_CURRENT_VALUES = R"(
-        SELECT 
-            -- data_points 모든 필드
-            dp.id, dp.device_id, dp.name, dp.description, 
-            dp.address, dp.data_type, dp.access_mode, dp.is_enabled,
-            dp.unit, dp.scaling_factor, dp.scaling_offset, 
-            dp.min_value, dp.max_value,
-            dp.log_enabled, dp.log_interval_ms, dp.log_deadband,
-            dp.tags, dp.metadata, dp.created_at, dp.updated_at,
-            
-            -- current_values 테이블 필드들
-            cv.current_value_float, cv.active_value_type,
-            cv.raw_value_float, cv.active_raw_type,
-            cv.quality_code, cv.quality,
-            cv.value_timestamp, cv.quality_timestamp, cv.last_log_time,
-            cv.last_read_time, cv.last_write_time,
-            cv.read_count, cv.write_count, cv.error_count
-        FROM data_points dp
-        LEFT JOIN current_values cv ON dp.id = cv.point_id
-        WHERE dp.device_id = ?
-        ORDER BY dp.address
-    )";
-    
     // 🔥🔥🔥 누락된 쿼리 7: UPDATE_BASIC_INFO (updateBasicInfo 메서드 사용)
     const std::string UPDATE_BASIC_INFO = R"(
         UPDATE data_points SET 
@@ -636,7 +612,25 @@ namespace DataPoint {
             datetime('now') as created_at, datetime('now') as updated_at
         FROM data_points 
         WHERE device_id = ?
-    )";    
+    )";
+
+    const std::string FIND_LAST_CREATED_BY_DEVICE_ADDRESS = R"(
+        SELECT id FROM data_points 
+        WHERE device_id = ? AND address = ?
+        ORDER BY created_at DESC LIMIT 1
+    )";
+    
+    const std::string FIND_WRITABLE_POINTS = R"(
+        SELECT * FROM data_points 
+        WHERE is_writable = 1 AND is_enabled = 1
+        ORDER BY device_id, address
+    )";
+    
+    const std::string FIND_BY_DATA_TYPE = R"(
+        SELECT * FROM data_points 
+        WHERE data_type = ? AND is_enabled = 1
+        ORDER BY device_id, address
+    )";        
     
 } // namespace DataPoint
 

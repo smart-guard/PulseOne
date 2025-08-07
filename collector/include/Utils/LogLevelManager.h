@@ -1,6 +1,6 @@
 // =============================================================================
-// collector/include/Utils/LogLevelManager.h - 완전한 기능 보존 + 자동 초기화
-// 기존 모든 기능 100% 유지 + getInstance()에서 자동 초기화 추가
+// collector/include/Utils/LogLevelManager.h - 경고 없는 자동 초기화 버전
+// 🔥 FIX: std::call_once 관련 모든 경고 해결
 // =============================================================================
 
 #ifndef LOG_LEVEL_MANAGER_H
@@ -8,21 +8,15 @@
 
 /**
  * @file LogLevelManager.h
- * @brief 실시간 로그 레벨 관리자 (전역 네임스페이스) - 자동 초기화 지원
+ * @brief 실시간 로그 레벨 관리자 (전역 네임스페이스) - 안전한 자동 초기화
  * @author PulseOne Development Team
  * @date 2025-07-30
- * @version 4.1.0 - 자동 초기화 기능 추가
- * 
- * 🎯 최종 완성:
- * - 🔥 NEW: getInstance() 호출 시 자동 초기화
- * - 전역 네임스페이스 + Utils 함수 활용
- * - DB/파일/웹에서 실시간 로그 레벨 모니터링
- * - 점검 모드 및 카테고리별 레벨 관리
+ * @version 4.1.1 - 경고 없는 자동 초기화
  */
 
 // ✅ 필요한 헤더만 선택적으로 import
-#include "Common/Enums.h"       // LogLevel, DriverLogCategory 등
-#include "Common/Structs.h"     // DeviceInfo, LogStatistics 등
+#include "Common/Enums.h"
+#include "Common/Structs.h"
 #include "Utils/ConfigManager.h" 
 #include "Database/DatabaseManager.h"
 #include <thread>
@@ -47,20 +41,17 @@ using DeviceInfo = PulseOne::Structs::DeviceInfo;
 using LogStatistics = PulseOne::Structs::LogStatistics;
 
 // ✅ 전역 네임스페이스에 정의
-/**
- * @brief 로그 레벨 변경 콜백 타입
- */
 using LogLevelChangeCallback = std::function<void(LogLevel old_level, LogLevel new_level)>;
 
 /**
  * @brief 로그 레벨 소스 열거형
  */
 enum class LogLevelSource : uint8_t {
-    FILE_CONFIG = 0,        // 설정 파일에서
-    DATABASE = 1,           // 데이터베이스에서
-    WEB_API = 2,           // 웹 API에서
-    COMMAND_LINE = 3,      // 명령줄에서
-    MAINTENANCE_OVERRIDE = 4 // 점검 모드 오버라이드
+    FILE_CONFIG = 0,
+    DATABASE = 1,
+    WEB_API = 2,
+    COMMAND_LINE = 3,
+    MAINTENANCE_OVERRIDE = 4
 };
 
 /**
@@ -75,18 +66,16 @@ struct LogLevelChangeEvent {
     std::string reason = "";
     bool is_maintenance_related = false;
     
-    // ✅ Timestamp 올바른 초기화
     LogLevelChangeEvent() : change_time(std::chrono::system_clock::now()) {}
 };
 
 /**
- * @brief 실시간 로그 레벨 관리자 (싱글톤, 전역 네임스페이스) - 자동 초기화 지원
- * @details DB/파일/웹에서 로그 레벨을 실시간으로 모니터링하여 동적 변경
+ * @brief 실시간 로그 레벨 관리자 (싱글톤) - 경고 없는 자동 초기화
  */
 class LogLevelManager {
 public:
     // =============================================================================
-    // 🔥 핵심 개선: 자동 초기화 getInstance
+    // 🔥 FIX: 경고 없는 자동 초기화 getInstance
     // =============================================================================
     
     /**
@@ -95,13 +84,7 @@ public:
      */
     static LogLevelManager& getInstance() {
         static LogLevelManager instance;
-        
-        // 🔥 자동 초기화: 처음 호출 시 한 번만 실행
-        static std::once_flag initialized;
-        std::call_once(initialized, [&instance] {
-            instance.doInitialize();
-        });
-        
+        instance.ensureInitialized();
         return instance;
     }
     
@@ -110,7 +93,7 @@ public:
      * @return 초기화 완료 시 true
      */
     bool isInitialized() const {
-        return initialized_.load();
+        return initialized_.load(std::memory_order_acquire);
     }
     
     // =============================================================================
@@ -119,31 +102,29 @@ public:
     
     /**
      * @brief 수동 초기화 (기존 호환성)
-     * @param config ConfigManager 포인터
-     * @param db DatabaseManager 포인터
      */
-    void Initialize(ConfigManager* config, DatabaseManager* db) {
+    void Initialize(ConfigManager* config = nullptr, DatabaseManager* db = nullptr) {
         doInitialize(config, db);
     }
     
     void Shutdown();
     
     // =============================================================================
-    // 기본 로그 레벨 관리 (기존 유지)
+    // 기본 로그 레벨 관리
     // =============================================================================
     void SetLogLevel(LogLevel level, LogLevelSource source = LogLevelSource::WEB_API,
                     const EngineerID& changed_by = "SYSTEM", const std::string& reason = "");
     LogLevel GetLogLevel() const { return current_level_; }
     
     // =============================================================================
-    // 카테고리별 로그 레벨 관리 (기존 유지)
+    // 카테고리별 로그 레벨 관리
     // =============================================================================
     void SetCategoryLogLevel(DriverLogCategory category, LogLevel level);
     LogLevel GetCategoryLogLevel(DriverLogCategory category) const;
     void ResetCategoryLogLevels();
     
     // =============================================================================
-    // 점검 모드 관리 (기존 유지)
+    // 점검 모드 관리
     // =============================================================================
     void SetMaintenanceMode(bool enabled, LogLevel maintenance_level = LogLevel::TRACE,
                            const EngineerID& engineer_id = "");
@@ -151,7 +132,7 @@ public:
     LogLevel GetMaintenanceLevel() const { return maintenance_level_; }
     
     // =============================================================================
-    // 웹 API 지원 (기존 유지)
+    // 웹 API 지원
     // =============================================================================
     bool UpdateLogLevelInDB(LogLevel level, const EngineerID& changed_by, 
                            const std::string& reason = "Updated via Web API");
@@ -162,24 +143,21 @@ public:
     bool EndMaintenanceModeFromWeb(const EngineerID& engineer_id);
     
     // =============================================================================
-    // 콜백 관리 (기존 유지)
+    // 콜백 관리
     // =============================================================================
     void RegisterChangeCallback(const LogLevelChangeCallback& callback);
     void UnregisterAllCallbacks();
     
     // =============================================================================
-    // 이력 관리 (기존 유지)
+    // 이력 관리
     // =============================================================================
     std::vector<LogLevelChangeEvent> GetChangeHistory(size_t max_count = 100) const;
     void ClearChangeHistory();
     
     // =============================================================================
-    // 상태 조회 및 진단 (기존 유지)
+    // 상태 조회 및 진단
     // =============================================================================
     
-    /**
-     * @brief 매니저 상태 정보
-     */
     struct ManagerStatus {
         LogLevel current_level;
         LogLevel maintenance_level;
@@ -220,33 +198,25 @@ private:
     // =============================================================================
     // 생성자/소멸자 (싱글톤)
     // =============================================================================
-    LogLevelManager();
-    ~LogLevelManager() { Shutdown(); }
     
-    // 복사 방지
+    LogLevelManager();
+    ~LogLevelManager();
+    
+    // 복사/이동 방지
     LogLevelManager(const LogLevelManager&) = delete;
     LogLevelManager& operator=(const LogLevelManager&) = delete;
+    LogLevelManager(LogLevelManager&&) = delete;
+    LogLevelManager& operator=(LogLevelManager&&) = delete;
     
     // =============================================================================
-    // 🔥 핵심: 실제 초기화 로직 (내부용)
+    // 🔥 경고 없는 초기화 로직
     // =============================================================================
-    
-    /**
-     * @brief 실제 초기화 로직 (thread-safe) - 자동 버전
-     * @return 초기화 성공 여부
-     */
+    void ensureInitialized();
     bool doInitialize();
-    
-    /**
-     * @brief 실제 초기화 로직 (thread-safe) - 수동 버전
-     * @param config ConfigManager 포인터
-     * @param db DatabaseManager 포인터
-     * @return 초기화 성공 여부
-     */
     bool doInitialize(ConfigManager* config, DatabaseManager* db);
     
     // =============================================================================
-    // 모니터링 관련 (기존 유지)
+    // 모니터링 관련
     // =============================================================================
     void StartMonitoring();
     void StopMonitoring();
@@ -255,7 +225,7 @@ private:
     void CheckFileChanges();
     
     // =============================================================================
-    // 내부 구현 메소드들 (기존 유지)
+    // 내부 구현 메소드들
     // =============================================================================
     LogLevel LoadLogLevelFromDB();
     LogLevel LoadLogLevelFromFile();
@@ -281,33 +251,38 @@ private:
     }
     
     // =============================================================================
-    // 멤버 변수들 (기존 + 초기화 상태)
+    // 멤버 변수들
     // =============================================================================
     
-    /// 🔥 NEW: 초기화 상태 추적
-    std::atomic<bool> initialized_{false};
+    /// 초기화 상태 (원자적 연산)
+    std::atomic<bool> initialized_;
     
+    /// 초기화용 뮤텍스
+    mutable std::mutex init_mutex_;
+    
+    /// 기본 상태
     LogLevel current_level_;
     LogLevel maintenance_level_;
     ConfigManager* config_;
     DatabaseManager* db_manager_;
     
+    /// 스레드 및 모니터링
     std::atomic<bool> running_;
     std::atomic<bool> maintenance_mode_;
     std::thread monitor_thread_;
     std::chrono::steady_clock::time_point last_db_check_;
     std::chrono::steady_clock::time_point last_file_check_;
     
-    // 통계 카운터들
+    /// 통계 카운터들
     std::atomic<uint64_t> level_change_count_;
     std::atomic<uint64_t> db_check_count_;
     std::atomic<uint64_t> file_check_count_;
     
-    // 카테고리별 로그 레벨 관리
+    /// 카테고리별 로그 레벨 관리
     std::map<DriverLogCategory, LogLevel> category_levels_;
     mutable std::mutex category_mutex_;
     
-    // 콜백 및 이벤트 관리
+    /// 콜백 및 이벤트 관리
     std::vector<LogLevelChangeCallback> change_callbacks_;
     std::vector<LogLevelChangeEvent> change_history_;
     mutable std::mutex callback_mutex_;

@@ -379,9 +379,9 @@ int object_type = 0;  // 기본값
             // 🔥 수정: CurrentValue 엔티티 생성 (필드명 및 타입 수정)
             CurrentValueEntity current_value;
             current_value.setPointId(new_datapoint.getId());  // setDataPointId → setPointId
-            current_value.setValue(0.0);  // 문자열 "0" → double 0.0
+            current_value.setCurrentValue("0.0");
             current_value.setQuality(DataQuality::GOOD);  // 문자열 "GOOD" → enum
-            current_value.setTimestamp(system_clock::now());
+            current_value.setValueTimestamp(std::chrono::system_clock::now());
             
             current_value_repository_->save(current_value);
         }
@@ -456,9 +456,9 @@ bool BACnetDiscoveryService::UpdateCurrentValueInDatabase(
             
             // 🔥 수정: 타입 변환 (string → double)
             double numeric_value = ConvertDataValueToDouble(value.value);
-            current_value.setValue(numeric_value);
+            current_value.setCurrentValue(std::to_string(numeric_value));
             current_value.setQuality(DataQuality::GOOD);
-            current_value.setTimestamp(value.timestamp);
+            current_value.setValueTimestamp(value.timestamp);
             
             return current_value_repository_->update(current_value);
         } else {
@@ -468,9 +468,9 @@ bool BACnetDiscoveryService::UpdateCurrentValueInDatabase(
             
             // 🔥 수정: 타입 변환 (string → double)
             double numeric_value = ConvertDataValueToDouble(value.value);
-            new_value.setValue(numeric_value);
+            new_value.setCurrentValue(std::to_string(numeric_value));
             new_value.setQuality(DataQuality::GOOD);
-            new_value.setTimestamp(value.timestamp);
+            new_value.setValueTimestamp(value.timestamp);
             
             return current_value_repository_->save(new_value);
         }
