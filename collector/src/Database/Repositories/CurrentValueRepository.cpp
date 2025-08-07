@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Common/Utils.h"
 #include <sstream>
@@ -279,19 +280,19 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByConditions(
         
         // WHERE 절 추가
         if (!conditions.empty()) {
-            query += buildWhereClause(conditions);
+            query += RepositoryHelpers::buildWhereClause(conditions);
         }
         
         // ORDER BY 절 추가
         if (order_by.has_value()) {
-            query += buildOrderByClause(order_by);
+            query += RepositoryHelpers::buildOrderByClause(order_by);
         } else {
             query += " ORDER BY updated_at DESC";
         }
         
         // LIMIT 절 추가
         if (pagination.has_value()) {
-            query += buildLimitClause(pagination);
+            query += RepositoryHelpers::buildLimitClause(pagination);
         }
         
         DatabaseAbstractionLayer db_layer;
@@ -326,7 +327,7 @@ int CurrentValueRepository::countByConditions(const std::vector<QueryCondition>&
         std::string query = "SELECT COUNT(*) as count FROM current_values";
         
         if (!conditions.empty()) {
-            query += buildWhereClause(conditions);
+            query += RepositoryHelpers::buildWhereClause(conditions);
         }
         
         DatabaseAbstractionLayer db_layer;
@@ -375,7 +376,7 @@ int CurrentValueRepository::saveBulk(std::vector<CurrentValueEntity>& entities) 
                       << entity.getPointId() << ", "
                       << entity.getValue() << ", "
                       << entity.getRawValue() << ", '"
-                      << escapeString(entity.getStringValue()) << "', '"
+                      << RepositoryHelpers::escapeString(entity.getStringValue()) << "', '"
                       << entity.getQualityString() << "', '"
                       << PulseOne::Utils::TimestampToDBString(entity.getTimestamp()) << "', '"
                       << PulseOne::Utils::TimestampToDBString(entity.getUpdatedAt()) << "')";
@@ -852,41 +853,6 @@ bool CurrentValueRepository::validateCurrentValue(const CurrentValueEntity& enti
     return true;
 }
 
-std::string CurrentValueRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
-
-// =============================================================================
-// SQL 빌더 헬퍼 메서드들 (DataPointRepository 패턴)
-// =============================================================================
-
-std::string CurrentValueRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string CurrentValueRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string CurrentValueRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
 
 } // namespace Repositories
 } // namespace Database

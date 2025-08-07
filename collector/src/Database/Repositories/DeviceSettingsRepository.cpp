@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/DeviceSettingsRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Utils/LogManager.h"
@@ -22,24 +23,6 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// =============================================================================
-// 동적 파라미터 치환 헬퍼 (DeviceRepository와 동일한 패턴)
-// =============================================================================
-std::string replaceParameter(std::string query, const std::string& value) {
-    size_t pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, value);
-    }
-    return query;
-}
-
-std::string replaceParameterWithQuotes(std::string query, const std::string& value) {
-    size_t pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, "'" + value + "'");
-    }
-    return query;
-}
 
 // =============================================================================
 // IRepository 기본 CRUD 구현 (SQLQueries.h 상수 사용)
@@ -95,7 +78,7 @@ std::optional<DeviceSettingsEntity> DeviceSettingsRepository::findById(int devic
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 동적 파라미터 처리
-        std::string query = replaceParameter(SQL::DeviceSettings::FIND_BY_ID, std::to_string(device_id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::DeviceSettings::FIND_BY_ID, std::to_string(device_id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -171,7 +154,7 @@ bool DeviceSettingsRepository::deleteById(int device_id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::DeviceSettings::DELETE_BY_ID, std::to_string(device_id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::DeviceSettings::DELETE_BY_ID, std::to_string(device_id));
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -202,7 +185,7 @@ bool DeviceSettingsRepository::exists(int device_id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::DeviceSettings::EXISTS_BY_ID, std::to_string(device_id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::DeviceSettings::EXISTS_BY_ID, std::to_string(device_id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -291,7 +274,7 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByProtocol(const
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameterWithQuotes(SQL::DeviceSettings::FIND_BY_PROTOCOL, protocol_type);
+        std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::DeviceSettings::FIND_BY_PROTOCOL, protocol_type);
         
         auto results = db_layer.executeQuery(query);
         
@@ -522,16 +505,6 @@ bool DeviceSettingsRepository::validateSettings(const DeviceSettingsEntity& enti
     }
     
     return true;
-}
-
-std::string DeviceSettingsRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
 }
 
 // =============================================================================

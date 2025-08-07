@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/AlarmConfigRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Utils/LogManager.h"
 #include <chrono>
@@ -305,9 +306,9 @@ std::vector<AlarmConfigEntity> AlarmConfigRepository::findByConditions(
             FROM alarm_definitions
         )";
         
-        query += buildWhereClause(conditions);
-        query += buildOrderByClause(order_by);
-        query += buildLimitClause(pagination);
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -339,7 +340,7 @@ int AlarmConfigRepository::countByConditions(const std::vector<QueryCondition>& 
         }
         
         std::string query = "SELECT COUNT(*) as count FROM alarm_definitions";
-        query += buildWhereClause(conditions);
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -504,7 +505,7 @@ bool AlarmConfigRepository::isAlarmNameTaken(const std::string& name, int tenant
         }
         
         std::string query = "SELECT COUNT(*) as count FROM alarm_definitions WHERE alarm_name = '" + 
-                           escapeString(name) + "' AND tenant_id = " + std::to_string(tenant_id);
+                           RepositoryHelpers::escapeString(name) + "' AND tenant_id = " + std::to_string(tenant_id);
         
         if (exclude_id > 0) {
             query += " AND id != " + std::to_string(exclude_id);
@@ -793,32 +794,6 @@ bool AlarmConfigRepository::validateAlarmConfig(const AlarmConfigEntity& entity)
     return true;
 }
 
-// =============================================================================
-// SQL 빌더 헬퍼 메서드들
-// =============================================================================
-
-std::string AlarmConfigRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string AlarmConfigRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string AlarmConfigRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
 QueryCondition AlarmConfigRepository::buildSeverityCondition(AlarmConfigEntity::Severity severity) const {
     std::string severity_str = AlarmConfigEntity::severityToString(severity);
     return QueryCondition("severity", "=", severity_str);
@@ -827,16 +802,6 @@ QueryCondition AlarmConfigRepository::buildSeverityCondition(AlarmConfigEntity::
 // =============================================================================
 // 유틸리티 함수들
 // =============================================================================
-
-std::string AlarmConfigRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
 
 std::string AlarmConfigRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
     auto time_t = std::chrono::system_clock::to_time_t(timestamp);

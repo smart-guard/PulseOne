@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/DeviceRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h" 
 #include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
@@ -21,25 +22,6 @@
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
-
-// =============================================================================
-// 동적 파라미터 치환 헬퍼
-// =============================================================================
-std::string replaceParameter(std::string query, const std::string& value) {
-    size_t pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, value);
-    }
-    return query;
-}
-
-std::string replaceParameterWithQuotes(std::string query, const std::string& value) {
-    size_t pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, "'" + value + "'");
-    }
-    return query;
-}
 
 // =============================================================================
 // IRepository 기본 CRUD 구현 (SQLQueries.h 상수 사용)
@@ -92,7 +74,7 @@ std::optional<DeviceEntity> DeviceRepository::findById(int id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 동적 파라미터 처리
-        std::string query = replaceParameter(SQL::Device::FIND_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Device::FIND_BY_ID, std::to_string(id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -176,7 +158,7 @@ bool DeviceRepository::deleteById(int id) {
         }
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::Device::DELETE_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Device::DELETE_BY_ID, std::to_string(id));
         
         DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
@@ -206,7 +188,7 @@ bool DeviceRepository::exists(int id) {
         }
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::Device::EXISTS_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Device::EXISTS_BY_ID, std::to_string(id));
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -291,9 +273,9 @@ std::vector<DeviceEntity> DeviceRepository::findByConditions(
             query = query.substr(0, order_pos);
         }
         
-        query += buildWhereClause(conditions);
-        query += buildOrderByClause(order_by);
-        query += buildLimitClause(pagination);
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -326,7 +308,7 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
         
         // 🎯 SQLQueries.h 상수 사용
         std::string query = SQL::Device::COUNT_ALL;
-        query += buildWhereClause(conditions);
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -356,7 +338,7 @@ std::vector<DeviceEntity> DeviceRepository::findByProtocol(const std::string& pr
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 파라미터 치환
-        std::string query = replaceParameterWithQuotes(SQL::Device::FIND_BY_PROTOCOL, protocol_type);
+        std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::Device::FIND_BY_PROTOCOL, protocol_type);
         
         auto results = db_layer.executeQuery(query);
         
@@ -380,7 +362,7 @@ std::vector<DeviceEntity> DeviceRepository::findByTenant(int tenant_id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::Device::FIND_BY_TENANT, std::to_string(tenant_id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Device::FIND_BY_TENANT, std::to_string(tenant_id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -404,7 +386,7 @@ std::vector<DeviceEntity> DeviceRepository::findBySite(int site_id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::Device::FIND_BY_SITE, std::to_string(site_id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Device::FIND_BY_SITE, std::to_string(site_id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -559,7 +541,7 @@ bool DeviceRepository::updateEndpoint(int device_id, const std::string& endpoint
         // 첫 번째 ? → endpoint 값
         size_t pos = query.find('?');
         if (pos != std::string::npos) {
-            query.replace(pos, 1, "'" + escapeString(endpoint) + "'");
+            query.replace(pos, 1, "'" + RepositoryHelpers::escapeString(endpoint) + "'");
         }
         
         // 두 번째 ? → 현재 시간
@@ -601,7 +583,7 @@ bool DeviceRepository::updateConfig(int device_id, const std::string& config) {
         // 첫 번째 ? → config 값
         size_t pos = query.find('?');
         if (pos != std::string::npos) {
-            query.replace(pos, 1, "'" + escapeString(config) + "'");
+            query.replace(pos, 1, "'" + RepositoryHelpers::escapeString(config) + "'");
         }
         
         // 두 번째 ? → 현재 시간
@@ -933,44 +915,8 @@ bool DeviceRepository::validateDevice(const DeviceEntity& entity) const {
 }
 
 // =============================================================================
-// SQL 빌더 헬퍼 메서드들
-// =============================================================================
-
-std::string DeviceRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string DeviceRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string DeviceRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
-// =============================================================================
 // 유틸리티 함수들
 // =============================================================================
-
-std::string DeviceRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
 
 std::string DeviceRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
     auto time_t = std::chrono::system_clock::to_time_t(timestamp);

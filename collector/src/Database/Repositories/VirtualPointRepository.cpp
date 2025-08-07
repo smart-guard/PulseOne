@@ -17,6 +17,7 @@
  */
 
 #include "Database/Repositories/VirtualPointRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
 #include <iomanip>
@@ -288,9 +289,9 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByConditions(
             FROM virtual_points
         )";
         
-        query += buildWhereClause(conditions);
-        query += buildOrderByClause(order_by);
-        query += buildLimitClause(pagination);
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -322,7 +323,7 @@ int VirtualPointRepository::countByConditions(const std::vector<QueryCondition>&
         }
         
         std::string query = "SELECT COUNT(*) as count FROM virtual_points";
-        query += buildWhereClause(conditions);
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -450,7 +451,7 @@ std::optional<VirtualPointEntity> VirtualPointRepository::findByName(const std::
                 data_type, unit, calculation_interval, calculation_trigger,
                 is_enabled, category, tags, created_by, created_at, updated_at
             FROM virtual_points 
-            WHERE name = ')" + escapeString(name) + R"(' AND tenant_id = )" + std::to_string(tenant_id);
+            WHERE name = ')" + RepositoryHelpers::escapeString(name) + R"(' AND tenant_id = )" + std::to_string(tenant_id);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -548,7 +549,7 @@ bool VirtualPointRepository::updateFormula(int point_id, const std::string& form
     try {
         const std::string query = R"(
             UPDATE virtual_points 
-            SET formula = ')" + escapeString(formula) + R"(',
+            SET formula = ')" + RepositoryHelpers::escapeString(formula) + R"(',
                 updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(point_id);
         
@@ -709,7 +710,7 @@ std::map<std::string, std::string> VirtualPointRepository::entityToParams(const 
     const auto& tags = entity.getTags();
     for (size_t i = 0; i < tags.size(); ++i) {
         if (i > 0) tags_ss << ", ";
-        tags_ss << "\"" << escapeString(tags[i]) << "\"";
+        tags_ss << "\"" << RepositoryHelpers::escapeString(tags[i]) << "\"";
     }
     tags_ss << "]";
     params["tags"] = tags_ss.str();
@@ -793,45 +794,8 @@ bool VirtualPointRepository::validateVirtualPoint(const VirtualPointEntity& enti
 }
 
 // =============================================================================
-// SQL 빌더 헬퍼 메서드들 (DeviceRepository 패턴)
-// =============================================================================
-
-std::string VirtualPointRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string VirtualPointRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string VirtualPointRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
-// =============================================================================
 // 유틸리티 함수들 (DeviceRepository 패턴)
 // =============================================================================
-
-std::string VirtualPointRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
-
 std::string VirtualPointRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
     auto time_t = std::chrono::system_clock::to_time_t(timestamp);
     std::ostringstream oss;

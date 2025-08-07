@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Database/Repositories/CurrentValueRepository.h"
@@ -23,37 +24,6 @@
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
-
-// =============================================================================
-// 동적 파라미터 치환 헬퍼 (DeviceRepository와 동일한 패턴)
-// =============================================================================
-std::string replaceParameter(std::string query, const std::string& value) {
-    size_t pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, value);
-    }
-    return query;
-}
-
-std::string replaceParameterWithQuotes(std::string query, const std::string& value) {
-    size_t pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, "'" + value + "'");
-    }
-    return query;
-}
-
-std::string replaceTwoParameters(std::string query, const std::string& value1, const std::string& value2) {
-    size_t pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, value1);
-    }
-    pos = query.find('?');
-    if (pos != std::string::npos) {
-        query.replace(pos, 1, value2);
-    }
-    return query;
-}
 
 // =============================================================================
 // IRepository 기본 CRUD 구현 (SQLQueries.h 상수 사용)
@@ -109,7 +79,7 @@ std::optional<DataPointEntity> DataPointRepository::findById(int id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 동적 파라미터 처리
-        std::string query = replaceParameter(SQL::DataPoint::FIND_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::DataPoint::FIND_BY_ID, std::to_string(id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -196,7 +166,7 @@ bool DataPointRepository::deleteById(int id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::DataPoint::DELETE_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::DataPoint::DELETE_BY_ID, std::to_string(id));
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -227,7 +197,7 @@ bool DataPointRepository::exists(int id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
-        std::string query = replaceParameter(SQL::DataPoint::EXISTS_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::DataPoint::EXISTS_BY_ID, std::to_string(id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -311,9 +281,9 @@ std::vector<DataPointEntity> DataPointRepository::findByConditions(
             query = query.substr(0, order_pos);
         }
         
-        query += buildWhereClause(conditions);
-        query += buildOrderByClause(order_by);
-        query += buildLimitClause(pagination);
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -346,7 +316,7 @@ int DataPointRepository::countByConditions(const std::vector<QueryCondition>& co
         
         // 🎯 SQLQueries.h 상수 사용
         std::string query = SQL::DataPoint::COUNT_ALL;
-        query += buildWhereClause(conditions);
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -378,9 +348,9 @@ std::vector<DataPointEntity> DataPointRepository::findByDeviceId(int device_id, 
         // 🎯 SQLQueries.h 상수 사용 - enabled_only에 따라 다른 상수 선택
         std::string query;
         if (enabled_only) {
-            query = replaceParameter(SQL::DataPoint::FIND_BY_DEVICE_ID_ENABLED, std::to_string(device_id));
+            query = RepositoryHelpers::replaceParameter(SQL::DataPoint::FIND_BY_DEVICE_ID_ENABLED, std::to_string(device_id));
         } else {
-            query = replaceParameter(SQL::DataPoint::FIND_BY_DEVICE_ID, std::to_string(device_id));
+            query = RepositoryHelpers::replaceParameter(SQL::DataPoint::FIND_BY_DEVICE_ID, std::to_string(device_id));
         }
         
         auto results = db_layer.executeQuery(query);
@@ -527,7 +497,7 @@ std::vector<DataPointEntity> DataPointRepository::findByDataType(const std::stri
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 파라미터 치환
-        std::string query = replaceParameterWithQuotes(SQL::DataPoint::FIND_BY_DATA_TYPE, data_type);
+        std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::DataPoint::FIND_BY_DATA_TYPE, data_type);
         
         auto results = db_layer.executeQuery(query);
         
@@ -560,7 +530,7 @@ std::vector<DataPointEntity> DataPointRepository::findByTag(const std::string& t
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + LIKE 패턴
-        std::string query = replaceParameterWithQuotes(SQL::DataPoint::FIND_BY_TAG, "%" + tag + "%");
+        std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::DataPoint::FIND_BY_TAG, "%" + tag + "%");
         
         auto results = db_layer.executeQuery(query);
         
@@ -787,7 +757,7 @@ int DataPointRepository::deleteByIds(const std::vector<int>& ids) {
         
         for (int id : ids) {
             // 🎯 SQLQueries.h 상수 사용
-            std::string query = replaceParameter(SQL::DataPoint::DELETE_BY_ID, std::to_string(id));
+            std::string query = RepositoryHelpers::replaceParameter(SQL::DataPoint::DELETE_BY_ID, std::to_string(id));
             bool success = db_layer.executeNonQuery(query);
             
             if (success) {
@@ -1002,46 +972,9 @@ bool DataPointRepository::validateDataPoint(const DataPointEntity& entity) const
     
     return true;
 }
-
-// =============================================================================
-// SQL 빌더 헬퍼 메서드들
-// =============================================================================
-
-std::string DataPointRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string DataPointRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return " ORDER BY device_id, address";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string DataPointRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
 // =============================================================================
 // 유틸리티 함수들
 // =============================================================================
-
-std::string DataPointRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
 
 std::string DataPointRepository::tagsToString(const std::vector<std::string>& tags) {
     if (tags.empty()) return "";
