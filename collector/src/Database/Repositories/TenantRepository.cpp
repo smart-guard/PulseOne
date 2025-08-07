@@ -555,7 +555,7 @@ bool TenantRepository::updateStatus(int tenant_id, TenantEntity::Status status) 
         const std::string query = R"(
             UPDATE tenants 
             SET status = ')" + RepositoryHelpers::escapeString(TenantEntity::statusToString(status)) + R"(',
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+                updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(tenant_id);
         
         DatabaseAbstractionLayer db_layer;
@@ -821,8 +821,8 @@ std::map<std::string, std::string> TenantRepository::entityToParams(const Tenant
     params["timezone"] = entity.getTimezone();
     
     // 구독 정보
-    params["subscription_start"] = formatTimestamp(entity.getSubscriptionStart());
-    params["subscription_end"] = formatTimestamp(entity.getSubscriptionEnd());
+    params["subscription_start"] = RepositoryHelpers::formatTimestamp(entity.getSubscriptionStart());
+    params["subscription_end"] = RepositoryHelpers::formatTimestamp(entity.getSubscriptionEnd());
     
     params["created_at"] = db_layer.getCurrentTimestamp();
     params["updated_at"] = db_layer.getCurrentTimestamp();
@@ -903,14 +903,6 @@ bool TenantRepository::validateTenant(const TenantEntity& entity) const {
 // =============================================================================
 // 유틸리티 함수들
 // =============================================================================
-
-std::string TenantRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
-
 std::map<std::string, int> TenantRepository::getCacheStats() const {
     return IRepository<TenantEntity>::getCacheStats();
 }

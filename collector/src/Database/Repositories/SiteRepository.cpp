@@ -620,7 +620,7 @@ bool SiteRepository::updateSiteStatus(int site_id, bool is_active) {
         const std::string query = R"(
             UPDATE sites 
             SET is_active = )" + std::string(is_active ? "1" : "0") + R"(,
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+                updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(site_id);
         
         DatabaseAbstractionLayer db_layer;
@@ -667,7 +667,7 @@ bool SiteRepository::updateHierarchyPath(SiteEntity& entity) {
             UPDATE sites 
             SET hierarchy_path = ')" + RepositoryHelpers::escapeString(entity.getHierarchyPath()) + R"(',
                 hierarchy_level = )" + std::to_string(entity.getHierarchyLevel()) + R"(,
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+                updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(entity.getId());
         
         DatabaseAbstractionLayer db_layer;
@@ -988,16 +988,6 @@ bool SiteRepository::validateSite(const SiteEntity& entity) const {
     return true;
 }
 
-// =============================================================================
-// 유틸리티 함수들
-// =============================================================================
-
-std::string SiteRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
 
 } // namespace Repositories
 } // namespace Database

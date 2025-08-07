@@ -133,12 +133,25 @@ std::string RepositoryHelpers::formatTimestamp(const std::time_t& timestamp) {
     return ss.str();
 }
 
+std::string RepositoryHelpers::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) {
+    std::time_t time_t_val = std::chrono::system_clock::to_time_t(timestamp);
+    return formatTimestamp(time_t_val);
+}
+
 std::time_t RepositoryHelpers::parseTimestamp(const std::string& timestamp_str) {
     // 간단한 구현 - 실제로는 더 정교한 파싱 필요
     std::tm tm = {};
     std::istringstream ss(timestamp_str);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
     return std::mktime(&tm);
+}
+
+std::time_t RepositoryHelpers::timePointToTimeT(const std::chrono::system_clock::time_point& tp) {
+    return std::chrono::system_clock::to_time_t(tp);
+}
+
+std::chrono::system_clock::time_point RepositoryHelpers::timeTToTimePoint(const std::time_t& tt) {
+    return std::chrono::system_clock::from_time_t(tt);
 }
 
 // =============================================================================

@@ -7,6 +7,13 @@
 #define REPOSITORY_HELPERS_H
 
 #include <string>
+#include <vector>
+#include <optional>
+#include <chrono>
+#include <ctime>
+
+#include "Database/DatabaseTypes.h"
+
 
 namespace PulseOne {
 namespace Database {
@@ -37,11 +44,15 @@ public:
     // SQL 문자열 처리
     static std::string escapeString(const std::string& str);
     static std::string formatTimestamp(const std::time_t& timestamp);
+    static std::string formatTimestamp(const std::chrono::system_clock::time_point& timestamp);    
     static std::time_t parseTimestamp(const std::string& timestamp_str);
     
     // 태그 처리 (DataPoint용)
     static std::string tagsToString(const std::vector<std::string>& tags);
     static std::vector<std::string> parseTagsFromString(const std::string& tags_str);
+
+    static std::time_t timePointToTimeT(const std::chrono::system_clock::time_point& tp);
+    static std::chrono::system_clock::time_point timeTToTimePoint(const std::time_t& tt);
 };
 
 } // namespace Repositories

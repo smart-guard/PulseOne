@@ -503,7 +503,7 @@ bool DeviceRepository::updateDeviceStatus(int device_id, bool is_enabled) {
         // 두 번째 ? → 현재 시간
         pos = query.find('?');
         if (pos != std::string::npos) {
-            query.replace(pos, 1, "'" + formatTimestamp(std::chrono::system_clock::now()) + "'");
+            query.replace(pos, 1, "'" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + "'");
         }
         
         // 세 번째 ? → device_id
@@ -547,7 +547,7 @@ bool DeviceRepository::updateEndpoint(int device_id, const std::string& endpoint
         // 두 번째 ? → 현재 시간
         pos = query.find('?');
         if (pos != std::string::npos) {
-            query.replace(pos, 1, "'" + formatTimestamp(std::chrono::system_clock::now()) + "'");
+            query.replace(pos, 1, "'" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + "'");
         }
         
         // 세 번째 ? → device_id
@@ -589,7 +589,7 @@ bool DeviceRepository::updateConfig(int device_id, const std::string& config) {
         // 두 번째 ? → 현재 시간
         pos = query.find('?');
         if (pos != std::string::npos) {
-            query.replace(pos, 1, "'" + formatTimestamp(std::chrono::system_clock::now()) + "'");
+            query.replace(pos, 1, "'" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + "'");
         }
         
         // 세 번째 ? → device_id
@@ -846,13 +846,13 @@ std::map<std::string, std::string> DeviceRepository::entityToParams(const Device
     params["is_enabled"] = db_layer.formatBoolean(entity.isEnabled());
     
     if (entity.getInstallationDate().has_value()) {
-        params["installation_date"] = formatTimestamp(entity.getInstallationDate().value());
+        params["installation_date"] = RepositoryHelpers::formatTimestamp(entity.getInstallationDate().value());
     } else {
         params["installation_date"] = "NULL";
     }
     
     if (entity.getLastMaintenance().has_value()) {
-        params["last_maintenance"] = formatTimestamp(entity.getLastMaintenance().value());
+        params["last_maintenance"] = RepositoryHelpers::formatTimestamp(entity.getLastMaintenance().value());
     } else {
         params["last_maintenance"] = "NULL";
     }
@@ -914,16 +914,6 @@ bool DeviceRepository::validateDevice(const DeviceEntity& entity) const {
     return true;
 }
 
-// =============================================================================
-// 유틸리티 함수들
-// =============================================================================
-
-std::string DeviceRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
 
 } // namespace Repositories
 } // namespace Database

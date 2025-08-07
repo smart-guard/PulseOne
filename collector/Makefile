@@ -1,6 +1,10 @@
 # =============================================================================
 # PulseOne Collector Makefile - 수정된 버전 (Redis 라이브러리 포함)
 # =============================================================================
+# CPU 코어 수 자동 감지 및 병렬 처리 설정
+NPROC := $(shell nproc 2>/dev/null || echo 4)
+MAKEFLAGS += -j$(NPROC)
+
 
 # nlohmann/json 라이브러리 체크
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
@@ -13,7 +17,7 @@ HAS_BACNET_STACK := $(shell pkg-config --exists bacnet && echo "1" || echo "0")
 
 # 컴파일러 설정
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus) -I/usr/local/include/bacnet
+CXXFLAGS = -Wno-unused-but-set-variable -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -O0 -Iinclude $(shell pkg-config --cflags libmodbus) -I/usr/local/include/bacnet
 LDFLAGS = 
 
 # 🔧 수정: Redis 라이브러리 추가

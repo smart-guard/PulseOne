@@ -178,12 +178,7 @@ private:
      */
     DeviceSettingsEntity createPresetEntity(const std::string& preset_mode, int device_id) const;
     
-    /**
-     * @brief 🎯 추가: SQL 문자열 이스케이프 처리
-     * @param str 이스케이프할 문자열
-     * @return 이스케이프된 문자열
-     */
-    std::string escapeString(const std::string& str) const;
+
 };
 
 } // namespace Repositories

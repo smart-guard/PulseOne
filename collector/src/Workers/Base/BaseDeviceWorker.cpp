@@ -598,5 +598,12 @@ void BaseDeviceWorker::LogMessage(LogLevel level, const std::string& message) co
     LogManager::getInstance().log("worker", level, prefix + message);
 }
 
+std::string BaseDeviceWorker::GetWorkerIdString() const {
+    // 기존 코드에서 사용하던 패턴 활용
+    std::stringstream ss;
+    ss << device_info_.GetProtocolName() << "_" << device_info_.name << "_" << device_info_.id;
+    return ss.str();
+}
+
 } // namespace Workers
 } // namespace PulseOne

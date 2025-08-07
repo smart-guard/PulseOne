@@ -125,7 +125,7 @@ bool DataPointRepository::save(DataPointEntity& entity) {
         if (success) {
             // 새로 생성된 경우 ID 조회 - SQLQueries.h 상수 사용
             if (entity.getId() <= 0) {
-                std::string id_query = replaceTwoParameters(SQL::DataPoint::FIND_LAST_CREATED_BY_DEVICE_ADDRESS,
+                std::string id_query = RepositoryHelpers::replaceTwoParameters(SQL::DataPoint::FIND_LAST_CREATED_BY_DEVICE_ADDRESS,
                                                            std::to_string(entity.getDeviceId()),
                                                            std::to_string(entity.getAddress()));
                 auto id_result = db_layer.executeQuery(id_query);
@@ -435,7 +435,7 @@ std::optional<DataPointEntity> DataPointRepository::findByDeviceAndAddress(int d
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 두 파라미터 치환
-        std::string query = replaceTwoParameters(SQL::DataPoint::FIND_BY_DEVICE_AND_ADDRESS,
+        std::string query = RepositoryHelpers::replaceTwoParameters(SQL::DataPoint::FIND_BY_DEVICE_AND_ADDRESS,
                                                  std::to_string(device_id),
                                                  std::to_string(address));
         
@@ -875,7 +875,7 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
         
         it = row.find("tags");
         if (it != row.end()) {
-            entity.setTags(parseTagsFromString(it->second));
+            entity.setTags(RepositoryHelpers::parseTagsFromString(it->second));
         }
         
         it = row.find("metadata");
@@ -920,7 +920,7 @@ std::map<std::string, std::string> DataPointRepository::entityToParams(const Dat
     params["log_enabled"] = db_layer.formatBoolean(entity.isLogEnabled());
     params["log_interval_ms"] = std::to_string(entity.getLogInterval());
     params["log_deadband"] = std::to_string(entity.getLogDeadband());
-    params["tags"] = tagsToString(entity.getTags());
+    params["tags"] = RepositoryHelpers::tagsToString(entity.getTags());
     params["metadata"] = "{}"; // 간단화
     params["created_at"] = db_layer.getCurrentTimestamp();
     params["updated_at"] = db_layer.getCurrentTimestamp();
@@ -971,34 +971,6 @@ bool DataPointRepository::validateDataPoint(const DataPointEntity& entity) const
     }
     
     return true;
-}
-// =============================================================================
-// 유틸리티 함수들
-// =============================================================================
-
-std::string DataPointRepository::tagsToString(const std::vector<std::string>& tags) {
-    if (tags.empty()) return "";
-    
-    std::ostringstream oss;
-    for (size_t i = 0; i < tags.size(); ++i) {
-        if (i > 0) oss << ",";
-        oss << tags[i];
-    }
-    return oss.str();
-}
-
-std::vector<std::string> DataPointRepository::parseTagsFromString(const std::string& tags_str) {
-    std::vector<std::string> tags;
-    if (tags_str.empty()) return tags;
-    
-    std::istringstream iss(tags_str);
-    std::string tag;
-    while (std::getline(iss, tag, ',')) {
-        if (!tag.empty()) {
-            tags.push_back(tag);
-        }
-    }
-    return tags;
 }
 
 // =============================================================================
