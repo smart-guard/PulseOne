@@ -397,7 +397,9 @@ private:
      */
     std::vector<DataPointEntity> mapResultToEntities(
         const std::vector<std::map<std::string, std::string>>& result);
-    
+    PulseOne::Structs::DataPoint DataPointRepository::mapToStructDataPoint(
+    const DataPointEntity& entity, 
+    const std::map<std::string, std::string>& current_values_row);
     // CurrentValueRepository 의존성
     std::shared_ptr<CurrentValueRepository> current_value_repo_;
 };

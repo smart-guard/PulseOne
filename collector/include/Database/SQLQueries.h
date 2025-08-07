@@ -188,95 +188,230 @@ namespace Device {
 // =============================================================================
 namespace DataPoint {
     
+    // 🔥🔥🔥 FIND_ALL - 모든 필드 포함 (Struct DataPoint 완전 일치)
     const std::string FIND_ALL = R"(
         SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            -- 기본 식별 정보
+            id, device_id, name, description, 
+            
+            -- 주소 정보  
+            address, address_string,
+            
+            -- 데이터 타입 및 접근성
+            data_type, access_mode, is_enabled, is_writable,
+            
+            -- 엔지니어링 단위 및 스케일링
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            
+            -- 🔥 로깅 및 수집 설정 (SQLQueries.h가 찾던 컬럼들!)
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            
+            -- 🔥 메타데이터 (SQLQueries.h가 찾던 컬럼들!)
+            group_name, tags, metadata, protocol_params,
+            
+            -- 시간 정보
             created_at, updated_at
         FROM data_points 
         ORDER BY device_id, address
     )";
     
+    // 🔥🔥🔥 FIND_BY_ID - 모든 필드 포함
     const std::string FIND_BY_ID = R"(
         SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            id, device_id, name, description, 
+            address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
         WHERE id = ?
     )";
     
+    // 🔥 FIND_BY_DEVICE_ID - 디바이스별 조회
     const std::string FIND_BY_DEVICE_ID = R"(
         SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            id, device_id, name, description, 
+            address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
         WHERE device_id = ?
         ORDER BY address
     )";
     
-    // 🔥 누락된 쿼리 1: FIND_BY_DEVICE_ID_ENABLED
+    // 🔥 FIND_BY_DEVICE_ID_ENABLED - 활성화된 포인트만
     const std::string FIND_BY_DEVICE_ID_ENABLED = R"(
         SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            id, device_id, name, description, 
+            address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
         WHERE device_id = ? AND is_enabled = 1
         ORDER BY address
     )";
     
-    const std::string FIND_ENABLED_BY_DEVICE = R"(
-        SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
-            created_at, updated_at
-        FROM data_points 
-        WHERE device_id = ? AND is_enabled = 1
-        ORDER BY address
-    )";
-    
-    const std::string FIND_BY_DATA_TYPE = R"(
-        SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
-            created_at, updated_at
-        FROM data_points 
-        WHERE data_type = ?
-        ORDER BY device_id, address
-    )";
-    
-    // 🔥 누락된 쿼리 2: FIND_BY_DEVICE_AND_ADDRESS
+    // 🔥 FIND_BY_DEVICE_AND_ADDRESS - 유니크 검색
     const std::string FIND_BY_DEVICE_AND_ADDRESS = R"(
         SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            id, device_id, name, description, 
+            address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
         WHERE device_id = ? AND address = ?
+        ORDER BY created_at DESC
+        LIMIT 1
     )";
     
-    // 🔥 누락된 쿼리 3: FIND_WRITABLE_POINTS
-    const std::string FIND_WRITABLE_POINTS = R"(
-        SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+    // 🔥🔥🔥 INSERT - 모든 필드 삽입
+    const std::string INSERT = R"(
+        INSERT INTO data_points (
+            device_id, name, description, 
+            address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
             created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+    
+    // 🔥🔥🔥 UPDATE - 모든 필드 업데이트  
+    const std::string UPDATE = R"(
+        UPDATE data_points SET 
+            device_id = ?, name = ?, description = ?, 
+            address = ?, address_string = ?,
+            data_type = ?, access_mode = ?, is_enabled = ?, is_writable = ?,
+            unit = ?, scaling_factor = ?, scaling_offset = ?, min_value = ?, max_value = ?,
+            log_enabled = ?, log_interval_ms = ?, log_deadband = ?, polling_interval_ms = ?,
+            group_name = ?, tags = ?, metadata = ?, protocol_params = ?,
+            updated_at = ?
+        WHERE id = ?
+    )";
+    
+    // 기본 CRUD 작업
+    const std::string DELETE_BY_ID = "DELETE FROM data_points WHERE id = ?";
+    const std::string DELETE_BY_DEVICE_ID = "DELETE FROM data_points WHERE device_id = ?";
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM data_points WHERE id = ?";
+    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM data_points";
+    const std::string COUNT_BY_DEVICE = "SELECT COUNT(*) as count FROM data_points WHERE device_id = ?";
+    
+    // 통계 쿼리들
+    const std::string GET_COUNT_BY_DEVICE = R"(
+        SELECT device_id, COUNT(*) as count 
         FROM data_points 
-        WHERE access_mode IN ('write', 'readwrite') AND is_enabled = 1
+        GROUP BY device_id
+        ORDER BY device_id
+    )";
+    
+    const std::string GET_COUNT_BY_DATA_TYPE = R"(
+        SELECT data_type, COUNT(*) as count 
+        FROM data_points 
+        GROUP BY data_type
+        ORDER BY count DESC
+    )";
+    
+    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+    
+    // 🔥🔥🔥 CREATE_TABLE - Struct DataPoint 완전 반영
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS data_points (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id INTEGER NOT NULL,
+            
+            -- 🔥 기본 식별 정보 (Struct DataPoint와 일치)
+            name VARCHAR(100) NOT NULL,
+            description TEXT,
+            
+            -- 🔥 주소 정보 (Struct DataPoint와 일치)
+            address INTEGER NOT NULL,                    -- uint32_t address
+            address_string VARCHAR(255),                 -- std::string address_string
+            
+            -- 🔥 데이터 타입 및 접근성 (Struct DataPoint와 일치)
+            data_type VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',  -- std::string data_type
+            access_mode VARCHAR(10) DEFAULT 'read',             -- std::string access_mode
+            is_enabled INTEGER DEFAULT 1,                       -- bool is_enabled
+            is_writable INTEGER DEFAULT 0,                      -- bool is_writable
+            
+            -- 🔥 엔지니어링 단위 및 스케일링 (Struct DataPoint와 일치)
+            unit VARCHAR(50),                            -- std::string unit
+            scaling_factor REAL DEFAULT 1.0,            -- double scaling_factor
+            scaling_offset REAL DEFAULT 0.0,            -- double scaling_offset
+            min_value REAL DEFAULT 0.0,                 -- double min_value
+            max_value REAL DEFAULT 0.0,                 -- double max_value
+            
+            -- 🔥🔥🔥 로깅 및 수집 설정 (중요! 이전에 없던 컬럼들)
+            log_enabled INTEGER DEFAULT 1,              -- bool log_enabled ✅
+            log_interval_ms INTEGER DEFAULT 0,          -- uint32_t log_interval_ms ✅
+            log_deadband REAL DEFAULT 0.0,              -- double log_deadband ✅
+            polling_interval_ms INTEGER DEFAULT 0,      -- uint32_t polling_interval_ms
+            
+            -- 🔥🔥🔥 메타데이터 (중요! 이전에 없던 컬럼들)
+            group_name VARCHAR(50),                      -- std::string group
+            tags TEXT,                                   -- std::string tags (JSON 배열) ✅
+            metadata TEXT,                               -- std::string metadata (JSON 객체) ✅
+            protocol_params TEXT,                        -- map<string,string> protocol_params (JSON)
+            
+            -- 🔥 시간 정보
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
+            UNIQUE(device_id, address)
+        )
+    )";
+    
+    // 🔥🔥🔥 실시간 값 조회 (current_values 테이블과 JOIN)
+    const std::string FIND_WITH_CURRENT_VALUES = R"(
+        SELECT 
+            -- data_points 모든 필드
+            dp.id, dp.device_id, dp.name, dp.description, 
+            dp.address, dp.address_string,
+            dp.data_type, dp.access_mode, dp.is_enabled, dp.is_writable,
+            dp.unit, dp.scaling_factor, dp.scaling_offset, dp.min_value, dp.max_value,
+            dp.log_enabled, dp.log_interval_ms, dp.log_deadband, dp.polling_interval_ms,
+            dp.group_name, dp.tags, dp.metadata, dp.protocol_params,
+            dp.created_at, dp.updated_at,
+            
+            -- current_values 테이블의 실시간 데이터
+            cv.current_value_bool, cv.current_value_int16, cv.current_value_uint16,
+            cv.current_value_int32, cv.current_value_uint32, cv.current_value_float,
+            cv.current_value_double, cv.current_value_string, cv.active_value_type,
+            cv.raw_value_float, cv.active_raw_type,
+            cv.quality_code, cv.quality,
+            cv.value_timestamp, cv.quality_timestamp, cv.last_log_time,
+            cv.last_read_time, cv.last_write_time,
+            cv.read_count, cv.write_count, cv.error_count
+        FROM data_points dp
+        LEFT JOIN current_values cv ON dp.id = cv.point_id
+        WHERE dp.device_id = ?
+        ORDER BY dp.address
+    )";
+    
+    // 🔥 로깅 활성화된 포인트들만 조회
+    const std::string FIND_LOG_ENABLED = R"(
+        SELECT 
+            id, device_id, name, address, data_type,
+            log_enabled, log_interval_ms, log_deadband,
+            unit, scaling_factor, scaling_offset
+        FROM data_points 
+        WHERE log_enabled = 1 AND is_enabled = 1
         ORDER BY device_id, address
     )";
-    
-    // 🔥 누락된 쿼리 4: FIND_BY_TAG
+
+    // 🔥🔥🔥 누락된 쿼리 1: FIND_BY_TAG (findByTag 메서드 사용)
     const std::string FIND_BY_TAG = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
@@ -288,7 +423,7 @@ namespace DataPoint {
         ORDER BY device_id, address
     )";
     
-    // 🔥 누락된 쿼리 5: FIND_DISABLED
+    // 🔥🔥🔥 누락된 쿼리 2: FIND_DISABLED (findDisabledPoints 메서드 사용)
     const std::string FIND_DISABLED = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
@@ -300,96 +435,211 @@ namespace DataPoint {
         ORDER BY device_id, address
     )";
     
-    // 🔥 누락된 쿼리 6: FIND_LAST_CREATED_BY_DEVICE_ADDRESS
-    const std::string FIND_LAST_CREATED_BY_DEVICE_ADDRESS = R"(
-        SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
+    // 🔥🔥🔥 누락된 쿼리 3: DELETE_BY_DEVICE_IDS (deleteByDeviceIds 메서드 사용)
+    const std::string DELETE_BY_DEVICE_IDS = R"(
+        DELETE FROM data_points 
+        WHERE device_id IN (%s)
+    )"; // %s는 런타임에 IN 절로 대체됨
+    
+    // 🔥🔥🔥 누락된 쿼리 4: BULK_INSERT (saveBulk 메서드 사용)
+    const std::string BULK_INSERT = R"(
+        INSERT INTO data_points (
+            device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, tags, metadata,
             created_at, updated_at
-        FROM data_points 
-        WHERE device_id = ? AND address = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-    )";
+        ) VALUES %s
+    )"; // %s는 런타임에 VALUES 절들로 대체됨
     
-    const std::string INSERT = R"(
-        INSERT INTO data_points (
-            device_id, name, description, address, data_type, access_mode,
+    // 🔥🔥🔥 누락된 쿼리 5: UPSERT (upsert 메서드 사용)
+    const std::string UPSERT = R"(
+        INSERT OR REPLACE INTO data_points (
+            id, device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, tags, metadata,
             created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
-    const std::string UPDATE = R"(
+    // 🔥🔥🔥 누락된 쿼리 6: FIND_WITH_CURRENT_VALUES (getDataPointsWithCurrentValues 사용)
+    const std::string FIND_WITH_CURRENT_VALUES = R"(
+        SELECT 
+            -- data_points 모든 필드
+            dp.id, dp.device_id, dp.name, dp.description, 
+            dp.address, dp.data_type, dp.access_mode, dp.is_enabled,
+            dp.unit, dp.scaling_factor, dp.scaling_offset, 
+            dp.min_value, dp.max_value,
+            dp.log_enabled, dp.log_interval_ms, dp.log_deadband,
+            dp.tags, dp.metadata, dp.created_at, dp.updated_at,
+            
+            -- current_values 테이블 필드들
+            cv.current_value_float, cv.active_value_type,
+            cv.raw_value_float, cv.active_raw_type,
+            cv.quality_code, cv.quality,
+            cv.value_timestamp, cv.quality_timestamp, cv.last_log_time,
+            cv.last_read_time, cv.last_write_time,
+            cv.read_count, cv.write_count, cv.error_count
+        FROM data_points dp
+        LEFT JOIN current_values cv ON dp.id = cv.point_id
+        WHERE dp.device_id = ?
+        ORDER BY dp.address
+    )";
+    
+    // 🔥🔥🔥 누락된 쿼리 7: UPDATE_BASIC_INFO (updateBasicInfo 메서드 사용)
+    const std::string UPDATE_BASIC_INFO = R"(
         UPDATE data_points SET 
-            device_id = ?, name = ?, description = ?, address = ?, data_type = ?, 
-            access_mode = ?, is_enabled = ?, unit = ?, scaling_factor = ?, 
-            scaling_offset = ?, min_value = ?, max_value = ?, log_enabled = ?, 
-            log_interval_ms = ?, log_deadband = ?, tags = ?, metadata = ?, 
+            name = ?, description = ?, unit = ?, 
+            scaling_factor = ?, scaling_offset = ?,
+            min_value = ?, max_value = ?,
             updated_at = ?
         WHERE id = ?
     )";
     
-    const std::string DELETE_BY_ID = "DELETE FROM data_points WHERE id = ?";
+    // 🔥🔥🔥 누락된 쿼리 8: UPDATE_STATUS (updateStatus 메서드 사용)  
+    const std::string UPDATE_STATUS = R"(
+        UPDATE data_points SET 
+            is_enabled = ?, updated_at = ?
+        WHERE id = ?
+    )";
     
-    const std::string DELETE_BY_DEVICE_ID = "DELETE FROM data_points WHERE device_id = ?";
+    // 🔥🔥🔥 누락된 쿼리 9: UPDATE_LOG_CONFIG (updateLogConfig 메서드 사용)
+    const std::string UPDATE_LOG_CONFIG = R"(
+        UPDATE data_points SET 
+            log_enabled = ?, log_interval_ms = ?, log_deadband = ?,
+            updated_at = ?
+        WHERE id = ?
+    )";
     
-    // 🔥 누락된 쿼리 7: EXISTS_BY_ID
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM data_points WHERE id = ?";
+    // 🔥🔥🔥 누락된 쿼리 10: BULK_UPDATE_STATUS (bulkUpdateStatus 메서드 사용)
+    const std::string BULK_UPDATE_STATUS = R"(
+        UPDATE data_points SET 
+            is_enabled = ?, updated_at = ?
+        WHERE id IN (%s)
+    )"; // %s는 런타임에 ID 목록으로 대체됨
     
-    // 🔥 누락된 쿼리 8: COUNT_ALL
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM data_points";
+    // 🔥🔥🔥 누락된 쿼리 11: COUNT_BY_CONDITIONS (countByConditions에서 확장 사용)
+    const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 1";
+    const std::string COUNT_DISABLED = "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 0";
+    const std::string COUNT_WRITABLE = "SELECT COUNT(*) as count FROM data_points WHERE access_mode IN ('write', 'readwrite')";
+    const std::string COUNT_LOG_ENABLED = "SELECT COUNT(*) as count FROM data_points WHERE log_enabled = 1";
     
-    const std::string COUNT_BY_DEVICE = "SELECT COUNT(*) as count FROM data_points WHERE device_id = ?";
-    
-    // 🔥 누락된 쿼리 9: GET_COUNT_BY_DEVICE (별칭)
-    const std::string GET_COUNT_BY_DEVICE = R"(
-        SELECT device_id, COUNT(*) as count 
+    // 🔥🔥🔥 누락된 쿼리 12: 통계 관련 쿼리들
+    const std::string GET_STATS_BY_DEVICE = R"(
+        SELECT 
+            device_id,
+            COUNT(*) as total_count,
+            COUNT(CASE WHEN is_enabled = 1 THEN 1 END) as enabled_count,
+            COUNT(CASE WHEN access_mode IN ('write', 'readwrite') THEN 1 END) as writable_count,
+            COUNT(CASE WHEN log_enabled = 1 THEN 1 END) as log_enabled_count
         FROM data_points 
         GROUP BY device_id
         ORDER BY device_id
     )";
     
-    // 🔥 누락된 쿼리 10: GET_COUNT_BY_DATA_TYPE
-    const std::string GET_COUNT_BY_DATA_TYPE = R"(
-        SELECT data_type, COUNT(*) as count 
+    // 🔥🔥🔥 누락된 쿼리 13: 최근 생성/수정 조회
+    const std::string FIND_RECENTLY_CREATED = R"(
+        SELECT 
+            id, device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            created_at, updated_at
         FROM data_points 
-        GROUP BY data_type
-        ORDER BY count DESC
+        WHERE created_at >= datetime('now', '-? days')
+        ORDER BY created_at DESC
     )";
     
-    // 🔥 누락된 쿼리 11: GET_LAST_INSERT_ID
-    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+    const std::string FIND_RECENTLY_UPDATED = R"(
+        SELECT 
+            id, device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            created_at, updated_at
+        FROM data_points 
+        WHERE updated_at >= datetime('now', '-? days')
+        ORDER BY updated_at DESC
+    )";
     
-    // 🔥 누락된 쿼리 12: CREATE_TABLE
-    const std::string CREATE_TABLE = R"(
-        CREATE TABLE IF NOT EXISTS data_points (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_id INTEGER NOT NULL,
-            name VARCHAR(100) NOT NULL,
-            description TEXT,
-            address INTEGER NOT NULL,
-            data_type VARCHAR(20) NOT NULL,
-            access_mode VARCHAR(10) DEFAULT 'read',
-            is_enabled INTEGER DEFAULT 1,
-            unit VARCHAR(20),
-            scaling_factor DECIMAL(10,6) DEFAULT 1.0,
-            scaling_offset DECIMAL(10,6) DEFAULT 0.0,
-            min_value DECIMAL(15,6),
-            max_value DECIMAL(15,6),
-            log_enabled INTEGER DEFAULT 1,
-            log_interval_ms INTEGER DEFAULT 0,
-            log_deadband DECIMAL(10,6) DEFAULT 0.0,
-            tags TEXT,
-            metadata TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    // 🔥🔥🔥 누락된 쿼리 14: 검증 및 중복 체크
+    const std::string CHECK_DUPLICATE_ADDRESS = R"(
+        SELECT COUNT(*) as count 
+        FROM data_points 
+        WHERE device_id = ? AND address = ? AND id != ?
+    )";
+    
+    const std::string FIND_DUPLICATE_NAMES = R"(
+        SELECT name, COUNT(*) as count
+        FROM data_points 
+        WHERE device_id = ?
+        GROUP BY name 
+        HAVING COUNT(*) > 1
+    )";
+    
+    // 🔥🔥🔥 누락된 쿼리 15: 페이징 및 정렬
+    const std::string FIND_WITH_PAGINATION = R"(
+        SELECT 
+            id, device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            created_at, updated_at
+        FROM data_points 
+        %s  -- WHERE 절 (조건부)
+        ORDER BY %s %s  -- ORDER BY 컬럼, ASC/DESC
+        LIMIT ? OFFSET ?
+    )";
+    
+    // 🔥🔥🔥 누락된 쿼리 16: 고급 필터링
+    const std::string FIND_BY_NAME_PATTERN = R"(
+        SELECT 
+            id, device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            created_at, updated_at
+        FROM data_points 
+        WHERE name LIKE ? AND is_enabled = 1
+        ORDER BY device_id, address
+    )";
+    
+    const std::string FIND_BY_ADDRESS_RANGE = R"(
+        SELECT 
+            id, device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            created_at, updated_at
+        FROM data_points 
+        WHERE device_id = ? AND address BETWEEN ? AND ?
+        ORDER BY address
+    )";
+    
+    // 🔥🔥🔥 누락된 쿼리 17: 백업 및 복구 관련
+    const std::string EXPORT_FOR_BACKUP = R"(
+        SELECT 
+            device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata
+        FROM data_points 
+        WHERE device_id IN (%s)
+        ORDER BY device_id, address
+    )";
+    
+    // 🔥🔥🔥 누락된 쿼리 18: 디바이스 이전/복사
+    const std::string COPY_TO_DEVICE = R"(
+        INSERT INTO data_points (
+            device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            created_at, updated_at
         )
-    )";
+        SELECT 
+            ? as device_id, name, description, address, data_type, access_mode,
+            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            datetime('now') as created_at, datetime('now') as updated_at
+        FROM data_points 
+        WHERE device_id = ?
+    )";    
     
 } // namespace DataPoint
+
 
 // =============================================================================
 // 🎯 DeviceSettingsRepository 쿼리들 (완전판)
