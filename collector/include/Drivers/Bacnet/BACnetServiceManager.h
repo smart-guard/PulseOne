@@ -7,7 +7,7 @@
 #define BACNET_SERVICE_MANAGER_H
 
 #include "Common/Structs.h"
-#include "Drivers/Bacnet/BACnetStatisticsManager.h"
+#include "Drivers/Bacnet/BACnetTypes.h"
 #include <memory>
 #include <map>
 #include <vector>

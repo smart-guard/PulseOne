@@ -92,6 +92,12 @@ public:
     // explicit DataPointEntity(const DataPoint& data_point);
     virtual ~DataPointEntity() = default;
 
+    // 생성자 및 소멸자 섹션에 추가
+    DataPointEntity(const DataPointEntity& other) = default;
+    DataPointEntity& operator=(const DataPointEntity& other) = default;
+    DataPointEntity(DataPointEntity&& other) noexcept = default;
+    DataPointEntity& operator=(DataPointEntity&& other) noexcept = default;    
+
     // =======================================================================
     // BaseEntity 순수 가상 함수 구현 (CPP에서 구현)
     // =======================================================================

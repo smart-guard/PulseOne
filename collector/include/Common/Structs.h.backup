@@ -34,7 +34,7 @@
     #include <nlohmann/json.hpp>
     using JsonType = nlohmann::json;
 #else
-     // 완전한 DummyJson 클래스 - 🔥 const char* operator[] 추가!
+    // 완전한 DummyJson 클래스 - 모든 할당 연산자 포함
     class DummyJson {
     public:
         // 기본 생성자/소멸자
@@ -69,17 +69,13 @@
         DummyJson& operator=(double) { return *this; }
         DummyJson& operator=(long double) { return *this; }
         
-        // 🔥 인덱싱 연산자들 - const char* 추가!
+        // 인덱싱 연산자들
         DummyJson& operator[](const std::string&) { return *this; }
         const DummyJson& operator[](const std::string&) const { return *this; }
         DummyJson& operator[](int) { return *this; }
         const DummyJson& operator[](int) const { return *this; }
         DummyJson& operator[](size_t) { return *this; }
         const DummyJson& operator[](size_t) const { return *this; }
-        
-        // 🔥 핵심 수정: const char* operator[] 추가!
-        DummyJson& operator[](const char* key) { return *this; }
-        const DummyJson& operator[](const char* key) const { return *this; }
         
         // 기본 메서드들
         template<typename T> 
