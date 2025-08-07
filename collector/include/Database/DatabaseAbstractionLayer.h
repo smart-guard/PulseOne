@@ -181,8 +181,10 @@ public:
      * @param base_create_query 기본 CREATE TABLE 쿼리 (표준 SQL)
      * @return 성공 시 true
      */
-    bool executeCreateTable(const std::string& base_create_query);
-    
+    bool executeCreateTable(const std::string& create_sql);
+    bool doesTableExist(const std::string& table_name);
+    std::string extractTableNameFromCreateSQL(const std::string& create_sql);
+
     /**
      * @brief BOOLEAN 값 포맷팅
      * @param value BOOLEAN 값

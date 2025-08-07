@@ -546,8 +546,62 @@ std::string DatabaseAbstractionLayer::getCurrentTimestamp() {
 }
 
 // 🔥 누락된 executeCreateTable 구현
-bool DatabaseAbstractionLayer::executeCreateTable(const std::string& query) {
-    return executeNonQuery(query);
+bool DatabaseAbstractionLayer::executeCreateTable(const std::string& create_sql) {
+    // 🚀 개선: 테이블이 이미 존재하면 CREATE 시도하지 않음
+    
+    // 1. 테이블 이름 추출
+    std::string table_name = extractTableNameFromCreateSQL(create_sql);
+    if (table_name.empty()) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "테이블 이름을 추출할 수 없음: " + create_sql.substr(0, 100) + "...");
+        return false;
+    }
+    
+    // 2. 테이블 존재 여부 확인
+    if (doesTableExist(table_name)) {
+        LogManager::getInstance().log("database", LogLevel::DEBUG, 
+            "✅ 테이블 이미 존재: " + table_name);
+        return true;  // 이미 존재하면 성공으로 처리
+    }
+    
+    // 3. 테이블이 없으면 생성 시도
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "📋 테이블 생성 시도: " + table_name);
+    
+    return executeNonQuery(create_sql);
+}
+
+bool DatabaseAbstractionLayer::doesTableExist(const std::string& table_name) {
+    try {
+        // SQLite 테이블 존재 확인 쿼리
+        std::string check_query = "SELECT name FROM sqlite_master WHERE type='table' AND name='" + table_name + "'";
+        
+        auto results = executeQuery(check_query);
+        
+        bool exists = !results.empty();
+        LogManager::getInstance().log("database", LogLevel::DEBUG, 
+            "🔍 테이블 '" + table_name + "' 존재 여부: " + (exists ? "존재" : "없음"));
+        
+        return exists;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::ERROR, 
+            "테이블 존재 확인 실패: " + table_name + " - " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::string DatabaseAbstractionLayer::extractTableNameFromCreateSQL(const std::string& create_sql) {
+    // CREATE TABLE IF NOT EXISTS table_name ... 에서 table_name 추출
+    std::regex table_regex(R"(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+))", 
+                          std::regex_constants::icase);
+    
+    std::smatch matches;
+    if (std::regex_search(create_sql, matches, table_regex)) {
+        return matches[1].str();
+    }
+    
+    return "";
 }
 
 // 🔥 현재 DB 타입 반환 헬퍼
