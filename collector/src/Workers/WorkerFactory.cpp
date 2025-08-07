@@ -122,7 +122,9 @@ WorkerFactory& WorkerFactory::getInstance() {  // ✅ getInstance (소문자 g)
 
 bool WorkerFactory::Initialize() {
     std::lock_guard<std::mutex> lock(factory_mutex_);
-    
+    logger_ = &LogManager::getInstance();
+    config_manager_ = &ConfigManager::getInstance();
+
     if (initialized_.load()) {
         logger_->Debug("WorkerFactory already initialized, skipping");
         return true;
@@ -604,7 +606,6 @@ std::string WorkerFactory::GetFactoryStatsString() const {
 }
 
 void WorkerFactory::RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator) {
-    std::lock_guard<std::mutex> lock(factory_mutex_);
     worker_creators_[protocol_type] = creator;
     logger_->Info("✅ Registered worker creator for protocol: " + protocol_type);
 }
