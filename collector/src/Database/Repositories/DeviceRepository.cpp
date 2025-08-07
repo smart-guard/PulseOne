@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/DeviceRepository.h"
+#include "Database/SQLQueries.h" 
 #include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
 #include <iomanip>
@@ -27,33 +28,12 @@ namespace Repositories {
 
 std::vector<DeviceEntity> DeviceRepository::findAll() {
     try {
-        if (!ensureTableExists()) {
-            logger_->Error("DeviceRepository::findAll - Table creation failed");
-            return {};
-        }
-        
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date, 
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices 
-            ORDER BY id
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        auto results = db_layer.executeQuery(SQL::Device::FIND_ALL);  // ← 상수 사용!
         
         std::vector<DeviceEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
-            try {
-                entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("DeviceRepository::findAll - Failed to map row: " + std::string(e.what()));
-            }
+            entities.push_back(mapRowToEntity(row));
         }
         
         logger_->Info("DeviceRepository::findAll - Found " + std::to_string(entities.size()) + " devices");
@@ -65,50 +45,28 @@ std::vector<DeviceEntity> DeviceRepository::findAll() {
     }
 }
 
+
 std::optional<DeviceEntity> DeviceRepository::findById(int id) {
     try {
-        // 캐시 확인
-        if (isCacheEnabled()) {
-            auto cached = getCachedEntity(id);
-            if (cached.has_value()) {
-                logger_->Debug("DeviceRepository::findById - Cache hit for ID: " + std::to_string(id));
-                return cached.value();
-            }
-        }
-        
-        if (!ensureTableExists()) {
-            return std::nullopt;
-        }
-        
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date,
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices 
-            WHERE id = )" + std::to_string(id);
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 동적 파라미터 처리
+        std::string query = SQL::Device::FIND_BY_ID;
+        // ? 플레이스홀더를 실제 값으로 치환 (간단한 방식)
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(id));
+        }
+        
         auto results = db_layer.executeQuery(query);
         
-        if (results.empty()) {
-            logger_->Debug("DeviceRepository::findById - Device not found: " + std::to_string(id));
-            return std::nullopt;
+        if (!results.empty()) {
+            return mapRowToEntity(results[0]);
         }
-        
-        auto entity = mapRowToEntity(results[0]);
-        
-        // 캐시에 저장
-        if (isCacheEnabled()) {
-            cacheEntity(entity);
-        }
-        
-        logger_->Debug("DeviceRepository::findById - Found device: " + entity.getName());
-        return entity;
+        return std::nullopt;
         
     } catch (const std::exception& e) {
-        logger_->Error("DeviceRepository::findById failed for ID " + std::to_string(id) + ": " + std::string(e.what()));
+        logger_->Error("DeviceRepository::findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
@@ -344,36 +302,22 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
 
 std::vector<DeviceEntity> DeviceRepository::findByProtocol(const std::string& protocol_type) {
     try {
-        if (!ensureTableExists()) {
-            return {};
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 파라미터 치환
+        std::string query = SQL::Device::FIND_BY_PROTOCOL;
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, "'" + protocol_type + "'");
         }
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date,
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices 
-            WHERE protocol_type = ')" + escapeString(protocol_type) + R"(' AND is_enabled = 1 
-            ORDER BY name
-        )";
-        
-        DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<DeviceEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
-            try {
-                entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("DeviceRepository::findByProtocol - Failed to map row: " + std::string(e.what()));
-            }
+            entities.push_back(mapRowToEntity(row));
         }
         
-        logger_->Info("DeviceRepository::findByProtocol - Found " + std::to_string(entities.size()) + " devices for protocol: " + protocol_type);
         return entities;
         
     } catch (const std::exception& e) {
