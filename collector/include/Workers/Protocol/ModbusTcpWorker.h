@@ -47,12 +47,6 @@ namespace Workers {
     using ModbusDriver = PulseOne::Drivers::ModbusDriver;
     using ModbusRegisterType = PulseOne::Enums::ModbusRegisterType;
 
-enum class ModbusRegisterType {
-    COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
-    DISCRETE_INPUT = 1,    ///< 접점 입력 (0x02)
-    HOLDING_REGISTER = 2,  ///< 홀딩 레지스터 (0x03, 0x06, 0x10)
-    INPUT_REGISTER = 3     ///< 입력 레지스터 (0x04)
-};
 
 /**
  * @brief Modbus TCP 폴링 그룹 (Worker가 관리)
