@@ -173,10 +173,6 @@ private:
     std::map<std::string, std::string> entityToParams(const UserEntity& entity);
     bool ensureTableExists();
     bool validateEntity(const UserEntity& entity) const;
-    std::string escapeString(const std::string& str) const;
-    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
-    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
-    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
 
     // =======================================================================
     // 스레드 안전성 (DeviceRepository 패턴)

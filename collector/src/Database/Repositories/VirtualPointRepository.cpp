@@ -522,7 +522,7 @@ bool VirtualPointRepository::updateVirtualPointStatus(int point_id, bool is_enab
         const std::string query = R"(
             UPDATE virtual_points 
             SET is_enabled = )" + std::string(is_enabled ? "1" : "0") + R"(,
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+                updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(point_id);
         
         DatabaseAbstractionLayer db_layer;
@@ -550,7 +550,7 @@ bool VirtualPointRepository::updateFormula(int point_id, const std::string& form
         const std::string query = R"(
             UPDATE virtual_points 
             SET formula = ')" + RepositoryHelpers::escapeString(formula) + R"(',
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
+                updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(point_id);
         
         DatabaseAbstractionLayer db_layer;
@@ -791,16 +791,6 @@ bool VirtualPointRepository::validateVirtualPoint(const VirtualPointEntity& enti
     }
     
     return true;
-}
-
-// =============================================================================
-// 유틸리티 함수들 (DeviceRepository 패턴)
-// =============================================================================
-std::string VirtualPointRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
 }
 
 } // namespace Repositories

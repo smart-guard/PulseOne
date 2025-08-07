@@ -224,6 +224,7 @@ private:
         const std::vector<std::string>& column_names);
     
     std::string escapeString(const std::string& str);
+    std::string getCurrentDbType();
 
 private:
     // =======================================================================

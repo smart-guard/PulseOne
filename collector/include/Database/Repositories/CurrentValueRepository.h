@@ -345,42 +345,6 @@ private:
     std::map<std::string, std::string> entityToParams(const CurrentValueEntity& entity);
     
     // =======================================================================
-    // SQL 빌더 헬퍼 메서드들 (DataPointRepository 패턴)
-    // =======================================================================
-    
-    /**
-     * @brief WHERE 절 생성
-     * @param conditions 조건 목록
-     * @return WHERE 절 문자열
-     */
-    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
-    
-    /**
-     * @brief ORDER BY 절 생성
-     * @param order_by 정렬 조건
-     * @return ORDER BY 절 문자열
-     */
-    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
-    
-    /**
-     * @brief LIMIT 절 생성
-     * @param pagination 페이징 조건
-     * @return LIMIT 절 문자열
-     */
-    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
-    
-    // =======================================================================
-    // 유틸리티 헬퍼 메서드들 (DataPointRepository 패턴)
-    // =======================================================================
-    
-    /**
-     * @brief SQL 문자열 이스케이프
-     * @param str 이스케이프할 문자열
-     * @return 이스케이프된 문자열
-     */
-    std::string escapeString(const std::string& str) const;
-
-    // =======================================================================
     // 데이터 멤버들 (DataPointRepository 패턴)
     // =======================================================================
     

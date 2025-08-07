@@ -197,41 +197,6 @@ private:
     bool validateAlarmConfig(const AlarmConfigEntity& entity) const;
     
     /**
-     * @brief SQL 문자열 이스케이프 처리
-     * @param str 이스케이프할 문자열
-     * @return 이스케이프된 문자열
-     */
-    std::string escapeString(const std::string& str) const;
-    
-    /**
-     * @brief 타임스탬프를 문자열로 변환
-     * @param timestamp 타임스탬프
-     * @return 문자열 형태의 타임스탬프
-     */
-    std::string formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const;
-    
-    /**
-     * @brief WHERE 절 생성
-     * @param conditions 조건들
-     * @return WHERE 절 문자열
-     */
-    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
-    
-    /**
-     * @brief ORDER BY 절 생성
-     * @param order_by 정렬 조건
-     * @return ORDER BY 절 문자열
-     */
-    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
-    
-    /**
-     * @brief LIMIT 절 생성
-     * @param pagination 페이지네이션
-     * @return LIMIT 절 문자열
-     */
-    std::string buildLimitClause(const std::optional<Pagination>& pagination) const;
-    
-    /**
      * @brief 심각도 조건 생성
      * @param severity 심각도
      * @return QueryCondition

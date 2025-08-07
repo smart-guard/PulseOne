@@ -799,17 +799,6 @@ QueryCondition AlarmConfigRepository::buildSeverityCondition(AlarmConfigEntity::
     return QueryCondition("severity", "=", severity_str);
 }
 
-// =============================================================================
-// 유틸리티 함수들
-// =============================================================================
-
-std::string AlarmConfigRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
-
 } // namespace Repositories
 } // namespace Database
 } // namespace PulseOne
