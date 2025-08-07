@@ -788,12 +788,13 @@ int DataPointRepository::deleteByIds(const std::vector<int>& ids) {
 // =============================================================================
 
 DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
-    DataPointEntity entity;
-    
     try {
+        DataPointEntity entity;
         DatabaseAbstractionLayer db_layer;
+        auto it = row.end();
         
-        auto it = row.find("id");
+        // 🔥 기본 식별 정보 (Struct DataPoint 완전 일치)
+        it = row.find("id");
         if (it != row.end()) {
             entity.setId(std::stoi(it->second));
         }
@@ -813,11 +814,18 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
             entity.setDescription(it->second);
         }
         
+        // 🔥 주소 정보 (Struct DataPoint 완전 일치)
         it = row.find("address");
         if (it != row.end()) {
             entity.setAddress(std::stoi(it->second));
         }
         
+        it = row.find("address_string");
+        if (it != row.end()) {
+            entity.setAddressString(it->second);  // 새 필드!
+        }
+        
+        // 🔥 데이터 타입 및 접근성 (Struct DataPoint 완전 일치)
         it = row.find("data_type");
         if (it != row.end()) {
             entity.setDataType(it->second);
@@ -833,6 +841,12 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
             entity.setEnabled(db_layer.parseBoolean(it->second));
         }
         
+        it = row.find("is_writable");
+        if (it != row.end()) {
+            entity.setWritable(db_layer.parseBoolean(it->second)); // 새 필드!
+        }
+        
+        // 🔥 엔지니어링 단위 및 스케일링 (Struct DataPoint 완전 일치)
         it = row.find("unit");
         if (it != row.end()) {
             entity.setUnit(it->second);
@@ -858,34 +872,69 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
             entity.setMaxValue(std::stod(it->second));
         }
         
+        // 🔥🔥🔥 로깅 및 수집 설정 (중요! 이전에 없던 필드들)
         it = row.find("log_enabled");
         if (it != row.end()) {
-            entity.setLogEnabled(db_layer.parseBoolean(it->second));
+            entity.setLogEnabled(db_layer.parseBoolean(it->second)); // ✅ 해결!
         }
         
         it = row.find("log_interval_ms");
         if (it != row.end()) {
-            entity.setLogInterval(std::stoi(it->second));
+            entity.setLogInterval(std::stoi(it->second)); // ✅ 해결!
         }
         
         it = row.find("log_deadband");
         if (it != row.end()) {
-            entity.setLogDeadband(std::stod(it->second));
+            entity.setLogDeadband(std::stod(it->second)); // ✅ 해결!
+        }
+        
+        it = row.find("polling_interval_ms");
+        if (it != row.end()) {
+            entity.setPollingInterval(std::stoi(it->second)); // 새 필드!
+        }
+        
+        // 🔥🔥🔥 메타데이터 (중요! 이전에 없던 필드들)
+        it = row.find("group_name");
+        if (it != row.end()) {
+            entity.setGroup(it->second); // 새 필드!
         }
         
         it = row.find("tags");
         if (it != row.end()) {
-            entity.setTags(RepositoryHelpers::parseTagsFromString(it->second));
+            entity.setTags(RepositoryHelpers::parseTagsFromString(it->second)); // ✅ 해결!
         }
         
         it = row.find("metadata");
         if (it != row.end() && !it->second.empty()) {
             try {
                 json metadata = json::parse(it->second);
-                entity.setMetadata(metadata.get<std::map<std::string, std::string>>());
-            } catch (const std::exception&) {
+                entity.setMetadata(metadata.get<std::map<std::string, std::string>>()); // ✅ 해결!
+            } catch (const std::exception& e) {
+                logger_->Warn("DataPointRepository::mapRowToEntity - Invalid JSON metadata: " + std::string(e.what()));
                 entity.setMetadata(std::map<std::string, std::string>());
             }
+        }
+        
+        it = row.find("protocol_params");
+        if (it != row.end() && !it->second.empty()) {
+            try {
+                json params = json::parse(it->second);
+                entity.setProtocolParams(params.get<std::map<std::string, std::string>>()); // 새 필드!
+            } catch (const std::exception& e) {
+                logger_->Warn("DataPointRepository::mapRowToEntity - Invalid JSON protocol_params: " + std::string(e.what()));
+                entity.setProtocolParams(std::map<std::string, std::string>());
+            }
+        }
+        
+        // 🔥 시간 정보
+        it = row.find("created_at");
+        if (it != row.end()) {
+            entity.setCreatedAt(it->second);
+        }
+        
+        it = row.find("updated_at");
+        if (it != row.end()) {
+            entity.setUpdatedAt(it->second);
         }
         
         return entity;
@@ -901,32 +950,68 @@ std::map<std::string, std::string> DataPointRepository::entityToParams(const Dat
     
     std::map<std::string, std::string> params;
     
+    // ID가 있으면 포함 (UPDATE용)
     if (entity.getId() > 0) {
         params["id"] = std::to_string(entity.getId());
     }
     
+    // 🔥 기본 식별 정보
     params["device_id"] = std::to_string(entity.getDeviceId());
     params["name"] = entity.getName();
     params["description"] = entity.getDescription();
+    
+    // 🔥 주소 정보
     params["address"] = std::to_string(entity.getAddress());
+    params["address_string"] = entity.getAddressString(); // 새 필드!
+    
+    // 🔥 데이터 타입 및 접근성
     params["data_type"] = entity.getDataType();
     params["access_mode"] = entity.getAccessMode();
     params["is_enabled"] = db_layer.formatBoolean(entity.isEnabled());
+    params["is_writable"] = db_layer.formatBoolean(entity.isWritable()); // 새 필드!
+    
+    // 🔥 엔지니어링 단위 및 스케일링
     params["unit"] = entity.getUnit();
     params["scaling_factor"] = std::to_string(entity.getScalingFactor());
     params["scaling_offset"] = std::to_string(entity.getScalingOffset());
     params["min_value"] = std::to_string(entity.getMinValue());
     params["max_value"] = std::to_string(entity.getMaxValue());
-    params["log_enabled"] = db_layer.formatBoolean(entity.isLogEnabled());
-    params["log_interval_ms"] = std::to_string(entity.getLogInterval());
-    params["log_deadband"] = std::to_string(entity.getLogDeadband());
-    params["tags"] = RepositoryHelpers::tagsToString(entity.getTags());
-    params["metadata"] = "{}"; // 간단화
+    
+    // 🔥🔥🔥 로깅 및 수집 설정 (중요!)
+    params["log_enabled"] = db_layer.formatBoolean(entity.isLogEnabled()); // ✅ 해결!
+    params["log_interval_ms"] = std::to_string(entity.getLogInterval()); // ✅ 해결!
+    params["log_deadband"] = std::to_string(entity.getLogDeadband()); // ✅ 해결!
+    params["polling_interval_ms"] = std::to_string(entity.getPollingInterval()); // 새 필드!
+    
+    // 🔥🔥🔥 메타데이터 (중요!)
+    params["group_name"] = entity.getGroup(); // 새 필드!
+    params["tags"] = RepositoryHelpers::tagsToString(entity.getTags()); // ✅ 해결!
+    
+    // metadata를 JSON으로 직렬화
+    auto metadata_map = entity.getMetadata();
+    if (!metadata_map.empty()) {
+        json metadata_json(metadata_map);
+        params["metadata"] = metadata_json.dump(); // ✅ 해결!
+    } else {
+        params["metadata"] = "{}";
+    }
+    
+    // protocol_params를 JSON으로 직렬화
+    auto protocol_params_map = entity.getProtocolParams();
+    if (!protocol_params_map.empty()) {
+        json protocol_json(protocol_params_map);
+        params["protocol_params"] = protocol_json.dump(); // 새 필드!
+    } else {
+        params["protocol_params"] = "{}";
+    }
+    
+    // 🔥 시간 정보
     params["created_at"] = db_layer.getCurrentTimestamp();
     params["updated_at"] = db_layer.getCurrentTimestamp();
     
     return params;
 }
+
 
 bool DataPointRepository::ensureTableExists() {
     try {

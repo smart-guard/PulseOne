@@ -149,34 +149,44 @@ CREATE TABLE IF NOT EXISTS device_status (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
 );
 
--- 데이터 포인트 테이블
 CREATE TABLE IF NOT EXISTS data_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id INTEGER NOT NULL,
     
-    -- 포인트 기본 정보
+    -- 🔥 기본 식별 정보 (Struct DataPoint와 일치)
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    address INTEGER NOT NULL,
-    data_type VARCHAR(20) NOT NULL, -- bool, int16, int32, uint16, uint32, float, double, string
-    access_mode VARCHAR(10) DEFAULT 'read', -- read, write, readwrite
     
-    -- 엔지니어링 정보
-    unit VARCHAR(20),
-    scaling_factor DECIMAL(10,4) DEFAULT 1.0,
-    scaling_offset DECIMAL(10,4) DEFAULT 0.0,
-    min_value DECIMAL(15,4),
-    max_value DECIMAL(15,4),
+    -- 🔥 주소 정보 (Struct DataPoint와 일치)
+    address INTEGER NOT NULL,                    -- uint32_t address
+    address_string VARCHAR(255),                 -- std::string address_string
     
-    -- 수집 설정
-    is_enabled INTEGER DEFAULT 1,
-    scan_rate INTEGER, -- 개별 스캔 주기 (디바이스 기본값 오버라이드)
-    deadband DECIMAL(10,4) DEFAULT 0,
+    -- 🔥 데이터 타입 및 접근성 (Struct DataPoint와 일치)
+    data_type VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',  -- std::string data_type
+    access_mode VARCHAR(10) DEFAULT 'read',             -- std::string access_mode
+    is_enabled INTEGER DEFAULT 1,                       -- bool is_enabled
+    is_writable INTEGER DEFAULT 0,                      -- bool is_writable (계산됨)
     
-    -- 메타데이터
-    config TEXT, -- JSON 형태
-    tags TEXT, -- JSON 배열 형태
+    -- 🔥 엔지니어링 단위 및 스케일링 (Struct DataPoint와 일치)
+    unit VARCHAR(50),                            -- std::string unit
+    scaling_factor REAL DEFAULT 1.0,            -- double scaling_factor
+    scaling_offset REAL DEFAULT 0.0,            -- double scaling_offset
+    min_value REAL DEFAULT 0.0,                 -- double min_value
+    max_value REAL DEFAULT 0.0,                 -- double max_value
     
+    -- 🔥🔥🔥 로깅 및 수집 설정 (SQLQueries.h가 찾던 컬럼들!)
+    log_enabled INTEGER DEFAULT 1,              -- bool log_enabled ✅
+    log_interval_ms INTEGER DEFAULT 0,          -- uint32_t log_interval_ms ✅
+    log_deadband REAL DEFAULT 0.0,              -- double log_deadband ✅
+    polling_interval_ms INTEGER DEFAULT 0,      -- uint32_t polling_interval_ms
+    
+    -- 🔥🔥🔥 메타데이터 (SQLQueries.h가 찾던 컬럼들!)
+    group_name VARCHAR(50),                      -- std::string group
+    tags TEXT,                                   -- std::string tags (JSON 배열) ✅
+    metadata TEXT,                               -- std::string metadata (JSON 객체) ✅
+    protocol_params TEXT,                        -- JSON for protocol-specific params
+    
+    -- 🔥 시간 정보
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
@@ -187,12 +197,29 @@ CREATE TABLE IF NOT EXISTS data_points (
 -- 현재값 테이블 (업데이트됨)
 CREATE TABLE IF NOT EXISTS current_values (
     point_id INTEGER PRIMARY KEY,
-    value DECIMAL(15,4),
-    raw_value DECIMAL(15,4),
-    string_value TEXT,
-    quality VARCHAR(20) DEFAULT 'good', -- good, bad, uncertain, not_connected
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, -- 🔥 추가됨
+    
+    -- 🔥 실제 값 (타입별로 분리하지 않고 통합)
+    current_value TEXT,                          -- JSON으로 DataVariant 저장 
+    raw_value TEXT,                              -- JSON으로 DataVariant 저장
+    value_type VARCHAR(10) DEFAULT 'double',     -- bool, int16, uint16, int32, uint32, float, double, string
+    
+    -- 🔥 데이터 품질 및 타임스탬프
+    quality_code INTEGER DEFAULT 0,             -- DataQuality enum 값
+    quality VARCHAR(20) DEFAULT 'not_connected', -- 텍스트 표현
+    
+    -- 🔥 타임스탬프들
+    value_timestamp DATETIME,                   -- 값 변경 시간
+    quality_timestamp DATETIME,                 -- 품질 변경 시간  
+    last_log_time DATETIME,                     -- 마지막 로깅 시간
+    last_read_time DATETIME,                    -- 마지막 읽기 시간
+    last_write_time DATETIME,                   -- 마지막 쓰기 시간
+    
+    -- 🔥 통계 카운터들
+    read_count INTEGER DEFAULT 0,               -- 읽기 횟수
+    write_count INTEGER DEFAULT 0,              -- 쓰기 횟수
+    error_count INTEGER DEFAULT 0,              -- 에러 횟수
+    
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE
 );
@@ -210,15 +237,18 @@ CREATE INDEX IF NOT EXISTS idx_devices_protocol ON devices(protocol_type);
 CREATE INDEX IF NOT EXISTS idx_devices_type ON devices(device_type);
 CREATE INDEX IF NOT EXISTS idx_devices_enabled ON devices(is_enabled);
 
+-- 기본 검색 인덱스
 CREATE INDEX IF NOT EXISTS idx_data_points_device ON data_points(device_id);
 CREATE INDEX IF NOT EXISTS idx_data_points_enabled ON data_points(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_data_points_type ON data_points(data_type);
 CREATE INDEX IF NOT EXISTS idx_data_points_address ON data_points(device_id, address);
+CREATE INDEX IF NOT EXISTS idx_data_points_type ON data_points(data_type);
+CREATE INDEX IF NOT EXISTS idx_data_points_log_enabled ON data_points(log_enabled);
 
-CREATE INDEX IF NOT EXISTS idx_current_values_timestamp ON current_values(timestamp DESC);
-
+-- 현재값 인덱스
+CREATE INDEX IF NOT EXISTS idx_current_values_timestamp ON current_values(value_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_current_values_quality ON current_values(quality_code);
+CREATE INDEX IF NOT EXISTS idx_current_values_updated ON current_values(updated_at DESC);
 -- 🔥 새로운 인덱스들
 CREATE INDEX IF NOT EXISTS idx_device_settings_device_id ON device_settings(device_id);
-CREATE INDEX IF NOT EXISTS idx_current_values_updated_at ON current_values(updated_at);
 CREATE INDEX IF NOT EXISTS idx_device_settings_polling ON device_settings(polling_interval_ms);
 
