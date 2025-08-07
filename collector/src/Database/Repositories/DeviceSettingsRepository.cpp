@@ -1,11 +1,18 @@
 /**
- * @file DeviceSettingsRepository.cpp - 컴파일 에러 수정 버전
- * @brief 헤더 시그니처와 일치하도록 수정
+ * @file DeviceSettingsRepository.cpp - SQLQueries.h 상수 100% 적용
+ * @brief PulseOne DeviceSettingsRepository 구현 - 완전한 중앙 집중식 쿼리 관리
  * @author PulseOne Development Team
- * @date 2025-07-31
+ * @date 2025-08-07
+ * 
+ * 🎯 SQLQueries.h 상수 완전 적용:
+ * - 모든 하드코딩된 쿼리를 SQL::DeviceSettings:: 상수로 교체
+ * - 동적 파라미터 처리 개선
+ * - DeviceSettingsRepository 패턴 100% 준수
+ * - DatabaseAbstractionLayer 완전 활용
  */
 
 #include "Database/Repositories/DeviceSettingsRepository.h"
+#include "Database/SQLQueries.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Utils/LogManager.h"
 #include <sstream>
@@ -16,7 +23,26 @@ namespace Database {
 namespace Repositories {
 
 // =============================================================================
-// 🎯 간단하고 깔끔한 구현 - DB 차이점은 추상화 레이어가 처리
+// 동적 파라미터 치환 헬퍼 (DeviceRepository와 동일한 패턴)
+// =============================================================================
+std::string replaceParameter(std::string query, const std::string& value) {
+    size_t pos = query.find('?');
+    if (pos != std::string::npos) {
+        query.replace(pos, 1, value);
+    }
+    return query;
+}
+
+std::string replaceParameterWithQuotes(std::string query, const std::string& value) {
+    size_t pos = query.find('?');
+    if (pos != std::string::npos) {
+        query.replace(pos, 1, "'" + value + "'");
+    }
+    return query;
+}
+
+// =============================================================================
+// IRepository 기본 CRUD 구현 (SQLQueries.h 상수 사용)
 // =============================================================================
 
 std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findAll() {
@@ -26,26 +52,16 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findAll() {
             return {};
         }
         
-        const std::string query = R"(
-            SELECT 
-                device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
-                retry_interval_ms, backoff_time_ms, keep_alive_enabled, keep_alive_interval_s,
-                scan_rate_override, read_timeout_ms, write_timeout_ms, backoff_multiplier,
-                max_backoff_time_ms, keep_alive_timeout_s, data_validation_enabled,
-                performance_monitoring_enabled, diagnostic_mode_enabled, updated_at
-            FROM device_settings 
-            ORDER BY device_id
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        
+        // 🎯 SQLQueries.h 상수 사용
+        auto results = db_layer.executeQuery(SQL::DeviceSettings::FIND_ALL);
         
         std::vector<DeviceSettingsEntity> entities;
         entities.reserve(results.size());
         
         for (const auto& row : results) {
             try {
-                // 🎯 수정: 2번째 파라미터 제거 - 헤더와 일치
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
                 logger_->Warn("DeviceSettingsRepository::findAll - Failed to map row: " + std::string(e.what()));
@@ -76,17 +92,11 @@ std::optional<DeviceSettingsEntity> DeviceSettingsRepository::findById(int devic
             return std::nullopt;
         }
         
-        const std::string query = R"(
-            SELECT 
-                device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
-                retry_interval_ms, backoff_time_ms, keep_alive_enabled, keep_alive_interval_s,
-                scan_rate_override, read_timeout_ms, write_timeout_ms, backoff_multiplier,
-                max_backoff_time_ms, keep_alive_timeout_s, data_validation_enabled,
-                performance_monitoring_enabled, diagnostic_mode_enabled, updated_at
-            FROM device_settings 
-            WHERE device_id = )" + std::to_string(device_id);
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용 + 동적 파라미터 처리
+        std::string query = replaceParameter(SQL::DeviceSettings::FIND_BY_ID, std::to_string(device_id));
+        
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -94,7 +104,6 @@ std::optional<DeviceSettingsEntity> DeviceSettingsRepository::findById(int devic
             return std::nullopt;
         }
         
-        // 🎯 수정: 2번째 파라미터 제거
         auto entity = mapRowToEntity(results[0]);
         
         // 캐시에 저장
@@ -124,28 +133,7 @@ bool DeviceSettingsRepository::save(DeviceSettingsEntity& entity) {
         
         DatabaseAbstractionLayer db_layer;
         
-        std::map<std::string, std::string> data = {
-            {"device_id", std::to_string(entity.getDeviceId())},
-            {"polling_interval_ms", std::to_string(entity.getPollingIntervalMs())},
-            {"connection_timeout_ms", std::to_string(entity.getConnectionTimeoutMs())},
-            {"max_retry_count", std::to_string(entity.getMaxRetryCount())},
-            {"retry_interval_ms", std::to_string(entity.getRetryIntervalMs())},
-            {"backoff_time_ms", std::to_string(entity.getBackoffTimeMs())},
-            {"keep_alive_enabled", db_layer.formatBoolean(entity.isKeepAliveEnabled())},
-            {"keep_alive_interval_s", std::to_string(entity.getKeepAliveIntervalS())},
-            {"scan_rate_override", entity.getScanRateOverride().has_value() ? 
-                std::to_string(entity.getScanRateOverride().value()) : "NULL"},
-            {"read_timeout_ms", std::to_string(entity.getReadTimeoutMs())},
-            {"write_timeout_ms", std::to_string(entity.getWriteTimeoutMs())},
-            {"backoff_multiplier", std::to_string(entity.getBackoffMultiplier())},
-            {"max_backoff_time_ms", std::to_string(entity.getMaxBackoffTimeMs())},
-            {"keep_alive_timeout_s", std::to_string(entity.getKeepAliveTimeoutS())},
-            {"data_validation_enabled", db_layer.formatBoolean(entity.isDataValidationEnabled())},
-            {"performance_monitoring_enabled", db_layer.formatBoolean(entity.isPerformanceMonitoringEnabled())},
-            {"diagnostic_mode_enabled", db_layer.formatBoolean(entity.isDiagnosticModeEnabled())},
-            {"updated_at", db_layer.getCurrentTimestamp()}
-        };
-        
+        std::map<std::string, std::string> data = entityToParams(entity);
         std::vector<std::string> primary_keys = {"device_id"};
         
         bool success = db_layer.executeUpsert("device_settings", data, primary_keys);
@@ -180,9 +168,11 @@ bool DeviceSettingsRepository::deleteById(int device_id) {
             return false;
         }
         
-        const std::string query = "DELETE FROM device_settings WHERE device_id = " + std::to_string(device_id);
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = replaceParameter(SQL::DeviceSettings::DELETE_BY_ID, std::to_string(device_id));
+        
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -209,9 +199,11 @@ bool DeviceSettingsRepository::exists(int device_id) {
             return false;
         }
         
-        const std::string query = "SELECT COUNT(*) as count FROM device_settings WHERE device_id = " + std::to_string(device_id);
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = replaceParameter(SQL::DeviceSettings::EXISTS_BY_ID, std::to_string(device_id));
+        
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -244,15 +236,14 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByIds(const std:
             ids_ss << device_ids[i];
         }
         
-        const std::string query = R"(
-            SELECT 
-                device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
-                retry_interval_ms, backoff_time_ms, keep_alive_enabled, keep_alive_interval_s,
-                scan_rate_override, read_timeout_ms, write_timeout_ms, backoff_multiplier,
-                max_backoff_time_ms, keep_alive_timeout_s, data_validation_enabled,
-                performance_monitoring_enabled, diagnostic_mode_enabled, updated_at
-            FROM device_settings 
-            WHERE device_id IN ()" + ids_ss.str() + ")";
+        // 🎯 기본 쿼리에 IN 절 추가 (SQLQueries.h 기반)
+        std::string query = SQL::DeviceSettings::FIND_ALL;
+        
+        // ORDER BY 전에 WHERE 절 삽입
+        size_t order_pos = query.find("ORDER BY");
+        if (order_pos != std::string::npos) {
+            query.insert(order_pos, "WHERE device_id IN (" + ids_ss.str() + ") ");
+        }
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -262,7 +253,6 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByIds(const std:
         
         for (const auto& row : results) {
             try {
-                // 🎯 수정: 2번째 파라미터 제거
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
                 logger_->Warn("DeviceSettingsRepository::findByIds - Failed to map row: " + std::string(e.what()));
@@ -283,13 +273,13 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByConditions(
     const std::optional<OrderBy>& /* order_by */,
     const std::optional<Pagination>& /* pagination */) {
     
-    // 🎯 수정: 사용하지 않는 파라미터 주석 처리로 경고 제거
+    // 임시 구현
     logger_->Info("DeviceSettingsRepository::findByConditions called - returning all for now");
-    return findAll(); // 임시 구현
+    return findAll();
 }
 
 // =============================================================================
-// DeviceSettings 전용 메서드들
+// DeviceSettings 전용 메서드들 (SQLQueries.h 상수 사용)
 // =============================================================================
 
 std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByProtocol(const std::string& protocol_type) {
@@ -298,20 +288,11 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByProtocol(const
             return {};
         }
         
-        const std::string query = R"(
-            SELECT 
-                ds.device_id, ds.polling_interval_ms, ds.connection_timeout_ms, ds.max_retry_count,
-                ds.retry_interval_ms, ds.backoff_time_ms, ds.keep_alive_enabled, ds.keep_alive_interval_s,
-                ds.scan_rate_override, ds.read_timeout_ms, ds.write_timeout_ms, ds.backoff_multiplier,
-                ds.max_backoff_time_ms, ds.keep_alive_timeout_s, ds.data_validation_enabled,
-                ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled, ds.updated_at
-            FROM device_settings ds
-            INNER JOIN devices d ON ds.device_id = d.id
-            WHERE d.protocol_type = ')" + escapeString(protocol_type) + R"('
-            ORDER BY ds.device_id
-        )";
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = replaceParameterWithQuotes(SQL::DeviceSettings::FIND_BY_PROTOCOL, protocol_type);
+        
         auto results = db_layer.executeQuery(query);
         
         std::vector<DeviceSettingsEntity> entities;
@@ -319,7 +300,6 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByProtocol(const
         
         for (const auto& row : results) {
             try {
-                // 🎯 수정: 2번째 파라미터 제거
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
                 logger_->Warn("DeviceSettingsRepository::findByProtocol - Failed to map row: " + std::string(e.what()));
@@ -341,28 +321,16 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findActiveDeviceSett
             return {};
         }
         
-        const std::string query = R"(
-            SELECT 
-                ds.device_id, ds.polling_interval_ms, ds.connection_timeout_ms, ds.max_retry_count,
-                ds.retry_interval_ms, ds.backoff_time_ms, ds.keep_alive_enabled, ds.keep_alive_interval_s,
-                ds.scan_rate_override, ds.read_timeout_ms, ds.write_timeout_ms, ds.backoff_multiplier,
-                ds.max_backoff_time_ms, ds.keep_alive_timeout_s, ds.data_validation_enabled,
-                ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled, ds.updated_at
-            FROM device_settings ds
-            INNER JOIN devices d ON ds.device_id = d.id
-            WHERE d.is_enabled = 1
-            ORDER BY ds.polling_interval_ms, ds.device_id
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        
+        // 🎯 SQLQueries.h 상수 사용
+        auto results = db_layer.executeQuery(SQL::DeviceSettings::FIND_ACTIVE_DEVICES);
         
         std::vector<DeviceSettingsEntity> entities;
         entities.reserve(results.size());
         
         for (const auto& row : results) {
             try {
-                // 🎯 수정: 2번째 파라미터 제거
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
                 logger_->Warn("DeviceSettingsRepository::findActiveDeviceSettings - Failed to map row: " + std::string(e.what()));
@@ -379,7 +347,7 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findActiveDeviceSett
 }
 
 // =============================================================================
-// 내부 헬퍼 메서드들 - 🎯 수정: 헤더와 시그니처 일치
+// 내부 헬퍼 메서드들 (DeviceSettingsRepository 패턴)
 // =============================================================================
 
 DeviceSettingsEntity DeviceSettingsRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
@@ -483,40 +451,45 @@ DeviceSettingsEntity DeviceSettingsRepository::mapRowToEntity(const std::map<std
     }
 }
 
+std::map<std::string, std::string> DeviceSettingsRepository::entityToParams(const DeviceSettingsEntity& entity) {
+    DatabaseAbstractionLayer db_layer;
+    
+    std::map<std::string, std::string> params;
+    
+    params["device_id"] = std::to_string(entity.getDeviceId());
+    params["polling_interval_ms"] = std::to_string(entity.getPollingIntervalMs());
+    params["connection_timeout_ms"] = std::to_string(entity.getConnectionTimeoutMs());
+    params["max_retry_count"] = std::to_string(entity.getMaxRetryCount());
+    params["retry_interval_ms"] = std::to_string(entity.getRetryIntervalMs());
+    params["backoff_time_ms"] = std::to_string(entity.getBackoffTimeMs());
+    params["keep_alive_enabled"] = db_layer.formatBoolean(entity.isKeepAliveEnabled());
+    params["keep_alive_interval_s"] = std::to_string(entity.getKeepAliveIntervalS());
+    
+    if (entity.getScanRateOverride().has_value()) {
+        params["scan_rate_override"] = std::to_string(entity.getScanRateOverride().value());
+    } else {
+        params["scan_rate_override"] = "NULL";
+    }
+    
+    params["read_timeout_ms"] = std::to_string(entity.getReadTimeoutMs());
+    params["write_timeout_ms"] = std::to_string(entity.getWriteTimeoutMs());
+    params["backoff_multiplier"] = std::to_string(entity.getBackoffMultiplier());
+    params["max_backoff_time_ms"] = std::to_string(entity.getMaxBackoffTimeMs());
+    params["keep_alive_timeout_s"] = std::to_string(entity.getKeepAliveTimeoutS());
+    params["data_validation_enabled"] = db_layer.formatBoolean(entity.isDataValidationEnabled());
+    params["performance_monitoring_enabled"] = db_layer.formatBoolean(entity.isPerformanceMonitoringEnabled());
+    params["diagnostic_mode_enabled"] = db_layer.formatBoolean(entity.isDiagnosticModeEnabled());
+    params["updated_at"] = db_layer.getCurrentTimestamp();
+    
+    return params;
+}
+
 bool DeviceSettingsRepository::ensureTableExists() {
     try {
-        const std::string base_create_query = R"(
-            CREATE TABLE IF NOT EXISTS device_settings (
-                device_id INTEGER PRIMARY KEY,
-                
-                -- 기본 통신 설정
-                polling_interval_ms INTEGER DEFAULT 1000,
-                connection_timeout_ms INTEGER DEFAULT 10000,
-                max_retry_count INTEGER DEFAULT 3,
-                retry_interval_ms INTEGER DEFAULT 5000,
-                backoff_time_ms INTEGER DEFAULT 60000,
-                keep_alive_enabled BOOLEAN DEFAULT true,
-                keep_alive_interval_s INTEGER DEFAULT 30,
-                
-                -- 고급 설정
-                scan_rate_override INTEGER,
-                read_timeout_ms INTEGER DEFAULT 5000,
-                write_timeout_ms INTEGER DEFAULT 5000,
-                backoff_multiplier DECIMAL(3,2) DEFAULT 1.5,
-                max_backoff_time_ms INTEGER DEFAULT 300000,
-                keep_alive_timeout_s INTEGER DEFAULT 10,
-                data_validation_enabled BOOLEAN DEFAULT true,
-                performance_monitoring_enabled BOOLEAN DEFAULT true,
-                diagnostic_mode_enabled BOOLEAN DEFAULT false,
-                
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                
-                FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
-            )
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeCreateTable(base_create_query);
+        
+        // 🎯 SQLQueries.h 상수 사용
+        bool success = db_layer.executeCreateTable(SQL::DeviceSettings::CREATE_TABLE);
         
         if (success) {
             logger_->Debug("DeviceSettingsRepository::ensureTableExists - Table creation/check completed");
@@ -551,7 +524,6 @@ bool DeviceSettingsRepository::validateSettings(const DeviceSettingsEntity& enti
     return true;
 }
 
-// 🎯 수정: 헤더에 선언되지 않은 메서드 제거하고 private로 이동
 std::string DeviceSettingsRepository::escapeString(const std::string& str) const {
     std::string escaped = str;
     size_t pos = 0;
@@ -563,7 +535,7 @@ std::string DeviceSettingsRepository::escapeString(const std::string& str) const
 }
 
 // =============================================================================
-// 비즈니스 로직 메서드들 (기존과 동일)
+// 비즈니스 로직 메서드들 (SQLQueries.h 상수 적용)
 // =============================================================================
 
 bool DeviceSettingsRepository::createOrUpdateSettings(int device_id, const DeviceSettingsEntity& settings) {
@@ -794,7 +766,6 @@ bool DeviceSettingsRepository::applyStabilityMode(int device_id) {
 
 // 기타 메서드들은 기본 구현
 int DeviceSettingsRepository::applyPresetToProtocol(const std::string& /* protocol_type */, const std::string& /* preset_mode */) {
-    // 🎯 수정: 사용하지 않는 파라미터 주석 처리로 경고 제거
     logger_->Info("DeviceSettingsRepository::applyPresetToProtocol - Not fully implemented yet");
     return 0;
 }
@@ -846,36 +817,6 @@ DeviceSettingsEntity DeviceSettingsRepository::createPresetEntity(const std::str
     }
     
     return entity;
-}
-
-std::map<std::string, std::string> DeviceSettingsRepository::entityToParams(const DeviceSettingsEntity& entity) {
-    std::map<std::string, std::string> params;
-    
-    params["device_id"] = std::to_string(entity.getDeviceId());
-    params["polling_interval_ms"] = std::to_string(entity.getPollingIntervalMs());
-    params["connection_timeout_ms"] = std::to_string(entity.getConnectionTimeoutMs());
-    params["max_retry_count"] = std::to_string(entity.getMaxRetryCount());
-    params["retry_interval_ms"] = std::to_string(entity.getRetryIntervalMs());
-    params["backoff_time_ms"] = std::to_string(entity.getBackoffTimeMs());
-    params["keep_alive_enabled"] = entity.isKeepAliveEnabled() ? "1" : "0";
-    params["keep_alive_interval_s"] = std::to_string(entity.getKeepAliveIntervalS());
-    
-    if (entity.getScanRateOverride().has_value()) {
-        params["scan_rate_override"] = std::to_string(entity.getScanRateOverride().value());
-    } else {
-        params["scan_rate_override"] = "NULL";
-    }
-    
-    params["read_timeout_ms"] = std::to_string(entity.getReadTimeoutMs());
-    params["write_timeout_ms"] = std::to_string(entity.getWriteTimeoutMs());
-    params["backoff_multiplier"] = std::to_string(entity.getBackoffMultiplier());
-    params["max_backoff_time_ms"] = std::to_string(entity.getMaxBackoffTimeMs());
-    params["keep_alive_timeout_s"] = std::to_string(entity.getKeepAliveTimeoutS());
-    params["data_validation_enabled"] = entity.isDataValidationEnabled() ? "1" : "0";
-    params["performance_monitoring_enabled"] = entity.isPerformanceMonitoringEnabled() ? "1" : "0";
-    params["diagnostic_mode_enabled"] = entity.isDiagnosticModeEnabled() ? "1" : "0";
-    
-    return params;
 }
 
 } // namespace Repositories

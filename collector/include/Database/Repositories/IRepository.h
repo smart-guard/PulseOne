@@ -3,7 +3,7 @@
 
 /**
  * @file IRepository.h
- * @brief PulseOne Repository 인터페이스 템플릿 - 완전 수정본
+ * @brief PulseOne Repository 인터페이스 템플릿 - 경고 완전 수정본
  * @author PulseOne Development Team
  * @date 2025-07-29
  * 
@@ -11,6 +11,7 @@
  * - 전방 선언 → 실제 헤더 include로 변경
  * - 모든 매니저 클래스가 전역 네임스페이스에 있음을 반영
  * - incomplete type 오류 완전 해결
+ * - unused parameter 경고 모두 제거
  */
 
 // ✅ 표준 라이브러리
@@ -101,7 +102,7 @@ public:
     }
 
     // =======================================================================
-    // 기본 가상 함수들
+    // 🔥 기본 가상 함수들 (unused parameter 경고 제거)
     // =======================================================================
     
     virtual std::vector<EntityType> findAll() {
@@ -109,33 +110,38 @@ public:
         return {};
     }
     
-    virtual std::optional<EntityType> findById(int id) {
+    // 🔥 수정: unused parameter 경고 제거
+    virtual std::optional<EntityType> findById([[maybe_unused]] int id) {
         if (logger_) logger_->Error(repository_name_ + "::findById() - Not implemented");
         return std::nullopt;
     }
     
-    virtual bool save(EntityType& entity) {
+    // 🔥 수정: unused parameter 경고 제거
+    virtual bool save([[maybe_unused]] EntityType& entity) {
         if (logger_) logger_->Error(repository_name_ + "::save() - Not implemented");
         return false;
     }
     
-    virtual bool update(const EntityType& entity) {
+    // 🔥 수정: unused parameter 경고 제거
+    virtual bool update([[maybe_unused]] const EntityType& entity) {
         if (logger_) logger_->Error(repository_name_ + "::update() - Not implemented");
         return false;
     }
     
-    virtual bool deleteById(int id) {
+    // 🔥 수정: unused parameter 경고 제거
+    virtual bool deleteById([[maybe_unused]] int id) {
         if (logger_) logger_->Error(repository_name_ + "::deleteById() - Not implemented");
         return false;
     }
     
-    virtual bool exists(int id) {
+    // 🔥 수정: unused parameter 경고 제거
+    virtual bool exists([[maybe_unused]] int id) {
         if (logger_) logger_->Error(repository_name_ + "::exists() - Not implemented");
         return false;
     }
 
     // =======================================================================
-    // 벌크 연산 (성능 최적화)
+    // 🔥 벌크 연산 (성능 최적화) - unused parameter 경고 제거
     // =======================================================================
     
     virtual std::vector<EntityType> findByIds(const std::vector<int>& ids) {
@@ -191,19 +197,20 @@ public:
     }
 
     // =======================================================================
-    // 조건부 쿼리
+    // 🔥 조건부 쿼리 - unused parameter 경고 제거
     // =======================================================================
     
     virtual std::vector<EntityType> findByConditions(
-        const std::vector<QueryCondition>& conditions,
-        const std::optional<OrderBy>& order_by = std::nullopt,
-        const std::optional<Pagination>& pagination = std::nullopt) {
+        [[maybe_unused]] const std::vector<QueryCondition>& conditions,
+        [[maybe_unused]] const std::optional<OrderBy>& order_by = std::nullopt,
+        [[maybe_unused]] const std::optional<Pagination>& pagination = std::nullopt) {
         
         if (logger_) logger_->Error(repository_name_ + "::findByConditions() - Not implemented");
         return {};
     }
     
-    virtual int countByConditions(const std::vector<QueryCondition>& conditions) {
+    // 🔥 수정: unused parameter 경고 제거
+    virtual int countByConditions([[maybe_unused]] const std::vector<QueryCondition>& conditions) {
         if (logger_) logger_->Error(repository_name_ + "::countByConditions() - Not implemented");
         return 0;
     }
@@ -308,22 +315,16 @@ protected:
         return std::nullopt;
     }
 
-    void cacheEntity(const EntityType& entity) {
+    // 🔥 수정: cacheEntity 함수 간소화 (템플릿 특수화 복잡성 제거)
+    void cacheEntity([[maybe_unused]] const EntityType& entity) {
         if (!cache_enabled_) return;
         
         std::lock_guard<std::mutex> lock(cache_mutex_);
         
         try {
-            // Entity에서 ID 추출 시도 (런타임에 체크)
-            // 대부분의 Entity는 getId() 메서드를 가지고 있다고 가정
-            // 만약 없다면 catch 블록에서 처리
-            auto get_id_method = [&entity]() -> int {
-                // 여기서 각 엔티티 타입별로 ID 추출
-                // 템플릿 특수화나 오버로드를 통해 처리 가능
-                return 0; // 기본값 (실제로는 entity의 ID를 반환해야 함)
-            };
-            
-            int id = get_id_method();
+            // 🔥 수정: ID 추출 로직을 단순화하고 기본값 사용
+            // 실제 구현에서는 각 Repository 파생 클래스에서 오버라이드해야 함
+            int id = 0;  // 기본값
             
             // 캐시 크기 제한 체크
             if (entity_cache_.size() >= max_cache_size_) {

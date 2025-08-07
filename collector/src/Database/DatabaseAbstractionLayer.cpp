@@ -164,12 +164,34 @@ std::string DatabaseAbstractionLayer::adaptBooleanValues(const std::string& quer
         result = std::regex_replace(result, std::regex("\\bfalse\\b", std::regex_constants::icase), "0");
         
     } else if (current_db_type_ == "POSTGRESQL") {
+        // 🔥 수정: 람다 함수 사용 대신 수동 처리
         // 1/0 → true/false (PostgreSQL은 native boolean 지원)
         std::regex bool_context("(is_enabled|is_active|enabled|active)\\s*=\\s*([01])", std::regex_constants::icase);
-        result = std::regex_replace(result, bool_context, 
-                                  [](const std::smatch& match) {
-                                      return match[1].str() + " = " + (match[2].str() == "1" ? "true" : "false");
-                                  });
+        
+        // 🔥 수정: std::sregex_iterator를 사용한 수동 교체
+        std::string temp_result;
+        std::sregex_iterator iter(result.begin(), result.end(), bool_context);
+        std::sregex_iterator end;
+        
+        size_t last_pos = 0;
+        for (; iter != end; ++iter) {
+            const std::smatch& match = *iter;
+            
+            // 매치 이전 부분 복사
+            temp_result += result.substr(last_pos, match.position() - last_pos);
+            
+            // 매치된 부분 교체
+            std::string field = match[1].str();
+            std::string value = match[2].str();
+            std::string replacement = field + " = " + (value == "1" ? "true" : "false");
+            temp_result += replacement;
+            
+            last_pos = match.position() + match.length();
+        }
+        
+        // 남은 부분 복사
+        temp_result += result.substr(last_pos);
+        result = temp_result;
         
     } else if (current_db_type_ == "MYSQL" || current_db_type_ == "MARIADB") {
         // MySQL은 TINYINT(1)을 boolean으로 사용, 0/1 그대로 유지
