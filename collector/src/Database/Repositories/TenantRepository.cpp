@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/TenantRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
 #include <iomanip>
@@ -293,9 +294,9 @@ std::vector<TenantEntity> TenantRepository::findByConditions(
             FROM tenants
         )";
         
-        query += buildWhereClause(conditions);
-        query += buildOrderByClause(order_by);
-        query += buildLimitClause(pagination);
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -327,7 +328,7 @@ int TenantRepository::countByConditions(const std::vector<QueryCondition>& condi
         }
         
         std::string query = "SELECT COUNT(*) as count FROM tenants";
-        query += buildWhereClause(conditions);
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -361,7 +362,7 @@ std::optional<TenantEntity> TenantRepository::findByDomain(const std::string& do
                 country, timezone, subscription_start, subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            WHERE domain = ')" + escapeString(domain) + "'";
+            WHERE domain = ')" + RepositoryHelpers::escapeString(domain) + "'";
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -394,7 +395,7 @@ std::vector<TenantEntity> TenantRepository::findByStatus(TenantEntity::Status st
                 country, timezone, subscription_start, subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            WHERE status = ')" + escapeString(TenantEntity::statusToString(status)) + R"('
+            WHERE status = ')" + RepositoryHelpers::escapeString(TenantEntity::statusToString(status)) + R"('
             ORDER BY name
         )";
         
@@ -473,7 +474,7 @@ std::optional<TenantEntity> TenantRepository::findByName(const std::string& name
                 country, timezone, subscription_start, subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            WHERE name = ')" + escapeString(name) + "'";
+            WHERE name = ')" + RepositoryHelpers::escapeString(name) + "'";
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -553,7 +554,7 @@ bool TenantRepository::updateStatus(int tenant_id, TenantEntity::Status status) 
     try {
         const std::string query = R"(
             UPDATE tenants 
-            SET status = ')" + escapeString(TenantEntity::statusToString(status)) + R"(',
+            SET status = ')" + RepositoryHelpers::escapeString(TenantEntity::statusToString(status)) + R"(',
                 updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(tenant_id);
         
@@ -598,7 +599,7 @@ bool TenantRepository::isDomainTaken(const std::string& domain, int exclude_id) 
             return false;
         }
         
-        std::string query = "SELECT COUNT(*) as count FROM tenants WHERE domain = '" + escapeString(domain) + "'";
+        std::string query = "SELECT COUNT(*) as count FROM tenants WHERE domain = '" + RepositoryHelpers::escapeString(domain) + "'";
         if (exclude_id > 0) {
             query += " AND id != " + std::to_string(exclude_id);
         }
@@ -625,7 +626,7 @@ bool TenantRepository::isNameTaken(const std::string& name, int exclude_id) {
             return false;
         }
         
-        std::string query = "SELECT COUNT(*) as count FROM tenants WHERE name = '" + escapeString(name) + "'";
+        std::string query = "SELECT COUNT(*) as count FROM tenants WHERE name = '" + RepositoryHelpers::escapeString(name) + "'";
         if (exclude_id > 0) {
             query += " AND id != " + std::to_string(exclude_id);
         }
@@ -900,44 +901,8 @@ bool TenantRepository::validateTenant(const TenantEntity& entity) const {
 }
 
 // =============================================================================
-// SQL 빌더 헬퍼 메서드들
-// =============================================================================
-
-std::string TenantRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string TenantRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string TenantRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
-// =============================================================================
 // 유틸리티 함수들
 // =============================================================================
-
-std::string TenantRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
 
 std::string TenantRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
     auto time_t = std::chrono::system_clock::to_time_t(timestamp);

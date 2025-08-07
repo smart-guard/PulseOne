@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/UserRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
 #include <iomanip>
@@ -282,9 +283,9 @@ std::vector<UserEntity> UserRepository::findByConditions(
             FROM users
         )";
         
-        query += buildWhereClause(conditions);
-        query += buildOrderByClause(order_by);
-        query += buildLimitClause(pagination);
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -316,7 +317,7 @@ int UserRepository::countByConditions(const std::vector<QueryCondition>& conditi
         }
         
         std::string query = "SELECT COUNT(*) as count FROM users";
-        query += buildWhereClause(conditions);
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -349,7 +350,7 @@ std::optional<UserEntity> UserRepository::findByUsername(const std::string& user
                 role, is_enabled, phone_number, department, permissions,
                 login_count, last_login_at, notes, created_by, created_at, updated_at
             FROM users 
-            WHERE username = ')" + escapeString(username) + "'";
+            WHERE username = ')" + RepositoryHelpers::escapeString(username) + "'";
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -378,7 +379,7 @@ std::optional<UserEntity> UserRepository::findByEmail(const std::string& email) 
                 role, is_enabled, phone_number, department, permissions,
                 login_count, last_login_at, notes, created_by, created_at, updated_at
             FROM users 
-            WHERE email = ')" + escapeString(email) + "'";
+            WHERE email = ')" + RepositoryHelpers::escapeString(email) + "'";
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -654,41 +655,6 @@ bool UserRepository::validateEntity(const UserEntity& entity) const {
     return entity.isValid();
 }
 
-// =============================================================================
-// SQL 빌더 헬퍼 메서드들 (DeviceRepository 패턴)
-// =============================================================================
-
-std::string UserRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string UserRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string UserRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
-std::string UserRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
 
 } // namespace Repositories
 } // namespace Database

@@ -12,6 +12,7 @@
  */
 
 #include "Database/Repositories/SiteRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include <sstream>
 #include <iomanip>
@@ -293,9 +294,9 @@ std::vector<SiteEntity> SiteRepository::findByConditions(
             FROM sites
         )";
         
-        query += buildWhereClause(conditions);
-        query += buildOrderByClause(order_by);
-        query += buildLimitClause(pagination);
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -327,7 +328,7 @@ int SiteRepository::countByConditions(const std::vector<QueryCondition>& conditi
         }
         
         std::string query = "SELECT COUNT(*) as count FROM sites";
-        query += buildWhereClause(conditions);
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -423,7 +424,7 @@ std::vector<SiteEntity> SiteRepository::findBySiteType(SiteEntity::SiteType site
                 hierarchy_level, hierarchy_path, is_active, contact_name,
                 contact_email, contact_phone, created_at, updated_at
             FROM sites 
-            WHERE site_type = ')" + escapeString(SiteEntity::siteTypeToString(site_type)) + R"(' AND is_active = 1 
+            WHERE site_type = ')" + RepositoryHelpers::escapeString(SiteEntity::siteTypeToString(site_type)) + R"(' AND is_active = 1 
             ORDER BY name
         )";
         
@@ -530,7 +531,7 @@ std::optional<SiteEntity> SiteRepository::findByCode(const std::string& code, in
                 hierarchy_level, hierarchy_path, is_active, contact_name,
                 contact_email, contact_phone, created_at, updated_at
             FROM sites 
-            WHERE code = ')" + escapeString(code) + R"(' AND tenant_id = )" + std::to_string(tenant_id);
+            WHERE code = ')" + RepositoryHelpers::escapeString(code) + R"(' AND tenant_id = )" + std::to_string(tenant_id);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -664,7 +665,7 @@ bool SiteRepository::updateHierarchyPath(SiteEntity& entity) {
         // DB 업데이트
         const std::string query = R"(
             UPDATE sites 
-            SET hierarchy_path = ')" + escapeString(entity.getHierarchyPath()) + R"(',
+            SET hierarchy_path = ')" + RepositoryHelpers::escapeString(entity.getHierarchyPath()) + R"(',
                 hierarchy_level = )" + std::to_string(entity.getHierarchyLevel()) + R"(,
                 updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(entity.getId());
@@ -988,44 +989,8 @@ bool SiteRepository::validateSite(const SiteEntity& entity) const {
 }
 
 // =============================================================================
-// SQL 빌더 헬퍼 메서드들
-// =============================================================================
-
-std::string SiteRepository::buildWhereClause(const std::vector<QueryCondition>& conditions) const {
-    if (conditions.empty()) return "";
-    
-    std::string clause = " WHERE ";
-    for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
-    }
-    return clause;
-}
-
-std::string SiteRepository::buildOrderByClause(const std::optional<OrderBy>& order_by) const {
-    if (!order_by.has_value()) return "";
-    return " ORDER BY " + order_by->field + (order_by->ascending ? " ASC" : " DESC");
-}
-
-std::string SiteRepository::buildLimitClause(const std::optional<Pagination>& pagination) const {
-    if (!pagination.has_value()) return "";
-    return " LIMIT " + std::to_string(pagination->getLimit()) + 
-           " OFFSET " + std::to_string(pagination->getOffset());
-}
-
-// =============================================================================
 // 유틸리티 함수들
 // =============================================================================
-
-std::string SiteRepository::escapeString(const std::string& str) const {
-    std::string escaped = str;
-    size_t pos = 0;
-    while ((pos = escaped.find("'", pos)) != std::string::npos) {
-        escaped.replace(pos, 1, "''");
-        pos += 2;
-    }
-    return escaped;
-}
 
 std::string SiteRepository::formatTimestamp(const std::chrono::system_clock::time_point& timestamp) const {
     auto time_t = std::chrono::system_clock::to_time_t(timestamp);

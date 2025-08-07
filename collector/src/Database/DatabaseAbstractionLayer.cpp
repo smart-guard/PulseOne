@@ -433,5 +433,139 @@ DatabaseAbstractionLayer::DatabaseAbstractionLayer()
     LogManager::getInstance().Debug("DatabaseAbstractionLayer created for DB type: " + current_db_type_);
 }
 
+bool DatabaseAbstractionLayer::executeUpsert(
+    const std::string& table_name,
+    const std::map<std::string, std::string>& data,
+    const std::vector<std::string>& primary_keys) {
+    
+    try {
+        // 1. 컬럼명과 값 분리
+        std::vector<std::string> columns;
+        std::vector<std::string> values;
+        
+        for (const auto& [key, value] : data) {
+            columns.push_back(key);
+            values.push_back("'" + value + "'");
+        }
+        
+        // 2. DB별 UPSERT 쿼리 생성
+        std::string query;
+        std::string db_type = getCurrentDbType();
+        
+        if (db_type == "SQLITE") {
+            // SQLite: INSERT OR REPLACE
+            query = "INSERT OR REPLACE INTO " + table_name + " (";
+            for (size_t i = 0; i < columns.size(); ++i) {
+                if (i > 0) query += ", ";
+                query += columns[i];
+            }
+            query += ") VALUES (";
+            for (size_t i = 0; i < values.size(); ++i) {
+                if (i > 0) query += ", ";
+                query += values[i];
+            }
+            query += ")";
+            
+        } else if (db_type == "MYSQL") {
+            // MySQL: INSERT ... ON DUPLICATE KEY UPDATE
+            query = "INSERT INTO " + table_name + " (";
+            for (size_t i = 0; i < columns.size(); ++i) {
+                if (i > 0) query += ", ";
+                query += columns[i];
+            }
+            query += ") VALUES (";
+            for (size_t i = 0; i < values.size(); ++i) {
+                if (i > 0) query += ", ";
+                query += values[i];
+            }
+            query += ") ON DUPLICATE KEY UPDATE ";
+            
+            bool first = true;
+            for (size_t i = 0; i < columns.size(); ++i) {
+                // 기본키가 아닌 컬럼만 업데이트
+                bool is_primary = std::find(primary_keys.begin(), primary_keys.end(), columns[i]) != primary_keys.end();
+                if (!is_primary) {
+                    if (!first) query += ", ";
+                    query += columns[i] + " = VALUES(" + columns[i] + ")";
+                    first = false;
+                }
+            }
+            
+        } else {
+            // 다른 DB는 일단 일반 INSERT로 처리
+            query = "INSERT INTO " + table_name + " (";
+            for (size_t i = 0; i < columns.size(); ++i) {
+                if (i > 0) query += ", ";
+                query += columns[i];
+            }
+            query += ") VALUES (";
+            for (size_t i = 0; i < values.size(); ++i) {
+                if (i > 0) query += ", ";
+                query += values[i];
+            }
+            query += ")";
+        }
+        
+        // 3. 쿼리 실행
+        return executeNonQuery(query);
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("DatabaseAbstractionLayer::executeUpsert failed: " + std::string(e.what()));
+        return false;
+    }
+}
+// 🔥 누락된 parseBoolean 구현
+bool DatabaseAbstractionLayer::parseBoolean(const std::string& value) {
+    if (value.empty()) return false;
+    
+    std::string lower_value = value;
+    std::transform(lower_value.begin(), lower_value.end(), lower_value.begin(), ::tolower);
+    
+    return (lower_value == "1" || lower_value == "true" || lower_value == "yes" || lower_value == "on");
+}
+
+// 🔥 누락된 formatBoolean 구현
+std::string DatabaseAbstractionLayer::formatBoolean(bool value) {
+    std::string db_type = getCurrentDbType();
+    
+    if (db_type == "POSTGRESQL") {
+        return value ? "true" : "false";
+    } else {
+        return value ? "1" : "0";  // SQLite, MySQL 등
+    }
+}
+
+// 🔥 누락된 getCurrentTimestamp 구현
+std::string DatabaseAbstractionLayer::getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    
+    std::ostringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
+// 🔥 누락된 executeCreateTable 구현
+bool DatabaseAbstractionLayer::executeCreateTable(const std::string& query) {
+    return executeNonQuery(query);
+}
+
+// 🔥 현재 DB 타입 반환 헬퍼
+std::string DatabaseAbstractionLayer::getCurrentDbType() {
+    if (!db_manager_) {
+        return "SQLITE";  // 기본값
+    }
+    
+    if (db_manager_->isSQLiteConnected()) {
+        return "SQLITE";
+    } else if (db_manager_->isPostgresConnected()) {
+        return "POSTGRESQL";
+    } else if (db_manager_->isRedisConnected()) {
+        return "REDIS";
+    } else {
+        return "SQLITE";  // 기본값
+    }
+}
+
 } // namespace Database
 } // namespace PulseOne
