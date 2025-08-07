@@ -123,15 +123,15 @@ bool CurrentValueRepository::save(CurrentValueEntity& entity) {
         
         DatabaseAbstractionLayer db_layer;
         
-        std::map<std::string, std::string> data = {
-            {"point_id", std::to_string(entity.getPointId())},
-            {"value", std::to_string(entity.getValue())},
-            {"raw_value", std::to_string(entity.getRawValue())},
-            {"string_value", entity.getStringValue()},
-            {"quality", entity.getQualityString()},
-            {"timestamp", PulseOne::Utils::TimestampToDBString(entity.getTimestamp())},
-            {"updated_at", PulseOne::Utils::TimestampToDBString(entity.getUpdatedAt())}
-        };
+        // 🔥 수정: 초기화 리스트 대신 개별 할당
+        std::map<std::string, std::string> data;
+        data["point_id"] = std::to_string(entity.getPointId());
+        data["value"] = std::to_string(entity.getCurrentValue().empty() ? 0.0 : std::stod(entity.getCurrentValue())); // 🔥 수정
+        data["raw_value"] = entity.getRawValue(); // 🔥 수정: string 그대로 사용
+        data["string_value"] = entity.getCurrentValue(); // 🔥 수정: getStringValue() → getCurrentValue()
+        data["quality"] = entity.getQuality(); // 🔥 수정: getQualityString() → getQuality()
+        data["timestamp"] = PulseOne::Utils::TimestampToDBString(entity.getValueTimestamp()); // 🔥 수정
+        data["updated_at"] = PulseOne::Utils::TimestampToDBString(entity.getUpdatedAt());
         
         std::vector<std::string> primary_keys = {"point_id"};
         
@@ -155,6 +155,7 @@ bool CurrentValueRepository::save(CurrentValueEntity& entity) {
         return false;
     }
 }
+
 
 bool CurrentValueRepository::update(const CurrentValueEntity& entity) {
     CurrentValueEntity mutable_entity = entity;
@@ -372,13 +373,22 @@ int CurrentValueRepository::saveBulk(std::vector<CurrentValueEntity>& entities) 
                 if (j > i) query << ", ";
                 
                 const auto& entity = entities[j];
+                
+                // 🔥 수정: 적절한 getter 메서드 사용
+                double value = 0.0;
+                try {
+                    value = entity.getCurrentValue().empty() ? 0.0 : std::stod(entity.getCurrentValue());
+                } catch (...) {
+                    value = 0.0;
+                }
+                
                 query << "(" 
                       << entity.getPointId() << ", "
-                      << entity.getValue() << ", "
-                      << entity.getRawValue() << ", '"
-                      << RepositoryHelpers::escapeString(entity.getStringValue()) << "', '"
-                      << entity.getQualityString() << "', '"
-                      << PulseOne::Utils::TimestampToDBString(entity.getTimestamp()) << "', '"
+                      << value << ", '"  // 🔥 수정: double 값
+                      << RepositoryHelpers::escapeString(entity.getRawValue()) << "', '"
+                      << RepositoryHelpers::escapeString(entity.getCurrentValue()) << "', '"  // 🔥 수정
+                      << entity.getQuality() << "', '"  // 🔥 수정
+                      << PulseOne::Utils::TimestampToDBString(entity.getValueTimestamp()) << "', '"  // 🔥 수정
                       << PulseOne::Utils::TimestampToDBString(entity.getUpdatedAt()) << "')";
             }
             
@@ -759,27 +769,32 @@ CurrentValueEntity CurrentValueRepository::mapRowToEntity(const std::map<std::st
         
         it = row.find("value");
         if (it != row.end()) {
-            entity.setValue(std::stod(it->second));
+            // 🔥 수정: setValue() 메서드가 없다면 setCurrentValue() 사용
+            entity.setCurrentValue(it->second); // double 값을 string으로 설정
         }
         
         it = row.find("raw_value");
         if (it != row.end()) {
-            entity.setRawValue(std::stod(it->second));
+            // 🔥 수정: setRawValue()는 string을 받으므로 string 그대로 전달
+            entity.setRawValue(it->second);
         }
         
         it = row.find("string_value");
         if (it != row.end()) {
-            entity.setStringValue(it->second);
+            // 🔥 수정: setStringValue() 메서드가 없다면 setCurrentValue() 사용
+            entity.setCurrentValue(it->second);
         }
         
         it = row.find("quality");
         if (it != row.end()) {
-            entity.setQuality(PulseOne::Utils::StringToDataQuality(it->second));
+            // 🔥 수정: string 버전 setQuality() 사용
+            entity.setQuality(it->second);
         }
         
         it = row.find("timestamp");
         if (it != row.end()) {
-            entity.setTimestamp(PulseOne::Utils::ParseTimestampFromString(it->second));
+            // 🔥 수정: setTimestamp() 메서드가 없다면 setValueTimestamp() 사용
+            entity.setValueTimestamp(PulseOne::Utils::ParseTimestampFromString(it->second));
         }
         
         it = row.find("updated_at");

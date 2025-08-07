@@ -14,6 +14,7 @@
  */
 
 #include "Database/Entities/BaseEntity.h"
+#include "Common/Utils.h"
 #include <string>
 #include <vector>
 #include <optional>
@@ -22,6 +23,7 @@
 #include <sstream>
 #include <iomanip>
 #include <limits>
+#include <set>
 
 #ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
@@ -226,7 +228,6 @@ public:
     void setDescription(const std::string& description) { description_ = description; markModified(); }
     void setAddress(int address) { address_ = address; markModified(); }
     void setAddressString(const std::string& address_string) { address_string_ = address_string; markModified(); } // 🔥 새 필드
-    void setDataType(const std::string& data_type) { data_type_ = data_type; markModified(); }
     void setAccessMode(const std::string& access_mode) { access_mode_ = access_mode; markModified(); }
     void setEnabled(bool enabled) { is_enabled_ = enabled; markModified(); }
     void setWritable(bool writable) { is_writable_ = writable; markModified(); }     // 🔥 새 필드
@@ -243,7 +244,32 @@ public:
     void setTags(const std::vector<std::string>& tags) { tags_ = tags; markModified(); }
     void setMetadata(const std::map<std::string, std::string>& metadata) { metadata_ = metadata; markModified(); }
     void setProtocolParams(const std::map<std::string, std::string>& protocol_params) { protocol_params_ = protocol_params; markModified(); } // 🔥 새 필드
+    void setCreatedAt(const std::string& timestamp_str) { 
+        created_at_ = PulseOne::Utils::ParseTimestampFromString(timestamp_str); 
+        markModified(); 
+    }
 
+    void setUpdatedAt(const std::string& timestamp_str) { 
+        updated_at_ = PulseOne::Utils::ParseTimestampFromString(timestamp_str); 
+        markModified(); 
+    }
+
+    // 또는 time_point를 직접 받는 버전도 추가:
+    void setCreatedAt(const std::chrono::system_clock::time_point& timestamp) {
+        created_at_ = timestamp;
+        markModified();
+    }
+
+    void setUpdatedAt(const std::chrono::system_clock::time_point& timestamp) {
+        updated_at_ = timestamp;
+        markModified();
+    }
+
+    void setDataType(const std::string& data_type) {
+        // 🚀 Utils의 표준 정규화 함수 사용
+        data_type_ = PulseOne::Utils::NormalizeDataType(data_type);
+        markModified();
+    }
     // =======================================================================
     // 유틸리티 메서드들 (개선됨)
     // =======================================================================
@@ -422,6 +448,21 @@ public:
     uint64_t getWriteCount() const { return write_count_; }
     uint64_t getErrorCount() const { return error_count_; }
 
+    bool validateProtocolSpecific() const;
+    double applyScaling(double raw_value) const;
+    double removeScaling(double scaled_value) const;
+    bool isWithinDeadband(double previous_value, double new_value) const;
+    bool isValueInRange(double value) const;
+    void adjustPollingInterval(bool connection_healthy);
+    void addTag(const std::string& tag);
+    void removeTag(const std::string& tag);
+    bool hasTag(const std::string& tag) const;
+    void setMetadata(const std::string& key, const std::string& value);      // 🔥 오버로드 버전
+    std::string getMetadata(const std::string& key, const std::string& default_value = "") const;  // 🔥 오버로드 버전
+    bool belongsToGroup(const std::string& group_name) const;
+    json getAlarmContext() const;
+    json getPerformanceMetrics() const;    
+
 private:
     // =======================================================================
     // 유틸리티 함수들
@@ -478,6 +519,8 @@ private:
     mutable uint64_t read_count_ = 0;
     mutable uint64_t write_count_ = 0;
     mutable uint64_t error_count_ = 0;
+
+    void updateTimestamps();
 };
 
 } // namespace Entities
