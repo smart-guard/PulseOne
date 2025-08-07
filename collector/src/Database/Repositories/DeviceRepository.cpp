@@ -1,14 +1,14 @@
 /**
  * @file DeviceRepository.cpp
- * @brief PulseOne DeviceRepository 구현 - DeviceSettingsRepository 패턴 100% 적용
+ * @brief PulseOne DeviceRepository 구현 - SQLQueries.h 상수 100% 적용
  * @author PulseOne Development Team
- * @date 2025-07-31
+ * @date 2025-08-07
  * 
- * 🎯 DeviceSettingsRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer 사용
- * - executeQuery/executeNonQuery/executeUpsert 패턴
- * - 컴파일 에러 완전 해결
- * - formatTimestamp, getLastInsertRowId 문제 해결
+ * 🎯 SQLQueries.h 상수 완전 적용:
+ * - 모든 하드코딩된 쿼리를 SQL:: 상수로 교체
+ * - 동적 파라미터 처리 개선
+ * - 쿼리 중앙 관리로 유지보수성 향상
+ * - DeviceSettingsRepository 패턴 유지
  */
 
 #include "Database/Repositories/DeviceRepository.h"
@@ -23,17 +23,47 @@ namespace Database {
 namespace Repositories {
 
 // =============================================================================
-// IRepository 기본 CRUD 구현 (DeviceSettingsRepository 패턴)
+// 동적 파라미터 치환 헬퍼
+// =============================================================================
+std::string replaceParameter(std::string query, const std::string& value) {
+    size_t pos = query.find('?');
+    if (pos != std::string::npos) {
+        query.replace(pos, 1, value);
+    }
+    return query;
+}
+
+std::string replaceParameterWithQuotes(std::string query, const std::string& value) {
+    size_t pos = query.find('?');
+    if (pos != std::string::npos) {
+        query.replace(pos, 1, "'" + value + "'");
+    }
+    return query;
+}
+
+// =============================================================================
+// IRepository 기본 CRUD 구현 (SQLQueries.h 상수 사용)
 // =============================================================================
 
 std::vector<DeviceEntity> DeviceRepository::findAll() {
     try {
+        if (!ensureTableExists()) {
+            logger_->Error("DeviceRepository::findAll - Table creation failed");
+            return {};
+        }
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::Device::FIND_ALL);  // ← 상수 사용!
+        auto results = db_layer.executeQuery(SQL::Device::FIND_ALL);  // ✅ 상수 사용
         
         std::vector<DeviceEntity> entities;
+        entities.reserve(results.size());
+        
         for (const auto& row : results) {
-            entities.push_back(mapRowToEntity(row));
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("DeviceRepository::findAll - Failed to map row: " + std::string(e.what()));
+            }
         }
         
         logger_->Info("DeviceRepository::findAll - Found " + std::to_string(entities.size()) + " devices");
@@ -45,24 +75,40 @@ std::vector<DeviceEntity> DeviceRepository::findAll() {
     }
 }
 
-
 std::optional<DeviceEntity> DeviceRepository::findById(int id) {
     try {
+        // 캐시 확인 먼저
+        if (isCacheEnabled()) {
+            if (auto cached = getCachedEntity(id)) {
+                logger_->Debug("DeviceRepository::findById - Cache hit for ID: " + std::to_string(id));
+                return cached;
+            }
+        }
+        
+        if (!ensureTableExists()) {
+            return std::nullopt;
+        }
+        
         DatabaseAbstractionLayer db_layer;
         
-        // 🎯 동적 파라미터 처리
-        std::string query = SQL::Device::FIND_BY_ID;
-        // ? 플레이스홀더를 실제 값으로 치환 (간단한 방식)
-        size_t pos = query.find('?');
-        if (pos != std::string::npos) {
-            query.replace(pos, 1, std::to_string(id));
-        }
+        // 🎯 SQLQueries.h 상수 사용 + 동적 파라미터 처리
+        std::string query = replaceParameter(SQL::Device::FIND_BY_ID, std::to_string(id));
         
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty()) {
-            return mapRowToEntity(results[0]);
+            auto entity = mapRowToEntity(results[0]);
+            
+            // 캐시에 저장
+            if (isCacheEnabled()) {
+                cacheEntity(entity);
+            }
+            
+            logger_->Debug("DeviceRepository::findById - Found device: " + entity.getName());
+            return entity;
         }
+        
+        logger_->Debug("DeviceRepository::findById - Device not found with ID: " + std::to_string(id));
         return std::nullopt;
         
     } catch (const std::exception& e) {
@@ -84,7 +130,7 @@ bool DeviceRepository::save(DeviceEntity& entity) {
         
         DatabaseAbstractionLayer db_layer;
         
-        // 🔧 수정: entityToParams 메서드 사용하여 맵 생성
+        // 🔧 entityToParams 메서드 사용하여 맵 생성
         std::map<std::string, std::string> data = entityToParams(entity);
         
         std::vector<std::string> primary_keys = {"id"};
@@ -92,10 +138,9 @@ bool DeviceRepository::save(DeviceEntity& entity) {
         bool success = db_layer.executeUpsert("devices", data, primary_keys);
         
         if (success) {
-            // 새로 생성된 경우 ID 조회
+            // 새로 생성된 경우 ID 조회 - SQLQueries.h 상수 사용
             if (entity.getId() <= 0) {
-                const std::string id_query = "SELECT last_insert_rowid() as id";
-                auto id_result = db_layer.executeQuery(id_query);
+                auto id_result = db_layer.executeQuery(SQL::Device::GET_LAST_INSERT_ID);
                 if (!id_result.empty()) {
                     entity.setId(std::stoi(id_result[0].at("id")));
                 }
@@ -130,7 +175,8 @@ bool DeviceRepository::deleteById(int id) {
             return false;
         }
         
-        const std::string query = "DELETE FROM devices WHERE id = " + std::to_string(id);
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = replaceParameter(SQL::Device::DELETE_BY_ID, std::to_string(id));
         
         DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
@@ -159,7 +205,8 @@ bool DeviceRepository::exists(int id) {
             return false;
         }
         
-        const std::string query = "SELECT COUNT(*) as count FROM devices WHERE id = " + std::to_string(id);
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = replaceParameter(SQL::Device::EXISTS_BY_ID, std::to_string(id));
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -194,14 +241,13 @@ std::vector<DeviceEntity> DeviceRepository::findByIds(const std::vector<int>& id
             ids_ss << ids[i];
         }
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date,
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices 
-            WHERE id IN ()" + ids_ss.str() + ")";
+        // 🎯 기본 쿼리에 IN 절 추가 (SQLQueries.h 기반)
+        std::string query = SQL::Device::FIND_ALL;
+        // ORDER BY 앞에 WHERE 절 삽입
+        size_t order_pos = query.find("ORDER BY");
+        if (order_pos != std::string::npos) {
+            query.insert(order_pos, "WHERE id IN (" + ids_ss.str() + ") ");
+        }
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -236,14 +282,14 @@ std::vector<DeviceEntity> DeviceRepository::findByConditions(
             return {};
         }
         
-        std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date,
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices
-        )";
+        // 🎯 기본 쿼리 사용 후 조건 추가
+        std::string query = SQL::Device::FIND_ALL;
+        
+        // ORDER BY 제거 후 조건 추가
+        size_t order_pos = query.find("ORDER BY");
+        if (order_pos != std::string::npos) {
+            query = query.substr(0, order_pos);
+        }
         
         query += buildWhereClause(conditions);
         query += buildOrderByClause(order_by);
@@ -278,7 +324,8 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
             return 0;
         }
         
-        std::string query = "SELECT COUNT(*) as count FROM devices";
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = SQL::Device::COUNT_ALL;
         query += buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
@@ -297,27 +344,25 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
 }
 
 // =============================================================================
-// Device 전용 메서드들 (DeviceSettingsRepository 패턴)
+// Device 전용 메서드들 (SQLQueries.h 상수 사용)
 // =============================================================================
 
 std::vector<DeviceEntity> DeviceRepository::findByProtocol(const std::string& protocol_type) {
     try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
         DatabaseAbstractionLayer db_layer;
         
-        // 🎯 파라미터 치환
-        std::string query = SQL::Device::FIND_BY_PROTOCOL;
-        size_t pos = query.find('?');
-        if (pos != std::string::npos) {
-            query.replace(pos, 1, "'" + protocol_type + "'");
-        }
+        // 🎯 SQLQueries.h 상수 사용 + 파라미터 치환
+        std::string query = replaceParameterWithQuotes(SQL::Device::FIND_BY_PROTOCOL, protocol_type);
         
         auto results = db_layer.executeQuery(query);
         
-        std::vector<DeviceEntity> entities;
-        for (const auto& row : results) {
-            entities.push_back(mapRowToEntity(row));
-        }
+        std::vector<DeviceEntity> entities = mapResultToEntities(results);
         
+        logger_->Info("DeviceRepository::findByProtocol - Found " + std::to_string(entities.size()) + " devices for protocol: " + protocol_type);
         return entities;
         
     } catch (const std::exception& e) {
@@ -332,18 +377,11 @@ std::vector<DeviceEntity> DeviceRepository::findByTenant(int tenant_id) {
             return {};
         }
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date,
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices 
-            WHERE tenant_id = )" + std::to_string(tenant_id) + R"(
-            ORDER BY name
-        )";
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = replaceParameter(SQL::Device::FIND_BY_TENANT, std::to_string(tenant_id));
+        
         auto results = db_layer.executeQuery(query);
         
         std::vector<DeviceEntity> entities = mapResultToEntities(results);
@@ -363,18 +401,11 @@ std::vector<DeviceEntity> DeviceRepository::findBySite(int site_id) {
             return {};
         }
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date,
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices 
-            WHERE site_id = )" + std::to_string(site_id) + R"(
-            ORDER BY name
-        )";
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = replaceParameter(SQL::Device::FIND_BY_SITE, std::to_string(site_id));
+        
         auto results = db_layer.executeQuery(query);
         
         std::vector<DeviceEntity> entities = mapResultToEntities(results);
@@ -394,19 +425,10 @@ std::vector<DeviceEntity> DeviceRepository::findEnabledDevices() {
             return {};
         }
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, site_id, device_group_id, edge_server_id,
-                name, description, device_type, manufacturer, model, serial_number,
-                protocol_type, endpoint, config, is_enabled, installation_date,
-                last_maintenance, created_by, created_at, updated_at
-            FROM devices 
-            WHERE is_enabled = 1
-            ORDER BY protocol_type, name
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        
+        // 🎯 SQLQueries.h 상수 사용
+        auto results = db_layer.executeQuery(SQL::Device::FIND_ENABLED);
         
         std::vector<DeviceEntity> entities = mapResultToEntities(results);
         
@@ -485,13 +507,29 @@ bool DeviceRepository::disableDevice(int device_id) {
 
 bool DeviceRepository::updateDeviceStatus(int device_id, bool is_enabled) {
     try {
-        const std::string query = R"(
-            UPDATE devices 
-            SET is_enabled = )" + std::string(is_enabled ? "1" : "0") + R"(,
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
-            WHERE id = )" + std::to_string(device_id);
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용 + 파라미터 치환
+        std::string query = SQL::Device::UPDATE_STATUS;
+        
+        // 첫 번째 ? → is_enabled 값
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, is_enabled ? "1" : "0");
+        }
+        
+        // 두 번째 ? → 현재 시간
+        pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, "'" + formatTimestamp(std::chrono::system_clock::now()) + "'");
+        }
+        
+        // 세 번째 ? → device_id
+        pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(device_id));
+        }
+        
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -513,13 +551,29 @@ bool DeviceRepository::updateDeviceStatus(int device_id, bool is_enabled) {
 
 bool DeviceRepository::updateEndpoint(int device_id, const std::string& endpoint) {
     try {
-        const std::string query = R"(
-            UPDATE devices 
-            SET endpoint = ')" + escapeString(endpoint) + R"(',
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
-            WHERE id = )" + std::to_string(device_id);
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용 + 파라미터 치환
+        std::string query = SQL::Device::UPDATE_ENDPOINT;
+        
+        // 첫 번째 ? → endpoint 값
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, "'" + escapeString(endpoint) + "'");
+        }
+        
+        // 두 번째 ? → 현재 시간
+        pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, "'" + formatTimestamp(std::chrono::system_clock::now()) + "'");
+        }
+        
+        // 세 번째 ? → device_id
+        pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(device_id));
+        }
+        
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -539,13 +593,29 @@ bool DeviceRepository::updateEndpoint(int device_id, const std::string& endpoint
 
 bool DeviceRepository::updateConfig(int device_id, const std::string& config) {
     try {
-        const std::string query = R"(
-            UPDATE devices 
-            SET config = ')" + escapeString(config) + R"(',
-                updated_at = ')" + formatTimestamp(std::chrono::system_clock::now()) + R"('
-            WHERE id = )" + std::to_string(device_id);
-        
         DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용 + 파라미터 치환
+        std::string query = SQL::Device::UPDATE_CONFIG;
+        
+        // 첫 번째 ? → config 값
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, "'" + escapeString(config) + "'");
+        }
+        
+        // 두 번째 ? → 현재 시간
+        pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, "'" + formatTimestamp(std::chrono::system_clock::now()) + "'");
+        }
+        
+        // 세 번째 ? → device_id
+        pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(device_id));
+        }
+        
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -564,31 +634,90 @@ bool DeviceRepository::updateConfig(int device_id, const std::string& config) {
 }
 
 // =============================================================================
-// 통계 및 분석
+// 통계 및 분석 (SQLQueries.h 상수 사용)
 // =============================================================================
 
 std::string DeviceRepository::getDeviceStatistics() const {
-    return "{ \"error\": \"Statistics not implemented\" }";
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 전체 개수 - SQLQueries.h 상수 사용
+        auto total_result = db_layer.executeQuery(SQL::Device::COUNT_ALL);
+        int total_count = 0;
+        if (!total_result.empty() && total_result[0].find("count") != total_result[0].end()) {
+            total_count = std::stoi(total_result[0].at("count"));
+        }
+        
+        // 🎯 활성화된 개수 - SQLQueries.h 상수 사용
+        auto enabled_result = db_layer.executeQuery(SQL::Device::COUNT_ENABLED);
+        int enabled_count = 0;
+        if (!enabled_result.empty() && enabled_result[0].find("count") != enabled_result[0].end()) {
+            enabled_count = std::stoi(enabled_result[0].at("count"));
+        }
+        
+        // JSON 형태로 반환
+        std::ostringstream oss;
+        oss << "{ \"total\": " << total_count << ", \"enabled\": " << enabled_count << ", \"disabled\": " << (total_count - enabled_count) << " }";
+        return oss.str();
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceRepository::getDeviceStatistics failed: " + std::string(e.what()));
+        }
+        return "{ \"error\": \"Statistics calculation failed\" }";
+    }
 }
 
 std::vector<DeviceEntity> DeviceRepository::findInactiveDevices() const {
-    // 임시 구현
-    return {};
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🎯 SQLQueries.h 상수 사용
+        auto results = db_layer.executeQuery(SQL::Device::FIND_DISABLED);
+        
+        std::vector<DeviceEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                DeviceEntity entity;
+                // mapRowToEntity는 const가 아니므로 여기서는 간단 구현
+                auto it = row.find("name");
+                if (it != row.end()) {
+                    entity.setName(it->second);
+                }
+                
+                it = row.find("id");
+                if (it != row.end()) {
+                    entity.setId(std::stoi(it->second));
+                }
+                
+                entities.push_back(entity);
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Warn("DeviceRepository::findInactiveDevices - Failed to map row: " + std::string(e.what()));
+                }
+            }
+        }
+        
+        return entities;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceRepository::findInactiveDevices failed: " + std::string(e.what()));
+        }
+        return {};
+    }
 }
 
 std::map<std::string, int> DeviceRepository::getProtocolDistribution() const {
     std::map<std::string, int> distribution;
     
     try {
-        const std::string query = R"(
-            SELECT protocol_type, COUNT(*) as count 
-            FROM devices 
-            GROUP BY protocol_type
-            ORDER BY count DESC
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        
+        // 🎯 SQLQueries.h 상수 사용
+        auto results = db_layer.executeQuery(SQL::Device::GET_PROTOCOL_DISTRIBUTION);
         
         for (const auto& row : results) {
             if (row.find("protocol_type") != row.end() && row.find("count") != row.end()) {
@@ -760,46 +889,10 @@ std::map<std::string, std::string> DeviceRepository::entityToParams(const Device
 
 bool DeviceRepository::ensureTableExists() {
     try {
-        const std::string base_create_query = R"(
-            CREATE TABLE IF NOT EXISTS devices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id INTEGER NOT NULL,
-                site_id INTEGER NOT NULL,
-                device_group_id INTEGER,
-                edge_server_id INTEGER,
-                
-                -- 디바이스 기본 정보
-                name VARCHAR(100) NOT NULL,
-                description TEXT,
-                device_type VARCHAR(50) NOT NULL,
-                manufacturer VARCHAR(100),
-                model VARCHAR(100),
-                serial_number VARCHAR(100),
-                
-                -- 통신 설정
-                protocol_type VARCHAR(50) NOT NULL,
-                endpoint VARCHAR(255) NOT NULL,
-                config TEXT NOT NULL,
-                
-                -- 상태 정보
-                is_enabled INTEGER DEFAULT 1,
-                installation_date DATE,
-                last_maintenance DATE,
-                
-                created_by INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-                FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
-                FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
-                FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
-                FOREIGN KEY (created_by) REFERENCES users(id)
-            )
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeCreateTable(base_create_query);
+        
+        // 🎯 SQLQueries.h 상수 사용
+        bool success = db_layer.executeCreateTable(SQL::Device::CREATE_TABLE);
         
         if (success) {
             logger_->Debug("DeviceRepository::ensureTableExists - Table creation/check completed");
