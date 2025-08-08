@@ -553,41 +553,61 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
             return false;
         }
         
-        LogMessage(LogLevel::DEBUG_LEVEL, "✅ ModbusDriver instance created");
+        // 🔥 수정 1: device_info_.driver_config 직접 사용 (WorkerFactory에서 완전 매핑된 것)
+        PulseOne::Structs::DriverConfig driver_config = device_info_.driver_config;
         
-        // 파싱된 설정을 DriverConfig로 변환
-        PulseOne::Structs::DriverConfig driver_config;
+        // 🔥 수정 2: Modbus 특화 설정만 추가/업데이트
+        // (기존 properties는 그대로 유지)
         
-        // 기본 디바이스 정보
+        // =======================================================================
+        // 기본 필드 업데이트 (Modbus 파싱 결과 반영)
+        // =======================================================================
         driver_config.device_id = device_info_.name;
         driver_config.endpoint = device_info_.endpoint;
         driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
         driver_config.timeout_ms = modbus_config_.timeout_ms;
+        driver_config.retry_count = static_cast<uint32_t>(device_info_.retry_count);
+        driver_config.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
+        if (device_info_.properties.count("auto_reconnect")) {
+            driver_config.auto_reconnect = (device_info_.properties.at("auto_reconnect") == "true");
+        } else {
+            driver_config.auto_reconnect = true; // 기본값
+        }
+        
+        // =======================================================================
+        // 🔥 핵심: 기존 properties 보존하면서 Modbus 설정 추가
+        // =======================================================================
+        
+        // Modbus 프로토콜 특화 설정들 (기존 properties에 추가)
+        driver_config.properties["slave_id"] = GetPropertyValue(modbus_config_.properties, "slave_id", "1");
+        driver_config.properties["byte_order"] = GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian");
+        driver_config.properties["max_retries"] = GetPropertyValue(modbus_config_.properties, "max_retries", "3");
+        driver_config.properties["response_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000");
+        driver_config.properties["byte_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100");
+        driver_config.properties["max_registers_per_group"] = GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
+        
+        // 🔥 로깅: 최종 properties 상태 확인
+        LogMessage(LogLevel::INFO, "📊 Final DriverConfig properties count: " + std::to_string(driver_config.properties.size()));
+        
+        // 디버그용: 모든 properties 출력
+        std::string properties_log = "📋 All DriverConfig properties:\n";
+        for (const auto& [key, value] : driver_config.properties) {
+            properties_log += "   [" + key + "] = " + value + "\n";
+        }
+        LogMessage(LogLevel::DEBUG_LEVEL, properties_log);
+        
+        // =======================================================================
+        // ModbusDriver 초기화
+        // =======================================================================
         
         std::string config_msg = "📋 DriverConfig prepared:\n";
         config_msg += "   - device_id: " + driver_config.device_id + "\n";
         config_msg += "   - endpoint: " + driver_config.endpoint + "\n";
         config_msg += "   - protocol: MODBUS_TCP\n";
-        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms";
+        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms\n";
+        config_msg += "   - properties: " + std::to_string(driver_config.properties.size()) + " items";
         
         LogMessage(LogLevel::DEBUG_LEVEL, config_msg);
-        
-        // ✅ 수정: properties에서 읽어서 custom_settings에 저장
-        driver_config.custom_settings["slave_id"] = GetPropertyValue(modbus_config_.properties, "slave_id", "1");
-        driver_config.custom_settings["byte_order"] = GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian");
-        driver_config.custom_settings["max_retries"] = GetPropertyValue(modbus_config_.properties, "max_retries", "3");
-        driver_config.custom_settings["response_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000");
-        driver_config.custom_settings["byte_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100");
-        driver_config.custom_settings["max_registers_per_group"] = GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
-        
-        // ✅ 수정: properties에서 읽기
-        std::string protocol_msg = "🔧 Protocol settings configured:\n";
-        protocol_msg += "   - slave_id: " + GetPropertyValue(modbus_config_.properties, "slave_id", "1") + "\n";
-        protocol_msg += "   - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
-        protocol_msg += "   - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3") + "\n";
-        protocol_msg += "   - response_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms";
-        
-        LogMessage(LogLevel::DEBUG_LEVEL, protocol_msg);
         
         // ModbusDriver 초기화 수행
         if (!modbus_driver_->Initialize(driver_config)) {
@@ -601,7 +621,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         // Driver 콜백 설정
         SetupDriverCallbacks();
         
-        // ✅ 수정: 최종 결과 로깅 (properties 기반)
+        // 최종 결과 로깅
         std::string final_msg = "✅ ModbusDriver initialized successfully:\n";
         final_msg += "   📡 Connection details:\n";
         final_msg += "      - endpoint: " + device_info_.endpoint + "\n";
@@ -611,7 +631,8 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         final_msg += "      - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
         final_msg += "      - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3") + "\n";
         final_msg += "      - response_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms\n";
-        final_msg += "      - max_registers_per_group: " + GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
+        final_msg += "      - max_registers_per_group: " + GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125") + "\n";
+        final_msg += "   📊 Total properties: " + std::to_string(driver_config.properties.size());
         
         LogMessage(LogLevel::INFO, final_msg);
         
@@ -627,6 +648,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         return false;
     }
 }
+
 
 void ModbusTcpWorker::PollingThreadFunction() {
     LogMessage(LogLevel::INFO, "Polling thread started");
