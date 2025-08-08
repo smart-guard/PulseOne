@@ -16,4 +16,5 @@ obj/Database/Repositories/CurrentValueRepository.o: \
  ../include/Database/Entities/BaseEntity.h \
  ../include/Common/DriverStatistics.h \
  ../include/Database/Repositories/RepositoryHelpers.h \
- ../include/Database/DatabaseAbstractionLayer.h
+ ../include/Database/DatabaseAbstractionLayer.h \
+ ../include/Database/SQLQueries.h

@@ -768,59 +768,252 @@ namespace CurrentValue {
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS current_values (
             point_id INTEGER PRIMARY KEY,
-            value DECIMAL(15,4),
-            raw_value DECIMAL(15,4),
-            string_value TEXT,
-            quality VARCHAR(20) DEFAULT 'good',
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            -- 🔥 실제 값 (타입별로 분리하지 않고 통합)
+            current_value TEXT, -- JSON으로 DataVariant 저장
+            raw_value TEXT, -- JSON으로 DataVariant 저장
+            value_type VARCHAR(10) DEFAULT 'double', -- bool, int16, uint16, int32, uint32, float, double, string
+            -- 🔥 데이터 품질 및 타임스탬프
+            quality_code INTEGER DEFAULT 0, -- DataQuality enum 값
+            quality VARCHAR(20) DEFAULT 'not_connected', -- 텍스트 표현
+            -- 🔥 타임스탬프들
+            value_timestamp DATETIME, -- 값 변경 시간
+            quality_timestamp DATETIME, -- 품질 변경 시간
+            last_log_time DATETIME, -- 마지막 로깅 시간
+            last_read_time DATETIME, -- 마지막 읽기 시간
+            last_write_time DATETIME, -- 마지막 쓰기 시간
+            -- 🔥 통계 카운터들
+            read_count INTEGER DEFAULT 0, -- 읽기 횟수
+            write_count INTEGER DEFAULT 0, -- 쓰기 횟수
+            error_count INTEGER DEFAULT 0, -- 에러 횟수
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE
         )
     )";
 
     const std::string FIND_ALL = R"(
         SELECT 
-            point_id, value, raw_value, string_value, quality,
-            timestamp, updated_at
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
         FROM current_values 
         ORDER BY point_id
     )";
     
-    const std::string FIND_BY_POINT_ID = R"(
+    const std::string FIND_BY_ID = R"(
         SELECT 
-            point_id, value, raw_value, string_value, quality,
-            timestamp, updated_at
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
         FROM current_values 
         WHERE point_id = ?
     )";
     
     const std::string FIND_BY_DEVICE_ID = R"(
         SELECT 
-            cv.point_id, cv.value, cv.raw_value, cv.string_value, cv.quality,
-            cv.timestamp, cv.updated_at
+            cv.point_id, cv.current_value, cv.raw_value, cv.value_type,
+            cv.quality_code, cv.quality,
+            cv.value_timestamp, cv.quality_timestamp, cv.last_log_time,
+            cv.last_read_time, cv.last_write_time,
+            cv.read_count, cv.write_count, cv.error_count, cv.updated_at
         FROM current_values cv
         JOIN data_points dp ON cv.point_id = dp.id
         WHERE dp.device_id = ?
         ORDER BY dp.address
     )";
-    
-    const std::string UPSERT_VALUE = R"(
-        INSERT OR REPLACE INTO current_values (
-            point_id, value, raw_value, string_value, quality, timestamp, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+
+    const std::string FIND_BY_IDS = R"(
+        SELECT 
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
+        FROM current_values 
+        WHERE point_id IN (%s)
+        ORDER BY point_id
     )";
     
-    const std::string DELETE_BY_POINT_ID = "DELETE FROM current_values WHERE point_id = ?";
+    const std::string FIND_BY_QUALITY_CODE = R"(
+        SELECT 
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
+        FROM current_values 
+        WHERE quality_code = ?
+        ORDER BY updated_at DESC
+    )";
+
+    const std::string FIND_BY_QUALITY = R"(
+        SELECT 
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
+        FROM current_values 
+        WHERE quality = ?
+        ORDER BY updated_at DESC
+    )";
+
+    const std::string FIND_STALE_VALUES = R"(
+        SELECT 
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
+        FROM current_values 
+        WHERE updated_at < ?
+        ORDER BY updated_at ASC
+    )";
+
+    const std::string FIND_BAD_QUALITY_VALUES = R"(
+        SELECT 
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
+        FROM current_values 
+        WHERE quality IN ('bad', 'uncertain', 'not_connected')
+        ORDER BY updated_at DESC
+    )";
+
+    const std::string UPSERT = R"(
+        INSERT OR REPLACE INTO current_values (
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
     
+    const std::string INSERT = R"(
+        INSERT INTO current_values (
+            point_id, current_value, raw_value, value_type,
+            quality_code, quality,
+            value_timestamp, quality_timestamp, last_log_time,
+            last_read_time, last_write_time,
+            read_count, write_count, error_count, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+
+    const std::string UPDATE = R"(
+        UPDATE current_values SET 
+            current_value = ?, raw_value = ?, value_type = ?,
+            quality_code = ?, quality = ?,
+            value_timestamp = ?, quality_timestamp = ?, last_log_time = ?,
+            last_read_time = ?, last_write_time = ?,
+            read_count = ?, write_count = ?, error_count = ?, updated_at = ?
+        WHERE point_id = ?
+    )";
+
+    const std::string UPDATE_VALUE = R"(
+        UPDATE current_values SET 
+            current_value = ?, raw_value = ?, value_type = ?,
+            value_timestamp = ?, updated_at = ?
+        WHERE point_id = ?
+    )";
+
+    const std::string UPDATE_QUALITY = R"(
+        UPDATE current_values SET 
+            quality_code = ?, quality = ?, quality_timestamp = ?, updated_at = ?
+        WHERE point_id = ?
+    )";
+
+    const std::string UPDATE_STATISTICS = R"(
+        UPDATE current_values SET 
+            read_count = ?, write_count = ?, error_count = ?, updated_at = ?
+        WHERE point_id = ?
+    )";
+
+    const std::string INCREMENT_READ_COUNT = R"(
+        UPDATE current_values SET 
+            read_count = read_count + 1, last_read_time = ?, updated_at = ?
+        WHERE point_id = ?
+    )";
+
+    const std::string INCREMENT_WRITE_COUNT = R"(
+        UPDATE current_values SET 
+            write_count = write_count + 1, last_write_time = ?, updated_at = ?
+        WHERE point_id = ?
+    )";
+
+    const std::string INCREMENT_ERROR_COUNT = R"(
+        UPDATE current_values SET 
+            error_count = error_count + 1, updated_at = ?
+        WHERE point_id = ?
+    )";
+    
+    const std::string DELETE_BY_ID = "DELETE FROM current_values WHERE point_id = ?";
+    
+    const std::string DELETE_BY_DEVICE_ID = R"(
+        DELETE FROM current_values 
+        WHERE point_id IN (
+            SELECT id FROM data_points WHERE device_id = ?
+        )
+    )";
+
+    const std::string DELETE_STALE_VALUES = R"(
+        DELETE FROM current_values 
+        WHERE updated_at < ?
+    )";
+
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM current_values WHERE point_id = ?";
+
+    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM current_values";
+
+    const std::string COUNT_BY_QUALITY = "SELECT COUNT(*) as count FROM current_values WHERE quality = ?";
+
+    const std::string COUNT_BY_QUALITY_CODE = "SELECT COUNT(*) as count FROM current_values WHERE quality_code = ?";
+
     const std::string GET_LATEST_VALUES = R"(
         SELECT 
-            cv.point_id, dp.name as point_name, cv.value, cv.quality, cv.timestamp,
+            cv.point_id, dp.name as point_name, cv.current_value, cv.quality, cv.value_timestamp,
             d.name as device_name, d.protocol_type
         FROM current_values cv
         JOIN data_points dp ON cv.point_id = dp.id
         JOIN devices d ON dp.device_id = d.id
-        WHERE cv.timestamp >= ?
-        ORDER BY cv.timestamp DESC
+        WHERE cv.value_timestamp >= ?
+        ORDER BY cv.value_timestamp DESC
     )";
+
+    const std::string GET_QUALITY_DISTRIBUTION = R"(
+        SELECT quality, COUNT(*) as count 
+        FROM current_values 
+        GROUP BY quality
+        ORDER BY count DESC
+    )";
+
+    const std::string GET_VALUE_TYPE_DISTRIBUTION = R"(
+        SELECT value_type, COUNT(*) as count 
+        FROM current_values 
+        GROUP BY value_type
+        ORDER BY count DESC
+    )";
+
+    const std::string GET_STATISTICS_SUMMARY = R"(
+        SELECT 
+            COUNT(*) as total_count,
+            AVG(read_count) as avg_reads,
+            AVG(write_count) as avg_writes,
+            AVG(error_count) as avg_errors,
+            MAX(read_count) as max_reads,
+            MAX(write_count) as max_writes,
+            MAX(error_count) as max_errors
+        FROM current_values
+    )";
+
+    // 🔥 기존 테스트와 호환성을 위한 별칭들
+    const std::string FIND_BY_POINT_ID = FIND_BY_ID;
+    const std::string UPSERT_VALUE = UPSERT;
     
 } // namespace CurrentValue
 
