@@ -906,40 +906,12 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
         
         it = row.find("metadata");
         if (it != row.end() && !it->second.empty()) {
-            try {
-                json metadata = json::parse(it->second);
-                entity.setMetadata(metadata.get<std::map<std::string, std::string>>()); // ✅ 해결!
-            } catch (const std::exception& e) {
-                logger_->Warn("DataPointRepository::mapRowToEntity - Invalid JSON metadata: " + std::string(e.what()));
-                entity.setMetadata(std::map<std::string, std::string>());
-            }
+            entity.setMetadata(parseJsonToStringMap(it->second, "metadata"));
         }
         
         it = row.find("protocol_params");
         if (it != row.end() && !it->second.empty()) {
-            try {
-                json params = json::parse(it->second);
-                std::map<std::string, std::string> protocol_map;
-                
-                // JSON 객체의 각 필드를 안전하게 문자열로 변환
-                for (auto& [key, value] : params.items()) {
-                    if (value.is_string()) {
-                        protocol_map[key] = value.get<std::string>();
-                    } else if (value.is_number()) {
-                        protocol_map[key] = std::to_string(value.get<double>());
-                    } else if (value.is_boolean()) {
-                        protocol_map[key] = value.get<bool>() ? "true" : "false";
-                    } else {
-                        protocol_map[key] = value.dump();
-                    }
-                }
-                
-                entity.setProtocolParams(protocol_map);
-                
-            } catch (const std::exception& e) {
-                logger_->Warn("DataPointRepository::mapRowToEntity - Invalid JSON protocol_params: " + std::string(e.what()));
-                entity.setProtocolParams(std::map<std::string, std::string>());
-            }
+            entity.setProtocolParams(parseJsonToStringMap(it->second, "protocol_params"));
         }
         
         // 🔥 시간 정보
@@ -1419,6 +1391,44 @@ void DataPointRepository::clearCacheForId(int id) {
 
 std::map<std::string, int> DataPointRepository::getCacheStats() const {
     return IRepository<DataPointEntity>::getCacheStats();
+}
+
+
+std::map<std::string, std::string> DataPointRepository::parseJsonToStringMap(
+    const std::string& json_str, const std::string& field_name) const {
+    
+    std::map<std::string, std::string> result;
+    
+    if (json_str.empty()) {
+        return result;
+    }
+    
+    try {
+        json data = json::parse(json_str);
+        
+        if (data.is_object()) {
+            for (auto& [key, value] : data.items()) {
+                if (value.is_string()) {
+                    result[key] = value.get<std::string>();
+                } else if (value.is_number_integer()) {
+                    result[key] = std::to_string(value.get<int64_t>());
+                } else if (value.is_number_float()) {
+                    result[key] = std::to_string(value.get<double>());
+                } else if (value.is_boolean()) {
+                    result[key] = value.get<bool>() ? "true" : "false";
+                } else if (value.is_null()) {
+                    result[key] = "";
+                } else {
+                    result[key] = value.dump();
+                }
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Warn("DataPointRepository::parseJsonToStringMap - Invalid JSON " + field_name + ": " + std::string(e.what()));
+    }
+    
+    return result;
 }
 
 } // namespace Repositories
