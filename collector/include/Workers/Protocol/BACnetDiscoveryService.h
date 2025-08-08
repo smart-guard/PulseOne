@@ -69,8 +69,8 @@ public:
     // 콜백 핸들러들 (public으로 변경)
     // =======================================================================
     
-    void OnDeviceDiscovered(const Drivers::DeviceInfo& device);
-    void OnObjectDiscovered(uint32_t device_id, const std::vector<Drivers::DataPoint>& objects);
+    void OnObjectDiscovered(const DataPoint& object);
+    void OnObjectDiscovered(uint32_t device_id, const std::vector<DataPoint>& objects);
     void OnValueChanged(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
 private:

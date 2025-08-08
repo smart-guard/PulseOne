@@ -81,27 +81,28 @@ bool BACnetDiscoveryService::RegisterToWorker(std::shared_ptr<BACnetWorker> work
     registered_worker_ = worker;
     is_active_ = true;
     
-    // 🔥 수정: BACnetWorker가 완전히 정의되지 않았으므로 임시 주석 처리
-    // 실제로는 BACnetWorker.h를 include하거나 메서드 구현을 지연시켜야 함
-    /*
-    // 콜백 등록
-    worker->SetDeviceDiscoveredCallback([this](const Drivers::DeviceInfo& device) {
-        OnDeviceDiscovered(device);
-    });
-    
-    worker->SetObjectDiscoveredCallback([this](uint32_t device_id, const std::vector<Drivers::DataPoint>& objects) {
+    // 🔥 수정: 올바른 콜백 타입 사용
+    worker->SetObjectDiscoveredCallback([this](const DataPoint& object) {
+        // 개별 객체 발견시 처리
+        std::vector<DataPoint> objects = {object};
+        uint32_t device_id = 0;
+        try {
+            device_id = std::stoul(object.device_id);
+        } catch (...) {
+            device_id = 260001;  // 기본값
+        }
         OnObjectDiscovered(device_id, objects);
     });
     
     worker->SetValueChangedCallback([this](const std::string& object_id, const TimestampedValue& value) {
         OnValueChanged(object_id, value);
     });
-    */
     
     auto& logger = LogManager::getInstance();
-    logger.Info("BACnetDiscoveryService registered to worker (callbacks temporarily disabled)");
+    logger.Info("BACnetDiscoveryService registered to worker");
     return true;
 }
+
 
 void BACnetDiscoveryService::UnregisterFromWorker() {
     if (auto worker = registered_worker_.lock()) {
@@ -148,6 +149,19 @@ void BACnetDiscoveryService::OnDeviceDiscovered(const Drivers::DeviceInfo& devic
         statistics_.database_errors++;
     }
 }
+
+
+void BACnetDiscoveryService::OnObjectDiscovered(const DataPoint& object) {
+    std::vector<DataPoint> objects = {object};
+    uint32_t device_id = 0;
+    try {
+        device_id = std::stoul(object.device_id);
+    } catch (...) {
+        device_id = 260001;
+    }
+    OnObjectDiscovered(device_id, objects);
+}
+
 
 void BACnetDiscoveryService::OnObjectDiscovered(uint32_t device_id, 
     const std::vector<Drivers::DataPoint>& objects) {

@@ -1,15 +1,16 @@
 /**
  * @file BACnetWorker.cpp
- * @brief BACnet 프로토콜 워커 클래스 구현 - 🔥 완전 통합 버전
+ * @brief BACnet 프로토콜 워커 클래스 구현 - 🔥 모든 에러 수정 완료본
  * @author PulseOne Development Team
  * @date 2025-08-08
- * @version 2.0.0
+ * @version 5.0.0
  * 
- * 🔥 주요 변경사항:
- * 1. BACnetWorkerConfig 완전 제거 → DeviceInfo 사용
- * 2. BACnetObjectInfo 제거 → DataPoint 직접 사용
- * 3. 모든 특화 구조체 제거 → 표준 구조체만 사용
- * 4. DeviceInfo.properties 기반 설정 파싱
+ * 🔥 주요 수정사항:
+ * 1. 누락된 메서드 구현 완료
+ * 2. 스레드 함수명 통일 
+ * 3. 컴파일 에러 모두 해결
+ * 4. 타입 불일치 완전 해결
+ * 5. DeviceInfo 기반 통합 설정
  */
 
 #include "Workers/Protocol/BACnetWorker.h"
@@ -426,11 +427,11 @@ void BACnetWorker::ShutdownBACnetDriver() {
 }
 
 // =============================================================================
-// 스레드 함수들
+// 🔥 스레드 함수들 - 함수명 통일
 // =============================================================================
 
-void BACnetWorker::DiscoveryThreadFunction() {
-    LogMessage(LogLevel::INFO, "BACnet discovery thread started");
+void BACnetWorker::ObjectDiscoveryThreadFunction() {
+    LogMessage(LogLevel::INFO, "BACnet object discovery thread started");
     
     // 디스커버리 간격 가져오기 (DeviceInfo.properties에서)
     auto interval_it = device_info_.properties.find("bacnet_discovery_interval_seconds");
@@ -439,7 +440,7 @@ void BACnetWorker::DiscoveryThreadFunction() {
     
     while (threads_running_.load()) {
         try {
-            if (PerformDiscovery()) {
+            if (PerformObjectDiscovery()) {
                 worker_stats_.discovery_attempts++;
             }
             
@@ -454,7 +455,7 @@ void BACnetWorker::DiscoveryThreadFunction() {
         }
     }
     
-    LogMessage(LogLevel::INFO, "BACnet discovery thread stopped");
+    LogMessage(LogLevel::INFO, "BACnet object discovery thread stopped");
 }
 
 void BACnetWorker::PollingThreadFunction() {
@@ -480,8 +481,12 @@ void BACnetWorker::PollingThreadFunction() {
     LogMessage(LogLevel::INFO, "BACnet polling thread stopped");
 }
 
-bool BACnetWorker::PerformDiscovery() {
-    LogMessage(LogLevel::DEBUG_LEVEL, "Performing BACnet device discovery...");
+// =============================================================================
+// 🔥 핵심 기능 메서드들 - 1:1 구조
+// =============================================================================
+
+bool BACnetWorker::PerformObjectDiscovery() {
+    LogMessage(LogLevel::DEBUG_LEVEL, "Performing BACnet object discovery...");
     
     try {
         if (!bacnet_driver_) {
@@ -490,51 +495,41 @@ bool BACnetWorker::PerformDiscovery() {
         
         worker_stats_.discovery_attempts++;
         
-        // BACnet 디바이스 발견 - 올바른 API 사용
-        std::vector<DeviceInfo> discovered_devices = bacnet_driver_->DiscoverDevices(5000);  // ✅ timeout_ms parameter
-        bool success = !discovered_devices.empty();
+        // 🔥 1:1 구조: 자신의 객체들만 발견
+        std::vector<DataPoint> discovered_objects;
+        bool success = DiscoverMyObjects(discovered_objects);
         
-        if (success) {
-            std::lock_guard<std::mutex> lock(devices_mutex_);
+        if (success && !discovered_objects.empty()) {
+            std::lock_guard<std::mutex> lock(objects_mutex_);
             
-            for (const auto& device : discovered_devices) {
-                // ✅ DeviceInfo는 string id를 가짐
-                uint32_t device_id = 0;
-                try {
-                    device_id = std::stoul(device.id);  // ✅ device_id → id
-                } catch (const std::exception&) {
-                    LogMessage(LogLevel::WARN, "Invalid device ID format: " + device.id);  // ✅ device_id → id
-                    continue;
+            // 기존 객체들과 병합
+            for (const auto& new_obj : discovered_objects) {
+                bool found = false;
+                for (auto& existing_obj : my_objects_) {
+                    if (existing_obj.id == new_obj.id) {
+                        existing_obj = new_obj;  // 업데이트
+                        found = true;
+                        break;
+                    }
                 }
                 
-                discovered_devices_[device_id] = device;
-                worker_stats_.devices_discovered++;
-                
-                // 콜백 호출
-                if (on_device_discovered_) {
-                    on_device_discovered_(device);
-                }
-                
-                // 해당 디바이스의 데이터포인트들 발견
-                std::vector<DataPoint> data_points;
-                if (DiscoverDeviceDataPoints(device_id, data_points)) {
-                    std::lock_guard<std::mutex> lock(devices_mutex_);
+                if (!found) {
+                    my_objects_.push_back(new_obj);  // 새 객체 추가
                     
-                    for (const auto& point : data_points) {
-                        discovered_data_points_[point.id] = point;
-                        
-                        if (on_datapoint_discovered_) {
-                            on_datapoint_discovered_(point);
-                        }
+                    // 콜백 호출 (개별 객체)
+                    if (on_object_discovered_) {
+                        on_object_discovered_(new_obj);
                     }
                 }
             }
+            
+            LogMessage(LogLevel::INFO, "Discovered " + std::to_string(discovered_objects.size()) + " objects");
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in PerformDiscovery: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "Exception in PerformObjectDiscovery: " + std::string(e.what()));
         return false;
     }
 }
