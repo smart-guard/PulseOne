@@ -401,17 +401,18 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
         }        
         logger_->Debug("🔧 Step 9: Protocol config validation completed");
         
-        // Step 10: DriverConfig 동기화 (에러 수정된 버전)
-        logger_->Debug("🔧 Step 10: Starting enhanced DriverConfig sync (error-fixed)...");
+        // Step 10: DriverConfig 동기화 (수정된 버전)
+        logger_->Debug("🔧 Step 10: Starting enhanced DriverConfig sync...");
         device_info.SyncToDriverConfig();
 
-        // 🔥 동기화 결과 확인 로그
+        // 🔥 동기화 결과 확인 로그 (문자열 연결 수정)
         const auto& config = device_info.GetDriverConfig();
-        logger_->Info("✅ DriverConfig synchronized (all errors fixed):");
+        logger_->Info("✅ DriverConfig synchronized:");
         logger_->Info("  - timeout_ms: " + std::to_string(config.timeout_ms));
         logger_->Info("  - retry_count: " + std::to_string(config.retry_count));  
         logger_->Info("  - polling_interval_ms: " + std::to_string(config.polling_interval_ms));
-        logger_->Info("  - auto_reconnect: " + (config.auto_reconnect ? "true" : "false"));
+        // 🔥 수정: std::string으로 변환하여 연결
+        logger_->Info("  - auto_reconnect: " + std::string(config.auto_reconnect ? "true" : "false"));
         logger_->Info("  - properties count: " + std::to_string(config.properties.size()));
 
         // 🔥 재시도 정책 확인 (핵심 필드들)
@@ -429,13 +430,13 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
             }
         }
 
-        // 전체 properties 디버그 로그 (필요시)
+        // properties 내용도 확인 (디버그 레벨)
         logger_->Debug("📋 All DriverConfig properties:");
         for (const auto& [key, value] : config.properties) {
             logger_->Debug("    [" + key + "] = " + value);
         }
 
-        logger_->Debug("🔧 Step 10: Enhanced DriverConfig sync completed (no errors)");
+        logger_->Debug("🔧 Step 10: Enhanced DriverConfig sync completed");
 
 
         // 11. 최종 검증

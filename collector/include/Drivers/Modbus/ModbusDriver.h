@@ -170,18 +170,17 @@ private:
     // Core 멤버 변수 (항상 존재)
     // =======================================================================
     
-    DriverStatistics driver_statistics_{"MODBUS"};
-    Structs::ErrorInfo last_error_;
     modbus_t* modbus_ctx_;
-    std::atomic<bool> is_connected_;
+    DriverStatistics driver_statistics_{"MODBUS"};  // 먼저 선언
+    Structs::ErrorInfo last_error_;
+    std::atomic<bool> is_connected_;                 // 나중 선언 (순서 맞춤)
     std::mutex connection_mutex_;
     int current_slave_id_;
  
     std::atomic<bool> is_started_{false};
     std::mutex driver_mutex_;
     LogManager* logger_;
-    PulseOne::Enums::ConnectionStatus status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;
-    // =======================================================================
+    PulseOne::Enums::ConnectionStatus status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;    // =======================================================================
     // 고급 기능 멤버 (선택적 생성 - std::unique_ptr 사용)
     // =======================================================================
     

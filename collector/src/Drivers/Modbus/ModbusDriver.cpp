@@ -28,8 +28,8 @@ using TimestampedValue = PulseOne::Structs::TimestampedValue;
 
 ModbusDriver::ModbusDriver()
     : modbus_ctx_(nullptr)
-    , is_connected_(false)
     , driver_statistics_("MODBUS")
+    , is_connected_(false)
     , current_slave_id_(1)
     , diagnostics_(nullptr)
     , connection_pool_(nullptr)
@@ -432,7 +432,7 @@ bool ModbusDriver::ReadInputRegisters(int slave_id, uint16_t start_addr, uint16_
         } else if (errno == EINVAL || errno == ERANGE) {
             SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
         } else {
-            SetError(Structs::ErrorCode::read_FAILED, error_msg);
+            SetError(Structs::ErrorCode::READ_FAILED, error_msg);
         }
         
         if (errno > 0 && errno < 255) {
@@ -463,7 +463,7 @@ bool ModbusDriver::ReadCoils(int slave_id, uint16_t start_addr, uint16_t count,
     
     if (result == -1) {
         auto error_msg = std::string("Read coils failed: ") + modbus_strerror(errno);
-        SetError(Structs::ErrorCode::read_FAILED, error_msg);
+        SetError(Structs::ErrorCode::READ_FAILED, error_msg);
         
         if (errno > 0 && errno < 255) {
             RecordExceptionCode(static_cast<uint8_t>(errno));
@@ -489,7 +489,7 @@ bool ModbusDriver::ReadDiscreteInputs(int slave_id, uint16_t start_addr, uint16_
     
     if (result == -1) {
         auto error_msg = std::string("Read discrete inputs failed: ") + modbus_strerror(errno);
-        SetError(Structs::ErrorCode::read_FAILED, error_msg);
+        SetError(Structs::ErrorCode::READ_FAILED, error_msg);
         
         if (errno > 0 && errno < 255) {
             RecordExceptionCode(static_cast<uint8_t>(errno));
