@@ -277,9 +277,9 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
         
         // 통신 설정
         device_info.protocol_type = device_entity.getProtocolType();
-        device_info.endpoint = device_entity.getEndpoint();
-        device_info.connection_string = device_entity.getEndpoint(); // 별칭
-        device_info.config = device_entity.getConfig();
+        device_info.endpoint = device_entity.getEndpoint(); // IP주소는 endpoint에
+        //device_info.connection_string = device_entity.getEndpoint(); // 별칭
+        device_info.config = device_entity.getConfig(); // JSON설정은 config에
         
         // 상태 정보
         device_info.is_enabled = device_entity.isEnabled();
