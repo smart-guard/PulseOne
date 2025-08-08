@@ -919,7 +919,23 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
         if (it != row.end() && !it->second.empty()) {
             try {
                 json params = json::parse(it->second);
-                entity.setProtocolParams(params.get<std::map<std::string, std::string>>()); // 새 필드!
+                std::map<std::string, std::string> protocol_map;
+                
+                // JSON 객체의 각 필드를 안전하게 문자열로 변환
+                for (auto& [key, value] : params.items()) {
+                    if (value.is_string()) {
+                        protocol_map[key] = value.get<std::string>();
+                    } else if (value.is_number()) {
+                        protocol_map[key] = std::to_string(value.get<double>());
+                    } else if (value.is_boolean()) {
+                        protocol_map[key] = value.get<bool>() ? "true" : "false";
+                    } else {
+                        protocol_map[key] = value.dump();
+                    }
+                }
+                
+                entity.setProtocolParams(protocol_map);
+                
             } catch (const std::exception& e) {
                 logger_->Warn("DataPointRepository::mapRowToEntity - Invalid JSON protocol_params: " + std::string(e.what()));
                 entity.setProtocolParams(std::map<std::string, std::string>());

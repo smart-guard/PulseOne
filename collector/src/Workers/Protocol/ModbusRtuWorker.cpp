@@ -701,49 +701,113 @@ bool ModbusRtuWorker::ParseModbusConfig() {
     auto& logger = LogManager::getInstance();
     
     try {
-        logger.Info("Starting Modbus RTU configuration parsing...");
+        logger.Info("🔧 Starting Modbus RTU configuration parsing...");
         
-        // DriverConfig 기본값 설정
+        // 기본 DriverConfig 설정
         modbus_config_.device_id = device_info_.id;
         modbus_config_.name = device_info_.name;
-        modbus_config_.endpoint = device_info_.endpoint;
+        modbus_config_.endpoint = device_info_.endpoint;  // RTU의 경우 시리얼 포트 (예: /dev/ttyUSB0)
         modbus_config_.timeout_ms = device_info_.timeout_ms;
         modbus_config_.retry_count = device_info_.retry_count;
         
-        // RTU 기본값들을 properties에 설정
-        if (modbus_config_.properties.find("slave_id") == modbus_config_.properties.end()) {
-            modbus_config_.properties["slave_id"] = "1";
-        }
-        if (modbus_config_.properties.find("baud_rate") == modbus_config_.properties.end()) {
-            modbus_config_.properties["baud_rate"] = "9600";
-        }
-        if (modbus_config_.properties.find("parity") == modbus_config_.properties.end()) {
-            modbus_config_.properties["parity"] = "N";
-        }
-        if (modbus_config_.properties.find("data_bits") == modbus_config_.properties.end()) {
-            modbus_config_.properties["data_bits"] = "8";
-        }
-        if (modbus_config_.properties.find("stop_bits") == modbus_config_.properties.end()) {
-            modbus_config_.properties["stop_bits"] = "1";
-        }
-        if (modbus_config_.properties.find("frame_delay_ms") == modbus_config_.properties.end()) {
-            modbus_config_.properties["frame_delay_ms"] = "50";
-        }
-        if (modbus_config_.properties.find("response_timeout_ms") == modbus_config_.properties.end()) {
-            modbus_config_.properties["response_timeout_ms"] = "1000";
-        }
-        if (modbus_config_.properties.find("byte_timeout_ms") == modbus_config_.properties.end()) {
-            modbus_config_.properties["byte_timeout_ms"] = "100";
-        }
-        if (modbus_config_.properties.find("max_retries") == modbus_config_.properties.end()) {
-            modbus_config_.properties["max_retries"] = "3";
+        // 🔥 핵심 수정: config와 connection_string 올바른 파싱 (TCP와 동일)
+        nlohmann::json protocol_config_json;
+        
+        // 1단계: device_info_.config에서 JSON 설정 찾기 (우선순위 1)
+        if (!device_info_.config.empty()) {
+            try {
+                protocol_config_json = nlohmann::json::parse(device_info_.config);
+                logger.Info("✅ RTU Protocol config loaded from device.config: " + device_info_.config);
+            } catch (const std::exception& e) {
+                logger.Warn("⚠️ Failed to parse device.config JSON: " + std::string(e.what()));
+            }
         }
         
-        logger.Info("Modbus RTU config parsed successfully");
+        // 2단계: connection_string이 JSON인지 확인 (우선순위 2)
+        if (protocol_config_json.empty() && !device_info_.connection_string.empty()) {
+            // JSON 형태인지 확인 ('{' 로 시작하는지)
+            if (device_info_.connection_string.front() == '{') {
+                try {
+                    protocol_config_json = nlohmann::json::parse(device_info_.connection_string);
+                    logger.Info("✅ RTU Protocol config loaded from connection_string JSON");
+                } catch (const std::exception& e) {
+                    logger.Warn("⚠️ Failed to parse connection_string JSON: " + std::string(e.what()));
+                }
+            } else {
+                logger.Info("📝 connection_string is not JSON format, using as serial port path");
+            }
+        }
+        
+        // 3단계: RTU 전용 기본값 설정 (DB에서 설정을 못 가져온 경우만)
+        if (protocol_config_json.empty()) {
+            protocol_config_json = {
+                {"slave_id", 1},
+                {"baud_rate", 9600},
+                {"parity", "N"},
+                {"data_bits", 8},
+                {"stop_bits", 1},
+                {"frame_delay_ms", 50}
+            };
+            logger.Info("📝 Applied default Modbus RTU protocol configuration");
+        }
+        
+        // 4단계: 실제 DB 설정값들을 properties에 저장
+        modbus_config_.properties["slave_id"] = std::to_string(protocol_config_json.value("slave_id", 1));
+        modbus_config_.properties["baud_rate"] = std::to_string(protocol_config_json.value("baud_rate", 9600));
+        modbus_config_.properties["parity"] = protocol_config_json.value("parity", "N");
+        modbus_config_.properties["data_bits"] = std::to_string(protocol_config_json.value("data_bits", 8));
+        modbus_config_.properties["stop_bits"] = std::to_string(protocol_config_json.value("stop_bits", 1));
+        modbus_config_.properties["frame_delay_ms"] = std::to_string(protocol_config_json.value("frame_delay_ms", 50));
+        
+        // 🔥 DB에서 가져온 timeout 값 적용
+        if (protocol_config_json.contains("timeout")) {
+            int db_timeout = protocol_config_json.value("timeout", device_info_.timeout_ms);
+            modbus_config_.timeout_ms = db_timeout;  // 실제 사용할 타임아웃 업데이트
+            modbus_config_.properties["response_timeout_ms"] = std::to_string(db_timeout);
+            logger.Info("✅ Applied timeout from DB: " + std::to_string(db_timeout) + "ms");
+        } else {
+            modbus_config_.properties["response_timeout_ms"] = std::to_string(device_info_.timeout_ms);
+        }
+        
+        // 5단계: RTU 전용 통신 설정 완성
+        modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(modbus_config_.timeout_ms / 10, 1000));
+        modbus_config_.properties["max_retries"] = std::to_string(device_info_.retry_count);
+        
+        // 6단계: RTU Worker 전용 설정
+        modbus_config_.properties["polling_interval_ms"] = std::to_string(device_info_.polling_interval_ms);
+        modbus_config_.properties["keep_alive"] = device_info_.is_enabled ? "enabled" : "disabled";
+        
+        // 🔥 시리얼 설정 업데이트 (SerialBasedWorker 부모 클래스)
+        serial_config_.port_name = device_info_.endpoint;  // 예: /dev/ttyUSB0
+        serial_config_.baud_rate = std::stoi(modbus_config_.properties["baud_rate"]);
+        serial_config_.parity = modbus_config_.properties["parity"][0];  // 첫 번째 문자
+        serial_config_.data_bits = std::stoi(modbus_config_.properties["data_bits"]);
+        serial_config_.stop_bits = std::stoi(modbus_config_.properties["stop_bits"]);
+        
+        // 🎉 성공 로그 - 실제 적용된 설정 표시
+        std::string config_summary = "✅ Modbus RTU config parsed successfully:\n";
+        config_summary += "   🔌 Protocol settings (from " + 
+                         (!device_info_.config.empty() ? "device.config" : "connection_string") + "):\n";
+        config_summary += "      - slave_id: " + modbus_config_.properties["slave_id"] + "\n";
+        config_summary += "      - baud_rate: " + modbus_config_.properties["baud_rate"] + "\n";
+        config_summary += "      - parity: " + modbus_config_.properties["parity"] + "\n";
+        config_summary += "      - data_bits: " + modbus_config_.properties["data_bits"] + "\n";
+        config_summary += "      - stop_bits: " + modbus_config_.properties["stop_bits"] + "\n";
+        config_summary += "      - frame_delay: " + modbus_config_.properties["frame_delay_ms"] + "ms\n";
+        config_summary += "   ⚙️  Communication settings (from DeviceSettings):\n";
+        config_summary += "      - serial_port: " + serial_config_.port_name + "\n";
+        config_summary += "      - response_timeout: " + modbus_config_.properties["response_timeout_ms"] + "ms\n";
+        config_summary += "      - byte_timeout: " + modbus_config_.properties["byte_timeout_ms"] + "ms\n";
+        config_summary += "      - max_retries: " + modbus_config_.properties["max_retries"] + "\n";
+        config_summary += "      - polling_interval: " + modbus_config_.properties["polling_interval_ms"] + "ms\n";
+        config_summary += "      - keep_alive: " + modbus_config_.properties["keep_alive"];
+        
+        logger.Info(config_summary);
+        
         return true;
         
     } catch (const std::exception& e) {
-        logger.Error("Exception in ParseModbusConfig: " + std::string(e.what()));
+        logger.Error("ParseModbusConfig failed: " + std::string(e.what()));
         return false;
     }
 }
