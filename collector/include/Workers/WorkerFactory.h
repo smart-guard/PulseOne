@@ -195,6 +195,10 @@ private:
     mutable std::atomic<uint64_t> workers_created_{0};
     mutable std::atomic<uint64_t> creation_failures_{0};
     std::chrono::system_clock::time_point factory_start_time_;
+
+    void LogSupportedProtocols() const; 
+    std::string GetProtocolConfigInfo(const std::string& protocol_type) const;
+
 };
 
 } // namespace Workers

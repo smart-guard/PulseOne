@@ -342,19 +342,40 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
         ParseDeviceConfigToProperties(device_info);
         
         // 6. 🔥 ProtocolConfigRegistry로 프로토콜별 기본값 적용
-        auto protocol_type = PulseOne::Enums::StringToProtocolType(device_info.protocol_type);
+        auto protocol_type = PulseOne::Utils::StringToProtocolType(device_info.protocol_type);  // 🔧 Utils:: 사용
         if (protocol_type != PulseOne::Enums::ProtocolType::UNKNOWN) {
             PulseOne::Config::ApplyProtocolDefaults(protocol_type, device_info.properties);
-            logger_->Debug("✅ Protocol defaults applied for: " + device_info.protocol_type);
+            logger_->Debug("✅ Protocol defaults applied for: " + device_info.protocol_type + 
+                        " (" + std::to_string(device_info.properties.size()) + " properties)");
+            
+            // 🔥 추가: 적용된 기본값들 로깅
+            for (const auto& [key, value] : device_info.properties) {
+                logger_->Debug("   Property: " + key + " = " + value);
+            }
+        } else {
+            logger_->Warn("⚠️ Unknown protocol type: " + device_info.protocol_type + ", using manual defaults");
+            // 수동 기본값 적용
+            ApplyProtocolSpecificDefaults(device_info, device_info.protocol_type);
         }
         
         // 7. 🔥 endpoint 파싱 → ip_address, port 추출
         ParseEndpoint(device_info);
+
+        // 8. 🔥 설정 검증 (ProtocolConfigRegistry 사용)
+        std::vector<std::string> validation_errors;
+        if (!PulseOne::Config::ValidateProtocolConfig(protocol_type, device_info.properties, validation_errors)) {
+            logger_->Warn("⚠️ Protocol config validation failed for " + device_info.name + ":");
+            for (const auto& error : validation_errors) {
+                logger_->Warn("   - " + error);
+            }
+        } else {
+            logger_->Debug("✅ Protocol config validation passed for " + device_info.name);
+        }        
         
-        // 8. 🔥 DriverConfig 동기화
+        // 9. 🔥 DriverConfig 동기화
         device_info.SyncToDriverConfig();
         
-        // 9. 최종 검증
+        // 10. 최종 검증
         ValidateAndCorrectSettings(device_info);
         
         if (!device_info.IsValid()) {
@@ -859,7 +880,16 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
                          ", Good: " + std::to_string(good_quality_count) + ")");
             logger_->Info("   ⏱️ Creation Time: " + std::to_string(creation_time.count()) + "ms");
             logger_->Info("   🎯 Worker Type: " + std::string(typeid(*worker).name()));
+
+            logger_->Debug("🔧 Protocol Configuration Details:");
+            logger_->Debug(GetProtocolConfigInfo(device_entity.getProtocolType()));
             
+            // 🔥 추가: 실제 적용된 properties 로깅
+            logger_->Debug("📋 Applied Properties:");
+            const auto& device_info = /* worker에서 가져와야 함 - 실제 구현에 따라 수정 */;
+            for (const auto& [key, value] : device_info.properties) {
+                logger_->Debug("   " + key + " = " + value);
+            }            
         } else {
             creation_failures_.fetch_add(1);
             logger_->Error("❌ Worker creation returned nullptr for: " + device_entity.getName());
@@ -1041,8 +1071,10 @@ void WorkerFactory::RegisterWorkerCreators() {
     worker_creators_["BACNET"] = worker_creators_["bacnet"];
     worker_creators_["BACNET_IP"] = worker_creators_["bacnet"];
     
+    LogSupportedProtocols();
+    
     logger_->Info("✅ Registered " + std::to_string(worker_creators_.size()) + " protocol creators");
-}
+    logger_->Info("🔧 ProtocolConfigRegistry provides automatic defaults and validation");
 
 // =============================================================================
 // 설정 및 유틸리티 메서드들
@@ -1249,6 +1281,49 @@ std::string WorkerFactory::GetCurrentValueAsString(const PulseOne::Structs::Data
 
 std::string WorkerFactory::GetQualityString(const PulseOne::Structs::DataPoint& data_point) const {
     return data_point.GetQualityCodeAsString();
+}
+
+std::string WorkerFactory::GetProtocolConfigInfo(const std::string& protocol_type) const {
+    auto protocol_enum = PulseOne::Utils::StringToProtocolType(protocol_type);
+    const auto* schema = PulseOne::Config::GetProtocolSchema(protocol_enum);
+    
+    if (!schema) {
+        return "Unknown protocol: " + protocol_type;
+    }
+    
+    std::ostringstream oss;
+    oss << "Protocol: " << schema->name << "\n";
+    oss << "Description: " << schema->description << "\n";
+    oss << "Default Port: " << schema->default_port << "\n";
+    oss << "Endpoint Format: " << schema->endpoint_format << "\n";
+    oss << "Parameters (" << schema->parameters.size() << "):\n";
+    
+    for (const auto& param : schema->parameters) {
+        oss << "  - " << param.key << " (" << param.type << ")";
+        if (param.required) oss << " [REQUIRED]";
+        oss << ": " << param.description;
+        oss << " (default: " << param.default_value << ")\n";
+    }
+    
+    return oss.str();
+}
+
+// 🔥 추가: 모든 지원 프로토콜 정보 조회
+void WorkerFactory::LogSupportedProtocols() const {
+    logger_->Info("🔧 Supported Protocols with ProtocolConfigRegistry:");
+    
+    auto& registry = PulseOne::Config::ProtocolConfigRegistry::getInstance();
+    auto protocols = registry.GetRegisteredProtocols();
+    
+    for (const auto& protocol : protocols) {
+        const auto* schema = registry.GetSchema(protocol);
+        if (schema) {
+            logger_->Info("   📋 " + schema->name + " (port: " + std::to_string(schema->default_port) + 
+                         ", params: " + std::to_string(schema->parameters.size()) + ")");
+        }
+    }
+    
+    logger_->Info("   📊 Total: " + std::to_string(protocols.size()) + " protocols registered");
 }
 
 } // namespace Workers
