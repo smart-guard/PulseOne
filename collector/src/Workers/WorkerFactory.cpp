@@ -686,12 +686,9 @@ void WorkerFactory::LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& d
         
         if (current_value_opt.has_value()) {
             const auto& cv = current_value_opt.value();
-            
-            logger_->Debug("✅ CurrentValue found for DataPoint: " + std::to_string(std::stoi(data_point.id)));
-            
             // 🔥 JSON 값 파싱
             data_point.current_value = ParseJSONValue(cv.getCurrentValue(), data_point.data_type);
-            data_point.raw_value = ParseJSONValue(cv.getRawValue(), data_point.data_type);
+            data_point.raw_value = ParseJSONValueAsRaw(cv.getRawValue());
             
             // 품질 및 타임스탬프 - 🔧 존재하지 않는 필드 제거
             data_point.quality_code = static_cast<PulseOne::Enums::DataQuality>(cv.getQualityCode());
@@ -1377,6 +1374,43 @@ void WorkerFactory::LogSupportedProtocols() const {
     }
     
     logger_->Info("   📊 Total: " + std::to_string(protocols.size()) + " protocols registered");
+}
+
+// 🔥 새로운 메소드 추가: raw_value 전용 파싱 (타입 무관)
+PulseOne::BasicTypes::DataVariant WorkerFactory::ParseJSONValueAsRaw(
+    const std::string& json_value) const {
+    
+    try {
+        if (json_value.empty()) {
+            return 0.0;  // 기본값
+        }
+        
+        auto json_obj = nlohmann::json::parse(json_value);
+        
+        // value 필드 추출
+        if (json_obj.contains("value")) {
+            const auto& value = json_obj["value"];
+            
+            // 🔥 raw_value는 항상 숫자로 처리 (원시 센서 값이므로)
+            if (value.is_number()) {
+                return value.get<double>();
+            } else if (value.is_boolean()) {
+                return value.get<bool>() ? 1.0 : 0.0;  // boolean → 숫자 변환
+            } else if (value.is_string()) {
+                try {
+                    return std::stod(value.get<std::string>());
+                } catch (...) {
+                    return 0.0;  // 변환 실패시 기본값
+                }
+            }
+        }
+        
+        return 0.0;  // 기본값
+        
+    } catch (const std::exception& e) {
+        logger_->Warn("⚠️ ParseJSONValueAsRaw failed: " + std::string(e.what()) + " for: " + json_value);
+        return 0.0;
+    }
 }
 
 } // namespace Workers

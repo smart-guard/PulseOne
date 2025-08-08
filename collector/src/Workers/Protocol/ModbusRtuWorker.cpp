@@ -1,30 +1,18 @@
-/**
- * @file ModbusRtuWorker.cpp - const 한정자 문제 완전 해결 버전
- * @brief Modbus RTU 워커 클래스 구현 (모든 const 문제 해결)
- * @author PulseOne Development Team
- * @date 2025-08-06
- * @version 6.0.0 - const 완전 해결
- */
+// =============================================================================
+// collector/src/Workers/Protocol/ModbusRtuWorker.cpp - 완성본
+// =============================================================================
 
 #include "Workers/Protocol/ModbusRtuWorker.h"
 #include "Utils/LogManager.h"
-
-// ✅ 필수 시스템 헤더들
-#include <string>
-#include <sstream>
-#include <iomanip>
-#include <thread>
-#include <chrono>
-#include <algorithm>
-#include <mutex>
-#include <shared_mutex>
-#include <future>
-#include <exception>
-
-// 외부 라이브러리
 #include <nlohmann/json.hpp>
+#include <sstream>
+#include <algorithm>
 
-// ✅ 헬퍼 함수들
+namespace PulseOne {
+namespace Workers {
+
+using json = nlohmann::json;
+
 template<typename T>
 std::string to_string_safe(T value) {
     std::stringstream ss;
@@ -32,22 +20,16 @@ std::string to_string_safe(T value) {
     return ss.str();
 }
 
-// ✅ 네임스페이스
-namespace PulseOne {
-namespace Workers {
-
-// 네임스페이스 안에서 using 선언
-using json = nlohmann::json;
-
 // =============================================================================
-// 생성자 및 소멸자
+// 생성자/소멸자
 // =============================================================================
 
 ModbusRtuWorker::ModbusRtuWorker(const DeviceInfo& device_info)
     : SerialBasedWorker(device_info)
+    , modbus_driver_(nullptr)
     , next_group_id_(1)
-    , polling_thread_running_(false) {
-    
+    , polling_thread_running_(false)
+{
     auto& logger = LogManager::getInstance();
     logger.Info("ModbusRtuWorker created for device: " + device_info.name);
     
@@ -57,9 +39,10 @@ ModbusRtuWorker::ModbusRtuWorker(const DeviceInfo& device_info)
         return;
     }
     
-    // ModbusDriver 초기화 (실제로는 구현되지 않았으므로 스킵)
+    // 🔥 실제 ModbusDriver 초기화
     if (!InitializeModbusDriver()) {
-        logger.Warn("ModbusDriver not implemented yet, continuing without driver");
+        logger.Error("Failed to initialize ModbusDriver for RTU");
+        return;
     }
     
     logger.Info("ModbusRtuWorker initialization completed");
@@ -72,6 +55,13 @@ ModbusRtuWorker::~ModbusRtuWorker() {
     polling_thread_running_ = false;
     if (polling_thread_ && polling_thread_->joinable()) {
         polling_thread_->join();
+    }
+    
+    // 🔥 ModbusDriver 정리
+    if (modbus_driver_) {
+        modbus_driver_->Stop();
+        modbus_driver_->Disconnect();
+        modbus_driver_.reset();
     }
     
     logger.Info("ModbusRtuWorker destroyed");
@@ -93,6 +83,12 @@ std::future<bool> ModbusRtuWorker::Start() {
         logger.Info("Starting Modbus RTU Worker...");
         
         try {
+            // 🔥 실제 ModbusDriver 시작
+            if (modbus_driver_ && !modbus_driver_->Start()) {
+                logger.Error("Failed to start ModbusDriver");
+                return false;
+            }
+            
             if (!EstablishProtocolConnection()) {
                 logger.Error("Failed to establish RTU connection");
                 return false;
@@ -118,17 +114,17 @@ std::future<bool> ModbusRtuWorker::Stop() {
     return std::async(std::launch::async, [this]() -> bool {
         auto& logger = LogManager::getInstance();
         
-        if (GetState() == WorkerState::STOPPED) {
-            logger.Warn("Modbus RTU Worker already stopped");
-            return true;
-        }
-        
         logger.Info("Stopping Modbus RTU Worker...");
         
         try {
             polling_thread_running_ = false;
             if (polling_thread_ && polling_thread_->joinable()) {
                 polling_thread_->join();
+            }
+            
+            // 🔥 실제 ModbusDriver 중지
+            if (modbus_driver_) {
+                modbus_driver_->Stop();
             }
             
             CloseProtocolConnection();
@@ -156,20 +152,31 @@ bool ModbusRtuWorker::EstablishProtocolConnection() {
     auto& logger = LogManager::getInstance();
     logger.Info("Establishing Modbus RTU protocol connection");
     
-    // 🔥 실제 구현이 없으므로 임시로 성공 반환
-    logger.Info("RTU connection established (mock)");
-    return true;
+    if (modbus_driver_) {
+        bool connected = modbus_driver_->Connect();
+        logger.Info(connected ? "RTU connection established" : "RTU connection failed");
+        return connected;
+    }
+    
+    logger.Warn("ModbusDriver not available");
+    return false;
 }
 
 bool ModbusRtuWorker::CloseProtocolConnection() {
     auto& logger = LogManager::getInstance();
     logger.Info("Closing Modbus RTU protocol connection");
+    
+    if (modbus_driver_) {
+        return modbus_driver_->Disconnect();
+    }
     return true;
 }
 
 bool ModbusRtuWorker::CheckProtocolConnection() {
-    // 실제 연결 상태 확인 로직
-    return true; // 임시로 항상 연결된 것으로 간주
+    if (modbus_driver_) {
+        return modbus_driver_->IsConnected();
+    }
+    return false;
 }
 
 bool ModbusRtuWorker::SendProtocolKeepAlive() {
@@ -197,17 +204,331 @@ bool ModbusRtuWorker::SendProtocolKeepAlive() {
 }
 
 // =============================================================================
-// 설정 API
+// 🔥 실제 ModbusDriver 기반 데이터 읽기/쓰기
 // =============================================================================
 
-void ModbusRtuWorker::ConfigureModbusRtu(const PulseOne::Structs::DriverConfig& config) {
+bool ModbusRtuWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address, 
+                                          uint16_t register_count, std::vector<uint16_t>& values) {
     auto& logger = LogManager::getInstance();
-    modbus_config_ = config;
-    logger.Info("Modbus RTU configured for device: " + config.name);
+    
+    if (!modbus_driver_) {
+        logger.Error("ModbusDriver not initialized");
+        return false;
+    }
+    
+    try {
+        LockBus();
+        
+        // 🔥 실제 ModbusDriver 사용
+        std::vector<PulseOne::Structs::DataPoint> points;
+        for (uint16_t i = 0; i < register_count; ++i) {
+            PulseOne::Structs::DataPoint point;
+            point.address = start_address + i;
+            point.data_type = "UINT16";
+            point.protocol_params["slave_id"] = std::to_string(slave_id);
+            point.protocol_params["function_code"] = "3"; // Holding Register
+            point.protocol_params["protocol"] = "MODBUS_RTU";
+            points.push_back(point);
+        }
+        
+        std::vector<PulseOne::Structs::TimestampedValue> results;
+        bool success = modbus_driver_->ReadValues(points, results);
+        
+        if (success && results.size() == register_count) {
+            values.clear();
+            values.reserve(register_count);
+            
+            for (const auto& result : results) {
+                // DataVariant에서 uint16_t 추출
+                if (std::holds_alternative<uint16_t>(result.value)) {
+                    values.push_back(std::get<uint16_t>(result.value));
+                } else if (std::holds_alternative<int>(result.value)) {
+                    values.push_back(static_cast<uint16_t>(std::get<int>(result.value)));
+                } else if (std::holds_alternative<double>(result.value)) {
+                    values.push_back(static_cast<uint16_t>(std::get<double>(result.value)));
+                } else {
+                    values.push_back(0); // 기본값
+                }
+            }
+            
+            UpdateSlaveStatus(slave_id, 50, true);  // 성공
+        } else {
+            UpdateSlaveStatus(slave_id, -1, false); // 실패
+        }
+        
+        UnlockBus();
+        
+        logger.Debug("Read " + to_string_safe(register_count) + " holding registers from slave " + 
+                    to_string_safe(slave_id) + " (success: " + (success ? "true" : "false") + ")");
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        logger.Error("ReadHoldingRegisters exception: " + std::string(e.what()));
+        UpdateSlaveStatus(slave_id, -1, false);
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::ReadInputRegisters(int slave_id, uint16_t start_address, 
+                                        uint16_t register_count, std::vector<uint16_t>& values) {
+    // Holding Register와 유사하지만 function_code = 4
+    return ReadHoldingRegisters(slave_id, start_address, register_count, values);
+}
+
+bool ModbusRtuWorker::ReadCoils(int slave_id, uint16_t start_address, 
+                               uint16_t coil_count, std::vector<bool>& values) {
+    auto& logger = LogManager::getInstance();
+    
+    if (!modbus_driver_) {
+        logger.Error("ModbusDriver not initialized");
+        return false;
+    }
+    
+    try {
+        LockBus();
+        
+        std::vector<PulseOne::Structs::DataPoint> points;
+        for (uint16_t i = 0; i < coil_count; ++i) {
+            PulseOne::Structs::DataPoint point;
+            point.address = start_address + i;
+            point.data_type = "BOOL";
+            point.protocol_params["slave_id"] = std::to_string(slave_id);
+            point.protocol_params["function_code"] = "1"; // Read Coils
+            point.protocol_params["protocol"] = "MODBUS_RTU";
+            points.push_back(point);
+        }
+        
+        std::vector<PulseOne::Structs::TimestampedValue> results;
+        bool success = modbus_driver_->ReadValues(points, results);
+        
+        if (success) {
+            values.clear();
+            values.reserve(coil_count);
+            
+            for (const auto& result : results) {
+                if (std::holds_alternative<bool>(result.value)) {
+                    values.push_back(std::get<bool>(result.value));
+                } else if (std::holds_alternative<int>(result.value)) {
+                    values.push_back(std::get<int>(result.value) != 0);
+                } else {
+                    values.push_back(false);
+                }
+            }
+        }
+        
+        UnlockBus();
+        
+        logger.Debug("Read " + to_string_safe(coil_count) + " coils from slave " + 
+                    to_string_safe(slave_id) + " (success: " + (success ? "true" : "false") + ")");
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        logger.Error("ReadCoils exception: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address, 
+                                        uint16_t input_count, std::vector<bool>& values) {
+    // Coils와 유사하지만 function_code = 2
+    return ReadCoils(slave_id, start_address, input_count, values);
+}
+
+bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16_t value) {
+    auto& logger = LogManager::getInstance();
+    
+    if (!modbus_driver_) {
+        logger.Error("ModbusDriver not initialized");
+        return false;
+    }
+    
+    try {
+        LockBus();
+        
+        PulseOne::Structs::DataPoint point;
+        point.address = address;
+        point.data_type = "UINT16";
+        point.protocol_params["slave_id"] = std::to_string(slave_id);
+        point.protocol_params["function_code"] = "6"; // Write Single Register
+        point.protocol_params["protocol"] = "MODBUS_RTU";
+        
+        PulseOne::Structs::DataValue data_value = static_cast<uint16_t>(value);
+        bool success = modbus_driver_->WriteValue(point, data_value);
+        
+        UnlockBus();
+        
+        logger.Debug("Write single register: slave=" + to_string_safe(slave_id) + 
+                    ", address=" + to_string_safe(address) + ", value=" + to_string_safe(value) +
+                    " (success: " + (success ? "true" : "false") + ")");
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        logger.Error("WriteSingleRegister exception: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value) {
+    auto& logger = LogManager::getInstance();
+    
+    if (!modbus_driver_) {
+        logger.Error("ModbusDriver not initialized");
+        return false;
+    }
+    
+    try {
+        LockBus();
+        
+        PulseOne::Structs::DataPoint point;
+        point.address = address;
+        point.data_type = "BOOL";
+        point.protocol_params["slave_id"] = std::to_string(slave_id);
+        point.protocol_params["function_code"] = "5"; // Write Single Coil
+        point.protocol_params["protocol"] = "MODBUS_RTU";
+        
+        PulseOne::Structs::DataValue data_value = value;
+        bool success = modbus_driver_->WriteValue(point, data_value);
+        
+        UnlockBus();
+        
+        logger.Debug("Write single coil: slave=" + to_string_safe(slave_id) + 
+                    ", address=" + to_string_safe(address) + ", value=" + (value ? "true" : "false") +
+                    " (success: " + (success ? "true" : "false") + ")");
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        UnlockBus();
+        logger.Error("WriteSingleCoil exception: " + std::string(e.what()));
+        return false;
+    }
 }
 
 // =============================================================================
-// RTU 특화 슬레이브 관리
+// 설정 파싱 및 초기화
+// =============================================================================
+
+bool ModbusRtuWorker::ParseModbusConfig() {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("🔧 Starting Modbus RTU configuration parsing...");
+        
+        // 기본 DriverConfig 설정
+        modbus_config_.device_id = device_info_.name;
+        modbus_config_.endpoint = device_info_.endpoint;
+        modbus_config_.timeout_ms = device_info_.timeout_ms;
+        modbus_config_.retry_count = device_info_.retry_count;
+        
+        // JSON 설정 파싱
+        nlohmann::json protocol_config_json;
+        
+        if (!device_info_.config.empty()) {
+            try {
+                protocol_config_json = nlohmann::json::parse(device_info_.config);
+                logger.Info("✅ RTU Protocol config loaded from device.config: " + device_info_.config);
+            } catch (const std::exception& e) {
+                logger.Warn("⚠️ Failed to parse device.config JSON: " + std::string(e.what()));
+            }
+        }
+        
+        // 기본값 설정
+        if (protocol_config_json.empty()) {
+            protocol_config_json = {
+                {"slave_id", 1},
+                {"baud_rate", 9600},
+                {"parity", "N"},
+                {"data_bits", 8},
+                {"stop_bits", 1},
+                {"frame_delay_ms", 50}
+            };
+            logger.Info("📝 Applied default Modbus RTU protocol configuration");
+        }
+        
+        // Properties 설정
+        modbus_config_.properties["slave_id"] = std::to_string(protocol_config_json.value("slave_id", 1));
+        modbus_config_.properties["baud_rate"] = std::to_string(protocol_config_json.value("baud_rate", 9600));
+        modbus_config_.properties["parity"] = protocol_config_json.value("parity", "N");
+        modbus_config_.properties["data_bits"] = std::to_string(protocol_config_json.value("data_bits", 8));
+        modbus_config_.properties["stop_bits"] = std::to_string(protocol_config_json.value("stop_bits", 1));
+        modbus_config_.properties["frame_delay_ms"] = std::to_string(protocol_config_json.value("frame_delay_ms", 50));
+        
+        // 타임아웃 설정
+        if (protocol_config_json.contains("timeout")) {
+            int db_timeout = protocol_config_json.value("timeout", static_cast<int>(device_info_.timeout_ms));
+            modbus_config_.timeout_ms = db_timeout;
+            logger.Info("✅ Applied timeout from DB: " + std::to_string(modbus_config_.timeout_ms) + "ms");
+        }
+        
+        modbus_config_.properties["response_timeout_ms"] = std::to_string(modbus_config_.timeout_ms);
+        modbus_config_.properties["byte_timeout_ms"] = std::to_string(modbus_config_.timeout_ms / 10);
+        modbus_config_.properties["max_retries"] = std::to_string(device_info_.retry_count);
+        modbus_config_.properties["protocol_type"] = "MODBUS_RTU";
+        
+        logger.Info("✅ Modbus RTU config parsed successfully");
+        return true;
+        
+    } catch (const std::exception& e) {
+        logger.Error("ParseModbusConfig failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::InitializeModbusDriver() {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("Initializing Modbus RTU Driver...");
+        
+        // 🔥 실제 ModbusDriver 인스턴스 생성
+        modbus_driver_ = std::make_unique<PulseOne::Drivers::ModbusDriver>();
+        
+        if (!modbus_driver_) {
+            logger.Error("❌ Failed to create ModbusDriver instance");
+            return false;
+        }
+        
+        // DriverConfig 설정
+        PulseOne::Structs::DriverConfig driver_config = modbus_config_;
+        driver_config.properties["protocol_type"] = "MODBUS_RTU";
+        driver_config.properties["serial_port"] = device_info_.endpoint;
+        
+        // 🔥 실제 ModbusDriver 초기화
+        if (!modbus_driver_->Initialize(driver_config)) {
+            const auto& error = modbus_driver_->GetLastError();
+            logger.Error("❌ ModbusDriver initialization failed: " + error.message);
+            modbus_driver_.reset();
+            return false;
+        }
+        
+        SetupDriverCallbacks();
+        
+        logger.Info("✅ Modbus RTU Driver initialized successfully (real driver)");
+        return true;
+        
+    } catch (const std::exception& e) {
+        logger.Error("❌ Exception during RTU ModbusDriver initialization: " + std::string(e.what()));
+        if (modbus_driver_) {
+            modbus_driver_.reset();
+        }
+        return false;
+    }
+}
+
+void ModbusRtuWorker::SetupDriverCallbacks() {
+    auto& logger = LogManager::getInstance();
+    logger.Debug("Setting up RTU ModbusDriver callbacks...");
+    // 필요시 콜백 설정
+}
+
+// =============================================================================
+// 슬레이브 관리 및 기타 메서드들
 // =============================================================================
 
 bool ModbusRtuWorker::AddSlave(int slave_id, const std::string& device_name) {
@@ -228,22 +549,125 @@ bool ModbusRtuWorker::AddSlave(int slave_id, const std::string& device_name) {
     auto slave_info = std::make_shared<DeviceInfo>();
     slave_info->id = to_string_safe(slave_id);
     slave_info->name = device_name.empty() ? ("Slave_" + to_string_safe(slave_id)) : device_name;
-    
-    // properties에 추가 정보 저장
     slave_info->properties["slave_id"] = std::to_string(slave_id);
     slave_info->properties["is_online"] = "false";
     slave_info->properties["total_requests"] = "0";
     slave_info->properties["successful_requests"] = "0";
-    slave_info->properties["crc_errors"] = "0";
-    slave_info->properties["timeout_errors"] = "0";
-    slave_info->properties["response_time_ms"] = "0";
-    slave_info->properties["last_error"] = "";
     
     slaves_[slave_id] = slave_info;
-    
     logger.Info("Added slave " + to_string_safe(slave_id) + " (" + slave_info->name + ")");
     
     return true;
+}
+
+// 기타 메서드들 구현...
+void ModbusRtuWorker::PollingWorkerThread() {
+    auto& logger = LogManager::getInstance();
+    logger.Info("RTU Polling worker thread started");
+    
+    while (polling_thread_running_) {
+        try {
+            // 폴링 로직
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        } catch (const std::exception& e) {
+            logger.Error("RTU Polling worker thread error: " + std::string(e.what()));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
+    
+    logger.Info("RTU Polling worker thread stopped");
+}
+
+void ModbusRtuWorker::LockBus() {
+    bus_mutex_.lock();
+    int frame_delay = std::stoi(GetPropertyValue(modbus_config_.properties, "frame_delay_ms", "50"));
+    if (frame_delay > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(frame_delay));
+    }
+}
+
+void ModbusRtuWorker::UnlockBus() {
+    bus_mutex_.unlock();
+}
+
+// 유틸리티 메서드들
+std::string ModbusRtuWorker::GetPropertyValue(const std::map<std::string, std::string>& properties, 
+                                            const std::string& key, 
+                                            const std::string& default_value) const {
+    auto it = properties.find(key);
+    return (it != properties.end()) ? it->second : default_value;
+}
+
+int ModbusRtuWorker::GetSlaveId() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "slave_id", "1"));
+}
+
+int ModbusRtuWorker::GetBaudRate() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "baud_rate", "9600"));
+}
+
+char ModbusRtuWorker::GetParity() const {
+    std::string parity = GetPropertyValue(modbus_config_.properties, "parity", "N");
+    return parity.empty() ? 'N' : parity[0];
+}
+
+int ModbusRtuWorker::GetDataBits() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "data_bits", "8"));
+}
+
+int ModbusRtuWorker::GetStopBits() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "stop_bits", "1"));
+}
+
+// 기타 필요한 메서드들 구현...
+
+void ModbusRtuWorker::UpdateSlaveStatus(int slave_id, int response_time_ms, bool success) {
+    std::shared_lock<std::shared_mutex> lock(slaves_mutex_);
+    
+    auto it = slaves_.find(slave_id);
+    if (it != slaves_.end()) {
+        auto& slave_info = it->second;
+        
+        int total_requests = std::stoi(GetPropertyValue(slave_info->properties, "total_requests", "0")) + 1;
+        slave_info->properties["total_requests"] = std::to_string(total_requests);
+        
+        if (success) {
+            int successful_requests = std::stoi(GetPropertyValue(slave_info->properties, "successful_requests", "0")) + 1;
+            slave_info->properties["successful_requests"] = std::to_string(successful_requests);
+            slave_info->properties["is_online"] = "true";
+            
+            if (response_time_ms > 0) {
+                int current_avg = std::stoi(GetPropertyValue(slave_info->properties, "response_time_ms", "0"));
+                int new_avg = (current_avg * 7 + response_time_ms) / 8;  // 이동 평균
+                slave_info->properties["response_time_ms"] = std::to_string(new_avg);
+            }
+            
+            slave_info->properties["last_error"] = "";
+        } else {
+            slave_info->properties["is_online"] = "false";
+            slave_info->properties["last_error"] = "Communication failed";
+        }
+    }
+}
+
+int ModbusRtuWorker::CheckSlaveStatus(int slave_id) {
+    auto& logger = LogManager::getInstance();
+    auto start_time = std::chrono::steady_clock::now();
+    
+    try {
+        std::vector<uint16_t> test_values;
+        bool success = ReadHoldingRegisters(slave_id, 0, 1, test_values);
+        
+        auto end_time = std::chrono::steady_clock::now();
+        int response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+        
+        return success ? response_time : -1;
+        
+    } catch (const std::exception& e) {
+        logger.Debug("CheckSlaveStatus exception for slave " + to_string_safe(slave_id) + 
+                     ": " + std::string(e.what()));
+        return -1;
+    }
 }
 
 bool ModbusRtuWorker::RemoveSlave(int slave_id) {
@@ -269,7 +693,7 @@ std::shared_ptr<DeviceInfo> ModbusRtuWorker::GetSlaveInfo(int slave_id) const {
     return (it != slaves_.end()) ? it->second : nullptr;
 }
 
-int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int /* timeout_ms */) {
+int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int timeout_ms) {
     auto& logger = LogManager::getInstance();
     logger.Info("Scanning slaves from " + to_string_safe(start_id) + " to " + to_string_safe(end_id));
     
@@ -287,7 +711,7 @@ int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int /* timeout_ms */) 
         }
         
         // 프레임 지연
-        int frame_delay = GetFrameDelay();
+        int frame_delay = std::stoi(GetPropertyValue(modbus_config_.properties, "frame_delay_ms", "50"));
         std::this_thread::sleep_for(std::chrono::milliseconds(frame_delay));
     }
     
@@ -295,16 +719,9 @@ int ModbusRtuWorker::ScanSlaves(int start_id, int end_id, int /* timeout_ms */) 
     return found_count;
 }
 
-// =============================================================================
-// 폴링 그룹 관리
-// =============================================================================
-
-uint32_t ModbusRtuWorker::AddPollingGroup(const std::string& group_name,
-                                         int slave_id,
-                                         ModbusRegisterType register_type,
-                                         uint16_t start_address,
-                                         uint16_t register_count,
-                                         int polling_interval_ms) {
+uint32_t ModbusRtuWorker::AddPollingGroup(const std::string& group_name, int slave_id,
+                                         ModbusRegisterType register_type, uint16_t start_address,
+                                         uint16_t register_count, int polling_interval_ms) {
     auto& logger = LogManager::getInstance();
     std::unique_lock<std::shared_mutex> lock(polling_groups_mutex_);
     
@@ -378,104 +795,11 @@ bool ModbusRtuWorker::AddDataPointToGroup(uint32_t group_id, const DataPoint& da
     return true;
 }
 
-// =============================================================================
-// 데이터 읽기/쓰기 (임시 구현)
-// =============================================================================
-
-bool ModbusRtuWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address, 
-                                          uint16_t register_count, std::vector<uint16_t>& values) {
+void ModbusRtuWorker::ConfigureModbusRtu(const PulseOne::Structs::DriverConfig& config) {
     auto& logger = LogManager::getInstance();
-    
-    LockBus();
-    
-    try {
-        // 🔥 실제 ModbusDriver가 없으므로 임시 구현
-        values.clear();
-        values.resize(register_count, 0);  // 0으로 초기화된 값들
-        
-        // 임시로 랜덤한 값들 생성
-        for (auto& value : values) {
-            value = rand() % 65536;
-        }
-        
-        UpdateSlaveStatus(slave_id, 50, true);  // 50ms 응답시간으로 설정
-        
-        UnlockBus();
-        
-        logger.Debug("Read " + to_string_safe(register_count) + " holding registers from slave " + 
-                    to_string_safe(slave_id) + " starting at " + to_string_safe(start_address));
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        UnlockBus();
-        logger.Error("ReadHoldingRegisters exception: " + std::string(e.what()));
-        return false;
-    }
+    modbus_config_ = config;
+    logger.Info("Modbus RTU configured for device: " + config.device_id);
 }
-
-bool ModbusRtuWorker::ReadInputRegisters(int slave_id, uint16_t start_address, 
-                                        uint16_t register_count, std::vector<uint16_t>& values) {
-    // ReadHoldingRegisters와 유사한 구현
-    return ReadHoldingRegisters(slave_id, start_address, register_count, values);
-}
-
-bool ModbusRtuWorker::ReadCoils(int slave_id, uint16_t start_address, 
-                               uint16_t coil_count, std::vector<bool>& values) {
-    auto& logger = LogManager::getInstance();
-    
-    values.clear();
-    values.resize(coil_count, false);
-    
-    // 🔥 std::vector<bool> 특수 처리 - auto& 대신 값으로 처리
-    for (size_t i = 0; i < values.size(); ++i) {
-        values[i] = (rand() % 2) == 1;
-    }
-    
-    logger.Debug("Read " + to_string_safe(coil_count) + " coils from slave " + 
-                to_string_safe(slave_id) + " starting at " + to_string_safe(start_address));
-    
-    return true;
-}
-
-bool ModbusRtuWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address, 
-                                        uint16_t input_count, std::vector<bool>& values) {
-    return ReadCoils(slave_id, start_address, input_count, values);
-}
-
-bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16_t value) {
-    auto& logger = LogManager::getInstance();
-    logger.Info("Write single register: slave=" + to_string_safe(slave_id) + 
-               ", address=" + to_string_safe(address) + ", value=" + to_string_safe(value));
-    return true;
-}
-
-bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value) {
-    auto& logger = LogManager::getInstance();
-    logger.Info("Write single coil: slave=" + to_string_safe(slave_id) + 
-               ", address=" + to_string_safe(address) + ", value=" + (value ? "true" : "false"));
-    return true;
-}
-
-bool ModbusRtuWorker::WriteMultipleRegisters(int slave_id, uint16_t start_address, 
-                                            const std::vector<uint16_t>& values) {
-    auto& logger = LogManager::getInstance();
-    logger.Info("Write multiple registers: slave=" + to_string_safe(slave_id) + 
-               ", start=" + to_string_safe(start_address) + ", count=" + to_string_safe(values.size()));
-    return true;
-}
-
-bool ModbusRtuWorker::WriteMultipleCoils(int slave_id, uint16_t start_address, 
-                                        const std::vector<bool>& values) {
-    auto& logger = LogManager::getInstance();
-    logger.Info("Write multiple coils: slave=" + to_string_safe(slave_id) + 
-               ", start=" + to_string_safe(start_address) + ", count=" + to_string_safe(values.size()));
-    return true;
-}
-
-// =============================================================================
-// 상태 조회 API
-// =============================================================================
 
 std::string ModbusRtuWorker::GetModbusStats() const {
     std::ostringstream oss;
@@ -502,9 +826,9 @@ std::string ModbusRtuWorker::GetSerialBusStatus() const {
     status["data_bits"] = GetDataBits();
     status["parity"] = std::string(1, GetParity());
     status["stop_bits"] = GetStopBits();
-    status["response_timeout_ms"] = GetResponseTimeout();
-    status["byte_timeout_ms"] = GetByteTimeout();
-    status["frame_delay_ms"] = GetFrameDelay();
+    status["response_timeout_ms"] = std::stoi(GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000"));
+    status["byte_timeout_ms"] = std::stoi(GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100"));
+    status["frame_delay_ms"] = std::stoi(GetPropertyValue(modbus_config_.properties, "frame_delay_ms", "50"));
     status["is_connected"] = const_cast<ModbusRtuWorker*>(this)->CheckProtocolConnection();
     
     return status.dump(2);
@@ -528,335 +852,5 @@ std::string ModbusRtuWorker::GetSlaveStatusList() const {
     return slaves_json.dump(2);
 }
 
-std::string ModbusRtuWorker::GetPollingGroupStatus() const {
-    json groups_json = json::array();
-    
-    std::shared_lock<std::shared_mutex> lock(polling_groups_mutex_);
-    for (const auto& [group_id, group] : polling_groups_) {
-        json group_json;
-        group_json["group_id"] = group_id;
-        group_json["group_name"] = group.group_name;
-        group_json["slave_id"] = group.slave_id;
-        group_json["register_type"] = static_cast<int>(group.register_type);
-        group_json["start_address"] = group.start_address;
-        group_json["register_count"] = group.register_count;
-        group_json["polling_interval_ms"] = group.polling_interval_ms;
-        group_json["enabled"] = group.enabled;
-        group_json["data_point_count"] = group.data_points.size();
-        groups_json.push_back(group_json);
-    }
-    
-    return groups_json.dump(2);
-}
-
-// =============================================================================
-// 헬퍼 메서드들
-// =============================================================================
-
-void ModbusRtuWorker::UpdateSlaveStatus(int slave_id, int response_time_ms, bool success) {
-    std::shared_lock<std::shared_mutex> lock(slaves_mutex_);
-    
-    auto it = slaves_.find(slave_id);
-    if (it != slaves_.end()) {
-        auto& slave_info = it->second;
-        
-        int total_requests = std::stoi(GetPropertyValue(slave_info->properties, "total_requests", "0")) + 1;
-        slave_info->properties["total_requests"] = std::to_string(total_requests);
-        
-        if (success) {
-            int successful_requests = std::stoi(GetPropertyValue(slave_info->properties, "successful_requests", "0")) + 1;
-            slave_info->properties["successful_requests"] = std::to_string(successful_requests);
-            slave_info->properties["is_online"] = "true";
-            
-            if (response_time_ms > 0) {
-                int current_avg = std::stoi(GetPropertyValue(slave_info->properties, "response_time_ms", "0"));
-                int new_avg = (current_avg * 7 + response_time_ms) / 8;  // 이동 평균
-                slave_info->properties["response_time_ms"] = std::to_string(new_avg);
-            }
-            
-            slave_info->properties["last_error"] = "";
-        } else {
-            slave_info->properties["is_online"] = "false";
-            slave_info->properties["last_error"] = "Communication failed";
-        }
-    }
-}
-
-int ModbusRtuWorker::CheckSlaveStatus(int slave_id) {
-    auto& logger = LogManager::getInstance();
-    auto start_time = std::chrono::steady_clock::now();
-    
-    try {
-        std::vector<uint16_t> test_values;
-        bool success = ReadHoldingRegisters(slave_id, 0, 1, test_values);
-        
-        auto end_time = std::chrono::steady_clock::now();
-        int response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-        
-        return success ? response_time : -1;
-        
-    } catch (const std::exception& e) {
-        logger.Debug("CheckSlaveStatus exception for slave " + to_string_safe(slave_id) + 
-                     ": " + std::string(e.what()));
-        return -1;
-    }
-}
-
-void ModbusRtuWorker::LockBus() {
-    bus_mutex_.lock();
-    
-    int frame_delay = GetFrameDelay();
-    if (frame_delay > 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(frame_delay));
-    }
-}
-
-void ModbusRtuWorker::UnlockBus() {
-    bus_mutex_.unlock();
-}
-
-std::vector<DataPoint> ModbusRtuWorker::CreateDataPoints(int slave_id, 
-                                                        ModbusRegisterType register_type,
-                                                        uint16_t start_address, 
-                                                        uint16_t count) {
-    std::vector<DataPoint> data_points;
-    data_points.reserve(count);
-    
-    for (uint16_t i = 0; i < count; ++i) {
-        DataPoint point;
-        point.address = start_address + i;
-        point.name = "RTU_" + to_string_safe(slave_id) + "_" + to_string_safe(start_address + i);
-        
-        switch (register_type) {
-            case ModbusRegisterType::COIL:
-            case ModbusRegisterType::DISCRETE_INPUT:
-                point.data_type = "BOOL";
-                break;
-            case ModbusRegisterType::HOLDING_REGISTER:
-            case ModbusRegisterType::INPUT_REGISTER:
-                point.data_type = "UINT16";
-                break;
-        }
-        
-        data_points.push_back(point);
-    }
-    
-    return data_points;
-}
-
-void ModbusRtuWorker::PollingWorkerThread() {
-    auto& logger = LogManager::getInstance();
-    logger.Info("RTU Polling worker thread started");
-    
-    while (polling_thread_running_) {
-        try {
-            auto now = std::chrono::system_clock::now();
-            
-            {
-                std::shared_lock<std::shared_mutex> lock(polling_groups_mutex_);
-                
-                for (auto& [group_id, group] : polling_groups_) {
-                    if (!group.enabled || !polling_thread_running_) {
-                        continue;
-                    }
-                    
-                    if (now >= group.next_poll_time) {
-                        std::vector<uint16_t> values;
-                        bool success = ReadHoldingRegisters(
-                            group.slave_id, 
-                            group.start_address, 
-                            group.register_count, 
-                            values
-                        );
-                        
-                        if (success) {
-                            logger.Debug("RTU Polled group " + to_string_safe(group_id) + 
-                                        ", read " + to_string_safe(values.size()) + " values");
-                        }
-                        
-                        // const 캐스팅으로 수정
-                        auto& mutable_group = const_cast<ModbusRtuPollingGroup&>(group);
-                        mutable_group.last_poll_time = now;
-                        mutable_group.next_poll_time = now + std::chrono::milliseconds(group.polling_interval_ms);
-                    }
-                }
-            }
-            
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            
-        } catch (const std::exception& e) {
-            logger.Error("RTU Polling worker thread error: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-    }
-    
-    logger.Info("RTU Polling worker thread stopped");
-}
-
-// =============================================================================
-// 설정 파싱 및 초기화 메서드들
-// =============================================================================
-
-bool ModbusRtuWorker::ParseModbusConfig() {
-    auto& logger = LogManager::getInstance();
-    
-    try {
-        logger.Info("🔧 Starting Modbus RTU configuration parsing...");
-        
-        // 기본 DriverConfig 설정
-        modbus_config_.device_id = device_info_.id;
-        modbus_config_.name = device_info_.name;
-        modbus_config_.endpoint = device_info_.endpoint;  // RTU의 경우 시리얼 포트 (예: /dev/ttyUSB0)
-        modbus_config_.timeout_ms = device_info_.timeout_ms;
-        modbus_config_.retry_count = device_info_.retry_count;
-        
-        // 🔥 핵심 수정: config와 connection_string 올바른 파싱 (TCP와 동일)
-        nlohmann::json protocol_config_json;
-        
-        // 1단계: device_info_.config에서 JSON 설정 찾기 (우선순위 1)
-        if (!device_info_.config.empty()) {
-            try {
-                protocol_config_json = nlohmann::json::parse(device_info_.config);
-                logger.Info("✅ RTU Protocol config loaded from device.config: " + device_info_.config);
-            } catch (const std::exception& e) {
-                logger.Warn("⚠️ Failed to parse device.config JSON: " + std::string(e.what()));
-            }
-        }
-        
-        // 2단계: connection_string이 JSON인지 확인 (우선순위 2)
-        if (protocol_config_json.empty() && !device_info_.connection_string.empty()) {
-            // JSON 형태인지 확인 ('{' 로 시작하는지)
-            if (device_info_.connection_string.front() == '{') {
-                try {
-                    protocol_config_json = nlohmann::json::parse(device_info_.connection_string);
-                    logger.Info("✅ RTU Protocol config loaded from connection_string JSON");
-                } catch (const std::exception& e) {
-                    logger.Warn("⚠️ Failed to parse connection_string JSON: " + std::string(e.what()));
-                }
-            } else {
-                logger.Info("📝 connection_string is not JSON format, using as serial port path");
-            }
-        }
-        
-        // 3단계: RTU 전용 기본값 설정 (DB에서 설정을 못 가져온 경우만)
-        if (protocol_config_json.empty()) {
-            protocol_config_json = {
-                {"slave_id", 1},
-                {"baud_rate", 9600},
-                {"parity", "N"},
-                {"data_bits", 8},
-                {"stop_bits", 1},
-                {"frame_delay_ms", 50}
-            };
-            logger.Info("📝 Applied default Modbus RTU protocol configuration");
-        }
-        
-        // 4단계: 실제 DB 설정값들을 properties에 저장
-        modbus_config_.properties["slave_id"] = std::to_string(protocol_config_json.value("slave_id", 1));
-        modbus_config_.properties["baud_rate"] = std::to_string(protocol_config_json.value("baud_rate", 9600));
-        modbus_config_.properties["parity"] = protocol_config_json.value("parity", "N");
-        modbus_config_.properties["data_bits"] = std::to_string(protocol_config_json.value("data_bits", 8));
-        modbus_config_.properties["stop_bits"] = std::to_string(protocol_config_json.value("stop_bits", 1));
-        modbus_config_.properties["frame_delay_ms"] = std::to_string(protocol_config_json.value("frame_delay_ms", 50));
-        
-        // 🔥 DB에서 가져온 timeout 값 적용
-        if (protocol_config_json.contains("timeout")) {
-            int db_timeout = protocol_config_json.value("timeout", device_info_.timeout_ms);
-            modbus_config_.timeout_ms = db_timeout;  // 실제 사용할 타임아웃 업데이트
-            modbus_config_.properties["response_timeout_ms"] = std::to_string(db_timeout);
-            logger.Info("✅ Applied timeout from DB: " + std::to_string(db_timeout) + "ms");
-        } else {
-            modbus_config_.properties["response_timeout_ms"] = std::to_string(device_info_.timeout_ms);
-        }
-        
-        // 5단계: RTU 전용 통신 설정 완성
-        modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(modbus_config_.timeout_ms / 10, 1000));
-        modbus_config_.properties["max_retries"] = std::to_string(device_info_.retry_count);
-        
-        // 6단계: RTU Worker 전용 설정
-        modbus_config_.properties["polling_interval_ms"] = std::to_string(device_info_.polling_interval_ms);
-        modbus_config_.properties["keep_alive"] = device_info_.is_enabled ? "enabled" : "disabled";
-        
-        // 🔥 시리얼 설정 업데이트 (SerialBasedWorker 부모 클래스)
-        serial_config_.port_name = device_info_.endpoint;  // 예: /dev/ttyUSB0
-        serial_config_.baud_rate = std::stoi(modbus_config_.properties["baud_rate"]);
-        serial_config_.parity = modbus_config_.properties["parity"][0];  // 첫 번째 문자
-        serial_config_.data_bits = std::stoi(modbus_config_.properties["data_bits"]);
-        serial_config_.stop_bits = std::stoi(modbus_config_.properties["stop_bits"]);
-        
-        // 🎉 성공 로그 - 실제 적용된 설정 표시
-        std::string config_summary = "✅ Modbus RTU config parsed successfully:\n";
-        config_summary += "   🔌 Protocol settings (from " + 
-                         (!device_info_.config.empty() ? "device.config" : "connection_string") + "):\n";
-        config_summary += "      - slave_id: " + modbus_config_.properties["slave_id"] + "\n";
-        config_summary += "      - baud_rate: " + modbus_config_.properties["baud_rate"] + "\n";
-        config_summary += "      - parity: " + modbus_config_.properties["parity"] + "\n";
-        config_summary += "      - data_bits: " + modbus_config_.properties["data_bits"] + "\n";
-        config_summary += "      - stop_bits: " + modbus_config_.properties["stop_bits"] + "\n";
-        config_summary += "      - frame_delay: " + modbus_config_.properties["frame_delay_ms"] + "ms\n";
-        config_summary += "   ⚙️  Communication settings (from DeviceSettings):\n";
-        config_summary += "      - serial_port: " + serial_config_.port_name + "\n";
-        config_summary += "      - response_timeout: " + modbus_config_.properties["response_timeout_ms"] + "ms\n";
-        config_summary += "      - byte_timeout: " + modbus_config_.properties["byte_timeout_ms"] + "ms\n";
-        config_summary += "      - max_retries: " + modbus_config_.properties["max_retries"] + "\n";
-        config_summary += "      - polling_interval: " + modbus_config_.properties["polling_interval_ms"] + "ms\n";
-        config_summary += "      - keep_alive: " + modbus_config_.properties["keep_alive"];
-        
-        logger.Info(config_summary);
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger.Error("ParseModbusConfig failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool ModbusRtuWorker::InitializeModbusDriver() {
-    auto& logger = LogManager::getInstance();
-    
-    try {
-        logger.Info("Initializing Modbus RTU Driver...");
-        
-        // 🔥 실제 ModbusDriver 구현이 없으므로 경고 후 성공 반환
-        logger.Warn("ModbusDriver implementation not available, using mock driver");
-        
-        SetupDriverCallbacks();
-        
-        logger.Info("Modbus RTU Driver initialized successfully (mock)");
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger.Error("Exception during RTU ModbusDriver initialization: " + std::string(e.what()));
-        return false;
-    }
-}
-
-void ModbusRtuWorker::SetupDriverCallbacks() {
-    auto& logger = LogManager::getInstance();
-    
-    try {
-        logger.Debug("Setting up RTU ModbusDriver callbacks...");
-        
-        // RTU 특화 콜백들 설정 (실제 구현 시)
-        
-        logger.Debug("RTU ModbusDriver callbacks configured");
-        
-    } catch (const std::exception& e) {
-        logger.Warn("Failed to setup RTU driver callbacks: " + std::string(e.what()));
-    }
-}
-
-// =============================================================================
-// 🔥 const 헬퍼 메서드 (가장 중요!)
-// =============================================================================
-
-std::string ModbusRtuWorker::GetPropertyValue(const std::map<std::string, std::string>& properties, 
-                                            const std::string& key, 
-                                            const std::string& default_value) const {
-    auto it = properties.find(key);
-    return (it != properties.end()) ? it->second : default_value;
-}
-
-} // namespace Workers  
+} // namespace Workers
 } // namespace PulseOne

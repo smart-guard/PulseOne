@@ -38,7 +38,8 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-BACnetWorker::BACnetWorker(const PulseOne::DeviceInfo& device_info)
+BACnetWorker::BACnetWorker(
+    const PulseOne::DeviceInfo& device_info)
     : UdpBasedWorker(device_info)
     , threads_running_(false) {
     
@@ -390,39 +391,129 @@ void BACnetWorker::SetValueChangedCallback(ValueChangedCallback callback) {
 
 bool BACnetWorker::ParseBACnetWorkerConfig() {
     try {
-        LogMessage(LogLevel::INFO, "Parsing BACnet worker configuration...");
+        LogMessage(LogLevel::INFO, "🔧 Starting BACnet worker configuration parsing...");
         
-        // ✅ 사용하지 않는 변수 주석 처리
-        // const auto& device_info = device_info_;  // 직접 멤버 접근
+        // 🔥 기존 worker_config_ 구조 확인됨:
+        // - local_device_id, target_port, timeout_ms, retry_count
+        // - discovery_interval_seconds, auto_device_discovery
+        // - polling_interval_ms, verbose_logging
+        // - enable_cov, enable_bulk_read, max_apdu_length
         
-        // 기본값 설정 (구조체 초기화)
-        worker_config_.local_device_id = 260001;
-        worker_config_.target_port = 47808;
-        worker_config_.timeout_ms = 5000;
-        worker_config_.retry_count = 3;
-        worker_config_.discovery_interval_seconds = 300;  // 5분
-        worker_config_.auto_device_discovery = true;
-        worker_config_.polling_interval_ms = 1000;
-        worker_config_.verbose_logging = false;
+        // 🔥 핵심 수정: config와 connection_string 올바른 파싱
+        nlohmann::json protocol_config_json;
         
-        // properties에서 BACnet 특화 설정 읽기 (안전하게)
-        // TODO: device_info_.properties 파싱 로직 추가
+        // 1단계: device_info_.config에서 JSON 설정 찾기 (우선순위 1)
+        if (!device_info_.config.empty()) {
+            try {
+                protocol_config_json = nlohmann::json::parse(device_info_.config);
+                LogMessage(LogLevel::INFO, "✅ BACnet Protocol config loaded from device.config: " + device_info_.config);
+            } catch (const std::exception& e) {
+                LogMessage(LogLevel::WARN, "⚠️ Failed to parse device.config JSON: " + std::string(e.what()));
+            }
+        }
+        
+        // 2단계: connection_string이 JSON인지 확인 (우선순위 2)
+        if (protocol_config_json.empty() && !device_info_.connection_string.empty()) {
+            // JSON 형태인지 확인 ('{' 로 시작하는지)
+            if (device_info_.connection_string.front() == '{') {
+                try {
+                    protocol_config_json = nlohmann::json::parse(device_info_.connection_string);
+                    LogMessage(LogLevel::INFO, "✅ BACnet Protocol config loaded from connection_string JSON");
+                } catch (const std::exception& e) {
+                    LogMessage(LogLevel::WARN, "⚠️ Failed to parse connection_string JSON: " + std::string(e.what()));
+                }
+            } else {
+                LogMessage(LogLevel::INFO, "📝 connection_string is not JSON format, using endpoint as target IP");
+            }
+        }
+        
+        // 3단계: BACnet 전용 기본값 설정 (DB에서 설정을 못 가져온 경우만)
+        if (protocol_config_json.empty()) {
+            protocol_config_json = {
+                {"device_id", 260001},
+                {"target_port", 47808},
+                {"network", 1},
+                {"max_apdu_length", 1476},
+                {"enable_cov", false},
+                {"enable_bulk_read", true},
+                {"discovery_interval_seconds", 300}
+            };
+            LogMessage(LogLevel::INFO, "📝 Applied default BACnet protocol configuration");
+        }
+        
+        // 🔥 4단계: 실제 DB 설정값들을 worker_config_에 저장 (기존 멤버만 사용!)
+        worker_config_.local_device_id = protocol_config_json.value("device_id", 260001);
+        worker_config_.target_port = protocol_config_json.value("target_port", 47808);
+        // ❌ network_number는 존재하지 않음 - 제거
+        worker_config_.max_apdu_length = protocol_config_json.value("max_apdu_length", 1476);
+        worker_config_.enable_cov = protocol_config_json.value("enable_cov", false);
+        worker_config_.enable_bulk_read = protocol_config_json.value("enable_bulk_read", true);
+        worker_config_.discovery_interval_seconds = protocol_config_json.value("discovery_interval_seconds", 300);
+        worker_config_.auto_device_discovery = protocol_config_json.value("auto_device_discovery", true);
+        worker_config_.verbose_logging = protocol_config_json.value("verbose_logging", false);
+        
+        // 🔥 DB에서 가져온 timeout 값 적용
+        if (protocol_config_json.contains("timeout")) {
+            int db_timeout = protocol_config_json.value("timeout", device_info_.timeout_ms);
+            worker_config_.timeout_ms = db_timeout;  // 실제 사용할 타임아웃 업데이트
+            LogMessage(LogLevel::INFO, "✅ Applied timeout from DB: " + std::to_string(db_timeout) + "ms");
+        } else {
+            worker_config_.timeout_ms = device_info_.timeout_ms;
+        }
+        
+        // 5단계: BACnet 전용 통신 설정 완성
+        worker_config_.retry_count = device_info_.retry_count;
+        worker_config_.polling_interval_ms = device_info_.polling_interval_ms;
+        
+        // ❌ target_ip는 존재하지 않음 - 제거하고 다른 방식으로 처리
+        std::string target_ip;
+        if (!device_info_.endpoint.empty()) {
+            target_ip = device_info_.endpoint;
+        } else if (protocol_config_json.contains("target_ip")) {
+            target_ip = protocol_config_json.value("target_ip", "192.168.1.255");
+        } else {
+            target_ip = "192.168.1.255";  // 브로드캐스트 주소 기본값
+        }
         
         // 설정 유효성 검사
         if (!worker_config_.Validate()) {
-            LogMessage(LogLevel::ERROR, "Invalid BACnet worker configuration");
+            LogMessage(LogLevel::ERROR, "Invalid BACnet worker configuration after parsing");
             return false;
         }
         
-        LogMessage(LogLevel::INFO, 
-                  "BACnet worker configured - Device ID: " + 
-                  std::to_string(worker_config_.local_device_id) +
-                  ", Port: " + std::to_string(worker_config_.target_port));
+        // 🎉 성공 로그 - 실제 적용된 설정 표시 - 🔥 문자열 연결 수정
+        std::string config_summary = "✅ BACnet worker config parsed successfully:\n";
+        config_summary += "   🔌 Protocol settings (from ";
+        config_summary += (!device_info_.config.empty() ? "device.config" : "connection_string");
+        config_summary += "):\n";
+        config_summary += "      - local_device_id: " + std::to_string(worker_config_.local_device_id) + "\n";
+        config_summary += "      - target_ip: " + target_ip + "\n";
+        config_summary += "      - target_port: " + std::to_string(worker_config_.target_port) + "\n";
+        config_summary += "      - network: " + std::to_string(protocol_config_json.value("network", 1)) + "\n";
+        config_summary += "      - max_apdu_length: " + std::to_string(worker_config_.max_apdu_length) + "\n";
+        config_summary += "      - enable_cov: ";
+        config_summary += (worker_config_.enable_cov ? "true" : "false");
+        config_summary += "\n";
+        config_summary += "      - enable_bulk_read: ";
+        config_summary += (worker_config_.enable_bulk_read ? "true" : "false");
+        config_summary += "\n";
+        config_summary += "      - auto_discovery: ";
+        config_summary += (worker_config_.auto_device_discovery ? "true" : "false");
+        config_summary += "\n";
+        config_summary += "   ⚙️  Communication settings (from DeviceSettings):\n";
+        config_summary += "      - timeout: " + std::to_string(worker_config_.timeout_ms) + "ms\n";
+        config_summary += "      - retry_count: " + std::to_string(worker_config_.retry_count) + "\n";
+        config_summary += "      - polling_interval: " + std::to_string(worker_config_.polling_interval_ms) + "ms\n";
+        config_summary += "      - discovery_interval: " + std::to_string(worker_config_.discovery_interval_seconds) + "s\n";
+        config_summary += "      - verbose_logging: ";
+        config_summary += (worker_config_.verbose_logging ? "enabled" : "disabled");
+        
+        LogMessage(LogLevel::INFO, config_summary);
         
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception parsing BACnet config: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "ParseBACnetWorkerConfig failed: " + std::string(e.what()));
         return false;
     }
 }

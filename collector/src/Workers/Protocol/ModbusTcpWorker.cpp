@@ -501,18 +501,19 @@ bool ModbusTcpWorker::ParseModbusConfig() {
             modbus_config_.properties["response_timeout_ms"] = std::to_string(device_info_.timeout_ms);
         }
         
-        // 5단계: 통신 설정 완성
-        modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(modbus_config_.timeout_ms / 10, 1000));
+        // 5단계: 통신 설정 완성 - 🔥 타입 캐스팅 수정
+        modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(static_cast<int>(modbus_config_.timeout_ms / 10), 1000));
         modbus_config_.properties["max_retries"] = std::to_string(device_info_.retry_count);
         
         // 6단계: Worker 전용 설정
         modbus_config_.properties["polling_interval_ms"] = std::to_string(device_info_.polling_interval_ms);
         modbus_config_.properties["keep_alive"] = device_info_.is_enabled ? "enabled" : "disabled";
         
-        // 🎉 성공 로그 - 실제 적용된 설정 표시
+        // 🎉 성공 로그 - 실제 적용된 설정 표시 - 🔥 문자열 연결 수정
         std::string config_summary = "✅ Modbus config parsed successfully:\n";
-        config_summary += "   🔌 Protocol settings (from " + 
-                         (!device_info_.config.empty() ? "device.config" : "connection_string") + "):\n";
+        config_summary += "   🔌 Protocol settings (from ";
+        config_summary += (!device_info_.config.empty() ? "device.config" : "connection_string");
+        config_summary += "):\n";
         config_summary += "      - slave_id: " + modbus_config_.properties["slave_id"] + "\n";
         config_summary += "      - byte_order: " + modbus_config_.properties["byte_order"] + "\n";
         config_summary += "      - max_registers_per_group: " + modbus_config_.properties["max_registers_per_group"] + "\n";
