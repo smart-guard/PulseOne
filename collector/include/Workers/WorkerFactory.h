@@ -1,6 +1,6 @@
 /**
  * @file WorkerFactory.h
- * @brief PulseOne WorkerFactory - 완전한 DB 통합 버전 헤더
+ * @brief PulseOne WorkerFactory - 완전한 DB 통합 버전 헤더 (컴파일 에러 수정)
  * @author PulseOne Development Team
  * @date 2025-08-08
  */
@@ -115,41 +115,15 @@ public:
     // ==========================================================================
     // 데이터 헬퍼 함수들
     // ==========================================================================
+    void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point, 
+                             const PulseOne::BasicTypes::DataVariant& new_value,
+                             PulseOne::Enums::DataQuality new_quality = PulseOne::Enums::DataQuality::GOOD) const;
+    
     bool ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_point,
-        const PulseOne::BasicTypes::DataVariant& new_value) const;
-    void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point,
-        const PulseOne::BasicTypes::DataVariant& new_value,
-        PulseOne::Enums::DataQuality new_quality) const;
-
-private:
-    WorkerFactory() = default;
-    ~WorkerFactory() = default;
-
-    // ==========================================================================
-    // 내부 초기화 및 등록
-    // ==========================================================================
-    void RegisterWorkerCreators();
+                           const PulseOne::BasicTypes::DataVariant& new_value) const;
+    
     std::string ValidateWorkerConfig(const Database::Entities::DeviceEntity& device_entity) const;
-    
-    // ==========================================================================
-    // 🔥 완전한 DB 통합 변환 메서드들
-    // ==========================================================================
-    PulseOne::Structs::DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
-    PulseOne::Structs::DataPoint ConvertToDataPoint(
-        const Database::Entities::DataPointEntity& datapoint_entity,
-        const std::string& device_id_string) const;
-    
-    // ==========================================================================
-    // 🔥 JSON 파싱 및 데이터 로딩 헬퍼들
-    // ==========================================================================
-    void ParseDeviceConfigToProperties(PulseOne::Structs::DeviceInfo& device_info) const;
-    void ParseEndpoint(PulseOne::Structs::DeviceInfo& device_info) const;
-    PulseOne::BasicTypes::DataVariant ParseJSONValue(
-        const std::string& json_value, 
-        const std::string& data_type) const;
-    
-    void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const; 
-    std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
+    std::string GetProtocolConfigInfo(const std::string& protocol_type) const;
     
     // ==========================================================================
     // 설정 및 검증 헬퍼들
@@ -165,6 +139,38 @@ private:
     std::string GetQualityString(const PulseOne::Structs::DataPoint& data_point) const;
     
     bool IsInitialized() const { return initialized_.load(); }
+
+private:
+    // ==========================================================================
+    // 생성자 (싱글톤)
+    // ==========================================================================
+    WorkerFactory() = default;
+    
+    // ==========================================================================
+    // 🔧 수정: private 메서드들 - extra qualification 제거
+    // ==========================================================================
+    void RegisterWorkerCreators();
+    
+    // DB 변환 메서드들
+    PulseOne::Structs::DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
+    PulseOne::Structs::DataPoint ConvertToDataPoint(const Database::Entities::DataPointEntity& datapoint_entity,
+                                                    const std::string& device_id_string = "") const;
+    
+    // JSON 및 설정 파싱
+    void ParseDeviceConfigToProperties(PulseOne::Structs::DeviceInfo& device_info) const;
+    void ParseEndpoint(PulseOne::Structs::DeviceInfo& device_info) const;
+    PulseOne::BasicTypes::DataVariant ParseJSONValue(const std::string& json_value, const std::string& data_type) const;
+    
+    // DataPoint 및 CurrentValue 로딩
+    void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const;
+    std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
+    
+    // 🔧 수정: ApplyProtocolSpecificDefaults 메서드 선언 추가
+    void ApplyProtocolSpecificDefaults(PulseOne::Structs::DeviceInfo& device_info, 
+                                      const std::string& protocol_type) const;
+    
+    // 🔧 수정: LogSupportedProtocols 메서드 - extra qualification 제거
+    void LogSupportedProtocols() const;
 
 private:
     // ==========================================================================
@@ -195,10 +201,6 @@ private:
     mutable std::atomic<uint64_t> workers_created_{0};
     mutable std::atomic<uint64_t> creation_failures_{0};
     std::chrono::system_clock::time_point factory_start_time_;
-
-    void LogSupportedProtocols() const; 
-    std::string GetProtocolConfigInfo(const std::string& protocol_type) const;
-
 };
 
 } // namespace Workers

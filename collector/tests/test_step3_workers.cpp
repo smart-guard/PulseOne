@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/tests/test_step5_complete_db_integration_validation.cpp
-// 🎯 완전한 DB 통합 검증: DeviceSettings + CurrentValue + JSON 파싱
+// 🎯 완전한 DB 통합 검증: DeviceSettings + CurrentValue + JSON 파싱 (수정된 버전)
 // =============================================================================
 
 #include <gtest/gtest.h>
@@ -36,6 +36,9 @@
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 
+// JSON 라이브러리
+#include <nlohmann/json.hpp>
+
 class CompleteDBIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -52,11 +55,11 @@ protected:
         repo_factory_ = &PulseOne::Database::RepositoryFactory::getInstance();
         ASSERT_TRUE(repo_factory_->initialize()) << "RepositoryFactory 초기화 실패";
         
-        // 3. 🔥 모든 Repository들 가져오기 (완전한 세트)
+        // 3. 🔥 모든 Repository들 가져오기 (완전한 세트) - 🔧 메서드명 수정
         device_repo_ = repo_factory_->getDeviceRepository();
         datapoint_repo_ = repo_factory_->getDataPointRepository();
-        device_settings_repo_ = repo_factory_->getDeviceSettingRepository();  // 🔧 수정: getDeviceSettingRepository
-        current_value_repo_ = repo_factory_->getCurrentValueRepository();     // 🔥 추가
+        device_settings_repo_ = repo_factory_->getDeviceSettingsRepository();  // 🔧 수정: getDeviceSettingsRepository
+        current_value_repo_ = repo_factory_->getCurrentValueRepository();      // 🔥 추가
         
         ASSERT_TRUE(device_repo_) << "DeviceRepository 생성 실패";
         ASSERT_TRUE(datapoint_repo_) << "DataPointRepository 생성 실패";
@@ -154,7 +157,7 @@ TEST_F(CompleteDBIntegrationTest, DeviceInfo_Complete_Integration_Test) {
                     
                     // JSON 파싱 가능성 확인
                     try {
-                        auto json_obj = nlohmann::json::parse(config);
+                        nlohmann::json json_obj = nlohmann::json::parse(config);
                         std::cout << "   ✅ JSON 파싱 성공 (" << json_obj.size() << " properties)\n";
                     } catch (const std::exception& e) {
                         std::cout << "   ❌ JSON 파싱 실패: " << e.what() << "\n";
@@ -204,7 +207,7 @@ TEST_F(CompleteDBIntegrationTest, DataPoint_CurrentValue_Integration_Test) {
     
     int total_datapoints = 0;
     int datapoints_with_current_values = 0;
-    int protocol_params_parsed = 0;
+    int protocol_params_with_data = 0;
     
     for (const auto& device : devices) {
         auto datapoints = datapoint_repo_->findByDeviceId(device.getId());
@@ -224,13 +227,14 @@ TEST_F(CompleteDBIntegrationTest, DataPoint_CurrentValue_Integration_Test) {
                         const auto& cv = cv_opt.value();
                         datapoints_with_current_values++;
                         
+                        // 🔧 수정: cv.getQuality() 제거, 품질 코드만 사용
                         std::cout << "      💎 CurrentValue: " << cv.getCurrentValue() 
-                                  << " (quality: " << cv.getQuality() 
+                                  << " (quality_code: " << static_cast<int>(cv.getQualityCode())
                                   << ", reads: " << cv.getReadCount() << ")\n";
                         
                         // JSON 값 파싱 테스트
                         try {
-                            auto json_obj = nlohmann::json::parse(cv.getCurrentValue());
+                            nlohmann::json json_obj = nlohmann::json::parse(cv.getCurrentValue());
                             if (json_obj.contains("value")) {
                                 std::cout << "      ✅ JSON value 파싱 성공\n";
                             }
@@ -246,17 +250,14 @@ TEST_F(CompleteDBIntegrationTest, DataPoint_CurrentValue_Integration_Test) {
                 }
             }
             
-            // 🔥 protocol_params 검증
-            const auto& protocol_params = dp.getProtocolParams();
-            if (!protocol_params.empty()) {
-                std::cout << "      🔧 Protocol params: " << protocol_params << "\n";
+            // 🔥 protocol_params 검증 - 🔧 수정: map<string,string>으로 받기
+            const auto& protocol_params_map = dp.getProtocolParams();
+            if (!protocol_params_map.empty()) {
+                protocol_params_with_data++;
+                std::cout << "      🔧 Protocol params (" << protocol_params_map.size() << " items):\n";
                 
-                try {
-                    auto json_obj = nlohmann::json::parse(protocol_params);
-                    protocol_params_parsed++;
-                    std::cout << "      ✅ Protocol params 파싱 성공 (" << json_obj.size() << " params)\n";
-                } catch (const std::exception& e) {
-                    std::cout << "      ❌ Protocol params 파싱 실패: " << e.what() << "\n";
+                for (const auto& [key, value] : protocol_params_map) {
+                    std::cout << "         " << key << " = " << value << "\n";
                 }
             } else {
                 std::cout << "      ⚠️ Protocol params 없음\n";
@@ -267,11 +268,11 @@ TEST_F(CompleteDBIntegrationTest, DataPoint_CurrentValue_Integration_Test) {
     std::cout << "\n📈 DataPoint + CurrentValue 통합 통계:\n";
     std::cout << "   📊 총 DataPoint 수: " << total_datapoints << "개\n";
     std::cout << "   💎 CurrentValue 있는 DataPoint: " << datapoints_with_current_values << "개\n";
-    std::cout << "   🔧 Protocol params 파싱 성공: " << protocol_params_parsed << "개\n";
+    std::cout << "   🔧 Protocol params 있는 DataPoint: " << protocol_params_with_data << "개\n";
     
     if (total_datapoints > 0) {
         double cv_ratio = (double)datapoints_with_current_values / total_datapoints * 100;
-        double pp_ratio = (double)protocol_params_parsed / total_datapoints * 100;
+        double pp_ratio = (double)protocol_params_with_data / total_datapoints * 100;
         std::cout << "   📈 CurrentValue 비율: " << std::fixed << std::setprecision(1) << cv_ratio << "%\n";
         std::cout << "   📈 Protocol params 비율: " << std::fixed << std::setprecision(1) << pp_ratio << "%\n";
     }
@@ -406,7 +407,6 @@ TEST_F(CompleteDBIntegrationTest, JSON_Parsing_Validation_Test) {
     int devices_with_config = 0;
     int valid_config_json = 0;
     int datapoints_with_protocol_params = 0;
-    int valid_protocol_params_json = 0;
     int current_values_with_json = 0;
     int valid_current_value_json = 0;
     
@@ -418,12 +418,14 @@ TEST_F(CompleteDBIntegrationTest, JSON_Parsing_Validation_Test) {
             std::cout << "\n🔸 Device [" << device.getId() << "] config: " << config << "\n";
             
             try {
-                auto json_obj = nlohmann::json::parse(config);
+                nlohmann::json json_obj = nlohmann::json::parse(config);
                 valid_config_json++;
                 std::cout << "   ✅ Config JSON 파싱 성공 (" << json_obj.size() << " properties)\n";
                 
-                // Properties 출력
-                for (const auto& [key, value] : json_obj.items()) {
+                // Properties 출력 - 🔧 수정: structured binding 제거
+                for (auto it = json_obj.begin(); it != json_obj.end(); ++it) {
+                    const std::string& key = it.key();
+                    const auto& value = it.value();
                     std::cout << "      " << key << " = ";
                     if (value.is_string()) {
                         std::cout << "\"" << value.get<std::string>() << "\"";
@@ -437,20 +439,17 @@ TEST_F(CompleteDBIntegrationTest, JSON_Parsing_Validation_Test) {
             }
         }
         
-        // DataPoint protocol_params JSON 검증
+        // DataPoint protocol_params 검증 - 🔧 수정: map으로 직접 접근
         auto datapoints = datapoint_repo_->findByDeviceId(device.getId());
         for (const auto& dp : datapoints) {
-            const std::string& protocol_params = dp.getProtocolParams();
-            if (!protocol_params.empty()) {
+            const auto& protocol_params_map = dp.getProtocolParams();
+            if (!protocol_params_map.empty()) {
                 datapoints_with_protocol_params++;
-                std::cout << "   📊 DataPoint [" << dp.getId() << "] protocol_params: " << protocol_params << "\n";
+                std::cout << "   📊 DataPoint [" << dp.getId() << "] protocol_params (" 
+                          << protocol_params_map.size() << " items)\n";
                 
-                try {
-                    auto json_obj = nlohmann::json::parse(protocol_params);
-                    valid_protocol_params_json++;
-                    std::cout << "      ✅ Protocol params JSON 파싱 성공\n";
-                } catch (const std::exception& e) {
-                    std::cout << "      ❌ Protocol params JSON 파싱 실패: " << e.what() << "\n";
+                for (const auto& [key, value] : protocol_params_map) {
+                    std::cout << "      " << key << " = " << value << "\n";
                 }
             }
             
@@ -466,7 +465,7 @@ TEST_F(CompleteDBIntegrationTest, JSON_Parsing_Validation_Test) {
                             current_values_with_json++;
                             
                             try {
-                                auto json_obj = nlohmann::json::parse(current_value);
+                                nlohmann::json json_obj = nlohmann::json::parse(current_value);
                                 if (json_obj.contains("value")) {
                                     valid_current_value_json++;
                                     std::cout << "      💎 CurrentValue JSON 파싱 성공: " 
@@ -486,7 +485,7 @@ TEST_F(CompleteDBIntegrationTest, JSON_Parsing_Validation_Test) {
     
     std::cout << "\n📊 JSON 파싱 통계:\n";
     std::cout << "   🔧 Device config JSON: " << valid_config_json << "/" << devices_with_config << "\n";
-    std::cout << "   📊 Protocol params JSON: " << valid_protocol_params_json << "/" << datapoints_with_protocol_params << "\n";
+    std::cout << "   📊 Protocol params (map): " << datapoints_with_protocol_params << " DataPoints\n";
     std::cout << "   💎 CurrentValue JSON: " << valid_current_value_json << "/" << current_values_with_json << "\n";
     
     if (devices_with_config > 0) {
