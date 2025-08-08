@@ -7,10 +7,11 @@
 NPROC := $(shell nproc 2>/dev/null || echo 4)
 MAKEFLAGS += -j$(NPROC)
 
-# 🔧 라이브러리 체크 (동적 감지)
+# 🔧 라이브러리 체크 (동적 감지) - MQTT 비동기 지원 추가
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_MQTT_AS := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3as >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
 
@@ -44,7 +45,7 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Client
 
 # =============================================================================
-# 라이브러리 설정 (조건부 링킹)
+# 라이브러리 설정 (조건부 링킹) - MQTT 섹션 수정
 # =============================================================================
 
 # 기본 라이브러리
@@ -75,22 +76,41 @@ else
     CXXFLAGS += -DDISABLE_MYSQL_FEATURES
 endif
 
-# MQTT 라이브러리
+# 🔧 MQTT 라이브러리 (수정됨 - 비동기 SSL 지원 추가)
+MQTT_LIBS = 
+MQTT_STATUS = 
+
+# MQTT C 라이브러리 (동기)
 ifeq ($(HAS_MQTT_C),1)
-    MQTT_C_LIBS = -lpaho-mqtt3c
-    $(info ✅ MQTT C found)
+    MQTT_LIBS += -lpaho-mqtt3c
+    MQTT_STATUS += "MQTT-C:✅ "
 else
-    $(warning ⚠️  paho-mqtt3c not found)
-    MQTT_C_LIBS = 
+    MQTT_STATUS += "MQTT-C:❌ "
 endif
 
-ifeq ($(HAS_MQTT_CPP),1)
-    MQTT_CPP_LIBS = -lpaho-mqttpp3
-    INCLUDES += -I/usr/local/include
-    $(info ✅ MQTT C++ found)
+# MQTT C 비동기 SSL 라이브러리 (핵심!)
+ifeq ($(HAS_MQTT_AS),1)
+    MQTT_LIBS += -lpaho-mqtt3as
+    MQTT_STATUS += "MQTT-AS:✅ "
 else
-    $(warning ⚠️  paho-mqttpp3 not found)
-    MQTT_CPP_LIBS = 
+    MQTT_STATUS += "MQTT-AS:❌ "
+endif
+
+# MQTT C++ 라이브러리
+ifeq ($(HAS_MQTT_CPP),1)
+    MQTT_LIBS += -lpaho-mqttpp3
+    MQTT_STATUS += "MQTT-CPP:✅"
+    INCLUDES += -I/usr/local/include
+else
+    MQTT_STATUS += "MQTT-CPP:❌"
+endif
+
+# MQTT 상태 출력
+ifneq ($(MQTT_LIBS),)
+    $(info ✅ MQTT Libraries: $(MQTT_LIBS))
+    $(info    Status: $(MQTT_STATUS))
+else
+    $(warning ⚠️  No MQTT libraries found - MQTT features disabled)
 endif
 
 # PostgreSQL 라이브러리
@@ -132,7 +152,7 @@ ifeq ($(HAS_NLOHMANN_JSON),1)
 endif
 
 # 전체 라이브러리 설정
-OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
+OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
 
 # 색상 정의
@@ -176,9 +196,12 @@ ifneq ($(MODBUS_LIBS),)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
 endif
 
-# MQTT 드라이버
-ifeq ($(HAS_MQTT_CPP),1)
+# MQTT 드라이버 (수정됨 - 더 유연한 조건)
+ifneq ($(MQTT_LIBS),)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
+    $(info ✅ Including MQTT driver sources)
+else
+    $(warning ⚠️  MQTT driver sources excluded - no MQTT libraries)
 endif
 
 # BACnet 드라이버
@@ -237,7 +260,7 @@ $(BIN_DIR):
 
 directories: $(BUILD_DIR) $(BIN_DIR)
 
-# 의존성 확인
+# 의존성 확인 (MQTT 정보 개선)
 check-deps:
 	@echo -e "$(BLUE)🔍 라이브러리 의존성 체크$(NC)"
 	@echo -e "$(YELLOW)========================================$(NC)"
@@ -246,15 +269,36 @@ check-deps:
 	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ $(MODBUS_LIBS),❌ not found)"
 	@echo "  MySQL: $(if $(MYSQL_LIBS),✅ found,❌ not found)"
 	@echo "  PostgreSQL: $(if $(PGSQL_LIBS),✅ $(PGSQL_LIBS),❌ not found)"
-	@echo "  MQTT C: $(if $(MQTT_C_LIBS),✅ $(MQTT_C_LIBS),❌ not found)"
-	@echo "  MQTT C++: $(if $(MQTT_CPP_LIBS),✅ $(MQTT_CPP_LIBS),❌ not found)"
+	@echo "  MQTT: $(if $(MQTT_LIBS),✅ $(MQTT_LIBS),❌ not found)"
 	@echo "  BACnet: $(if $(BACNET_LIBS),✅ $(BACNET_LIBS),❌ not found)"
 	@echo "  Redis: $(if $(REDIS_LIBS),✅ $(REDIS_LIBS),❌ not found)"
+	@echo ""
+	@echo -e "$(BLUE)🔧 MQTT 상세 체크:$(NC)"
+	@echo "  $(MQTT_STATUS)"
 	@echo ""
 	@echo -e "$(BLUE)🔧 컴파일 설정:$(NC)"
 	@echo "  LIBS: $(LIBS)"
 	@echo "  Total Sources: $(words $(ALL_LIB_SOURCES))"
 	@echo "  CXXFLAGS: $(CXXFLAGS)"
+
+# 🔧 MQTT 전용 체크 타겟 추가
+check-mqtt:
+	@echo -e "$(BLUE)🔍 MQTT 라이브러리 상세 체크$(NC)"
+	@echo -e "$(YELLOW)================================$(NC)"
+	@echo ""
+	@echo -e "$(BLUE)설치된 MQTT 라이브러리:$(NC)"
+	@ls -la /usr/local/lib/libpaho-mqtt* 2>/dev/null || echo "  ❌ No MQTT libraries in /usr/local/lib"
+	@echo ""
+	@echo -e "$(BLUE)시스템 경로의 MQTT 라이브러리:$(NC)"
+	@ldconfig -p | grep paho || echo "  ❌ No paho libraries in system path"
+	@echo ""
+	@echo -e "$(BLUE)링크 테스트:$(NC)"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "  ✅ mqtt3c: OK" || echo "  ❌ mqtt3c: Failed"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3as >/dev/null 2>&1 && echo "  ✅ mqtt3as: OK" || echo "  ❌ mqtt3as: Failed"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "  ✅ mqttpp3: OK" || echo "  ❌ mqttpp3: Failed"
+	@echo ""
+	@echo -e "$(BLUE)조합 테스트:$(NC)"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - $(MQTT_LIBS) >/dev/null 2>&1 && echo "  ✅ All MQTT libs combined: OK" || echo "  ❌ Combined test: Failed"
 
 # 소스 파일 확인
 check-sources:
@@ -384,7 +428,7 @@ release: clean all
 # 테스트 빌드 (라이브러리 없이)
 test-build:
 	@echo -e "$(BLUE)🧪 Testing build without optional libraries...$(NC)"
-	$(MAKE) MODBUS_LIBS= MQTT_CPP_LIBS= BACNET_LIBS= REDIS_LIBS= all
+	$(MAKE) MODBUS_LIBS= MQTT_LIBS= BACNET_LIBS= REDIS_LIBS= all
 
 # 진단
 diagnose:
@@ -396,6 +440,7 @@ diagnose:
 	@echo ""
 	@echo -e "$(BLUE)직접 링킹 테스트:$(NC)"
 	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "  ✅ MQTT C 링크 성공" || echo "  ❌ MQTT C 링크 실패"
+	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3as >/dev/null 2>&1 && echo "  ✅ MQTT AS 링크 성공" || echo "  ❌ MQTT AS 링크 실패"
 	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "  ✅ MQTT C++ 링크 성공" || echo "  ❌ MQTT C++ 링크 실패"
 	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1 && echo "  ✅ Modbus 링크 성공" || echo "  ❌ Modbus 링크 실패"
 	@echo "int main(){return 0;}" | $(CXX) -x c++ - -lhiredis >/dev/null 2>&1 && echo "  ✅ Redis 링크 성공" || echo "  ❌ Redis 링크 실패"
@@ -418,16 +463,18 @@ help:
 	@echo -e "$(GREEN)🔍 진단 도구:$(NC)"
 	@echo "  make check-deps       - 라이브러리 의존성 확인"
 	@echo "  make check-sources    - 소스 파일 존재 확인"
+	@echo "  make check-mqtt       - MQTT 라이브러리 상세 체크"
 	@echo "  make diagnose         - 전체 시스템 진단"
 	@echo ""
 	@echo -e "$(GREEN)🎯 일반적인 사용법:$(NC)"
-	@echo "  make check-deps       # 먼저 라이브러리 확인"
+	@echo "  make check-mqtt       # MQTT 라이브러리 확인"
+	@echo "  make check-deps       # 모든 라이브러리 확인"
 	@echo "  make clean && make    # 클린 빌드"
 	@echo "  make debug            # 개발 시 디버그 빌드"
 	@echo "  make run              # 빌드 후 바로 실행"
 
 # PHONY 타겟들
-.PHONY: all clean run debug release check-deps check-sources test-build diagnose directories help
+.PHONY: all clean run debug release check-deps check-sources check-mqtt test-build diagnose directories help
 
 # 자동 종속성 생성 (고급 기능)
 -include $(ALL_OBJECTS:.o=.d)

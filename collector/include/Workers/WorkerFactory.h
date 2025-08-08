@@ -1,8 +1,8 @@
 /**
  * @file WorkerFactory.h
- * @brief PulseOne WorkerFactory - 컴파일 에러 완전 해결
+ * @brief PulseOne WorkerFactory - 완전한 DB 통합 버전 헤더
  * @author PulseOne Development Team
- * @date 2025-07-30
+ * @date 2025-08-08
  */
 
 #ifndef WORKER_FACTORY_H
@@ -18,11 +18,12 @@
 #include <chrono>
 #include <future>
 
-// ✅ 새로 추가: DataQuality 타입 사용을 위해 Enums.h include
+// ✅ 필수 헤더들
 #include "Common/Enums.h"
 #include "Common/BasicTypes.h"
 #include "Utils/LogManager.h"
-// 🔧 중요: 전역 네임스페이스에서 전방선언 (PulseOne:: 제거)
+
+// 🔧 전역 네임스페이스 전방선언
 class LogManager;
 class ConfigManager;
 class RedisClient;
@@ -30,7 +31,7 @@ class InfluxClient;
 
 namespace PulseOne {
 
-// ✅ PulseOne 네임스페이스 안의 전방선언들
+// ✅ PulseOne 네임스페이스 전방선언들
 namespace Structs {
     struct DeviceInfo;
     struct DataPoint;
@@ -54,7 +55,7 @@ namespace Workers {
 
 class BaseDeviceWorker;
 
-// ✅ WorkerCreator 타입 정의 - 전역 클래스 사용
+// ✅ WorkerCreator 타입 정의
 using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(
     const PulseOne::Structs::DeviceInfo& device_info)>;
 
@@ -71,35 +72,49 @@ struct FactoryStats {
 
 class WorkerFactory {
 public:
-    // 🔧 수정: 메서드명 통일 - getInstance (소문자 g)
+    // ==========================================================================
+    // 싱글톤 및 초기화
+    // ==========================================================================
     static WorkerFactory& getInstance();
     
     WorkerFactory(const WorkerFactory&) = delete;
     WorkerFactory& operator=(const WorkerFactory&) = delete;
 
-    // 🔧 수정: Initialize() 메서드 정리
-    bool Initialize();  // 기본 버전 - 내부에서 싱글톤들 가져오기
-    bool Initialize(::LogManager* logger, ::ConfigManager* config_manager);  // 직접 주입 버전
+    bool Initialize();
+    bool Initialize(::LogManager* logger, ::ConfigManager* config_manager);
     
+    // ==========================================================================
+    // 의존성 주입
+    // ==========================================================================
     void SetRepositoryFactory(std::shared_ptr<Database::RepositoryFactory> repo_factory);
     void SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo);
     void SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo);
     void SetCurrentValueRepository(std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo);
-    void SetDatabaseClients(std::shared_ptr<RedisClient> redis_client, 
-                       std::shared_ptr<InfluxClient> influx_client);
     void SetDeviceSettingsRepository(std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo);
+    void SetDatabaseClients(std::shared_ptr<RedisClient> redis_client, 
+                           std::shared_ptr<InfluxClient> influx_client);
 
+    // ==========================================================================
+    // Worker 생성
+    // ==========================================================================
     std::unique_ptr<BaseDeviceWorker> CreateWorker(const Database::Entities::DeviceEntity& device_entity);
     std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
     std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers();
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers(int tenant_id);
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateWorkersByProtocol(const std::string& protocol_type, int tenant_id = 0);
+    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers(int max_workers);
+    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateWorkersByProtocol(const std::string& protocol_type, int max_workers = 0);
 
+    // ==========================================================================
+    // 팩토리 정보
+    // ==========================================================================
     std::vector<std::string> GetSupportedProtocols() const;
     bool IsProtocolSupported(const std::string& protocol_type) const;
     FactoryStats GetFactoryStats() const;
     std::string GetFactoryStatsString() const;
     void RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator);
+    
+    // ==========================================================================
+    // 데이터 헬퍼 함수들
+    // ==========================================================================
     bool ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_point,
         const PulseOne::BasicTypes::DataVariant& new_value) const;
     void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point,
@@ -110,53 +125,76 @@ private:
     WorkerFactory() = default;
     ~WorkerFactory() = default;
 
+    // ==========================================================================
+    // 내부 초기화 및 등록
+    // ==========================================================================
     void RegisterWorkerCreators();
     std::string ValidateWorkerConfig(const Database::Entities::DeviceEntity& device_entity) const;
     
-    // ✅ 전방 선언된 타입 사용
+    // ==========================================================================
+    // 🔥 완전한 DB 통합 변환 메서드들
+    // ==========================================================================
     PulseOne::Structs::DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
-    // 🔥 새로 추가: DataPoint 변환 메서드
     PulseOne::Structs::DataPoint ConvertToDataPoint(
         const Database::Entities::DataPointEntity& datapoint_entity,
         const std::string& device_id_string) const;
     
-    // 🔥 새로 추가: 현재값 로드 헬퍼
+    // ==========================================================================
+    // 🔥 JSON 파싱 및 데이터 로딩 헬퍼들
+    // ==========================================================================
+    void ParseDeviceConfigToProperties(PulseOne::Structs::DeviceInfo& device_info) const;
+    void ParseEndpoint(PulseOne::Structs::DeviceInfo& device_info) const;
+    PulseOne::BasicTypes::DataVariant ParseJSONValue(
+        const std::string& json_value, 
+        const std::string& data_type) const;
+    
     void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const; 
     std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
     
-    // ✅ 새로 추가: 데이터 품질 헬퍼 함수
-    std::string DataQualityToString(PulseOne::Enums::DataQuality quality) const;
+    // ==========================================================================
+    // 설정 및 검증 헬퍼들
+    // ==========================================================================
     void ApplyDefaultSettings(PulseOne::Structs::DeviceInfo& device_info, 
-                                        const std::string& protocol_type) const;
-
+                             const std::string& protocol_type) const;
     void ValidateAndCorrectSettings(PulseOne::Structs::DeviceInfo& device_info) const;
-    void ApplyProtocolSpecificDefaults(PulseOne::Structs::DeviceInfo& device_info, 
-                                      const std::string& protocol_type) const;
+    
+    // ==========================================================================
+    // 품질 및 통계 헬퍼들
+    // ==========================================================================
+    std::string GetCurrentValueAsString(const PulseOne::Structs::DataPoint& data_point) const;
+    std::string GetQualityString(const PulseOne::Structs::DataPoint& data_point) const;
+    
+    bool IsInitialized() const { return initialized_.load(); }
+
+private:
+    // ==========================================================================
+    // 멤버 변수들
+    // ==========================================================================
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;
     
-    // 🔧 수정: 전역 클래스 포인터들 (PulseOne:: 제거)
+    // 🔧 전역 클래스 포인터들
     ::LogManager* logger_ = nullptr;
     ::ConfigManager* config_manager_ = nullptr;
     
+    // Repository들
     std::shared_ptr<Database::RepositoryFactory> repo_factory_;
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo_;
     std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo_;
-    // ✅ 전역 클래스 shared_ptr
+    
+    // 데이터베이스 클라이언트들
     std::shared_ptr<::RedisClient> redis_client_;
     std::shared_ptr<::InfluxClient> influx_client_;
     
+    // Worker Creator 맵
     std::map<std::string, WorkerCreator> worker_creators_;
     
+    // 통계
     mutable std::atomic<uint64_t> workers_created_{0};
     mutable std::atomic<uint64_t> creation_failures_{0};
     std::chrono::system_clock::time_point factory_start_time_;
-
-    std::string GetCurrentValueAsString(const PulseOne::Structs::DataPoint& data_point) const;
-    std::string GetQualityString(const PulseOne::Structs::DataPoint& data_point) const;
-    bool IsInitialized() const { return initialized_.load(); }
 };
 
 } // namespace Workers
