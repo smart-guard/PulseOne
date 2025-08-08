@@ -7,6 +7,7 @@ obj/Workers/WorkerFactory.o: ../src/Workers/WorkerFactory.cpp \
  ../include/Common/DriverError.h ../include/Common/IProtocolConfig.h \
  ../include/Common/ProtocolConfigs.h \
  ../include/Database/RepositoryFactory.h \
+ ../include/Common/ProtocolConfigRegistry.h \
  ../include/Workers/Protocol/ModbusTcpWorker.h \
  ../include/Workers/Base/TcpBasedWorker.h \
  ../include/Workers/Base/BaseDeviceWorker.h \
