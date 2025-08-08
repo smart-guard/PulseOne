@@ -1,15 +1,15 @@
 /**
  * @file BACnetWorker.h
- * @brief BACnet 프로토콜 워커 클래스 - 🔥 실제 프로젝트 구조 완전 준수
+ * @brief BACnet 프로토콜 워커 클래스 - 🔥 모든 에러 수정 완료본
  * @author PulseOne Development Team
  * @date 2025-08-08
- * @version 4.0.0
+ * @version 5.0.0
  * 
- * 🔥 실제 프로젝트 지침 100% 준수:
- * 1. DataPoint.is_enabled (not enabled)
- * 2. DataPoint.protocol_params (not properties)
- * 3. DeviceInfo.id (string type)
- * 4. 모든 필드명 실제 구조와 정확히 일치
+ * 🔥 수정사항:
+ * 1. 콜백 타입 불일치 완전 해결
+ * 2. 누락된 메서드 선언 추가
+ * 3. 스레드 함수명 통일
+ * 4. 필드명 실제 구조와 정확히 일치
  */
 
 #ifndef BACNET_WORKER_H
@@ -245,9 +245,9 @@ public:
     void StopObjectDiscovery();
     
     /**
-     * @brief 콜백 설정 (자신의 디바이스용)
+     * @brief 콜백 설정 (자신의 디바이스용) - 🔥 올바른 타입 사용
      */
-    void SetObjectDiscoveredCallback(DataPointDiscoveredCallback callback);
+    void SetObjectDiscoveredCallback(ObjectDiscoveredCallback callback);
     void SetValueChangedCallback(ValueChangedCallback callback);
     
     Drivers::BACnetDriver* GetBACnetDriver() const {
@@ -264,17 +264,20 @@ private:
     bool InitializeBACnetDriver();
     void ShutdownBACnetDriver();
     
+    // 🔥 수정: 스레드 함수명 통일
     void ObjectDiscoveryThreadFunction();  // 객체 발견 스레드 (자신의 디바이스)
     void PollingThreadFunction();
     
     bool PerformObjectDiscovery();         // 자신의 객체들 발견
     bool PerformPolling();
     
+    // 🔥 추가: 누락된 메서드 선언들
     bool ProcessDataPoints(const std::vector<DataPoint>& points);
+    bool ProcessBACnetDataPoints(const std::vector<DataPoint>& bacnet_points);
+    bool DiscoverMyObjects(std::vector<DataPoint>& data_points);  // 자신의 객체들 발견
     
     void UpdateWorkerStats(const std::string& operation, bool success);
     std::string CreateObjectId(const DataPoint& point) const;
-    bool DiscoverMyObjects(std::vector<DataPoint>& data_points);  // 자신의 객체들 발견
     
     // =============================================================================
     // 멤버 변수들 - 표준 구조체만 사용

@@ -82,8 +82,9 @@ struct UdpStatistics {
  * @brief UDP 수신 패킷 정보
  */
 struct UdpPacket {
-    std::vector<uint8_t> data;                ///< 패킷 데이터
     struct sockaddr_in sender_addr;           ///< 송신자 주소
+    uint16_t sender_port;                     
+    std::vector<uint8_t> data;                ///< 패킷 데이터
     std::chrono::system_clock::time_point timestamp; ///< 수신 시간
     size_t data_length;                       ///< 실제 데이터 길이
 };
