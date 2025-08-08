@@ -278,7 +278,7 @@ private:
     
     void UpdateWorkerStats(const std::string& operation, bool success);
     std::string CreateObjectId(const DataPoint& point) const;
-    
+    void SetupBACnetDriverCallbacks();
     // =============================================================================
     // 멤버 변수들 - 표준 구조체만 사용
     // =============================================================================

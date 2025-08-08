@@ -339,17 +339,46 @@ bool BACnetWorker::ParseBACnetConfigFromDeviceInfo() {
  * @brief BACnet 드라이버용 설정 생성 (DeviceInfo 기반)
  */
 PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfigFromDeviceInfo() {
-    PulseOne::Structs::DriverConfig config;
+    LogMessage(LogLevel::INFO, "🔧 Creating BACnet DriverConfig from DeviceInfo...");
     
-    // ✅ DeviceInfo에서 직접 설정 가져오기 - 실제 필드명 사용
-    config.device_id = device_info_.id;  // ✅ string type
-    config.protocol = PulseOne::Enums::ProtocolType::BACNET_IP;  // ✅ protocol (not protocol_type)
+    // =======================================================================
+    // 🔥 핵심 수정: device_info_.driver_config 직접 사용 (ModbusTcpWorker와 동일)
+    // =======================================================================
+    
+    // WorkerFactory에서 완전 매핑된 DriverConfig 사용
+    PulseOne::Structs::DriverConfig config = device_info_.driver_config;
+    
+    // =======================================================================
+    // 기본 필드 업데이트 (BACnet 특화)
+    // =======================================================================
+    config.device_id = device_info_.id;
+    config.protocol = PulseOne::Enums::ProtocolType::BACNET_IP;
     config.endpoint = device_info_.endpoint;
-    config.timeout_ms = device_info_.timeout_ms;
-    config.retry_count = device_info_.retry_count;
-    config.polling_interval_ms = device_info_.polling_interval_ms;
     
-    // ✅ BACnet 특화 설정은 properties에서
+    // BACnet 설정이 더 정확한 경우에만 업데이트
+    if (device_info_.timeout_ms > 0) {
+        config.timeout_ms = device_info_.timeout_ms;
+    }
+    if (device_info_.retry_count > 0) {
+        config.retry_count = static_cast<uint32_t>(device_info_.retry_count);
+    }
+    if (device_info_.polling_interval_ms > 0) {
+        config.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
+    }
+    
+    // 🔥 수정: auto_reconnect는 DriverConfig에서 기본값 사용 또는 properties에서 설정
+    if (device_info_.properties.count("auto_reconnect")) {
+        config.auto_reconnect = (device_info_.properties.at("auto_reconnect") == "true");
+    } else {
+        config.auto_reconnect = true; // 기본값: 자동 재연결 활성화
+    }
+    
+    // =======================================================================
+    // 🔥 BACnet 프로토콜 특화 설정들 추가 (기존 properties 보존)
+    // =======================================================================
+    
+    // 기존 properties가 이미 WorkerFactory에서 설정되었으므로 유지
+    // BACnet 특화 설정만 추가
     const auto& props = device_info_.properties;
     
     // BACnet 로컬 디바이스 ID
@@ -378,38 +407,141 @@ PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfigFromDeviceInfo()
     config.properties["enable_cov"] = (cov_it != props.end()) ? 
                                      cov_it->second : "true";
     
+    // 추가 BACnet 설정들
+    auto max_apdu_it = props.find("bacnet_max_apdu_length");
+    config.properties["max_apdu_length"] = (max_apdu_it != props.end()) ? 
+                                          max_apdu_it->second : "1476";
+    
+    auto segmentation_it = props.find("bacnet_segmentation_supported");
+    config.properties["segmentation_supported"] = (segmentation_it != props.end()) ? 
+                                                  segmentation_it->second : "true";
+    
+    // BACnet 디스커버리 간격
+    auto discovery_interval_it = props.find("bacnet_discovery_interval_seconds");
+    config.properties["discovery_interval_seconds"] = (discovery_interval_it != props.end()) ? 
+                                                      discovery_interval_it->second : "300";
+    
+    // =======================================================================
+    // 🔥 중요: properties 상태 로깅 (디버깅용) - ModbusTcpWorker와 동일
+    // =======================================================================
+    LogMessage(LogLevel::INFO, "📊 Final DriverConfig state:");
+    LogMessage(LogLevel::INFO, "   - properties count: " + std::to_string(config.properties.size()));
+    LogMessage(LogLevel::INFO, "   - timeout_ms: " + std::to_string(config.timeout_ms));
+    LogMessage(LogLevel::INFO, "   - retry_count: " + std::to_string(config.retry_count));
+    LogMessage(LogLevel::INFO, "   - auto_reconnect: " + std::string(config.auto_reconnect ? "true" : "false"));
+    
+    // DeviceSettings 핵심 필드들 확인 (ModbusTcpWorker와 동일)
+    std::vector<std::string> key_fields = {
+        "retry_interval_ms", "backoff_time_ms", "keep_alive_enabled",
+        "local_device_id", "port", "auto_discovery", "enable_cov"  // BACnet 특화 필드 추가
+    };
+    
+    LogMessage(LogLevel::INFO, "📋 Key properties status:");
+    for (const auto& field : key_fields) {
+        if (config.properties.count(field)) {
+            LogMessage(LogLevel::INFO, "   ✅ " + field + ": " + config.properties.at(field));
+        } else {
+            LogMessage(LogLevel::WARN, "   ❌ " + field + ": NOT FOUND");
+        }
+    }
+    
+    // =======================================================================
+    // 최종 결과 로깅 (ModbusTcpWorker와 동일한 상세도)
+    // =======================================================================
+    std::string config_summary = "✅ BACnet DriverConfig created successfully:\n";
+    config_summary += "   📡 Connection details:\n";
+    config_summary += "      - endpoint: " + config.endpoint + "\n";
+    config_summary += "      - local_device_id: " + config.properties.at("local_device_id") + "\n";
+    config_summary += "      - port: " + config.properties.at("port") + "\n";
+    config_summary += "      - timeout: " + std::to_string(config.timeout_ms) + "ms\n";
+    config_summary += "   ⚙️  BACnet settings:\n";
+    config_summary += "      - auto_discovery: " + config.properties.at("auto_discovery") + "\n";
+    config_summary += "      - enable_cov: " + config.properties.at("enable_cov") + "\n";
+    config_summary += "      - max_apdu_length: " + config.properties.at("max_apdu_length") + "\n";
+    config_summary += "      - segmentation_supported: " + config.properties.at("segmentation_supported") + "\n";
+    config_summary += "   🔧 Advanced settings:\n";
+    config_summary += "      - max_retries: " + std::to_string(config.retry_count) + "\n";
+    config_summary += "      - polling_interval: " + std::to_string(config.polling_interval_ms) + "ms\n";
+    config_summary += "      - discovery_interval: " + config.properties.at("discovery_interval_seconds") + "s\n";
+    config_summary += "   📊 Total properties: " + std::to_string(config.properties.size());
+    
+    LogMessage(LogLevel::INFO, config_summary);
+    
     return config;
 }
 
 bool BACnetWorker::InitializeBACnetDriver() {
     try {
-        LogMessage(LogLevel::INFO, "Initializing BACnet driver...");
+        LogMessage(LogLevel::INFO, "🔧 Initializing BACnet driver...");
         
         if (!bacnet_driver_) {
-            LogMessage(LogLevel::ERROR, "BACnet driver is null");
+            LogMessage(LogLevel::ERROR, "❌ BACnet driver is null");
             return false;
         }
         
-        // 드라이버 설정 생성 (DeviceInfo 기반)
+        LogMessage(LogLevel::DEBUG_LEVEL, "✅ BACnet driver instance ready");
+        
+        // 🔥 개선된 드라이버 설정 생성 (완전한 DeviceInfo 기반)
         auto driver_config = CreateDriverConfigFromDeviceInfo();
+        
+        // =======================================================================
+        // BACnet 드라이버 초기화 (ModbusTcpWorker와 동일한 로깅)
+        // =======================================================================
+        
+        std::string config_msg = "📋 DriverConfig prepared:\n";
+        config_msg += "   - device_id: " + driver_config.device_id + "\n";
+        config_msg += "   - endpoint: " + driver_config.endpoint + "\n";
+        config_msg += "   - protocol: BACNET_IP\n";
+        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms\n";
+        config_msg += "   - properties: " + std::to_string(driver_config.properties.size()) + " items";
+        
+        LogMessage(LogLevel::DEBUG_LEVEL, config_msg);
         
         // 드라이버 초기화
         if (!bacnet_driver_->Initialize(driver_config)) {
-            LogMessage(LogLevel::ERROR, "Failed to initialize BACnet driver");
+            const auto& error = bacnet_driver_->GetLastError();
+            LogMessage(LogLevel::ERROR, "❌ BACnet driver initialization failed: " + error.message + 
+                      " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
             return false;
         }
+        
+        LogMessage(LogLevel::DEBUG_LEVEL, "✅ BACnet driver initialization successful");
         
         // 드라이버 연결
         if (!bacnet_driver_->Connect()) {
-            LogMessage(LogLevel::ERROR, "Failed to connect BACnet driver");
+            const auto& error = bacnet_driver_->GetLastError();
+            LogMessage(LogLevel::ERROR, "❌ Failed to connect BACnet driver: " + error.message);
             return false;
         }
         
-        LogMessage(LogLevel::INFO, "BACnet driver initialized successfully");
+        LogMessage(LogLevel::DEBUG_LEVEL, "✅ BACnet driver connection successful");
+        
+        // 드라이버 콜백 설정 (필요한 경우)
+        SetupBACnetDriverCallbacks();
+        
+        // 최종 결과 로깅 (ModbusTcpWorker와 동일한 상세도)
+        std::string final_msg = "✅ BACnet driver initialized successfully:\n";
+        final_msg += "   📡 Connection details:\n";
+        final_msg += "      - endpoint: " + device_info_.endpoint + "\n";
+        final_msg += "      - local_device_id: " + driver_config.properties.at("local_device_id") + "\n";
+        final_msg += "      - port: " + driver_config.properties.at("port") + "\n";
+        final_msg += "      - timeout: " + std::to_string(driver_config.timeout_ms) + "ms\n";
+        final_msg += "   ⚙️  BACnet settings:\n";
+        final_msg += "      - auto_discovery: " + driver_config.properties.at("auto_discovery") + "\n";
+        final_msg += "      - enable_cov: " + driver_config.properties.at("enable_cov") + "\n";
+        final_msg += "      - max_apdu_length: " + driver_config.properties.at("max_apdu_length") + "\n";
+        final_msg += "   🔧 Advanced settings:\n";
+        final_msg += "      - max_retries: " + std::to_string(driver_config.retry_count) + "\n";
+        final_msg += "      - polling_interval: " + std::to_string(driver_config.polling_interval_ms) + "ms\n";
+        final_msg += "      - discovery_interval: " + driver_config.properties.at("discovery_interval_seconds") + "s\n";
+        final_msg += "   📊 Total properties: " + std::to_string(driver_config.properties.size());
+        
+        LogMessage(LogLevel::INFO, final_msg);
+        
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception initializing BACnet driver: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "❌ Exception initializing BACnet driver: " + std::string(e.what()));
         return false;
     }
 }
@@ -739,6 +871,32 @@ bool BACnetWorker::DiscoverMyObjects(std::vector<DataPoint>& data_points) {
                   "Exception in DiscoverMyObjects: " + std::string(e.what()));
         return false;
     }
+}
+
+void BACnetWorker::SetupBACnetDriverCallbacks() {
+    if (!bacnet_driver_) {
+        return;
+    }
+    
+    LogMessage(LogLevel::DEBUG_LEVEL, "🔗 Setting up BACnet driver callbacks...");
+    
+    // 예시: 연결 상태 변경 콜백
+    // bacnet_driver_->SetConnectionStatusCallback([this](bool connected) {
+    //     if (connected) {
+    //         LogMessage(LogLevel::INFO, "📡 BACnet connection established");
+    //         OnProtocolConnected();
+    //     } else {
+    //         LogMessage(LogLevel::WARN, "📡 BACnet connection lost");
+    //         OnProtocolDisconnected();
+    //     }
+    // });
+    
+    // 예시: COV 알림 콜백
+    // bacnet_driver_->SetCovNotificationCallback([this](const BACnetCovNotification& notification) {
+    //     ProcessCovNotification(notification);
+    // });
+    
+    LogMessage(LogLevel::DEBUG_LEVEL, "✅ BACnet driver callbacks configured");
 }
 
 } // namespace Workers

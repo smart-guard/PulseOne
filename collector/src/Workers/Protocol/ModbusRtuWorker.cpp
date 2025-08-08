@@ -480,11 +480,16 @@ bool ModbusRtuWorker::ParseModbusConfig() {
     }
 }
 
+/**
+ * @brief ModbusRtuWorker.cpp - InitializeModbusDriver() 완전 수정
+ * @details ModbusTcpWorker와 동일한 수준의 완전한 설정 적용
+ */
+
 bool ModbusRtuWorker::InitializeModbusDriver() {
     auto& logger = LogManager::getInstance();
     
     try {
-        logger.Info("Initializing Modbus RTU Driver...");
+        logger.Info("🔧 Initializing Modbus RTU Driver...");
         
         // 🔥 실제 ModbusDriver 인스턴스 생성
         modbus_driver_ = std::make_unique<PulseOne::Drivers::ModbusDriver>();
@@ -494,22 +499,138 @@ bool ModbusRtuWorker::InitializeModbusDriver() {
             return false;
         }
         
-        // DriverConfig 설정
-        PulseOne::Structs::DriverConfig driver_config = modbus_config_;
+        logger.Debug("✅ ModbusDriver instance created");
+        
+        // =======================================================================
+        // 🔥 핵심 수정: device_info_.driver_config 직접 사용 (ModbusTcpWorker와 동일)
+        // =======================================================================
+        
+        // WorkerFactory에서 완전 매핑된 DriverConfig 사용
+        PulseOne::Structs::DriverConfig driver_config = device_info_.driver_config;
+        
+        // =======================================================================
+        // 기본 필드 업데이트 (RTU 특화)
+        // =======================================================================
+        driver_config.device_id = device_info_.name;
+        driver_config.endpoint = device_info_.endpoint;
+        driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_RTU;
+        driver_config.timeout_ms = modbus_config_.timeout_ms;
+        
+        // 🔥 수정: DeviceInfo 필드들 안전하게 접근 (ModbusTcpWorker와 동일)
+        if (device_info_.retry_count > 0) {
+            driver_config.retry_count = static_cast<uint32_t>(device_info_.retry_count);
+        } else {
+            driver_config.retry_count = 3; // 기본값
+        }
+        
+        if (device_info_.polling_interval_ms > 0) {
+            driver_config.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
+        } else {
+            driver_config.polling_interval_ms = 1000; // 기본값
+        }
+        
+        // 🔥 수정: auto_reconnect는 DriverConfig에서 기본값 사용 또는 properties에서 설정
+        if (device_info_.properties.count("auto_reconnect")) {
+            driver_config.auto_reconnect = (device_info_.properties.at("auto_reconnect") == "true");
+        } else {
+            driver_config.auto_reconnect = true; // 기본값: 자동 재연결 활성화
+        }
+        
+        // =======================================================================
+        // 🔥 Modbus RTU 프로토콜 특화 설정들 추가 (ModbusTcpWorker 패턴 적용)
+        // =======================================================================
+        
+        // 기존 properties가 이미 WorkerFactory에서 설정되었으므로 유지
+        // Modbus RTU 특화 설정만 추가
         driver_config.properties["protocol_type"] = "MODBUS_RTU";
         driver_config.properties["serial_port"] = device_info_.endpoint;
+        
+        // Modbus 공통 설정들 (ModbusTcpWorker와 동일)
+        driver_config.properties["slave_id"] = GetPropertyValue(modbus_config_.properties, "slave_id", "1");
+        driver_config.properties["byte_order"] = GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian");
+        driver_config.properties["max_retries"] = GetPropertyValue(modbus_config_.properties, "max_retries", "3");
+        driver_config.properties["response_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000");
+        driver_config.properties["byte_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100");
+        driver_config.properties["max_registers_per_group"] = GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
+        
+        // RTU 특화 시리얼 설정들
+        driver_config.properties["baud_rate"] = GetPropertyValue(modbus_config_.properties, "baud_rate", "9600");
+        driver_config.properties["parity"] = GetPropertyValue(modbus_config_.properties, "parity", "N");
+        driver_config.properties["data_bits"] = GetPropertyValue(modbus_config_.properties, "data_bits", "8");
+        driver_config.properties["stop_bits"] = GetPropertyValue(modbus_config_.properties, "stop_bits", "1");
+        driver_config.properties["frame_delay_ms"] = GetPropertyValue(modbus_config_.properties, "frame_delay_ms", "50");
+        
+        // =======================================================================
+        // 🔥 중요: properties 상태 로깅 (디버깅용) - ModbusTcpWorker와 동일
+        // =======================================================================
+        logger.Info("📊 Final DriverConfig state:");
+        logger.Info("   - properties count: " + std::to_string(driver_config.properties.size()));
+        logger.Info("   - timeout_ms: " + std::to_string(driver_config.timeout_ms));
+        logger.Info("   - retry_count: " + std::to_string(driver_config.retry_count));
+        logger.Info("   - auto_reconnect: " + std::string(driver_config.auto_reconnect ? "true" : "false"));
+        
+        // DeviceSettings 핵심 필드들 확인 (ModbusTcpWorker와 동일)
+        std::vector<std::string> key_fields = {
+            "retry_interval_ms", "backoff_time_ms", "keep_alive_enabled",
+            "slave_id", "byte_order", "baud_rate", "parity"  // RTU 특화 필드 추가
+        };
+        
+        logger.Info("📋 Key properties status:");
+        for (const auto& field : key_fields) {
+            if (driver_config.properties.count(field)) {
+                logger.Info("   ✅ " + field + ": " + driver_config.properties.at(field));
+            } else {
+                logger.Warn("   ❌ " + field + ": NOT FOUND");
+            }
+        }
+        
+        // =======================================================================
+        // ModbusDriver 초기화 (ModbusTcpWorker와 동일한 로깅)
+        // =======================================================================
+        
+        std::string config_msg = "📋 DriverConfig prepared:\n";
+        config_msg += "   - device_id: " + driver_config.device_id + "\n";
+        config_msg += "   - endpoint: " + driver_config.endpoint + "\n";
+        config_msg += "   - protocol: MODBUS_RTU\n";
+        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms\n";
+        config_msg += "   - properties: " + std::to_string(driver_config.properties.size()) + " items";
+        
+        logger.Debug(config_msg);
         
         // 🔥 실제 ModbusDriver 초기화
         if (!modbus_driver_->Initialize(driver_config)) {
             const auto& error = modbus_driver_->GetLastError();
-            logger.Error("❌ ModbusDriver initialization failed: " + error.message);
+            logger.Error("❌ ModbusDriver initialization failed: " + error.message + 
+                        " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
             modbus_driver_.reset();
             return false;
         }
         
+        logger.Debug("✅ ModbusDriver initialization successful");
+        
+        // Driver 콜백 설정
         SetupDriverCallbacks();
         
-        logger.Info("✅ Modbus RTU Driver initialized successfully (real driver)");
+        // 최종 결과 로깅 (ModbusTcpWorker와 동일한 상세도)
+        std::string final_msg = "✅ Modbus RTU Driver initialized successfully:\n";
+        final_msg += "   📡 Connection details:\n";
+        final_msg += "      - serial_port: " + device_info_.endpoint + "\n";
+        final_msg += "      - slave_id: " + GetPropertyValue(modbus_config_.properties, "slave_id", "1") + "\n";
+        final_msg += "      - timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
+        final_msg += "   ⚙️  RTU settings:\n";
+        final_msg += "      - baud_rate: " + GetPropertyValue(modbus_config_.properties, "baud_rate", "9600") + "\n";
+        final_msg += "      - parity: " + GetPropertyValue(modbus_config_.properties, "parity", "N") + "\n";
+        final_msg += "      - data_bits: " + GetPropertyValue(modbus_config_.properties, "data_bits", "8") + "\n";
+        final_msg += "      - stop_bits: " + GetPropertyValue(modbus_config_.properties, "stop_bits", "1") + "\n";
+        final_msg += "   🔧 Advanced settings:\n";
+        final_msg += "      - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
+        final_msg += "      - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3") + "\n";
+        final_msg += "      - response_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms\n";
+        final_msg += "      - frame_delay: " + GetPropertyValue(modbus_config_.properties, "frame_delay_ms", "50") + "ms\n";
+        final_msg += "   📊 Total properties: " + std::to_string(driver_config.properties.size());
+        
+        logger.Info(final_msg);
+        
         return true;
         
     } catch (const std::exception& e) {

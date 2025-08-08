@@ -574,6 +574,7 @@ private:
     static void MessageCallback(MQTTWorker* worker, 
                                const std::string& topic, 
                                const std::string& payload);
+    void SetupMQTTDriverCallbacks();                          
 
 #ifdef HAS_NLOHMANN_JSON
     bool ConvertJsonToDataValue(const nlohmann::json& json_val,
