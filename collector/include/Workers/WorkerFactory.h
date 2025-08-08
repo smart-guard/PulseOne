@@ -201,6 +201,8 @@ private:
     mutable std::atomic<uint64_t> workers_created_{0};
     mutable std::atomic<uint64_t> creation_failures_{0};
     std::chrono::system_clock::time_point factory_start_time_;
+
+    PulseOne::BasicTypes::DataVariant ParseJSONValueAsRaw(const std::string& json_value) const;
 };
 
 } // namespace Workers

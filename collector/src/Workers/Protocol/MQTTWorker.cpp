@@ -6,6 +6,28 @@
  * @version 3.0.0 (통합 버전)
  */
 
+ /*
+MQTT 디바이스 설정 예시:
+
+devices 테이블:
+- endpoint: "mqtt://192.168.2.50:1883"
+- config: {
+    "topic": "sensors/temperature",
+    "qos": 1,
+    "client_id": "pulseone_temp_sensor_001",
+    "username": "mqtt_user",
+    "password": "mqtt_pass",
+    "keepalive_interval": 120,
+    "clean_session": true,
+    "use_ssl": false,
+    "timeout": 10000
+}
+
+또는 connection_string으로:
+- connection_string: "mqtt://192.168.2.50:1883"
+- config: {"topic": "sensors/temperature", "qos": 2, "use_ssl": true}
+*/
+
 #include "Workers/Protocol/MQTTWorker.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
@@ -667,187 +689,142 @@ bool MQTTWorker::ParseMQTTConfig() {
     try {
         LogMessage(LogLevel::INFO, "🔧 Starting MQTT configuration parsing...");
         
-        // =====================================================================
-        // 🔥 1단계: connection_string에서 프로토콜별 설정 JSON 파싱
-        // =====================================================================
+        // 🔥 기존 mqtt_config_ 구조 사용 (properties 없음)
+        // mqtt_config_ 구조체는 다음과 같음:
+        // - broker_url, client_id, username, password
+        // - clean_session, use_ssl, keepalive_interval_sec
+        // - connection_timeout_sec, max_retry_count, default_qos
         
-#ifdef HAS_NLOHMANN_JSON
-        json protocol_config_json;
-        std::string config_source = device_info_.connection_string;
+        // 🔥 핵심 수정: config와 connection_string 올바른 파싱
+        nlohmann::json protocol_config_json;
         
-        LogMessage(LogLevel::DEBUG_LEVEL, 
-                   "📋 Raw connection_string: '" + config_source + "'");
-        
-        // connection_string이 JSON 형태인지 확인
-        if (!config_source.empty() && 
-            (config_source.front() == '{' || config_source.find("broker_url") != std::string::npos)) {
+        // 1단계: device_info_.config에서 JSON 설정 찾기 (우선순위 1)
+        if (!device_info_.config.empty()) {
             try {
-                protocol_config_json = json::parse(config_source);
-                LogMessage(LogLevel::INFO, 
-                          "✅ Parsed protocol config from connection_string: " + config_source);
+                protocol_config_json = nlohmann::json::parse(device_info_.config);
+                LogMessage(LogLevel::INFO, "✅ MQTT Protocol config loaded from device.config: " + device_info_.config);
             } catch (const std::exception& e) {
-                LogMessage(LogLevel::WARN, 
-                          "⚠️ Failed to parse protocol config JSON, using defaults: " + std::string(e.what()));
-                protocol_config_json = json::object();
+                LogMessage(LogLevel::WARN, "⚠️ Failed to parse device.config JSON: " + std::string(e.what()));
             }
-        } else {
-            LogMessage(LogLevel::INFO, 
-                      "📝 connection_string is not JSON format, using endpoint as broker URL");
-            protocol_config_json = json::object();
         }
         
-        // =====================================================================
-        // 🔥 2단계: MQTT 특화 설정 추출 (프로토콜별)
-        // =====================================================================
+        // 2단계: connection_string이 JSON인지 확인 (우선순위 2)
+        if (protocol_config_json.empty() && !device_info_.connection_string.empty()) {
+            // JSON 형태인지 확인 ('{' 로 시작하는지)
+            if (device_info_.connection_string.front() == '{') {
+                try {
+                    protocol_config_json = nlohmann::json::parse(device_info_.connection_string);
+                    LogMessage(LogLevel::INFO, "✅ MQTT Protocol config loaded from connection_string JSON");
+                } catch (const std::exception& e) {
+                    LogMessage(LogLevel::WARN, "⚠️ Failed to parse connection_string JSON: " + std::string(e.what()));
+                }
+            } else {
+                LogMessage(LogLevel::INFO, "📝 connection_string is not JSON format, using endpoint as broker URL");
+            }
+        }
         
-        // 브로커 URL (필수)
+        // 3단계: MQTT 전용 기본값 설정 (DB에서 설정을 못 가져온 경우만)
+        if (protocol_config_json.empty()) {
+            protocol_config_json = {
+                {"topic", "pulseone/default"},
+                {"qos", 1},
+                {"keepalive_interval", 60},
+                {"clean_session", true},
+                {"client_id", "pulseone_" + device_info_.name}
+            };
+            LogMessage(LogLevel::INFO, "📝 Applied default MQTT protocol configuration");
+        }
+        
+        // 4단계: 실제 DB 설정값들을 mqtt_config_ 구조체에 직접 저장
+        
+        // 브로커 URL 설정
         if (protocol_config_json.contains("broker_url")) {
-            mqtt_config_.broker_url = protocol_config_json["broker_url"].get<std::string>();
+            mqtt_config_.broker_url = protocol_config_json.value("broker_url", "mqtt://localhost:1883");
         } else if (!device_info_.endpoint.empty()) {
             mqtt_config_.broker_url = device_info_.endpoint;
+        } else {
+            mqtt_config_.broker_url = "mqtt://localhost:1883";
         }
         
-        // 클라이언트 ID
+        // 클라이언트 ID 설정
         if (protocol_config_json.contains("client_id")) {
-            mqtt_config_.client_id = protocol_config_json["client_id"].get<std::string>();
+            mqtt_config_.client_id = protocol_config_json.value("client_id", "pulseone_" + device_info_.name);
         } else {
             mqtt_config_.client_id = "pulseone_" + device_info_.name + "_" + device_info_.id;
         }
         
-        // 인증 정보
+        // 인증 정보 (선택사항)
         if (protocol_config_json.contains("username")) {
-            mqtt_config_.username = protocol_config_json["username"].get<std::string>();
+            mqtt_config_.username = protocol_config_json.value("username", "");
         }
         if (protocol_config_json.contains("password")) {
-            mqtt_config_.password = protocol_config_json["password"].get<std::string>();
+            mqtt_config_.password = protocol_config_json.value("password", "");
         }
         
         // SSL/TLS 설정
-        if (protocol_config_json.contains("use_ssl")) {
-            mqtt_config_.use_ssl = protocol_config_json["use_ssl"].get<bool>();
-        }
+        mqtt_config_.use_ssl = protocol_config_json.value("use_ssl", false);
         
         // QoS 설정
-        if (protocol_config_json.contains("default_qos")) {
-            int qos_int = protocol_config_json["default_qos"].get<int>();
+        if (protocol_config_json.contains("qos")) {
+            int qos_int = protocol_config_json.value("qos", 1);
             mqtt_config_.default_qos = IntToQos(qos_int);
         }
         
         // Keep-alive 설정
-        if (protocol_config_json.contains("keepalive_interval")) {
-            mqtt_config_.keepalive_interval_sec = protocol_config_json["keepalive_interval"].get<int>();
-        }
+        mqtt_config_.keepalive_interval_sec = protocol_config_json.value("keepalive_interval", 60);
         
         // Clean Session 설정
-        if (protocol_config_json.contains("clean_session")) {
-            mqtt_config_.clean_session = protocol_config_json["clean_session"].get<bool>();
-        }
+        mqtt_config_.clean_session = protocol_config_json.value("clean_session", true);
         
-        LogMessage(LogLevel::INFO, 
-                  "✅ MQTT protocol settings parsed successfully");
-        
-        // =====================================================================
-        // 🔥 3단계: DeviceInfo에서 공통 통신 설정 가져오기
-        // =====================================================================
-        
-        // 연결 타임아웃
+        // 🔥 DB에서 가져온 timeout 값 적용
         if (protocol_config_json.contains("connection_timeout")) {
-            mqtt_config_.connection_timeout_sec = protocol_config_json["connection_timeout"].get<int>();
+            mqtt_config_.connection_timeout_sec = protocol_config_json.value("connection_timeout", 30);
+            LogMessage(LogLevel::INFO, "✅ Applied connection timeout from DB: " + std::to_string(mqtt_config_.connection_timeout_sec) + "s");
         }
         
         // 재시도 횟수
         if (protocol_config_json.contains("max_retry_count")) {
-            mqtt_config_.max_retry_count = protocol_config_json["max_retry_count"].get<int>();
+            mqtt_config_.max_retry_count = protocol_config_json.value("max_retry_count", 3);
         }
         
-        LogMessage(LogLevel::INFO, 
-                  "✅ Common communication settings applied");
-        
-        // =====================================================================
-        // 🔥 4단계: Worker 레벨 설정 적용
-        // =====================================================================
-        
-        // 메시지 타임아웃
+        // 5단계: Worker 레벨 설정 적용
         if (protocol_config_json.contains("message_timeout_ms")) {
-            default_message_timeout_ms_ = protocol_config_json["message_timeout_ms"].get<uint32_t>();
+            default_message_timeout_ms_ = protocol_config_json.value("message_timeout_ms", 30000);
         }
         
-        // 발행 큐 크기
         if (protocol_config_json.contains("max_publish_queue_size")) {
-            max_publish_queue_size_ = protocol_config_json["max_publish_queue_size"].get<uint32_t>();
+            max_publish_queue_size_ = protocol_config_json.value("max_publish_queue_size", 10000);
         }
         
-        // 자동 재연결
-        if (protocol_config_json.contains("auto_reconnect")) {
-            auto_reconnect_enabled_ = protocol_config_json["auto_reconnect"].get<bool>();
-        }
+        // 🎉 성공 로그 - 실제 적용된 설정 표시 - 🔥 문자열 연결 수정
+        std::string config_summary = "✅ MQTT config parsed successfully:\n";
+        config_summary += "   🔌 Protocol settings (from ";
+        config_summary += (!device_info_.config.empty() ? "device.config" : "connection_string");
+        config_summary += "):\n";
+        config_summary += "      - broker_url: " + mqtt_config_.broker_url + "\n";
+        config_summary += "      - client_id: " + mqtt_config_.client_id + "\n";
+        config_summary += "      - topic: " + protocol_config_json.value("topic", "pulseone/default") + "\n";
+        config_summary += "      - qos: " + std::to_string(QosToInt(mqtt_config_.default_qos)) + "\n";
+        config_summary += "      - keepalive_interval: " + std::to_string(mqtt_config_.keepalive_interval_sec) + "s\n";
+        config_summary += "      - clean_session: " + (mqtt_config_.clean_session ? std::string("true") : std::string("false")) + "\n";
+        config_summary += "      - use_ssl: " + (mqtt_config_.use_ssl ? std::string("true") : std::string("false")) + "\n";
+        config_summary += "   ⚙️  Communication settings (from DeviceSettings):\n";
+        config_summary += "      - connection_timeout: " + std::to_string(mqtt_config_.connection_timeout_sec) + "s\n";
+        config_summary += "      - message_timeout: " + std::to_string(default_message_timeout_ms_) + "ms\n";
+        config_summary += "      - max_retries: " + std::to_string(mqtt_config_.max_retry_count) + "\n";
+        config_summary += "      - max_queue_size: " + std::to_string(max_publish_queue_size_) + "\n";
+        config_summary += "      - auto_reconnect: " + (auto_reconnect_enabled_ ? std::string("enabled") : std::string("disabled"));
         
-        LogMessage(LogLevel::INFO, 
-                  "✅ Worker-level settings applied");
-        
-        // =====================================================================
-        // 🔥 5단계: 설정 검증 및 안전한 기본값 적용
-        // =====================================================================
-        
-        // 브로커 URL 검증
-        if (mqtt_config_.broker_url.empty()) {
-            LogMessage(LogLevel::ERROR, "❌ Broker URL is required");
-            return false;
-        }
-        
-        // Keep-alive 범위 검증
-        if (mqtt_config_.keepalive_interval_sec < 10 || mqtt_config_.keepalive_interval_sec > 3600) {
-            LogMessage(LogLevel::WARN, "⚠️ Keep-alive interval out of range, using default (60s)");
-            mqtt_config_.keepalive_interval_sec = 60;
-        }
-        
-        // 타임아웃 범위 검증
-        if (mqtt_config_.connection_timeout_sec < 5 || mqtt_config_.connection_timeout_sec > 120) {
-            LogMessage(LogLevel::WARN, "⚠️ Connection timeout out of range, using default (30s)");
-            mqtt_config_.connection_timeout_sec = 30;
-        }
-        
-        // 발행 큐 크기 검증
-        if (max_publish_queue_size_ > 100000) {
-            LogMessage(LogLevel::WARN, "⚠️ Publish queue size too large, using default (10000)");
-            max_publish_queue_size_ = 10000;
-        }
-        
-        LogMessage(LogLevel::INFO, 
-                  "✅ Configuration validation completed");
-        
-        // 최종 설정 요약 로그
-        std::ostringstream config_summary;
-        config_summary << "📋 Final MQTT Configuration:\n"
-                      << "  - Broker: " << mqtt_config_.broker_url << "\n"
-                      << "  - Client ID: " << mqtt_config_.client_id << "\n" 
-                      << "  - Keep-alive: " << mqtt_config_.keepalive_interval_sec << "s\n"
-                      << "  - Clean Session: " << (mqtt_config_.clean_session ? "true" : "false") << "\n"
-                      << "  - SSL: " << (mqtt_config_.use_ssl ? "enabled" : "disabled") << "\n"
-                      << "  - Default QoS: " << QosToInt(mqtt_config_.default_qos);
-        
-        LogMessage(LogLevel::INFO, config_summary.str());
+        LogMessage(LogLevel::INFO, config_summary);
         
         return true;
-        
-#else
-        LogMessage(LogLevel::WARN, "nlohmann/json not available, using basic parsing");
-        
-        // 기본 설정 적용
-        if (!device_info_.endpoint.empty()) {
-            mqtt_config_.broker_url = device_info_.endpoint;
-        }
-        mqtt_config_.client_id = "pulseone_" + device_info_.name;
-        
-        return true;
-#endif
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                  "❌ Failed to parse MQTT configuration: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, "ParseMQTTConfig failed: " + std::string(e.what()));
         return false;
     }
 }
+
 
 bool MQTTWorker::InitializeMQTTDriver() {
     try {
