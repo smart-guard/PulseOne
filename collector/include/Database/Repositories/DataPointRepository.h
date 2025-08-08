@@ -342,6 +342,7 @@ public:
      * @return {data_type: count} 맵
      */
     std::map<std::string, int> getPointCountByDataType();
+    std::map<std::string, std::string> parseJsonToStringMap(const std::string& json_str, const std::string& field_name) const;
 
 private:
     // =======================================================================

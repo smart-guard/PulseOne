@@ -160,7 +160,7 @@ private:
     void ParseDeviceConfigToProperties(PulseOne::Structs::DeviceInfo& device_info) const;
     void ParseEndpoint(PulseOne::Structs::DeviceInfo& device_info) const;
     PulseOne::BasicTypes::DataVariant ParseJSONValue(const std::string& json_value, const std::string& data_type) const;
-    
+    PulseOne::BasicTypes::DataVariant ParseJSONValueAsRaw(const std::string& json_value) const;
     // DataPoint 및 CurrentValue 로딩
     void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const;
     std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
@@ -171,6 +171,7 @@ private:
     
     // 🔧 수정: LogSupportedProtocols 메서드 - extra qualification 제거
     void LogSupportedProtocols() const;
+    
 
 private:
     // ==========================================================================
@@ -202,7 +203,7 @@ private:
     mutable std::atomic<uint64_t> creation_failures_{0};
     std::chrono::system_clock::time_point factory_start_time_;
 
-    PulseOne::BasicTypes::DataVariant ParseJSONValueAsRaw(const std::string& json_value) const;
+    
 };
 
 } // namespace Workers
