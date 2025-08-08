@@ -107,7 +107,9 @@ public:
      * @return 성공 시 true
      */
     bool SendProtocolKeepAlive();
-
+    PulseOne::Drivers::ModbusDriver* GetModbusDriver() const {
+        return modbus_driver_.get();
+    }
     // =============================================================================
     // Modbus TCP 특화 객체 관리 (Worker 고유 기능)
     // =============================================================================

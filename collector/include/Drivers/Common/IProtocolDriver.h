@@ -59,7 +59,7 @@ class IProtocolDriver {
 protected:
     // Driver 통계 (통신 성능만)
     DriverStatistics statistics_;
-    
+    DriverConfig config_;
     // 간소화된 콜백들
     StatusCallback status_callback_;
     ErrorCallback error_callback_;
@@ -113,7 +113,14 @@ public:
     virtual ConnectionStatus GetConnectionStatus() const {
         return connection_status_.load();
     }
-    
+
+    /**
+     * @brief 현재 설정 정보 반환 (테스트용)
+     */
+    virtual const DriverConfig& GetConfiguration() const {
+        return config_;  // 파생 클래스에서 config_ 멤버 변수 필요
+    }
+        
     virtual void SetStatusCallback(const StatusCallback& callback) {
         std::lock_guard<std::mutex> lock(callback_mutex_);
         status_callback_ = callback;

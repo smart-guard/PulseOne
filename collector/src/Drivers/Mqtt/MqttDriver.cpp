@@ -167,10 +167,11 @@ void MqttDriver::InitializeMqttCounters() {
 
 bool MqttDriver::Initialize(const DriverConfig& config) {
     try {
+        config_ = config;
         LogMessage("INFO", "Initializing MQTT driver", "MQTT");
         
         // 설정 파싱
-        if (!ParseDriverConfig(config)) {
+        if (!ParseDriverConfig(config_)) {
             SetError("Failed to parse driver configuration");
             return false;
         }
