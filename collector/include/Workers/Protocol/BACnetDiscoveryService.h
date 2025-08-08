@@ -1,26 +1,31 @@
-// =============================================================================
-// include/Workers/Protocol/BACnetDiscoveryService.h 
-// 🔥 누락된 메서드 선언 완전 추가
-// =============================================================================
+/**
+ * @file BACnetDiscoveryService.h 
+ * @brief BACnet 발견 서비스 헤더 - 🔥 모든 문제 완전 해결
+ * @author PulseOne Development Team
+ * @date 2025-08-08
+ */
 
 #ifndef BACNET_DISCOVERY_SERVICE_H
 #define BACNET_DISCOVERY_SERVICE_H
 
-// 전방 선언
+#include "Database/Repositories/DeviceRepository.h" 
+#include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/DatabaseTypes.h"    
+#include "Common/Structs.h"
+#include "Common/Enums.h"
+#include "Drivers/Bacnet/BACnetTypes.h"  // 🔥 추가: BACNET_ADDRESS 정의
+#include <memory>
+#include <mutex>
+#include <chrono>
+#include <atomic>
+
+// 🔥 전방 선언만 (include 하지 않음)
 namespace PulseOne {
 namespace Workers {
     class BACnetWorker;
 }
 }
-
-#include "Drivers/Bacnet/BACnetDriver.h"
-#include "Database/Repositories/DeviceRepository.h" 
-#include "Database/Repositories/DataPointRepository.h"
-#include "Database/Repositories/CurrentValueRepository.h"
-#include "Database/DatabaseTypes.h"    // 🔥 QueryCondition 포함
-#include <memory>
-#include <mutex>
-#include <chrono>
 
 namespace PulseOne {
 namespace Workers {
@@ -66,11 +71,12 @@ public:
     void ResetStatistics();
 
     // =======================================================================
-    // 콜백 핸들러들 (public으로 변경)
+    // 🔥 콜백 핸들러들 - 올바른 타입 사용
     // =======================================================================
     
-    void OnObjectDiscovered(const DataPoint& object);
-    void OnObjectDiscovered(uint32_t device_id, const std::vector<DataPoint>& objects);
+    void OnDeviceDiscovered(const PulseOne::Structs::DeviceInfo& device);
+    void OnObjectDiscovered(const PulseOne::Structs::DataPoint& object);
+    void OnObjectDiscovered(uint32_t device_id, const std::vector<PulseOne::Structs::DataPoint>& objects);
     void OnValueChanged(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
 private:
@@ -78,65 +84,25 @@ private:
     // 데이터베이스 저장 메서드들
     // =======================================================================
     
-    bool SaveDiscoveredDeviceToDatabase(const Drivers::DeviceInfo& device);
-    bool SaveDiscoveredObjectsToDatabase(uint32_t device_id, const std::vector<Drivers::DataPoint>& objects);
+    bool SaveDiscoveredDeviceToDatabase(const PulseOne::Structs::DeviceInfo& device);
+    bool SaveDiscoveredObjectsToDatabase(uint32_t device_id, const std::vector<PulseOne::Structs::DataPoint>& objects);
     bool UpdateCurrentValueInDatabase(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
     // =======================================================================
-    // 🔥 누락된 유틸리티 함수 선언들 추가
+    // 유틸리티 함수들
     // =======================================================================
     
-    /**
-     * @brief 데이터베이스에서 BACnet 디바이스 ID로 실제 디바이스 ID 찾기
-     */
     int FindDeviceIdInDatabase(uint32_t bacnet_device_id);
-    
-    /**
-     * @brief 데이터포인트 ID 생성
-     */
-    std::string GenerateDataPointId(uint32_t device_id, const Drivers::DataPoint& object);
-    
-    /**
-     * @brief 객체 타입을 문자열로 변환
-     */
+    std::string GenerateDataPointId(uint32_t device_id, const PulseOne::Structs::DataPoint& object);
     std::string ObjectTypeToString(int type);
-    
-    /**
-     * @brief BACnet 객체 타입으로부터 데이터 타입 결정
-     */
     PulseOne::Enums::DataType DetermineDataType(int type);
-    
-    /**
-     * @brief 데이터 타입을 문자열로 변환
-     */
     std::string DataTypeToString(PulseOne::Enums::DataType type);
-    
-    /**
-     * @brief 데이터 값을 문자열로 변환
-     */
     std::string ConvertDataValueToString(const PulseOne::Structs::DataValue& value);
-    
-    /**
-     * @brief BACnet 주소를 IP 문자열로 변환
-     */
-    std::string BACnetAddressToString(const BACNET_ADDRESS& address);
-    
-    /**
-     * @brief DataValue를 double로 변환 (CurrentValueEntity용)
-     */
     double ConvertDataValueToDouble(const PulseOne::Structs::DataValue& value);
-    
-    /**
-     * @brief 에러 처리
-     */
     void HandleError(const std::string& context, const std::string& error);
-
-    /**
-     * @brief Object 이름에서 Object Type 추정
-     * @param object_name 객체 이름 ("AI1", "BO5" 등)
-     * @return 추정된 객체 타입
-     */
     int GuessObjectTypeFromName(const std::string& object_name);
+    std::string BACnetAddressToString(const BACNET_ADDRESS& address);
+
     // =======================================================================
     // 멤버 변수들
     // =======================================================================

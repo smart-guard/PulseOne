@@ -1417,23 +1417,100 @@ namespace Structs {
             enabled = is_enabled;
             connection_string = endpoint;
             
-            // DriverConfig와 동기화
+            // 🔥 DeviceSettings → DriverConfig 완전 매핑
             driver_config.name = name;
             driver_config.endpoint = endpoint;
             driver_config.polling_interval_ms = static_cast<uint32_t>(polling_interval_ms);
-            driver_config.timeout_ms = static_cast<uint32_t>(getConnectionTimeoutMs());
-            driver_config.retry_count = max_retry_count;
+            
+            // 🔥 수정: connection_timeout_ms 사용 (optional 안전 처리)
+            if (connection_timeout_ms.has_value()) {
+                driver_config.timeout_ms = static_cast<uint32_t>(connection_timeout_ms.value());
+            } else {
+                driver_config.timeout_ms = static_cast<uint32_t>(timeout_ms); // fallback
+            }
+            
+            // 🔥 수정: max_retry_count 사용
+            driver_config.retry_count = static_cast<uint32_t>(max_retry_count);
         }
         
         /**
-         * @brief DriverConfig로 동기화
+         * @brief DriverConfig로 완전 동기화 (DeviceSettings 포함)
          */
         void SyncToDriverConfig() {
             SyncAliasFields();
             driver_config.device_id = id;
             
-            // properties 전체를 driver_config.properties에 복사
-            driver_config.properties = properties;
+            // 🔥 DeviceSettings 전용 필드들 추가 매핑 (타입별 올바른 처리)
+            
+            // =======================================================================
+            // 추가 타이밍 설정 (optional 타입들)
+            // =======================================================================
+            if (read_timeout_ms.has_value()) {
+                driver_config.properties["read_timeout_ms"] = std::to_string(read_timeout_ms.value());
+            }
+            if (write_timeout_ms.has_value()) {
+                driver_config.properties["write_timeout_ms"] = std::to_string(write_timeout_ms.value());
+            }
+            if (scan_rate_override.has_value()) {
+                driver_config.properties["scan_rate_override"] = std::to_string(scan_rate_override.value());
+            }
+            
+            // =======================================================================
+            // 🔥 재시도 정책 (int 타입들 - .has_value() 제거)
+            // =======================================================================
+            driver_config.properties["retry_interval_ms"] = std::to_string(retry_interval_ms);
+            driver_config.properties["backoff_multiplier"] = std::to_string(backoff_multiplier);
+            
+            // 🔥 수정: int 타입이므로 직접 변환 (optional이 아님)
+            driver_config.properties["backoff_time_ms"] = std::to_string(backoff_time_ms);
+            driver_config.properties["max_backoff_time_ms"] = std::to_string(max_backoff_time_ms);
+            
+            // =======================================================================
+            // 🔥 Keep-alive 설정 (int 타입들 - .has_value() 제거)
+            // =======================================================================
+            driver_config.properties["keep_alive_enabled"] = keep_alive_enabled ? "true" : "false";
+            driver_config.properties["keep_alive_interval_s"] = std::to_string(keep_alive_interval_s);
+            
+            // 🔥 수정: int 타입이므로 직접 변환 (optional이 아님)
+            driver_config.properties["keep_alive_timeout_s"] = std::to_string(keep_alive_timeout_s);
+            
+            // =======================================================================
+            // 모니터링 설정
+            // =======================================================================
+            driver_config.properties["data_validation_enabled"] = data_validation_enabled ? "true" : "false";
+            driver_config.properties["performance_monitoring_enabled"] = performance_monitoring_enabled ? "true" : "false";
+            driver_config.properties["diagnostic_mode_enabled"] = diagnostic_mode_enabled ? "true" : "false";
+            
+            // =======================================================================
+            // 🔥 마지막에 JSON config의 properties 복사 (오버라이드 가능)
+            // =======================================================================
+            for (const auto& [key, value] : properties) {
+                driver_config.properties[key] = value;
+            }
+            
+            // =======================================================================
+            // 🔥 자동 재연결 설정 (필드가 없으면 기본값 사용)
+            // =======================================================================
+            // auto_reconnect 필드가 DeviceInfo에 없으므로 기본값으로 설정
+            driver_config.auto_reconnect = true; // 기본값: 자동 재연결 활성화
+            
+            // 만약 properties에 설정이 있다면 오버라이드
+            if (properties.count("auto_reconnect")) {
+                driver_config.auto_reconnect = (properties.at("auto_reconnect") == "true");
+            }
+            
+            // =======================================================================
+            // 🔥 프로토콜 타입 설정
+            // =======================================================================
+            if (protocol_type == "MODBUS_TCP") {
+                driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
+            } else if (protocol_type == "MODBUS_RTU") {
+                driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_RTU;
+            } else if (protocol_type == "MQTT") {
+                driver_config.protocol = PulseOne::Enums::ProtocolType::MQTT;
+            } else if (protocol_type == "BACNET_IP") {
+                driver_config.protocol = PulseOne::Enums::ProtocolType::BACNET_IP;
+            }
         }
         
         /**
