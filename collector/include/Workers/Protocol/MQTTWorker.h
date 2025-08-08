@@ -440,7 +440,9 @@ public:
             default: return MqttQoS::AT_LEAST_ONCE;
         }
     }
-
+    PulseOne::Drivers::MqttDriver* GetMqttDriver() const {
+        return mqtt_driver_.get();
+    }
 private:
     // =============================================================================
     // 내부 멤버 변수들

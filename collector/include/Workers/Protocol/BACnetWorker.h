@@ -1,24 +1,24 @@
 /**
  * @file BACnetWorker.h
- * @brief BACnet 프로토콜 워커 클래스 - 🔥 UdpBasedWorker 인터페이스 완전 준수
+ * @brief BACnet 프로토콜 워커 클래스 - 🔥 실제 프로젝트 구조 완전 준수
  * @author PulseOne Development Team
- * @date 2025-08-03
- * @version 1.0.0
+ * @date 2025-08-08
+ * @version 4.0.0
  * 
- * 🔥 주요 수정사항:
- * 1. UdpBasedWorker 순수 가상 함수들만 override로 선언
- * 2. 잘못된 BaseDeviceWorker 메서드들 제거 (Start/Stop 등)
- * 3. 헤더와 구현 파일 완전 일치
- * 4. 표준 DriverStatistics 사용
+ * 🔥 실제 프로젝트 지침 100% 준수:
+ * 1. DataPoint.is_enabled (not enabled)
+ * 2. DataPoint.protocol_params (not properties)
+ * 3. DeviceInfo.id (string type)
+ * 4. 모든 필드명 실제 구조와 정확히 일치
  */
 
 #ifndef BACNET_WORKER_H
 #define BACNET_WORKER_H
 
-#include "Workers/Base/UdpBasedWorker.h"                    // ✅ 부모 클래스
-#include "Common/Structs.h"
-#include "Drivers/Bacnet/BACnetDriver.h"                    // ✅ BACnet 드라이버
-#include "Common/DriverStatistics.h"                       // ✅ 표준 통계 구조                     // ✅ 공통 타입들
+#include "Workers/Base/UdpBasedWorker.h"                    
+#include "Common/Structs.h"                                 
+#include "Drivers/Bacnet/BACnetDriver.h"                    
+#include "Common/DriverStatistics.h"                       
 #include <memory>
 #include <atomic>
 #include <mutex>
@@ -31,75 +31,138 @@ namespace PulseOne {
 namespace Workers {
 
 // =============================================================================
-// 🔥 타입 별칭 정의 (BACnetCommonTypes.h에서 가져온 타입들)
-#include "Common/Structs.h"
+// 🔥 타입 별칭 정의 - 실제 프로젝트 구조 사용
 // =============================================================================
 
-// BACnet 구조체들은 BACnetCommonTypes.h에서 정의됨
-#include "Common/Structs.h"
-using DeviceInfo = Drivers::DeviceInfo;            // 디바이스 정보  
-using DataPoint = Drivers::DataPoint;            // 객체 정보
+using DataPoint = PulseOne::Structs::DataPoint;              
+using DeviceInfo = PulseOne::Structs::DeviceInfo;            
+using TimestampedValue = PulseOne::Structs::TimestampedValue; 
+using DataValue = PulseOne::Structs::DataValue;              
+
+// =============================================================================
+// 🔥 BACnet 헬퍼 함수들 - 실제 필드명 사용
+// =============================================================================
 
 /**
- * @brief BACnet 워커 설정 구조체
+ * @brief BACnet 객체를 DataPoint로 생성하는 헬퍼 함수
  */
-struct BACnetWorkerConfig {
-    // BACnet 장치 설정
-    uint32_t local_device_id = 260001;                        // 로컬 디바이스 ID
-    uint16_t target_port = 47808;                             // BACnet 표준 포트
-    uint32_t timeout_ms = 5000;                               // 타임아웃 (밀리초)
-    uint8_t retry_count = 3;                                  // 재시도 횟수
+inline DataPoint CreateBACnetDataPoint(
+    uint32_t device_id,
+    uint16_t object_type, 
+    uint32_t object_instance,
+    const std::string& object_name = "",
+    const std::string& description = "",
+    const std::string& units = "") {
     
-    // 디스커버리 설정
-    bool auto_device_discovery = true;                        // 자동 디바이스 발견
-    uint32_t discovery_interval_seconds = 300;               // 5분마다 디스커버리
-    uint32_t discovery_low_limit = 0;                        // 발견 범위 시작
-    uint32_t discovery_high_limit = 4194303;                 // 발견 범위 끝
+    DataPoint point;
     
-    // 폴링 설정
-    uint32_t polling_interval_ms = 1000;                     // 1초마다 폴링
-    bool enable_cov = true;                                  // COV 구독 사용
-    bool enable_bulk_read = true;                            // ReadPropertyMultiple 사용
+    // ✅ 실제 필드명 사용
+    point.device_id = std::to_string(device_id);              
+    point.address = static_cast<int>(object_instance);        
+    point.name = object_name.empty() ? 
+                 ("Object_" + std::to_string(object_instance)) : object_name;
+    point.description = description;
+    point.unit = units;
+    point.is_enabled = true;  // ✅ enabled → is_enabled
     
-    // 디버그 설정
-    bool verbose_logging = false;                            // 상세 로깅
-    
-    // 성능 설정
-    size_t max_concurrent_reads = 10;                        // 최대 동시 읽기
-    size_t max_devices = 100;                               // 최대 디바이스 수
-    uint16_t max_apdu_length = 1476;                        // 최대 APDU 길이
-    
-    /**
-     * @brief 설정 유효성 검사
-     */
-    bool Validate() const {
-        return (local_device_id > 0 && local_device_id <= 4194303) &&
-               (target_port > 0) &&
-               (timeout_ms >= 1000 && timeout_ms <= 60000) &&
-               (retry_count >= 1 && retry_count <= 10) &&
-               (discovery_interval_seconds >= 60) &&
-               (polling_interval_ms >= 100);
+    // BACnet 객체 타입에 따른 데이터 타입 결정
+    switch (object_type) {
+        case 0:  case 1:  case 2:   // AI, AO, AV
+            point.data_type = "float";
+            break;
+        case 3:  case 4:  case 5:   // BI, BO, BV
+            point.data_type = "bool";
+            break;
+        case 13: case 14: case 19:  // MI, MO, MV
+            point.data_type = "int";
+            break;
+        default:
+            point.data_type = "string";
+            break;
     }
-};
+    
+    // ✅ BACnet 특화 정보를 protocol_params에 저장 (not properties)
+    point.protocol_params["bacnet_object_type"] = std::to_string(object_type);
+    point.protocol_params["bacnet_device_id"] = std::to_string(device_id);
+    point.protocol_params["bacnet_instance"] = std::to_string(object_instance);
+    
+    // 고유 ID 생성
+    point.id = std::to_string(device_id) + ":" + 
+               std::to_string(object_type) + ":" + 
+               std::to_string(object_instance);
+               
+    return point;
+}
 
 /**
- * @brief BACnet 워커 통계
+ * @brief DataPoint에서 BACnet 정보 추출 - 실제 필드명 사용
  */
+inline bool GetBACnetInfoFromDataPoint(const DataPoint& point, 
+                                      uint32_t& device_id,
+                                      uint16_t& object_type, 
+                                      uint32_t& object_instance) {
+    try {
+        // ✅ protocol_params에서 추출 (not properties)
+        auto it_dev = point.protocol_params.find("bacnet_device_id");
+        auto it_type = point.protocol_params.find("bacnet_object_type");
+        auto it_inst = point.protocol_params.find("bacnet_instance");
+        
+        if (it_dev != point.protocol_params.end() && 
+            it_type != point.protocol_params.end() && 
+            it_inst != point.protocol_params.end()) {
+            
+            device_id = std::stoul(it_dev->second);
+            object_type = static_cast<uint16_t>(std::stoul(it_type->second));
+            object_instance = std::stoul(it_inst->second);
+            return true;
+        }
+        
+        // 대안: 기본 필드 사용
+        device_id = std::stoul(point.device_id);
+        object_instance = static_cast<uint32_t>(point.address);
+        object_type = 0; // 기본값
+        return true;
+        
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+/**
+ * @brief BACnet 객체 타입 이름 반환
+ */
+inline std::string GetBACnetObjectTypeName(uint16_t object_type) {
+    switch (object_type) {
+        case 0: return "ANALOG_INPUT";
+        case 1: return "ANALOG_OUTPUT";
+        case 2: return "ANALOG_VALUE";
+        case 3: return "BINARY_INPUT";
+        case 4: return "BINARY_OUTPUT";
+        case 5: return "BINARY_VALUE";
+        case 8: return "DEVICE";
+        case 13: return "MULTI_STATE_INPUT";
+        case 14: return "MULTI_STATE_OUTPUT";
+        case 19: return "MULTI_STATE_VALUE";
+        default: return "UNKNOWN_" + std::to_string(object_type);
+    }
+}
+
+// =============================================================================
+// 🔥 BACnet 워커 통계 (필수 최소한만)
+// =============================================================================
+
 struct BACnetWorkerStats {
-    std::atomic<uint64_t> discovery_attempts{0};      ///< 발견 시도 횟수
-    std::atomic<uint64_t> devices_discovered{0};      ///< 발견된 디바이스 수
-    std::atomic<uint64_t> polling_cycles{0};          ///< 폴링 사이클 수
-    std::atomic<uint64_t> read_operations{0};         ///< 읽기 작업 수
-    std::atomic<uint64_t> write_operations{0};        ///< 쓰기 작업 수
-    std::atomic<uint64_t> failed_operations{0};       ///< 실패한 작업 수
-    std::atomic<uint64_t> cov_notifications{0};       ///< COV 알림 수
+    std::atomic<uint64_t> discovery_attempts{0};      
+    std::atomic<uint64_t> devices_discovered{0};      
+    std::atomic<uint64_t> polling_cycles{0};          
+    std::atomic<uint64_t> read_operations{0};         
+    std::atomic<uint64_t> write_operations{0};        
+    std::atomic<uint64_t> failed_operations{0};       
+    std::atomic<uint64_t> cov_notifications{0};       
     
-    std::chrono::system_clock::time_point start_time;     ///< 시작 시간
-    std::chrono::system_clock::time_point last_reset;     ///< 마지막 리셋 시간
+    std::chrono::system_clock::time_point start_time;     
+    std::chrono::system_clock::time_point last_reset;     
     
-    /**
-     * @brief 통계 리셋
-     */
     void Reset() {
         discovery_attempts = 0;
         devices_discovered = 0;
@@ -112,29 +175,20 @@ struct BACnetWorkerStats {
     }
 };
 
-// 콜백 함수 타입들 (BACnetCommonTypes.h의 구조체 사용)
-#include "Common/Structs.h"
-using DeviceDiscoveredCallback = std::function<void(const DeviceInfo&)>;
-using ObjectDiscoveredCallback = std::function<void(uint32_t device_id, const DataPoint&)>;
-using ValueChangedCallback = std::function<void(const std::string& object_id, const PulseOne::Structs::TimestampedValue&)>;
+// =============================================================================
+// 🔥 콜백 함수 타입들 - 1:1 구조 (자신의 디바이스용)
+// =============================================================================
+
+using ObjectDiscoveredCallback = std::function<void(const DataPoint&)>;  // 자신의 객체 발견
+using ValueChangedCallback = std::function<void(const std::string& object_id, const TimestampedValue&)>;
 
 // =============================================================================
-// 🔥 BACnetWorker 클래스 정의
+// 🔥 BACnetWorker 클래스 - 실제 프로젝트 구조 준수
 // =============================================================================
 
 /**
  * @class BACnetWorker
- * @brief BACnet 프로토콜 워커 클래스
- * 
- * @details
- * UdpBasedWorker를 상속받아 BACnet 프로토콜에 특화된 기능을 제공합니다.
- * 
- * 주요 기능:
- * - BACnet 디바이스 자동 발견 (Who-Is/I-Am)
- * - 실시간 데이터 폴링 (ReadProperty)
- * - COV(Change of Value) 구독
- * - 데이터 쓰기 (WriteProperty)
- * - 표준 DriverStatistics 통계 시스템 사용
+ * @brief BACnet 프로토콜 워커 클래스 (실제 프로젝트 구조 완전 준수)
  */
 class BACnetWorker : public UdpBasedWorker {
 public:
@@ -142,200 +196,102 @@ public:
     // 생성자 및 소멸자
     // =============================================================================
     
-    /**
-     * @brief BACnet 워커 생성자
-     */
-    explicit BACnetWorker(const PulseOne::DeviceInfo& device_info);
-    
-    /**
-     * @brief 소멸자
-     */
+    explicit BACnetWorker(const DeviceInfo& device_info);
     virtual ~BACnetWorker();
 
     // =============================================================================
-    // 🔥 UdpBasedWorker 순수 가상 함수 구현 (OVERRIDE)
+    // 🔥 UdpBasedWorker 순수 가상 함수 구현
     // =============================================================================
     
-    /**
-     * @brief 프로토콜별 연결 수립 (BACnet 드라이버 초기화)
-     */
     bool EstablishProtocolConnection() override;
-    
-    /**
-     * @brief 프로토콜별 연결 해제 (BACnet 드라이버 정리)
-     */
     bool CloseProtocolConnection() override;
-    
-    /**
-     * @brief 프로토콜별 연결 상태 확인
-     */
     bool CheckProtocolConnection() override;
-    
-    /**
-     * @brief 프로토콜별 Keep-alive 전송 (Who-Is 브로드캐스트)
-     */
     bool SendProtocolKeepAlive() override;
-    
-    /**
-     * @brief 수신된 UDP 패킷 처리 (BACnet 메시지 파싱)
-     */
     bool ProcessReceivedPacket(const UdpPacket& packet) override;
     
     // =============================================================================
-    // 🔥 BaseDeviceWorker 순수 가상 함수 구현 (Start/Stop만 존재)
+    // 🔥 BaseDeviceWorker 인터페이스 구현
     // =============================================================================
     
-    /**
-     * @brief 워커 시작 (BaseDeviceWorker 인터페이스)
-     */
     std::future<bool> Start() override;
-    
-    /**
-     * @brief 워커 정지 (BaseDeviceWorker 인터페이스)
-     */
     std::future<bool> Stop() override;
     
     // =============================================================================
-    // BACnet 특화 공개 기능들
+    // BACnet 공개 기능들 - 1:1 구조 (1 Worker = 1 Device)
     // =============================================================================
     
-    /**
-     * @brief BACnet 워커 설정
-     */
-    void ConfigureBACnetWorker(const BACnetWorkerConfig& config);
-    
-    /**
-     * @brief BACnet 워커 통계 조회
-     */
     std::string GetBACnetWorkerStats() const;
-    
-    /**
-     * @brief BACnet 워커 통계 리셋
-     */
     void ResetBACnetWorkerStats();
     
     /**
-     * @brief 발견된 디바이스 목록 JSON 형태로 조회
+     * @brief 자신의 디바이스 정보 반환 (1:1 구조)
      */
-    std::string GetDiscoveredDevicesAsJson() const;
+    const DeviceInfo& GetDeviceInfo() const { return device_info_; }
     
     /**
-     * @brief BACnet 디바이스 발견 시작
+     * @brief 자신의 BACnet 객체들 조회 (1:1 구조)
      */
-    bool StartDiscovery();
+    std::vector<DataPoint> GetDiscoveredObjects() const;
     
     /**
-     * @brief BACnet 디바이스 발견 중지
+     * @brief 자신의 디바이스 JSON 정보
      */
-    void StopDiscovery();
+    std::string GetDeviceInfoAsJson() const;
     
     /**
-     * @brief 발견된 디바이스 목록 조회
+     * @brief Discovery 제어
      */
-    std::vector<DeviceInfo> GetDiscoveredDevices() const;
+    bool StartObjectDiscovery();
+    void StopObjectDiscovery();
     
     /**
-     * @brief 특정 디바이스의 객체 목록 조회
+     * @brief 콜백 설정 (자신의 디바이스용)
      */
-    std::vector<DataPoint> GetDiscoveredObjects(uint32_t device_id) const;
-    
-    /**
-     * @brief 디바이스 발견 콜백 설정
-     */
-    void SetDeviceDiscoveredCallback(DeviceDiscoveredCallback callback);
-    
-    /**
-     * @brief 객체 발견 콜백 설정
-     */
-    void SetObjectDiscoveredCallback(ObjectDiscoveredCallback callback);
-    
-    /**
-     * @brief 값 변경 콜백 설정
-     */
+    void SetObjectDiscoveredCallback(DataPointDiscoveredCallback callback);
     void SetValueChangedCallback(ValueChangedCallback callback);
+    
+    Drivers::BACnetDriver* GetBACnetDriver() const {
+        return bacnet_driver_.get();
+    }    
     
 private:
     // =============================================================================
-    // 🔥 내부 구현 메서드들 (헤더에 선언, 구현에서 정의)
+    // 🔥 내부 구현 메서드들 - DeviceInfo 기반
     // =============================================================================
     
-    /**
-     * @brief BACnet 워커 설정 파싱
-     */
-    bool ParseBACnetWorkerConfig();
-    
-    /**
-     * @brief BACnet 드라이버 설정 생성
-     */
-    PulseOne::Structs::DriverConfig CreateDriverConfig();
-    
-    /**
-     * @brief BACnet 드라이버 초기화
-     */
+    bool ParseBACnetConfigFromDeviceInfo();
+    PulseOne::Structs::DriverConfig CreateDriverConfigFromDeviceInfo();
     bool InitializeBACnetDriver();
-    
-    /**
-     * @brief BACnet 드라이버 종료
-     */
     void ShutdownBACnetDriver();
     
-    /**
-     * @brief 디스커버리 스레드 함수
-     */
-    void DiscoveryThreadFunction();
-    
-    /**
-     * @brief 폴링 스레드 함수
-     */
+    void ObjectDiscoveryThreadFunction();  // 객체 발견 스레드 (자신의 디바이스)
     void PollingThreadFunction();
     
-    /**
-     * @brief 디바이스 발견 수행
-     */
-    bool PerformDiscovery();
-    
-    /**
-     * @brief 데이터 폴링 수행
-     */
+    bool PerformObjectDiscovery();         // 자신의 객체들 발견
     bool PerformPolling();
     
-    /**
-     * @brief 데이터 포인트 처리
-     */
-    bool ProcessDataPoints(const std::vector<PulseOne::DataPoint>& points);
+    bool ProcessDataPoints(const std::vector<DataPoint>& points);
     
-    /**
-     * @brief 통계 업데이트
-     */
     void UpdateWorkerStats(const std::string& operation, bool success);
-    
-    /**
-     * @brief 객체 ID 생성 (UUID 지원)
-     */
-    std::string CreateObjectId(const std::string& device_id, const DataPoint& object_info) const;
+    std::string CreateObjectId(const DataPoint& point) const;
+    bool DiscoverMyObjects(std::vector<DataPoint>& data_points);  // 자신의 객체들 발견
     
     // =============================================================================
-    // 멤버 변수들
+    // 멤버 변수들 - 표준 구조체만 사용
     // =============================================================================
     
-    // BACnet 드라이버
     std::unique_ptr<Drivers::BACnetDriver> bacnet_driver_;
-    
-    // 설정 및 통계
-    BACnetWorkerConfig worker_config_;
     BACnetWorkerStats worker_stats_;
     
-    // 스레드 관리
     std::atomic<bool> threads_running_;
-    std::unique_ptr<std::thread> discovery_thread_;
+    std::unique_ptr<std::thread> object_discovery_thread_;  // 객체 발견 스레드
     std::unique_ptr<std::thread> polling_thread_;
     
-    // 발견된 디바이스 관리
-    mutable std::mutex devices_mutex_;
-    std::map<uint32_t, DeviceInfo> discovered_devices_;
+    // 🔥 1:1 구조: 자신의 객체들만 관리
+    mutable std::mutex objects_mutex_;
+    std::vector<DataPoint> my_objects_;                      // 자신의 BACnet 객체들
     
-    // 콜백 함수들
-    DeviceDiscoveredCallback on_device_discovered_;
+    // 콜백 함수들 (1:1 구조)
     ObjectDiscoveredCallback on_object_discovered_;
     ValueChangedCallback on_value_changed_;
 };

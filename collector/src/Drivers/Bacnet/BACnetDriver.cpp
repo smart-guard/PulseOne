@@ -60,10 +60,10 @@ BACnetDriver::~BACnetDriver() {
 bool BACnetDriver::Initialize(const PulseOne::Structs::DriverConfig& config) {
     auto& logger = LogManager::getInstance();
     logger.Info("🚀 Initializing BACnet Driver...");
-    
+    config_ = config;
     try {
         // 1. 설정 파싱
-        ParseDriverConfig(config);
+        ParseDriverConfig(config_);
         
         // 2. BACnet 스택 초기화
         if (!InitializeBACnetStack()) {

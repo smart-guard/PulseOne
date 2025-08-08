@@ -124,7 +124,9 @@ public:
     char GetParity() const;
     int GetDataBits() const;
     int GetStopBits() const;
-
+    PulseOne::Drivers::ModbusDriver* GetModbusDriver() const {
+        return modbus_driver_.get();
+    }
 private:
     // 🔥 실제 ModbusDriver 인스턴스
     std::unique_ptr<PulseOne::Drivers::ModbusDriver> modbus_driver_;

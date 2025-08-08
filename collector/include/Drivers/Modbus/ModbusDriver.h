@@ -162,6 +162,9 @@ public:
     bool StartRealtimeMonitoring(int interval_seconds = 5);
     void StopRealtimeMonitoring();
 
+    const DriverConfig& GetConfiguration() const override {
+        return config_;  // 실제 config 반환
+    }
 private:
     // =======================================================================
     // Core 멤버 변수 (항상 존재)
@@ -173,7 +176,7 @@ private:
     std::atomic<bool> is_connected_;
     std::mutex connection_mutex_;
     int current_slave_id_;
-    DriverConfig config_;
+ 
     std::atomic<bool> is_started_{false};
     std::mutex driver_mutex_;
     LogManager* logger_;
