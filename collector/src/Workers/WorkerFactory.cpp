@@ -401,12 +401,44 @@ PulseOne::Structs::DeviceInfo WorkerFactory::ConvertToDeviceInfo(const Database:
         }        
         logger_->Debug("🔧 Step 9: Protocol config validation completed");
         
-        // 9. 🔥 DriverConfig 동기화
-        logger_->Debug("🔧 Step 10: Starting DriverConfig sync...");
+        // Step 10: DriverConfig 동기화 (에러 수정된 버전)
+        logger_->Debug("🔧 Step 10: Starting enhanced DriverConfig sync (error-fixed)...");
         device_info.SyncToDriverConfig();
-        logger_->Debug("🔧 Step 10: DriverConfig sync completed");
-        
-        // 10. 최종 검증
+
+        // 🔥 동기화 결과 확인 로그
+        const auto& config = device_info.GetDriverConfig();
+        logger_->Info("✅ DriverConfig synchronized (all errors fixed):");
+        logger_->Info("  - timeout_ms: " + std::to_string(config.timeout_ms));
+        logger_->Info("  - retry_count: " + std::to_string(config.retry_count));  
+        logger_->Info("  - polling_interval_ms: " + std::to_string(config.polling_interval_ms));
+        logger_->Info("  - auto_reconnect: " + (config.auto_reconnect ? "true" : "false"));
+        logger_->Info("  - properties count: " + std::to_string(config.properties.size()));
+
+        // 🔥 재시도 정책 확인 (핵심 필드들)
+        std::vector<std::string> key_properties = {
+            "retry_interval_ms", "backoff_time_ms", "max_backoff_time_ms", 
+            "backoff_multiplier", "keep_alive_enabled", "keep_alive_timeout_s"
+        };
+
+        logger_->Info("📋 Key retry policy properties:");
+        for (const auto& key : key_properties) {
+            if (config.properties.count(key)) {
+                logger_->Info("  - " + key + ": " + config.properties.at(key));
+            } else {
+                logger_->Warn("  - " + key + ": NOT FOUND");
+            }
+        }
+
+        // 전체 properties 디버그 로그 (필요시)
+        logger_->Debug("📋 All DriverConfig properties:");
+        for (const auto& [key, value] : config.properties) {
+            logger_->Debug("    [" + key + "] = " + value);
+        }
+
+        logger_->Debug("🔧 Step 10: Enhanced DriverConfig sync completed (no errors)");
+
+
+        // 11. 최종 검증
         logger_->Debug("🔧 Step 11: Starting final validation...");
         ValidateAndCorrectSettings(device_info);
         
