@@ -1,9 +1,9 @@
 /**
- * @file MQTTWorker.cpp - 통합 MQTT 워커 구현부 (기본 + 프로덕션 모드)
+ * @file MQTTWorker.cpp - 통합 MQTT 워커 구현부 (기본 + 프로덕션 모드 + 파이프라인 연동 완성)
  * @brief 하나의 클래스로 모든 MQTT 기능 구현 - ModbusTcpWorker 패턴 완전 적용
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 3.0.0 (통합 버전)
+ * @version 3.1.0 (파이프라인 연동 완성 버전)
  */
 
  /*
@@ -246,6 +246,193 @@ bool MQTTWorker::CheckConnection() {
 bool MQTTWorker::SendKeepAlive() {
     // MQTT 자체적으로 Keep-alive를 처리하므로 항상 true 반환
     return CheckConnection();
+}
+
+// =============================================================================
+// 🔥 파이프라인 연동 메서드들 (ModbusTcpWorker 패턴 완전 적용)
+// =============================================================================
+
+bool MQTTWorker::SendMQTTDataToPipeline(const std::string& topic, 
+                                       const std::string& payload,
+                                       const DataPoint* data_point,
+                                       uint32_t priority) {
+    if (data_point) {
+        LogMessage(LogLevel::DEBUG_LEVEL, "Processing for DataPoint: " + data_point->name);
+    }
+
+    if (payload.empty()) {
+        return false;
+    }
+    
+    try {
+        std::vector<TimestampedValue> timestamped_values;
+        auto timestamp = std::chrono::system_clock::now();
+        
+#ifdef HAS_NLOHMANN_JSON
+        try {
+            // JSON 파싱 시도
+            auto json_payload = nlohmann::json::parse(payload);
+            
+            if (json_payload.is_object()) {
+                // JSON 객체인 경우: 각 필드를 별도 TimestampedValue로 변환
+                for (auto& [key, value] : json_payload.items()) {
+                    TimestampedValue tv;
+                    
+                    // JSON 값을 DataValue로 변환
+                    if (ConvertJsonToDataValue(value, tv.value)) {
+                        tv.timestamp = timestamp;
+                        tv.quality = DataQuality::GOOD;
+                        tv.source = "mqtt_" + topic + "_" + key;
+                        timestamped_values.push_back(tv);
+                    }
+                }
+            } else {
+                // JSON 단일 값인 경우
+                TimestampedValue tv;
+                if (ConvertJsonToDataValue(json_payload, tv.value)) {
+                    tv.timestamp = timestamp;
+                    tv.quality = DataQuality::GOOD;
+                    tv.source = "mqtt_" + topic + "_value";
+                    timestamped_values.push_back(tv);
+                }
+            }
+        } catch (const std::exception& e) {
+            // JSON 파싱 실패 시 문자열로 처리
+            LogMessage(LogLevel::WARN, "JSON parsing failed, treating as string: " + std::string(e.what()));
+            worker_stats_.json_parse_errors++;
+            
+            TimestampedValue tv;
+            tv.value = payload;  // DataValue는 std::string 지원
+            tv.timestamp = timestamp;
+            tv.quality = DataQuality::GOOD;
+            tv.source = "mqtt_" + topic + "_raw";
+            timestamped_values.push_back(tv);
+        }
+#else
+        // JSON 라이브러리가 없는 경우: 문자열로 처리
+        TimestampedValue tv;
+        tv.value = payload;  // DataValue는 std::string 지원
+        tv.timestamp = timestamp;
+        tv.quality = DataQuality::GOOD;
+        tv.source = "mqtt_" + topic + "_raw";
+        timestamped_values.push_back(tv);
+#endif
+        
+        // 공통 전송 함수 호출
+        return SendValuesToPipelineWithLogging(timestamped_values, 
+                                              "MQTT topic: " + topic, 
+                                              priority);
+                                              
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "SendMQTTDataToPipeline 예외: " + std::string(e.what()));
+        worker_stats_.json_parse_errors++;
+        return false;
+    }
+}
+
+#ifdef HAS_NLOHMANN_JSON
+bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json& json_data,
+                                         const std::string& topic_context,
+                                         uint32_t priority) {
+    try {
+        std::vector<TimestampedValue> timestamped_values;
+        auto timestamp = std::chrono::system_clock::now();
+        
+        if (json_data.is_object()) {
+            // JSON 객체의 각 필드를 처리
+            for (auto& [key, value] : json_data.items()) {
+                TimestampedValue tv;
+                
+                if (ConvertJsonToDataValue(value, tv.value)) {
+                    tv.timestamp = timestamp;
+                    tv.quality = DataQuality::GOOD;
+                    tv.source = "mqtt_json_" + key;
+                    timestamped_values.push_back(tv);
+                }
+            }
+        } else if (json_data.is_array()) {
+            // JSON 배열 처리
+            for (size_t i = 0; i < json_data.size(); ++i) {
+                TimestampedValue tv;
+                
+                if (ConvertJsonToDataValue(json_data[i], tv.value)) {
+                    tv.timestamp = timestamp;
+                    tv.quality = DataQuality::GOOD;
+                    tv.source = "mqtt_json_array_" + std::to_string(i);
+                    timestamped_values.push_back(tv);
+                }
+            }
+        } else {
+            // JSON 단일 값
+            TimestampedValue tv;
+            if (ConvertJsonToDataValue(json_data, tv.value)) {
+                tv.timestamp = timestamp;
+                tv.quality = DataQuality::GOOD;
+                tv.source = "mqtt_json_value";
+                timestamped_values.push_back(tv);
+            }
+        }
+        
+        return SendValuesToPipelineWithLogging(timestamped_values, topic_context, priority);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "SendJsonValuesToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+#endif
+
+bool MQTTWorker::SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
+                                                const std::string& context,
+                                                uint32_t priority) {
+    if (values.empty()) {
+        return false;
+    }
+    
+    try {
+        // BaseDeviceWorker::SendDataToPipeline() 호출
+        bool success = SendDataToPipeline(values, priority);
+        
+        if (success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "파이프라인 전송 성공 (" + context + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        } else {
+            LogMessage(LogLevel::WARN, 
+                      "파이프라인 전송 실패 (" + context + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "SendValuesToPipelineWithLogging 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::SendSingleTopicValueToPipeline(const std::string& topic,
+                                               const PulseOne::Structs::DataValue& value,
+                                               uint32_t priority) {
+    try {
+        TimestampedValue tv;
+        tv.value = value;
+        tv.timestamp = std::chrono::system_clock::now();
+        tv.quality = DataQuality::GOOD;
+        tv.source = "mqtt_single_" + topic;
+        
+        return SendValuesToPipelineWithLogging({tv}, 
+                                              "Single MQTT value: " + topic, 
+                                              priority);
+                                              
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "SendSingleTopicValueToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
 }
 
 // =============================================================================
@@ -825,7 +1012,6 @@ bool MQTTWorker::ParseMQTTConfig() {
     }
 }
 
-
 bool MQTTWorker::InitializeMQTTDriver() {
     try {
         LogMessage(LogLevel::INFO, "🔧 Initializing MQTT Driver...");
@@ -1006,6 +1192,7 @@ bool MQTTWorker::InitializeMQTTDriver() {
         return false;
     }
 }
+
 // =============================================================================
 // 스레드 함수들
 // =============================================================================
@@ -1089,6 +1276,77 @@ void MQTTWorker::PublishProcessorThreadFunction() {
     }
     
     LogMessage(LogLevel::INFO, "Publish processor thread stopped");
+}
+
+// =============================================================================
+// 🔥 ProcessReceivedMessage - 파이프라인 연동 완성 (ModbusTcpWorker 패턴)
+// =============================================================================
+
+bool MQTTWorker::ProcessReceivedMessage(const std::string& topic, const std::string& payload) {
+    try {
+        worker_stats_.messages_received++;
+        
+        // 프로덕션 모드에서는 성능 메트릭스 업데이트
+        if (IsProductionMode()) {
+            performance_metrics_.messages_received++;
+            performance_metrics_.bytes_received += payload.size();
+        }
+        
+        LogMessage(LogLevel::DEBUG_LEVEL, 
+                  "Received message from topic: " + topic + " (size: " + std::to_string(payload.size()) + " bytes)");
+        
+        // 🔥 새로 추가: 연관된 데이터포인트 찾기
+        DataPoint* related_point = FindDataPointByTopic(topic);
+        
+        // 🔥 새로 추가: 파이프라인 전송
+        bool pipeline_success = SendMQTTDataToPipeline(topic, payload, related_point);
+        
+        if (pipeline_success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, "Successfully sent MQTT data to pipeline");
+        } else {
+            LogMessage(LogLevel::WARN, "Failed to send MQTT data to pipeline");
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Error processing received message: " + std::string(e.what()));
+        worker_stats_.json_parse_errors++;
+        return false;
+    }
+}
+
+// =============================================================================
+// 🔥 파이프라인 연동 헬퍼 메서드들 (ModbusTcpWorker 패턴)
+// =============================================================================
+
+DataPoint* MQTTWorker::FindDataPointByTopic(const std::string& topic) {
+    // GetDataPoints()는 BaseDeviceWorker에서 제공되는 함수
+    const auto& data_points = GetDataPoints();
+    
+    for (auto& point : data_points) {
+        // MQTT는 토픽 기반이므로 간단한 매칭 로직 사용
+        // 실제 구현에서는 더 정교한 토픽 매칭 필요
+        if (point.name.find(topic) != std::string::npos || 
+            topic.find(point.name) != std::string::npos) {
+            return const_cast<DataPoint*>(&point);
+        }
+    }
+    
+    return nullptr;  // 찾지 못함
+}
+
+std::optional<DataPoint> MQTTWorker::FindDataPointById(const std::string& point_id) {
+    // GetDataPoints()는 BaseDeviceWorker에서 제공되는 함수
+    const auto& data_points = GetDataPoints();
+    
+    for (const auto& point : data_points) {
+        if (point.id == point_id) {
+            return point;
+        }
+    }
+    
+    return std::nullopt;  // 찾지 못함
 }
 
 // =============================================================================
@@ -1418,31 +1676,6 @@ void MQTTWorker::MessageCallback(MQTTWorker* worker,
     }
 }
 
-bool MQTTWorker::ProcessReceivedMessage(const std::string& topic, const std::string& payload) {
-    try {
-        worker_stats_.messages_received++;
-        
-        // 프로덕션 모드에서는 성능 메트릭스 업데이트
-        if (IsProductionMode()) {
-            performance_metrics_.messages_received++;
-            performance_metrics_.bytes_received += payload.size();
-        }
-        
-        LogMessage(LogLevel::DEBUG_LEVEL, 
-                  "Received message from topic: " + topic + " (size: " + std::to_string(payload.size()) + " bytes)");
-        
-        // 실제 메시지 처리 로직은 여기에 구현
-        // 예: JSON 파싱, 데이터 포인트 매핑, DB 저장 등
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Error processing received message: " + std::string(e.what()));
-        worker_stats_.json_parse_errors++;
-        return false;
-    }
-}
-
 #ifdef HAS_NLOHMANN_JSON
 bool MQTTWorker::ConvertJsonToDataValue(const nlohmann::json& json_val,
                                        PulseOne::Structs::DataValue& data_value) {
@@ -1494,7 +1727,6 @@ void MQTTWorker::SetupMQTTDriverCallbacks() {
     
     LogMessage(LogLevel::DEBUG_LEVEL, "✅ MQTT driver callbacks configured");
 }
-
 
 } // namespace Workers
 } // namespace PulseOne

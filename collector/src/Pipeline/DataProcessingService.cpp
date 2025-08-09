@@ -105,6 +105,34 @@ void DataProcessingService::Stop() {
                                  "✅ DataProcessingService 중지 완료");
 }
 
+
+void DataProcessingService::SetThreadCount(size_t thread_count) {
+    if (is_running_.load()) {
+        LogManager::getInstance().log("processing", LogLevel::WARN, 
+                                     "⚠️ 서비스가 실행 중일 때는 스레드 수를 변경할 수 없습니다. "
+                                     "먼저 서비스를 중지하세요.");
+        return;
+    }
+    
+    // 유효한 스레드 수 범위 검증 (1~32개)
+    if (thread_count == 0) {
+        LogManager::getInstance().log("processing", LogLevel::WARN, 
+                                     "⚠️ 스레드 수는 최소 1개 이상이어야 합니다. 1개로 설정됩니다.");
+        thread_count = 1;
+    } else if (thread_count > 32) {
+        LogManager::getInstance().log("processing", LogLevel::WARN, 
+                                     "⚠️ 스레드 수는 최대 32개까지 지원됩니다. 32개로 제한됩니다.");
+        thread_count = 32;
+    }
+    
+    thread_count_ = thread_count;
+    
+    LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                 "🔧 DataProcessingService 스레드 수 설정: " + 
+                                 std::to_string(thread_count_) + "개");
+}
+
+
 // =============================================================================
 // 🔥 올바른 멀티스레드 처리 루프
 // =============================================================================
@@ -210,21 +238,37 @@ void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMes
 
 void DataProcessingService::SaveToRedis(const std::vector<Structs::DeviceDataMessage>& batch) {
     if (!redis_client_) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "❌ Redis 클라이언트가 null입니다!");
+        return;
+    }
+    
+    if (!redis_client_->isConnected()) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "❌ Redis 연결이 끊어져 있습니다!");
         return;
     }
     
     try {
+        LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                     "🔄 Redis 저장 시작: " + std::to_string(batch.size()) + "개 메시지");
+        
         for (const auto& message : batch) {
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "📝 디바이스 " + message.device_id + " 저장 중... (" + 
+                                         std::to_string(message.points.size()) + "개 포인트)");
+            
             WriteDeviceDataToRedis(message);
             redis_writes_.fetch_add(1);
         }
         
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "Redis 저장 완료: " + std::to_string(batch.size()) + "개");
+        // 🔥 DEBUG_LEVEL → INFO로 변경해서 반드시 보이도록!
+        LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                     "✅ Redis 저장 완료: " + std::to_string(batch.size()) + "개");
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "Redis 저장 실패: " + std::string(e.what()));
+                                     "❌ Redis 저장 실패: " + std::string(e.what()));
         throw;
     }
 }
@@ -242,6 +286,9 @@ void DataProcessingService::SaveToInfluxDB(const std::vector<Structs::DeviceData
 
 void DataProcessingService::WriteDeviceDataToRedis(const Structs::DeviceDataMessage& message) {
     try {
+        LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                     "🔧 디바이스 " + message.device_id + " Redis 저장 시작");
+        
         // 🔥 올바른 필드 사용: message.points는 TimestampedValue의 배열
         for (size_t i = 0; i < message.points.size(); ++i) {
             const auto& point = message.points[i];
@@ -252,12 +299,33 @@ void DataProcessingService::WriteDeviceDataToRedis(const Structs::DeviceDataMess
             // 1. 개별 포인트 최신값 저장
             std::string point_key = "point:" + point_id + ":latest";
             std::string point_json = TimestampedValueToJson(point, point_id);
-            redis_client_->set(point_key, point_json);
-            redis_client_->expire(point_key, 3600);
+            
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "🔑 저장 키: " + point_key + " = " + point_json.substr(0, 100));
+            
+            bool set_result = redis_client_->set(point_key, point_json);
+            if (!set_result) {
+                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                             "❌ Redis SET 실패: " + point_key);
+                continue;
+            }
+            
+            bool expire_result = redis_client_->expire(point_key, 3600);
+            if (!expire_result) {
+                LogManager::getInstance().log("processing", LogLevel::WARN, 
+                                             "⚠️ Redis EXPIRE 실패: " + point_key);
+            }
             
             // 2. 디바이스 해시에 포인트 추가
             std::string device_key = "device:" + message.device_id + ":points";
-            redis_client_->hset(device_key, point_id, point_json);
+            bool hset_result = redis_client_->hset(device_key, point_id, point_json);
+            if (!hset_result) {
+                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                             "❌ Redis HSET 실패: " + device_key);
+            }
+            
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "✅ 포인트 저장 완료: " + point_id);
         }
         
         // 3. 디바이스 메타정보 저장
@@ -271,12 +339,23 @@ void DataProcessingService::WriteDeviceDataToRedis(const Structs::DeviceDataMess
         meta["priority"] = message.priority;
         meta["point_count"] = message.points.size();
         
-        redis_client_->set(device_meta_key, meta.dump());
+        bool meta_result = redis_client_->set(device_meta_key, meta.dump());
+        if (!meta_result) {
+            LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                         "❌ Redis 메타 저장 실패: " + device_meta_key);
+        } else {
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "✅ 메타 저장 완료: " + device_meta_key);
+        }
+        
         redis_client_->expire(device_meta_key, 7200);
+        
+        LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                     "🎉 디바이스 " + message.device_id + " 전체 저장 완료!");
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "Redis 저장 실패: " + std::string(e.what()));
+                                     "💥 디바이스 " + message.device_id + " Redis 저장 실패: " + std::string(e.what()));
         throw;
     }
 }
