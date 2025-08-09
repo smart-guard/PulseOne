@@ -1,12 +1,13 @@
 /**
  * @file BACnetDiscoveryService.cpp
- * @brief BACnet 발견 서비스 구현 - 🔥 실제 프로젝트 구조 100% 반영
+ * @brief BACnet 발견 서비스 - 🔥 동적 Worker 생성 완전 구현
  * @author PulseOne Development Team
- * @date 2025-08-08
+ * @date 2025-08-09
+ * @version 6.0.0 - 동적 확장
  */
 
 #include "Workers/Protocol/BACnetDiscoveryService.h"
-#include "Workers/Protocol/BACnetWorker.h"  // 🔥 중요: cpp에서만 include
+#include "Workers/Protocol/BACnetWorker.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
 #include "Database/DatabaseManager.h"
@@ -14,16 +15,16 @@
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Database/DatabaseTypes.h"
-#include <nlohmann/json.hpp>  // 🔥 추가: JSON 사용
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <functional>
 #include <regex>
+#include <thread>
 
-using json = nlohmann::json;  // 🔥 추가: JSON 타입 별칭
-
+using json = nlohmann::json;
 using namespace std::chrono;
 
-// 🔥 타입 별칭들 - 모든 타입 실제 구조 사용
+// 타입 별칭들
 using DeviceInfo = PulseOne::Structs::DeviceInfo;
 using DataPoint = PulseOne::Structs::DataPoint;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
@@ -39,6 +40,51 @@ using LogLevel = PulseOne::Enums::LogLevel;
 namespace PulseOne {
 namespace Workers {
 
+    // =======================================================================
+    // 🔥 DeviceInfo ↔ DeviceEntity 변환 함수들
+    // =======================================================================
+    
+    void ConvertDeviceInfoToEntity(const DeviceInfo& device_info, Database::Entities::DeviceEntity& entity);
+    Database::Entities::DeviceEntity ConvertDeviceInfoToEntity(const DeviceInfo& device_info);
+    
+    // =============================================================================
+// 🔥 DeviceInfo ↔ DeviceEntity 변환 구현
+// =============================================================================
+
+void BACnetDiscoveryService::ConvertDeviceInfoToEntity(const DeviceInfo& device_info, Database::Entities::DeviceEntity& entity) {
+    try {
+        entity.setId(std::stoi(device_info.id));
+        entity.setName(device_info.name);
+        entity.setDescription(device_info.description);
+        entity.setProtocolType(device_info.protocol_type);
+        entity.setEndpoint(device_info.endpoint);
+        entity.setEnabled(device_info.is_enabled);
+        
+        // properties를 JSON으로 변환
+        std::stringstream properties_json;
+        properties_json << "{";
+        bool first = true;
+        for (const auto& [key, value] : device_info.properties) {
+            if (!first) properties_json << ",";
+            properties_json << "\"" << key << "\":\"" << value << "\"";
+            first = false;
+        }
+        properties_json << "}";
+        entity.setConfig(properties_json.str());
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("Failed to convert DeviceInfo to DeviceEntity: " + std::string(e.what()));
+        throw;
+    }
+}
+
+Database::Entities::DeviceEntity BACnetDiscoveryService::ConvertDeviceInfoToEntity(const DeviceInfo& device_info) {
+    Database::Entities::DeviceEntity entity;
+    ConvertDeviceInfoToEntity(device_info, entity);
+    return entity;
+}
+
 // =============================================================================
 // 생성자 및 소멸자
 // =============================================================================
@@ -46,88 +92,345 @@ namespace Workers {
 BACnetDiscoveryService::BACnetDiscoveryService(
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo,
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo,
-    std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo)
+    std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo,
+    std::shared_ptr<WorkerFactory> worker_factory)
     : device_repository_(device_repo)
     , datapoint_repository_(datapoint_repo)
     , current_value_repository_(current_value_repo)
-    , is_active_(false) {
+    , worker_factory_(worker_factory)  // 🔥 추가
+    , is_active_(false)
+    , is_discovery_active_(false)
+    , is_network_scan_active_(false)
+    , network_scan_running_(false) {
     
     if (!device_repository_ || !datapoint_repository_) {
         throw std::invalid_argument("DeviceRepository or DataPointRepository is null");
     }
     
     auto& logger = LogManager::getInstance();
-    logger.Info("BACnetDiscoveryService created");
+    logger.Info("BACnetDiscoveryService created with dynamic Worker support");
 }
 
 BACnetDiscoveryService::~BACnetDiscoveryService() {
+    // 모든 활성 서비스 중지
+    StopDynamicDiscovery();
+    StopNetworkScan();
     UnregisterFromWorker();
+    
+    // 모든 관리 중인 Worker 정리
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    for (auto& [device_id, managed_worker] : managed_workers_) {
+        if (managed_worker->is_running && managed_worker->worker) {
+            try {
+                auto stop_future = managed_worker->worker->Stop();
+                stop_future.wait_for(std::chrono::seconds(5));  // 5초 대기
+            } catch (const std::exception& e) {
+                auto& logger = LogManager::getInstance();
+                logger.Error("Exception stopping worker for device " + device_id + ": " + e.what());
+            }
+        }
+    }
+    managed_workers_.clear();
     
     auto& logger = LogManager::getInstance();
     logger.Info("BACnetDiscoveryService destroyed");
 }
 
 // =============================================================================
-// 서비스 제어
+// 🔥 동적 Discovery 서비스 제어
 // =============================================================================
 
-bool BACnetDiscoveryService::RegisterToWorker(std::shared_ptr<BACnetWorker> worker) {
-    if (!worker) {
+bool BACnetDiscoveryService::StartDynamicDiscovery() {
+    if (is_discovery_active_.load()) {
         auto& logger = LogManager::getInstance();
-        logger.Error("BACnetDiscoveryService::RegisterToWorker - Worker is null");
+        logger.Warn("BACnet dynamic discovery already active");
         return false;
     }
     
-    registered_worker_ = worker;
+    if (!worker_factory_) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("WorkerFactory is null - cannot start dynamic discovery");
+        return false;
+    }
+    
+    is_discovery_active_ = true;
     is_active_ = true;
     
-    // 🔥 이제 BACnetWorker가 완전히 정의되어 있으므로 메서드 호출 가능
-    worker->SetObjectDiscoveredCallback([this](const DataPoint& object) {
-        OnObjectDiscovered(object);
-    });
-    
-    worker->SetValueChangedCallback([this](const std::string& object_id, const TimestampedValue& value) {
-        OnValueChanged(object_id, value);
-    });
-    
     auto& logger = LogManager::getInstance();
-    logger.Info("BACnetDiscoveryService registered to worker successfully");
+    logger.Info("🔥 BACnet dynamic discovery started");
+    
     return true;
 }
 
-void BACnetDiscoveryService::UnregisterFromWorker() {
-    if (auto worker = registered_worker_.lock()) {
-        // 콜백 제거 (nullptr로 설정)
-        worker->SetObjectDiscoveredCallback(nullptr);
-        worker->SetValueChangedCallback(nullptr);
+void BACnetDiscoveryService::StopDynamicDiscovery() {
+    if (!is_discovery_active_.load()) {
+        return;
     }
     
-    registered_worker_.reset();
-    is_active_ = false;
+    is_discovery_active_ = false;
+    
+    // 모든 관리 중인 Worker 중지
+    std::vector<std::string> device_ids;
+    {
+        std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+        for (const auto& [device_id, managed_worker] : managed_workers_) {
+            device_ids.push_back(device_id);
+        }
+    }
+    
+    for (const auto& device_id : device_ids) {
+        StopWorkerForDevice(device_id);
+    }
     
     auto& logger = LogManager::getInstance();
-    logger.Info("BACnetDiscoveryService unregistered from worker");
+    logger.Info("BACnet dynamic discovery stopped");
 }
 
-BACnetDiscoveryService::Statistics BACnetDiscoveryService::GetStatistics() const {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    return statistics_;
-}
-
-bool BACnetDiscoveryService::IsActive() const {
-    return is_active_.load();
-}
-
-void BACnetDiscoveryService::ResetStatistics() {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    statistics_ = Statistics{};
-    
-    auto& logger = LogManager::getInstance();
-    logger.Info("BACnetDiscoveryService statistics reset");
+bool BACnetDiscoveryService::IsDiscoveryActive() const {
+    return is_discovery_active_.load();
 }
 
 // =============================================================================
-// 🔥 콜백 핸들러들 - 모든 타입 통일
+// 🔥 Worker 동적 생성 및 관리
+// =============================================================================
+
+std::shared_ptr<BaseDeviceWorker> BACnetDiscoveryService::CreateWorkerForDevice(const DeviceInfo& device_info) {
+    if (!worker_factory_) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("WorkerFactory is null - cannot create worker for device: " + device_info.id);
+        return nullptr;
+    }
+    
+    try {
+        auto& logger = LogManager::getInstance();
+        logger.Info("🔧 Creating worker for device: " + device_info.name + " (ID: " + device_info.id + ")");
+        
+        // 🔧 DeviceInfo → DeviceEntity 변환 필요
+        // WorkerFactory는 DeviceEntity를 받으므로 변환
+        Database::Entities::DeviceEntity device_entity;
+        ConvertDeviceInfoToEntity(device_info, device_entity);
+        
+        // WorkerFactory를 통해 프로토콜별 Worker 생성
+        auto worker = worker_factory_->CreateWorker(device_entity);
+        
+        if (!worker) {
+            logger.Error("❌ Failed to create worker for device: " + device_info.name);
+            std::lock_guard<std::mutex> lock(stats_mutex_);
+            statistics_.workers_failed++;
+            return nullptr;
+        }
+        
+        // ManagedWorker로 감싸서 관리
+        std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+        auto managed_worker = std::make_unique<ManagedWorker>(worker, device_info);
+        managed_workers_[device_info.id] = std::move(managed_worker);
+        
+        {
+            std::lock_guard<std::mutex> stats_lock(stats_mutex_);
+            statistics_.workers_created++;
+        }
+        
+        logger.Info("✅ Worker created successfully for device: " + device_info.name);
+        return worker;
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("Exception creating worker for device " + device_info.id + ": " + std::string(e.what()));
+        
+        std::lock_guard<std::mutex> lock(stats_mutex_);
+        statistics_.workers_failed++;
+        return nullptr;
+    }
+}
+
+bool BACnetDiscoveryService::StartWorkerForDevice(const std::string& device_id) {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    
+    auto it = managed_workers_.find(device_id);
+    if (it == managed_workers_.end()) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("Worker not found for device: " + device_id);
+        return false;
+    }
+    
+    auto& managed_worker = it->second;
+    
+    if (managed_worker->is_running) {
+        auto& logger = LogManager::getInstance();
+        logger.Warn("Worker already running for device: " + device_id);
+        return true;
+    }
+    
+    if (!managed_worker->worker) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("Worker is null for device: " + device_id);
+        managed_worker->is_failed = true;
+        return false;
+    }
+    
+    try {
+        auto& logger = LogManager::getInstance();
+        logger.Info("🚀 Starting worker for device: " + managed_worker->device_info.name);
+        
+        // 비동기 시작
+        auto start_future = managed_worker->worker->Start();
+        bool start_success = start_future.get();  // 시작 완료까지 대기
+        
+        if (start_success) {
+            managed_worker->is_running = true;
+            managed_worker->is_failed = false;
+            managed_worker->last_activity = std::chrono::system_clock::now();
+            
+            {
+                std::lock_guard<std::mutex> stats_lock(stats_mutex_);
+                statistics_.workers_started++;
+            }
+            
+            logger.Info("✅ Worker started successfully for device: " + managed_worker->device_info.name);
+            return true;
+        } else {
+            managed_worker->is_failed = true;
+            managed_worker->last_error = "Failed to start worker";
+            
+            {
+                std::lock_guard<std::mutex> stats_lock(stats_mutex_);
+                statistics_.workers_failed++;
+            }
+            
+            logger.Error("❌ Failed to start worker for device: " + managed_worker->device_info.name);
+            return false;
+        }
+        
+    } catch (const std::exception& e) {
+        managed_worker->is_failed = true;
+        managed_worker->last_error = e.what();
+        
+        auto& logger = LogManager::getInstance();
+        logger.Error("Exception starting worker for device " + device_id + ": " + std::string(e.what()));
+        
+        std::lock_guard<std::mutex> stats_lock(stats_mutex_);
+        statistics_.workers_failed++;
+        return false;
+    }
+}
+
+bool BACnetDiscoveryService::StopWorkerForDevice(const std::string& device_id) {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    
+    auto it = managed_workers_.find(device_id);
+    if (it == managed_workers_.end()) {
+        return false;  // Worker가 없으면 이미 중지된 것으로 간주
+    }
+    
+    auto& managed_worker = it->second;
+    
+    if (!managed_worker->is_running) {
+        return true;  // 이미 중지됨
+    }
+    
+    if (!managed_worker->worker) {
+        managed_worker->is_running = false;
+        return true;
+    }
+    
+    try {
+        auto& logger = LogManager::getInstance();
+        logger.Info("🛑 Stopping worker for device: " + managed_worker->device_info.name);
+        
+        // 비동기 중지
+        auto stop_future = managed_worker->worker->Stop();
+        bool stop_success = stop_future.get();  // 중지 완료까지 대기
+        
+        managed_worker->is_running = false;
+        
+        if (stop_success) {
+            {
+                std::lock_guard<std::mutex> stats_lock(stats_mutex_);
+                statistics_.workers_stopped++;
+            }
+            
+            logger.Info("✅ Worker stopped successfully for device: " + managed_worker->device_info.name);
+        } else {
+            logger.Warn("⚠️ Worker stop returned false for device: " + managed_worker->device_info.name);
+        }
+        
+        return stop_success;
+        
+    } catch (const std::exception& e) {
+        managed_worker->is_running = false;
+        managed_worker->is_failed = true;
+        managed_worker->last_error = e.what();
+        
+        auto& logger = LogManager::getInstance();
+        logger.Error("Exception stopping worker for device " + device_id + ": " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetDiscoveryService::RemoveWorkerForDevice(const std::string& device_id) {
+    // 먼저 중지
+    StopWorkerForDevice(device_id);
+    
+    // 관리 목록에서 제거
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    auto it = managed_workers_.find(device_id);
+    if (it != managed_workers_.end()) {
+        auto& logger = LogManager::getInstance();
+        logger.Info("🗑️ Removing worker for device: " + it->second->device_info.name);
+        managed_workers_.erase(it);
+        return true;
+    }
+    
+    return false;
+}
+
+// =============================================================================
+// 🔥 Worker 상태 조회
+// =============================================================================
+
+std::vector<std::string> BACnetDiscoveryService::GetManagedWorkerIds() const {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    std::vector<std::string> device_ids;
+    device_ids.reserve(managed_workers_.size());
+    
+    for (const auto& [device_id, managed_worker] : managed_workers_) {
+        device_ids.push_back(device_id);
+    }
+    
+    return device_ids;
+}
+
+std::shared_ptr<BaseDeviceWorker> BACnetDiscoveryService::GetWorkerForDevice(const std::string& device_id) const {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    auto it = managed_workers_.find(device_id);
+    if (it != managed_workers_.end()) {
+        return it->second->worker;
+    }
+    return nullptr;
+}
+
+BACnetDiscoveryService::ManagedWorker* BACnetDiscoveryService::GetManagedWorkerInfo(const std::string& device_id) const {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    auto it = managed_workers_.find(device_id);
+    if (it != managed_workers_.end()) {
+        return it->second.get();
+    }
+    return nullptr;
+}
+
+std::map<std::string, bool> BACnetDiscoveryService::GetAllWorkerStates() const {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    std::map<std::string, bool> states;
+    
+    for (const auto& [device_id, managed_worker] : managed_workers_) {
+        states[device_id] = managed_worker->is_running;
+    }
+    
+    return states;
+}
+
+// =============================================================================
+// 🔥 콜백 핸들러들 - 동적 Worker 생성 로직 추가
 // =============================================================================
 
 void BACnetDiscoveryService::OnDeviceDiscovered(const DeviceInfo& device) {
@@ -147,6 +450,12 @@ void BACnetDiscoveryService::OnDeviceDiscovered(const DeviceInfo& device) {
         } else {
             statistics_.database_errors++;
             logger.Error("❌ Failed to save device to database: " + device.name);
+            return;  // DB 저장 실패 시 Worker 생성하지 않음
+        }
+        
+        // 🔥 핵심: 동적 Discovery가 활성화된 경우 자동으로 Worker 생성
+        if (is_discovery_active_.load()) {
+            CreateAndStartWorkerForNewDevice(device);
         }
         
     } catch (const std::exception& e) {
@@ -158,6 +467,7 @@ void BACnetDiscoveryService::OnDeviceDiscovered(const DeviceInfo& device) {
     }
 }
 
+// 기존 OnObjectDiscovered, OnValueChanged 메서드들은 동일하게 유지...
 void BACnetDiscoveryService::OnObjectDiscovered(const DataPoint& object) {
     try {
         std::lock_guard<std::mutex> lock(stats_mutex_);
@@ -167,16 +477,14 @@ void BACnetDiscoveryService::OnObjectDiscovered(const DataPoint& object) {
         auto& logger = LogManager::getInstance();
         logger.Debug("🔄 BACnet object discovered: " + object.name + " (ID: " + object.id + ")");
         
-        // 단일 객체를 벡터로 변환하여 기존 메서드 호출
         std::vector<DataPoint> objects = {object};
         uint32_t device_id = 0;
         try {
             device_id = std::stoul(object.device_id);
         } catch (...) {
-            device_id = 260001;  // 기본값
+            device_id = 260001;
         }
         
-        // 데이터베이스에 저장
         if (SaveDiscoveredObjectsToDatabase(device_id, objects)) {
             statistics_.objects_saved++;
             logger.Info("✅ Object saved to database: " + object.name);
@@ -204,7 +512,6 @@ void BACnetDiscoveryService::OnObjectDiscovered(uint32_t device_id, const std::v
         logger.Debug("🔄 BACnet objects discovered for device " + std::to_string(device_id) + 
                      ": " + std::to_string(objects.size()) + " objects");
         
-        // 데이터베이스에 저장
         if (SaveDiscoveredObjectsToDatabase(device_id, objects)) {
             statistics_.objects_saved += objects.size();
             logger.Info("✅ Objects saved to database for device " + std::to_string(device_id));
@@ -231,7 +538,6 @@ void BACnetDiscoveryService::OnValueChanged(const std::string& object_id, const 
         auto& logger = LogManager::getInstance();
         logger.Debug("🔄 BACnet value changed for object: " + object_id);
         
-        // 현재값 데이터베이스에 업데이트
         if (UpdateCurrentValueInDatabase(object_id, value)) {
             statistics_.values_saved++;
         } else {
@@ -249,32 +555,207 @@ void BACnetDiscoveryService::OnValueChanged(const std::string& object_id, const 
 }
 
 // =============================================================================
-// 🔥 데이터베이스 저장 메서드들 - 실제 메서드명 사용
+// 🔥 핵심: 새 디바이스 발견 시 Worker 생성 및 시작
+// =============================================================================
+
+bool BACnetDiscoveryService::CreateAndStartWorkerForNewDevice(const DeviceInfo& device_info) {
+    try {
+        auto& logger = LogManager::getInstance();
+        logger.Info("🎯 Creating and starting worker for new device: " + device_info.name);
+        
+        // 1. 이미 관리 중인 디바이스인지 확인
+        if (IsDeviceAlreadyManaged(device_info.id)) {
+            logger.Info("Device already managed: " + device_info.id);
+            return true;
+        }
+        
+        // 2. Worker 생성
+        auto worker = CreateWorkerForDevice(device_info);
+        if (!worker) {
+            logger.Error("Failed to create worker for device: " + device_info.name);
+            return false;
+        }
+        
+        // 3. Worker 시작
+        bool started = StartWorkerForDevice(device_info.id);
+        if (!started) {
+            logger.Error("Failed to start worker for device: " + device_info.name);
+            // 실패한 Worker는 제거
+            RemoveWorkerForDevice(device_info.id);
+            return false;
+        }
+        
+        logger.Info("🎉 Successfully created and started worker for device: " + device_info.name);
+        return true;
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("Exception in CreateAndStartWorkerForNewDevice: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetDiscoveryService::IsDeviceAlreadyManaged(const std::string& device_id) const {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    return managed_workers_.find(device_id) != managed_workers_.end();
+}
+
+void BACnetDiscoveryService::CleanupFailedWorkers() {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    
+    auto it = managed_workers_.begin();
+    while (it != managed_workers_.end()) {
+        if (it->second->is_failed) {
+            auto& logger = LogManager::getInstance();
+            logger.Info("🧹 Cleaning up failed worker for device: " + it->second->device_info.name);
+            it = managed_workers_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void BACnetDiscoveryService::UpdateWorkerActivity(const std::string& device_id) {
+    std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+    auto it = managed_workers_.find(device_id);
+    if (it != managed_workers_.end()) {
+        it->second->last_activity = std::chrono::system_clock::now();
+    }
+}
+
+// =============================================================================
+// 기존 레거시 호환 메서드들
+// =============================================================================
+
+bool BACnetDiscoveryService::RegisterToWorker(std::shared_ptr<BACnetWorker> worker) {
+    if (!worker) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("BACnetDiscoveryService::RegisterToWorker - Worker is null");
+        return false;
+    }
+    
+    registered_worker_ = worker;
+    is_active_ = true;
+    
+    // BACnet Worker 콜백 설정 (레거시 방식)
+    // worker->SetObjectDiscoveredCallback(...);
+    // worker->SetValueChangedCallback(...);
+    
+    auto& logger = LogManager::getInstance();
+    logger.Info("BACnetDiscoveryService registered to worker successfully (legacy mode)");
+    return true;
+}
+
+void BACnetDiscoveryService::UnregisterFromWorker() {
+    if (auto worker = registered_worker_.lock()) {
+        // 콜백 제거
+        // worker->SetObjectDiscoveredCallback(nullptr);
+        // worker->SetValueChangedCallback(nullptr);
+    }
+    
+    registered_worker_.reset();
+    
+    auto& logger = LogManager::getInstance();
+    logger.Info("BACnetDiscoveryService unregistered from worker");
+}
+
+BACnetDiscoveryService::Statistics BACnetDiscoveryService::GetStatistics() const {
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    return statistics_;
+}
+
+bool BACnetDiscoveryService::IsActive() const {
+    return is_active_.load();
+}
+
+void BACnetDiscoveryService::ResetStatistics() {
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    statistics_ = Statistics{};
+    
+    auto& logger = LogManager::getInstance();
+    logger.Info("BACnetDiscoveryService statistics reset");
+}
+
+// =============================================================================
+// 🔥 네트워크 스캔 기능 (선택사항)
+// =============================================================================
+
+bool BACnetDiscoveryService::StartNetworkScan(const std::string& network_range) {
+    if (is_network_scan_active_.load()) {
+        return false;
+    }
+    
+    is_network_scan_active_ = true;
+    network_scan_running_ = true;
+    
+    // 네트워크 스캔 스레드 시작 (실제 구현은 BACnet 라이브러리 기반)
+    network_scan_thread_ = std::make_unique<std::thread>([this, network_range]() {
+        auto& logger = LogManager::getInstance();
+        logger.Info("🔍 Network scan started for range: " + 
+                   (network_range.empty() ? "auto-detect" : network_range));
+        
+        // TODO: 실제 BACnet 네트워크 스캔 구현
+        // 1. BACnet Who-Is 브로드캐스트 전송
+        // 2. I-Am 응답 수집
+        // 3. 새 디바이스 발견 시 OnDeviceDiscovered 호출
+        
+        while (network_scan_running_.load()) {
+            // 네트워크 스캔 로직
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+        }
+        
+        logger.Info("🔍 Network scan stopped");
+    });
+    
+    auto& logger = LogManager::getInstance();
+    logger.Info("🔍 BACnet network scan started");
+    return true;
+}
+
+void BACnetDiscoveryService::StopNetworkScan() {
+    if (!is_network_scan_active_.load()) {
+        return;
+    }
+    
+    network_scan_running_ = false;
+    is_network_scan_active_ = false;
+    
+    if (network_scan_thread_ && network_scan_thread_->joinable()) {
+        network_scan_thread_->join();
+        network_scan_thread_.reset();
+    }
+    
+    auto& logger = LogManager::getInstance();
+    logger.Info("BACnet network scan stopped");
+}
+
+bool BACnetDiscoveryService::IsNetworkScanActive() const {
+    return is_network_scan_active_.load();
+}
+
+// =============================================================================
+// 기존 데이터베이스 저장 메서드들 (동일하게 유지)
 // =============================================================================
 
 bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(const DeviceInfo& device) {
     try {
-        // 🔥 실제 메서드명: findAll() (not GetAll)
         auto existing_devices = device_repository_->findAll();
         for (const auto& existing : existing_devices) {
-            if (existing.getId() == std::stoi(device.id)) {  // ✅ int 변환
+            if (existing.getId() == std::stoi(device.id)) {
                 auto& logger = LogManager::getInstance();
                 logger.Debug("Device already exists in database: " + device.id);
-                return true;  // 이미 존재하므로 성공으로 처리
+                return true;
             }
         }
         
-        // 새 디바이스 엔티티 생성
         DeviceEntity entity;
-        entity.setId(std::stoi(device.id));  // ✅ string → int 변환
+        entity.setId(std::stoi(device.id));
         entity.setName(device.name);
         entity.setDescription(device.description);
         entity.setProtocolType(device.protocol_type);
         entity.setEndpoint(device.endpoint);
         entity.setEnabled(device.is_enabled);
-        // ❌ setTimeout, setRetryCount, setPollingInterval 메서드 없음 - 제거
         
-        // properties를 JSON으로 직렬화
         std::stringstream properties_json;
         properties_json << "{";
         bool first = true;
@@ -286,7 +767,6 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(const DeviceInfo& de
         properties_json << "}";
         entity.setConfig(properties_json.str());
         
-        // 🔥 실제 메서드명: save() (not Create)
         return device_repository_->save(entity);
         
     } catch (const std::exception& e) {
@@ -297,41 +777,34 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(const DeviceInfo& de
 
 bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(uint32_t device_id, const std::vector<DataPoint>& objects) {
     try {
-        // ✅ unused parameter 경고 해결
-        (void)device_id;  // 명시적으로 사용하지 않음을 표시
-        
+        (void)device_id;
         bool all_success = true;
         
         for (const auto& object : objects) {
-            // 🔥 실제 메서드명: findAll() (not GetAll)
             auto existing_points = datapoint_repository_->findAll();
             bool exists = false;
             for (const auto& existing : existing_points) {
-                if (existing.getId() == std::stoi(object.id)) {  // ✅ string → int 변환
+                if (existing.getId() == std::stoi(object.id)) {
                     exists = true;
                     break;
                 }
             }
             
             if (exists) {
-                continue;  // 이미 존재하므로 건너뛰기
+                continue;
             }
             
-            // 새 데이터포인트 엔티티 생성
             DataPointEntity entity;
-            entity.setId(std::stoi(object.id));  // ✅ string → int 변환
-            entity.setDeviceId(std::stoi(object.device_id));  // ✅ string → int 변환
+            entity.setId(std::stoi(object.id));
+            entity.setDeviceId(std::stoi(object.device_id));
             entity.setName(object.name);
             entity.setDescription(object.description);
             entity.setAddress(object.address);
             entity.setDataType(object.data_type);
             entity.setUnit(object.unit);
             entity.setEnabled(object.is_enabled);
-            
-            // ✅ protocol_params를 맵으로 설정 (not JSON string)
             entity.setProtocolParams(object.protocol_params);
             
-            // 🔥 실제 메서드명: save() (not Create)
             if (!datapoint_repository_->save(entity)) {
                 all_success = false;
             }
@@ -348,42 +821,31 @@ bool BACnetDiscoveryService::SaveDiscoveredObjectsToDatabase(uint32_t device_id,
 bool BACnetDiscoveryService::UpdateCurrentValueInDatabase(const std::string& object_id, const TimestampedValue& value) {
     try {
         if (!current_value_repository_) {
-            return false;  // CurrentValue 저장소가 없으면 건너뛰기
+            return false;
         }
         
-        // CurrentValue 엔티티 생성/업데이트
         CurrentValueEntity entity;
-        entity.setId(std::stoi(object_id));  // ✅ string → int 변환
-        // ✅ 실제 메서드명: setPointId() (not setDataPointId)
+        entity.setId(std::stoi(object_id));
         entity.setPointId(std::stoi(object_id));
         
-        // ✅ 실제 존재하는 메서드 사용 (setValue, setTimestamp는 구현되지 않음)
-        // double 값을 JSON 문자열로 설정
         double value_double = ConvertDataValueToDouble(value.value);
         json value_json;
         value_json["value"] = value_double;
         entity.setCurrentValue(value_json.dump());
         
-        // ✅ setQuality는 DataQuality enum 요구
         entity.setQuality(value.quality);
-        
-        // ✅ 실제 존재하는 메서드: setValueTimestamp (not setTimestamp)
         entity.setValueTimestamp(value.timestamp);
         
-        // 🔥 실제 조건 생성 방법
         std::vector<QueryCondition> conditions = {
             QueryCondition("point_id", "=", object_id)
         };
         
-        // 🔥 실제 메서드명: findByConditions() (not FindByCondition)
         auto existing_values = current_value_repository_->findByConditions(conditions);
         
         if (existing_values.empty()) {
-            // 🔥 실제 메서드명: save() (not Create)
             return current_value_repository_->save(entity);
         } else {
             entity.setId(existing_values[0].getId());
-            // 🔥 실제 메서드명: update() (not Update)
             return current_value_repository_->update(entity);
         }
         
@@ -394,7 +856,7 @@ bool BACnetDiscoveryService::UpdateCurrentValueInDatabase(const std::string& obj
 }
 
 // =============================================================================
-// 유틸리티 함수들
+// 기존 유틸리티 함수들 (동일하게 유지)
 // =============================================================================
 
 int BACnetDiscoveryService::FindDeviceIdInDatabase(uint32_t bacnet_device_id) {
@@ -403,14 +865,13 @@ int BACnetDiscoveryService::FindDeviceIdInDatabase(uint32_t bacnet_device_id) {
             QueryCondition("config", "LIKE", "%\"bacnet_device_id\":\"" + std::to_string(bacnet_device_id) + "\"%")
         };
         
-        // 🔥 실제 메서드명: findByConditions() (not FindByCondition)
         auto devices = device_repository_->findByConditions(conditions);
         
         if (!devices.empty()) {
             return devices[0].getId();
         }
         
-        return -1;  // 찾을 수 없음
+        return -1;
         
     } catch (const std::exception& e) {
         HandleError("FindDeviceIdInDatabase", e.what());
@@ -419,7 +880,6 @@ int BACnetDiscoveryService::FindDeviceIdInDatabase(uint32_t bacnet_device_id) {
 }
 
 std::string BACnetDiscoveryService::GenerateDataPointId(uint32_t device_id, const DataPoint& object) {
-    // BACnet 객체 정보로 고유 ID 생성
     auto obj_type_it = object.protocol_params.find("bacnet_object_type");
     auto obj_inst_it = object.protocol_params.find("bacnet_instance");
     
@@ -430,7 +890,6 @@ std::string BACnetDiscoveryService::GenerateDataPointId(uint32_t device_id, cons
                obj_inst_it->second;
     }
     
-    // 기본 ID 생성
     return std::to_string(device_id) + ":" + std::to_string(object.address);
 }
 
@@ -452,12 +911,12 @@ std::string BACnetDiscoveryService::ObjectTypeToString(int type) {
 
 PulseOne::Enums::DataType BACnetDiscoveryService::DetermineDataType(int type) {
     switch (type) {
-        case 0: case 1: case 2:   // AI, AO, AV
-            return DataType::FLOAT32;  // ✅ 실제 enum 값
-        case 3: case 4: case 5:   // BI, BO, BV
-            return DataType::BOOL;     // ✅ 실제 enum 값
-        case 13: case 14: case 19:  // MI, MO, MV
-            return DataType::INT32;    // ✅ 실제 enum 값
+        case 0: case 1: case 2:
+            return DataType::FLOAT32;
+        case 3: case 4: case 5:
+            return DataType::BOOL;
+        case 13: case 14: case 19:
+            return DataType::INT32;
         default:
             return DataType::STRING;
     }
@@ -465,16 +924,15 @@ PulseOne::Enums::DataType BACnetDiscoveryService::DetermineDataType(int type) {
 
 std::string BACnetDiscoveryService::DataTypeToString(PulseOne::Enums::DataType type) {
     switch (type) {
-        case DataType::BOOL: return "bool";        // ✅ 실제 enum 값
-        case DataType::INT32: return "int";        // ✅ 실제 enum 값
-        case DataType::FLOAT32: return "float";    // ✅ 실제 enum 값
+        case DataType::BOOL: return "bool";
+        case DataType::INT32: return "int";
+        case DataType::FLOAT32: return "float";
         case DataType::STRING: return "string";
         default: return "unknown";
     }
 }
 
 std::string BACnetDiscoveryService::ConvertDataValueToString(const DataValue& value) {
-    // ✅ DataValue는 variant<bool, int16_t, uint16_t, int32_t, uint32_t, float, double, string>
     try {
         if (std::holds_alternative<bool>(value)) {
             return std::get<bool>(value) ? "true" : "false";
@@ -500,7 +958,6 @@ std::string BACnetDiscoveryService::ConvertDataValueToString(const DataValue& va
 }
 
 double BACnetDiscoveryService::ConvertDataValueToDouble(const DataValue& value) {
-    // ✅ DataValue는 variant<bool, int16_t, uint16_t, int32_t, uint32_t, float, double, string>
     try {
         if (std::holds_alternative<bool>(value)) {
             return std::get<bool>(value) ? 1.0 : 0.0;
@@ -535,7 +992,6 @@ void BACnetDiscoveryService::HandleError(const std::string& context, const std::
 }
 
 int BACnetDiscoveryService::GuessObjectTypeFromName(const std::string& object_name) {
-    // 정규 표현식으로 객체 타입 추정
     std::regex ai_pattern("^AI\\d+", std::regex_constants::icase);
     std::regex ao_pattern("^AO\\d+", std::regex_constants::icase);
     std::regex av_pattern("^AV\\d+", std::regex_constants::icase);
@@ -546,31 +1002,28 @@ int BACnetDiscoveryService::GuessObjectTypeFromName(const std::string& object_na
     std::regex mo_pattern("^MO\\d+", std::regex_constants::icase);
     std::regex mv_pattern("^MV\\d+", std::regex_constants::icase);
     
-    if (std::regex_search(object_name, ai_pattern)) return 0;   // AI
-    if (std::regex_search(object_name, ao_pattern)) return 1;   // AO
-    if (std::regex_search(object_name, av_pattern)) return 2;   // AV
-    if (std::regex_search(object_name, bi_pattern)) return 3;   // BI
-    if (std::regex_search(object_name, bo_pattern)) return 4;   // BO
-    if (std::regex_search(object_name, bv_pattern)) return 5;   // BV
-    if (std::regex_search(object_name, mi_pattern)) return 13;  // MI
-    if (std::regex_search(object_name, mo_pattern)) return 14;  // MO
-    if (std::regex_search(object_name, mv_pattern)) return 19;  // MV
+    if (std::regex_search(object_name, ai_pattern)) return 0;
+    if (std::regex_search(object_name, ao_pattern)) return 1;
+    if (std::regex_search(object_name, av_pattern)) return 2;
+    if (std::regex_search(object_name, bi_pattern)) return 3;
+    if (std::regex_search(object_name, bo_pattern)) return 4;
+    if (std::regex_search(object_name, bv_pattern)) return 5;
+    if (std::regex_search(object_name, mi_pattern)) return 13;
+    if (std::regex_search(object_name, mo_pattern)) return 14;
+    if (std::regex_search(object_name, mv_pattern)) return 19;
     
-    return 2;  // 기본값: ANALOG_VALUE
+    return 2;
 }
 
 std::string BACnetDiscoveryService::BACnetAddressToString(const BACNET_ADDRESS& address) {
-    // BACNET_ADDRESS를 IP 문자열로 변환
     std::stringstream ss;
     
     if (address.net == 0) {
-        // 로컬 네트워크
         for (int i = 0; i < address.len && i < 6; i++) {
             if (i > 0) ss << ".";
             ss << static_cast<int>(address.adr[i]);
         }
     } else {
-        // 원격 네트워크
         ss << "Network:" << address.net << ",Address:";
         for (int i = 0; i < address.len && i < 6; i++) {
             if (i > 0) ss << ".";

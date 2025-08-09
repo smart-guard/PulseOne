@@ -21,10 +21,11 @@ obj/Workers/Protocol/BACnetDiscoveryService.o: \
  ../include/Database/Repositories/CurrentValueRepository.h \
  ../include/Database/Entities/CurrentValueEntity.h \
  ../include/Drivers/Bacnet/BACnetTypes.h \
- ../include/Workers/Protocol/BACnetWorker.h \
- ../include/Workers/Base/UdpBasedWorker.h \
+ ../include/Workers/WorkerFactory.h \
  ../include/Workers/Base/BaseDeviceWorker.h \
  ../include/Pipeline/PipelineManager.h \
+ ../include/Workers/Protocol/BACnetWorker.h \
+ ../include/Workers/Base/UdpBasedWorker.h \
  ../include/Drivers/Bacnet/BACnetDriver.h \
  ../include/Drivers/Common/IProtocolDriver.h \
  ../include/Drivers/Bacnet/BACnetErrorMapper.h \

@@ -1,4 +1,4 @@
-# collector/Dockerfile.dev - BACnet 라이브러리 완전 수정 버전
+# collector/Dockerfile.dev - BACnet 라이브러리 + Redis 설정 완전 수정 버전
 FROM gcc:12
 
 # 기본 패키지 설치
@@ -155,22 +155,100 @@ Libs: -L${libdir} -lpaho-mqttpp3
 Cflags: -I${includedir}
 EOF
 
+# =============================================================================
+# 🔥 Redis 설정 파일 및 환경 변수 미리 설정
+# =============================================================================
+
+# Docker 개발 환경용 Redis 설정 파일 생성
+RUN echo "📝 Creating Docker-specific Redis configuration..." && \
+    mkdir -p /app/collector/config && \
+    cat > /app/collector/config/redis_docker.env << 'EOF'
+# Docker 개발 환경용 Redis 설정
+REDIS_HOST=host.docker.internal
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=
+REDIS_SSL=false
+REDIS_CONNECTION_TIMEOUT_MS=5000
+REDIS_COMMAND_TIMEOUT_MS=3000
+REDIS_MAX_CONNECTIONS=20
+REDIS_MIN_CONNECTIONS=5
+REDIS_RETRY_ATTEMPTS=3
+REDIS_RETRY_DELAY_MS=1000
+
+# 개발 모드 설정
+REDIS_TEST_MODE=true
+REDIS_FLUSH_ON_START=false
+REDIS_AUTO_PING=true
+REDIS_PING_INTERVAL_S=30
+
+# Docker Compose 연결 (선택적)
+REDIS_HOST_COMPOSE=redis
+REDIS_HOST_EXTERNAL=host.docker.internal
+EOF
+
+# Docker 환경 감지 및 자동 Redis 설정 스크립트
+RUN echo '#!/bin/bash' > /usr/local/bin/setup-docker-redis.sh && \
+    echo 'echo "🔧 Docker Redis 설정 스크립트"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'REDIS_CONFIG_FILE="/app/collector/config/redis.env"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'DOCKER_REDIS_CONFIG="/app/collector/config/redis_docker.env"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '# Docker 환경 감지' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'if [ -f /.dockerenv ]; then' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    echo "✅ Docker 환경 감지됨"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    ' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    # Docker용 Redis 설정 복사' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    if [ -f "$DOCKER_REDIS_CONFIG" ]; then' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '        echo "📋 Docker 전용 Redis 설정 적용..."' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '        cp "$DOCKER_REDIS_CONFIG" "$REDIS_CONFIG_FILE"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '        echo "✅ Redis 설정 업데이트 완료: host.docker.internal:6379"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    else' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '        echo "⚠️  Docker Redis 설정 파일이 없습니다"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    fi' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    ' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    # 환경 변수 설정' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    export REDIS_HOST=host.docker.internal' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    export REDIS_PORT=6379' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    echo "🌍 환경 변수 설정: REDIS_HOST=$REDIS_HOST"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'else' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '    echo "ℹ️  Docker 환경이 아닙니다. 기본 설정 유지"' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'fi' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo '# Redis 연결 테스트' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'echo "🔍 Redis 연결 테스트..."' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'redis_host=${REDIS_HOST:-localhost}' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'redis_port=${REDIS_PORT:-6379}' >> /usr/local/bin/setup-docker-redis.sh && \
+    echo 'timeout 3 bash -c "</dev/tcp/$redis_host/$redis_port" 2>/dev/null && echo "✅ Redis 연결 성공: $redis_host:$redis_port" || echo "❌ Redis 연결 실패: $redis_host:$redis_port"' >> /usr/local/bin/setup-docker-redis.sh && \
+    chmod +x /usr/local/bin/setup-docker-redis.sh
+
 # 환경 변수 설정
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 ENV BACNET_PORT=linux
 ENV BACDL_DEFINE="-DBACDL_BIP=1"
 
-# 개발용 스크립트 생성 (BACnet 확인 개선)
+# 🔥 Redis 관련 환경 변수 기본값 설정
+ENV REDIS_HOST=host.docker.internal
+ENV REDIS_PORT=6379
+ENV REDIS_DB=0
+ENV REDIS_TEST_MODE=true
+
+# 개발용 스크립트 생성 (BACnet + Redis 확인 개선)
 RUN echo '#!/bin/bash' > /usr/local/bin/dev-build.sh && \
     echo 'echo "🔧 PulseOne Collector 개발 빌드"' >> /usr/local/bin/dev-build.sh && \
     echo 'cd /app/collector' >> /usr/local/bin/dev-build.sh && \
+    echo '' >> /usr/local/bin/dev-build.sh && \
+    echo '# Docker Redis 설정 자동 적용' >> /usr/local/bin/dev-build.sh && \
+    echo 'setup-docker-redis.sh' >> /usr/local/bin/dev-build.sh && \
+    echo '' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "📋 설치된 라이브러리 확인:"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "  libmodbus: $(pkg-config --exists libmodbus && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  hiredis: $(ls -la /usr/local/lib/libhiredis* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "  BACnet lib: $(ls -la /usr/local/lib/libbacnet.a 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "  BACnet headers: $(ls -d /usr/local/include/bacnet 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "  Paho MQTT C: $(ls -la /usr/local/lib/libpaho-mqtt3c.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "  Paho MQTT C++: $(ls -la /usr/local/lib/libpaho-mqttpp*.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
+    echo 'echo "  Redis 설정: $REDIS_HOST:$REDIS_PORT"' >> /usr/local/bin/dev-build.sh && \
     echo 'echo ""' >> /usr/local/bin/dev-build.sh && \
     echo 'echo "🔨 빌드 시작:"' >> /usr/local/bin/dev-build.sh && \
     echo 'make clean && make debug' >> /usr/local/bin/dev-build.sh && \
@@ -238,7 +316,47 @@ RUN echo '#!/bin/bash' > /usr/local/bin/test-bacnet-symbols.sh && \
     echo 'rm -f /tmp/test_bacnet /tmp/test_bacnet.c 2>/dev/null' >> /usr/local/bin/test-bacnet-symbols.sh && \
     chmod +x /usr/local/bin/test-bacnet-symbols.sh
 
-# Bash 프롬프트 개선 및 개발 환경 메시지
+# Redis 연결 테스트 스크립트 추가
+RUN echo '#!/bin/bash' > /usr/local/bin/test-redis-connection.sh && \
+    echo 'echo "🔍 Redis 연결 테스트"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'echo "=================="' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '# 환경 변수 확인' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'REDIS_HOST=${REDIS_HOST:-host.docker.internal}' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'REDIS_PORT=${REDIS_PORT:-6379}' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'echo "🌐 설정: $REDIS_HOST:$REDIS_PORT"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '# 네트워크 연결 테스트' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'echo "📡 네트워크 연결 테스트..."' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'timeout 3 bash -c "</dev/tcp/$REDIS_HOST/$REDIS_PORT" 2>/dev/null && {' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    echo "✅ 네트워크 연결 성공"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '} || {' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    echo "❌ 네트워크 연결 실패"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    echo "   - Redis 서버가 실행 중인지 확인하세요"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    echo "   - 호스트 주소가 올바른지 확인하세요"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    exit 1' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '}' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '# hiredis 라이브러리 테스트' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'echo "🧪 hiredis 라이브러리 테스트..."' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'cat > /tmp/test_redis.c << "TESTEOF"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '#include <stdio.h>' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '#include <hiredis/hiredis.h>' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'int main() {' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    printf("hiredis library linkage test passed\n");' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    return 0;' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '}' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'TESTEOF' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'if gcc -o /tmp/test_redis /tmp/test_redis.c -lhiredis 2>/dev/null; then' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    echo "✅ hiredis 라이브러리 링킹 성공"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    /tmp/test_redis && echo "✅ hiredis 실행 테스트 성공"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'else' >> /usr/local/bin/test-redis-connection.sh && \
+    echo '    echo "❌ hiredis 라이브러리 링킹 실패"' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'fi' >> /usr/local/bin/test-redis-connection.sh && \
+    echo 'rm -f /tmp/test_redis /tmp/test_redis.c 2>/dev/null' >> /usr/local/bin/test-redis-connection.sh && \
+    chmod +x /usr/local/bin/test-redis-connection.sh
+
+# Bash 프롬프트 개선 및 개발 환경 메시지 (Redis 정보 추가)
 RUN echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
     echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc && \
     echo 'echo "📋 설치된 라이브러리들:"' >> /root/.bashrc && \
@@ -246,15 +364,17 @@ RUN echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\
     echo 'echo "  - Paho MQTT C (MQTT 통신 - C)"' >> /root/.bashrc && \
     echo 'echo "  - Paho MQTT C++ (MQTT 통신 - C++)"' >> /root/.bashrc && \
     echo 'echo "  - BACnet Stack (BACnet 통신)"' >> /root/.bashrc && \
-    echo 'echo "  - hiredis (Redis 클라이언트)"' >> /root/.bashrc && \
+    echo 'echo "  - hiredis (Redis 클라이언트) - ${REDIS_HOST:-host.docker.internal}:${REDIS_PORT:-6379}"' >> /root/.bashrc && \
     echo 'echo "  - nlohmann/json (JSON 파싱)"' >> /root/.bashrc && \
     echo 'echo "  - spdlog (로깅)"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc && \
     echo 'echo "🔧 유용한 명령어들:"' >> /root/.bashrc && \
-    echo 'echo "  dev-build.sh           - 개발 빌드"' >> /root/.bashrc && \
-    echo 'echo "  check-bacnet.sh        - BACnet 설치 확인"' >> /root/.bashrc && \
-    echo 'echo "  test-bacnet-symbols.sh - BACnet 심볼 테스트"' >> /root/.bashrc && \
-    echo 'echo "  make help              - Makefile 도움말"' >> /root/.bashrc && \
+    echo 'echo "  dev-build.sh              - 개발 빌드 (Redis 설정 자동 적용)"' >> /root/.bashrc && \
+    echo 'echo "  setup-docker-redis.sh     - Redis 설정 자동 구성"' >> /root/.bashrc && \
+    echo 'echo "  test-redis-connection.sh  - Redis 연결 테스트"' >> /root/.bashrc && \
+    echo 'echo "  check-bacnet.sh           - BACnet 설치 확인"' >> /root/.bashrc && \
+    echo 'echo "  test-bacnet-symbols.sh    - BACnet 심볼 테스트"' >> /root/.bashrc && \
+    echo 'echo "  make help                 - Makefile 도움말"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc
 
 # 환경 변수 설정
@@ -265,7 +385,22 @@ ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
 # 작업 디렉토리 설정
 WORKDIR /app
 
+# 컨테이너 시작 시 자동으로 Redis 설정 적용
+RUN echo '#!/bin/bash' > /docker-entrypoint.sh && \
+    echo 'echo "🚀 PulseOne Collector 컨테이너 시작"' >> /docker-entrypoint.sh && \
+    echo 'echo "================================="' >> /docker-entrypoint.sh && \
+    echo '' >> /docker-entrypoint.sh && \
+    echo '# Docker Redis 설정 자동 적용' >> /docker-entrypoint.sh && \
+    echo 'if [ -f /usr/local/bin/setup-docker-redis.sh ]; then' >> /docker-entrypoint.sh && \
+    echo '    /usr/local/bin/setup-docker-redis.sh' >> /docker-entrypoint.sh && \
+    echo 'fi' >> /docker-entrypoint.sh && \
+    echo '' >> /docker-entrypoint.sh && \
+    echo '# 전달된 명령어 실행' >> /docker-entrypoint.sh && \
+    echo 'exec "$@"' >> /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
+
 # 기본 명령어
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["/bin/bash"]
 
 # 빌드 완료 후 최종 확인
@@ -275,6 +410,10 @@ RUN echo "🎉 Docker 이미지 빌드 완료!" && \
     ls -la /usr/local/lib/libbacnet.a 2>/dev/null && \
     echo "  BACnet 헤더 파일 개수:" && \
     find /usr/local/include/bacnet -name "*.h" 2>/dev/null | wc -l && \
+    echo "  hiredis 라이브러리:" && \
+    ls -la /usr/local/lib/libhiredis* 2>/dev/null | head -3 && \
     echo "  MQTT C++ 헤더 확인:" && \
     find /usr/local/include -name "async_client.h" 2>/dev/null | wc -l && \
-    echo "✅ 모든 라이브러리 설치 완료 (BACnet 라이브러리 수정됨)"
+    echo "  Redis 설정:" && \
+    ls -la /app/collector/config/redis_docker.env 2>/dev/null && \
+    echo "✅ 모든 라이브러리 및 Redis 설정 완료!"

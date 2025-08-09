@@ -81,7 +81,9 @@ public:
     };
     
     ProcessingStats GetStatistics() const;
-
+    std::shared_ptr<RedisClient> GetRedisClient() const { 
+        return redis_client_; 
+    }
 private:
     // ==========================================================================
     // 멤버 변수들

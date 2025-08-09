@@ -1,9 +1,9 @@
 /**
- * @file MQTTWorker.h - 통합 MQTT 워커 (기본 + 프로덕션 기능)
- * @brief 하나의 클래스로 기본부터 프로덕션까지 모든 MQTT 기능 제공
+ * @file MQTTWorker.h - 통합 MQTT 워커 (기본 + 프로덕션 기능 + 파이프라인 연동)
+ * @brief 하나의 클래스로 기본부터 프로덕션까지 모든 MQTT 기능 제공 + ModbusTcpWorker 패턴 적용
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 3.0.0 (통합 버전)
+ * @version 3.1.0 (파이프라인 연동 완성 버전)
  */
 
 #ifndef PULSEONE_WORKERS_PROTOCOL_MQTT_WORKER_H
@@ -174,8 +174,6 @@ struct PerformanceMetrics {
     }
 };
 
-
-
 /**
  * @brief 오프라인 메시지 (프로덕션 모드용)
  */
@@ -238,8 +236,9 @@ struct AdvancedMqttConfig {
 // =============================================================================
 
 /**
- * @brief 통합 MQTT 프로토콜 워커 클래스
+ * @brief 통합 MQTT 프로토콜 워커 클래스 (파이프라인 연동 완성)
  * @details 기본 기능부터 프로덕션 고급 기능까지 모든 MQTT 기능을 하나의 클래스로 제공
+ *          ModbusTcpWorker와 동일한 파이프라인 연동 패턴 적용
  * 
  * 사용 방법:
  * - 기본 모드: 간단한 MQTT 통신 (개발/테스트용)
@@ -250,8 +249,6 @@ public:
     /**
      * @brief 생성자
      * @param device_info 디바이스 정보
-     * @param redis_client Redis 클라이언트 (선택적)
-     * @param influx_client InfluxDB 클라이언트 (선택적)
      * @param mode 워커 모드 (기본값: BASIC)
      */
     explicit MQTTWorker(const PulseOne::DeviceInfo& device_info,
@@ -273,6 +270,56 @@ public:
     bool CloseConnection() override;
     bool CheckConnection() override;
     bool SendKeepAlive() override;
+
+    // =============================================================================
+    // 🔥 파이프라인 연동 메서드들 (ModbusTcpWorker 패턴 완전 적용)
+    // =============================================================================
+    
+    /**
+     * @brief MQTT 메시지를 TimestampedValue로 변환 후 파이프라인 전송
+     * @param topic MQTT 토픽
+     * @param payload JSON 페이로드
+     * @param data_point 연관된 데이터포인트 (옵션)
+     * @param priority 파이프라인 우선순위 (기본: 0)
+     * @return 전송 성공 시 true
+     */
+    bool SendMQTTDataToPipeline(const std::string& topic, 
+                               const std::string& payload,
+                               const DataPoint* data_point = nullptr,
+                               uint32_t priority = 0);
+
+    /**
+     * @brief JSON 데이터를 직접 TimestampedValue로 변환 후 파이프라인 전송  
+     * @param json_data 파싱된 JSON 데이터
+     * @param topic_context 토픽 컨텍스트 (로깅용)
+     * @param priority 파이프라인 우선순위 (기본: 0)
+     * @return 전송 성공 시 true
+     */
+    bool SendJsonValuesToPipeline(const nlohmann::json& json_data,
+                                 const std::string& topic_context,
+                                 uint32_t priority = 0);
+
+    /**
+     * @brief TimestampedValue 배열을 직접 파이프라인 전송 (로깅 포함)
+     * @param values TimestampedValue 배열
+     * @param context 컨텍스트 (로깅용)  
+     * @param priority 파이프라인 우선순위 (기본: 0)
+     * @return 전송 성공 시 true
+     */
+    bool SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
+                                        const std::string& context,
+                                        uint32_t priority = 0);
+
+    /**
+     * @brief 단일 MQTT 토픽 값을 파이프라인 전송
+     * @param topic MQTT 토픽
+     * @param value 데이터 값
+     * @param priority 파이프라인 우선순위 (기본: 0)
+     * @return 전송 성공 시 true
+     */
+    bool SendSingleTopicValueToPipeline(const std::string& topic,
+                                       const PulseOne::Structs::DataValue& value,
+                                       uint32_t priority = 0);
 
     // =============================================================================
     // 기본 MQTT 기능 (모든 모드에서 사용 가능)
@@ -440,9 +487,11 @@ public:
             default: return MqttQoS::AT_LEAST_ONCE;
         }
     }
+    
     PulseOne::Drivers::MqttDriver* GetMqttDriver() const {
         return mqtt_driver_.get();
     }
+
 private:
     // =============================================================================
     // 내부 멤버 변수들
@@ -551,6 +600,10 @@ private:
     bool SaveDataPointValue(const PulseOne::DataPoint& data_point,
                            const PulseOne::TimestampedValue& value);
     bool ValidateSubscription(const MQTTSubscription& subscription);
+    
+    // 🔥 파이프라인 연동 헬퍼 메서드들 (ModbusTcpWorker 패턴)
+    DataPoint* FindDataPointByTopic(const std::string& topic);
+    std::optional<DataPoint> FindDataPointById(const std::string& point_id);
     
     // 프로덕션 모드 전용 메서드들
     void StartProductionThreads();

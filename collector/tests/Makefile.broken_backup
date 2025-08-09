@@ -1,0 +1,456 @@
+# =============================================================================
+# 🔥 기존 Makefile에 추가할 파이프라인 테스트 섹션
+# 기존 내용은 그대로 두고, 이 내용을 맨 아래에 추가하세요
+# =============================================================================
+
+# 🚀 파이프라인 테스트 오브젝트 추가 (기존 TEST_OBJECTS 다음에 추가)
+PIPELINE_TEST_OBJ = $(OBJ_DIR)/test_complete_data_pipeline.o
+
+# 🚀 파이프라인 테스트 소스 컴파일
+$(OBJ_DIR)/test_complete_data_pipeline.o: test_complete_data_pipeline.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔨 Compiling test_complete_data_pipeline...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 🔥 Step 6: 완전한 데이터 파이프라인 테스트 (신규 추가)
+$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(PIPELINE_TEST_OBJ) | $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking test_step6 (Complete Data Pipeline)...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(PIPELINE_TEST_OBJ) $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ test_step6 (Complete Data Pipeline) build completed!$(NC)"
+
+# =============================================================================
+# 🔥 파이프라인 테스트 타겟들 (기존 step4-build, step5-build 다음에 추가)
+# =============================================================================
+
+# 🔥 Step 6: 완전한 데이터 파이프라인 테스트 빌드
+step6-build: $(BIN_DIR)/test_step6
+	@echo -e "$(GREEN)🚀 Step 6 (Complete Data Pipeline) build completed!$(NC)"
+
+step6-test: step6-build
+	@echo -e "$(PURPLE)🧪 Running Step 6 (Complete Data Pipeline) tests...$(NC)"
+	@echo -e "$(CYAN)📊 이 테스트는 Redis 서버가 실행 중이어야 합니다$(NC)"
+	@./$(BIN_DIR)/test_step6
+
+# 🚀 파이프라인 단계별 테스트 실행 (개별)
+pipeline-step1: step6-build
+	@echo -e "$(BLUE)🔍 Pipeline Step 1: Worker 기반 실시간 데이터 스캔$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step1*" --gtest_color=yes
+
+pipeline-step2: step6-build  
+	@echo -e "$(BLUE)🔍 Pipeline Step 2: 시뮬레이션 데이터 스캔 프로세스$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step2*" --gtest_color=yes
+
+pipeline-step3: step6-build
+	@echo -e "$(BLUE)🔍 Pipeline Step 3: DataProcessingService 배치 처리$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step3*" --gtest_color=yes
+
+pipeline-step4: step6-build
+	@echo -e "$(BLUE)🔍 Pipeline Step 4: Redis 저장 검증$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step4*" --gtest_color=yes
+
+pipeline-step5: step6-build
+	@echo -e "$(BLUE)🔍 Pipeline Step 5: 완전한 실시간 파이프라인 통합$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step5*" --gtest_color=yes
+
+# 🔥 파이프라인 빠른 테스트 (Step 1-3만)
+pipeline-quick: step6-build
+	@echo -e "$(BLUE)⚡ 빠른 파이프라인 테스트 (Step 1-3만)$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step1*:*Step2*:*Step3*" --gtest_color=yes
+
+# 🔥 Redis 중심 파이프라인 테스트 (Step 3-4)
+pipeline-redis: step6-build
+	@echo -e "$(BLUE)🔍 Redis 중심 파이프라인 테스트 (Step 3-4)$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step3*:*Step4*" --gtest_color=yes
+
+# 🔥 통합 파이프라인 테스트 (Step 5만)
+pipeline-integration: step6-build
+	@echo -e "$(BLUE)🔗 통합 파이프라인 테스트 (Step 5만)$(NC)"
+	@./$(BIN_DIR)/test_step6 --gtest_filter="*Step5*" --gtest_color=yes
+
+# =============================================================================
+# 🔥 통합된 모든 테스트 빌드 (기존 all-tests-build 수정)
+# =============================================================================
+
+# 기존 all-tests-build를 다음과 같이 수정:
+all-tests-build: $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6
+	@echo -e "$(GREEN)🎉 All tests build completed! (Step 3-6)$(NC)"
+
+# 기존 all-tests-run을 다음과 같이 수정:
+all-tests-run: all-tests-build check-redis-connection
+	@echo -e "$(BLUE)🚀 Running all tests in sequence (Step 3-6)...$(NC)"
+	@echo -e "$(YELLOW)======================================$(NC)"
+	@echo -e "$(PURPLE)🧪 Step 3: Workers Test$(NC)"
+	@./$(BIN_DIR)/test_step3
+	@echo -e "$(YELLOW)======================================$(NC)"
+	@echo -e "$(PURPLE)🧪 Step 4: Driver Data Validation Test$(NC)"
+	@./$(BIN_DIR)/test_step4
+	@echo -e "$(YELLOW)======================================$(NC)"
+	@echo -e "$(PURPLE)🧪 Step 5: Complete DB Integration Test$(NC)"
+	@./$(BIN_DIR)/test_step5
+	@echo -e "$(YELLOW)======================================$(NC)"
+	@echo -e "$(PURPLE)🧪 Step 6: Complete Data Pipeline Test$(NC)"
+	@./$(BIN_DIR)/test_step6
+	@echo -e "$(GREEN)🎉 All tests completed!$(NC)"
+
+# =============================================================================
+# 🔧 Redis 연결 확인 (파이프라인 테스트용)
+# =============================================================================
+
+check-redis-connection:
+	@echo -e "$(BLUE)🔍 Redis 서버 연결 확인...$(NC)"
+	@if command -v redis-cli >/dev/null 2>&1; then \
+		if redis-cli ping >/dev/null 2>&1; then \
+			echo -e "$(GREEN)✅ Redis 서버 연결 정상$(NC)"; \
+		else \
+			echo -e "$(RED)❌ Redis 서버 연결 실패$(NC)"; \
+			echo -e "$(YELLOW)Redis 서버를 시작하세요:$(NC)"; \
+			echo -e "  sudo systemctl start redis-server"; \
+			echo -e "  또는: redis-server &"; \
+			false; \
+		fi; \
+	else \
+		echo -e "$(RED)❌ Redis CLI가 설치되지 않았습니다$(NC)"; \
+		echo -e "$(YELLOW)설치 방법: sudo apt-get install redis-tools$(NC)"; \
+		false; \
+	fi
+
+# =============================================================================
+# 🔥 개발 워크플로우 확장 (기존 dev-* 다음에 추가)
+# =============================================================================
+
+dev-step6: step6-build step6-test
+dev-pipeline: step6-build step6-test
+dev-all-extended: all-tests-run
+
+# =============================================================================
+# 🔥 상태 확인 업데이트 (기존 status 타겟 수정)
+# =============================================================================
+
+# 기존 status 타겟의 이 부분을:
+# @echo "Step 3 binary: $(if $(wildcard $(BIN_DIR)/test_step3),✅ exists,❌ missing)"
+# @echo "Step 4 binary: $(if $(wildcard $(BIN_DIR)/test_step4),✅ exists,❌ missing)"
+# @echo "Step 5 binary: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
+
+# 다음과 같이 수정:
+status-extended:
+	@echo -e "$(BLUE)📊 Build Status (Extended)$(NC)"
+	@echo -e "$(YELLOW)===============$(NC)"
+	@echo "Object files: $(words $(wildcard $(OBJ_DIR)/**/*.o)) / $(words $(ALL_OBJECTS))"
+	@echo "Source files: $(words $(ALL_SOURCES))"
+	@echo "Step 3 binary: $(if $(wildcard $(BIN_DIR)/test_step3),✅ exists,❌ missing)"
+	@echo "Step 4 binary: $(if $(wildcard $(BIN_DIR)/test_step4),✅ exists,❌ missing)"
+	@echo "Step 5 binary: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
+	@echo "Step 6 binary: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing) - Data Pipeline"
+	@echo ""
+	@echo -e "$(BLUE)🔧 Libraries:$(NC)"
+	@echo "  Modbus: $(if $(MODBUS_LIBS),✅,❌)"
+	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅,❌)"
+	@echo "  BACnet: $(if $(BACNET_LIBS),✅,❌)"
+	@echo "  Redis: $(if $(REDIS_LIBS),✅,❌)"
+	@echo ""
+	@echo -e "$(BLUE)🚀 Pipeline Test Status:$(NC)"
+	@if command -v redis-cli >/dev/null 2>&1; then \
+		if redis-cli ping >/dev/null 2>&1; then \
+			echo "  Redis Server: ✅ running"; \
+		else \
+			echo "  Redis Server: ❌ not running"; \
+		fi; \
+	else \
+		echo "  Redis CLI: ❌ not installed"; \
+	fi
+
+# =============================================================================
+# 🔥 도움말 업데이트 (기존 help 타겟 수정)
+# =============================================================================
+
+# 기존 help 타겟에 다음 내용 추가:
+help-extended:
+	@echo -e "$(BLUE)🚀 PulseOne Fast Build System (Extended with Pipeline)$(NC)"
+	@echo -e "$(YELLOW)==========================================$(NC)"
+	@echo ""
+	@echo -e "$(GREEN)🔥 개별 테스트 명령어:$(NC)"
+	@echo "  make step3-test   - 🧪 Step 3: Workers 테스트"
+	@echo "  make step4-test   - 🧪 Step 4: Driver 데이터 검증 테스트"
+	@echo "  make step5-test   - 🧪 Step 5: 완전한 DB 통합 테스트"
+	@echo "  make step6-test   - 🧪 Step 6: 완전한 데이터 파이프라인 테스트 (신규!)"
+	@echo ""
+	@echo -e "$(GREEN)🚀 파이프라인 개별 단계:$(NC)"
+	@echo "  make pipeline-step1 - 📊 Worker 기반 데이터 스캔"
+	@echo "  make pipeline-step2 - 🔄 시뮬레이션 데이터 생성"
+	@echo "  make pipeline-step3 - ⚙️  DataProcessingService 배치 처리"
+	@echo "  make pipeline-step4 - 📊 Redis 저장 검증"
+	@echo "  make pipeline-step5 - 🔗 완전한 실시간 통합"
+	@echo ""
+	@echo -e "$(GREEN)⚡ 빠른 파이프라인 테스트:$(NC)"
+	@echo "  make pipeline-quick     - ⚡ Step 1-3만 빠르게"
+	@echo "  make pipeline-redis     - 🔍 Redis 관련 테스트만"
+	@echo "  make pipeline-integration - 🔗 통합 테스트만"
+	@echo ""
+	@echo -e "$(GREEN)🚀 빠른 빌드 명령어:$(NC)"
+	@echo "  make step3-build  - 🚀 Step 3 빌드만"
+	@echo "  make step4-build  - 🚀 Step 4 빌드만"
+	@echo "  make step5-build  - 🚀 Step 5 빌드만"
+	@echo "  make step6-build  - 🚀 Step 6 빌드만 (파이프라인)"
+	@echo "  make all-tests-build - 🚀 모든 테스트 빌드 (Step 3-6)"
+	@echo ""
+	@echo -e "$(GREEN)🎯 통합 실행:$(NC)"
+	@echo "  make all-tests-run    - 🎉 모든 테스트 순서대로 실행 (Step 3-6)"
+	@echo "  make dev-all-extended - 🔄 확장된 개발 워크플로우"
+	@echo ""
+	@echo -e "$(GREEN)📊 상태 확인:$(NC)"
+	@echo "  make status-extended     - 📊 확장된 빌드 상태 확인"
+	@echo "  make check-redis-connection - 🔍 Redis 연결 확인"
+	@echo ""
+	@echo -e "$(PURPLE)💡 파이프라인 테스트 권장 사용법:$(NC)"
+	@echo "  1️⃣  환경 확인: make check-redis-connection"
+	@echo "  2️⃣  빠른 테스트: make pipeline-quick"
+	@echo "  3️⃣  Redis 테스트: make pipeline-redis"
+	@echo "  4️⃣  전체 파이프라인: make step6-test"
+	@echo "  5️⃣  모든 테스트: make all-tests-run"
+	@echo ""
+	@echo -e "$(RED)🔥 새로 추가된 파이프라인 기능:$(NC)"
+	@echo "  - Step 6: 디바이스 스캔 → Redis 저장 완전 파이프라인"
+	@echo "  - 5단계 실시간 데이터 처리 검증"
+	@echo "  - DataProcessingService 배치 처리"
+	@echo "  - Redis 데이터 무결성 확인"
+	@echo "  - 멀티사이클 실시간 통합 테스트"
+
+# =============================================================================
+# 🔥 .PHONY 타겟 업데이트 (기존 .PHONY에 추가)
+# =============================================================================
+
+# 기존 .PHONY 줄을 다음과 같이 확장:
+.PHONY: fast-build full-build test clean status status-extended check-deps help help-extended \
+        step3-build step3-test step4-build step4-test step5-build step5-test step6-build step6-test \
+        all-tests-build all-tests-run dev-step3 dev-step4 dev-step5 dev-step6 dev-pipeline dev-all-extended \
+        pipeline-step1 pipeline-step2 pipeline-step3 pipeline-step4 pipeline-step5 \
+        pipeline-quick pipeline-redis pipeline-integration check-redis-connection
+
+# =============================================================================
+# 🎯 사용 예시 및 권장 워크플로우
+# =============================================================================
+
+# 🚀 완전한 개발 워크플로우 예시:
+# 1. make check-redis-connection    # Redis 확인
+# 2. make step6-build              # 파이프라인 테스트 빌드
+# 3. make pipeline-quick           # 빠른 검증
+# 4. make step6-test              # 전체 파이프라인 테스트
+# 5. make all-tests-run           # 모든 테스트 실행
+
+
+# =============================================================================
+# Step 6 추가 설정 - 기존 tests/Makefile에 추가할 내용
+# =============================================================================
+
+# Step 6 전용 소스 (기존 모든 소스 + Pipeline 추가)
+STEP6_SOURCES = $(UTILS_SOURCES) $(CONFIG_SOURCES) $(DATABASE_SOURCES) \
+                $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(CLIENT_SOURCES) \
+                $(PIPELINE_SOURCES)
+
+# Step 6 파이프라인 소스 정의 (만약 기존에 없다면)
+PIPELINE_SOURCES = ../src/Pipeline/DataProcessingService.cpp
+
+# Step 6 컴파일 규칙
+step6: $(STEP6_SOURCES) test_step6_full_pipeline.cpp
+	@echo "🔧 Step 6: 완전한 파이프라인 테스트 컴파일 중..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o bin/test_step6_full_pipeline \
+		test_step6_full_pipeline.cpp $(STEP6_SOURCES) $(TEST_LIBS) $(LIBS)
+	@echo "✅ Step 6 컴파일 완료: bin/test_step6_full_pipeline"
+
+# Step 6 실행
+run-step6: step6
+	@echo ""
+	@echo "🚀 Step 6: 완전한 파이프라인 테스트 실행"
+	@echo "=================================================="
+	@cd bin && ./test_step6_full_pipeline
+
+# 전체 6단계 플로우 실행
+run-all-6steps: run-step1 run-step2 run-step3 run-step4 run-step5 run-step6
+	@echo ""
+	@echo "🎉 전체 6단계 파이프라인 테스트 완료!"
+	@echo "✅ Step 1: 설정파일 읽기"
+	@echo "✅ Step 2: DB 접근"  
+	@echo "✅ Step 3: Worker 생성"
+	@echo "✅ Step 4: 드라이버 초기화"
+	@echo "✅ Step 5: Redis 저장 시뮬레이션"
+	@echo "✅ Step 6: 완전한 파이프라인 (스캔→처리→저장→검증)"
+
+# 파이프라인 전용 명령어들
+pipeline: step6
+	@echo "🔄 파이프라인 테스트 준비 완료"
+
+test-pipeline: run-step6
+	@echo "✅ 파이프라인 테스트 실행 완료"
+
+full-pipeline: run-all-6steps
+	@echo "🏆 전체 6단계 파이프라인 테스트 완료"
+
+# Redis 연결 테스트 (Step6 실행 전 확인용)
+check-redis:
+	@echo "🔍 Redis 연결 상태 확인 중..."
+	@if command -v redis-cli >/dev/null 2>&1; then \
+		echo "✅ redis-cli 발견"; \
+		if redis-cli ping 2>/dev/null | grep -q PONG; then \
+			echo "✅ Redis 서버 응답 확인 (PONG)"; \
+		else \
+			echo "⚠️  Redis 서버 무응답 (테스트는 시뮬레이션 모드로 진행됨)"; \
+		fi \
+	else \
+		echo "⚠️  redis-cli 없음 (테스트는 시뮬레이션 모드로 진행됨)"; \
+	fi
+
+# 환경 체크에 Redis 추가
+check-pipeline-env: check-deps check-sources check-redis
+	@echo ""
+	@echo "🎯 파이프라인 테스트 환경 체크 완료"
+	@echo "   - 컴파일러: ✅"
+	@echo "   - 라이브러리: ✅" 
+	@echo "   - 소스 파일: ✅"
+	@echo "   - Redis: $(shell if redis-cli ping 2>/dev/null | grep -q PONG; then echo "✅"; else echo "⚠️ "; fi)"
+
+# 파이프라인 디버그 실행
+debug-pipeline: step6
+	@echo "🐛 파이프라인 디버그 모드 실행"
+	@cd bin && gdb -batch -ex run -ex bt --args ./test_step6_full_pipeline
+
+# 파이프라인 성능 측정
+profile-pipeline: step6
+	@echo "📊 파이프라인 성능 프로파일링"
+	@cd bin && time ./test_step6_full_pipeline
+
+# =============================================================================
+# help에 Step6 관련 명령어 추가
+# =============================================================================
+
+# 기존 help 타겟에 추가할 내용:
+help-step6:
+	@echo ""
+	@echo "🔄 Step 6 (완전한 파이프라인) 관련 명령어:"
+	@echo "  make step6              - Step 6 컴파일"
+	@echo "  make run-step6          - Step 6 실행 (DB→Worker→스캔→처리→Redis)"
+	@echo "  make run-all-6steps     - 전체 1~6단계 순차 실행"
+	@echo "  make pipeline           - 파이프라인 테스트 준비"
+	@echo "  make test-pipeline      - 파이프라인 테스트 실행"
+	@echo "  make full-pipeline      - 전체 파이프라인 테스트"
+	@echo "  make check-redis        - Redis 연결 상태 확인"
+	@echo "  make check-pipeline-env - 파이프라인 환경 전체 체크"
+	@echo "  make debug-pipeline     - 파이프라인 디버그 실행"
+	@echo "  make profile-pipeline   - 파이프라인 성능 측정"
+
+# =============================================================================
+# 실행 전 체크리스트
+# =============================================================================
+
+pre-step6-check:
+	@echo "📋 Step 6 실행 전 체크리스트:"
+	@echo "1. 기본 환경:"
+	@if [ -f "../config/.env" ]; then echo "   ✅ .env 파일 존재"; else echo "   ❌ .env 파일 없음"; fi
+	@if [ -f "db/pulseone_test.db" ]; then echo "   ✅ 테스트 DB 존재"; else echo "   ❌ 테스트 DB 없음 (setup_test_environment.sh 실행 필요)"; fi
+	@echo "2. 이전 단계 준비:"
+	@if [ -f "bin/test_step1_config" ]; then echo "   ✅ Step 1 컴파일됨"; else echo "   ⚠️  Step 1 미컴파일"; fi
+	@if [ -f "bin/test_step2_database" ]; then echo "   ✅ Step 2 컴파일됨"; else echo "   ⚠️  Step 2 미컴파일"; fi
+	@if [ -f "bin/test_step3_workers" ]; then echo "   ✅ Step 3 컴파일됨"; else echo "   ⚠️  Step 3 미컴파일"; fi
+	@if [ -f "bin/test_step4_drivers" ]; then echo "   ✅ Step 4 컴파일됨"; else echo "   ⚠️  Step 4 미컴파일"; fi
+	@if [ -f "bin/test_step5_redis" ]; then echo "   ✅ Step 5 컴파일됨"; else echo "   ⚠️  Step 5 미컴파일"; fi
+	@echo "3. Redis 상태:"
+	@make check-redis
+	@echo ""
+	@echo "💡 모든 체크가 완료되면 'make run-step6' 실행하세요"
+
+# 전체 파이프라인 테스트 실행 (체크 포함)
+complete-pipeline-test: pre-step6-check run-step6
+	@echo ""
+	@echo "🎯 === 완전한 파이프라인 테스트 결과 ==="
+	@echo "✅ 사전 체크 통과"
+	@echo "✅ Step 6 파이프라인 실행 완료" 
+	@echo "🏆 전체 테스트 성공!"
+
+	# =============================================================================
+# 🔥 기존 Makefile에 Step 6만 추가 (최소한의 수정)
+# 기존 내용은 그대로 두고, 아래 내용만 적절한 위치에 추가하세요
+# =============================================================================
+
+# Step 6 테스트 오브젝트 추가 (기존 TEST_OBJECTS 줄에 추가)
+# 기존: TEST_OBJECTS = $(OBJ_DIR)/test_step3_workers.o \
+#                     $(OBJ_DIR)/test_step4_driver_data_validation.o \
+#                     $(OBJ_DIR)/test_step5_complete_db_integration_validation.o
+# 
+# 수정 후: TEST_OBJECTS = $(OBJ_DIR)/test_step3_workers.o \
+#                         $(OBJ_DIR)/test_step4_driver_data_validation.o \
+#                         $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
+#                         $(OBJ_DIR)/test_step6_full_pipeline.o
+
+# =============================================================================
+# 🔥 Step 6 테스트 파일 컴파일 (기존 테스트 컴파일 규칙들 다음에 추가)
+# =============================================================================
+
+$(OBJ_DIR)/test_step6_full_pipeline.o: test_step6_full_pipeline.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔨 Compiling test_step6_full_pipeline...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# =============================================================================
+# 🔥 Step 6 실행 파일 (기존 실행 파일 타겟들 다음에 추가)
+# =============================================================================
+
+# Step 6: 완전한 파이프라인 테스트
+$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_full_pipeline.o | $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking test_step6 (Complete Data Pipeline)...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_full_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ test_step6 (Complete Data Pipeline) build completed!$(NC)"
+
+# =============================================================================
+# 🔥 Step 6 메인 타겟들 (기존 step5-build, step5-test 다음에 추가)
+# =============================================================================
+
+step6-build: $(BIN_DIR)/test_step6
+	@echo -e "$(GREEN)🚀 Step 6 (Complete Data Pipeline) build completed!$(NC)"
+
+step6-test: step6-build
+	@echo -e "$(PURPLE)🧪 Running Step 6 (Complete Data Pipeline) tests...$(NC)"
+	@echo -e "$(CYAN)📊 이 테스트는 Redis 서버가 실행 중이어야 합니다$(NC)"
+	@./$(BIN_DIR)/test_step6
+
+# 🚀 Step 6 개발 워크플로우 (기존 dev-* 다음에 추가)
+dev-step6: step6-build step6-test
+
+# =============================================================================
+# 🔥 기존 타겟들 수정 (기존 타겟을 찾아서 수정)
+# =============================================================================
+
+# 기존 all-tests-build 타겟을 수정:
+# 기존: all-tests-build: $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5
+# 수정 후: all-tests-build: $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6
+
+# 기존 all-tests-run 타겟에 Step 6 추가:
+# 기존 all-tests-run 타겟 끝부분에 다음 추가:
+#	@echo -e "$(YELLOW)======================================$(NC)"
+#	@echo -e "$(PURPLE)🧪 Step 6: Complete Data Pipeline Test$(NC)"
+#	@./$(BIN_DIR)/test_step6
+
+# 기존 status 타겟에 Step 6 상태 추가:
+# 기존 status 타겟의 바이너리 체크 부분에 다음 추가:
+#	@echo "Step 6 binary: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing) - Data Pipeline"
+
+# 기존 help 타겟에 Step 6 도움말 추가:
+# 기존 help 타겟의 "🔥 개별 테스트 명령어:" 섹션에 다음 추가:
+#	@echo "  make step6-test   - 🧪 Step 6: 완전한 데이터 파이프라인 테스트 (신규!)"
+
+# 기존 help 타겟의 "🚀 빠른 빌드 명령어:" 섹션에 다음 추가:
+#	@echo "  make step6-build  - 🚀 Step 6 빌드만 (파이프라인)"
+
+# 기존 .PHONY 타겟에 추가:
+# 기존: .PHONY: fast-build full-build test clean status check-deps help \
+#               step3-build step3-test step4-build step4-test step5-build step5-test \
+#               all-tests-build all-tests-run dev-step3 dev-step4 dev-step5 dev-all
+# 수정 후: 기존에 다음만 추가: step6-build step6-test dev-step6
+
+# =============================================================================
+# 🎯 완전한 수정 가이드
+# =============================================================================
+
+# 1. TEST_OBJECTS 변수에 $(OBJ_DIR)/test_step6_full_pipeline.o 추가
+# 2. $(OBJ_DIR)/test_step6_full_pipeline.o 컴파일 규칙 추가 (위 코드)
+# 3. $(BIN_DIR)/test_step6 링킹 규칙 추가 (위 코드)
+# 4. step6-build, step6-test, dev-step6 타겟 추가 (위 코드)
+# 5. all-tests-build에 $(BIN_DIR)/test_step6 추가
+# 6. all-tests-run에 Step 6 실행 코드 추가
+# 7. status, help, .PHONY에 Step 6 관련 내용 추가

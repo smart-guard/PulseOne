@@ -140,7 +140,8 @@ ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
 # 🔥 테스트 파일들 정의
 TEST_OBJECTS = $(OBJ_DIR)/test_step3_workers.o \
                $(OBJ_DIR)/test_step4_driver_data_validation.o \
-               $(OBJ_DIR)/test_step5_complete_db_integration_validation.o
+               $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
+               $(OBJ_DIR)/test_step6_full_pipeline.o
 
 # 색상 정의
 GREEN = \033[0;32m
@@ -186,6 +187,10 @@ $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_
 	@echo -e "$(YELLOW)🔨 Compiling test_step5_complete_db_integration_validation...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+$(OBJ_DIR)/test_step6_full_pipeline.o: test_step6_full_pipeline.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔨 Compiling test_step6_full_pipeline...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 # =============================================================================
 # 🚀 테스트 실행 파일들 (개별)
 # =============================================================================
@@ -196,7 +201,7 @@ $(BIN_DIR)/test_step3: $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_workers.o | $(BIN_DI
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_workers.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ test_step3 build completed!$(NC)"
 
-# 🔥 Step 4: Driver 데이터 검증 테스트 (신규 추가)
+# Step 4: Driver 데이터 검증 테스트
 $(BIN_DIR)/test_step4: $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o | $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking test_step4 (Driver Data Validation)...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o $(TEST_LIBS) $(LIBS) -o $@
@@ -208,43 +213,54 @@ $(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integrat
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ test_step5 build completed!$(NC)"
 
+# Step 6: Redis 파이프라인 테스트
+$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_full_pipeline.o | $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking test_step6 (Redis Pipeline)...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_full_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ test_step6 (Redis Pipeline) build completed!$(NC)"
+
 # =============================================================================
 # 🚀 메인 타겟들
 # =============================================================================
 
-# 🔥 개별 테스트 빌드 (신규 추가)
+# 개별 테스트 빌드
+step3-build: $(BIN_DIR)/test_step3
+	@echo -e "$(GREEN)🚀 Step 3 (Workers) build completed!$(NC)"
+
 step4-build: $(BIN_DIR)/test_step4
 	@echo -e "$(GREEN)🚀 Step 4 (Driver Data Validation) build completed!$(NC)"
+
+step5-build: $(BIN_DIR)/test_step5
+	@echo -e "$(GREEN)🚀 Step 5 (Complete DB Integration) build completed!$(NC)"
+
+step6-build: $(BIN_DIR)/test_step6
+	@echo -e "$(GREEN)🚀 Step 6 (Redis Pipeline) build completed!$(NC)"
+
+# 개별 테스트 실행
+step3-test: step3-build
+	@echo -e "$(PURPLE)🧪 Running Step 3 (Workers) tests...$(NC)"
+	@./$(BIN_DIR)/test_step3
 
 step4-test: step4-build
 	@echo -e "$(PURPLE)🧪 Running Step 4 (Driver Data Validation) tests...$(NC)"
 	@./$(BIN_DIR)/test_step4
 
-# 기존 타겟들
-fast-build: $(BIN_DIR)/test_step3
-	@echo -e "$(GREEN)🚀 Fast incremental build completed!$(NC)"
-
-step3-build: $(BIN_DIR)/test_step3
-	@echo -e "$(GREEN)🚀 Step 3 (Workers) build completed!$(NC)"
-
-step3-test: step3-build
-	@echo -e "$(PURPLE)🧪 Running Step 3 (Workers) tests...$(NC)"
-	@./$(BIN_DIR)/test_step3
-
-step5-build: $(BIN_DIR)/test_step5
-	@echo -e "$(GREEN)🚀 Step 5 (Complete DB Integration) build completed!$(NC)"
-
 step5-test: step5-build
 	@echo -e "$(PURPLE)🧪 Running Step 5 (Complete DB Integration) tests...$(NC)"
 	@./$(BIN_DIR)/test_step5
 
+step6-test: step6-build
+	@echo -e "$(PURPLE)🧪 Running Step 6 (Redis Pipeline) tests...$(NC)"
+	@echo -e "$(CYAN)📊 이 테스트는 Redis 서버가 실행 중이어야 합니다$(NC)"
+	@./$(BIN_DIR)/test_step6
+
 # 🔥 모든 테스트 빌드
-all-tests-build: $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5
-	@echo -e "$(GREEN)🎉 All tests build completed!$(NC)"
+all-tests-build: $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6
+	@echo -e "$(GREEN)🎉 All tests build completed (Step 3-6)!$(NC)"
 
 # 🔥 모든 테스트 실행 (순서대로)
 all-tests-run: all-tests-build
-	@echo -e "$(BLUE)🚀 Running all tests in sequence...$(NC)"
+	@echo -e "$(BLUE)🚀 Running all tests in sequence (Step 3-6)...$(NC)"
 	@echo -e "$(YELLOW)======================================$(NC)"
 	@echo -e "$(PURPLE)🧪 Step 3: Workers Test$(NC)"
 	@./$(BIN_DIR)/test_step3
@@ -254,7 +270,10 @@ all-tests-run: all-tests-build
 	@echo -e "$(YELLOW)======================================$(NC)"
 	@echo -e "$(PURPLE)🧪 Step 5: Complete DB Integration Test$(NC)"
 	@./$(BIN_DIR)/test_step5
-	@echo -e "$(GREEN)🎉 All tests completed!$(NC)"
+	@echo -e "$(YELLOW)======================================$(NC)"
+	@echo -e "$(PURPLE)🧪 Step 6: Redis Pipeline Test$(NC)"
+	@./$(BIN_DIR)/test_step6
+	@echo -e "$(GREEN)🎉 All tests completed (Step 3-6)!$(NC)"
 
 # 전체 클린 빌드
 full-build: clean all-tests-build
@@ -278,6 +297,7 @@ status:
 	@echo "Step 3 binary: $(if $(wildcard $(BIN_DIR)/test_step3),✅ exists,❌ missing)"
 	@echo "Step 4 binary: $(if $(wildcard $(BIN_DIR)/test_step4),✅ exists,❌ missing)"
 	@echo "Step 5 binary: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
+	@echo "Step 6 binary: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing)"
 	@echo ""
 	@echo -e "$(BLUE)🔧 Libraries:$(NC)"
 	@echo "  Modbus: $(if $(MODBUS_LIBS),✅,❌)"
@@ -289,6 +309,7 @@ status:
 dev-step3: step3-build step3-test
 dev-step4: step4-build step4-test
 dev-step5: step5-build step5-test
+dev-step6: step6-build step6-test
 dev-all: all-tests-run
 
 # 종속성 확인 (기존과 동일)
@@ -298,25 +319,28 @@ check-deps:
 	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅ $(MQTT_CPP_LIBS),❌ not found)"
 	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ $(MODBUS_LIBS),❌ not found)"
 	@echo "  BACnet: $(if $(BACNET_LIBS),✅ $(BACNET_LIBS),❌ not found)"
+	@echo "  Redis: $(if $(REDIS_LIBS),✅ $(REDIS_LIBS),❌ not found)"
 
 # 도움말
 help:
-	@echo -e "$(BLUE)🚀 PulseOne Fast Build System (Updated)$(NC)"
-	@echo -e "$(YELLOW)==========================================$(NC)"
+	@echo -e "$(BLUE)🚀 PulseOne Fast Build System (with Step 6)$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
 	@echo ""
 	@echo -e "$(GREEN)🔥 개별 테스트 명령어:$(NC)"
 	@echo "  make step3-test   - 🧪 Step 3: Workers 테스트"
-	@echo "  make step4-test   - 🧪 Step 4: Driver 데이터 검증 테스트 (신규!)"
+	@echo "  make step4-test   - 🧪 Step 4: Driver 데이터 검증 테스트"
 	@echo "  make step5-test   - 🧪 Step 5: 완전한 DB 통합 테스트"
+	@echo "  make step6-test   - 🧪 Step 6: Redis 파이프라인 테스트 (신규!)"
 	@echo ""
 	@echo -e "$(GREEN)🚀 빠른 빌드 명령어:$(NC)"
 	@echo "  make step3-build  - 🚀 Step 3 빌드만"
-	@echo "  make step4-build  - 🚀 Step 4 빌드만 (신규!)"
+	@echo "  make step4-build  - 🚀 Step 4 빌드만"
 	@echo "  make step5-build  - 🚀 Step 5 빌드만"
-	@echo "  make all-tests-build - 🚀 모든 테스트 빌드"
+	@echo "  make step6-build  - 🚀 Step 6 빌드만 (신규!)"
+	@echo "  make all-tests-build - 🚀 모든 테스트 빌드 (Step 3-6)"
 	@echo ""
 	@echo -e "$(GREEN)🎯 통합 실행:$(NC)"
-	@echo "  make all-tests-run - 🎉 모든 테스트 순서대로 실행"
+	@echo "  make all-tests-run - 🎉 모든 테스트 순서대로 실행 (Step 3-6)"
 	@echo "  make dev-all      - 🔄 개발 워크플로우 (빌드 + 전체 테스트)"
 	@echo ""
 	@echo -e "$(GREEN)🏗️  전체 빌드:$(NC)"
@@ -329,14 +353,14 @@ help:
 	@echo ""
 	@echo -e "$(PURPLE)💡 권장 사용법:$(NC)"
 	@echo "  1️⃣  첫 빌드: make full-build"
-	@echo "  2️⃣  개별 테스트: make step4-test (드라이버 데이터 검증)"
+	@echo "  2️⃣  개별 테스트: make step6-test (Redis 파이프라인)"
 	@echo "  3️⃣  전체 검증: make all-tests-run"
-	@echo "  4️⃣  개발 중: make dev-step4 (빠른 개발)"
+	@echo "  4️⃣  개발 중: make dev-step6 (빠른 개발)"
 	@echo ""
-	@echo -e "$(RED)🔥 새로 추가된 기능:$(NC)"
-	@echo "  - Step 4: Worker → Driver 데이터 전달 검증"
-	@echo "  - 각 Worker별로 Driver 객체 접근 테스트"
-	@echo "  - DataPoint, Config, Status 전달 확인"
+	@echo -e "$(RED)🔥 Step 6 신규 기능:$(NC)"
+	@echo "  - Redis 연결 및 데이터 저장 테스트"
+	@echo "  - 디바이스 스캔부터 Redis 저장까지 완전한 파이프라인"
+	@echo "  - 성능 측정 및 데이터 무결성 검증"
 
 # 🚀 자동 종속성 생성 (고급 기능)
 -include $(ALL_OBJECTS:.o=.d)
@@ -347,4 +371,5 @@ $(OBJ_DIR)/%.d: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
 
 .PHONY: fast-build full-build test clean status check-deps help \
         step3-build step3-test step4-build step4-test step5-build step5-test \
-        all-tests-build all-tests-run dev-step3 dev-step4 dev-step5 dev-all
+        step6-build step6-test all-tests-build all-tests-run \
+        dev-step3 dev-step4 dev-step5 dev-step6 dev-all
