@@ -39,6 +39,16 @@ BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
         LogMessage(LogLevel::ERROR, "Failed to initialize BACnet driver");
         return;
     }
+
+    // 🔥 BACnetServiceManager 초기화 추가
+    if (bacnet_driver_) {
+        bacnet_service_manager_ = std::make_shared<PulseOne::Drivers::BACnetServiceManager>(
+            bacnet_driver_.get()
+        );
+        LogMessage(LogLevel::INFO, "BACnetServiceManager initialized successfully");
+    } else {
+        LogMessage(LogLevel::ERROR, "Cannot initialize BACnetServiceManager: BACnet driver is null");
+    }    
     
     LogMessage(LogLevel::INFO, "BACnetWorker initialization completed");
 }
@@ -660,6 +670,146 @@ bool BACnetWorker::IsValueChanged(const DataValue& previous, const DataValue& cu
     }
     
     return previous != current;
+}
+
+bool BACnetWorker::WriteProperty(uint32_t device_id,
+                                BACNET_OBJECT_TYPE object_type,
+                                uint32_t object_instance,
+                                BACNET_PROPERTY_ID property_id,
+                                const DataValue& value,
+                                uint8_t priority) {
+    if (!bacnet_driver_ || !bacnet_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "BACnet driver not connected");
+        return false;
+    }
+    
+    if (!bacnet_service_manager_) {
+        LogMessage(LogLevel::ERROR, "BACnetServiceManager not initialized");
+        return false;
+    }
+    
+    try {
+        LogMessage(LogLevel::INFO, 
+                  "🔧 Writing BACnet property: Device=" + std::to_string(device_id) + 
+                  ", Object=" + std::to_string(object_type) + ":" + std::to_string(object_instance));
+        
+        // BACnetServiceManager를 통해 실제 쓰기
+        bool success = bacnet_service_manager_->WriteProperty(
+            device_id, object_type, object_instance, property_id, value, priority);
+        
+        // 🔥 제어 이력 기록 (성공/실패 무관하게)
+        TimestampedValue control_log;
+        control_log.value = value;
+        control_log.timestamp = std::chrono::system_clock::now();
+        control_log.quality = success ? DataQuality::GOOD : DataQuality::BAD;
+        control_log.source = "control_bacnet_" + std::to_string(device_id) + 
+                            "_" + std::to_string(object_type) + 
+                            "_" + std::to_string(object_instance);
+        
+        // 제어 이력은 높은 우선순위로 파이프라인 전송
+        SendValuesToPipelineWithLogging({control_log}, "BACnet 제어 이력", 1);
+        
+        // 통계 업데이트
+        if (success) {
+            worker_stats_.write_operations++;
+            LogMessage(LogLevel::INFO, "✅ BACnet write successful");
+        } else {
+            worker_stats_.failed_operations++;
+            LogMessage(LogLevel::ERROR, "❌ BACnet write failed");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteProperty 예외: " + std::string(e.what()));
+        worker_stats_.failed_operations++;
+        
+        // 예외 발생도 이력 기록
+        TimestampedValue error_log;
+        error_log.value = std::string("ERROR: ") + e.what();
+        error_log.timestamp = std::chrono::system_clock::now();
+        error_log.quality = DataQuality::BAD;
+        error_log.source = "control_bacnet_" + std::to_string(device_id) + "_error";
+        
+        SendValuesToPipelineWithLogging({error_log}, "BACnet 제어 에러", 1);
+        
+        return false;
+    }
+}
+
+bool BACnetWorker::WriteObjectProperty(const std::string& object_id, 
+                                      const DataValue& value,
+                                      uint8_t priority) {
+    try {
+        // object_id 파싱: "device_id:object_type:object_instance"
+        std::vector<std::string> parts;
+        std::string temp = object_id;
+        size_t pos = 0;
+        
+        while ((pos = temp.find(':')) != std::string::npos) {
+            parts.push_back(temp.substr(0, pos));
+            temp.erase(0, pos + 1);
+        }
+        parts.push_back(temp);
+        
+        if (parts.size() != 3) {
+            LogMessage(LogLevel::ERROR, "Invalid object_id format: " + object_id + 
+                      " (expected: device_id:object_type:object_instance)");
+            return false;
+        }
+        
+        uint32_t device_id = std::stoul(parts[0]);
+        BACNET_OBJECT_TYPE object_type = static_cast<BACNET_OBJECT_TYPE>(std::stoul(parts[1]));
+        uint32_t object_instance = std::stoul(parts[2]);
+        
+        // WriteProperty 호출
+        return WriteProperty(device_id, object_type, object_instance, 
+                           PROP_PRESENT_VALUE, value, priority);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteObjectProperty 파싱 에러: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetWorker::WriteBACnetDataPoint(const std::string& point_id, const DataValue& value) {
+    try {
+        // DataPoint ID로 실제 매핑 정보 조회 (BaseDeviceWorker에서 제공)
+        const auto& data_points = GetDataPoints();
+        
+        for (const auto& point : data_points) {
+            if (point.id == point_id) {
+                // protocol_params에서 BACnet 매핑 정보 추출
+                auto device_it = point.protocol_params.find("device_id");
+                auto object_type_it = point.protocol_params.find("object_type");
+                auto object_instance_it = point.protocol_params.find("object_instance");
+                auto priority_it = point.protocol_params.find("priority");
+                
+                if (device_it == point.protocol_params.end() ||
+                    object_type_it == point.protocol_params.end() ||
+                    object_instance_it == point.protocol_params.end()) {
+                    LogMessage(LogLevel::ERROR, "BACnet mapping info missing for point: " + point_id);
+                    return false;
+                }
+                
+                uint32_t device_id = std::stoul(device_it->second);
+                BACNET_OBJECT_TYPE object_type = static_cast<BACNET_OBJECT_TYPE>(std::stoul(object_type_it->second));
+                uint32_t object_instance = std::stoul(object_instance_it->second);
+                uint8_t priority = (priority_it != point.protocol_params.end()) ? 
+                                 static_cast<uint8_t>(std::stoul(priority_it->second)) : BACNET_NO_PRIORITY;
+                
+                return WriteProperty(device_id, object_type, object_instance, 
+                                   PROP_PRESENT_VALUE, value, priority);
+            }
+        }
+        
+        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        return false;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteBACnetDataPoint 에러: " + std::string(e.what()));
+        return false;
+    }
 }
 
 } // namespace Workers

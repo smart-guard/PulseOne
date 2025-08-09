@@ -12,6 +12,7 @@
 #include "Workers/Base/BaseDeviceWorker.h"
 #include "Drivers/Mqtt/MqttDriver.h"
 #include "Common/Structs.h"
+#include "Common/Enums.h" 
 #include <memory>
 #include <string>
 #include <vector>
