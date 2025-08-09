@@ -1,15 +1,31 @@
 // =============================================================================
 // collector/src/Drivers/Bacnet/BACnetServiceManager.cpp
-// 🔥 BACnet 고급 서비스 관리자 - BACnetDriver 패턴 적용
+// 🔥 BACnet 고급 서비스 관리자 - 매크로 충돌 해결
 // =============================================================================
 
-#include "Drivers/Bacnet/BACnetServiceManager.h"
-#include "Drivers/Bacnet/BACnetDriver.h"
-#include "Utils/LogManager.h"
+// 🔧 매크로 충돌 방지 - BACnet 헤더보다 먼저 STL 포함
 #include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <sstream>
+#include <vector>
+#include <map>
+
+// 매크로 충돌 제거
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include "Drivers/Bacnet/BACnetServiceManager.h"
+#include "Drivers/Bacnet/BACnetDriver.h"
+#include "Utils/LogManager.h"
 
 // 상수 정의
 #ifndef MAX_OBJECTS_PER_RPM
