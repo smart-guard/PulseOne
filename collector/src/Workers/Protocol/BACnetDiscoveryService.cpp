@@ -14,6 +14,7 @@
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/CurrentValueEntity.h"
+#include "Database/Entities/DeviceSettingsEntity.h"  // 🔥 추가
 #include "Database/DatabaseTypes.h"
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -93,11 +94,13 @@ BACnetDiscoveryService::BACnetDiscoveryService(
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repo,
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo,
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo,
+    std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo,  // 🔥 추가
     std::shared_ptr<WorkerFactory> worker_factory)
     : device_repository_(device_repo)
     , datapoint_repository_(datapoint_repo)
     , current_value_repository_(current_value_repo)
-    , worker_factory_(worker_factory)  // 🔥 추가
+    , device_settings_repository_(device_settings_repo)  // 🔥 추가
+    , worker_factory_(worker_factory)
     , is_active_(false)
     , is_discovery_active_(false)
     , is_network_scan_active_(false)
@@ -108,7 +111,15 @@ BACnetDiscoveryService::BACnetDiscoveryService(
     }
     
     auto& logger = LogManager::getInstance();
-    logger.Info("BACnetDiscoveryService created with dynamic Worker support");
+    logger.Info("BACnetDiscoveryService created with complete entity support");
+    
+    // Repository 상태 로깅
+    logger.Info("📊 Repository Status:");
+    logger.Info("  - DeviceRepository: ✅");
+    logger.Info("  - DataPointRepository: ✅");
+    logger.Info(std::string("  - CurrentValueRepository: ") + (current_value_repo ? "✅" : "❌"));
+    logger.Info(std::string("  - DeviceSettingsRepository: ") + (device_settings_repo ? "✅" : "❌"));
+    logger.Info(std::string("  - WorkerFactory: ") + (worker_factory ? "✅" : "❌"));
 }
 
 BACnetDiscoveryService::~BACnetDiscoveryService() {
@@ -210,15 +221,18 @@ std::shared_ptr<BaseDeviceWorker> BACnetDiscoveryService::CreateWorkerForDevice(
         Database::Entities::DeviceEntity device_entity;
         ConvertDeviceInfoToEntity(device_info, device_entity);
         
-        // WorkerFactory를 통해 프로토콜별 Worker 생성
-        auto worker = worker_factory_->CreateWorker(device_entity);
+        // WorkerFactory를 통해 프로토콜별 Worker 생성 
+        auto unique_worker = worker_factory_->CreateWorker(device_entity);
         
-        if (!worker) {
+        if (!unique_worker) {
             logger.Error("❌ Failed to create worker for device: " + device_info.name);
             std::lock_guard<std::mutex> lock(stats_mutex_);
             statistics_.workers_failed++;
             return nullptr;
         }
+        
+        // 🔧 unique_ptr → shared_ptr 변환
+        std::shared_ptr<BaseDeviceWorker> worker = std::move(unique_worker);
         
         // ManagedWorker로 감싸서 관리
         std::lock_guard<std::mutex> lock(managed_workers_mutex_);
@@ -674,6 +688,18 @@ void BACnetDiscoveryService::ResetStatistics() {
     
     auto& logger = LogManager::getInstance();
     logger.Info("BACnetDiscoveryService statistics reset");
+}
+
+// =============================================================================
+// 🔥 Repository 의존성 주입
+// =============================================================================
+
+void BACnetDiscoveryService::SetDeviceSettingsRepository(
+    std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo) {
+    device_settings_repository_ = device_settings_repo;
+    
+    auto& logger = LogManager::getInstance();
+    logger.Info("DeviceSettingsRepository injected into BACnetDiscoveryService");
 }
 
 // =============================================================================

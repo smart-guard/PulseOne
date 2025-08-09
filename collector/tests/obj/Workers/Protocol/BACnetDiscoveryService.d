@@ -20,6 +20,8 @@ obj/Workers/Protocol/BACnetDiscoveryService.o: \
  ../include/Database/Entities/DataPointEntity.h \
  ../include/Database/Repositories/CurrentValueRepository.h \
  ../include/Database/Entities/CurrentValueEntity.h \
+ ../include/Database/Repositories/DeviceSettingsRepository.h \
+ ../include/Database/Entities/DeviceSettingsEntity.h \
  ../include/Drivers/Bacnet/BACnetTypes.h \
  ../include/Workers/WorkerFactory.h \
  ../include/Workers/Base/BaseDeviceWorker.h \

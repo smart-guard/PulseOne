@@ -18,6 +18,7 @@
 #include "Database/Repositories/DeviceRepository.h" 
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/Repositories/DeviceSettingsRepository.h"  // 🔥 추가
 #include "Database/DatabaseTypes.h"    
 #include "Common/Structs.h"
 #include "Common/Enums.h"
@@ -46,6 +47,9 @@ namespace Workers {
 
 class BACnetDiscoveryService {
 public:
+    // 🔥 Repository 의존성 주입
+    void SetDeviceSettingsRepository(std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo);
+    
     // =======================================================================
     // 🔥 DeviceInfo ↔ DeviceEntity 변환 함수들
     // =======================================================================
@@ -103,7 +107,8 @@ public:
         std::shared_ptr<Database::Repositories::DeviceRepository> device_repo,
         std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo,
         std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo = nullptr,
-        std::shared_ptr<WorkerFactory> worker_factory = nullptr  // 🔥 추가
+        std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo = nullptr,  // 🔥 추가
+        std::shared_ptr<WorkerFactory> worker_factory = nullptr
     );
     
     ~BACnetDiscoveryService();
@@ -196,6 +201,7 @@ private:
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repository_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repository_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repository_;
+    std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repository_;  // 🔥 추가
     
     // 🔥 WorkerFactory 추가
     std::shared_ptr<WorkerFactory> worker_factory_;
