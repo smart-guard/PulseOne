@@ -1637,22 +1637,98 @@ namespace Structs {
     // 🔥 메시지 전송용 확장 (향후 사용)
     // =========================================================================
     struct DeviceDataMessage {
-        std::string type = "device_data";
+        // ========== 기존 필드 (100% 호환) ==========
+        std::string type = "device_data";        // 기본값 유지
         UUID device_id;
-        std::string protocol;
-        std::vector<TimestampedValue> points;
+        std::string protocol;                    // string 타입 유지 (기존 호환)
+        std::vector<TimestampedValue> points;    // 기존 구조 유지
         Timestamp timestamp;
         uint32_t priority = 0;
         
+        // ========== 🔥 새로운 필드 (선택적 사용) ==========
+        
+        // 테넌트/사이트 정보 (멀티테넌트 지원)
+        int tenant_id = 0;                       // 0이면 미사용
+        int site_id = 0;                         // 0이면 미사용
+        
+        // 가상포인트 지원
+        std::vector<int> affected_virtual_points;     // 영향받는 가상포인트 ID
+        bool trigger_virtual_calculation = false;     // 가상포인트 재계산 트리거
+        
+        // 알람 지원
+        std::vector<int> applicable_alarm_rules;      // 적용 가능한 알람 규칙
+        bool trigger_alarm_evaluation = false;        // 알람 평가 트리거
+        
+        // 품질 정보
+        DataQuality overall_quality = DataQuality::GOOD;  // 전체 품질
+        std::map<std::string, DataQuality> point_qualities;  // 포인트별 품질
+        
+        // 처리 메타데이터
+        std::string source_worker;               // 데이터 생성 워커
+        std::string processing_chain;            // 처리 체인 정보
+        std::string correlation_id;              // 추적용 ID
+        
+        // 배치 처리 지원
+        bool is_batch = false;
+        int batch_id = 0;
+        int batch_sequence = 0;
+        
+        // ========== 생성자 (기존 호환) ==========
         DeviceDataMessage() : timestamp(std::chrono::system_clock::now()) {}
         
-        std::string ToJSON() const {
-            JsonType j;
+        // 기존 방식 생성자 (하위 호환)
+        DeviceDataMessage(const UUID& id, const std::string& proto) 
+            : device_id(id)
+            , protocol(proto)
+            , timestamp(std::chrono::system_clock::now()) {}
+        
+        // ========== 헬퍼 메서드 ==========
+        
+        /**
+         * @brief 가상포인트 계산이 필요한지 확인
+         */
+        bool needsVirtualPointCalculation() const {
+            return trigger_virtual_calculation && !affected_virtual_points.empty();
+        }
+        
+        /**
+         * @brief 알람 평가가 필요한지 확인
+         */
+        bool needsAlarmEvaluation() const {
+            return trigger_alarm_evaluation && !applicable_alarm_rules.empty();
+        }
+        
+        /**
+         * @brief 확장 기능 사용 여부 확인
+         */
+        bool hasExtendedFeatures() const {
+            return tenant_id > 0 || 
+                !affected_virtual_points.empty() || 
+                !applicable_alarm_rules.empty();
+        }
+        
+        /**
+         * @brief 레거시 모드인지 확인 (기존 필드만 사용)
+         */
+        bool isLegacyMode() const {
+            return !hasExtendedFeatures();
+        }
+        
+        // ========== JSON 직렬화 (확장) ==========
+        
+        /**
+         * @brief JSON 직렬화 (기존 호환 + 확장)
+         * @param include_extended 확장 필드 포함 여부 (기본값: true)
+         */
+        std::string ToJSON(bool include_extended = true) const {
+            nlohmann::json j;
+            
+            // ===== 기존 필드 (항상 포함) =====
             j["type"] = type;
             j["device_id"] = device_id;
             j["protocol"] = protocol;
             
-            // 타임스탬프를 문자열로 변환 (Utils 의존성 제거)
+            // 타임스탬프 변환 (기존 코드 유지)
             auto time_t = std::chrono::system_clock::to_time_t(timestamp);
             std::tm tm_buf;
             #ifdef _WIN32
@@ -1664,15 +1740,184 @@ namespace Structs {
             std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
             j["timestamp"] = std::string(buffer);
             
-            j["points"] = JsonType::array();
+            // 포인트 데이터 (기존 방식)
+            j["points"] = nlohmann::json::array();
             for (const auto& point : points) {
-                JsonType point_json = JsonType::parse(point.ToJSON());
-                j["points"].push_back(point_json);
+                j["points"].push_back(nlohmann::json::parse(point.ToJSON()));
+            }
+            
+            if (priority > 0) {
+                j["priority"] = priority;
+            }
+            
+            // ===== 확장 필드 (선택적) =====
+            if (include_extended && hasExtendedFeatures()) {
+                // 테넌트 정보
+                if (tenant_id > 0) {
+                    j["tenant_id"] = tenant_id;
+                }
+                if (site_id > 0) {
+                    j["site_id"] = site_id;
+                }
+                
+                // 가상포인트 정보
+                if (!affected_virtual_points.empty()) {
+                    j["affected_virtual_points"] = affected_virtual_points;
+                    j["trigger_virtual_calculation"] = trigger_virtual_calculation;
+                }
+                
+                // 알람 정보
+                if (!applicable_alarm_rules.empty()) {
+                    j["applicable_alarm_rules"] = applicable_alarm_rules;
+                    j["trigger_alarm_evaluation"] = trigger_alarm_evaluation;
+                }
+                
+                // 품질 정보
+                if (overall_quality != DataQuality::GOOD) {
+                    j["overall_quality"] = static_cast<int>(overall_quality);
+                }
+                if (!point_qualities.empty()) {
+                    j["point_qualities"] = nlohmann::json::object();
+                    for (const auto& [point_id, quality] : point_qualities) {
+                        j["point_qualities"][point_id] = static_cast<int>(quality);
+                    }
+                }
+                
+                // 메타데이터
+                if (!source_worker.empty()) {
+                    j["source_worker"] = source_worker;
+                }
+                if (!processing_chain.empty()) {
+                    j["processing_chain"] = processing_chain;
+                }
+                if (!correlation_id.empty()) {
+                    j["correlation_id"] = correlation_id;
+                }
+                
+                // 배치 정보
+                if (is_batch) {
+                    j["batch_info"] = {
+                        {"batch_id", batch_id},
+                        {"sequence", batch_sequence}
+                    };
+                }
             }
             
             return j.dump();
         }
+        
+        /**
+         * @brief 레거시 JSON 생성 (기존 필드만)
+         */
+        std::string ToLegacyJSON() const {
+            return ToJSON(false);  // 확장 필드 제외
+        }
+        
+        /**
+         * @brief JSON에서 역직렬화
+         */
+        static DeviceDataMessage FromJSON(const std::string& json_str) {
+            DeviceDataMessage msg;
+            auto j = nlohmann::json::parse(json_str);
+            
+            // 기존 필드 파싱
+            if (j.contains("type")) msg.type = j["type"];
+            if (j.contains("device_id")) msg.device_id = j["device_id"];
+            if (j.contains("protocol")) msg.protocol = j["protocol"];
+            if (j.contains("priority")) msg.priority = j["priority"];
+            
+            // 타임스탬프 파싱
+            if (j.contains("timestamp")) {
+                // ISO 8601 파싱 로직
+                std::tm tm = {};
+                std::istringstream ss(j["timestamp"].get<std::string>());
+                ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+                msg.timestamp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+            }
+            
+            // 포인트 데이터 파싱
+            if (j.contains("points") && j["points"].is_array()) {
+                for (const auto& point_json : j["points"]) {
+                    // TimestampedValue::FromJSON 구현 필요
+                    // msg.points.push_back(TimestampedValue::FromJSON(point_json.dump()));
+                }
+            }
+            
+            // 확장 필드 파싱 (있을 경우만)
+            if (j.contains("tenant_id")) msg.tenant_id = j["tenant_id"];
+            if (j.contains("site_id")) msg.site_id = j["site_id"];
+            
+            if (j.contains("affected_virtual_points")) {
+                msg.affected_virtual_points = j["affected_virtual_points"].get<std::vector<int>>();
+            }
+            if (j.contains("trigger_virtual_calculation")) {
+                msg.trigger_virtual_calculation = j["trigger_virtual_calculation"];
+            }
+            
+            if (j.contains("applicable_alarm_rules")) {
+                msg.applicable_alarm_rules = j["applicable_alarm_rules"].get<std::vector<int>>();
+            }
+            if (j.contains("trigger_alarm_evaluation")) {
+                msg.trigger_alarm_evaluation = j["trigger_alarm_evaluation"];
+            }
+            
+            if (j.contains("overall_quality")) {
+                msg.overall_quality = static_cast<DataQuality>(j["overall_quality"].get<int>());
+            }
+            
+            if (j.contains("source_worker")) msg.source_worker = j["source_worker"];
+            if (j.contains("processing_chain")) msg.processing_chain = j["processing_chain"];
+            if (j.contains("correlation_id")) msg.correlation_id = j["correlation_id"];
+            
+            if (j.contains("batch_info")) {
+                msg.is_batch = true;
+                msg.batch_id = j["batch_info"]["batch_id"];
+                msg.batch_sequence = j["batch_info"]["sequence"];
+            }
+            
+            return msg;
+        }
     };
+
+    /**
+     * @brief 레거시 코드 호환 헬퍼
+     */
+    inline DeviceDataMessage CreateLegacyMessage(
+        const UUID& device_id,
+        const std::string& protocol,
+        const std::vector<TimestampedValue>& points) {
+        
+        DeviceDataMessage msg;
+        msg.device_id = device_id;
+        msg.protocol = protocol;
+        msg.points = points;
+        // 확장 필드는 기본값 유지
+        return msg;
+    }
+
+    /**
+     * @brief 확장 메시지 생성 헬퍼
+     */
+    inline DeviceDataMessage CreateExtendedMessage(
+        const UUID& device_id,
+        const std::string& protocol,
+        const std::vector<TimestampedValue>& points,
+        int tenant_id,
+        const std::vector<int>& virtual_points = {},
+        const std::vector<int>& alarm_rules = {}) {
+        
+        DeviceDataMessage msg;
+        msg.device_id = device_id;
+        msg.protocol = protocol;
+        msg.points = points;
+        msg.tenant_id = tenant_id;
+        msg.affected_virtual_points = virtual_points;
+        msg.applicable_alarm_rules = alarm_rules;
+        msg.trigger_virtual_calculation = !virtual_points.empty();
+        msg.trigger_alarm_evaluation = !alarm_rules.empty();
+        return msg;
+    }
+
     /**
      * @brief 알람 이벤트 구조체
      * @details RabbitMQ로 전송되는 알람 정보
