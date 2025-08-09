@@ -30,7 +30,6 @@
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 #include "Drivers/Modbus/ModbusDriver.h"  // 🔥 실제 ModbusDriver 포함
-
 namespace PulseOne {
 namespace Workers {
 
@@ -112,7 +111,17 @@ public:
                            uint16_t input_count, std::vector<bool>& values);
     bool WriteSingleRegister(int slave_id, uint16_t address, uint16_t value);
     bool WriteSingleCoil(int slave_id, uint16_t address, bool value);
-
+    bool SendModbusRtuDataToPipeline(const std::vector<uint16_t>& raw_values, 
+                                    uint16_t start_address,
+                                    const std::string& register_type,
+                                    uint32_t priority = 0);
+    bool SendModbusRtuBoolDataToPipeline(const std::vector<bool>& raw_values,
+                                        uint16_t start_address,
+                                        const std::string& register_type,
+                                        uint32_t priority = 0);
+    bool SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
+                                        const std::string& context,
+                                        uint32_t priority = 0);
     // 상태 조회
     std::string GetModbusStats() const;
     std::string GetSerialBusStatus() const;

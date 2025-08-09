@@ -219,54 +219,46 @@ bool ModbusRtuWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address,
     try {
         LockBus();
         
-        // 🔥 실제 ModbusDriver 사용
-        std::vector<PulseOne::Structs::DataPoint> points;
-        for (uint16_t i = 0; i < register_count; ++i) {
-            PulseOne::Structs::DataPoint point;
-            point.address = start_address + i;
-            point.data_type = "UINT16";
-            point.protocol_params["slave_id"] = std::to_string(slave_id);
-            point.protocol_params["function_code"] = "3"; // Holding Register
-            point.protocol_params["protocol"] = "MODBUS_RTU";
-            points.push_back(point);
-        }
+        PulseOne::Structs::DataPoint point;
+        point.address = start_address;
+        point.data_type = "UINT16";
+        point.protocol_params["slave_id"] = std::to_string(slave_id);
+        point.protocol_params["function_code"] = "3"; // Read Holding Registers
+        point.protocol_params["register_count"] = std::to_string(register_count);
+        point.protocol_params["protocol"] = "MODBUS_RTU";
         
         std::vector<PulseOne::Structs::TimestampedValue> results;
-        bool success = modbus_driver_->ReadValues(points, results);
-        
-        if (success && results.size() == register_count) {
-            values.clear();
-            values.reserve(register_count);
-            
-            for (const auto& result : results) {
-                // DataVariant에서 uint16_t 추출
-                if (std::holds_alternative<uint16_t>(result.value)) {
-                    values.push_back(std::get<uint16_t>(result.value));
-                } else if (std::holds_alternative<int>(result.value)) {
-                    values.push_back(static_cast<uint16_t>(std::get<int>(result.value)));
-                } else if (std::holds_alternative<double>(result.value)) {
-                    values.push_back(static_cast<uint16_t>(std::get<double>(result.value)));
-                } else {
-                    values.push_back(0); // 기본값
-                }
-            }
-            
-            UpdateSlaveStatus(slave_id, 50, true);  // 성공
-        } else {
-            UpdateSlaveStatus(slave_id, -1, false); // 실패
-        }
+        bool success = modbus_driver_->ReadValues({point}, results);
         
         UnlockBus();
         
-        logger.Debug("Read " + to_string_safe(register_count) + " holding registers from slave " + 
-                    to_string_safe(slave_id) + " (success: " + (success ? "true" : "false") + ")");
+        if (success && !results.empty()) {
+            values.clear();
+            values.reserve(results.size());
+            
+            for (const auto& result : results) {
+                // DataValue에서 uint16_t 추출
+                if (std::holds_alternative<int32_t>(result.value)) {
+                    values.push_back(static_cast<uint16_t>(std::get<int32_t>(result.value)));
+                }
+            }
+            
+            // 🔥 파이프라인 전송 추가
+            if (!values.empty()) {
+                SendModbusRtuDataToPipeline(values, start_address, "holding", 0);
+            }
+            
+            logger.Debug("Read holding registers: slave=" + to_string_safe(slave_id) + 
+                        ", start=" + to_string_safe(start_address) + 
+                        ", count=" + to_string_safe(register_count) + 
+                        ", result_count=" + to_string_safe(values.size()));
+        }
         
         return success;
         
     } catch (const std::exception& e) {
         UnlockBus();
         logger.Error("ReadHoldingRegisters exception: " + std::string(e.what()));
-        UpdateSlaveStatus(slave_id, -1, false);
         return false;
     }
 }
@@ -289,39 +281,40 @@ bool ModbusRtuWorker::ReadCoils(int slave_id, uint16_t start_address,
     try {
         LockBus();
         
-        std::vector<PulseOne::Structs::DataPoint> points;
-        for (uint16_t i = 0; i < coil_count; ++i) {
-            PulseOne::Structs::DataPoint point;
-            point.address = start_address + i;
-            point.data_type = "BOOL";
-            point.protocol_params["slave_id"] = std::to_string(slave_id);
-            point.protocol_params["function_code"] = "1"; // Read Coils
-            point.protocol_params["protocol"] = "MODBUS_RTU";
-            points.push_back(point);
-        }
+        PulseOne::Structs::DataPoint point;
+        point.address = start_address;
+        point.data_type = "BOOL";
+        point.protocol_params["slave_id"] = std::to_string(slave_id);
+        point.protocol_params["function_code"] = "1"; // Read Coils
+        point.protocol_params["register_count"] = std::to_string(coil_count);
+        point.protocol_params["protocol"] = "MODBUS_RTU";
         
         std::vector<PulseOne::Structs::TimestampedValue> results;
-        bool success = modbus_driver_->ReadValues(points, results);
-        
-        if (success) {
-            values.clear();
-            values.reserve(coil_count);
-            
-            for (const auto& result : results) {
-                if (std::holds_alternative<bool>(result.value)) {
-                    values.push_back(std::get<bool>(result.value));
-                } else if (std::holds_alternative<int>(result.value)) {
-                    values.push_back(std::get<int>(result.value) != 0);
-                } else {
-                    values.push_back(false);
-                }
-            }
-        }
+        bool success = modbus_driver_->ReadValues({point}, results);
         
         UnlockBus();
         
-        logger.Debug("Read " + to_string_safe(coil_count) + " coils from slave " + 
-                    to_string_safe(slave_id) + " (success: " + (success ? "true" : "false") + ")");
+        if (success && !results.empty()) {
+            values.clear();
+            values.reserve(results.size());
+            
+            for (const auto& result : results) {
+                // DataValue에서 bool 추출
+                if (std::holds_alternative<bool>(result.value)) {
+                    values.push_back(std::get<bool>(result.value));
+                }
+            }
+            
+            // 🔥 파이프라인 전송 추가
+            if (!values.empty()) {
+                SendModbusRtuBoolDataToPipeline(values, start_address, "coil", 0);
+            }
+            
+            logger.Debug("Read coils: slave=" + to_string_safe(slave_id) + 
+                        ", start=" + to_string_safe(start_address) + 
+                        ", count=" + to_string_safe(coil_count) + 
+                        " (success: " + (success ? "true" : "false") + ")");
+        }
         
         return success;
         
@@ -331,6 +324,7 @@ bool ModbusRtuWorker::ReadCoils(int slave_id, uint16_t start_address,
         return false;
     }
 }
+
 
 bool ModbusRtuWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address, 
                                         uint16_t input_count, std::vector<bool>& values) {
@@ -360,6 +354,19 @@ bool ModbusRtuWorker::WriteSingleRegister(int slave_id, uint16_t address, uint16
         bool success = modbus_driver_->WriteValue(point, data_value);
         
         UnlockBus();
+        
+        // 🔥 제어 이력 파이프라인 전송 추가
+        if (success) {
+            TimestampedValue control_log;
+            control_log.value = static_cast<int32_t>(value);
+            control_log.timestamp = std::chrono::system_clock::now();
+            control_log.quality = DataQuality::GOOD;
+            control_log.source = "control_holding_" + std::to_string(address) + 
+                                "_slave" + std::to_string(slave_id);
+            
+            // 제어 이력은 높은 우선순위로 기록
+            SendValuesToPipelineWithLogging({control_log}, "제어 이력", 1);
+        }
         
         logger.Debug("Write single register: slave=" + to_string_safe(slave_id) + 
                     ", address=" + to_string_safe(address) + ", value=" + to_string_safe(value) +
@@ -396,6 +403,19 @@ bool ModbusRtuWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value
         bool success = modbus_driver_->WriteValue(point, data_value);
         
         UnlockBus();
+        
+        // 🔥 제어 이력 파이프라인 전송 추가
+        if (success) {
+            TimestampedValue control_log;
+            control_log.value = value;
+            control_log.timestamp = std::chrono::system_clock::now();
+            control_log.quality = DataQuality::GOOD;
+            control_log.source = "control_coil_" + std::to_string(address) + 
+                                "_slave" + std::to_string(slave_id);
+            
+            // 제어 이력은 높은 우선순위로 기록
+            SendValuesToPipelineWithLogging({control_log}, "제어 이력", 1);
+        }
         
         logger.Debug("Write single coil: slave=" + to_string_safe(slave_id) + 
                     ", address=" + to_string_safe(address) + ", value=" + (value ? "true" : "false") +
@@ -688,8 +708,31 @@ void ModbusRtuWorker::PollingWorkerThread() {
     
     while (polling_thread_running_) {
         try {
-            // 폴링 로직
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // 🔥 기존 폴링 로직에 파이프라인 전송 추가
+            for (auto& [slave_id, slave_info] : slaves_) {
+                if (!slave_info || !slave_info->enabled) {
+                    continue;
+                }
+                
+                // 예시: Holding Register 스캔
+                std::vector<uint16_t> holding_values;
+                if (ReadHoldingRegisters(slave_id, 0, 10, holding_values)) {
+                    // ReadHoldingRegisters 내부에서 이미 파이프라인 전송됨
+                    logger.Debug("Polled slave " + std::to_string(slave_id) + 
+                                ": " + std::to_string(holding_values.size()) + " values");
+                }
+                
+                // 예시: Coil 스캔
+                std::vector<bool> coil_values;
+                if (ReadCoils(slave_id, 0, 8, coil_values)) {
+                    // ReadCoils 내부에서 이미 파이프라인 전송됨
+                    logger.Debug("Polled coils slave " + std::to_string(slave_id) + 
+                                ": " + std::to_string(coil_values.size()) + " values");
+                }
+            }
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // 1초 간격
+            
         } catch (const std::exception& e) {
             logger.Error("RTU Polling worker thread error: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -698,6 +741,7 @@ void ModbusRtuWorker::PollingWorkerThread() {
     
     logger.Info("RTU Polling worker thread stopped");
 }
+
 
 void ModbusRtuWorker::LockBus() {
     bus_mutex_.lock();
@@ -971,6 +1015,110 @@ std::string ModbusRtuWorker::GetSlaveStatusList() const {
     }
     
     return slaves_json.dump(2);
+}
+
+
+bool ModbusRtuWorker::SendModbusRtuDataToPipeline(const std::vector<uint16_t>& raw_values, 
+                                                  uint16_t start_address,
+                                                  const std::string& register_type,
+                                                  uint32_t priority) {
+    if (raw_values.empty()) {
+        return false;
+    }
+    
+    try {
+        std::vector<TimestampedValue> timestamped_values;
+        timestamped_values.reserve(raw_values.size());
+        
+        auto timestamp = std::chrono::system_clock::now();
+        
+        for (size_t i = 0; i < raw_values.size(); ++i) {
+            TimestampedValue tv;
+            tv.value = static_cast<int32_t>(raw_values[i]);  // DataValue는 variant
+            tv.timestamp = timestamp;
+            tv.quality = DataQuality::GOOD;
+            tv.source = "modbus_rtu_" + register_type + "_" + std::to_string(start_address + i);
+            timestamped_values.push_back(tv);
+        }
+        
+        // 공통 전송 함수 호출
+        return SendValuesToPipelineWithLogging(timestamped_values, 
+                                               register_type + " registers", 
+                                               priority);
+                                               
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("SendModbusRtuDataToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// 🔥 2-2. bool 값들 (Coil/Discrete Input) 파이프라인 전송
+bool ModbusRtuWorker::SendModbusRtuBoolDataToPipeline(const std::vector<bool>& raw_values,
+                                                     uint16_t start_address,
+                                                     const std::string& register_type,
+                                                     uint32_t priority) {
+    if (raw_values.empty()) {
+        return false;
+    }
+    
+    try {
+        std::vector<TimestampedValue> timestamped_values;
+        timestamped_values.reserve(raw_values.size());
+        
+        auto timestamp = std::chrono::system_clock::now();
+        
+        for (size_t i = 0; i < raw_values.size(); ++i) {
+            TimestampedValue tv;
+            tv.value = raw_values[i];  // DataValue는 bool 지원
+            tv.timestamp = timestamp;
+            tv.quality = DataQuality::GOOD;
+            tv.source = "modbus_rtu_" + register_type + "_" + std::to_string(start_address + i);
+            timestamped_values.push_back(tv);
+        }
+        
+        // 공통 전송 함수 호출
+        return SendValuesToPipelineWithLogging(timestamped_values,
+                                               register_type + " inputs",
+                                               priority);
+                                               
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("SendModbusRtuBoolDataToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// 🔥 2-3. 최종 공통 전송 함수 (로깅 포함)
+bool ModbusRtuWorker::SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
+                                                      const std::string& context,
+                                                      uint32_t priority) {
+    if (values.empty()) {
+        return false;
+    }
+    
+    try {
+        // BaseDeviceWorker::SendDataToPipeline() 호출
+        bool success = SendDataToPipeline(values, priority);
+        
+        auto& logger = LogManager::getInstance();
+        
+        if (success) {
+            logger.Debug("🚀 RTU 파이프라인 전송 성공 (" + context + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        } else {
+            logger.Warn("⚠️ RTU 파이프라인 전송 실패 (" + context + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.Error("SendValuesToPipelineWithLogging 예외 (" + context + "): " + 
+                  std::string(e.what()));
+        return false;
+    }
 }
 
 } // namespace Workers

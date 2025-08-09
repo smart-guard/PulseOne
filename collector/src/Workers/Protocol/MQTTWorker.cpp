@@ -1242,8 +1242,8 @@ void MQTTWorker::PublishProcessorThreadFunction() {
             
             // 실제 메시지 발행 (Driver 위임)
             if (mqtt_driver_ && mqtt_driver_->IsConnected()) {
-                // bool success = mqtt_driver_->Publish(task.topic, task.payload, QosToInt(task.qos), task.retained);
-                bool success = true; // 현재는 임시로 true
+                // 🔥 실제 Driver 호출로 수정 (현재는 임시로 true였음)
+                bool success = mqtt_driver_->Publish(task.topic, task.payload, QosToInt(task.qos), task.retained);
                 
                 if (success) {
                     worker_stats_.messages_published++;
@@ -1254,6 +1254,16 @@ void MQTTWorker::PublishProcessorThreadFunction() {
                         performance_metrics_.bytes_sent += task.payload.size();
                     }
                     
+                    // 🔥 제어 이력 파이프라인 전송 추가
+                    TimestampedValue control_log;
+                    control_log.value = task.payload;  // JSON 제어 명령
+                    control_log.timestamp = std::chrono::system_clock::now();
+                    control_log.quality = DataQuality::GOOD;
+                    control_log.source = "control_mqtt_" + task.topic;
+                    
+                    // 제어 이력은 높은 우선순위로 파이프라인 전송
+                    SendValuesToPipelineWithLogging({control_log}, "MQTT 제어 이력", 1);
+                    
                     LogMessage(LogLevel::DEBUG_LEVEL, 
                               "Published message to topic: " + task.topic);
                 } else {
@@ -1262,6 +1272,15 @@ void MQTTWorker::PublishProcessorThreadFunction() {
                     if (IsProductionMode()) {
                         performance_metrics_.error_count++;
                     }
+                    
+                    // 🔥 실패한 제어도 이력 기록
+                    TimestampedValue control_log;
+                    control_log.value = task.payload;
+                    control_log.timestamp = std::chrono::system_clock::now();
+                    control_log.quality = DataQuality::BAD;  // 실패
+                    control_log.source = "control_mqtt_" + task.topic;
+                    
+                    SendValuesToPipelineWithLogging({control_log}, "MQTT 제어 실패 이력", 1);
                     
                     LogMessage(LogLevel::ERROR, 
                               "Failed to publish message to topic: " + task.topic);
@@ -1277,6 +1296,7 @@ void MQTTWorker::PublishProcessorThreadFunction() {
     
     LogMessage(LogLevel::INFO, "Publish processor thread stopped");
 }
+
 
 // =============================================================================
 // 🔥 ProcessReceivedMessage - 파이프라인 연동 완성 (ModbusTcpWorker 패턴)

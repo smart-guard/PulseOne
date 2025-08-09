@@ -23,8 +23,10 @@
 #define BACNET_WORKER_H
 
 #include "Workers/Base/UdpBasedWorker.h"                    
-#include "Common/Structs.h"                                 
-#include "Drivers/Bacnet/BACnetDriver.h"                    
+#include "Common/Structs.h"
+#include "Drivers/Bacnet/BACnetTypes.h"                                 
+#include "Drivers/Bacnet/BACnetDriver.h"  
+#include "Drivers/Bacnet/BACnetServiceManager.h"                  
 #include "Common/DriverStatistics.h"                       
 #include <memory>
 #include <atomic>
@@ -170,6 +172,18 @@ public:
     Drivers::BACnetDriver* GetBACnetDriver() const {
         return bacnet_driver_.get();
     }
+    bool WriteProperty(uint32_t device_id,
+                      BACNET_OBJECT_TYPE object_type,
+                      uint32_t object_instance,
+                      BACNET_PROPERTY_ID property_id,
+                      const DataValue& value,
+                      uint8_t priority = BACNET_NO_PRIORITY);
+    
+    bool WriteObjectProperty(const std::string& object_id, 
+                            const DataValue& value,
+                            uint8_t priority = BACNET_NO_PRIORITY);
+    
+    bool WriteBACnetDataPoint(const std::string& point_id, const DataValue& value);    
     
 private:
     // =============================================================================
@@ -218,6 +232,8 @@ private:
     // COV용 이전 값 저장
     std::map<std::string, DataValue> previous_values_;
     std::mutex previous_values_mutex_;
+
+    std::shared_ptr<PulseOne::Drivers::BACnetServiceManager> bacnet_service_manager_;
 };
 
 } // namespace Workers

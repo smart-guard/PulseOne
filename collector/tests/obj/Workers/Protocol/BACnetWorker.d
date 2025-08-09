@@ -9,9 +9,10 @@ obj/Workers/Protocol/BACnetWorker.o: \
  ../include/Common/Utils.h ../include/Common/DriverError.h \
  ../include/Common/IProtocolConfig.h ../include/Common/ProtocolConfigs.h \
  ../include/Utils/LogManager.h ../include/Pipeline/PipelineManager.h \
+ ../include/Drivers/Bacnet/BACnetTypes.h \
  ../include/Drivers/Bacnet/BACnetDriver.h \
  ../include/Drivers/Common/IProtocolDriver.h \
  ../include/Common/DriverStatistics.h \
- ../include/Drivers/Bacnet/BACnetTypes.h \
  ../include/Drivers/Bacnet/BACnetErrorMapper.h \
- ../include/Common/DriverError.h
+ ../include/Common/DriverError.h \
+ ../include/Drivers/Bacnet/BACnetServiceManager.h
