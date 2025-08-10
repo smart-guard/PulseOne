@@ -94,7 +94,7 @@ ifeq ($(HAS_NLOHMANN_JSON),1)
 endif
 
 # 전체 라이브러리 설정
-BASIC_LIBS = -lpthread -lsqlite3
+BASIC_LIBS = -lpthread -lsqlite3 $(shell pkg-config --libs quickjs) -lquickjs -lm -ldl
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
 TEST_LIBS = -lgtest -lgtest_main -pthread

@@ -64,7 +64,14 @@ RUN echo "🔧 Installing nlohmann/json..." && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DJSON_BuildTests=OFF && \
     make -j$(nproc) && make install && \
     cd / && rm -rf /tmp/json && echo "✅ nlohmann/json installed"
-
+# 5. QuickJS JavaScript 엔진 설치
+RUN echo "🔧 Installing QuickJS..." && \
+    cd /tmp && git clone --depth 1 --branch 2024-01-13 https://github.com/bellard/quickjs.git && \
+    cd quickjs && \
+    make && \
+    make install PREFIX=/usr/local && \
+    ldconfig && \
+    cd / && rm -rf /tmp/quickjs && echo "✅ QuickJS installed"
 # 5. spdlog 설치 (로깅 라이브러리)
 RUN echo "🔧 Installing spdlog..." && \
     cd /tmp && git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
@@ -154,6 +161,27 @@ Requires: paho-mqtt3c
 Libs: -L${libdir} -lpaho-mqttpp3
 Cflags: -I${includedir}
 EOF
+
+# 10. QuickJS pkg-config 파일 생성 (기존 섹션에 추가)
+RUN echo "📝 Creating QuickJS pkg-config file..." && \
+    mkdir -p /usr/local/lib/pkgconfig && \
+    cat > /usr/local/lib/pkgconfig/quickjs.pc << 'EOF'
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: QuickJS
+Description: QuickJS JavaScript Engine
+Version: 2024-01-13
+Libs: -L${libdir} -lquickjs
+Cflags: -I${includedir}
+EOF
+
+RUN echo "🔍 QuickJS 설치 확인:" && \
+    pkg-config --exists quickjs && echo "✅ pkg-config OK" || echo "❌ pkg-config 실패" && \
+    ls -la /usr/local/lib/libquickjs* 2>/dev/null && echo "✅ QuickJS 라이브러리 확인" || echo "❌ 라이브러리 없음" && \
+    ls -la /usr/local/include/quickjs*.h 2>/dev/null && echo "✅ QuickJS 헤더 확인" || echo "❌ 헤더 없음"
 
 # =============================================================================
 # 🔥 Redis 설정 파일 및 환경 변수 미리 설정
