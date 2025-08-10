@@ -182,7 +182,21 @@ public:
      * @return 안전한 오프셋
      */
     static int sanitizeOffset(int offset, int max_offset = 100000);
+    /**
+     * @brief 벡터의 문자열들을 구분자로 연결
+     * @param values 연결할 문자열 벡터
+     * @param delimiter 구분자
+     * @return 연결된 문자열
+     */
+    static std::string join(const std::vector<std::string>& values, const std::string& delimiter);
 
+    /**
+     * @brief 벡터의 정수들을 구분자로 연결
+     * @param values 연결할 정수 벡터  
+     * @param delimiter 구분자
+     * @return 연결된 문자열
+     */
+static std::string join(const std::vector<int>& values, const std::string& delimiter);
 private:
     // 내부 헬퍼들
     static std::string trimString(const std::string& str);
