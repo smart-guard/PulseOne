@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Database/Entities/AlarmOccurrenceEntity.cpp
-// PulseOne AlarmOccurrenceEntity 구현 - BaseEntity 패턴 적용
+// PulseOne AlarmOccurrenceEntity 구현 - BaseEntity 패턴 100% 준수
 // =============================================================================
 
 /**
@@ -16,7 +16,6 @@
 #include "Utils/ConfigManager.h"
 #include <sstream>
 #include <iomanip>
-#include <regex>
 #include <algorithm>
 
 namespace PulseOne {
@@ -45,11 +44,7 @@ AlarmOccurrenceEntity::AlarmOccurrenceEntity()
     , notification_result_("")
     , context_data_("")
     , source_name_("")
-    , location_("")
-    , logger_(nullptr)
-    , config_manager_(nullptr) {
-    
-    initializeDependencies();
+    , location_("") {
 }
 
 AlarmOccurrenceEntity::AlarmOccurrenceEntity(int occurrence_id) 
@@ -69,11 +64,11 @@ AlarmOccurrenceEntity::AlarmOccurrenceEntity(int rule_id, int tenant_id, const s
     occurrence_time_ = std::chrono::system_clock::now();
     state_ = State::ACTIVE;
     
-    markDirty();  // 새로 생성된 엔티티이므로 dirty 마크
+    markModified();  // BaseEntity 패턴: markModified() 사용
 }
 
 // =============================================================================
-// BaseEntity 순수 가상 함수 구현 (Repository 활용)
+// BaseEntity 순수 가상 함수 구현 (필수!)
 // =============================================================================
 
 bool AlarmOccurrenceEntity::loadFromDatabase() {
@@ -81,29 +76,79 @@ bool AlarmOccurrenceEntity::loadFromDatabase() {
         if (logger_) {
             logger_->Error("AlarmOccurrenceEntity::loadFromDatabase - Invalid occurrence ID: " + std::to_string(getId()));
         }
-        markError();
         return false;
     }
     
     try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getAlarmOccurrenceRepository();
-        if (repo) {
-            auto loaded = repo->findById(getId());
-            if (loaded.has_value()) {
-                *this = loaded.value();
-                markSaved();
-                if (logger_) {
-                    logger_->Info("AlarmOccurrenceEntity::loadFromDatabase - Loaded occurrence: " + std::to_string(getId()));
-                }
-                return true;
+        // 🔥 임시로 직접 SQL 실행 (Repository 추가 전까지)
+        std::string query = "SELECT * FROM " + getTableName() + " WHERE id = " + std::to_string(getId());
+        
+        auto results = executeUnifiedQuery(query);
+        if (results.empty()) {
+            if (logger_) {
+                logger_->Warn("AlarmOccurrenceEntity::loadFromDatabase - No data found for ID: " + std::to_string(getId()));
             }
+            return false;
         }
         
-        if (logger_) {
-            logger_->Warn("AlarmOccurrenceEntity::loadFromDatabase - Occurrence not found: " + std::to_string(getId()));
+        const auto& row = results[0];
+        
+        // 데이터 매핑
+        rule_id_ = std::stoi(getValueOrDefault(row, "rule_id", "0"));
+        tenant_id_ = std::stoi(getValueOrDefault(row, "tenant_id", "0"));
+        trigger_value_ = getValueOrDefault(row, "trigger_value", "");
+        trigger_condition_ = getValueOrDefault(row, "trigger_condition", "");
+        alarm_message_ = getValueOrDefault(row, "alarm_message", "");
+        severity_ = stringToSeverity(getValueOrDefault(row, "severity", "medium"));
+        state_ = stringToState(getValueOrDefault(row, "state", "active"));
+        
+        // Optional 필드들
+        auto ack_time_str = getValueOrDefault(row, "acknowledged_time", "");
+        if (!ack_time_str.empty() && ack_time_str != "NULL") {
+            acknowledged_time_ = stringToTimestamp(ack_time_str);
         }
-        return false;
+        
+        auto ack_by_str = getValueOrDefault(row, "acknowledged_by", "");
+        if (!ack_by_str.empty() && ack_by_str != "NULL") {
+            acknowledged_by_ = std::stoi(ack_by_str);
+        }
+        
+        acknowledge_comment_ = getValueOrDefault(row, "acknowledge_comment", "");
+        
+        auto cleared_time_str = getValueOrDefault(row, "cleared_time", "");
+        if (!cleared_time_str.empty() && cleared_time_str != "NULL") {
+            cleared_time_ = stringToTimestamp(cleared_time_str);
+        }
+        
+        cleared_value_ = getValueOrDefault(row, "cleared_value", "");
+        clear_comment_ = getValueOrDefault(row, "clear_comment", "");
+        
+        notification_sent_ = (getValueOrDefault(row, "notification_sent", "0") == "1");
+        
+        auto notif_time_str = getValueOrDefault(row, "notification_time", "");
+        if (!notif_time_str.empty() && notif_time_str != "NULL") {
+            notification_time_ = stringToTimestamp(notif_time_str);
+        }
+        
+        notification_count_ = std::stoi(getValueOrDefault(row, "notification_count", "0"));
+        notification_result_ = getValueOrDefault(row, "notification_result", "");
+        context_data_ = getValueOrDefault(row, "context_data", "");
+        source_name_ = getValueOrDefault(row, "source_name", "");
+        location_ = getValueOrDefault(row, "location", "");
+        
+        // 시간 필드 처리
+        auto occ_time_str = getValueOrDefault(row, "occurrence_time", "");
+        if (!occ_time_str.empty()) {
+            occurrence_time_ = stringToTimestamp(occ_time_str);
+        }
+        
+        markLoaded();  // BaseEntity 패턴
+        
+        if (logger_) {
+            logger_->Info("AlarmOccurrenceEntity::loadFromDatabase - Loaded occurrence: " + std::to_string(getId()));
+        }
+        
+        return true;
         
     } catch (const std::exception& e) {
         if (logger_) {
@@ -115,31 +160,79 @@ bool AlarmOccurrenceEntity::loadFromDatabase() {
 }
 
 bool AlarmOccurrenceEntity::saveToDatabase() {
-    try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getAlarmOccurrenceRepository();
-        if (repo) {
-            // 새 엔티티인 경우 save, 기존 엔티티인 경우 update
-            bool success = false;
-            if (getId() <= 0) {
-                success = repo->save(*this);
-            } else {
-                success = repo->update(*this);
-            }
-            
-            if (success) {
-                markSaved();
-                if (logger_) {
-                    logger_->Info("AlarmOccurrenceEntity::saveToDatabase - Saved occurrence: " + std::to_string(getId()));
-                }
-            }
-            return success;
-        }
-        
+    if (!isValid()) {
         if (logger_) {
-            logger_->Error("AlarmOccurrenceEntity::saveToDatabase - Repository not available");
+            logger_->Error("AlarmOccurrenceEntity::saveToDatabase - Invalid occurrence data");
         }
         return false;
+    }
+    
+    try {
+        // INSERT 쿼리 생성
+        std::ostringstream query;
+        query << "INSERT INTO " << getTableName() << " (";
+        query << "rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition, ";
+        query << "alarm_message, severity, state, acknowledge_comment, cleared_value, ";
+        query << "clear_comment, notification_sent, notification_count, notification_result, ";
+        query << "context_data, source_name, location";
+        
+        // Optional 필드들 조건부 추가
+        if (acknowledged_time_.has_value()) query << ", acknowledged_time";
+        if (acknowledged_by_.has_value()) query << ", acknowledged_by";
+        if (cleared_time_.has_value()) query << ", cleared_time";
+        if (notification_time_.has_value()) query << ", notification_time";
+        
+        query << ") VALUES (";
+        query << rule_id_ << ", " << tenant_id_ << ", ";
+        query << "'" << timestampToString(occurrence_time_) << "', ";
+        query << "'" << trigger_value_ << "', ";
+        query << "'" << trigger_condition_ << "', ";
+        query << "'" << alarm_message_ << "', ";
+        query << "'" << severityToString(severity_) << "', ";
+        query << "'" << stateToString(state_) << "', ";
+        query << "'" << acknowledge_comment_ << "', ";
+        query << "'" << cleared_value_ << "', ";
+        query << "'" << clear_comment_ << "', ";
+        query << (notification_sent_ ? 1 : 0) << ", ";
+        query << notification_count_ << ", ";
+        query << "'" << notification_result_ << "', ";
+        query << "'" << context_data_ << "', ";
+        query << "'" << source_name_ << "', ";
+        query << "'" << location_ << "'";
+        
+        // Optional 필드들 값 추가
+        if (acknowledged_time_.has_value()) {
+            query << ", '" << timestampToString(acknowledged_time_.value()) << "'";
+        }
+        if (acknowledged_by_.has_value()) {
+            query << ", " << acknowledged_by_.value();
+        }
+        if (cleared_time_.has_value()) {
+            query << ", '" << timestampToString(cleared_time_.value()) << "'";
+        }
+        if (notification_time_.has_value()) {
+            query << ", '" << timestampToString(notification_time_.value()) << "'";
+        }
+        
+        query << ")";
+        
+        bool success = executeUnifiedNonQuery(query.str());
+        
+        if (success) {
+            // 생성된 ID 가져오기
+            auto last_id = getLastInsertId();
+            if (last_id > 0) {
+                setId(static_cast<int>(last_id));
+            }
+            
+            markSaved();  // BaseEntity 패턴
+            
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceEntity::saveToDatabase - Saved occurrence: " + std::to_string(getId()));
+            }
+        }
+        
+        return success;
         
     } catch (const std::exception& e) {
         if (logger_) {
@@ -159,23 +252,19 @@ bool AlarmOccurrenceEntity::deleteFromDatabase() {
     }
     
     try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getAlarmOccurrenceRepository();
-        if (repo) {
-            bool success = repo->deleteById(getId());
-            if (success) {
-                if (logger_) {
-                    logger_->Info("AlarmOccurrenceEntity::deleteFromDatabase - Deleted occurrence: " + std::to_string(getId()));
-                }
-                setId(-1); // 삭제 후 ID 리셋
+        std::string query = "DELETE FROM " + getTableName() + " WHERE id = " + std::to_string(getId());
+        
+        bool success = executeUnifiedNonQuery(query);
+        
+        if (success) {
+            markDeleted();  // BaseEntity 패턴
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceEntity::deleteFromDatabase - Deleted occurrence: " + std::to_string(getId()));
             }
-            return success;
+            setId(-1); // 삭제 후 ID 리셋
         }
         
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceEntity::deleteFromDatabase - Repository not available");
-        }
-        return false;
+        return success;
         
     } catch (const std::exception& e) {
         if (logger_) {
@@ -186,98 +275,240 @@ bool AlarmOccurrenceEntity::deleteFromDatabase() {
 }
 
 bool AlarmOccurrenceEntity::updateToDatabase() {
-    if (getId() <= 0) {
+    if (getId() <= 0 || !isValid()) {
         if (logger_) {
-            logger_->Error("AlarmOccurrenceEntity::updateToDatabase - Invalid occurrence ID: " + std::to_string(getId()));
+            logger_->Error("AlarmOccurrenceEntity::updateToDatabase - Invalid occurrence data or ID");
         }
         return false;
     }
     
     try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getAlarmOccurrenceRepository();
-        if (repo) {
-            bool success = repo->update(*this);
-            if (success) {
-                markSaved();
-                if (logger_) {
-                    logger_->Info("AlarmOccurrenceEntity::updateToDatabase - Updated occurrence: " + std::to_string(getId()));
-                }
-            }
-            return success;
+        std::ostringstream query;
+        query << "UPDATE " << getTableName() << " SET ";
+        query << "rule_id = " << rule_id_ << ", ";
+        query << "tenant_id = " << tenant_id_ << ", ";
+        query << "occurrence_time = '" << timestampToString(occurrence_time_) << "', ";
+        query << "trigger_value = '" << trigger_value_ << "', ";
+        query << "trigger_condition = '" << trigger_condition_ << "', ";
+        query << "alarm_message = '" << alarm_message_ << "', ";
+        query << "severity = '" << severityToString(severity_) << "', ";
+        query << "state = '" << stateToString(state_) << "', ";
+        query << "acknowledge_comment = '" << acknowledge_comment_ << "', ";
+        query << "cleared_value = '" << cleared_value_ << "', ";
+        query << "clear_comment = '" << clear_comment_ << "', ";
+        query << "notification_sent = " << (notification_sent_ ? 1 : 0) << ", ";
+        query << "notification_count = " << notification_count_ << ", ";
+        query << "notification_result = '" << notification_result_ << "', ";
+        query << "context_data = '" << context_data_ << "', ";
+        query << "source_name = '" << source_name_ << "', ";
+        query << "location = '" << location_ << "'";
+        
+        // Optional 필드들
+        if (acknowledged_time_.has_value()) {
+            query << ", acknowledged_time = '" << timestampToString(acknowledged_time_.value()) << "'";
+        } else {
+            query << ", acknowledged_time = NULL";
         }
         
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceEntity::updateToDatabase - Repository not available");
+        if (acknowledged_by_.has_value()) {
+            query << ", acknowledged_by = " << acknowledged_by_.value();
+        } else {
+            query << ", acknowledged_by = NULL";
         }
-        return false;
+        
+        if (cleared_time_.has_value()) {
+            query << ", cleared_time = '" << timestampToString(cleared_time_.value()) << "'";
+        } else {
+            query << ", cleared_time = NULL";
+        }
+        
+        if (notification_time_.has_value()) {
+            query << ", notification_time = '" << timestampToString(notification_time_.value()) << "'";
+        } else {
+            query << ", notification_time = NULL";
+        }
+        
+        query << " WHERE id = " << getId();
+        
+        bool success = executeUnifiedNonQuery(query.str());
+        
+        if (success) {
+            markSaved();  // BaseEntity 패턴
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceEntity::updateToDatabase - Updated occurrence: " + std::to_string(getId()));
+            }
+        }
+        
+        return success;
         
     } catch (const std::exception& e) {
         if (logger_) {
             logger_->Error("AlarmOccurrenceEntity::updateToDatabase failed: " + std::string(e.what()));
         }
+        markError();
         return false;
     }
 }
 
 // =============================================================================
-// 열거형 변환 유틸리티 메서드들
+// JSON 직렬화/역직렬화 (BaseEntity 패턴 - json 타입 사용)
 // =============================================================================
 
-std::string AlarmOccurrenceEntity::stateToString(State state) {
-    switch (state) {
-        case State::ACTIVE:       return "active";
-        case State::ACKNOWLEDGED: return "acknowledged";
-        case State::CLEARED:      return "cleared";
-        case State::SUPPRESSED:   return "suppressed";
-        case State::SHELVED:      return "shelved";
-        default:                  return "unknown";
+json AlarmOccurrenceEntity::toJson() const {
+    json j;
+    
+    j["id"] = getId();
+    j["rule_id"] = rule_id_;
+    j["tenant_id"] = tenant_id_;
+    j["occurrence_time"] = timestampToString(occurrence_time_);
+    j["trigger_value"] = trigger_value_;
+    j["trigger_condition"] = trigger_condition_;
+    j["alarm_message"] = alarm_message_;
+    j["severity"] = severityToString(severity_);
+    j["state"] = stateToString(state_);
+    
+    // Optional 필드들
+    if (acknowledged_time_.has_value()) {
+        j["acknowledged_time"] = timestampToString(acknowledged_time_.value());
+    } else {
+        j["acknowledged_time"] = nullptr;
+    }
+    
+    if (acknowledged_by_.has_value()) {
+        j["acknowledged_by"] = acknowledged_by_.value();
+    } else {
+        j["acknowledged_by"] = nullptr;
+    }
+    
+    j["acknowledge_comment"] = acknowledge_comment_;
+    
+    if (cleared_time_.has_value()) {
+        j["cleared_time"] = timestampToString(cleared_time_.value());
+    } else {
+        j["cleared_time"] = nullptr;
+    }
+    
+    j["cleared_value"] = cleared_value_;
+    j["clear_comment"] = clear_comment_;
+    j["notification_sent"] = notification_sent_;
+    
+    if (notification_time_.has_value()) {
+        j["notification_time"] = timestampToString(notification_time_.value());
+    } else {
+        j["notification_time"] = nullptr;
+    }
+    
+    j["notification_count"] = notification_count_;
+    j["notification_result"] = notification_result_;
+    j["context_data"] = context_data_;
+    j["source_name"] = source_name_;
+    j["location"] = location_;
+    
+    return j;
+}
+
+bool AlarmOccurrenceEntity::fromJson(const json& data) {
+    try {
+        if (data.contains("id")) {
+            setId(data["id"].get<int>());
+        }
+        if (data.contains("rule_id")) {
+            rule_id_ = data["rule_id"].get<int>();
+        }
+        if (data.contains("tenant_id")) {
+            tenant_id_ = data["tenant_id"].get<int>();
+        }
+        if (data.contains("occurrence_time")) {
+            auto time_str = data["occurrence_time"].get<std::string>();
+            occurrence_time_ = stringToTimestamp(time_str);
+        }
+        if (data.contains("trigger_value")) {
+            trigger_value_ = data["trigger_value"].get<std::string>();
+        }
+        if (data.contains("trigger_condition")) {
+            trigger_condition_ = data["trigger_condition"].get<std::string>();
+        }
+        if (data.contains("alarm_message")) {
+            alarm_message_ = data["alarm_message"].get<std::string>();
+        }
+        if (data.contains("severity")) {
+            severity_ = stringToSeverity(data["severity"].get<std::string>());
+        }
+        if (data.contains("state")) {
+            state_ = stringToState(data["state"].get<std::string>());
+        }
+        
+        // Optional 필드들
+        if (data.contains("acknowledged_time") && !data["acknowledged_time"].is_null()) {
+            acknowledged_time_ = stringToTimestamp(data["acknowledged_time"].get<std::string>());
+        }
+        if (data.contains("acknowledged_by") && !data["acknowledged_by"].is_null()) {
+            acknowledged_by_ = data["acknowledged_by"].get<int>();
+        }
+        if (data.contains("acknowledge_comment")) {
+            acknowledge_comment_ = data["acknowledge_comment"].get<std::string>();
+        }
+        if (data.contains("cleared_time") && !data["cleared_time"].is_null()) {
+            cleared_time_ = stringToTimestamp(data["cleared_time"].get<std::string>());
+        }
+        if (data.contains("cleared_value")) {
+            cleared_value_ = data["cleared_value"].get<std::string>();
+        }
+        if (data.contains("clear_comment")) {
+            clear_comment_ = data["clear_comment"].get<std::string>();
+        }
+        if (data.contains("notification_sent")) {
+            notification_sent_ = data["notification_sent"].get<bool>();
+        }
+        if (data.contains("notification_time") && !data["notification_time"].is_null()) {
+            notification_time_ = stringToTimestamp(data["notification_time"].get<std::string>());
+        }
+        if (data.contains("notification_count")) {
+            notification_count_ = data["notification_count"].get<int>();
+        }
+        if (data.contains("notification_result")) {
+            notification_result_ = data["notification_result"].get<std::string>();
+        }
+        if (data.contains("context_data")) {
+            context_data_ = data["context_data"].get<std::string>();
+        }
+        if (data.contains("source_name")) {
+            source_name_ = data["source_name"].get<std::string>();
+        }
+        if (data.contains("location")) {
+            location_ = data["location"].get<std::string>();
+        }
+        
+        markModified();  // BaseEntity 패턴
+        return true;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceEntity::fromJson failed: " + std::string(e.what()));
+        }
+        return false;
     }
 }
 
-AlarmOccurrenceEntity::State AlarmOccurrenceEntity::stringToState(const std::string& state_str) {
-    std::string lower_state = state_str;
-    std::transform(lower_state.begin(), lower_state.end(), lower_state.begin(), ::tolower);
-    
-    if (lower_state == "active")       return State::ACTIVE;
-    if (lower_state == "acknowledged") return State::ACKNOWLEDGED;
-    if (lower_state == "cleared")      return State::CLEARED;
-    if (lower_state == "suppressed")   return State::SUPPRESSED;
-    if (lower_state == "shelved")      return State::SHELVED;
-    
-    return State::ACTIVE; // 기본값
+std::string AlarmOccurrenceEntity::toString() const {
+    std::ostringstream ss;
+    ss << "AlarmOccurrence[id=" << getId()
+       << ", rule_id=" << rule_id_
+       << ", tenant_id=" << tenant_id_
+       << ", severity=" << severityToString(severity_)
+       << ", state=" << stateToString(state_)
+       << ", message=\"" << alarm_message_ << "\""
+       << ", elapsed=" << getElapsedSeconds() << "s]";
+    return ss.str();
 }
 
-std::vector<std::string> AlarmOccurrenceEntity::getAllStateStrings() {
-    return {"active", "acknowledged", "cleared", "suppressed", "shelved"};
-}
-
-std::string AlarmOccurrenceEntity::severityToString(Severity severity) {
-    switch (severity) {
-        case Severity::CRITICAL: return "critical";
-        case Severity::HIGH:     return "high";
-        case Severity::MEDIUM:   return "medium";
-        case Severity::LOW:      return "low";
-        case Severity::INFO:     return "info";
-        default:                 return "medium";
-    }
-}
-
-AlarmOccurrenceEntity::Severity AlarmOccurrenceEntity::stringToSeverity(const std::string& severity_str) {
-    std::string lower_severity = severity_str;
-    std::transform(lower_severity.begin(), lower_severity.end(), lower_severity.begin(), ::tolower);
+bool AlarmOccurrenceEntity::isValid() const {
+    // 기본 유효성 검사
+    if (rule_id_ <= 0) return false;
+    if (tenant_id_ <= 0) return false;
+    if (alarm_message_.empty()) return false;
     
-    if (lower_severity == "critical") return Severity::CRITICAL;
-    if (lower_severity == "high")     return Severity::HIGH;
-    if (lower_severity == "medium")   return Severity::MEDIUM;
-    if (lower_severity == "low")      return Severity::LOW;
-    if (lower_severity == "info")     return Severity::INFO;
-    
-    return Severity::MEDIUM; // 기본값
-}
-
-std::vector<std::string> AlarmOccurrenceEntity::getAllSeverityStrings() {
-    return {"critical", "high", "medium", "low", "info"};
+    return true;
 }
 
 // =============================================================================
@@ -286,26 +517,21 @@ std::vector<std::string> AlarmOccurrenceEntity::getAllSeverityStrings() {
 
 bool AlarmOccurrenceEntity::acknowledge(int user_id, const std::string& comment) {
     try {
-        if (state_ != State::ACTIVE) {
-            if (logger_) {
-                logger_->Warn("AlarmOccurrenceEntity::acknowledge - Occurrence not in active state: " + stateToString(state_));
-            }
-            return false;
+        if (state_ == State::ACKNOWLEDGED) {
+            return true; // 이미 인지됨
         }
         
-        state_ = State::ACKNOWLEDGED;
         acknowledged_time_ = std::chrono::system_clock::now();
         acknowledged_by_ = user_id;
         acknowledge_comment_ = comment;
-        
-        markDirty();
+        state_ = State::ACKNOWLEDGED;
+        markModified();
         
         // 데이터베이스에 즉시 반영
         bool success = updateToDatabase();
         
         if (success && logger_) {
-            logger_->Info("AlarmOccurrenceEntity::acknowledge - Occurrence " + std::to_string(getId()) + 
-                         " acknowledged by user " + std::to_string(user_id));
+            logger_->Info("AlarmOccurrenceEntity::acknowledge - Occurrence " + std::to_string(getId()) + " acknowledged by user " + std::to_string(user_id));
         }
         
         return success;
@@ -321,18 +547,14 @@ bool AlarmOccurrenceEntity::acknowledge(int user_id, const std::string& comment)
 bool AlarmOccurrenceEntity::clear(const std::string& cleared_value, const std::string& comment) {
     try {
         if (state_ == State::CLEARED) {
-            if (logger_) {
-                logger_->Warn("AlarmOccurrenceEntity::clear - Occurrence already cleared");
-            }
-            return true; // 이미 클리어된 상태
+            return true; // 이미 해제됨
         }
         
-        state_ = State::CLEARED;
         cleared_time_ = std::chrono::system_clock::now();
         cleared_value_ = cleared_value;
         clear_comment_ = comment;
-        
-        markDirty();
+        state_ = State::CLEARED;
+        markModified();
         
         // 데이터베이스에 즉시 반영
         bool success = updateToDatabase();
@@ -359,7 +581,7 @@ bool AlarmOccurrenceEntity::changeState(State new_state) {
         
         State old_state = state_;
         state_ = new_state;
-        markDirty();
+        markModified();
         
         // 데이터베이스에 즉시 반영
         bool success = updateToDatabase();
@@ -383,7 +605,7 @@ void AlarmOccurrenceEntity::markNotificationSent(const std::string& result_json)
     notification_sent_ = true;
     notification_time_ = std::chrono::system_clock::now();
     notification_result_ = result_json;
-    markDirty();
+    markModified();
     
     if (logger_) {
         logger_->Debug("AlarmOccurrenceEntity::markNotificationSent - Occurrence " + std::to_string(getId()));
@@ -392,7 +614,7 @@ void AlarmOccurrenceEntity::markNotificationSent(const std::string& result_json)
 
 void AlarmOccurrenceEntity::incrementNotificationCount() {
     notification_count_++;
-    markDirty();
+    markModified();
     
     if (logger_) {
         logger_->Debug("AlarmOccurrenceEntity::incrementNotificationCount - Occurrence " + std::to_string(getId()) + 
@@ -406,215 +628,70 @@ long long AlarmOccurrenceEntity::getElapsedSeconds() const {
     return duration.count();
 }
 
-long long AlarmOccurrenceEntity::getStateDurationSeconds() const {
-    auto now = std::chrono::system_clock::now();
-    
-    switch (state_) {
-        case State::ACKNOWLEDGED:
-            if (acknowledged_time_.has_value()) {
-                auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - acknowledged_time_.value());
-                return duration.count();
-            }
-            break;
-        case State::CLEARED:
-            if (cleared_time_.has_value()) {
-                auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - cleared_time_.value());
-                return duration.count();
-            }
-            break;
-        default:
-            break;
+// =============================================================================
+// 정적 유틸리티 메서드들
+// =============================================================================
+
+std::string AlarmOccurrenceEntity::severityToString(Severity severity) {
+    switch (severity) {
+        case Severity::LOW: return "low";
+        case Severity::MEDIUM: return "medium";
+        case Severity::HIGH: return "high";
+        case Severity::CRITICAL: return "critical";
+        default: return "medium";
     }
+}
+
+AlarmOccurrenceEntity::Severity AlarmOccurrenceEntity::stringToSeverity(const std::string& str) {
+    std::string lower_str = str;
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(), ::tolower);
     
-    // 기본적으로는 발생 시점부터의 경과 시간
-    return getElapsedSeconds();
+    if (lower_str == "low") return Severity::LOW;
+    if (lower_str == "medium") return Severity::MEDIUM;
+    if (lower_str == "high") return Severity::HIGH;
+    if (lower_str == "critical") return Severity::CRITICAL;
+    
+    return Severity::MEDIUM; // 기본값
+}
+
+std::string AlarmOccurrenceEntity::stateToString(State state) {
+    switch (state) {
+        case State::ACTIVE: return "active";
+        case State::ACKNOWLEDGED: return "acknowledged";
+        case State::CLEARED: return "cleared";
+        default: return "active";
+    }
+}
+
+AlarmOccurrenceEntity::State AlarmOccurrenceEntity::stringToState(const std::string& str) {
+    std::string lower_str = str;
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(), ::tolower);
+    
+    if (lower_str == "active") return State::ACTIVE;
+    if (lower_str == "acknowledged") return State::ACKNOWLEDGED;
+    if (lower_str == "cleared") return State::CLEARED;
+    
+    return State::ACTIVE; // 기본값
 }
 
 // =============================================================================
-// JSON 직렬화/역직렬화
+// 헬퍼 메서드들
 // =============================================================================
-
-std::string AlarmOccurrenceEntity::toJson() const {
-    std::ostringstream json;
-    json << "{";
-    json << "\"id\":" << getId() << ",";
-    json << "\"rule_id\":" << rule_id_ << ",";
-    json << "\"tenant_id\":" << tenant_id_ << ",";
-    json << "\"occurrence_time\":\"" << timestampToString(occurrence_time_) << "\",";
-    json << "\"trigger_value\":\"" << trigger_value_ << "\",";
-    json << "\"trigger_condition\":\"" << trigger_condition_ << "\",";
-    json << "\"alarm_message\":\"" << alarm_message_ << "\",";
-    json << "\"severity\":\"" << severityToString(severity_) << "\",";
-    json << "\"state\":\"" << stateToString(state_) << "\",";
-    
-    if (acknowledged_time_.has_value()) {
-        json << "\"acknowledged_time\":\"" << timestampToString(acknowledged_time_.value()) << "\",";
-    }
-    if (acknowledged_by_.has_value()) {
-        json << "\"acknowledged_by\":" << acknowledged_by_.value() << ",";
-    }
-    json << "\"acknowledge_comment\":\"" << acknowledge_comment_ << "\",";
-    
-    if (cleared_time_.has_value()) {
-        json << "\"cleared_time\":\"" << timestampToString(cleared_time_.value()) << "\",";
-    }
-    json << "\"cleared_value\":\"" << cleared_value_ << "\",";
-    json << "\"clear_comment\":\"" << clear_comment_ << "\",";
-    
-    json << "\"notification_sent\":" << (notification_sent_ ? "true" : "false") << ",";
-    if (notification_time_.has_value()) {
-        json << "\"notification_time\":\"" << timestampToString(notification_time_.value()) << "\",";
-    }
-    json << "\"notification_count\":" << notification_count_ << ",";
-    json << "\"notification_result\":\"" << notification_result_ << "\",";
-    
-    json << "\"context_data\":\"" << context_data_ << "\",";
-    json << "\"source_name\":\"" << source_name_ << "\",";
-    json << "\"location\":\"" << location_ << "\"";
-    json << "}";
-    
-    return json.str();
-}
-
-bool AlarmOccurrenceEntity::fromJson(const std::string& json_str) {
-    try {
-        // 간단한 JSON 파싱 (실제로는 더 정교한 JSON 라이브러리 사용 권장)
-        auto data = parseJsonToMap(json_str);
-        
-        if (data.find("id") != data.end()) {
-            setId(std::stoi(data.at("id")));
-        }
-        if (data.find("rule_id") != data.end()) {
-            rule_id_ = std::stoi(data.at("rule_id"));
-        }
-        if (data.find("tenant_id") != data.end()) {
-            tenant_id_ = std::stoi(data.at("tenant_id"));
-        }
-        if (data.find("trigger_value") != data.end()) {
-            trigger_value_ = data.at("trigger_value");
-        }
-        if (data.find("alarm_message") != data.end()) {
-            alarm_message_ = data.at("alarm_message");
-        }
-        if (data.find("severity") != data.end()) {
-            severity_ = stringToSeverity(data.at("severity"));
-        }
-        if (data.find("state") != data.end()) {
-            state_ = stringToState(data.at("state"));
-        }
-        
-        // 추가 필드들도 필요에 따라 파싱...
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceEntity::fromJson failed: " + std::string(e.what()));
-        }
-        return false;
-    }
-}
-
-std::string AlarmOccurrenceEntity::toSummaryJson() const {
-    std::ostringstream json;
-    json << "{";
-    json << "\"id\":" << getId() << ",";
-    json << "\"rule_id\":" << rule_id_ << ",";
-    json << "\"alarm_message\":\"" << alarm_message_ << "\",";
-    json << "\"severity\":\"" << severityToString(severity_) << "\",";
-    json << "\"state\":\"" << stateToString(state_) << "\",";
-    json << "\"elapsed_seconds\":" << getElapsedSeconds();
-    json << "}";
-    return json.str();
-}
-
-// =============================================================================
-// 유틸리티 메서드들
-// =============================================================================
-
-std::string AlarmOccurrenceEntity::getDisplayString() const {
-    std::ostringstream ss;
-    ss << "[" << severityToString(severity_) << "] ";
-    ss << alarm_message_;
-    ss << " (" << stateToString(state_) << ")";
-    ss << " - " << getElapsedSeconds() << "s ago";
-    return ss.str();
-}
-
-std::string AlarmOccurrenceEntity::getLogString() const {
-    std::ostringstream ss;
-    ss << "AlarmOccurrence{id=" << getId();
-    ss << ", rule_id=" << rule_id_;
-    ss << ", severity=" << severityToString(severity_);
-    ss << ", state=" << stateToString(state_);
-    ss << ", elapsed=" << getElapsedSeconds() << "s}";
-    return ss.str();
-}
-
-bool AlarmOccurrenceEntity::isValid() const {
-    if (rule_id_ <= 0) return false;
-    if (tenant_id_ <= 0) return false;
-    if (alarm_message_.empty()) return false;
-    return true;
-}
-
-// =============================================================================
-// 내부 헬퍼 메서드들
-// =============================================================================
-
-void AlarmOccurrenceEntity::initializeDependencies() const {
-    if (!logger_) {
-        logger_ = &LogManager::getInstance();
-    }
-    if (!config_manager_) {
-        config_manager_ = &ConfigManager::getInstance();
-    }
-}
 
 std::string AlarmOccurrenceEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
     auto time_t = std::chrono::system_clock::to_time_t(tp);
     std::ostringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
     return ss.str();
 }
 
-std::chrono::system_clock::time_point AlarmOccurrenceEntity::stringToTimestamp(const std::string& timestamp_str) const {
-    // 간단한 ISO 8601 파싱 (실제로는 더 정교한 파싱 필요)
+std::chrono::system_clock::time_point AlarmOccurrenceEntity::stringToTimestamp(const std::string& str) const {
     std::tm tm = {};
-    std::istringstream ss(timestamp_str);
-    ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-    return std::chrono::system_clock::from_time_t(std::mktime(&tm));
-}
-
-std::map<std::string, std::string> AlarmOccurrenceEntity::parseJsonToMap(const std::string& json_str) const {
-    std::map<std::string, std::string> result;
+    std::istringstream ss(str);
+    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
     
-    // 매우 간단한 JSON 파싱 (실제로는 JSON 라이브러리 사용 권장)
-    std::regex field_regex(R"("([^"]+)"\s*:\s*"?([^",}]+)"?)");
-    std::sregex_iterator iter(json_str.begin(), json_str.end(), field_regex);
-    std::sregex_iterator end;
-    
-    for (; iter != end; ++iter) {
-        std::smatch match = *iter;
-        result[match[1].str()] = match[2].str();
-    }
-    
-    return result;
-}
-
-std::string AlarmOccurrenceEntity::mapToJson(const std::map<std::string, std::string>& data) const {
-    std::ostringstream json;
-    json << "{";
-    
-    bool first = true;
-    for (const auto& pair : data) {
-        if (!first) json << ",";
-        json << "\"" << pair.first << "\":\"" << pair.second << "\"";
-        first = false;
-    }
-    
-    json << "}";
-    return json.str();
+    auto time_t = std::mktime(&tm);
+    return std::chrono::system_clock::from_time_t(time_t);
 }
 
 } // namespace Entities
