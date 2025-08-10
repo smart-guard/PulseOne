@@ -17,5 +17,4 @@ obj/Pipeline/DataProcessingService.o: \
  ../include/Database/Repositories/AlarmRuleRepository.h \
  ../include/Database/Repositories/IRepository.h \
  ../include/Database/DatabaseTypes.h \
- ../include/Database/Repositories/AlarmOccurrenceRepository.h \
- ../include/Database/DatabaseAbstractionLayer.h
+ ../include/Database/Repositories/AlarmOccurrenceRepository.h

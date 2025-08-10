@@ -1,379 +1,183 @@
+// =============================================================================
+// collector/include/Database/Repositories/AlarmOccurrenceRepository.h
+// PulseOne AlarmOccurrenceRepository 헤더 - AlarmRuleRepository 패턴 100% 적용
+// =============================================================================
+
 #ifndef ALARM_OCCURRENCE_REPOSITORY_H
 #define ALARM_OCCURRENCE_REPOSITORY_H
 
-/**
- * @file AlarmOccurrenceRepository.h
- * @brief PulseOne 알람 발생 이력 Repository - DeviceRepository 패턴 100% 준수
- * @author PulseOne Development Team
- * @date 2025-08-10
- * 
- * 🔥 DeviceRepository 패턴 100% 준수:
- * - IRepository<AlarmOccurrenceEntity> 상속
- * - DatabaseAbstractionLayer 사용
- * - SQL::AlarmOccurrence 네임스페이스 사용
- * - 캐싱 지원
- * - 에러 처리 및 로깅
- */
-
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "Database/DatabaseManager.h"
+#include "Utils/ConfigManager.h"
+#include "Utils/LogManager.h"
+#include <memory>
+#include <map>
+#include <string>
+#include <mutex>
 #include <vector>
 #include <optional>
-#include <string>
 #include <chrono>
+#include <atomic>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
+// 타입 별칭 정의 (AlarmRuleRepository 패턴)
+using AlarmOccurrenceEntity = PulseOne::Database::Entities::AlarmOccurrenceEntity;
+
 /**
- * @brief 알람 발생 이력 Repository 클래스
+ * @brief Alarm Occurrence Repository 클래스 (AlarmRuleRepository 패턴 적용)
  */
-class AlarmOccurrenceRepository : public IRepository<Entities::AlarmOccurrenceEntity> {
+class AlarmOccurrenceRepository : public IRepository<AlarmOccurrenceEntity> {
 public:
     // =======================================================================
     // 생성자 및 소멸자
     // =======================================================================
     
-    /**
-     * @brief 기본 생성자
-     */
-    AlarmOccurrenceRepository();
+    AlarmOccurrenceRepository() : IRepository<AlarmOccurrenceEntity>("AlarmOccurrenceRepository") {
+        initializeDependencies();
+    }
     
-    /**
-     * @brief 가상 소멸자
-     */
     virtual ~AlarmOccurrenceRepository() = default;
 
     // =======================================================================
-    // IRepository 인터페이스 구현 (필수)
+    // IRepository 인터페이스 구현
     // =======================================================================
     
-    /**
-     * @brief 모든 알람 발생 조회
-     * @return 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findAll() override;
-    
-    /**
-     * @brief ID로 알람 발생 조회
-     * @param id 알람 발생 ID
-     * @return 알람 발생 (없으면 nullopt)
-     */
-    std::optional<Entities::AlarmOccurrenceEntity> findById(int id) override;
-    
-    /**
-     * @brief 알람 발생 저장
-     * @param entity 알람 발생 엔티티
-     * @return 성공 시 true
-     */
-    bool save(Entities::AlarmOccurrenceEntity& entity) override;
-    
-    /**
-     * @brief 알람 발생 업데이트
-     * @param entity 알람 발생 엔티티
-     * @return 성공 시 true
-     */
-    bool update(const Entities::AlarmOccurrenceEntity& entity) override;
-    
-    /**
-     * @brief ID로 알람 발생 삭제
-     * @param id 알람 발생 ID
-     * @return 성공 시 true
-     */
+    std::vector<AlarmOccurrenceEntity> findAll() override;
+    std::optional<AlarmOccurrenceEntity> findById(int id) override;
+    bool save(AlarmOccurrenceEntity& entity) override;
+    bool update(const AlarmOccurrenceEntity& entity) override;
     bool deleteById(int id) override;
-    
-    /**
-     * @brief 알람 발생 존재 여부 확인
-     * @param id 알람 발생 ID
-     * @return 존재하면 true
-     */
     bool exists(int id) override;
 
     // =======================================================================
-    // 벌크 연산 (IRepository 확장)
+    // 벌크 연산 (IRepository에서 제공)
     // =======================================================================
     
-    /**
-     * @brief 여러 ID로 알람 발생 조회
-     * @param ids ID 목록
-     * @return 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findByIds(const std::vector<int>& ids) override;
+    std::vector<AlarmOccurrenceEntity> findByIds(const std::vector<int>& ids) override;
     
-    /**
-     * @brief 조건부 검색
-     * @param conditions 검색 조건
-     * @param order_by 정렬 조건 (optional)
-     * @param pagination 페이징 조건 (optional)
-     * @return 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findByConditions(
+    std::vector<AlarmOccurrenceEntity> findByConditions(
         const std::vector<QueryCondition>& conditions,
         const std::optional<OrderBy>& order_by = std::nullopt,
         const std::optional<Pagination>& pagination = std::nullopt
     ) override;
-
-    // =======================================================================
-    // 🎯 알람 발생 전용 메서드들
-    // =======================================================================
     
-    /**
-     * @brief 첫 번째 조건 매칭 알람 발생 조회
-     * @param conditions 검색 조건
-     * @return 첫 번째 알람 발생 (없으면 nullopt)
-     */
-    std::optional<Entities::AlarmOccurrenceEntity> findFirstByConditions(
+    int countByConditions(const std::vector<QueryCondition>& conditions) override;
+    
+    // ❌ override 제거 - IRepository에 없는 메서드
+    std::optional<AlarmOccurrenceEntity> findFirstByConditions(
         const std::vector<QueryCondition>& conditions
     );
     
-    /**
-     * @brief 활성 상태 알람 발생 조회
-     * @return 활성 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findActive();
+    int saveBulk(std::vector<AlarmOccurrenceEntity>& entities) override;
+    int updateBulk(const std::vector<AlarmOccurrenceEntity>& entities) override;
+    int deleteByIds(const std::vector<int>& ids) override;
+    
+    // =======================================================================
+    // AlarmOccurrence 전용 메서드들
+    // =======================================================================
     
     /**
-     * @brief 규칙 ID로 알람 발생 조회
+     * @brief 활성 알람 발생들 조회
+     * @return 활성 상태인 알람 발생들
+     */
+    std::vector<AlarmOccurrenceEntity> findActive();
+    
+    /**
+     * @brief 특정 알람 규칙의 발생들 조회
      * @param rule_id 알람 규칙 ID
-     * @return 해당 규칙의 알람 발생 목록
+     * @return 해당 규칙의 알람 발생들
      */
-    std::vector<Entities::AlarmOccurrenceEntity> findByRuleId(int rule_id);
+    std::vector<AlarmOccurrenceEntity> findByRuleId(int rule_id);
     
     /**
-     * @brief 테넌트 ID로 알람 발생 조회
+     * @brief 특정 테넌트의 활성 알람들 조회
      * @param tenant_id 테넌트 ID
-     * @return 해당 테넌트의 알람 발생 목록
+     * @return 해당 테넌트의 활성 알람들
      */
-    std::vector<Entities::AlarmOccurrenceEntity> findByTenantId(int tenant_id);
+    std::vector<AlarmOccurrenceEntity> findActiveByTenantId(int tenant_id);
     
     /**
-     * @brief 심각도별 알람 발생 조회
+     * @brief 심각도별 알람 발생들 조회
      * @param severity 심각도
-     * @return 해당 심각도의 알람 발생 목록
+     * @return 해당 심각도의 알람 발생들
      */
-    std::vector<Entities::AlarmOccurrenceEntity> findBySeverity(
-        Entities::AlarmOccurrenceEntity::Severity severity
-    );
+    std::vector<AlarmOccurrenceEntity> findBySeverity(AlarmOccurrenceEntity::Severity severity);
     
     /**
-     * @brief 상태별 알람 발생 조회
-     * @param state 상태
-     * @return 해당 상태의 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findByState(
-        Entities::AlarmOccurrenceEntity::State state
-    );
-    
-    /**
-     * @brief 기간별 알람 발생 조회
-     * @param start_time 시작 시간
-     * @param end_time 종료 시간
-     * @return 해당 기간의 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findByTimeRange(
-        const std::chrono::system_clock::time_point& start_time,
-        const std::chrono::system_clock::time_point& end_time
-    );
-    
-    /**
-     * @brief 인지되지 않은 알람 발생 조회
-     * @return 인지되지 않은 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findUnacknowledged();
-    
-    /**
-     * @brief 해제되지 않은 알람 발생 조회
-     * @return 해제되지 않은 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findUncleared();
-    
-    /**
-     * @brief 알림이 전송되지 않은 알람 발생 조회
-     * @return 알림 미전송 알람 발생 목록
-     */
-    std::vector<Entities::AlarmOccurrenceEntity> findPendingNotification();
-
-    // =======================================================================
-    // 🎯 통계 및 집계 메서드들
-    // =======================================================================
-    
-    /**
-     * @brief 규칙별 알람 발생 횟수
-     * @param rule_id 알람 규칙 ID
-     * @return 발생 횟수
-     */
-    int countByRuleId(int rule_id);
-    
-    /**
-     * @brief 테넌트별 알람 발생 횟수
-     * @param tenant_id 테넌트 ID
-     * @return 발생 횟수
-     */
-    int countByTenantId(int tenant_id);
-    
-    /**
-     * @brief 심각도별 알람 발생 횟수
-     * @param severity 심각도
-     * @return 발생 횟수
-     */
-    int countBySeverity(Entities::AlarmOccurrenceEntity::Severity severity);
-    
-    /**
-     * @brief 활성 알람 발생 횟수
-     * @return 활성 알람 발생 횟수
-     */
-    int countActive();
-    
-    /**
-     * @brief 기간별 알람 발생 횟수
-     * @param start_time 시작 시간
-     * @param end_time 종료 시간
-     * @return 해당 기간의 알람 발생 횟수
-     */
-    int countByTimeRange(
-        const std::chrono::system_clock::time_point& start_time,
-        const std::chrono::system_clock::time_point& end_time
-    );
-
-    // =======================================================================
-    // 🎯 비즈니스 로직 메서드들
-    // =======================================================================
-    
-    /**
-     * @brief 알람 발생 인지 처리
-     * @param occurrence_id 알람 발생 ID
+     * @brief 알람 인지 처리
+     * @param occurrence_id 발생 ID
      * @param user_id 인지한 사용자 ID
      * @param comment 인지 코멘트
-     * @return 성공 시 true
+     * @return 성공 여부
      */
-    bool acknowledgeOccurrence(int occurrence_id, int user_id, const std::string& comment = "");
+    bool acknowledge(int occurrence_id, int user_id, const std::string& comment = "");
     
     /**
-     * @brief 알람 발생 해제 처리
-     * @param occurrence_id 알람 발생 ID
-     * @param cleared_value 해제 시점의 값
+     * @brief 알람 해제 처리
+     * @param occurrence_id 발생 ID
+     * @param cleared_value 해제 값
      * @param comment 해제 코멘트
-     * @return 성공 시 true
+     * @return 성공 여부
      */
-    bool clearOccurrence(int occurrence_id, const std::string& cleared_value, const std::string& comment = "");
+    bool clear(int occurrence_id, const std::string& cleared_value = "", const std::string& comment = "");
     
     /**
-     * @brief 알림 전송 상태 업데이트
-     * @param occurrence_id 알람 발생 ID
-     * @param result_json 전송 결과 JSON
-     * @return 성공 시 true
+     * @brief 최대 ID 조회 (ID 생성용)
+     * @return 최대 ID (없으면 nullopt)
      */
-    bool updateNotificationStatus(int occurrence_id, const std::string& result_json);
-    
-    /**
-     * @brief 여러 알람 발생 벌크 인지 처리
-     * @param occurrence_ids 알람 발생 ID 목록
-     * @param user_id 인지한 사용자 ID
-     * @param comment 인지 코멘트
-     * @return 성공한 개수
-     */
-    int acknowledgeBulk(const std::vector<int>& occurrence_ids, int user_id, const std::string& comment = "");
-    
-    /**
-     * @brief 여러 알람 발생 벌크 해제 처리
-     * @param occurrence_ids 알람 발생 ID 목록
-     * @param cleared_value 해제 시점의 값
-     * @param comment 해제 코멘트
-     * @return 성공한 개수
-     */
-    int clearBulk(const std::vector<int>& occurrence_ids, const std::string& cleared_value, const std::string& comment = "");
-    
-    /**
-     * @brief 오래된 알람 발생 정리
-     * @param retention_days 보관 일수
-     * @return 삭제된 개수
-     */
-    int cleanupOldOccurrences(int retention_days);
+    std::optional<int64_t> findMaxId();
 
     // =======================================================================
-    // 🎯 테이블 관리 (IRepository 확장)
+    // 테이블 관리 (BaseEntity에 있음 - override 제거)
     // =======================================================================
     
-    /**
-     * @brief 테이블 존재 여부 확인 및 생성
-     * @return 성공 시 true
-     */
-    bool ensureTableExists() override;
-    
-    /**
-     * @brief 테이블 스키마 업데이트
-     * @return 성공 시 true
-     */
-    bool updateTableSchema();
+    bool ensureTableExists();
 
 private:
     // =======================================================================
-    // 🎯 내부 헬퍼 메서드들 (DeviceRepository 패턴)
+    // 내부 헬퍼 메서드들
     // =======================================================================
     
     /**
-     * @brief DB 행을 엔티티로 변환
-     * @param row DB 행 데이터
-     * @return 알람 발생 엔티티
+     * @brief 행 데이터를 Entity로 변환
+     * @param row 행 데이터
+     * @return AlarmOccurrenceEntity 객체
      */
-    Entities::AlarmOccurrenceEntity mapRowToEntity(const std::map<std::string, std::string>& row);
+    AlarmOccurrenceEntity mapRowToEntity(const std::map<std::string, std::string>& row);
     
     /**
-     * @brief 시간을 문자열로 변환
-     * @param tp 시간
-     * @return 문자열
+     * @brief 시간 포인트를 문자열로 변환
      */
     std::string timePointToString(const std::chrono::system_clock::time_point& tp) const;
     
     /**
-     * @brief 문자열을 시간으로 변환
-     * @param str 문자열
-     * @return 시간
+     * @brief 문자열을 시간 포인트로 변환
      */
     std::chrono::system_clock::time_point stringToTimePoint(const std::string& str) const;
     
     /**
-     * @brief Severity 열거형을 문자열로 변환
-     * @param severity 심각도
-     * @return 문자열
+     * @brief 심각도 enum을 문자열로 변환
      */
-    std::string severityToString(Entities::AlarmOccurrenceEntity::Severity severity) const;
+    std::string severityToString(AlarmOccurrenceEntity::Severity severity) const;
     
     /**
-     * @brief State 열거형을 문자열로 변환
-     * @param state 상태
-     * @return 문자열
+     * @brief 문자열을 심각도 enum으로 변환
      */
-    std::string stateToString(Entities::AlarmOccurrenceEntity::State state) const;
+    AlarmOccurrenceEntity::Severity stringToSeverity(const std::string& str) const;
     
     /**
-     * @brief WHERE 절 조건 생성
-     * @param conditions 조건 목록
-     * @return WHERE 절 문자열
+     * @brief 상태 enum을 문자열로 변환
      */
-    std::string buildWhereClause(const std::vector<QueryCondition>& conditions) const;
+    std::string stateToString(AlarmOccurrenceEntity::State state) const;
     
     /**
-     * @brief ORDER BY 절 생성
-     * @param order_by 정렬 조건
-     * @return ORDER BY 절 문자열
+     * @brief 문자열을 상태 enum으로 변환
      */
-    std::string buildOrderByClause(const std::optional<OrderBy>& order_by) const;
-    
-    /**
-     * @brief LIMIT/OFFSET 절 생성
-     * @param pagination 페이징 조건
-     * @return LIMIT/OFFSET 절 문자열
-     */
-    std::string buildPaginationClause(const std::optional<Pagination>& pagination) const;
-
-    // =======================================================================
-    // 🎯 멤버 변수들
-    // =======================================================================
-    
-    DatabaseAbstractionLayer db_layer_;  // DB 추상화 계층
+    AlarmOccurrenceEntity::State stringToState(const std::string& str) const;
 };
 
 } // namespace Repositories

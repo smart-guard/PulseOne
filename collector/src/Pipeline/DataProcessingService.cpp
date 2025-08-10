@@ -240,8 +240,8 @@ void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMes
         
         // 초기화 확인 및 시도
         if (!alarm_engine.isInitialized()) {
-            // DatabaseManager 가져오기 (기존 멤버 변수 사용)
-            auto db_manager = Database::DatabaseManager::getInstance();
+            // DatabaseManager 가져오기 (올바른 싱글톤 호출)
+            auto db_manager = DatabaseManager::getInstance();
             if (!alarm_engine.initialize(db_manager, redis_client_)) {
                 LogManager::getInstance().log("processing", LogLevel::ERROR, 
                                              "❌ AlarmEngine 초기화 실패");
@@ -265,12 +265,11 @@ void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMes
                 
                 // 발생한 알람 이벤트 처리
                 for (const auto& event : alarm_events) {
-                    // Redis에 알람 이벤트 발송 (자동으로 AlarmEngine에서 처리됨)
                     total_alarms++;
                     
                     LogManager::getInstance().log("processing", LogLevel::INFO, 
                                                  "🚨 알람 발생: " + event.message + 
-                                                 " (ID: " + std::to_string(event.occurrence_id) + ")");
+                                                 " (Device: " + event.device_id + ")");
                 }
                 
             } catch (const std::exception& e) {
