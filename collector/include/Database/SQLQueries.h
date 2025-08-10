@@ -16,8 +16,9 @@ namespace SQL {
     // =============================================================================
 // 🎯 기타 공통 쿼리들
 // =============================================================================
-    namespace Common {
-        
+namespace Common {
+    
+    // 🔥 CHECK_TABLE_EXISTS - 기존 패턴과 일치 (이름 반환)
     const std::string CHECK_TABLE_EXISTS = R"(
         SELECT name FROM sqlite_master 
         WHERE type='table' AND name = ?
@@ -36,6 +37,7 @@ namespace SQL {
     const std::string COMMIT_TRANSACTION = "COMMIT";
     
     const std::string ROLLBACK_TRANSACTION = "ROLLBACK";
+    
     // 🔥 마지막 삽입 ID 조회 (SQLite)
     const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
     
@@ -48,15 +50,15 @@ namespace SQL {
     // 🔥 현재 시간 조회
     const std::string GET_CURRENT_TIMESTAMP = "SELECT datetime('now') as timestamp";
     
-    // 🔥 테이블 존재 여부 확인 (SQLite)
-    const std::string CHECK_TABLE_EXISTS = R"(
+    // 🔥 데이터베이스 정보 조회
+    const std::string GET_DATABASE_VERSION = "SELECT sqlite_version() as version";
+    
+    // 🔥🔥🔥 별도의 카운트 전용 쿼리 (필요한 경우)
+    const std::string COUNT_TABLES = R"(
         SELECT COUNT(*) as count 
         FROM sqlite_master 
         WHERE type='table' AND name=?
     )";
-    
-    // 🔥 데이터베이스 정보 조회
-    const std::string GET_DATABASE_VERSION = "SELECT sqlite_version() as version";
     
 } // namespace Common
 
