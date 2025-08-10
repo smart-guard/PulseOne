@@ -11,8 +11,4 @@ obj/Database/Entities/VirtualPointEntity.o: \
  ../include/Common/BasicTypes.h ../include/Common/Utils.h \
  ../include/Common/DriverError.h ../include/Common/IProtocolConfig.h \
  ../include/Common/ProtocolConfigs.h ../include/Utils/ConfigManager.h \
- ../include/Common/DriverStatistics.h \
- ../include/Database/RepositoryFactory.h \
- ../include/Database/Repositories/VirtualPointRepository.h \
- ../include/Database/Repositories/IRepository.h \
- ../include/Database/DatabaseTypes.h
+ ../include/Common/DriverStatistics.h

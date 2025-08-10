@@ -4,8 +4,10 @@
 // =============================================================================
 
 #include "Alarm/AlarmManager.h"
+#include "VirtualPoint/ScriptLibraryManager.h"
 #include "Client/RedisClientImpl.h"
 #include "Client/RabbitMQClient.h"
+#include <quickjs.h> 
 #include <algorithm>
 #include <sstream>
 #include <regex>
@@ -548,68 +550,194 @@ std::string AlarmManager::generateMessage(const AlarmRule& rule, const DataValue
 }
 
 std::string AlarmManager::generateCustomMessage(const AlarmRule& rule, const DataValue& value) {
-    if (rule.message_config.empty()) {
-        return "";
-    }
-    
-    try {
-        // 디지털 알람 - 0/1 값에 따른 메시지
-        if (rule.alarm_type == "digital") {
-            int int_value = 0;
-            std::visit([&int_value](auto&& v) {
-                using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_arithmetic_v<T>) {
-                    int_value = static_cast<int>(v);
-                }
-            }, value);
-            
-            std::string key = std::to_string(int_value);
-            if (rule.message_config.contains(key)) {
-                auto msg_obj = rule.message_config[key];
-                if (msg_obj.is_object() && msg_obj.contains("text")) {
-                    return msg_obj["text"];
-                } else if (msg_obj.is_string()) {
-                    return msg_obj;
-                }
-            }
-        }
-        
-        // 아날로그 알람 - 레벨별 메시지
-        if (rule.alarm_type == "analog") {
-            double dbl_value = 0.0;
-            std::visit([&dbl_value](auto&& v) {
-                using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_arithmetic_v<T>) {
-                    dbl_value = static_cast<double>(v);
-                }
-            }, value);
-            
-            std::string level = getAnalogLevel(rule, dbl_value);
-            
-            if (rule.message_config.contains(level)) {
-                auto msg_obj = rule.message_config[level];
-                if (msg_obj.is_object() && msg_obj.contains("text")) {
-                    std::string msg = msg_obj["text"];
-                    
-                    // 변수 치환
-                    size_t pos = 0;
-                    while ((pos = msg.find("{value}")) != std::string::npos) {
-                        msg.replace(pos, 7, std::to_string(dbl_value));
+    // =========================================================================
+    // 1️⃣ 기존 message_config 처리 (100% 유지)
+    // =========================================================================
+    if (!rule.message_config.empty()) {
+        try {
+            // 디지털 알람 - 0/1 값에 따른 메시지
+            if (rule.alarm_type == "digital") {
+                int int_value = 0;
+                std::visit([&int_value](auto&& v) {
+                    using T = std::decay_t<decltype(v)>;
+                    if constexpr (std::is_arithmetic_v<T>) {
+                        int_value = static_cast<int>(v);
                     }
-                    
-                    return msg;
-                } else if (msg_obj.is_string()) {
-                    return msg_obj;
+                }, value);
+                
+                std::string key = std::to_string(int_value);
+                if (rule.message_config.contains(key)) {
+                    auto msg_obj = rule.message_config[key];
+                    if (msg_obj.is_object() && msg_obj.contains("text")) {
+                        return msg_obj["text"];
+                    } else if (msg_obj.is_string()) {
+                        return msg_obj;
+                    }
                 }
             }
+            
+            // 아날로그 알람 - 레벨별 메시지
+            if (rule.alarm_type == "analog") {
+                double dbl_value = 0.0;
+                std::visit([&dbl_value](auto&& v) {
+                    using T = std::decay_t<decltype(v)>;
+                    if constexpr (std::is_arithmetic_v<T>) {
+                        dbl_value = static_cast<double>(v);
+                    }
+                }, value);
+                
+                std::string level = getAnalogLevel(rule, dbl_value);
+                
+                if (rule.message_config.contains(level)) {
+                    auto msg_obj = rule.message_config[level];
+                    if (msg_obj.is_object() && msg_obj.contains("text")) {
+                        std::string msg = msg_obj["text"];
+                        
+                        // 변수 치환
+                        size_t pos = 0;
+                        while ((pos = msg.find("{value}")) != std::string::npos) {
+                            msg.replace(pos, 7, std::to_string(dbl_value));
+                        }
+                        
+                        return msg;
+                    } else if (msg_obj.is_string()) {
+                        return msg_obj;
+                    }
+                }
+            }
+            
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to generate custom message from config: " + std::string(e.what()));
         }
-        
-    } catch (const std::exception& e) {
-        logger_.Error("Failed to generate custom message: " + std::string(e.what()));
     }
     
+    // =========================================================================
+    // 2️⃣ 🔥 새로운 기능: message_script 처리 (추가)
+    // =========================================================================
+    if (!rule.message_script.empty()) {
+        try {
+            // JavaScript 엔진 확인
+            if (!js_context_) {
+                initScriptEngine();
+            }
+            
+            if (js_context_) {
+                std::lock_guard<std::mutex> lock(js_mutex_);
+                
+                // 값 추출
+                double dbl_value = 0.0;
+                std::string str_value;
+                bool bool_value = false;
+                
+                std::visit([&](auto&& v) {
+                    using T = std::decay_t<decltype(v)>;
+                    if constexpr (std::is_same_v<T, std::string>) {
+                        str_value = v;
+                    } else if constexpr (std::is_same_v<T, bool>) {
+                        bool_value = v;
+                        dbl_value = v ? 1.0 : 0.0;
+                    } else if constexpr (std::is_arithmetic_v<T>) {
+                        dbl_value = static_cast<double>(v);
+                    }
+                }, value);
+                
+                // 스크립트 라이브러리 함수 포함 (선택적)
+                std::string complete_script = rule.message_script;
+                auto& script_lib = VirtualPoint::ScriptLibraryManager::getInstance();
+                if (script_lib.isInitialized()) {
+                    complete_script = script_lib.buildCompleteScript(rule.message_script, rule.tenant_id);
+                }
+                
+                // JavaScript 변수 설정
+                std::stringstream vars;
+                vars << "var value = " << dbl_value << ";\n";
+                vars << "var valueStr = '" << str_value << "';\n";
+                vars << "var valueBool = " << (bool_value ? "true" : "false") << ";\n";
+                vars << "var name = '" << rule.name << "';\n";
+                vars << "var severity = '" << rule.severity << "';\n";
+                vars << "var alarmType = '" << rule.alarm_type << "';\n";
+                
+                // 레벨 정보 (아날로그 알람)
+                if (rule.alarm_type == "analog") {
+                    std::string level = getAnalogLevel(rule, dbl_value);
+                    vars << "var level = '" << level << "';\n";
+                }
+                
+                // 임계값 정보
+                if (rule.high_high_limit) {
+                    vars << "var highHighLimit = " << *rule.high_high_limit << ";\n";
+                }
+                if (rule.high_limit) {
+                    vars << "var highLimit = " << *rule.high_limit << ";\n";
+                }
+                if (rule.low_limit) {
+                    vars << "var lowLimit = " << *rule.low_limit << ";\n";
+                }
+                if (rule.low_low_limit) {
+                    vars << "var lowLowLimit = " << *rule.low_low_limit << ";\n";
+                }
+                
+                // 시간 정보
+                auto now = std::chrono::system_clock::now();
+                auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+                vars << "var timestamp = " << timestamp << ";\n";
+                
+                // 현재 시간 문자열
+                auto time_t = std::chrono::system_clock::to_time_t(now);
+                char time_str[100];
+                std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", std::localtime(&time_t));
+                vars << "var timeStr = '" << time_str << "';\n";
+                
+                // 변수 설정 실행
+                JSValue vars_result = JS_Eval(js_context_, 
+                                             vars.str().c_str(), 
+                                             vars.str().length(),
+                                             "<msg_vars>", 
+                                             JS_EVAL_TYPE_GLOBAL);
+                JS_FreeValue(js_context_, vars_result);
+                
+                // 메시지 스크립트 실행
+                JSValue msg_result = JS_Eval(js_context_, 
+                                            complete_script.c_str(), 
+                                            complete_script.length(),
+                                            "<msg_script>", 
+                                            JS_EVAL_TYPE_GLOBAL);
+                
+                std::string script_message;
+                
+                if (JS_IsException(msg_result)) {
+                    // 에러 처리
+                    JSValue exception = JS_GetException(js_context_);
+                    const char* error_str = JS_ToCString(js_context_, exception);
+                    logger_.Error("Message script error: " + std::string(error_str ? error_str : "Unknown"));
+                    JS_FreeCString(js_context_, error_str);
+                    JS_FreeValue(js_context_, exception);
+                } else if (JS_IsString(msg_result)) {
+                    // 문자열 결과
+                    const char* msg_str = JS_ToCString(js_context_, msg_result);
+                    script_message = msg_str ? msg_str : "";
+                    JS_FreeCString(js_context_, msg_str);
+                }
+                
+                JS_FreeValue(js_context_, msg_result);
+                
+                // 스크립트 메시지가 있으면 반환
+                if (!script_message.empty()) {
+                    return script_message;
+                }
+            }
+            
+        } catch (const std::exception& e) {
+            logger_.Error("Failed to generate message from script: " + std::string(e.what()));
+        }
+    }
+    
+    // =========================================================================
+    // 3️⃣ 기존 반환값 (모두 실패시 빈 문자열)
+    // =========================================================================
     return "";
 }
+
 
 // =============================================================================
 // 알람 발생/해제
@@ -828,6 +956,258 @@ json AlarmManager::getStatistics() const {
         {"alarms_cleared", alarms_cleared_.load()}
     };
 }
+
+// =============================================================================
+// 🔥 스크립트 알람 평가 메서드 추가 (기존에 없던 부분)
+// =============================================================================
+
+AlarmEvaluation AlarmManager::evaluateScriptAlarm(const AlarmRule& rule, const json& context) {
+    AlarmEvaluation eval;
+    eval.severity = rule.severity;
+    
+    // JavaScript 엔진이 없으면 초기화
+    if (!js_context_) {
+        initScriptEngine();
+    }
+    
+    if (!js_context_) {
+        logger_.Error("JavaScript engine not initialized for script alarm");
+        return eval;
+    }
+    
+    try {
+        std::lock_guard<std::mutex> lock(js_mutex_);
+        
+        // 🔥 스크립트 라이브러리에서 함수 주입
+        auto& script_lib = VirtualPoint::ScriptLibraryManager::getInstance();
+        std::string complete_script;
+        
+        if (!script_lib.isInitialized()) {
+            // 라이브러리가 초기화되지 않았으면 스크립트만 사용
+            complete_script = rule.condition_script;
+        } else {
+            // 라이브러리 함수 포함하여 완전한 스크립트 생성
+            complete_script = script_lib.buildCompleteScript(rule.condition_script, rule.tenant_id);
+        }
+        
+        // 컨텍스트 변수 설정
+        for (auto& [key, value] : context.items()) {
+            std::string js_code;
+            
+            if (value.is_number()) {
+                js_code = "var " + key + " = " + std::to_string(value.get<double>()) + ";";
+            } else if (value.is_boolean()) {
+                js_code = "var " + key + " = " + (value.get<bool>() ? "true" : "false") + ";";
+            } else if (value.is_string()) {
+                js_code = "var " + key + " = '" + value.get<std::string>() + "';";
+            } else {
+                js_code = "var " + key + " = null;";
+            }
+            
+            JSValue var_result = JS_Eval(js_context_, js_code.c_str(), js_code.length(), 
+                                         "<context>", JS_EVAL_TYPE_GLOBAL);
+            JS_FreeValue(js_context_, var_result);
+        }
+        
+        // 알람 규칙 변수 추가
+        std::string rule_vars = "var rule_name = '" + rule.name + "';\n";
+        rule_vars += "var severity = '" + rule.severity + "';\n";
+        rule_vars += "var last_value = " + std::to_string(rule.last_value) + ";\n";
+        
+        if (rule.high_limit) {
+            rule_vars += "var high_limit = " + std::to_string(*rule.high_limit) + ";\n";
+        }
+        if (rule.low_limit) {
+            rule_vars += "var low_limit = " + std::to_string(*rule.low_limit) + ";\n";
+        }
+        
+        JSValue vars_result = JS_Eval(js_context_, rule_vars.c_str(), rule_vars.length(),
+                                      "<rule_vars>", JS_EVAL_TYPE_GLOBAL);
+        JS_FreeValue(js_context_, vars_result);
+        
+        // 스크립트 실행
+        JSValue eval_result = JS_Eval(js_context_, complete_script.c_str(), complete_script.length(),
+                                      "<alarm_script>", JS_EVAL_TYPE_GLOBAL);
+        
+        if (JS_IsException(eval_result)) {
+            // 에러 처리
+            JSValue exception = JS_GetException(js_context_);
+            const char* error_str = JS_ToCString(js_context_, exception);
+            logger_.Error("Script alarm evaluation error: " + std::string(error_str ? error_str : "Unknown"));
+            JS_FreeCString(js_context_, error_str);
+            JS_FreeValue(js_context_, exception);
+        } else {
+            // 결과 처리
+            bool triggered = false;
+            
+            if (JS_IsBool(eval_result)) {
+                triggered = JS_ToBool(js_context_, eval_result);
+            } else if (JS_IsNumber(eval_result)) {
+                double val;
+                JS_ToFloat64(js_context_, &val, eval_result);
+                triggered = (val != 0.0);
+            } else if (JS_IsObject(eval_result)) {
+                // 객체 반환시 triggered와 message 추출
+                JSValue triggered_val = JS_GetPropertyStr(js_context_, eval_result, "triggered");
+                JSValue message_val = JS_GetPropertyStr(js_context_, eval_result, "message");
+                JSValue severity_val = JS_GetPropertyStr(js_context_, eval_result, "severity");
+                
+                if (JS_IsBool(triggered_val)) {
+                    triggered = JS_ToBool(js_context_, triggered_val);
+                }
+                
+                if (JS_IsString(message_val)) {
+                    const char* msg_str = JS_ToCString(js_context_, message_val);
+                    eval.message = msg_str ? msg_str : "";
+                    JS_FreeCString(js_context_, msg_str);
+                }
+                
+                if (JS_IsString(severity_val)) {
+                    const char* sev_str = JS_ToCString(js_context_, severity_val);
+                    eval.severity = sev_str ? sev_str : rule.severity;
+                    JS_FreeCString(js_context_, sev_str);
+                }
+                
+                JS_FreeValue(js_context_, triggered_val);
+                JS_FreeValue(js_context_, message_val);
+                JS_FreeValue(js_context_, severity_val);
+            }
+            
+            if (triggered && !rule.in_alarm_state) {
+                eval.should_trigger = true;
+                eval.condition_met = "Script Condition";
+            } else if (!triggered && rule.in_alarm_state && rule.auto_clear) {
+                eval.should_clear = true;
+                eval.condition_met = "Script Cleared";
+            }
+        }
+        
+        JS_FreeValue(js_context_, eval_result);
+        
+        // 🔥 사용 통계 기록
+        if (script_lib.isInitialized()) {
+            auto dependencies = script_lib.collectDependencies(rule.condition_script);
+            for (const auto& func_name : dependencies) {
+                script_lib.recordUsage(func_name, rule.id, "alarm");
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_.Error("Script alarm evaluation failed: " + std::string(e.what()));
+    }
+    
+    return eval;
+}
+
+
+// =============================================================================
+// 🔥 JavaScript 엔진 초기화 메서드 추가
+// =============================================================================
+
+bool AlarmManager::initScriptEngine() {
+    if (js_context_) {
+        return true;  // 이미 초기화됨
+    }
+    
+    // JavaScript 런타임 생성
+    js_runtime_ = JS_NewRuntime();
+    if (!js_runtime_) {
+        logger_.Error("Failed to create JS runtime for AlarmManager");
+        return false;
+    }
+    
+    // 메모리 제한 (8MB)
+    JS_SetMemoryLimit(js_runtime_, 8 * 1024 * 1024);
+    
+    // Context 생성
+    js_context_ = JS_NewContext(js_runtime_);
+    if (!js_context_) {
+        logger_.Error("Failed to create JS context for AlarmManager");
+        JS_FreeRuntime(js_runtime_);
+        js_runtime_ = nullptr;
+        return false;
+    }
+    
+    // 🔥 스크립트 라이브러리 초기화 및 함수 로드
+    auto& script_lib = VirtualPoint::ScriptLibraryManager::getInstance();
+    if (!script_lib.isInitialized()) {
+        auto db_ptr = std::make_shared<Database::DatabaseManager>(*db_manager_);
+        script_lib.initialize(db_ptr);
+    }
+    
+    // 알람 관련 함수 로드
+    auto alarm_functions = script_lib.getScriptsByTags({"알람", "모니터링"});
+    for (const auto& func : alarm_functions) {
+        JSValue result = JS_Eval(js_context_, 
+                                func.script_code.c_str(),
+                                func.script_code.length(),
+                                func.name.c_str(),
+                                JS_EVAL_TYPE_GLOBAL);
+        
+        if (!JS_IsException(result)) {
+            logger_.Debug("Loaded alarm function: " + func.name);
+        }
+        JS_FreeValue(js_context_, result);
+    }
+    
+    // 알람 전용 헬퍼 함수
+    std::string helpers = R"(
+        // 범위 체크
+        function inRange(value, min, max) {
+            return value >= min && value <= max;
+        }
+        
+        // 변화율 계산
+        function rateOfChange(current, previous, timeSeconds) {
+            if (timeSeconds <= 0) return 0;
+            return (current - previous) / timeSeconds;
+        }
+        
+        // 편차 계산
+        function deviation(value, reference) {
+            if (reference === 0) return 0;
+            return Math.abs((value - reference) / reference) * 100;
+        }
+    )";
+    
+    JSValue helpers_result = JS_Eval(js_context_, helpers.c_str(), helpers.length(),
+                                     "<helpers>", JS_EVAL_TYPE_GLOBAL);
+    JS_FreeValue(js_context_, helpers_result);
+    
+    logger_.Info("Script engine initialized for AlarmManager");
+    return true;
+}
+
+// =============================================================================
+// 🔥 소멸자에 스크립트 엔진 정리 추가
+// =============================================================================
+
+void AlarmManager::cleanupScriptEngine() {
+    if (js_context_) {
+        JS_FreeContext(js_context_);
+        js_context_ = nullptr;
+    }
+    if (js_runtime_) {
+        JS_FreeRuntime(js_runtime_);
+        js_runtime_ = nullptr;
+    }
+}
+
+// shutdown() 메서드에 추가
+void AlarmManager::shutdown() {
+    if (!initialized_) return;
+    
+    logger_.Info("Shutting down AlarmManager");
+    
+    // 🔥 스크립트 엔진 정리
+    cleanupScriptEngine();
+    
+    alarm_rules_.clear();
+    point_alarm_map_.clear();
+    active_alarms_.clear();
+    initialized_ = false;
+}
+
 
 } // namespace Alarm
 } // namespace PulseOne

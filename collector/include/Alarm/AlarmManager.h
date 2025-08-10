@@ -267,6 +267,17 @@ private:
     
     // 상태
     std::atomic<bool> initialized_{false};
+
+    // 🔥 JavaScript 엔진 (스크립트 알람용)
+    JSRuntime* js_runtime_ = nullptr;
+    JSContext* js_context_ = nullptr;
+    mutable std::mutex js_mutex_;
+    
+    // 🔥 추가 private 메서드
+    bool initScriptEngine();
+    void cleanupScriptEngine();
+    AlarmEvaluation evaluateScriptAlarm(const AlarmRule& rule, const json& context);
+
 };
 
 } // namespace Alarm
