@@ -31,4 +31,5 @@ obj/Workers/Protocol/BACnetDiscoveryService.o: \
  ../include/Drivers/Bacnet/BACnetDriver.h \
  ../include/Drivers/Common/IProtocolDriver.h \
  ../include/Drivers/Bacnet/BACnetErrorMapper.h \
- ../include/Common/DriverError.h
+ ../include/Common/DriverError.h \
+ ../include/Drivers/Bacnet/BACnetServiceManager.h

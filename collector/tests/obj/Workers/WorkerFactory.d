@@ -24,9 +24,10 @@ obj/Workers/WorkerFactory.o: ../src/Workers/WorkerFactory.cpp \
  ../include/Drivers/Mqtt/MqttLoadBalancer.h \
  ../include/Workers/Protocol/BACnetWorker.h \
  ../include/Workers/Base/UdpBasedWorker.h \
- ../include/Drivers/Bacnet/BACnetDriver.h \
  ../include/Drivers/Bacnet/BACnetTypes.h \
+ ../include/Drivers/Bacnet/BACnetDriver.h \
  ../include/Drivers/Bacnet/BACnetErrorMapper.h \
+ ../include/Drivers/Bacnet/BACnetServiceManager.h \
  ../include/Database/Entities/DeviceEntity.h \
  ../include/Database/Entities/BaseEntity.h \
  ../include/Database/DatabaseManager.h \
