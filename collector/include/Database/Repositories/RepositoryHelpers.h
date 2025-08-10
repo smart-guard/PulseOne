@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Repositories/RepositoryHelpers.h
-// 🔥 완성본: 모든 Repository 공통 헬퍼 함수들
+// 🔥 완성본: 모든 Repository 공통 헬퍼 함수들 (에러 수정 완료)
 // =============================================================================
 
 #ifndef REPOSITORY_HELPERS_H
@@ -50,6 +50,14 @@ public:
      * @param replacement 교체할 문자열
      */
     static void replaceStringPlaceholder(std::string& query, const std::string& placeholder, const std::string& replacement);
+
+    /**
+     * @brief 쿼리의 ? 마커들을 순서대로 파라미터로 교체
+     * @param query 원본 쿼리 문자열
+     * @param params 교체할 파라미터 목록
+     * @return 파라미터가 치환된 쿼리 문자열
+     */
+    static std::string replaceParameterMarkers(std::string query, const std::vector<std::string>& params);
 
     // =============================================================================
     // 🔥 SQL 절 빌더 함수들 (기존)
@@ -182,6 +190,25 @@ public:
      * @return 안전한 오프셋
      */
     static int sanitizeOffset(int offset, int max_offset = 100000);
+
+    // =============================================================================
+    // 🔥🔥🔥 문자열 처리 유틸리티 (public으로 이동!)
+    // =============================================================================
+
+    /**
+     * @brief 문자열 양쪽 공백 제거
+     * @param str 원본 문자열
+     * @return 공백이 제거된 문자열
+     */
+    static std::string trimString(const std::string& str);
+
+    /**
+     * @brief 문자열을 소문자로 변환
+     * @param str 원본 문자열  
+     * @return 소문자로 변환된 문자열
+     */
+    static std::string toLowerString(const std::string& str);
+
     /**
      * @brief 벡터의 문자열들을 구분자로 연결
      * @param values 연결할 문자열 벡터
@@ -196,11 +223,7 @@ public:
      * @param delimiter 구분자
      * @return 연결된 문자열
      */
-static std::string join(const std::vector<int>& values, const std::string& delimiter);
-private:
-    // 내부 헬퍼들
-    static std::string trimString(const std::string& str);
-    static std::string toLowerString(const std::string& str);
+    static std::string join(const std::vector<int>& values, const std::string& delimiter);
 };
 
 } // namespace Repositories
