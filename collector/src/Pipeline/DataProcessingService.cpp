@@ -231,68 +231,67 @@ std::vector<Structs::DeviceDataMessage> DataProcessingService::CalculateVirtualP
     return batch;
 }
 
-void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMessage>& all_data) {
-    if (all_data.empty()) return;
-    
+void DataProcessingService::CheckAlarms(const std::vector<DeviceDataMessage>& messages) {
     try {
-        // 🔥 AlarmEngine 싱글톤 가져오기
-        auto& alarm_engine = Alarm::AlarmEngine::getInstance();
+        static AlarmEngine alarm_engine;
+        static bool initialized = false;
         
-        // 초기화 확인 및 시도
-        if (!alarm_engine.isInitialized()) {
-            // DatabaseManager 가져오기 (올바른 싱글톤 호출)
-            auto db_manager = DatabaseManager::getInstance();
+        if (!initialized) {
+            // DatabaseManager는 싱글턴이므로 shared_ptr로 래핑
+            auto db_manager = std::make_shared<DatabaseManager>(DatabaseManager::getInstance());
+            
             if (!alarm_engine.initialize(db_manager, redis_client_)) {
-                LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                             "❌ AlarmEngine 초기화 실패");
+                logger_->Error("DataProcessingService::CheckAlarms - Failed to initialize alarm engine");
                 return;
             }
-            
-            LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                         "✅ AlarmEngine 초기화 성공");
+            initialized = true;
         }
         
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "🚨 알람 평가 시작: " + std::to_string(all_data.size()) + "개 메시지");
-        
-        size_t total_alarms = 0;
-        
-        // 🔥 각 디바이스 메시지에 대해 알람 평가
-        for (const auto& device_message : all_data) {
-            try {
-                // 알람 평가 수행
-                auto alarm_events = alarm_engine.evaluateForMessage(device_message);
-                
-                // 발생한 알람 이벤트 처리
-                for (const auto& event : alarm_events) {
-                    total_alarms++;
-                    
-                    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                                 "🚨 알람 발생: " + event.message + 
-                                                 " (Device: " + event.device_id + ")");
-                }
-                
-            } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                             "💥 디바이스 " + device_message.device_id + 
-                                             " 알람 평가 실패: " + std::string(e.what()));
-            }
-        }
-        
-        if (total_alarms > 0) {
-            LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                         "✅ 알람 평가 완료: " + std::to_string(total_alarms) + 
-                                         "개 알람 발생");
-        } else {
-            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                         "✅ 알람 평가 완료: 알람 발생 없음");
+        // 알람 체크 로직
+        for (const auto& message : messages) {
+            alarm_engine.checkDataPoint(message);
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "💥 CheckAlarms 처리 중 예외: " + std::string(e.what()));
+        logger_->Error("DataProcessingService::CheckAlarms failed: " + std::string(e.what()));
     }
 }
+
+// =============================================================================
+// 3. DatabaseManager 싱글턴 패턴 수정 제안
+// =============================================================================
+
+// DatabaseManager.h에서 getInstance() 메서드가 shared_ptr를 반환하도록 수정:
+
+class DatabaseManager {
+public:
+    // ❌ 기존
+    // static DatabaseManager& getInstance();
+    
+    // ✅ 수정 - shared_ptr 반환으로 변경
+    static std::shared_ptr<DatabaseManager> getInstance() {
+        static std::shared_ptr<DatabaseManager> instance = nullptr;
+        static std::once_flag once_flag;
+        
+        std::call_once(once_flag, []() {
+            instance = std::shared_ptr<DatabaseManager>(new DatabaseManager());
+        });
+        
+        return instance;
+    }
+    
+    // 또는 기존 방식 유지하고 shared_ptr 래퍼 메서드 추가:
+    static std::shared_ptr<DatabaseManager> getSharedInstance() {
+        return std::shared_ptr<DatabaseManager>(&getInstance(), [](DatabaseManager*){});
+    }
+
+private:
+    DatabaseManager() = default;  // private 생성자
+    
+    // 복사 방지
+    DatabaseManager(const DatabaseManager&) = delete;
+    DatabaseManager& operator=(const DatabaseManager&) = delete;
+};
 
 void DataProcessingService::SaveToRedis(const std::vector<Structs::DeviceDataMessage>& batch) {
     if (!redis_client_) {

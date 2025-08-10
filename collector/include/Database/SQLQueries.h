@@ -1561,7 +1561,7 @@ namespace AlarmRule {
 namespace AlarmOccurrence {
     
     // =======================================================================
-    // 기본 CRUD 쿼리들
+    // 기본 CRUD 쿼리들 (AlarmRule 패턴과 동일)
     // =======================================================================
     
     const std::string FIND_ALL = R"(
@@ -1607,8 +1607,10 @@ namespace AlarmOccurrence {
     
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE id = ?";
     
+    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+    
     // =======================================================================
-    // 전용 조회 쿼리들
+    // 전용 조회 쿼리들 (AlarmOccurrence 특화)
     // =======================================================================
     
     const std::string FIND_ACTIVE = R"(
@@ -1644,7 +1646,7 @@ namespace AlarmOccurrence {
             created_at, updated_at
         FROM alarm_occurrences 
         WHERE tenant_id = ? AND state = 'active'
-        ORDER BY occurrence_time DESC
+        ORDER BY severity DESC, occurrence_time DESC
     )";
     
     const std::string FIND_BY_SEVERITY = R"(
@@ -1681,17 +1683,23 @@ namespace AlarmOccurrence {
     // 통계 쿼리들
     // =======================================================================
     
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM alarm_occurrences";
-    
     const std::string COUNT_ACTIVE = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE state = 'active'";
-    
-    const std::string COUNT_BY_RULE_ID = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE rule_id = ?";
-    
-    const std::string COUNT_BY_TENANT_ID = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = ?";
     
     const std::string COUNT_BY_SEVERITY = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE severity = ?";
     
-    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+    const std::string COUNT_BY_TENANT_ID = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = ?";
+    
+    const std::string FIND_RECENT = R"(
+        SELECT 
+            id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+            alarm_message, severity, state, acknowledged_time, acknowledged_by, acknowledge_comment,
+            cleared_time, cleared_value, clear_comment, notification_sent, notification_time,
+            notification_count, notification_result, context_data, source_name, location,
+            created_at, updated_at
+        FROM alarm_occurrences 
+        ORDER BY occurrence_time DESC
+        LIMIT ?
+    )";
     
     // =======================================================================
     // 테이블 생성 쿼리 (AlarmRule::CREATE_TABLE 패턴과 동일)

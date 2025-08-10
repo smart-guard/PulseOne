@@ -1,187 +1,415 @@
 // =============================================================================
-// collector/include/Database/Repositories/AlarmOccurrenceRepository.h
-// PulseOne AlarmOccurrenceRepository 헤더 - AlarmRuleRepository 패턴 100% 적용
+// collector/src/Database/Repositories/AlarmOccurrenceRepository.cpp
+// 🔧 AlarmOccurrenceRepository 수정 - RepositoryHelpers 방식으로 매개변수 바인딩
 // =============================================================================
 
-#ifndef ALARM_OCCURRENCE_REPOSITORY_H
-#define ALARM_OCCURRENCE_REPOSITORY_H
-
-#include "Database/Repositories/IRepository.h"
-#include "Database/Entities/AlarmOccurrenceEntity.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include <memory>
-#include <map>
-#include <string>
-#include <mutex>
-#include <vector>
-#include <optional>
-#include <chrono>
-#include <atomic>
+#include "Database/Repositories/AlarmOccurrenceRepository.h"
+#include "Database/Repositories/RepositoryHelpers.h"  // 🔥 추가
+#include "Database/SQLQueries.h"
+#include "Database/DatabaseAbstractionLayer.h"
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 타입 별칭 정의 (AlarmRuleRepository 패턴)
-using AlarmOccurrenceEntity = PulseOne::Database::Entities::AlarmOccurrenceEntity;
+// 타입 별칭 (AlarmRuleRepository 패턴)
+using AlarmOccurrenceEntity = Entities::AlarmOccurrenceEntity;
 
-/**
- * @brief Alarm Occurrence Repository 클래스 (AlarmRuleRepository 패턴 적용)
- */
-class AlarmOccurrenceRepository : public IRepository<AlarmOccurrenceEntity> {
-public:
-    // =======================================================================
-    // 생성자 및 소멸자
-    // =======================================================================
+// =============================================================================
+// IRepository 인터페이스 구현 (RepositoryHelpers 방식)
+// =============================================================================
+
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll() {
+    std::vector<AlarmOccurrenceEntity> results;
     
-    AlarmOccurrenceRepository() : IRepository<AlarmOccurrenceEntity>("AlarmOccurrenceRepository") {
-        initializeDependencies();
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🔥 RepositoryHelpers 방식: 매개변수 없으므로 그대로 사용
+        auto rows = db_layer.executeQuery(SQL::AlarmOccurrence::FIND_ALL);
+        
+        results.reserve(rows.size());
+        for (const auto& row : rows) {
+            results.push_back(mapRowToEntity(row));
+        }
+        
+        if (logger_) {
+            logger_->Debug("AlarmOccurrenceRepository::findAll - Found " + std::to_string(results.size()) + " occurrences");
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::findAll failed: " + std::string(e.what()));
+        }
     }
     
-    virtual ~AlarmOccurrenceRepository() = default;
+    return results;
+}
 
-    // =======================================================================
-    // IRepository 인터페이스 구현
-    // =======================================================================
+std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id) {
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::FIND_BY_ID;
+        RepositoryHelpers::replaceParameterPlaceholders(query, {std::to_string(id)});
+        
+        DatabaseAbstractionLayer db_layer;
+        auto rows = db_layer.executeQuery(query);  // 매개변수 1개만!
+        
+        if (!rows.empty()) {
+            auto entity = mapRowToEntity(rows[0]);
+            
+            // 캐시에 저장
+            setCachedEntity(id, entity);
+            
+            if (logger_) {
+                logger_->Debug("AlarmOccurrenceRepository::findById - Found occurrence: " + std::to_string(id));
+            }
+            
+            return entity;
+        }
+        
+        if (logger_) {
+            logger_->Debug("AlarmOccurrenceRepository::findById - Occurrence not found: " + std::to_string(id));
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::findById failed: " + std::string(e.what()));
+        }
+    }
     
-    std::vector<AlarmOccurrenceEntity> findAll() override;
-    std::optional<AlarmOccurrenceEntity> findById(int id) override;
-    bool save(AlarmOccurrenceEntity& entity) override;
-    bool update(const AlarmOccurrenceEntity& entity) override;
-    bool deleteById(int id) override;
-    bool exists(int id) override;
+    return std::nullopt;
+}
 
-    // =======================================================================
-    // 벌크 연산 (IRepository에서 제공)
-    // =======================================================================
-    
-    std::vector<AlarmOccurrenceEntity> findByIds(const std::vector<int>& ids) override;
-    
-    std::vector<AlarmOccurrenceEntity> findByConditions(
-        const std::vector<QueryCondition>& conditions,
-        const std::optional<OrderBy>& order_by = std::nullopt,
-        const std::optional<Pagination>& pagination = std::nullopt
-    ) override;
-    
-    int countByConditions(const std::vector<QueryCondition>& conditions) override;
-    
-    // ❌ override 제거 - IRepository에 없는 메서드
-    std::optional<AlarmOccurrenceEntity> findFirstByConditions(
-        const std::vector<QueryCondition>& conditions
-    );
-    
-    int saveBulk(std::vector<AlarmOccurrenceEntity>& entities) override;
-    int updateBulk(const std::vector<AlarmOccurrenceEntity>& entities) override;
-    int deleteByIds(const std::vector<int>& ids) override;
-    
-    // =======================================================================
-    // AlarmOccurrence 전용 메서드들
-    // =======================================================================
-    
-    /**
-     * @brief 활성 알람 발생들 조회
-     * @return 활성 상태인 알람 발생들
-     */
-    std::vector<AlarmOccurrenceEntity> findActive();
-    
-    /**
-     * @brief 특정 알람 규칙의 발생들 조회
-     * @param rule_id 알람 규칙 ID
-     * @return 해당 규칙의 알람 발생들
-     */
-    std::vector<AlarmOccurrenceEntity> findByRuleId(int rule_id);
-    
-    /**
-     * @brief 특정 테넌트의 활성 알람들 조회
-     * @param tenant_id 테넌트 ID
-     * @return 해당 테넌트의 활성 알람들
-     */
-    std::vector<AlarmOccurrenceEntity> findActiveByTenantId(int tenant_id);
-    
-    /**
-     * @brief 심각도별 알람 발생들 조회
-     * @param severity 심각도
-     * @return 해당 심각도의 알람 발생들
-     */
-    std::vector<AlarmOccurrenceEntity> findBySeverity(AlarmOccurrenceEntity::Severity severity);
-    
-    /**
-     * @brief 알람 인지 처리
-     * @param occurrence_id 발생 ID
-     * @param user_id 인지한 사용자 ID
-     * @param comment 인지 코멘트
-     * @return 성공 여부
-     */
-    bool acknowledge(int occurrence_id, int user_id, const std::string& comment = "");
-    
-    /**
-     * @brief 알람 해제 처리
-     * @param occurrence_id 발생 ID
-     * @param cleared_value 해제 값
-     * @param comment 해제 코멘트
-     * @return 성공 여부
-     */
-    bool clear(int occurrence_id, const std::string& cleared_value = "", const std::string& comment = "");
-    
-    /**
-     * @brief 최대 ID 조회 (ID 생성용)
-     * @return 최대 ID (없으면 nullopt)
-     */
-    std::optional<int64_t> findMaxId();
+bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::INSERT;
+        
+        std::vector<std::string> params = {
+            std::to_string(entity.getRuleId()),
+            std::to_string(entity.getTenantId()),
+            timePointToString(entity.getOccurrenceTime()),
+            entity.getTriggerValue(),
+            entity.getTriggerCondition(),
+            entity.getAlarmMessage(),
+            entity.getSeverityString(),
+            entity.getStateString(),
+            entity.getAcknowledgeComment(),
+            entity.getClearedValue(),
+            entity.getClearComment(),
+            entity.isNotificationSent() ? "1" : "0",
+            std::to_string(entity.getNotificationCount()),
+            entity.getNotificationResult(),
+            entity.getContextData(),
+            entity.getSourceName(),
+            entity.getLocation()
+        };
+        
+        RepositoryHelpers::replaceParameterPlaceholders(query, params);
+        
+        bool success = db_layer.executeNonQuery(query);  // 매개변수 1개만!
+        
+        if (success) {
+            // 새로 생성된 ID 가져오기
+            auto id_rows = db_layer.executeQuery(SQL::AlarmOccurrence::GET_LAST_INSERT_ID);
+            if (!id_rows.empty() && id_rows[0].count("id")) {
+                entity.setId(std::stoi(id_rows[0].at("id")));
+            }
+            
+            // 캐시에 저장
+            setCachedEntity(entity.getId(), entity);
+            
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceRepository::save - Saved occurrence: " + std::to_string(entity.getId()));
+            }
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::save failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
 
-    // =======================================================================
-    // 테이블 관리 (BaseEntity에 있음 - override 제거)
-    // =======================================================================
-    
-    bool ensureTableExists();
+bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
+    try {
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::UPDATE;
+        
+        std::vector<std::string> params = {
+            std::to_string(entity.getRuleId()),
+            std::to_string(entity.getTenantId()),
+            timePointToString(entity.getOccurrenceTime()),
+            entity.getTriggerValue(),
+            entity.getTriggerCondition(),
+            entity.getAlarmMessage(),
+            entity.getSeverityString(),
+            entity.getStateString(),
+            entity.getAcknowledgeComment(),
+            entity.getClearedValue(),
+            entity.getClearComment(),
+            entity.isNotificationSent() ? "1" : "0",
+            std::to_string(entity.getNotificationCount()),
+            entity.getNotificationResult(),
+            entity.getContextData(),
+            entity.getSourceName(),
+            entity.getLocation(),
+            std::to_string(entity.getId())  // WHERE 조건
+        };
+        
+        RepositoryHelpers::replaceParameterPlaceholders(query, params);
+        
+        bool success = db_layer.executeNonQuery(query);  // 매개변수 1개만!
+        
+        if (success) {
+            // 캐시 업데이트
+            setCachedEntity(entity.getId(), entity);
+            
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceRepository::update - Updated occurrence: " + std::to_string(entity.getId()));
+            }
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::update failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
 
-private:
-    // =======================================================================
-    // 내부 헬퍼 메서드들
-    // =======================================================================
+bool AlarmOccurrenceRepository::deleteById(int id) {
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::DELETE_BY_ID;
+        RepositoryHelpers::replaceParameterPlaceholders(query, {std::to_string(id)});
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);  // 매개변수 1개만!
+        
+        if (success) {
+            // 캐시에서 제거
+            clearCacheForId(id);
+            
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceRepository::deleteById - Deleted occurrence: " + std::to_string(id));
+            }
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::deleteById failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+bool AlarmOccurrenceRepository::exists(int id) {
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::EXISTS_BY_ID;
+        RepositoryHelpers::replaceParameterPlaceholders(query, {std::to_string(id)});
+        
+        DatabaseAbstractionLayer db_layer;
+        auto rows = db_layer.executeQuery(query);  // 매개변수 1개만!
+        
+        if (!rows.empty() && rows[0].count("count")) {
+            return std::stoi(rows[0].at("count")) > 0;
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::exists failed: " + std::string(e.what()));
+        }
+    }
     
-    /**
-     * @brief 행 데이터를 Entity로 변환
-     * @param row 행 데이터
-     * @return AlarmOccurrenceEntity 객체
-     */
-    AlarmOccurrenceEntity mapRowToEntity(const std::map<std::string, std::string>& row);
+    return false;
+}
+
+// =============================================================================
+// AlarmOccurrence 전용 메서드들 (RepositoryHelpers 방식)
+// =============================================================================
+
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByRuleId(int rule_id) {
+    std::vector<AlarmOccurrenceEntity> results;
     
-    /**
-     * @brief 시간 포인트를 문자열로 변환
-     */
-    std::string timePointToString(const std::chrono::system_clock::time_point& tp) const;
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::FIND_BY_RULE_ID;
+        RepositoryHelpers::replaceParameterPlaceholders(query, {std::to_string(rule_id)});
+        
+        DatabaseAbstractionLayer db_layer;
+        auto rows = db_layer.executeQuery(query);  // 매개변수 1개만!
+        
+        results.reserve(rows.size());
+        for (const auto& row : rows) {
+            results.push_back(mapRowToEntity(row));
+        }
+        
+        if (logger_) {
+            logger_->Debug("AlarmOccurrenceRepository::findByRuleId - Found " + std::to_string(results.size()) + " occurrences for rule " + std::to_string(rule_id));
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::findByRuleId failed: " + std::string(e.what()));
+        }
+    }
     
-    /**
-     * @brief 문자열을 시간 포인트로 변환
-     */
-    std::chrono::system_clock::time_point stringToTimePoint(const std::string& str) const;
+    return results;
+}
+
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActiveByTenantId(int tenant_id) {
+    std::vector<AlarmOccurrenceEntity> results;
     
-    /**
-     * @brief 심각도 enum을 문자열로 변환
-     */
-    std::string severityToString(AlarmOccurrenceEntity::Severity severity) const;
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::FIND_ACTIVE_BY_TENANT_ID;
+        RepositoryHelpers::replaceParameterPlaceholders(query, {std::to_string(tenant_id)});
+        
+        DatabaseAbstractionLayer db_layer;
+        auto rows = db_layer.executeQuery(query);  // 매개변수 1개만!
+        
+        results.reserve(rows.size());
+        for (const auto& row : rows) {
+            results.push_back(mapRowToEntity(row));
+        }
+        
+        if (logger_) {
+            logger_->Debug("AlarmOccurrenceRepository::findActiveByTenantId - Found " + std::to_string(results.size()) + " active occurrences for tenant " + std::to_string(tenant_id));
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::findActiveByTenantId failed: " + std::string(e.what()));
+        }
+    }
     
-    /**
-     * @brief 문자열을 심각도 enum으로 변환
-     */
-    AlarmOccurrenceEntity::Severity stringToSeverity(const std::string& str) const;
+    return results;
+}
+
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findBySeverity(AlarmOccurrenceEntity::Severity severity) {
+    std::vector<AlarmOccurrenceEntity> results;
     
-    /**
-     * @brief 상태 enum을 문자열로 변환
-     */
-    std::string stateToString(AlarmOccurrenceEntity::State state) const;
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::FIND_BY_SEVERITY;
+        RepositoryHelpers::replaceParameterPlaceholders(query, {severityToString(severity)});
+        
+        DatabaseAbstractionLayer db_layer;
+        auto rows = db_layer.executeQuery(query);  // 매개변수 1개만!
+        
+        results.reserve(rows.size());
+        for (const auto& row : rows) {
+            results.push_back(mapRowToEntity(row));
+        }
+        
+        if (logger_) {
+            logger_->Debug("AlarmOccurrenceRepository::findBySeverity - Found " + std::to_string(results.size()) + " occurrences with severity " + severityToString(severity));
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::findBySeverity failed: " + std::string(e.what()));
+        }
+    }
     
-    /**
-     * @brief 문자열을 상태 enum으로 변환
-     */
-    AlarmOccurrenceEntity::State stringToState(const std::string& str) const;
-};
+    return results;
+}
+
+bool AlarmOccurrenceRepository::acknowledge(int occurrence_id, int user_id, const std::string& comment) {
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::ACKNOWLEDGE;
+        
+        std::vector<std::string> params = {
+            "acknowledged",  // state
+            timePointToString(std::chrono::system_clock::now()),  // acknowledged_time
+            std::to_string(user_id),  // acknowledged_by
+            comment,  // acknowledge_comment
+            std::to_string(occurrence_id)  // WHERE id
+        };
+        
+        RepositoryHelpers::replaceParameterPlaceholders(query, params);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);  // 매개변수 1개만!
+        
+        if (success) {
+            // 캐시 클리어 (다음 조회시 DB에서 최신 데이터 가져오기)
+            clearCacheForId(occurrence_id);
+            
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceRepository::acknowledge - Acknowledged occurrence " + std::to_string(occurrence_id) + " by user " + std::to_string(user_id));
+            }
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::acknowledge failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+bool AlarmOccurrenceRepository::clear(int occurrence_id, const std::string& cleared_value, const std::string& comment) {
+    try {
+        // 🔥 RepositoryHelpers 방식: 미리 매개변수 바인딩
+        std::string query = SQL::AlarmOccurrence::CLEAR;
+        
+        std::vector<std::string> params = {
+            "cleared",  // state
+            timePointToString(std::chrono::system_clock::now()),  // cleared_time
+            cleared_value,  // cleared_value
+            comment,  // clear_comment
+            std::to_string(occurrence_id)  // WHERE id
+        };
+        
+        RepositoryHelpers::replaceParameterPlaceholders(query, params);
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);  // 매개변수 1개만!
+        
+        if (success) {
+            // 캐시 클리어 (다음 조회시 DB에서 최신 데이터 가져오기)
+            clearCacheForId(occurrence_id);
+            
+            if (logger_) {
+                logger_->Info("AlarmOccurrenceRepository::clear - Cleared occurrence " + std::to_string(occurrence_id));
+            }
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::clear failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+// =============================================================================
+// 헬퍼 메서드들 (나머지는 기존과 동일)
+// =============================================================================
+
+// mapRowToEntity, timePointToString, severityToString 등의 헬퍼 메서드들은
+// 기존 AlarmOccurrenceRepository 구현과 동일하게 유지
 
 } // namespace Repositories
 } // namespace Database
 } // namespace PulseOne
-
-#endif // ALARM_OCCURRENCE_REPOSITORY_H

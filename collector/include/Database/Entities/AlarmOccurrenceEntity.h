@@ -229,7 +229,7 @@ private:
     std::chrono::system_clock::time_point stringToTimestamp(const std::string& str) const;
 
     // Forward declarations (순환 참조 방지)
-    friend class PulseOne::Database::Repositories::AlarmOccurrenceRepository;
+    //friend class PulseOne::Database::Repositories::AlarmOccurrenceRepository;
 };
 
 } // namespace Entities
