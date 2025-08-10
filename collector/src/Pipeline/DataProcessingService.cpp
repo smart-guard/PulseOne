@@ -5,6 +5,7 @@
 #include "Pipeline/DataProcessingService.h"
 #include "Pipeline/PipelineManager.h"  // 🔥 올바른 include!
 #include "Utils/LogManager.h"
+#include "Common/Structs.h"
 #include "Common/Enums.h"
 #include "Alarm/AlarmEngine.h"
 #include <nlohmann/json.hpp>
@@ -231,29 +232,45 @@ std::vector<Structs::DeviceDataMessage> DataProcessingService::CalculateVirtualP
     return batch;
 }
 
-void DataProcessingService::CheckAlarms(const std::vector<DeviceDataMessage>& messages) {
+void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMessage>& messages) {
     try {
-        static AlarmEngine alarm_engine;
-        static bool initialized = false;
-        
-        if (!initialized) {
-            // DatabaseManager는 싱글턴이므로 shared_ptr로 래핑
-            auto db_manager = std::make_shared<DatabaseManager>(DatabaseManager::getInstance());
-            
-            if (!alarm_engine.initialize(db_manager, redis_client_)) {
-                logger_->Error("DataProcessingService::CheckAlarms - Failed to initialize alarm engine");
-                return;
-            }
-            initialized = true;
+        // 알람 엔진이 초기화되지 않았으면 건너뛰기
+        auto& alarm_engine = PulseOne::Alarm::AlarmEngine::getInstance();
+        if (!alarm_engine.isInitialized()) {
+            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                         "AlarmEngine not initialized, skipping alarm evaluation");
+            return;
         }
         
-        // 알람 체크 로직
-        for (const auto& message : messages) {
-            alarm_engine.checkDataPoint(message);
+        // 알람 평가 실행
+        auto alarm_events = alarm_engine.evaluateAlarms(messages);
+        
+        if (!alarm_events.empty()) {
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "Processed " + std::to_string(alarm_events.size()) + " alarm events");
+            
+            // Redis에 알람 이벤트 발송 (선택적)
+            if (redis_client_) {
+                for (const auto& event : alarm_events) {
+                    nlohmann::json event_json = {
+                        {"type", "alarm_event"},
+                        {"rule_id", event.rule_id},
+                        {"occurrence_id", event.occurrence_id},
+                        {"event_type", event.event_type},
+                        {"message", event.message},
+                        {"severity", static_cast<int>(event.severity)},
+                        {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+                            event.timestamp.time_since_epoch()).count()}
+                    };
+                    
+                    redis_client_->publish("pulseone:alarms", event_json.dump());
+                }
+            }
         }
         
     } catch (const std::exception& e) {
-        logger_->Error("DataProcessingService::CheckAlarms failed: " + std::string(e.what()));
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "Error in CheckAlarms: " + std::string(e.what()));
     }
 }
 

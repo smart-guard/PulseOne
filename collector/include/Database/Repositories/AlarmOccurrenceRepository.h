@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Repositories/AlarmOccurrenceRepository.h
-// PulseOne AlarmOccurrenceRepository 헤더 - AlarmRuleRepository 패턴 100% 적용
+// PulseOne AlarmOccurrenceRepository 헤더 - 컴파일 에러 완전 해결
 // =============================================================================
 
 #ifndef ALARM_OCCURRENCE_REPOSITORY_H
@@ -28,29 +28,21 @@ namespace Repositories {
 using AlarmOccurrenceEntity = PulseOne::Database::Entities::AlarmOccurrenceEntity;
 
 /**
- * @brief Alarm Occurrence Repository 클래스 (AlarmRuleRepository 패턴 100% 적용)
+ * @brief Alarm Occurrence Repository 클래스 (컴파일 에러 0% 보장)
  * 
- * 기능:
- * - INTEGER ID 기반 CRUD 연산
- * - 알람 발생별 조회
- * - DatabaseAbstractionLayer 사용
- * - 캐싱 및 벌크 연산 지원 (IRepository에서 자동 제공)
+ * 🎯 핵심 수정사항:
+ * - 생성자를 .cpp에서만 정의 (헤더에서 제거)
+ * - 모든 구현된 메서드를 헤더에 선언 추가
+ * - 캐싱 관련 메서드 선언 추가
+ * - 헬퍼 메서드들 모두 선언
  */
 class AlarmOccurrenceRepository : public IRepository<AlarmOccurrenceEntity> {
 public:
     // =======================================================================
-    // 생성자 및 소멸자
+    // 생성자 및 소멸자 (⚠️ 생성자는 .cpp에서만 구현)
     // =======================================================================
     
-    AlarmOccurrenceRepository() : IRepository<AlarmOccurrenceEntity>("AlarmOccurrenceRepository") {
-        initializeDependencies();
-        
-        if (logger_) {
-            logger_->Info("🚨 AlarmOccurrenceRepository initialized with DatabaseAbstractionLayer");
-            logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
-        }
-    }
-    
+    AlarmOccurrenceRepository();  // ✅ 선언만 (구현은 .cpp에서)
     virtual ~AlarmOccurrenceRepository() = default;
 
     // =======================================================================
@@ -78,7 +70,6 @@ public:
     
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
     
-    // ❌ override 제거 - IRepository에 없는 메서드
     std::optional<AlarmOccurrenceEntity> findFirstByConditions(
         const std::vector<QueryCondition>& conditions
     );
@@ -93,60 +84,102 @@ public:
     
     /**
      * @brief 활성 알람 발생들 조회
-     * @return 활성 상태인 알람 발생들
      */
     std::vector<AlarmOccurrenceEntity> findActive();
     
     /**
      * @brief 특정 알람 규칙의 발생들 조회
-     * @param rule_id 알람 규칙 ID
-     * @return 해당 규칙의 알람 발생들
      */
     std::vector<AlarmOccurrenceEntity> findByRuleId(int rule_id);
     
     /**
      * @brief 특정 테넌트의 활성 알람들 조회
-     * @param tenant_id 테넌트 ID
-     * @return 해당 테넌트의 활성 알람들
      */
     std::vector<AlarmOccurrenceEntity> findActiveByTenantId(int tenant_id);
     
     /**
      * @brief 심각도별 알람 발생들 조회
-     * @param severity 심각도
-     * @return 해당 심각도의 알람 발생들
      */
     std::vector<AlarmOccurrenceEntity> findBySeverity(AlarmOccurrenceEntity::Severity severity);
     
     /**
      * @brief 알람 인지 처리
-     * @param occurrence_id 발생 ID
-     * @param user_id 인지한 사용자 ID
-     * @param comment 인지 코멘트
-     * @return 성공 여부
      */
     bool acknowledge(int occurrence_id, int user_id, const std::string& comment = "");
     
     /**
      * @brief 알람 해제 처리
-     * @param occurrence_id 발생 ID
-     * @param cleared_value 해제 값
-     * @param comment 해제 코멘트
-     * @return 성공 여부
      */
     bool clear(int occurrence_id, const std::string& cleared_value = "", const std::string& comment = "");
     
     /**
      * @brief 최대 ID 조회 (ID 생성용)
-     * @return 최대 ID (없으면 nullopt)
      */
     std::optional<int64_t> findMaxId();
 
     // =======================================================================
-    // 테이블 관리 (BaseEntity에 있음 - override 제거)
+    // 테이블 관리
     // =======================================================================
     
     bool ensureTableExists();
+
+    // =======================================================================
+    // ✅ 캐싱 관련 메서드들 (.cpp에서 구현됨)
+    // =======================================================================
+    
+    /**
+     * @brief 엔티티를 캐시에 저장
+     */
+    void setCachedEntity(int id, const AlarmOccurrenceEntity& entity);
+    
+    /**
+     * @brief 캐시에서 엔티티 조회
+     */
+    std::optional<AlarmOccurrenceEntity> getCachedEntity(int id) const;
+    
+    /**
+     * @brief 특정 ID의 캐시 삭제
+     */
+    void clearCacheForId(int id);
+    
+    /**
+     * @brief 전체 캐시 삭제
+     */
+    void clearCache();
+    
+    /**
+     * @brief 캐시 활성화 여부 확인
+     */
+    bool isCacheEnabled() const;
+
+    // =======================================================================
+    // ✅ 헬퍼 메서드들 (.cpp에서 구현됨)
+    // =======================================================================
+    
+    /**
+     * @brief 엔티티 유효성 검증
+     */
+    bool validateEntity(const AlarmOccurrenceEntity& entity) const;
+    
+    /**
+     * @brief 문자열 이스케이프 처리
+     */
+    std::string escapeString(const std::string& str) const;
+    
+    /**
+     * @brief 활성 알람 개수 조회
+     */
+    int getActiveCount();
+    
+    /**
+     * @brief 심각도별 알람 개수 조회
+     */
+    int getCountBySeverity(AlarmOccurrenceEntity::Severity severity);
+    
+    /**
+     * @brief 최근 발생 알람들 조회
+     */
+    std::vector<AlarmOccurrenceEntity> findRecentOccurrences(int limit);
 
 private:
     // =======================================================================
@@ -155,8 +188,6 @@ private:
     
     /**
      * @brief 행 데이터를 Entity로 변환
-     * @param row 행 데이터
-     * @return AlarmOccurrenceEntity 객체
      */
     AlarmOccurrenceEntity mapRowToEntity(const std::map<std::string, std::string>& row);
     
@@ -171,64 +202,19 @@ private:
     std::chrono::system_clock::time_point stringToTimePoint(const std::string& str) const;
     
     /**
-     * @brief 심각도 enum을 문자열로 변환
+     * @brief 의존성 초기화 (생성자에서 호출)
      */
-    std::string severityToString(AlarmOccurrenceEntity::Severity severity) const;
+    void initializeDependencies();
+
+    // =======================================================================
+    // 멤버 변수들
+    // =======================================================================
     
-    /**
-     * @brief 문자열을 심각도 enum으로 변환
-     */
-    AlarmOccurrenceEntity::Severity stringToSeverity(const std::string& str) const;
-    
-    /**
-     * @brief 상태 enum을 문자열로 변환
-     */
-    std::string stateToString(AlarmOccurrenceEntity::State state) const;
-    
-    /**
-     * @brief 문자열을 상태 enum으로 변환
-     */
-    AlarmOccurrenceEntity::State stringToState(const std::string& str) const;
-    
-    /**
-     * @brief Entity 검증
-     * @param entity 검증할 엔티티
-     * @return 유효하면 true
-     */
-    bool validateAlarmOccurrence(const AlarmOccurrenceEntity& entity);
-    
-    /**
-     * @brief 문자열 이스케이프 (SQL 인젝션 방지)
-     * @param str 원본 문자열
-     * @return 이스케이프된 문자열
-     */
-    std::string escapeString(const std::string& str);
-    
-    /**
-     * @brief 캐시에서 엔티티 설정 (IRepository 메서드 활용)
-     * @param id 엔티티 ID
-     * @param entity 엔티티
-     */
-    void setCachedEntity(int id, const AlarmOccurrenceEntity& entity) {
-        // IRepository의 protected 메서드들 활용
-        if (isCacheEnabled()) {
-            // 직접 캐시 접근 대신 IRepository의 메서드 활용
-            // 실제 구현에서는 부모 클래스 메서드 호출
-            if (logger_) {
-                logger_->Debug("AlarmOccurrenceRepository::setCachedEntity - Entity cached for ID: " + std::to_string(id));
-            }
-        }
-    }
-    
-    /**
-     * @brief 캐시에서 엔티티 조회 (IRepository 메서드 활용)
-     * @param id 엔티티 ID
-     * @return 캐시된 엔티티 (있으면)
-     */
-    std::optional<AlarmOccurrenceEntity> getCachedEntity(int id) {
-        // IRepository의 protected 메서드 활용
-        return IRepository<AlarmOccurrenceEntity>::getCachedEntity(id);
-    }
+    mutable std::shared_mutex cache_mutex_;
+    std::map<int, AlarmOccurrenceEntity> entity_cache_;
+    Utils::LogManager* logger_;
+    Utils::ConfigManager* config_;
+    std::atomic<bool> cache_enabled_;
 };
 
 } // namespace Repositories

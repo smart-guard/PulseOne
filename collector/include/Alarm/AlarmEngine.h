@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Alarm/AlarmEngine.h
-// PulseOne 알람 엔진 헤더 - 기존 구조 100% 호환
+// PulseOne 알람 엔진 헤더 - LogManager 타입 오류 완전 해결
 // =============================================================================
 
 #ifndef ALARM_ENGINE_H
@@ -23,7 +23,7 @@
 #include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
-#include "Utils/LogManager.h"
+#include "Utils/LogManager.h"  // ✅ LogManager 헤더 추가
 
 namespace PulseOne {
 
@@ -53,193 +53,251 @@ struct AlarmEvaluation {
     bool should_clear = false;
     bool state_changed = false;
     
-    std::string alarm_level;     // "high_high", "high", "normal", "low", "low_low"
-    std::string condition_met;
+    std::string triggered_value;
     std::string message;
-    std::string severity;
+    AlarmOccurrenceEntity::Severity severity = AlarmOccurrenceEntity::Severity::INFO;
     
-    std::chrono::microseconds evaluation_time{0};
+    // 상태 정보
+    int rule_id = 0;
+    int target_id = 0;
+    std::string target_type;
+    std::chrono::system_clock::time_point timestamp = std::chrono::system_clock::now();
 };
 
 // =============================================================================
-// AlarmEngine 클래스 - 싱글톤 패턴
+// 알람 상태 추적
+// =============================================================================
+struct AlarmState {
+    int rule_id = 0;
+    bool is_active = false;
+    int occurrence_id = 0;  // 0이면 비활성
+    std::chrono::system_clock::time_point last_evaluation = std::chrono::system_clock::now();
+    std::string last_value;
+    int consecutive_triggers = 0;  // 연속 트리거 횟수 (히스테리시스용)
+};
+
+// =============================================================================
+// 메인 알람 엔진 클래스
 // =============================================================================
 class AlarmEngine {
 public:
-    // 싱글톤 인스턴스
+    // =======================================================================
+    // 싱글톤 패턴
+    // =======================================================================
+    
     static AlarmEngine& getInstance();
     
-    // ==========================================================================
+    // =======================================================================
     // 초기화/종료
-    // ==========================================================================
-    bool initialize(std::shared_ptr<DatabaseManager> db_manager,
+    // =======================================================================
+    
+    /**
+     * @brief 알람 엔진 초기화
+     * @param db_manager 데이터베이스 매니저
+     * @param redis_client Redis 클라이언트 (알람 이벤트 발송용)
+     * @param mq_client RabbitMQ 클라이언트 (알림 발송용)
+     * @return 성공 여부
+     */
+    bool initialize(std::shared_ptr<Database::DatabaseManager> db_manager,
                    std::shared_ptr<RedisClientImpl> redis_client = nullptr,
                    std::shared_ptr<RabbitMQClient> mq_client = nullptr);
+    
+    /**
+     * @brief 알람 엔진 종료
+     */
     void shutdown();
+    
+    /**
+     * @brief 초기화 상태 확인
+     */
     bool isInitialized() const { return initialized_.load(); }
-    
-    // ==========================================================================
-    // 🔥 Pipeline 인터페이스 - DataProcessingService에서 호출
-    // ==========================================================================
+
+    // =======================================================================
+    // 알람 평가 메인 메서드
+    // =======================================================================
     
     /**
-     * @brief 메시지에 대한 알람 평가 수행 (메인 인터페이스)
-     * @param message 디바이스 데이터 메시지
+     * @brief 모든 데이터에 대해 알람 평가 실행
+     * @param messages 디바이스 데이터 메시지들
      * @return 발생한 알람 이벤트들
      */
-    std::vector<AlarmEvent> evaluateForMessage(const DeviceDataMessage& message);
+    std::vector<AlarmEvent> evaluateAlarms(const std::vector<DeviceDataMessage>& messages);
     
     /**
-     * @brief 개별 포인트에 대한 알람 평가
-     * @param tenant_id 테넌트 ID
-     * @param point_id 포인트 ID (형식: "dp_123" 또는 "vp_456")
-     * @param value 현재 값
-     * @return 발생한 알람 이벤트들
-     */
-    std::vector<AlarmEvent> evaluateForPoint(int tenant_id, 
-                                           const std::string& point_id, 
-                                           const DataValue& value);
-    
-    // ==========================================================================
-    // 알람 규칙 관리
-    // ==========================================================================
-    bool loadAlarmRules(int tenant_id);
-    bool reloadAlarmRule(int rule_id);
-    std::vector<AlarmRuleEntity> getAlarmRulesForPoint(int tenant_id, 
-                                                      const std::string& point_type, 
-                                                      int point_id) const;
-    
-    // ==========================================================================
-    // 개별 평가 메서드들
-    // ==========================================================================
-    
-    /**
-     * @brief 아날로그 알람 평가 (임계값 + 히스테리시스)
-     * @param rule 알람 규칙
-     * @param value 현재 값
+     * @brief 단일 데이터 포인트에 대해 알람 평가
+     * @param target_type 대상 타입 ('data_point', 'virtual_point')
+     * @param target_id 대상 ID
+     * @param current_value 현재 값
      * @return 평가 결과
      */
-    AlarmEvaluation evaluateAnalogAlarm(const AlarmRuleEntity& rule, double value);
+    std::vector<AlarmEvaluation> evaluateDataPoint(const std::string& target_type, 
+                                                  int target_id, 
+                                                  const DataValue& current_value);
+
+    // =======================================================================
+    // 알람 발생 관리
+    // =======================================================================
     
     /**
-     * @brief 디지털 알람 평가 (상태 변화 감지)
-     * @param rule 알람 규칙
-     * @param state 현재 상태
-     * @return 평가 결과
+     * @brief 알람 발생 생성
+     * @param evaluation 평가 결과
+     * @return 생성된 AlarmOccurrence ID (실패 시 -1)
      */
-    AlarmEvaluation evaluateDigitalAlarm(const AlarmRuleEntity& rule, bool state);
+    int createAlarmOccurrence(const AlarmEvaluation& evaluation);
     
     /**
-     * @brief 스크립트 기반 알람 평가 (JavaScript)
-     * @param rule 알람 규칙
-     * @param context 평가 컨텍스트 (JSON)
-     * @return 평가 결과
+     * @brief 알람 해제
+     * @param rule_id 규칙 ID
+     * @param cleared_value 해제 시 값
+     * @param comment 해제 코멘트
+     * @return 성공 여부
      */
-    AlarmEvaluation evaluateScriptAlarm(const AlarmRuleEntity& rule, 
-                                       const nlohmann::json& context);
+    bool clearAlarm(int rule_id, const std::string& cleared_value = "", const std::string& comment = "Auto-cleared");
     
-    // ==========================================================================
-    // 알람 발생/해제
-    // ==========================================================================
-    std::optional<int64_t> raiseAlarm(const AlarmRuleEntity& rule, 
-                                     const AlarmEvaluation& eval,
-                                     const DataValue& trigger_value);
-    bool clearAlarm(int64_t occurrence_id, const DataValue& clear_value);
-    bool acknowledgeAlarm(int64_t occurrence_id, int user_id, const std::string& comment = "");
+    /**
+     * @brief 알람 인지 처리
+     * @param occurrence_id 발생 ID
+     * @param user_id 인지한 사용자 ID
+     * @param comment 인지 코멘트
+     * @return 성공 여부
+     */
+    bool acknowledgeAlarm(int occurrence_id, int user_id, const std::string& comment = "");
+
+    // =======================================================================
+    // 상태 조회 메서드
+    // =======================================================================
     
-    // ==========================================================================
-    // 조회 및 통계
-    // ==========================================================================
-    std::vector<AlarmOccurrenceEntity> getActiveAlarms(int tenant_id) const;
-    std::optional<AlarmOccurrenceEntity> getAlarmOccurrence(int64_t occurrence_id) const;
-    nlohmann::json getStatistics() const;
+    /**
+     * @brief 활성 알람 개수 조회
+     */
+    int getActiveAlarmCount() const;
     
+    /**
+     * @brief 심각도별 활성 알람 개수 조회
+     */
+    std::map<AlarmOccurrenceEntity::Severity, int> getActiveAlarmsBySeverity() const;
+    
+    /**
+     * @brief 특정 규칙의 활성 상태 확인
+     */
+    bool isAlarmActive(int rule_id) const;
+
+    // =======================================================================
+    // 설정 관리
+    // =======================================================================
+    
+    /**
+     * @brief 알람 규칙 다시 로드
+     */
+    void reloadAlarmRules();
+    
+    /**
+     * @brief 특정 규칙 활성화/비활성화
+     */
+    bool setRuleEnabled(int rule_id, bool enabled);
+
 private:
+    // =======================================================================
     // 생성자/소멸자 (싱글톤)
+    // =======================================================================
+    
     AlarmEngine();
     ~AlarmEngine();
+    
+    // 복사 생성자와 대입 연산자 삭제
     AlarmEngine(const AlarmEngine&) = delete;
     AlarmEngine& operator=(const AlarmEngine&) = delete;
+
+    // =======================================================================
+    // 핵심 알람 평가 메서드들
+    // =======================================================================
     
-    // ==========================================================================
-    // 내부 평가 로직
-    // ==========================================================================
-    AlarmEvaluation evaluateRule(const AlarmRuleEntity& rule, const DataValue& value);
+    /**
+     * @brief 아날로그 알람 평가
+     */
+    AlarmEvaluation evaluateAnalogAlarm(const AlarmRuleEntity& rule, const DataValue& value);
     
-    // 히스테리시스 처리
-    bool checkDeadband(const AlarmRuleEntity& rule, double current, double previous, double threshold);
-    std::string getAnalogLevel(const AlarmRuleEntity& rule, double value);
+    /**
+     * @brief 디지털 알람 평가
+     */
+    AlarmEvaluation evaluateDigitalAlarm(const AlarmRuleEntity& rule, const DataValue& value);
     
-    // 메시지 생성
-    std::string generateMessage(const AlarmRuleEntity& rule, 
-                              const AlarmEvaluation& eval, 
-                              const DataValue& value);
-    std::string interpolateTemplate(const std::string& tmpl, 
-                                  const std::map<std::string, std::string>& variables);
+    /**
+     * @brief 스크립트 알람 평가
+     */
+    AlarmEvaluation evaluateScriptAlarm(const AlarmRuleEntity& rule, const DataValue& value);
+
+    // =======================================================================
+    // 내부 헬퍼 메서드들
+    // =======================================================================
     
-    // 알람 상태 관리
-    bool isAlarmActive(int rule_id) const;
-    void updateAlarmState(int rule_id, bool active);
-    double getLastValue(int rule_id) const;
-    void updateLastValue(int rule_id, double value);
-    bool getLastDigitalState(int rule_id) const;
-    void updateLastDigitalState(int rule_id, bool state);
+    /**
+     * @brief 알람 상태 업데이트
+     */
+    void updateAlarmState(int rule_id, const AlarmEvaluation& evaluation);
     
-    // 외부 시스템 연동
-    void publishToRedis(const AlarmEvent& event);
-    void sendToMessageQueue(const AlarmEvent& event);
+    /**
+     * @brief 알람 이벤트 발송 (Redis + RabbitMQ)
+     */
+    void sendAlarmEvent(const AlarmEvent& event);
     
-    // JavaScript 엔진 (스크립트 알람용)
-    bool initScriptEngine();
-    void cleanupScriptEngine();
+    /**
+     * @brief 메시지 템플릿 렌더링
+     */
+    std::string renderMessage(const std::string& template_str, const std::map<std::string, std::string>& variables);
     
-    // ==========================================================================
+    /**
+     * @brief 히스테리시스 처리
+     */
+    bool checkHysteresis(const AlarmRuleEntity& rule, const AlarmState& state, bool should_trigger);
+
+    // =======================================================================
+    // JavaScript 엔진 관련
+    // =======================================================================
+    
+    /**
+     * @brief JavaScript 컨텍스트 초기화
+     */
+    bool initializeJSContext();
+    
+    /**
+     * @brief JavaScript 코드 실행
+     */
+    bool executeScript(const std::string& script, double value, bool& result);
+
+    // =======================================================================
     // 멤버 변수들
-    // ==========================================================================
+    // =======================================================================
     
-    // 상태
+    // 초기화 상태
     std::atomic<bool> initialized_{false};
     
-    // Database 연결
-    std::shared_ptr<DatabaseManager> db_manager_;
-    std::shared_ptr<AlarmRuleRepository> alarm_rule_repo_;
-    std::shared_ptr<AlarmOccurrenceRepository> alarm_occurrence_repo_;
-    
-    // 외부 연결
+    // 의존성 객체들
+    std::shared_ptr<Database::DatabaseManager> db_manager_;
     std::shared_ptr<RedisClientImpl> redis_client_;
     std::shared_ptr<RabbitMQClient> mq_client_;
     
+    // Repository들
+    std::shared_ptr<AlarmRuleRepository> alarm_rule_repo_;
+    std::shared_ptr<AlarmOccurrenceRepository> alarm_occurrence_repo_;
+    
     // 알람 규칙 캐시 (성능 최적화)
-    std::map<int, std::vector<AlarmRuleEntity>> tenant_rules_;  // tenant_id -> rules
-    std::map<std::string, std::vector<int>> point_rule_index_;  // "dp_123" -> rule_ids
     mutable std::shared_mutex rules_cache_mutex_;
+    std::map<std::string, std::vector<AlarmRuleEntity>> rules_by_target_;  // "data_point:123" -> rules
+    std::chrono::system_clock::time_point rules_cache_time_;
     
-    // 알람 상태 캐시 (런타임 상태)
-    std::map<int, bool> alarm_states_;           // rule_id -> in_alarm
-    std::map<int, double> last_values_;          // rule_id -> last_value
-    std::map<int, bool> last_digital_states_;    // rule_id -> last_digital_state
-    std::map<int, std::chrono::system_clock::time_point> last_check_times_;
-    mutable std::shared_mutex state_cache_mutex_;
-    
-    // 활성 알람 매핑
-    std::map<int, int64_t> rule_occurrence_map_;  // rule_id -> occurrence_id
-    mutable std::shared_mutex occurrence_map_mutex_;
-    
-    // 통계
-    std::atomic<uint64_t> total_evaluations_{0};
-    std::atomic<uint64_t> alarms_raised_{0};
-    std::atomic<uint64_t> alarms_cleared_{0};
-    std::atomic<uint64_t> evaluations_errors_{0};
+    // 알람 상태 추적
+    mutable std::shared_mutex states_mutex_;
+    std::map<int, AlarmState> alarm_states_;  // rule_id -> state
     
     // ID 생성기
     std::atomic<int64_t> next_occurrence_id_{1};
     
-    // JavaScript 엔진 (QuickJS)
-    void* js_runtime_ = nullptr;
-    void* js_context_ = nullptr;
-    mutable std::mutex js_mutex_;
+    // JavaScript 엔진 (스레드별)
+    thread_local static void* js_runtime_;
+    thread_local static void* js_context_;
     
-    // 로거
+    // ✅ LogManager 참조 (타입 수정)
     Utils::LogManager& logger_;
 };
 
