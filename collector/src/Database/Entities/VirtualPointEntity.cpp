@@ -1,815 +1,449 @@
 // =============================================================================
 // collector/src/Database/Entities/VirtualPointEntity.cpp
-// PulseOne VirtualPointEntity 구현 - SiteEntity 패턴 100% 준수 + timestampToString 추가
+// PulseOne VirtualPointEntity 구현
 // =============================================================================
 
-/**
- * @file VirtualPointEntity.cpp
- * @brief PulseOne VirtualPointEntity 구현 - SiteEntity 패턴 100% 준수
- * @author PulseOne Development Team
- * @date 2025-07-31
- */
-
 #include "Database/Entities/VirtualPointEntity.h"
-#include "Database/RepositoryFactory.h"
-#include "Database/Repositories/VirtualPointRepository.h"
-#include "Utils/LogManager.h"
-#include <algorithm>
+#include "Database/DatabaseManager.h"
 #include <sstream>
-#include <regex>
-#include <iomanip>
-#include <cmath>
-#include <stdexcept>
-#include <set>
+#include <algorithm>
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
 
-// =======================================================================
-// 생성자들 (SiteEntity 패턴)
-// =======================================================================
+// =============================================================================
+// 생성자
+// =============================================================================
 
-VirtualPointEntity::VirtualPointEntity() 
-    : BaseEntity<VirtualPointEntity>()
-    , tenant_id_(0)
-    , site_id_(0)
-    , name_("")
-    , description_("")
-    , formula_("")
-    , data_type_(DataType::FLOAT)
-    , unit_("")
-    , calculation_interval_(1000)
-    , calculation_trigger_(CalculationTrigger::TIMER)
-    , is_enabled_(true)
-    , category_("")
-    , tags_()
-    , created_by_(0)
-    , created_at_(std::chrono::system_clock::now())
-    , updated_at_(std::chrono::system_clock::now())
-    , last_calculated_value_(std::nullopt)
-    , last_calculation_time_(std::chrono::system_clock::time_point{})
-    , last_calculation_error_("") {
-    
-    LogManager::getInstance().Debug("VirtualPointEntity default constructor");
+VirtualPointEntity::VirtualPointEntity() : BaseEntity() {
+    // 기본 생성자
+}
+
+VirtualPointEntity::VirtualPointEntity(int id) : BaseEntity(id) {
+    // ID로 생성
 }
 
 VirtualPointEntity::VirtualPointEntity(int tenant_id, const std::string& name, const std::string& formula)
-    : BaseEntity<VirtualPointEntity>()
+    : BaseEntity()
     , tenant_id_(tenant_id)
-    , site_id_(0)
     , name_(name)
-    , description_("")
-    , formula_(formula)
-    , data_type_(DataType::FLOAT)
-    , unit_("")
-    , calculation_interval_(1000)
-    , calculation_trigger_(CalculationTrigger::TIMER)
-    , is_enabled_(true)
-    , category_("")
-    , tags_()
-    , created_by_(0)
-    , created_at_(std::chrono::system_clock::now())
-    , updated_at_(std::chrono::system_clock::now())
-    , last_calculated_value_(std::nullopt)
-    , last_calculation_time_(std::chrono::system_clock::time_point{})
-    , last_calculation_error_("") {
-    
-    LogManager::getInstance().Debug("VirtualPointEntity constructor: " + name);
+    , formula_(formula) {
+    // 필수 필드로 생성
 }
 
-VirtualPointEntity::VirtualPointEntity(int tenant_id, int site_id, const std::string& name, 
-                                      const std::string& description, const std::string& formula,
-                                      DataType data_type, const std::string& unit, 
-                                      int calculation_interval, bool is_enabled)
-    : BaseEntity<VirtualPointEntity>()
-    , tenant_id_(tenant_id)
-    , site_id_(site_id)
-    , name_(name)
-    , description_(description)
-    , formula_(formula)
-    , data_type_(data_type)
-    , unit_(unit)
-    , calculation_interval_(calculation_interval)
-    , calculation_trigger_(CalculationTrigger::TIMER)
-    , is_enabled_(is_enabled)
-    , category_("")
-    , tags_()
-    , created_by_(0)
-    , created_at_(std::chrono::system_clock::now())
-    , updated_at_(std::chrono::system_clock::now())
-    , last_calculated_value_(std::nullopt)
-    , last_calculation_time_(std::chrono::system_clock::time_point{})
-    , last_calculation_error_("") {
-    
-    LogManager::getInstance().Debug("VirtualPointEntity full constructor: " + name);
-}
-
-// =======================================================================
-// BaseEntity 순수 가상 함수 구현 (Repository 활용)
-// =======================================================================
+// =============================================================================
+// BaseEntity 순수 가상 함수 구현
+// =============================================================================
 
 bool VirtualPointEntity::loadFromDatabase() {
-    if (getId() <= 0) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::loadFromDatabase - Invalid virtual point ID: " + std::to_string(getId()));
-        }
-        markError();
-        return false;
-    }
+    if (id_ <= 0) return false;
     
     try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getVirtualPointRepository();
-        if (repo) {
-            auto loaded = repo->findById(getId());
-            if (loaded.has_value()) {
-                *this = loaded.value();
-                markSaved();
-                if (logger_) {
-                    logger_->Info("VirtualPointEntity - Loaded virtual point: " + name_);
-                }
-                return true;
-            }
+        auto& db = DatabaseManager::getInstance();
+        
+        std::string query = R"(
+            SELECT tenant_id, scope_type, site_id, device_id, name, description,
+                   formula, data_type, unit, calculation_interval, calculation_trigger,
+                   execution_type, error_handling, input_mappings, dependencies,
+                   cache_duration_ms, is_enabled, category, tags, execution_count,
+                   last_value, last_error, avg_execution_time_ms, created_by,
+                   created_at, updated_at
+            FROM virtual_points
+            WHERE id = ?
+        )";
+        
+        auto results = db.executeQuery(query, {std::to_string(id_)});
+        
+        if (results.empty()) return false;
+        
+        const auto& row = results[0];
+        
+        // 필수 필드
+        tenant_id_ = std::stoi(row.at("tenant_id"));
+        scope_type_ = row.at("scope_type");
+        name_ = row.at("name");
+        description_ = row.at("description");
+        formula_ = row.at("formula");
+        data_type_ = row.at("data_type");
+        unit_ = row.at("unit");
+        calculation_interval_ = std::stoi(row.at("calculation_interval"));
+        calculation_trigger_ = row.at("calculation_trigger");
+        
+        // 선택 필드
+        if (!row.at("site_id").empty()) {
+            site_id_ = std::stoi(row.at("site_id"));
         }
-        return false;
+        if (!row.at("device_id").empty()) {
+            device_id_ = std::stoi(row.at("device_id"));
+        }
+        
+        // Enum 변환
+        std::string exec_type = row.at("execution_type");
+        if (exec_type == "javascript") execution_type_ = ExecutionType::JAVASCRIPT;
+        else if (exec_type == "formula") execution_type_ = ExecutionType::FORMULA;
+        else if (exec_type == "aggregate") execution_type_ = ExecutionType::AGGREGATE;
+        else execution_type_ = ExecutionType::REFERENCE;
+        
+        std::string error_handling = row.at("error_handling");
+        if (error_handling == "return_null") error_handling_ = ErrorHandling::RETURN_NULL;
+        else if (error_handling == "return_last") error_handling_ = ErrorHandling::RETURN_LAST;
+        else if (error_handling == "return_zero") error_handling_ = ErrorHandling::RETURN_ZERO;
+        else error_handling_ = ErrorHandling::RETURN_DEFAULT;
+        
+        // JSON 필드
+        input_mappings_ = row.at("input_mappings");
+        dependencies_ = row.at("dependencies");
+        tags_ = row.at("tags");
+        
+        // 숫자 필드
+        cache_duration_ms_ = std::stoi(row.at("cache_duration_ms"));
+        execution_count_ = std::stoi(row.at("execution_count"));
+        last_value_ = std::stod(row.at("last_value"));
+        avg_execution_time_ms_ = std::stod(row.at("avg_execution_time_ms"));
+        
+        // 불린 필드
+        is_enabled_ = row.at("is_enabled") == "1";
+        
+        // 기타
+        category_ = row.at("category");
+        last_error_ = row.at("last_error");
+        created_by_ = row.at("created_by");
+        
+        state_ = EntityState::LOADED;
+        return true;
+        
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::loadFromDatabase failed: " + std::string(e.what()));
-        }
-        markError();
+        logger_->Error("Failed to load VirtualPointEntity: " + std::string(e.what()));
         return false;
     }
 }
 
 bool VirtualPointEntity::saveToDatabase() {
-    if (!isValid()) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::saveToDatabase - Invalid virtual point data");
-        }
-        return false;
-    }
-    
     try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getVirtualPointRepository();
-        if (repo) {
-            bool success = repo->save(*this);
-            if (success) {
-                markSaved();
-                if (logger_) {
-                    logger_->Info("VirtualPointEntity - Saved virtual point: " + name_);
-                }
+        auto& db = DatabaseManager::getInstance();
+        
+        std::string query = R"(
+            INSERT INTO virtual_points 
+            (tenant_id, scope_type, site_id, device_id, name, description,
+             formula, data_type, unit, calculation_interval, calculation_trigger,
+             execution_type, error_handling, input_mappings, dependencies,
+             cache_duration_ms, is_enabled, category, tags, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        )";
+        
+        std::vector<std::string> params = {
+            std::to_string(tenant_id_),
+            scope_type_,
+            site_id_ ? std::to_string(*site_id_) : "NULL",
+            device_id_ ? std::to_string(*device_id_) : "NULL",
+            name_,
+            description_,
+            formula_,
+            data_type_,
+            unit_,
+            std::to_string(calculation_interval_),
+            calculation_trigger_,
+            executionTypeToString(execution_type_),
+            errorHandlingToString(error_handling_),
+            input_mappings_,
+            dependencies_,
+            std::to_string(cache_duration_ms_),
+            is_enabled_ ? "1" : "0",
+            category_,
+            tags_,
+            created_by_
+        };
+        
+        if (db.executeUpdate(query, params)) {
+            // 새로 생성된 ID 가져오기
+            auto results = db.executeQuery("SELECT last_insert_rowid() as id");
+            if (!results.empty()) {
+                id_ = std::stoi(results[0].at("id"));
+                state_ = EntityState::LOADED;
+                return true;
             }
-            return success;
         }
+        
         return false;
+        
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::saveToDatabase failed: " + std::string(e.what()));
-        }
-        markError();
+        logger_->Error("Failed to save VirtualPointEntity: " + std::string(e.what()));
         return false;
     }
 }
 
 bool VirtualPointEntity::updateToDatabase() {
-    if (getId() <= 0 || !isValid()) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::updateToDatabase - Invalid virtual point data or ID");
-        }
-        return false;
-    }
+    if (id_ <= 0) return false;
     
     try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getVirtualPointRepository();
-        if (repo) {
-            bool success = repo->update(*this);
-            if (success) {
-                markSaved();
-                if (logger_) {
-                    logger_->Info("VirtualPointEntity - Updated virtual point: " + name_);
-                }
-            }
-            return success;
+        auto& db = DatabaseManager::getInstance();
+        
+        std::string query = R"(
+            UPDATE virtual_points SET
+                tenant_id = ?, scope_type = ?, site_id = ?, device_id = ?,
+                name = ?, description = ?, formula = ?, data_type = ?,
+                unit = ?, calculation_interval = ?, calculation_trigger = ?,
+                execution_type = ?, error_handling = ?, input_mappings = ?,
+                dependencies = ?, cache_duration_ms = ?, is_enabled = ?,
+                category = ?, tags = ?, execution_count = ?, last_value = ?,
+                last_error = ?, avg_execution_time_ms = ?, updated_at = datetime('now')
+            WHERE id = ?
+        )";
+        
+        std::vector<std::string> params = {
+            std::to_string(tenant_id_),
+            scope_type_,
+            site_id_ ? std::to_string(*site_id_) : "NULL",
+            device_id_ ? std::to_string(*device_id_) : "NULL",
+            name_,
+            description_,
+            formula_,
+            data_type_,
+            unit_,
+            std::to_string(calculation_interval_),
+            calculation_trigger_,
+            executionTypeToString(execution_type_),
+            errorHandlingToString(error_handling_),
+            input_mappings_,
+            dependencies_,
+            std::to_string(cache_duration_ms_),
+            is_enabled_ ? "1" : "0",
+            category_,
+            tags_,
+            std::to_string(execution_count_),
+            std::to_string(last_value_),
+            last_error_,
+            std::to_string(avg_execution_time_ms_),
+            std::to_string(id_)
+        };
+        
+        if (db.executeUpdate(query, params)) {
+            state_ = EntityState::LOADED;
+            return true;
         }
+        
         return false;
+        
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::updateToDatabase failed: " + std::string(e.what()));
-        }
-        markError();
+        logger_->Error("Failed to update VirtualPointEntity: " + std::string(e.what()));
         return false;
     }
 }
 
 bool VirtualPointEntity::deleteFromDatabase() {
-    if (getId() <= 0) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::deleteFromDatabase - Invalid virtual point ID");
-        }
-        return false;
-    }
+    if (id_ <= 0) return false;
     
     try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto repo = factory.getVirtualPointRepository();
-        if (repo) {
-            bool success = repo->deleteById(getId());
-            if (success) {
-                markDeleted();
-                if (logger_) {
-                    logger_->Info("VirtualPointEntity - Deleted virtual point: " + name_);
-                }
-            }
-            return success;
+        auto& db = DatabaseManager::getInstance();
+        
+        std::string query = "DELETE FROM virtual_points WHERE id = ?";
+        
+        if (db.executeUpdate(query, {std::to_string(id_)})) {
+            state_ = EntityState::DELETED;
+            return true;
         }
+        
         return false;
+        
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("VirtualPointEntity::deleteFromDatabase failed: " + std::string(e.what()));
-        }
-        markError();
+        logger_->Error("Failed to delete VirtualPointEntity: " + std::string(e.what()));
         return false;
     }
 }
 
-// =======================================================================
-// 🔥 DeviceEntity 패턴 추가: timestampToString 메서드
-// =======================================================================
-
-std::string VirtualPointEntity::timestampToString(const std::chrono::system_clock::time_point& timestamp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return ss.str();
+bool VirtualPointEntity::validate() const {
+    // 필수 필드 검증
+    if (name_.empty()) return false;
+    if (formula_.empty()) return false;
+    if (tenant_id_ <= 0) return false;
+    
+    return true;
 }
 
-// =======================================================================
-// 계산 관련 메서드들 (VirtualPoint 전용)
-// =======================================================================
+// =============================================================================
+// JSON 변환
+// =============================================================================
 
-bool VirtualPointEntity::validateFormula() const {
-    LogManager::getInstance().Debug("🔍 VirtualPointEntity::validateFormula() - " + name_);
-    
-    if (formula_.empty()) {
-        LogManager::getInstance().Error("❌ Empty formula for virtual point: " + name_);
-        return false;
-    }
-    
-    // 1. 안전성 검사 (SQL Injection, Script Injection 방지)
-    if (!isFormulaSafe(formula_)) {
-        LogManager::getInstance().Error("❌ Unsafe formula detected: " + name_);
-        return false;
-    }
-    
-    // 2. 기본 문법 검사 (간단한 JavaScript 문법)
+bool VirtualPointEntity::fromJson(const json& data) {
     try {
-        // 괄호 균형 검사
-        int parentheses_count = 0;
-        for (char c : formula_) {
-            if (c == '(') parentheses_count++;
-            else if (c == ')') parentheses_count--;
-            
-            if (parentheses_count < 0) {
-                LogManager::getInstance().Error("❌ Unbalanced parentheses in formula: " + name_);
-                return false;
+        if (data.contains("id")) id_ = data["id"];
+        if (data.contains("tenant_id")) tenant_id_ = data["tenant_id"];
+        if (data.contains("scope_type")) scope_type_ = data["scope_type"];
+        if (data.contains("site_id") && !data["site_id"].is_null()) {
+            site_id_ = data["site_id"];
+        }
+        if (data.contains("device_id") && !data["device_id"].is_null()) {
+            device_id_ = data["device_id"];
+        }
+        if (data.contains("name")) name_ = data["name"];
+        if (data.contains("description")) description_ = data["description"];
+        if (data.contains("formula")) formula_ = data["formula"];
+        if (data.contains("data_type")) data_type_ = data["data_type"];
+        if (data.contains("unit")) unit_ = data["unit"];
+        if (data.contains("calculation_interval")) calculation_interval_ = data["calculation_interval"];
+        if (data.contains("calculation_trigger")) calculation_trigger_ = data["calculation_trigger"];
+        if (data.contains("input_mappings")) {
+            if (data["input_mappings"].is_string()) {
+                input_mappings_ = data["input_mappings"];
+            } else {
+                input_mappings_ = data["input_mappings"].dump();
+            }
+        }
+        if (data.contains("dependencies")) {
+            if (data["dependencies"].is_string()) {
+                dependencies_ = data["dependencies"];
+            } else {
+                dependencies_ = data["dependencies"].dump();
+            }
+        }
+        if (data.contains("cache_duration_ms")) cache_duration_ms_ = data["cache_duration_ms"];
+        if (data.contains("is_enabled")) is_enabled_ = data["is_enabled"];
+        if (data.contains("category")) category_ = data["category"];
+        if (data.contains("tags")) {
+            if (data["tags"].is_string()) {
+                tags_ = data["tags"];
+            } else {
+                tags_ = data["tags"].dump();
             }
         }
         
-        if (parentheses_count != 0) {
-            LogManager::getInstance().Error("❌ Unbalanced parentheses in formula: " + name_);
-            return false;
-        }
-        
-        // 3. 허용된 함수/연산자 검사
-        std::regex allowed_pattern(R"([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+\.?[0-9]*|[\+\-\*/\(\)\s\.,<>=!&|])");
-        std::sregex_iterator iter(formula_.begin(), formula_.end(), allowed_pattern);
-        std::sregex_iterator end;
-        
-        std::string reconstructed;
-        for (; iter != end; ++iter) {
-            reconstructed += iter->str();
-        }
-        
-        // 공백 제거 후 비교
-        std::string formula_no_space = formula_;
-        formula_no_space.erase(std::remove_if(formula_no_space.begin(), formula_no_space.end(), ::isspace), formula_no_space.end());
-        reconstructed.erase(std::remove_if(reconstructed.begin(), reconstructed.end(), ::isspace), reconstructed.end());
-        
-        if (formula_no_space != reconstructed) {
-            LogManager::getInstance().Error("❌ Invalid characters in formula: " + name_);
-            return false;
-        }
-        
-        LogManager::getInstance().Debug("✅ Formula validation passed: " + name_);
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ Formula validation error: " + std::string(e.what()));
+        logger_->Error("Failed to parse VirtualPointEntity from JSON: " + std::string(e.what()));
         return false;
     }
 }
-
-std::optional<double> VirtualPointEntity::calculateValue(const std::map<std::string, double>& input_values) const {
-    LogManager::getInstance().Debug("🔢 VirtualPointEntity::calculateValue() - " + name_);
-    
-    last_calculation_time_ = std::chrono::system_clock::now();
-    last_calculation_error_.clear();
-    
-    try {
-        // 1. 수식 유효성 검사
-        if (!validateFormula()) {
-            last_calculation_error_ = "Invalid formula";
-            return std::nullopt;
-        }
-        
-        // 2. 변수 치환
-        std::string processed_formula = formula_;
-        
-        for (const auto& [var_name, value] : input_values) {
-            // 변수명을 값으로 치환
-            std::regex var_regex("\\b" + var_name + "\\b");
-            processed_formula = std::regex_replace(processed_formula, var_regex, std::to_string(value));
-        }
-        
-        // 3. 간단한 수식 계산 (기본 연산자만 지원)
-        double result = evaluateSimpleExpression(processed_formula);
-        
-        // 4. 데이터 타입에 따른 값 변환
-        switch (data_type_) {
-            case DataType::INT16:
-                result = static_cast<int16_t>(std::round(result));
-                break;
-            case DataType::INT32:
-                result = static_cast<int32_t>(std::round(result));
-                break;
-            case DataType::UINT16:
-                result = static_cast<uint16_t>(std::round(std::max(0.0, result)));
-                break;
-            case DataType::UINT32:
-                result = static_cast<uint32_t>(std::round(std::max(0.0, result)));
-                break;
-            case DataType::BOOLEAN:
-                result = (result != 0.0) ? 1.0 : 0.0;
-                break;
-            case DataType::FLOAT:
-            case DataType::DOUBLE:
-            default:
-                // 그대로 유지
-                break;
-        }
-        
-        last_calculated_value_ = result;
-        LogManager::getInstance().Debug("✅ Calculation successful: " + name_ + " = " + std::to_string(result));
-        
-        return result;
-        
-    } catch (const std::exception& e) {
-        last_calculation_error_ = "Calculation error: " + std::string(e.what());
-        LogManager::getInstance().Error("❌ Calculation failed: " + name_ + " - " + last_calculation_error_);
-        return std::nullopt;
-    }
-}
-
-std::vector<std::string> VirtualPointEntity::extractVariableNames() const {
-    LogManager::getInstance().Debug("🔍 VirtualPointEntity::extractVariableNames() - " + name_);
-    
-    std::vector<std::string> variables;
-    
-    try {
-        // JavaScript 변수명 패턴 (문자나 _로 시작, 그 다음 문자/숫자/_ 조합)
-        std::regex var_pattern(R"(\b[a-zA-Z_][a-zA-Z0-9_]*\b)");
-        std::sregex_iterator iter(formula_.begin(), formula_.end(), var_pattern);
-        std::sregex_iterator end;
-        
-        // 예약어 목록 (JavaScript 기본 함수/키워드)
-        std::set<std::string> reserved_words = {
-            "Math", "abs", "ceil", "floor", "round", "max", "min", "pow", "sqrt",
-            "sin", "cos", "tan", "log", "exp", "PI", "E",
-            "if", "else", "for", "while", "function", "return", "var", "let", "const",
-            "true", "false", "null", "undefined"
-        };
-        
-        for (; iter != end; ++iter) {
-            std::string var_name = iter->str();
-            
-            // 예약어가 아니고 숫자가 아닌 경우만 변수로 인정
-            if (reserved_words.find(var_name) == reserved_words.end() &&
-                !std::all_of(var_name.begin(), var_name.end(), ::isdigit)) {
-                
-                // 중복 제거
-                if (std::find(variables.begin(), variables.end(), var_name) == variables.end()) {
-                    variables.push_back(var_name);
-                }
-            }
-        }
-        
-        LogManager::getInstance().Debug("✅ Found " + std::to_string(variables.size()) + " variables in formula: " + name_);
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ Variable extraction error: " + std::string(e.what()));
-    }
-    
-    return variables;
-}
-
-bool VirtualPointEntity::hasCircularReference(const std::vector<int>& referenced_points) const {
-    // 간단한 순환 참조 검사 (현재 포인트 ID가 참조 목록에 있는지 확인)
-    if (getId() > 0) {
-        return std::find(referenced_points.begin(), referenced_points.end(), getId()) != referenced_points.end();
-    }
-    return false;
-}
-
-// =======================================================================
-// 유틸리티 메서드들 (SiteEntity 패턴)
-// =======================================================================
-
-bool VirtualPointEntity::isValid() const {
-    // 1. 필수 필드 검사
-    if (tenant_id_ <= 0) {
-        return false;
-    }
-    
-    if (name_.empty() || name_.length() > 100) {
-        return false;
-    }
-    
-    if (formula_.empty()) {
-        return false;
-    }
-    
-    // 2. 계산 주기 검사
-    if (calculation_interval_ < 100 || calculation_interval_ > 3600000) { // 100ms ~ 1시간
-        return false;
-    }
-    
-    // 3. 수식 유효성 검사
-    if (!validateFormula()) {
-        return false;
-    }
-    
-    return true;
-}
-
-bool VirtualPointEntity::isSameTenant(const VirtualPointEntity& other) const {
-    return tenant_id_ == other.tenant_id_;
-}
-
-bool VirtualPointEntity::isSameSite(const VirtualPointEntity& other) const {
-    return tenant_id_ == other.tenant_id_ && site_id_ == other.site_id_;
-}
-
-bool VirtualPointEntity::needsCalculation() const {
-    if (!is_enabled_) {
-        return false;
-    }
-    
-    if (calculation_trigger_ == CalculationTrigger::MANUAL) {
-        return false;
-    }
-    
-    if (calculation_trigger_ == CalculationTrigger::TIMER) {
-        auto now = std::chrono::system_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_calculation_time_).count();
-        return elapsed >= calculation_interval_;
-    }
-    
-    return true;
-}
-
-// =======================================================================
-// JSON 직렬화/역직렬화 (DeviceEntity 패턴 + timestampToString 사용)
-// =======================================================================
 
 json VirtualPointEntity::toJson() const {
     json j;
+    j["id"] = id_;
+    j["tenant_id"] = tenant_id_;
+    j["scope_type"] = scope_type_;
+    
+    if (site_id_) j["site_id"] = *site_id_;
+    else j["site_id"] = nullptr;
+    
+    if (device_id_) j["device_id"] = *device_id_;
+    else j["device_id"] = nullptr;
+    
+    j["name"] = name_;
+    j["description"] = description_;
+    j["formula"] = formula_;
+    j["data_type"] = data_type_;
+    j["unit"] = unit_;
+    j["calculation_interval"] = calculation_interval_;
+    j["calculation_trigger"] = calculation_trigger_;
+    j["execution_type"] = executionTypeToString(execution_type_);
+    j["error_handling"] = errorHandlingToString(error_handling_);
+    
+    // JSON 문자열 필드들은 파싱해서 저장
+    try {
+        if (!input_mappings_.empty()) {
+            j["input_mappings"] = json::parse(input_mappings_);
+        } else {
+            j["input_mappings"] = json::array();
+        }
+    } catch (...) {
+        j["input_mappings"] = input_mappings_;
+    }
     
     try {
-        j["id"] = getId();
-        j["tenant_id"] = tenant_id_;
-        j["site_id"] = site_id_;
-        j["name"] = name_;
-        j["description"] = description_;
-        j["formula"] = formula_;
-        j["data_type"] = dataTypeToString(data_type_);
-        j["unit"] = unit_;
-        j["calculation_interval"] = calculation_interval_;
-        j["calculation_trigger"] = calculationTriggerToString(calculation_trigger_);
-        j["is_enabled"] = is_enabled_;
-        j["category"] = category_;
-        j["tags"] = tags_;
-        j["created_by"] = created_by_;
-        
-        // 🔥 DeviceEntity 패턴 적용: timestampToString 사용
-        j["created_at"] = timestampToString(created_at_);
-        j["updated_at"] = timestampToString(updated_at_);
-        
-        // 계산 관련 정보
-        if (last_calculated_value_.has_value()) {
-            j["last_calculated_value"] = last_calculated_value_.value();
+        if (!dependencies_.empty()) {
+            j["dependencies"] = json::parse(dependencies_);
+        } else {
+            j["dependencies"] = json::array();
         }
-        
-        if (last_calculation_time_ != std::chrono::system_clock::time_point{}) {
-            j["last_calculation_time"] = timestampToString(last_calculation_time_);
-        }
-        
-        if (!last_calculation_error_.empty()) {
-            j["last_calculation_error"] = last_calculation_error_;
-        }
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ VirtualPointEntity::toJson() error: " + std::string(e.what()));
+    } catch (...) {
+        j["dependencies"] = dependencies_;
     }
+    
+    try {
+        if (!tags_.empty()) {
+            j["tags"] = json::parse(tags_);
+        } else {
+            j["tags"] = json::array();
+        }
+    } catch (...) {
+        j["tags"] = tags_;
+    }
+    
+    j["cache_duration_ms"] = cache_duration_ms_;
+    j["is_enabled"] = is_enabled_;
+    j["category"] = category_;
+    j["execution_count"] = execution_count_;
+    j["last_value"] = last_value_;
+    j["last_error"] = last_error_;
+    j["avg_execution_time_ms"] = avg_execution_time_ms_;
+    j["created_by"] = created_by_;
     
     return j;
-}
-
-bool VirtualPointEntity::fromJson(const json& j) {
-    try {
-        if (j.contains("id")) setId(j["id"]);
-        if (j.contains("tenant_id")) tenant_id_ = j["tenant_id"];
-        if (j.contains("site_id")) site_id_ = j["site_id"];
-        if (j.contains("name")) name_ = j["name"];
-        if (j.contains("description")) description_ = j["description"];
-        if (j.contains("formula")) formula_ = j["formula"];
-        if (j.contains("data_type")) data_type_ = stringToDataType(j["data_type"]);
-        if (j.contains("unit")) unit_ = j["unit"];
-        if (j.contains("calculation_interval")) calculation_interval_ = j["calculation_interval"];
-        if (j.contains("calculation_trigger")) calculation_trigger_ = stringToCalculationTrigger(j["calculation_trigger"]);
-        if (j.contains("is_enabled")) is_enabled_ = j["is_enabled"];
-        if (j.contains("category")) category_ = j["category"];
-        if (j.contains("tags")) tags_ = j["tags"];
-        if (j.contains("created_by")) created_by_ = j["created_by"];
-        
-        // 시간 필드들 파싱 (간단한 구현)
-        if (j.contains("created_at")) {
-            // 실제 구현에서는 정확한 ISO 8601 파싱 필요
-            created_at_ = std::chrono::system_clock::now();
-        }
-        
-        if (j.contains("updated_at")) {
-            updated_at_ = std::chrono::system_clock::now();
-        }
-        
-        markModified();
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ VirtualPointEntity::fromJson() error: " + std::string(e.what()));
-        markError();
-        return false;
-    }
 }
 
 std::string VirtualPointEntity::toString() const {
     std::stringstream ss;
-    ss << "VirtualPoint[id=" << getId() 
-       << ", tenant=" << tenant_id_
-       << ", site=" << site_id_
+    ss << "VirtualPointEntity[id=" << id_ 
+       << ", tenant_id=" << tenant_id_
        << ", name=" << name_
        << ", formula=" << formula_
-       << ", type=" << dataTypeToString(data_type_)
-       << ", enabled=" << (is_enabled_ ? "yes" : "no");
-    
-    if (last_calculated_value_.has_value()) {
-        ss << ", last_value=" << last_calculated_value_.value();
-    }
-    
-    ss << "]";
+       << ", enabled=" << (is_enabled_ ? "true" : "false")
+       << ", execution_count=" << execution_count_
+       << ", last_value=" << last_value_ << "]";
     return ss.str();
 }
 
-json VirtualPointEntity::toSummaryJson() const {
-    json j;
+// =============================================================================
+// 헬퍼 메서드
+// =============================================================================
+
+std::vector<std::string> VirtualPointEntity::getTagList() const {
+    std::vector<std::string> tag_list;
     
     try {
-        j["id"] = getId();
-        j["name"] = name_;
-        j["data_type"] = dataTypeToString(data_type_);
-        j["unit"] = unit_;
-        j["is_enabled"] = is_enabled_;
-        j["category"] = category_;
-        
-        if (last_calculated_value_.has_value()) {
-            j["last_value"] = last_calculated_value_.value();
-        }
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ VirtualPointEntity::toSummaryJson() error: " + std::string(e.what()));
-    }
-    
-    return j;
-}
-
-// =======================================================================
-// 정적 유틸리티 메서드들 (SiteEntity 패턴)
-// =======================================================================
-
-std::string VirtualPointEntity::dataTypeToString(DataType data_type) {
-    switch (data_type) {
-        case DataType::INT16: return "int16";
-        case DataType::INT32: return "int32";
-        case DataType::UINT16: return "uint16";
-        case DataType::UINT32: return "uint32";
-        case DataType::FLOAT: return "float";
-        case DataType::DOUBLE: return "double";
-        case DataType::BOOLEAN: return "boolean";
-        case DataType::STRING: return "string";
-        default: return "unknown";
-    }
-}
-
-VirtualPointEntity::DataType VirtualPointEntity::stringToDataType(const std::string& type_str) {
-    std::string lower_str = type_str;
-    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(), ::tolower);
-    
-    if (lower_str == "int16") return DataType::INT16;
-    if (lower_str == "int32") return DataType::INT32;
-    if (lower_str == "uint16") return DataType::UINT16;
-    if (lower_str == "uint32") return DataType::UINT32;
-    if (lower_str == "float") return DataType::FLOAT;
-    if (lower_str == "double") return DataType::DOUBLE;
-    if (lower_str == "boolean" || lower_str == "bool") return DataType::BOOLEAN;
-    if (lower_str == "string") return DataType::STRING;
-    
-    return DataType::UNKNOWN;
-}
-
-std::string VirtualPointEntity::calculationTriggerToString(CalculationTrigger trigger) {
-    switch (trigger) {
-        case CalculationTrigger::TIMER: return "timer";
-        case CalculationTrigger::ON_CHANGE: return "onchange";
-        case CalculationTrigger::MANUAL: return "manual";
-        case CalculationTrigger::EVENT: return "event";
-        default: return "timer";
-    }
-}
-
-VirtualPointEntity::CalculationTrigger VirtualPointEntity::stringToCalculationTrigger(const std::string& trigger_str) {
-    std::string lower_str = trigger_str;
-    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(), ::tolower);
-    
-    if (lower_str == "timer") return CalculationTrigger::TIMER;
-    if (lower_str == "onchange" || lower_str == "on_change") return CalculationTrigger::ON_CHANGE;
-    if (lower_str == "manual") return CalculationTrigger::MANUAL;
-    if (lower_str == "event") return CalculationTrigger::EVENT;
-    
-    return CalculationTrigger::TIMER;
-}
-
-// =======================================================================
-// 비교 연산자들 (SiteEntity 패턴)
-// =======================================================================
-
-bool VirtualPointEntity::operator==(const VirtualPointEntity& other) const {
-    return getId() == other.getId() && 
-           tenant_id_ == other.tenant_id_ &&
-           site_id_ == other.site_id_ &&
-           name_ == other.name_ &&
-           formula_ == other.formula_;
-}
-
-bool VirtualPointEntity::operator!=(const VirtualPointEntity& other) const {
-    return !(*this == other);
-}
-
-bool VirtualPointEntity::operator<(const VirtualPointEntity& other) const {
-    if (tenant_id_ != other.tenant_id_) {
-        return tenant_id_ < other.tenant_id_;
-    }
-    if (site_id_ != other.site_id_) {
-        return site_id_ < other.site_id_;
-    }
-    return name_ < other.name_;
-}
-
-// =======================================================================
-// 출력 연산자 (SiteEntity 패턴)
-// =======================================================================
-
-std::ostream& operator<<(std::ostream& os, const VirtualPointEntity& entity) {
-    os << "VirtualPoint[id=" << entity.getId() 
-       << ", tenant=" << entity.tenant_id_
-       << ", site=" << entity.site_id_
-       << ", name=" << entity.name_
-       << ", formula=" << entity.formula_
-       << ", enabled=" << (entity.is_enabled_ ? "yes" : "no")
-       << "]";
-    return os;
-}
-
-// =======================================================================
-// private 헬퍼 메서드들
-// =======================================================================
-
-bool VirtualPointEntity::isFormulaSafe(const std::string& formula) const {
-    // 위험한 키워드 검사
-    std::vector<std::string> dangerous_keywords = {
-        "eval", "exec", "system", "import", "require", "fetch", "xhr",
-        "document", "window", "global", "process", "fs", "child_process",
-        "delete", "drop", "insert", "update", "create", "alter", "select",
-        "__proto__", "constructor", "prototype"
-    };
-    
-    std::string lower_formula = formula;
-    std::transform(lower_formula.begin(), lower_formula.end(), lower_formula.begin(), ::tolower);
-    
-    for (const auto& keyword : dangerous_keywords) {
-        if (lower_formula.find(keyword) != std::string::npos) {
-            return false;
-        }
-    }
-    
-    return true;
-}
-
-std::string VirtualPointEntity::tagsToJsonString() const {
-    json j = tags_;
-    return j.dump();
-}
-
-void VirtualPointEntity::tagsFromJsonString(const std::string& json_str) {
-    try {
-        if (!json_str.empty()) {
-            json j = json::parse(json_str);
-            if (j.is_array()) {
-                tags_ = j;
+        if (!tags_.empty()) {
+            json tags_json = json::parse(tags_);
+            if (tags_json.is_array()) {
+                for (const auto& tag : tags_json) {
+                    if (tag.is_string()) {
+                        tag_list.push_back(tag.get<std::string>());
+                    }
+                }
             }
         }
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ Tags JSON parsing error: " + std::string(e.what()));
-        tags_.clear();
+    } catch (...) {
+        // 파싱 실패시 빈 리스트 반환
+    }
+    
+    return tag_list;
+}
+
+bool VirtualPointEntity::hasTag(const std::string& tag) const {
+    auto tag_list = getTagList();
+    return std::find(tag_list.begin(), tag_list.end(), tag) != tag_list.end();
+}
+
+// =============================================================================
+// Private 헬퍼 메서드
+// =============================================================================
+
+std::string VirtualPointEntity::executionTypeToString(ExecutionType type) const {
+    switch (type) {
+        case ExecutionType::JAVASCRIPT: return "javascript";
+        case ExecutionType::FORMULA: return "formula";
+        case ExecutionType::AGGREGATE: return "aggregate";
+        case ExecutionType::REFERENCE: return "reference";
+        default: return "javascript";
     }
 }
 
-// =======================================================================
-// 간단한 수식 계산기 (private 헬퍼)
-// =======================================================================
-
-double VirtualPointEntity::evaluateSimpleExpression(const std::string& expression) const {
-    // 매우 간단한 수식 계산기 구현
-    // 실제 환경에서는 더 강력한 수식 파서 필요 (예: muParser, ExprTk 등)
-    
-    try {
-        // 공백 제거
-        std::string expr = expression;
-        expr.erase(std::remove_if(expr.begin(), expr.end(), ::isspace), expr.end());
-        
-        // 간단한 숫자만 있는 경우
-        if (std::regex_match(expr, std::regex(R"([+-]?[0-9]*\.?[0-9]+)"))) {
-            return std::stod(expr);
-        }
-        
-        // 간단한 사칙연산 처리 (매우 기본적인 구현)
-        // 실제 환경에서는 전문 수식 파서 사용 권장
-        
-        // 더하기 연산 찾기
-        size_t plus_pos = expr.find_last_of('+');
-        if (plus_pos != std::string::npos && plus_pos > 0) {
-            double left = evaluateSimpleExpression(expr.substr(0, plus_pos));
-            double right = evaluateSimpleExpression(expr.substr(plus_pos + 1));
-            return left + right;
-        }
-        
-        // 빼기 연산 찾기
-        size_t minus_pos = expr.find_last_of('-');
-        if (minus_pos != std::string::npos && minus_pos > 0) {
-            double left = evaluateSimpleExpression(expr.substr(0, minus_pos));
-            double right = evaluateSimpleExpression(expr.substr(minus_pos + 1));
-            return left - right;
-        }
-        
-        // 곱하기 연산 찾기
-        size_t mult_pos = expr.find_last_of('*');
-        if (mult_pos != std::string::npos) {
-            double left = evaluateSimpleExpression(expr.substr(0, mult_pos));
-            double right = evaluateSimpleExpression(expr.substr(mult_pos + 1));
-            return left * right;
-        }
-        
-        // 나누기 연산 찾기
-        size_t div_pos = expr.find_last_of('/');
-        if (div_pos != std::string::npos) {
-            double left = evaluateSimpleExpression(expr.substr(0, div_pos));
-            double right = evaluateSimpleExpression(expr.substr(div_pos + 1));
-            if (right == 0.0) {
-                throw std::runtime_error("Division by zero");
-            }
-            return left / right;
-        }
-        
-        // 괄호 처리
-        if (expr.front() == '(' && expr.back() == ')') {
-            return evaluateSimpleExpression(expr.substr(1, expr.length() - 2));
-        }
-        
-        throw std::runtime_error("Unable to parse expression: " + expr);
-        
-    } catch (const std::exception& e) {
-        throw std::runtime_error("Expression evaluation error: " + std::string(e.what()));
+std::string VirtualPointEntity::errorHandlingToString(ErrorHandling handling) const {
+    switch (handling) {
+        case ErrorHandling::RETURN_NULL: return "return_null";
+        case ErrorHandling::RETURN_LAST: return "return_last";
+        case ErrorHandling::RETURN_ZERO: return "return_zero";
+        case ErrorHandling::RETURN_DEFAULT: return "return_default";
+        default: return "return_null";
     }
 }
 
