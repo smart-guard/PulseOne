@@ -42,7 +42,8 @@ AlarmEngine::~AlarmEngine() {
 
 bool AlarmEngine::initialize(std::shared_ptr<Database::DatabaseManager> db_manager,
                              std::shared_ptr<RedisClientImpl> redis_client,
-                             std::shared_ptr<RabbitMQClient> mq_client) {
+                             std::shared_ptr<RabbitMQClient> mq_client) 
+                             :logger_(&Utils::LogManager::getInstance()) {
     if (initialized_.load()) {
         logger_.Warn("AlarmEngine already initialized");
         return true;
