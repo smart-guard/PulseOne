@@ -39,7 +39,7 @@ namespace Alarm {
 using DeviceDataMessage = Structs::DeviceDataMessage;
 using TimestampedValue = Structs::TimestampedValue;
 using DataValue = Structs::DataValue;
-using AlarmEvent = Structs::AlarmEventEnhanced;
+using AlarmEvent = Structs::AlarmEvent;
 using AlarmRuleEntity = Database::Entities::AlarmRuleEntity;
 using AlarmOccurrenceEntity = Database::Entities::AlarmOccurrenceEntity;
 using AlarmRuleRepository = Database::Repositories::AlarmRuleRepository;
@@ -72,7 +72,7 @@ public:
     // ==========================================================================
     // 초기화/종료
     // ==========================================================================
-    bool initialize(std::shared_ptr<Database::DatabaseManager> db_manager,
+    bool initialize(std::shared_ptr<DatabaseManager> db_manager,
                    std::shared_ptr<RedisClientImpl> redis_client = nullptr,
                    std::shared_ptr<RabbitMQClient> mq_client = nullptr);
     void shutdown();
@@ -201,7 +201,7 @@ private:
     std::atomic<bool> initialized_{false};
     
     // Database 연결
-    std::shared_ptr<Database::DatabaseManager> db_manager_;
+    std::shared_ptr<DatabaseManager> db_manager_;
     std::shared_ptr<AlarmRuleRepository> alarm_rule_repo_;
     std::shared_ptr<AlarmOccurrenceRepository> alarm_occurrence_repo_;
     
