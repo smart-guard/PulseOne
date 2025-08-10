@@ -1,10 +1,9 @@
 // =============================================================================
 // collector/src/Database/Entities/VirtualPointEntity.cpp
-// PulseOne VirtualPointEntity 구현
+// PulseOne VirtualPointEntity 구현 - 단순한 데이터 구조체
 // =============================================================================
 
 #include "Database/Entities/VirtualPointEntity.h"
-#include "Database/DatabaseManager.h"
 #include <sstream>
 #include <algorithm>
 
@@ -16,249 +15,12 @@ namespace Entities {
 // 생성자
 // =============================================================================
 
-VirtualPointEntity::VirtualPointEntity() : BaseEntity() {
-    // 기본 생성자
-}
-
-VirtualPointEntity::VirtualPointEntity(int id) : BaseEntity(id) {
-    // ID로 생성
-}
-
 VirtualPointEntity::VirtualPointEntity(int tenant_id, const std::string& name, const std::string& formula)
     : BaseEntity()
     , tenant_id_(tenant_id)
     , name_(name)
     , formula_(formula) {
     // 필수 필드로 생성
-}
-
-// =============================================================================
-// BaseEntity 순수 가상 함수 구현
-// =============================================================================
-
-bool VirtualPointEntity::loadFromDatabase() {
-    if (id_ <= 0) return false;
-    
-    try {
-        auto& db = DatabaseManager::getInstance();
-        
-        std::string query = R"(
-            SELECT tenant_id, scope_type, site_id, device_id, name, description,
-                   formula, data_type, unit, calculation_interval, calculation_trigger,
-                   execution_type, error_handling, input_mappings, dependencies,
-                   cache_duration_ms, is_enabled, category, tags, execution_count,
-                   last_value, last_error, avg_execution_time_ms, created_by,
-                   created_at, updated_at
-            FROM virtual_points
-            WHERE id = ?
-        )";
-        
-        auto results = db.executeQuery(query, {std::to_string(id_)});
-        
-        if (results.empty()) return false;
-        
-        const auto& row = results[0];
-        
-        // 필수 필드
-        tenant_id_ = std::stoi(row.at("tenant_id"));
-        scope_type_ = row.at("scope_type");
-        name_ = row.at("name");
-        description_ = row.at("description");
-        formula_ = row.at("formula");
-        data_type_ = row.at("data_type");
-        unit_ = row.at("unit");
-        calculation_interval_ = std::stoi(row.at("calculation_interval"));
-        calculation_trigger_ = row.at("calculation_trigger");
-        
-        // 선택 필드
-        if (!row.at("site_id").empty()) {
-            site_id_ = std::stoi(row.at("site_id"));
-        }
-        if (!row.at("device_id").empty()) {
-            device_id_ = std::stoi(row.at("device_id"));
-        }
-        
-        // Enum 변환
-        std::string exec_type = row.at("execution_type");
-        if (exec_type == "javascript") execution_type_ = ExecutionType::JAVASCRIPT;
-        else if (exec_type == "formula") execution_type_ = ExecutionType::FORMULA;
-        else if (exec_type == "aggregate") execution_type_ = ExecutionType::AGGREGATE;
-        else execution_type_ = ExecutionType::REFERENCE;
-        
-        std::string error_handling = row.at("error_handling");
-        if (error_handling == "return_null") error_handling_ = ErrorHandling::RETURN_NULL;
-        else if (error_handling == "return_last") error_handling_ = ErrorHandling::RETURN_LAST;
-        else if (error_handling == "return_zero") error_handling_ = ErrorHandling::RETURN_ZERO;
-        else error_handling_ = ErrorHandling::RETURN_DEFAULT;
-        
-        // JSON 필드
-        input_mappings_ = row.at("input_mappings");
-        dependencies_ = row.at("dependencies");
-        tags_ = row.at("tags");
-        
-        // 숫자 필드
-        cache_duration_ms_ = std::stoi(row.at("cache_duration_ms"));
-        execution_count_ = std::stoi(row.at("execution_count"));
-        last_value_ = std::stod(row.at("last_value"));
-        avg_execution_time_ms_ = std::stod(row.at("avg_execution_time_ms"));
-        
-        // 불린 필드
-        is_enabled_ = row.at("is_enabled") == "1";
-        
-        // 기타
-        category_ = row.at("category");
-        last_error_ = row.at("last_error");
-        created_by_ = row.at("created_by");
-        
-        state_ = EntityState::LOADED;
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Failed to load VirtualPointEntity: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool VirtualPointEntity::saveToDatabase() {
-    try {
-        auto& db = DatabaseManager::getInstance();
-        
-        std::string query = R"(
-            INSERT INTO virtual_points 
-            (tenant_id, scope_type, site_id, device_id, name, description,
-             formula, data_type, unit, calculation_interval, calculation_trigger,
-             execution_type, error_handling, input_mappings, dependencies,
-             cache_duration_ms, is_enabled, category, tags, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        )";
-        
-        std::vector<std::string> params = {
-            std::to_string(tenant_id_),
-            scope_type_,
-            site_id_ ? std::to_string(*site_id_) : "NULL",
-            device_id_ ? std::to_string(*device_id_) : "NULL",
-            name_,
-            description_,
-            formula_,
-            data_type_,
-            unit_,
-            std::to_string(calculation_interval_),
-            calculation_trigger_,
-            executionTypeToString(execution_type_),
-            errorHandlingToString(error_handling_),
-            input_mappings_,
-            dependencies_,
-            std::to_string(cache_duration_ms_),
-            is_enabled_ ? "1" : "0",
-            category_,
-            tags_,
-            created_by_
-        };
-        
-        if (db.executeUpdate(query, params)) {
-            // 새로 생성된 ID 가져오기
-            auto results = db.executeQuery("SELECT last_insert_rowid() as id");
-            if (!results.empty()) {
-                id_ = std::stoi(results[0].at("id"));
-                state_ = EntityState::LOADED;
-                return true;
-            }
-        }
-        
-        return false;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Failed to save VirtualPointEntity: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool VirtualPointEntity::updateToDatabase() {
-    if (id_ <= 0) return false;
-    
-    try {
-        auto& db = DatabaseManager::getInstance();
-        
-        std::string query = R"(
-            UPDATE virtual_points SET
-                tenant_id = ?, scope_type = ?, site_id = ?, device_id = ?,
-                name = ?, description = ?, formula = ?, data_type = ?,
-                unit = ?, calculation_interval = ?, calculation_trigger = ?,
-                execution_type = ?, error_handling = ?, input_mappings = ?,
-                dependencies = ?, cache_duration_ms = ?, is_enabled = ?,
-                category = ?, tags = ?, execution_count = ?, last_value = ?,
-                last_error = ?, avg_execution_time_ms = ?, updated_at = datetime('now')
-            WHERE id = ?
-        )";
-        
-        std::vector<std::string> params = {
-            std::to_string(tenant_id_),
-            scope_type_,
-            site_id_ ? std::to_string(*site_id_) : "NULL",
-            device_id_ ? std::to_string(*device_id_) : "NULL",
-            name_,
-            description_,
-            formula_,
-            data_type_,
-            unit_,
-            std::to_string(calculation_interval_),
-            calculation_trigger_,
-            executionTypeToString(execution_type_),
-            errorHandlingToString(error_handling_),
-            input_mappings_,
-            dependencies_,
-            std::to_string(cache_duration_ms_),
-            is_enabled_ ? "1" : "0",
-            category_,
-            tags_,
-            std::to_string(execution_count_),
-            std::to_string(last_value_),
-            last_error_,
-            std::to_string(avg_execution_time_ms_),
-            std::to_string(id_)
-        };
-        
-        if (db.executeUpdate(query, params)) {
-            state_ = EntityState::LOADED;
-            return true;
-        }
-        
-        return false;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Failed to update VirtualPointEntity: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool VirtualPointEntity::deleteFromDatabase() {
-    if (id_ <= 0) return false;
-    
-    try {
-        auto& db = DatabaseManager::getInstance();
-        
-        std::string query = "DELETE FROM virtual_points WHERE id = ?";
-        
-        if (db.executeUpdate(query, {std::to_string(id_)})) {
-            state_ = EntityState::DELETED;
-            return true;
-        }
-        
-        return false;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Failed to delete VirtualPointEntity: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool VirtualPointEntity::validate() const {
-    // 필수 필드 검증
-    if (name_.empty()) return false;
-    if (formula_.empty()) return false;
-    if (tenant_id_ <= 0) return false;
-    
-    return true;
 }
 
 // =============================================================================
@@ -283,6 +45,14 @@ bool VirtualPointEntity::fromJson(const json& data) {
         if (data.contains("unit")) unit_ = data["unit"];
         if (data.contains("calculation_interval")) calculation_interval_ = data["calculation_interval"];
         if (data.contains("calculation_trigger")) calculation_trigger_ = data["calculation_trigger"];
+        
+        if (data.contains("execution_type")) {
+            execution_type_ = stringToExecutionType(data["execution_type"]);
+        }
+        if (data.contains("error_handling")) {
+            error_handling_ = stringToErrorHandling(data["error_handling"]);
+        }
+        
         if (data.contains("input_mappings")) {
             if (data["input_mappings"].is_string()) {
                 input_mappings_ = data["input_mappings"];
@@ -308,10 +78,18 @@ bool VirtualPointEntity::fromJson(const json& data) {
             }
         }
         
+        if (data.contains("execution_count")) execution_count_ = data["execution_count"];
+        if (data.contains("last_value")) last_value_ = data["last_value"];
+        if (data.contains("last_error")) last_error_ = data["last_error"];
+        if (data.contains("avg_execution_time_ms")) avg_execution_time_ms_ = data["avg_execution_time_ms"];
+        if (data.contains("created_by")) created_by_ = data["created_by"];
+        
         return true;
         
     } catch (const std::exception& e) {
-        logger_->Error("Failed to parse VirtualPointEntity from JSON: " + std::string(e.what()));
+        if (logger_) {
+            logger_->Error("Failed to parse VirtualPointEntity from JSON: " + std::string(e.what()));
+        }
         return false;
     }
 }
@@ -340,7 +118,7 @@ json VirtualPointEntity::toJson() const {
     
     // JSON 문자열 필드들은 파싱해서 저장
     try {
-        if (!input_mappings_.empty()) {
+        if (!input_mappings_.empty() && input_mappings_ != "[]") {
             j["input_mappings"] = json::parse(input_mappings_);
         } else {
             j["input_mappings"] = json::array();
@@ -350,7 +128,7 @@ json VirtualPointEntity::toJson() const {
     }
     
     try {
-        if (!dependencies_.empty()) {
+        if (!dependencies_.empty() && dependencies_ != "[]") {
             j["dependencies"] = json::parse(dependencies_);
         } else {
             j["dependencies"] = json::array();
@@ -360,7 +138,7 @@ json VirtualPointEntity::toJson() const {
     }
     
     try {
-        if (!tags_.empty()) {
+        if (!tags_.empty() && tags_ != "[]") {
             j["tags"] = json::parse(tags_);
         } else {
             j["tags"] = json::array();
@@ -401,7 +179,7 @@ std::vector<std::string> VirtualPointEntity::getTagList() const {
     std::vector<std::string> tag_list;
     
     try {
-        if (!tags_.empty()) {
+        if (!tags_.empty() && tags_ != "[]") {
             json tags_json = json::parse(tags_);
             if (tags_json.is_array()) {
                 for (const auto& tag : tags_json) {
@@ -421,6 +199,31 @@ std::vector<std::string> VirtualPointEntity::getTagList() const {
 bool VirtualPointEntity::hasTag(const std::string& tag) const {
     auto tag_list = getTagList();
     return std::find(tag_list.begin(), tag_list.end(), tag) != tag_list.end();
+}
+
+bool VirtualPointEntity::validate() const {
+    // 필수 필드 검증
+    if (name_.empty()) return false;
+    if (formula_.empty()) return false;
+    if (tenant_id_ <= 0) return false;
+    
+    // scope_type 검증
+    if (scope_type_ != "tenant" && scope_type_ != "site" && scope_type_ != "device") {
+        return false;
+    }
+    
+    // scope 일관성 검증
+    if (scope_type_ == "tenant" && (site_id_.has_value() || device_id_.has_value())) {
+        return false;
+    }
+    if (scope_type_ == "site" && (!site_id_.has_value() || device_id_.has_value())) {
+        return false;
+    }
+    if (scope_type_ == "device" && (!site_id_.has_value() || !device_id_.has_value())) {
+        return false;
+    }
+    
+    return true;
 }
 
 // =============================================================================
@@ -445,6 +248,20 @@ std::string VirtualPointEntity::errorHandlingToString(ErrorHandling handling) co
         case ErrorHandling::RETURN_DEFAULT: return "return_default";
         default: return "return_null";
     }
+}
+
+VirtualPointEntity::ExecutionType VirtualPointEntity::stringToExecutionType(const std::string& str) const {
+    if (str == "formula") return ExecutionType::FORMULA;
+    if (str == "aggregate") return ExecutionType::AGGREGATE;
+    if (str == "reference") return ExecutionType::REFERENCE;
+    return ExecutionType::JAVASCRIPT;
+}
+
+VirtualPointEntity::ErrorHandling VirtualPointEntity::stringToErrorHandling(const std::string& str) const {
+    if (str == "return_last") return ErrorHandling::RETURN_LAST;
+    if (str == "return_zero") return ErrorHandling::RETURN_ZERO;
+    if (str == "return_default") return ErrorHandling::RETURN_DEFAULT;
+    return ErrorHandling::RETURN_NULL;
 }
 
 } // namespace Entities
