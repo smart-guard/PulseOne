@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Repositories/VirtualPointRepository.h
-// PulseOne VirtualPointRepository - DeviceRepository 패턴 100% 적용
+// PulseOne VirtualPointRepository - DeviceRepository 패턴 100% 적용 (완성본)
 // =============================================================================
 
 #ifndef VIRTUAL_POINT_REPOSITORY_H
@@ -64,7 +64,7 @@ public:
     bool exists(int id) override;
 
     // =======================================================================
-    // 벌크 연산
+    // 벌크 연산 (IRepository 시그니처에 맞춤)
     // =======================================================================
     
     std::vector<VirtualPointEntity> findByIds(const std::vector<int>& ids) override;
@@ -77,9 +77,10 @@ public:
     
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
     
-    bool saveAll(std::vector<VirtualPointEntity>& entities) override;
-    bool updateAll(const std::vector<VirtualPointEntity>& entities) override;
-    bool deleteByIds(const std::vector<int>& ids) override;
+    // ✅ IRepository에 실제로 있는 벌크 메서드들
+    int saveBulk(std::vector<VirtualPointEntity>& entities) override;
+    int updateBulk(const std::vector<VirtualPointEntity>& entities) override;
+    int deleteByIds(const std::vector<int>& ids) override;
 
     // =======================================================================
     // 캐시 관리 (IRepository에서 상속)
@@ -149,14 +150,14 @@ public:
 
 protected:
     // =======================================================================
-    // IRepository 추상 메서드 구현
+    // 내부 헬퍼 메서드들 (override 제거)
     // =======================================================================
     
-    VirtualPointEntity mapRowToEntity(const std::map<std::string, std::string>& row) override;
-    std::map<std::string, std::string> mapEntityToRow(const VirtualPointEntity& entity) override;
-    std::string getTableName() const override { return "virtual_points"; }
-    std::string getIdFieldName() const override { return "id"; }
-    bool ensureTableExists() override;
+    VirtualPointEntity mapRowToEntity(const std::map<std::string, std::string>& row);
+    std::map<std::string, std::string> mapEntityToRow(const VirtualPointEntity& entity);
+    std::string getTableName() const { return "virtual_points"; }
+    std::string getIdFieldName() const { return "id"; }
+    bool ensureTableExists();
 
 private:
     // =======================================================================

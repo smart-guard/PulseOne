@@ -12,6 +12,55 @@ namespace PulseOne {
 namespace Database {
 namespace SQL {
 
+
+    // =============================================================================
+// 🎯 기타 공통 쿼리들
+// =============================================================================
+    namespace Common {
+        
+    const std::string CHECK_TABLE_EXISTS = R"(
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name = ?
+    )";
+    
+    const std::string GET_TABLE_INFO = "PRAGMA table_info(?)";
+    
+    const std::string GET_FOREIGN_KEYS = "PRAGMA foreign_key_list(?)";
+    
+    const std::string ENABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = ON";
+    
+    const std::string DISABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = OFF";
+    
+    const std::string BEGIN_TRANSACTION = "BEGIN TRANSACTION";
+    
+    const std::string COMMIT_TRANSACTION = "COMMIT";
+    
+    const std::string ROLLBACK_TRANSACTION = "ROLLBACK";
+    // 🔥 마지막 삽입 ID 조회 (SQLite)
+    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+    
+    // 🔥 PostgreSQL용 (필요시 사용)
+    const std::string GET_LAST_INSERT_ID_POSTGRES = "SELECT lastval() as id";
+    
+    // 🔥 MySQL용 (필요시 사용)  
+    const std::string GET_LAST_INSERT_ID_MYSQL = "SELECT LAST_INSERT_ID() as id";
+    
+    // 🔥 현재 시간 조회
+    const std::string GET_CURRENT_TIMESTAMP = "SELECT datetime('now') as timestamp";
+    
+    // 🔥 테이블 존재 여부 확인 (SQLite)
+    const std::string CHECK_TABLE_EXISTS = R"(
+        SELECT COUNT(*) as count 
+        FROM sqlite_master 
+        WHERE type='table' AND name=?
+    )";
+    
+    // 🔥 데이터베이스 정보 조회
+    const std::string GET_DATABASE_VERSION = "SELECT sqlite_version() as version";
+    
+} // namespace Common
+
+
 // =============================================================================
 // 🎯 DeviceRepository 쿼리들 (완전판)
 // =============================================================================
@@ -1017,31 +1066,7 @@ namespace CurrentValue {
     
 } // namespace CurrentValue
 
-// =============================================================================
-// 🎯 기타 공통 쿼리들
-// =============================================================================
-namespace Common {
-    
-    const std::string CHECK_TABLE_EXISTS = R"(
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name = ?
-    )";
-    
-    const std::string GET_TABLE_INFO = "PRAGMA table_info(?)";
-    
-    const std::string GET_FOREIGN_KEYS = "PRAGMA foreign_key_list(?)";
-    
-    const std::string ENABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = ON";
-    
-    const std::string DISABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = OFF";
-    
-    const std::string BEGIN_TRANSACTION = "BEGIN TRANSACTION";
-    
-    const std::string COMMIT_TRANSACTION = "COMMIT";
-    
-    const std::string ROLLBACK_TRANSACTION = "ROLLBACK";
-    
-} // namespace Common
+
 
 // =============================================================================
 // 🎯 동적 쿼리 빌더 헬퍼들
@@ -1089,6 +1114,185 @@ namespace QueryBuilder {
     }
     
 } // namespace QueryBuilder
+
+namespace VirtualPoint {
+    
+    // 🔥 FIND_ALL - 모든 가상포인트 조회 (Device::FIND_ALL 패턴)
+    const std::string FIND_ALL = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, scope_type,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE is_enabled = 1
+        ORDER BY tenant_id, name
+    )";
+    
+    // 🔥 FIND_BY_ID - ID로 조회 (Device::FIND_BY_ID 패턴)
+    const std::string FIND_BY_ID = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, scope_type,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE id = ?
+    )";
+    
+    // 🔥 INSERT - 새 가상포인트 생성 (Device 패턴)
+    const std::string INSERT = R"(
+        INSERT INTO virtual_points (
+            tenant_id, site_id, device_id, name, description, formula,
+            data_type, unit, calculation_interval, calculation_trigger,
+            is_enabled, category, tags, scope_type, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+    
+    // 🔥 UPDATE - 기존 가상포인트 수정 (Device 패턴)
+    const std::string UPDATE = R"(
+        UPDATE virtual_points SET 
+            tenant_id = ?, site_id = ?, device_id = ?, name = ?, 
+            description = ?, formula = ?, data_type = ?, unit = ?,
+            calculation_interval = ?, calculation_trigger = ?,
+            is_enabled = ?, category = ?, tags = ?, scope_type = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    // 🔥 DELETE_BY_ID - ID로 삭제 (Device 패턴)
+    const std::string DELETE_BY_ID = "DELETE FROM virtual_points WHERE id = ?";
+    
+    // 🔥 EXISTS_BY_ID - 존재 여부 확인 (Device 패턴)
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM virtual_points WHERE id = ?";
+    
+    // 🔥 COUNT_ALL - 전체 개수 (Device 패턴)
+    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM virtual_points";
+    
+    // 🔥 COUNT_ENABLED - 활성화된 개수 (Device 패턴)
+    const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM virtual_points WHERE is_enabled = 1";
+    
+    // =======================================================================
+    // VirtualPoint 전용 쿼리들
+    // =======================================================================
+    
+    // 🔥 FIND_BY_TENANT - 테넌트별 조회
+    const std::string FIND_BY_TENANT = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, scope_type,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE tenant_id = ? AND is_enabled = 1
+        ORDER BY name
+    )";
+    
+    // 🔥 FIND_BY_SCOPE - 범위별 조회 (tenant/site/device)
+    const std::string FIND_BY_SCOPE = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, scope_type,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE scope_type = ? AND is_enabled = 1
+        ORDER BY name
+    )";
+    
+    // 🔥 FIND_ACTIVE_FOR_CALCULATION - 계산할 활성 가상포인트들
+    const std::string FIND_ACTIVE_FOR_CALCULATION = R"(
+        SELECT 
+            id, name, formula, calculation_interval, calculation_trigger
+        FROM virtual_points 
+        WHERE is_enabled = 1 AND calculation_trigger = 'timer'
+        ORDER BY calculation_interval
+    )";
+    
+    // 🔥 FIND_INPUTS_BY_VP_ID - 가상포인트의 입력 매핑
+    const std::string FIND_INPUTS_BY_VP_ID = R"(
+        SELECT 
+            variable_name, source_type, source_id, expression
+        FROM virtual_point_inputs 
+        WHERE virtual_point_id = ?
+        ORDER BY variable_name
+    )";
+    
+    // 🔥 GET_LAST_INSERT_ID - 마지막 삽입 ID (Device 패턴)
+    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+    
+    // =======================================================================
+    // 테이블 생성 (Device::CREATE_TABLE 패턴)
+    // =======================================================================
+    
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS virtual_points (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id INTEGER NOT NULL,
+            site_id INTEGER,
+            device_id INTEGER,
+            
+            -- 가상포인트 기본 정보
+            name VARCHAR(100) NOT NULL,
+            description TEXT,
+            formula TEXT NOT NULL,
+            data_type VARCHAR(20) NOT NULL DEFAULT 'float',
+            unit VARCHAR(20),
+            
+            -- 계산 설정
+            calculation_interval INTEGER DEFAULT 1000,
+            calculation_trigger VARCHAR(20) DEFAULT 'timer',
+            is_enabled INTEGER DEFAULT 1,
+            
+            -- 메타데이터
+            category VARCHAR(50),
+            tags TEXT,
+            scope_type VARCHAR(20) NOT NULL DEFAULT 'tenant',
+            
+            created_by INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            -- 제약조건
+            CONSTRAINT chk_scope_type CHECK (scope_type IN ('tenant', 'site', 'device'))
+        )
+    )";
+    
+    // 🔥 가상포인트 입력 매핑 테이블
+    const std::string CREATE_INPUTS_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS virtual_point_inputs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            virtual_point_id INTEGER NOT NULL,
+            variable_name VARCHAR(50) NOT NULL,
+            source_type VARCHAR(20) NOT NULL,
+            source_id INTEGER,
+            expression TEXT,
+            
+            FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
+            CONSTRAINT chk_source_type CHECK (source_type IN ('data_point', 'virtual_point', 'constant'))
+        )
+    )";
+    
+    // 🔥 가상포인트 실행 로그 테이블
+    const std::string CREATE_EXECUTION_LOG_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS virtual_point_execution_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            virtual_point_id INTEGER NOT NULL,
+            calculated_value REAL,
+            execution_time_ms INTEGER,
+            status VARCHAR(20),
+            error_message TEXT,
+            executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
+        )
+    )";
+    
+} // namespace VirtualPoint
 
 } // namespace SQL
 } // namespace Database  

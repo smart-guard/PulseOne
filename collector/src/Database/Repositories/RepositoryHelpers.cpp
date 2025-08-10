@@ -369,6 +369,46 @@ std::string RepositoryHelpers::toLowerString(const std::string& str) {
     return result;
 }
 
+std::string RepositoryHelpers::join(const std::vector<std::string>& values, const std::string& delimiter) {
+    if (values.empty()) {
+        return "";
+    }
+    
+    std::ostringstream ss;
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            ss << delimiter;
+        }
+        ss << values[i];
+    }
+    return ss.str();
+}
+
+std::string RepositoryHelpers::join(const std::vector<int>& values, const std::string& delimiter) {
+    if (values.empty()) {
+        return "";
+    }
+    
+    std::ostringstream ss;
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            ss << delimiter;
+        }
+        ss << values[i];
+    }
+    return ss.str();
+}
+
+std::string RepositoryHelpers::replaceParameterMarkers(std::string query, const std::vector<std::string>& params) {
+    for (const auto& param : params) {
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, param);
+        }
+    }
+    return query;
+}
+
 } // namespace Repositories
 } // namespace Database  
 } // namespace PulseOne

@@ -132,7 +132,35 @@ public:
     
     const std::string& getCreatedBy() const { return created_by_; }
     void setCreatedBy(const std::string& user) { created_by_ = user; markModified(); }
-
+    /**
+     * @brief DB에서 엔티티 로드
+     * @return 성공 시 true
+     */
+    bool loadFromDatabase() override;
+    
+    /**
+     * @brief DB에 엔티티 저장
+     * @return 성공 시 true
+     */
+    bool saveToDatabase() override;
+    
+    /**
+     * @brief DB에 엔티티 업데이트
+     * @return 성공 시 true
+     */
+    bool updateToDatabase() override;
+    
+    /**
+     * @brief DB에서 엔티티 삭제
+     * @return 성공 시 true
+     */
+    bool deleteFromDatabase() override;
+    
+    /**
+     * @brief 테이블명 반환
+     * @return 테이블명
+     */
+    std::string getTableName() const override { return "virtual_points"; }
     // =======================================================================
     // JSON 변환
     // =======================================================================

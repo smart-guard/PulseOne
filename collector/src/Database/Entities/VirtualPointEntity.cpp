@@ -4,6 +4,8 @@
 // =============================================================================
 
 #include "Database/Entities/VirtualPointEntity.h"
+#include "Database/RepositoryFactory.h"
+#include "Database/Repositories/VirtualPointRepository.h"
 #include <sstream>
 #include <algorithm>
 
@@ -262,6 +264,192 @@ VirtualPointEntity::ErrorHandling VirtualPointEntity::stringToErrorHandling(cons
     if (str == "return_zero") return ErrorHandling::RETURN_ZERO;
     if (str == "return_default") return ErrorHandling::RETURN_DEFAULT;
     return ErrorHandling::RETURN_NULL;
+}
+
+bool VirtualPointEntity::loadFromDatabase() {
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::loadFromDatabase - Invalid virtual point ID: " + std::to_string(getId()));
+        }
+        markError();
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        
+        if (!repo) {
+            if (logger_) {
+                logger_->Error("VirtualPointEntity::loadFromDatabase - Repository not available");
+            }
+            markError();
+            return false;
+        }
+        
+        auto loaded_entity = repo->findById(getId());
+        if (!loaded_entity) {
+            if (logger_) {
+                logger_->Warn("VirtualPointEntity::loadFromDatabase - Virtual point not found: " + std::to_string(getId()));
+            }
+            return false;
+        }
+        
+        // 현재 엔티티에 로드된 데이터 복사
+        *this = loaded_entity.value();
+        markSaved(); // DeviceEntity 패턴
+        
+        if (logger_) {
+            logger_->Info("VirtualPointEntity::loadFromDatabase - Loaded virtual point: " + getName());
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::loadFromDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+bool VirtualPointEntity::saveToDatabase() {
+    if (!validate()) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::saveToDatabase - Invalid virtual point data");
+        }
+        markError();
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        
+        if (!repo) {
+            if (logger_) {
+                logger_->Error("VirtualPointEntity::saveToDatabase - Repository not available");
+            }
+            markError();
+            return false;
+        }
+        
+        VirtualPointEntity temp_entity = *this; // 복사본 생성 (save는 비상수 참조 필요)
+        bool success = repo->save(temp_entity);
+        
+        if (success) {
+            // 생성된 ID를 현재 엔티티에 반영
+            setId(temp_entity.getId());
+            markSaved(); // DeviceEntity 패턴
+            
+            if (logger_) {
+                logger_->Info("VirtualPointEntity::saveToDatabase - Saved virtual point: " + getName() + 
+                            " (ID: " + std::to_string(getId()) + ")");
+            }
+        } else {
+            markError();
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::saveToDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+bool VirtualPointEntity::updateToDatabase() {
+    if (getId() <= 0 || !validate()) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::updateToDatabase - Invalid virtual point data or ID");
+        }
+        markError();
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        
+        if (!repo) {
+            if (logger_) {
+                logger_->Error("VirtualPointEntity::updateToDatabase - Repository not available");
+            }
+            markError();
+            return false;
+        }
+        
+        bool success = repo->update(*this);
+        
+        if (success) {
+            markSaved(); // DeviceEntity 패턴
+            
+            if (logger_) {
+                logger_->Info("VirtualPointEntity::updateToDatabase - Updated virtual point: " + getName() + 
+                            " (ID: " + std::to_string(getId()) + ")");
+            }
+        } else {
+            markError();
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::updateToDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
+}
+
+bool VirtualPointEntity::deleteFromDatabase() {
+    if (getId() <= 0) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::deleteFromDatabase - Invalid virtual point ID");
+        }
+        markError();
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        
+        if (!repo) {
+            if (logger_) {
+                logger_->Error("VirtualPointEntity::deleteFromDatabase - Repository not available");
+            }
+            markError();
+            return false;
+        }
+        
+        bool success = repo->deleteById(getId());
+        
+        if (success) {
+            markDeleted(); // DeviceEntity 패턴
+            
+            if (logger_) {
+                logger_->Info("VirtualPointEntity::deleteFromDatabase - Deleted virtual point: " + getName() + 
+                            " (ID: " + std::to_string(getId()) + ")");
+            }
+        } else {
+            markError();
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("VirtualPointEntity::deleteFromDatabase failed: " + std::string(e.what()));
+        }
+        markError();
+        return false;
+    }
 }
 
 } // namespace Entities
