@@ -30,7 +30,7 @@ namespace Repositories {
     class SiteRepository;
     class TenantRepository;
     class UserRepository;
-    class AlarmConfigRepository;
+    class AlarmRuleRepository;
 }
 
 /**
@@ -134,13 +134,13 @@ public:
         return user_repository_;
     }
     
-    std::shared_ptr<Repositories::AlarmConfigRepository> getAlarmConfigRepository() {
+    std::shared_ptr<Repositories::AlarmRuleRepository> getAlarmRuleRepository() {
         std::lock_guard<std::mutex> lock(factory_mutex_);
         if (!initialized_.load()) {
             throw std::runtime_error("RepositoryFactory not initialized");
         }
         creation_count_.fetch_add(1);
-        return alarm_config_repository_;
+        return alarm_rule_repository_;
     }
 
     // =============================================================================
@@ -190,7 +190,7 @@ private:
     std::shared_ptr<Repositories::DeviceSettingsRepository> device_settings_repository_;
     std::shared_ptr<Repositories::UserRepository> user_repository_;
     std::shared_ptr<Repositories::TenantRepository> tenant_repository_;
-    std::shared_ptr<Repositories::AlarmConfigRepository> alarm_config_repository_;
+    std::shared_ptr<Repositories::AlarmRuleRepository> alarm_rule_repository_;
     std::shared_ptr<Repositories::SiteRepository> site_repository_;
     std::shared_ptr<Repositories::VirtualPointRepository> virtual_point_repository_;
     std::shared_ptr<Repositories::CurrentValueRepository> current_value_repository_;

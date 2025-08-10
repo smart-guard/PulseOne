@@ -18,10 +18,12 @@
 #include "Database/Repositories/DeviceSettingsRepository.h"
 #include "Database/Repositories/UserRepository.h"
 #include "Database/Repositories/TenantRepository.h"
-#include "Database/Repositories/AlarmConfigRepository.h"
 #include "Database/Repositories/SiteRepository.h"
 #include "Database/Repositories/VirtualPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/Repositories/AlarmRuleRepository.h"
+#include "Database/Repositories/AlarmOccurrenceRepository.h"
+
 
 // ✅ 필수 STL 헤더들
 #include <map>
@@ -144,11 +146,13 @@ void RepositoryFactory::shutdown() {
         data_point_repository_.reset();
         user_repository_.reset();
         tenant_repository_.reset();
-        alarm_config_repository_.reset();
+        alarm_rule_repository_.reset();
         site_repository_.reset();
         virtual_point_repository_.reset();
         current_value_repository_.reset();
         device_settings_repository_.reset(); 
+        alarm_occurrence_repository_.reset();
+
         
         initialized_.store(false);
         logger_->Info("✅ RepositoryFactory shutdown completed");
@@ -253,11 +257,6 @@ bool RepositoryFactory::createRepositoryInstances() {
             return false;
         }
         
-        alarm_config_repository_ = std::make_shared<Repositories::AlarmConfigRepository>();
-        if (!alarm_config_repository_) {
-            logger_->Error("Failed to create AlarmConfigRepository");
-            return false;
-        }
         
         site_repository_ = std::make_shared<Repositories::SiteRepository>();
         if (!site_repository_) {
@@ -276,7 +275,19 @@ bool RepositoryFactory::createRepositoryInstances() {
             logger_->Error("Failed to create CurrentValueRepository");
             return false;
         }
-        
+
+        alarm_rule_repository_ = std::make_shared<Repositories::AlarmRuleRepository>();
+        if (!alarm_rule_repository_) {
+            logger_->Error("Failed to create AlarmRuleRepository");
+            return false;
+        }
+
+        alarm_occurrence_repository_ = std::make_shared<Repositories::AlarmOccurrenceRepository>();
+        if (!alarm_occurrence_repository_) {
+            logger_->Error("Failed to create AlarmOccurrenceRepository");
+            return false;
+        }
+                
         logger_->Info("All repository instances created successfully");
         return true;
         

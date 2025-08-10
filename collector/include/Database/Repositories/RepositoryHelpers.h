@@ -58,7 +58,13 @@ public:
      * @return 파라미터가 치환된 쿼리 문자열
      */
     static std::string replaceParameterMarkers(std::string query, const std::vector<std::string>& params);
-
+    /**
+     * @brief 쿼리의 {key} 형태 플레이스홀더를 파라미터 맵으로 치환
+     * @param query 원본 쿼리 문자열
+     * @param params 파라미터 맵 (key -> value)
+     * @return 치환된 쿼리 문자열
+     */
+    static std::string replaceParametersInOrder(const std::string& query, const std::map<std::string, std::string>& params);
     // =============================================================================
     // 🔥 SQL 절 빌더 함수들 (기존)
     // =============================================================================

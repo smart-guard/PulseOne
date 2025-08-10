@@ -483,61 +483,7 @@ std::string AlarmRuleEntity::interpolateTemplate(const std::string& tmpl, double
     return result;
 }
 
-// =============================================================================
-// 내부 헬퍼 메서드 구현 (Entity 전용 - Repository와 분리)
-// =============================================================================
 
-std::string AlarmRuleEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(tp);
-    std::ostringstream oss;
-    oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
-
-std::string AlarmRuleEntity::interpolateTemplate(const std::string& tmpl, double value, const std::string& unit) const {
-    std::string result = tmpl;
-    
-    // {{ALARM_NAME}} 치환
-    size_t pos = result.find("{{ALARM_NAME}}");
-    if (pos != std::string::npos) {
-        result.replace(pos, 14, name_);
-    }
-    
-    // {{CURRENT_VALUE}} 치환
-    std::ostringstream value_oss;
-    value_oss << std::fixed << std::setprecision(2) << value;
-    std::string value_str = value_oss.str();
-    
-    pos = result.find("{{CURRENT_VALUE}}");
-    if (pos != std::string::npos) {
-        result.replace(pos, 17, value_str);
-    }
-    
-    pos = result.find("{{VALUE}}");
-    if (pos != std::string::npos) {
-        result.replace(pos, 9, value_str);
-    }
-    
-    // {{UNIT}} 치환
-    pos = result.find("{{UNIT}}");
-    if (pos != std::string::npos) {
-        result.replace(pos, 8, unit);
-    }
-    
-    // {{SEVERITY}} 치환
-    pos = result.find("{{SEVERITY}}");
-    if (pos != std::string::npos) {
-        result.replace(pos, 12, severityToString(severity_));
-    }
-    
-    // {{TIMESTAMP}} 치환
-    pos = result.find("{{TIMESTAMP}}");
-    if (pos != std::string::npos) {
-        result.replace(pos, 13, timestampToString(std::chrono::system_clock::now()));
-    }
-    
-    return result;
-}
 
 } // namespace Entities
 } // namespace Database

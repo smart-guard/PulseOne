@@ -409,6 +409,22 @@ std::string RepositoryHelpers::replaceParameterMarkers(std::string query, const 
     return query;
 }
 
+std::string RepositoryHelpers::replaceParametersInOrder(const std::string& query, const std::map<std::string, std::string>& params) {
+    std::string result = query;
+    
+    for (const auto& pair : params) {
+        size_t pos = 0;
+        std::string placeholder = "{" + pair.first + "}";
+        
+        while ((pos = result.find(placeholder, pos)) != std::string::npos) {
+            result.replace(pos, placeholder.length(), pair.second);
+            pos += pair.second.length();
+        }
+    }
+    
+    return result;
+}
+
 } // namespace Repositories
 } // namespace Database  
 } // namespace PulseOne
