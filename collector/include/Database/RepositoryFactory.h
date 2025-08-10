@@ -31,6 +31,7 @@ namespace Repositories {
     class TenantRepository;
     class UserRepository;
     class AlarmRuleRepository;
+    class AlarmOccurrenceRepository; 
 }
 
 /**
@@ -143,6 +144,15 @@ public:
         return alarm_rule_repository_;
     }
 
+    std::shared_ptr<Repositories::AlarmOccurrenceRepository> getAlarmOccurrenceRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return alarm_occurrence_repository_;
+    }
+
     // =============================================================================
     // 캐시 관리
     // =============================================================================
@@ -194,7 +204,7 @@ private:
     std::shared_ptr<Repositories::SiteRepository> site_repository_;
     std::shared_ptr<Repositories::VirtualPointRepository> virtual_point_repository_;
     std::shared_ptr<Repositories::CurrentValueRepository> current_value_repository_;
-    
+    std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repository_;
     // 상태 관리
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;

@@ -1,95 +1,87 @@
-// =============================================================================
-// collector/include/Database/Entities/AlarmOccurrenceEntity.h
-// PulseOne AlarmOccurrenceEntity - 알람 발생 이력 엔티티 (BaseEntity 패턴)
-// =============================================================================
+#ifndef ALARM_OCCURRENCE_ENTITY_H
+#define ALARM_OCCURRENCE_ENTITY_H
 
 /**
  * @file AlarmOccurrenceEntity.h
- * @brief PulseOne 알람 발생 이력 엔티티 - BaseEntity 패턴 100% 적용
+ * @brief PulseOne 알람 발생 이력 엔티티 - BaseEntity 패턴 100% 준수
  * @author PulseOne Development Team
  * @date 2025-08-10
  * 
- * 🎯 알람 발생 이력 관리:
- * - alarm_occurrences 테이블과 1:1 매핑
- * - BaseEntity<AlarmOccurrenceEntity> 상속
- * - JSON 직렬화/역직렬화 지원
- * - 상태 전환 (active → acknowledged → cleared)
- * - 알림 관리 (notification tracking)
+ * 🔥 BaseEntity 패턴 100% 준수:
+ * - BaseEntity<AlarmOccurrenceEntity> 상속 (CRTP)
+ * - INTEGER ID 기반
+ * - markModified() 패턴 통일 (markDirty() 아님!)
+ * - JSON 직렬화/역직렬화 (json 타입 사용)
+ * - DeviceEntity/DataPointEntity와 동일한 패턴
  */
-
-#ifndef ALARM_OCCURRENCE_ENTITY_H
-#define ALARM_OCCURRENCE_ENTITY_H
 
 #include "Database/Entities/BaseEntity.h"
 #include <string>
 #include <chrono>
 #include <optional>
 #include <map>
-#include <vector>
 
-// Forward declarations
-class LogManager;
-class ConfigManager;
+#ifdef HAS_NLOHMANN_JSON
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+#else
+struct json {
+    template<typename T> T get() const { return T{}; }
+    bool contains(const std::string&) const { return false; }
+    std::string dump() const { return "{}"; }
+    static json parse(const std::string&) { return json{}; }
+    static json object() { return json{}; }
+};
+#endif
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
 
 /**
- * @brief 알람 발생 이력 엔티티 클래스
- * 
- * alarm_occurrences 테이블과 1:1 대응:
- * - 알람 발생 시점 데이터 저장
- * - 상태 전환 추적 (active/acknowledged/cleared)
- * - 알림 전송 이력 관리
- * - JSON 기반 확장 데이터 지원
+ * @brief 알람 발생 이력 엔티티 클래스 (BaseEntity 템플릿 상속)
  */
 class AlarmOccurrenceEntity : public BaseEntity<AlarmOccurrenceEntity> {
 public:
     // =======================================================================
-    // 🎯 열거형 정의들
+    // 알람 심각도 열거형 (alarm_rules 테이블과 일치)
     // =======================================================================
     
-    /**
-     * @brief 알람 발생 상태
-     */
-    enum class State {
-        ACTIVE = 0,        // 활성 상태 (발생)
-        ACKNOWLEDGED,      // 인지됨 (사용자가 확인)
-        CLEARED,          // 해제됨 (조건 정상화)
-        SUPPRESSED,       // 억제됨 (자동 억제)
-        SHELVED          // 보류됨 (일시적 비활성화)
-    };
-    
-    /**
-     * @brief 알람 심각도 (AlarmRuleEntity와 동일)
-     */
     enum class Severity {
-        CRITICAL = 0,     // 긴급
-        HIGH,            // 높음
-        MEDIUM,          // 보통
-        LOW,             // 낮음
-        INFO             // 정보
+        LOW,      // 낮음
+        MEDIUM,   // 보통  
+        HIGH,     // 높음
+        CRITICAL  // 치명적
     };
     
+    // =======================================================================
+    // 알람 상태 열거형
+    // =======================================================================
+    
+    enum class State {
+        ACTIVE,        // 활성 (발생 중)
+        ACKNOWLEDGED,  // 인지됨
+        CLEARED        // 해제됨
+    };
+
     // =======================================================================
     // 생성자 및 소멸자
     // =======================================================================
     
     /**
-     * @brief 기본 생성자
+     * @brief 기본 생성자 (새 알람 발생)
      */
     AlarmOccurrenceEntity();
     
     /**
-     * @brief ID로 생성자
-     * @param occurrence_id 알람 발생 이력 ID
+     * @brief ID로 생성자 (기존 발생 로드)
+     * @param occurrence_id 발생 ID
      */
     explicit AlarmOccurrenceEntity(int occurrence_id);
     
     /**
-     * @brief 알람 규칙으로 생성자 (새 발생 생성 시)
-     * @param rule_id 알람 규칙 ID
+     * @brief 완전 생성자 (새 알람 발생 생성)
+     * @param rule_id 규칙 ID
      * @param tenant_id 테넌트 ID
      * @param trigger_value 트리거 값
      * @param alarm_message 알람 메시지
@@ -101,7 +93,7 @@ public:
     virtual ~AlarmOccurrenceEntity() = default;
     
     // =======================================================================
-    // BaseEntity 순수 가상 함수 구현
+    // BaseEntity 순수 가상 함수 구현 (필수!)
     // =======================================================================
     
     bool loadFromDatabase() override;
@@ -109,38 +101,71 @@ public:
     bool deleteFromDatabase() override;
     bool updateToDatabase() override;
     
+    /**
+     * @brief 테이블 이름 반환 (필수 구현)
+     * @return "alarm_occurrences"
+     */
+    std::string getTableName() const override {
+        return "alarm_occurrences";
+    }
+    
+    /**
+     * @brief JSON 객체로 변환 (BaseEntity 패턴)
+     * @return json 객체 (string 아님!)
+     */
+    json toJson() const override;
+    
+    /**
+     * @brief JSON 객체에서 로드 (BaseEntity 패턴)
+     * @param data json 객체 (string 아님!)
+     * @return 성공 시 true
+     */
+    bool fromJson(const json& data) override;
+    
+    /**
+     * @brief 표시용 문자열 생성 (필수 구현)
+     * @return 사람이 읽기 쉬운 형태의 문자열
+     */
+    std::string toString() const override;
+    
+    /**
+     * @brief 유효성 검증 (필수 구현)
+     * @return 유효하면 true
+     */
+    bool isValid() const override;
+    
     // =======================================================================
-    // 🎯 기본 정보 getter/setter
+    // 🎯 기본 정보 getter/setter (markModified 사용)
     // =======================================================================
     
     // 규칙 연관
     int getRuleId() const { return rule_id_; }
-    void setRuleId(int rule_id) { rule_id_ = rule_id; markDirty(); }
+    void setRuleId(int rule_id) { rule_id_ = rule_id; markModified(); }
     
     int getTenantId() const { return tenant_id_; }
-    void setTenantId(int tenant_id) { tenant_id_ = tenant_id; markDirty(); }
+    void setTenantId(int tenant_id) { tenant_id_ = tenant_id; markModified(); }
     
     // 발생 정보
     std::chrono::system_clock::time_point getOccurrenceTime() const { return occurrence_time_; }
     void setOccurrenceTime(const std::chrono::system_clock::time_point& time) { 
-        occurrence_time_ = time; markDirty(); 
+        occurrence_time_ = time; markModified(); 
     }
     
     std::string getTriggerValue() const { return trigger_value_; }
-    void setTriggerValue(const std::string& value) { trigger_value_ = value; markDirty(); }
+    void setTriggerValue(const std::string& value) { trigger_value_ = value; markModified(); }
     
     std::string getTriggerCondition() const { return trigger_condition_; }
-    void setTriggerCondition(const std::string& condition) { trigger_condition_ = condition; markDirty(); }
+    void setTriggerCondition(const std::string& condition) { trigger_condition_ = condition; markModified(); }
     
     std::string getAlarmMessage() const { return alarm_message_; }
-    void setAlarmMessage(const std::string& message) { alarm_message_ = message; markDirty(); }
+    void setAlarmMessage(const std::string& message) { alarm_message_ = message; markModified(); }
     
     Severity getSeverity() const { return severity_; }
-    void setSeverity(Severity severity) { severity_ = severity; markDirty(); }
+    void setSeverity(Severity severity) { severity_ = severity; markModified(); }
     
     // 상태
     State getState() const { return state_; }
-    void setState(State state) { state_ = state; markDirty(); }
+    void setState(State state) { state_ = state; markModified(); }
     
     // =======================================================================
     // 🎯 Acknowledge 정보 getter/setter
@@ -150,15 +175,15 @@ public:
         return acknowledged_time_; 
     }
     void setAcknowledgedTime(const std::chrono::system_clock::time_point& time) { 
-        acknowledged_time_ = time; markDirty(); 
+        acknowledged_time_ = time; markModified(); 
     }
     
     std::optional<int> getAcknowledgedBy() const { return acknowledged_by_; }
-    void setAcknowledgedBy(int user_id) { acknowledged_by_ = user_id; markDirty(); }
+    void setAcknowledgedBy(int user_id) { acknowledged_by_ = user_id; markModified(); }
     
     std::string getAcknowledgeComment() const { return acknowledge_comment_; }
     void setAcknowledgeComment(const std::string& comment) { 
-        acknowledge_comment_ = comment; markDirty(); 
+        acknowledge_comment_ = comment; markModified(); 
     }
     
     // =======================================================================
@@ -169,66 +194,54 @@ public:
         return cleared_time_; 
     }
     void setClearedTime(const std::chrono::system_clock::time_point& time) { 
-        cleared_time_ = time; markDirty(); 
+        cleared_time_ = time; markModified(); 
     }
     
     std::string getClearedValue() const { return cleared_value_; }
-    void setClearedValue(const std::string& value) { cleared_value_ = value; markDirty(); }
+    void setClearedValue(const std::string& value) { cleared_value_ = value; markModified(); }
     
     std::string getClearComment() const { return clear_comment_; }
-    void setClearComment(const std::string& comment) { clear_comment_ = comment; markDirty(); }
+    void setClearComment(const std::string& comment) { clear_comment_ = comment; markModified(); }
     
     // =======================================================================
     // 🎯 알림 정보 getter/setter
     // =======================================================================
     
     bool isNotificationSent() const { return notification_sent_; }
-    void setNotificationSent(bool sent) { notification_sent_ = sent; markDirty(); }
+    void setNotificationSent(bool sent) { notification_sent_ = sent; markModified(); }
     
     std::optional<std::chrono::system_clock::time_point> getNotificationTime() const { 
         return notification_time_; 
     }
     void setNotificationTime(const std::chrono::system_clock::time_point& time) { 
-        notification_time_ = time; markDirty(); 
+        notification_time_ = time; markModified(); 
     }
     
     int getNotificationCount() const { return notification_count_; }
-    void setNotificationCount(int count) { notification_count_ = count; markDirty(); }
+    void setNotificationCount(int count) { notification_count_ = count; markModified(); }
     
     std::string getNotificationResult() const { return notification_result_; }
-    void setNotificationResult(const std::string& result) { notification_result_ = result; markDirty(); }
+    void setNotificationResult(const std::string& result) { notification_result_ = result; markModified(); }
     
     // =======================================================================
-    // 🎯 추가 컨텍스트 getter/setter
+    // 🎯 추가 컨텍스트 정보
     // =======================================================================
     
     std::string getContextData() const { return context_data_; }
-    void setContextData(const std::string& data) { context_data_ = data; markDirty(); }
+    void setContextData(const std::string& data) { context_data_ = data; markModified(); }
     
     std::string getSourceName() const { return source_name_; }
-    void setSourceName(const std::string& name) { source_name_ = name; markDirty(); }
+    void setSourceName(const std::string& name) { source_name_ = name; markModified(); }
     
     std::string getLocation() const { return location_; }
-    void setLocation(const std::string& location) { location_ = location; markDirty(); }
-    
-    // =======================================================================
-    // 🎯 열거형 변환 유틸리티 메서드들
-    // =======================================================================
-    
-    static std::string stateToString(State state);
-    static State stringToState(const std::string& state_str);
-    static std::vector<std::string> getAllStateStrings();
-    
-    static std::string severityToString(Severity severity);
-    static Severity stringToSeverity(const std::string& severity_str);
-    static std::vector<std::string> getAllSeverityStrings();
+    void setLocation(const std::string& location) { location_ = location; markModified(); }
     
     // =======================================================================
     // 🎯 비즈니스 로직 메서드들
     // =======================================================================
     
     /**
-     * @brief 알람 발생 인지 처리
+     * @brief 알람 인지 처리
      * @param user_id 인지한 사용자 ID
      * @param comment 인지 코멘트
      * @return 성공 시 true
@@ -236,42 +249,40 @@ public:
     bool acknowledge(int user_id, const std::string& comment = "");
     
     /**
-     * @brief 알람 발생 해제 처리
-     * @param cleared_value 해제 시점 값
+     * @brief 알람 해제 처리
+     * @param cleared_value 해제 시점의 값
      * @param comment 해제 코멘트
      * @return 성공 시 true
      */
-    bool clear(const std::string& cleared_value = "", const std::string& comment = "");
+    bool clear(const std::string& cleared_value, const std::string& comment = "");
     
     /**
-     * @brief 알람 상태 변경
+     * @brief 상태 변경
      * @param new_state 새로운 상태
      * @return 성공 시 true
      */
     bool changeState(State new_state);
     
     /**
-     * @brief 알림 전송 완료 기록
+     * @brief 알림 전송 완료 마킹
      * @param result_json 전송 결과 JSON
      */
     void markNotificationSent(const std::string& result_json = "");
     
     /**
-     * @brief 알림 재전송 카운트 증가
+     * @brief 알림 횟수 증가
      */
     void incrementNotificationCount();
     
+    // =======================================================================
+    // 🎯 유틸리티 메서드들
+    // =======================================================================
+    
     /**
-     * @brief 발생 경과 시간 계산 (초 단위)
+     * @brief 발생 후 경과 시간 (초)
      * @return 경과 시간 (초)
      */
     long long getElapsedSeconds() const;
-    
-    /**
-     * @brief 상태별 지속 시간 계산
-     * @return 현재 상태 지속 시간 (초)
-     */
-    long long getStateDurationSeconds() const;
     
     /**
      * @brief 활성 상태인지 확인
@@ -292,49 +303,28 @@ public:
     bool isCleared() const { return state_ == State::CLEARED; }
     
     // =======================================================================
-    // 🎯 JSON 직렬화/역직렬화 (BaseEntity 확장)
+    // 🎯 정적 유틸리티 메서드들
     // =======================================================================
     
     /**
-     * @brief JSON 문자열로 변환
-     * @return JSON 문자열
+     * @brief Severity 열거형을 문자열로 변환
      */
-    std::string toJson() const override;
+    static std::string severityToString(Severity severity);
     
     /**
-     * @brief JSON 문자열에서 로드
-     * @param json_str JSON 문자열
-     * @return 성공 시 true
+     * @brief 문자열을 Severity 열거형으로 변환
      */
-    bool fromJson(const std::string& json_str) override;
+    static Severity stringToSeverity(const std::string& str);
     
     /**
-     * @brief 간단한 정보만 포함하는 JSON (성능 최적화)
-     * @return 축약된 JSON 문자열
+     * @brief State 열거형을 문자열로 변환
      */
-    std::string toSummaryJson() const;
-    
-    // =======================================================================
-    // 🎯 유틸리티 메서드들
-    // =======================================================================
+    static std::string stateToString(State state);
     
     /**
-     * @brief 표시용 문자열 생성
-     * @return 사람이 읽기 쉬운 형태의 문자열
+     * @brief 문자열을 State 열거형으로 변환
      */
-    std::string getDisplayString() const;
-    
-    /**
-     * @brief 로그용 문자열 생성
-     * @return 로그에 적합한 형태의 문자열
-     */
-    std::string getLogString() const;
-    
-    /**
-     * @brief 유효성 검증
-     * @return 유효하면 true
-     */
-    bool isValid() const override;
+    static State stringToState(const std::string& str);
 
 private:
     // =======================================================================
@@ -367,7 +357,7 @@ private:
     
     // 알림 정보
     bool notification_sent_;                                  // notification_sent
-    std::optional<std::chrono::system_clock::time_point> notification_time_; // notification_time
+    std::optional<std::chrono::system_clock::time_point> notification_time_;  // notification_time
     int notification_count_;                                  // notification_count
     std::string notification_result_;                         // notification_result (JSON)
     
@@ -376,46 +366,19 @@ private:
     std::string source_name_;                                 // source_name
     std::string location_;                                    // location
     
-    // 🎯 의존성 (BaseEntity 추가)
-    mutable LogManager* logger_;
-    mutable ConfigManager* config_manager_;
-    
     // =======================================================================
-    // 내부 헬퍼 메서드들
+    // 🎯 헬퍼 메서드들
     // =======================================================================
     
     /**
-     * @brief 의존성 초기화
-     */
-    void initializeDependencies() const;
-    
-    /**
-     * @brief 타임스탬프를 문자열로 변환
-     * @param tp 타임포인트
-     * @return ISO 8601 형식 문자열
+     * @brief 시간을 문자열로 변환
      */
     std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
     
     /**
-     * @brief 문자열을 타임스탬프로 변환
-     * @param timestamp_str ISO 8601 형식 문자열
-     * @return 타임포인트
+     * @brief 문자열을 시간으로 변환
      */
-    std::chrono::system_clock::time_point stringToTimestamp(const std::string& timestamp_str) const;
-    
-    /**
-     * @brief JSON 값 파싱 헬퍼
-     * @param json_str JSON 문자열
-     * @return 파싱된 맵
-     */
-    std::map<std::string, std::string> parseJsonToMap(const std::string& json_str) const;
-    
-    /**
-     * @brief 맵을 JSON으로 변환 헬퍼
-     * @param data 데이터 맵
-     * @return JSON 문자열
-     */
-    std::string mapToJson(const std::map<std::string, std::string>& data) const;
+    std::chrono::system_clock::time_point stringToTimestamp(const std::string& str) const;
 };
 
 } // namespace Entities
