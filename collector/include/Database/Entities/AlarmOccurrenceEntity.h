@@ -3,36 +3,31 @@
 
 /**
  * @file AlarmOccurrenceEntity.h
- * @brief PulseOne 알람 발생 이력 엔티티 - BaseEntity 패턴 100% 준수
+ * @brief PulseOne AlarmOccurrenceEntity - DeviceEntity/DataPointEntity 패턴 100% 준수
  * @author PulseOne Development Team
  * @date 2025-08-10
  * 
- * 🔥 BaseEntity 패턴 100% 준수:
+ * 🔥 DeviceEntity/DataPointEntity 패턴 완전 적용:
  * - BaseEntity<AlarmOccurrenceEntity> 상속 (CRTP)
  * - INTEGER ID 기반
- * - markModified() 패턴 통일 (markDirty() 아님!)
- * - JSON 직렬화/역직렬화 (json 타입 사용)
- * - DeviceEntity/DataPointEntity와 동일한 패턴
+ * - markModified() 패턴 통일
+ * - JSON 직렬화/역직렬화 인라인
+ * - 헤더에서는 선언만, CPP에서 Repository 호출
+ * 
+ * 🎯 DB 스키마 (alarm_occurrences 테이블):
+ * - id, rule_id, tenant_id
+ * - occurrence_time, trigger_value, trigger_condition
+ * - alarm_message, severity, state
+ * - acknowledged_time, acknowledged_by, acknowledge_comment
+ * - cleared_time, cleared_value, clear_comment
+ * - notification_sent, notification_time, notification_count, notification_result
+ * - context_data, source_name, location
  */
 
 #include "Database/Entities/BaseEntity.h"
 #include <string>
 #include <chrono>
 #include <optional>
-#include <map>
-
-#ifdef HAS_NLOHMANN_JSON
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-#else
-struct json {
-    template<typename T> T get() const { return T{}; }
-    bool contains(const std::string&) const { return false; }
-    std::string dump() const { return "{}"; }
-    static json parse(const std::string&) { return json{}; }
-    static json object() { return json{}; }
-};
-#endif
 
 namespace PulseOne {
 namespace Database {
@@ -40,32 +35,60 @@ namespace Entities {
 
 /**
  * @brief 알람 발생 이력 엔티티 클래스 (BaseEntity 템플릿 상속)
+ * 
+ * SQLQueries::AlarmOccurrence 테이블과 1:1 매칭:
+ * CREATE TABLE alarm_occurrences (
+ *     id INTEGER PRIMARY KEY AUTOINCREMENT,
+ *     rule_id INTEGER NOT NULL,
+ *     tenant_id INTEGER NOT NULL,
+ *     occurrence_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ *     trigger_value TEXT,
+ *     trigger_condition TEXT,
+ *     alarm_message TEXT NOT NULL,
+ *     severity TEXT NOT NULL DEFAULT 'medium',
+ *     state TEXT NOT NULL DEFAULT 'active',
+ *     acknowledged_time TIMESTAMP NULL,
+ *     acknowledged_by INTEGER NULL,
+ *     acknowledge_comment TEXT,
+ *     cleared_time TIMESTAMP NULL,
+ *     cleared_value TEXT,
+ *     clear_comment TEXT,
+ *     notification_sent BOOLEAN DEFAULT 0,
+ *     notification_time TIMESTAMP NULL,
+ *     notification_count INTEGER DEFAULT 0,
+ *     notification_result TEXT,
+ *     context_data TEXT,
+ *     source_name TEXT,
+ *     location TEXT
+ * );
  */
 class AlarmOccurrenceEntity : public BaseEntity<AlarmOccurrenceEntity> {
 public:
     // =======================================================================
-    // 알람 심각도 열거형 (alarm_rules 테이블과 일치)
+    // 열거형 정의 (DB 스키마와 일치)
     // =======================================================================
     
+    /**
+     * @brief 알람 심각도 (severity 컬럼)
+     */
     enum class Severity {
-        LOW,      // 낮음
-        MEDIUM,   // 보통  
-        HIGH,     // 높음
-        CRITICAL  // 치명적
+        LOW,        // 낮음
+        MEDIUM,     // 중간
+        HIGH,       // 높음
+        CRITICAL    // 긴급
     };
     
-    // =======================================================================
-    // 알람 상태 열거형
-    // =======================================================================
-    
+    /**
+     * @brief 알람 상태 (state 컬럼)
+     */
     enum class State {
-        ACTIVE,        // 활성 (발생 중)
-        ACKNOWLEDGED,  // 인지됨
-        CLEARED        // 해제됨
+        ACTIVE,         // 활성
+        ACKNOWLEDGED,   // 확인됨
+        CLEARED         // 해제됨
     };
 
     // =======================================================================
-    // 생성자 및 소멸자
+    // 생성자 및 소멸자 (DeviceEntity 패턴)
     // =======================================================================
     
     /**
@@ -74,14 +97,23 @@ public:
     AlarmOccurrenceEntity();
     
     /**
-     * @brief ID로 생성자 (기존 발생 로드)
-     * @param occurrence_id 발생 ID
+     * @brief ID로 생성자 (기존 알람 발생 로드)
+     * @param id 알람 발생 ID
      */
-    explicit AlarmOccurrenceEntity(int occurrence_id);
+    explicit AlarmOccurrenceEntity(int id);
     
     /**
-     * @brief 완전 생성자 (새 알람 발생 생성)
-     * @param rule_id 규칙 ID
+     * @brief 가상 소멸자
+     */
+    virtual ~AlarmOccurrenceEntity() = default;
+
+    // =======================================================================
+    // 추가 생성자 (기존 구현과 일치)
+    // =======================================================================
+    
+    /**
+     * @brief 알람 생성 헬퍼 생성자
+     * @param rule_id 알람 규칙 ID
      * @param tenant_id 테넌트 ID
      * @param trigger_value 트리거 값
      * @param alarm_message 알람 메시지
@@ -89,296 +121,356 @@ public:
      */
     AlarmOccurrenceEntity(int rule_id, int tenant_id, const std::string& trigger_value, 
                          const std::string& alarm_message, Severity severity);
-    
-    virtual ~AlarmOccurrenceEntity() = default;
-    
+
     // =======================================================================
-    // BaseEntity 순수 가상 함수 구현 (필수!)
+    // BaseEntity 순수 가상 함수 구현 (CPP에서 구현)
     // =======================================================================
     
-    bool loadFromDatabase() override;
-    bool saveToDatabase() override;
-    bool deleteFromDatabase() override;
-    bool updateToDatabase() override;
-    
     /**
-     * @brief 테이블 이름 반환 (필수 구현)
-     * @return "alarm_occurrences"
-     */
-    std::string getTableName() const override {
-        return "alarm_occurrences";
-    }
-    
-    /**
-     * @brief JSON 객체로 변환 (BaseEntity 패턴)
-     * @return json 객체 (string 아님!)
-     */
-    json toJson() const override;
-    
-    /**
-     * @brief JSON 객체에서 로드 (BaseEntity 패턴)
-     * @param data json 객체 (string 아님!)
+     * @brief DB에서 엔티티 로드
      * @return 성공 시 true
      */
-    bool fromJson(const json& data) override;
+    bool loadFromDatabase() override;
     
     /**
-     * @brief 표시용 문자열 생성 (필수 구현)
-     * @return 사람이 읽기 쉬운 형태의 문자열
+     * @brief DB에 엔티티 저장
+     * @return 성공 시 true
      */
-    std::string toString() const override;
+    bool saveToDatabase() override;
     
     /**
-     * @brief 유효성 검증 (필수 구현)
-     * @return 유효하면 true
+     * @brief DB에서 엔티티 삭제
+     * @return 성공 시 true
      */
-    bool isValid() const override;
+    bool deleteFromDatabase() override;
     
+    /**
+     * @brief DB에 엔티티 업데이트
+     * @return 성공 시 true
+     */
+    bool updateToDatabase() override;
+
     // =======================================================================
-    // 🎯 기본 정보 getter/setter (markModified 사용)
+    // JSON 직렬화/역직렬화 (인라인 구현 - DeviceEntity 패턴)
     // =======================================================================
     
-    // 규칙 연관
+    json toJson() const override {
+        json j;
+        try {
+            // 기본 식별자
+            j["id"] = getId();
+            j["rule_id"] = rule_id_;
+            j["tenant_id"] = tenant_id_;
+            
+            // 발생 정보
+            j["occurrence_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                occurrence_time_.time_since_epoch()).count();
+            j["trigger_value"] = trigger_value_;
+            j["trigger_condition"] = trigger_condition_;
+            j["alarm_message"] = alarm_message_;
+            j["severity"] = severityToString(severity_);
+            j["state"] = stateToString(state_);
+            
+            // Optional 필드들
+            if (acknowledged_time_.has_value()) {
+                j["acknowledged_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    acknowledged_time_.value().time_since_epoch()).count();
+            }
+            if (acknowledged_by_.has_value()) {
+                j["acknowledged_by"] = acknowledged_by_.value();
+            }
+            j["acknowledge_comment"] = acknowledge_comment_;
+            
+            if (cleared_time_.has_value()) {
+                j["cleared_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    cleared_time_.value().time_since_epoch()).count();
+            }
+            j["cleared_value"] = cleared_value_;
+            j["clear_comment"] = clear_comment_;
+            
+            // 알림 정보
+            j["notification_sent"] = notification_sent_;
+            if (notification_time_.has_value()) {
+                j["notification_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    notification_time_.value().time_since_epoch()).count();
+            }
+            j["notification_count"] = notification_count_;
+            j["notification_result"] = notification_result_;
+            
+            // 컨텍스트 정보
+            j["context_data"] = context_data_;
+            j["source_name"] = source_name_;
+            j["location"] = location_;
+            
+        } catch (const std::exception& e) {
+            if (logger_) {
+                logger_->Error("AlarmOccurrenceEntity::toJson failed: " + std::string(e.what()));
+            }
+        }
+        return j;
+    }
+    
+    void fromJson(const json& j) override {
+        try {
+            // 기본 식별자
+            if (j.contains("id")) setId(j["id"]);
+            if (j.contains("rule_id")) rule_id_ = j["rule_id"];
+            if (j.contains("tenant_id")) tenant_id_ = j["tenant_id"];
+            
+            // 발생 정보
+            if (j.contains("occurrence_time")) {
+                auto ms = std::chrono::milliseconds(j["occurrence_time"]);
+                occurrence_time_ = std::chrono::system_clock::time_point(ms);
+            }
+            if (j.contains("trigger_value")) trigger_value_ = j["trigger_value"];
+            if (j.contains("trigger_condition")) trigger_condition_ = j["trigger_condition"];
+            if (j.contains("alarm_message")) alarm_message_ = j["alarm_message"];
+            if (j.contains("severity")) severity_ = stringToSeverity(j["severity"]);
+            if (j.contains("state")) state_ = stringToState(j["state"]);
+            
+            // Optional 필드들
+            if (j.contains("acknowledged_time") && !j["acknowledged_time"].is_null()) {
+                auto ms = std::chrono::milliseconds(j["acknowledged_time"]);
+                acknowledged_time_ = std::chrono::system_clock::time_point(ms);
+            }
+            if (j.contains("acknowledged_by") && !j["acknowledged_by"].is_null()) {
+                acknowledged_by_ = j["acknowledged_by"];
+            }
+            if (j.contains("acknowledge_comment")) acknowledge_comment_ = j["acknowledge_comment"];
+            
+            if (j.contains("cleared_time") && !j["cleared_time"].is_null()) {
+                auto ms = std::chrono::milliseconds(j["cleared_time"]);
+                cleared_time_ = std::chrono::system_clock::time_point(ms);
+            }
+            if (j.contains("cleared_value")) cleared_value_ = j["cleared_value"];
+            if (j.contains("clear_comment")) clear_comment_ = j["clear_comment"];
+            
+            // 알림 정보
+            if (j.contains("notification_sent")) notification_sent_ = j["notification_sent"];
+            if (j.contains("notification_time") && !j["notification_time"].is_null()) {
+                auto ms = std::chrono::milliseconds(j["notification_time"]);
+                notification_time_ = std::chrono::system_clock::time_point(ms);
+            }
+            if (j.contains("notification_count")) notification_count_ = j["notification_count"];
+            if (j.contains("notification_result")) notification_result_ = j["notification_result"];
+            
+            // 컨텍스트 정보
+            if (j.contains("context_data")) context_data_ = j["context_data"];
+            if (j.contains("source_name")) source_name_ = j["source_name"];
+            if (j.contains("location")) location_ = j["location"];
+            
+            markModified();
+            
+        } catch (const std::exception& e) {
+            if (logger_) {
+                logger_->Error("AlarmOccurrenceEntity::fromJson failed: " + std::string(e.what()));
+            }
+        }
+    }
+
+    // =======================================================================
+    // 유효성 검사 (DeviceEntity 패턴)
+    // =======================================================================
+    
+    bool isValid() const override {
+        return getId() > 0 && 
+               rule_id_ > 0 && 
+               tenant_id_ > 0 && 
+               !alarm_message_.empty();
+    }
+
+    // =======================================================================
+    // Getter 메서드들 (기본 필드)
+    // =======================================================================
+    
     int getRuleId() const { return rule_id_; }
-    void setRuleId(int rule_id) { rule_id_ = rule_id; markModified(); }
-    
     int getTenantId() const { return tenant_id_; }
+    
+    const std::chrono::system_clock::time_point& getOccurrenceTime() const { return occurrence_time_; }
+    const std::string& getTriggerValue() const { return trigger_value_; }
+    const std::string& getTriggerCondition() const { return trigger_condition_; }
+    const std::string& getAlarmMessage() const { return alarm_message_; }
+    Severity getSeverity() const { return severity_; }
+    State getState() const { return state_; }
+    
+    // Optional 필드들
+    const std::optional<std::chrono::system_clock::time_point>& getAcknowledgedTime() const { return acknowledged_time_; }
+    const std::optional<int>& getAcknowledgedBy() const { return acknowledged_by_; }
+    const std::string& getAcknowledgeComment() const { return acknowledge_comment_; }
+    
+    const std::optional<std::chrono::system_clock::time_point>& getClearedTime() const { return cleared_time_; }
+    const std::string& getClearedValue() const { return cleared_value_; }
+    const std::string& getClearComment() const { return clear_comment_; }
+    
+    // 알림 정보
+    bool isNotificationSent() const { return notification_sent_; }
+    const std::optional<std::chrono::system_clock::time_point>& getNotificationTime() const { return notification_time_; }
+    int getNotificationCount() const { return notification_count_; }
+    const std::string& getNotificationResult() const { return notification_result_; }
+    
+    // 컨텍스트 정보
+    const std::string& getContextData() const { return context_data_; }
+    const std::string& getSourceName() const { return source_name_; }
+    const std::string& getLocation() const { return location_; }
+
+    // =======================================================================
+    // Setter 메서드들 (markModified 호출)
+    // =======================================================================
+    
+    void setRuleId(int rule_id) { rule_id_ = rule_id; markModified(); }
     void setTenantId(int tenant_id) { tenant_id_ = tenant_id; markModified(); }
     
-    // 발생 정보
-    std::chrono::system_clock::time_point getOccurrenceTime() const { return occurrence_time_; }
     void setOccurrenceTime(const std::chrono::system_clock::time_point& time) { 
         occurrence_time_ = time; markModified(); 
     }
-    
-    std::string getTriggerValue() const { return trigger_value_; }
     void setTriggerValue(const std::string& value) { trigger_value_ = value; markModified(); }
-    
-    std::string getTriggerCondition() const { return trigger_condition_; }
     void setTriggerCondition(const std::string& condition) { trigger_condition_ = condition; markModified(); }
-    
-    std::string getAlarmMessage() const { return alarm_message_; }
     void setAlarmMessage(const std::string& message) { alarm_message_ = message; markModified(); }
-    
-    Severity getSeverity() const { return severity_; }
     void setSeverity(Severity severity) { severity_ = severity; markModified(); }
-    
-    // 상태
-    State getState() const { return state_; }
     void setState(State state) { state_ = state; markModified(); }
     
-    // =======================================================================
-    // 🎯 Acknowledge 정보 getter/setter
-    // =======================================================================
-    
-    std::optional<std::chrono::system_clock::time_point> getAcknowledgedTime() const { 
-        return acknowledged_time_; 
-    }
+    // Optional 필드들
     void setAcknowledgedTime(const std::chrono::system_clock::time_point& time) { 
         acknowledged_time_ = time; markModified(); 
     }
-    
-    std::optional<int> getAcknowledgedBy() const { return acknowledged_by_; }
     void setAcknowledgedBy(int user_id) { acknowledged_by_ = user_id; markModified(); }
-    
-    std::string getAcknowledgeComment() const { return acknowledge_comment_; }
     void setAcknowledgeComment(const std::string& comment) { 
         acknowledge_comment_ = comment; markModified(); 
     }
     
-    // =======================================================================
-    // 🎯 Clear 정보 getter/setter
-    // =======================================================================
-    
-    std::optional<std::chrono::system_clock::time_point> getClearedTime() const { 
-        return cleared_time_; 
-    }
     void setClearedTime(const std::chrono::system_clock::time_point& time) { 
         cleared_time_ = time; markModified(); 
     }
-    
-    std::string getClearedValue() const { return cleared_value_; }
     void setClearedValue(const std::string& value) { cleared_value_ = value; markModified(); }
-    
-    std::string getClearComment() const { return clear_comment_; }
     void setClearComment(const std::string& comment) { clear_comment_ = comment; markModified(); }
     
-    // =======================================================================
-    // 🎯 알림 정보 getter/setter
-    // =======================================================================
-    
-    bool isNotificationSent() const { return notification_sent_; }
+    // 알림 정보
     void setNotificationSent(bool sent) { notification_sent_ = sent; markModified(); }
-    
-    std::optional<std::chrono::system_clock::time_point> getNotificationTime() const { 
-        return notification_time_; 
-    }
     void setNotificationTime(const std::chrono::system_clock::time_point& time) { 
         notification_time_ = time; markModified(); 
     }
-    
-    int getNotificationCount() const { return notification_count_; }
     void setNotificationCount(int count) { notification_count_ = count; markModified(); }
+    void setNotificationResult(const std::string& result) { 
+        notification_result_ = result; markModified(); 
+    }
     
-    std::string getNotificationResult() const { return notification_result_; }
-    void setNotificationResult(const std::string& result) { notification_result_ = result; markModified(); }
-    
-    // =======================================================================
-    // 🎯 추가 컨텍스트 정보
-    // =======================================================================
-    
-    std::string getContextData() const { return context_data_; }
+    // 컨텍스트 정보
     void setContextData(const std::string& data) { context_data_ = data; markModified(); }
-    
-    std::string getSourceName() const { return source_name_; }
     void setSourceName(const std::string& name) { source_name_ = name; markModified(); }
-    
-    std::string getLocation() const { return location_; }
     void setLocation(const std::string& location) { location_ = location; markModified(); }
-    
+
     // =======================================================================
-    // 🎯 비즈니스 로직 메서드들
+    // 헬퍼 메서드들 (DeviceEntity 패턴)
     // =======================================================================
-    
-    /**
-     * @brief 알람 인지 처리
-     * @param user_id 인지한 사용자 ID
-     * @param comment 인지 코멘트
-     * @return 성공 시 true
-     */
-    bool acknowledge(int user_id, const std::string& comment = "");
-    
-    /**
-     * @brief 알람 해제 처리
-     * @param cleared_value 해제 시점의 값
-     * @param comment 해제 코멘트
-     * @return 성공 시 true
-     */
-    bool clear(const std::string& cleared_value, const std::string& comment = "");
-    
-    /**
-     * @brief 상태 변경
-     * @param new_state 새로운 상태
-     * @return 성공 시 true
-     */
-    bool changeState(State new_state);
-    
-    /**
-     * @brief 알림 전송 완료 마킹
-     * @param result_json 전송 결과 JSON
-     */
-    void markNotificationSent(const std::string& result_json = "");
-    
-    /**
-     * @brief 알림 횟수 증가
-     */
-    void incrementNotificationCount();
-    
-    // =======================================================================
-    // 🎯 유틸리티 메서드들
-    // =======================================================================
-    
-    /**
-     * @brief 발생 후 경과 시간 (초)
-     * @return 경과 시간 (초)
-     */
-    long long getElapsedSeconds() const;
     
     /**
      * @brief 활성 상태인지 확인
-     * @return 활성 상태면 true
      */
     bool isActive() const { return state_ == State::ACTIVE; }
     
     /**
-     * @brief 인지된 상태인지 확인
-     * @return 인지 상태면 true
+     * @brief 확인된 상태인지 확인
      */
     bool isAcknowledged() const { return state_ == State::ACKNOWLEDGED; }
     
     /**
      * @brief 해제된 상태인지 확인
-     * @return 해제 상태면 true
      */
     bool isCleared() const { return state_ == State::CLEARED; }
     
+    /**
+     * @brief 알람을 확인 상태로 변경 (DB 즉시 반영)
+     */
+    bool acknowledge(int user_id, const std::string& comment = "");
+    
+    /**
+     * @brief 알람을 해제 상태로 변경 (DB 즉시 반영)
+     */
+    bool clear(const std::string& cleared_value = "", const std::string& comment = "");
+    
     // =======================================================================
-    // 🎯 정적 유틸리티 메서드들
+    // 추가 메서드들 (기존 구현과 일치)
     // =======================================================================
     
     /**
-     * @brief Severity 열거형을 문자열로 변환
+     * @brief 문자열 표현 반환
      */
+    std::string toString() const;
+    
+    /**
+     * @brief 알람 발생 후 경과 시간 (초)
+     */
+    long long getElapsedSeconds() const;
+    
+    /**
+     * @brief 알림 전송 처리 완료 마킹
+     */
+    void markNotificationSent(const std::string& result_json = "");
+    
+    /**
+     * @brief 알림 카운트 증가
+     */
+    void incrementNotificationCount();
+    
+    /**
+     * @brief 상태 변경 (DB 즉시 반영)
+     */
+    bool changeState(State new_state);
+
+    // =======================================================================
+    // 정적 유틸리티 메서드들 (기존 구현과 일치)
+    // =======================================================================
+    
     static std::string severityToString(Severity severity);
-    
-    /**
-     * @brief 문자열을 Severity 열거형으로 변환
-     */
     static Severity stringToSeverity(const std::string& str);
-    
-    /**
-     * @brief State 열거형을 문자열로 변환
-     */
     static std::string stateToString(State state);
-    
-    /**
-     * @brief 문자열을 State 열거형으로 변환
-     */
     static State stringToState(const std::string& str);
 
 private:
     // =======================================================================
-    // 🎯 멤버 변수들 (alarm_occurrences 테이블 컬럼 매핑)
+    // 헬퍼 메서드들 (기존 구현과 일치)
     // =======================================================================
     
-    // 기본 정보
-    int rule_id_;                                               // rule_id
-    int tenant_id_;                                            // tenant_id
+    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
+    std::chrono::system_clock::time_point stringToTimestamp(const std::string& str) const;
+
+private:
+    // =======================================================================
+    // 멤버 변수들 (DB 스키마와 1:1 매칭)
+    // =======================================================================
+    
+    // 기본 식별자
+    int rule_id_;                   // NOT NULL
+    int tenant_id_;                 // NOT NULL
     
     // 발생 정보
-    std::chrono::system_clock::time_point occurrence_time_;   // occurrence_time
-    std::string trigger_value_;                               // trigger_value (JSON)
-    std::string trigger_condition_;                           // trigger_condition
-    std::string alarm_message_;                               // alarm_message
-    Severity severity_;                                       // severity
+    std::chrono::system_clock::time_point occurrence_time_;     // NOT NULL
+    std::string trigger_value_;                                 // TEXT
+    std::string trigger_condition_;                             // TEXT
+    std::string alarm_message_;                                 // NOT NULL
+    Severity severity_;                                         // NOT NULL, DEFAULT 'medium'
+    State state_;                                               // NOT NULL, DEFAULT 'active'
     
-    // 상태
-    State state_;                                             // state
+    // Acknowledge 정보 (Optional)
+    std::optional<std::chrono::system_clock::time_point> acknowledged_time_;    // NULL
+    std::optional<int> acknowledged_by_;                                        // NULL
+    std::string acknowledge_comment_;                                           // TEXT
     
-    // Acknowledge 정보
-    std::optional<std::chrono::system_clock::time_point> acknowledged_time_;  // acknowledged_time
-    std::optional<int> acknowledged_by_;                      // acknowledged_by
-    std::string acknowledge_comment_;                         // acknowledge_comment
-    
-    // Clear 정보
-    std::optional<std::chrono::system_clock::time_point> cleared_time_;       // cleared_time
-    std::string cleared_value_;                               // cleared_value (JSON)
-    std::string clear_comment_;                               // clear_comment
+    // Clear 정보 (Optional)
+    std::optional<std::chrono::system_clock::time_point> cleared_time_;         // NULL
+    std::string cleared_value_;                                                 // TEXT
+    std::string clear_comment_;                                                 // TEXT
     
     // 알림 정보
-    bool notification_sent_;                                  // notification_sent
-    std::optional<std::chrono::system_clock::time_point> notification_time_;  // notification_time
-    int notification_count_;                                  // notification_count
-    std::string notification_result_;                         // notification_result (JSON)
+    bool notification_sent_;                                                    // DEFAULT 0
+    std::optional<std::chrono::system_clock::time_point> notification_time_;    // NULL
+    int notification_count_;                                                    // DEFAULT 0
+    std::string notification_result_;                                           // TEXT
     
-    // 추가 컨텍스트
-    std::string context_data_;                                // context_data (JSON)
-    std::string source_name_;                                 // source_name
-    std::string location_;                                    // location
-    
-    // =======================================================================
-    // 🎯 헬퍼 메서드들
-    // =======================================================================
-    
-    /**
-     * @brief 시간을 문자열로 변환
-     */
-    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
-    
-    /**
-     * @brief 문자열을 시간으로 변환
-     */
-    std::chrono::system_clock::time_point stringToTimestamp(const std::string& str) const;
+    // 컨텍스트 정보
+    std::string context_data_;                                                  // TEXT (JSON)
+    std::string source_name_;                                                   // TEXT
+    std::string location_;                                                      // TEXT
 };
 
 } // namespace Entities

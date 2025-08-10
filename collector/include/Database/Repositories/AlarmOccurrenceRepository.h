@@ -18,7 +18,6 @@
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/DatabaseAbstractionLayer.h"
-#include "Database/QueryTypes.h"
 #include <vector>
 #include <optional>
 #include <string>

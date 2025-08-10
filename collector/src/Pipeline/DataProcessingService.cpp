@@ -6,6 +6,7 @@
 #include "Pipeline/PipelineManager.h"  // 🔥 올바른 include!
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
+#include "Alarm/AlarmEngine.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
 
@@ -231,9 +232,67 @@ std::vector<Structs::DeviceDataMessage> DataProcessingService::CalculateVirtualP
 }
 
 void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMessage>& all_data) {
-    // 🔥 나중에 구현 - 현재는 로깅만
-    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                 "알람 체크 완료: " + std::to_string(all_data.size()) + "개");
+    if (all_data.empty()) return;
+    
+    try {
+        // 🔥 AlarmEngine 싱글톤 가져오기
+        auto& alarm_engine = Alarm::AlarmEngine::getInstance();
+        
+        // 초기화 확인 및 시도
+        if (!alarm_engine.isInitialized()) {
+            // DatabaseManager 가져오기 (기존 멤버 변수 사용)
+            auto db_manager = Database::DatabaseManager::getInstance();
+            if (!alarm_engine.initialize(db_manager, redis_client_)) {
+                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                             "❌ AlarmEngine 초기화 실패");
+                return;
+            }
+            
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "✅ AlarmEngine 초기화 성공");
+        }
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "🚨 알람 평가 시작: " + std::to_string(all_data.size()) + "개 메시지");
+        
+        size_t total_alarms = 0;
+        
+        // 🔥 각 디바이스 메시지에 대해 알람 평가
+        for (const auto& device_message : all_data) {
+            try {
+                // 알람 평가 수행
+                auto alarm_events = alarm_engine.evaluateForMessage(device_message);
+                
+                // 발생한 알람 이벤트 처리
+                for (const auto& event : alarm_events) {
+                    // Redis에 알람 이벤트 발송 (자동으로 AlarmEngine에서 처리됨)
+                    total_alarms++;
+                    
+                    LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                                 "🚨 알람 발생: " + event.message + 
+                                                 " (ID: " + std::to_string(event.occurrence_id) + ")");
+                }
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                             "💥 디바이스 " + device_message.device_id + 
+                                             " 알람 평가 실패: " + std::string(e.what()));
+            }
+        }
+        
+        if (total_alarms > 0) {
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "✅ 알람 평가 완료: " + std::to_string(total_alarms) + 
+                                         "개 알람 발생");
+        } else {
+            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                         "✅ 알람 평가 완료: 알람 발생 없음");
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "💥 CheckAlarms 처리 중 예외: " + std::string(e.what()));
+    }
 }
 
 void DataProcessingService::SaveToRedis(const std::vector<Structs::DeviceDataMessage>& batch) {
