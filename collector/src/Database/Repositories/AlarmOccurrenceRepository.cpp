@@ -44,8 +44,7 @@ std::vector<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll(
             return {};
         }
         
-        // 🔥 임시로 직접 쿼리 작성 (SQLQueries.h에 추가하기 전까지)
-        std::string query = "SELECT * FROM alarm_occurrences ORDER BY occurrence_time DESC";
+        std::string query = SQL::AlarmOccurrence::FIND_ALL;
         
         auto results = db_layer_.executeQuery(query);
         
@@ -82,7 +81,7 @@ std::optional<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findBy
             return std::nullopt;
         }
         
-        // 🔥 캐시 확인 (IRepository 패턴)
+        // 캐시 확인 (IRepository 패턴)
         if (isCacheEnabled()) {
             auto cached = getCachedEntity(id);
             if (cached.has_value()) {
@@ -93,7 +92,7 @@ std::optional<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findBy
             }
         }
         
-        std::string query = "SELECT * FROM alarm_occurrences WHERE id = " + std::to_string(id);
+        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::FIND_BY_ID, std::to_string(id));
         
         auto results = db_layer_.executeQuery(query);
         
@@ -106,7 +105,7 @@ std::optional<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findBy
         
         auto entity = mapRowToEntity(results[0]);
         
-        // 🔥 캐시에 저장 (IRepository 패턴)
+        // 캐시에 저장 (IRepository 패턴)
         if (isCacheEnabled()) {
             cacheEntity(id, entity);
         }
@@ -134,20 +133,13 @@ bool AlarmOccurrenceRepository::save(Entities::AlarmOccurrenceEntity& entity) {
             return false;
         }
         
-        // INSERT 쿼리 생성
+        // INSERT 쿼리 생성 (간단화)
         std::ostringstream query;
         query << "INSERT INTO alarm_occurrences (";
         query << "rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition, ";
         query << "alarm_message, severity, state, acknowledge_comment, cleared_value, ";
         query << "clear_comment, notification_sent, notification_count, notification_result, ";
         query << "context_data, source_name, location";
-        
-        // Optional 필드들 조건부 추가
-        if (entity.getAcknowledgedTime().has_value()) query << ", acknowledged_time";
-        if (entity.getAcknowledgedBy().has_value()) query << ", acknowledged_by";
-        if (entity.getClearedTime().has_value()) query << ", cleared_time";
-        if (entity.getNotificationTime().has_value()) query << ", notification_time";
-        
         query << ") VALUES (";
         query << entity.getRuleId() << ", ";
         query << entity.getTenantId() << ", ";
@@ -166,21 +158,6 @@ bool AlarmOccurrenceRepository::save(Entities::AlarmOccurrenceEntity& entity) {
         query << "'" << entity.getContextData() << "', ";
         query << "'" << entity.getSourceName() << "', ";
         query << "'" << entity.getLocation() << "'";
-        
-        // Optional 필드들 값 추가
-        if (entity.getAcknowledgedTime().has_value()) {
-            query << ", '" << timePointToString(entity.getAcknowledgedTime().value()) << "'";
-        }
-        if (entity.getAcknowledgedBy().has_value()) {
-            query << ", " << entity.getAcknowledgedBy().value();
-        }
-        if (entity.getClearedTime().has_value()) {
-            query << ", '" << timePointToString(entity.getClearedTime().value()) << "'";
-        }
-        if (entity.getNotificationTime().has_value()) {
-            query << ", '" << timePointToString(entity.getNotificationTime().value()) << "'";
-        }
-        
         query << ")";
         
         bool success = db_layer_.executeNonQuery(query.str());
@@ -192,7 +169,7 @@ bool AlarmOccurrenceRepository::save(Entities::AlarmOccurrenceEntity& entity) {
                 entity.setId(static_cast<int>(last_id));
             }
             
-            // 🔥 캐시에 저장 (IRepository 패턴)
+            // 캐시에 저장 (IRepository 패턴)
             if (isCacheEnabled() && entity.getId() > 0) {
                 cacheEntity(entity.getId(), entity);
             }
@@ -271,7 +248,7 @@ bool AlarmOccurrenceRepository::update(const Entities::AlarmOccurrenceEntity& en
         bool success = db_layer_.executeNonQuery(query.str());
         
         if (success) {
-            // 🔥 캐시 업데이트 (IRepository 패턴)
+            // 캐시 업데이트 (IRepository 패턴)
             if (isCacheEnabled()) {
                 cacheEntity(entity.getId(), entity);
             }
@@ -302,7 +279,7 @@ bool AlarmOccurrenceRepository::deleteById(int id) {
         bool success = db_layer_.executeNonQuery(query);
         
         if (success) {
-            // 🔥 캐시에서 제거 (IRepository 패턴)
+            // 캐시에서 제거 (IRepository 패턴)
             if (isCacheEnabled()) {
                 clearCacheForId(id);
             }
@@ -461,27 +438,13 @@ std::vector<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByCo
 // 알람 발생 전용 메서드들
 // =============================================================================
 
-std::optional<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findFirstByConditions(
-    const std::vector<QueryCondition>& conditions
-) {
-    // 페이징을 1개로 제한
-    Pagination limit_one{1, 0};
-    auto results = findByConditions(conditions, std::nullopt, limit_one);
-    
-    if (!results.empty()) {
-        return results[0];
-    }
-    
-    return std::nullopt;
-}
-
 std::vector<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActive() {
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
-        std::string query = "SELECT * FROM alarm_occurrences WHERE state = 'active' ORDER BY occurrence_time DESC";
+        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::FIND_ACTIVE, "");
         
         auto results = db_layer_.executeQuery(query);
         
@@ -518,7 +481,7 @@ std::vector<Entities::AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByRu
             return {};
         }
         
-        std::string query = "SELECT * FROM alarm_occurrences WHERE rule_id = " + std::to_string(rule_id) + " ORDER BY occurrence_time DESC";
+        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::FIND_BY_RULE_ID, std::to_string(rule_id));
         
         auto results = db_layer_.executeQuery(query);
         
@@ -641,16 +604,6 @@ Entities::AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const 
             entity.setClearComment(it->second);
         }
         
-        it = row.find("notification_sent");
-        if (it != row.end()) {
-            entity.setNotificationSent(it->second == "1" || it->second == "true");
-        }
-        
-        it = row.find("notification_time");
-        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
-            entity.setNotificationTime(stringToTimePoint(it->second));
-        }
-        
         it = row.find("notification_count");
         if (it != row.end()) {
             entity.setNotificationCount(std::stoi(it->second));
@@ -685,58 +638,6 @@ Entities::AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const 
         throw;
     }
 }
-
-bool AlarmOccurrenceRepository::ensureTableExists() {
-    try {
-        // 🔥 임시로 간단한 테이블 생성 (SQLQueries.h에 추가하기 전까지)
-        std::string create_table_query = R"(
-            CREATE TABLE IF NOT EXISTS alarm_occurrences (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                rule_id INTEGER NOT NULL,
-                tenant_id INTEGER NOT NULL,
-                occurrence_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                trigger_value TEXT,
-                trigger_condition TEXT,
-                alarm_message TEXT NOT NULL,
-                severity TEXT NOT NULL DEFAULT 'medium',
-                state TEXT NOT NULL DEFAULT 'active',
-                acknowledged_time TIMESTAMP NULL,
-                acknowledged_by INTEGER NULL,
-                acknowledge_comment TEXT,
-                cleared_time TIMESTAMP NULL,
-                cleared_value TEXT,
-                clear_comment TEXT,
-                notification_sent BOOLEAN DEFAULT 0,
-                notification_time TIMESTAMP NULL,
-                notification_count INTEGER DEFAULT 0,
-                notification_result TEXT,
-                context_data TEXT,
-                source_name TEXT,
-                location TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        )";
-        
-        bool success = db_layer_.executeNonQuery(create_table_query);
-        
-        if (success && logger_) {
-            logger_->Debug("AlarmOccurrenceRepository::ensureTableExists - Table alarm_occurrences ready");
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::ensureTableExists failed: " + std::string(e.what()));
-        }
-        return false;
-    }
-}
-
-// =============================================================================
-// 유틸리티 메서드들
-// =============================================================================
 
 std::string AlarmOccurrenceRepository::timePointToString(const std::chrono::system_clock::time_point& tp) const {
     auto time_t = std::chrono::system_clock::to_time_t(tp);
@@ -815,4 +716,14 @@ std::string AlarmOccurrenceRepository::buildPaginationClause(const std::optional
 
 } // namespace Repositories
 } // namespace Database
-} // namespace PulseOne
+} // namespace PulseOnesent");
+        if (it != row.end()) {
+            entity.setNotificationSent(it->second == "1" || it->second == "true");
+        }
+        
+        it = row.find("notification_time");
+        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+            entity.setNotificationTime(stringToTimePoint(it->second));
+        }
+        
+        it = row.find("notification_
