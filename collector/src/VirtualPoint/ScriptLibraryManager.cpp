@@ -1,26 +1,68 @@
 // =============================================================================
 // collector/src/VirtualPoint/ScriptLibraryManager.cpp
-// PulseOne 스크립트 라이브러리 매니저 구현
+// PulseOne 스크립트 라이브러리 매니저 구현 - 컴파일 에러 완전 수정
 // =============================================================================
 
 #include "VirtualPoint/ScriptLibraryManager.h"
 #include "Database/Repositories/ScriptLibraryRepository.h"
 #include "Database/RepositoryFactory.h"
+#include "Utils/LogManager.h"
+#include "Utils/ConfigManager.h"
+#include "Database/DatabaseManager.h"
 #include <regex>
 #include <sstream>
 #include <algorithm>
+#include <shared_mutex>
 
 namespace PulseOne {
 namespace VirtualPoint {
 
 // =============================================================================
-// ScriptDefinition 변환 메서드
+// ScriptDefinition 변환 메서드들 - 열거형 변환 함수 추가
 // =============================================================================
+
+std::string categoryToString(Database::Entities::ScriptLibraryEntity::Category category) {
+    switch (category) {
+        case Database::Entities::ScriptLibraryEntity::Category::SYSTEM: return "system";
+        case Database::Entities::ScriptLibraryEntity::Category::MATH: return "math";
+        case Database::Entities::ScriptLibraryEntity::Category::UTILITY: return "utility";
+        case Database::Entities::ScriptLibraryEntity::Category::CUSTOM: return "custom";
+        default: return "unknown";
+    }
+}
+
+Database::Entities::ScriptLibraryEntity::Category stringToCategory(const std::string& str) {
+    if (str == "system") return Database::Entities::ScriptLibraryEntity::Category::SYSTEM;
+    if (str == "math") return Database::Entities::ScriptLibraryEntity::Category::MATH;
+    if (str == "utility") return Database::Entities::ScriptLibraryEntity::Category::UTILITY;
+    if (str == "custom") return Database::Entities::ScriptLibraryEntity::Category::CUSTOM;
+    return Database::Entities::ScriptLibraryEntity::Category::CUSTOM;
+}
+
+std::string returnTypeToString(Database::Entities::ScriptLibraryEntity::ReturnType type) {
+    switch (type) {
+        case Database::Entities::ScriptLibraryEntity::ReturnType::NUMBER: return "number";
+        case Database::Entities::ScriptLibraryEntity::ReturnType::STRING: return "string";
+        case Database::Entities::ScriptLibraryEntity::ReturnType::BOOLEAN: return "boolean";
+        case Database::Entities::ScriptLibraryEntity::ReturnType::OBJECT: return "object";
+        case Database::Entities::ScriptLibraryEntity::ReturnType::VOID: return "void";
+        default: return "unknown";
+    }
+}
+
+Database::Entities::ScriptLibraryEntity::ReturnType stringToReturnType(const std::string& str) {
+    if (str == "number") return Database::Entities::ScriptLibraryEntity::ReturnType::NUMBER;
+    if (str == "string") return Database::Entities::ScriptLibraryEntity::ReturnType::STRING;
+    if (str == "boolean") return Database::Entities::ScriptLibraryEntity::ReturnType::BOOLEAN;
+    if (str == "object") return Database::Entities::ScriptLibraryEntity::ReturnType::OBJECT;
+    if (str == "void") return Database::Entities::ScriptLibraryEntity::ReturnType::VOID;
+    return Database::Entities::ScriptLibraryEntity::ReturnType::OBJECT;
+}
 
 ScriptDefinition ScriptDefinition::fromEntity(const ScriptLibraryEntity& entity) {
     ScriptDefinition def;
     def.id = entity.getId();
-    def.category = entity.getCategory();
+    def.category = categoryToString(entity.getCategory());
     def.name = entity.getName();
     def.display_name = entity.getDisplayName();
     def.description = entity.getDescription();
@@ -36,10 +78,10 @@ ScriptDefinition ScriptDefinition::fromEntity(const ScriptLibraryEntity& entity)
         }
     }
     
-    def.return_type = entity.getReturnType();
+    def.return_type = returnTypeToString(entity.getReturnType());
     
-    // Tags JSON 파싱
-    def.tags = entity.getTagList();
+    // Tags 가져오기 - getTags() 메서드 사용
+    def.tags = entity.getTags();
     
     def.example_usage = entity.getExampleUsage();
     def.is_system = entity.getIsSystem();
@@ -52,15 +94,14 @@ ScriptDefinition ScriptDefinition::fromEntity(const ScriptLibraryEntity& entity)
 ScriptLibraryEntity ScriptDefinition::toEntity() const {
     ScriptLibraryEntity entity(0, name, script_code);  // tenant_id는 나중에 설정
     
-    entity.setCategory(category);
+    entity.setCategory(stringToCategory(category));
     entity.setDisplayName(display_name);
     entity.setDescription(description);
     entity.setParameters(parameters.dump());
-    entity.setReturnType(return_type);
+    entity.setReturnType(stringToReturnType(return_type));
     
-    // Tags를 JSON 문자열로 변환
-    json tags_json = tags;
-    entity.setTags(tags_json.dump());
+    // Tags 설정 - setTags() 메서드 사용
+    entity.setTags(tags);
     
     entity.setExampleUsage(example_usage);
     entity.setIsSystem(is_system);
@@ -77,10 +118,9 @@ ScriptLibraryManager& ScriptLibraryManager::getInstance() {
     return instance;
 }
 
-ScriptLibraryManager::ScriptLibraryManager() 
-    : logger_(::Utils::LogManager::getInstance())
-    , config_manager_(::ConfigManager::getInstance()) {
-    logger_.Log(::Utils::LogLevel::INFO, "📚 ScriptLibraryManager 생성");
+ScriptLibraryManager::ScriptLibraryManager() {
+    auto& logger = LogManager::getInstance();
+    logger.log("scriptlib", LogLevel::INFO, "📚 ScriptLibraryManager 생성");
 }
 
 ScriptLibraryManager::~ScriptLibraryManager() {
@@ -88,35 +128,42 @@ ScriptLibraryManager::~ScriptLibraryManager() {
 }
 
 // =============================================================================
-// 초기화/종료
+// 초기화/종료 - 올바른 싱글톤 사용법
 // =============================================================================
 
-bool ScriptLibraryManager::initialize(std::shared_ptr<::DatabaseManager> db_manager) {
+bool ScriptLibraryManager::initialize() {
     if (initialized_) {
-        logger_.Log(::Utils::LogLevel::WARNING, "ScriptLibraryManager 이미 초기화됨");
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::WARN, "ScriptLibraryManager 이미 초기화됨");
         return true;
     }
     
-    // DatabaseManager 설정
-    if (db_manager) {
-        db_manager_ = db_manager;
-    } else {
-        db_manager_ = std::make_shared<::DatabaseManager>(::DatabaseManager::getInstance());
-    }
-    
-    // Repository 생성
-    repository_ = std::make_shared<Database::Repositories::ScriptLibraryRepository>();
-    
-    // 시스템 스크립트 로드
-    if (!loadSystemScripts()) {
-        logger_.Log(::Utils::LogLevel::ERROR, "시스템 스크립트 로드 실패");
+    try {
+        // ✅ 올바른 싱글톤 사용법 - 직접 가져오기
+        auto& db_manager = Database::DatabaseManager::getInstance();
+        auto& config_manager = ConfigManager::getInstance();
+        
+        // Repository 생성
+        repository_ = Database::RepositoryFactory::getInstance().createScriptLibraryRepository();
+        
+        // 시스템 스크립트 로드
+        if (!loadSystemScripts()) {
+            auto& logger = LogManager::getInstance();
+            logger.log("scriptlib", LogLevel::ERROR, "시스템 스크립트 로드 실패");
+            return false;
+        }
+        
+        initialized_ = true;
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::INFO, "✅ ScriptLibraryManager 초기화 완료");
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::ERROR, "ScriptLibraryManager 초기화 실패: " + std::string(e.what()));
         return false;
     }
-    
-    initialized_ = true;
-    logger_.Log(::Utils::LogLevel::INFO, "✅ ScriptLibraryManager 초기화 완료");
-    
-    return true;
 }
 
 void ScriptLibraryManager::shutdown() {
@@ -130,7 +177,8 @@ void ScriptLibraryManager::shutdown() {
     system_script_names_.clear();
     
     initialized_ = false;
-    logger_.Log(::Utils::LogLevel::INFO, "ScriptLibraryManager 종료");
+    auto& logger = LogManager::getInstance();
+    logger.log("scriptlib", LogLevel::INFO, "ScriptLibraryManager 종료");
 }
 
 // =============================================================================
@@ -139,7 +187,8 @@ void ScriptLibraryManager::shutdown() {
 
 bool ScriptLibraryManager::loadScripts(int tenant_id) {
     if (!repository_) {
-        logger_.Log(::Utils::LogLevel::ERROR, "Repository not initialized");
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::ERROR, "Repository not initialized");
         return false;
     }
     
@@ -157,14 +206,16 @@ bool ScriptLibraryManager::loadScripts(int tenant_id) {
         
         current_tenant_id_ = tenant_id;
         
-        logger_.Log(::Utils::LogLevel::INFO, 
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::INFO, 
                    "테넌트 " + std::to_string(tenant_id) + "의 스크립트 " + 
                    std::to_string(entities.size()) + "개 로드");
         
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Log(::Utils::LogLevel::ERROR, 
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::ERROR, 
                    "스크립트 로드 실패: " + std::string(e.what()));
         return false;
     }
@@ -172,7 +223,8 @@ bool ScriptLibraryManager::loadScripts(int tenant_id) {
 
 bool ScriptLibraryManager::loadSystemScripts() {
     if (!repository_) {
-        logger_.Log(::Utils::LogLevel::ERROR, "Repository not initialized");
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::ERROR, "Repository not initialized");
         return false;
     }
     
@@ -189,13 +241,15 @@ bool ScriptLibraryManager::loadSystemScripts() {
             system_script_names_.push_back(script_def.name);
         }
         
-        logger_.Log(::Utils::LogLevel::INFO, 
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::INFO, 
                    "시스템 스크립트 " + std::to_string(entities.size()) + "개 로드");
         
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Log(::Utils::LogLevel::ERROR, 
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::ERROR, 
                    "시스템 스크립트 로드 실패: " + std::string(e.what()));
         return false;
     }
@@ -267,7 +321,8 @@ std::vector<ScriptDefinition> ScriptLibraryManager::getScriptsByCategory(const s
     
     if (!repository_) return results;
     
-    auto entities = repository_->findByCategory(category);
+    auto cat_enum = stringToCategory(category);
+    auto entities = repository_->findByCategory(cat_enum);
     for (const auto& entity : entities) {
         results.push_back(ScriptDefinition::fromEntity(entity));
     }
@@ -337,7 +392,8 @@ std::vector<std::string> ScriptLibraryManager::collectDependencies(const std::st
 std::string ScriptLibraryManager::generateFromTemplate(int template_id, const json& variables) {
     auto tmpl_opt = getTemplateById(template_id);
     if (!tmpl_opt) {
-        logger_.Log(::Utils::LogLevel::ERROR, "템플릿 ID " + std::to_string(template_id) + " 찾을 수 없음");
+        auto& logger = LogManager::getInstance();
+        logger.log("scriptlib", LogLevel::ERROR, "템플릿 ID " + std::to_string(template_id) + " 찾을 수 없음");
         return "";
     }
     
