@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Repositories/ScriptLibraryRepository.h
-// PulseOne ScriptLibraryRepository - DeviceRepository 패턴 100% 적용
+// PulseOne ScriptLibraryRepository - DeviceRepository 패턴 100% 적용 (수정완료)
 // =============================================================================
 
 #ifndef SCRIPT_LIBRARY_REPOSITORY_H
@@ -8,32 +8,27 @@
 
 /**
  * @file ScriptLibraryRepository.h
- * @brief PulseOne ScriptLibraryRepository - DeviceRepository 패턴 100% 적용
+ * @brief PulseOne ScriptLibraryRepository - DeviceRepository 패턴 완전 적용
  * @author PulseOne Development Team
- * @date 2025-08-11
+ * @date 2025-08-12
  * 
- * 🔥 DeviceRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer 사용
- * - executeQuery/executeNonQuery/executeUpsert 패턴
- * - RepositoryHelpers 활용
- * - 캐시 관리 구현
- * - 모든 IRepository 메서드 override
+ * 🔥 완전 수정된 DeviceRepository 패턴:
+ * - ExtendedSQLQueries.h 사용
+ * - DatabaseAbstractionLayer 패턴
+ * - 올바른 LogManager 사용법
+ * - IRepository 상속 관계 정확히 준수
+ * - 모든 구현 메서드 헤더 선언
  */
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/ScriptLibraryEntity.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
-#include "Utils/ConfigManager.h"
 #include "Database/DatabaseTypes.h"
 #include <memory>
 #include <map>
 #include <string>
-#include <mutex>
 #include <vector>
 #include <optional>
-#include <chrono>
-#include <atomic>
+#include <nlohmann/json.hpp>
 
 namespace PulseOne {
 namespace Database {
@@ -60,10 +55,11 @@ public:
     ScriptLibraryRepository() : IRepository<ScriptLibraryEntity>("ScriptLibraryRepository") {
         initializeDependencies();
         
-        if (logger_) {
-            logger_->Info("📚 ScriptLibraryRepository initialized with BaseEntity pattern");
-            logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
-        }
+        // ✅ 올바른 LogManager 사용법
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
+                                    "📚 ScriptLibraryRepository initialized with BaseEntity pattern");
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
+                                    "✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
     }
     
     virtual ~ScriptLibraryRepository() = default;
@@ -114,7 +110,7 @@ public:
     bool exists(int id) override;
 
     // =======================================================================
-    // 벌크 연산 (IRepository 상속)
+    // 벌크 연산 (IRepository 상속) - 모든 메서드 구현파일에서 구현됨
     // =======================================================================
     
     /**
@@ -166,76 +162,7 @@ public:
     int deleteByIds(const std::vector<int>& ids) override;
 
     // =======================================================================
-    // 캐시 관리 (IRepository에서 상속)
-    // =======================================================================
-    
-    /**
-     * @brief 캐시 활성화/비활성화
-     * @param enabled 캐시 사용 여부
-     */
-    void setCacheEnabled(bool enabled) override {
-        IRepository<ScriptLibraryEntity>::setCacheEnabled(enabled);
-        if (logger_) {
-            logger_->Info("ScriptLibraryRepository cache " + std::string(enabled ? "enabled" : "disabled"));
-        }
-    }
-    
-    /**
-     * @brief 캐시 상태 조회
-     * @return 캐시 활성화 여부
-     */
-    bool isCacheEnabled() const override {
-        return IRepository<ScriptLibraryEntity>::isCacheEnabled();
-    }
-    
-    /**
-     * @brief 모든 캐시 삭제
-     */
-    void clearCache() override {
-        IRepository<ScriptLibraryEntity>::clearCache();
-        if (logger_) {
-            logger_->Info("ScriptLibraryRepository cache cleared");
-        }
-    }
-    
-    /**
-     * @brief 특정 스크립트 캐시 삭제
-     * @param id 스크립트 ID
-     */
-    void clearCacheForId(int id) override {
-        IRepository<ScriptLibraryEntity>::clearCacheForId(id);
-    }
-    
-    /**
-     * @brief 캐시 통계 조회
-     * @return 캐시 통계 (hits, misses, size 등)
-     */
-    std::map<std::string, int> getCacheStats() const override {
-        return IRepository<ScriptLibraryEntity>::getCacheStats();
-    }
-
-    // =======================================================================
-    // 유틸리티
-    // =======================================================================
-    
-    /**
-     * @brief 전체 스크립트 개수 조회
-     * @return 전체 개수
-     */
-    int getTotalCount() override {
-        return IRepository<ScriptLibraryEntity>::getTotalCount();
-    }
-    
-    /**
-     * @brief Repository 이름 조회 (디버깅용)
-     * @return Repository 이름
-     */
-    std::string getRepositoryName() const override { 
-        return "ScriptLibraryRepository"; 
-    }
-
-    // =======================================================================
-    // ScriptLibrary 전용 메서드들
+    // ScriptLibrary 전용 메서드들 (구현파일에서 구현됨)
     // =======================================================================
     
     /**
@@ -316,7 +243,7 @@ public:
                     const std::string& code, const std::string& change_log);
 
     // =======================================================================
-    // 템플릿 관련
+    // 템플릿 관련 (구현파일에서 구현 예정)
     // =======================================================================
     
     /**
@@ -334,7 +261,7 @@ public:
     std::optional<std::map<std::string, std::string>> getTemplateById(int template_id);
 
     // =======================================================================
-    // 통계
+    // 통계 (구현파일에서 구현 예정)
     // =======================================================================
     
     /**
@@ -346,21 +273,14 @@ public:
 
 private:
     // =======================================================================
-    // 의존성 관리 (DeviceRepository 패턴)
+    // 내부 헬퍼 메서드들 (구현파일에서 구현됨)
     // =======================================================================
-    DatabaseManager* db_manager_;
-    LogManager* logger_;
-    ConfigManager* config_manager_;
     
-    void initializeDependencies() {
-        db_manager_ = &::DatabaseManager::getInstance();
-        logger_ = &::LogManager::getInstance();
-        config_manager_ = &::ConfigManager::getInstance();
-    }
-    
-    // =======================================================================
-    // 내부 헬퍼 메서드 (DeviceRepository 패턴)
-    // =======================================================================
+    /**
+     * @brief 테이블 존재 여부 확인 및 생성
+     * @return 성공 시 true
+     */
+    bool ensureTableExists();
     
     /**
      * @brief 데이터베이스 로우를 Entity로 변환
@@ -375,27 +295,86 @@ private:
      * @return ScriptLibraryEntity 목록
      */
     std::vector<ScriptLibraryEntity> mapResultToEntities(
-        const std::vector<std::map<std::string, std::string>>& result);
+        const std::vector<std::map<std::string, std::string>>& result) {
+        std::vector<ScriptLibraryEntity> entities;
+        entities.reserve(result.size());
+        
+        for (const auto& row : result) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::WARN,
+                                            "mapResultToEntities - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        return entities;
+    }
     
     /**
      * @brief Entity를 데이터베이스 파라미터로 변환
      * @param entity ScriptLibraryEntity
      * @return 파라미터 맵
      */
-    std::map<std::string, std::string> entityToParams(const ScriptLibraryEntity& entity);
-    
-    /**
-     * @brief 테이블 존재 여부 확인 및 생성
-     * @return 성공 시 true
-     */
-    bool ensureTableExists();
+    std::map<std::string, std::string> entityToParams(const ScriptLibraryEntity& entity) {
+        std::map<std::string, std::string> params;
+        
+        // 기본 필드들
+        params["tenant_id"] = std::to_string(entity.getTenantId());
+        params["name"] = entity.getName();
+        params["display_name"] = entity.getDisplayName();
+        params["description"] = entity.getDescription();
+        params["category"] = entity.getCategoryString();
+        params["script_code"] = entity.getScriptCode();
+        params["parameters"] = entity.getParameters().dump();
+        params["return_type"] = entity.getReturnTypeString();
+        params["tags"] = nlohmann::json(entity.getTags()).dump();
+        params["example_usage"] = entity.getExampleUsage();
+        params["is_system"] = entity.isSystem() ? "1" : "0";
+        params["is_template"] = entity.isTemplate() ? "1" : "0";
+        params["usage_count"] = std::to_string(entity.getUsageCount());
+        params["rating"] = std::to_string(entity.getRating());
+        params["version"] = entity.getVersion();
+        params["author"] = entity.getAuthor();
+        params["license"] = entity.getLicense();
+        params["dependencies"] = nlohmann::json(entity.getDependencies()).dump();
+        
+        return params;
+    }
     
     /**
      * @brief Entity 유효성 검증
      * @param entity ScriptLibraryEntity
      * @return 유효하면 true
      */
-    bool validateEntity(const ScriptLibraryEntity& entity) const;
+    bool validateEntity(const ScriptLibraryEntity& entity) const {
+        if (entity.getName().empty()) {
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                        "validateEntity - Empty script name");
+            return false;
+        }
+        
+        if (entity.getScriptCode().empty()) {
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                        "validateEntity - Empty script code");
+            return false;
+        }
+        
+        if (entity.getTenantId() < 0) {
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                        "validateEntity - Invalid tenant_id: " + std::to_string(entity.getTenantId()));
+            return false;
+        }
+        
+        return true;
+    }
+
+    // =======================================================================
+    // 의존성 관리 - IRepository에서 이미 제공되므로 중복 제거
+    // =======================================================================
+    // ❌ 제거: DatabaseManager* db_manager_; (IRepository에서 제공)
+    // ❌ 제거: LogManager* logger_; (IRepository에서 제공)  
+    // ❌ 제거: ConfigManager* config_manager_; (IRepository에서 제공)
 };
 
 } // namespace Repositories
