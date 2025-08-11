@@ -144,7 +144,6 @@ public:
      * @return 활성화된 알람 규칙 목록
      */
     std::vector<AlarmRuleEntity> findAllEnabled();
-
 private:
     // =======================================================================
     // 내부 헬퍼 메서드들 (자체 구현)
