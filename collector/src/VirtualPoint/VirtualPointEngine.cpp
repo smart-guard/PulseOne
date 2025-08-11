@@ -407,7 +407,7 @@ CalculationResult VirtualPointEngine::calculate(int vp_id, const json& inputs) {
         // 수식 실행
         result.value = evaluateFormula(vp.formula, inputs);
         result.success = true;
-        result.input_snapshot = inputs;
+        //result.input_snapshot = inputs;
         
         // 실행 시간 계산
         auto end_time = std::chrono::high_resolution_clock::now();

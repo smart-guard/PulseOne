@@ -31,7 +31,8 @@ namespace Repositories {
     class TenantRepository;
     class UserRepository;
     class AlarmRuleRepository;
-    class AlarmOccurrenceRepository; 
+    class AlarmOccurrenceRepository;
+    class ScriptLibraryRepository; 
 }
 
 /**
@@ -153,6 +154,17 @@ public:
         return alarm_occurrence_repository_;
     }
 
+    std::shared_ptr<Repositories::ScriptLibraryRepository> getScriptLibraryRepository() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        if (!script_library_repo_) {
+            script_library_repo_ = std::make_shared<Repositories::ScriptLibraryRepository>();
+            script_library_repo_->initialize(&::DatabaseManager::getInstance());
+        }
+        
+        return script_library_repo_;
+    }   
+
     // =============================================================================
     // 캐시 관리
     // =============================================================================
@@ -205,6 +217,7 @@ private:
     std::shared_ptr<Repositories::VirtualPointRepository> virtual_point_repository_;
     std::shared_ptr<Repositories::CurrentValueRepository> current_value_repository_;
     std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repository_;
+    std::shared_ptr<Repositories::ScriptLibraryRepository> script_library_repo_;
     // 상태 관리
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;
