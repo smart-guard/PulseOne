@@ -1,9 +1,9 @@
 // =============================================================================
-// collector/src/Pipeline/DataProcessingService.cpp - 올바른 구현
+// collector/src/Pipeline/DataProcessingService.cpp - 완전 정리된 구현
 // =============================================================================
 
 #include "Pipeline/DataProcessingService.h"
-#include "Pipeline/PipelineManager.h"  // 🔥 올바른 include!
+#include "Pipeline/PipelineManager.h"
 #include "Utils/LogManager.h"
 #include "Common/Structs.h"
 #include "Common/Enums.h"
@@ -38,7 +38,7 @@ DataProcessingService::~DataProcessingService() {
 }
 
 // =============================================================================
-// 🔥 올바른 인터페이스 구현 (PipelineManager 싱글톤 사용)
+// 서비스 시작/중지
 // =============================================================================
 
 bool DataProcessingService::Start() {
@@ -48,7 +48,7 @@ bool DataProcessingService::Start() {
         return false;
     }
     
-    // 🔥 PipelineManager 싱글톤 상태 확인
+    // PipelineManager 싱글톤 상태 확인
     auto& pipeline_manager = PipelineManager::GetInstance();
     if (!pipeline_manager.IsRunning()) {
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
@@ -64,7 +64,7 @@ bool DataProcessingService::Start() {
     should_stop_ = false;
     is_running_ = true;
     
-    // 🔥 멀티스레드 처리기들 시작
+    // 멀티스레드 처리기들 시작
     processing_threads_.reserve(thread_count_);
     for (size_t i = 0; i < thread_count_; ++i) {
         processing_threads_.emplace_back(
@@ -88,10 +88,10 @@ void DataProcessingService::Stop() {
     LogManager::getInstance().log("processing", LogLevel::INFO, 
                                  "🛑 DataProcessingService 중지 중...");
     
-    // 🔥 정지 신호 설정
+    // 정지 신호 설정
     should_stop_ = true;
     
-    // 🔥 모든 처리 스레드 종료 대기
+    // 모든 처리 스레드 종료 대기
     for (size_t i = 0; i < processing_threads_.size(); ++i) {
         if (processing_threads_[i].joinable()) {
             processing_threads_[i].join();
@@ -106,7 +106,6 @@ void DataProcessingService::Stop() {
     LogManager::getInstance().log("processing", LogLevel::INFO, 
                                  "✅ DataProcessingService 중지 완료");
 }
-
 
 void DataProcessingService::SetThreadCount(size_t thread_count) {
     if (is_running_.load()) {
@@ -134,9 +133,8 @@ void DataProcessingService::SetThreadCount(size_t thread_count) {
                                  std::to_string(thread_count_) + "개");
 }
 
-
 // =============================================================================
-// 🔥 올바른 멀티스레드 처리 루프
+// 멀티스레드 처리 루프
 // =============================================================================
 
 void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
@@ -145,7 +143,7 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
     
     while (!should_stop_.load()) {
         try {
-            // 🔥 PipelineManager 싱글톤에서 배치 수집
+            // PipelineManager 싱글톤에서 배치 수집
             auto batch = CollectBatchFromPipelineManager();
             
             if (!batch.empty()) {
@@ -184,7 +182,7 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
 }
 
 std::vector<Structs::DeviceDataMessage> DataProcessingService::CollectBatchFromPipelineManager() {
-    // 🔥 PipelineManager 싱글톤에서 배치 가져오기
+    // PipelineManager 싱글톤에서 배치 가져오기
     auto& pipeline_manager = PipelineManager::GetInstance();
     return pipeline_manager.GetBatch(batch_size_, 100); // 최대 batch_size_개, 100ms 타임아웃
 }
@@ -223,12 +221,12 @@ void DataProcessingService::ProcessBatch(
 }
 
 // =============================================================================
-// 🔥 단계별 처리 메서드들 (순차 실행)
+// 단계별 처리 메서드들
 // =============================================================================
 
 std::vector<Structs::DeviceDataMessage> DataProcessingService::CalculateVirtualPoints(
     const std::vector<Structs::DeviceDataMessage>& batch) {
-    // 🔥 나중에 구현 - 현재는 원본 데이터 그대로 반환
+    // 나중에 구현 - 현재는 원본 데이터 그대로 반환
     return batch;
 }
 
@@ -254,13 +252,17 @@ void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMes
                 for (const auto& event : alarm_events) {
                     nlohmann::json event_json = {
                         {"type", "alarm_event"},
-                        {"rule_id", event.rule_id},
-                        {"occurrence_id", event.occurrence_id},
-                        {"event_type", event.event_type},
-                        {"message", event.message},
-                        {"severity", static_cast<int>(event.severity)},
+                        {"occurrence_id", event.occurrence_id},        // ✅ 올바른 필드
+                        {"rule_id", event.rule_id},                    // ✅ 올바른 필드  
+                        {"device_id", event.device_id},                // ✅ 올바른 필드
+                        {"point_id", event.point_id},                  // ✅ 올바른 필드
+                        {"alarm_type", event.alarm_type},              // ✅ event_type 대신 alarm_type
+                        {"message", event.message},                    // ✅ 올바른 필드
+                        {"severity", event.severity},                  // ✅ 올바른 필드
+                        {"state", event.state},                       // ✅ 올바른 필드
+                        {"trigger_value", event.trigger_value},       // ✅ value 대신 trigger_value
                         {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
-                            event.timestamp.time_since_epoch()).count()}
+                            event.occurrence_time.time_since_epoch()).count()}  // ✅ occurrence_time 사용
                     };
                     
                     redis_client_->publish("pulseone:alarms", event_json.dump());
@@ -273,42 +275,6 @@ void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMes
                                      "Error in CheckAlarms: " + std::string(e.what()));
     }
 }
-
-// =============================================================================
-// 3. DatabaseManager 싱글턴 패턴 수정 제안
-// =============================================================================
-
-// DatabaseManager.h에서 getInstance() 메서드가 shared_ptr를 반환하도록 수정:
-
-class DatabaseManager {
-public:
-    // ❌ 기존
-    // static DatabaseManager& getInstance();
-    
-    // ✅ 수정 - shared_ptr 반환으로 변경
-    static std::shared_ptr<DatabaseManager> getInstance() {
-        static std::shared_ptr<DatabaseManager> instance = nullptr;
-        static std::once_flag once_flag;
-        
-        std::call_once(once_flag, []() {
-            instance = std::shared_ptr<DatabaseManager>(new DatabaseManager());
-        });
-        
-        return instance;
-    }
-    
-    // 또는 기존 방식 유지하고 shared_ptr 래퍼 메서드 추가:
-    static std::shared_ptr<DatabaseManager> getSharedInstance() {
-        return std::shared_ptr<DatabaseManager>(&getInstance(), [](DatabaseManager*){});
-    }
-
-private:
-    DatabaseManager() = default;  // private 생성자
-    
-    // 복사 방지
-    DatabaseManager(const DatabaseManager&) = delete;
-    DatabaseManager& operator=(const DatabaseManager&) = delete;
-};
 
 void DataProcessingService::SaveToRedis(const std::vector<Structs::DeviceDataMessage>& batch) {
     if (!redis_client_) {
@@ -336,7 +302,6 @@ void DataProcessingService::SaveToRedis(const std::vector<Structs::DeviceDataMes
             redis_writes_.fetch_add(1);
         }
         
-        // 🔥 DEBUG_LEVEL → INFO로 변경해서 반드시 보이도록!
         LogManager::getInstance().log("processing", LogLevel::INFO, 
                                      "✅ Redis 저장 완료: " + std::to_string(batch.size()) + "개");
         
@@ -348,14 +313,14 @@ void DataProcessingService::SaveToRedis(const std::vector<Structs::DeviceDataMes
 }
 
 void DataProcessingService::SaveToInfluxDB(const std::vector<Structs::DeviceDataMessage>& batch) {
-    // 🔥 나중에 구현 - 현재는 로깅만
+    // 나중에 구현 - 현재는 로깅만
     LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                  "InfluxDB 저장 완료: " + std::to_string(batch.size()) + "개");
     influx_writes_.fetch_add(batch.size());
 }
 
 // =============================================================================
-// 🔥 Redis 저장 헬퍼 메서드들 (필드 오류 수정!)
+// Redis 저장 헬퍼 메서드들
 // =============================================================================
 
 void DataProcessingService::WriteDeviceDataToRedis(const Structs::DeviceDataMessage& message) {
@@ -363,11 +328,11 @@ void DataProcessingService::WriteDeviceDataToRedis(const Structs::DeviceDataMess
         LogManager::getInstance().log("processing", LogLevel::INFO, 
                                      "🔧 디바이스 " + message.device_id + " Redis 저장 시작");
         
-        // 🔥 올바른 필드 사용: message.points는 TimestampedValue의 배열
+        // message.points는 TimestampedValue의 배열
         for (size_t i = 0; i < message.points.size(); ++i) {
             const auto& point = message.points[i];
             
-            // 🔥 point_id 생성: device_id + index 조합 (또는 다른 고유 식별자)
+            // point_id 생성: device_id + index 조합
             std::string point_id = message.device_id + "_point_" + std::to_string(i);
             
             // 1. 개별 포인트 최신값 저장
@@ -439,9 +404,8 @@ std::string DataProcessingService::TimestampedValueToJson(
     const std::string& point_id) {
     
     nlohmann::json json_value;
-    json_value["point_id"] = point_id;  // 🔥 외부에서 받은 point_id 사용!
+    json_value["point_id"] = point_id;
     
-    // 🔥 올바른 TimestampedValue 필드 사용
     // value 필드 처리 (DataVariant)
     std::visit([&json_value](const auto& v) {
         json_value["value"] = v;
@@ -455,25 +419,22 @@ std::string DataProcessingService::TimestampedValueToJson(
     return json_value.dump();
 }
 
+// =============================================================================
+// 통계 관리
+// =============================================================================
+
 void DataProcessingService::UpdateStatistics(size_t processed_count, double processing_time_ms) {
-    // 🔥 수정: atomic<double>의 fetch_add 문제 해결
-    // fetch_add 대신 load/store 사용하여 근사치 계산
-    
-    static std::atomic<uint64_t> total_time_ms{0};  // double 대신 uint64_t 사용
+    // atomic<double>의 fetch_add 문제 해결
+    static std::atomic<uint64_t> total_time_ms{0};
     static std::atomic<uint64_t> total_operations{0};
     
-    // 🔥 수정: fetch_add를 지원하는 타입으로 변환
     total_time_ms.fetch_add(static_cast<uint64_t>(processing_time_ms));
     total_operations.fetch_add(1);
     
-    // 🔥 수정: 미사용 변수 경고 해결 - processed_count 사용
     if (processed_count > 0) {
-        // 통계에 processed_count 반영 (실제 사용)
-        total_messages_processed_.fetch_add(processed_count - 1); // -1은 이미 다른 곳에서 카운트되므로
+        // 통계에 processed_count 반영
+        total_messages_processed_.fetch_add(processed_count - 1);
     }
-    
-    // 🔥 수정: unused variable 경고 해결 - current_avg 제거하거나 사용
-    // 필요시 평균 계산은 GetStatistics()에서 수행
 }
 
 DataProcessingService::ProcessingStats DataProcessingService::GetStatistics() const {

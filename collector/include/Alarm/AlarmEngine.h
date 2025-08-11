@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Alarm/AlarmEngine.h
-// PulseOne 알람 엔진 헤더 - LogManager 타입 오류 완전 해결
+// PulseOne 알람 엔진 헤더 - 컴파일 에러 완전 해결
 // =============================================================================
 
 #ifndef ALARM_ENGINE_H
@@ -23,7 +23,7 @@
 #include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
-#include "Utils/LogManager.h"  // ✅ LogManager 헤더 추가
+#include "Utils/LogManager.h"
 
 namespace PulseOne {
 
@@ -92,14 +92,12 @@ public:
     // =======================================================================
     
     /**
-     * @brief 알람 엔진 초기화
-     * @param db_manager 데이터베이스 매니저
+     * @brief 알람 엔진 초기화 (다른 클래스들과 동일한 패턴)
      * @param redis_client Redis 클라이언트 (알람 이벤트 발송용)
      * @param mq_client RabbitMQ 클라이언트 (알림 발송용)
      * @return 성공 여부
      */
-    bool initialize(std::shared_ptr<Database::DatabaseManager> db_manager,
-                   std::shared_ptr<RedisClientImpl> redis_client = nullptr,
+    bool initialize(std::shared_ptr<RedisClientImpl> redis_client = nullptr,
                    std::shared_ptr<RabbitMQClient> mq_client = nullptr);
     
     /**
@@ -198,13 +196,11 @@ public:
 
 private:
     // =======================================================================
-    // 생성자/소멸자 (싱글톤)
+    // 생성자/소멸자 (싱글톤) - ✅ 선언만, 구현은 .cpp에서
     // =======================================================================
     
-    AlarmEngine();
+    AlarmEngine();  // ✅ 선언만
     ~AlarmEngine();
-    
-    // 복사 생성자와 대입 연산자 삭제
     AlarmEngine(const AlarmEngine&) = delete;
     AlarmEngine& operator=(const AlarmEngine&) = delete;
 
@@ -272,8 +268,8 @@ private:
     // 초기화 상태
     std::atomic<bool> initialized_{false};
     
-    // 의존성 객체들
-    std::shared_ptr<Database::DatabaseManager> db_manager_;
+    // 의존성 객체들 - 전방 선언으로 해결
+    class DatabaseManager* db_manager_;  // ✅ 전방 선언 사용
     std::shared_ptr<RedisClientImpl> redis_client_;
     std::shared_ptr<RabbitMQClient> mq_client_;
     
@@ -297,8 +293,8 @@ private:
     thread_local static void* js_runtime_;
     thread_local static void* js_context_;
     
-    // ✅ LogManager 참조 (타입 수정)
-    Utils::LogManager& logger_;
+    // ✅ LogManager 전방 선언
+    class LogManager* logger_;
 };
 
 } // namespace Alarm

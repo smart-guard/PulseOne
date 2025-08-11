@@ -15,6 +15,7 @@
 #include <map>
 #include <string>
 #include <mutex>
+#include <shared_mutex>  // ✅ 추가
 #include <vector>
 #include <optional>
 #include <chrono>
@@ -24,7 +25,7 @@ namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// 타입 별칭 정의 (AlarmRuleRepository 패턴)
+// 타입 별칭 정의
 using AlarmOccurrenceEntity = PulseOne::Database::Entities::AlarmOccurrenceEntity;
 
 /**
@@ -153,7 +154,7 @@ public:
     bool isCacheEnabled() const;
 
     // =======================================================================
-    // ✅ 헬퍼 메서드들 (.cpp에서 구현됨)
+    // ✅ 헬퍼 메서드들 (.cpp에서 구현됨) - 이 부분이 핵심 수정!
     // =======================================================================
     
     /**
@@ -164,7 +165,7 @@ public:
     /**
      * @brief 문자열 이스케이프 처리
      */
-    std::string escapeString(const std::string& str) const;
+    std::string escapeString(const std::string& str) const override;
     
     /**
      * @brief 활성 알람 개수 조회
@@ -180,6 +181,15 @@ public:
      * @brief 최근 발생 알람들 조회
      */
     std::vector<AlarmOccurrenceEntity> findRecentOccurrences(int limit);
+
+    /**
+     * @brief 🔥 .cpp에서 구현된 헬퍼 메서드들 선언 추가
+     */
+    std::string severityToString(AlarmOccurrenceEntity::Severity severity) const;
+    AlarmOccurrenceEntity::Severity stringToSeverity(const std::string& str) const;
+    std::string stateToString(AlarmOccurrenceEntity::State state) const;
+    AlarmOccurrenceEntity::State stringToState(const std::string& str) const;
+    bool validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const;  // ✅ const 추가!
 
 private:
     // =======================================================================
@@ -207,13 +217,15 @@ private:
     void initializeDependencies();
 
     // =======================================================================
-    // 멤버 변수들
+    // 멤버 변수들 - 전방 선언 대신 포인터 사용
     // =======================================================================
     
     mutable std::shared_mutex cache_mutex_;
     std::map<int, AlarmOccurrenceEntity> entity_cache_;
-    Utils::LogManager* logger_;
-    Utils::ConfigManager* config_;
+    
+    // ✅ 전방 선언으로 해결
+    class LogManager* logger_;      
+    class ConfigManager* config_;   
     std::atomic<bool> cache_enabled_;
 };
 

@@ -28,7 +28,8 @@ AlarmEngine& AlarmEngine::getInstance() {
 }
 
 AlarmEngine::AlarmEngine() 
-    : logger_(Utils::LogManager::getInstance()) {
+    : db_manager_(DatabaseManager::getInstance())
+    , logger_(Utils::LogManager::getInstance()) {
     logger_.Debug("AlarmEngine constructor");
 }
 
