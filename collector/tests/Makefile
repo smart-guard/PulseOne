@@ -1,5 +1,5 @@
 # =============================================================================
-# collector/tests/Makefile - 🚀 고속 증분 컴파일 + 드라이버 데이터 검증 추가
+# collector/tests/Makefile - 🚀 고속 증분 컴파일 + 알람 시스템 통합
 # =============================================================================
 
 # 🚀 성능 최적화 설정
@@ -12,12 +12,14 @@ HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ -
 HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
+HAS_QUICKJS := $(shell pkg-config --exists quickjs && echo "1" || echo "0")
 
 # 컴파일러 설정 (🚀 최적화됨)
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE \
            -O1 -fno-omit-frame-pointer \
            -Wno-unused-but-set-variable -Wno-unused-variable \
+           -Wno-unused-parameter \
            -fdiagnostics-color=always
 
 # 🚀 증분 컴파일용 디렉토리
@@ -30,8 +32,10 @@ PARENT_DIR = ..
 INCLUDE_DIR = $(PARENT_DIR)/include
 SRC_DIR = $(PARENT_DIR)/src
 
-# Include 경로
-INCLUDES = -I$(INCLUDE_DIR)
+# Include 경로 (🔥 알람 시스템 헤더 추가)
+INCLUDES = -I$(INCLUDE_DIR) \
+           -I$(INCLUDE_DIR)/Alarm \
+           -I$(INCLUDE_DIR)/VirtualPoint
 
 # 🔧 라이브러리 설정 (기존과 동일)
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)
@@ -93,14 +97,26 @@ ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON
 endif
 
-# 전체 라이브러리 설정
-BASIC_LIBS = -lpthread -lsqlite3 $(shell pkg-config --libs quickjs) -lquickjs -lm -ldl
+# 🔥 QuickJS 라이브러리 설정 (수정됨)
+ifeq ($(HAS_QUICKJS),1)
+    QUICKJS_LIBS = $(shell pkg-config --libs quickjs 2>/dev/null || echo "-lquickjs")
+    QUICKJS_INCLUDES = $(shell pkg-config --cflags quickjs 2>/dev/null || echo "-I/usr/local/include")
+    INCLUDES += $(QUICKJS_INCLUDES)
+    CXXFLAGS += -DHAS_QUICKJS=1
+else
+    QUICKJS_LIBS = 
+    CXXFLAGS += -DHAS_QUICKJS=0
+    $(warning ⚠️  QuickJS not found - Script alarms will be disabled)
+endif
+
+# 전체 라이브러리 설정 (🔥 QuickJS 추가)
+BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) -lm -ldl
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
 TEST_LIBS = -lgtest -lgtest_main -pthread
 
 # =============================================================================
-# 🚀 소스 파일 및 오브젝트 파일 정의 (모든 파일 포함)
+# 🚀 소스 파일 및 오브젝트 파일 정의 (🔥 알람 및 VirtualPoint 추가)
 # =============================================================================
 
 # 모든 소스 파일 수집 (기존과 동일)
@@ -129,13 +145,14 @@ endif
 
 PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
 
-# 🔥 AlarmEngine 소스 추가
+# 🔥 알람 및 가상포인트 소스 추가
 ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
+VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
 
-# 🚀 전체 소스 파일 (모든 파일 포함)
+# 🚀 전체 소스 파일 (🔥 알람 및 VirtualPoint 포함)
 ALL_SOURCES = $(UTILS_SOURCES) $(CONFIG_SOURCES) $(DATABASE_SOURCES) \
               $(CLIENT_SOURCES) $(WORKERS_SOURCES) $(DRIVERS_SOURCES) \
-              $(PIPELINE_SOURCES) $(ALARM_SOURCES)
+              $(PIPELINE_SOURCES) $(ALARM_SOURCES) $(VIRTUALPOINT_SOURCES)
 
 # 🚀 오브젝트 파일 생성 (증분 컴파일용)
 ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
@@ -152,6 +169,7 @@ BLUE = \033[0;34m
 YELLOW = \033[1;33m
 RED = \033[0;31m
 PURPLE = \033[0;35m
+CYAN = \033[0;36m
 NC = \033[0m
 
 # =============================================================================
@@ -160,37 +178,47 @@ NC = \033[0m
 
 .DEFAULT_GOAL := help
 
-# 디렉토리 생성
+# 🔥 디렉토리 생성 (알람 및 VirtualPoint 디렉토리 추가)
 $(OBJ_DIR):
 	@echo -e "$(BLUE)📁 Creating object directories...$(NC)"
 	@mkdir -p $(OBJ_DIR)
 	@mkdir -p $(OBJ_DIR)/Utils $(OBJ_DIR)/Config $(OBJ_DIR)/Database/Entities $(OBJ_DIR)/Database/Repositories
 	@mkdir -p $(OBJ_DIR)/Client $(OBJ_DIR)/Workers/Base $(OBJ_DIR)/Workers/Protocol $(OBJ_DIR)/Workers/Components
 	@mkdir -p $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
-	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm
+	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
-# 🚀 개별 오브젝트 파일 컴파일 (증분 컴파일)
+# 🚀 개별 오브젝트 파일 컴파일 (증분 컴파일 + 의존성 생성)
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔗 Generating dependencies for $<$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
 	@echo -e "$(YELLOW)🔨 Compiling $<$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# 🚀 테스트 파일들 컴파일
+# 🚀 테스트 파일들 컴파일 (의존성 생성 포함)
 $(OBJ_DIR)/test_step3_workers.o: test_step3_workers.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step3_workers.cpp$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
 	@echo -e "$(YELLOW)🔨 Compiling test_step3_workers...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step4_driver_data_validation.o: test_step4_driver_data_validation.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step4_driver_data_validation.cpp$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
 	@echo -e "$(YELLOW)🔨 Compiling test_step4_driver_data_validation...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_db_integration_validation.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step5_complete_db_integration_validation.cpp$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
 	@echo -e "$(YELLOW)🔨 Compiling test_step5_complete_db_integration_validation...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step6_full_pipeline.o: test_step6_full_pipeline.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step6_full_pipeline.cpp$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
 	@echo -e "$(YELLOW)🔨 Compiling test_step6_full_pipeline...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
@@ -291,7 +319,7 @@ clean:
 	@rm -rf $(OBJ_DIR) $(BIN_DIR)
 	@echo -e "$(GREEN)✅ Clean completed$(NC)"
 
-# 🔍 빌드 상태 확인
+# 🔍 빌드 상태 확인 (🔥 QuickJS 상태 추가)
 status:
 	@echo -e "$(BLUE)📊 Build Status$(NC)"
 	@echo -e "$(YELLOW)===============$(NC)"
@@ -307,6 +335,7 @@ status:
 	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅,❌)"
 	@echo "  BACnet: $(if $(BACNET_LIBS),✅,❌)"
 	@echo "  Redis: $(if $(REDIS_LIBS),✅,❌)"
+	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ $(QUICKJS_LIBS),❌)"
 
 # 🚀 개발용 워크플로우들
 dev-step3: step3-build step3-test
@@ -315,7 +344,7 @@ dev-step5: step5-build step5-test
 dev-step6: step6-build step6-test
 dev-all: all-tests-run
 
-# 종속성 확인 (기존과 동일)
+# 종속성 확인 (🔥 QuickJS 추가)
 check-deps:
 	@echo -e "$(BLUE)🔍 라이브러리 의존성 체크$(NC)"
 	@echo "  Total sources: $(words $(ALL_SOURCES))"
@@ -323,23 +352,29 @@ check-deps:
 	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ $(MODBUS_LIBS),❌ not found)"
 	@echo "  BACnet: $(if $(BACNET_LIBS),✅ $(BACNET_LIBS),❌ not found)"
 	@echo "  Redis: $(if $(REDIS_LIBS),✅ $(REDIS_LIBS),❌ not found)"
+	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ $(QUICKJS_LIBS),❌ not found)"
+	@echo ""
+	@echo -e "$(BLUE)🔧 QuickJS 상세 체크:$(NC)"
+	@pkg-config --exists quickjs && echo "  ✅ pkg-config: OK" || echo "  ❌ pkg-config: 실패"
+	@ls -la /usr/local/lib/libquickjs* 2>/dev/null || echo "  ❌ 라이브러리 파일 없음"
+	@ls -la /usr/local/include/quickjs*.h 2>/dev/null || echo "  ❌ 헤더 파일 없음"
 
 # 도움말
 help:
-	@echo -e "$(BLUE)🚀 PulseOne Fast Build System (with Step 6)$(NC)"
-	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)🚀 PulseOne Fast Build System (with Alarm System)$(NC)"
+	@echo -e "$(YELLOW)===============================================$(NC)"
 	@echo ""
 	@echo -e "$(GREEN)🔥 개별 테스트 명령어:$(NC)"
 	@echo "  make step3-test   - 🧪 Step 3: Workers 테스트"
 	@echo "  make step4-test   - 🧪 Step 4: Driver 데이터 검증 테스트"
 	@echo "  make step5-test   - 🧪 Step 5: 완전한 DB 통합 테스트"
-	@echo "  make step6-test   - 🧪 Step 6: Redis 파이프라인 테스트 (신규!)"
+	@echo "  make step6-test   - 🧪 Step 6: Redis 파이프라인 + 알람 테스트"
 	@echo ""
 	@echo -e "$(GREEN)🚀 빠른 빌드 명령어:$(NC)"
 	@echo "  make step3-build  - 🚀 Step 3 빌드만"
 	@echo "  make step4-build  - 🚀 Step 4 빌드만"
 	@echo "  make step5-build  - 🚀 Step 5 빌드만"
-	@echo "  make step6-build  - 🚀 Step 6 빌드만 (신규!)"
+	@echo "  make step6-build  - 🚀 Step 6 빌드만 (알람 시스템 포함)"
 	@echo "  make all-tests-build - 🚀 모든 테스트 빌드 (Step 3-6)"
 	@echo ""
 	@echo -e "$(GREEN)🎯 통합 실행:$(NC)"
@@ -352,25 +387,22 @@ help:
 	@echo ""
 	@echo -e "$(GREEN)📊 상태 확인:$(NC)"
 	@echo "  make status       - 📊 빌드 상태 확인"
-	@echo "  make check-deps   - 🔍 라이브러리 확인"
+	@echo "  make check-deps   - 🔍 라이브러리 확인 (QuickJS 포함)"
 	@echo ""
 	@echo -e "$(PURPLE)💡 권장 사용법:$(NC)"
 	@echo "  1️⃣  첫 빌드: make full-build"
-	@echo "  2️⃣  개별 테스트: make step6-test (Redis 파이프라인)"
+	@echo "  2️⃣  개별 테스트: make step6-test (Redis + 알람)"
 	@echo "  3️⃣  전체 검증: make all-tests-run"
 	@echo "  4️⃣  개발 중: make dev-step6 (빠른 개발)"
 	@echo ""
-	@echo -e "$(RED)🔥 Step 6 신규 기능:$(NC)"
+	@echo -e "$(RED)🔥 Step 6 업데이트:$(NC)"
+	@echo "  - 알람 시스템 통합 테스트"
+	@echo "  - QuickJS 스크립트 엔진 지원"
 	@echo "  - Redis 연결 및 데이터 저장 테스트"
-	@echo "  - 디바이스 스캔부터 Redis 저장까지 완전한 파이프라인"
-	@echo "  - 성능 측정 및 데이터 무결성 검증"
+	@echo "  - 완전한 파이프라인 (스캔 → 처리 → 알람 → Redis)"
 
 # 🚀 자동 종속성 생성 (고급 기능)
--include $(ALL_OBJECTS:.o=.d)
-
-$(OBJ_DIR)/%.d: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔗 Generating dependencies for $<$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $(OBJ_DIR)/$*.o $< > $@
+-include $(ALL_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d)
 
 .PHONY: fast-build full-build test clean status check-deps help \
         step3-build step3-test step4-build step4-test step5-build step5-test \
