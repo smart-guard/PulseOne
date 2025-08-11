@@ -1,24 +1,25 @@
 // =============================================================================
 // collector/src/Database/Repositories/ScriptLibraryRepository.cpp
-// PulseOne ScriptLibraryRepository 구현 - DeviceRepository 패턴 100% 적용
+// PulseOne ScriptLibraryRepository 구현 - SQLQueries.h 패턴 100% 적용
 // =============================================================================
 
 /**
  * @file ScriptLibraryRepository.cpp
- * @brief PulseOne ScriptLibraryRepository 구현 - DeviceRepository 패턴 100% 적용
+ * @brief PulseOne ScriptLibraryRepository 구현 - SQLQueries.h 패턴 완전 적용
  * @author PulseOne Development Team
  * @date 2025-08-11
  * 
- * 🎯 DeviceRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer 사용
- * - executeQuery/executeNonQuery/executeUpsert 패턴
- * - RepositoryHelpers 활용
- * - 캐시 관리 구현
+ * 🎯 SQLQueries.h 패턴 완전 적용:
+ * - 모든 쿼리는 SQLQueries.h에서 관리
+ * - RepositoryHelpers::replaceParameter 사용
+ * - DeviceRepository와 동일한 패턴
+ * - 인라인 쿼리 완전 제거
  */
 
 #include "Database/Repositories/ScriptLibraryRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
+#include "Database/SQLQueries.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -28,7 +29,7 @@ namespace Database {
 namespace Repositories {
 
 // =============================================================================
-// IRepository 기본 CRUD 구현 (DeviceRepository 패턴)
+// IRepository 기본 CRUD 구현 (SQLQueries.h 패턴)
 // =============================================================================
 
 std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findAll() {
@@ -38,18 +39,8 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findAll() {
             return {};
         }
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            ORDER BY name
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        auto results = db_layer.executeQuery(SQL::ScriptLibrary::FIND_ALL);
         
         std::vector<ScriptLibraryEntity> entities;
         entities.reserve(results.size());
@@ -87,15 +78,8 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findById(int id) {
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE id = )" + std::to_string(id);
-        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -133,30 +117,19 @@ bool ScriptLibraryRepository::save(ScriptLibraryEntity& entity) {
         DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         
-        // Insert 쿼리 생성
-        std::string columns, values;
-        for (const auto& [key, value] : params) {
-            if (key == "id") continue;  // ID는 자동 생성
-            
-            if (!columns.empty()) {
-                columns += ", ";
-                values += ", ";
+        // 🎯 executeUpsert 사용 (SQLQueries.h 패턴)
+        std::vector<std::string> primary_keys = {"id"};
+        bool success = db_layer.executeUpsert("script_library", params, primary_keys);
+        
+        if (success) {
+            // 새로 생성된 경우 ID 조회
+            if (entity.getId() <= 0) {
+                auto id_result = db_layer.executeQuery(SQL::Common::GET_LAST_INSERT_ID);
+                if (!id_result.empty()) {
+                    entity.setId(std::stoi(id_result[0].at("id")));
+                }
             }
-            columns += key;
             
-            if (value == "NULL") {
-                values += value;
-            } else {
-                values += "'" + RepositoryHelpers::escapeString(value) + "'";
-            }
-        }
-        
-        const std::string query = "INSERT INTO script_library (" + columns + ") VALUES (" + values + ")";
-        
-        int new_id = db_layer.executeInsert(query);
-        
-        if (new_id > 0) {
-            entity.setId(new_id);
             entity.markSaved();
             
             // 캐시에 추가
@@ -164,7 +137,7 @@ bool ScriptLibraryRepository::save(ScriptLibraryEntity& entity) {
                 cacheEntity(entity);
             }
             
-            logger_->Info("ScriptLibraryRepository::save - Script saved with ID: " + std::to_string(new_id));
+            logger_->Info("ScriptLibraryRepository::save - Script saved with ID: " + std::to_string(entity.getId()));
             return true;
         }
         
@@ -194,28 +167,34 @@ bool ScriptLibraryRepository::update(const ScriptLibraryEntity& entity) {
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto params = entityToParams(entity);
         
-        // Update 쿼리 생성
-        std::string set_clause;
-        for (const auto& [key, value] : params) {
-            if (key == "id" || key == "created_at") continue;  // ID와 created_at은 업데이트 안함
-            
-            if (!set_clause.empty()) {
-                set_clause += ", ";
-            }
-            
-            if (value == "NULL") {
-                set_clause += key + " = NULL";
-            } else {
-                set_clause += key + " = '" + RepositoryHelpers::escapeString(value) + "'";
-            }
-        }
+        // 🎯 SQLQueries.h 상수 사용 + RepositoryHelpers 파라미터 치환
+        std::vector<std::string> params = {
+            std::to_string(entity.getTenantId()),
+            entity.getName(),
+            entity.getDisplayName(),
+            entity.getDescription(),
+            entity.getCategoryString(),
+            entity.getScriptCode(),
+            entity.getParameters().dump(),
+            entity.getReturnTypeString(),
+            nlohmann::json(entity.getTags()).dump(),
+            entity.getExampleUsage(),
+            entity.isSystem() ? "1" : "0",
+            entity.isTemplate() ? "1" : "0",
+            std::to_string(entity.getUsageCount()),
+            std::to_string(entity.getRating()),
+            entity.getVersion(),
+            entity.getAuthor(),
+            entity.getLicense(),
+            nlohmann::json(entity.getDependencies()).dump(),
+            std::to_string(entity.getId()) // WHERE 절의 id
+        };
         
-        const std::string query = "UPDATE script_library SET " + set_clause + 
-                                " WHERE id = " + std::to_string(entity.getId());
+        std::string query = SQL::ScriptLibrary::UPDATE_BY_ID;
+        RepositoryHelpers::replaceParameterPlaceholders(query, params);
         
-        bool success = db_layer.executeNonQuery(query) > 0;
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
             // 캐시 업데이트
@@ -249,14 +228,14 @@ bool ScriptLibraryRepository::deleteById(int id) {
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = "DELETE FROM script_library WHERE id = " + std::to_string(id);
-        
-        bool success = db_layer.executeNonQuery(query) > 0;
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::DELETE_BY_ID, std::to_string(id));
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
             // 캐시에서 제거
             if (isCacheEnabled()) {
-                removeCachedEntity(id);
+                clearCacheForId(id);
             }
             
             logger_->Info("ScriptLibraryRepository::deleteById - Script deleted: " + std::to_string(id));
@@ -289,8 +268,8 @@ bool ScriptLibraryRepository::exists(int id) {
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = "SELECT COUNT(*) as count FROM script_library WHERE id = " + std::to_string(id);
-        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::EXISTS_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -306,7 +285,7 @@ bool ScriptLibraryRepository::exists(int id) {
 }
 
 // =============================================================================
-// 특화 메서드들 (DeviceRepository 패턴)
+// 특화 메서드들 (SQLQueries.h 패턴)
 // =============================================================================
 
 std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByCategory(const std::string& category) {
@@ -317,16 +296,9 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByCategory(const s
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE category = ')" + RepositoryHelpers::escapeString(category) + "'" +
-            " ORDER BY name";
-        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_BY_CATEGORY, 
+                                                              RepositoryHelpers::escapeString(category));
         auto results = db_layer.executeQuery(query);
         
         std::vector<ScriptLibraryEntity> entities = mapResultToEntities(results);
@@ -349,16 +321,9 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByTenantId(int ten
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE tenant_id = )" + std::to_string(tenant_id) + 
-            " OR is_system = 1 ORDER BY name";
-        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_BY_TENANT_ID, 
+                                                              std::to_string(tenant_id));
         auto results = db_layer.executeQuery(query);
         
         std::vector<ScriptLibraryEntity> entities = mapResultToEntities(results);
@@ -381,16 +346,10 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findByName(int tenan
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE (tenant_id = )" + std::to_string(tenant_id) + 
-            " OR is_system = 1) AND name = '" + RepositoryHelpers::escapeString(name) + "'";
-        
+        // 🎯 SQLQueries.h 상수 사용 + 두 개 파라미터 치환
+        std::string query = RepositoryHelpers::replaceTwoParameters(SQL::ScriptLibrary::FIND_BY_NAME,
+                                                                  std::to_string(tenant_id),
+                                                                  RepositoryHelpers::escapeString(name));
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -416,18 +375,8 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findSystemScripts() {
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE is_system = 1
-            ORDER BY category, name
-        )";
-        
-        auto results = db_layer.executeQuery(query);
+        // 🎯 SQLQueries.h 상수 사용
+        auto results = db_layer.executeQuery(SQL::ScriptLibrary::FIND_SYSTEM_SCRIPTS);
         
         std::vector<ScriptLibraryEntity> entities = mapResultToEntities(results);
         
@@ -449,7 +398,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByTags(const std::
         
         DatabaseAbstractionLayer db_layer;
         
-        // 태그 조건 생성
+        // 태그 조건 생성 (동적)
         std::string tag_conditions;
         for (const auto& tag : tags) {
             if (!tag_conditions.empty()) {
@@ -458,15 +407,8 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByTags(const std::
             tag_conditions += "tags LIKE '%" + RepositoryHelpers::escapeString(tag) + "%'";
         }
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE )" + tag_conditions + " ORDER BY usage_count DESC, name";
-        
+        // 🎯 SQLQueries.h 상수 사용하되 동적 조건 치환
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_BY_TAGS, tag_conditions);
         auto results = db_layer.executeQuery(query);
         
         std::vector<ScriptLibraryEntity> entities = mapResultToEntities(results);
@@ -489,20 +431,12 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::search(const std::stri
         
         DatabaseAbstractionLayer db_layer;
         
-        std::string escaped_keyword = RepositoryHelpers::escapeString(keyword);
+        std::string escaped_keyword = "%" + RepositoryHelpers::escapeString(keyword) + "%";
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE name LIKE '%)" + escaped_keyword + "%'" +
-            " OR display_name LIKE '%" + escaped_keyword + "%'" +
-            " OR description LIKE '%" + escaped_keyword + "%'" +
-            " OR tags LIKE '%" + escaped_keyword + "%'" +
-            " ORDER BY usage_count DESC, name";
+        // 🎯 SQLQueries.h 상수 사용 + 네 개 파라미터 치환 (LIKE 조건들)
+        std::vector<std::string> params = {escaped_keyword, escaped_keyword, escaped_keyword, escaped_keyword};
+        std::string query = SQL::ScriptLibrary::SEARCH_SCRIPTS;
+        RepositoryHelpers::replaceParameterPlaceholders(query, params);
         
         auto results = db_layer.executeQuery(query);
         
@@ -526,17 +460,9 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findTopUsed(int limit)
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE usage_count > 0
-            ORDER BY usage_count DESC, rating DESC
-            LIMIT )" + std::to_string(limit);
-        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_TOP_USED, 
+                                                              std::to_string(limit));
         auto results = db_layer.executeQuery(query);
         
         std::vector<ScriptLibraryEntity> entities = mapResultToEntities(results);
@@ -563,18 +489,15 @@ bool ScriptLibraryRepository::incrementUsageCount(int script_id) {
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            UPDATE script_library 
-            SET usage_count = usage_count + 1,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = )" + std::to_string(script_id);
-        
-        bool success = db_layer.executeNonQuery(query) > 0;
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::INCREMENT_USAGE_COUNT, 
+                                                              std::to_string(script_id));
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
             // 캐시 무효화
             if (isCacheEnabled()) {
-                removeCachedEntity(script_id);
+                clearCacheForId(script_id);
             }
             
             logger_->Debug("ScriptLibraryRepository::incrementUsageCount - Updated count for script: " + 
@@ -619,24 +542,24 @@ bool ScriptLibraryRepository::saveVersion(int script_id, const std::string& vers
             return false;
         }
         
-        // 버전 관리 테이블이 있다면 여기에 저장
-        // 현재는 메인 테이블의 버전과 코드만 업데이트
-        
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            UPDATE script_library 
-            SET version = ')" + RepositoryHelpers::escapeString(version) + "', " +
-            "script_code = '" + RepositoryHelpers::escapeString(code) + "', " +
-            "updated_at = CURRENT_TIMESTAMP " +
-            "WHERE id = " + std::to_string(script_id);
+        // 🎯 SQLQueries.h 상수 사용 + 세 개 파라미터 치환
+        std::vector<std::string> params = {
+            RepositoryHelpers::escapeString(version),
+            RepositoryHelpers::escapeString(code),
+            std::to_string(script_id)
+        };
         
-        bool success = db_layer.executeNonQuery(query) > 0;
+        std::string query = SQL::ScriptLibrary::UPDATE_VERSION;
+        RepositoryHelpers::replaceParameterPlaceholders(query, params);
+        
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
             // 캐시 무효화
             if (isCacheEnabled()) {
-                removeCachedEntity(script_id);
+                clearCacheForId(script_id);
             }
             
             logger_->Info("ScriptLibraryRepository::saveVersion - Saved version " + version + 
@@ -659,20 +582,17 @@ std::vector<std::map<std::string, std::string>> ScriptLibraryRepository::getTemp
         
         DatabaseAbstractionLayer db_layer;
         
-        std::string query = R"(
-            SELECT 
-                id, name, display_name, description, category,
-                script_code, parameters, return_type, example_usage
-            FROM script_library 
-            WHERE is_template = 1)";
+        std::vector<std::map<std::string, std::string>> results;
         
-        if (!category.empty()) {
-            query += " AND category = '" + RepositoryHelpers::escapeString(category) + "'";
+        if (category.empty()) {
+            // 🎯 SQLQueries.h 상수 사용
+            results = db_layer.executeQuery(SQL::ScriptLibrary::FIND_TEMPLATES);
+        } else {
+            // 🎯 SQLQueries.h 상수 사용 + 카테고리 파라미터
+            std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_TEMPLATES_BY_CATEGORY,
+                                                                  RepositoryHelpers::escapeString(category));
+            results = db_layer.executeQuery(query);
         }
-        
-        query += " ORDER BY category, name";
-        
-        auto results = db_layer.executeQuery(query);
         
         logger_->Info("ScriptLibraryRepository::getTemplates - Found " + 
                      std::to_string(results.size()) + " templates");
@@ -692,13 +612,9 @@ std::optional<std::map<std::string, std::string>> ScriptLibraryRepository::getTe
         
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = R"(
-            SELECT 
-                id, name, display_name, description, category,
-                script_code, parameters, return_type, example_usage
-            FROM script_library 
-            WHERE is_template = 1 AND id = )" + std::to_string(template_id);
-        
+        // 🎯 SQLQueries.h 상수 사용
+        std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_TEMPLATE_BY_ID,
+                                                              std::to_string(template_id));
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -727,20 +643,16 @@ nlohmann::json ScriptLibraryRepository::getUsageStatistics(int tenant_id) {
         
         DatabaseAbstractionLayer db_layer;
         
-        // 전체 통계
-        std::string query = R"(
-            SELECT 
-                COUNT(*) as total_scripts,
-                SUM(usage_count) as total_usage,
-                AVG(rating) as avg_rating,
-                MAX(usage_count) as max_usage
-            FROM script_library)";
+        // 🎯 SQLQueries.h 상수 사용
+        std::vector<std::map<std::string, std::string>> results;
         
         if (tenant_id > 0) {
-            query += " WHERE tenant_id = " + std::to_string(tenant_id) + " OR is_system = 1";
+            std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::GET_USAGE_STATS_BY_TENANT,
+                                                                  std::to_string(tenant_id));
+            results = db_layer.executeQuery(query);
+        } else {
+            results = db_layer.executeQuery(SQL::ScriptLibrary::GET_USAGE_STATS);
         }
-        
-        auto results = db_layer.executeQuery(query);
         
         if (!results.empty()) {
             stats["total_scripts"] = std::stoi(results[0].at("total_scripts"));
@@ -750,20 +662,13 @@ nlohmann::json ScriptLibraryRepository::getUsageStatistics(int tenant_id) {
         }
         
         // 카테고리별 통계
-        query = R"(
-            SELECT 
-                category,
-                COUNT(*) as count,
-                SUM(usage_count) as usage
-            FROM script_library)";
-        
         if (tenant_id > 0) {
-            query += " WHERE tenant_id = " + std::to_string(tenant_id) + " OR is_system = 1";
+            std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::GET_CATEGORY_STATS_BY_TENANT,
+                                                                  std::to_string(tenant_id));
+            results = db_layer.executeQuery(query);
+        } else {
+            results = db_layer.executeQuery(SQL::ScriptLibrary::GET_CATEGORY_STATS);
         }
-        
-        query += " GROUP BY category";
-        
-        results = db_layer.executeQuery(query);
         
         nlohmann::json categories = nlohmann::json::array();
         for (const auto& row : results) {
@@ -786,7 +691,7 @@ nlohmann::json ScriptLibraryRepository::getUsageStatistics(int tenant_id) {
 }
 
 // =============================================================================
-// 내부 헬퍼 메서드
+// 내부 헬퍼 메서드 (기존과 동일)
 // =============================================================================
 
 ScriptLibraryEntity ScriptLibraryRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
@@ -913,16 +818,7 @@ ScriptLibraryEntity ScriptLibraryRepository::mapRowToEntity(const std::map<std::
             }
         }
         
-        // 타임스탬프
-        if (row.find("created_at") != row.end() && !row.at("created_at").empty()) {
-            entity.setCreatedAt(RepositoryHelpers::parseTimestamp(row.at("created_at")));
-        }
-        
-        if (row.find("updated_at") != row.end() && !row.at("updated_at").empty()) {
-            entity.setUpdatedAt(RepositoryHelpers::parseTimestamp(row.at("updated_at")));
-        }
-        
-        entity.markLoaded();
+        entity.markSaved();
         
     } catch (const std::exception& e) {
         logger_->Error("ScriptLibraryRepository::mapRowToEntity failed: " + std::string(e.what()));
@@ -951,8 +847,6 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::mapResultToEntities(
 
 std::map<std::string, std::string> ScriptLibraryRepository::entityToParams(const ScriptLibraryEntity& entity) {
     std::map<std::string, std::string> params;
-    
-    DatabaseAbstractionLayer db_layer;
     
     // 기본 필드
     params["id"] = std::to_string(entity.getId());
@@ -989,10 +883,6 @@ std::map<std::string, std::string> ScriptLibraryRepository::entityToParams(const
     nlohmann::json deps_json = entity.getDependencies();
     params["dependencies"] = deps_json.dump();
     
-    // 타임스탬프
-    params["created_at"] = db_layer.getCurrentTimestamp();
-    params["updated_at"] = db_layer.getCurrentTimestamp();
-    
     return params;
 }
 
@@ -1000,34 +890,8 @@ bool ScriptLibraryRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
         
-        const std::string create_table_query = R"(
-            CREATE TABLE IF NOT EXISTS script_library (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id INTEGER NOT NULL,
-                name VARCHAR(100) NOT NULL,
-                display_name VARCHAR(100),
-                description TEXT,
-                category VARCHAR(50) DEFAULT 'CUSTOM',
-                script_code TEXT NOT NULL,
-                parameters TEXT,
-                return_type VARCHAR(50) DEFAULT 'FLOAT',
-                tags TEXT,
-                example_usage TEXT,
-                is_system INTEGER DEFAULT 0,
-                is_template INTEGER DEFAULT 0,
-                usage_count INTEGER DEFAULT 0,
-                rating REAL DEFAULT 0.0,
-                version VARCHAR(20) DEFAULT '1.0.0',
-                author VARCHAR(100),
-                license VARCHAR(100),
-                dependencies TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(tenant_id, name)
-            )
-        )";
-        
-        bool success = db_layer.executeCreateTable(create_table_query);
+        // 🎯 SQLQueries.h 상수 사용
+        bool success = db_layer.executeCreateTable(SQL::ScriptLibrary::CREATE_TABLE);
         
         if (success) {
             logger_->Debug("ScriptLibraryRepository::ensureTableExists - Table creation/check completed");
