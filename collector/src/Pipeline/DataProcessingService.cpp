@@ -258,7 +258,7 @@ void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMes
                 for (const auto& event : events) {
                     LogManager::getInstance().log("processing", LogLevel::INFO, 
                                                  "🚨 알람 이벤트: " + event.message + 
-                                                 " (심각도: " + event.severity + ")");
+                                                 " (심각도: " + event.getSeverityString() + ")");
                 }
                 
             } catch (const std::exception& e) {

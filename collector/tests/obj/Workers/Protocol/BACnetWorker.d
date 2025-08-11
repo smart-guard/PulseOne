@@ -8,7 +8,8 @@ obj/Workers/Protocol/BACnetWorker.o: \
  ../include/Common/BasicTypes.h ../include/Common/Enums.h \
  ../include/Common/Utils.h ../include/Common/DriverError.h \
  ../include/Common/IProtocolConfig.h ../include/Common/ProtocolConfigs.h \
- ../include/Utils/LogManager.h ../include/Pipeline/PipelineManager.h \
+ ../include/Alarm/AlarmTypes.h ../include/Utils/LogManager.h \
+ ../include/Pipeline/PipelineManager.h \
  ../include/Drivers/Bacnet/BACnetTypes.h \
  ../include/Drivers/Bacnet/BACnetDriver.h \
  ../include/Drivers/Common/IProtocolDriver.h \

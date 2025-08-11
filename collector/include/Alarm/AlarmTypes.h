@@ -11,21 +11,35 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <variant>
 #include <nlohmann/json.hpp>
+
+// 🔥 기존 프로젝트 타입들 import (필수!)
+#include "Common/BasicTypes.h"
 
 namespace PulseOne {
 namespace Alarm {
 
 // =============================================================================
-// 🎯 열거형 타입들
+// 🎯 기존 프로젝트 타입 별칭들 (추가된 부분)
+// =============================================================================
+using UUID = PulseOne::BasicTypes::UUID;
+using Timestamp = PulseOne::BasicTypes::Timestamp;
+using DataValue = PulseOne::BasicTypes::DataVariant;
+using JsonType = nlohmann::json;
+
+// =============================================================================
+// 🎯 열거형 타입들 (기존 유지 + 누락된 값 추가)
 // =============================================================================
 
-// 알람 타입 정의
+// 알람 타입 정의 (COMMUNICATION, QUALITY 추가!)
 enum class AlarmType : uint8_t {
     ANALOG = 0,
     DIGITAL = 1,
     SCRIPT = 2,
-    COMPOUND = 3
+    COMPOUND = 3,
+    COMMUNICATION = 4,   // 🔥 추가됨
+    QUALITY = 5          // 🔥 추가됨
 };
 
 // 알람 심각도
@@ -94,20 +108,18 @@ enum class TriggerCondition : uint8_t {
     DIGITAL_CHANGE = 7,
     RATE_CHANGE = 8
 };
-// =============================================================================
-// 🎯 구조체들
-// =============================================================================
+
 /**
  * @brief 알람 이벤트 구조체
  * @details RabbitMQ로 전송되는 알람 정보
  */    
 // =============================================================================
-// 🚨 경고 해결된 AlarmEvent 구조체 - PulseOne 알람 시스템 통합
+// 🚨 경고 해결된 AlarmEvent 구조체 - PulseOne 알람 시스템 통합 (기존 유지!)
 // =============================================================================
 
 struct AlarmEvent {
     // =============================================================================
-    // 🎯 핵심 식별자 및 연결
+    // 🎯 핵심 식별자 및 연결 (기존 그대로!)
     // =============================================================================
     UUID device_id;                    // 디바이스 UUID
     int point_id = 0;                  // ✅ 원래대로 int 유지! (TimestampedValue.point_id와 일치)
@@ -115,7 +127,7 @@ struct AlarmEvent {
     int occurrence_id = 0;             // 알람 발생 ID (0 = 신규)
     
     // =============================================================================
-    // 🎯 알람 데이터 및 상태
+    // 🎯 알람 데이터 및 상태 (기존 그대로!)
     // =============================================================================
     DataValue current_value;           // 현재 값
     double threshold_value = 0.0;      // 임계값
@@ -124,7 +136,7 @@ struct AlarmEvent {
     TriggerCondition trigger_condition = TriggerCondition::NONE;
     
     // =============================================================================
-    // 🎯 알람 메타데이터 
+    // 🎯 알람 메타데이터 (기존 그대로!)
     // =============================================================================
     AlarmType alarm_type = AlarmType::ANALOG;           // ✅ enum 타입
     std::string message;                                // 알람 메시지
@@ -132,13 +144,13 @@ struct AlarmEvent {
     AlarmState state = AlarmState::ACTIVE;              // ✅ enum 타입
     
     // =============================================================================
-    // 🎯 시간 정보
+    // 🎯 시간 정보 (기존 그대로!)
     // =============================================================================
     Timestamp timestamp;               // 기존 타임스탬프 (현재 시간)
     Timestamp occurrence_time;         // 실제 알람 발생 시간
     
     // =============================================================================
-    // 🎯 추가 컨텍스트 정보
+    // 🎯 추가 컨텍스트 정보 (기존 그대로!)
     // =============================================================================
     std::string source_name;           // 소스 이름 (디바이스명 등)
     std::string location;              // 위치 정보
@@ -148,7 +160,7 @@ struct AlarmEvent {
     bool condition_met = false;        // bool 타입 유지
     
     // =============================================================================
-    // 🎯 생성자들
+    // 🎯 생성자들 (기존 그대로!)
     // =============================================================================
     AlarmEvent() : timestamp(std::chrono::system_clock::now()),
                 occurrence_time(std::chrono::system_clock::now()) {}
@@ -167,7 +179,7 @@ struct AlarmEvent {
         occurrence_time(std::chrono::system_clock::now()) {}
     
     // =============================================================================
-    // 🎯 타입 변환 헬퍼 메서드들 (enum → string)
+    // 🎯 타입 변환 헬퍼 메서드들 (기존 그대로! COMMUNICATION, QUALITY 추가)
     // =============================================================================
     
     /**
@@ -185,15 +197,16 @@ struct AlarmEvent {
     }
     
     /**
-     * @brief 알람 타입을 문자열로 반환
+     * @brief 알람 타입을 문자열로 반환 (COMMUNICATION, QUALITY 추가!)
      */
     std::string getAlarmTypeString() const {
         switch(alarm_type) {
             case AlarmType::ANALOG: return "ANALOG";
             case AlarmType::DIGITAL: return "DIGITAL";
-            case AlarmType::COMMUNICATION: return "COMMUNICATION";
-            case AlarmType::QUALITY: return "QUALITY";
+            case AlarmType::COMMUNICATION: return "COMMUNICATION";  // 🔥 추가
+            case AlarmType::QUALITY: return "QUALITY";              // 🔥 추가
             case AlarmType::SCRIPT: return "SCRIPT";
+            case AlarmType::COMPOUND: return "COMPOUND";
             default: return "UNKNOWN";
         }
     }
@@ -244,7 +257,7 @@ struct AlarmEvent {
     }
     
     // =============================================================================
-    // 🎯 기존 헬퍼 메서드들
+    // 🎯 기존 헬퍼 메서드들 (그대로 유지!)
     // =============================================================================
     
     bool isNewOccurrence() const {
@@ -274,7 +287,7 @@ struct AlarmEvent {
     }
     
     // =============================================================================
-    // 🎯 JSON 직렬화 (enum → string 변환)
+    // 🎯 JSON 직렬화 (기존 그대로! JsonType 사용)
     // =============================================================================
     std::string ToJSON() const {
         JsonType j;
@@ -329,7 +342,12 @@ struct AlarmEvent {
         return j.dump();
     }
 };
-// 알람 규칙 정의
+
+// =============================================================================
+// 기존 구조체들 모두 그대로 유지!
+// =============================================================================
+
+// 알람 규칙 정의 (기존 그대로!)
 struct AlarmRule {
     int id = 0;
     int tenant_id = 0;
@@ -389,7 +407,7 @@ struct AlarmRule {
     mutable std::optional<double> last_value;
 };
 
-// 알람 발생 정보
+// 알람 발생 정보 (기존 그대로!)
 struct AlarmOccurrence {
     int64_t id = 0;
     int rule_id = 0;
@@ -415,7 +433,7 @@ struct AlarmOccurrence {
     nlohmann::json context_data;
 };
 
-// 알람 평가 결과
+// 알람 평가 결과 (기존 그대로!)
 struct AlarmEvaluation {
     // =============================================================================
     // 🎯 기본 평가 결과 (기존 유지)
@@ -500,6 +518,10 @@ struct AlarmEvaluation {
     }
 };
 
+// =============================================================================
+// 기존 구조체들 계속 그대로 유지!
+// =============================================================================
+
 // 알람 필터
 struct AlarmFilter {
     std::optional<int> tenant_id;
@@ -525,16 +547,18 @@ struct AlarmStatistics {
 };
 
 // =============================================================================
-// 🎯 타입 변환 헬퍼 함수들 (네임스페이스 내부!)
+// 🎯 타입 변환 헬퍼 함수들 (기존 그대로! COMMUNICATION, QUALITY 추가만)
 // =============================================================================
 
-// AlarmType 변환
+// AlarmType 변환 (COMMUNICATION, QUALITY 추가!)
 inline std::string alarmTypeToString(AlarmType type) {
     switch (type) {
         case AlarmType::ANALOG: return "analog";
         case AlarmType::DIGITAL: return "digital";
         case AlarmType::SCRIPT: return "script";
         case AlarmType::COMPOUND: return "compound";
+        case AlarmType::COMMUNICATION: return "communication";  // 🔥 추가
+        case AlarmType::QUALITY: return "quality";              // 🔥 추가
         default: return "analog";
     }
 }
@@ -544,10 +568,12 @@ inline AlarmType stringToAlarmType(const std::string& str) {
     if (str == "digital" || str == "DIGITAL") return AlarmType::DIGITAL;
     if (str == "script" || str == "SCRIPT") return AlarmType::SCRIPT;
     if (str == "compound" || str == "COMPOUND") return AlarmType::COMPOUND;
+    if (str == "communication" || str == "COMMUNICATION") return AlarmType::COMMUNICATION;  // 🔥 추가
+    if (str == "quality" || str == "QUALITY") return AlarmType::QUALITY;                    // 🔥 추가
     return AlarmType::ANALOG;
 }
 
-// AlarmSeverity 변환
+// 나머지 모든 변환 함수들 기존 그대로 유지...
 inline std::string severityToString(AlarmSeverity severity) {
     switch (severity) {
         case AlarmSeverity::CRITICAL: return "CRITICAL";
@@ -651,7 +677,7 @@ inline AnalogAlarmLevel stringToAnalogAlarmLevel(const std::string& str) {
 }
 
 // =============================================================================
-// 🎯 소문자 변환 헬퍼 함수들 (API/JSON 호환용) - 네임스페이스 내부!
+// 🎯 소문자 변환 헬퍼 함수들 (기존 그대로! COMMUNICATION, QUALITY 추가만)
 // =============================================================================
 
 // 소문자 변환 함수들
@@ -661,6 +687,8 @@ inline std::string alarmTypeToLowerString(AlarmType type) {
         case AlarmType::DIGITAL: return "digital"; 
         case AlarmType::SCRIPT: return "script";
         case AlarmType::COMPOUND: return "compound";
+        case AlarmType::COMMUNICATION: return "communication";  // 🔥 추가
+        case AlarmType::QUALITY: return "quality";              // 🔥 추가
         default: return "analog";
     }
 }

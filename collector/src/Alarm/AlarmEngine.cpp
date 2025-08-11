@@ -602,7 +602,7 @@ AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, do
         eval.condition_met = condition;      // ✅ string 할당
         alarm_states_[rule.getId()] = true;
     }
-    else if (!currently_in_alarm && was_in_alarm && rule.getAutoClear()) {
+    else if (!currently_in_alarm && was_in_alarm && rule.isAutoClear()) {
         eval.should_clear = true;
         eval.state_changed = true;
         eval.condition_met = "NORMAL";       // ✅ string 할당
@@ -616,7 +616,7 @@ AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, do
         {"point_type", "analog"}
     };
     
-    eval.message = generateMessage(rule, eval);
+    eval.message = generateMessage(rule, eval, DataValue{});
     
     return eval;
 }
@@ -670,7 +670,7 @@ AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, b
         eval.condition_met = trigger_condition;  // ✅ string 할당
         alarm_states_[rule.getId()] = true;
     }
-    else if (!should_trigger && was_in_alarm && rule.getAutoClear()) {
+    else if (!should_trigger && was_in_alarm && rule.isAutoClear()) {
         eval.should_clear = true;
         eval.state_changed = true;
         eval.condition_met = "NORMAL";           // ✅ string 할당
@@ -686,7 +686,7 @@ AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, b
     };
     
     updateLastDigitalState(rule.getId(), value);
-    eval.message = generateMessage(rule, eval);
+    eval.message = generateMessage(rule, eval, DataValue{});
     
     return eval;
 }
@@ -914,7 +914,7 @@ void AlarmEngine::publishToRedis(const AlarmEvent& event) {
             {"rule_id", event.rule_id},
             {"tenant_id", event.tenant_id},
             {"point_id", event.point_id},
-            {"severity", event.severity},
+            {"severity", event.getSeverityString()},
             {"state", event.state},
             {"message", event.message},
             {"timestamp", std::chrono::system_clock::to_time_t(event.occurrence_time)}
@@ -972,7 +972,146 @@ std::optional<AlarmOccurrenceEntity> AlarmEngine::getAlarmOccurrence(int64_t occ
     }
 }
 
-// 나머지 모든 메서드들... (기존과 동일하되 상태 체크 추가)
+std::string AlarmEngine::generateMessage(
+    const AlarmRuleEntity& rule, 
+    const AlarmEvaluation& eval, 
+    const DataValue& value) {
+    
+    std::string message = rule.getName();
+    
+    if (!eval.condition_met.empty()) {
+        message += " - " + eval.condition_met;
+    }
+    
+    // DataValue를 문자열로 변환
+    std::string value_str = std::visit([](const auto& v) -> std::string {
+        if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>) {
+            return v;
+        } else if constexpr (std::is_same_v<std::decay_t<decltype(v)>, bool>) {
+            return v ? "true" : "false";
+        } else {
+            return std::to_string(v);
+        }
+    }, value);
+    
+    message += " (값: " + value_str + ")";
+    
+    return message;
+}
+
+std::vector<AlarmRuleEntity> AlarmEngine::getAlarmRulesForPoint(
+    int point_id, 
+    const std::string& target_type, 
+    int tenant_id) const {
+    
+    std::vector<AlarmRuleEntity> rules;
+    
+    try {
+        if (!alarm_rule_repo_) {
+            logger_->Error("AlarmRuleRepository not available");
+            return rules;
+        }
+        
+        // Repository에서 규칙들 조회
+        auto all_rules = alarm_rule_repo_->findByTarget(target_type, point_id);
+        
+        // 활성화된 규칙들만 필터링
+        for (const auto& rule : all_rules) {
+            if (rule.getIsEnabled() && 
+                (tenant_id == 0 || rule.getTenantId() == tenant_id)) {
+                rules.push_back(rule);
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("getAlarmRulesForPoint failed: " + std::string(e.what()));
+    }
+    
+    return rules;
+}
+
+bool AlarmEngine::clearActiveAlarm(int rule_id, const DataValue& clear_value) {
+    try {
+        if (!alarm_occurrence_repo_) {
+            logger_->Error("AlarmOccurrenceRepository not available");
+            return false;
+        }
+        
+        // 활성 알람들 조회
+        auto active_alarms = alarm_occurrence_repo_->findActiveByRuleId(rule_id);
+        
+        bool cleared_any = false;
+        for (auto& alarm : active_alarms) {
+            // 알람 해제
+            alarm.setState("cleared");
+            alarm.setClearedTime(std::chrono::system_clock::now());
+            
+            // 해제 값 설정
+            std::string clear_value_str = std::visit([](const auto& v) -> std::string {
+                if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>) {
+                    return v;
+                } else if constexpr (std::is_same_v<std::decay_t<decltype(v)>, bool>) {
+                    return v ? "true" : "false";
+                } else {
+                    return std::to_string(v);
+                }
+            }, clear_value);
+            
+            alarm.setClearComment("Auto-cleared by system with value: " + clear_value_str);
+            
+            // 저장
+            if (alarm_occurrence_repo_->update(alarm)) {
+                cleared_any = true;
+            }
+        }
+        
+        return cleared_any;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("clearActiveAlarm failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool AlarmEngine::clearAlarm(int64_t occurrence_id, const DataValue& clear_value) {
+    try {
+        if (!alarm_occurrence_repo_) {
+            logger_->Error("AlarmOccurrenceRepository not available");
+            return false;
+        }
+        
+        auto alarm_opt = alarm_occurrence_repo_->findById(occurrence_id);
+        if (!alarm_opt) {
+            logger_->Warning("Alarm occurrence not found: " + std::to_string(occurrence_id));
+            return false;
+        }
+        
+        auto alarm = alarm_opt.value();
+        
+        // 알람 해제
+        alarm.setState("cleared");
+        alarm.setClearedTime(std::chrono::system_clock::now());
+        
+        // 해제 값 설정
+        std::string clear_value_str = std::visit([](const auto& v) -> std::string {
+            if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>) {
+                return v;
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(v)>, bool>) {
+                return v ? "true" : "false";
+            } else {
+                return std::to_string(v);
+            }
+        }, clear_value);
+        
+        alarm.setClearComment("Manual clear with value: " + clear_value_str);
+        
+        return alarm_occurrence_repo_->update(alarm);
+        
+    } catch (const std::exception& e) {
+        logger_->Error("clearAlarm failed: " + std::string(e.what()));
+        return false;
+    }
+}
 
 } // namespace Alarm
 } // namespace PulseOne

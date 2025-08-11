@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/VirtualPoint/VirtualPointEngine.h
-// PulseOne 가상포인트 엔진 - VirtualPointTypes 적용 및 싱글톤 패턴 수정
+// PulseOne 가상포인트 엔진 - 모든 문제 수정된 최종 버전
 // =============================================================================
 
 #ifndef VIRTUAL_POINT_ENGINE_H
@@ -21,7 +21,8 @@
 // ✅ PulseOne 공통 헤더들
 #include "Common/BasicTypes.h"
 #include "Common/Structs.h"
-#include "VirtualPoint/VirtualPointTypes.h"  // 🔥 VirtualPointTypes 추가
+#include "VirtualPoint/VirtualPointTypes.h"
+#include "Database/Entities/VirtualPointEntity.h"  // 🔥 추가 필수!
 
 // QuickJS 헤더
 extern "C" {
@@ -47,11 +48,11 @@ using DataQuality = PulseOne::Enums::DataQuality;
 class ScriptLibraryManager;
 
 // =============================================================================
-// ✅ VirtualPointTypes.h의 구조체 사용 (중복 제거)
+// ✅ 가상포인트 정의 (VirtualPointTypes.h의 enum 사용)
 // =============================================================================
 
 /**
- * @brief 가상포인트 정의 (기존 VirtualPointDef 확장)
+ * @brief 가상포인트 정의
  */
 struct VirtualPointDef {
     int id = 0;
@@ -60,7 +61,7 @@ struct VirtualPointDef {
     std::string description;
     std::string formula;
     
-    // ✅ VirtualPointTypes의 enum 활용
+    // ✅ VirtualPointTypes의 올바른 enum 사용
     VirtualPointState state = VirtualPointState::INACTIVE;
     ExecutionType execution_type = ExecutionType::JAVASCRIPT;
     ErrorHandling error_handling = ErrorHandling::RETURN_NULL;
@@ -87,15 +88,19 @@ struct VirtualPointDef {
     std::string getExecutionTypeString() const {
         return executionTypeToString(execution_type);
     }
+    
+    std::string getErrorHandlingString() const {
+        return errorHandlingToString(error_handling);
+    }
 };
 
 /**
- * @brief VirtualPointEngine 클래스 (싱글톤) - 자동 초기화 적용
+ * @brief VirtualPointEngine 클래스 (싱글톤)
  */
 class VirtualPointEngine {
 public:
     // =======================================================================
-    // ✅ 자동 초기화 싱글톤 패턴 (DatabaseManager와 동일)
+    // ✅ 싱글톤 패턴
     // =======================================================================
     static VirtualPointEngine& getInstance();
     
@@ -106,21 +111,18 @@ public:
     VirtualPointEngine& operator=(VirtualPointEngine&&) = delete;
 
     // =======================================================================
-    // 생명주기 관리 (자동 초기화)
+    // 생명주기 관리
     // =======================================================================
     bool isInitialized() const { 
         return initialization_success_.load(std::memory_order_acquire); 
     }
     
-    // ✅ 기존 호환성을 위한 initialize (자동 초기화로 대체됨)
     bool initialize() { 
         ensureInitialized(); 
         return isInitialized(); 
     }
     
     void shutdown();
-    
-    // ✅ 강제 재초기화 (DatabaseManager와 동일)
     void reinitialize();
 
     // =======================================================================
@@ -150,7 +152,7 @@ public:
     bool hasDependency(int vp_id, int point_id) const;
     
     // =======================================================================
-    // 스크립트 관리 (ScriptLibraryManager 연동)
+    // 스크립트 관리
     // =======================================================================
     bool registerCustomFunction(const std::string& name, const std::string& script);
     bool unregisterCustomFunction(const std::string& name);
@@ -159,25 +161,57 @@ public:
     std::vector<ScriptMetadata> getAvailableScripts(int tenant_id = 0) const;
     
     // =======================================================================
-    // 통계 및 상태 (VirtualPointTypes 활용)
+    // 통계 및 상태
     // =======================================================================
     VirtualPointStatistics getStatistics() const;
     json getStatisticsJson() const;
 
 private:
     // =======================================================================
-    // ✅ 자동 초기화 싱글톤 (DatabaseManager 패턴)
+    // ✅ 싱글톤 생성자/소멸자
     // =======================================================================
     VirtualPointEngine();
     ~VirtualPointEngine();
     
-    // 자동 초기화 메서드
+    // 초기화 메서드
     void ensureInitialized();
-    bool doInitialize();  // 실제 초기화 로직
+    bool doInitialize();
     
-    // 자동 초기화 정적 변수들
+    // 정적 변수들
     static std::once_flag init_flag_;
     static std::atomic<bool> initialization_success_;
+
+    // =======================================================================
+    // ✅ Entity → VirtualPoint 타입 변환 헬퍼들 (선언만)
+    // =======================================================================
+    ExecutionType convertEntityExecutionType(
+        const PulseOne::Database::Entities::VirtualPointEntity::ExecutionType& entity_type);
+    
+    ErrorHandling convertEntityErrorHandling(
+        const PulseOne::Database::Entities::VirtualPointEntity::ErrorHandling& entity_handling);
+
+    // =======================================================================
+    // ✅ JSON ↔ DataValue 변환 헬퍼들
+    // =======================================================================
+    DataValue jsonToDataValue(const nlohmann::json& j) {
+        try {
+            if (j.is_null()) return std::string("null");
+            if (j.is_boolean()) return j.get<bool>();
+            if (j.is_number_integer()) return j.get<int>();
+            if (j.is_number_unsigned()) return j.get<uint32_t>();
+            if (j.is_number_float()) return j.get<double>();
+            if (j.is_string()) return j.get<std::string>();
+            return j.dump();  // 복잡한 객체는 JSON 문자열로
+        } catch (...) {
+            return std::string("conversion_error");
+        }
+    }
+    
+    nlohmann::json dataValueToJson(const DataValue& dv) {
+        return std::visit([](const auto& v) -> nlohmann::json {
+            return nlohmann::json(v);
+        }, dv);
+    }
 
     // =======================================================================
     // JavaScript 엔진 관리
@@ -200,36 +234,29 @@ private:
     void updateVirtualPointStats(int vp_id, const CalculationResult& result);
     void triggerAlarmEvaluation(int vp_id, const DataValue& value);
 
-private:
     // =======================================================================
+    // 멤버 변수들
+    // =======================================================================
+    
     // JavaScript 엔진
-    // =======================================================================
     JSRuntime* js_runtime_{nullptr};
     JSContext* js_context_{nullptr};
     mutable std::mutex js_mutex_;
     
-    // =======================================================================
     // 가상포인트 캐시
-    // =======================================================================
     std::unordered_map<int, VirtualPointDef> virtual_points_;
     mutable std::shared_mutex vp_mutex_;
     
-    // =======================================================================
     // 의존성 그래프
-    // =======================================================================
     std::unordered_map<int, std::unordered_set<int>> point_to_vp_map_;
     std::unordered_map<int, std::unordered_set<int>> vp_dependencies_;
     mutable std::shared_mutex dep_mutex_;
     
-    // =======================================================================
     // ✅ VirtualPointTypes의 통계 구조체 활용
-    // =======================================================================
     VirtualPointStatistics statistics_;
     mutable std::mutex stats_mutex_;
     
-    // =======================================================================
     // 런타임 상태
-    // =======================================================================
     int current_vp_id_{0};
     int tenant_id_{0};
 };

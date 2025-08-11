@@ -1381,6 +1381,64 @@ std::optional<int> AlarmOccurrenceRepository::findMaxId() {
         return std::nullopt;
     }
 }
+AlarmOccurrenceRepository::AlarmOccurrenceRepository() 
+    : IRepository("alarm_occurrences") {
+    logger_->Info("AlarmOccurrenceRepository created");
+}
+
+// IRepository 순수 가상 함수들 구현
+int AlarmOccurrenceRepository::getTotalCount() {
+    return 0; // 스텁 구현
+}
+
+bool AlarmOccurrenceRepository::isCacheEnabled() const {
+    return false; // 스텁 구현
+}
+
+void AlarmOccurrenceRepository::clearCache() {
+    // 스텁 구현
+}
+
+void AlarmOccurrenceRepository::clearCacheForId(int id) {
+    // 스텁 구현
+}
+
+std::string AlarmOccurrenceRepository::getCacheStats() const {
+    return "{}"; // 스텁 구현
+}
+
+// findActiveByRuleId 구현
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActiveByRuleId(int rule_id) {
+    std::vector<AlarmOccurrenceEntity> results;
+    
+    try {
+        std::string query = R"(
+            SELECT id, rule_id, occurrence_time, state, triggered_value, 
+                   condition_met, alarm_message, acknowledged_time, 
+                   acknowledged_by, acknowledge_comment, cleared_time, 
+                   cleared_value, clear_comment, created_at, updated_at
+            FROM alarm_occurrences 
+            WHERE rule_id = ? AND state = 'active'
+            ORDER BY occurrence_time DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto query_results = db_layer.executeQuery(query, {std::to_string(rule_id)});
+        
+        for (const auto& row : query_results) {
+            auto entity = mapRowToEntity(row);
+            results.push_back(entity);
+        }
+        
+        logger_->Debug("Found " + std::to_string(results.size()) + " active alarms for rule " + std::to_string(rule_id));
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findActiveByRuleId failed: " + std::string(e.what()));
+    }
+    
+    return results;
+}
+
 
 } // namespace Repositories
 } // namespace Database

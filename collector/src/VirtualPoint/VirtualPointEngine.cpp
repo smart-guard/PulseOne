@@ -281,8 +281,8 @@ bool VirtualPointEngine::loadVirtualPoints(int tenant_id) {
             vp_def.formula = entity.getFormula();
             
             // ✅ VirtualPointTypes의 enum 변환 활용
-            vp_def.execution_type = stringToExecutionType(entity.getExecutionType());
-            vp_def.error_handling = stringToErrorHandling(entity.getErrorHandling());
+            vp_def.execution_type = convertEntityExecutionType(entity.getExecutionType());
+            vp_def.error_handling = convertEntityErrorHandling(entity.getErrorHandling());
             vp_def.state = entity.getIsEnabled() ? VirtualPointState::ACTIVE : VirtualPointState::INACTIVE;
             
             vp_def.calculation_interval_ms = std::chrono::milliseconds(entity.getCalculationInterval());
@@ -379,7 +379,7 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
             
             if (calc_result.success) {
                 TimestampedValue tv;
-                tv.value = calc_result.value;
+                tv.value = jsonToDataValue(calc_result.value);
                 tv.timestamp = std::chrono::system_clock::now();
                 tv.quality = DataQuality::GOOD;
                 
@@ -389,7 +389,7 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
                 updateVirtualPointStats(vp_id, calc_result);
                 
                 // 알람 평가 트리거
-                triggerAlarmEvaluation(vp_id, calc_result.value);
+                triggerAlarmEvaluation(vp_id, jsonToDataValue(calc_result.value));
                 
             } else {
                 LogManager::getInstance().Error("가상포인트 {} 계산 실패: {}", 
@@ -436,7 +436,7 @@ CalculationResult VirtualPointEngine::calculate(int vp_id, const json& inputs) {
         tenant_id_ = vp.tenant_id;
         
         // 수식 실행
-        result.value = evaluateFormula(vp.formula, inputs);
+        result.value = dataValueToJson(evaluateFormula(vp.formula, inputs));
         result.success = true;
         
         // 실행 시간 계산
@@ -486,7 +486,8 @@ CalculationResult VirtualPointEngine::calculateWithFormula(const std::string& fo
     auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
-        result.value = evaluateFormula(formula, inputs);
+        DataValue formula_result = evaluateFormula(formula, inputs);
+        result.value = dataValueToJson(formula_result);
         result.success = true;
         
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -786,8 +787,8 @@ void VirtualPointEngine::updateVirtualPointStats(int vp_id, const CalculationRes
     auto it = virtual_points_.find(vp_id);
     if (it != virtual_points_.end()) {
         auto& vp = it->second;
-        if (std::holds_alternative<double>(result.value)) {
-            vp.last_value = result.value;
+        if (result.value.is_number()) {
+            vp.last_value = jsonToDataValue(result.value);
         }
         vp.last_calculation = std::chrono::system_clock::now();
     }
@@ -893,6 +894,36 @@ bool VirtualPointEngine::registerCustomFunction(const std::string& name, const s
 bool VirtualPointEngine::unregisterCustomFunction(const std::string& name) {
     LogManager::getInstance().Warn("unregisterCustomFunction은 ScriptLibraryManager 사용 권장");
     return false;
+}
+
+ExecutionType VirtualPointEngine::convertEntityExecutionType(
+    const PulseOne::Database::Entities::VirtualPointEntity::ExecutionType& entity_type) {
+    
+    using EntityType = PulseOne::Database::Entities::VirtualPointEntity::ExecutionType;
+    using VPType = ExecutionType;
+    
+    switch(entity_type) {
+        case EntityType::JAVASCRIPT: return VPType::JAVASCRIPT;
+        case EntityType::FORMULA: return VPType::FORMULA;
+        case EntityType::AGGREGATE: return VPType::AGGREGATE;
+        case EntityType::REFERENCE: return VPType::REFERENCE;
+        default: return VPType::JAVASCRIPT;
+    }
+}
+
+ErrorHandling VirtualPointEngine::convertEntityErrorHandling(
+    const PulseOne::Database::Entities::VirtualPointEntity::ErrorHandling& entity_handling) {
+    
+    using EntityType = PulseOne::Database::Entities::VirtualPointEntity::ErrorHandling;
+    using VPType = ErrorHandling;
+    
+    switch(entity_handling) {
+        case EntityType::RETURN_NULL: return VPType::RETURN_NULL;
+        case EntityType::RETURN_LAST: return VPType::RETURN_LAST;
+        case EntityType::RETURN_ZERO: return VPType::RETURN_ZERO;
+        case EntityType::RETURN_DEFAULT: return VPType::RETURN_DEFAULT;
+        default: return VPType::RETURN_NULL;
+    }
 }
 
 } // namespace VirtualPoint

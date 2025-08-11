@@ -921,6 +921,34 @@ bool ScriptLibraryRepository::validateEntity(const ScriptLibraryEntity& entity) 
     return true;
 }
 
+std::string ScriptLibraryEntity::getCategoryString() const {
+    switch(category_) {
+        case Category::FUNCTION: return "function";
+        case Category::FORMULA: return "formula";
+        case Category::TEMPLATE: return "template";
+        case Category::CUSTOM: return "custom";
+        default: return "custom";
+    }
+}
+
+std::string ScriptLibraryEntity::getReturnTypeString() const {
+    switch(return_type_) {
+        case ReturnType::FLOAT: return "float";
+        case ReturnType::STRING: return "string";
+        case ReturnType::BOOLEAN: return "boolean";
+        case ReturnType::OBJECT: return "object";
+        default: return "float";
+    }
+}
+
+std::string ScriptLibraryEntity::toString() const {
+    return "ScriptLibraryEntity{id=" + std::to_string(getId()) + 
+           ", name=" + name_ + 
+           ", category=" + getCategoryString() + 
+           ", return_type=" + getReturnTypeString() + "}";
+}
+
+
 } // namespace Repositories
 } // namespace Database
 } // namespace PulseOne
