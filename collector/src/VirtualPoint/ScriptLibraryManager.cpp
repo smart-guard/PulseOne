@@ -22,21 +22,25 @@ namespace VirtualPoint {
 // =============================================================================
 
 std::string categoryToString(Database::Entities::ScriptLibraryEntity::Category category) {
+    using Category = Database::Entities::ScriptLibraryEntity::Category;
     switch (category) {
-        case Database::Entities::ScriptLibraryEntity::Category::SYSTEM: return "system";
-        case Database::Entities::ScriptLibraryEntity::Category::MATH: return "math";
-        case Database::Entities::ScriptLibraryEntity::Category::UTILITY: return "utility";
-        case Database::Entities::ScriptLibraryEntity::Category::CUSTOM: return "custom";
-        default: return "unknown";
+        case Category::SYSTEM: return "system";
+        case Category::MATH: return "math";
+        case Category::UTILITY: return "utility";
+        case Category::USER: return "user";        // CUSTOM 대신 USER
+        case Category::TEMPLATE: return "template"; // TEMPLATE 추가
+        default: return "user";
     }
 }
 
 Database::Entities::ScriptLibraryEntity::Category stringToCategory(const std::string& str) {
-    if (str == "system") return Database::Entities::ScriptLibraryEntity::Category::SYSTEM;
-    if (str == "math") return Database::Entities::ScriptLibraryEntity::Category::MATH;
-    if (str == "utility") return Database::Entities::ScriptLibraryEntity::Category::UTILITY;
-    if (str == "custom") return Database::Entities::ScriptLibraryEntity::Category::CUSTOM;
-    return Database::Entities::ScriptLibraryEntity::Category::CUSTOM;
+    using Category = Database::Entities::ScriptLibraryEntity::Category;
+    if (str == "system") return Category::SYSTEM;
+    if (str == "math") return Category::MATH;
+    if (str == "utility") return Category::UTILITY;
+    if (str == "template") return Category::TEMPLATE;
+    if (str == "user") return Category::USER;
+    return Category::USER; // 기본값
 }
 
 std::string returnTypeToString(Database::Entities::ScriptLibraryEntity::ReturnType type) {
@@ -71,18 +75,14 @@ ScriptDefinition ScriptDefinition::fromEntity(const ScriptLibraryEntity& entity)
     // Parameters JSON 파싱
     if (!entity.getParameters().empty()) {
         try {
-            def.parameters = json::parse(entity.getParameters());
+            def.parameters = nlohmann::json::parse(entity.getParameters());
         } catch (const std::exception& e) {
-            // 파싱 실패시 빈 JSON
-            def.parameters = json::array();
+            def.parameters = nlohmann::json::object();
         }
     }
     
     def.return_type = returnTypeToString(entity.getReturnType());
-    
-    // Tags 가져오기 - getTags() 메서드 사용
     def.tags = entity.getTags();
-    
     def.example_usage = entity.getExampleUsage();
     def.is_system = entity.getIsSystem();
     def.usage_count = entity.getUsageCount();
@@ -99,15 +99,13 @@ ScriptLibraryEntity ScriptDefinition::toEntity() const {
     entity.setDescription(description);
     entity.setParameters(parameters.dump());
     entity.setReturnType(stringToReturnType(return_type));
-    
-    // Tags 설정 - setTags() 메서드 사용
     entity.setTags(tags);
-    
     entity.setExampleUsage(example_usage);
     entity.setIsSystem(is_system);
     
     return entity;
 }
+
 
 // =============================================================================
 // 싱글톤 구현
@@ -119,8 +117,9 @@ ScriptLibraryManager& ScriptLibraryManager::getInstance() {
 }
 
 ScriptLibraryManager::ScriptLibraryManager() {
-    auto& logger = LogManager::getInstance();
-    logger.log("scriptlib", LogLevel::INFO, "📚 ScriptLibraryManager 생성");
+    // PulseOne 패턴: 필요할 때마다 getInstance() 호출
+    auto& logger = ::LogManager::getInstance();
+    logger.Info("📚 ScriptLibraryManager 생성");
 }
 
 ScriptLibraryManager::~ScriptLibraryManager() {
@@ -131,43 +130,49 @@ ScriptLibraryManager::~ScriptLibraryManager() {
 // 초기화/종료 - 올바른 싱글톤 사용법
 // =============================================================================
 
-bool ScriptLibraryManager::initialize() {
-    if (initialized_) {
-        auto& logger = LogManager::getInstance();
-        logger.log("scriptlib", LogLevel::WARN, "ScriptLibraryManager 이미 초기화됨");
+bool ScriptLibraryManager::initialize(std::shared_ptr<::DatabaseManager> db_manager) {
+    if (initialized_.load()) {
+        auto& logger = ::LogManager::getInstance();
+        logger.Warn("ScriptLibraryManager 이미 초기화됨");
         return true;
     }
     
     try {
-        // ✅ 올바른 싱글톤 사용법 - 직접 가져오기
-        auto& db_manager = Database::DatabaseManager::getInstance();
-        auto& config_manager = ConfigManager::getInstance();
+        auto& logger = ::LogManager::getInstance();
+        logger.Info("ScriptLibraryManager 초기화 시작...");
         
-        // Repository 생성
-        repository_ = Database::RepositoryFactory::getInstance().createScriptLibraryRepository();
+        // 🔥 수정: getScriptLibraryRepository() 사용 (createScriptLibraryRepository가 아님)
+        auto& factory = Database::RepositoryFactory::getInstance();
+        repository_ = factory.getScriptLibraryRepository();
         
-        // 시스템 스크립트 로드
-        if (!loadSystemScripts()) {
-            auto& logger = LogManager::getInstance();
-            logger.log("scriptlib", LogLevel::ERROR, "시스템 스크립트 로드 실패");
+        if (!repository_) {
+            logger.Error("ScriptLibraryRepository 가져오기 실패");
             return false;
         }
         
-        initialized_ = true;
-        auto& logger = LogManager::getInstance();
-        logger.log("scriptlib", LogLevel::INFO, "✅ ScriptLibraryManager 초기화 완료");
+        // 시스템 스크립트 로드
+        if (!loadSystemScripts()) {
+            logger.Error("시스템 스크립트 로드 실패");
+            return false;
+        }
+        
+        initialized_.store(true);
+        logger.Info("✅ ScriptLibraryManager 초기화 완료");
         
         return true;
         
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("scriptlib", LogLevel::ERROR, "ScriptLibraryManager 초기화 실패: " + std::string(e.what()));
+        auto& logger = ::LogManager::getInstance();
+        logger.Error("ScriptLibraryManager 초기화 실패: " + std::string(e.what()));
         return false;
     }
 }
 
 void ScriptLibraryManager::shutdown() {
-    if (!initialized_) return;
+    if (!initialized_.load()) return;
+    
+    auto& logger = ::LogManager::getInstance();
+    logger.Info("ScriptLibraryManager 종료 시작...");
     
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     
@@ -176,9 +181,20 @@ void ScriptLibraryManager::shutdown() {
     template_cache_.clear();
     system_script_names_.clear();
     
-    initialized_ = false;
-    auto& logger = LogManager::getInstance();
-    logger.log("scriptlib", LogLevel::INFO, "ScriptLibraryManager 종료");
+    repository_.reset();
+    
+    initialized_.store(false);
+    logger.Info("ScriptLibraryManager 종료 완료");
+}
+
+// =============================================================================
+// updateCacheFromEntity 구현 추가
+// =============================================================================
+
+void ScriptLibraryManager::updateCacheFromEntity(const ScriptLibraryEntity& entity) {
+    auto script_def = ScriptDefinition::fromEntity(entity);
+    script_cache_[script_def.name] = script_def;
+    script_cache_by_id_[script_def.id] = script_def;
 }
 
 // =============================================================================
@@ -319,10 +335,15 @@ std::optional<ScriptDefinition> ScriptLibraryManager::getScriptById(int script_i
 std::vector<ScriptDefinition> ScriptLibraryManager::getScriptsByCategory(const std::string& category) {
     std::vector<ScriptDefinition> results;
     
-    if (!repository_) return results;
+    if (!repository_) {
+        auto& logger = ::LogManager::getInstance();
+        logger.Error("Repository가 초기화되지 않음");
+        return results;
+    }
     
-    auto cat_enum = stringToCategory(category);
-    auto entities = repository_->findByCategory(cat_enum);
+    // 🔥 수정: findByCategory는 문자열을 받음 (Repository 구현 확인)
+    auto entities = repository_->findByCategory(category);  // 문자열 그대로 전달
+    
     for (const auto& entity : entities) {
         results.push_back(ScriptDefinition::fromEntity(entity));
     }

@@ -38,7 +38,7 @@ namespace VirtualPoint {
 // 타입 별칭 및 전방 선언
 // =============================================================================
 using json = nlohmann::json;
-using DataValue = PulseOne::Common::DataValue;
+using DataValue = PulseOne::Structs::DataValue;
 using DeviceDataMessage = PulseOne::Structs::DeviceDataMessage;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
 using DatabaseManager = PulseOne::Database::DatabaseManager;  // 🔥 명시적 별칭

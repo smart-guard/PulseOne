@@ -237,11 +237,6 @@ private:
     bool cache_enabled_ = true;
     int current_tenant_id_ = 0;
     
-    // 연결
-    std::shared_ptr<::DatabaseManager> db_manager_;
-    ::Utils::LogManager& logger_;
-    ::ConfigManager& config_manager_;
-    
     // Repository
     std::shared_ptr<Database::Repositories::ScriptLibraryRepository> repository_;
     
