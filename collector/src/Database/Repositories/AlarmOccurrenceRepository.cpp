@@ -933,7 +933,7 @@ AlarmOccurrenceEntity::State AlarmOccurrenceRepository::stringToState(const std:
     return AlarmOccurrenceEntity::stringToState(str);
 }
 
-bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) {
+bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const {
     if (entity.getRuleId() <= 0) {
         return false;
     }
@@ -949,11 +949,79 @@ bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEnt
     return true;
 }
 
-std::string AlarmOccurrenceRepository::escapeString(const std::string& str) {
+std::string AlarmOccurrenceRepository::escapeString(const std::string& str) const {
     return RepositoryHelpers::escapeString(str);
 }
 
-// 나머지 벌크 연산들 (saveBulk, updateBulk, deleteByIds)는 IRepository 기본 구현 사용
+// 캐시 관련 메서드들 구현
+void AlarmOccurrenceRepository::setCachedEntity(int id, const AlarmOccurrenceEntity& entity) {
+    if (!cache_enabled_.load()) return;
+    
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+    entity_cache_[id] = entity;
+    
+    // 캐시 크기 제한 (예: 1000개)
+    if (entity_cache_.size() > 1000) {
+        auto it = entity_cache_.begin();
+        entity_cache_.erase(it);
+    }
+}
+
+std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::getCachedEntity(int id) const {
+    if (!cache_enabled_.load()) return std::nullopt;
+    
+    std::shared_lock<std::shared_mutex> lock(cache_mutex_);
+    auto it = entity_cache_.find(id);
+    if (it != entity_cache_.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+void AlarmOccurrenceRepository::clearCacheForId(int id) {
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+    entity_cache_.erase(id);
+}
+
+void AlarmOccurrenceRepository::clearCache() {
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+    entity_cache_.clear();
+}
+
+bool AlarmOccurrenceRepository::isCacheEnabled() const {
+    return cache_enabled_.load();
+}
+
+// 벌크 연산들 (IRepository에서 요구하는 virtual 메서드들)
+int AlarmOccurrenceRepository::saveBulk(std::vector<AlarmOccurrenceEntity>& entities) {
+    int saved_count = 0;
+    for (auto& entity : entities) {
+        if (save(entity)) {
+            saved_count++;
+        }
+    }
+    return saved_count;
+}
+
+int AlarmOccurrenceRepository::updateBulk(const std::vector<AlarmOccurrenceEntity>& entities) {
+    int updated_count = 0;
+    for (const auto& entity : entities) {
+        if (update(entity)) {
+            updated_count++;
+        }
+    }
+    return updated_count;
+}
+
+int AlarmOccurrenceRepository::deleteByIds(const std::vector<int>& ids) {
+    int deleted_count = 0;
+    for (int id : ids) {
+        if (deleteById(id)) {
+            deleted_count++;
+        }
+    }
+    return deleted_count;
+}
 
 } // namespace Repositories
 } // namespace Database

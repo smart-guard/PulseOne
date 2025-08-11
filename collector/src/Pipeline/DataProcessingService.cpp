@@ -250,19 +250,29 @@ void DataProcessingService::CheckAlarms(const std::vector<Structs::DeviceDataMes
             // Redis에 알람 이벤트 발송 (선택적)
             if (redis_client_) {
                 for (const auto& event : alarm_events) {
+                    // DataValue를 문자열로 변환
+                    std::string value_str;
+                    std::visit([&value_str](const auto& v) {
+                        using T = std::decay_t<decltype(v)>;
+                        if constexpr (std::is_same_v<T, std::string>) {
+                            value_str = v;
+                        } else if constexpr (std::is_arithmetic_v<T>) {
+                            value_str = std::to_string(v);
+                        } else {
+                            value_str = "unknown";
+                        }
+                    }, event.current_value);
+                    
                     nlohmann::json event_json = {
                         {"type", "alarm_event"},
-                        {"occurrence_id", event.occurrence_id},        // ✅ 올바른 필드
-                        {"rule_id", event.rule_id},                    // ✅ 올바른 필드  
-                        {"device_id", event.device_id},                // ✅ 올바른 필드
-                        {"point_id", event.point_id},                  // ✅ 올바른 필드
-                        {"alarm_type", event.alarm_type},              // ✅ event_type 대신 alarm_type
-                        {"message", event.message},                    // ✅ 올바른 필드
-                        {"severity", event.severity},                  // ✅ 올바른 필드
-                        {"state", event.state},                       // ✅ 올바른 필드
-                        {"trigger_value", event.trigger_value},       // ✅ value 대신 trigger_value
+                        {"device_id", event.device_id},               // ✅ 실제 필드
+                        {"point_id", event.point_id},                 // ✅ 실제 필드
+                        {"current_value", value_str},                 // ✅ 문자열로 변환
+                        {"severity", event.severity},                 // ✅ 실제 필드
+                        {"message", event.message},                   // ✅ 실제 필드
+                        {"alarm_type", event.alarm_type},             // ✅ 실제 필드
                         {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
-                            event.occurrence_time.time_since_epoch()).count()}  // ✅ occurrence_time 사용
+                            event.timestamp.time_since_epoch()).count()}  // ✅ 실제 필드
                     };
                     
                     redis_client_->publish("pulseone:alarms", event_json.dump());
