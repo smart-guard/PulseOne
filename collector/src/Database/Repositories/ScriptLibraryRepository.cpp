@@ -921,31 +921,185 @@ bool ScriptLibraryRepository::validateEntity(const ScriptLibraryEntity& entity) 
     return true;
 }
 
-std::string ScriptLibraryEntity::getCategoryString() const {
-    switch(category_) {
-        case Category::FUNCTION: return "function";
-        case Category::FORMULA: return "formula";
-        case Category::TEMPLATE: return "template";
-        case Category::CUSTOM: return "custom";
-        default: return "custom";
+
+std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByIds(const std::vector<int>& ids) {
+    std::vector<ScriptLibraryEntity> results;
+    
+    if (ids.empty()) {
+        return results;
     }
+    
+    try {
+        if (!ensureTableExists()) {
+            return results;
+        }
+        
+        // 각 ID별로 개별 조회 (간단한 구현)
+        for (int id : ids) {
+            auto entity_opt = findById(id);
+            if (entity_opt) {
+                results.push_back(entity_opt.value());
+            }
+        }
+        
+        logger_->Info("ScriptLibraryRepository::findByIds - Found " + 
+                     std::to_string(results.size()) + " scripts");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR, 
+                                     "findByIds failed: " + std::string(e.what()));
+    }
+    
+    return results;
 }
 
-std::string ScriptLibraryEntity::getReturnTypeString() const {
-    switch(return_type_) {
-        case ReturnType::FLOAT: return "float";
-        case ReturnType::STRING: return "string";
-        case ReturnType::BOOLEAN: return "boolean";
-        case ReturnType::OBJECT: return "object";
-        default: return "float";
+
+int ScriptLibraryRepository::saveBulk(std::vector<ScriptLibraryEntity>& entities) {
+    int saved_count = 0;
+    
+    try {
+        for (auto& entity : entities) {
+            if (save(entity)) {
+                saved_count++;
+            }
+        }
+        
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
+                                     "saveBulk - Saved " + std::to_string(saved_count) + " scripts");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                     "saveBulk failed: " + std::string(e.what()));
     }
+    
+    return saved_count;
 }
 
-std::string ScriptLibraryEntity::toString() const {
-    return "ScriptLibraryEntity{id=" + std::to_string(getId()) + 
-           ", name=" + name_ + 
-           ", category=" + getCategoryString() + 
-           ", return_type=" + getReturnTypeString() + "}";
+int ScriptLibraryRepository::updateBulk(const std::vector<ScriptLibraryEntity>& entities) {
+    int updated_count = 0;
+    
+    try {
+        for (const auto& entity : entities) {
+            if (update(entity)) {
+                updated_count++;
+            }
+        }
+        
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
+                                     "updateBulk - Updated " + std::to_string(updated_count) + " scripts");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                     "updateBulk failed: " + std::string(e.what()));
+    }
+    
+    return updated_count;
+}
+
+int ScriptLibraryRepository::deleteByIds(const std::vector<int>& ids) {
+    int deleted_count = 0;
+    
+    if (ids.empty()) {
+        return deleted_count;
+    }
+    
+    try {
+        for (int id : ids) {
+            if (deleteById(id)) {
+                deleted_count++;
+            }
+        }
+        
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
+                                     "deleteByIds - Deleted " + std::to_string(deleted_count) + " scripts");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                     "deleteByIds failed: " + std::string(e.what()));
+    }
+    
+    return deleted_count;
+}
+
+std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByConditions(
+    const std::vector<QueryCondition>& conditions,
+    const std::optional<OrderBy>& order_by,
+    const std::optional<Pagination>& pagination) {
+    
+    std::vector<ScriptLibraryEntity> results;
+    
+    try {
+        if (!ensureTableExists()) {
+            return results;
+        }
+        
+        // 간단한 구현: 모든 스크립트를 가져와서 메모리에서 필터링
+        auto all_scripts = findAll();
+        
+        // 조건 필터링 (기본적인 구현)
+        for (const auto& script : all_scripts) {
+            bool matches = true;
+            
+            for (const auto& condition : conditions) {
+                // 기본적인 조건 검사 (향후 더 정교하게 구현 가능)
+                if (condition.field == "tenant_id") {
+                    if (std::to_string(script.getTenantId()) != condition.value) {
+                        matches = false;
+                        break;
+                    }
+                } else if (condition.field == "category") {
+                    if (script.getCategoryString() != condition.value) {
+                        matches = false;
+                        break;
+                    }
+                } else if (condition.field == "is_system") {
+                    bool is_system = (condition.value == "1" || condition.value == "true");
+                    if (script.isSystem() != is_system) {
+                        matches = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (matches) {
+                results.push_back(script);
+            }
+        }
+        
+        // 페이징 적용 (기본적인 구현)
+        if (pagination && pagination->limit > 0) {
+            size_t start = pagination->offset;
+            size_t end = std::min(start + pagination->limit, results.size());
+            
+            if (start < results.size()) {
+                results = std::vector<ScriptLibraryEntity>(
+                    results.begin() + start, 
+                    results.begin() + end
+                );
+            } else {
+                results.clear();
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                     "findByConditions failed: " + std::string(e.what()));
+    }
+    
+    return results;
+}
+
+int ScriptLibraryRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
+    try {
+        // findByConditions를 사용해서 개수만 반환
+        auto results = findByConditions(conditions);
+        return static_cast<int>(results.size());
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                     "countByConditions failed: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 

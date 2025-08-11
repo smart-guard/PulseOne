@@ -426,31 +426,50 @@ bool ScriptLibraryEntity::validate() const {
 }
 
 std::string ScriptLibraryEntity::getCategoryString() const {
-    switch(category_) {
-        case Category::FUNCTION: return "function";
-        case Category::FORMULA: return "formula";
-        case Category::TEMPLATE: return "template";
-        case Category::CUSTOM: return "custom";
-        default: return "custom";
+    switch (category_) {
+        case Category::FUNCTION:     // ✅ ScriptCategory::UTILITY → Category::FUNCTION
+            return "function";
+        case Category::FORMULA:      // ✅ ScriptCategory::CONVERSION → Category::FORMULA  
+            return "formula";
+        case Category::TEMPLATE:     // ✅ ScriptCategory::CALCULATION → Category::TEMPLATE
+            return "template";
+        case Category::CUSTOM:       // ✅ ScriptCategory::CUSTOM → Category::CUSTOM
+            return "custom";
+        default:
+            return "custom";
     }
 }
 
 std::string ScriptLibraryEntity::getReturnTypeString() const {
-    switch(return_type_) {
-        case ReturnType::FLOAT: return "float";
-        case ReturnType::STRING: return "string";
-        case ReturnType::BOOLEAN: return "boolean";
-        case ReturnType::OBJECT: return "object";
-        default: return "float";
+    switch (return_type_) {
+        case ReturnType::FLOAT:      // ✅ ScriptReturnType::NUMBER → ReturnType::FLOAT
+            return "float";
+        case ReturnType::STRING:     // ✅ ScriptReturnType::STRING → ReturnType::STRING
+            return "string";
+        case ReturnType::BOOLEAN:    // ✅ ScriptReturnType::BOOLEAN → ReturnType::BOOLEAN
+            return "boolean";
+        case ReturnType::OBJECT:     // ✅ ScriptReturnType::OBJECT → ReturnType::OBJECT
+            return "object";
+        default:
+            return "float";
     }
 }
 
 std::string ScriptLibraryEntity::toString() const {
-    return "ScriptLibraryEntity{id=" + std::to_string(getId()) + 
-           ", name=" + name_ + 
-           ", category=" + getCategoryString() + 
-           ", return_type=" + getReturnTypeString() + "}";
+    std::ostringstream oss;
+    oss << "ScriptLibraryEntity{";
+    oss << "id=" << getId() << ", ";
+    oss << "name='" << name_ << "', ";
+    oss << "category='" << getCategoryString() << "', ";
+    oss << "return_type='" << getReturnTypeString() << "', ";
+    // ❌ isEnabled() 대신 실제 멤버 변수 사용
+    oss << "is_system=" << (is_system_ ? "true" : "false") << ", ";
+    oss << "tenant_id=" << tenant_id_;
+    oss << "}";
+    return oss.str();
 }
+
+
 
 
 } // namespace Entities
