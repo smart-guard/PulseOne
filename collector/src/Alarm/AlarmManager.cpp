@@ -324,7 +324,7 @@ std::string AlarmManager::generateAdvancedMessage(const AlarmRule& rule, const A
         if (rule.message_config.contains("include_location") && 
             rule.message_config["include_location"].get<bool>()) {
             
-            base_message += " [위치: Device-" + std::to_string(event.device_id) + "]";
+            base_message += " [위치: Device-" + event.device_id + "]";
         }
         
         // 5. 심각도 레벨 표시
@@ -448,7 +448,13 @@ void AlarmManager::publishToRedis(const AlarmEvent& event) {
         
         // 모든 채널에 발송
         for (const auto& channel : channels) {
-            redis_client_->publish(channel, enhanced_alarm.dump());
+            //redis_client_->publish(channel, enhanced_alarm.dump());
+            if (redis_client_) {
+                // TODO: Redis publish 구현
+                auto& logger = LogManager::getInstance();
+                logger.log("alarm", LogLevel::DEBUG_LEVEL, 
+                        "Redis publish temporarily disabled");
+            }
         }
         
         auto& logger = LogManager::getInstance();
@@ -500,7 +506,7 @@ AlarmEvaluation AlarmManager::evaluateAnalogAlarm(const AlarmRule& rule, double 
     
     auto& alarm_engine = AlarmEngine::getInstance();
     auto rule_entity = convertToEntity(rule);
-    return alarm_engine.evaluateAnalogAlarm(rule_entity, value);
+    return alarm_engine.evaluateForMessage(msg);
 }
 
 AlarmEvaluation AlarmManager::evaluateDigitalAlarm(const AlarmRule& rule, bool state) {
@@ -605,7 +611,7 @@ Database::Entities::AlarmRuleEntity AlarmManager::convertToEntity(const AlarmRul
     
     entity.setDeadband(rule.deadband);
     entity.setAutoClear(rule.auto_clear);
-    entity.setIsEnabled(rule.is_enabled);
+    entity.setEnabled(rule.is_enabled);
     
     if (!rule.condition_script.empty()) {
         entity.setConditionScript(rule.condition_script);

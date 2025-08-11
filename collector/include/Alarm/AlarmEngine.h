@@ -20,6 +20,7 @@
 
 // 🔥 프로젝트 헤더들 (순서 중요!)
 #include "Common/Structs.h"
+#include "Alarm/AlarmTypes.h"
 #include "Database/DatabaseManager.h"
 #include "Database/Entities/AlarmRuleEntity.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
@@ -49,26 +50,7 @@ using AlarmOccurrenceEntity = Database::Entities::AlarmOccurrenceEntity;
 using AlarmRuleRepository = Database::Repositories::AlarmRuleRepository;
 using AlarmOccurrenceRepository = Database::Repositories::AlarmOccurrenceRepository;
 
-// =============================================================================
-// 알람 평가 결과 - 🔥 구현부와 완전 일치
-// =============================================================================
-struct AlarmEvaluation {
-    bool should_trigger = false;
-    bool should_clear = false;
-    bool state_changed = false;
-    
-    std::string triggered_value;
-    std::string message;
-    std::string severity;
-    std::string condition_met;
-    std::string alarm_level;
-    
-    std::chrono::microseconds evaluation_time{0};
-    std::chrono::system_clock::time_point timestamp;
-    
-    int rule_id = 0;
-    int tenant_id = 0;
-};
+
 
 // =============================================================================
 // 메인 알람 엔진 클래스 - 🔥 구현부와 정확히 일치

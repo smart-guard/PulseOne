@@ -1922,48 +1922,233 @@ namespace Structs {
      * @brief 알람 이벤트 구조체
      * @details RabbitMQ로 전송되는 알람 정보
      */    
+    // =============================================================================
+    // 🚨 경고 해결된 AlarmEvent 구조체 - PulseOne 알람 시스템 통합
+    // =============================================================================
+
     struct AlarmEvent {
-        UUID device_id;
-        std::string point_id;
-        DataValue current_value;
-        std::string severity;           // "LOW", "MEDIUM", "HIGH", "CRITICAL"
-        Timestamp timestamp;
-        std::string message;
-        double threshold_value = 0.0;
-        std::string alarm_type = "THRESHOLD";  // "THRESHOLD", "COMMUNICATION", "QUALITY"
+        // =============================================================================
+        // 🎯 핵심 식별자 및 연결
+        // =============================================================================
+        UUID device_id;                    // 디바이스 UUID
+        std::string point_id;              // 데이터 포인트 ID
+        int rule_id = 0;                   // ✅ 새로 추가: 알람 규칙 ID
+        int occurrence_id = 0;             // ✅ 새로 추가: 알람 발생 ID (0 = 신규)
         
-        AlarmEvent() : timestamp(std::chrono::system_clock::now()) {}
+        // =============================================================================
+        // 🎯 알람 데이터 및 상태
+        // =============================================================================
+        DataValue current_value;           // 현재 값
+        double threshold_value = 0.0;      // 임계값
+        std::string trigger_condition;     // ✅ 개선: "HIGH", "LOW", "RATE", "DIGITAL_TRUE" 등
+        
+        // =============================================================================
+        // 🎯 알람 메타데이터 (⚠️ 순서 조정됨)
+        // =============================================================================
+        std::string alarm_type;            // "ANALOG", "DIGITAL", "COMMUNICATION", "QUALITY"
+        std::string message;               // 알람 메시지 (alarm_type 다음으로 이동)
+        std::string severity;              // "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"
+        std::string state;                 // ✅ 새로 추가: "ACTIVE", "ACKNOWLEDGED", "CLEARED"
+        
+        // =============================================================================
+        // 🎯 시간 정보 (⚠️ 순서 조정됨)
+        // =============================================================================
+        Timestamp timestamp;               // 기존 타임스탬프 (현재 시간)
+        Timestamp occurrence_time;         // ✅ 새로 추가: 실제 알람 발생 시간 (timestamp 다음으로 이동)
+        
+        // =============================================================================
+        // 🎯 추가 컨텍스트 정보
+        // =============================================================================
+        std::string source_name;           // ✅ 새로 추가: 소스 이름 (디바이스명 등)
+        std::string location;              // ✅ 새로 추가: 위치 정보
+        int tenant_id = 1;                 // ✅ 새로 추가: 테넌트 ID
+        
+        // =============================================================================
+        // 🎯 생성자들 (⚠️ 초기화 순서 수정됨)
+        // =============================================================================
+        AlarmEvent() : timestamp(std::chrono::system_clock::now()),
+                    occurrence_time(std::chrono::system_clock::now()) {}
+        
+        // 기본 알람 이벤트 생성자 (⚠️ 초기화 순서가 멤버 선언 순서와 일치하도록 수정)
+        AlarmEvent(const UUID& dev_id, const std::string& pt_id, 
+                const DataValue& value, const std::string& sev,
+                const std::string& msg, const std::string& type = "ANALOG") 
+            : device_id(dev_id), 
+            point_id(pt_id), 
+            current_value(value),
+            alarm_type(type),        // ✅ alarm_type이 message보다 먼저 초기화
+            message(msg),            // ✅ message가 alarm_type 다음에 초기화
+            severity(sev),
+            state("ACTIVE"),         // ✅ state가 occurrence_time보다 먼저 초기화
+            timestamp(std::chrono::system_clock::now()),
+            occurrence_time(std::chrono::system_clock::now()) {} // ✅ occurrence_time이 마지막에 초기화
+        
+        // =============================================================================
+        // 🎯 헬퍼 메서드들 (변경 없음)
+        // =============================================================================
         
         /**
-         * @brief JSON 직렬화
+         * @brief 새로운 알람 발생인지 확인
          */
+        bool isNewOccurrence() const {
+            return occurrence_id == 0;
+        }
+        
+        /**
+         * @brief 알람이 활성 상태인지 확인
+         */
+        bool isActive() const {
+            return state == "ACTIVE";
+        }
+        
+        /**
+         * @brief 알람이 해제된 상태인지 확인
+         */
+        bool isCleared() const {
+            return state == "CLEARED";
+        }
+        
+        /**
+         * @brief 임계값과 현재값 비교 결과 반환
+         */
+        std::string getComparisonResult() const {
+            try {
+                if (std::holds_alternative<double>(current_value)) {
+                    double val = std::get<double>(current_value);
+                    if (val > threshold_value) return "ABOVE";
+                    if (val < threshold_value) return "BELOW";
+                    return "EQUAL";
+                } else if (std::holds_alternative<bool>(current_value)) {
+                    return std::get<bool>(current_value) ? "TRUE" : "FALSE";
+                }
+            } catch (const std::exception&) {
+                // 변환 실패 시 기본값
+            }
+            return "UNKNOWN";
+        }
+        
+        /**
+         * @brief 심각도 수치 반환 (정렬용)
+         */
+        int getSeverityLevel() const {
+            if (severity == "CRITICAL") return 5;
+            if (severity == "HIGH") return 4;
+            if (severity == "MEDIUM") return 3;
+            if (severity == "LOW") return 2;
+            if (severity == "INFO") return 1;
+            return 0;
+        }
+        
+        // =============================================================================
+        // 🎯 JSON 직렬화 (변경 없음)
+        // =============================================================================
         std::string ToJSON() const {
             JsonType j;
+            
+            // 기본 정보
             j["device_id"] = device_id;
             j["point_id"] = point_id;
+            j["rule_id"] = rule_id;
+            j["occurrence_id"] = occurrence_id;
+            
+            // 알람 데이터
             j["severity"] = severity;
+            j["alarm_type"] = alarm_type;
+            j["state"] = state;
             j["message"] = message;
             j["threshold_value"] = threshold_value;
-            j["alarm_type"] = alarm_type;
+            j["trigger_condition"] = trigger_condition;
             
-            // variant 값 처리
+            // 추가 정보
+            j["source_name"] = source_name;
+            j["location"] = location;
+            j["tenant_id"] = tenant_id;
+            
+            // variant 값 처리 (기존 로직 유지)
             std::visit([&j](const auto& v) {
                 j["current_value"] = v;
             }, current_value);
             
-            // 타임스탬프를 ISO 문자열로 변환
-            auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-            std::tm tm_buf;
-            #ifdef _WIN32
+            // 비교 결과 추가
+            j["comparison_result"] = getComparisonResult();
+            j["severity_level"] = getSeverityLevel();
+            
+            // 타임스탬프를 ISO 문자열로 변환 (기존 로직 유지)
+            auto convertTimestamp = [](const Timestamp& ts) -> std::string {
+                auto time_t = std::chrono::system_clock::to_time_t(ts);
+                std::tm tm_buf;
+    #ifdef _WIN32
                 gmtime_s(&tm_buf, &time_t);
-            #else
+    #else
                 gmtime_r(&time_t, &tm_buf);
-            #endif
-            char buffer[32];
-            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
-            j["timestamp"] = std::string(buffer);
+    #endif
+                char buffer[32];
+                std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+                return std::string(buffer);
+            };
+            
+            j["timestamp"] = convertTimestamp(timestamp);
+            j["occurrence_time"] = convertTimestamp(occurrence_time);
             
             return j.dump();
+        }
+        
+        /**
+         * @brief JSON에서 AlarmEvent 복원
+         */
+        static AlarmEvent FromJSON(const std::string& json_str) {
+            AlarmEvent event;
+            try {
+                auto j = JsonType::parse(json_str);
+                
+                if (j.contains("device_id")) event.device_id = j["device_id"];
+                if (j.contains("point_id")) event.point_id = j["point_id"];
+                if (j.contains("rule_id")) event.rule_id = j["rule_id"];
+                if (j.contains("occurrence_id")) event.occurrence_id = j["occurrence_id"];
+                if (j.contains("severity")) event.severity = j["severity"];
+                if (j.contains("alarm_type")) event.alarm_type = j["alarm_type"];
+                if (j.contains("state")) event.state = j["state"];
+                if (j.contains("message")) event.message = j["message"];
+                if (j.contains("threshold_value")) event.threshold_value = j["threshold_value"];
+                if (j.contains("trigger_condition")) event.trigger_condition = j["trigger_condition"];
+                if (j.contains("source_name")) event.source_name = j["source_name"];
+                if (j.contains("location")) event.location = j["location"];
+                if (j.contains("tenant_id")) event.tenant_id = j["tenant_id"];
+                
+                // current_value 복원 (타입 추론 필요)
+                if (j.contains("current_value")) {
+                    if (j["current_value"].is_boolean()) {
+                        event.current_value = j["current_value"].get<bool>();
+                    } else if (j["current_value"].is_number_float()) {
+                        event.current_value = j["current_value"].get<double>();
+                    } else if (j["current_value"].is_number_integer()) {
+                        event.current_value = static_cast<double>(j["current_value"].get<int>());
+                    } else if (j["current_value"].is_string()) {
+                        event.current_value = j["current_value"].get<std::string>();
+                    }
+                }
+                
+            } catch (const std::exception& e) {
+                // JSON 파싱 실패 시 기본 이벤트 반환
+            }
+            return event;
+        }
+        
+        // =============================================================================
+        // 🎯 문자열 표현 (디버깅용)
+        // =============================================================================
+        std::string toString() const {
+            std::ostringstream ss;
+            ss << "AlarmEvent[" 
+            << "rule_id=" << rule_id
+            << ", occurrence_id=" << occurrence_id
+            << ", device=" << device_id 
+            << ", point=" << point_id
+            << ", severity=" << severity
+            << ", state=" << state
+            << ", type=" << alarm_type
+            << "]";
+            return ss.str();
         }
     };
 

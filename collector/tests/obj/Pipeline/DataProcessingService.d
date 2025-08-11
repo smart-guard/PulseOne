@@ -8,7 +8,7 @@ obj/Pipeline/DataProcessingService.o: \
  ../include/Common/IProtocolConfig.h ../include/Common/ProtocolConfigs.h \
  ../include/Client/RedisClient.h ../include/Client/InfluxClient.h \
  ../include/Pipeline/PipelineManager.h ../include/Utils/LogManager.h \
- ../include/Alarm/AlarmManager.h \
+ ../include/Alarm/AlarmManager.h ../include/Alarm/AlarmTypes.h \
  ../include/Database/Entities/AlarmRuleEntity.h \
  ../include/Database/Entities/BaseEntity.h \
  ../include/Database/DatabaseManager.h \
