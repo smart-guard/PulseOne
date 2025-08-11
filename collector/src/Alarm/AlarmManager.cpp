@@ -306,7 +306,7 @@ std::string AlarmManager::generateAdvancedMessage(const AlarmRule& rule, const A
         if (rule.message_config.contains("include_context") && 
             rule.message_config["include_context"].get<bool>()) {
             
-            base_message += " [대상: " + event.point_id + "]";
+            base_message += " [대상: " + std::to_string(event.point_id) + "]";
         }
         
         // 3. 시간 정보 추가
@@ -333,11 +333,11 @@ std::string AlarmManager::generateAdvancedMessage(const AlarmRule& rule, const A
             rule.message_config["show_severity"].get<bool>()) {
             
             std::string severity_prefix;
-            if (event.severity == "critical") {
+            if (event.severity == AlarmSeverity::CRITICAL) {
                 severity_prefix = "[🚨 긴급] ";
-            } else if (event.severity == "high") {
+            } else if (event.severity == AlarmSeverity::HIGH) {
                 severity_prefix = "[⚠️  높음] ";
-            } else if (event.severity == "medium") {
+            } else if (event.severity == AlarmSeverity::MEDIUM) {
                 severity_prefix = "[⚡ 보통] ";
             } else {
                 severity_prefix = "[ℹ️  정보] ";
@@ -368,28 +368,28 @@ void AlarmManager::adjustSeverityAndPriority(AlarmEvent& event, const AlarmRule&
         
         // 야간 시간(22:00-06:00)에는 심각도 한 단계 상향
         if (local_time->tm_hour >= 22 || local_time->tm_hour < 6) {
-            if (event.severity == "low") {
-                event.severity = "medium";
-            } else if (event.severity == "medium") {
-                event.severity = "high";
-            } else if (event.severity == "high") {
-                event.severity = "critical";
+            if (event.severity == AlarmSeverity::LOW) {
+                event.severity = AlarmSeverity::MEDIUM;
+            } else if (event.severity == AlarmSeverity::MEDIUM) {
+                event.severity = AlarmSeverity::HIGH;
+            } else if (event.severity == AlarmSeverity::HIGH) {
+                event.severity = AlarmSeverity::CRITICAL;
             }
             
             auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::DEBUG_LEVEL, "Severity upgraded for night time: " + event.severity);
+            logger.log("alarm", LogLevel::DEBUG_LEVEL, "Severity upgraded for night time: " + event.getSeverityString());
         }
         
         // 2. 주말/휴일 심각도 조정
         if (local_time->tm_wday == 0 || local_time->tm_wday == 6) { // 일요일(0) 또는 토요일(6)
-            if (event.severity == "low") {
-                event.severity = "medium";
-            } else if (event.severity == "medium") {
-                event.severity = "high";
+            if (event.severity == AlarmSeverity::LOW) {
+                event.severity = AlarmSeverity::MEDIUM;
+            } else if (event.severity == AlarmSeverity::MEDIUM) {
+                event.severity = AlarmSeverity::HIGH;
             }
             
             auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::DEBUG_LEVEL, "Severity upgraded for weekend: " + event.severity);
+            logger.log("alarm", LogLevel::DEBUG_LEVEL, "Severity upgraded for weekend: " + event.getSeverityString());
         }
         
     } catch (const std::exception& e) {
@@ -416,7 +416,7 @@ void AlarmManager::publishToRedis(const AlarmEvent& event) {
             {"rule_id", event.rule_id},
             {"device_id", event.device_id},
             {"point_id", event.point_id},
-            {"severity", event.severity},
+            {"severity", event.getSeverityString()},
             {"state", event.state},
             {"message", event.message},
             {"timestamp", std::chrono::system_clock::to_time_t(event.occurrence_time)},
@@ -432,9 +432,9 @@ void AlarmManager::publishToRedis(const AlarmEvent& event) {
         };
         
         // 심각도별 비즈니스 채널
-        if (event.severity == "critical") {
+        if (event.severity == AlarmSeverity::CRITICAL) {
             channels.push_back("alarms:critical:immediate");
-        } else if (event.severity == "high") {
+        } else if (event.severity == AlarmSeverity::HIGH) {
             channels.push_back("alarms:high:priority");
         }
         

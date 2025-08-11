@@ -8,6 +8,7 @@ obj/Drivers/Mqtt/MqttDiagnostics.o: \
  ../include/Common/Enums.h ../include/Common/Constants.h \
  ../include/Common/DriverStatistics.h ../include/Common/Utils.h \
  ../include/Common/DriverError.h ../include/Common/IProtocolConfig.h \
- ../include/Common/ProtocolConfigs.h ../include/Common/DriverStatistics.h \
- ../include/Common/DriverError.h ../include/Drivers/Mqtt/MqttFailover.h \
+ ../include/Common/ProtocolConfigs.h ../include/Alarm/AlarmTypes.h \
+ ../include/Common/DriverStatistics.h ../include/Common/DriverError.h \
+ ../include/Drivers/Mqtt/MqttFailover.h \
  ../include/Drivers/Mqtt/MqttLoadBalancer.h

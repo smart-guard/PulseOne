@@ -225,7 +225,15 @@ private:
     // =======================================================================
     // 🔥 구현부와 정확히 일치하는 멤버 변수들
     // =======================================================================
+    UUID getDeviceIdForPoint(int point_id);
+    std::string getPointLocation(int point_id); 
+    AlarmType convertToAlarmType(const AlarmRuleEntity::AlarmType& entity_type);
+    TriggerCondition determineTriggerCondition(const AlarmRuleEntity& rule, const AlarmEvaluation& eval);
+    double getThresholdValue(const AlarmRuleEntity& rule, const AlarmEvaluation& eval);
+    bool clearActiveAlarm(int rule_id, const DataValue& value);
     
+    // 멤버 변수 추가
+    std::mutex state_mutex_;
     // 초기화 상태
     std::atomic<bool> initialized_{false};
     
