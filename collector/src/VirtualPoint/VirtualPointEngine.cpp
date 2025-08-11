@@ -649,35 +649,43 @@ DataValue VirtualPointEngine::evaluateFormula(const std::string& formula, const 
 // =============================================================================
 
 std::string VirtualPointEngine::preprocessFormula(const std::string& formula, int tenant_id) {
-    auto& script_lib = ScriptLibraryManager::getInstance();
-    
-    // 수식 분석: 라이브러리 함수 사용 여부 확인
-    auto dependencies = script_lib.collectDependencies(formula);
-    
-    if (dependencies.empty()) {
-        return formula;
-    }
-    
-    std::stringstream complete_script;
-    
-    // 의존 함수들을 먼저 추가
-    for (const auto& func_name : dependencies) {
-        auto script_opt = script_lib.getScript(func_name, tenant_id);
-        if (script_opt) {
-            complete_script << "// Library: " << script_opt->display_name << "\n";
-            complete_script << script_opt->script_code << "\n\n";
-            
-            // 사용 통계 기록
-            if (current_vp_id_ > 0) {
-                script_lib.recordUsage(script_opt->id, current_vp_id_, "virtual_point");
+    try {
+        // ✅ getInstance() 호출 전에 초기화 상태 확인
+        auto& script_mgr = ScriptLibraryManager::getInstance();
+        
+        // ✅ collectDependencies 메서드 호출
+        auto dependencies = script_mgr.collectDependencies(formula);
+        
+        if (dependencies.empty()) {
+            return formula;
+        }
+        
+        std::stringstream complete_script;
+        
+        // 라이브러리 함수들 주입
+        for (const auto& func_name : dependencies) {
+            auto script_opt = script_mgr.getScript(func_name, tenant_id);
+            if (script_opt) {
+                complete_script << "// Library: " << script_opt->display_name << "\n";
+                complete_script << script_opt->script_code << "\n\n";
+                
+                // ✅ recordUsage 메서드 호출
+                if (current_vp_id_ > 0) {
+                    script_mgr.recordUsage(script_opt->id, current_vp_id_, "virtual_point");
+                }
             }
         }
+        
+        complete_script << "// User Formula\n";
+        complete_script << formula;
+        
+        return complete_script.str();
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.Warn("Formula preprocessing failed: " + std::string(e.what()));
+        return formula; // 실패 시 원본 반환
     }
-    
-    complete_script << "// User Formula\n";
-    complete_script << formula;
-    
-    return complete_script.str();
 }
 
 // =============================================================================

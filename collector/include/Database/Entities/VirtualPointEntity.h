@@ -176,6 +176,7 @@ public:
     bool hasTag(const std::string& tag) const;
     bool validate() const;
     std::string toString() const;
+    std::string preprocessFormula(const std::string& formula, int tenant_id);
 
 private:
     // =======================================================================

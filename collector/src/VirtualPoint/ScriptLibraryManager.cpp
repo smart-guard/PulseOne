@@ -529,5 +529,75 @@ std::string ScriptLibraryManager::replaceVariables(const std::string& template_c
     return template_code;  // 기본 구현
 }
 
+std::vector<std::string> ScriptLibraryManager::collectDependencies(const std::string& formula) {
+    std::vector<std::string> dependencies;
+    
+    try {
+        // 기본적인 함수 이름 추출 (정규식 사용)
+        std::regex function_pattern(R"(\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\()");
+        std::sregex_iterator iter(formula.begin(), formula.end(), function_pattern);
+        std::sregex_iterator end;
+        
+        std::set<std::string> unique_functions;
+        
+        while (iter != end) {
+            std::string func_name = (*iter)[1].str();
+            
+            // JavaScript 내장 함수들은 제외
+            if (func_name != "Math" && func_name != "console" && 
+                func_name != "parseInt" && func_name != "parseFloat" &&
+                func_name != "isNaN" && func_name != "isFinite" &&
+                func_name != "Number" && func_name != "String" &&
+                func_name != "Boolean" && func_name != "Date") {
+                unique_functions.insert(func_name);
+            }
+            
+            ++iter;
+        }
+        
+        // set을 vector로 변환
+        dependencies.assign(unique_functions.begin(), unique_functions.end());
+        
+        auto& logger = LogManager::getInstance();
+        logger.log("ScriptLibraryManager", LogLevel::DEBUG, 
+                  "collectDependencies - Found " + std::to_string(dependencies.size()) + " dependencies");
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.log("ScriptLibraryManager", LogLevel::ERROR,
+                  "collectDependencies failed: " + std::string(e.what()));
+    }
+    
+    return dependencies;
+}
+
+void ScriptLibraryManager::recordUsage(int script_id, int virtual_point_id, const std::string& context) {
+    try {
+        if (script_id <= 0 || virtual_point_id <= 0) {
+            return;
+        }
+        
+        if (!repository_) {
+            LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+                                        "recordUsage - Repository not available");
+            return;
+        }
+        
+        // 사용 횟수 증가
+        repository_->incrementUsageCount(script_id);
+        
+        // 추가적인 사용 이력 기록 (필요시)
+        repository_->recordUsage(script_id, virtual_point_id, 0, context);
+        
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
+                                    "recordUsage - Recorded usage for script " + 
+                                    std::to_string(script_id) + " in VP " + std::to_string(virtual_point_id));
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+                                    "recordUsage failed: " + std::string(e.what()));
+    }
+}
+
 } // namespace VirtualPoint
 } // namespace PulseOne

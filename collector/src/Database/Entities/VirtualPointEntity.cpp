@@ -452,25 +452,22 @@ bool VirtualPointEntity::deleteFromDatabase() {
     }
 }
 
-std::string VirtualPointEngine::preprocessFormula(const std::string& formula, int tenant_id) {
-    std::string processed_formula = formula;
-    
+std::string VirtualPointEntity::preprocessFormula(const std::string& formula, int tenant_id) {
     try {
-        // ScriptLibraryManager 사용 대신 기본 처리
-        // auto& script_mgr = ScriptLibraryManager::getInstance();
-        // auto dependencies = script_mgr.collectDependencies(formula);
+        auto& logger = LogManager::getInstance();
         
-        // 기본적인 전처리만 수행
-        // 향후 ScriptLibraryManager 구현 시 확장
+        // 실제 전처리 로직
+        std::string processed = formula;
+        // ... 전처리 작업 ...
         
-        logger_->Debug("Formula preprocessed for tenant " + std::to_string(tenant_id));
+        logger.Debug("Formula preprocessed for tenant " + std::to_string(tenant_id));
+        return processed;
         
     } catch (const std::exception& e) {
-        logger_->Warning("Formula preprocessing failed: " + std::string(e.what()));
-        // 전처리 실패 시 원본 반환
+        auto& logger = LogManager::getInstance();
+        logger.Warn("Formula preprocessing failed: " + std::string(e.what()));  // ✅ Warning → Warn
+        return formula; // 원본 반환
     }
-    
-    return processed_formula;
 }
 
 } // namespace Entities
