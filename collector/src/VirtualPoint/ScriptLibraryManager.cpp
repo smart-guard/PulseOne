@@ -196,31 +196,31 @@ bool ScriptLibraryManager::initialize(std::shared_ptr<::DatabaseManager> db_mana
         }
         
         if (!repository_) {
-            if (auto logger = Utils::LogManager::getInstance()) {
-                logger->Error("ScriptLibraryManager::initialize - Failed to get ScriptLibraryRepository");
+            auto& logger = LogManager::getInstance(); {
+                logger.Error("ScriptLibraryManager::initialize - Failed to get ScriptLibraryRepository");
             }
             return false;
         }
         
         // 시스템 스크립트 로드
         if (!loadSystemScripts()) {
-            if (auto logger = Utils::LogManager::getInstance()) {
-                logger->Warn("ScriptLibraryManager::initialize - Failed to load system scripts");
+            auto& logger = LogManager::getInstance(); {
+                logger.Warn("ScriptLibraryManager::initialize - Failed to load system scripts");
             }
             // 경고만 하고 계속 진행
         }
         
         initialized_.store(true);
         
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Info("ScriptLibraryManager initialized successfully");
+        auto& logger = LogManager::getInstance(); {
+            logger.Info("ScriptLibraryManager initialized successfully");
         }
         
         return true;
         
     } catch (const std::exception& e) {
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Error("ScriptLibraryManager::initialize failed: " + std::string(e.what()));
+        auto& logger = LogManager::getInstance(); {
+            logger.Error("ScriptLibraryManager::initialize failed: " + std::string(e.what()));
         }
         return false;
     }
@@ -245,13 +245,13 @@ void ScriptLibraryManager::shutdown() {
         
         initialized_.store(false);
         
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Info("ScriptLibraryManager shutdown completed");
+        auto& logger = LogManager::getInstance(); {
+            logger.Info("ScriptLibraryManager shutdown completed");
         }
         
     } catch (const std::exception& e) {
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Error("ScriptLibraryManager::shutdown failed: " + std::string(e.what()));
+        auto& logger = LogManager::getInstance(); {
+            logger.Error("ScriptLibraryManager::shutdown failed: " + std::string(e.what()));
         }
     }
 }
@@ -278,24 +278,24 @@ bool ScriptLibraryManager::loadScripts(int tenant_id) {
                 try {
                     updateCacheFromEntity(entity);
                 } catch (const std::exception& e) {
-                    if (auto logger = Utils::LogManager::getInstance()) {
-                        logger->Warn("ScriptLibraryManager::loadScripts - Failed to cache script '" + 
+                    auto& logger = LogManager::getInstance(); {
+                        logger.Warn("ScriptLibraryManager::loadScripts - Failed to cache script '" + 
                                    entity.getName() + "': " + std::string(e.what()));
                     }
                 }
             }
         }
         
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Info("ScriptLibraryManager::loadScripts - Loaded " + std::to_string(entities.size()) + 
+        auto& logger = LogManager::getInstance(); {
+            logger.Info("ScriptLibraryManager::loadScripts - Loaded " + std::to_string(entities.size()) + 
                         " scripts for tenant " + std::to_string(tenant_id));
         }
         
         return true;
         
     } catch (const std::exception& e) {
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Error("ScriptLibraryManager::loadScripts failed: " + std::string(e.what()));
+        auto& logger = LogManager::getInstance(); {
+            logger.Error("ScriptLibraryManager::loadScripts failed: " + std::string(e.what()));
         }
         return false;
     }
@@ -320,23 +320,23 @@ bool ScriptLibraryManager::loadSystemScripts() {
                     updateCacheFromEntity(entity);
                     system_script_names_.push_back(entity.getName());
                 } catch (const std::exception& e) {
-                    if (auto logger = Utils::LogManager::getInstance()) {
-                        logger->Warn("ScriptLibraryManager::loadSystemScripts - Failed to cache system script '" + 
+                    auto& logger = LogManager::getInstance(); {
+                        logger.Warn("ScriptLibraryManager::loadSystemScripts - Failed to cache system script '" + 
                                    entity.getName() + "': " + std::string(e.what()));
                     }
                 }
             }
         }
         
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Info("ScriptLibraryManager::loadSystemScripts - Loaded " + std::to_string(entities.size()) + " system scripts");
+        auto& logger = LogManager::getInstance(); {
+            logger.Info("ScriptLibraryManager::loadSystemScripts - Loaded " + std::to_string(entities.size()) + " system scripts");
         }
         
         return true;
         
     } catch (const std::exception& e) {
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Error("ScriptLibraryManager::loadSystemScripts failed: " + std::string(e.what()));
+        auto& logger = LogManager::getInstance(); {
+            logger.Error("ScriptLibraryManager::loadSystemScripts failed: " + std::string(e.what()));
         }
         return false;
     }
@@ -380,8 +380,8 @@ std::optional<ScriptDefinition> ScriptLibraryManager::getScript(const std::strin
         return std::nullopt;
         
     } catch (const std::exception& e) {
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Error("ScriptLibraryManager::getScript failed: " + std::string(e.what()));
+        auto& logger = LogManager::getInstance(); {
+            logger.Error("ScriptLibraryManager::getScript failed: " + std::string(e.what()));
         }
         return std::nullopt;
     }
@@ -421,8 +421,8 @@ std::optional<ScriptDefinition> ScriptLibraryManager::getScriptById(int script_i
         return std::nullopt;
         
     } catch (const std::exception& e) {
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Error("ScriptLibraryManager::getScriptById failed: " + std::string(e.what()));
+        auto& logger = LogManager::getInstance(); {
+            logger.Error("ScriptLibraryManager::getScriptById failed: " + std::string(e.what()));
         }
         return std::nullopt;
     }
@@ -449,8 +449,8 @@ int ScriptLibraryManager::registerScript(const ScriptDefinition& script) {
         return -1;
         
     } catch (const std::exception& e) {
-        if (auto logger = Utils::LogManager::getInstance()) {
-            logger->Error("ScriptLibraryManager::registerScript failed: " + std::string(e.what()));
+        auto& logger = LogManager::getInstance(); {
+            logger.Error("ScriptLibraryManager::registerScript failed: " + std::string(e.what()));
         }
         return -1;
     }

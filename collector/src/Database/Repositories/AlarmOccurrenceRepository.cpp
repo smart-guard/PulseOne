@@ -105,7 +105,7 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
         
         // 캐시에 저장
         if (isCacheEnabled()) {
-            setCachedEntity(id, entity);
+            cacheEntity(entity);
         }
         
         if (logger_) {
@@ -1272,7 +1272,7 @@ bool AlarmOccurrenceRepository::ensureTableExists() {
     }
 }
 
-bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const {
+bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) {
     // 기본 검증
     if (entity.getRuleId() <= 0) {
         return false;
@@ -1291,7 +1291,7 @@ bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEnt
     return true;
 }
 
-std::string AlarmOccurrenceRepository::escapeString(const std::string& str) const {
+std::string AlarmOccurrenceRepository::escapeString(const std::string& str) {
     // SQL 인젝션 방지를 위한 문자열 이스케이프
     std::string escaped = str;
     
@@ -1334,6 +1334,52 @@ std::chrono::system_clock::time_point AlarmOccurrenceRepository::stringToTimePoi
     }
     
     return time_point;
+}
+
+std::optional<int> AlarmOccurrenceRepository::findMaxId() {
+    try {
+        if (!ensureTableExists()) {
+            if (logger_) {
+                logger_->Error("AlarmOccurrenceRepository::findMaxId - Table creation failed");
+            }
+            return std::nullopt;
+        }
+        
+        // 🔥 기존 패턴과 동일: 지역 변수로 생성
+        DatabaseAbstractionLayer db_layer;
+        
+        const std::string query = "SELECT MAX(id) as max_id FROM alarm_occurrences";
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("max_id") != results[0].end()) {
+            const std::string& max_id_str = results[0].at("max_id");
+            
+            // NULL 체크
+            if (max_id_str.empty() || max_id_str == "NULL") {
+                if (logger_) {
+                    logger_->Debug("AlarmOccurrenceRepository::findMaxId - No records found, returning 0");
+                }
+                return 0; // 첫 번째 ID는 1부터 시작하도록
+            }
+            
+            int max_id = std::stoi(max_id_str);
+            if (logger_) {
+                logger_->Debug("AlarmOccurrenceRepository::findMaxId - Found max ID: " + std::to_string(max_id));
+            }
+            return max_id;
+        }
+        
+        if (logger_) {
+            logger_->Debug("AlarmOccurrenceRepository::findMaxId - No results returned");
+        }
+        return 0; // 기본값
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("AlarmOccurrenceRepository::findMaxId failed: " + std::string(e.what()));
+        }
+        return std::nullopt;
+    }
 }
 
 } // namespace Repositories

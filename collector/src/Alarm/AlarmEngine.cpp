@@ -186,7 +186,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForMessage(const DeviceDataMessage&
 }
 
 std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id, 
-                                                     const std::string& point_id, 
+                                                     int point_id, 
                                                      const DataValue& value) {
     std::vector<AlarmEvent> alarm_events;
     
@@ -241,7 +241,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
                         event.rule_id = rule.getId();
                         event.tenant_id = tenant_id;
                         event.point_id = point_id;
-                        event.alarm_type = rule.getAlarmType();
+                        event.alarm_type = PulseOne::Alarm::alarmTypeToString(rule.getAlarmType());
                         event.severity = eval.severity;
                         event.state = "ACTIVE";
                         event.trigger_value = value;
@@ -362,124 +362,46 @@ AlarmEvaluation AlarmEngine::evaluateRule(const AlarmRuleEntity& rule, const Dat
 
 AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, double value) {
     AlarmEvaluation eval;
+    eval.timestamp = std::chrono::system_clock::now();
+    eval.trigger_value = std::to_string(value);
     
-    if (!initialized_.load()) {
-        return eval;  // 빈 결과 반환
-    }
+    // ✅ 올바른 방법: enum 기본값 설정
+    eval.severity = rule.getSeverity();  // enum 반환하는 메서드 사용
     
-    eval.severity = rule.getSeverity();
-    
-    // 나머지 로직은 동일...
-    // (기존 코드 그대로 유지)
-    
-    // 현재 레벨 판정
-    eval.alarm_level = getAnalogLevel(rule, value);
-    
-    // 이전 값 가져오기
-    double last_value = getLastValue(rule.getId());
-    bool is_alarm_active = isAlarmActive(rule.getId());
-    
-    // 🔥 히스테리시스를 고려한 임계값 체크
-    bool trigger = false;
+    bool currently_in_alarm = false;
     std::string condition;
-    std::string severity = rule.getSeverity();
     
-    // High-High 체크
-    if (rule.getHighHighLimit().has_value()) {
-        double threshold = rule.getHighHighLimit().value();
-        if (value >= threshold) {
-            if (!is_alarm_active || checkDeadband(rule, value, last_value, threshold)) {
-                trigger = true;
-                condition = "High-High";
-                severity = "critical";
-            }
-        }
+    // HIGH-HIGH 체크
+    if (rule.getHighHighLimit().has_value() && value >= rule.getHighHighLimit().value()) {
+        currently_in_alarm = true;
+        condition = "HIGH-HIGH";
+        eval.severity = PulseOne::Alarm::AlarmSeverity::CRITICAL;  // ✅ enum 직접 할당
+    }
+    // HIGH 체크
+    else if (rule.getHighLimit().has_value() && value >= rule.getHighLimit().value()) {
+        currently_in_alarm = true;
+        condition = "HIGH";
+        eval.severity = PulseOne::Alarm::AlarmSeverity::HIGH;  // ✅ enum 직접 할당
+    }
+    // LOW-LOW 체크
+    else if (rule.getLowLowLimit().has_value() && value <= rule.getLowLowLimit().value()) {
+        currently_in_alarm = true;
+        condition = "LOW-LOW";
+        eval.severity = PulseOne::Alarm::AlarmSeverity::CRITICAL;  // ✅ enum 직접 할당
+    }
+    // LOW 체크
+    else if (rule.getLowLimit().has_value() && value <= rule.getLowLimit().value()) {
+        currently_in_alarm = true;
+        condition = "LOW";
+        eval.severity = PulseOne::Alarm::AlarmSeverity::HIGH;  // ✅ enum 직접 할당
     }
     
-    // High 체크 (High-High가 트리거되지 않은 경우만)
-    if (!trigger && rule.getHighLimit().has_value()) {
-        double threshold = rule.getHighLimit().value();
-        if (value >= threshold) {
-            if (!is_alarm_active || checkDeadband(rule, value, last_value, threshold)) {
-                trigger = true;
-                condition = "High";
-                severity = "high";
-            }
-        }
-    }
-    
-    // Low-Low 체크
-    if (!trigger && rule.getLowLowLimit().has_value()) {
-        double threshold = rule.getLowLowLimit().value();
-        if (value <= threshold) {
-            if (!is_alarm_active || checkDeadband(rule, value, last_value, threshold)) {
-                trigger = true;
-                condition = "Low-Low";
-                severity = "critical";
-            }
-        }
-    }
-    
-    // Low 체크 (Low-Low가 트리거되지 않은 경우만)
-    if (!trigger && rule.getLowLimit().has_value()) {
-        double threshold = rule.getLowLimit().value();
-        if (value <= threshold) {
-            if (!is_alarm_active || checkDeadband(rule, value, last_value, threshold)) {
-                trigger = true;
-                condition = "Low";
-                severity = "high";
-            }
-        }
-    }
-    
-    // 변화율 체크
-    if (!trigger && rule.getRateOfChange() > 0) {
-        auto last_time = last_check_times_[rule.getId()];
-        if (last_time.time_since_epoch().count() > 0) {
-            auto now = std::chrono::system_clock::now();
-            auto time_diff = std::chrono::duration<double>(now - last_time).count();
-            if (time_diff > 0) {
-                double rate = std::abs(value - last_value) / time_diff;
-                if (rate > rule.getRateOfChange()) {
-                    trigger = true;
-                    condition = "Rate of Change";
-                    severity = "high";
-                }
-            }
-        }
-    }
-    
-    // 결과 설정
-    if (trigger && !is_alarm_active) {
-        eval.should_trigger = true;
-        eval.condition_met = condition;
-        eval.severity = severity;
-    } else if (!trigger && is_alarm_active && rule.isAutoClear()) {
-        // 정상 범위로 복귀 + 히스테리시스 체크
-        bool should_clear = true;
-        
-        if (rule.getHighHighLimit() && last_value >= *rule.getHighHighLimit()) {
-            should_clear = value < (*rule.getHighHighLimit() - rule.getDeadband());
-        } else if (rule.getHighLimit() && last_value >= *rule.getHighLimit()) {
-            should_clear = value < (*rule.getHighLimit() - rule.getDeadband());
-        } else if (rule.getLowLowLimit() && last_value <= *rule.getLowLowLimit()) {
-            should_clear = value > (*rule.getLowLowLimit() + rule.getDeadband());
-        } else if (rule.getLowLimit() && last_value <= *rule.getLowLimit()) {
-            should_clear = value > (*rule.getLowLimit() + rule.getDeadband());
-        }
-        
-        if (should_clear) {
-            eval.should_clear = true;
-            eval.condition_met = "Normal";
-        }
-    }
-    
-    // 값 업데이트
-    updateLastValue(rule.getId(), value);
-    last_check_times_[rule.getId()] = std::chrono::system_clock::now();
+    eval.condition_met = condition;
+    eval.should_trigger = currently_in_alarm;
     
     return eval;
 }
+
 
 AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, bool state) {
     AlarmEvaluation eval;
@@ -497,21 +419,21 @@ AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, b
     std::string condition;
     
     // 디지털 조건 체크
-    std::string trigger_condition = rule.getTriggerCondition();
+    auto trigger_condition = rule.getTriggerCondition();
     
     if (trigger_condition == "on_true") {
         trigger = state;
         condition = state ? "ON" : "OFF";
-    } else if (trigger_condition == "on_false") {
+    } else if (PulseOne::Alarm::stringToDigitalTrigger(trigger_condition) == PulseOne::Alarm::DigitalTrigger::ON_FALSE) {
         trigger = !state;
         condition = state ? "OFF" : "ON";
-    } else if (trigger_condition == "on_change") {
+    } else if (PulseOne::Alarm::stringToDigitalTrigger(trigger_condition) == PulseOne::Alarm::DigitalTrigger::ON_CHANGE) {
         trigger = (state != last_state);
         condition = state ? "Changed to ON" : "Changed to OFF";
-    } else if (trigger_condition == "on_rising") {
+    } else if (PulseOne::Alarm::stringToDigitalTrigger(trigger_condition) == PulseOne::Alarm::DigitalTrigger::ON_RISING) {
         trigger = (state && !last_state);
         condition = "Rising Edge";
-    } else if (trigger_condition == "on_falling") {
+    } else if (PulseOne::Alarm::stringToDigitalTrigger(trigger_condition) == PulseOne::Alarm::DigitalTrigger::ON_FALLING) {
         trigger = (!state && last_state);
         condition = "Falling Edge";
     }
@@ -629,7 +551,7 @@ std::optional<int64_t> AlarmEngine::raiseAlarm(const AlarmRuleEntity& rule,
         occurrence.setTriggerCondition(eval.condition_met);
         occurrence.setAlarmMessage(eval.message);
         occurrence.setSeverity(eval.severity);
-        occurrence.setState(State::ACTIVE);
+        occurrence.setState(PulseOne::Alarm::AlarmState::ACTIVE);
         
         // 트리거 값을 JSON으로 저장
         json trigger_json;
@@ -792,7 +714,7 @@ std::vector<AlarmOccurrenceEntity> AlarmEngine::getActiveAlarms(int tenant_id) c
     }
     
     try {
-        return alarm_occurrence_repo_->findActiveByTenantId(tenant_id);
+        return alarm_occurrence_repo_->findActiveByRuleId(tenant_id);
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Failed to get active alarms: " + std::string(e.what()));
         return {};

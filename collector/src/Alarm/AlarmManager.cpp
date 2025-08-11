@@ -261,7 +261,7 @@ void AlarmManager::enhanceAlarmEvent(AlarmEvent& event, const DeviceDataMessage&
             // 2. 알림 채널 설정
             if (!rule->notification_channels.empty()) {
                 try {
-                    auto channels = rule->notification_channels.get<std::vector<std::string>>();
+                    auto channels = rule->notification_channels;
                     // TODO: event에 channels 추가 (Structs::AlarmEvent 확장 필요)
                 } catch (...) {
                     auto& logger = LogManager::getInstance();
@@ -428,7 +428,7 @@ void AlarmManager::publishToRedis(const AlarmEvent& event) {
         // 🔥 다중 비즈니스 채널 발송
         std::vector<std::string> channels = {
             "alarms:enhanced",  // 강화된 알람 전용 채널
-            "device:" + std::to_string(event.device_id) + ":alarms:enhanced"
+            "device:" + event.device_id + ":alarms:enhanced"
         };
         
         // 심각도별 비즈니스 채널
@@ -622,16 +622,16 @@ Database::Entities::AlarmRuleEntity AlarmManager::convertToEntity(const AlarmRul
     }
     
     // 심각도 변환 - enum to enum
-    if (rule.severity == AlarmSeverity::CRITICAL) {
-        entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::CRITICAL);
-    } else if (rule.severity == AlarmSeverity::HIGH) {
-        entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::HIGH);
-    } else if (rule.severity == AlarmSeverity::MEDIUM) {
-        entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::MEDIUM);
-    } else if (rule.severity == AlarmSeverity::LOW) {
-        entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::LOW);
+    if (rule.severity == PulseOne::Alarm::AlarmSeverity::CRITICAL) {
+        entity.setSeverity(PulseOne::Alarm::AlarmSeverity::CRITICAL);
+    } else if (rule.severity == PulseOne::Alarm::AlarmSeverity::HIGH) {
+        entity.setSeverity(PulseOne::Alarm::AlarmSeverity::HIGH);
+    } else if (rule.severity == PulseOne::Alarm::AlarmSeverity::MEDIUM) {
+        entity.setSeverity(PulseOne::Alarm::AlarmSeverity::MEDIUM);
+    } else if (rule.severity == PulseOne::Alarm::AlarmSeverity::LOW) {
+        entity.setSeverity(PulseOne::Alarm::AlarmSeverity::LOW);
     } else {
-        entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::INFO);
+        entity.setSeverity(PulseOne::Alarm::AlarmSeverity::INFO);
     }
     
     return entity;

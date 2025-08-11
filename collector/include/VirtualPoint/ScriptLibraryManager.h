@@ -43,6 +43,8 @@ struct ScriptDefinition {
     bool is_system = false;
     int usage_count = 0;
     double rating = 0.0;
+    std::string version = "1.0.0";
+    std::string author = "system";
     
     // Entity 변환
     static ScriptDefinition fromEntity(const ScriptLibraryEntity& entity);

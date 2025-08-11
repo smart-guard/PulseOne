@@ -747,79 +747,48 @@ AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(const std::map<std::string, 
         AlarmRuleEntity entity;
         auto it = row.end();
         
-        // 기본 정보
-        it = row.find("id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setId(std::stoi(it->second));
+        // 기본 식별자
+        if ((it = row.find("id")) != row.end()) entity.setId(std::stoi(it->second));
+        if ((it = row.find("tenant_id")) != row.end()) entity.setTenantId(std::stoi(it->second));
+        if ((it = row.find("name")) != row.end()) entity.setName(it->second);
+        if ((it = row.find("description")) != row.end()) entity.setDescription(it->second);
+        
+        // 🔥 target_type 변환 - AlarmTypes.h 함수 직접 사용
+        if ((it = row.find("target_type")) != row.end()) {
+            entity.setTargetType(PulseOne::Alarm::stringToTargetType(it->second));
         }
         
-        it = row.find("tenant_id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setTenantId(std::stoi(it->second));
-        }
-        
-        it = row.find("name");
-        if (it != row.end()) {
-            entity.setName(it->second);
-        }
-        
-        it = row.find("description");
-        if (it != row.end()) {
-            entity.setDescription(it->second);
-        }
-        
-        // 🎯 TargetType 변환 - AlarmRuleEntity의 메서드 사용
-        it = row.find("target_type");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setTargetType(entity.stringToTargetType(it->second));
-        }
-        
-        it = row.find("target_id");
-        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+        if ((it = row.find("target_id")) != row.end() && !it->second.empty() && it->second != "NULL") {
             entity.setTargetId(std::stoi(it->second));
         }
+        if ((it = row.find("target_group")) != row.end()) entity.setTargetGroup(it->second);
         
-        it = row.find("target_group");
-        if (it != row.end()) {
-            entity.setTargetGroup(it->second);
-        }
-        
-        // 🎯 AlarmType 변환 - PulseOne::Alarm 네임스페이스 사용
-        it = row.find("alarm_type");
-        if (it != row.end() && !it->second.empty()) {
+        // 🔥 alarm_type 변환 - AlarmTypes.h 함수 사용
+        if ((it = row.find("alarm_type")) != row.end()) {
             entity.setAlarmType(PulseOne::Alarm::stringToAlarmType(it->second));
         }
         
-        // 🎯 AlarmSeverity 변환 - PulseOne::Alarm 네임스페이스 사용
-        it = row.find("severity");
-        if (it != row.end() && !it->second.empty()) {
+        // 🔥 severity 변환 - AlarmTypes.h 함수 사용
+        if ((it = row.find("severity")) != row.end()) {
             entity.setSeverity(PulseOne::Alarm::stringToSeverity(it->second));
         }
         
-        // 우선순위
-        it = row.find("priority");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setPriority(std::stoi(it->second));
-        }
+        // 나머지 필드들...
+        if ((it = row.find("priority")) != row.end()) entity.setPriority(std::stoi(it->second));
         
-        // 상태
-        it = row.find("is_enabled");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setEnabled(it->second == "1");
+        // Boolean 필드들
+        if ((it = row.find("is_enabled")) != row.end()) {
+            entity.setEnabled(it->second == "1" || it->second == "true");
         }
-        
-        it = row.find("is_latched");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setLatched(it->second == "1");
+        if ((it = row.find("is_latched")) != row.end()) {
+            entity.setLatched(it->second == "1" || it->second == "true");
         }
-        
-        // 생성자
-        it = row.find("created_by");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setCreatedBy(std::stoi(it->second));
+        if ((it = row.find("auto_acknowledge")) != row.end()) {
+            entity.setAutoAcknowledge(it->second == "1" || it->second == "true");
         }
-        
-        // TODO: 나머지 필드들 매핑 (필요에 따라 추가)
+        if ((it = row.find("auto_clear")) != row.end()) {
+            entity.setAutoClear(it->second == "1" || it->second == "true");
+        }
         
         return entity;
         
@@ -834,13 +803,14 @@ AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(const std::map<std::string, 
 std::map<std::string, std::string> AlarmRuleRepository::entityToParams(const AlarmRuleEntity& entity) {
     std::map<std::string, std::string> params;
     
-    // 기본 정보 (ID는 AUTO_INCREMENT이므로 제외)
+    // 기본 정보
     params["tenant_id"] = std::to_string(entity.getTenantId());
     params["name"] = escapeString(entity.getName());
     params["description"] = escapeString(entity.getDescription());
     
-    // 🎯 TargetType 변환 - AlarmRuleEntity의 메서드 사용
-    params["target_type"] = escapeString(entity.targetTypeToString(entity.getTargetType()));
+    // 🔥 TargetType 변환 - AlarmTypes.h 함수 직접 사용
+    params["target_type"] = escapeString(PulseOne::Alarm::targetTypeToString(entity.getTargetType()));
+    
     if (entity.getTargetId().has_value()) {
         params["target_id"] = std::to_string(entity.getTargetId().value());
     } else {
@@ -848,51 +818,39 @@ std::map<std::string, std::string> AlarmRuleRepository::entityToParams(const Ala
     }
     params["target_group"] = escapeString(entity.getTargetGroup());
     
-    // 🎯 AlarmType 변환 - PulseOne::Alarm 네임스페이스 사용
+    // 🔥 AlarmType 변환 - AlarmTypes.h 함수 직접 사용
     params["alarm_type"] = escapeString(PulseOne::Alarm::alarmTypeToString(entity.getAlarmType()));
     
-    // 아날로그 설정 (간단화 - 실제로는 모든 필드 포함)
+    // 🔥 AlarmSeverity 변환 - AlarmTypes.h 함수 직접 사용
+    params["severity"] = escapeString(PulseOne::Alarm::severityToString(entity.getSeverity()));
+    
+    params["priority"] = std::to_string(entity.getPriority());
+    
+    // Boolean 값들
+    params["is_enabled"] = entity.isEnabled() ? "1" : "0";
+    params["is_latched"] = entity.isLatched() ? "1" : "0";
+    params["auto_acknowledge"] = entity.isAutoAcknowledge() ? "1" : "0";
+    params["auto_clear"] = entity.isAutoClear() ? "1" : "0";
+    
+    // 기타 필드들 (기본값으로 설정)
     params["high_high_limit"] = "NULL";
     params["high_limit"] = "NULL";
     params["low_limit"] = "NULL";
     params["low_low_limit"] = "NULL";
     params["deadband"] = "0.0";
     params["rate_of_change"] = "0.0";
-    
-    // 디지털 설정
-    params["trigger_condition"] = escapeString("NORMAL_TO_ALARM");
-    
-    // 스크립트 설정
+    params["trigger_condition"] = "''";
     params["condition_script"] = "''";
     params["message_script"] = "''";
-    
-    // 메시지 설정
     params["message_config"] = "''";
     params["message_template"] = "''";
-    
-    // 🎯 AlarmSeverity 변환 - PulseOne::Alarm 네임스페이스 사용
-    params["severity"] = escapeString(PulseOne::Alarm::severityToString(entity.getSeverity()));
-    params["priority"] = std::to_string(entity.getPriority());
-    
-    // 자동 처리
-    params["auto_acknowledge"] = "0";
     params["acknowledge_timeout_min"] = "0";
-    params["auto_clear"] = "1";
-    
-    // 억제 규칙
     params["suppression_rules"] = "''";
-    
-    // 알림 설정
     params["notification_enabled"] = "1";
     params["notification_delay_sec"] = "0";
     params["notification_repeat_interval_min"] = "0";
     params["notification_channels"] = "''";
     params["notification_recipients"] = "''";
-    
-    // 상태
-    params["is_enabled"] = entity.isEnabled() ? "1" : "0";
-    params["is_latched"] = entity.isLatched() ? "1" : "0";
-    params["created_by"] = std::to_string(entity.getCreatedBy());
     
     return params;
 }

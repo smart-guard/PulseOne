@@ -512,6 +512,7 @@ public:
         is_latched_ = latched; 
         markModified();
     }
+
     
     // 타임스탬프
     const std::chrono::system_clock::time_point& getCreatedAt() const { return created_at_; }
