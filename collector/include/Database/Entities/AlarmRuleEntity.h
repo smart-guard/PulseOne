@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Entities/AlarmRuleEntity.h
-// PulseOne AlarmRuleEntity - DeviceEntity 패턴 100% 준수 (수정완료)
+// PulseOne AlarmRuleEntity - AlarmTypes.h 통합 적용 완료
 // =============================================================================
 
 #ifndef ALARM_RULE_ENTITY_H
@@ -8,18 +8,18 @@
 
 /**
  * @file AlarmRuleEntity.h
- * @brief PulseOne AlarmRuleEntity - DeviceEntity 패턴 100% 적용
+ * @brief PulseOne AlarmRuleEntity - AlarmTypes.h 공통 타입 시스템 완전 적용
  * @author PulseOne Development Team
- * @date 2025-08-10
+ * @date 2025-08-11
  * 
- * 🎯 DeviceEntity 패턴 완전 적용:
- * - 헤더: 선언만 (순환 참조 방지)
- * - CPP: Repository 호출 구현
- * - BaseEntity<AlarmRuleEntity> 상속 (CRTP)
- * - alarm_rules 테이블과 1:1 매핑
+ * 🎯 AlarmTypes.h 통합 완료:
+ * - 자체 enum 제거, AlarmTypes.h 타입 사용
+ * - 일관된 네임스페이스 구조
+ * - 공통 헬퍼 함수 활용
  */
 
 #include "Database/Entities/BaseEntity.h"
+#include "Alarm/AlarmTypes.h"  // 🔥 AlarmTypes.h 포함!
 #include <string>
 #include <vector>
 #include <optional>
@@ -54,109 +54,18 @@ namespace Database {
 namespace Entities {
 
 /**
- * @brief 알람 규칙 엔티티 클래스 (BaseEntity 상속, 정규화된 스키마)
- * 
- * 🎯 정규화된 DB 스키마 매핑:
- * CREATE TABLE alarm_rules (
- *     id INTEGER PRIMARY KEY AUTOINCREMENT,
- *     tenant_id INTEGER NOT NULL,
- *     name VARCHAR(100) NOT NULL,
- *     description TEXT,
- *     
- *     -- 대상 정보
- *     target_type VARCHAR(20) NOT NULL,  -- 'data_point', 'virtual_point', 'group'
- *     target_id INTEGER,
- *     target_group VARCHAR(100),
- *     
- *     -- 알람 타입
- *     alarm_type VARCHAR(20) NOT NULL,  -- 'analog', 'digital', 'script'
- *     
- *     -- 아날로그 알람 설정
- *     high_high_limit REAL,
- *     high_limit REAL,
- *     low_limit REAL,
- *     low_low_limit REAL,
- *     deadband REAL DEFAULT 0,
- *     rate_of_change REAL DEFAULT 0,
- *     
- *     -- 디지털 알람 설정
- *     trigger_condition VARCHAR(20),  -- 'on_true', 'on_false', 'on_change', 'on_rising', 'on_falling'
- *     
- *     -- 스크립트 기반 알람
- *     condition_script TEXT,
- *     message_script TEXT,
- *     
- *     -- 메시지 커스터마이징
- *     message_config TEXT,  -- JSON 형태
- *     message_template TEXT,
- *     
- *     -- 우선순위
- *     severity VARCHAR(20) DEFAULT 'medium',  -- 'critical', 'high', 'medium', 'low', 'info'
- *     priority INTEGER DEFAULT 100,
- *     
- *     -- 자동 처리
- *     auto_acknowledge INTEGER DEFAULT 0,
- *     acknowledge_timeout_min INTEGER DEFAULT 0,
- *     auto_clear INTEGER DEFAULT 1,
- *     
- *     -- 억제 규칙
- *     suppression_rules TEXT,  -- JSON 형태
- *     
- *     -- 알림 설정
- *     notification_enabled INTEGER DEFAULT 1,
- *     notification_delay_sec INTEGER DEFAULT 0,
- *     notification_repeat_interval_min INTEGER DEFAULT 0,
- *     notification_channels TEXT,  -- JSON 배열
- *     notification_recipients TEXT,  -- JSON 배열
- *     
- *     -- 상태
- *     is_enabled INTEGER DEFAULT 1,
- *     is_latched INTEGER DEFAULT 0,
- *     
- *     -- 타임스탬프
- *     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
- *     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
- *     created_by INTEGER,
- *     
- *     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
- *     FOREIGN KEY (created_by) REFERENCES users(id)
- * );
+ * @brief 알람 규칙 엔티티 클래스 - AlarmTypes.h 타입 시스템 사용
  */
 class AlarmRuleEntity : public BaseEntity<AlarmRuleEntity> {
 public:
     // =======================================================================
-    // 알람 타입 열거형 (DB 스키마와 일치)
+    // 🔥 AlarmTypes.h 타입 별칭 (자체 enum 제거!)
     // =======================================================================
-    
-    enum class AlarmType {
-        ANALOG = 0,         // 아날로그 값 기반 알람
-        DIGITAL = 1,        // 디지털 값 기반 알람
-        SCRIPT = 2          // 스크립트 기반 알람
-    };
-    
-    enum class Severity {
-        CRITICAL = 0,       // 치명적
-        HIGH = 1,           // 높음
-        MEDIUM = 2,         // 보통
-        LOW = 3,            // 낮음
-        INFO = 4            // 정보
-    };
-    
-    enum class DigitalTrigger {
-        ON_TRUE = 0,        // true로 변경 시
-        ON_FALSE = 1,       // false로 변경 시
-        ON_CHANGE = 2,      // 값 변경 시
-        ON_RISING = 3,      // 상승 엣지
-        ON_FALLING = 4      // 하강 엣지
-    };
-    
-    enum class TargetType {
-        DATA_POINT = 0,     // 데이터 포인트
-        VIRTUAL_POINT = 1,  // 가상 포인트
-        GROUP = 2           // 그룹
-    };
+    using AlarmType = PulseOne::Alarm::AlarmType;
+    using AlarmSeverity = PulseOne::Alarm::AlarmSeverity;
+    using TargetType = PulseOne::Alarm::TargetType;
+    using DigitalTrigger = PulseOne::Alarm::DigitalTrigger;
 
-public:
     // =======================================================================
     // 생성자 및 소멸자 (선언만 - CPP에서 구현)
     // =======================================================================
@@ -175,7 +84,7 @@ public:
     bool updateToDatabase() override;
 
     // =======================================================================
-    // JSON 직렬화/역직렬화 (인라인 구현)
+    // JSON 직렬화/역직렬화 - AlarmTypes.h 함수 사용
     // =======================================================================
     
     json toJson() const override {
@@ -188,15 +97,15 @@ public:
             j["name"] = name_;
             j["description"] = description_;
             
-            // 대상 정보
-            j["target_type"] = targetTypeToString(target_type_);
+            // 대상 정보 - 🔥 AlarmTypes.h 함수 사용
+            j["target_type"] = PulseOne::Alarm::targetTypeToString(target_type_);
             if (target_id_.has_value()) {
                 j["target_id"] = target_id_.value();
             }
             j["target_group"] = target_group_;
             
-            // 알람 타입
-            j["alarm_type"] = alarmTypeToString(alarm_type_);
+            // 알람 타입 - 🔥 AlarmTypes.h 함수 사용
+            j["alarm_type"] = PulseOne::Alarm::alarmTypeToString(alarm_type_);
             
             // 아날로그 설정
             if (high_high_limit_.has_value()) j["high_high_limit"] = high_high_limit_.value();
@@ -206,8 +115,8 @@ public:
             j["deadband"] = deadband_;
             j["rate_of_change"] = rate_of_change_;
             
-            // 디지털 설정
-            j["trigger_condition"] = digitalTriggerToString(trigger_condition_);
+            // 디지털 설정 - 🔥 AlarmTypes.h 함수 사용
+            j["trigger_condition"] = PulseOne::Alarm::digitalTriggerToString(trigger_condition_);
             
             // 스크립트 설정
             j["condition_script"] = condition_script_;
@@ -223,8 +132,8 @@ public:
             }
             j["message_template"] = message_template_;
             
-            // 우선순위
-            j["severity"] = severityToString(severity_);
+            // 우선순위 - 🔥 AlarmTypes.h 함수 사용
+            j["severity"] = PulseOne::Alarm::severityToString(severity_);
             j["priority"] = priority_;
             
             // 자동 처리
@@ -286,24 +195,40 @@ public:
             if (j.contains("name")) name_ = j["name"].get<std::string>();
             if (j.contains("description")) description_ = j["description"].get<std::string>();
             
-            // 대상 정보
-            if (j.contains("target_type")) target_type_ = stringToTargetType(j["target_type"].get<std::string>());
-            if (j.contains("target_id") && !j["target_id"].is_null()) target_id_ = j["target_id"].get<int>();
+            // 대상 정보 - 🔥 AlarmTypes.h 함수 사용
+            if (j.contains("target_type")) {
+                target_type_ = PulseOne::Alarm::stringToTargetType(j["target_type"].get<std::string>());
+            }
+            if (j.contains("target_id") && !j["target_id"].is_null()) {
+                target_id_ = j["target_id"].get<int>();
+            }
             if (j.contains("target_group")) target_group_ = j["target_group"].get<std::string>();
             
-            // 알람 타입
-            if (j.contains("alarm_type")) alarm_type_ = stringToAlarmType(j["alarm_type"].get<std::string>());
+            // 알람 타입 - 🔥 AlarmTypes.h 함수 사용
+            if (j.contains("alarm_type")) {
+                alarm_type_ = PulseOne::Alarm::stringToAlarmType(j["alarm_type"].get<std::string>());
+            }
             
             // 아날로그 설정
-            if (j.contains("high_high_limit") && !j["high_high_limit"].is_null()) high_high_limit_ = j["high_high_limit"].get<double>();
-            if (j.contains("high_limit") && !j["high_limit"].is_null()) high_limit_ = j["high_limit"].get<double>();
-            if (j.contains("low_limit") && !j["low_limit"].is_null()) low_limit_ = j["low_limit"].get<double>();
-            if (j.contains("low_low_limit") && !j["low_low_limit"].is_null()) low_low_limit_ = j["low_low_limit"].get<double>();
+            if (j.contains("high_high_limit") && !j["high_high_limit"].is_null()) {
+                high_high_limit_ = j["high_high_limit"].get<double>();
+            }
+            if (j.contains("high_limit") && !j["high_limit"].is_null()) {
+                high_limit_ = j["high_limit"].get<double>();
+            }
+            if (j.contains("low_limit") && !j["low_limit"].is_null()) {
+                low_limit_ = j["low_limit"].get<double>();
+            }
+            if (j.contains("low_low_limit") && !j["low_low_limit"].is_null()) {
+                low_low_limit_ = j["low_low_limit"].get<double>();
+            }
             if (j.contains("deadband")) deadband_ = j["deadband"].get<double>();
             if (j.contains("rate_of_change")) rate_of_change_ = j["rate_of_change"].get<double>();
             
-            // 디지털 설정
-            if (j.contains("trigger_condition")) trigger_condition_ = stringToDigitalTrigger(j["trigger_condition"].get<std::string>());
+            // 디지털 설정 - 🔥 AlarmTypes.h 함수 사용
+            if (j.contains("trigger_condition")) {
+                trigger_condition_ = PulseOne::Alarm::stringToDigitalTrigger(j["trigger_condition"].get<std::string>());
+            }
             
             // 스크립트 설정
             if (j.contains("condition_script")) condition_script_ = j["condition_script"].get<std::string>();
@@ -313,8 +238,10 @@ public:
             if (j.contains("message_config")) message_config_ = j["message_config"].dump();
             if (j.contains("message_template")) message_template_ = j["message_template"].get<std::string>();
             
-            // 우선순위
-            if (j.contains("severity")) severity_ = stringToSeverity(j["severity"].get<std::string>());
+            // 우선순위 - 🔥 AlarmTypes.h 함수 사용
+            if (j.contains("severity")) {
+                severity_ = PulseOne::Alarm::stringToSeverity(j["severity"].get<std::string>());
+            }
             if (j.contains("priority")) priority_ = j["priority"].get<int>();
             
             // 자동 처리
@@ -353,8 +280,8 @@ public:
         oss << "id=" << getId();
         oss << ", tenant_id=" << tenant_id_;
         oss << ", name=" << name_;
-        oss << ", alarm_type=" << alarmTypeToString(alarm_type_);
-        oss << ", severity=" << severityToString(severity_);
+        oss << ", alarm_type=" << PulseOne::Alarm::alarmTypeToString(alarm_type_);  // 🔥 AlarmTypes.h 함수 사용
+        oss << ", severity=" << PulseOne::Alarm::severityToString(severity_);       // 🔥 AlarmTypes.h 함수 사용
         oss << ", enabled=" << (is_enabled_ ? "true" : "false");
         oss << "]";
         return oss.str();
@@ -504,8 +431,8 @@ public:
     }
     
     // 우선순위
-    Severity getSeverity() const { return severity_; }
-    void setSeverity(Severity severity) { 
+    AlarmSeverity getSeverity() const { return severity_; }
+    void setSeverity(AlarmSeverity severity) { 
         severity_ = severity; 
         markModified();
     }
@@ -604,23 +531,10 @@ public:
     bool isInAlarmState(double value) const;
     bool checkSuppressionRules(const std::string& context_json) const;
     int getSeverityLevel() const;
-    
-    // =======================================================================
-    // 헬퍼 메서드 (CPP에서 구현)
-    // =======================================================================
-    
-    static std::string alarmTypeToString(AlarmType type);
-    static AlarmType stringToAlarmType(const std::string& str);
-    static std::string severityToString(Severity severity);
-    static Severity stringToSeverity(const std::string& str);
-    static std::string digitalTriggerToString(DigitalTrigger trigger);
-    static DigitalTrigger stringToDigitalTrigger(const std::string& str);
-    static std::string targetTypeToString(TargetType type);
-    static TargetType stringToTargetType(const std::string& str);
 
 private:
     // =======================================================================
-    // 멤버 변수들 (alarm_rules 테이블과 1:1 대응)
+    // 멤버 변수들 - AlarmTypes.h 타입 사용
     // =======================================================================
     
     // 기본 정보
@@ -629,12 +543,12 @@ private:
     std::string description_;
     
     // 대상 정보
-    TargetType target_type_ = TargetType::DATA_POINT;
+    TargetType target_type_ = TargetType::DATA_POINT;  // 🔥 AlarmTypes.h 타입
     std::optional<int> target_id_;
     std::string target_group_;
     
     // 알람 타입
-    AlarmType alarm_type_ = AlarmType::ANALOG;
+    AlarmType alarm_type_ = AlarmType::ANALOG;         // 🔥 AlarmTypes.h 타입
     
     // 아날로그 설정
     std::optional<double> high_high_limit_;
@@ -645,7 +559,7 @@ private:
     double rate_of_change_ = 0.0;
     
     // 디지털 설정
-    DigitalTrigger trigger_condition_ = DigitalTrigger::ON_CHANGE;
+    DigitalTrigger trigger_condition_ = DigitalTrigger::ON_CHANGE;  // 🔥 AlarmTypes.h 타입
     
     // 스크립트 설정
     std::string condition_script_;
@@ -656,7 +570,7 @@ private:
     std::string message_template_;
     
     // 우선순위
-    Severity severity_ = Severity::MEDIUM;
+    AlarmSeverity severity_ = AlarmSeverity::MEDIUM;   // 🔥 AlarmTypes.h 타입
     int priority_ = 100;
     
     // 자동 처리
@@ -686,7 +600,6 @@ private:
     // =======================================================================
     // 내부 헬퍼 메서드들 (CPP에서 구현)
     // =======================================================================
-    
     
     /**
      * @brief 내부 헬퍼 메서드: 타임스탬프를 문자열로 변환 (CPP에서 구현)

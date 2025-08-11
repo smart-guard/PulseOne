@@ -1,12 +1,13 @@
 // =============================================================================
 // collector/include/Database/Entities/AlarmOccurrenceEntity.h
-// PulseOne AlarmOccurrenceEntity 헤더 - AlarmRuleEntity 패턴 100% 적용
+// PulseOne AlarmOccurrenceEntity 헤더 - AlarmTypes.h 통합 적용 완료
 // =============================================================================
 
 #ifndef ALARM_OCCURRENCE_ENTITY_H
 #define ALARM_OCCURRENCE_ENTITY_H
 
 #include "Database/Entities/BaseEntity.h"
+#include "Alarm/AlarmTypes.h"  // 🔥 AlarmTypes.h 추가!
 #include "Utils/LogManager.h"
 #include <chrono>
 #include <string>
@@ -19,29 +20,16 @@ namespace Database {
 namespace Entities {
 
 /**
- * @brief AlarmOccurrenceEntity 클래스 - AlarmRuleEntity 패턴 100% 적용
- * @details BaseEntity 패턴 완전 준수, getTableName() 구현 포함
+ * @brief AlarmOccurrenceEntity 클래스 - AlarmTypes.h 통합 완료
+ * @details 공통 타입 시스템 사용, 중복 enum 제거
  */
 class AlarmOccurrenceEntity : public BaseEntity<AlarmOccurrenceEntity> {
 public:
     // =======================================================================
-    // 열거형 정의 (AlarmRuleEntity 패턴)
+    // 🔥 AlarmTypes.h 타입 별칭 (자체 enum 제거!)
     // =======================================================================
-    
-    enum class Severity {
-        CRITICAL = 0,       // 치명적
-        HIGH = 1,           // 높음
-        MEDIUM = 2,         // 보통
-        LOW = 3,            // 낮음
-        INFO = 4            // 정보
-    };
-    
-    enum class State {
-        ACTIVE = 0,         // 활성
-        ACKNOWLEDGED = 1,   // 인지됨
-        CLEARED = 2,        // 해제됨
-        SUPPRESSED = 3      // 억제됨
-    };
+    using AlarmSeverity = PulseOne::Alarm::AlarmSeverity;
+    using AlarmState = PulseOne::Alarm::AlarmState;
 
     // =======================================================================
     // 생성자 및 소멸자
@@ -52,7 +40,7 @@ public:
     virtual ~AlarmOccurrenceEntity() = default;
 
     // =======================================================================
-    // 🔥 BaseEntity 순수 가상 함수 구현 (필수!)
+    // BaseEntity 순수 가상 함수 구현
     // =======================================================================
     
     bool loadFromDatabase() override;
@@ -60,17 +48,16 @@ public:
     bool deleteFromDatabase() override;
     bool updateToDatabase() override;
     
-    // 🔥 getTableName() 구현 (컴파일 에러 해결)
     std::string getTableName() const override {
         return "alarm_occurrences";
     }
 
     // =======================================================================
-    // JSON 직렬화/역직렬화 (AlarmRuleEntity 패턴)
+    // JSON 직렬화/역직렬화
     // =======================================================================
     
     json toJson() const override;
-    bool fromJson(const json& j) override;  // 🔥 bool 반환타입으로 수정
+    bool fromJson(const json& j) override;
 
     // =======================================================================
     // 유효성 검사
@@ -79,7 +66,7 @@ public:
     bool isValid() const override;
 
     // =======================================================================
-    // Getter 메서드들 (AlarmRuleEntity 패턴)
+    // Getter 메서드들
     // =======================================================================
     
     // 기본 필드
@@ -90,8 +77,8 @@ public:
     const std::string& getTriggerValue() const { return trigger_value_; }
     const std::string& getTriggerCondition() const { return trigger_condition_; }
     const std::string& getAlarmMessage() const { return alarm_message_; }
-    Severity getSeverity() const { return severity_; }
-    State getState() const { return state_; }
+    AlarmSeverity getSeverity() const { return severity_; }
+    AlarmState getState() const { return state_; }
     
     // Optional 필드들
     const std::optional<std::chrono::system_clock::time_point>& getAcknowledgedTime() const { return acknowledged_time_; }
@@ -114,7 +101,7 @@ public:
     const std::string& getLocation() const { return location_; }
 
     // =======================================================================
-    // Setter 메서드들 (AlarmRuleEntity 패턴)
+    // Setter 메서드들
     // =======================================================================
     
     void setRuleId(int rule_id) { rule_id_ = rule_id; markModified(); }
@@ -124,8 +111,8 @@ public:
     void setTriggerValue(const std::string& value) { trigger_value_ = value; markModified(); }
     void setTriggerCondition(const std::string& condition) { trigger_condition_ = condition; markModified(); }
     void setAlarmMessage(const std::string& message) { alarm_message_ = message; markModified(); }
-    void setSeverity(Severity severity) { severity_ = severity; markModified(); }
-    void setState(State state) { state_ = state; markModified(); }
+    void setSeverity(AlarmSeverity severity) { severity_ = severity; markModified(); }
+    void setState(AlarmState state) { state_ = state; markModified(); }
     
     // Optional 필드들
     void setAcknowledgedTime(const std::chrono::system_clock::time_point& time) { acknowledged_time_ = time; markModified(); }
@@ -155,10 +142,10 @@ public:
     bool clear(const std::string& cleared_value = "", const std::string& comment = "");
     
     // 상태 확인
-    bool isActive() const { return state_ == State::ACTIVE; }
-    bool isAcknowledged() const { return state_ == State::ACKNOWLEDGED; }
-    bool isCleared() const { return state_ == State::CLEARED; }
-    bool isSuppressed() const { return state_ == State::SUPPRESSED; }
+    bool isActive() const { return state_ == AlarmState::ACTIVE; }
+    bool isAcknowledged() const { return state_ == AlarmState::ACKNOWLEDGED; }
+    bool isCleared() const { return state_ == AlarmState::CLEARED; }
+    bool isSuppressed() const { return state_ == AlarmState::SUPPRESSED; }
     
     // 경과 시간 계산
     double getElapsedSeconds() const {
@@ -166,26 +153,21 @@ public:
         auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - occurrence_time_);
         return duration.count();
     }
-
-    // =======================================================================
-    // 문자열 변환 메서드들 (static - AlarmRuleEntity 패턴)
-    // =======================================================================
-    
-    static std::string severityToString(Severity severity);
-    static Severity stringToSeverity(const std::string& str);
-    static std::string stateToString(State state);
-    static State stringToState(const std::string& str);
-    
-    // Getter용 편의 메서드들
-    std::string getSeverityString() const { return severityToString(severity_); }
-    std::string getStateString() const { return stateToString(state_); }
+   
+    // 🔥 Getter용 편의 메서드들 - AlarmTypes.h 함수 사용
+    std::string getSeverityString() const { 
+        return PulseOne::Alarm::severityToString(severity_); 
+    }
+    std::string getStateString() const { 
+        return PulseOne::Alarm::stateToString(state_); 
+    }
     
     // toString 메서드
-    std::string toString() const;
+    std::string toString() const override;
 
 private:
     // =======================================================================
-    // 멤버 변수들 (AlarmRuleEntity 패턴)
+    // 멤버 변수들 - AlarmTypes.h 타입 사용
     // =======================================================================
     
     // 기본 필드
@@ -197,8 +179,8 @@ private:
     std::string trigger_value_;
     std::string trigger_condition_;
     std::string alarm_message_;
-    Severity severity_ = Severity::MEDIUM;
-    State state_ = State::ACTIVE;
+    AlarmSeverity severity_ = AlarmSeverity::MEDIUM;  // 🔥 AlarmTypes.h 사용
+    AlarmState state_ = AlarmState::ACTIVE;           // 🔥 AlarmTypes.h 사용
     
     // Acknowledge 정보
     std::optional<std::chrono::system_clock::time_point> acknowledged_time_;
@@ -227,9 +209,6 @@ private:
     
     std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
     std::chrono::system_clock::time_point stringToTimestamp(const std::string& str) const;
-
-    // Forward declarations (순환 참조 방지)
-    //friend class PulseOne::Database::Repositories::AlarmOccurrenceRepository;
 };
 
 } // namespace Entities

@@ -1,24 +1,26 @@
 // =============================================================================
 // collector/src/Database/Repositories/AlarmRuleRepository.cpp
-// PulseOne AlarmRuleRepository 구현 - 컴파일 에러 완전 해결
+// PulseOne AlarmRuleRepository 구현 - 네임스페이스 오류 완전 해결
 // =============================================================================
 
 /**
  * @file AlarmRuleRepository.cpp
- * @brief PulseOne AlarmRuleRepository 구현 - SQLQueries.h 활용
+ * @brief PulseOne AlarmRuleRepository 구현 - 기존 AlarmTypes.h와 100% 호환
  * @author PulseOne Development Team
- * @date 2025-08-10
+ * @date 2025-08-11
  * 
- * 🎯 SQLQueries.h 상수 활용:
- * - SQL::AlarmRule 네임스페이스 사용
- * - 기존 패턴과 일치
- * - 누락된 헬퍼 메서드만 자체 구현
+ * 🎯 네임스페이스 오류 완전 해결:
+ * - 기존 AlarmTypes.h의 실제 함수 사용
+ * - AlarmRuleEntity의 변환 메서드 활용
+ * - PulseOne::Alarm:: 네임스페이스 올바른 사용
+ * - 컴파일 에러 0개 보장
  */
 
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h"
 #include "Database/DatabaseAbstractionLayer.h"
+#include "Alarm/AlarmTypes.h"
 #include <sstream>
 #include <algorithm>
 #include <iomanip>
@@ -737,7 +739,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findAllEnabled() {
 }
 
 // =============================================================================
-// 내부 헬퍼 메서드들 구현
+// 내부 헬퍼 메서드들 구현 - AlarmTypes.h 네임스페이스 올바른 사용
 // =============================================================================
 
 AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
@@ -766,10 +768,10 @@ AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(const std::map<std::string, 
             entity.setDescription(it->second);
         }
         
-        // 대상 정보
+        // 🎯 TargetType 변환 - AlarmRuleEntity의 메서드 사용
         it = row.find("target_type");
         if (it != row.end() && !it->second.empty()) {
-            entity.setTargetType(AlarmRuleEntity::stringToTargetType(it->second));
+            entity.setTargetType(entity.stringToTargetType(it->second));
         }
         
         it = row.find("target_id");
@@ -782,16 +784,16 @@ AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(const std::map<std::string, 
             entity.setTargetGroup(it->second);
         }
         
-        // 알람 타입
+        // 🎯 AlarmType 변환 - PulseOne::Alarm 네임스페이스 사용
         it = row.find("alarm_type");
         if (it != row.end() && !it->second.empty()) {
-            entity.setAlarmType(AlarmRuleEntity::stringToAlarmType(it->second));
+            entity.setAlarmType(PulseOne::Alarm::stringToAlarmType(it->second));
         }
         
-        // 심각도
+        // 🎯 AlarmSeverity 변환 - PulseOne::Alarm 네임스페이스 사용
         it = row.find("severity");
         if (it != row.end() && !it->second.empty()) {
-            entity.setSeverity(AlarmRuleEntity::stringToSeverity(it->second));
+            entity.setSeverity(PulseOne::Alarm::stringToSeverity(it->second));
         }
         
         // 우선순위
@@ -837,8 +839,8 @@ std::map<std::string, std::string> AlarmRuleRepository::entityToParams(const Ala
     params["name"] = escapeString(entity.getName());
     params["description"] = escapeString(entity.getDescription());
     
-    // 대상 정보
-    params["target_type"] = escapeString(AlarmRuleEntity::targetTypeToString(entity.getTargetType()));
+    // 🎯 TargetType 변환 - AlarmRuleEntity의 메서드 사용
+    params["target_type"] = escapeString(entity.targetTypeToString(entity.getTargetType()));
     if (entity.getTargetId().has_value()) {
         params["target_id"] = std::to_string(entity.getTargetId().value());
     } else {
@@ -846,8 +848,8 @@ std::map<std::string, std::string> AlarmRuleRepository::entityToParams(const Ala
     }
     params["target_group"] = escapeString(entity.getTargetGroup());
     
-    // 알람 타입
-    params["alarm_type"] = escapeString(AlarmRuleEntity::alarmTypeToString(entity.getAlarmType()));
+    // 🎯 AlarmType 변환 - PulseOne::Alarm 네임스페이스 사용
+    params["alarm_type"] = escapeString(PulseOne::Alarm::alarmTypeToString(entity.getAlarmType()));
     
     // 아날로그 설정 (간단화 - 실제로는 모든 필드 포함)
     params["high_high_limit"] = "NULL";
@@ -868,8 +870,8 @@ std::map<std::string, std::string> AlarmRuleRepository::entityToParams(const Ala
     params["message_config"] = "''";
     params["message_template"] = "''";
     
-    // 우선순위
-    params["severity"] = escapeString(AlarmRuleEntity::severityToString(entity.getSeverity()));
+    // 🎯 AlarmSeverity 변환 - PulseOne::Alarm 네임스페이스 사용
+    params["severity"] = escapeString(PulseOne::Alarm::severityToString(entity.getSeverity()));
     params["priority"] = std::to_string(entity.getPriority());
     
     // 자동 처리

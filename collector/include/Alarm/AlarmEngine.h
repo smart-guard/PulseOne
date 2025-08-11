@@ -28,14 +28,12 @@
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
+#include "Client/RedisClientImpl.h"
 
 // 🔥 JSON include (전방 선언 대신 직접 포함)
 #include <nlohmann/json.hpp>
 
 namespace PulseOne {
-
-// Forward declarations (순환 참조 방지)
-class RedisClientImpl;
 
 namespace Alarm {
 
@@ -230,9 +228,6 @@ private:
     
     // 초기화 상태
     std::atomic<bool> initialized_{false};
-    
-    // 🔥 구현부와 일치하는 참조형 멤버 변수들
-    Database::DatabaseManager& db_manager_;
     
     // 🔥 구현부와 일치하는 포인터 멤버들
     std::shared_ptr<RedisClientImpl> redis_client_;

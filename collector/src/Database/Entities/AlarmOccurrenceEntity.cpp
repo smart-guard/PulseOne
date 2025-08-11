@@ -1,18 +1,19 @@
 // =============================================================================
 // collector/src/Database/Entities/AlarmOccurrenceEntity.cpp
-// PulseOne AlarmOccurrenceEntity 구현 - AlarmRuleEntity 패턴 100% 적용
+// PulseOne AlarmOccurrenceEntity 구현 - AlarmTypes.h 통합 적용 완료
 // =============================================================================
 
 #include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
+#include "Alarm/AlarmTypes.h"  // 🔥 AlarmTypes.h 추가!
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
 
 // =============================================================================
-// 생성자 구현 (AlarmRuleEntity 패턴)
+// 생성자 구현
 // =============================================================================
 
 AlarmOccurrenceEntity::AlarmOccurrenceEntity() 
@@ -23,8 +24,8 @@ AlarmOccurrenceEntity::AlarmOccurrenceEntity()
     , trigger_value_("")
     , trigger_condition_("")
     , alarm_message_("")
-    , severity_(Severity::MEDIUM)
-    , state_(State::ACTIVE)
+    , severity_(AlarmSeverity::MEDIUM)  // 🔥 AlarmTypes.h 타입 사용
+    , state_(AlarmState::ACTIVE)        // 🔥 AlarmTypes.h 타입 사용
     , acknowledged_time_(std::nullopt)
     , acknowledged_by_(std::nullopt)
     , acknowledge_comment_("")
@@ -46,7 +47,7 @@ AlarmOccurrenceEntity::AlarmOccurrenceEntity(int occurrence_id)
 }
 
 // =============================================================================
-// BaseEntity 순수 가상 함수 구현 (AlarmRuleEntity 패턴)
+// BaseEntity 순수 가상 함수 구현
 // =============================================================================
 
 bool AlarmOccurrenceEntity::loadFromDatabase() {
@@ -200,7 +201,7 @@ bool AlarmOccurrenceEntity::updateToDatabase() {
 }
 
 // =============================================================================
-// JSON 직렬화/역직렬화 (AlarmRuleEntity 패턴)
+// JSON 직렬화/역직렬화 - AlarmTypes.h 함수 사용
 // =============================================================================
 
 json AlarmOccurrenceEntity::toJson() const {
@@ -218,8 +219,10 @@ json AlarmOccurrenceEntity::toJson() const {
         j["trigger_value"] = trigger_value_;
         j["trigger_condition"] = trigger_condition_;
         j["alarm_message"] = alarm_message_;
-        j["severity"] = severityToString(severity_);
-        j["state"] = stateToString(state_);
+        
+        // 🔥 AlarmTypes.h 함수 사용
+        j["severity"] = PulseOne::Alarm::severityToString(severity_);
+        j["state"] = PulseOne::Alarm::stateToString(state_);
         
         // Optional 필드들
         if (acknowledged_time_.has_value()) {
@@ -285,8 +288,14 @@ bool AlarmOccurrenceEntity::fromJson(const json& j) {
         if (j.contains("trigger_value")) trigger_value_ = j["trigger_value"].get<std::string>();
         if (j.contains("trigger_condition")) trigger_condition_ = j["trigger_condition"].get<std::string>();
         if (j.contains("alarm_message")) alarm_message_ = j["alarm_message"].get<std::string>();
-        if (j.contains("severity")) severity_ = stringToSeverity(j["severity"].get<std::string>());
-        if (j.contains("state")) state_ = stringToState(j["state"].get<std::string>());
+        
+        // 🔥 AlarmTypes.h 함수 사용
+        if (j.contains("severity")) {
+            severity_ = PulseOne::Alarm::stringToSeverity(j["severity"].get<std::string>());
+        }
+        if (j.contains("state")) {
+            state_ = PulseOne::Alarm::stringToState(j["state"].get<std::string>());
+        }
         
         // Optional 필드들
         if (j.contains("acknowledged_time") && !j["acknowledged_time"].is_null()) {
@@ -342,19 +351,19 @@ bool AlarmOccurrenceEntity::isValid() const {
 }
 
 // =============================================================================
-// 비즈니스 로직 메서드들
+// 비즈니스 로직 메서드들 - AlarmTypes.h 타입 사용
 // =============================================================================
 
 bool AlarmOccurrenceEntity::acknowledge(int user_id, const std::string& comment) {
     try {
-        if (state_ == State::ACKNOWLEDGED) {
+        if (state_ == AlarmState::ACKNOWLEDGED) {  // 🔥 AlarmTypes.h 사용
             return true; // 이미 인지됨
         }
         
         acknowledged_time_ = std::chrono::system_clock::now();
         acknowledged_by_ = user_id;
         acknowledge_comment_ = comment;
-        state_ = State::ACKNOWLEDGED;
+        state_ = AlarmState::ACKNOWLEDGED;  // 🔥 AlarmTypes.h 사용
         markModified();
         
         // 데이터베이스에 즉시 반영
@@ -377,14 +386,14 @@ bool AlarmOccurrenceEntity::acknowledge(int user_id, const std::string& comment)
 
 bool AlarmOccurrenceEntity::clear(const std::string& cleared_value, const std::string& comment) {
     try {
-        if (state_ == State::CLEARED) {
+        if (state_ == AlarmState::CLEARED) {  // 🔥 AlarmTypes.h 사용
             return true; // 이미 해제됨
         }
         
         cleared_time_ = std::chrono::system_clock::now();
         cleared_value_ = cleared_value;
         clear_comment_ = comment;
-        state_ = State::CLEARED;
+        state_ = AlarmState::CLEARED;  // 🔥 AlarmTypes.h 사용
         markModified();
         
         // 데이터베이스에 즉시 반영
@@ -405,49 +414,7 @@ bool AlarmOccurrenceEntity::clear(const std::string& cleared_value, const std::s
 }
 
 // =============================================================================
-// 문자열 변환 메서드들 (static - AlarmRuleEntity 패턴)
-// =============================================================================
-
-std::string AlarmOccurrenceEntity::severityToString(Severity severity) {
-    switch (severity) {
-        case Severity::CRITICAL: return "critical";
-        case Severity::HIGH: return "high";
-        case Severity::MEDIUM: return "medium";
-        case Severity::LOW: return "low";
-        case Severity::INFO: return "info";
-        default: return "medium";
-    }
-}
-
-AlarmOccurrenceEntity::Severity AlarmOccurrenceEntity::stringToSeverity(const std::string& str) {
-    if (str == "critical") return Severity::CRITICAL;
-    if (str == "high") return Severity::HIGH;
-    if (str == "medium") return Severity::MEDIUM;
-    if (str == "low") return Severity::LOW;
-    if (str == "info") return Severity::INFO;
-    return Severity::MEDIUM; // 기본값
-}
-
-std::string AlarmOccurrenceEntity::stateToString(State state) {
-    switch (state) {
-        case State::ACTIVE: return "active";
-        case State::ACKNOWLEDGED: return "acknowledged";
-        case State::CLEARED: return "cleared";
-        case State::SUPPRESSED: return "suppressed";
-        default: return "active";
-    }
-}
-
-AlarmOccurrenceEntity::State AlarmOccurrenceEntity::stringToState(const std::string& str) {
-    if (str == "active") return State::ACTIVE;
-    if (str == "acknowledged") return State::ACKNOWLEDGED;
-    if (str == "cleared") return State::CLEARED;
-    if (str == "suppressed") return State::SUPPRESSED;
-    return State::ACTIVE; // 기본값
-}
-
-// =============================================================================
-// toString 메서드
+// toString 메서드 - AlarmTypes.h 함수 사용
 // =============================================================================
 
 std::string AlarmOccurrenceEntity::toString() const {
@@ -455,8 +422,8 @@ std::string AlarmOccurrenceEntity::toString() const {
     ss << "AlarmOccurrence[id=" << getId()
        << ", rule_id=" << rule_id_
        << ", tenant_id=" << tenant_id_
-       << ", severity=" << severityToString(severity_)
-       << ", state=" << stateToString(state_)
+       << ", severity=" << PulseOne::Alarm::severityToString(severity_)  // 🔥 AlarmTypes.h 함수 사용
+       << ", state=" << PulseOne::Alarm::stateToString(state_)           // 🔥 AlarmTypes.h 함수 사용
        << ", message=\"" << alarm_message_ << "\""
        << ", elapsed=" << getElapsedSeconds() << "s]";
     return ss.str();

@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Repositories/AlarmOccurrenceRepository.h
-// PulseOne AlarmOccurrenceRepository 헤더 - 컴파일 에러 완전 해결
+// PulseOne AlarmOccurrenceRepository 헤더 - AlarmTypes.h 통합 적용 완료
 // =============================================================================
 
 #ifndef ALARM_OCCURRENCE_REPOSITORY_H
@@ -8,6 +8,7 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
+#include "Alarm/AlarmTypes.h"  // 🔥 AlarmTypes.h 포함!
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
@@ -15,7 +16,7 @@
 #include <map>
 #include <string>
 #include <mutex>
-#include <shared_mutex>  // ✅ 추가
+#include <shared_mutex>
 #include <vector>
 #include <optional>
 #include <chrono>
@@ -29,21 +30,26 @@ namespace Repositories {
 using AlarmOccurrenceEntity = PulseOne::Database::Entities::AlarmOccurrenceEntity;
 
 /**
- * @brief Alarm Occurrence Repository 클래스 (컴파일 에러 0% 보장)
+ * @brief Alarm Occurrence Repository 클래스 - AlarmTypes.h 통합 완료
  * 
  * 🎯 핵심 수정사항:
- * - 생성자를 .cpp에서만 정의 (헤더에서 제거)
- * - 모든 구현된 메서드를 헤더에 선언 추가
- * - 캐싱 관련 메서드 선언 추가
- * - 헬퍼 메서드들 모두 선언
+ * - AlarmTypes.h 공통 타입 시스템 사용
+ * - 타입 별칭으로 일관성 확보
+ * - 헬퍼 함수 네임스페이스 통합
  */
 class AlarmOccurrenceRepository : public IRepository<AlarmOccurrenceEntity> {
 public:
     // =======================================================================
-    // 생성자 및 소멸자 (⚠️ 생성자는 .cpp에서만 구현)
+    // 🔥 AlarmTypes.h 타입 별칭
+    // =======================================================================
+    using AlarmSeverity = PulseOne::Alarm::AlarmSeverity;
+    using AlarmState = PulseOne::Alarm::AlarmState;
+
+    // =======================================================================
+    // 생성자 및 소멸자
     // =======================================================================
     
-    AlarmOccurrenceRepository();  // ✅ 선언만 (구현은 .cpp에서)
+    AlarmOccurrenceRepository();
     virtual ~AlarmOccurrenceRepository() = default;
 
     // =======================================================================
@@ -80,7 +86,7 @@ public:
     int deleteByIds(const std::vector<int>& ids) override;
     
     // =======================================================================
-    // AlarmOccurrence 전용 메서드들
+    // AlarmOccurrence 전용 메서드들 - AlarmTypes.h 타입 사용
     // =======================================================================
     
     /**
@@ -99,9 +105,9 @@ public:
     std::vector<AlarmOccurrenceEntity> findActiveByTenantId(int tenant_id);
     
     /**
-     * @brief 심각도별 알람 발생들 조회
+     * @brief 심각도별 알람 발생들 조회 - 🔥 AlarmTypes.h 타입 사용
      */
-    std::vector<AlarmOccurrenceEntity> findBySeverity(AlarmOccurrenceEntity::Severity severity);
+    std::vector<AlarmOccurrenceEntity> findBySeverity(AlarmSeverity severity);
     
     /**
      * @brief 알람 인지 처리
@@ -125,7 +131,7 @@ public:
     bool ensureTableExists();
 
     // =======================================================================
-    // ✅ 캐싱 관련 메서드들 (.cpp에서 구현됨)
+    // 캐싱 관련 메서드들
     // =======================================================================
     
     /**
@@ -154,7 +160,7 @@ public:
     bool isCacheEnabled() const;
 
     // =======================================================================
-    // ✅ 헬퍼 메서드들 (.cpp에서 구현됨) - 이 부분이 핵심 수정!
+    // 헬퍼 메서드들 - AlarmTypes.h 타입 사용
     // =======================================================================
     
     /**
@@ -173,9 +179,9 @@ public:
     int getActiveCount();
     
     /**
-     * @brief 심각도별 알람 개수 조회
+     * @brief 심각도별 알람 개수 조회 - 🔥 AlarmTypes.h 타입 사용
      */
-    int getCountBySeverity(AlarmOccurrenceEntity::Severity severity);
+    int getCountBySeverity(AlarmSeverity severity);
     
     /**
      * @brief 최근 발생 알람들 조회
@@ -183,13 +189,13 @@ public:
     std::vector<AlarmOccurrenceEntity> findRecentOccurrences(int limit);
 
     /**
-     * @brief 🔥 .cpp에서 구현된 헬퍼 메서드들 선언 추가
+     * @brief 🔥 AlarmTypes.h 타입 변환 헬퍼 메서드들 (수정 완료!)
      */
-    std::string severityToString(AlarmOccurrenceEntity::Severity severity) const;
-    AlarmOccurrenceEntity::Severity stringToSeverity(const std::string& str) const;
-    std::string stateToString(AlarmOccurrenceEntity::State state) const;
-    AlarmOccurrenceEntity::State stringToState(const std::string& str) const;
-    bool validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const;  // ✅ const 추가!
+    std::string severityToString(AlarmSeverity severity) const;
+    AlarmSeverity stringToSeverity(const std::string& str) const;
+    std::string stateToString(AlarmState state) const;
+    AlarmState stringToState(const std::string& str) const;
+    bool validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const;
 
 private:
     // =======================================================================
@@ -217,13 +223,13 @@ private:
     void initializeDependencies();
 
     // =======================================================================
-    // 멤버 변수들 - 전방 선언 대신 포인터 사용
+    // 멤버 변수들
     // =======================================================================
     
     mutable std::shared_mutex cache_mutex_;
     std::map<int, AlarmOccurrenceEntity> entity_cache_;
     
-    // ✅ 전방 선언으로 해결
+    // 전방 선언으로 해결
     class LogManager* logger_;      
     class ConfigManager* config_;   
     std::atomic<bool> cache_enabled_;
