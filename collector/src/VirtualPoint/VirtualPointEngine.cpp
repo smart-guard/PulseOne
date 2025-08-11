@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/VirtualPoint/VirtualPointEngine.cpp
-// PulseOne 가상포인트 엔진 - 컴파일 에러 수정 버전
+// PulseOne 가상포인트 엔진 - VirtualPointTypes 적용 및 자동 초기화 구현
 // =============================================================================
 
 #include "VirtualPoint/VirtualPointEngine.h"
@@ -14,23 +14,24 @@
 #include <chrono>
 #include <algorithm>
 #include <regex>
-#include <shared_mutex>
 
 namespace PulseOne {
 namespace VirtualPoint {
 
 // =============================================================================
-// 싱글톤 구현
+// ✅ 자동 초기화 정적 변수들 (DatabaseManager 패턴)
 // =============================================================================
+std::once_flag VirtualPointEngine::init_flag_;
+std::atomic<bool> VirtualPointEngine::initialization_success_(false);
 
-VirtualPointEngine& VirtualPointEngine::getInstance() {
-    static VirtualPointEngine instance;
-    return instance;
-}
-
+// =============================================================================
+// ✅ 자동 초기화 생성자 (DatabaseManager 패턴)
+// =============================================================================
 VirtualPointEngine::VirtualPointEngine() {
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::INFO, "🔧 VirtualPointEngine 생성");
+    // 기본 설정 (doInitialize()에서 재설정됨)
+    statistics_.total_points = 0;
+    statistics_.active_points = 0;
+    statistics_.error_points = 0;
 }
 
 VirtualPointEngine::~VirtualPointEngine() {
@@ -38,59 +39,97 @@ VirtualPointEngine::~VirtualPointEngine() {
 }
 
 // =============================================================================
-// 초기화/종료 - 올바른 싱글톤 사용법
+// ✅ 자동 초기화 싱글톤 구현 (DatabaseManager 패턴)
 // =============================================================================
+VirtualPointEngine& VirtualPointEngine::getInstance() {
+    static VirtualPointEngine instance;
+    instance.ensureInitialized();
+    return instance;
+}
 
-bool VirtualPointEngine::initialize() {
-    if (initialized_) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::WARN, "VirtualPointEngine 이미 초기화됨");
-        return true;
+void VirtualPointEngine::ensureInitialized() {
+    if (initialization_success_.load(std::memory_order_acquire)) {
+        return;
     }
     
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::INFO, "🚀 VirtualPointEngine 초기화 시작");
+    std::call_once(init_flag_, [this] {
+        try {
+            bool success = doInitialize();
+            initialization_success_.store(success, std::memory_order_release);
+            
+            if (success) {
+                LogManager::getInstance().Info("🚀 VirtualPointEngine 자동 초기화 성공!");
+            } else {
+                LogManager::getInstance().Error("❌ VirtualPointEngine 자동 초기화 실패!");
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("❌ VirtualPointEngine 초기화 예외: {}", e.what());
+            initialization_success_.store(false, std::memory_order_release);
+        }
+    });
+}
+
+// =============================================================================
+// ✅ 실제 초기화 로직 (DatabaseManager 패턴)
+// =============================================================================
+bool VirtualPointEngine::doInitialize() {
+    LogManager::getInstance().Info("🔧 VirtualPointEngine 자동 초기화 시작...");
     
     try {
-        // ✅ 올바른 싱글톤 사용법 - DatabaseManager 직접 가져오기
-        auto& db_manager = DatabaseManager::getInstance(); // ✅ 수정
+        // ✅ 싱글톤끼리 직접 연동 - 자동 초기화 활용
+        auto& db_manager = DatabaseManager::getInstance();
         
         // JavaScript 엔진 초기화
         if (!initJSEngine()) {
-            logger.log("virtualpoint", LogLevel::ERROR, "JavaScript 엔진 초기화 실패");
+            LogManager::getInstance().Error("JavaScript 엔진 초기화 실패");
             return false;
         }
         
         // ScriptLibraryManager 초기화 - 싱글톤끼리 직접 연동
         auto& script_lib = ScriptLibraryManager::getInstance();
-        if (!script_lib.initialize()) {  // 파라미터 없이 호출
-            logger.log("virtualpoint", LogLevel::ERROR, "ScriptLibraryManager 초기화 실패");
-            return false;
-        }
+        // script_lib는 자동 초기화되므로 별도 initialize() 호출 불필요
         
         // 시스템 함수 등록
         if (!registerSystemFunctions()) {
-            logger.log("virtualpoint", LogLevel::WARN, "시스템 함수 등록 일부 실패");
+            LogManager::getInstance().Warn("시스템 함수 등록 일부 실패");
         }
         
-        initialized_ = true;
-        logger.log("virtualpoint", LogLevel::INFO, "✅ VirtualPointEngine 초기화 완료");
-        
+        LogManager::getInstance().Info("✅ VirtualPointEngine 자동 초기화 완료");
         return true;
         
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, 
-                   "VirtualPointEngine 초기화 실패: " + std::string(e.what()));
+        LogManager::getInstance().Error("VirtualPointEngine 초기화 실패: {}", e.what());
         return false;
     }
 }
 
-void VirtualPointEngine::shutdown() {
-    if (!initialized_) return;
+// =============================================================================
+// ✅ 강제 재초기화 (DatabaseManager 패턴)
+// =============================================================================
+void VirtualPointEngine::reinitialize() {
+    LogManager::getInstance().Info("🔄 VirtualPointEngine 강제 재초기화 중...");
     
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::INFO, "VirtualPointEngine 종료 중...");
+    // 기존 상태 정리
+    shutdown();
+    
+    // 초기화 상태 리셋
+    initialization_success_.store(false, std::memory_order_release);
+    
+    // 재초기화 실행
+    bool success = doInitialize();
+    initialization_success_.store(success, std::memory_order_release);
+    
+    if (success) {
+        LogManager::getInstance().Info("✅ VirtualPointEngine 재초기화 성공");
+    } else {
+        LogManager::getInstance().Error("❌ VirtualPointEngine 재초기화 실패");
+    }
+}
+
+void VirtualPointEngine::shutdown() {
+    if (!initialization_success_.load()) return;
+    
+    LogManager::getInstance().Info("VirtualPointEngine 종료 중...");
     
     // JavaScript 엔진 정리
     cleanupJSEngine();
@@ -107,8 +146,13 @@ void VirtualPointEngine::shutdown() {
         vp_dependencies_.clear();
     }
     
-    initialized_ = false;
-    logger.log("virtualpoint", LogLevel::INFO, "VirtualPointEngine 종료 완료");
+    // 통계 리셋
+    {
+        std::lock_guard<std::mutex> lock(stats_mutex_);
+        statistics_ = VirtualPointStatistics{};
+    }
+    
+    LogManager::getInstance().Info("VirtualPointEngine 종료 완료");
 }
 
 // =============================================================================
@@ -121,8 +165,7 @@ bool VirtualPointEngine::initJSEngine() {
     // QuickJS 런타임 생성
     js_runtime_ = JS_NewRuntime();
     if (!js_runtime_) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, "JavaScript 런타임 생성 실패");
+        LogManager::getInstance().Error("JavaScript 런타임 생성 실패");
         return false;
     }
     
@@ -132,15 +175,13 @@ bool VirtualPointEngine::initJSEngine() {
     // 컨텍스트 생성
     js_context_ = JS_NewContext(js_runtime_);
     if (!js_context_) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, "JavaScript 컨텍스트 생성 실패");
+        LogManager::getInstance().Error("JavaScript 컨텍스트 생성 실패");
         JS_FreeRuntime(js_runtime_);
         js_runtime_ = nullptr;
         return false;
     }
     
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::INFO, "✅ JavaScript 엔진 초기화 완료");
+    LogManager::getInstance().Info("✅ JavaScript 엔진 초기화 완료");
     return true;
 }
 
@@ -157,14 +198,12 @@ void VirtualPointEngine::cleanupJSEngine() {
         js_runtime_ = nullptr;
     }
     
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::INFO, "JavaScript 엔진 정리 완료");
+    LogManager::getInstance().Info("JavaScript 엔진 정리 완료");
 }
 
 bool VirtualPointEngine::registerSystemFunctions() {
     if (!js_context_) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, "JavaScript 엔진이 초기화되지 않음");
+        LogManager::getInstance().Error("JavaScript 엔진이 초기화되지 않음");
         return false;
     }
     
@@ -197,97 +236,99 @@ bool VirtualPointEngine::registerSystemFunctions() {
             JS_FreeValue(js_context_, result);
             
         } catch (const std::exception& e) {
-            auto& logger = LogManager::getInstance(); // ✅ 수정
-            logger.log("virtualpoint", LogLevel::WARN, 
-                       "시스템 함수 '" + name + "' 등록 실패: " + e.what());
+            LogManager::getInstance().Warn("시스템 함수 '{}' 등록 실패: {}", name, e.what());
         }
     }
     
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::INFO, 
-               "시스템 함수 " + std::to_string(success_count) + "/" + 
-               std::to_string(system_functions.size()) + "개 등록 완료");
+    LogManager::getInstance().Info("시스템 함수 {}/{} 개 등록 완료", 
+                                  success_count, system_functions.size());
     
     return success_count > 0;
 }
 
 // =============================================================================
-// 가상포인트 관리 - 올바른 Repository 사용법
+// ✅ 가상포인트 관리 (Repository 패턴 활용)
 // =============================================================================
 bool VirtualPointEngine::loadVirtualPoints(int tenant_id) {
-   auto& logger = LogManager::getInstance(); // ✅ 수정
-   logger.log("virtualpoint", LogLevel::INFO,
-       "테넌트 " + std::to_string(tenant_id) + "의 가상포인트 로드 중...");
-   
-   try {
-       // ✅ 올바른 Repository Factory 사용법
-       auto repo = Database::RepositoryFactory::getInstance().getVirtualPointRepository();
-       auto entities = repo->findByTenant(tenant_id); // ✅ 수정 - findByTenant 사용
-       
-       std::unique_lock<std::shared_mutex> vp_lock(vp_mutex_);
-       std::unique_lock<std::shared_mutex> dep_lock(dep_mutex_);
-       
-       // 기존 테넌트 데이터 정리
-       auto it = virtual_points_.begin();
-       while (it != virtual_points_.end()) {
-           if (it->second.tenant_id == tenant_id) {
-               it = virtual_points_.erase(it);
-           } else {
-               ++it;
-           }
-       }
-       
-       // 새 데이터 로드
-       for (const auto& entity : entities) {
-           VirtualPointDef vp_def;
-           vp_def.id = entity.getId();
-           vp_def.tenant_id = entity.getTenantId();
-           vp_def.name = entity.getName();
-           vp_def.description = entity.getDescription();
-           vp_def.formula = entity.getFormula();
-           
-           // ✅ 기존 구조체에 맞는 필드들만 사용
-           vp_def.update_interval = std::chrono::milliseconds(entity.getCalculationInterval());
-           vp_def.is_enabled = entity.getIsEnabled();
-           
-           // ✅ input_mappings 파싱
-           if (!entity.getInputMappings().empty()) {
-               try {
-                   vp_def.input_points = json::parse(entity.getInputMappings());
-               } catch (const std::exception& e) {
-                   logger.log("virtualpoint", LogLevel::WARN,
-                       "가상포인트 " + std::to_string(vp_def.id) +
-                       " input_mappings 파싱 실패: " + e.what());
-               }
-           }
-           
-           virtual_points_[vp_def.id] = vp_def;
-           
-           // ✅ 의존성 맵 구축 (input_points 기반으로 수정)
-           if (vp_def.input_points.contains("inputs") &&
-               vp_def.input_points["inputs"].is_array()) {
-               
-               for (const auto& input : vp_def.input_points["inputs"]) {
-                   if (input.contains("point_id") && input["point_id"].is_number()) {
-                       int point_id = input["point_id"].get<int>();
-                       
-                       // ✅ unordered_set에는 insert 사용
-                       point_to_vp_map_[point_id].insert(vp_def.id);
-                       vp_dependencies_[vp_def.id].insert(point_id);
-                   }
-               }
-           }
-       }
-       
-       logger.log("virtualpoint", LogLevel::INFO,
-           "가상포인트 " + std::to_string(entities.size()) + "개 로드 완료");
-       return true;
-       
-   } catch (const std::exception& e) {
-       logger.log("virtualpoint", LogLevel::ERROR,
-           "가상포인트 로드 실패: " + std::string(e.what()));
-       return false;
-   }
+    LogManager::getInstance().Info("테넌트 {}의 가상포인트 로드 중...", tenant_id);
+    
+    try {
+        // ✅ Repository Factory를 통한 올바른 접근
+        auto& factory = Database::RepositoryFactory::getInstance();
+        auto repo = factory.getVirtualPointRepository();
+        auto entities = repo->findByTenant(tenant_id);
+        
+        std::unique_lock<std::shared_mutex> vp_lock(vp_mutex_);
+        std::unique_lock<std::shared_mutex> dep_lock(dep_mutex_);
+        
+        // 기존 테넌트 데이터 정리
+        auto it = virtual_points_.begin();
+        while (it != virtual_points_.end()) {
+            if (it->second.tenant_id == tenant_id) {
+                it = virtual_points_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        
+        // 새 데이터 로드
+        for (const auto& entity : entities) {
+            VirtualPointDef vp_def;
+            vp_def.id = entity.getId();
+            vp_def.tenant_id = entity.getTenantId();
+            vp_def.name = entity.getName();
+            vp_def.description = entity.getDescription();
+            vp_def.formula = entity.getFormula();
+            
+            // ✅ VirtualPointTypes의 enum 변환 활용
+            vp_def.execution_type = stringToExecutionType(entity.getExecutionType());
+            vp_def.error_handling = stringToErrorHandling(entity.getErrorHandling());
+            vp_def.state = entity.getIsEnabled() ? VirtualPointState::ACTIVE : VirtualPointState::INACTIVE;
+            
+            vp_def.calculation_interval_ms = std::chrono::milliseconds(entity.getCalculationInterval());
+            vp_def.is_enabled = entity.getIsEnabled();
+            
+            // input_mappings 파싱
+            if (!entity.getInputMappings().empty()) {
+                try {
+                    vp_def.input_points = json::parse(entity.getInputMappings());
+                } catch (const std::exception& e) {
+                    LogManager::getInstance().Warn("가상포인트 {} input_mappings 파싱 실패: {}", 
+                                                  vp_def.id, e.what());
+                }
+            }
+            
+            virtual_points_[vp_def.id] = vp_def;
+            
+            // 의존성 맵 구축
+            if (vp_def.input_points.contains("inputs") &&
+                vp_def.input_points["inputs"].is_array()) {
+                
+                for (const auto& input : vp_def.input_points["inputs"]) {
+                    if (input.contains("point_id") && input["point_id"].is_number()) {
+                        int point_id = input["point_id"].get<int>();
+                        point_to_vp_map_[point_id].insert(vp_def.id);
+                        vp_dependencies_[vp_def.id].insert(point_id);
+                    }
+                }
+            }
+        }
+        
+        // ✅ 통계 업데이트
+        {
+            std::lock_guard<std::mutex> stats_lock(stats_mutex_);
+            statistics_.total_points = entities.size();
+            statistics_.active_points = std::count_if(entities.begin(), entities.end(),
+                [](const auto& e) { return e.getIsEnabled(); });
+        }
+        
+        LogManager::getInstance().Info("가상포인트 {} 개 로드 완료", entities.size());
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("가상포인트 로드 실패: {}", e.what());
+        return false;
+    }
 }
 
 std::optional<VirtualPointDef> VirtualPointEngine::getVirtualPoint(int vp_id) const {
@@ -302,15 +343,14 @@ std::optional<VirtualPointDef> VirtualPointEngine::getVirtualPoint(int vp_id) co
 }
 
 // =============================================================================
-// 메인 계산 인터페이스 (Pipeline에서 호출)
+// ✅ 메인 계산 인터페이스 (VirtualPointTypes 활용)
 // =============================================================================
 
 std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const DeviceDataMessage& msg) {
     std::vector<TimestampedValue> results;
     
-    if (!initialized_) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, "VirtualPointEngine이 초기화되지 않음");
+    if (!isInitialized()) {
+        LogManager::getInstance().Error("VirtualPointEngine이 초기화되지 않음");
         return results;
     }
     
@@ -318,14 +358,10 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
     auto affected_vps = getAffectedVirtualPoints(msg);
     
     if (affected_vps.empty()) {
-        // 영향받는 가상포인트가 없음
         return results;
     }
     
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::DEBUG_LEVEL, 
-               "메시지로 인해 " + std::to_string(affected_vps.size()) + 
-               "개 가상포인트 재계산 필요");
+    LogManager::getInstance().Debug("메시지로 인해 {} 개 가상포인트 재계산 필요", affected_vps.size());
     
     // 각 가상포인트 계산
     for (int vp_id : affected_vps) {
@@ -338,15 +374,14 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
             // 입력값 수집
             json inputs = collectInputValues(*vp_opt, msg);
             
-            // 계산 실행
+            // ✅ VirtualPointTypes의 CalculationResult 사용
             auto calc_result = calculate(vp_id, inputs);
             
             if (calc_result.success) {
                 TimestampedValue tv;
-                // ✅ 구조체 필드 수정
                 tv.value = calc_result.value;
-                tv.timestamp = std::chrono::system_clock::now(); // ✅ 타임스탬프 직접 할당
-                tv.quality = DataQuality::GOOD; // ✅ enum 사용
+                tv.timestamp = std::chrono::system_clock::now();
+                tv.quality = DataQuality::GOOD;
                 
                 results.push_back(tv);
                 
@@ -357,32 +392,31 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
                 triggerAlarmEvaluation(vp_id, calc_result.value);
                 
             } else {
-                logger.log("virtualpoint", LogLevel::ERROR, 
-                           "가상포인트 " + std::to_string(vp_id) + " 계산 실패: " + 
-                           calc_result.error_message);
+                LogManager::getInstance().Error("가상포인트 {} 계산 실패: {}", 
+                                               vp_id, calc_result.error_message);
+                
+                // ✅ 통계에 실패 기록
+                std::lock_guard<std::mutex> lock(stats_mutex_);
+                statistics_.failed_calculations++;
             }
             
         } catch (const std::exception& e) {
-            logger.log("virtualpoint", LogLevel::ERROR, 
-                       "가상포인트 " + std::to_string(vp_id) + " 처리 예외: " + e.what());
+            LogManager::getInstance().Error("가상포인트 {} 처리 예외: {}", vp_id, e.what());
         }
     }
     
-    logger.log("virtualpoint", LogLevel::DEBUG_LEVEL, 
-               std::to_string(results.size()) + "개 가상포인트 계산 완료");
-    
+    LogManager::getInstance().Debug("{} 개 가상포인트 계산 완료", results.size());
     return results;
 }
 
 // =============================================================================
-// 개별 계산
+// ✅ 개별 계산 (VirtualPointTypes 활용)
 // =============================================================================
 
 CalculationResult VirtualPointEngine::calculate(int vp_id, const json& inputs) {
     CalculationResult result;
     auto start_time = std::chrono::high_resolution_clock::now();
     
-    // 통계용 현재 처리중인 가상포인트 ID 저장
     current_vp_id_ = vp_id;
     
     try {
@@ -399,7 +433,6 @@ CalculationResult VirtualPointEngine::calculate(int vp_id, const json& inputs) {
             return result;
         }
         
-        // tenant_id 설정 (라이브러리 함수 조회용)
         tenant_id_ = vp.tenant_id;
         
         // 수식 실행
@@ -411,26 +444,37 @@ CalculationResult VirtualPointEngine::calculate(int vp_id, const json& inputs) {
         result.execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(
             end_time - start_time);
         
-        // 통계 업데이트
-        total_calculations_++;
+        // ✅ VirtualPointStatistics 업데이트
+        {
+            std::lock_guard<std::mutex> lock(stats_mutex_);
+            statistics_.total_calculations++;
+            statistics_.successful_calculations++;
+            
+            // 평균 실행 시간 업데이트
+            auto total_calc = statistics_.total_calculations;
+            statistics_.avg_execution_time_ms = 
+                (statistics_.avg_execution_time_ms * (total_calc - 1) + result.execution_time.count()) / total_calc;
+            
+            statistics_.last_calculation = std::chrono::system_clock::now();
+        }
         
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::DEBUG_LEVEL, 
-                   "가상포인트 " + vp.name + " 계산 완료: " + 
-                   std::to_string(result.execution_time.count()) + "ms)");
+        LogManager::getInstance().Debug("가상포인트 {} 계산 완료 ({}ms)", 
+                                       vp.name, result.execution_time.count());
         
     } catch (const std::exception& e) {
         result.error_message = e.what();
         result.success = false;
-        failed_calculations_++;
         
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, 
-                   "가상포인트 " + std::to_string(vp_id) + " 계산 실패: " + 
-                   result.error_message);
+        // ✅ 실패 통계 업데이트
+        {
+            std::lock_guard<std::mutex> lock(stats_mutex_);
+            statistics_.total_calculations++;
+            statistics_.failed_calculations++;
+        }
+        
+        LogManager::getInstance().Error("가상포인트 {} 계산 실패: {}", vp_id, result.error_message);
     }
     
-    // 초기화
     current_vp_id_ = 0;
     tenant_id_ = 0;
     
@@ -442,27 +486,75 @@ CalculationResult VirtualPointEngine::calculateWithFormula(const std::string& fo
     auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
-        // 수식 직접 실행
         result.value = evaluateFormula(formula, inputs);
         result.success = true;
-        // ✅ input_snapshot 필드 제거 (구조체에 없음)
         
-        // 실행 시간 계산
         auto end_time = std::chrono::high_resolution_clock::now();
         result.execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(
             end_time - start_time);
         
         // 통계 업데이트
-        total_calculations_++;
+        {
+            std::lock_guard<std::mutex> lock(stats_mutex_);
+            statistics_.total_calculations++;
+            statistics_.successful_calculations++;
+        }
         
     } catch (const std::exception& e) {
         result.error_message = e.what();
         result.success = false;
-        failed_calculations_++;
         
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, 
-                   "수식 계산 실패: " + result.error_message);
+        {
+            std::lock_guard<std::mutex> lock(stats_mutex_);
+            statistics_.total_calculations++;
+            statistics_.failed_calculations++;
+        }
+        
+        LogManager::getInstance().Error("수식 계산 실패: {}", result.error_message);
+    }
+    
+    return result;
+}
+
+// =============================================================================
+// ✅ ExecutionResult 구현 (VirtualPointTypes 활용)
+// =============================================================================
+
+ExecutionResult VirtualPointEngine::executeScript(const CalculationContext& context) {
+    ExecutionResult result;
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    try {
+        // CalculationContext를 json으로 변환
+        json inputs = context.input_values;
+        
+        // 수식 실행
+        auto data_value = evaluateFormula(context.formula, inputs);
+        
+        // DataValue를 json으로 변환
+        if (std::holds_alternative<double>(data_value)) {
+            result.result = std::get<double>(data_value);
+        } else if (std::holds_alternative<std::string>(data_value)) {
+            result.result = std::get<std::string>(data_value);
+        } else if (std::holds_alternative<bool>(data_value)) {
+            result.result = std::get<bool>(data_value);
+        } else {
+            result.result = nullptr;
+        }
+        
+        result.status = ExecutionStatus::SUCCESS;
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        result.execution_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            end_time - start_time);
+        
+    } catch (const std::exception& e) {
+        result.status = ExecutionStatus::RUNTIME_ERROR;
+        result.error_message = e.what();
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        result.execution_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            end_time - start_time);
     }
     
     return result;
@@ -562,11 +654,9 @@ std::string VirtualPointEngine::preprocessFormula(const std::string& formula, in
     auto dependencies = script_lib.collectDependencies(formula);
     
     if (dependencies.empty()) {
-        // 라이브러리 함수를 사용하지 않는 순수 수식
         return formula;
     }
     
-    // 라이브러리 함수를 사용하는 경우, 함수 정의를 앞에 추가
     std::stringstream complete_script;
     
     // 의존 함수들을 먼저 추가
@@ -583,7 +673,6 @@ std::string VirtualPointEngine::preprocessFormula(const std::string& formula, in
         }
     }
     
-    // 원본 수식 추가
     complete_script << "// User Formula\n";
     complete_script << formula;
     
@@ -599,12 +688,9 @@ std::vector<int> VirtualPointEngine::getAffectedVirtualPoints(const DeviceDataMe
     
     std::shared_lock<std::shared_mutex> lock(dep_mutex_);
     
-    // ✅ 메시지 구조체 필드명 수정 - values 사용
-    for (const auto& data_point : msg.values) {
-        // ✅ point_id 대신 다른 필드명 사용해야 할 수 있음
+    for (const auto& data_point : msg.points) {
         auto it = point_to_vp_map_.find(data_point.point_id); 
         if (it != point_to_vp_map_.end()) {
-            // 이 포인트에 의존하는 가상포인트들 추가
             for (int vp_id : it->second) {
                 if (std::find(affected_vps.begin(), affected_vps.end(), vp_id) == affected_vps.end()) {
                     affected_vps.push_back(vp_id);
@@ -621,7 +707,6 @@ std::vector<int> VirtualPointEngine::getDependentVirtualPoints(int point_id) con
     
     auto it = point_to_vp_map_.find(point_id);
     if (it != point_to_vp_map_.end()) {
-        // ✅ unordered_set을 vector로 변환
         return std::vector<int>(it->second.begin(), it->second.end());
     }
     
@@ -634,7 +719,7 @@ bool VirtualPointEngine::hasDependency(int vp_id, int point_id) const {
     auto it = vp_dependencies_.find(vp_id);
     if (it != vp_dependencies_.end()) {
         const auto& deps = it->second;
-        return deps.find(point_id) != deps.end(); // ✅ unordered_set에서 find 사용
+        return deps.find(point_id) != deps.end();
     }
     
     return false;
@@ -648,13 +733,10 @@ json VirtualPointEngine::collectInputValues(const VirtualPointDef& vp, const Dev
     json inputs;
     
     if (!vp.input_points.contains("inputs") || !vp.input_points["inputs"].is_array()) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::WARN, 
-                   "가상포인트 " + vp.name + "에 입력 매핑이 없음");
+        LogManager::getInstance().Warn("가상포인트 {} 에 입력 매핑이 없음", vp.name);
         return inputs;
     }
     
-    // input_points에 정의된 각 입력에 대해
     for (const auto& input_def : vp.input_points["inputs"]) {
         if (!input_def.contains("variable") || !input_def.contains("point_id")) {
             continue;
@@ -663,16 +745,12 @@ json VirtualPointEngine::collectInputValues(const VirtualPointDef& vp, const Dev
         std::string var_name = input_def["variable"].get<std::string>();
         int point_id = input_def["point_id"].get<int>();
         
-        // 메시지에서 해당 포인트 값 찾기
         auto value_opt = getPointValue(std::to_string(point_id), msg);
         if (value_opt) {
             inputs[var_name] = *value_opt;
         } else {
-            // 현재 값이 없으면 기본값 또는 에러
-            auto& logger = LogManager::getInstance(); // ✅ 수정
-            logger.log("virtualpoint", LogLevel::WARN, 
-                       "가상포인트 " + vp.name + "의 입력 " + var_name + 
-                       " (point_id=" + std::to_string(point_id) + ") 값을 찾을 수 없음");
+            LogManager::getInstance().Warn("가상포인트 {} 의 입력 {} (point_id={}) 값을 찾을 수 없음", 
+                                          vp.name, var_name, point_id);
             inputs[var_name] = 0.0;  // 기본값
         }
     }
@@ -683,10 +761,8 @@ json VirtualPointEngine::collectInputValues(const VirtualPointDef& vp, const Dev
 std::optional<double> VirtualPointEngine::getPointValue(const std::string& point_id, const DeviceDataMessage& msg) {
     int id = std::stoi(point_id);
     
-    // ✅ 메시지 구조체 필드명 수정 - values 사용
-    for (const auto& data_point : msg.values) {
+    for (const auto& data_point : msg.points) {
         if (data_point.point_id == id) {
-            // ✅ DataValue에서 double 값 추출 방법 수정
             if (std::holds_alternative<double>(data_point.value)) {
                 return std::get<double>(data_point.value);
             } else if (std::holds_alternative<int>(data_point.value)) {
@@ -701,7 +777,7 @@ std::optional<double> VirtualPointEngine::getPointValue(const std::string& point
 }
 
 // =============================================================================
-// 헬퍼 메서드들
+// ✅ VirtualPointTypes 활용 헬퍼 메서드들
 // =============================================================================
 
 void VirtualPointEngine::updateVirtualPointStats(int vp_id, const CalculationResult& result) {
@@ -710,74 +786,112 @@ void VirtualPointEngine::updateVirtualPointStats(int vp_id, const CalculationRes
     auto it = virtual_points_.find(vp_id);
     if (it != virtual_points_.end()) {
         auto& vp = it->second;
-        // ✅ VirtualPointDef 구조체에 실제 존재하는 필드만 사용
         if (std::holds_alternative<double>(result.value)) {
             vp.last_value = result.value;
         }
-        
-        // ✅ 에러 메시지는 구조체에 없으므로 제거 또는 다른 방식으로 처리
         vp.last_calculation = std::chrono::system_clock::now();
     }
 }
 
 void VirtualPointEngine::triggerAlarmEvaluation(int vp_id, const DataValue& value) {
     try {
-        // ✅ AlarmManager 직접 사용 - 올바른 싱글톤 연동
+        // AlarmManager 연동 (자동 초기화 활용)
         auto& alarm_mgr = Alarm::AlarmManager::getInstance();
         
         // TODO: AlarmManager에 evaluateForVirtualPoint 메서드 추가 필요
-        // 현재는 일반적인 알람 평가만 수행
         
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance(); // ✅ 수정
-        logger.log("virtualpoint", LogLevel::ERROR, 
-                   "가상포인트 " + std::to_string(vp_id) + " 알람 평가 실패: " + e.what());
+        LogManager::getInstance().Error("가상포인트 {} 알람 평가 실패: {}", vp_id, e.what());
     }
 }
 
 // =============================================================================
-// 통계
+// ✅ VirtualPointStatistics 활용
 // =============================================================================
 
-json VirtualPointEngine::getStatistics() const {
-    json stats;
+VirtualPointStatistics VirtualPointEngine::getStatistics() const {
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    return statistics_;
+}
+
+json VirtualPointEngine::getStatisticsJson() const {
+    auto stats = getStatistics();
     
-    stats["total_calculations"] = total_calculations_.load();
-    stats["failed_calculations"] = failed_calculations_.load();
-    stats["success_rate"] = total_calculations_ > 0 ? 
-        (double)(total_calculations_ - failed_calculations_) / total_calculations_ * 100.0 : 0.0;
+    json result;
+    result["total_points"] = stats.total_points;
+    result["active_points"] = stats.active_points;
+    result["error_points"] = stats.error_points;
+    result["total_calculations"] = stats.total_calculations;
+    result["successful_calculations"] = stats.successful_calculations;
+    result["failed_calculations"] = stats.failed_calculations;
+    result["avg_execution_time_ms"] = stats.avg_execution_time_ms;
+    result["last_calculation"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+        stats.last_calculation.time_since_epoch()).count();
     
-    std::shared_lock<std::shared_mutex> lock(vp_mutex_);
-    stats["loaded_virtual_points"] = virtual_points_.size();
+    // 카테고리별 통계
+    json categories;
+    for (const auto& [category, count] : stats.points_by_category) {
+        categories[scriptCategoryToLowerString(category)] = count;
+    }
+    result["points_by_category"] = categories;
     
-    // ✅ 구조체에 실제 존재하는 필드들만 사용
-    stats["average_execution_time_ms"] = 0.0; // 통계 필드 제거됨
+    // 상태별 계산 통계
+    json calc_status;
+    for (const auto& [status, count] : stats.calculations_by_status) {
+        calc_status[executionStatusToString(status)] = count;
+    }
+    result["calculations_by_status"] = calc_status;
     
-    return stats;
+    return result;
 }
 
 // =============================================================================
-// 사용하지 않는 메서드들 (호환성용 stub)
+// ✅ ScriptLibraryManager 연동 메서드
+// =============================================================================
+
+std::vector<ScriptMetadata> VirtualPointEngine::getAvailableScripts(int tenant_id) const {
+    auto& script_lib = ScriptLibraryManager::getInstance();
+    
+    // ScriptDefinition을 ScriptMetadata로 변환
+    auto definitions = script_lib.getAllScripts(tenant_id);
+    std::vector<ScriptMetadata> metadata_list;
+    
+    for (const auto& def : definitions) {
+        ScriptMetadata meta;
+        meta.id = def.id;
+        meta.name = def.name;
+        meta.display_name = def.display_name;
+        meta.description = def.description;
+        meta.category = stringToScriptCategory(def.category);
+        meta.return_type = stringToScriptReturnType(def.return_type);
+        meta.version = def.version;
+        meta.author = def.author;
+        meta.is_system = def.is_system;
+        meta.usage_count = def.usage_count;
+        meta.rating = def.rating;
+        
+        metadata_list.push_back(meta);
+    }
+    
+    return metadata_list;
+}
+
+// =============================================================================
+// 호환성용 stub 메서드들
 // =============================================================================
 
 bool VirtualPointEngine::reloadVirtualPoint(int vp_id) {
-    // TODO: 개별 가상포인트 리로드 구현
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::WARN, "reloadVirtualPoint 미구현");
+    LogManager::getInstance().Warn("reloadVirtualPoint 미구현 - loadVirtualPoints 사용 권장");
     return false;
 }
 
 bool VirtualPointEngine::registerCustomFunction(const std::string& name, const std::string& code) {
-    // ScriptLibraryManager를 통해 처리
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::WARN, "registerCustomFunction은 ScriptLibraryManager 사용 권장");
+    LogManager::getInstance().Warn("registerCustomFunction은 ScriptLibraryManager 사용 권장");
     return false;
 }
 
 bool VirtualPointEngine::unregisterCustomFunction(const std::string& name) {
-    // ScriptLibraryManager를 통해 처리
-    auto& logger = LogManager::getInstance(); // ✅ 수정
-    logger.log("virtualpoint", LogLevel::WARN, "unregisterCustomFunction은 ScriptLibraryManager 사용 권장");
+    LogManager::getInstance().Warn("unregisterCustomFunction은 ScriptLibraryManager 사용 권장");
     return false;
 }
 

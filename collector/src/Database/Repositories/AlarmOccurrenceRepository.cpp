@@ -1262,7 +1262,8 @@ std::map<std::string, std::string> AlarmOccurrenceRepository::entityToParams(con
 bool AlarmOccurrenceRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
-        return db_layer.executeNonQuery(CREATE_TABLE_QUERY);
+        // 🔥 정확한 네임스페이스 사용
+        return db_layer.executeNonQuery(SQL::AlarmOccurrence::CREATE_TABLE_QUERY);
     } catch (const std::exception& e) {
         if (logger_) {
             logger_->Error("AlarmOccurrenceRepository::ensureTableExists failed: " + std::string(e.what()));
@@ -1271,7 +1272,7 @@ bool AlarmOccurrenceRepository::ensureTableExists() {
     }
 }
 
-bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) {
+bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const {
     // 기본 검증
     if (entity.getRuleId() <= 0) {
         return false;
@@ -1290,7 +1291,7 @@ bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEnt
     return true;
 }
 
-std::string AlarmOccurrenceRepository::escapeString(const std::string& str) {
+std::string AlarmOccurrenceRepository::escapeString(const std::string& str) const {
     // SQL 인젝션 방지를 위한 문자열 이스케이프
     std::string escaped = str;
     
@@ -1304,7 +1305,7 @@ std::string AlarmOccurrenceRepository::escapeString(const std::string& str) {
     return "'" + escaped + "'";
 }
 
-std::string AlarmOccurrenceRepository::timePointToString(const std::chrono::system_clock::time_point& time_point) {
+std::string AlarmOccurrenceRepository::timePointToString(const std::chrono::system_clock::time_point& time_point) const {
     auto time_t = std::chrono::system_clock::to_time_t(time_point);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_point.time_since_epoch()) % 1000;
     
@@ -1315,7 +1316,7 @@ std::string AlarmOccurrenceRepository::timePointToString(const std::chrono::syst
     return oss.str();
 }
 
-std::chrono::system_clock::time_point AlarmOccurrenceRepository::stringToTimePoint(const std::string& time_str) {
+std::chrono::system_clock::time_point AlarmOccurrenceRepository::stringToTimePoint(const std::string& time_str) const {
     std::tm tm = {};
     std::istringstream ss(time_str);
     

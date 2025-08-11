@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/VirtualPoint/VirtualPointTypes.h
-// PulseOne 가상포인트 시스템 - 공통 타입 정의
+// PulseOne 가상포인트 시스템 - 공통 타입 정의 (중복 제거 버전)
 // =============================================================================
 
 /**
@@ -147,6 +147,19 @@ struct ScriptMetadata {
     bool is_system = false;
     int usage_count = 0;
     double rating = 0.0;
+};
+
+/**
+ * @brief 계산 결과 (VirtualPointEngine에서 사용)
+ */
+struct CalculationResult {
+    bool success = false;
+    nlohmann::json value;  // DataValue 대신 json 사용 (더 범용적)
+    std::string error_message;
+    std::chrono::milliseconds execution_time{0};
+    
+    CalculationResult() = default;
+    CalculationResult(bool s, const nlohmann::json& v) : success(s), value(v) {}
 };
 
 /**
@@ -347,31 +360,9 @@ inline ExecutionStatus stringToExecutionStatus(const std::string& str) {
 }
 
 // =============================================================================
-// 🎯 소문자 변환 헬퍼 함수들 (API/JSON 호환용)
+// 🎯 소문자 변환 헬퍼 함수들 (API/JSON 호환용) - 중복 제거
 // =============================================================================
 
-// 소문자 변환 함수들
-inline std::string scriptCategoryToLowerString(ScriptCategory category) {
-    switch (category) {
-        case ScriptCategory::FUNCTION: return "function";
-        case ScriptCategory::FORMULA: return "formula";
-        case ScriptCategory::TEMPLATE: return "template";
-        case ScriptCategory::CUSTOM: return "custom";
-        default: return "custom";
-    }
-}
-
-inline std::string scriptReturnTypeToLowerString(ScriptReturnType type) {
-    switch (type) {
-        case ScriptReturnType::FLOAT: return "float";
-        case ScriptReturnType::STRING: return "string";
-        case ScriptReturnType::BOOLEAN: return "boolean";
-        case ScriptReturnType::OBJECT: return "object";
-        default: return "float";
-    }
-}
-
-// 소문자 변환 함수들
 inline std::string scriptCategoryToLowerString(ScriptCategory category) {
     switch (category) {
         case ScriptCategory::FUNCTION: return "function";

@@ -1,6 +1,5 @@
 // =============================================================================
-// collector/include/Database/Repositories/AlarmOccurrenceRepository.h
-// PulseOne AlarmOccurrenceRepository 헤더 - AlarmTypes.h 통합 적용 완료
+// Database/Repositories/AlarmOccurrenceRepository.h - 완전 수정 버전
 // =============================================================================
 
 #ifndef ALARM_OCCURRENCE_REPOSITORY_H
@@ -8,7 +7,8 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
-#include "Alarm/AlarmTypes.h"  // 🔥 AlarmTypes.h 포함!
+#include "Database/DatabaseAbstractionLayer.h"  // 🔥 누락된 헤더 추가
+#include "Alarm/AlarmTypes.h"
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
@@ -30,17 +30,12 @@ namespace Repositories {
 using AlarmOccurrenceEntity = PulseOne::Database::Entities::AlarmOccurrenceEntity;
 
 /**
- * @brief Alarm Occurrence Repository 클래스 - AlarmTypes.h 통합 완료
- * 
- * 🎯 핵심 수정사항:
- * - AlarmTypes.h 공통 타입 시스템 사용
- * - 타입 별칭으로 일관성 확보
- * - 헬퍼 함수 네임스페이스 통합
+ * @brief Alarm Occurrence Repository 클래스 - 완전 수정 버전
  */
 class AlarmOccurrenceRepository : public IRepository<AlarmOccurrenceEntity> {
 public:
     // =======================================================================
-    // 🔥 AlarmTypes.h 타입 별칭
+    // 🔥 AlarmTypes.h 타입 별칭 (올바른 네임스페이스 사용)
     // =======================================================================
     using AlarmSeverity = PulseOne::Alarm::AlarmSeverity;
     using AlarmState = PulseOne::Alarm::AlarmState;
@@ -50,21 +45,23 @@ public:
     // =======================================================================
     
     AlarmOccurrenceRepository();
+    explicit AlarmOccurrenceRepository(std::shared_ptr<DatabaseAbstractionLayer> db_layer);
     virtual ~AlarmOccurrenceRepository() = default;
 
     // =======================================================================
-    // IRepository 인터페이스 구현
+    // IRepository 인터페이스 구현 (올바른 메서드명 사용)
     // =======================================================================
     
     std::vector<AlarmOccurrenceEntity> findAll() override;
     std::optional<AlarmOccurrenceEntity> findById(int id) override;
     bool save(AlarmOccurrenceEntity& entity) override;
     bool update(const AlarmOccurrenceEntity& entity) override;
-    bool deleteById(int id) override;
+    bool deleteById(int id) override;  // 🔥 remove → deleteById
     bool exists(int id) override;
+    int count() override;
 
     // =======================================================================
-    // 벌크 연산 (IRepository에서 제공)
+    // 🔥 벌크 연산 (구현부와 일치하는 시그니처)
     // =======================================================================
     
     std::vector<AlarmOccurrenceEntity> findByIds(const std::vector<int>& ids) override;
@@ -86,18 +83,18 @@ public:
     int deleteByIds(const std::vector<int>& ids) override;
     
     // =======================================================================
-    // AlarmOccurrence 전용 메서드들 - AlarmTypes.h 타입 사용
+    // 🔥 AlarmOccurrence 전용 메서드들 (구현부와 일치하는 시그니처)
     // =======================================================================
     
     /**
-     * @brief 활성 알람 발생들 조회
+     * @brief 활성 알람 발생들 조회 (구현부와 일치)
      */
-    std::vector<AlarmOccurrenceEntity> findActive();
+    std::vector<AlarmOccurrenceEntity> findActive(std::optional<int> tenant_id = std::nullopt);
     
     /**
-     * @brief 특정 알람 규칙의 발생들 조회
+     * @brief 특정 알람 규칙의 발생들 조회 (구현부와 일치)
      */
-    std::vector<AlarmOccurrenceEntity> findByRuleId(int rule_id);
+    std::vector<AlarmOccurrenceEntity> findByRuleId(int rule_id, bool active_only = false);
     
     /**
      * @brief 특정 테넌트의 활성 알람들 조회
@@ -105,19 +102,72 @@ public:
     std::vector<AlarmOccurrenceEntity> findActiveByTenantId(int tenant_id);
     
     /**
-     * @brief 심각도별 알람 발생들 조회 - 🔥 AlarmTypes.h 타입 사용
+     * @brief 심각도별 알람 발생들 조회 (AlarmSeverity enum 버전)
      */
     std::vector<AlarmOccurrenceEntity> findBySeverity(AlarmSeverity severity);
     
     /**
-     * @brief 알람 인지 처리
+     * @brief 심각도별 알람 발생들 조회 (문자열 버전, 구현부와 일치)
      */
-    bool acknowledge(int occurrence_id, int user_id, const std::string& comment = "");
+    std::vector<AlarmOccurrenceEntity> findBySeverity(const std::string& severity, bool active_only = false);
     
     /**
-     * @brief 알람 해제 처리
+     * @brief 테넌트별 알람 조회 (구현부와 일치)
      */
-    bool clear(int occurrence_id, const std::string& cleared_value = "", const std::string& comment = "");
+    std::vector<AlarmOccurrenceEntity> findByTenant(int tenant_id, const std::string& state_filter = "");
+    
+    /**
+     * @brief 시간 범위 내 알람 조회 (구현부와 일치)
+     */
+    std::vector<AlarmOccurrenceEntity> findByTimeRange(
+        const std::chrono::system_clock::time_point& start_time,
+        const std::chrono::system_clock::time_point& end_time,
+        std::optional<int> tenant_id = std::nullopt);
+    
+    /**
+     * @brief 최근 알람들 조회 (구현부와 일치)
+     */
+    std::vector<AlarmOccurrenceEntity> findRecent(int limit, std::optional<int> tenant_id = std::nullopt);
+    
+    /**
+     * @brief 알람 인지 처리 (구현부와 일치 - int64_t 사용)
+     */
+    bool acknowledge(int64_t occurrence_id, int acknowledged_by, const std::string& comment = "");
+    
+    /**
+     * @brief 알람 해제 처리 (구현부와 일치 - int64_t 사용)
+     */
+    bool clear(int64_t occurrence_id, const std::string& cleared_value = "", const std::string& comment = "");
+    
+    /**
+     * @brief 알람 억제 처리 (구현부와 일치)
+     */
+    bool suppress(int64_t occurrence_id, const std::string& comment = "");
+    
+    /**
+     * @brief 대량 알람 인지 처리 (구현부와 일치)
+     */
+    int acknowledgeBulk(const std::vector<int64_t>& occurrence_ids, int acknowledged_by, const std::string& comment = "");
+    
+    /**
+     * @brief 대량 알람 해제 처리 (구현부와 일치)
+     */
+    int clearBulk(const std::vector<int64_t>& occurrence_ids, const std::string& comment = "");
+    
+    /**
+     * @brief 알람 통계 조회 (구현부와 일치)
+     */
+    std::map<std::string, int> getAlarmStatistics(int tenant_id = 0);
+    
+    /**
+     * @brief 심각도별 활성 알람 개수 조회 (구현부와 일치)
+     */
+    std::map<std::string, int> getActiveAlarmsBySeverity(int tenant_id = 0);
+    
+    /**
+     * @brief 오래된 해제 알람 정리 (구현부와 일치)
+     */
+    int cleanupOldClearedAlarms(int older_than_days);
     
     /**
      * @brief 최대 ID 조회 (ID 생성용)
@@ -128,7 +178,7 @@ public:
     // 테이블 관리
     // =======================================================================
     
-    bool ensureTableExists();
+    bool ensureTableExists() override;
 
     // =======================================================================
     // 캐싱 관련 메서드들
@@ -169,7 +219,7 @@ public:
     bool validateEntity(const AlarmOccurrenceEntity& entity) const;
     
     /**
-     * @brief 문자열 이스케이프 처리
+     * @brief 문자열 이스케이프 처리 (const 추가)
      */
     std::string escapeString(const std::string& str) const override;
     
@@ -179,7 +229,7 @@ public:
     int getActiveCount();
     
     /**
-     * @brief 심각도별 알람 개수 조회 - 🔥 AlarmTypes.h 타입 사용
+     * @brief 심각도별 알람 개수 조회 - AlarmTypes.h 타입 사용
      */
     int getCountBySeverity(AlarmSeverity severity);
     
@@ -189,31 +239,36 @@ public:
     std::vector<AlarmOccurrenceEntity> findRecentOccurrences(int limit);
 
     /**
-     * @brief 🔥 AlarmTypes.h 타입 변환 헬퍼 메서드들 (수정 완료!)
+     * @brief AlarmTypes.h 타입 변환 헬퍼 메서드들 (const 추가)
      */
     std::string severityToString(AlarmSeverity severity) const;
     AlarmSeverity stringToSeverity(const std::string& str) const;
     std::string stateToString(AlarmState state) const;
     AlarmState stringToState(const std::string& str) const;
-    bool validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const;
+    bool validateAlarmOccurrence(const AlarmOccurrenceEntity& entity) const;  // 🔥 const 추가
 
 private:
     // =======================================================================
-    // 내부 헬퍼 메서드들
+    // 🔥 내부 헬퍼 메서드들 (const 추가)
     // =======================================================================
     
     /**
      * @brief 행 데이터를 Entity로 변환
      */
-    AlarmOccurrenceEntity mapRowToEntity(const std::map<std::string, std::string>& row);
+    AlarmOccurrenceEntity mapRowToEntity(const std::map<std::string, std::string>& row) override;
     
     /**
-     * @brief 시간 포인트를 문자열로 변환
+     * @brief Entity를 파라미터 맵으로 변환 (구현부에 있음)
+     */
+    std::map<std::string, std::string> entityToParams(const AlarmOccurrenceEntity& entity);
+    
+    /**
+     * @brief 시간 포인트를 문자열로 변환 (const 추가)
      */
     std::string timePointToString(const std::chrono::system_clock::time_point& tp) const;
     
     /**
-     * @brief 문자열을 시간 포인트로 변환
+     * @brief 문자열을 시간 포인트로 변환 (const 추가)
      */
     std::chrono::system_clock::time_point stringToTimePoint(const std::string& str) const;
     
