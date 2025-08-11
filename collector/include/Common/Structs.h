@@ -156,70 +156,75 @@ namespace Structs {
      * @brief 타임스탬프가 포함된 데이터 값
      * @details 모든 드라이버에서 사용하는 표준 값 구조체
      */
-     struct TimestampedValue {
-        DataValue value;                          // 실제 값 (DataVariant 별칭)
-        Timestamp timestamp;                      // 수집 시간
-        DataQuality quality = DataQuality::GOOD;  // 데이터 품질
-        std::string source = "";                  // 데이터 소스
+    struct TimestampedValue {
+        // ======================================================================
+        // 🔥 멤버 변수 선언 순서 (이 순서대로 초기화해야 함)
+        // ======================================================================
+        DataValue value;                          // 실제 값 (첫 번째)
+        Timestamp timestamp;                      // 수집 시간 (두 번째)
+        DataQuality quality = DataQuality::GOOD;  // 데이터 품질 (세 번째)
+        std::string source = "";                  // 데이터 소스 (네 번째)
+        int point_id = 0;                        // 데이터포인트 ID (다섯 번째)
         
-        // 🔥 생성자 수정 (Utils 의존성 제거)
-        TimestampedValue() : timestamp(std::chrono::system_clock::now()) {}
+        // ======================================================================
+        // 🔥 생성자들 (멤버 변수 선언 순서에 맞게 초기화)
+        // ======================================================================
         
+        // 기본 생성자
+        TimestampedValue() 
+            : value{}, timestamp(std::chrono::system_clock::now()), quality(DataQuality::GOOD), source(""), point_id(0) {}
+        
+        // 값만 지정 (기존 호환)
         TimestampedValue(const DataValue& val) 
-            : value(val), timestamp(std::chrono::system_clock::now()) {}
+            : value(val), timestamp(std::chrono::system_clock::now()), quality(DataQuality::GOOD), source(""), point_id(0) {}
         
+        // 값 + 품질 (기존 호환)
         TimestampedValue(const DataValue& val, DataQuality qual)
-            : value(val), timestamp(std::chrono::system_clock::now()), quality(qual) {}
+            : value(val), timestamp(std::chrono::system_clock::now()), quality(qual), source(""), point_id(0) {}
         
-        // 🔥 타입 안전한 값 접근
+        // 🔥 point_id + 값 (올바른 초기화 순서)
+        TimestampedValue(int pid, const DataValue& val)
+            : value(val), timestamp(std::chrono::system_clock::now()), quality(DataQuality::GOOD), source(""), point_id(pid) {}
+        
+        // 🔥 완전한 생성자 (올바른 초기화 순서)
+        TimestampedValue(int pid, const DataValue& val, DataQuality qual, const std::string& src = "")
+            : value(val), timestamp(std::chrono::system_clock::now()), quality(qual), source(src), point_id(pid) {}
+        
+        // ======================================================================
+        // 편의 메서드들
+        // ======================================================================
+        
+        bool hasValidPointId() const {
+            return point_id > 0;
+        }
+        
         template<typename T>
         T GetValue() const {
             return std::get<T>(value);
         }
         
-        // 🔥 JSON 직렬화 메소드 추가
         std::string ToJSON() const {
             JsonType j;
             
-            // variant 값 처리
             std::visit([&j](const auto& v) {
                 j["value"] = v;
             }, value);
             
-            // 타임스탬프를 milliseconds로 변환
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 timestamp.time_since_epoch()).count();
             j["timestamp"] = ms;
             j["quality"] = static_cast<int>(quality);
             j["source"] = source;
             
+            if (point_id > 0) {
+                j["point_id"] = point_id;
+            }
+            
             return j.dump();
         }
-        
-        bool FromJSON(const std::string& json_str) {
-            try {
-                JsonType j = JsonType::parse(json_str);
-                
-                // 타임스탬프 복원
-                if (j.contains("timestamp")) {
-                    auto ms = j["timestamp"].template get<int64_t>();
-                    timestamp = Timestamp(std::chrono::milliseconds(ms));
-                }
-                
-                if (j.contains("quality")) {
-                    quality = static_cast<DataQuality>(j["quality"].template get<int>());
-                }
-                
-                if (j.contains("source")) {
-                    source = j["source"].template get<std::string>();
-                }
-                
-                return true;
-            } catch (...) {
-                return false;
-            }
-        }
     };
+
+
 
     // =========================================================================
     // 🔥 Phase 1: 통합 DataPoint 구조체 (기존 여러 DataPoint 통합)
