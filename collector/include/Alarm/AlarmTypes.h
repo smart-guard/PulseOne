@@ -175,23 +175,87 @@ struct AlarmOccurrence {
 
 // 알람 평가 결과
 struct AlarmEvaluation {
+    // =============================================================================
+    // 🎯 기본 평가 결과 (기존 유지)
+    // =============================================================================
     bool should_trigger = false;
     bool should_clear = false;
     bool state_changed = false;
     
+    // =============================================================================
+    // 🎯 아날로그 알람 레벨 (기존 유지)
+    // =============================================================================
     AnalogAlarmLevel analog_level = AnalogAlarmLevel::NORMAL;
-    std::string condition_met;
-    std::string message;
-    AlarmSeverity severity = AlarmSeverity::MEDIUM;
-    nlohmann::json context_data;
     
-    // 추가 필드들 (기존 코드 호환성)
-    std::string triggered_value;
-    std::string alarm_level;
-    std::chrono::microseconds evaluation_time{0};
-    std::chrono::system_clock::time_point timestamp;
-    int rule_id = 0;
-    int tenant_id = 0;
+    // =============================================================================
+    // 🎯 조건 및 메시지 (기존 유지)
+    // =============================================================================
+    std::string condition_met;           // ✅ 기존 string 필드 유지
+    std::string message;                 // ✅ 기존 string 필드 유지
+    
+    // =============================================================================
+    // 🎯 심각도 (기존 enum 유지)
+    // =============================================================================
+    AlarmSeverity severity = AlarmSeverity::MEDIUM;  // ✅ 기존 enum 유지
+    
+    // =============================================================================
+    // 🎯 컨텍스트 데이터 (기존 유지)
+    // =============================================================================
+    nlohmann::json context_data;        // ✅ 기존 JSON 필드 유지
+    
+    // =============================================================================
+    // 🎯 추가 필드들 - 기존 코드 호환성 (모두 유지)
+    // =============================================================================
+    std::string triggered_value;        // ✅ 기존 string 필드 유지
+    std::string alarm_level;            // ✅ 기존 string 필드 유지
+    std::chrono::microseconds evaluation_time{0};  // ✅ 기존 시간 필드 유지
+    std::chrono::system_clock::time_point timestamp;  // ✅ 기존 타임스탬프 유지
+    int rule_id = 0;                    // ✅ 기존 ID 필드 유지
+    int tenant_id = 0;                  // ✅ 기존 테넌트 ID 유지
+    
+    // =============================================================================
+    // 🎯 생성자 (기존 호환성)
+    // =============================================================================
+    AlarmEvaluation() : timestamp(std::chrono::system_clock::now()) {}
+    
+    // =============================================================================
+    // 🎯 헬퍼 메서드들 (편의성)
+    // =============================================================================
+    
+    /**
+     * @brief 심각도를 문자열로 반환
+     */
+    std::string getSeverityString() const {
+        switch(severity) {
+            case AlarmSeverity::CRITICAL: return "CRITICAL";
+            case AlarmSeverity::HIGH: return "HIGH";
+            case AlarmSeverity::MEDIUM: return "MEDIUM";
+            case AlarmSeverity::LOW: return "LOW";
+            case AlarmSeverity::INFO: return "INFO";
+            default: return "MEDIUM";
+        }
+    }
+    
+    /**
+     * @brief 아날로그 레벨을 문자열로 반환
+     */
+    std::string getAnalogLevelString() const {
+        switch(analog_level) {
+            case AnalogAlarmLevel::HIGH_HIGH: return "HIGH_HIGH";
+            case AnalogAlarmLevel::HIGH: return "HIGH";
+            case AnalogAlarmLevel::NORMAL: return "NORMAL";
+            case AnalogAlarmLevel::LOW: return "LOW";
+            case AnalogAlarmLevel::LOW_LOW: return "LOW_LOW";
+            default: return "NORMAL";
+        }
+    }
+    
+    /**
+     * @brief condition_met 값이 비어있지 않으면 true 반환
+     */
+    bool hasConditionMet() const {
+        return !condition_met.empty();
+    }
 };
 
 // 알람 필터
