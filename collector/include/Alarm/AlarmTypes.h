@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Alarm/AlarmTypes.h
-// PulseOne 알람 시스템 - 공통 타입 정의
+// PulseOne 알람 시스템 - 공통 타입 정의 (중복 제거 완료)
 // =============================================================================
 
 #ifndef ALARM_TYPES_H
@@ -15,6 +15,10 @@
 
 namespace PulseOne {
 namespace Alarm {
+
+// =============================================================================
+// 🎯 열거형 타입들
+// =============================================================================
 
 // 알람 타입 정의
 enum class AlarmType : uint8_t {
@@ -72,6 +76,10 @@ enum class AlarmErrorCode : int {
     NOT_INITIALIZED = -6
 };
 
+// =============================================================================
+// 🎯 구조체들 (정확히 한 번만 정의)
+// =============================================================================
+
 // 알람 규칙 정의
 struct AlarmRule {
     int id = 0;
@@ -115,6 +123,7 @@ struct AlarmRule {
     // 자동 처리
     bool auto_acknowledge = false;
     std::chrono::minutes acknowledge_timeout{0};
+    bool auto_clear = true;
     
     // 알림
     bool notification_enabled = true;
@@ -157,7 +166,9 @@ struct AlarmOccurrence {
     nlohmann::json context_data;
 };
 
-// 알람 평가 결과
+// =============================================================================
+// 🚨 알람 평가 결과 (단 한 번만 정의!)
+// =============================================================================
 struct AlarmEvaluation {
     bool should_trigger = false;
     bool should_clear = false;
@@ -166,8 +177,16 @@ struct AlarmEvaluation {
     AnalogAlarmLevel analog_level = AnalogAlarmLevel::NORMAL;
     std::string condition_met;
     std::string message;
-    AlarmSeverity severity;
+    AlarmSeverity severity = AlarmSeverity::MEDIUM;
     nlohmann::json context_data;
+    
+    // 추가 필드들 (기존 코드 호환성)
+    std::string triggered_value;
+    std::string alarm_level;
+    std::chrono::microseconds evaluation_time{0};
+    std::chrono::system_clock::time_point timestamp;
+    int rule_id = 0;
+    int tenant_id = 0;
 };
 
 // 알람 필터
@@ -193,6 +212,70 @@ struct AlarmStatistics {
     int alarms_last_hour = 0;
     int alarms_last_24h = 0;
 };
+
+// =============================================================================
+// 🎯 타입 변환 헬퍼 함수들
+// =============================================================================
+
+inline std::string severityToString(AlarmSeverity severity) {
+    switch (severity) {
+        case AlarmSeverity::CRITICAL: return "CRITICAL";
+        case AlarmSeverity::HIGH: return "HIGH";
+        case AlarmSeverity::MEDIUM: return "MEDIUM";
+        case AlarmSeverity::LOW: return "LOW";
+        case AlarmSeverity::INFO: return "INFO";
+        default: return "MEDIUM";
+    }
+}
+
+inline AlarmSeverity stringToSeverity(const std::string& str) {
+    if (str == "CRITICAL") return AlarmSeverity::CRITICAL;
+    if (str == "HIGH") return AlarmSeverity::HIGH;
+    if (str == "MEDIUM") return AlarmSeverity::MEDIUM;
+    if (str == "LOW") return AlarmSeverity::LOW;
+    if (str == "INFO") return AlarmSeverity::INFO;
+    return AlarmSeverity::MEDIUM;
+}
+
+inline std::string alarmTypeToString(AlarmType type) {
+    switch (type) {
+        case AlarmType::ANALOG: return "ANALOG";
+        case AlarmType::DIGITAL: return "DIGITAL";
+        case AlarmType::SCRIPT: return "SCRIPT";
+        case AlarmType::COMPOUND: return "COMPOUND";
+        default: return "ANALOG";
+    }
+}
+
+inline AlarmType stringToAlarmType(const std::string& str) {
+    if (str == "ANALOG") return AlarmType::ANALOG;
+    if (str == "DIGITAL") return AlarmType::DIGITAL;
+    if (str == "SCRIPT") return AlarmType::SCRIPT;
+    if (str == "COMPOUND") return AlarmType::COMPOUND;
+    return AlarmType::ANALOG;
+}
+
+inline std::string stateToString(AlarmState state) {
+    switch (state) {
+        case AlarmState::INACTIVE: return "INACTIVE";
+        case AlarmState::ACTIVE: return "ACTIVE";
+        case AlarmState::ACKNOWLEDGED: return "ACKNOWLEDGED";
+        case AlarmState::CLEARED: return "CLEARED";
+        case AlarmState::SUPPRESSED: return "SUPPRESSED";
+        case AlarmState::SHELVED: return "SHELVED";
+        default: return "ACTIVE";
+    }
+}
+
+inline AlarmState stringToState(const std::string& str) {
+    if (str == "INACTIVE") return AlarmState::INACTIVE;
+    if (str == "ACTIVE") return AlarmState::ACTIVE;
+    if (str == "ACKNOWLEDGED") return AlarmState::ACKNOWLEDGED;
+    if (str == "CLEARED") return AlarmState::CLEARED;
+    if (str == "SUPPRESSED") return AlarmState::SUPPRESSED;
+    if (str == "SHELVED") return AlarmState::SHELVED;
+    return AlarmState::ACTIVE;
+}
 
 } // namespace Alarm
 } // namespace PulseOne
