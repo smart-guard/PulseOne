@@ -4,7 +4,6 @@
 // =============================================================================
 
 #include "VirtualPoint/ScriptLibraryManager.h"
-#include "Database/Repositories/ScriptLibraryRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"

@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Alarm/AlarmTypes.h
-// PulseOne 알람 시스템 - 공통 타입 정의 (중복 제거 완료)
+// PulseOne 알람 시스템 - 공통 타입 정의 (컴파일 에러 완전 해결)
 // =============================================================================
 
 #ifndef ALARM_TYPES_H
@@ -56,6 +56,13 @@ enum class DigitalTrigger : uint8_t {
     ON_FALLING = 4
 };
 
+// 대상 타입
+enum class TargetType : uint8_t {
+    DATA_POINT = 0,     // 데이터 포인트
+    VIRTUAL_POINT = 1,  // 가상 포인트
+    GROUP = 2           // 그룹
+};
+
 // 아날로그 레벨
 enum class AnalogAlarmLevel : uint8_t {
     NORMAL = 0,
@@ -77,7 +84,7 @@ enum class AlarmErrorCode : int {
 };
 
 // =============================================================================
-// 🎯 구조체들 (정확히 한 번만 정의)
+// 🎯 구조체들
 // =============================================================================
 
 // 알람 규칙 정의
@@ -166,9 +173,7 @@ struct AlarmOccurrence {
     nlohmann::json context_data;
 };
 
-// =============================================================================
-// 🚨 알람 평가 결과 (단 한 번만 정의!)
-// =============================================================================
+// 알람 평가 결과
 struct AlarmEvaluation {
     bool should_trigger = false;
     bool should_clear = false;
@@ -214,9 +219,29 @@ struct AlarmStatistics {
 };
 
 // =============================================================================
-// 🎯 타입 변환 헬퍼 함수들
+// 🎯 타입 변환 헬퍼 함수들 (네임스페이스 내부!)
 // =============================================================================
 
+// AlarmType 변환
+inline std::string alarmTypeToString(AlarmType type) {
+    switch (type) {
+        case AlarmType::ANALOG: return "analog";
+        case AlarmType::DIGITAL: return "digital";
+        case AlarmType::SCRIPT: return "script";
+        case AlarmType::COMPOUND: return "compound";
+        default: return "analog";
+    }
+}
+
+inline AlarmType stringToAlarmType(const std::string& str) {
+    if (str == "analog" || str == "ANALOG") return AlarmType::ANALOG;
+    if (str == "digital" || str == "DIGITAL") return AlarmType::DIGITAL;
+    if (str == "script" || str == "SCRIPT") return AlarmType::SCRIPT;
+    if (str == "compound" || str == "COMPOUND") return AlarmType::COMPOUND;
+    return AlarmType::ANALOG;
+}
+
+// AlarmSeverity 변환
 inline std::string severityToString(AlarmSeverity severity) {
     switch (severity) {
         case AlarmSeverity::CRITICAL: return "CRITICAL";
@@ -229,32 +254,15 @@ inline std::string severityToString(AlarmSeverity severity) {
 }
 
 inline AlarmSeverity stringToSeverity(const std::string& str) {
-    if (str == "CRITICAL") return AlarmSeverity::CRITICAL;
-    if (str == "HIGH") return AlarmSeverity::HIGH;
-    if (str == "MEDIUM") return AlarmSeverity::MEDIUM;
-    if (str == "LOW") return AlarmSeverity::LOW;
-    if (str == "INFO") return AlarmSeverity::INFO;
+    if (str == "CRITICAL" || str == "critical") return AlarmSeverity::CRITICAL;
+    if (str == "HIGH" || str == "high") return AlarmSeverity::HIGH;
+    if (str == "MEDIUM" || str == "medium") return AlarmSeverity::MEDIUM;
+    if (str == "LOW" || str == "low") return AlarmSeverity::LOW;
+    if (str == "INFO" || str == "info") return AlarmSeverity::INFO;
     return AlarmSeverity::MEDIUM;
 }
 
-inline std::string alarmTypeToString(AlarmType type) {
-    switch (type) {
-        case AlarmType::ANALOG: return "ANALOG";
-        case AlarmType::DIGITAL: return "DIGITAL";
-        case AlarmType::SCRIPT: return "SCRIPT";
-        case AlarmType::COMPOUND: return "COMPOUND";
-        default: return "ANALOG";
-    }
-}
-
-inline AlarmType stringToAlarmType(const std::string& str) {
-    if (str == "ANALOG") return AlarmType::ANALOG;
-    if (str == "DIGITAL") return AlarmType::DIGITAL;
-    if (str == "SCRIPT") return AlarmType::SCRIPT;
-    if (str == "COMPOUND") return AlarmType::COMPOUND;
-    return AlarmType::ANALOG;
-}
-
+// AlarmState 변환
 inline std::string stateToString(AlarmState state) {
     switch (state) {
         case AlarmState::INACTIVE: return "INACTIVE";
@@ -275,6 +283,103 @@ inline AlarmState stringToState(const std::string& str) {
     if (str == "SUPPRESSED") return AlarmState::SUPPRESSED;
     if (str == "SHELVED") return AlarmState::SHELVED;
     return AlarmState::ACTIVE;
+}
+
+// DigitalTrigger 변환
+inline std::string digitalTriggerToString(DigitalTrigger trigger) {
+    switch (trigger) {
+        case DigitalTrigger::ON_TRUE: return "ON_TRUE";
+        case DigitalTrigger::ON_FALSE: return "ON_FALSE";
+        case DigitalTrigger::ON_CHANGE: return "ON_CHANGE";
+        case DigitalTrigger::ON_RISING: return "ON_RISING";
+        case DigitalTrigger::ON_FALLING: return "ON_FALLING";
+        default: return "ON_CHANGE";
+    }
+}
+
+inline DigitalTrigger stringToDigitalTrigger(const std::string& str) {
+    if (str == "ON_TRUE") return DigitalTrigger::ON_TRUE;
+    if (str == "ON_FALSE") return DigitalTrigger::ON_FALSE;
+    if (str == "ON_CHANGE") return DigitalTrigger::ON_CHANGE;
+    if (str == "ON_RISING") return DigitalTrigger::ON_RISING;
+    if (str == "ON_FALLING") return DigitalTrigger::ON_FALLING;
+    return DigitalTrigger::ON_CHANGE;
+}
+
+// TargetType 변환
+inline std::string targetTypeToString(TargetType type) {
+    switch (type) {
+        case TargetType::DATA_POINT: return "DATA_POINT";
+        case TargetType::VIRTUAL_POINT: return "VIRTUAL_POINT";
+        case TargetType::GROUP: return "GROUP";
+        default: return "DATA_POINT";
+    }
+}
+
+inline TargetType stringToTargetType(const std::string& str) {
+    if (str == "DATA_POINT") return TargetType::DATA_POINT;
+    if (str == "VIRTUAL_POINT") return TargetType::VIRTUAL_POINT;
+    if (str == "GROUP") return TargetType::GROUP;
+    return TargetType::DATA_POINT;
+}
+
+// AnalogAlarmLevel 변환
+inline std::string analogAlarmLevelToString(AnalogAlarmLevel level) {
+    switch (level) {
+        case AnalogAlarmLevel::NORMAL: return "NORMAL";
+        case AnalogAlarmLevel::LOW_LOW: return "LOW_LOW";
+        case AnalogAlarmLevel::LOW: return "LOW";
+        case AnalogAlarmLevel::HIGH: return "HIGH";
+        case AnalogAlarmLevel::HIGH_HIGH: return "HIGH_HIGH";
+        default: return "NORMAL";
+    }
+}
+
+inline AnalogAlarmLevel stringToAnalogAlarmLevel(const std::string& str) {
+    if (str == "NORMAL") return AnalogAlarmLevel::NORMAL;
+    if (str == "LOW_LOW") return AnalogAlarmLevel::LOW_LOW;
+    if (str == "LOW") return AnalogAlarmLevel::LOW;
+    if (str == "HIGH") return AnalogAlarmLevel::HIGH;
+    if (str == "HIGH_HIGH") return AnalogAlarmLevel::HIGH_HIGH;
+    return AnalogAlarmLevel::NORMAL;
+}
+
+// =============================================================================
+// 🎯 소문자 변환 헬퍼 함수들 (API/JSON 호환용) - 네임스페이스 내부!
+// =============================================================================
+
+// 소문자 변환 함수들
+inline std::string alarmTypeToLowerString(AlarmType type) {
+    switch (type) {
+        case AlarmType::ANALOG: return "analog";
+        case AlarmType::DIGITAL: return "digital"; 
+        case AlarmType::SCRIPT: return "script";
+        case AlarmType::COMPOUND: return "compound";
+        default: return "analog";
+    }
+}
+
+inline std::string severityToLowerString(AlarmSeverity severity) {
+    switch (severity) {
+        case AlarmSeverity::CRITICAL: return "critical";
+        case AlarmSeverity::HIGH: return "high";
+        case AlarmSeverity::MEDIUM: return "medium";
+        case AlarmSeverity::LOW: return "low";
+        case AlarmSeverity::INFO: return "info";
+        default: return "medium";
+    }
+}
+
+inline std::string stateToLowerString(AlarmState state) {
+    switch (state) {
+        case AlarmState::INACTIVE: return "inactive";
+        case AlarmState::ACTIVE: return "active";
+        case AlarmState::ACKNOWLEDGED: return "acknowledged";
+        case AlarmState::CLEARED: return "cleared";
+        case AlarmState::SUPPRESSED: return "suppressed";
+        case AlarmState::SHELVED: return "shelved";
+        default: return "active";
+    }
 }
 
 } // namespace Alarm

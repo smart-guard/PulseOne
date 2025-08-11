@@ -1,31 +1,31 @@
 // =============================================================================
 // collector/src/Database/Entities/AlarmRuleEntity.cpp
-// PulseOne AlarmRuleEntity 구현 - DeviceEntity/DataPointEntity 패턴 100% 적용
+// PulseOne AlarmRuleEntity 구현 - AlarmTypes.h 통합 적용 완료
 // =============================================================================
 
 /**
  * @file AlarmRuleEntity.cpp
- * @brief PulseOne AlarmRuleEntity 구현 - DeviceEntity/DataPointEntity 패턴 100% 적용
+ * @brief PulseOne AlarmRuleEntity 구현 - AlarmTypes.h 공통 타입 시스템 적용
  * @author PulseOne Development Team
- * @date 2025-08-10
+ * @date 2025-08-11
  * 
- * 🎯 DeviceEntity/DataPointEntity 패턴 완전 적용:
- * - 헤더에서는 선언만, CPP에서 Repository 호출
- * - Repository include는 CPP에서만 (순환 참조 방지)
- * - BaseEntity 순수 가상 함수 구현만 포함
- * - RepositoryFactory 패턴 사용
+ * 🎯 AlarmTypes.h 통합 완료:
+ * - 모든 enum을 AlarmTypes.h에서 사용
+ * - 헬퍼 함수 일관된 네임스페이스 참조
+ * - 타입 변환 함수 활용
  */
 
 #include "Database/Entities/AlarmRuleEntity.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/AlarmRuleRepository.h"
+#include "Alarm/AlarmTypes.h"  // 🔥 AlarmTypes.h 포함!
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
 
 // =============================================================================
-// 생성자 구현 (CPP에서 구현하여 중복 제거)
+// 생성자 구현 - AlarmTypes.h 타입 사용
 // =============================================================================
 
 AlarmRuleEntity::AlarmRuleEntity() 
@@ -33,22 +33,22 @@ AlarmRuleEntity::AlarmRuleEntity()
     , tenant_id_(0)
     , name_("")
     , description_("")
-    , target_type_(TargetType::DATA_POINT)
+    , target_type_(TargetType::DATA_POINT)          // 🔥 AlarmTypes.h 타입 사용
     , target_id_(std::nullopt)
     , target_group_("")
-    , alarm_type_(AlarmType::ANALOG)
+    , alarm_type_(AlarmType::ANALOG)                // 🔥 AlarmTypes.h 타입 사용
     , high_high_limit_(std::nullopt)
     , high_limit_(std::nullopt)
     , low_limit_(std::nullopt)
     , low_low_limit_(std::nullopt)
     , deadband_(0.0)
     , rate_of_change_(0.0)
-    , trigger_condition_(DigitalTrigger::ON_CHANGE)
+    , trigger_condition_(DigitalTrigger::ON_CHANGE) // 🔥 AlarmTypes.h 타입 사용
     , condition_script_("")
     , message_script_("")
     , message_config_("{}")
     , message_template_("")
-    , severity_(Severity::MEDIUM)
+    , severity_(AlarmSeverity::MEDIUM)              // 🔥 AlarmTypes.h 타입 사용
     , priority_(100)
     , auto_acknowledge_(false)
     , acknowledge_timeout_min_(0)
@@ -221,7 +221,7 @@ bool AlarmRuleEntity::updateToDatabase() {
 }
 
 // =============================================================================
-// 비즈니스 로직 메서드 구현
+// 비즈니스 로직 메서드 구현 - AlarmTypes.h 함수 사용
 // =============================================================================
 
 std::string AlarmRuleEntity::generateMessage(double value, const std::string& unit) const {
@@ -251,7 +251,8 @@ std::string AlarmRuleEntity::generateMessage(double value, const std::string& un
         }
     }
     
-    oss << " - Severity: " << severityToString(severity_);
+    // 🔥 AlarmTypes.h 함수 사용
+    oss << " - Severity: " << PulseOne::Alarm::severityToString(severity_);
     
     return oss.str();
 }
@@ -278,8 +279,10 @@ std::string AlarmRuleEntity::generateDigitalMessage(bool state) const {
     std::ostringstream oss;
     oss << "ALARM: " << name_;
     oss << " - Digital State: " << (state ? "TRUE" : "FALSE");
-    oss << " - Trigger: " << digitalTriggerToString(trigger_condition_);
-    oss << " - Severity: " << severityToString(severity_);
+    
+    // 🔥 AlarmTypes.h 함수 사용
+    oss << " - Trigger: " << PulseOne::Alarm::digitalTriggerToString(trigger_condition_);
+    oss << " - Severity: " << PulseOne::Alarm::severityToString(severity_);
     
     return oss.str();
 }
@@ -352,83 +355,7 @@ int AlarmRuleEntity::getSeverityLevel() const {
 }
 
 // =============================================================================
-// 헬퍼 메서드 구현 (enum ↔ string 변환)
-// =============================================================================
-
-std::string AlarmRuleEntity::alarmTypeToString(AlarmType type) {
-    switch (type) {
-        case AlarmType::ANALOG: return "analog";
-        case AlarmType::DIGITAL: return "digital";
-        case AlarmType::SCRIPT: return "script";
-        default: return "analog";
-    }
-}
-
-AlarmRuleEntity::AlarmType AlarmRuleEntity::stringToAlarmType(const std::string& str) {
-    if (str == "analog") return AlarmType::ANALOG;
-    if (str == "digital") return AlarmType::DIGITAL;
-    if (str == "script") return AlarmType::SCRIPT;
-    return AlarmType::ANALOG; // 기본값
-}
-
-std::string AlarmRuleEntity::severityToString(Severity severity) {
-    switch (severity) {
-        case Severity::CRITICAL: return "critical";
-        case Severity::HIGH: return "high";
-        case Severity::MEDIUM: return "medium";
-        case Severity::LOW: return "low";
-        case Severity::INFO: return "info";
-        default: return "medium";
-    }
-}
-
-AlarmRuleEntity::Severity AlarmRuleEntity::stringToSeverity(const std::string& str) {
-    if (str == "critical") return Severity::CRITICAL;
-    if (str == "high") return Severity::HIGH;
-    if (str == "medium") return Severity::MEDIUM;
-    if (str == "low") return Severity::LOW;
-    if (str == "info") return Severity::INFO;
-    return Severity::MEDIUM; // 기본값
-}
-
-std::string AlarmRuleEntity::digitalTriggerToString(DigitalTrigger trigger) {
-    switch (trigger) {
-        case DigitalTrigger::ON_TRUE: return "on_true";
-        case DigitalTrigger::ON_FALSE: return "on_false";
-        case DigitalTrigger::ON_CHANGE: return "on_change";
-        case DigitalTrigger::ON_RISING: return "on_rising";
-        case DigitalTrigger::ON_FALLING: return "on_falling";
-        default: return "on_change";
-    }
-}
-
-AlarmRuleEntity::DigitalTrigger AlarmRuleEntity::stringToDigitalTrigger(const std::string& str) {
-    if (str == "on_true") return DigitalTrigger::ON_TRUE;
-    if (str == "on_false") return DigitalTrigger::ON_FALSE;
-    if (str == "on_change") return DigitalTrigger::ON_CHANGE;
-    if (str == "on_rising") return DigitalTrigger::ON_RISING;
-    if (str == "on_falling") return DigitalTrigger::ON_FALLING;
-    return DigitalTrigger::ON_CHANGE; // 기본값
-}
-
-std::string AlarmRuleEntity::targetTypeToString(TargetType type) {
-    switch (type) {
-        case TargetType::DATA_POINT: return "data_point";
-        case TargetType::VIRTUAL_POINT: return "virtual_point";
-        case TargetType::GROUP: return "group";
-        default: return "data_point";
-    }
-}
-
-AlarmRuleEntity::TargetType AlarmRuleEntity::stringToTargetType(const std::string& str) {
-    if (str == "data_point") return TargetType::DATA_POINT;
-    if (str == "virtual_point") return TargetType::VIRTUAL_POINT;
-    if (str == "group") return TargetType::GROUP;
-    return TargetType::DATA_POINT; // 기본값
-}
-
-// =============================================================================
-// 내부 헬퍼 메서드 구현
+// 내부 헬퍼 메서드 구현 - AlarmTypes.h 함수 사용
 // =============================================================================
 
 std::string AlarmRuleEntity::timestampToString(const std::chrono::system_clock::time_point& tp) const {
@@ -468,10 +395,10 @@ std::string AlarmRuleEntity::interpolateTemplate(const std::string& tmpl, double
         result.replace(pos, 8, unit);
     }
     
-    // {{SEVERITY}} 치환
+    // {{SEVERITY}} 치환 - 🔥 AlarmTypes.h 함수 사용
     pos = result.find("{{SEVERITY}}");
     if (pos != std::string::npos) {
-        result.replace(pos, 12, severityToString(severity_));
+        result.replace(pos, 12, PulseOne::Alarm::severityToString(severity_));
     }
     
     // {{TIMESTAMP}} 치환
@@ -482,8 +409,6 @@ std::string AlarmRuleEntity::interpolateTemplate(const std::string& tmpl, double
     
     return result;
 }
-
-
 
 } // namespace Entities
 } // namespace Database

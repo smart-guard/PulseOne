@@ -4,14 +4,16 @@
 // =============================================================================
 
 #include "Alarm/AlarmEngine.h"
+#include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/RepositoryFactory.h"
-#include "Client/RedisClientImpl.h"
+
 //#include "Client/RabbitMQClient.h"
 #include <nlohmann/json.hpp>
 #include <quickjs.h>
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+
 
 using json = nlohmann::json;
 
@@ -27,9 +29,7 @@ AlarmEngine& AlarmEngine::getInstance() {
     return instance;
 }
 
-AlarmEngine::AlarmEngine() 
-    : db_manager_(DatabaseManager::getInstance())
-    , LogManager::getInstance()(Utils::LogManager::getInstance()) {
+AlarmEngine::AlarmEngine() {
     
     LogManager::getInstance().Debug("AlarmEngine constructor starting...");
     
@@ -97,12 +97,12 @@ void AlarmEngine::shutdown() {
 void AlarmEngine::initializeClients() {
     try {
         // ConfigManager 싱글톤에서 설정 가져오기
-        auto& config = Utils::ConfigManager::getInstance();
+        auto& config = ConfigManager::getInstance();
         
         // Redis 클라이언트 생성
-        std::string redis_host = config.getString("redis.host", "localhost");
+        std::string redis_host = config.getOrDefault("redis.host", "localhost");
         int redis_port = config.getInt("redis.port", 6379);
-        std::string redis_password = config.getString("redis.password", "");
+        std::string redis_password = config.getOrDefault("redis.password", "");
         
         redis_client_ = std::make_shared<RedisClientImpl>();
         if (!redis_client_->connect(redis_host, redis_port, redis_password)) {
@@ -123,18 +123,12 @@ void AlarmEngine::initializeRepositories() {
         // Repository Factory 싱글톤 사용
         auto& repo_factory = Database::RepositoryFactory::getInstance();
         
-        alarm_rule_repo_ = std::dynamic_pointer_cast<AlarmRuleRepository>(
-            repo_factory.getRepository<AlarmRuleEntity>()
-        );
-        
-        alarm_occurrence_repo_ = std::dynamic_pointer_cast<AlarmOccurrenceRepository>(
-            repo_factory.getRepository<AlarmOccurrenceEntity>()
-        );
-        
+        alarm_rule_repo_ = repo_factory.getAlarmRuleRepository();
         if (!alarm_rule_repo_) {
             LogManager::getInstance().Error("Failed to get AlarmRuleRepository from factory");
         }
-        
+
+        alarm_occurrence_repo_ = repo_factory.getAlarmOccurrenceRepository();
         if (!alarm_occurrence_repo_) {
             LogManager::getInstance().Error("Failed to get AlarmOccurrenceRepository from factory");
         }
@@ -231,7 +225,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
     auto rules = getAlarmRulesForPoint(tenant_id, point_type, numeric_id);
     
     for (const auto& rule : rules) {
-        if (!rule.getIsEnabled()) continue;
+        if (!rule.isEnabled()) continue;
         
         try {
             // 규칙 평가
@@ -247,7 +241,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
                         event.rule_id = rule.getId();
                         event.tenant_id = tenant_id;
                         event.point_id = point_id;
-                        event.alarm_type = rule.getAlarmTypeString();
+                        event.alarm_type = rule.getAlarmType();
                         event.severity = eval.severity;
                         event.state = "ACTIVE";
                         event.trigger_value = value;
@@ -373,7 +367,7 @@ AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, do
         return eval;  // 빈 결과 반환
     }
     
-    eval.severity = rule.getSeverityString();
+    eval.severity = rule.getSeverity();
     
     // 나머지 로직은 동일...
     // (기존 코드 그대로 유지)
@@ -388,7 +382,7 @@ AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, do
     // 🔥 히스테리시스를 고려한 임계값 체크
     bool trigger = false;
     std::string condition;
-    std::string severity = rule.getSeverityString();
+    std::string severity = rule.getSeverity();
     
     // High-High 체크
     if (rule.getHighHighLimit().has_value()) {
@@ -460,7 +454,7 @@ AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, do
         eval.should_trigger = true;
         eval.condition_met = condition;
         eval.severity = severity;
-    } else if (!trigger && is_alarm_active && rule.getAutoClear()) {
+    } else if (!trigger && is_alarm_active && rule.isAutoClear()) {
         // 정상 범위로 복귀 + 히스테리시스 체크
         bool should_clear = true;
         
@@ -494,7 +488,7 @@ AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, b
         return eval;  // 빈 결과 반환
     }
     
-    eval.severity = rule.getSeverityString();
+    eval.severity = rule.getSeverity();
     
     bool last_state = getLastDigitalState(rule.getId());
     bool is_alarm_active = isAlarmActive(rule.getId());
@@ -503,7 +497,7 @@ AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, b
     std::string condition;
     
     // 디지털 조건 체크
-    std::string trigger_condition = rule.getTriggerConditionString();
+    std::string trigger_condition = rule.getTriggerCondition();
     
     if (trigger_condition == "on_true") {
         trigger = state;
@@ -526,7 +520,7 @@ AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, b
     if (trigger && !is_alarm_active) {
         eval.should_trigger = true;
         eval.condition_met = condition;
-    } else if (!trigger && is_alarm_active && rule.getAutoClear()) {
+    } else if (!trigger && is_alarm_active && rule.isAutoClear()) {
         eval.should_clear = true;
         eval.condition_met = "Condition Cleared";
     }
@@ -544,7 +538,7 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule, co
         return eval;  // 빈 결과 반환
     }
     
-    eval.severity = rule.getSeverityString();
+    eval.severity = rule.getSeverity();
     
     if (!js_context_) {
         LogManager::getInstance().Error("JavaScript engine not available for script alarm");
@@ -600,7 +594,7 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule, co
             if (triggered && !is_alarm_active) {
                 eval.should_trigger = true;
                 eval.condition_met = "Script Condition";
-            } else if (!triggered && is_alarm_active && rule.getAutoClear()) {
+            } else if (!triggered && is_alarm_active && rule.isAutoClear()) {
                 eval.should_clear = true;
                 eval.condition_met = "Script Cleared";
             }
@@ -635,7 +629,7 @@ std::optional<int64_t> AlarmEngine::raiseAlarm(const AlarmRuleEntity& rule,
         occurrence.setTriggerCondition(eval.condition_met);
         occurrence.setAlarmMessage(eval.message);
         occurrence.setSeverity(eval.severity);
-        occurrence.setState("active");
+        occurrence.setState(State::ACTIVE);
         
         // 트리거 값을 JSON으로 저장
         json trigger_json;

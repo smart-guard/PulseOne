@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 #include "Database/DatabaseManager.h"
 #include "Database/Entities/ScriptLibraryEntity.h"
+#include "Database/Repositories/ScriptLibraryRepository.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 

@@ -29,10 +29,14 @@ class RedisClientImpl;
 
 namespace Alarm {
 
-using json = nlohmann::json;
-using AlarmEvent = Structs::AlarmEvent;
-using DeviceDataMessage = Structs::DeviceDataMessage;
-using DataValue = Structs::DataValue;
+    using json = nlohmann::json;
+    using AlarmEvent = Structs::AlarmEvent;
+    using DeviceDataMessage = Structs::DeviceDataMessage;
+    using DataValue = Structs::DataValue;
+    using AlarmType = PulseOne::Alarm::AlarmType;
+    using AlarmSeverity = PulseOne::Alarm::AlarmSeverity;
+    using TargetType = PulseOne::Alarm::TargetType;
+    using DigitalTrigger = PulseOne::Alarm::DigitalTrigger;
 // =============================================================================
 // AlarmManager 클래스 - 🔥 명확한 싱글톤 패턴
 // =============================================================================

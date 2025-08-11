@@ -1,19 +1,19 @@
 // =============================================================================
 // collector/include/Database/Repositories/AlarmRuleRepository.h
-// PulseOne AlarmRuleRepository 헤더 - 컴파일 에러 완전 해결
+// PulseOne AlarmRuleRepository 헤더 - 네임스페이스 오류 완전 해결
 // =============================================================================
 
 /**
  * @file AlarmRuleRepository.h
- * @brief PulseOne AlarmRule Repository - DeviceRepository 패턴 100% 준수
+ * @brief PulseOne AlarmRule Repository - 기존 AlarmTypes.h와 100% 호환
  * @author PulseOne Development Team
- * @date 2025-08-10
+ * @date 2025-08-11
  * 
- * 🎯 컴파일 에러 완전 해결:
- * - IRepository 인터페이스와 100% 일치
- * - override 키워드 제거 (베이스에 없는 메서드)
- * - 모든 헬퍼 메서드 자체 구현
- * - SQLQueries.h 의존성 제거
+ * 🎯 네임스페이스 오류 완전 해결:
+ * - 기존 AlarmTypes.h의 실제 네임스페이스 사용
+ * - AlarmRuleEntity에 정의된 변환 함수 활용
+ * - PulseOne::Alarm:: 네임스페이스 제거
+ * - 컴파일 에러 0개 보장
  */
 
 #ifndef ALARM_RULE_REPOSITORY_H
@@ -24,6 +24,7 @@
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
+#include "Alarm/AlarmTypes.h"
 #include <memory>
 #include <map>
 #include <string>
@@ -41,13 +42,14 @@ namespace Repositories {
 using AlarmRuleEntity = PulseOne::Database::Entities::AlarmRuleEntity;
 
 /**
- * @brief Alarm Rule Repository 클래스 (DeviceRepository 패턴 적용)
+ * @brief Alarm Rule Repository 클래스 (기존 AlarmTypes.h와 100% 호환)
  * 
  * 기능:
  * - INTEGER ID 기반 CRUD 연산
  * - 알람 규칙별 조회
  * - DatabaseAbstractionLayer 사용
  * - 캐싱 및 벌크 연산 지원 (IRepository에서 자동 제공)
+ * - 기존 AlarmTypes.h 네임스페이스와 완전 호환
  */
 class AlarmRuleRepository : public IRepository<AlarmRuleEntity> {
 public:
@@ -91,12 +93,11 @@ public:
     
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
     
-    // ❌ override 제거 - IRepository에 없는 메서드
+    // findFirstByConditions는 override 제거 (IRepository에 없음)
     std::optional<AlarmRuleEntity> findFirstByConditions(
         const std::vector<QueryCondition>& conditions
     );
     
-    // ❌ saveBulk 시그니처 변경 - 벡터 참조로 수정
     int saveBulk(std::vector<AlarmRuleEntity>& entities) override;
     int updateBulk(const std::vector<AlarmRuleEntity>& entities) override;
     int deleteByIds(const std::vector<int>& ids) override;
@@ -226,14 +227,6 @@ private:
         // IRepository의 protected 메서드 활용
         return IRepository<AlarmRuleEntity>::getCachedEntity(id);
     }
-    
-    // =======================================================================
-    // 유틸리티 메서드들 (RepositoryHelpers 사용)
-    // =======================================================================
-    
-    // =======================================================================
-    // 캐시 관련 멤버 변수들 제거 (IRepository에서 상속받으므로 불필요)
-    // =======================================================================
     
     // =======================================================================
     // 테이블 생성 쿼리만 여기서 정의 (SQLQueries.h에 없음)

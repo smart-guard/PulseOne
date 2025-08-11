@@ -41,7 +41,6 @@ using json = nlohmann::json;
 using DataValue = PulseOne::Structs::DataValue;
 using DeviceDataMessage = PulseOne::Structs::DeviceDataMessage;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
-using DatabaseManager = PulseOne::Database::DatabaseManager;  // 🔥 명시적 별칭
 
 // 전방 선언
 class ScriptLibraryManager;
@@ -59,7 +58,14 @@ struct VirtualPointDef {
     std::string name;
     std::string description;
     std::string formula;
-    json input_points;
+    json input_points;  // 기존
+    
+    // ✅ 누락된 필드들 추가
+    std::string data_type;
+    std::string unit;
+    std::chrono::milliseconds calculation_interval_ms{1000};
+    json input_mappings;  // 추가
+    
     std::string script_id;
     std::chrono::milliseconds update_interval{1000};
     bool is_enabled = true;
@@ -99,7 +105,7 @@ public:
     // =======================================================================
     // 생명주기 관리
     // =======================================================================
-    bool initialize(std::shared_ptr<DatabaseManager> db_manager);  // 🔥 타입 수정
+    bool initialize();  // 🔥 타입 수정
     void shutdown();
     bool isInitialized() const { return initialized_; }
 
@@ -195,13 +201,7 @@ private:
     std::atomic<int64_t> total_calculations_{0};
     std::atomic<int64_t> successful_calculations_{0};
     std::atomic<int64_t> failed_calculations_{0};
-    
-    // =======================================================================
-    // 의존성들
-    // =======================================================================
-    std::shared_ptr<DatabaseManager> db_manager_;
-    PulseOne::Utils::LogManager& logger_;  // 🔥 타입 수정
-    
+       
     // =======================================================================
     // 내부 상태
     // =======================================================================
