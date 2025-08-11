@@ -1757,6 +1757,229 @@ namespace AlarmOccurrence {
     
 } // namespace AlarmOccurrence
 
+namespace ScriptLibrary {
+    
+    const std::string FIND_ALL = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        ORDER BY name
+    )";
+    
+    const std::string FIND_BY_ID = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE id = ?
+    )";
+    
+    const std::string FIND_BY_CATEGORY = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE category = ?
+        ORDER BY name
+    )";
+    
+    const std::string FIND_BY_TENANT_ID = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE tenant_id = ? OR is_system = 1 
+        ORDER BY name
+    )";
+    
+    const std::string FIND_BY_NAME = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE (tenant_id = ? OR is_system = 1) AND name = ?
+    )";
+    
+    const std::string FIND_SYSTEM_SCRIPTS = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE is_system = 1
+        ORDER BY category, name
+    )";
+    
+    const std::string FIND_BY_TAGS = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE ?
+        ORDER BY usage_count DESC, name
+    )";
+    
+    const std::string SEARCH_SCRIPTS = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE name LIKE ? OR display_name LIKE ? OR description LIKE ? OR tags LIKE ?
+        ORDER BY usage_count DESC, name
+    )";
+    
+    const std::string FIND_TOP_USED = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE usage_count > 0
+        ORDER BY usage_count DESC, rating DESC
+        LIMIT ?
+    )";
+    
+    const std::string UPDATE_BY_ID = R"(
+        UPDATE script_library 
+        SET tenant_id = ?, name = ?, display_name = ?, description = ?, 
+            category = ?, script_code = ?, parameters = ?, return_type = ?, 
+            tags = ?, example_usage = ?, is_system = ?, is_template = ?, 
+            usage_count = ?, rating = ?, version = ?, author = ?, 
+            license = ?, dependencies = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string DELETE_BY_ID = R"(
+        DELETE FROM script_library WHERE id = ?
+    )";
+    
+    const std::string EXISTS_BY_ID = R"(
+        SELECT COUNT(*) as count FROM script_library WHERE id = ?
+    )";
+    
+    const std::string INCREMENT_USAGE_COUNT = R"(
+        UPDATE script_library 
+        SET usage_count = usage_count + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string UPDATE_VERSION = R"(
+        UPDATE script_library 
+        SET version = ?, script_code = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+    )";
+    
+    const std::string FIND_TEMPLATES = R"(
+        SELECT 
+            id, name, display_name, description, category,
+            script_code, parameters, return_type, example_usage
+        FROM script_library 
+        WHERE is_template = 1
+        ORDER BY category, name
+    )";
+    
+    const std::string FIND_TEMPLATES_BY_CATEGORY = R"(
+        SELECT 
+            id, name, display_name, description, category,
+            script_code, parameters, return_type, example_usage
+        FROM script_library 
+        WHERE is_template = 1 AND category = ?
+        ORDER BY category, name
+    )";
+    
+    const std::string FIND_TEMPLATE_BY_ID = R"(
+        SELECT 
+            id, name, display_name, description, category,
+            script_code, parameters, return_type, example_usage
+        FROM script_library 
+        WHERE is_template = 1 AND id = ?
+    )";
+    
+    const std::string GET_USAGE_STATS = R"(
+        SELECT 
+            COUNT(*) as total_scripts,
+            SUM(usage_count) as total_usage,
+            AVG(rating) as avg_rating,
+            MAX(usage_count) as max_usage
+        FROM script_library
+    )";
+    
+    const std::string GET_USAGE_STATS_BY_TENANT = R"(
+        SELECT 
+            COUNT(*) as total_scripts,
+            SUM(usage_count) as total_usage,
+            AVG(rating) as avg_rating,
+            MAX(usage_count) as max_usage
+        FROM script_library 
+        WHERE tenant_id = ? OR is_system = 1
+    )";
+    
+    const std::string GET_CATEGORY_STATS = R"(
+        SELECT 
+            category,
+            COUNT(*) as count,
+            SUM(usage_count) as usage
+        FROM script_library
+        GROUP BY category
+    )";
+    
+    const std::string GET_CATEGORY_STATS_BY_TENANT = R"(
+        SELECT 
+            category,
+            COUNT(*) as count,
+            SUM(usage_count) as usage
+        FROM script_library 
+        WHERE tenant_id = ? OR is_system = 1
+        GROUP BY category
+    )";
+    
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS script_library (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id INTEGER NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            display_name VARCHAR(100),
+            description TEXT,
+            category VARCHAR(50) DEFAULT 'CUSTOM',
+            script_code TEXT NOT NULL,
+            parameters TEXT,
+            return_type VARCHAR(50) DEFAULT 'FLOAT',
+            tags TEXT,
+            example_usage TEXT,
+            is_system INTEGER DEFAULT 0,
+            is_template INTEGER DEFAULT 0,
+            usage_count INTEGER DEFAULT 0,
+            rating REAL DEFAULT 0.0,
+            version VARCHAR(20) DEFAULT '1.0.0',
+            author VARCHAR(100),
+            license VARCHAR(100),
+            dependencies TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(tenant_id, name)
+        )
+    )";
+    
+} // namespace ScriptLibrary
+
 } // namespace SQL
 } // namespace Database  
 } // namespace PulseOne
