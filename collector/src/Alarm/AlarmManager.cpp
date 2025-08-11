@@ -4,6 +4,7 @@
 // =============================================================================
 
 #include "Alarm/AlarmManager.h"
+#include "Utils/LogManager.h"
 #include "Alarm/AlarmEngine.h"  // 🔥 AlarmEngine 사용
 #include "Client/RedisClientImpl.h"
 #include <nlohmann/json.hpp>
@@ -28,9 +29,8 @@ AlarmManager& AlarmManager::getInstance() {
 }
 
 AlarmManager::AlarmManager() 
-    : logger_(&Utils::LogManager::getInstance()) {  // 🔥 포인터로 초기화
     
-    logger_->Debug("AlarmManager constructor starting...");  // 🔥 포인터 접근
+    LogManager::getInstance().Debug("AlarmManager constructor starting...");  // 🔥 포인터 접근
     
     try {
         // 🔥 생성자에서 모든 초기화를 완료 (AlarmEngine 패턴)
@@ -39,10 +39,10 @@ AlarmManager::AlarmManager()
         initScriptEngine();
         
         initialized_ = true;
-        logger_.Info("AlarmManager initialized successfully in constructor");
+        LogManager::getInstance().Info("AlarmManager initialized successfully in constructor");
         
     } catch (const std::exception& e) {
-        logger_.Error("AlarmManager constructor failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("AlarmManager constructor failed: " + std::string(e.what()));
         initialized_ = false;
     }
 }
@@ -58,7 +58,7 @@ AlarmManager::~AlarmManager() {
 void AlarmManager::shutdown() {
     if (!initialized_.load()) return;
     
-    logger_.Info("Shutting down AlarmManager");
+    LogManager::getInstance().Info("Shutting down AlarmManager");
     
     // JavaScript 엔진 정리
     cleanupScriptEngine();
@@ -80,7 +80,7 @@ void AlarmManager::shutdown() {
     }
     
     initialized_ = false;
-    logger_.Info("AlarmManager shutdown completed");
+    LogManager::getInstance().Info("AlarmManager shutdown completed");
 }
 
 // =============================================================================
@@ -99,12 +99,12 @@ void AlarmManager::initializeClients() {
         
         redis_client_ = std::make_shared<RedisClientImpl>();
         if (!redis_client_->connect(redis_host, redis_port, redis_password)) {
-            logger_.Warn("Failed to connect to Redis - enhanced alarm events will not be published");
+            LogManager::getInstance().Warn("Failed to connect to Redis - enhanced alarm events will not be published");
             redis_client_.reset();
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to initialize clients: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to initialize clients: " + std::string(e.what()));
     }
 }
 
@@ -113,7 +113,7 @@ void AlarmManager::initializeData() {
         // 🔥 AlarmEngine 초기화 확인
         auto& alarm_engine = AlarmEngine::getInstance();
         if (!alarm_engine.isInitialized()) {
-            logger_.Warn("AlarmEngine not initialized - some features may be limited");
+            LogManager::getInstance().Warn("AlarmEngine not initialized - some features may be limited");
         }
         
         // 다음 occurrence ID 로드 (데이터베이스에서 최대값 조회)
@@ -136,10 +136,10 @@ void AlarmManager::initializeData() {
             next_occurrence_id_ = 1;
         }
         
-        logger_.Debug("Initial data loaded, next occurrence ID: " + std::to_string(next_occurrence_id_.load()));
+        LogManager::getInstance().Debug("Initial data loaded, next occurrence ID: " + std::to_string(next_occurrence_id_.load()));
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to load initial data: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to load initial data: " + std::string(e.what()));
         next_occurrence_id_ = 1;  // 기본값 사용
     }
 }
@@ -153,7 +153,7 @@ bool AlarmManager::initScriptEngine() {
         // JavaScript 런타임 생성
         js_runtime_ = JS_NewRuntime();
         if (!js_runtime_) {
-            logger_.Error("Failed to create JS runtime for AlarmManager");
+            LogManager::getInstance().Error("Failed to create JS runtime for AlarmManager");
             return false;
         }
         
@@ -163,17 +163,17 @@ bool AlarmManager::initScriptEngine() {
         // Context 생성
         js_context_ = JS_NewContext((JSRuntime*)js_runtime_);
         if (!js_context_) {
-            logger_.Error("Failed to create JS context for AlarmManager");
+            LogManager::getInstance().Error("Failed to create JS context for AlarmManager");
             JS_FreeRuntime((JSRuntime*)js_runtime_);
             js_runtime_ = nullptr;
             return false;
         }
         
-        logger_.Info("Script engine initialized for AlarmManager");
+        LogManager::getInstance().Info("Script engine initialized for AlarmManager");
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("Script engine initialization failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("Script engine initialization failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -196,7 +196,7 @@ void AlarmManager::cleanupScriptEngine() {
 std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage& msg) {
     // 🔥 상태 체크
     if (!initialized_.load()) {
-        logger_.Error("AlarmManager not properly initialized");
+        LogManager::getInstance().Error("AlarmManager not properly initialized");
         return {};
     }
     
@@ -223,14 +223,14 @@ std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage
         total_evaluations_.fetch_add(msg.points.size());
         
         if (!enhanced_events.empty()) {
-            logger_.Info("AlarmManager processed " + std::to_string(enhanced_events.size()) + 
+            LogManager::getInstance().Info("AlarmManager processed " + std::to_string(enhanced_events.size()) + 
                         " enhanced alarm events");
         }
         
         return enhanced_events;
         
     } catch (const std::exception& e) {
-        logger_.Error("AlarmManager::evaluateForMessage failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("AlarmManager::evaluateForMessage failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -261,7 +261,7 @@ void AlarmManager::enhanceAlarmEvent(AlarmEvent& event, const DeviceDataMessage&
                     auto channels = rule->notification_channels.get<std::vector<std::string>>();
                     // TODO: event에 channels 추가 (Structs::AlarmEvent 확장 필요)
                 } catch (...) {
-                    logger_.Debug("Failed to parse notification channels for rule " + std::to_string(event.rule_id));
+                    LogManager::getInstance().Debug("Failed to parse notification channels for rule " + std::to_string(event.rule_id));
                 }
             }
             
@@ -281,7 +281,7 @@ void AlarmManager::enhanceAlarmEvent(AlarmEvent& event, const DeviceDataMessage&
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to enhance alarm event: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to enhance alarm event: " + std::string(e.what()));
     }
 }
 
@@ -345,7 +345,7 @@ std::string AlarmManager::generateAdvancedMessage(const AlarmRule& rule, const A
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to generate advanced message: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to generate advanced message: " + std::string(e.what()));
         return base_message;  // 에러 시 기본 메시지 반환
     }
     
@@ -373,7 +373,7 @@ void AlarmManager::adjustSeverityAndPriority(AlarmEvent& event, const AlarmRule&
                 event.severity = "critical";
             }
             
-            logger_.Debug("Severity upgraded for night time: " + event.severity);
+            LogManager::getInstance().Debug("Severity upgraded for night time: " + event.severity);
         }
         
         // 2. 주말/휴일 심각도 조정
@@ -385,7 +385,7 @@ void AlarmManager::adjustSeverityAndPriority(AlarmEvent& event, const AlarmRule&
                 event.severity = "high";
             }
             
-            logger_.Debug("Severity upgraded for weekend: " + event.severity);
+            LogManager::getInstance().Debug("Severity upgraded for weekend: " + event.severity);
         }
         
         // 3. 연속 알람 발생 시 심각도 상향 (향후 구현)
@@ -395,7 +395,7 @@ void AlarmManager::adjustSeverityAndPriority(AlarmEvent& event, const AlarmRule&
         // TODO: 중요 시설물에 대한 우선순위 상향 조정
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to adjust severity and priority: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to adjust severity and priority: " + std::string(e.what()));
     }
 }
 
@@ -455,10 +455,10 @@ void AlarmManager::publishToRedis(const AlarmEvent& event) {
             redis_client_->publish(channel, enhanced_alarm.dump());
         }
         
-        logger_.Debug("Enhanced alarm published to " + std::to_string(channels.size()) + " Redis channels");
+        LogManager::getInstance().Debug("Enhanced alarm published to " + std::to_string(channels.size()) + " Redis channels");
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to publish enhanced alarm to Redis: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to publish enhanced alarm to Redis: " + std::string(e.what()));
     }
 }
 
@@ -485,10 +485,10 @@ void AlarmManager::sendNotifications(const AlarmEvent& event) {
         //     slackService->sendAlarmNotification(event);
         // }
         
-        logger_.Debug("Notification processing completed for alarm " + std::to_string(event.occurrence_id));
+        LogManager::getInstance().Debug("Notification processing completed for alarm " + std::to_string(event.occurrence_id));
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to send notifications: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to send notifications: " + std::string(e.what()));
     }
 }
 
@@ -708,7 +708,7 @@ std::optional<AlarmRule> AlarmManager::getAlarmRule(int rule_id) const {
 
 bool AlarmManager::loadAlarmRules(int tenant_id) {
     if (!initialized_.load()) {
-        logger_.Error("AlarmManager not initialized");
+        LogManager::getInstance().Error("AlarmManager not initialized");
         return false;
     }
     
@@ -856,19 +856,19 @@ bool AlarmManager::loadAlarmRules(int tenant_id) {
             }
         }
         
-        logger_.Info("Loaded " + std::to_string(alarm_rules_.size()) + 
+        LogManager::getInstance().Info("Loaded " + std::to_string(alarm_rules_.size()) + 
                     " alarm rules for tenant " + std::to_string(tenant_id));
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to load alarm rules: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to load alarm rules: " + std::string(e.what()));
         return false;
     }
 }
 
 bool AlarmManager::reloadAlarmRule(int rule_id) {
     if (!initialized_.load()) {
-        logger_.Error("AlarmManager not initialized");
+        LogManager::getInstance().Error("AlarmManager not initialized");
         return false;
     }
     
@@ -891,7 +891,7 @@ bool AlarmManager::reloadAlarmRule(int rule_id) {
         auto results = db_manager.executeQuery(query, {std::to_string(rule_id)});
         
         if (results.empty()) {
-            logger_.Warn("Alarm rule not found or disabled: " + std::to_string(rule_id));
+            LogManager::getInstance().Warn("Alarm rule not found or disabled: " + std::to_string(rule_id));
             
             // 기존 규칙 제거
             std::unique_lock<std::shared_mutex> rules_lock(rules_mutex_);
@@ -910,11 +910,11 @@ bool AlarmManager::reloadAlarmRule(int rule_id) {
         std::unique_lock<std::shared_mutex> rules_lock(rules_mutex_);
         alarm_rules_[rule_id] = rule;
         
-        logger_.Info("Reloaded alarm rule: " + rule.name);
+        LogManager::getInstance().Info("Reloaded alarm rule: " + rule.name);
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to reload alarm rule " + std::to_string(rule_id) + ": " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to reload alarm rule " + std::to_string(rule_id) + ": " + std::string(e.what()));
         return false;
     }
 }
@@ -943,7 +943,7 @@ std::vector<AlarmRule> AlarmManager::getAlarmRulesForPoint(int point_id, const s
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to get alarm rules for point: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to get alarm rules for point: " + std::string(e.what()));
     }
     
     return rules;
@@ -1017,7 +1017,7 @@ std::string AlarmManager::generateMessage(const AlarmRule& rule, const DataValue
         return message;
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to generate message: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to generate message: " + std::string(e.what()));
         return "ALARM: " + rule.name + " (message generation failed)";
     }
 }
@@ -1068,7 +1068,7 @@ std::string AlarmManager::generateCustomMessage(const AlarmRule& rule, const Dat
             } else {
                 JSValue exception = JS_GetException((JSContext*)js_context_);
                 const char* error_str = JS_ToCString((JSContext*)js_context_, exception);
-                logger_.Error("Message script error: " + std::string(error_str ? error_str : "Unknown"));
+                LogManager::getInstance().Error("Message script error: " + std::string(error_str ? error_str : "Unknown"));
                 JS_FreeCString((JSContext*)js_context_, error_str);
                 JS_FreeValue((JSContext*)js_context_, exception);
             }
@@ -1080,7 +1080,7 @@ std::string AlarmManager::generateCustomMessage(const AlarmRule& rule, const Dat
         return generateMessage(rule, value);
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to generate custom message: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to generate custom message: " + std::string(e.what()));
         return generateMessage(rule, value);
     }
 }
@@ -1104,7 +1104,7 @@ std::string AlarmManager::interpolateTemplate(const std::string& tmpl,
             }
         }
     } catch (const std::exception& e) {
-        logger_.Error("Failed to interpolate template: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to interpolate template: " + std::string(e.what()));
     }
     
     return result;
@@ -1121,19 +1121,19 @@ bool AlarmManager::acknowledgeAlarm(int64_t occurrence_id, int user_id, const st
         auto occurrence = alarm_engine.getAlarmOccurrence(occurrence_id);
         
         if (!occurrence.has_value()) {
-            logger_.Error("Alarm occurrence not found: " + std::to_string(occurrence_id));
+            LogManager::getInstance().Error("Alarm occurrence not found: " + std::to_string(occurrence_id));
             return false;
         }
         
         // TODO: Repository를 통한 acknowledge 처리
         // occurrence_repo_->acknowledge(occurrence_id, user_id, comment);
         
-        logger_.Info("Alarm acknowledged: " + std::to_string(occurrence_id) + 
+        LogManager::getInstance().Info("Alarm acknowledged: " + std::to_string(occurrence_id) + 
                     " by user " + std::to_string(user_id));
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to acknowledge alarm: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to acknowledge alarm: " + std::string(e.what()));
         return false;
     }
 }
