@@ -129,10 +129,13 @@ endif
 
 PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
 
+# 🔥 AlarmEngine 소스 추가
+ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
+
 # 🚀 전체 소스 파일 (모든 파일 포함)
 ALL_SOURCES = $(UTILS_SOURCES) $(CONFIG_SOURCES) $(DATABASE_SOURCES) \
               $(CLIENT_SOURCES) $(WORKERS_SOURCES) $(DRIVERS_SOURCES) \
-              $(PIPELINE_SOURCES)
+              $(PIPELINE_SOURCES) $(ALARM_SOURCES)
 
 # 🚀 오브젝트 파일 생성 (증분 컴파일용)
 ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
@@ -164,7 +167,7 @@ $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)/Utils $(OBJ_DIR)/Config $(OBJ_DIR)/Database/Entities $(OBJ_DIR)/Database/Repositories
 	@mkdir -p $(OBJ_DIR)/Client $(OBJ_DIR)/Workers/Base $(OBJ_DIR)/Workers/Protocol $(OBJ_DIR)/Workers/Components
 	@mkdir -p $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
-	@mkdir -p $(OBJ_DIR)/Pipeline
+	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
