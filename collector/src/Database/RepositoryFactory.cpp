@@ -23,7 +23,7 @@
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
-
+#include "Database/Repositories/ScriptLibraryRepository.h"
 
 // ✅ 필수 STL 헤더들
 #include <map>
@@ -152,7 +152,7 @@ void RepositoryFactory::shutdown() {
         current_value_repository_.reset();
         device_settings_repository_.reset(); 
         alarm_occurrence_repository_.reset();
-
+        script_library_repository_.reset();
         
         initialized_.store(false);
         logger_->Info("✅ RepositoryFactory shutdown completed");
@@ -287,6 +287,13 @@ bool RepositoryFactory::createRepositoryInstances() {
             logger_->Error("Failed to create AlarmOccurrenceRepository");
             return false;
         }
+        // script_library_repo_ = std::make_shared<Repositories::ScriptLibraryRepository>();
+        //if (!script_library_repo_) {
+        //    logger_->Error("Failed to create ScriptLibraryRepository");
+        //    return false;
+        //}
+        logger_->Info("⚠️ ScriptLibraryRepository not created (implementation pending)");
+
                 
         logger_->Info("All repository instances created successfully");
         return true;

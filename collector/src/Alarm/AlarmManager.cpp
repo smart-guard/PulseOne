@@ -506,7 +506,7 @@ AlarmEvaluation AlarmManager::evaluateAnalogAlarm(const AlarmRule& rule, double 
     
     auto& alarm_engine = AlarmEngine::getInstance();
     auto rule_entity = convertToEntity(rule);
-    return alarm_engine.evaluateForMessage(msg);
+    return alarm_engine.evaluateAnalogAlarm(rule_entity, value);
 }
 
 AlarmEvaluation AlarmManager::evaluateDigitalAlarm(const AlarmRule& rule, bool state) {
@@ -587,29 +587,29 @@ Database::Entities::AlarmRuleEntity AlarmManager::convertToEntity(const AlarmRul
     
     entity.setTargetId(rule.target_id);
     
-    if (rule.alarm_type == "analog") {
+    if (rule.alarm_type == AlarmType::ANALOG) {
         entity.setAlarmType(Database::Entities::AlarmRuleEntity::AlarmType::ANALOG);
-    } else if (rule.alarm_type == "digital") {
+    } else if (rule.alarm_type == AlarmType::DIGITAL) {
         entity.setAlarmType(Database::Entities::AlarmRuleEntity::AlarmType::DIGITAL);
-    } else if (rule.alarm_type == "script") {
+    } else if (rule.alarm_type == AlarmType::SCRIPT) {
         entity.setAlarmType(Database::Entities::AlarmRuleEntity::AlarmType::SCRIPT);
     }
     
-    // 한계값들
-    if (rule.high_high_limit.has_value()) {
-        entity.setHighHighLimit(rule.high_high_limit.value());
+    // 한계값들 - AlarmRule의 구조체 사용
+    if (rule.analog_limits.high_high.has_value()) {
+        entity.setHighHighLimit(rule.analog_limits.high_high.value());
     }
-    if (rule.high_limit.has_value()) {
-        entity.setHighLimit(rule.high_limit.value());
+    if (rule.analog_limits.high.has_value()) {
+        entity.setHighLimit(rule.analog_limits.high.value());
     }
-    if (rule.low_limit.has_value()) {
-        entity.setLowLimit(rule.low_limit.value());
+    if (rule.analog_limits.low.has_value()) {
+        entity.setLowLimit(rule.analog_limits.low.value());
     }
-    if (rule.low_low_limit.has_value()) {
-        entity.setLowLowLimit(rule.low_low_limit.value());
+    if (rule.analog_limits.low_low.has_value()) {
+        entity.setLowLowLimit(rule.analog_limits.low_low.value());
     }
     
-    entity.setDeadband(rule.deadband);
+    entity.setDeadband(rule.analog_limits.deadband);
     entity.setAutoClear(rule.auto_clear);
     entity.setEnabled(rule.is_enabled);
     
@@ -620,14 +620,14 @@ Database::Entities::AlarmRuleEntity AlarmManager::convertToEntity(const AlarmRul
         entity.setMessageTemplate(rule.message_template);
     }
     
-    // 심각도 변환
-    if (rule.severity == "critical") {
+    // 심각도 변환 - enum to enum
+    if (rule.severity == AlarmSeverity::CRITICAL) {
         entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::CRITICAL);
-    } else if (rule.severity == "high") {
+    } else if (rule.severity == AlarmSeverity::HIGH) {
         entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::HIGH);
-    } else if (rule.severity == "medium") {
+    } else if (rule.severity == AlarmSeverity::MEDIUM) {
         entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::MEDIUM);
-    } else if (rule.severity == "low") {
+    } else if (rule.severity == AlarmSeverity::LOW) {
         entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::LOW);
     } else {
         entity.setSeverity(Database::Entities::AlarmRuleEntity::Severity::INFO);
@@ -711,12 +711,12 @@ bool AlarmManager::loadAlarmRules(int tenant_id) {
         std::string query = R"(
             SELECT id, name, description, target_type, target_id, target_group,
                    alarm_type, high_high_limit, high_limit, low_limit, low_low_limit,
-                   deadband, rate_of_change, trigger_condition, condition_script,
+                   deadband, digital_trigger, condition_script,
                    message_script, message_config, message_template, severity,
-                   priority, auto_acknowledge, acknowledge_timeout_min, auto_clear,
-                   suppression_rules, notification_enabled, notification_delay_sec,
-                   notification_repeat_interval_min, notification_channels,
-                   notification_recipients, is_enabled, is_latched
+                   priority, auto_acknowledge, acknowledge_timeout, auto_clear,
+                   notification_enabled, notification_delay,
+                   notification_channels,
+                   is_enabled, is_latched
             FROM alarm_rules
             WHERE tenant_id = )" + std::to_string(tenant_id) + R"( AND is_enabled = 1
         )";
@@ -741,7 +741,7 @@ bool AlarmManager::loadAlarmRules(int tenant_id) {
         
         // 🔥 컬럼 순서에 맞춰 파싱 (결과는 쿼리 SELECT 순서대로)
         for (const auto& row : raw_results) {
-            if (row.size() < 31) continue; // 최소 컬럼 수 체크
+            if (row.size() < 26) continue; // 최소 컬럼 수 체크
             
             AlarmRule rule;
             
@@ -759,96 +759,113 @@ bool AlarmManager::loadAlarmRules(int tenant_id) {
                 }
                 rule.target_group = row[5];  // target_group
                 
-                // 알람 타입
-                rule.alarm_type = row[6];  // alarm_type
+                // 알람 타입 (string to enum)
+                std::string alarm_type_str = row[6];  // alarm_type
+                if (alarm_type_str == "ANALOG" || alarm_type_str == "analog") {
+                    rule.alarm_type = AlarmType::ANALOG;
+                } else if (alarm_type_str == "DIGITAL" || alarm_type_str == "digital") {
+                    rule.alarm_type = AlarmType::DIGITAL;
+                } else if (alarm_type_str == "SCRIPT" || alarm_type_str == "script") {
+                    rule.alarm_type = AlarmType::SCRIPT;
+                } else {
+                    rule.alarm_type = AlarmType::ANALOG;
+                }
                 
                 // 아날로그 설정
                 if (!row[7].empty() && row[7] != "NULL") {  // high_high_limit
-                    rule.high_high_limit = std::stod(row[7]);
+                    rule.analog_limits.high_high = std::stod(row[7]);
                 }
                 if (!row[8].empty() && row[8] != "NULL") {  // high_limit
-                    rule.high_limit = std::stod(row[8]);
+                    rule.analog_limits.high = std::stod(row[8]);
                 }
                 if (!row[9].empty() && row[9] != "NULL") {  // low_limit
-                    rule.low_limit = std::stod(row[9]);
+                    rule.analog_limits.low = std::stod(row[9]);
                 }
                 if (!row[10].empty() && row[10] != "NULL") {  // low_low_limit
-                    rule.low_low_limit = std::stod(row[10]);
+                    rule.analog_limits.low_low = std::stod(row[10]);
                 }
                 
                 if (!row[11].empty() && row[11] != "NULL") {  // deadband
-                    rule.deadband = std::stod(row[11]);
-                }
-                if (!row[12].empty() && row[12] != "NULL") {  // rate_of_change
-                    rule.rate_of_change = std::stod(row[12]);
+                    rule.analog_limits.deadband = std::stod(row[11]);
                 }
                 
-                // 디지털 설정
-                rule.trigger_condition = row[13];  // trigger_condition
+                // 디지털 설정 (string to enum)
+                if (!row[12].empty() && row[12] != "NULL") {  // digital_trigger
+                    std::string trigger_str = row[12];
+                    if (trigger_str == "ON_TRUE") {
+                        rule.digital_trigger = DigitalTrigger::ON_TRUE;
+                    } else if (trigger_str == "ON_FALSE") {
+                        rule.digital_trigger = DigitalTrigger::ON_FALSE;
+                    } else if (trigger_str == "ON_CHANGE") {
+                        rule.digital_trigger = DigitalTrigger::ON_CHANGE;
+                    } else if (trigger_str == "ON_RISING") {
+                        rule.digital_trigger = DigitalTrigger::ON_RISING;
+                    } else if (trigger_str == "ON_FALLING") {
+                        rule.digital_trigger = DigitalTrigger::ON_FALLING;
+                    }
+                }
                 
                 // 스크립트
-                rule.condition_script = row[14];  // condition_script
-                rule.message_script = row[15];    // message_script
+                rule.condition_script = row[13];  // condition_script
+                rule.message_script = row[14];    // message_script
                 
                 // 메시지 설정
-                if (!row[16].empty() && row[16] != "NULL") {  // message_config
+                if (!row[15].empty() && row[15] != "NULL") {  // message_config
                     try {
-                        rule.message_config = json::parse(row[16]);
+                        rule.message_config = json::parse(row[15]);
                     } catch (...) {
                         rule.message_config = json::object();
                     }
                 }
-                rule.message_template = row[17];  // message_template
+                rule.message_template = row[16];  // message_template
                 
-                // 우선순위
-                rule.severity = row[18];  // severity
-                if (!row[19].empty() && row[19] != "NULL") {  // priority
-                    rule.priority = std::stoi(row[19]);
+                // 우선순위 (string to enum)
+                std::string severity_str = row[17];  // severity
+                if (severity_str == "CRITICAL" || severity_str == "critical") {
+                    rule.severity = AlarmSeverity::CRITICAL;
+                } else if (severity_str == "HIGH" || severity_str == "high") {
+                    rule.severity = AlarmSeverity::HIGH;
+                } else if (severity_str == "MEDIUM" || severity_str == "medium") {
+                    rule.severity = AlarmSeverity::MEDIUM;
+                } else if (severity_str == "LOW" || severity_str == "low") {
+                    rule.severity = AlarmSeverity::LOW;
+                } else {
+                    rule.severity = AlarmSeverity::INFO;
+                }
+                
+                if (!row[18].empty() && row[18] != "NULL") {  // priority
+                    rule.priority = std::stoi(row[18]);
                 }
                 
                 // 자동 처리
-                rule.auto_acknowledge = (row[20] == "1");  // auto_acknowledge
-                if (!row[21].empty() && row[21] != "NULL") {  // acknowledge_timeout_min
-                    rule.acknowledge_timeout_min = std::stoi(row[21]);
+                rule.auto_acknowledge = (row[19] == "1");  // auto_acknowledge
+                if (!row[20].empty() && row[20] != "NULL") {  // acknowledge_timeout
+                    rule.acknowledge_timeout = std::chrono::minutes(std::stoi(row[20]));
                 }
-                rule.auto_clear = (row[22] == "1");  // auto_clear
-                
-                // 억제 규칙
-                if (!row[23].empty() && row[23] != "NULL") {  // suppression_rules
-                    try {
-                        rule.suppression_rules = json::parse(row[23]);
-                    } catch (...) {
-                        rule.suppression_rules = json::object();
-                    }
-                }
+                rule.auto_clear = (row[21] == "1");  // auto_clear
                 
                 // 알림 설정
-                rule.notification_enabled = (row[24] == "1");  // notification_enabled
-                if (!row[25].empty() && row[25] != "NULL") {  // notification_delay_sec
-                    rule.notification_delay_sec = std::stoi(row[25]);
-                }
-                if (!row[26].empty() && row[26] != "NULL") {  // notification_repeat_interval_min
-                    rule.notification_repeat_interval_min = std::stoi(row[26]);
+                rule.notification_enabled = (row[22] == "1");  // notification_enabled
+                if (!row[23].empty() && row[23] != "NULL") {  // notification_delay
+                    rule.notification_delay = std::chrono::seconds(std::stoi(row[23]));
                 }
                 
-                if (!row[27].empty() && row[27] != "NULL") {  // notification_channels
+                if (!row[24].empty() && row[24] != "NULL") {  // notification_channels
                     try {
-                        rule.notification_channels = json::parse(row[27]);
+                        auto channels_json = json::parse(row[24]);
+                        if (channels_json.is_array()) {
+                            for (const auto& channel : channels_json) {
+                                rule.notification_channels.push_back(channel.get<std::string>());
+                            }
+                        }
                     } catch (...) {
-                        rule.notification_channels = json::array();
-                    }
-                }
-                if (!row[28].empty() && row[28] != "NULL") {  // notification_recipients
-                    try {
-                        rule.notification_recipients = json::parse(row[28]);
-                    } catch (...) {
-                        rule.notification_recipients = json::array();
+                        // JSON 파싱 실패 시 무시
                     }
                 }
                 
                 // 상태
                 rule.is_enabled = true;  // 쿼리에서 이미 is_enabled = 1 조건
-                rule.is_latched = (row[30] == "1");  // is_latched
+                rule.is_latched = (row[25] == "1");  // is_latched
                 
                 // 저장
                 alarm_rules_[rule.id] = rule;
@@ -893,13 +910,7 @@ bool AlarmManager::reloadAlarmRule(int rule_id) {
         
         std::string query = R"(
             SELECT tenant_id, name, description, target_type, target_id, target_group,
-                   alarm_type, high_high_limit, high_limit, low_limit, low_low_limit,
-                   deadband, rate_of_change, trigger_condition, condition_script,
-                   message_script, message_config, message_template, severity,
-                   priority, auto_acknowledge, acknowledge_timeout_min, auto_clear,
-                   suppression_rules, notification_enabled, notification_delay_sec,
-                   notification_repeat_interval_min, notification_channels,
-                   notification_recipients, is_enabled, is_latched
+                   alarm_type, severity, is_enabled
             FROM alarm_rules
             WHERE id = )" + std::to_string(rule_id) + R"( AND is_enabled = 1
         )";
@@ -931,8 +942,29 @@ bool AlarmManager::reloadAlarmRule(int rule_id) {
         if (!row[4].empty()) {
             rule.target_id = std::stoi(row[4]);
         }
-        rule.alarm_type = row[6];
-        rule.severity = row[18];
+        
+        std::string alarm_type_str = row[6];
+        if (alarm_type_str == "ANALOG" || alarm_type_str == "analog") {
+            rule.alarm_type = AlarmType::ANALOG;
+        } else if (alarm_type_str == "DIGITAL" || alarm_type_str == "digital") {
+            rule.alarm_type = AlarmType::DIGITAL;
+        } else if (alarm_type_str == "SCRIPT" || alarm_type_str == "script") {
+            rule.alarm_type = AlarmType::SCRIPT;
+        }
+        
+        std::string severity_str = row[7];
+        if (severity_str == "CRITICAL" || severity_str == "critical") {
+            rule.severity = AlarmSeverity::CRITICAL;
+        } else if (severity_str == "HIGH" || severity_str == "high") {
+            rule.severity = AlarmSeverity::HIGH;
+        } else if (severity_str == "MEDIUM" || severity_str == "medium") {
+            rule.severity = AlarmSeverity::MEDIUM;
+        } else if (severity_str == "LOW" || severity_str == "low") {
+            rule.severity = AlarmSeverity::LOW;
+        } else {
+            rule.severity = AlarmSeverity::INFO;
+        }
+        
         rule.is_enabled = true;
         
         std::unique_lock<std::shared_mutex> rules_lock(rules_mutex_);
@@ -1001,10 +1033,24 @@ std::string AlarmManager::generateMessage(const AlarmRule& rule, const DataValue
             std::map<std::string, std::string> variables = {
                 {"NAME", rule.name},
                 {"CONDITION", condition},
-                {"SEVERITY", rule.severity},
                 {"TARGET_TYPE", rule.target_type},
                 {"TARGET_ID", std::to_string(rule.target_id)}
             };
+            
+            // severity enum to string
+            std::string severity_str;
+            if (rule.severity == AlarmSeverity::CRITICAL) {
+                severity_str = "CRITICAL";
+            } else if (rule.severity == AlarmSeverity::HIGH) {
+                severity_str = "HIGH";
+            } else if (rule.severity == AlarmSeverity::MEDIUM) {
+                severity_str = "MEDIUM";
+            } else if (rule.severity == AlarmSeverity::LOW) {
+                severity_str = "LOW";
+            } else {
+                severity_str = "INFO";
+            }
+            variables["SEVERITY"] = severity_str;
             
             // 값 변환
             std::string value_str;
@@ -1042,7 +1088,18 @@ std::string AlarmManager::generateMessage(const AlarmRule& rule, const DataValue
                 }
             }, value);
             
-            message += " - Severity: " + rule.severity;
+            message += " - Severity: ";
+            if (rule.severity == AlarmSeverity::CRITICAL) {
+                message += "CRITICAL";
+            } else if (rule.severity == AlarmSeverity::HIGH) {
+                message += "HIGH";
+            } else if (rule.severity == AlarmSeverity::MEDIUM) {
+                message += "MEDIUM";
+            } else if (rule.severity == AlarmSeverity::LOW) {
+                message += "LOW";
+            } else {
+                message += "INFO";
+            }
         }
         
         return message;
@@ -1067,7 +1124,21 @@ std::string AlarmManager::generateCustomMessage(const AlarmRule& rule, const Dat
             // 값을 JavaScript 변수로 설정
             std::string js_code = "var ruleId = " + std::to_string(rule.id) + "; ";
             js_code += "var ruleName = '" + rule.name + "'; ";
-            js_code += "var severity = '" + rule.severity + "'; ";
+            
+            // severity enum to string
+            std::string severity_str;
+            if (rule.severity == AlarmSeverity::CRITICAL) {
+                severity_str = "CRITICAL";
+            } else if (rule.severity == AlarmSeverity::HIGH) {
+                severity_str = "HIGH";
+            } else if (rule.severity == AlarmSeverity::MEDIUM) {
+                severity_str = "MEDIUM";
+            } else if (rule.severity == AlarmSeverity::LOW) {
+                severity_str = "LOW";
+            } else {
+                severity_str = "INFO";
+            }
+            js_code += "var severity = '" + severity_str + "'; ";
             
             std::visit([&js_code](const auto& v) {
                 using T = std::decay_t<decltype(v)>;
