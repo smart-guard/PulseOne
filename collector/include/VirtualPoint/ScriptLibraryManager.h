@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/VirtualPoint/ScriptLibraryManager.h
-// PulseOne 스크립트 라이브러리 매니저
+// PulseOne 스크립트 라이브러리 매니저 - shared_mutex 헤더 추가
 // =============================================================================
 
 #ifndef SCRIPT_LIBRARY_MANAGER_H
@@ -11,6 +11,7 @@
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>  // 🔥 누락된 헤더 추가
 #include <optional>
 #include <nlohmann/json.hpp>
 #include "Database/DatabaseManager.h"
@@ -232,7 +233,7 @@ private:
     std::vector<std::string> system_script_names_;
     
     // 동기화
-    mutable std::shared_mutex cache_mutex_;
+    mutable std::shared_mutex cache_mutex_;  // 🔥 이제 컴파일 됨
     
     // 설정
     bool cache_enabled_ = true;
