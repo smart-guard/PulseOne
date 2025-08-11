@@ -17,7 +17,6 @@
 #include <nlohmann/json.hpp>
 
 #include "Common/Structs.h"
-#include "Database/DatabaseManager.h"
 #include "Database/Entities/AlarmRuleEntity.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"

@@ -29,9 +29,9 @@ AlarmEngine& AlarmEngine::getInstance() {
 
 AlarmEngine::AlarmEngine() 
     : db_manager_(DatabaseManager::getInstance())
-    , logger_(Utils::LogManager::getInstance()) {
+    , LogManager::getInstance()(Utils::LogManager::getInstance()) {
     
-    logger_.Debug("AlarmEngine constructor starting...");
+    LogManager::getInstance().Debug("AlarmEngine constructor starting...");
     
     try {
         // 🔥 생성자에서 모든 초기화를 완료
@@ -41,10 +41,10 @@ AlarmEngine::AlarmEngine()
         loadInitialData();
         
         initialized_ = true;
-        logger_.Info("AlarmEngine initialized successfully in constructor");
+        LogManager::getInstance().Info("AlarmEngine initialized successfully in constructor");
         
     } catch (const std::exception& e) {
-        logger_.Error("AlarmEngine constructor failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("AlarmEngine constructor failed: " + std::string(e.what()));
         initialized_ = false;  // 실패 표시
     }
 }
@@ -60,7 +60,7 @@ AlarmEngine::~AlarmEngine() {
 void AlarmEngine::shutdown() {
     if (!initialized_.load()) return;
     
-    logger_.Info("Shutting down AlarmEngine");
+    LogManager::getInstance().Info("Shutting down AlarmEngine");
     
     // JavaScript 엔진 정리
     cleanupScriptEngine();
@@ -87,7 +87,7 @@ void AlarmEngine::shutdown() {
     }
     
     initialized_ = false;
-    logger_.Info("AlarmEngine shutdown completed");
+    LogManager::getInstance().Info("AlarmEngine shutdown completed");
 }
 
 // =============================================================================
@@ -106,7 +106,7 @@ void AlarmEngine::initializeClients() {
         
         redis_client_ = std::make_shared<RedisClientImpl>();
         if (!redis_client_->connect(redis_host, redis_port, redis_password)) {
-            logger_.Warn("Failed to connect to Redis - alarm events will not be published");
+            LogManager::getInstance().Warn("Failed to connect to Redis - alarm events will not be published");
             redis_client_.reset();
         }
         
@@ -114,7 +114,7 @@ void AlarmEngine::initializeClients() {
         // mq_client_ = std::make_shared<RabbitMQClient>();
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to initialize clients: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to initialize clients: " + std::string(e.what()));
     }
 }
 
@@ -132,15 +132,15 @@ void AlarmEngine::initializeRepositories() {
         );
         
         if (!alarm_rule_repo_) {
-            logger_.Error("Failed to get AlarmRuleRepository from factory");
+            LogManager::getInstance().Error("Failed to get AlarmRuleRepository from factory");
         }
         
         if (!alarm_occurrence_repo_) {
-            logger_.Error("Failed to get AlarmOccurrenceRepository from factory");
+            LogManager::getInstance().Error("Failed to get AlarmOccurrenceRepository from factory");
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to initialize repositories: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to initialize repositories: " + std::string(e.what()));
     }
 }
 
@@ -152,10 +152,10 @@ void AlarmEngine::loadInitialData() {
             next_occurrence_id_ = max_occurrence ? (*max_occurrence + 1) : 1;
         }
         
-        logger_.Debug("Initial data loaded successfully");
+        LogManager::getInstance().Debug("Initial data loaded successfully");
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to load initial data: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to load initial data: " + std::string(e.what()));
         // 에러가 있어도 계속 진행 (기본값 사용)
         next_occurrence_id_ = 1;
     }
@@ -170,7 +170,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForMessage(const DeviceDataMessage&
     
     // 🔥 간단한 상태 체크만
     if (!initialized_.load()) {
-        logger_.Error("AlarmEngine not properly initialized");
+        LogManager::getInstance().Error("AlarmEngine not properly initialized");
         return alarm_events;
     }
     
@@ -185,7 +185,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForMessage(const DeviceDataMessage&
         
     } catch (const std::exception& e) {
         evaluations_errors_.fetch_add(1);
-        logger_.Error("Failed to evaluate alarm for message: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to evaluate alarm for message: " + std::string(e.what()));
     }
     
     return alarm_events;
@@ -198,7 +198,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
     
     // 🔥 상태 체크
     if (!initialized_.load()) {
-        logger_.Error("AlarmEngine not properly initialized");
+        LogManager::getInstance().Error("AlarmEngine not properly initialized");
         return alarm_events;
     }
     
@@ -211,7 +211,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
         try {
             numeric_id = std::stoi(point_id.substr(3));
         } catch (...) {
-            logger_.Error("Invalid data point ID format: " + point_id);
+            LogManager::getInstance().Error("Invalid data point ID format: " + point_id);
             return alarm_events;
         }
     } else if (point_id.find("vp_") == 0) {
@@ -219,11 +219,11 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
         try {
             numeric_id = std::stoi(point_id.substr(3));
         } catch (...) {
-            logger_.Error("Invalid virtual point ID format: " + point_id);
+            LogManager::getInstance().Error("Invalid virtual point ID format: " + point_id);
             return alarm_events;
         }
     } else {
-        logger_.Debug("Unsupported point ID format: " + point_id);
+        LogManager::getInstance().Debug("Unsupported point ID format: " + point_id);
         return alarm_events;
     }
     
@@ -261,7 +261,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
                         publishToRedis(event);
                         // sendToMessageQueue(event);  // 🔥 RabbitMQ 주석 처리
                         
-                        logger_.Info("Alarm triggered: " + rule.getName() + " - " + eval.message);
+                        LogManager::getInstance().Info("Alarm triggered: " + rule.getName() + " - " + eval.message);
                     }
                 } else if (eval.should_clear) {
                     // 알람 해제
@@ -270,14 +270,14 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
                     if (it != rule_occurrence_map_.end()) {
                         lock.unlock();
                         clearAlarm(it->second, value);
-                        logger_.Info("Alarm cleared: " + rule.getName());
+                        LogManager::getInstance().Info("Alarm cleared: " + rule.getName());
                     }
                 }
             }
             
         } catch (const std::exception& e) {
             evaluations_errors_.fetch_add(1);
-            logger_.Error("Failed to evaluate rule " + rule.getName() + ": " + std::string(e.what()));
+            LogManager::getInstance().Error("Failed to evaluate rule " + rule.getName() + ": " + std::string(e.what()));
         }
     }
     
@@ -293,7 +293,7 @@ AlarmEvaluation AlarmEngine::evaluateRule(const AlarmRuleEntity& rule, const Dat
     
     // 🔥 상태 체크
     if (!initialized_.load()) {
-        logger_.Error("AlarmEngine not properly initialized");
+        LogManager::getInstance().Error("AlarmEngine not properly initialized");
         return eval;
     }
     
@@ -352,7 +352,7 @@ AlarmEvaluation AlarmEngine::evaluateRule(const AlarmRuleEntity& rule, const Dat
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to evaluate rule " + rule.getName() + ": " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to evaluate rule " + rule.getName() + ": " + std::string(e.what()));
     }
     
     // 평가 시간 계산
@@ -547,7 +547,7 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule, co
     eval.severity = rule.getSeverityString();
     
     if (!js_context_) {
-        logger_.Error("JavaScript engine not available for script alarm");
+        LogManager::getInstance().Error("JavaScript engine not available for script alarm");
         return eval;
     }
     
@@ -581,7 +581,7 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule, co
         if (JS_IsException(eval_result)) {
             JSValue exception = JS_GetException((JSContext*)js_context_);
             const char* error_str = JS_ToCString((JSContext*)js_context_, exception);
-            logger_.Error("Script alarm evaluation error: " + std::string(error_str ? error_str : "Unknown"));
+            LogManager::getInstance().Error("Script alarm evaluation error: " + std::string(error_str ? error_str : "Unknown"));
             JS_FreeCString((JSContext*)js_context_, error_str);
             JS_FreeValue((JSContext*)js_context_, exception);
         } else {
@@ -609,7 +609,7 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule, co
         JS_FreeValue((JSContext*)js_context_, eval_result);
         
     } catch (const std::exception& e) {
-        logger_.Error("Script alarm evaluation failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("Script alarm evaluation failed: " + std::string(e.what()));
     }
     
     return eval;
@@ -657,7 +657,7 @@ std::optional<int64_t> AlarmEngine::raiseAlarm(const AlarmRuleEntity& rule,
         }
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to raise alarm: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to raise alarm: " + std::string(e.what()));
     }
     
     return std::nullopt;
@@ -674,7 +674,7 @@ bool AlarmEngine::initScriptEngine() {
     try {
         js_runtime_ = JS_NewRuntime();
         if (!js_runtime_) {
-            logger_.Error("Failed to create JS runtime");
+            LogManager::getInstance().Error("Failed to create JS runtime");
             return false;
         }
         
@@ -683,17 +683,17 @@ bool AlarmEngine::initScriptEngine() {
         
         js_context_ = JS_NewContext((JSRuntime*)js_runtime_);
         if (!js_context_) {
-            logger_.Error("Failed to create JS context");
+            LogManager::getInstance().Error("Failed to create JS context");
             JS_FreeRuntime((JSRuntime*)js_runtime_);
             js_runtime_ = nullptr;
             return false;
         }
         
-        logger_.Info("JavaScript engine initialized for script alarms");
+        LogManager::getInstance().Info("JavaScript engine initialized for script alarms");
         return true;
         
     } catch (const std::exception& e) {
-        logger_.Error("JavaScript engine initialization failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("JavaScript engine initialization failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -770,7 +770,7 @@ void AlarmEngine::publishToRedis(const AlarmEvent& event) {
         redis_client_->publish(channel, alarm_json.dump());
         
     } catch (const std::exception& e) {
-        logger_.Error("Failed to publish alarm to Redis: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to publish alarm to Redis: " + std::string(e.what()));
     }
 }
 
@@ -800,7 +800,7 @@ std::vector<AlarmOccurrenceEntity> AlarmEngine::getActiveAlarms(int tenant_id) c
     try {
         return alarm_occurrence_repo_->findActiveByTenantId(tenant_id);
     } catch (const std::exception& e) {
-        logger_.Error("Failed to get active alarms: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to get active alarms: " + std::string(e.what()));
         return {};
     }
 }
@@ -813,7 +813,7 @@ std::optional<AlarmOccurrenceEntity> AlarmEngine::getAlarmOccurrence(int64_t occ
     try {
         return alarm_occurrence_repo_->findById(occurrence_id);
     } catch (const std::exception& e) {
-        logger_.Error("Failed to get alarm occurrence: " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to get alarm occurrence: " + std::string(e.what()));
         return std::nullopt;
     }
 }
