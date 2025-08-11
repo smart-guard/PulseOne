@@ -251,7 +251,6 @@ private:
     
     // 🔥 구현부와 일치하는 참조형 멤버 변수들
     Database::DatabaseManager& db_manager_;
-    Utils::LogManager& logger_;
     
     // 🔥 구현부와 일치하는 포인터 멤버들
     std::shared_ptr<RedisClientImpl> redis_client_;

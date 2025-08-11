@@ -185,7 +185,7 @@ $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)/Utils $(OBJ_DIR)/Config $(OBJ_DIR)/Database/Entities $(OBJ_DIR)/Database/Repositories
 	@mkdir -p $(OBJ_DIR)/Client $(OBJ_DIR)/Workers/Base $(OBJ_DIR)/Workers/Protocol $(OBJ_DIR)/Workers/Components
 	@mkdir -p $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
-	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint
+	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Plugin $(OBJ_DIR)/Core
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
