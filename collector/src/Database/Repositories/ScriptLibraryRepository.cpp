@@ -22,6 +22,7 @@
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Database/ExtendedSQLQueries.h"  // 🔥 새로운 분리된 쿼리 파일
+#include "Utils/LogManager.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -39,9 +40,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findAll() {
         if (!ensureTableExists()) {
             LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR, 
                                         "findAll - Table creation failed");
-            return {} // namespace Repositories
-} // namespace Database
-} // namespace PulseOne;
+            return {};  // 🔥 수정: 올바른 빈 벡터 반환
         }
         
         DatabaseAbstractionLayer db_layer;
@@ -885,14 +884,7 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findByName(int tenan
         
         // 🎯 ExtendedSQLQueries.h 패턴 (두 개 매개변수)
         std::vector<std::string> params = {std::to_string(tenant_id), name};
-        std::string query = "SELECT " + 
-            "id, tenant_id, name, display_name, description, category, " +
-            "script_code, parameters, return_type, tags, example_usage, " +
-            "is_system, is_template, usage_count, rating, version, " +
-            "author, license, dependencies, created_at, updated_at " +
-            "FROM script_library " +
-            "WHERE (tenant_id = ? OR is_system = 1) AND name = ?";
-        
+        std::string query = SQL::ScriptLibrary::FIND_BY_NAME;
         RepositoryHelpers::replaceParameterPlaceholders(query, params);
         auto results = db_layer.executeQuery(query);
         
@@ -1086,15 +1078,13 @@ std::vector<std::map<std::string, std::string>> ScriptLibraryRepository::getTemp
         
         DatabaseAbstractionLayer db_layer;
         
-        std::string query = "SELECT id, name, display_name, description, category, " +
-                           "script_code, parameters, return_type, example_usage " +
-                           "FROM script_library WHERE is_template = 1";
-        
-        if (!category.empty()) {
-            query += " AND category = '" + category + "'";
+        std::string query;
+        if (category.empty()) {
+            query = SQL::ScriptLibrary::FIND_TEMPLATES;
+        } else {
+            query = RepositoryHelpers::replaceParameterWithQuotes(
+                SQL::ScriptLibrary::FIND_TEMPLATES_BY_CATEGORY, category);
         }
-        
-        query += " ORDER BY category, name";
         
         auto results = db_layer.executeQuery(query);
         
@@ -1136,10 +1126,8 @@ std::optional<std::map<std::string, std::string>> ScriptLibraryRepository::getTe
         
         DatabaseAbstractionLayer db_layer;
         
-        std::string query = "SELECT id, name, display_name, description, category, " +
-                           "script_code, parameters, return_type, example_usage " +
-                           "FROM script_library WHERE is_template = 1 AND id = " + 
-                           std::to_string(template_id);
+        std::string query = RepositoryHelpers::replaceParameter(
+        SQL::ScriptLibrary::FIND_TEMPLATE_BY_ID, std::to_string(template_id));
         
         auto results = db_layer.executeQuery(query);
         
@@ -1169,54 +1157,72 @@ std::optional<std::map<std::string, std::string>> ScriptLibraryRepository::getTe
 }
 
 nlohmann::json ScriptLibraryRepository::getUsageStatistics(int tenant_id) {
-    nlohmann::json stats = nlohmann::json::object();
-    
-    try {
-        if (!ensureTableExists()) {
-            return stats;
-        }
-        
-        DatabaseAbstractionLayer db_layer;
-        
-        std::string where_clause = "";
-        if (tenant_id > 0) {
-            where_clause = " WHERE tenant_id = " + std::to_string(tenant_id);
-        }
-        
-        // 총 스크립트 수
-        std::string count_query = "SELECT COUNT(*) as total_scripts FROM script_library" + where_clause;
-        auto count_results = db_layer.executeQuery(count_query);
-        if (!count_results.empty()) {
-            stats["total_scripts"] = std::stoi(count_results[0].at("total_scripts"));
-        }
-        
-        // 카테고리별 통계
-        std::string category_query = "SELECT category, COUNT(*) as count FROM script_library" + 
-                                    where_clause + " GROUP BY category";
-        auto category_results = db_layer.executeQuery(category_query);
-        nlohmann::json category_stats = nlohmann::json::object();
-        for (const auto& row : category_results) {
-            category_stats[row.at("category")] = std::stoi(row.at("count"));
-        }
-        stats["by_category"] = category_stats;
-        
-        // 사용량 통계
-        std::string usage_query = "SELECT SUM(usage_count) as total_usage, " +
-                                 "AVG(usage_count) as avg_usage FROM script_library" + where_clause;
-        auto usage_results = db_layer.executeQuery(usage_query);
-        if (!usage_results.empty()) {
-            stats["total_usage"] = std::stoi(usage_results[0].at("total_usage"));
-            stats["average_usage"] = std::stod(usage_results[0].at("avg_usage"));
-        }
-        
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::DEBUG,
-                                    "getUsageStatistics - Generated statistics for tenant: " + std::to_string(tenant_id));
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
-                                    "getUsageStatistics failed: " + std::string(e.what()));
-        stats["error"] = e.what();
-    }
-    
-    return stats;
+   nlohmann::json stats = nlohmann::json::object();
+   
+   try {
+       if (!ensureTableExists()) {
+           return stats;
+       }
+       
+       DatabaseAbstractionLayer db_layer;
+       
+       // 🎯 ExtendedSQLQueries.h 사용 - 총 스크립트 수
+       std::string count_query;
+       if (tenant_id > 0) {
+           count_query = RepositoryHelpers::replaceParameter(
+               SQL::ScriptLibrary::COUNT_BY_TENANT, std::to_string(tenant_id));
+       } else {
+           count_query = SQL::ScriptLibrary::COUNT_ALL_SCRIPTS;
+       }
+       
+       auto count_results = db_layer.executeQuery(count_query);
+       if (!count_results.empty()) {
+           stats["total_scripts"] = std::stoi(count_results[0].at("total_scripts"));
+       }
+       
+       // 🎯 ExtendedSQLQueries.h 사용 - 카테고리별 통계
+       std::string category_query;
+       if (tenant_id > 0) {
+           category_query = RepositoryHelpers::replaceParameter(
+               SQL::ScriptLibrary::GROUP_BY_CATEGORY_AND_TENANT, std::to_string(tenant_id));
+       } else {
+           category_query = SQL::ScriptLibrary::GROUP_BY_CATEGORY;
+       }
+       
+       auto category_results = db_layer.executeQuery(category_query);
+       nlohmann::json category_stats = nlohmann::json::object();
+       for (const auto& row : category_results) {
+           category_stats[row.at("category")] = std::stoi(row.at("count"));
+       }
+       stats["by_category"] = category_stats;
+       
+       // 🎯 ExtendedSQLQueries.h 사용 - 사용량 통계
+       std::string usage_query;
+       if (tenant_id > 0) {
+           usage_query = RepositoryHelpers::replaceParameter(
+               SQL::ScriptLibrary::USAGE_STATISTICS_BY_TENANT, std::to_string(tenant_id));
+       } else {
+           usage_query = SQL::ScriptLibrary::USAGE_STATISTICS;
+       }
+       
+       auto usage_results = db_layer.executeQuery(usage_query);
+       if (!usage_results.empty()) {
+           stats["total_usage"] = std::stoi(usage_results[0].at("total_usage"));
+           stats["average_usage"] = std::stod(usage_results[0].at("avg_usage"));
+       }
+       
+       LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::DEBUG,
+                                   "getUsageStatistics - Generated statistics for tenant: " + std::to_string(tenant_id));
+       
+   } catch (const std::exception& e) {
+       LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+                                   "getUsageStatistics failed: " + std::string(e.what()));
+       stats["error"] = e.what();
+   }
+   
+   return stats;
 }
+
+} // namespace Repositories
+} // namespace Database
+} // namespace PulseOne

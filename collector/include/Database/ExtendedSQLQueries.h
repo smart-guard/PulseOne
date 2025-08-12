@@ -453,6 +453,76 @@ namespace ScriptLibrary {
         WHERE id = ?
     )";
 
+    const std::string FIND_BY_NAME = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE (tenant_id = ? OR is_system = 1) AND name = ?
+    )";
+    
+    const std::string FIND_TEMPLATES = R"(
+        SELECT id, name, display_name, description, category,
+               script_code, parameters, return_type, example_usage
+        FROM script_library 
+        WHERE is_template = 1
+        ORDER BY category, name
+    )";
+    
+    const std::string FIND_TEMPLATE_BY_ID = R"(
+        SELECT id, name, display_name, description, category,
+               script_code, parameters, return_type, example_usage
+        FROM script_library 
+        WHERE is_template = 1 AND id = ?
+    )";
+    
+    const std::string FIND_TEMPLATES_BY_CATEGORY = R"(
+        SELECT id, name, display_name, description, category,
+               script_code, parameters, return_type, example_usage
+        FROM script_library 
+        WHERE is_template = 1 AND category = ?
+        ORDER BY name
+    )";
+    
+    const std::string COUNT_ALL_SCRIPTS = R"(
+        SELECT COUNT(*) as total_scripts 
+        FROM script_library
+    )";
+    
+    const std::string COUNT_BY_TENANT = R"(
+        SELECT COUNT(*) as total_scripts 
+        FROM script_library 
+        WHERE tenant_id = ?
+    )";
+    
+    const std::string GROUP_BY_CATEGORY = R"(
+        SELECT category, COUNT(*) as count 
+        FROM script_library 
+        GROUP BY category
+    )";
+    
+    const std::string GROUP_BY_CATEGORY_AND_TENANT = R"(
+        SELECT category, COUNT(*) as count 
+        FROM script_library 
+        WHERE tenant_id = ? 
+        GROUP BY category
+    )";
+    
+    const std::string USAGE_STATISTICS = R"(
+        SELECT SUM(usage_count) as total_usage, 
+               AVG(usage_count) as avg_usage 
+        FROM script_library
+    )";
+    
+    const std::string USAGE_STATISTICS_BY_TENANT = R"(
+        SELECT SUM(usage_count) as total_usage, 
+               AVG(usage_count) as avg_usage 
+        FROM script_library 
+        WHERE tenant_id = ?
+    )";
+
 } // namespace ScriptLibrary
 
 } // namespace SQL
