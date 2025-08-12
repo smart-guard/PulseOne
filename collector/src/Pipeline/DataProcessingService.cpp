@@ -780,7 +780,7 @@ void DataProcessingService::UpdateAlarmStatistics(size_t evaluated_count,
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::WARNING, 
+        LogManager::getInstance().log("processing", LogLevel::WARN, 
                                      "통계 업데이트 실패: " + std::string(e.what()));
     }
 }
