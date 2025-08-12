@@ -4,6 +4,7 @@
 
 #include "Pipeline/DataProcessingService.h"
 #include "Pipeline/PipelineManager.h"
+#include "Alarm/AlarmEngine.h"
 #include "Alarm/AlarmManager.h"  // 🔥 추가
 #include "Utils/LogManager.h"
 #include "Common/Structs.h"
@@ -543,6 +544,26 @@ DataProcessingService::ExtendedProcessingStats DataProcessingService::GetExtende
     stats.processing = GetStatistics();
     stats.alarms = GetAlarmStatistics();
     return stats;
+}
+
+void DataProcessingService::evaluateAlarmsForMessage(const Structs::DeviceDataMessage& message) {
+    try {
+        auto& alarm_engine = Alarm::AlarmEngine::getInstance();
+        
+        if (!alarm_engine.isInitialized()) {
+            // 알람 엔진 초기화 안됨 - 조용히 스킵
+            return;
+        }
+        
+        // 🔥 메시지 전체를 AlarmEngine에 전달
+        alarm_engine.evaluateForMessage(message);
+        
+    } catch (const std::exception& e) {
+        // 🔥 수정: LogMessage -> LogManager::getInstance().log
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "🚨 알람 평가 중 에러: " + std::string(e.what()));
+        // 알람 평가 실패해도 데이터 처리는 계속 진행 (Graceful degradation)
+    }
 }
 
 } // namespace Pipeline

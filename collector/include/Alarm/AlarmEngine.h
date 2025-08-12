@@ -269,6 +269,12 @@ private:
     std::atomic<uint64_t> alarms_cleared_{0};
     std::atomic<uint64_t> evaluations_errors_{0};
     std::atomic<int64_t> next_occurrence_id_{1};
+
+        // Redis 이벤트 발송
+    void publishAlarmClearedEvent(const AlarmOccurrenceEntity& alarm);
+    
+    // 헬퍼 메서드들
+    size_t getActiveAlarmsCount() const;
 };
 
 } // namespace Alarm
