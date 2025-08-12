@@ -157,11 +157,11 @@ ALL_SOURCES = $(UTILS_SOURCES) $(CONFIG_SOURCES) $(DATABASE_SOURCES) \
 # 🚀 오브젝트 파일 생성 (증분 컴파일용)
 ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
 
-# 🔥 테스트 파일들 정의
+# 🔥 테스트 파일들 정의 (🚀 step6을 enhanced로 변경)
 TEST_OBJECTS = $(OBJ_DIR)/test_step3_workers.o \
                $(OBJ_DIR)/test_step4_driver_data_validation.o \
                $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
-               $(OBJ_DIR)/test_step6_full_pipeline.o
+               $(OBJ_DIR)/test_step6_enhanced_pipeline.o
 
 # 색상 정의
 GREEN = \033[0;32m
@@ -216,10 +216,11 @@ $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_
 	@echo -e "$(YELLOW)🔨 Compiling test_step5_complete_db_integration_validation...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-$(OBJ_DIR)/test_step6_full_pipeline.o: test_step6_full_pipeline.cpp | $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step6_full_pipeline.cpp$(NC)"
+# 🔥 새로운 enhanced 테스트 파일 컴파일
+$(OBJ_DIR)/test_step6_enhanced_pipeline.o: test_step6_enhanced_pipeline.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step6_enhanced_pipeline.cpp$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🔨 Compiling test_step6_full_pipeline...$(NC)"
+	@echo -e "$(YELLOW)🔨 Compiling test_step6_enhanced_pipeline...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
@@ -244,11 +245,11 @@ $(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integrat
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ test_step5 build completed!$(NC)"
 
-# Step 6: Redis 파이프라인 테스트
-$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_full_pipeline.o | $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step6 (Redis Pipeline)...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_full_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step6 (Redis Pipeline) build completed!$(NC)"
+# 🔥 Step 6: 향상된 알람+가상포인트 파이프라인 테스트
+$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o | $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking test_step6 (Enhanced Alarm+VirtualPoint Pipeline)...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ test_step6 (Enhanced Alarm+VirtualPoint Pipeline) build completed!$(NC)"
 
 # =============================================================================
 # 🚀 메인 타겟들
@@ -265,7 +266,7 @@ step5-build: $(BIN_DIR)/test_step5
 	@echo -e "$(GREEN)🚀 Step 5 (Complete DB Integration) build completed!$(NC)"
 
 step6-build: $(BIN_DIR)/test_step6
-	@echo -e "$(GREEN)🚀 Step 6 (Redis Pipeline) build completed!$(NC)"
+	@echo -e "$(GREEN)🚀 Step 6 (Enhanced Alarm+VirtualPoint Pipeline) build completed!$(NC)"
 
 # 개별 테스트 실행
 step3-test: step3-build
@@ -281,8 +282,9 @@ step5-test: step5-build
 	@./$(BIN_DIR)/test_step5
 
 step6-test: step6-build
-	@echo -e "$(PURPLE)🧪 Running Step 6 (Redis Pipeline) tests...$(NC)"
+	@echo -e "$(PURPLE)🧪 Running Step 6 (Enhanced Alarm+VirtualPoint Pipeline) tests...$(NC)"
 	@echo -e "$(CYAN)📊 이 테스트는 Redis 서버가 실행 중이어야 합니다$(NC)"
+	@echo -e "$(CYAN)🔥 알람 규칙 및 가상포인트 테스트 데이터가 DB에 있어야 합니다$(NC)"
 	@./$(BIN_DIR)/test_step6
 
 # 🔥 모든 테스트 빌드
@@ -302,7 +304,7 @@ all-tests-run: all-tests-build
 	@echo -e "$(PURPLE)🧪 Step 5: Complete DB Integration Test$(NC)"
 	@./$(BIN_DIR)/test_step5
 	@echo -e "$(YELLOW)======================================$(NC)"
-	@echo -e "$(PURPLE)🧪 Step 6: Redis Pipeline Test$(NC)"
+	@echo -e "$(PURPLE)🧪 Step 6: Enhanced Alarm+VirtualPoint Pipeline Test$(NC)"
 	@./$(BIN_DIR)/test_step6
 	@echo -e "$(GREEN)🎉 All tests completed (Step 3-6)!$(NC)"
 
@@ -361,20 +363,20 @@ check-deps:
 
 # 도움말
 help:
-	@echo -e "$(BLUE)🚀 PulseOne Fast Build System (with Alarm System)$(NC)"
-	@echo -e "$(YELLOW)===============================================$(NC)"
+	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System (with Alarm+VirtualPoint)$(NC)"
+	@echo -e "$(YELLOW)========================================================$(NC)"
 	@echo ""
 	@echo -e "$(GREEN)🔥 개별 테스트 명령어:$(NC)"
 	@echo "  make step3-test   - 🧪 Step 3: Workers 테스트"
 	@echo "  make step4-test   - 🧪 Step 4: Driver 데이터 검증 테스트"
 	@echo "  make step5-test   - 🧪 Step 5: 완전한 DB 통합 테스트"
-	@echo "  make step6-test   - 🧪 Step 6: Redis 파이프라인 + 알람 테스트"
+	@echo "  make step6-test   - 🧪 Step 6: 🔥 향상된 알람+가상포인트 파이프라인 테스트"
 	@echo ""
 	@echo -e "$(GREEN)🚀 빠른 빌드 명령어:$(NC)"
 	@echo "  make step3-build  - 🚀 Step 3 빌드만"
 	@echo "  make step4-build  - 🚀 Step 4 빌드만"
 	@echo "  make step5-build  - 🚀 Step 5 빌드만"
-	@echo "  make step6-build  - 🚀 Step 6 빌드만 (알람 시스템 포함)"
+	@echo "  make step6-build  - 🚀 Step 6 빌드만 (🔥 알람+가상포인트 시스템 포함)"
 	@echo "  make all-tests-build - 🚀 모든 테스트 빌드 (Step 3-6)"
 	@echo ""
 	@echo -e "$(GREEN)🎯 통합 실행:$(NC)"
@@ -391,15 +393,21 @@ help:
 	@echo ""
 	@echo -e "$(PURPLE)💡 권장 사용법:$(NC)"
 	@echo "  1️⃣  첫 빌드: make full-build"
-	@echo "  2️⃣  개별 테스트: make step6-test (Redis + 알람)"
+	@echo "  2️⃣  개별 테스트: make step6-test (🔥 알람+가상포인트)"
 	@echo "  3️⃣  전체 검증: make all-tests-run"
 	@echo "  4️⃣  개발 중: make dev-step6 (빠른 개발)"
 	@echo ""
-	@echo -e "$(RED)🔥 Step 6 업데이트:$(NC)"
-	@echo "  - 알람 시스템 통합 테스트"
-	@echo "  - QuickJS 스크립트 엔진 지원"
-	@echo "  - Redis 연결 및 데이터 저장 테스트"
-	@echo "  - 완전한 파이프라인 (스캔 → 처리 → 알람 → Redis)"
+	@echo -e "$(RED)🔥 Step 6 Enhanced 기능:$(NC)"
+	@echo "  - 🚨 알람 시스템 완전 통합 (아날로그/디지털/스크립트 알람)"
+	@echo "  - 🧮 가상포인트 계산 엔진 통합"
+	@echo "  - 📊 Redis 알람 이벤트 및 가상포인트 결과 저장"
+	@echo "  - 🔍 완전한 검증 로직 (알람 발생 + 가상포인트 계산 확인)"
+	@echo "  - 🎯 DB → Worker스캔 → 파이프라인 → 알람평가 → 가상포인트 → Redis"
+	@echo ""
+	@echo -e "$(CYAN)📋 Step 6 테스트 전 준비사항:$(NC)"
+	@echo "  1. Redis 서버 실행: docker run -d -p 6379:6379 redis"
+	@echo "  2. 테스트 데이터 삽입: sqlite3 db/pulseone_test.db < insert_test_alarm_virtual_data.sql"
+	@echo "  3. 알람 규칙 확인: sqlite3 db/pulseone_test.db \"SELECT COUNT(*) FROM alarm_rules WHERE name LIKE 'TEST_%';\""
 
 # 🚀 자동 종속성 생성 (고급 기능)
 -include $(ALL_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d)

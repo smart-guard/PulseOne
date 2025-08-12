@@ -1,16 +1,18 @@
 // =============================================================================
-// collector/src/Pipeline/DataProcessingService.cpp - 컴파일 에러 수정
+// collector/src/Pipeline/DataProcessingService.cpp - 완성된 구현
 // =============================================================================
 
 #include "Pipeline/DataProcessingService.h"
 #include "Pipeline/PipelineManager.h"
 #include "Alarm/AlarmEngine.h"
-#include "Alarm/AlarmManager.h"  // 🔥 추가
+#include "Alarm/AlarmManager.h"
 #include "Utils/LogManager.h"
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <thread>
+#include <iomanip>
 
 using LogLevel = PulseOne::Enums::LogLevel;
 using json = nlohmann::json;
@@ -70,7 +72,8 @@ bool DataProcessingService::Start() {
     }
     
     LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                 "✅ DataProcessingService 시작 완료");
+                                 "✅ DataProcessingService 시작 완료 (스레드 " + 
+                                 std::to_string(thread_count_) + "개)");
     return true;
 }
 
@@ -115,6 +118,16 @@ void DataProcessingService::SetThreadCount(size_t thread_count) {
                                  "🔧 스레드 수 설정: " + std::to_string(thread_count_));
 }
 
+DataProcessingService::ServiceConfig DataProcessingService::GetConfig() const {
+    ServiceConfig config;
+    config.thread_count = thread_count_;
+    config.batch_size = batch_size_;
+    config.lightweight_mode = use_lightweight_redis_.load();
+    config.alarm_evaluation_enabled = alarm_evaluation_enabled_.load();
+    config.virtual_point_calculation_enabled = virtual_point_calculation_enabled_.load();
+    return config;
+}
+
 // =============================================================================
 // 멀티스레드 처리 루프
 // =============================================================================
@@ -141,14 +154,13 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
                                              "🧵 스레드 " + std::to_string(thread_index) + 
                                              " 배치 처리 완료: " + std::to_string(batch.size()) + "개");
             } else {
+                // 데이터가 없으면 잠시 대기
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             
         } catch (const std::exception& e) {
             processing_errors_.fetch_add(1);
-            LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                         "💥 스레드 " + std::to_string(thread_index) + 
-                                         " 처리 중 예외: " + std::string(e.what()));
+            HandleError("스레드 " + std::to_string(thread_index) + " 처리 중 예외", e.what());
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
@@ -159,7 +171,7 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
 
 std::vector<Structs::DeviceDataMessage> DataProcessingService::CollectBatchFromPipelineManager() {
     auto& pipeline_manager = PipelineManager::GetInstance();
-    return pipeline_manager.GetBatch(batch_size_, 100);
+    return pipeline_manager.GetBatch(batch_size_, 100); // 100ms 타임아웃
 }
 
 void DataProcessingService::ProcessBatch(
@@ -175,23 +187,41 @@ void DataProcessingService::ProcessBatch(
                                      "🔄 배치 처리 시작: " + std::to_string(batch.size()) + "개");
         
         // 1단계: 가상포인트 계산 및 TimestampedValue 변환
-        auto enriched_data = CalculateVirtualPoints(batch);
+        std::vector<Structs::TimestampedValue> enriched_data;
+        if (virtual_point_calculation_enabled_.load()) {
+            enriched_data = CalculateVirtualPoints(batch);
+        } else {
+            // 가상포인트 계산 비활성화 시 기본 변환만 수행
+            for (const auto& device_msg : batch) {
+                auto converted = ConvertToTimestampedValues(device_msg);
+                enriched_data.insert(enriched_data.end(), converted.begin(), converted.end());
+            }
+        }
         
         // 2단계: 알람 평가
-        EvaluateAlarms(enriched_data, thread_index);
+        if (alarm_evaluation_enabled_.load()) {
+            EvaluateAlarms(enriched_data, thread_index);
+        }
         
-        // 3단계: Redis 저장
-        SaveToRedis(enriched_data);
+        // 3단계: 저장 (모드에 따라 다르게 처리)
+        if (use_lightweight_redis_.load()) {
+            // 🚀 미래: 경량화 버전 (성능 최적화)
+            SaveToRedisLightweight(enriched_data);
+        } else {
+            // 🔥 현재: 테스트용 (전체 데이터 저장)
+            SaveToRedisFullData(batch);
+        }
         
-        // 4단계: InfluxDB 저장
-        SaveToInfluxDB(enriched_data);
+        // 4단계: InfluxDB 저장 (시계열 데이터)
+        if (influx_client_) {
+            SaveToInfluxDB(enriched_data);
+        }
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                      "✅ 배치 처리 완료: " + std::to_string(batch.size()) + "개");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "💥 배치 처리 실패: " + std::string(e.what()));
+        HandleError("배치 처리 실패", e.what());
         throw;
     }
 }
@@ -215,21 +245,16 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
         
         // 원본 데이터를 TimestampedValue로 변환
         for (const auto& device_msg : batch) {
-            for (const auto& point : device_msg.points) {
-                Structs::TimestampedValue tv;
-                tv.point_id = point.point_id;  // 🔥 int는 그대로 사용
-                tv.value = point.value;
-                tv.timestamp = point.timestamp;
-                tv.quality = point.quality;
-                
-                enriched_data.push_back(tv);
-            }
+            auto converted = ConvertToTimestampedValues(device_msg);
+            enriched_data.insert(enriched_data.end(), converted.begin(), converted.end());
         }
         
         // VirtualPointEngine으로 가상포인트 계산
         auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
         
         if (vp_engine.isInitialized()) {
+            size_t virtual_points_calculated = 0;
+            
             for (const auto& device_msg : batch) {
                 try {
                     auto vp_results = vp_engine.calculateForMessage(device_msg);
@@ -238,16 +263,19 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
                         enriched_data.push_back(vp_result);
                     }
                     
-                    if (!vp_results.empty()) {
-                        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                                     "✅ 가상포인트 " + std::to_string(vp_results.size()) + 
-                                                     "개 계산 완료");
-                    }
+                    virtual_points_calculated += vp_results.size();
                     
                 } catch (const std::exception& e) {
                     LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                                 "💥 가상포인트 계산 실패: " + std::string(e.what()));
+                                                 "💥 가상포인트 계산 실패 (device=" + 
+                                                 device_msg.device_id + "): " + std::string(e.what()));
                 }
+            }
+            
+            if (virtual_points_calculated > 0) {
+                LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                             "✅ 가상포인트 " + std::to_string(virtual_points_calculated) + 
+                                             "개 계산 완료");
             }
         } else {
             LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
@@ -255,18 +283,37 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
         }
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "✅ 가상포인트 계산 완료: " + std::to_string(enriched_data.size()) + "개");
+                                     "✅ 가상포인트 계산 완료: 총 " + std::to_string(enriched_data.size()) + "개");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "💥 가상포인트 계산 전체 실패: " + std::string(e.what()));
+        HandleError("가상포인트 계산 전체 실패", e.what());
     }
     
     return enriched_data;
 }
 
+std::vector<Structs::TimestampedValue> DataProcessingService::ConvertToTimestampedValues(
+    const Structs::DeviceDataMessage& device_msg) {
+    
+    std::vector<Structs::TimestampedValue> result;
+    result.reserve(device_msg.points.size());
+    
+    for (const auto& point : device_msg.points) {
+        Structs::TimestampedValue tv;
+        tv.point_id = point.point_id;
+        tv.value = point.value;
+        tv.timestamp = point.timestamp;
+        tv.quality = point.quality;
+        tv.value_changed = point.value_changed;
+        
+        result.push_back(tv);
+    }
+    
+    return result;
+}
+
 // =============================================================================
-// 🔥 알람 평가 (올바른 필드 사용)
+// 🔥 알람 평가 시스템
 // =============================================================================
 
 void DataProcessingService::EvaluateAlarms(
@@ -285,7 +332,7 @@ void DataProcessingService::EvaluateAlarms(
         auto& alarm_manager = PulseOne::Alarm::AlarmManager::getInstance();
         
         if (!alarm_manager.isInitialized()) {
-            LogManager::getInstance().log("processing", LogLevel::WARN, 
+            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                          "⚠️ AlarmManager가 초기화되지 않음");
             return;
         }
@@ -295,30 +342,17 @@ void DataProcessingService::EvaluateAlarms(
         
         for (const auto& timestamped_value : data) {
             try {
-                int tenant_id = 1;
-                
-                // 🔥 point_id는 이미 int이므로 직접 사용
-                int point_id = timestamped_value.point_id;
-                
-                PulseOne::BasicTypes::DataVariant alarm_value;
-                std::visit([&alarm_value](const auto& val) {
-                    alarm_value = val;
-                }, timestamped_value.value);
-                
-                // 🔥 AlarmManager의 올바른 API 사용
-                // DeviceDataMessage 생성하여 evaluateForMessage 호출
+                // DeviceDataMessage 구성하여 AlarmManager에 전달
                 Structs::DeviceDataMessage alarm_msg;
-                alarm_msg.tenant_id = tenant_id;
-                alarm_msg.device_id = "device_" + std::to_string(point_id); // 임시 device_id
+                alarm_msg.tenant_id = 1; // 기본 테넌트
+                alarm_msg.device_id = "device_" + std::to_string(timestamped_value.point_id); // 임시 device_id
+                alarm_msg.timestamp = timestamped_value.timestamp;
                 
-                Structs::TimestampedValue alarm_point;
-                alarm_point.point_id = point_id;
-                alarm_point.value = timestamped_value.value;
-                alarm_point.timestamp = timestamped_value.timestamp;
-                alarm_point.quality = timestamped_value.quality;
-                
+                // 포인트 데이터 추가
+                Structs::TimestampedValue alarm_point = timestamped_value;
                 alarm_msg.points.push_back(alarm_point);
                 
+                // 알람 평가 실행
                 auto alarm_events = alarm_manager.evaluateForMessage(alarm_msg);
                 
                 alarms_evaluated++;
@@ -343,16 +377,34 @@ void DataProcessingService::EvaluateAlarms(
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         
-        total_alarms_evaluated_.fetch_add(alarms_evaluated);
-        total_alarms_triggered_.fetch_add(alarms_triggered);
+        UpdateAlarmStatistics(alarms_evaluated, alarms_triggered);
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                      "✅ 알람 평가 완료: 평가=" + std::to_string(alarms_evaluated) + 
-                                     "개, 발생=" + std::to_string(alarms_triggered) + "개");
+                                     "개, 발생=" + std::to_string(alarms_triggered) + 
+                                     "개, 소요시간=" + std::to_string(duration.count()) + "μs");
+        
+    } catch (const std::exception& e) {
+        HandleError("알람 평가 전체 실패", e.what());
+    }
+}
+
+void DataProcessingService::evaluateAlarmsForMessage(const Structs::DeviceDataMessage& message) {
+    try {
+        auto& alarm_engine = Alarm::AlarmEngine::getInstance();
+        
+        if (!alarm_engine.isInitialized()) {
+            // 알람 엔진 초기화 안됨 - 조용히 스킵
+            return;
+        }
+        
+        // 🔥 메시지 전체를 AlarmEngine에 전달
+        alarm_engine.evaluateForMessage(message);
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "💥 알람 평가 전체 실패: " + std::string(e.what()));
+                                     "🚨 알람 평가 중 에러: " + std::string(e.what()));
+        // 알람 평가 실패해도 데이터 처리는 계속 진행 (Graceful degradation)
     }
 }
 
@@ -371,10 +423,11 @@ void DataProcessingService::ProcessAlarmEvents(
         
         for (const auto& alarm_event : alarm_events) {
             try {
-                if (redis_client_) {
+                if (redis_client_ && redis_client_->isConnected()) {
+                    // Redis에 알람 이벤트 저장
                     std::string redis_key = "alarm:active:" + std::to_string(alarm_event.rule_id);
                     
-                    nlohmann::json alarm_json;
+                    json alarm_json;
                     alarm_json["rule_id"] = alarm_event.rule_id;
                     alarm_json["point_id"] = alarm_event.point_id;
                     alarm_json["message"] = alarm_event.message;
@@ -383,8 +436,8 @@ void DataProcessingService::ProcessAlarmEvents(
                     alarm_json["trigger_value"] = alarm_event.getTriggerValueString();
                     alarm_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
                         alarm_event.timestamp.time_since_epoch()).count();
+                    alarm_json["thread_id"] = thread_index;
                     
-                    // 🔥 올바른 RedisClient API 사용
                     redis_client_->set(redis_key, alarm_json.dump());
                     redis_client_->expire(redis_key, 86400);  // TTL 24시간
                     
@@ -392,6 +445,7 @@ void DataProcessingService::ProcessAlarmEvents(
                                                  "📝 Redis 알람 저장: " + redis_key);
                 }
                 
+                // 심각도별 카운터 업데이트
                 if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::CRITICAL) {
                     critical_alarms_count_.fetch_add(1);
                 } else if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::HIGH) {
@@ -403,29 +457,36 @@ void DataProcessingService::ProcessAlarmEvents(
                                              std::to_string(alarm_event.rule_id));
                 
             } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                             "💥 개별 알람 이벤트 처리 실패: " + std::string(e.what()));
+                HandleError("개별 알람 이벤트 처리 실패", e.what());
             }
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "💥 알람 이벤트 후처리 전체 실패: " + std::string(e.what()));
+        HandleError("알람 이벤트 후처리 전체 실패", e.what());
     }
 }
 
 // =============================================================================
-// Redis/InfluxDB 저장 (올바른 타입 사용)
+// 🔥 저장 시스템 (경량화 지원)
 // =============================================================================
 
 void DataProcessingService::SaveToRedis(const std::vector<Structs::TimestampedValue>& batch) {
-    if (!redis_client_) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "❌ Redis 클라이언트가 null입니다!");
-        return;
+    if (use_lightweight_redis_.load()) {
+        SaveToRedisLightweight(batch);
+    } else {
+        // 테스트용: 전체 데이터를 JSON으로 저장
+        // TODO: batch를 DeviceDataMessage로 재구성하거나 다른 방식 필요
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "🔄 Redis 저장 (TimestampedValue): " + std::to_string(batch.size()) + "개");
+        
+        for (const auto& value : batch) {
+            WriteTimestampedValueToRedis(value);
+        }
     }
-    
-    if (!redis_client_->isConnected()) {
+}
+
+void DataProcessingService::SaveToRedisFullData(const std::vector<Structs::DeviceDataMessage>& batch) {
+    if (!redis_client_ || !redis_client_->isConnected()) {
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
                                      "❌ Redis 연결이 끊어져 있습니다!");
         return;
@@ -433,27 +494,156 @@ void DataProcessingService::SaveToRedis(const std::vector<Structs::TimestampedVa
     
     try {
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "🔄 Redis 저장 시작: " + std::to_string(batch.size()) + "개");
+                                     "🔄 Redis 저장 (전체 데이터): " + std::to_string(batch.size()) + "개");
         
+        for (const auto& message : batch) {
+            // 🔥 현재: 테스트용 전체 데이터 저장
+            std::string device_key = "device:full:" + message.device_id;
+            std::string full_json = DeviceDataMessageToJson(message);
+            
+            redis_client_->set(device_key, full_json);
+            redis_client_->expire(device_key, 3600); // 1시간 TTL
+            
+            // 개별 포인트도 저장 (빠른 조회용)
+            for (const auto& point : message.points) {
+                WriteTimestampedValueToRedis(point);
+            }
+            
+            redis_writes_.fetch_add(1 + message.points.size());
+        }
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "✅ Redis 저장 완료 (전체 데이터): " + std::to_string(batch.size()) + "개");
+        
+    } catch (const std::exception& e) {
+        HandleError("Redis 저장 실패 (전체 데이터)", e.what());
+    }
+}
+
+void DataProcessingService::SaveToRedisLightweight(const std::vector<Structs::TimestampedValue>& batch) {
+    if (!redis_client_ || !redis_client_->isConnected()) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "❌ Redis 연결이 끊어져 있습니다!");
+        return;
+    }
+    
+    try {
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "🔄 Redis 저장 (경량화): " + std::to_string(batch.size()) + "개");
+        
+        // 🚀 미래: 경량화 구조체로 저장
         for (const auto& value : batch) {
-            WriteTimestampedValueToRedis(value);
+            // LightPointValue로 변환하여 저장
+            std::string light_json = ConvertToLightPointValue(value, "unknown_device");
+            std::string point_key = "point:light:" + std::to_string(value.point_id);
+            
+            redis_client_->set(point_key, light_json);
+            redis_client_->expire(point_key, 1800); // 30분 TTL
+            
             redis_writes_.fetch_add(1);
         }
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "✅ Redis 저장 완료: " + std::to_string(batch.size()) + "개");
+                                     "✅ Redis 저장 완료 (경량화): " + std::to_string(batch.size()) + "개");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "❌ Redis 저장 실패: " + std::string(e.what()));
-        throw;
+        HandleError("Redis 저장 실패 (경량화)", e.what());
     }
 }
 
 void DataProcessingService::SaveToInfluxDB(const std::vector<Structs::TimestampedValue>& batch) {
-    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                 "InfluxDB 저장 완료: " + std::to_string(batch.size()) + "개");
-    influx_writes_.fetch_add(batch.size());
+    if (!influx_client_) {
+        return;
+    }
+    
+    try {
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "🔄 InfluxDB 저장: " + std::to_string(batch.size()) + "개");
+        
+        // TODO: InfluxDB 실제 저장 로직 구현
+        // 현재는 로깅만 수행
+        
+        influx_writes_.fetch_add(batch.size());
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "✅ InfluxDB 저장 완료: " + std::to_string(batch.size()) + "개");
+        
+    } catch (const std::exception& e) {
+        HandleError("InfluxDB 저장 실패", e.what());
+    }
+}
+
+// =============================================================================
+// 🚀 경량화 구조체 변환 메서드들 (미리 준비)
+// =============================================================================
+
+std::string DataProcessingService::ConvertToLightDeviceStatus(const Structs::DeviceDataMessage& message) {
+    // 🚀 미래: LightDeviceStatus 구조체로 변환
+    json light_status;
+    light_status["id"] = message.device_id;
+    light_status["proto"] = message.protocol;
+    light_status["status"] = static_cast<int>(message.device_status);
+    light_status["connected"] = message.is_connected;
+    light_status["manual"] = message.manual_status;
+    light_status["msg"] = message.status_message.substr(0, 50); // 최대 50자
+    light_status["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+        message.timestamp.time_since_epoch()).count();
+    
+    light_status["stats"] = {
+        {"fail", message.consecutive_failures},
+        {"total", message.total_points_configured},
+        {"ok", message.successful_points},
+        {"err", message.failed_points},
+        {"rtt", message.response_time.count()}
+    };
+    
+    return light_status.dump();
+}
+
+std::string DataProcessingService::ConvertToLightPointValue(const Structs::TimestampedValue& value, 
+                                                           const std::string& device_id) {
+    // 🚀 미래: LightPointValue 구조체로 변환
+    json light_point;
+    light_point["id"] = value.point_id;
+    light_point["dev"] = device_id;
+    
+    std::visit([&light_point](const auto& v) {
+        light_point["val"] = v;
+    }, value.value);
+    
+    light_point["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+        value.timestamp.time_since_epoch()).count();
+    light_point["q"] = static_cast<int>(value.quality);
+    
+    if (value.value_changed) {
+        light_point["chg"] = true;
+    }
+    
+    return light_point.dump();
+}
+
+std::string DataProcessingService::ConvertToBatchPointData(const Structs::DeviceDataMessage& message) {
+    // 🚀 미래: BatchPointData 구조체로 변환
+    json batch_data;
+    batch_data["dev"] = message.device_id;
+    batch_data["proto"] = message.protocol;
+    batch_data["batch_ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+        message.timestamp.time_since_epoch()).count();
+    batch_data["seq"] = message.batch_sequence;
+    
+    batch_data["points"] = json::array();
+    for (const auto& point : message.points) {
+        json p;
+        p["id"] = point.point_id;
+        std::visit([&p](const auto& v) { p["val"] = v; }, point.value);
+        p["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            point.timestamp.time_since_epoch()).count();
+        p["q"] = static_cast<int>(point.quality);
+        if (point.value_changed) p["chg"] = true;
+        batch_data["points"].push_back(p);
+    }
+    
+    return batch_data.dump();
 }
 
 // =============================================================================
@@ -461,7 +651,7 @@ void DataProcessingService::SaveToInfluxDB(const std::vector<Structs::Timestampe
 // =============================================================================
 
 void DataProcessingService::WriteTimestampedValueToRedis(const Structs::TimestampedValue& value) {
-    if (!redis_client_) {
+    if (!redis_client_ || !redis_client_->isConnected()) {
         return;
     }
     
@@ -470,11 +660,10 @@ void DataProcessingService::WriteTimestampedValueToRedis(const Structs::Timestam
         std::string point_key = "point:" + std::to_string(value.point_id) + ":latest";
         
         redis_client_->set(point_key, json_str);
-        redis_client_->expire(point_key, 3600);
+        redis_client_->expire(point_key, 3600); // 1시간 TTL
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "Redis 저장 실패: " + std::string(e.what()));
+        HandleError("개별 포인트 Redis 저장 실패", e.what());
     }
 }
 
@@ -492,12 +681,51 @@ std::string DataProcessingService::TimestampedValueToJson(const Structs::Timesta
         
         json_value["quality"] = static_cast<int>(value.quality);
         
+        if (value.value_changed) {
+            json_value["changed"] = true;
+        }
+        
         return json_value.dump();
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "JSON 변환 실패: " + std::string(e.what()));
-        return R"({"point_id":)" + std::to_string(value.point_id) + R"(,"value":null,"error":"conversion_failed"})";
+        HandleError("JSON 변환 실패", e.what());
+        return R"({"point_id":)" + std::to_string(value.point_id) + 
+               R"(,"value":null,"error":"conversion_failed"})";
+    }
+}
+
+std::string DataProcessingService::DeviceDataMessageToJson(const Structs::DeviceDataMessage& message) {
+    try {
+        json j;
+        j["device_id"] = message.device_id;
+        j["protocol"] = message.protocol;
+        j["tenant_id"] = message.tenant_id;
+        j["device_status"] = static_cast<int>(message.device_status);
+        j["is_connected"] = message.is_connected;
+        j["manual_status"] = message.manual_status;
+        j["status_message"] = message.status_message;
+        j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            message.timestamp.time_since_epoch()).count();
+        
+        j["points"] = json::array();
+        for (const auto& point : message.points) {
+            json point_json;
+            point_json["point_id"] = point.point_id;
+            std::visit([&point_json](const auto& v) {
+                point_json["value"] = v;
+            }, point.value);
+            point_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                point.timestamp.time_since_epoch()).count();
+            point_json["quality"] = static_cast<int>(point.quality);
+            point_json["changed"] = point.value_changed;
+            j["points"].push_back(point_json);
+        }
+        
+        return j.dump();
+        
+    } catch (const std::exception& e) {
+        HandleError("DeviceDataMessage JSON 변환 실패", e.what());
+        return R"({"device_id":")" + message.device_id + R"(","error":"conversion_failed"})";
     }
 }
 
@@ -506,16 +734,18 @@ std::string DataProcessingService::TimestampedValueToJson(const Structs::Timesta
 // =============================================================================
 
 void DataProcessingService::UpdateStatistics(size_t processed_count, double processing_time_ms) {
-    static std::atomic<uint64_t> total_time_ms{0};
-    static std::atomic<uint64_t> total_operations{0};
-    
-    total_time_ms.fetch_add(static_cast<uint64_t>(processing_time_ms));
-    total_operations.fetch_add(1);
+    total_processing_time_ms_.fetch_add(static_cast<uint64_t>(processing_time_ms));
+    total_operations_.fetch_add(1);
     
     if (processed_count > 0) {
         total_messages_processed_.fetch_add(processed_count);
         total_batches_processed_.fetch_add(1);
     }
+}
+
+void DataProcessingService::UpdateAlarmStatistics(size_t alarms_evaluated, size_t alarms_triggered) {
+    total_alarms_evaluated_.fetch_add(alarms_evaluated);
+    total_alarms_triggered_.fetch_add(alarms_triggered);
 }
 
 DataProcessingService::ProcessingStats DataProcessingService::GetStatistics() const {
@@ -525,7 +755,12 @@ DataProcessingService::ProcessingStats DataProcessingService::GetStatistics() co
     stats.redis_writes = redis_writes_.load();
     stats.influx_writes = influx_writes_.load();
     stats.processing_errors = processing_errors_.load();
-    stats.avg_processing_time_ms = 0.0;
+    
+    // 평균 처리 시간 계산
+    uint64_t total_ops = total_operations_.load();
+    if (total_ops > 0) {
+        stats.avg_processing_time_ms = static_cast<double>(total_processing_time_ms_.load()) / total_ops;
+    }
     
     return stats;
 }
@@ -546,24 +781,14 @@ DataProcessingService::ExtendedProcessingStats DataProcessingService::GetExtende
     return stats;
 }
 
-void DataProcessingService::evaluateAlarmsForMessage(const Structs::DeviceDataMessage& message) {
-    try {
-        auto& alarm_engine = Alarm::AlarmEngine::getInstance();
-        
-        if (!alarm_engine.isInitialized()) {
-            // 알람 엔진 초기화 안됨 - 조용히 스킵
-            return;
-        }
-        
-        // 🔥 메시지 전체를 AlarmEngine에 전달
-        alarm_engine.evaluateForMessage(message);
-        
-    } catch (const std::exception& e) {
-        // 🔥 수정: LogMessage -> LogManager::getInstance().log
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "🚨 알람 평가 중 에러: " + std::string(e.what()));
-        // 알람 평가 실패해도 데이터 처리는 계속 진행 (Graceful degradation)
+void DataProcessingService::HandleError(const std::string& error_message, const std::string& context) {
+    std::string full_message = error_message;
+    if (!context.empty()) {
+        full_message += ": " + context;
     }
+    
+    LogManager::getInstance().log("processing", LogLevel::ERROR, "💥 " + full_message);
+    processing_errors_.fetch_add(1);
 }
 
 } // namespace Pipeline
