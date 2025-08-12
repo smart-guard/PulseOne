@@ -325,6 +325,7 @@ void DataProcessingService::EvaluateAlarms(const std::vector<Structs::Timestampe
     try {
         auto& alarm_manager = PulseOne::Alarm::AlarmManager::getInstance();
         
+        // 🔥 수정 1: initialize() 호출 제거, isInitialized()만 체크
         if (!alarm_manager.isInitialized()) {
             LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                          "⚠️ AlarmManager가 초기화되지 않음 - 알람 평가 건너뜀");
@@ -336,71 +337,33 @@ void DataProcessingService::EvaluateAlarms(const std::vector<Structs::Timestampe
         
         size_t alarms_triggered = 0;
         
-        // 🎯 핵심: 각 포인트를 AlarmManager에 전달하고 결과만 받기
         for (const auto& timestamped_value : data) {
             try {
-                // 🔥 1단계: DeviceDataMessage 구성 (AlarmEngine이 요구하는 형태)
+                // DeviceDataMessage 구성
                 Structs::DeviceDataMessage alarm_message;
-                
-                // 🔧 간단한 device_id 생성 (Repository 조회 없이)
                 alarm_message.device_id = "device_" + std::to_string(timestamped_value.point_id / 100);
                 alarm_message.timestamp = timestamped_value.timestamp;
-                
-                // TimestampedValue를 DeviceDataMessage.points에 추가
                 alarm_message.points.push_back(timestamped_value);
                 
-                // 🔥 2단계: AlarmManager에 위임 (모든 판단은 여기서!)
+                // AlarmManager에 완전 위임
                 auto alarm_events = alarm_manager.evaluateForMessage(alarm_message);
+                alarms_triggered += alarm_events.size();
                 
-                // 🔥 3단계: 결과 처리만 (Redis 저장, 로깅 등)
+                // 결과 로깅만
                 if (!alarm_events.empty()) {
-                    alarms_triggered += alarm_events.size();
-                    
-                    for (const auto& alarm_event : alarm_events) {
-                        // 🔥 Redis 저장 (inline으로 처리)
-                        if (redis_client_ && redis_client_->isConnected()) {
-                            try {
-                                std::string redis_key = "alarm:active:" + std::to_string(alarm_event.rule_id);
-                                
-                                nlohmann::json alarm_json;
-                                alarm_json["rule_id"] = alarm_event.rule_id;
-                                alarm_json["point_id"] = alarm_event.point_id;
-                                alarm_json["message"] = alarm_event.message;
-                                alarm_json["severity"] = alarm_event.getSeverityString();
-                                alarm_json["state"] = alarm_event.getStateString();
-                                alarm_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                    alarm_event.timestamp.time_since_epoch()).count();
-                                alarm_json["thread_index"] = thread_index;
-                                
-                                redis_client_->set(redis_key, alarm_json.dump());
-                                redis_client_->expire(redis_key, 86400);  // TTL 24시간
-                                
-                                LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                                             "📝 Redis 알람 저장: " + redis_key);
-                                
-                            } catch (const std::exception& e) {
-                                LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                                             "Redis 알람 저장 실패: " + std::string(e.what()));
-                            }
-                        }
-                        
-                        // 로깅
-                        LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                                     "🚨 알람 발생: " + alarm_event.message + 
-                                                     " (point_id=" + std::to_string(timestamped_value.point_id) + ")");
-                    }
+                    LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                                 "🚨 알람 발생: " + std::to_string(alarm_events.size()) + 
+                                                 "개 (point_id=" + std::to_string(timestamped_value.point_id) + ")");
                 }
                 
             } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                // 🔥 수정 2: LogLevel::WARNING → LogLevel::WARN
+                LogManager::getInstance().log("processing", LogLevel::WARN, 
                                              "💥 포인트 알람 평가 실패 (point_id=" + 
                                              std::to_string(timestamped_value.point_id) + 
                                              "): " + std::string(e.what()));
             }
         }
-        
-        // 통계 업데이트
-        UpdateAlarmStatistics(data.size(), alarms_triggered);
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                      "✅ 알람 평가 완료: 평가=" + std::to_string(data.size()) + 
@@ -772,6 +735,56 @@ void DataProcessingService::UpdateAlarmStatistics(size_t alarms_evaluated, size_
     total_alarms_triggered_.fetch_add(alarms_triggered);
 }
 
+void DataProcessingService::UpdateAlarmStatistics(size_t evaluated_count, 
+                                                  size_t triggered_count, 
+                                                  size_t thread_index) {
+    try {
+        // 🔥 스레드별 통계 업데이트
+        {
+            std::lock_guard<std::mutex> lock(alarm_stats_mutex_);
+            
+            alarm_statistics_.total_evaluations += evaluated_count;
+            alarm_statistics_.total_triggers += triggered_count;
+            alarm_statistics_.thread_statistics[thread_index].evaluations += evaluated_count;
+            alarm_statistics_.thread_statistics[thread_index].triggers += triggered_count;
+            alarm_statistics_.last_evaluation_time = std::chrono::system_clock::now();
+            
+            // 🔧 성능 메트릭 계산
+            if (alarm_statistics_.total_evaluations > 0) {
+                alarm_statistics_.trigger_rate = 
+                    static_cast<double>(alarm_statistics_.total_triggers) / 
+                    static_cast<double>(alarm_statistics_.total_evaluations) * 100.0;
+            }
+        }
+        
+        // 🔥 Redis 메트릭 업데이트 (선택적)
+        if (redis_client_ && redis_client_->isConnected()) {
+            try {
+                std::string metric_key = "alarm_metrics:thread_" + std::to_string(thread_index);
+                
+                nlohmann::json metrics;
+                metrics["thread_id"] = thread_index;
+                metrics["evaluations"] = evaluated_count;
+                metrics["triggers"] = triggered_count;
+                metrics["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                
+                redis_client_->set(metric_key, metrics.dump());
+                redis_client_->expire(metric_key, 3600); // 1시간 TTL
+                
+            } catch (const std::exception& e) {
+                // Redis 실패는 조용히 무시 (핵심 기능에 영향 없음)
+                LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                             "Redis 메트릭 업데이트 실패: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::WARNING, 
+                                     "통계 업데이트 실패: " + std::string(e.what()));
+    }
+}
+
 DataProcessingService::ProcessingStats DataProcessingService::GetStatistics() const {
     ProcessingStats stats;
     stats.total_batches_processed = total_batches_processed_.load();
@@ -817,8 +830,18 @@ void DataProcessingService::HandleError(const std::string& error_message, const 
 
 
 std::string DataProcessingService::getDeviceIdForPoint(int point_id) {
-    // Repository 조회 없이 간단한 계산
-    return "device_" + std::to_string(point_id / 100);
+    try {
+        auto datapoint_repo = repository_factory_->getDataPointRepository();
+        auto datapoint = datapoint_repo->findById(point_id);
+        
+        if (datapoint.has_value()) {
+            return std::to_string(datapoint->getDeviceId());
+        }
+        return "unknown_device";
+        
+    } catch (const std::exception& e) {
+        return "unknown_device";
+    }
 }
 
 void DataProcessingService::SaveAlarmEventToRedis(const PulseOne::Alarm::AlarmEvent& alarm_event, size_t thread_index) {

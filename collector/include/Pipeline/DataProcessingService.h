@@ -372,13 +372,33 @@ private:
      * @param alarms_triggered 발생한 알람 수
      */
     void UpdateAlarmStatistics(size_t alarms_evaluated, size_t alarms_triggered);
-    
+    void UpdateAlarmStatistics(size_t evaluated_count, size_t triggered_count, 
+                                                  size_t thread_index);    
     /**
      * @brief 에러 처리 및 로깅
      * @param error_message 에러 메시지
      * @param context 에러 발생 컨텍스트
      */
     void HandleError(const std::string& error_message, const std::string& context);
+
+    // 🔥 알람 통계 구조체
+    struct AlarmStatistics {
+        std::atomic<size_t> total_evaluations{0};
+        std::atomic<size_t> total_triggers{0};
+        std::chrono::system_clock::time_point last_evaluation_time;
+        double trigger_rate{0.0};
+        
+        struct ThreadStats {
+            std::atomic<size_t> evaluations{0};
+            std::atomic<size_t> triggers{0};
+        };
+        std::map<size_t, ThreadStats> thread_statistics;
+    };
+    
+    // 🔥 멤버 변수
+    AlarmStatistics alarm_statistics_;
+    std::mutex alarm_stats_mutex_;
+
 };
 
 } // namespace Pipeline
