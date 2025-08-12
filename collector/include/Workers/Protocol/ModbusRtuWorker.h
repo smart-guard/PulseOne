@@ -119,9 +119,7 @@ public:
                                         uint16_t start_address,
                                         const std::string& register_type,
                                         uint32_t priority = 0);
-    bool SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
-                                        const std::string& context,
-                                        uint32_t priority = 0);
+
     // 상태 조회
     std::string GetModbusStats() const;
     std::string GetSerialBusStatus() const;

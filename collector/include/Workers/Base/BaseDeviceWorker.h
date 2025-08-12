@@ -1,6 +1,6 @@
 // ==========================================================================
 // 📁 파일: collector/include/Workers/Base/BaseDeviceWorker.h  
-// 🔥 컴파일 에러 수정: Timestamp, WorkerState::UNKNOWN, 멤버 변수 등
+// 🔥 컴파일 에러 완전 수정: DataValue 네임스페이스, 접근권한, 구현부 분리
 // ==========================================================================
 
 #ifndef WORKERS_BASE_DEVICE_WORKER_H
@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>              // 🔥 추가: unordered_map을 위해 필요
 #include <chrono>
 #include <thread>
 #include <mutex>
@@ -58,8 +59,10 @@ enum class WorkerState {
     MAX_RETRIES_EXCEEDED = 42   ///< 최대 재시도 횟수 초과
 };
 
-// 🔥 Timestamp 별칭 정의 (BasicTypes에서 가져오기)
+// 🔥 네임스페이스 별칭들 (충돌 방지)
 using Timestamp = PulseOne::BasicTypes::Timestamp;
+using DataValue = PulseOne::Structs::DataValue;        // 🔥 중요: 명시적 네임스페이스
+using LogLevel = PulseOne::Enums::LogLevel;
 
 /**
  * @brief 재연결 설정 구조체 (데이터베이스에서 로드)
@@ -100,7 +103,7 @@ struct ReconnectionStats {
  */
 class BaseDeviceWorker {
 public:
-    explicit BaseDeviceWorker(const PulseOne::Structs::DeviceInfo& device_info); // 🔥 Structs:: 추가
+    explicit BaseDeviceWorker(const PulseOne::Structs::DeviceInfo& device_info);
     virtual ~BaseDeviceWorker();
     
     // 복사/이동 방지
@@ -123,8 +126,8 @@ public:
     virtual WorkerState GetState() const { return current_state_.load(); }
     virtual std::future<bool> Pause();
     virtual std::future<bool> Resume();
-    virtual bool AddDataPoint(const PulseOne::Structs::DataPoint& point); // 🔥 Structs:: 추가
-    virtual std::vector<PulseOne::Structs::DataPoint> GetDataPoints() const; // 🔥 Structs:: 추가
+    virtual bool AddDataPoint(const PulseOne::Structs::DataPoint& point);
+    virtual std::vector<PulseOne::Structs::DataPoint> GetDataPoints() const;
     
     // =============================================================================
     // 재연결 관리
@@ -145,7 +148,8 @@ public:
     // =============================================================================
     // 파이프라인 연결
     // =============================================================================
-    bool SendDataToPipeline(const std::vector<PulseOne::Structs::TimestampedValue>& values, // 🔥 Structs:: 추가
+
+    bool SendDataToPipeline(const std::vector<PulseOne::Structs::TimestampedValue>& values,
                            uint32_t priority = 0);
     
     const std::string& GetWorkerId() const { return worker_id_; }
@@ -165,6 +169,28 @@ protected:
     std::string WorkerStateToString(WorkerState state) const;
     bool IsActiveState(WorkerState state);
     bool IsErrorState(WorkerState state);
+    
+    // =============================================================================
+    // 🔥 파이프라인 전송을 위한 헬퍼 함수들 (protected로 접근 허용)
+    // =============================================================================
+    uint32_t GetNextSequenceNumber();                                  // 🔥 선언만, 구현은 CPP에서
+    double GetRawDoubleValue(const DataValue& value) const;           // 🔥 선언만, 구현은 CPP에서
+    /**
+     * @brief 파이프라인으로 데이터 전송 (로깅 포함)
+     * @param values 전송할 TimestampedValue 벡터
+     * @param data_type 데이터 타입 설명 (로깅용)
+     * @param priority 우선순위 (기본값: 0)
+     * @return 전송 성공 여부
+     */
+    bool SendValuesToPipelineWithLogging(
+        const std::vector<PulseOne::Structs::TimestampedValue>& values,
+        const std::string& data_type,
+        uint32_t priority = 0);    
+    // =============================================================================
+    // 🔥 파생 클래스에서 접근 가능한 데이터 (protected로 변경)
+    // =============================================================================
+    std::unordered_map<int, DataValue> previous_values_;              // 🔥 protected로 변경
+    std::vector<PulseOne::Structs::DataPoint> data_points_;          // 🔥 protected로 변경
     
     // DeviceInfo 접근자들
     std::string GetProtocolType() const { 
@@ -193,7 +219,11 @@ protected:
     const PulseOne::Structs::DeviceInfo& GetDeviceInfo() const { return device_info_; }
     PulseOne::Structs::DeviceInfo& GetDeviceInfo() { return device_info_; }
     
-    std::vector<PulseOne::Structs::DataPoint>& GetDataPoints() { return data_points_; }
+    // =============================================================================
+    // 멤버 변수들
+    // =============================================================================
+    PulseOne::Structs::DeviceInfo device_info_;              ///< 디바이스 정보
+    std::string worker_id_;
 
     // =============================================================================
     // 통신 결과 업데이트 메서드들 (CPP에서 구현)
@@ -213,12 +243,6 @@ protected:
     std::string GenerateCorrelationId() const;
     std::string GetWorkerIdString() const;
 
-    // =============================================================================
-    // 멤버 변수들
-    // =============================================================================
-    PulseOne::Structs::DeviceInfo device_info_;              ///< 디바이스 정보
-    std::string worker_id_;
-
 private:
     // =============================================================================
     // 내부 데이터 멤버
@@ -226,17 +250,20 @@ private:
     std::atomic<WorkerState> current_state_{WorkerState::STOPPED};
     std::atomic<bool> is_connected_{false};
     
-    // 🔥 누락된 멤버 변수들 추가!
+    // 🔥 시퀀스 카운터 (private)
+    std::atomic<uint32_t> sequence_counter_{0};               // 🔥 private로 유지
+    
+    // 🔥 통신 상태 관련 멤버들
     uint32_t batch_sequence_counter_ = 0;
     uint32_t consecutive_failures_ = 0;
     uint32_t total_failures_ = 0;
     uint32_t total_attempts_ = 0;
     std::chrono::milliseconds last_response_time_{0};
-    Timestamp last_success_time_;                    // 🔥 이제 정의됨!
-    Timestamp state_change_time_;                    // 🔥 이제 정의됨!
+    Timestamp last_success_time_;
+    Timestamp state_change_time_;
     std::string last_error_message_ = "";
     int last_error_code_ = 0;
-    WorkerState previous_state_ = WorkerState::UNKNOWN; // 🔥 이제 UNKNOWN 사용 가능!
+    WorkerState previous_state_ = WorkerState::UNKNOWN;
     
     // =============================================================================
     // 재연결 관리
@@ -263,7 +290,6 @@ private:
     // 데이터 포인트 관리
     // =============================================================================
     mutable std::mutex data_points_mutex_;
-    std::vector<PulseOne::Structs::DataPoint> data_points_;   // 🔥 Structs:: 추가
     
     // =============================================================================
     // 내부 메서드들

@@ -697,6 +697,41 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
     }
 }
 
+
+bool BaseDeviceWorker::SendValuesToPipelineWithLogging(
+    const std::vector<PulseOne::Structs::TimestampedValue>& values,
+    const std::string& data_type,
+    uint32_t priority) {
+    
+    if (values.empty()) {
+        LogMessage(LogLevel::DEBUG_LEVEL, "전송할 데이터가 없음: " + data_type);
+        return true;
+    }
+    
+    try {
+        // 파이프라인으로 실제 전송
+        bool success = SendDataToPipeline(values, priority);
+        
+        if (success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "파이프라인 전송 성공 (" + data_type + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        } else {
+            LogMessage(LogLevel::ERROR, 
+                      "파이프라인 전송 실패 (" + data_type + "): " + 
+                      std::to_string(values.size()) + "개 포인트");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, 
+                  "파이프라인 전송 예외 (" + data_type + "): " + std::string(e.what()));
+        return false;
+    }
+}
+
+
 /*
 bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::TimestampedValue>& values, 
                                          uint32_t priority) {
@@ -891,6 +926,27 @@ std::string BaseDeviceWorker::WorkerStateToString(WorkerState state) const {
         case WorkerState::MAX_RETRIES_EXCEEDED: return "MAX_RETRIES_EXCEEDED";
         default: return "UNDEFINED";
     }
+}
+
+uint32_t BaseDeviceWorker::GetNextSequenceNumber() {
+    return ++sequence_counter_;
+}
+
+double BaseDeviceWorker::GetRawDoubleValue(const DataValue& value) const {
+    return std::visit([](const auto& v) -> double {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_arithmetic_v<T>) {
+            return static_cast<double>(v);
+        } else if constexpr (std::is_same_v<T, std::string>) {
+            try {
+                return std::stod(v);
+            } catch (...) {
+                return 0.0;
+            }
+        } else {
+            return 0.0;
+        }
+    }, value);
 }
 
 } // namespace Workers

@@ -301,17 +301,6 @@ public:
                                  uint32_t priority = 0);
 
     /**
-     * @brief TimestampedValue 배열을 직접 파이프라인 전송 (로깅 포함)
-     * @param values TimestampedValue 배열
-     * @param context 컨텍스트 (로깅용)  
-     * @param priority 파이프라인 우선순위 (기본: 0)
-     * @return 전송 성공 시 true
-     */
-    bool SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
-                                        const std::string& context,
-                                        uint32_t priority = 0);
-
-    /**
      * @brief 단일 MQTT 토픽 값을 파이프라인 전송
      * @param topic MQTT 토픽
      * @param value 데이터 값
@@ -321,6 +310,9 @@ public:
     bool SendSingleTopicValueToPipeline(const std::string& topic,
                                        const PulseOne::Structs::DataValue& value,
                                        uint32_t priority = 0);
+    bool SendMultipleTopicValuesToPipeline(const std::map<std::string, PulseOne::Structs::DataValue>& topic_values,
+                                          const std::string& batch_context,
+                                          uint32_t priority = 0);                                       
 
     // =============================================================================
     // 기본 MQTT 기능 (모든 모드에서 사용 가능)
