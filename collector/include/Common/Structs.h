@@ -165,6 +165,44 @@ namespace Structs {
     // ❌ ErrorCode 별칭 제거 (DriverError.h와 충돌 방지)
     // using ErrorCode = PulseOne::Enums::ErrorCode;  // 🔥 제거!
     
+
+    /**
+     * @brief 상태 자동 판단 임계값 설정
+     */
+    struct StatusThresholds {
+        uint32_t offline_failure_count = 3;          // 3회 연속 실패 → OFFLINE
+        std::chrono::seconds timeout_threshold{5};   // 5초 초과 → WARNING/ERROR
+        double partial_failure_ratio = 0.3;          // 30% 포인트 실패 → WARNING
+        double error_failure_ratio = 0.7;            // 70% 포인트 실패 → ERROR
+        std::chrono::seconds offline_timeout{30};    // 30초간 응답 없음 → OFFLINE
+        
+        // JSON 직렬화
+        nlohmann::json toJson() const {
+            return nlohmann::json{
+                {"offline_failure_count", offline_failure_count},
+                {"timeout_threshold_sec", timeout_threshold.count()},
+                {"partial_failure_ratio", partial_failure_ratio},
+                {"error_failure_ratio", error_failure_ratio},
+                {"offline_timeout_sec", offline_timeout.count()}
+            };
+        }
+        
+        // JSON 역직렬화
+        static StatusThresholds fromJson(const nlohmann::json& j) {
+            StatusThresholds thresholds;
+            if (j.contains("offline_failure_count")) 
+                thresholds.offline_failure_count = j["offline_failure_count"];
+            if (j.contains("timeout_threshold_sec")) 
+                thresholds.timeout_threshold = std::chrono::seconds(j["timeout_threshold_sec"]);
+            if (j.contains("partial_failure_ratio")) 
+                thresholds.partial_failure_ratio = j["partial_failure_ratio"];
+            if (j.contains("error_failure_ratio")) 
+                thresholds.error_failure_ratio = j["error_failure_ratio"];
+            if (j.contains("offline_timeout_sec")) 
+                thresholds.offline_timeout = std::chrono::seconds(j["offline_timeout_sec"]);
+            return thresholds;
+        }
+    };    
     // =========================================================================
     // 🔥 Phase 1: 타임스탬프 값 구조체 (기존 확장)
     // =========================================================================
@@ -174,70 +212,201 @@ namespace Structs {
      * @details 모든 드라이버에서 사용하는 표준 값 구조체
      */
     struct TimestampedValue {
-        // ======================================================================
-        // 🔥 멤버 변수 선언 순서 (이 순서대로 초기화해야 함)
-        // ======================================================================
-        DataValue value;                          // 실제 값 (첫 번째)
-        Timestamp timestamp;                      // 수집 시간 (두 번째)
-        DataQuality quality = DataQuality::GOOD;  // 데이터 품질 (세 번째)
-        std::string source = "";                  // 데이터 소스 (네 번째)
-        int point_id = 0;                        // 데이터포인트 ID (다섯 번째)
+        // ==========================================================================
+        // 🔥 기존 필드들 (그대로 유지)
+        // ==========================================================================
+        DataValue value;                              // 현재 값 (스케일링 적용 후)
+        Timestamp timestamp;                          // 데이터 수집/생성 시간
+        DataQuality quality = DataQuality::GOOD;      // 데이터 품질 상태
+        std::string source = "";                      // 데이터 소스 (worker명 등)
+        int point_id = 0;                            // 데이터포인트 고유 ID
         
-        // ======================================================================
-        // 🔥 생성자들 (멤버 변수 선언 순서에 맞게 초기화)
-        // ======================================================================
+        // ==========================================================================
+        // 🔥 상태변화 감지용 필드들 (디지털/아날로그 조건부 저장)
+        // ==========================================================================
+        DataValue previous_value;                     // 이전 값 (상태변화 비교용)
+        bool value_changed = false;                   // 이전값 대비 변화 여부
+        double change_threshold = 0.0;                // 아날로그 변화 임계값 (DataPoint 설정에서 복사)
         
-        // 기본 생성자
-        TimestampedValue() 
-            : value{}, timestamp(std::chrono::system_clock::now()), quality(DataQuality::GOOD), source(""), point_id(0) {}
+        // ==========================================================================
+        // 🔥 저장 제어용 필드들
+        // ==========================================================================
+        bool force_rdb_store = false;                 // 강제 RDB 저장 플래그 (중요 데이터)
         
-        // 값만 지정 (기존 호환)
-        TimestampedValue(const DataValue& val) 
-            : value(val), timestamp(std::chrono::system_clock::now()), quality(DataQuality::GOOD), source(""), point_id(0) {}
+        // ==========================================================================
+        // 🔥 데이터 추적용 필드들
+        // ==========================================================================
+        uint32_t sequence_number = 0;                 // Worker내 시퀀스 번호 (패킷 순서)
+        double raw_value = 0.0;                       // 원시 값 (스케일링 적용 전)
+        double scaling_factor = 1.0;                  // 스케일링 인수 (DataPoint에서 복사)
+        double scaling_offset = 0.0;                  // 스케일링 오프셋 (DataPoint에서 복사)
         
-        // 값 + 품질 (기존 호환)
-        TimestampedValue(const DataValue& val, DataQuality qual)
-            : value(val), timestamp(std::chrono::system_clock::now()), quality(qual), source(""), point_id(0) {}
+        // ==========================================================================
+        // 🔥 알람 관련 필드들
+        // ==========================================================================
+        std::vector<int> applicable_alarms;           // 이 포인트에 적용되는 알람 규칙 ID들
+        bool suppress_alarms = false;                 // 알람 억제 여부 (점검중 등)
+        bool trigger_alarm_check = true;              // 알람 체크 수행 여부
         
-        // 🔥 point_id + 값 (올바른 초기화 순서)
-        TimestampedValue(int pid, const DataValue& val)
-            : value(val), timestamp(std::chrono::system_clock::now()), quality(DataQuality::GOOD), source(""), point_id(pid) {}
+        // ==========================================================================
+        // 🔥 편의 함수들 (인라인으로 성능 최적화)
+        // ==========================================================================
         
-        // 🔥 완전한 생성자 (올바른 초기화 순서)
-        TimestampedValue(int pid, const DataValue& val, DataQuality qual, const std::string& src = "")
-            : value(val), timestamp(std::chrono::system_clock::now()), quality(qual), source(src), point_id(pid) {}
-        
-        // ======================================================================
-        // 편의 메서드들
-        // ======================================================================
-        
-        bool hasValidPointId() const {
-            return point_id > 0;
+        /**
+        * @brief 디지털 포인트 상태변화 확인
+        * @return true if digital state changed, false otherwise
+        */
+        inline bool HasDigitalStateChanged() const {
+            if (!std::holds_alternative<bool>(value) || 
+                !std::holds_alternative<bool>(previous_value)) {
+                return false;
+            }
+            return std::get<bool>(value) != std::get<bool>(previous_value);
         }
         
-        template<typename T>
-        T GetValue() const {
-            return std::get<T>(value);
+        /**
+        * @brief 아날로그 값 변화량 계산
+        * @return 절댓값 변화량 (double)
+        */
+        inline double GetAnalogChangeAmount() const {
+            if (!std::holds_alternative<double>(value) || 
+                !std::holds_alternative<double>(previous_value)) {
+                return 0.0;
+            }
+            return std::abs(std::get<double>(value) - std::get<double>(previous_value));
         }
         
-        std::string ToJSON() const {
-            JsonType j;
+        /**
+        * @brief RDB 저장 필요 여부 판단 (조건부 저장용)
+        * @return true if should store to RDB, false otherwise
+        */
+        inline bool ShouldStoreToRDB() const {
+            // 강제 저장 플래그
+            if (force_rdb_store) return true;
             
-            std::visit([&j](const auto& v) {
-                j["value"] = v;
-            }, value);
+            // 품질 체크
+            if (quality != DataQuality::GOOD) return false;
             
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            // 디지털: 상태변화시
+            if (std::holds_alternative<bool>(value)) {
+                return HasDigitalStateChanged();
+            }
+            
+            // 아날로그: 임계값 초과시
+            return GetAnalogChangeAmount() > change_threshold;
+        }
+        
+        /**
+        * @brief Redis용 경량 JSON 생성 (성능 최적화)
+        * @return JSON string for Redis storage
+        */
+        inline std::string ToRedisJSON() const {
+            nlohmann::json j;
+            j["point_id"] = point_id;
+            
+            // 현재값만 저장 (이전값은 Redis에 불필요)
+            std::visit([&j](const auto& v) { j["value"] = v; }, value);
+            
+            j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
                 timestamp.time_since_epoch()).count();
-            j["timestamp"] = ms;
             j["quality"] = static_cast<int>(quality);
             j["source"] = source;
+            j["sequence"] = sequence_number;
             
-            if (point_id > 0) {
-                j["point_id"] = point_id;
+            // 원시값 (스케일링 정보 추적용)
+            if (raw_value != 0.0) {
+                j["raw_value"] = raw_value;
+            }
+            
+            // 변화 플래그 (상태변화 표시용)
+            if (value_changed) {
+                j["changed"] = true;
             }
             
             return j.dump();
+        }
+        
+        /**
+        * @brief 완전한 JSON 생성 (RDB 저장용)
+        * @return Complete JSON with all fields
+        */
+        inline std::string ToFullJSON() const {
+            nlohmann::json j;
+            j["point_id"] = point_id;
+            
+            // 현재값과 이전값 모두 저장
+            std::visit([&j](const auto& v) { j["value"] = v; }, value);
+            std::visit([&j](const auto& v) { j["previous_value"] = v; }, previous_value);
+            
+            j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                timestamp.time_since_epoch()).count();
+            j["quality"] = static_cast<int>(quality);
+            j["source"] = source;
+            j["value_changed"] = value_changed;
+            j["change_threshold"] = change_threshold;
+            j["force_rdb_store"] = force_rdb_store;
+            j["sequence_number"] = sequence_number;
+            j["raw_value"] = raw_value;
+            j["scaling_factor"] = scaling_factor;
+            j["scaling_offset"] = scaling_offset;
+            
+            // 알람 정보
+            if (!applicable_alarms.empty()) {
+                j["applicable_alarms"] = applicable_alarms;
+            }
+            j["suppress_alarms"] = suppress_alarms;
+            j["trigger_alarm_check"] = trigger_alarm_check;
+            
+            return j.dump();
+        }
+        
+        /**
+        * @brief 이전값 업데이트 (Worker에서 호출)
+        */
+        inline void UpdatePreviousValue() {
+            previous_value = value;
+            value_changed = false;
+        }
+        
+        /**
+        * @brief 값 변화 체크 및 플래그 설정 (Worker에서 호출)
+        * @param new_value 새로운 값
+        */
+        inline void SetValueWithChange(const DataValue& new_value) {
+            previous_value = value;
+            value = new_value;
+            value_changed = (value != previous_value);
+            timestamp = std::chrono::system_clock::now();
+        }
+        
+        /**
+        * @brief 데이터 타입 확인
+        * @return true if digital (bool), false if analog
+        */
+        inline bool IsDigital() const {
+            return std::holds_alternative<bool>(value);
+        }
+        
+        /**
+        * @brief 알람 체크 필요 여부
+        * @return true if should check alarms
+        */
+        inline bool ShouldCheckAlarms() const {
+            return trigger_alarm_check && !suppress_alarms && !applicable_alarms.empty();
+        }
+        
+        /**
+        * @brief 값을 double로 변환 (수치 계산용)
+        * @return double value or 0.0 if not numeric
+        */
+        inline double GetDoubleValue() const {
+            return std::visit([](const auto& v) -> double {
+                using T = std::decay_t<decltype(v)>;
+                if constexpr (std::is_arithmetic_v<T>) {
+                    return static_cast<double>(v);
+                }
+                return 0.0;
+            }, value);
         }
     };
 
@@ -1659,286 +1828,477 @@ namespace Structs {
     // 🔥 메시지 전송용 확장 (향후 사용)
     // =========================================================================
     struct DeviceDataMessage {
-        // ========== 기존 필드 (100% 호환) ==========
-        std::string type = "device_data";        // 기본값 유지
-        UUID device_id;
-        std::string protocol;                    // string 타입 유지 (기존 호환)
-        std::vector<TimestampedValue> points;    // 기존 구조 유지
-        Timestamp timestamp;
-        uint32_t priority = 0;
+        // ==========================================================================
+        // 🔥 기존 필드들 (그대로 유지)
+        // ==========================================================================
+        std::string type = "device_data";                    // 메시지 타입 (고정값)
+        UUID device_id;                                      // 디바이스 고유 ID
+        std::string protocol;                                // 통신 프로토콜명 (modbus, bacnet, mqtt 등)
+        std::vector<TimestampedValue> points;                // 수집된 데이터포인트들
+        Timestamp timestamp;                                 // 메시지 생성 시간
+        uint32_t priority = 0;                              // 처리 우선순위 (0=일반, 1=높음)
         
-        // ========== 🔥 새로운 필드 (선택적 사용) ==========
+        // 멀티테넌트 지원
+        int tenant_id = 0;                                   // 테넌트 ID (0=기본)
+        int site_id = 0;                                    // 사이트 ID (0=기본)
         
-        // 테넌트/사이트 정보 (멀티테넌트 지원)
-        int tenant_id = 0;                       // 0이면 미사용
-        int site_id = 0;                         // 0이면 미사용
+        // 처리 제어
+        bool trigger_alarms = true;                          // 알람 체크 수행 여부
+        bool trigger_virtual_points = false;                // 가상포인트 계산 수행 여부
+        bool high_priority = false;                          // 고우선순위 처리 여부
         
-        // 가상포인트 지원
-        std::vector<int> affected_virtual_points;     // 영향받는 가상포인트 ID
-        bool trigger_virtual_calculation = false;     // 가상포인트 재계산 트리거
+        // 추적 정보
+        std::string correlation_id = "";                     // 요청 추적 ID (로그 연결용)
+        std::string source_worker = "";                      // 메시지 생성한 Worker명
+        uint32_t batch_sequence = 0;                        // 배치 내 시퀀스 번호
         
-        // 알람 지원
-        std::vector<int> applicable_alarm_rules;      // 적용 가능한 알람 규칙
-        bool trigger_alarm_evaluation = false;        // 알람 평가 트리거
+        // ==========================================================================
+        // 🔥 디바이스 상태 정보 (새로 추가)
+        // ==========================================================================
         
-        // 품질 정보
-        DataQuality overall_quality = DataQuality::GOOD;  // 전체 품질
-        std::map<std::string, DataQuality> point_qualities;  // 포인트별 품질
+        // 현재 디바이스 상태 (5가지 기본 상태)
+        Enums::DeviceStatus device_status = Enums::DeviceStatus::ONLINE;   // 현재 디바이스 상태
+        Enums::DeviceStatus previous_status = Enums::DeviceStatus::ONLINE; // 이전 상태 (상태변화 감지용)
+        bool status_changed = false;                                       // 상태 변경 여부 (알림 트리거용)
         
-        // 처리 메타데이터
-        std::string source_worker;               // 데이터 생성 워커
-        std::string processing_chain;            // 처리 체인 정보
-        std::string correlation_id;              // 추적용 ID
+        // 상태 관리 정보
+        bool manual_status = false;                          // 수동 설정 여부 (관리자가 MAINTENANCE 설정시 true)
+        std::string status_message = "";                     // 상태 설명 메시지 (오류 내용, 점검 사유 등)
+        Timestamp status_changed_time;                       // 상태 마지막 변경 시간
+        std::string status_changed_by = "";                  // 상태 변경 주체 (system/admin/user_id)
         
-        // 배치 처리 지원
-        bool is_batch = false;
-        int batch_id = 0;
-        int batch_sequence = 0;
+        // 통신 상태 정보 (Worker에서 자동 업데이트, 상태 자동 판단용)
+        bool is_connected = false;                           // 현재 통신 연결 상태
+        uint32_t consecutive_failures = 0;                   // 연속 실패 횟수 (3회 → OFFLINE)
+        uint32_t total_failures = 0;                        // 총 실패 횟수 (세션 시작부터)
+        uint32_t total_attempts = 0;                        // 총 시도 횟수 (성공률 계산용)
+        std::chrono::milliseconds response_time{0};         // 마지막 응답 시간 (5초 초과 → WARNING)
+        Timestamp last_success_time;                        // 마지막 성공 통신 시간
+        Timestamp last_attempt_time;                        // 마지막 통신 시도 시간
+        std::string last_error_message = "";                // 마지막 오류 메시지 (상태 메시지에 표시)
+        int last_error_code = 0;                            // 마지막 오류 코드 (프로토콜별)
         
-        // ========== 생성자 (기존 호환) ==========
+        // 포인트 상태 정보 (PARTIAL/ERROR 자동 판단용)
+        uint32_t total_points_configured = 0;               // 이 디바이스에 설정된 총 포인트 수
+        uint32_t successful_points = 0;                     // 성공적으로 읽은 포인트 수
+        uint32_t failed_points = 0;                        // 실패한 포인트 수 (30% 실패 → WARNING, 70% → ERROR)
+        
+        // ==========================================================================
+        // 🔥 생성자들
+        // ==========================================================================
+        
         DeviceDataMessage() : timestamp(std::chrono::system_clock::now()) {}
         
-        // 기존 방식 생성자 (하위 호환)
-        DeviceDataMessage(const UUID& id, const std::string& proto) 
-            : device_id(id)
-            , protocol(proto)
-            , timestamp(std::chrono::system_clock::now()) {}
-        
-        // ========== 헬퍼 메서드 ==========
-        
-        /**
-         * @brief 가상포인트 계산이 필요한지 확인
-         */
-        bool needsVirtualPointCalculation() const {
-            return trigger_virtual_calculation && !affected_virtual_points.empty();
+        DeviceDataMessage(const UUID& id, const std::string& proto, const std::string& worker = "")
+            : device_id(id), protocol(proto), source_worker(worker),
+            timestamp(std::chrono::system_clock::now()) {
+            correlation_id = GenerateCorrelationId();
         }
         
-        /**
-         * @brief 알람 평가가 필요한지 확인
-         */
-        bool needsAlarmEvaluation() const {
-            return trigger_alarm_evaluation && !applicable_alarm_rules.empty();
-        }
+        // ==========================================================================
+        // 🔥 디바이스 상태 관리 함수들
+        // ==========================================================================
         
         /**
-         * @brief 확장 기능 사용 여부 확인
+         * @brief 디바이스 상태 자동 판단 및 업데이트
+         * @param thresholds 임계값 설정
          */
-        bool hasExtendedFeatures() const {
-            return tenant_id > 0 || 
-                !affected_virtual_points.empty() || 
-                !applicable_alarm_rules.empty();
-        }
-        
-        /**
-         * @brief 레거시 모드인지 확인 (기존 필드만 사용)
-         */
-        bool isLegacyMode() const {
-            return !hasExtendedFeatures();
-        }
-        
-        // ========== JSON 직렬화 (확장) ==========
-        
-        /**
-         * @brief JSON 직렬화 (기존 호환 + 확장)
-         * @param include_extended 확장 필드 포함 여부 (기본값: true)
-         */
-        std::string ToJSON(bool include_extended = true) const {
-            nlohmann::json j;
+        inline void UpdateDeviceStatus(const StatusThresholds& thresholds = StatusThresholds{}) {
+            if (manual_status) {
+                return; // 수동 설정된 상태는 자동 변경하지 않음
+            }
             
-            // ===== 기존 필드 (항상 포함) =====
-            j["type"] = type;
+            previous_status = device_status;
+            
+            // 연속 실패 횟수로 OFFLINE 판단
+            if (consecutive_failures >= thresholds.offline_failure_count) {
+                device_status = Enums::DeviceStatus::OFFLINE;
+                status_message = "연속 " + std::to_string(consecutive_failures) + "회 통신 실패";
+            }
+            // 포인트 실패율로 ERROR/WARNING 판단
+            else if (total_points_configured > 0) {
+                double failure_ratio = static_cast<double>(failed_points) / total_points_configured;
+                
+                if (failure_ratio >= thresholds.error_failure_ratio) {
+                    device_status = Enums::DeviceStatus::ERROR;
+                    status_message = "포인트 " + std::to_string(static_cast<int>(failure_ratio * 100)) + "% 실패";
+                }
+                else if (failure_ratio >= thresholds.partial_failure_ratio) {
+                    device_status = Enums::DeviceStatus::WARNING;
+                    status_message = "포인트 " + std::to_string(static_cast<int>(failure_ratio * 100)) + "% 실패";
+                }
+                // 응답 시간으로 WARNING 판단
+                else if (response_time > thresholds.timeout_threshold) {
+                    device_status = Enums::DeviceStatus::WARNING;
+                    status_message = "응답 지연 (" + std::to_string(response_time.count()) + "ms)";
+                }
+                else if (is_connected && consecutive_failures == 0) {
+                    device_status = Enums::DeviceStatus::ONLINE;
+                    status_message = "정상";
+                }
+            }
+            
+            // 상태 변경 감지
+            if (device_status != previous_status) {
+                status_changed = true;
+                status_changed_time = std::chrono::system_clock::now();
+                status_changed_by = "system";
+            }
+        }
+        
+        /**
+         * @brief 수동 상태 설정 (관리자용)
+         * @param new_status 새로운 상태
+         * @param message 상태 메시지
+         * @param user_id 설정한 사용자 ID
+         */
+        inline void SetManualStatus(Enums::DeviceStatus new_status, 
+                                const std::string& message = "", 
+                                const std::string& user_id = "admin") {
+            previous_status = device_status;
+            device_status = new_status;
+            manual_status = (new_status == Enums::DeviceStatus::MAINTENANCE);
+            status_message = message.empty() ? Enums::GetDefaultDeviceStatusMessage(new_status) : message;
+            status_changed = (device_status != previous_status);
+            status_changed_time = std::chrono::system_clock::now();
+            status_changed_by = user_id;
+        }
+        
+        /**
+         * @brief 통신 시도 결과 업데이트
+         * @param success 성공 여부
+         * @param error_msg 오류 메시지 (실패시)
+         * @param error_code 오류 코드 (실패시)
+         * @param resp_time 응답 시간
+         */
+        inline void UpdateCommunicationResult(bool success, 
+                                            const std::string& error_msg = "",
+                                            int error_code = 0,
+                                            std::chrono::milliseconds resp_time = std::chrono::milliseconds{0}) {
+            total_attempts++;
+            last_attempt_time = std::chrono::system_clock::now();
+            response_time = resp_time;
+            
+            if (success) {
+                consecutive_failures = 0;
+                is_connected = true;
+                last_success_time = last_attempt_time;
+                last_error_message = "";
+                last_error_code = 0;
+            } else {
+                consecutive_failures++;
+                total_failures++;
+                is_connected = false;
+                last_error_message = error_msg;
+                last_error_code = error_code;
+            }
+        }
+        
+        /**
+         * @brief 포인트 처리 결과 업데이트
+         * @param configured_count 설정된 포인트 수
+         * @param success_count 성공한 포인트 수
+         * @param fail_count 실패한 포인트 수
+         */
+        inline void UpdatePointResults(uint32_t configured_count, 
+                                    uint32_t success_count, 
+                                    uint32_t fail_count) {
+            total_points_configured = configured_count;
+            successful_points = success_count;
+            failed_points = fail_count;
+        }
+        
+        // ==========================================================================
+        // 🔥 데이터 조회 및 분석 함수들
+        // ==========================================================================
+        
+        /**
+         * @brief 변화된 포인트들만 반환
+         */
+        inline std::vector<TimestampedValue> GetChangedPoints() const {
+            std::vector<TimestampedValue> changed;
+            for (const auto& point : points) {
+                if (point.value_changed || point.force_rdb_store) {
+                    changed.push_back(point);
+                }
+            }
+            return changed;
+        }
+        
+        /**
+         * @brief RDB 저장이 필요한 포인트들만 반환
+         */
+        inline std::vector<TimestampedValue> GetRDBStorePoints() const {
+            std::vector<TimestampedValue> rdb_points;
+            for (const auto& point : points) {
+                if (point.ShouldStoreToRDB()) {
+                    rdb_points.push_back(point);
+                }
+            }
+            return rdb_points;
+        }
+        
+        /**
+         * @brief 알람 체크가 필요한 포인트들만 반환
+         */
+        inline std::vector<TimestampedValue> GetAlarmCheckPoints() const {
+            std::vector<TimestampedValue> alarm_points;
+            for (const auto& point : points) {
+                if (point.ShouldCheckAlarms()) {
+                    alarm_points.push_back(point);
+                }
+            }
+            return alarm_points;
+        }
+        
+        /**
+         * @brief 디지털/아날로그 포인트 분류
+         */
+        inline std::pair<std::vector<TimestampedValue>, std::vector<TimestampedValue>> 
+        GetDigitalAndAnalogPoints() const {
+            std::vector<TimestampedValue> digital, analog;
+            for (const auto& point : points) {
+                if (point.IsDigital()) {
+                    digital.push_back(point);
+                } else {
+                    analog.push_back(point);
+                }
+            }
+            return {digital, analog};
+        }
+        
+        /**
+         * @brief 메시지 통계 조회
+         */
+        struct MessageStats {
+            size_t total_points = 0;
+            size_t changed_points = 0;
+            size_t rdb_store_points = 0;
+            size_t alarm_check_points = 0;
+            size_t digital_points = 0;
+            size_t analog_points = 0;
+            double success_rate = 0.0;
+            double failure_rate = 0.0;
+        };
+        
+        inline MessageStats GetStats() const {
+            MessageStats stats;
+            stats.total_points = points.size();
+            
+            for (const auto& point : points) {
+                if (point.value_changed || point.force_rdb_store) {
+                    stats.changed_points++;
+                }
+                if (point.ShouldStoreToRDB()) {
+                    stats.rdb_store_points++;
+                }
+                if (point.ShouldCheckAlarms()) {
+                    stats.alarm_check_points++;
+                }
+                if (point.IsDigital()) {
+                    stats.digital_points++;
+                } else {
+                    stats.analog_points++;
+                }
+            }
+            
+            if (total_points_configured > 0) {
+                stats.success_rate = static_cast<double>(successful_points) / total_points_configured;
+                stats.failure_rate = static_cast<double>(failed_points) / total_points_configured;
+            }
+            
+            return stats;
+        }
+        
+        // ==========================================================================
+        // 🔥 JSON 직렬화 함수들
+        // ==========================================================================
+        
+        /**
+         * @brief Redis용 디바이스 상태 JSON (경량)
+         */
+        inline std::string ToDeviceStatusJSON() const {
+            nlohmann::json j;
             j["device_id"] = device_id;
             j["protocol"] = protocol;
+            j["status"] = static_cast<int>(device_status);
+            j["status_str"] = Enums::DeviceStatusToString(device_status);
+            j["status_message"] = status_message;
+            j["is_connected"] = is_connected;
+            j["manual_status"] = manual_status;
+            j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                timestamp.time_since_epoch()).count();
             
-            // 타임스탬프 변환 (기존 코드 유지)
-            auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-            std::tm tm_buf;
-            #ifdef _WIN32
-                gmtime_s(&tm_buf, &time_t);
-            #else
-                gmtime_r(&time_t, &tm_buf);
-            #endif
-            char buffer[32];
-            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
-            j["timestamp"] = std::string(buffer);
-            
-            // 포인트 데이터 (기존 방식)
-            j["points"] = nlohmann::json::array();
-            for (const auto& point : points) {
-                j["points"].push_back(nlohmann::json::parse(point.ToJSON()));
+            if (status_changed) {
+                j["status_changed"] = true;
+                j["status_changed_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    status_changed_time.time_since_epoch()).count();
             }
             
-            if (priority > 0) {
-                j["priority"] = priority;
-            }
+            // 통신 통계
+            j["comm_stats"] = {
+                {"consecutive_failures", consecutive_failures},
+                {"total_failures", total_failures},
+                {"total_attempts", total_attempts},
+                {"response_time_ms", response_time.count()}
+            };
             
-            // ===== 확장 필드 (선택적) =====
-            if (include_extended && hasExtendedFeatures()) {
-                // 테넌트 정보
-                if (tenant_id > 0) {
-                    j["tenant_id"] = tenant_id;
-                }
-                if (site_id > 0) {
-                    j["site_id"] = site_id;
-                }
-                
-                // 가상포인트 정보
-                if (!affected_virtual_points.empty()) {
-                    j["affected_virtual_points"] = affected_virtual_points;
-                    j["trigger_virtual_calculation"] = trigger_virtual_calculation;
-                }
-                
-                // 알람 정보
-                if (!applicable_alarm_rules.empty()) {
-                    j["applicable_alarm_rules"] = applicable_alarm_rules;
-                    j["trigger_alarm_evaluation"] = trigger_alarm_evaluation;
-                }
-                
-                // 품질 정보
-                if (overall_quality != DataQuality::GOOD) {
-                    j["overall_quality"] = static_cast<int>(overall_quality);
-                }
-                if (!point_qualities.empty()) {
-                    j["point_qualities"] = nlohmann::json::object();
-                    for (const auto& [point_id, quality] : point_qualities) {
-                        j["point_qualities"][point_id] = static_cast<int>(quality);
-                    }
-                }
-                
-                // 메타데이터
-                if (!source_worker.empty()) {
-                    j["source_worker"] = source_worker;
-                }
-                if (!processing_chain.empty()) {
-                    j["processing_chain"] = processing_chain;
-                }
-                if (!correlation_id.empty()) {
-                    j["correlation_id"] = correlation_id;
-                }
-                
-                // 배치 정보
-                if (is_batch) {
-                    j["batch_info"] = {
-                        {"batch_id", batch_id},
-                        {"sequence", batch_sequence}
-                    };
-                }
+            // 포인트 통계
+            if (total_points_configured > 0) {
+                j["point_stats"] = {
+                    {"total", total_points_configured},
+                    {"success", successful_points},
+                    {"failed", failed_points},
+                    {"success_rate", static_cast<double>(successful_points) / total_points_configured}
+                };
             }
             
             return j.dump();
         }
         
         /**
-         * @brief 레거시 JSON 생성 (기존 필드만)
+         * @brief 완전한 메시지 JSON (RDB/로그용)
          */
-        std::string ToLegacyJSON() const {
-            return ToJSON(false);  // 확장 필드 제외
+        inline std::string ToFullJSON() const {
+            nlohmann::json j;
+            
+            // 기본 정보
+            j["type"] = type;
+            j["device_id"] = device_id;
+            j["protocol"] = protocol;
+            j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                timestamp.time_since_epoch()).count();
+            j["tenant_id"] = tenant_id;
+            j["site_id"] = site_id;
+            j["correlation_id"] = correlation_id;
+            j["source_worker"] = source_worker;
+            j["batch_sequence"] = batch_sequence;
+            
+            // 처리 제어
+            j["processing"] = {
+                {"trigger_alarms", trigger_alarms},
+                {"trigger_virtual_points", trigger_virtual_points},
+                {"high_priority", high_priority},
+                {"priority", priority}
+            };
+            
+            // 디바이스 상태
+            j["device_status"] = {
+                {"current", static_cast<int>(device_status)},
+                {"current_str", Enums::DeviceStatusToString(device_status)},
+                {"previous", static_cast<int>(previous_status)},
+                {"changed", status_changed},
+                {"manual", manual_status},
+                {"message", status_message},
+                {"changed_by", status_changed_by}
+            };
+            
+            if (status_changed) {
+                j["device_status"]["changed_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    status_changed_time.time_since_epoch()).count();
+            }
+            
+            // 통신 상태
+            j["communication"] = {
+                {"connected", is_connected},
+                {"consecutive_failures", consecutive_failures},
+                {"total_failures", total_failures},
+                {"total_attempts", total_attempts},
+                {"response_time_ms", response_time.count()},
+                {"last_error_message", last_error_message},
+                {"last_error_code", last_error_code}
+            };
+            
+            if (last_success_time.time_since_epoch().count() > 0) {
+                j["communication"]["last_success_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    last_success_time.time_since_epoch()).count();
+            }
+            
+            // 포인트 정보
+            j["points_summary"] = {
+                {"total_configured", total_points_configured},
+                {"successful", successful_points},
+                {"failed", failed_points},
+                {"in_message", points.size()}
+            };
+            
+            // 포인트 데이터 (요약만)
+            j["points"] = nlohmann::json::array();
+            for (const auto& point : points) {
+                j["points"].push_back(nlohmann::json::parse(point.ToRedisJSON()));
+            }
+            
+            return j.dump();
         }
         
         /**
-         * @brief JSON에서 역직렬화
+         * @brief 전송용 경량 JSON (파이프라인용)
          */
-        static DeviceDataMessage FromJSON(const std::string& json_str) {
-            DeviceDataMessage msg;
-            auto j = nlohmann::json::parse(json_str);
+        inline std::string ToTransportJSON() const {
+            nlohmann::json j;
             
-            // 기존 필드 파싱
-            if (j.contains("type")) msg.type = j["type"];
-            if (j.contains("device_id")) msg.device_id = j["device_id"];
-            if (j.contains("protocol")) msg.protocol = j["protocol"];
-            if (j.contains("priority")) msg.priority = j["priority"];
+            // 필수 필드만
+            j["type"] = type;
+            j["device_id"] = device_id;
+            j["protocol"] = protocol;
+            j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                timestamp.time_since_epoch()).count();
+            j["correlation_id"] = correlation_id;
+            j["source_worker"] = source_worker;
             
-            // 타임스탬프 파싱
-            if (j.contains("timestamp")) {
-                // ISO 8601 파싱 로직
-                std::tm tm = {};
-                std::istringstream ss(j["timestamp"].get<std::string>());
-                ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
-                msg.timestamp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+            // 상태 정보 (핵심만)
+            j["device_status"] = static_cast<int>(device_status);
+            j["is_connected"] = is_connected;
+            
+            // 처리 제어
+            j["trigger_alarms"] = trigger_alarms;
+            j["trigger_virtual_points"] = trigger_virtual_points;
+            
+            // 포인트 데이터 (경량)
+            j["points"] = nlohmann::json::array();
+            for (const auto& point : points) {
+                j["points"].push_back(nlohmann::json::parse(point.ToRedisJSON()));
             }
             
-            // 포인트 데이터 파싱
-            if (j.contains("points") && j["points"].is_array()) {
-                for (const auto& point_json : j["points"]) {
-                    // TimestampedValue::FromJSON 구현 필요
-                    // msg.points.push_back(TimestampedValue::FromJSON(point_json.dump()));
-                }
-            }
-            
-            // 확장 필드 파싱 (있을 경우만)
-            if (j.contains("tenant_id")) msg.tenant_id = j["tenant_id"];
-            if (j.contains("site_id")) msg.site_id = j["site_id"];
-            
-            if (j.contains("affected_virtual_points")) {
-                msg.affected_virtual_points = j["affected_virtual_points"].get<std::vector<int>>();
-            }
-            if (j.contains("trigger_virtual_calculation")) {
-                msg.trigger_virtual_calculation = j["trigger_virtual_calculation"];
-            }
-            
-            if (j.contains("applicable_alarm_rules")) {
-                msg.applicable_alarm_rules = j["applicable_alarm_rules"].get<std::vector<int>>();
-            }
-            if (j.contains("trigger_alarm_evaluation")) {
-                msg.trigger_alarm_evaluation = j["trigger_alarm_evaluation"];
-            }
-            
-            if (j.contains("overall_quality")) {
-                msg.overall_quality = static_cast<DataQuality>(j["overall_quality"].get<int>());
-            }
-            
-            if (j.contains("source_worker")) msg.source_worker = j["source_worker"];
-            if (j.contains("processing_chain")) msg.processing_chain = j["processing_chain"];
-            if (j.contains("correlation_id")) msg.correlation_id = j["correlation_id"];
-            
-            if (j.contains("batch_info")) {
-                msg.is_batch = true;
-                msg.batch_id = j["batch_info"]["batch_id"];
-                msg.batch_sequence = j["batch_info"]["sequence"];
-            }
-            
-            return msg;
+            return j.dump();
         }
+        
+        // ==========================================================================
+        // 🔥 유틸리티 함수들
+        // ==========================================================================
+        
+        /**
+         * @brief 상태 변경 초기화 (처리 완료 후 호출)
+         */
+        inline void ResetStatusChange() {
+            status_changed = false;
+        }
+        
+        /**
+         * @brief 통신 세션 초기화 (Worker 재시작시)
+         */
+        inline void ResetCommunicationStats() {
+            consecutive_failures = 0;
+            total_failures = 0;
+            total_attempts = 0;
+            is_connected = false;
+            last_error_message = "";
+            last_error_code = 0;
+        }
+        
+        /**
+         * @brief correlation_id 자동 생성
+         */
+        inline std::string GenerateCorrelationId() {
+            auto now = std::chrono::system_clock::now();
+            auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()).count();
+            return device_id + "_" + source_worker + "_" + std::to_string(timestamp);
+        }
+
+    private:
+        // (Enums.h에 정의된 함수들 사용하므로 여기서는 제거)
     };
-
-    /**
-     * @brief 레거시 코드 호환 헬퍼
-     */
-    inline DeviceDataMessage CreateLegacyMessage(
-        const UUID& device_id,
-        const std::string& protocol,
-        const std::vector<TimestampedValue>& points) {
-        
-        DeviceDataMessage msg;
-        msg.device_id = device_id;
-        msg.protocol = protocol;
-        msg.points = points;
-        // 확장 필드는 기본값 유지
-        return msg;
-    }
-
-    /**
-     * @brief 확장 메시지 생성 헬퍼
-     */
-    inline DeviceDataMessage CreateExtendedMessage(
-        const UUID& device_id,
-        const std::string& protocol,
-        const std::vector<TimestampedValue>& points,
-        int tenant_id,
-        const std::vector<int>& virtual_points = {},
-        const std::vector<int>& alarm_rules = {}) {
-        
-        DeviceDataMessage msg;
-        msg.device_id = device_id;
-        msg.protocol = protocol;
-        msg.points = points;
-        msg.tenant_id = tenant_id;
-        msg.affected_virtual_points = virtual_points;
-        msg.applicable_alarm_rules = alarm_rules;
-        msg.trigger_virtual_calculation = !virtual_points.empty();
-        msg.trigger_alarm_evaluation = !alarm_rules.empty();
-        return msg;
-    }
 
     /**
      * @brief 로그 통계 구조체
