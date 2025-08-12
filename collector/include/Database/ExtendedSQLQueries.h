@@ -14,135 +14,9 @@ namespace Database {
 namespace SQL {
 
 // =============================================================================
-// 🚨 Alarm 관련 쿼리들 (AlarmRule, AlarmOccurrence)
-// =============================================================================
-namespace Alarm {
-
-// =============================================================================
-// AlarmRule 테이블 쿼리들
-// =============================================================================
-namespace Rule {
-    
-    const std::string CREATE_TABLE = R"(
-        CREATE TABLE IF NOT EXISTS alarm_rules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tenant_id INTEGER DEFAULT 0,
-            name VARCHAR(255) NOT NULL,
-            description TEXT,
-            target_type VARCHAR(50) NOT NULL,
-            target_id INTEGER,
-            target_address INTEGER,
-            target_tag VARCHAR(255),
-            condition_type VARCHAR(20) NOT NULL,
-            threshold_value REAL,
-            threshold_value2 REAL,
-            condition_script TEXT,
-            severity VARCHAR(20) DEFAULT 'MEDIUM',
-            priority INTEGER DEFAULT 5,
-            is_enabled BOOLEAN DEFAULT 1,
-            auto_clear BOOLEAN DEFAULT 1,
-            clear_delay_seconds INTEGER DEFAULT 0,
-            notification_enabled BOOLEAN DEFAULT 1,
-            notification_channels TEXT DEFAULT '[]',
-            escalation_rules TEXT DEFAULT '{}',
-            suppression_rules TEXT DEFAULT '{}',
-            context_data TEXT DEFAULT '{}',
-            created_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            
-            INDEX idx_alarm_rules_tenant (tenant_id),
-            INDEX idx_alarm_rules_target (target_type, target_id),
-            INDEX idx_alarm_rules_enabled (is_enabled),
-            INDEX idx_alarm_rules_severity (severity)
-        )
-    )";
-    
-    const std::string FIND_ALL = R"(
-        SELECT 
-            id, tenant_id, name, description, target_type, target_id,
-            target_address, target_tag, condition_type, threshold_value,
-            threshold_value2, condition_script, severity, priority,
-            is_enabled, auto_clear, clear_delay_seconds, notification_enabled,
-            notification_channels, escalation_rules, suppression_rules,
-            context_data, created_by, created_at, updated_at
-        FROM alarm_rules 
-        ORDER BY priority DESC, name
-    )";
-    
-    const std::string FIND_BY_ID = R"(
-        SELECT 
-            id, tenant_id, name, description, target_type, target_id,
-            target_address, target_tag, condition_type, threshold_value,
-            threshold_value2, condition_script, severity, priority,
-            is_enabled, auto_clear, clear_delay_seconds, notification_enabled,
-            notification_channels, escalation_rules, suppression_rules,
-            context_data, created_by, created_at, updated_at
-        FROM alarm_rules 
-        WHERE id = ?
-    )";
-    
-    const std::string INSERT = R"(
-        INSERT INTO alarm_rules (
-            tenant_id, name, description, target_type, target_id,
-            target_address, target_tag, condition_type, threshold_value,
-            threshold_value2, condition_script, severity, priority,
-            is_enabled, auto_clear, clear_delay_seconds, notification_enabled,
-            notification_channels, escalation_rules, suppression_rules,
-            context_data, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    )";
-    
-    const std::string UPDATE_BY_ID = R"(
-        UPDATE alarm_rules 
-        SET tenant_id = ?, name = ?, description = ?, target_type = ?,
-            target_id = ?, target_address = ?, target_tag = ?,
-            condition_type = ?, threshold_value = ?, threshold_value2 = ?,
-            condition_script = ?, severity = ?, priority = ?, is_enabled = ?,
-            auto_clear = ?, clear_delay_seconds = ?, notification_enabled = ?,
-            notification_channels = ?, escalation_rules = ?, suppression_rules = ?,
-            context_data = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    )";
-    
-    const std::string DELETE_BY_ID = "DELETE FROM alarm_rules WHERE id = ?";
-    
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM alarm_rules WHERE id = ?";
-    
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM alarm_rules";
-    
-    const std::string FIND_BY_TARGET = R"(
-        SELECT 
-            id, tenant_id, name, description, target_type, target_id,
-            target_address, target_tag, condition_type, threshold_value,
-            threshold_value2, condition_script, severity, priority,
-            is_enabled, auto_clear, clear_delay_seconds, notification_enabled,
-            notification_channels, escalation_rules, suppression_rules,
-            context_data, created_by, created_at, updated_at
-        FROM alarm_rules 
-        WHERE target_type = ? AND target_id = ? AND is_enabled = 1
-        ORDER BY priority DESC
-    )";
-    
-    const std::string FIND_ENABLED = R"(
-        SELECT 
-            id, tenant_id, name, description, target_type, target_id,
-            target_address, target_tag, condition_type, threshold_value,
-            threshold_value2, condition_script, severity, priority,
-            is_enabled, auto_clear, clear_delay_seconds, notification_enabled,
-            notification_channels, escalation_rules, suppression_rules,
-            context_data, created_by, created_at, updated_at
-        FROM alarm_rules 
-        WHERE is_enabled = 1
-        ORDER BY priority DESC, name
-    )";
-
-} // namespace Rule
-
-// =============================================================================
 // AlarmOccurrence 테이블 쿼리들
 // =============================================================================
-namespace Occurrence {
+namespace AlarmOccurrence {
     
     // ==========================================================================
     // 테이블 생성 및 관리
@@ -544,7 +418,7 @@ namespace Occurrence {
 
 namespace AlarmRule {
     
-    // 🔥🔥🔥 FIND_ALL - 모든 알람 규칙 조회 (우선순위, 중요도 순)
+    // 🔥🔥🔥 FIND_ALL - 실제 alarm_rules 테이블 컬럼 기준
     const std::string FIND_ALL = R"(
         SELECT 
             id, tenant_id, name, description, target_type, target_id, target_group,
@@ -590,22 +464,6 @@ namespace AlarmRule {
         ORDER BY priority DESC, severity
     )";
     
-    // 🔥🔥🔥 FIND_BY_TENANT - 테넌트별 알람 규칙들
-    const std::string FIND_BY_TENANT = R"(
-        SELECT 
-            id, tenant_id, name, description, target_type, target_id, target_group,
-            alarm_type, high_high_limit, high_limit, low_limit, low_low_limit,
-            deadband, rate_of_change, trigger_condition, condition_script,
-            message_script, message_config, message_template, severity, priority,
-            auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
-            notification_enabled, notification_delay_sec, notification_repeat_interval_min,
-            notification_channels, notification_recipients, is_enabled, is_latched,
-            created_at, updated_at, created_by
-        FROM alarm_rules 
-        WHERE tenant_id = ?
-        ORDER BY priority DESC, severity, name
-    )";
-    
     // 🔥🔥🔥 FIND_ENABLED - 활성화된 알람 규칙들만
     const std::string FIND_ENABLED = R"(
         SELECT 
@@ -622,39 +480,7 @@ namespace AlarmRule {
         ORDER BY priority DESC, severity
     )";
     
-    // 🔥🔥🔥 FIND_BY_SEVERITY - 중요도별 알람 규칙들
-    const std::string FIND_BY_SEVERITY = R"(
-        SELECT 
-            id, tenant_id, name, description, target_type, target_id, target_group,
-            alarm_type, high_high_limit, high_limit, low_limit, low_low_limit,
-            deadband, rate_of_change, trigger_condition, condition_script,
-            message_script, message_config, message_template, severity, priority,
-            auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
-            notification_enabled, notification_delay_sec, notification_repeat_interval_min,
-            notification_channels, notification_recipients, is_enabled, is_latched,
-            created_at, updated_at, created_by
-        FROM alarm_rules 
-        WHERE severity = ?
-        ORDER BY priority DESC, name
-    )";
-    
-    // 🔥🔥🔥 FIND_BY_ALARM_TYPE - 알람 타입별 (analog, digital, script)
-    const std::string FIND_BY_ALARM_TYPE = R"(
-        SELECT 
-            id, tenant_id, name, description, target_type, target_id, target_group,
-            alarm_type, high_high_limit, high_limit, low_limit, low_low_limit,
-            deadband, rate_of_change, trigger_condition, condition_script,
-            message_script, message_config, message_template, severity, priority,
-            auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
-            notification_enabled, notification_delay_sec, notification_repeat_interval_min,
-            notification_channels, notification_recipients, is_enabled, is_latched,
-            created_at, updated_at, created_by
-        FROM alarm_rules 
-        WHERE alarm_type = ?
-        ORDER BY priority DESC, severity
-    )";
-    
-    // 🔥🔥🔥 INSERT - 새 알람 규칙 생성
+    // 🔥🔥🔥 INSERT - 새 알람 규칙 생성 (정확한 32개 컬럼)
     const std::string INSERT = R"(
         INSERT INTO alarm_rules (
             tenant_id, name, description, target_type, target_id, target_group,
@@ -664,7 +490,7 @@ namespace AlarmRule {
             auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
             notification_enabled, notification_delay_sec, notification_repeat_interval_min,
             notification_channels, notification_recipients, is_enabled, is_latched,
-            created_by, created_at, updated_at
+            created_by
         ) VALUES (
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
@@ -673,11 +499,11 @@ namespace AlarmRule {
             ?, ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?, ?,
-            ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            ?
         )
     )";
     
-    // 🔥🔥🔥 UPDATE - 알람 규칙 업데이트
+    // 🔥🔥🔥 UPDATE - 알람 규칙 업데이트 (정확한 32개 컬럼 + WHERE id)
     const std::string UPDATE = R"(
         UPDATE alarm_rules SET 
             tenant_id = ?, name = ?, description = ?, target_type = ?, target_id = ?, target_group = ?,
@@ -691,46 +517,13 @@ namespace AlarmRule {
         WHERE id = ?
     )";
     
-    // 🔥🔥🔥 UPDATE_STATUS - 알람 규칙 활성화/비활성화
-    const std::string UPDATE_STATUS = R"(
-        UPDATE alarm_rules SET 
-            is_enabled = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    )";
-    
     // 🔥🔥🔥 기본 CRUD 및 유틸리티
     const std::string DELETE_BY_ID = "DELETE FROM alarm_rules WHERE id = ?";
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM alarm_rules WHERE id = ?";
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM alarm_rules";
     const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM alarm_rules WHERE is_enabled = 1";
-    const std::string COUNT_BY_SEVERITY = "SELECT COUNT(*) as count FROM alarm_rules WHERE severity = ?";
-    const std::string COUNT_BY_TARGET = "SELECT COUNT(*) as count FROM alarm_rules WHERE target_type = ? AND target_id = ?";
-    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
     
-    // 🔥🔥🔥 통계 쿼리들
-    const std::string GET_SEVERITY_DISTRIBUTION = R"(
-        SELECT severity, COUNT(*) as count 
-        FROM alarm_rules 
-        GROUP BY severity
-        ORDER BY 
-            CASE severity 
-                WHEN 'critical' THEN 1
-                WHEN 'high' THEN 2  
-                WHEN 'medium' THEN 3
-                WHEN 'low' THEN 4
-                WHEN 'info' THEN 5
-                ELSE 6
-            END
-    )";
-    
-    const std::string GET_TYPE_DISTRIBUTION = R"(
-        SELECT alarm_type, COUNT(*) as count 
-        FROM alarm_rules 
-        GROUP BY alarm_type
-        ORDER BY count DESC
-    )";
-    
-    // 🔥🔥🔥 CREATE_TABLE - alarm_rules 테이블 생성
+    // 🔥🔥🔥 CREATE_TABLE - alarm_rules 테이블 생성 (실제 스키마)
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS alarm_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -799,8 +592,6 @@ namespace AlarmRule {
     )";
     
 } // namespace AlarmRule
-
-} // namespace Alarm
 
 // =============================================================================
 // 📚 ScriptLibrary 관련 쿼리들
