@@ -498,159 +498,109 @@ AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, do
     eval.timestamp = std::chrono::system_clock::now();
     eval.rule_id = rule.getId();
     eval.tenant_id = rule.getTenantId();
-    
-    // 트리거 값 문자열로 저장
+    eval.severity = rule.getSeverity();
     eval.triggered_value = std::to_string(value);
     
-    bool currently_in_alarm = false;
-    std::string condition;
-    AlarmSeverity determined_severity = rule.getSeverity();
+    // 🔥 초기값 설정 (중요!)
+    eval.should_trigger = false;
+    eval.should_clear = false;
+    eval.state_changed = false;
+    eval.condition_met = "NORMAL";
     
     try {
         LogManager::getInstance().Debug("Evaluating analog alarm for rule " + 
                                       std::to_string(rule.getId()) + ", value: " + std::to_string(value));
         
-        // =============================================================================
-        // 🎯 임계값 체크 (우선순위 순서: HIGH_HIGH -> HIGH -> LOW_LOW -> LOW)
-        // =============================================================================
+        // 🚨 1단계: 현재 임계값 조건 체크
+        bool condition_triggered = false;
+        std::string alarm_level;
         
-        // HIGH-HIGH 체크 (가장 심각한 상태)
         if (rule.getHighHighLimit().has_value() && value >= rule.getHighHighLimit().value()) {
-            currently_in_alarm = true;
-            condition = "HIGH_HIGH";
-            determined_severity = AlarmSeverity::CRITICAL;  // 강제로 CRITICAL
-            eval.analog_level = AnalogAlarmLevel::HIGH_HIGH;
-            eval.alarm_level = "HIGH_HIGH";
-            
+            condition_triggered = true;
+            alarm_level = "HIGH_HIGH";
             LogManager::getInstance().Debug("HIGH_HIGH condition met: " + std::to_string(value) + 
                                           " >= " + std::to_string(rule.getHighHighLimit().value()));
         }
-        // HIGH 체크
         else if (rule.getHighLimit().has_value() && value >= rule.getHighLimit().value()) {
-            currently_in_alarm = true;
-            condition = "HIGH";
-            determined_severity = AlarmSeverity::HIGH;
-            eval.analog_level = AnalogAlarmLevel::HIGH;
-            eval.alarm_level = "HIGH";
-            
+            condition_triggered = true;
+            alarm_level = "HIGH";
             LogManager::getInstance().Debug("HIGH condition met: " + std::to_string(value) + 
                                           " >= " + std::to_string(rule.getHighLimit().value()));
         }
-        // LOW-LOW 체크 (가장 심각한 하한)
-        else if (rule.getLowLowLimit().has_value() && value <= rule.getLowLowLimit().value()) {
-            currently_in_alarm = true;
-            condition = "LOW_LOW";
-            determined_severity = AlarmSeverity::CRITICAL;  // 강제로 CRITICAL
-            eval.analog_level = AnalogAlarmLevel::LOW_LOW;
-            eval.alarm_level = "LOW_LOW";
-            
-            LogManager::getInstance().Debug("LOW_LOW condition met: " + std::to_string(value) + 
-                                          " <= " + std::to_string(rule.getLowLowLimit().value()));
-        }
-        // LOW 체크
         else if (rule.getLowLimit().has_value() && value <= rule.getLowLimit().value()) {
-            currently_in_alarm = true;
-            condition = "LOW";
-            determined_severity = AlarmSeverity::HIGH;
-            eval.analog_level = AnalogAlarmLevel::LOW;
-            eval.alarm_level = "LOW";
-            
+            condition_triggered = true;
+            alarm_level = "LOW";
             LogManager::getInstance().Debug("LOW condition met: " + std::to_string(value) + 
                                           " <= " + std::to_string(rule.getLowLimit().value()));
         }
+        else if (rule.getLowLowLimit().has_value() && value <= rule.getLowLowLimit().value()) {
+            condition_triggered = true;
+            alarm_level = "LOW_LOW";
+            LogManager::getInstance().Debug("LOW_LOW condition met: " + std::to_string(value) + 
+                                          " <= " + std::to_string(rule.getLowLowLimit().value()));
+        }
         else {
-            // 정상 범위
-            eval.analog_level = AnalogAlarmLevel::NORMAL;
-            eval.alarm_level = "NORMAL";
-            
             LogManager::getInstance().Debug("Value in normal range: " + std::to_string(value));
         }
         
-        // =============================================================================
-        // 🎯 히스테리시스 (Deadband) 처리
-        // =============================================================================
-        
+        // 🚨 2단계: 현재 알람 상태 확인
         std::lock_guard<std::mutex> lock(state_mutex_);
-        bool was_in_alarm = alarm_states_[rule.getId()];
-        double last_value = last_values_[rule.getId()];
+        bool currently_in_alarm = isAlarmActive(rule.getId());
+        double last_value = getLastValue(rule.getId());
         
-        // 데드밴드 적용 (기본값 0.0) - getDeadband()는 double 반환
-        double deadband = rule.getDeadband();
-        bool hysteresis_allows_change = true;
+        LogManager::getInstance().Debug("Rule " + std::to_string(rule.getId()) + 
+                                      " - condition_triggered: " + std::to_string(condition_triggered) + 
+                                      ", currently_in_alarm: " + std::to_string(currently_in_alarm));
         
-        if (deadband > 0.0) {
-            // 알람 → 정상: 값이 데드밴드만큼 여유있게 돌아와야 함
-            if (was_in_alarm && !currently_in_alarm) {
-                double clearance_needed = deadband;
-                
-                if (condition == "HIGH" || condition == "HIGH_HIGH") {
-                    // 상한 알람의 경우: 임계값보다 데드밴드만큼 낮아져야 해제
-                    double threshold = rule.getHighLimit().value_or(rule.getHighHighLimit().value_or(0));
-                    hysteresis_allows_change = (value <= (threshold - clearance_needed));
-                } else if (condition == "LOW" || condition == "LOW_LOW") {
-                    // 하한 알람의 경우: 임계값보다 데드밴드만큼 높아져야 해제
-                    double threshold = rule.getLowLimit().value_or(rule.getLowLowLimit().value_or(0));
-                    hysteresis_allows_change = (value >= (threshold + clearance_needed));
-                }
-                
-                LogManager::getInstance().Debug("Hysteresis check for clearing: " + 
-                                              std::to_string(hysteresis_allows_change) + 
+        // 🚨 3단계: 히스테리시스 체크 (간단하게!)
+        double deadband = rule.getDeadband();  // ✅ 수정: .value_or() 제거
+        bool hysteresis_clear = true;
+        
+        if (currently_in_alarm && !condition_triggered && deadband > 0) {
+            // 알람 중이었는데 조건이 해제 → 히스테리시스 체크
+            if (rule.getHighLimit().has_value() && last_value >= rule.getHighLimit().value()) {
+                hysteresis_clear = value < (rule.getHighLimit().value() - deadband);
+                LogManager::getInstance().Debug("Hysteresis check for clearing: " + std::to_string(hysteresis_clear) + 
+                                              ", deadband: " + std::to_string(deadband));
+            }
+            else if (rule.getLowLimit().has_value() && last_value <= rule.getLowLimit().value()) {
+                hysteresis_clear = value > (rule.getLowLimit().value() + deadband);
+                LogManager::getInstance().Debug("Hysteresis check for clearing: " + std::to_string(hysteresis_clear) + 
                                               ", deadband: " + std::to_string(deadband));
             }
         }
         
-        // =============================================================================
-        // 🎯 상태 변화 결정
-        // =============================================================================
-        
-        eval.severity = determined_severity;
-        
-        if (currently_in_alarm && !was_in_alarm && hysteresis_allows_change) {
-            // 알람 발생
+        // 🔥 4단계: 상태 변경 결정 (핵심!)
+        if (condition_triggered && !currently_in_alarm) {
+            // ✅ 새로운 알람 발생
             eval.should_trigger = true;
             eval.state_changed = true;
-            eval.condition_met = condition;
-            alarm_states_[rule.getId()] = true;
+            eval.condition_met = alarm_level;
             
             LogManager::getInstance().Info("Analog alarm TRIGGERED for rule " + 
-                                         std::to_string(rule.getId()) + ": " + condition);
+                                         std::to_string(rule.getId()) + ": " + alarm_level);
         }
-        else if (!currently_in_alarm && was_in_alarm && rule.isAutoClear() && hysteresis_allows_change) {
-            // 알람 해제 (자동 해제 활성화된 경우만)
+        else if (!condition_triggered && currently_in_alarm && rule.isAutoClear() && hysteresis_clear) {
+            // ✅ 알람 해제 (자동 해제 + 히스테리시스 조건 만족)
             eval.should_clear = true;
             eval.state_changed = true;
-            eval.condition_met = "NORMAL";
-            alarm_states_[rule.getId()] = false;
+            eval.condition_met = "AUTO_CLEAR";
             
             LogManager::getInstance().Info("Analog alarm CLEARED for rule " + 
                                          std::to_string(rule.getId()) + ": AUTO_CLEAR");
         }
+        else {
+            // ❌ 상태 변경 없음
+            LogManager::getInstance().Debug("No state change for rule " + 
+                                          std::to_string(rule.getId()) + 
+                                          " on point " + std::to_string(rule.getTargetId().value_or(0)));  // ✅ 수정
+        }
         
         // 현재 값 업데이트
-        last_values_[rule.getId()] = value;
-        
-        // =============================================================================
-        // 🎯 컨텍스트 데이터 설정
-        // =============================================================================
-        
-        eval.context_data = {
-            {"current_value", value},
-            {"last_value", last_value},
-            {"rule_name", rule.getName()},
-            {"target_type", "analog"},
-            {"deadband", deadband},
-            {"was_in_alarm", was_in_alarm}
-        };
-        
-        // 임계값 정보 추가
-        if (rule.getHighHighLimit().has_value()) eval.context_data["high_high_limit"] = rule.getHighHighLimit().value();
-        if (rule.getHighLimit().has_value()) eval.context_data["high_limit"] = rule.getHighLimit().value();
-        if (rule.getLowLimit().has_value()) eval.context_data["low_limit"] = rule.getLowLimit().value();
-        if (rule.getLowLowLimit().has_value()) eval.context_data["low_low_limit"] = rule.getLowLowLimit().value();
+        updateLastValue(rule.getId(), value);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Analog alarm evaluation failed for rule " + 
-                                      std::to_string(rule.getId()) + ": " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to evaluate rule " + rule.getName() + ": " + std::string(e.what()));
         eval.condition_met = "ERROR";
         eval.message = "Evaluation error: " + std::string(e.what());
     }
@@ -662,7 +612,6 @@ AlarmEvaluation AlarmEngine::evaluateAnalogAlarm(const AlarmRuleEntity& rule, do
 }
 
 
-
 AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, bool value) {
     AlarmEvaluation eval;
     eval.timestamp = std::chrono::system_clock::now();
@@ -671,98 +620,90 @@ AlarmEvaluation AlarmEngine::evaluateDigitalAlarm(const AlarmRuleEntity& rule, b
     eval.severity = rule.getSeverity();
     eval.triggered_value = value ? "true" : "false";
     
-    bool should_trigger_now = false;
-    std::string condition;  // 로그용으로만 사용
+    // 🔥 초기값 설정 (중요!)
+    eval.should_trigger = false;
+    eval.should_clear = false;
+    eval.state_changed = false;
+    eval.condition_met = "NORMAL";
     
     try {
         LogManager::getInstance().Debug("Evaluating digital alarm for rule " + 
                                       std::to_string(rule.getId()) + ", value: " + (value ? "true" : "false"));
         
-        // =============================================================================
-        // 🚀 enum 직접 사용 - 초고속 비교!
-        // =============================================================================
+        // 🚨 1단계: 트리거 조건 체크
+        bool condition_triggered = false;
+        std::string trigger_type;
         
         std::lock_guard<std::mutex> lock(state_mutex_);
-        bool was_in_alarm = alarm_states_[rule.getId()];
-        bool last_digital_state = last_digital_states_[rule.getId()];
+        bool currently_in_alarm = isAlarmActive(rule.getId());
+        bool last_digital_state = (getLastValue(rule.getId()) > 0.5);  // double에서 bool 변환
         
-        // ✅ enum 직접 switch - 정수 비교로 초고속!
         auto trigger = rule.getTriggerCondition();
-        
         switch (trigger) {
             case AlarmRuleEntity::DigitalTrigger::ON_TRUE:
-                should_trigger_now = value;
-                condition = "DIGITAL_TRUE";  // 로그용
-                LogManager::getInstance().Debug("ON_TRUE trigger: " + std::to_string(should_trigger_now));
+                condition_triggered = value;
+                trigger_type = "DIGITAL_TRUE";
+                LogManager::getInstance().Debug("ON_TRUE trigger: " + std::to_string(value));
                 break;
                 
             case AlarmRuleEntity::DigitalTrigger::ON_FALSE:
-                should_trigger_now = !value;
-                condition = "DIGITAL_FALSE";  // 로그용
-                LogManager::getInstance().Debug("ON_FALSE trigger: " + std::to_string(should_trigger_now));
+                condition_triggered = !value;
+                trigger_type = "DIGITAL_FALSE";
+                LogManager::getInstance().Debug("ON_FALSE trigger: " + std::to_string(!value));
                 break;
                 
             case AlarmRuleEntity::DigitalTrigger::ON_RISING:
-                should_trigger_now = value && !last_digital_state;
-                condition = "DIGITAL_RISING";  // 로그용
-                LogManager::getInstance().Debug("ON_RISING trigger: current=" + std::to_string(value) + 
-                                              ", last=" + std::to_string(last_digital_state));
+                condition_triggered = value && !last_digital_state;
+                trigger_type = "DIGITAL_RISING";
                 break;
                 
             case AlarmRuleEntity::DigitalTrigger::ON_FALLING:
-                should_trigger_now = !value && last_digital_state;
-                condition = "DIGITAL_FALLING";  // 로그용
-                LogManager::getInstance().Debug("ON_FALLING trigger: current=" + std::to_string(value) + 
-                                              ", last=" + std::to_string(last_digital_state));
+                condition_triggered = !value && last_digital_state;
+                trigger_type = "DIGITAL_FALLING";
                 break;
                 
             case AlarmRuleEntity::DigitalTrigger::ON_CHANGE:
             default:
-                should_trigger_now = (value != last_digital_state);
-                condition = "DIGITAL_CHANGE";  // 로그용
-                LogManager::getInstance().Debug("ON_CHANGE trigger: " + std::to_string(should_trigger_now));
+                condition_triggered = (value != last_digital_state);
+                trigger_type = "DIGITAL_CHANGE";
                 break;
         }
         
-        // =============================================================================
-        // 🎯 상태 변화 결정 (기존 로직 유지)
-        // =============================================================================
+        LogManager::getInstance().Debug("Rule " + std::to_string(rule.getId()) + 
+                                      " - condition_triggered: " + std::to_string(condition_triggered) + 
+                                      ", currently_in_alarm: " + std::to_string(currently_in_alarm));
         
-        if (should_trigger_now && !was_in_alarm) {
+        // 🔥 2단계: 상태 변경 결정
+        if (condition_triggered && !currently_in_alarm) {
+            // ✅ 새로운 알람 발생
             eval.should_trigger = true;
             eval.state_changed = true;
-            eval.condition_met = condition;
-            alarm_states_[rule.getId()] = true;
+            eval.condition_met = trigger_type;
             
             LogManager::getInstance().Info("Digital alarm TRIGGERED for rule " + 
-                                         std::to_string(rule.getId()) + ": " + condition);
+                                         std::to_string(rule.getId()) + ": " + trigger_type);
         }
-        else if (!should_trigger_now && was_in_alarm && rule.isAutoClear()) {
+        else if (!condition_triggered && currently_in_alarm && rule.isAutoClear()) {
+            // ✅ 알람 해제
             eval.should_clear = true;
             eval.state_changed = true;
-            eval.condition_met = "NORMAL";
-            alarm_states_[rule.getId()] = false;
+            eval.condition_met = "AUTO_CLEAR";
             
             LogManager::getInstance().Info("Digital alarm CLEARED for rule " + 
                                          std::to_string(rule.getId()));
         }
+        else {
+            // ❌ 상태 변경 없음
+            LogManager::getInstance().Debug("No state change for rule " + 
+                                          std::to_string(rule.getId()) + 
+                                          " on point " + std::to_string(rule.getTargetId().value_or(0)));  // ✅ 수정
+        }
         
         // 현재 상태 업데이트
-        last_digital_states_[rule.getId()] = value;
-        
-        // 컨텍스트 데이터 설정
-        eval.context_data = {
-            {"current_value", value},
-            {"last_value", last_digital_state},
-            {"rule_name", rule.getName()},
-            {"target_type", "digital"},
-            {"trigger_type", condition},  // enum 결과를 string으로 저장 (JSON용)
-            {"was_in_alarm", was_in_alarm}
-        };
+        updateLastValue(rule.getId(), value ? 1.0 : 0.0);  // bool을 double로 저장
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Digital alarm evaluation failed for rule " + 
-                                      std::to_string(rule.getId()) + ": " + std::string(e.what()));
+        LogManager::getInstance().Error("Failed to evaluate rule " + rule.getName() + ": " + std::string(e.what()));
         eval.condition_met = "ERROR";
         eval.message = "Evaluation error: " + std::string(e.what());
     }

@@ -316,11 +316,8 @@ std::vector<Structs::TimestampedValue> DataProcessingService::ConvertToTimestamp
 // 🔥 알람 평가 시스템
 // =============================================================================
 
-void DataProcessingService::EvaluateAlarms(
-    const std::vector<Structs::TimestampedValue>& data, 
-    size_t thread_index) {
-    
-    if (data.empty()) {
+void DataProcessingService::EvaluateAlarms(const std::vector<Structs::TimestampedValue>& batch, size_t thread_index) {
+    if (batch.empty()) {
         return;
     }
     
@@ -329,55 +326,166 @@ void DataProcessingService::EvaluateAlarms(
     size_t alarms_triggered = 0;
     
     try {
+        // AlarmManager 인스턴스 가져오기
         auto& alarm_manager = PulseOne::Alarm::AlarmManager::getInstance();
         
         if (!alarm_manager.isInitialized()) {
             LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                         "⚠️ AlarmManager가 초기화되지 않음");
+                                         "⚠️ AlarmManager가 초기화되지 않음 - 알람 평가 건너뜀");
             return;
         }
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "🚨 알람 평가 시작: " + std::to_string(data.size()) + "개");
+                                     "🚨 알람 평가 시작: " + std::to_string(batch.size()) + "개");
         
-        for (const auto& timestamped_value : data) {
+        // 배치의 각 데이터 포인트에 대해 알람 평가
+        for (const auto& value : batch) {
             try {
-                // DeviceDataMessage 구성하여 AlarmManager에 전달
-                Structs::DeviceDataMessage alarm_msg;
-                alarm_msg.tenant_id = 1; // 기본 테넌트
-                alarm_msg.device_id = "device_" + std::to_string(timestamped_value.point_id); // 임시 device_id
-                alarm_msg.timestamp = timestamped_value.timestamp;
+                // 🔥 1단계: 해당 포인트의 알람 규칙 조회
+                std::string target_type = "data_point";
+                auto rules = factory_->getAlarmRuleRepository()->findByTarget(target_type, value.point_id);
                 
-                // 포인트 데이터 추가
-                Structs::TimestampedValue alarm_point = timestamped_value;
-                alarm_msg.points.push_back(alarm_point);
+                LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                             "Found " + std::to_string(rules.size()) + 
+                                             " rules for data_point:" + std::to_string(value.point_id));
                 
-                // 알람 평가 실행
-                auto alarm_events = alarm_manager.evaluateForMessage(alarm_msg);
-                
-                alarms_evaluated++;
-                
-                if (!alarm_events.empty()) {
-                    alarms_triggered += alarm_events.size();
-                    
-                    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                                 "🚨 알람 발생! point_id=" + std::to_string(timestamped_value.point_id) + 
-                                                 ", 이벤트 수=" + std::to_string(alarm_events.size()));
-                    
-                    ProcessAlarmEvents(alarm_events, timestamped_value, thread_index);
+                // 🔥 2단계: 각 알람 규칙에 대해 평가 수행
+                for (const auto& rule : rules) {
+                    try {
+                        AlarmEvaluation eval;
+                        
+                        // 🚨 알람 타입별 평가 수행
+                        if (rule.getAlarmType() == AlarmRuleEntity::AlarmType::ANALOG) {
+                            eval = alarm_manager.getEngine().evaluateAnalogAlarm(rule, value.numeric_value);
+                        }
+                        else if (rule.getAlarmType() == AlarmRuleEntity::AlarmType::DIGITAL) {
+                            eval = alarm_manager.getEngine().evaluateDigitalAlarm(rule, value.bool_value);
+                        }
+                        else if (rule.getAlarmType() == AlarmRuleEntity::AlarmType::SCRIPT) {
+                            // 스크립트 알람을 위한 컨텍스트 구성
+                            nlohmann::json context;
+                            context["point_id"] = value.point_id;
+                            context["current_value"] = value.numeric_value;
+                            context["bool_value"] = value.bool_value;
+                            context["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                value.timestamp.time_since_epoch()).count();
+                            context["quality"] = static_cast<int>(value.quality);
+                            
+                            eval = alarm_manager.getEngine().evaluateScriptAlarm(rule, context);
+                        }
+                        
+                        alarms_evaluated++;
+                        
+                        // 🔥 3단계: 상태 변경이 있을 때만 처리
+                        if (eval.state_changed) {
+                            if (eval.should_trigger) {
+                                // ✅ 알람 발생 처리
+                                alarm_manager.getEngine().updateAlarmState(rule.getId(), true);
+                                
+                                // AlarmEvent 생성
+                                AlarmEvent alarm_event;
+                                alarm_event.rule_id = rule.getId();
+                                alarm_event.tenant_id = rule.getTenantId();
+                                alarm_event.point_id = value.point_id;
+                                alarm_event.device_id = getDeviceIdForPoint(value.point_id);
+                                
+                                // 알람 타입 설정
+                                if (rule.getAlarmType() == AlarmRuleEntity::AlarmType::ANALOG) {
+                                    alarm_event.alarm_type = AlarmType::ANALOG;
+                                } else if (rule.getAlarmType() == AlarmRuleEntity::AlarmType::DIGITAL) {
+                                    alarm_event.alarm_type = AlarmType::DIGITAL;
+                                } else {
+                                    alarm_event.alarm_type = AlarmType::SCRIPT;
+                                }
+                                
+                                alarm_event.severity = convertToAlarmSeverity(rule.getSeverity());
+                                alarm_event.state = AlarmState::ACTIVE;
+                                alarm_event.trigger_value = value.numeric_value;
+                                alarm_event.current_value = value.numeric_value;
+                                alarm_event.condition_met = true;
+                                alarm_event.message = eval.message;
+                                alarm_event.timestamp = value.timestamp;
+                                
+                                // Redis에 알람 이벤트 저장
+                                if (redis_client_ && redis_client_->isConnected()) {
+                                    std::string redis_key = "alarm:active:" + std::to_string(alarm_event.rule_id);
+                                    
+                                    nlohmann::json alarm_json;
+                                    alarm_json["rule_id"] = alarm_event.rule_id;
+                                    alarm_json["point_id"] = alarm_event.point_id;
+                                    alarm_json["device_id"] = alarm_event.device_id;
+                                    alarm_json["message"] = alarm_event.message;
+                                    alarm_json["severity"] = alarm_event.getSeverityString();
+                                    alarm_json["state"] = alarm_event.getStateString();
+                                    alarm_json["trigger_value"] = alarm_event.getTriggerValueString();
+                                    alarm_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        alarm_event.timestamp.time_since_epoch()).count();
+                                    alarm_json["condition_met"] = eval.condition_met;
+                                    alarm_json["alarm_type"] = alarm_event.getAlarmTypeString();
+                                    
+                                    redis_client_->set(redis_key, alarm_json.dump());
+                                    redis_client_->expire(redis_key, 86400);  // TTL 24시간
+                                    
+                                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                                                 "📝 Redis 알람 저장: " + redis_key);
+                                }
+                                
+                                alarms_triggered++;
+                                
+                                LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                                             "🚨 알람 발생: " + rule.getName() + 
+                                                             " (" + eval.condition_met + ") for point " + 
+                                                             std::to_string(value.point_id));
+                            }
+                            else if (eval.should_clear) {
+                                // ✅ 알람 해제 처리  
+                                alarm_manager.getEngine().updateAlarmState(rule.getId(), false);
+                                
+                                // Redis에서 활성 알람 제거
+                                if (redis_client_ && redis_client_->isConnected()) {
+                                    std::string redis_key = "alarm:active:" + std::to_string(rule.getId());
+                                    redis_client_->del(redis_key);
+                                    
+                                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                                                 "🗑️ Redis 알람 제거: " + redis_key);
+                                }
+                                
+                                LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                                             "✅ 알람 해제: " + rule.getName() + 
+                                                             " for point " + std::to_string(value.point_id));
+                            }
+                        }
+                        else {
+                            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                                         "No state change for rule " + 
+                                                         std::to_string(rule.getId()) + 
+                                                         " (" + rule.getName() + ") for point " + 
+                                                         std::to_string(value.point_id));
+                        }
+                        
+                    } catch (const std::exception& e) {
+                        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                                     "💥 개별 알람 규칙 평가 실패 (rule_id=" + 
+                                                     std::to_string(rule.getId()) + 
+                                                     ", point_id=" + std::to_string(value.point_id) + 
+                                                     "): " + std::string(e.what()));
+                    }
                 }
                 
             } catch (const std::exception& e) {
                 LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                             "💥 알람 평가 실패 (point_id=" + std::to_string(timestamped_value.point_id) + 
+                                             "💥 포인트 알람 평가 실패 (point_id=" + 
+                                             std::to_string(value.point_id) + 
                                              "): " + std::string(e.what()));
             }
         }
         
+        // 통계 업데이트
+        UpdateAlarmStatistics(alarms_evaluated, alarms_triggered);
+        
+        // 실행 시간 계산
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        
-        UpdateAlarmStatistics(alarms_evaluated, alarms_triggered);
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                      "✅ 알람 평가 완료: 평가=" + std::to_string(alarms_evaluated) + 
@@ -385,9 +493,12 @@ void DataProcessingService::EvaluateAlarms(
                                      "개, 소요시간=" + std::to_string(duration.count()) + "μs");
         
     } catch (const std::exception& e) {
-        HandleError("알람 평가 전체 실패", e.what());
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "🚨 알람 평가 전체 실패: " + std::string(e.what()));
+        // 알람 평가 실패해도 데이터 처리는 계속 진행 (Graceful degradation)
     }
 }
+
 
 void DataProcessingService::evaluateAlarmsForMessage(const Structs::DeviceDataMessage& message) {
     try {
