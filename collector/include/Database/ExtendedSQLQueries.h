@@ -183,10 +183,11 @@ namespace AlarmRule {
             is_latched INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            created_by INTEGER
+            created_by INTEGER,
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
         )
     )";
-    
     // 기본 CRUD 쿼리들
     const std::string FIND_ALL = R"(
         SELECT 

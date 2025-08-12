@@ -197,9 +197,7 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForMessage(const DeviceDataMessage&
     return alarm_events;
 }
 
-std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
-                                                     int point_id,
-                                                     const DataValue& value) {
+std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id, int point_id, const DataValue& value) {
     std::vector<AlarmEvent> alarm_events;
     
     // =============================================================================
@@ -211,19 +209,12 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
     }
     
     // =============================================================================
-    // 🎯 2. 포인트 타입 결정 (ID 범위 기반)
+    // 🔥 2. 포인트 타입 결정 - 범위 제한 제거
     // =============================================================================
-    std::string point_type;
+    std::string point_type = "data_point";  // 🔥 모든 포인트를 data_point로 처리
     int numeric_id = point_id;
     
-    if (point_id >= 1000 && point_id < 9000) {
-        point_type = "data_point";
-    } else if (point_id >= 9000) {
-        point_type = "virtual_point";
-    } else {
-        LogManager::getInstance().Debug("Unknown point ID range: " + std::to_string(point_id));
-        return alarm_events;
-    }
+    LogManager::getInstance().Debug("Evaluating alarms for point " + std::to_string(point_id));
     
     // =============================================================================
     // 🎯 3. 해당 포인트의 알람 규칙들 조회
@@ -247,160 +238,107 @@ std::vector<AlarmEvent> AlarmEngine::evaluateForPoint(int tenant_id,
     }
     
     // =============================================================================
-    // 🎯 4. 각 규칙에 대해 알람 평가 수행
+    // 🎯 4. 각 규칙별 알람 평가 수행
     // =============================================================================
     for (const auto& rule : rules) {
-        if (!rule.isEnabled()) {
-            LogManager::getInstance().Debug("Skipping disabled rule: " + rule.getName());
-            continue;
-        }
-        
         try {
-            auto eval_start = std::chrono::steady_clock::now();
+            if (!rule.isEnabled()) {
+                LogManager::getInstance().Debug("Skipping disabled rule " + std::to_string(rule.getId()));
+                continue;
+            }
             
-            // 🔥 규칙 평가 실행
-            auto eval = evaluateRule(rule, value);
+            LogManager::getInstance().Debug("Evaluating rule " + std::to_string(rule.getId()) + 
+                                          " (" + rule.getName() + ") for point " + std::to_string(point_id));
             
-            // 평가 시간 측정
-            auto eval_end = std::chrono::steady_clock::now();
-            eval.evaluation_time = std::chrono::duration_cast<std::chrono::microseconds>(eval_end - eval_start);
+            AlarmEvaluation eval = evaluateRule(rule, value);
             
-            // 평가 결과에 메타데이터 추가
-            eval.rule_id = rule.getId();
-            eval.tenant_id = tenant_id;
-            
-            LogManager::getInstance().Debug("Rule " + std::to_string(rule.getId()) + 
-                                          " evaluation: trigger=" + std::to_string(eval.should_trigger) +
-                                          ", clear=" + std::to_string(eval.should_clear) +
-                                          ", condition=" + eval.condition_met);
-            
-            // =============================================================================
-            // 🎯 5. 상태 변화가 있는 경우에만 처리
-            // =============================================================================
             if (eval.state_changed) {
-                
-                // -------------------------------------------------------------------------
-                // 🚨 알람 발생 처리
-                // -------------------------------------------------------------------------
                 if (eval.should_trigger) {
-                    auto occurrence_id = raiseAlarm(rule, eval, value);
+                    // 🔥 알람 발생
+                    AlarmEvent trigger_event;
+                    trigger_event.device_id = getDeviceIdForPoint(point_id);
+                    trigger_event.point_id = point_id;
+                    trigger_event.rule_id = rule.getId();
+                    trigger_event.current_value = value;
+                    trigger_event.threshold_value = getThresholdValue(rule, eval);
+                    trigger_event.trigger_condition = determineTriggerCondition(rule, eval);
+                    trigger_event.alarm_type = convertToAlarmType(rule.getAlarmType());
+                    trigger_event.message = generateMessage(rule, eval, value);  // 🔥 기존 메서드 사용
+                    trigger_event.severity = rule.getSeverity();
+                    trigger_event.state = AlarmState::ACTIVE;
+                    trigger_event.timestamp = std::chrono::system_clock::now();
+                    trigger_event.occurrence_time = eval.timestamp;
+                    trigger_event.source_name = "Point_" + std::to_string(point_id);  // 🔥 직접 설정
+                    trigger_event.location = getPointLocation(point_id);
+                    trigger_event.tenant_id = tenant_id;
+                    trigger_event.trigger_value = value;
+                    trigger_event.condition_met = true;
                     
-                    if (occurrence_id.has_value()) {
-                        // AlarmEvent 생성
-                        AlarmEvent event;
-                        
-                        // 기본 식별 정보
-                        event.occurrence_id = occurrence_id.value();
-                        event.rule_id = rule.getId();
-                        event.tenant_id = tenant_id;
-                        event.point_id = point_id;
-                        event.device_id = getDeviceIdForPoint(point_id);  // 헬퍼 함수 필요
-                        
-                        // 알람 타입 및 심각도 (enum 직접 할당)
-                        event.alarm_type = convertToAlarmType(rule.getAlarmType());
-                        event.severity = eval.severity;
-                        event.state = AlarmState::ACTIVE;
-                        
-                        // 트리거 조건 결정
-                        event.trigger_condition = determineTriggerCondition(rule, eval);
-                        
-                        // 값 정보 (DataValue 직접 할당)
-                        event.trigger_value = value;
-                        event.current_value = value;
-                        event.threshold_value = getThresholdValue(rule, eval);
-                        
-                        // 조건 및 메시지
-                        event.condition_met = !eval.condition_met.empty();
-                        event.message = eval.message;
-                        
-                        // 시간 정보
-                        event.timestamp = std::chrono::system_clock::now();
-                        event.occurrence_time = eval.timestamp;
-                        
-                        // 추가 컨텍스트 정보
-                        event.source_name = rule.getName();
-                        event.location = getPointLocation(point_id);  // 헬퍼 함수 필요
-                        
-                        alarm_events.push_back(event);
-                        
-                        // 통계 업데이트
-                        alarms_raised_.fetch_add(1);
-                        
-                        // 외부 시스템에 알림
-                        publishToRedis(event);
-                        
-                        LogManager::getInstance().Info("🚨 Alarm triggered: Rule " + 
-                                                      std::to_string(rule.getId()) + 
-                                                      " (" + rule.getName() + ") - " + 
-                                                      event.message);
-                    } else {
-                        LogManager::getInstance().Error("Failed to raise alarm for rule " + 
-                                                       std::to_string(rule.getId()));
-                        evaluations_errors_.fetch_add(1);
-                    }
-                }
-                
-                // -------------------------------------------------------------------------
-                // ✅ 알람 해제 처리
-                // -------------------------------------------------------------------------
-                else if (eval.should_clear) {
-                    bool cleared = clearActiveAlarm(rule.getId(), value);
+                    alarm_events.push_back(trigger_event);
                     
-                    if (cleared) {
-                        // 해제 이벤트 생성 (선택적)
-                        AlarmEvent clear_event;
-                        clear_event.rule_id = rule.getId();
-                        clear_event.tenant_id = tenant_id;
-                        clear_event.point_id = point_id;
-                        clear_event.device_id = getDeviceIdForPoint(point_id);
-                        
-                        clear_event.alarm_type = convertToAlarmType(rule.getAlarmType());
-                        clear_event.severity = AlarmSeverity::INFO;
-                        clear_event.state = AlarmState::CLEARED;
-                        
-                        clear_event.trigger_value = value;
-                        clear_event.current_value = value;
-                        clear_event.condition_met = false;
-                        clear_event.message = "Alarm cleared: " + rule.getName();
-                        
-                        clear_event.timestamp = std::chrono::system_clock::now();
-                        clear_event.occurrence_time = eval.timestamp;
-                        
-                        alarm_events.push_back(clear_event);
-                        
-                        // 통계 업데이트
-                        alarms_cleared_.fetch_add(1);
-                        
-                        LogManager::getInstance().Info("✅ Alarm cleared: Rule " + 
-                                                      std::to_string(rule.getId()) + 
-                                                      " (" + rule.getName() + ")");
-                    } else {
-                        LogManager::getInstance().Error("Failed to clear alarm for rule " + 
-                                                       std::to_string(rule.getId()));
-                        evaluations_errors_.fetch_add(1);
-                    }
+                    // 🔥 기존 통계 변수 사용
+                    alarms_raised_.fetch_add(1);
+                    
+                    LogManager::getInstance().Info("🚨 Alarm TRIGGERED: Rule " + 
+                                                  std::to_string(rule.getId()) + 
+                                                  " (" + rule.getName() + ") for point " + 
+                                                  std::to_string(point_id));
+                    
+                } else if (eval.should_clear) {
+                    // 🔥 알람 해제
+                    AlarmEvent clear_event;
+                    clear_event.device_id = getDeviceIdForPoint(point_id);
+                    clear_event.point_id = point_id;
+                    clear_event.rule_id = rule.getId();
+                    clear_event.current_value = value;
+                    clear_event.alarm_type = convertToAlarmType(rule.getAlarmType());
+                    clear_event.message = "Alarm cleared: " + generateMessage(rule, eval, value);
+                    clear_event.severity = rule.getSeverity();
+                    clear_event.state = AlarmState::CLEARED;
+                    clear_event.timestamp = std::chrono::system_clock::now();
+                    clear_event.occurrence_time = eval.timestamp;
+                    clear_event.source_name = "Point_" + std::to_string(point_id);  // 🔥 직접 설정
+                    clear_event.location = getPointLocation(point_id);
+                    clear_event.tenant_id = tenant_id;
+                    clear_event.trigger_value = value;
+                    clear_event.condition_met = false;
+                    
+                    alarm_events.push_back(clear_event);
+                    
+                    // 🔥 기존 통계 변수 사용
+                    alarms_cleared_.fetch_add(1);
+                    
+                    LogManager::getInstance().Info("✅ Alarm CLEARED: Rule " + 
+                                                  std::to_string(rule.getId()) + 
+                                                  " (" + rule.getName() + ") for point " + 
+                                                  std::to_string(point_id));
                 }
             } else {
-                LogManager::getInstance().Debug("No state change for rule " + std::to_string(rule.getId()));
+                LogManager::getInstance().Debug("No state change for rule " + 
+                                              std::to_string(rule.getId()) + 
+                                              " on point " + std::to_string(point_id));
             }
             
         } catch (const std::exception& e) {
             evaluations_errors_.fetch_add(1);
             LogManager::getInstance().Error("Failed to evaluate rule " + 
                                           std::to_string(rule.getId()) + 
-                                          " (" + rule.getName() + "): " + 
+                                          " (" + rule.getName() + ") for point " + 
+                                          std::to_string(point_id) + ": " + 
                                           std::string(e.what()));
         }
     }
     
     // =============================================================================
-    // 🎯 6. 전체 평가 통계 업데이트
+    // 🎯 5. 전체 평가 통계 업데이트
     // =============================================================================
     total_evaluations_.fetch_add(rules.size());
     
     if (!alarm_events.empty()) {
         LogManager::getInstance().Info("Generated " + std::to_string(alarm_events.size()) + 
                                      " alarm events for point " + std::to_string(point_id));
+    } else {
+        LogManager::getInstance().Debug("No alarm events generated for point " + std::to_string(point_id));
     }
     
     return alarm_events;
