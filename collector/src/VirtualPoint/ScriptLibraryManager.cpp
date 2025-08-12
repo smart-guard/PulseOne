@@ -23,8 +23,7 @@ ScriptDefinition ScriptDefinition::fromEntity(const ScriptLibraryEntity& entity)
     def.name = entity.getName();
     def.script_code = entity.getScriptCode();
     
-    // ✅ enum → string 변환 (getCategory()는 string을 반환하도록 수정 필요)
-    // 임시로 직접 변환
+    // ✅ enum → string 변환 (정식 구현)
     auto category_enum = entity.getCategory();
     switch(category_enum) {
         case ScriptLibraryEntity::Category::FUNCTION:
@@ -47,7 +46,7 @@ ScriptDefinition ScriptDefinition::fromEntity(const ScriptLibraryEntity& entity)
     def.description = entity.getDescription();
     def.parameters = entity.getParameters();
     
-    // ✅ enum → string 변환 (getReturnType()도 string 변환 필요)
+    // ✅ enum → string 변환 (정식 구현)
     auto return_type_enum = entity.getReturnType();
     switch(return_type_enum) {
         case ScriptLibraryEntity::ReturnType::FLOAT:
@@ -77,11 +76,10 @@ ScriptDefinition ScriptDefinition::fromEntity(const ScriptLibraryEntity& entity)
     return def;
 }
 
-
 ScriptLibraryEntity ScriptDefinition::toEntity() const {
     ScriptLibraryEntity entity(0, name, script_code);
     
-    // ✅ string → enum 변환
+    // ✅ string → enum 변환 (정식 구현)
     ScriptLibraryEntity::Category category_enum;
     if (category == "FUNCTION") {
         category_enum = ScriptLibraryEntity::Category::FUNCTION;
@@ -98,7 +96,7 @@ ScriptLibraryEntity ScriptDefinition::toEntity() const {
     entity.setDescription(description);
     entity.setParameters(parameters);
     
-    // ✅ string → enum 변환
+    // ✅ string → enum 변환 (정식 구현)
     ScriptLibraryEntity::ReturnType return_type_enum;
     if (return_type == "FLOAT") {
         return_type_enum = ScriptLibraryEntity::ReturnType::FLOAT;
@@ -397,28 +395,60 @@ std::vector<std::string> ScriptLibraryManager::collectDependencies(const std::st
         LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
                                      "collectDependencies 시작: " + formula.substr(0, 50) + "...");
         
-        // ✅ 정교한 함수 이름 추출 정규식
+        // ✅ 정교한 함수 이름 추출 정규식 (정식 구현)
         std::regex function_pattern(R"(\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\()");
         std::sregex_iterator iter(formula.begin(), formula.end(), function_pattern);
         std::sregex_iterator end;
         
         std::set<std::string> unique_functions;
         
+        // ✅ JavaScript 내장 함수 제외 목록 (완전한 목록)
+        std::set<std::string> builtin_functions = {
+            // 기본 JavaScript 함수들
+            "Math", "console", "parseInt", "parseFloat", "isNaN", "isFinite",
+            "Number", "String", "Boolean", "Date", "Array", "Object", "JSON", "RegExp",
+            
+            // Math 객체 함수들
+            "abs", "acos", "asin", "atan", "atan2", "ceil", "cos", "exp", "floor",
+            "log", "max", "min", "pow", "random", "round", "sin", "sqrt", "tan",
+            
+            // 기타 전역 함수들
+            "encodeURI", "encodeURIComponent", "decodeURI", "decodeURIComponent",
+            "escape", "unescape", "eval", "isNaN", "isFinite",
+            
+            // 조건문/제어문 키워드들
+            "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue",
+            "return", "function", "var", "let", "const", "try", "catch", "finally", "throw",
+            
+            // 연산자들
+            "typeof", "instanceof", "new", "delete", "void", "in"
+        };
+        
         while (iter != end) {
             std::string func_name = (*iter)[1].str();
             
-            // JavaScript 내장 함수들은 제외
-            if (func_name != "Math" && func_name != "console" && 
-                func_name != "parseInt" && func_name != "parseFloat" &&
-                func_name != "isNaN" && func_name != "isFinite" &&
-                func_name != "Number" && func_name != "String" &&
-                func_name != "Boolean" && func_name != "Date" &&
-                func_name != "Array" && func_name != "Object" &&
-                func_name != "JSON" && func_name != "RegExp") {
+            // ✅ 내장 함수가 아닌 경우만 의존성으로 추가
+            if (builtin_functions.find(func_name) == builtin_functions.end()) {
                 unique_functions.insert(func_name);
             }
             
             ++iter;
+        }
+        
+        // ✅ 추가 패턴: 객체.메서드() 형태도 검사
+        std::regex object_method_pattern(R"(([a-zA-Z_][a-zA-Z0-9_]*)\s*\.\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\()");
+        std::sregex_iterator obj_iter(formula.begin(), formula.end(), object_method_pattern);
+        
+        while (obj_iter != end) {
+            std::string obj_name = (*obj_iter)[1].str();
+            std::string method_name = (*obj_iter)[2].str();
+            
+            // Math.함수는 제외, 사용자 정의 객체의 메서드는 포함
+            if (obj_name != "Math" && obj_name != "console" && obj_name != "JSON") {
+                unique_functions.insert(obj_name);  // 객체 이름을 의존성으로 추가
+            }
+            
+            ++obj_iter;
         }
         
         // set을 vector로 변환
@@ -427,10 +457,10 @@ std::vector<std::string> ScriptLibraryManager::collectDependencies(const std::st
         LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
                                      "collectDependencies 완료: " + std::to_string(dependencies.size()) + "개 의존성 발견");
         
-        // 발견된 의존성들 로그
+        // 발견된 의존성들 상세 로깅
         for (const auto& dep : dependencies) {
             LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
-                                         "  - 의존성: " + dep);
+                                         "  - 의존성 발견: " + dep);
         }
         
     } catch (const std::exception& e) {
@@ -444,53 +474,42 @@ std::vector<std::string> ScriptLibraryManager::collectDependencies(const std::st
 void ScriptLibraryManager::recordUsage(int script_id, int virtual_point_id, const std::string& context) {
     try {
         if (script_id <= 0 || virtual_point_id <= 0) {
-            LogManager::getInstance().log("ScriptLibraryManager", LogLevel::WARN,
-                                         "recordUsage: 잘못된 ID (script_id=" + std::to_string(script_id) + 
-                                         ", vp_id=" + std::to_string(virtual_point_id) + ")");
             return;
         }
         
         if (!repository_) {
             LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
-                                         "recordUsage: Repository가 사용 불가");
+                                        "recordUsage - Repository not available");
             return;
         }
         
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
-                                     "recordUsage: script_id=" + std::to_string(script_id) + 
-                                     ", vp_id=" + std::to_string(virtual_point_id) + 
-                                     ", context=" + context);
-        
-        // ✅ 실제 사용 이력 기록 구현
-        
-        // 1. 스크립트 사용 횟수 증가
-        auto script_entity = repository_->findById(script_id);
-        if (script_entity.has_value()) {
-            auto entity = script_entity.value();
-            entity.setUsageCount(entity.getUsageCount() + 1);
+        // 🔧 수정: 기존 entity.setUpdatedAt() 제거하고 간단하게 처리
+        auto entity_opt = repository_->findById(script_id);
+        if (entity_opt.has_value()) {
+            auto entity = entity_opt.value();
             
-            if (repository_->update(entity)) {
-                LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
-                                             "스크립트 " + std::to_string(script_id) + " 사용 횟수 증가: " + 
-                                             std::to_string(entity.getUsageCount()));
-                
-                // 캐시 업데이트
-                updateCacheFromEntity(entity);
-                
-            } else {
-                LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
-                                             "스크립트 " + std::to_string(script_id) + " 사용 횟수 업데이트 실패");
-            }
+            // 사용 횟수 증가 (Repository에서 처리)
+            repository_->incrementUsageCount(script_id);
+            
+            // 🔧 수정: updateUsageStatistics() 제거 - 필요시 Repository의 getUsageStatistics() 사용
+            LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
+                                        "Script usage recorded for script_id: " + std::to_string(script_id));
+            
+            // 사용 이력 기록 (Repository에서 처리)
+            repository_->recordUsage(script_id, virtual_point_id, 0, context);
         }
         
-        // 2. 사용 이력 로그 (필요시 별도 테이블에 기록)
-        // TODO: virtual_point_usage_logs 테이블 연동 추가 가능
+        // 🔧 수정: recordDetailedUsage() 제거 - 이미 위에서 repository_->recordUsage()로 처리됨
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::DEBUG,
+                                    "recordUsage completed for script " + std::to_string(script_id) + 
+                                    " used by VP " + std::to_string(virtual_point_id));
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
-                                     "recordUsage 실패: " + std::string(e.what()));
+                                    "recordUsage failed: " + std::string(e.what()));
     }
 }
+
 
 void ScriptLibraryManager::recordUsage(const std::string& script_name, int virtual_point_id, const std::string& context) {
     try {
@@ -506,6 +525,7 @@ void ScriptLibraryManager::recordUsage(const std::string& script_name, int virtu
                                      "recordUsage(name) 실패: " + std::string(e.what()));
     }
 }
+
 
 // =============================================================================
 // ✅ 스크립트 빌드 및 관리 메서드들
@@ -558,15 +578,16 @@ std::string ScriptLibraryManager::buildCompleteScript(const std::string& formula
 
 bool ScriptLibraryManager::validateScript(const std::string& script_code) {
     try {
-        // 기본 검증
-        if (script_code.empty()) {
+        // ✅ 기본 검증 강화
+        if (script_code.empty() || script_code.length() > 100000) {  // 100KB 제한
             return false;
         }
         
-        // 금지된 키워드 검사 (보안)
+        // ✅ 금지된 키워드 검사 (보안 강화)
         std::vector<std::string> forbidden_keywords = {
             "eval", "Function", "setTimeout", "setInterval",
-            "XMLHttpRequest", "fetch", "import", "require"
+            "XMLHttpRequest", "fetch", "import", "require", "process", "global",
+            "window", "document", "localStorage", "sessionStorage"
         };
         
         for (const auto& keyword : forbidden_keywords) {
@@ -577,12 +598,43 @@ bool ScriptLibraryManager::validateScript(const std::string& script_code) {
             }
         }
         
-        // 기본 구문 검증 (간단한 괄호 매칭)
+        // ✅ 기본 구문 검증 강화 (괄호, 브레이스, 대괄호 매칭)
         int parentheses_count = 0;
         int braces_count = 0;
         int brackets_count = 0;
+        bool in_string = false;
+        bool in_comment = false;
+        char quote_char = '\0';
         
-        for (char c : script_code) {
+        for (size_t i = 0; i < script_code.length(); ++i) {
+            char c = script_code[i];
+            char next_c = (i + 1 < script_code.length()) ? script_code[i + 1] : '\0';
+            
+            // 문자열 처리
+            if (!in_comment && (c == '"' || c == '\'' || c == '`')) {
+                if (!in_string) {
+                    in_string = true;
+                    quote_char = c;
+                } else if (c == quote_char && (i == 0 || script_code[i-1] != '\\')) {
+                    in_string = false;
+                    quote_char = '\0';
+                }
+                continue;
+            }
+            
+            // 주석 처리
+            if (!in_string && c == '/' && next_c == '/') {
+                in_comment = true;
+                continue;
+            }
+            if (in_comment && c == '\n') {
+                in_comment = false;
+                continue;
+            }
+            
+            // 문자열이나 주석 안에서는 괄호 체크 안함
+            if (in_string || in_comment) continue;
+            
             switch (c) {
                 case '(': parentheses_count++; break;
                 case ')': parentheses_count--; break;
@@ -595,7 +647,9 @@ bool ScriptLibraryManager::validateScript(const std::string& script_code) {
         
         if (parentheses_count != 0 || braces_count != 0 || brackets_count != 0) {
             LogManager::getInstance().log("ScriptLibraryManager", LogLevel::WARN,
-                                         "validateScript: 괄호 불일치");
+                                         "validateScript: 괄호 불일치 (():" + std::to_string(parentheses_count) + 
+                                         ", {}:" + std::to_string(braces_count) + 
+                                         ", []:" + std::to_string(brackets_count) + ")");
             return false;
         }
         

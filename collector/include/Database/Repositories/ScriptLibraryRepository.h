@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Repositories/ScriptLibraryRepository.h
-// PulseOne ScriptLibraryRepository - DeviceRepository 패턴 100% 적용 (수정완료)
+// PulseOne ScriptLibraryRepository - DeviceRepository 패턴 100% 적용 (완전 수정)
 // =============================================================================
 
 #ifndef SCRIPT_LIBRARY_REPOSITORY_H
@@ -12,23 +12,31 @@
  * @author PulseOne Development Team
  * @date 2025-08-12
  * 
- * 🔥 완전 수정된 DeviceRepository 패턴:
- * - ExtendedSQLQueries.h 사용
- * - DatabaseAbstractionLayer 패턴
- * - 올바른 LogManager 사용법
- * - IRepository 상속 관계 정확히 준수
- * - 모든 구현 메서드 헤더 선언
+ * 🔥 모든 컴파일 에러 수정 완료:
+ * - DatabaseAbstractionLayer forward declaration 추가
+ * - IRepository 벌크 메서드 반환타입 일치
+ * - 기존 패턴과 100% 호환
+ * - 불필요한 오버라이드 제거
  */
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/ScriptLibraryEntity.h"
 #include "Database/DatabaseTypes.h"
+#include "Utils/LogManager.h"
 #include <memory>
 #include <map>
 #include <string>
 #include <vector>
 #include <optional>
 #include <nlohmann/json.hpp>
+
+// Forward declarations
+namespace PulseOne {
+namespace Database {
+    class DatabaseAbstractionLayer;
+    class RepositoryHelpers;
+}
+}
 
 namespace PulseOne {
 namespace Database {
@@ -52,20 +60,11 @@ public:
     // 생성자 및 소멸자
     // =======================================================================
     
-    ScriptLibraryRepository() : IRepository<ScriptLibraryEntity>("ScriptLibraryRepository") {
-        initializeDependencies();
-        
-        // ✅ 올바른 LogManager 사용법
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
-                                    "📚 ScriptLibraryRepository initialized with BaseEntity pattern");
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
-                                    "✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
-    }
-    
+    ScriptLibraryRepository();
     virtual ~ScriptLibraryRepository() = default;
 
     // =======================================================================
-    // IRepository 인터페이스 구현 (필수!)
+    // IRepository 인터페이스 구현 (필수!) - 기본 CRUD만
     // =======================================================================
     
     /**
@@ -110,7 +109,7 @@ public:
     bool exists(int id) override;
 
     // =======================================================================
-    // 벌크 연산 (IRepository 상속) - 모든 메서드 구현파일에서 구현됨
+    // IRepository 벌크 연산 override (반환타입 int로 맞춤)
     // =======================================================================
     
     /**
@@ -121,45 +120,43 @@ public:
     std::vector<ScriptLibraryEntity> findByIds(const std::vector<int>& ids) override;
     
     /**
-     * @brief 조건에 맞는 스크립트들 조회
-     * @param conditions 쿼리 조건들
-     * @param order_by 정렬 조건 (optional)
-     * @param pagination 페이징 조건 (optional)
-     * @return ScriptLibraryEntity 목록
-     */
-    std::vector<ScriptLibraryEntity> findByConditions(
-        const std::vector<QueryCondition>& conditions,
-        const std::optional<OrderBy>& order_by = std::nullopt,
-        const std::optional<Pagination>& pagination = std::nullopt
-    ) override;
-    
-    /**
-     * @brief 조건에 맞는 스크립트 개수 조회
-     * @param conditions 쿼리 조건들
-     * @return 개수
-     */
-    int countByConditions(const std::vector<QueryCondition>& conditions) override;
-    
-    /**
-     * @brief 여러 스크립트 일괄 저장
+     * @brief 여러 스크립트 일괄 저장 (🔧 수정: int 반환타입)
      * @param entities 저장할 스크립트들 (참조로 전달하여 ID 업데이트)
      * @return 저장된 개수
      */
     int saveBulk(std::vector<ScriptLibraryEntity>& entities) override;
     
     /**
-     * @brief 여러 스크립트 일괄 업데이트
+     * @brief 여러 스크립트 일괄 업데이트 (🔧 수정: int 반환타입)
      * @param entities 업데이트할 스크립트들
      * @return 업데이트된 개수
      */
     int updateBulk(const std::vector<ScriptLibraryEntity>& entities) override;
     
     /**
-     * @brief 여러 ID 일괄 삭제
+     * @brief 여러 ID 일괄 삭제 (🔧 수정: int 반환타입)
      * @param ids 삭제할 ID들
      * @return 삭제된 개수
      */
     int deleteByIds(const std::vector<int>& ids) override;
+
+    // =======================================================================
+    // 추가 조회 메서드들 (기존 구현부와 호환)
+    // =======================================================================
+    
+    /**
+     * @brief 조건에 맞는 스크립트들 조회 (구현부와 시그니처 일치)
+     * @param conditions 쿼리 조건들 (key-value 맵 형태)
+     * @return ScriptLibraryEntity 목록
+     */
+    std::vector<ScriptLibraryEntity> findByConditions(const std::map<std::string, std::string>& conditions);
+    
+    /**
+     * @brief 조건에 맞는 스크립트 개수 조회 (구현부와 시그니처 일치)
+     * @param conditions 쿼리 조건들 (key-value 맵 형태)
+     * @return 개수
+     */
+    int countByConditions(const std::map<std::string, std::string>& conditions);
 
     // =======================================================================
     // ScriptLibrary 전용 메서드들 (구현파일에서 구현됨)
@@ -243,7 +240,7 @@ public:
                     const std::string& code, const std::string& change_log);
 
     // =======================================================================
-    // 템플릿 관련 (구현파일에서 구현 예정)
+    // 템플릿 관련 (구현파일에서 구현됨)
     // =======================================================================
     
     /**
@@ -261,7 +258,7 @@ public:
     std::optional<std::map<std::string, std::string>> getTemplateById(int template_id);
 
     // =======================================================================
-    // 통계 (구현파일에서 구현 예정)
+    // 통계 (구현파일에서 구현됨)
     // =======================================================================
     
     /**
@@ -295,86 +292,44 @@ private:
      * @return ScriptLibraryEntity 목록
      */
     std::vector<ScriptLibraryEntity> mapResultToEntities(
-        const std::vector<std::map<std::string, std::string>>& result) {
-        std::vector<ScriptLibraryEntity> entities;
-        entities.reserve(result.size());
-        
-        for (const auto& row : result) {
-            try {
-                entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::WARN,
-                                            "mapResultToEntities - Failed to map row: " + std::string(e.what()));
-            }
-        }
-        
-        return entities;
-    }
+        const std::vector<std::map<std::string, std::string>>& result);
     
     /**
      * @brief Entity를 데이터베이스 파라미터로 변환
      * @param entity ScriptLibraryEntity
      * @return 파라미터 맵
      */
-    std::map<std::string, std::string> entityToParams(const ScriptLibraryEntity& entity) {
-        std::map<std::string, std::string> params;
-        
-        // 기본 필드들
-        params["tenant_id"] = std::to_string(entity.getTenantId());
-        params["name"] = entity.getName();
-        params["display_name"] = entity.getDisplayName();
-        params["description"] = entity.getDescription();
-        params["category"] = entity.getCategoryString();
-        params["script_code"] = entity.getScriptCode();
-        params["parameters"] = entity.getParameters().dump();
-        params["return_type"] = entity.getReturnTypeString();
-        params["tags"] = nlohmann::json(entity.getTags()).dump();
-        params["example_usage"] = entity.getExampleUsage();
-        params["is_system"] = entity.isSystem() ? "1" : "0";
-        params["is_template"] = entity.isTemplate() ? "1" : "0";
-        params["usage_count"] = std::to_string(entity.getUsageCount());
-        params["rating"] = std::to_string(entity.getRating());
-        params["version"] = entity.getVersion();
-        params["author"] = entity.getAuthor();
-        params["license"] = entity.getLicense();
-        params["dependencies"] = nlohmann::json(entity.getDependencies()).dump();
-        
-        return params;
-    }
+    std::map<std::string, std::string> entityToParams(const ScriptLibraryEntity& entity);
     
     /**
      * @brief Entity 유효성 검증
      * @param entity ScriptLibraryEntity
      * @return 유효하면 true
      */
-    bool validateEntity(const ScriptLibraryEntity& entity) const {
-        if (entity.getName().empty()) {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
-                                        "validateEntity - Empty script name");
-            return false;
-        }
-        
-        if (entity.getScriptCode().empty()) {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
-                                        "validateEntity - Empty script code");
-            return false;
-        }
-        
-        if (entity.getTenantId() < 0) {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
-                                        "validateEntity - Invalid tenant_id: " + std::to_string(entity.getTenantId()));
-            return false;
-        }
-        
-        return true;
-    }
+    bool validateEntity(const ScriptLibraryEntity& entity) const;
+    
+    /**
+     * @brief Category Enum을 문자열로 변환 (구현파일에서 구현됨)
+     * @param category Category enum
+     * @return 문자열
+     */
+    std::string categoryEnumToString(ScriptLibraryEntity::Category category);
+    
+    /**
+     * @brief ReturnType Enum을 문자열로 변환 (구현파일에서 구현됨)
+     * @param type ReturnType enum
+     * @return 문자열
+     */
+    std::string returnTypeEnumToString(ScriptLibraryEntity::ReturnType type);
 
     // =======================================================================
-    // 의존성 관리 - IRepository에서 이미 제공되므로 중복 제거
+    // 의존성 초기화 (구현부에서 구현)
     // =======================================================================
-    // ❌ 제거: DatabaseManager* db_manager_; (IRepository에서 제공)
-    // ❌ 제거: LogManager* logger_; (IRepository에서 제공)  
-    // ❌ 제거: ConfigManager* config_manager_; (IRepository에서 제공)
+    
+    /**
+     * @brief 의존성 초기화 (DatabaseAbstractionLayer 등)
+     */
+    void initializeDependencies();
 };
 
 } // namespace Repositories
