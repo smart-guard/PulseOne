@@ -321,7 +321,7 @@ public:
      * @brief 최대 ID 조회 (테스트용)
      * @return 최대 ID (optional)
      */
-    std::optional<int> findMaxId();
+    int findMaxId();;
     std::vector<AlarmOccurrenceEntity> findActiveByRuleId(int rule_id);
 private:
     // =======================================================================

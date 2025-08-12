@@ -242,7 +242,7 @@ namespace Occurrence {
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE id = ?";
     
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM alarm_occurrences";
-    
+    const std::string FIND_MAX_ID = "SELECT MAX(id) as max_id FROM alarm_occurrences";
     // ==========================================================================
     // 특화 조회 쿼리들 (AlarmOccurrence 전용)
     // ==========================================================================
@@ -803,88 +803,6 @@ namespace AlarmRule {
 } // namespace Alarm
 
 // =============================================================================
-// 🧮 VirtualPoint 관련 쿼리들
-// =============================================================================
-namespace VirtualPoint {
-    
-    const std::string CREATE_TABLE = R"(
-        CREATE TABLE IF NOT EXISTS virtual_points (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tenant_id INTEGER DEFAULT 0,
-            name VARCHAR(255) NOT NULL,
-            display_name VARCHAR(255),
-            description TEXT,
-            unit VARCHAR(50),
-            data_type VARCHAR(20) DEFAULT 'FLOAT',
-            formula TEXT NOT NULL,
-            execution_type VARCHAR(20) DEFAULT 'JAVASCRIPT',
-            execution_interval_ms INTEGER DEFAULT 5000,
-            is_enabled BOOLEAN DEFAULT 1,
-            error_handling VARCHAR(20) DEFAULT 'RETURN_NULL',
-            default_value REAL DEFAULT 0.0,
-            min_value REAL,
-            max_value REAL,
-            decimal_places INTEGER DEFAULT 2,
-            tags TEXT DEFAULT '[]',
-            context_data TEXT DEFAULT '{}',
-            last_calculated_value REAL,
-            last_calculation_time DATETIME,
-            last_error_message TEXT,
-            calculation_count INTEGER DEFAULT 0,
-            error_count INTEGER DEFAULT 0,
-            created_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            
-            UNIQUE(tenant_id, name),
-            
-            INDEX idx_virtual_points_tenant (tenant_id),
-            INDEX idx_virtual_points_enabled (is_enabled),
-            INDEX idx_virtual_points_execution_type (execution_type),
-            INDEX idx_virtual_points_name (name)
-        )
-    )";
-    
-    const std::string FIND_ALL = R"(
-        SELECT 
-            id, tenant_id, name, display_name, description, unit,
-            data_type, formula, execution_type, execution_interval_ms,
-            is_enabled, error_handling, default_value, min_value, max_value,
-            decimal_places, tags, context_data, last_calculated_value,
-            last_calculation_time, last_error_message, calculation_count,
-            error_count, created_by, created_at, updated_at
-        FROM virtual_points 
-        ORDER BY name
-    )";
-    
-    const std::string FIND_BY_ID = R"(
-        SELECT 
-            id, tenant_id, name, display_name, description, unit,
-            data_type, formula, execution_type, execution_interval_ms,
-            is_enabled, error_handling, default_value, min_value, max_value,
-            decimal_places, tags, context_data, last_calculated_value,
-            last_calculation_time, last_error_message, calculation_count,
-            error_count, created_by, created_at, updated_at
-        FROM virtual_points 
-        WHERE id = ?
-    )";
-    
-    const std::string FIND_ENABLED = R"(
-        SELECT 
-            id, tenant_id, name, display_name, description, unit,
-            data_type, formula, execution_type, execution_interval_ms,
-            is_enabled, error_handling, default_value, min_value, max_value,
-            decimal_places, tags, context_data, last_calculated_value,
-            last_calculation_time, last_error_message, calculation_count,
-            error_count, created_by, created_at, updated_at
-        FROM virtual_points 
-        WHERE is_enabled = 1
-        ORDER BY name
-    )";
-
-} // namespace VirtualPoint
-
-// =============================================================================
 // 📚 ScriptLibrary 관련 쿼리들
 // =============================================================================
 namespace ScriptLibrary {
@@ -1091,6 +1009,306 @@ namespace ScriptLibrary {
     )";
 
 } // namespace ScriptLibrary
+
+namespace VirtualPoint {
+    
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS virtual_points (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id INTEGER NOT NULL DEFAULT 0,
+            site_id INTEGER,
+            device_id INTEGER,
+            
+            -- 가상포인트 기본 정보
+            name VARCHAR(100) NOT NULL,
+            description TEXT,
+            formula TEXT NOT NULL,
+            data_type VARCHAR(20) NOT NULL DEFAULT 'float',
+            unit VARCHAR(20),
+            
+            -- 계산 설정
+            calculation_interval INTEGER DEFAULT 1000,
+            calculation_trigger VARCHAR(20) DEFAULT 'timer',
+            cache_duration_ms INTEGER DEFAULT 5000,
+            is_enabled INTEGER DEFAULT 1,
+            
+            -- 메타데이터
+            category VARCHAR(50),
+            tags TEXT DEFAULT '',
+            scope_type VARCHAR(20) NOT NULL DEFAULT 'tenant',
+            
+            -- 실행 통계
+            execution_count INTEGER DEFAULT 0,
+            last_value REAL DEFAULT 0.0,
+            last_error TEXT DEFAULT '',
+            avg_execution_time_ms REAL DEFAULT 0.0,
+            
+            -- 생성/수정 정보
+            created_by VARCHAR(100) DEFAULT 'system',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            -- 제약조건
+            CONSTRAINT chk_scope_type CHECK (scope_type IN ('tenant', 'site', 'device')),
+            CONSTRAINT chk_calculation_trigger CHECK (calculation_trigger IN ('timer', 'event', 'manual')),
+            
+            -- 인덱스
+            INDEX idx_virtual_points_tenant (tenant_id),
+            INDEX idx_virtual_points_enabled (is_enabled),
+            INDEX idx_virtual_points_scope (scope_type, tenant_id)
+        )
+    )";
+    
+    const std::string FIND_ALL = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        ORDER BY tenant_id, name
+    )";
+    
+    const std::string FIND_BY_ID = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE id = ?
+    )";
+    
+    const std::string INSERT = R"(
+        INSERT INTO virtual_points (
+            tenant_id, site_id, device_id, name, description, formula,
+            data_type, unit, calculation_interval, calculation_trigger, cache_duration_ms,
+            is_enabled, category, tags, scope_type, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+    
+    const std::string UPDATE_BY_ID = R"(
+        UPDATE virtual_points SET 
+            tenant_id = ?, site_id = ?, device_id = ?, name = ?, 
+            description = ?, formula = ?, data_type = ?, unit = ?,
+            calculation_interval = ?, calculation_trigger = ?, cache_duration_ms = ?,
+            is_enabled = ?, category = ?, tags = ?, scope_type = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string DELETE_BY_ID = "DELETE FROM virtual_points WHERE id = ?";
+    
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM virtual_points WHERE id = ?";
+    
+    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM virtual_points";
+    
+    // =======================================================================
+    // VirtualPoint 특화 쿼리들
+    // =======================================================================
+    
+    const std::string FIND_BY_TENANT = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE tenant_id = ?
+        ORDER BY name
+    )";
+    
+    const std::string FIND_BY_SITE = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE site_id = ?
+        ORDER BY name
+    )";
+    
+    const std::string FIND_BY_DEVICE = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE device_id = ?
+        ORDER BY name
+    )";
+    
+    const std::string FIND_ENABLED = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE is_enabled = 1
+        ORDER BY calculation_interval, name
+    )";
+    
+    const std::string FIND_BY_CATEGORY = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE category = ?
+        ORDER BY name
+    )";
+    
+    const std::string FIND_BY_EXECUTION_TYPE = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id,
+            name, description, formula, data_type, unit,
+            calculation_interval, calculation_trigger, cache_duration_ms, is_enabled,
+            category, tags, scope_type,
+            execution_count, last_value, last_error, avg_execution_time_ms,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE calculation_trigger = ?
+        ORDER BY calculation_interval, name
+    )";
+    
+    // =======================================================================
+    // 실행 통계 업데이트 쿼리들
+    // =======================================================================
+    
+    const std::string UPDATE_EXECUTION_STATS = R"(
+        UPDATE virtual_points SET 
+            execution_count = execution_count + 1,
+            last_value = ?,
+            avg_execution_time_ms = ((avg_execution_time_ms * (execution_count - 1)) + ?) / execution_count,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string UPDATE_ERROR_INFO = R"(
+        UPDATE virtual_points SET 
+            last_error = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string UPDATE_LAST_VALUE = R"(
+        UPDATE virtual_points SET 
+            last_value = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string RESET_EXECUTION_STATS = R"(
+        UPDATE virtual_points SET 
+            execution_count = 0,
+            last_value = 0.0,
+            last_error = '',
+            avg_execution_time_ms = 0.0,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    // =======================================================================
+    // 가상포인트 입력 매핑 테이블 (VirtualPoint 의존성 관리용)
+    // =======================================================================
+    
+    const std::string CREATE_INPUTS_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS virtual_point_inputs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            virtual_point_id INTEGER NOT NULL,
+            variable_name VARCHAR(50) NOT NULL,
+            source_type VARCHAR(20) NOT NULL,
+            source_id INTEGER,
+            expression TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
+            CONSTRAINT chk_source_type CHECK (source_type IN ('data_point', 'virtual_point', 'constant')),
+            
+            INDEX idx_vp_inputs_virtual_point (virtual_point_id),
+            INDEX idx_vp_inputs_source (source_type, source_id)
+        )
+    )";
+    
+    const std::string FIND_INPUTS_BY_VP_ID = R"(
+        SELECT 
+            id, variable_name, source_type, source_id, expression
+        FROM virtual_point_inputs 
+        WHERE virtual_point_id = ?
+        ORDER BY variable_name
+    )";
+    
+    const std::string INSERT_INPUT = R"(
+        INSERT INTO virtual_point_inputs (
+            virtual_point_id, variable_name, source_type, source_id, expression
+        ) VALUES (?, ?, ?, ?, ?)
+    )";
+    
+    const std::string DELETE_INPUTS_BY_VP_ID = R"(
+        DELETE FROM virtual_point_inputs WHERE virtual_point_id = ?
+    )";
+    
+    // =======================================================================
+    // 실행 로그 테이블 (디버깅 및 모니터링용)
+    // =======================================================================
+    
+    const std::string CREATE_EXECUTION_LOG_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS virtual_point_execution_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            virtual_point_id INTEGER NOT NULL,
+            calculated_value REAL,
+            execution_time_ms INTEGER,
+            status VARCHAR(20) DEFAULT 'success',
+            error_message TEXT,
+            executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
+            
+            INDEX idx_vp_log_virtual_point (virtual_point_id),
+            INDEX idx_vp_log_executed_at (executed_at)
+        )
+    )";
+    
+    const std::string INSERT_EXECUTION_LOG = R"(
+        INSERT INTO virtual_point_execution_log (
+            virtual_point_id, calculated_value, execution_time_ms, status, error_message
+        ) VALUES (?, ?, ?, ?, ?)
+    )";
+    
+    const std::string FIND_EXECUTION_LOG = R"(
+        SELECT 
+            id, virtual_point_id, calculated_value, execution_time_ms, 
+            status, error_message, executed_at
+        FROM virtual_point_execution_log 
+        WHERE virtual_point_id = ?
+        ORDER BY executed_at DESC
+        LIMIT ?
+    )";
+    
+    const std::string CLEANUP_OLD_LOGS = R"(
+        DELETE FROM virtual_point_execution_log 
+        WHERE executed_at < datetime('now', '-7 days')
+    )";
+    
+} // namespace VirtualPoint
 
 } // namespace SQL
 } // namespace Database  
