@@ -72,6 +72,7 @@ enum class DigitalTrigger : uint8_t {
 
 // 대상 타입
 enum class TargetType : uint8_t {
+    UNKNOWN = 255,
     DATA_POINT = 0,     // 데이터 포인트
     VIRTUAL_POINT = 1,  // 가상 포인트
     GROUP = 2           // 그룹

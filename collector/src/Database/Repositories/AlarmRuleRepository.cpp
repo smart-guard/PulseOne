@@ -172,10 +172,13 @@ bool AlarmRuleRepository::update(const AlarmRuleEntity& entity) {
         
         DatabaseAbstractionLayer db_layer;
         
-        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
+        // 🔥 수정: UPDATE -> UPDATE_BY_ID (ExtendedSQLQueries.h 기준)
         auto params = entityToParams(entity);
         params["id"] = std::to_string(entity.getId()); // WHERE 절용
-        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::Alarm::Rule::UPDATE, params);
+        std::string query = RepositoryHelpers::replaceParametersInOrder(
+            SQL::Alarm::Rule::UPDATE_BY_ID,  // 🔥 수정됨!
+            params
+        );
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -197,6 +200,7 @@ bool AlarmRuleRepository::update(const AlarmRuleEntity& entity) {
         return false;
     }
 }
+
 
 bool AlarmRuleRepository::deleteById(int id) {
     try {
@@ -641,87 +645,98 @@ bool AlarmRuleRepository::isNameTaken(const std::string& name, int tenant_id, in
 // 내부 헬퍼 메서드들 - AlarmTypes.h 올바른 사용
 // =============================================================================
 
-AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
-    try {
-        AlarmRuleEntity entity;
-        auto it = row.end();
+PulseOne::Database::Repositories::AlarmRuleEntity 
+PulseOne::Database::Repositories::AlarmRuleRepository::mapRowToEntity(
+    const std::map<std::string, std::string>& row) {
+    
+    AlarmRuleEntity entity;
+    
+    for (const auto& it : row) {
+        const std::string& key = it.first;
+        const std::string& value = it.second;
         
-        // 기본 정보
-        it = row.find("id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setId(std::stoll(it->second));
+        if (key == "id") {
+            entity.setId(std::stoi(value));
+        } else if (key == "tenant_id") {
+            entity.setTenantId(std::stoi(value));
+        } else if (key == "name") {
+            entity.setName(value);
+        } else if (key == "description") {
+            entity.setDescription(value);
+        } else if (key == "target_type") {
+            // 🔥 AlarmTypes.h 변환 함수 사용
+            entity.setTargetType(PulseOne::Alarm::stringToTargetType(value));
+        } else if (key == "target_id" && !value.empty()) {
+            entity.setTargetId(std::stoi(value));
+        } else if (key == "target_group") {
+            entity.setTargetGroup(value);
+        } else if (key == "alarm_type") {
+            // 🔥 AlarmTypes.h 변환 함수 사용
+            entity.setAlarmType(PulseOne::Alarm::stringToAlarmType(value));
+        } else if (key == "high_high_limit" && !value.empty()) {
+            entity.setHighHighLimit(std::stod(value));
+        } else if (key == "high_limit" && !value.empty()) {
+            entity.setHighLimit(std::stod(value));
+        } else if (key == "low_limit" && !value.empty()) {
+            entity.setLowLimit(std::stod(value));
+        } else if (key == "low_low_limit" && !value.empty()) {
+            entity.setLowLowLimit(std::stod(value));
+        } else if (key == "deadband") {
+            entity.setDeadband(std::stod(value));
+        } else if (key == "rate_of_change") {
+            entity.setRateOfChange(std::stod(value));
+        } else if (key == "trigger_condition") {
+            // 🔥 AlarmTypes.h 변환 함수 사용
+            entity.setTriggerCondition(PulseOne::Alarm::stringToDigitalTrigger(value));
+        } else if (key == "condition_script") {  // 🔥 올바른 메서드명 사용
+            entity.setConditionScript(value);
+        } else if (key == "message_script") {
+            entity.setMessageScript(value);
+        } else if (key == "message_config") {
+            entity.setMessageConfig(value);
+        } else if (key == "message_template") {
+            entity.setMessageTemplate(value);
+        } else if (key == "severity") {
+            // 🔥 AlarmTypes.h 변환 함수 사용
+            entity.setSeverity(PulseOne::Alarm::stringToSeverity(value));
+        } else if (key == "priority") {
+            entity.setPriority(std::stoi(value));
+        } else if (key == "auto_acknowledge") {
+            entity.setAutoAcknowledge(value == "1" || value == "true");
+        } else if (key == "acknowledge_timeout_min") {
+            entity.setAcknowledgeTimeoutMin(std::stoi(value));
+        } else if (key == "auto_clear") {
+            entity.setAutoClear(value == "1" || value == "true");
+        } else if (key == "suppression_rules") {
+            entity.setSuppressionRules(value);
+        } else if (key == "notification_enabled") {
+            entity.setNotificationEnabled(value == "1" || value == "true");
+        } else if (key == "notification_delay_sec") {
+            entity.setNotificationDelaySec(std::stoi(value));
+        } else if (key == "notification_repeat_interval_min") {
+            entity.setNotificationRepeatIntervalMin(std::stoi(value));
+        } else if (key == "notification_channels") {
+            entity.setNotificationChannels(value);
+        } else if (key == "notification_recipients") {
+            entity.setNotificationRecipients(value);
+        } else if (key == "is_enabled") {
+            entity.setEnabled(value == "1" || value == "true");
+        } else if (key == "is_latched") {
+            entity.setLatched(value == "1" || value == "true");
+        } else if (key == "created_by") {
+            entity.setCreatedBy(std::stoi(value));
         }
-        
-        it = row.find("tenant_id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setTenantId(std::stoi(it->second));
-        }
-        
-        it = row.find("name");
-        if (it != row.end()) {
-            entity.setName(it->second);
-        }
-        
-        it = row.find("description");
-        if (it != row.end()) {
-            entity.setDescription(it->second);
-        }
-        
-        // 대상 정보
-        it = row.find("target_type");
-        if (it != row.end()) {
-            entity.setTargetType(it->second);
-        }
-        
-        it = row.find("target_id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setTargetId(std::stoi(it->second));
-        }
-        
-        // 조건 정보
-        it = row.find("condition_type");
-        if (it != row.end()) {
-            entity.setConditionType(it->second);
-        }
-        
-        it = row.find("threshold_value");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setThresholdValue(std::stod(it->second));
-        }
-        
-        // 심각도
-        it = row.find("severity");
-        if (it != row.end()) {
-            entity.setSeverity(it->second);
-        }
-        
-        // 우선순위
-        it = row.find("priority");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setPriority(std::stoi(it->second));
-        }
-        
-        // 플래그들
-        it = row.find("is_enabled");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setEnabled(it->second == "1");
-        }
-        
-        it = row.find("auto_clear");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setAutoClear(it->second == "1");
-        }
-        
-        return entity;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
-                                    "mapRowToEntity failed: " + std::string(e.what()));
-        throw;
+        // created_at, updated_at는 자동으로 처리됨
     }
+    
+    return entity;
 }
 
-std::map<std::string, std::string> AlarmRuleRepository::entityToParams(const AlarmRuleEntity& entity) {
+
+std::map<std::string, std::string> 
+PulseOne::Database::Repositories::AlarmRuleRepository::entityToParams(
+    const AlarmRuleEntity& entity) {
+    
     std::map<std::string, std::string> params;
     
     // 기본 정보
@@ -729,24 +744,87 @@ std::map<std::string, std::string> AlarmRuleRepository::entityToParams(const Ala
     params["name"] = escapeString(entity.getName());
     params["description"] = escapeString(entity.getDescription());
     
-    // 대상 정보
-    params["target_type"] = escapeString(entity.getTargetType());
-    params["target_id"] = std::to_string(entity.getTargetId());
+    // 대상 정보 - 🔥 AlarmTypes.h 변환 함수 사용
+    params["target_type"] = escapeString(PulseOne::Alarm::targetTypeToString(entity.getTargetType()));
     
-    // 조건 정보
-    params["condition_type"] = escapeString(entity.getConditionType());
-    params["threshold_value"] = std::to_string(entity.getThresholdValue());
+    // 🔥 std::optional 올바른 처리
+    if (entity.getTargetId().has_value()) {
+        params["target_id"] = std::to_string(entity.getTargetId().value());
+    } else {
+        params["target_id"] = "";
+    }
     
-    // 심각도 및 우선순위
-    params["severity"] = escapeString(entity.getSeverity());
+    params["target_group"] = escapeString(entity.getTargetGroup());
+    
+    // 알람 타입 - 🔥 AlarmTypes.h 변환 함수 사용
+    params["alarm_type"] = escapeString(PulseOne::Alarm::alarmTypeToString(entity.getAlarmType()));
+    
+    // 아날로그 설정 - 🔥 std::optional 올바른 처리
+    if (entity.getHighHighLimit().has_value()) {
+        params["high_high_limit"] = std::to_string(entity.getHighHighLimit().value());
+    } else {
+        params["high_high_limit"] = "";
+    }
+    
+    if (entity.getHighLimit().has_value()) {
+        params["high_limit"] = std::to_string(entity.getHighLimit().value());
+    } else {
+        params["high_limit"] = "";
+    }
+    
+    if (entity.getLowLimit().has_value()) {
+        params["low_limit"] = std::to_string(entity.getLowLimit().value());
+    } else {
+        params["low_limit"] = "";
+    }
+    
+    if (entity.getLowLowLimit().has_value()) {
+        params["low_low_limit"] = std::to_string(entity.getLowLowLimit().value());
+    } else {
+        params["low_low_limit"] = "";
+    }
+    
+    params["deadband"] = std::to_string(entity.getDeadband());
+    params["rate_of_change"] = std::to_string(entity.getRateOfChange());
+    
+    // 디지털 설정 - 🔥 AlarmTypes.h 변환 함수 사용
+    params["trigger_condition"] = escapeString(PulseOne::Alarm::digitalTriggerToString(entity.getTriggerCondition()));
+    
+    // 스크립트 설정 - 🔥 올바른 메서드명 사용
+    params["condition_script"] = escapeString(entity.getConditionScript());
+    params["message_script"] = escapeString(entity.getMessageScript());
+    
+    // 메시지 설정
+    params["message_config"] = escapeString(entity.getMessageConfig());
+    params["message_template"] = escapeString(entity.getMessageTemplate());
+    
+    // 우선순위 - 🔥 AlarmTypes.h 변환 함수 사용
+    params["severity"] = escapeString(PulseOne::Alarm::severityToString(entity.getSeverity()));
     params["priority"] = std::to_string(entity.getPriority());
     
-    // 플래그들
-    params["is_enabled"] = entity.isEnabled() ? "1" : "0";
+    // 자동 처리
+    params["auto_acknowledge"] = entity.isAutoAcknowledge() ? "1" : "0";
+    params["acknowledge_timeout_min"] = std::to_string(entity.getAcknowledgeTimeoutMin());
     params["auto_clear"] = entity.isAutoClear() ? "1" : "0";
+    
+    // 억제 규칙
+    params["suppression_rules"] = escapeString(entity.getSuppressionRules());
+    
+    // 알림 설정
+    params["notification_enabled"] = entity.isNotificationEnabled() ? "1" : "0";
+    params["notification_delay_sec"] = std::to_string(entity.getNotificationDelaySec());
+    params["notification_repeat_interval_min"] = std::to_string(entity.getNotificationRepeatIntervalMin());
+    params["notification_channels"] = escapeString(entity.getNotificationChannels());
+    params["notification_recipients"] = escapeString(entity.getNotificationRecipients());
+    
+    // 상태
+    params["is_enabled"] = entity.isEnabled() ? "1" : "0";
+    params["is_latched"] = entity.isLatched() ? "1" : "0";
+    params["created_by"] = std::to_string(entity.getCreatedBy());
     
     return params;
 }
+
 
 bool AlarmRuleRepository::ensureTableExists() {
     try {
@@ -761,21 +839,66 @@ bool AlarmRuleRepository::ensureTableExists() {
 }
 
 bool AlarmRuleRepository::validateAlarmRule(const AlarmRuleEntity& entity) {
-    // 기본 검증
+    // 🔥 수정: UNKNOWN 체크 제거, 기본값으로 변경
     if (entity.getName().empty()) {
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+                                    "validateAlarmRule - Name cannot be empty");
         return false;
     }
     
-    if (entity.getTenantId() <= 0) {
+    // 🔥 수정: TargetType 유효성 검사 개선
+    auto target_type = entity.getTargetType();
+    if (target_type != PulseOne::Alarm::TargetType::DATA_POINT &&
+        target_type != PulseOne::Alarm::TargetType::VIRTUAL_POINT &&
+        target_type != PulseOne::Alarm::TargetType::GROUP) {
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+                                    "validateAlarmRule - Invalid target type");
         return false;
     }
     
-    if (entity.getTargetType().empty()) {
+    // target_id 검증 (DATA_POINT, VIRTUAL_POINT의 경우 필수)
+    if ((target_type == PulseOne::Alarm::TargetType::DATA_POINT || 
+         target_type == PulseOne::Alarm::TargetType::VIRTUAL_POINT) &&
+        (!entity.getTargetId().has_value() || entity.getTargetId().value() <= 0)) {
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+                                    "validateAlarmRule - Target ID required for DATA_POINT/VIRTUAL_POINT");
         return false;
+    }
+    
+    // GROUP의 경우 target_group 필수
+    if (target_type == PulseOne::Alarm::TargetType::GROUP &&
+        entity.getTargetGroup().empty()) {
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+                                    "validateAlarmRule - Target group required for GROUP type");
+        return false;
+    }
+    
+    // 알람 타입별 유효성 검사
+    auto alarm_type = entity.getAlarmType();
+    if (alarm_type == PulseOne::Alarm::AlarmType::ANALOG) {
+        // 아날로그 알람은 최소 하나의 임계값 필요
+        if (!entity.getHighHighLimit().has_value() &&
+            !entity.getHighLimit().has_value() &&
+            !entity.getLowLimit().has_value() &&
+            !entity.getLowLowLimit().has_value()) {
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+                                        "validateAlarmRule - Analog alarm requires at least one threshold");
+            return false;
+        }
+    }
+    
+    if (alarm_type == PulseOne::Alarm::AlarmType::SCRIPT) {
+        // 스크립트 알람은 condition_script 필수
+        if (entity.getConditionScript().empty()) {
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+                                        "validateAlarmRule - Script alarm requires condition script");
+            return false;
+        }
     }
     
     return true;
 }
+
 
 std::string AlarmRuleRepository::escapeString(const std::string& str) {
     std::string escaped = str;
