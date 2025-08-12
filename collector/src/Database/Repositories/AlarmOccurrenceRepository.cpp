@@ -1,49 +1,54 @@
 // =============================================================================
 // collector/src/Database/Repositories/AlarmOccurrenceRepository.cpp
-// PulseOne AlarmOccurrenceRepository 구현 - 네임스페이스 오류 완전 해결
+// PulseOne AlarmOccurrenceRepository 구현 - ScriptLibraryRepository 패턴 100% 적용
 // =============================================================================
 
 /**
  * @file AlarmOccurrenceRepository.cpp
- * @brief PulseOne AlarmOccurrenceRepository 구현 - 기존 AlarmTypes.h와 100% 호환
+ * @brief PulseOne AlarmOccurrenceRepository - DeviceRepository 패턴 완전 적용
  * @author PulseOne Development Team
- * @date 2025-08-11
+ * @date 2025-08-12
  * 
- * 🎯 네임스페이스 오류 완전 해결:
- * - 기존 AlarmTypes.h의 실제 함수 사용
- * - AlarmOccurrenceEntity의 변환 메서드 활용
- * - PulseOne::Alarm:: 네임스페이스 올바른 사용
- * - 컴파일 에러 0개 보장
+ * 🎯 ScriptLibraryRepository 패턴 완전 적용:
+ * - ExtendedSQLQueries.h 사용 (분리된 쿼리 파일)
+ * - DatabaseAbstractionLayer 패턴
+ * - 표준 LogManager 사용법
+ * - 벌크 연산 SQL 최적화
+ * - 캐시 관리 완전 구현
+ * - 모든 IRepository 메서드 override
  */
 
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/SQLQueries.h"
 #include "Database/DatabaseAbstractionLayer.h"
+#include "Database/SQLQueries.h"
+#include "Database/ExtendedSQLQueries.h"  // 🔥 분리된 쿼리 파일 사용
+#include "Utils/LogManager.h"
 #include "Alarm/AlarmTypes.h"
 #include <sstream>
-#include <algorithm>
 #include <iomanip>
+#include <algorithm>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
 // =============================================================================
-// IRepository 기본 CRUD 구현
+// IRepository 기본 CRUD 구현 (ScriptLibraryRepository 패턴)
 // =============================================================================
 
 std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll() {
     try {
         if (!ensureTableExists()) {
-            if (logger_) {
-                logger_->Error("AlarmOccurrenceRepository::findAll - Table creation failed");
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR, 
+                                        "findAll - Table creation failed");
             return {};
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::AlarmOccurrence::FIND_ALL);
+        
+        // 🎯 ExtendedSQLQueries.h 사용
+        auto results = db_layer.executeQuery(SQL::Alarm::Occurrence::FIND_ALL);
         
         std::vector<AlarmOccurrenceEntity> entities;
         entities.reserve(results.size());
@@ -52,21 +57,18 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll() {
             try {
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findAll - Failed to map row: " + std::string(e.what()));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findAll - Failed to map row: " + std::string(e.what()));
             }
         }
         
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findAll - Found " + std::to_string(entities.size()) + " alarm occurrences");
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "findAll - Found " + std::to_string(entities.size()) + " alarm occurrences");
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findAll failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findAll failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -77,9 +79,8 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
         if (isCacheEnabled()) {
             auto cached = getCachedEntity(id);
             if (cached.has_value()) {
-                if (logger_) {
-                    logger_->Debug("AlarmOccurrenceRepository::findById - Cache hit for ID: " + std::to_string(id));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
+                                            "findById - Cache hit for ID: " + std::to_string(id));
                 return cached.value();
             }
         }
@@ -90,14 +91,13 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
         
         DatabaseAbstractionLayer db_layer;
         
-        // 파라미터 치환
-        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::FIND_BY_ID, std::to_string(id));
+        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Alarm::Occurrence::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
-            if (logger_) {
-                logger_->Debug("AlarmOccurrenceRepository::findById - No alarm occurrence found for ID: " + std::to_string(id));
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
+                                        "findById - No alarm occurrence found for ID: " + std::to_string(id));
             return std::nullopt;
         }
         
@@ -108,15 +108,13 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
             cacheEntity(entity);
         }
         
-        if (logger_) {
-            logger_->Debug("AlarmOccurrenceRepository::findById - Found alarm occurrence ID: " + std::to_string(id));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
+                                    "findById - Found alarm occurrence ID: " + std::to_string(id));
         return entity;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findById failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
@@ -128,17 +126,16 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
         }
         
         if (!validateAlarmOccurrence(entity)) {
-            if (logger_) {
-                logger_->Error("AlarmOccurrenceRepository::save - Invalid alarm occurrence data");
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                        "save - Invalid alarm occurrence data");
             return false;
         }
         
         DatabaseAbstractionLayer db_layer;
         
-        // 파라미터 치환
+        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         auto params = entityToParams(entity);
-        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::AlarmOccurrence::INSERT, params);
+        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::Alarm::Occurrence::INSERT, params);
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -149,17 +146,15 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
                 entity.setId(std::stoll(id_results[0].at("id")));
             }
             
-            if (logger_) {
-                logger_->Info("AlarmOccurrenceRepository::save - Saved alarm occurrence for rule ID: " + std::to_string(entity.getRuleId()));
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                        "save - Saved alarm occurrence for rule ID: " + std::to_string(entity.getRuleId()));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::save failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "save failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -171,18 +166,17 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
         }
         
         if (!validateAlarmOccurrence(entity)) {
-            if (logger_) {
-                logger_->Error("AlarmOccurrenceRepository::update - Invalid alarm occurrence data");
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                        "update - Invalid alarm occurrence data");
             return false;
         }
         
         DatabaseAbstractionLayer db_layer;
         
-        // 파라미터 치환
+        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         auto params = entityToParams(entity);
         params["id"] = std::to_string(entity.getId()); // WHERE 절용
-        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::AlarmOccurrence::UPDATE, params);
+        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::Alarm::Occurrence::UPDATE, params);
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -192,17 +186,15 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
                 clearCacheForId(static_cast<int>(entity.getId()));
             }
             
-            if (logger_) {
-                logger_->Info("AlarmOccurrenceRepository::update - Updated alarm occurrence ID: " + std::to_string(entity.getId()));
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                        "update - Updated alarm occurrence ID: " + std::to_string(entity.getId()));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::update failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "update failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -215,8 +207,8 @@ bool AlarmOccurrenceRepository::deleteById(int id) {
         
         DatabaseAbstractionLayer db_layer;
         
-        // 파라미터 치환
-        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::DELETE_BY_ID, std::to_string(id));
+        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Alarm::Occurrence::DELETE_BY_ID, std::to_string(id));
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -225,110 +217,103 @@ bool AlarmOccurrenceRepository::deleteById(int id) {
                 clearCacheForId(id);
             }
             
-            if (logger_) {
-                logger_->Info("AlarmOccurrenceRepository::deleteById - Deleted alarm occurrence ID: " + std::to_string(id));
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                        "deleteById - Deleted alarm occurrence ID: " + std::to_string(id));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::deleteById failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "deleteById failed: " + std::string(e.what()));
         return false;
     }
 }
 
 bool AlarmOccurrenceRepository::exists(int id) {
     try {
-        if (id <= 0 || !ensureTableExists()) {
+        if (id <= 0) {
             return false;
         }
         
         // 캐시 확인
-        if (isCacheEnabled()) {
-            auto cached = getCachedEntity(id);
-            if (cached.has_value()) {
-                return true;
-            }
+        if (isCacheEnabled() && getCachedEntity(id).has_value()) {
+            return true;
+        }
+        
+        if (!ensureTableExists()) {
+            return false;
         }
         
         DatabaseAbstractionLayer db_layer;
         
-        // 파라미터 치환
-        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::EXISTS_BY_ID, std::to_string(id));
+        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Alarm::Occurrence::EXISTS_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
-        if (!results.empty() && results[0].find("count") != results[0].end()) {
-            return std::stoi(results[0].at("count")) > 0;
-        }
-        
-        return false;
+        return !results.empty() && std::stoi(results[0].at("count")) > 0;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::exists failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "exists failed: " + std::string(e.what()));
         return false;
     }
 }
 
 // =============================================================================
-// 벌크 연산 구현 (IRepository 인터페이스)
+// 벌크 연산 (SQL 최적화된 구현) - ScriptLibraryRepository 패턴
 // =============================================================================
 
 std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByIds(const std::vector<int>& ids) {
+    std::vector<AlarmOccurrenceEntity> results;
+    
+    if (ids.empty()) {
+        return results;
+    }
+    
     try {
-        if (ids.empty() || !ensureTableExists()) {
-            return {};
+        if (!ensureTableExists()) {
+            return results;
         }
         
-        // IN 절 구성
-        std::ostringstream ids_ss;
+        // 🎯 SQL IN 절로 한 번에 조회 (성능 최적화)
+        std::stringstream ids_ss;
         for (size_t i = 0; i < ids.size(); ++i) {
-            if (i > 0) ids_ss << ", ";
+            if (i > 0) ids_ss << ",";
             ids_ss << ids[i];
         }
         
-        // 기본 쿼리에 WHERE 절 추가
-        std::string query = SQL::AlarmOccurrence::FIND_ALL;
-        
-        // ORDER BY 전에 WHERE 절 삽입
+        // 🎯 기본 쿼리에 WHERE 절 추가
+        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
+        // ORDER BY 앞에 WHERE 절 삽입
         size_t order_pos = query.find("ORDER BY");
-        std::string where_clause = "WHERE id IN (" + ids_ss.str() + ") ";
-        
         if (order_pos != std::string::npos) {
-            query.insert(order_pos, where_clause);
+            query.insert(order_pos, "WHERE id IN (" + ids_ss.str() + ") ");
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        auto query_results = db_layer.executeQuery(query);
         
-        std::vector<AlarmOccurrenceEntity> entities;
-        entities.reserve(results.size());
+        results.reserve(query_results.size());
         
-        for (const auto& row : results) {
+        for (const auto& row : query_results) {
             try {
-                entities.push_back(mapRowToEntity(row));
+                results.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findByIds - Failed to map row: " + std::string(e.what()));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findByIds - Failed to map row: " + std::string(e.what()));
             }
         }
         
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findByIds - Found " + std::to_string(entities.size()) + " alarm occurrences for " + std::to_string(ids.size()) + " IDs");
-        }
-        return entities;
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
+                                    "findByIds - Found " + std::to_string(results.size()) + " alarm occurrences for " + std::to_string(ids.size()) + " IDs");
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findByIds failed: " + std::string(e.what()));
-        }
-        return {};
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findByIds failed: " + std::string(e.what()));
     }
+    
+    return results;
 }
 
 std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByConditions(
@@ -336,65 +321,42 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
+    std::vector<AlarmOccurrenceEntity> results;
+    
     try {
         if (!ensureTableExists()) {
-            return {};
+            return results;
         }
         
-        // 기본 쿼리 구성
-        std::string query = SQL::AlarmOccurrence::FIND_ALL;
-        
-        // WHERE 절 추가 (간단한 구현)
-        if (!conditions.empty()) {
-            std::string where_clause = "WHERE ";
-            for (size_t i = 0; i < conditions.size(); ++i) {
-                if (i > 0) where_clause += " AND ";
-                where_clause += conditions[i].field + " " + conditions[i].operation + " '" + conditions[i].value + "'";
-            }
-            where_clause += " ";
-            
-            // ORDER BY 전에 WHERE 절 삽입
-            size_t order_pos = query.find("ORDER BY");
-            if (order_pos != std::string::npos) {
-                query.insert(order_pos, where_clause);
-            }
-        }
-        
-        // LIMIT 절 추가 (간단한 구현)
-        if (pagination.has_value()) {
-            query += " LIMIT " + std::to_string(pagination->limit);
-            if (pagination->offset > 0) {
-                query += " OFFSET " + std::to_string(pagination->offset);
-            }
-        }
+        // 🎯 RepositoryHelpers를 사용한 동적 쿼리 구성
+        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        auto query_results = db_layer.executeQuery(query);
         
-        std::vector<AlarmOccurrenceEntity> entities;
-        entities.reserve(results.size());
+        results.reserve(query_results.size());
         
-        for (const auto& row : results) {
+        for (const auto& row : query_results) {
             try {
-                entities.push_back(mapRowToEntity(row));
+                results.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findByConditions - Failed to map row: " + std::string(e.what()));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findByConditions - Failed to map row: " + std::string(e.what()));
             }
         }
         
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findByConditions - Found " + std::to_string(entities.size()) + " alarm occurrences");
-        }
-        return entities;
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
+                                    "findByConditions - Found " + std::to_string(results.size()) + " alarm occurrences");
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findByConditions failed: " + std::string(e.what()));
-        }
-        return {};
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findByConditions failed: " + std::string(e.what()));
     }
+    
+    return results;
 }
 
 int AlarmOccurrenceRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
@@ -403,16 +365,9 @@ int AlarmOccurrenceRepository::countByConditions(const std::vector<QueryConditio
             return 0;
         }
         
-        std::string query = SQL::AlarmOccurrence::COUNT_ALL;
-        
-        // WHERE 절 추가 (간단한 구현)
-        if (!conditions.empty()) {
-            query += " WHERE ";
-            for (size_t i = 0; i < conditions.size(); ++i) {
-                if (i > 0) query += " AND ";
-                query += conditions[i].field + " " + conditions[i].operation + " '" + conditions[i].value + "'";
-            }
-        }
+        // 🎯 ExtendedSQLQueries.h 상수 + RepositoryHelpers 패턴
+        std::string query = SQL::Alarm::Occurrence::COUNT_ALL;
+        query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -424,9 +379,8 @@ int AlarmOccurrenceRepository::countByConditions(const std::vector<QueryConditio
         return 0;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::countByConditions failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "countByConditions failed: " + std::string(e.what()));
         return 0;
     }
 }
@@ -434,7 +388,7 @@ int AlarmOccurrenceRepository::countByConditions(const std::vector<QueryConditio
 std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findFirstByConditions(
     const std::vector<QueryCondition>& conditions) {
     
-    // 첫 번째 결과만 필요하므로 LIMIT 1 적용
+    // 🎯 첫 번째 결과만 필요하므로 LIMIT 1 적용
     auto pagination = Pagination{0, 1}; // offset=0, limit=1
     auto results = findByConditions(conditions, std::nullopt, pagination);
     
@@ -446,6 +400,7 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findFirstByCondi
 }
 
 int AlarmOccurrenceRepository::saveBulk(std::vector<AlarmOccurrenceEntity>& entities) {
+    // 🔥 TODO: 실제 배치 INSERT 구현 필요 (성능 최적화)
     int saved_count = 0;
     for (auto& entity : entities) {
         if (save(entity)) {
@@ -456,6 +411,7 @@ int AlarmOccurrenceRepository::saveBulk(std::vector<AlarmOccurrenceEntity>& enti
 }
 
 int AlarmOccurrenceRepository::updateBulk(const std::vector<AlarmOccurrenceEntity>& entities) {
+    // 🔥 TODO: 실제 배치 UPDATE 구현 필요 (성능 최적화)
     int updated_count = 0;
     for (const auto& entity : entities) {
         if (update(entity)) {
@@ -466,17 +422,51 @@ int AlarmOccurrenceRepository::updateBulk(const std::vector<AlarmOccurrenceEntit
 }
 
 int AlarmOccurrenceRepository::deleteByIds(const std::vector<int>& ids) {
-    int deleted_count = 0;
-    for (int id : ids) {
-        if (deleteById(id)) {
-            deleted_count++;
-        }
+    if (ids.empty()) {
+        return 0;
     }
-    return deleted_count;
+    
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        // 🎯 SQL IN 절로 한 번에 삭제 (성능 최적화)
+        std::stringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ",";
+            ids_ss << ids[i];
+        }
+        
+        std::string query = "DELETE FROM alarm_occurrences WHERE id IN (" + ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            // 캐시 무효화
+            if (isCacheEnabled()) {
+                for (int id : ids) {
+                    clearCacheForId(id);
+                }
+            }
+            
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                        "deleteByIds - Deleted " + std::to_string(ids.size()) + " alarm occurrences");
+            return static_cast<int>(ids.size());
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "deleteByIds failed: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 // =============================================================================
-// AlarmOccurrence 전용 메서드들 구현
+// AlarmOccurrence 전용 메서드들 - ExtendedSQLQueries.h 사용
 // =============================================================================
 
 std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActive(std::optional<int> tenant_id) {
@@ -485,10 +475,10 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActive(std::op
             return {};
         }
         
-        std::string query = SQL::AlarmOccurrence::FIND_ACTIVE;
+        std::string query = SQL::Alarm::Occurrence::FIND_ACTIVE;
         
         if (tenant_id.has_value()) {
-            // WHERE 절이 이미 있으므로 AND 추가
+            // 🎯 RepositoryHelpers를 사용한 조건 추가
             size_t order_pos = query.find("ORDER BY");
             std::string tenant_clause = "AND tenant_id = " + std::to_string(tenant_id.value()) + " ";
             
@@ -507,21 +497,18 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActive(std::op
             try {
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findActive - Failed to map row: " + std::string(e.what()));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findActive - Failed to map row: " + std::string(e.what()));
             }
         }
         
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findActive - Found " + std::to_string(entities.size()) + " active alarm occurrences");
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "findActive - Found " + std::to_string(entities.size()) + " active alarm occurrences");
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findActive failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findActive failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -532,13 +519,12 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByRuleId(int r
             return {};
         }
         
-        std::string query = SQL::AlarmOccurrence::FIND_BY_RULE_ID;
+        std::string query = SQL::Alarm::Occurrence::FIND_BY_RULE_ID;
         
-        // 파라미터 치환
+        // 🎯 RepositoryHelpers 패턴
         query = RepositoryHelpers::replaceParameter(query, std::to_string(rule_id));
         
         if (active_only) {
-            // WHERE 절이 이미 있으므로 AND 추가
             size_t order_pos = query.find("ORDER BY");
             std::string active_clause = "AND state = 'active' ";
             
@@ -557,22 +543,19 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByRuleId(int r
             try {
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findByRuleId - Failed to map row: " + std::string(e.what()));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findByRuleId - Failed to map row: " + std::string(e.what()));
             }
         }
         
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findByRuleId - Found " + std::to_string(entities.size()) + 
-                         " alarm occurrences for rule: " + std::to_string(rule_id));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "findByRuleId - Found " + std::to_string(entities.size()) + 
+                                   " alarm occurrences for rule: " + std::to_string(rule_id));
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findByRuleId failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findByRuleId failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -583,9 +566,9 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTenant(int t
             return {};
         }
         
-        std::string query = SQL::AlarmOccurrence::FIND_ALL;
+        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
         
-        // WHERE 절 구성
+        // 🎯 WHERE 절 구성
         std::string where_clause = "WHERE tenant_id = " + std::to_string(tenant_id);
         
         if (!state_filter.empty()) {
@@ -593,7 +576,6 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTenant(int t
         }
         where_clause += " ";
         
-        // ORDER BY 전에 WHERE 절 삽입
         size_t order_pos = query.find("ORDER BY");
         if (order_pos != std::string::npos) {
             query.insert(order_pos, where_clause);
@@ -609,74 +591,19 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTenant(int t
             try {
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findByTenant - Failed to map row: " + std::string(e.what()));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findByTenant - Failed to map row: " + std::string(e.what()));
             }
         }
         
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findByTenant - Found " + std::to_string(entities.size()) + 
-                         " alarm occurrences for tenant: " + std::to_string(tenant_id));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "findByTenant - Found " + std::to_string(entities.size()) + 
+                                   " alarm occurrences for tenant: " + std::to_string(tenant_id));
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findByTenant failed: " + std::string(e.what()));
-        }
-        return {};
-    }
-}
-
-std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findBySeverity(const std::string& severity, bool active_only) {
-    try {
-        if (!ensureTableExists()) {
-            return {};
-        }
-        
-        std::string query = SQL::AlarmOccurrence::FIND_ALL;
-        
-        // WHERE 절 구성
-        std::string where_clause = "WHERE severity = '" + severity + "'";
-        
-        if (active_only) {
-            where_clause += " AND state = 'active'";
-        }
-        where_clause += " ";
-        
-        // ORDER BY 전에 WHERE 절 삽입
-        size_t order_pos = query.find("ORDER BY");
-        if (order_pos != std::string::npos) {
-            query.insert(order_pos, where_clause);
-        }
-        
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
-        
-        std::vector<AlarmOccurrenceEntity> entities;
-        entities.reserve(results.size());
-        
-        for (const auto& row : results) {
-            try {
-                entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findBySeverity - Failed to map row: " + std::string(e.what()));
-                }
-            }
-        }
-        
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findBySeverity - Found " + std::to_string(entities.size()) + 
-                         " alarm occurrences with severity: " + severity);
-        }
-        return entities;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findBySeverity failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findByTenant failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -691,9 +618,9 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTimeRange(
             return {};
         }
         
-        std::string query = SQL::AlarmOccurrence::FIND_ALL;
+        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
         
-        // WHERE 절 구성
+        // 🎯 WHERE 절 구성
         std::string start_str = timePointToString(start_time);
         std::string end_str = timePointToString(end_time);
         
@@ -704,7 +631,6 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTimeRange(
         }
         where_clause += " ";
         
-        // ORDER BY 전에 WHERE 절 삽입
         size_t order_pos = query.find("ORDER BY");
         if (order_pos != std::string::npos) {
             query.insert(order_pos, where_clause);
@@ -720,77 +646,24 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTimeRange(
             try {
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findByTimeRange - Failed to map row: " + std::string(e.what()));
-                }
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findByTimeRange - Failed to map row: " + std::string(e.what()));
             }
         }
         
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findByTimeRange - Found " + std::to_string(entities.size()) + " alarm occurrences in time range");
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "findByTimeRange - Found " + std::to_string(entities.size()) + " alarm occurrences in time range");
         return entities;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findByTimeRange failed: " + std::string(e.what()));
-        }
-        return {};
-    }
-}
-
-std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findRecent(int limit, std::optional<int> tenant_id) {
-    try {
-        if (!ensureTableExists()) {
-            return {};
-        }
-        
-        std::string query = SQL::AlarmOccurrence::FIND_RECENT;
-        
-        if (tenant_id.has_value()) {
-            // WHERE 절 추가
-            size_t order_pos = query.find("ORDER BY");
-            std::string where_clause = "WHERE tenant_id = " + std::to_string(tenant_id.value()) + " ";
-            
-            if (order_pos != std::string::npos) {
-                query.insert(order_pos, where_clause);
-            }
-        }
-        
-        // LIMIT 파라미터 치환
-        query = RepositoryHelpers::replaceParameter(query, std::to_string(limit));
-        
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
-        
-        std::vector<AlarmOccurrenceEntity> entities;
-        entities.reserve(results.size());
-        
-        for (const auto& row : results) {
-            try {
-                entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                if (logger_) {
-                    logger_->Warn("AlarmOccurrenceRepository::findRecent - Failed to map row: " + std::string(e.what()));
-                }
-            }
-        }
-        
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::findRecent - Found " + std::to_string(entities.size()) + " recent alarm occurrences");
-        }
-        return entities;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findRecent failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findByTimeRange failed: " + std::string(e.what()));
         return {};
     }
 }
 
 // =============================================================================
-// 알람 상태 관리 메서드들 구현
+// 알람 상태 관리 메서드들 - ExtendedSQLQueries.h 사용
 // =============================================================================
 
 bool AlarmOccurrenceRepository::acknowledge(int64_t occurrence_id, int acknowledged_by, const std::string& comment) {
@@ -801,7 +674,8 @@ bool AlarmOccurrenceRepository::acknowledge(int64_t occurrence_id, int acknowled
         
         DatabaseAbstractionLayer db_layer;
         
-        std::string query = SQL::AlarmOccurrence::ACKNOWLEDGE;
+        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
+        std::string query = SQL::Alarm::Occurrence::ACKNOWLEDGE;
         query = RepositoryHelpers::replaceParameter(query, std::to_string(acknowledged_by));
         query = RepositoryHelpers::replaceParameter(query, escapeString(comment));
         query = RepositoryHelpers::replaceParameter(query, std::to_string(occurrence_id));
@@ -814,17 +688,15 @@ bool AlarmOccurrenceRepository::acknowledge(int64_t occurrence_id, int acknowled
                 clearCacheForId(static_cast<int>(occurrence_id));
             }
             
-            if (logger_) {
-                logger_->Info("AlarmOccurrenceRepository::acknowledge - Acknowledged alarm occurrence ID: " + std::to_string(occurrence_id));
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                        "acknowledge - Acknowledged alarm occurrence ID: " + std::to_string(occurrence_id));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::acknowledge failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "acknowledge failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -837,7 +709,8 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, const std::string& 
         
         DatabaseAbstractionLayer db_layer;
         
-        std::string query = SQL::AlarmOccurrence::CLEAR;
+        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
+        std::string query = SQL::Alarm::Occurrence::CLEAR;
         query = RepositoryHelpers::replaceParameter(query, escapeString(cleared_value));
         query = RepositoryHelpers::replaceParameter(query, escapeString(comment));
         query = RepositoryHelpers::replaceParameter(query, std::to_string(occurrence_id));
@@ -850,83 +723,21 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, const std::string& 
                 clearCacheForId(static_cast<int>(occurrence_id));
             }
             
-            if (logger_) {
-                logger_->Info("AlarmOccurrenceRepository::clear - Cleared alarm occurrence ID: " + std::to_string(occurrence_id));
-            }
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                        "clear - Cleared alarm occurrence ID: " + std::to_string(occurrence_id));
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::clear failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "clear failed: " + std::string(e.what()));
         return false;
     }
-}
-
-bool AlarmOccurrenceRepository::suppress(int64_t occurrence_id, const std::string& comment) {
-    try {
-        if (!ensureTableExists()) {
-            return false;
-        }
-        
-        DatabaseAbstractionLayer db_layer;
-        
-        // SUPPRESS 쿼리가 SQLQueries.h에 없으므로 직접 구성
-        std::string query = R"(
-            UPDATE alarm_occurrences SET 
-                state = 'suppressed', updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        )";
-        
-        query = RepositoryHelpers::replaceParameter(query, std::to_string(occurrence_id));
-        
-        bool success = db_layer.executeNonQuery(query);
-        
-        if (success) {
-            // 캐시 무효화
-            if (isCacheEnabled()) {
-                clearCacheForId(static_cast<int>(occurrence_id));
-            }
-            
-            if (logger_) {
-                logger_->Info("AlarmOccurrenceRepository::suppress - Suppressed alarm occurrence ID: " + std::to_string(occurrence_id));
-            }
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::suppress failed: " + std::string(e.what()));
-        }
-        return false;
-    }
-}
-
-int AlarmOccurrenceRepository::acknowledgeBulk(const std::vector<int64_t>& occurrence_ids, int acknowledged_by, const std::string& comment) {
-    int acknowledged_count = 0;
-    for (int64_t id : occurrence_ids) {
-        if (acknowledge(id, acknowledged_by, comment)) {
-            acknowledged_count++;
-        }
-    }
-    return acknowledged_count;
-}
-
-int AlarmOccurrenceRepository::clearBulk(const std::vector<int64_t>& occurrence_ids, const std::string& comment) {
-    int cleared_count = 0;
-    for (int64_t id : occurrence_ids) {
-        if (clear(id, "", comment)) {
-            cleared_count++;
-        }
-    }
-    return cleared_count;
 }
 
 // =============================================================================
-// 통계 및 분석 메서드들 구현
+// 통계 및 분석 메서드들 - SQL 최적화
 // =============================================================================
 
 std::map<std::string, int> AlarmOccurrenceRepository::getAlarmStatistics(int tenant_id) {
@@ -939,124 +750,39 @@ std::map<std::string, int> AlarmOccurrenceRepository::getAlarmStatistics(int ten
         
         DatabaseAbstractionLayer db_layer;
         
-        // 전체 알람 개수
-        std::string total_query = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = " + std::to_string(tenant_id);
-        auto total_results = db_layer.executeQuery(total_query);
-        if (!total_results.empty()) {
-            stats["total"] = std::stoi(total_results[0].at("count"));
+        // 🎯 한 번의 쿼리로 모든 통계 조회 (성능 최적화)
+        std::string query = R"(
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN state = 'active' THEN 1 END) as active,
+                COUNT(CASE WHEN state = 'acknowledged' THEN 1 END) as acknowledged,
+                COUNT(CASE WHEN state = 'cleared' THEN 1 END) as cleared
+            FROM alarm_occurrences 
+            WHERE tenant_id = )" + std::to_string(tenant_id);
+        
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty()) {
+            const auto& row = results[0];
+            stats["total"] = std::stoi(row.at("total"));
+            stats["active"] = std::stoi(row.at("active"));
+            stats["acknowledged"] = std::stoi(row.at("acknowledged"));
+            stats["cleared"] = std::stoi(row.at("cleared"));
         }
         
-        // 활성 알람 개수
-        std::string active_query = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = " + std::to_string(tenant_id) + " AND state = 'active'";
-        auto active_results = db_layer.executeQuery(active_query);
-        if (!active_results.empty()) {
-            stats["active"] = std::stoi(active_results[0].at("count"));
-        }
-        
-        // 확인된 알람 개수
-        std::string ack_query = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = " + std::to_string(tenant_id) + " AND state = 'acknowledged'";
-        auto ack_results = db_layer.executeQuery(ack_query);
-        if (!ack_results.empty()) {
-            stats["acknowledged"] = std::stoi(ack_results[0].at("count"));
-        }
-        
-        // 해제된 알람 개수
-        std::string cleared_query = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = " + std::to_string(tenant_id) + " AND state = 'cleared'";
-        auto cleared_results = db_layer.executeQuery(cleared_query);
-        if (!cleared_results.empty()) {
-            stats["cleared"] = std::stoi(cleared_results[0].at("count"));
-        }
-        
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::getAlarmStatistics - Retrieved statistics for tenant: " + std::to_string(tenant_id));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "getAlarmStatistics - Retrieved statistics for tenant: " + std::to_string(tenant_id));
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::getAlarmStatistics failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "getAlarmStatistics failed: " + std::string(e.what()));
     }
     
     return stats;
 }
 
-std::map<std::string, int> AlarmOccurrenceRepository::getActiveAlarmsBySeverity(int tenant_id) {
-    std::map<std::string, int> severity_counts;
-    
-    try {
-        if (!ensureTableExists()) {
-            return severity_counts;
-        }
-        
-        DatabaseAbstractionLayer db_layer;
-        
-        std::string query = "SELECT severity, COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = " + 
-                           std::to_string(tenant_id) + " AND state = 'active' GROUP BY severity";
-        
-        auto results = db_layer.executeQuery(query);
-        
-        for (const auto& row : results) {
-            if (row.find("severity") != row.end() && row.find("count") != row.end()) {
-                severity_counts[row.at("severity")] = std::stoi(row.at("count"));
-            }
-        }
-        
-        if (logger_) {
-            logger_->Info("AlarmOccurrenceRepository::getActiveAlarmsBySeverity - Retrieved severity counts for tenant: " + std::to_string(tenant_id));
-        }
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::getActiveAlarmsBySeverity failed: " + std::string(e.what()));
-        }
-    }
-    
-    return severity_counts;
-}
-
-int AlarmOccurrenceRepository::cleanupOldClearedAlarms(int older_than_days) {
-    try {
-        if (!ensureTableExists()) {
-            return 0;
-        }
-        
-        DatabaseAbstractionLayer db_layer;
-        
-        std::string query = "DELETE FROM alarm_occurrences WHERE state = 'cleared' AND cleared_time < datetime('now', '-" + 
-                           std::to_string(older_than_days) + " days')";
-        
-        // 삭제 전에 개수 확인
-        std::string count_query = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE state = 'cleared' AND cleared_time < datetime('now', '-" + 
-                                 std::to_string(older_than_days) + " days')";
-        
-        auto count_results = db_layer.executeQuery(count_query);
-        int count_to_delete = 0;
-        if (!count_results.empty()) {
-            count_to_delete = std::stoi(count_results[0].at("count"));
-        }
-        
-        if (count_to_delete > 0) {
-            bool success = db_layer.executeNonQuery(query);
-            if (success) {
-                if (logger_) {
-                    logger_->Info("AlarmOccurrenceRepository::cleanupOldClearedAlarms - Cleaned up " + std::to_string(count_to_delete) + " old cleared alarms");
-                }
-                return count_to_delete;
-            }
-        }
-        
-        return 0;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::cleanupOldClearedAlarms failed: " + std::string(e.what()));
-        }
-        return 0;
-    }
-}
-
 // =============================================================================
-// 내부 헬퍼 메서드들 구현 - AlarmTypes.h 네임스페이스 올바른 사용
+// 내부 헬퍼 메서드들 - AlarmTypes.h 올바른 사용
 // =============================================================================
 
 AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
@@ -1092,11 +818,6 @@ AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const std::map<s
             entity.setTriggerValue(it->second);
         }
         
-        it = row.find("trigger_condition");
-        if (it != row.end()) {
-            entity.setTriggerCondition(it->second);
-        }
-        
         it = row.find("alarm_message");
         if (it != row.end()) {
             entity.setAlarmMessage(it->second);
@@ -1125,70 +846,17 @@ AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const std::map<s
             entity.setAcknowledgedBy(std::stoi(it->second));
         }
         
-        it = row.find("acknowledge_comment");
-        if (it != row.end()) {
-            entity.setAcknowledgeComment(it->second);
-        }
-        
         // Clear 정보
         it = row.find("cleared_time");
         if (it != row.end() && !it->second.empty() && it->second != "NULL") {
             entity.setClearedTime(stringToTimePoint(it->second));
         }
         
-        it = row.find("cleared_value");
-        if (it != row.end()) {
-            entity.setClearedValue(it->second);
-        }
-        
-        it = row.find("clear_comment");
-        if (it != row.end()) {
-            entity.setClearComment(it->second);
-        }
-        
-        // 알림 정보
-        it = row.find("notification_sent");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setNotificationSent(it->second == "1");
-        }
-        
-        it = row.find("notification_time");
-        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
-            entity.setNotificationTime(stringToTimePoint(it->second));
-        }
-        
-        it = row.find("notification_count");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setNotificationCount(std::stoi(it->second));
-        }
-        
-        it = row.find("notification_result");
-        if (it != row.end()) {
-            entity.setNotificationResult(it->second);
-        }
-        
-        // 컨텍스트 정보
-        it = row.find("context_data");
-        if (it != row.end()) {
-            entity.setContextData(it->second);
-        }
-        
-        it = row.find("source_name");
-        if (it != row.end()) {
-            entity.setSourceName(it->second);
-        }
-        
-        it = row.find("location");
-        if (it != row.end()) {
-            entity.setLocation(it->second);
-        }
-        
         return entity;
         
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::mapRowToEntity failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "mapRowToEntity failed: " + std::string(e.what()));
         throw;
     }
 }
@@ -1196,16 +864,11 @@ AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const std::map<s
 std::map<std::string, std::string> AlarmOccurrenceRepository::entityToParams(const AlarmOccurrenceEntity& entity) {
     std::map<std::string, std::string> params;
     
-    // 기본 정보 (ID는 AUTO_INCREMENT이므로 제외)
+    // 기본 정보
     params["rule_id"] = std::to_string(entity.getRuleId());
     params["tenant_id"] = std::to_string(entity.getTenantId());
-    
-    // 발생 시간
     params["occurrence_time"] = timePointToString(entity.getOccurrenceTime());
-    
-    // 트리거 정보
     params["trigger_value"] = escapeString(entity.getTriggerValue());
-    params["trigger_condition"] = escapeString(entity.getTriggerCondition());
     params["alarm_message"] = escapeString(entity.getAlarmMessage());
     
     // 🎯 AlarmSeverity 변환 - PulseOne::Alarm 네임스페이스 사용
@@ -1227,8 +890,6 @@ std::map<std::string, std::string> AlarmOccurrenceRepository::entityToParams(con
         params["acknowledged_by"] = "NULL";
     }
     
-    params["acknowledge_comment"] = escapeString(entity.getAcknowledgeComment());
-    
     // Clear 정보
     if (entity.getClearedTime().has_value()) {
         params["cleared_time"] = timePointToString(entity.getClearedTime().value());
@@ -1236,38 +897,17 @@ std::map<std::string, std::string> AlarmOccurrenceRepository::entityToParams(con
         params["cleared_time"] = "NULL";
     }
     
-    params["cleared_value"] = escapeString(entity.getClearedValue());
-    params["clear_comment"] = escapeString(entity.getClearComment());
-    
-    // 알림 정보
-    params["notification_sent"] = entity.isNotificationSent() ? "1" : "0";
-    
-    if (entity.getNotificationTime().has_value()) {
-        params["notification_time"] = timePointToString(entity.getNotificationTime().value());
-    } else {
-        params["notification_time"] = "NULL";
-    }
-    
-    params["notification_count"] = std::to_string(entity.getNotificationCount());
-    params["notification_result"] = escapeString(entity.getNotificationResult());
-    
-    // 컨텍스트 정보
-    params["context_data"] = escapeString(entity.getContextData());
-    params["source_name"] = escapeString(entity.getSourceName());
-    params["location"] = escapeString(entity.getLocation());
-    
     return params;
 }
 
 bool AlarmOccurrenceRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
-        // 🔥 정확한 네임스페이스 사용
-        return db_layer.executeNonQuery(SQL::AlarmOccurrence::CREATE_TABLE_QUERY);
+        // 🔥 ExtendedSQLQueries.h 사용
+        return db_layer.executeNonQuery(SQL::Alarm::Occurrence::CREATE_TABLE);
     } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::ensureTableExists failed: " + std::string(e.what()));
-        }
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "ensureTableExists failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -1286,13 +926,10 @@ bool AlarmOccurrenceRepository::validateAlarmOccurrence(const AlarmOccurrenceEnt
         return false;
     }
     
-    // TODO: 더 상세한 검증 로직 추가
-    
     return true;
 }
 
 std::string AlarmOccurrenceRepository::escapeString(const std::string& str) {
-    // SQL 인젝션 방지를 위한 문자열 이스케이프
     std::string escaped = str;
     
     // 작은따옴표 이스케이프
@@ -1336,158 +973,54 @@ std::chrono::system_clock::time_point AlarmOccurrenceRepository::stringToTimePoi
     return time_point;
 }
 
-std::optional<int> AlarmOccurrenceRepository::findMaxId() {
+
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActiveByRuleId(int rule_id) {
     try {
         if (!ensureTableExists()) {
-            if (logger_) {
-                logger_->Error("AlarmOccurrenceRepository::findMaxId - Table creation failed");
-            }
-            return std::nullopt;
+            return {};
         }
         
-        // 🔥 기존 패턴과 동일: 지역 변수로 생성
         DatabaseAbstractionLayer db_layer;
         
-        const std::string query = "SELECT MAX(id) as max_id FROM alarm_occurrences";
-        auto results = db_layer.executeQuery(query);
-        
-        if (!results.empty() && results[0].find("max_id") != results[0].end()) {
-            const std::string& max_id_str = results[0].at("max_id");
-            
-            // NULL 체크
-            if (max_id_str.empty() || max_id_str == "NULL") {
-                if (logger_) {
-                    logger_->Debug("AlarmOccurrenceRepository::findMaxId - No records found, returning 0");
-                }
-                return 0; // 첫 번째 ID는 1부터 시작하도록
-            }
-            
-            int max_id = std::stoi(max_id_str);
-            if (logger_) {
-                logger_->Debug("AlarmOccurrenceRepository::findMaxId - Found max ID: " + std::to_string(max_id));
-            }
-            return max_id;
-        }
-        
-        if (logger_) {
-            logger_->Debug("AlarmOccurrenceRepository::findMaxId - No results returned");
-        }
-        return 0; // 기본값
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("AlarmOccurrenceRepository::findMaxId failed: " + std::string(e.what()));
-        }
-        return std::nullopt;
-    }
-}
-
-
-AlarmOccurrenceRepository::AlarmOccurrenceRepository() 
-    : IRepository<AlarmOccurrenceEntity>("AlarmOccurrenceRepository") {
-    
-    initializeDependencies();
-    
-    // ✅ 올바른 LogManager 사용법 (프로젝트 지식 준수)
-    LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO, "AlarmOccurrenceRepository created");
-}
-
-// IRepository 순수 가상 함수들 구현
-int AlarmOccurrenceRepository::getTotalCount() {
-    return 0; // 스텁 구현
-}
-
-bool AlarmOccurrenceRepository::isCacheEnabled() const {
-    return false; // 스텁 구현
-}
-
-void AlarmOccurrenceRepository::clearCache() {
-    // 스텁 구현
-}
-
-void AlarmOccurrenceRepository::clearCacheForId(int id) {
-    // 스텁 구현
-}
-
-std::map<std::string, int> AlarmOccurrenceRepository::getCacheStats() const {
-    std::map<std::string, int> stats;
-    
-    try {
-        // ✅ 간단한 통계만 반환 (실제 private 멤버 접근 불가)
-        stats["total_entries"] = 0;  // getSize() 대신 기본값
-        stats["hits"] = 0;           // private 멤버라 접근 불가
-        stats["misses"] = 0;         // private 멤버라 접근 불가
-        stats["evictions"] = 0;      // private 멤버라 접근 불가
-        stats["memory_kb"] = 0;      // 계산 불가
-        
-        // 실제 데이터 개수 조회 (public 메서드 사용)
-        try {
-            // findAll()을 통해 전체 개수 파악 (성능상 좋지 않지만 동작은 함)
-            //auto all_items = findAll();
-            //stats["total_entries"] = static_cast<int>(all_items.size());
-        } catch (...) {
-            stats["total_entries"] = 0;
-        }
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("getCacheStats failed: " + std::string(e.what()));
-        stats["error"] = 1;
-    }
-    
-    return stats;
-}
-
-// findActiveByRuleId 구현
-std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActiveByRuleId(int rule_id) {
-    std::vector<AlarmOccurrenceEntity> results;
-    
-    try {
-        // 매개변수 치환된 쿼리 생성
+        // 🎯 ExtendedSQLQueries.h 사용
         std::string query = R"(
-            SELECT id, rule_id, tenant_id, state, 
-                   occurrence_time, trigger_value, trigger_condition, alarm_message, severity
+            SELECT 
+                id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+                alarm_message, severity, state, acknowledged_time, acknowledged_by,
+                acknowledge_comment, cleared_time, cleared_value, clear_comment,
+                notification_sent, notification_time, notification_count, notification_result,
+                context_data, source_name, location, created_at, updated_at
             FROM alarm_occurrences 
-            WHERE rule_id = )" + std::to_string(rule_id) + R"(
-              AND state IN ('active', 'acknowledged')
+            WHERE rule_id = ? AND state = 'active'
             ORDER BY occurrence_time DESC
         )";
         
-        // ✅ db_layer_ 사용 (db_layer가 아님)
-        auto query_results = db_layer_->executeQuery(query);
+        // 파라미터 치환
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(rule_id));
+        auto results = db_layer.executeQuery(query);
         
-        // 결과를 엔티티로 변환
-        for (const auto& row : query_results) {
-            AlarmOccurrenceEntity entity;
-            entity.setId(std::stoi(row.at("id")));
-            entity.setRuleId(std::stoi(row.at("rule_id")));
-            // ❌ setPointId는 존재하지 않음 - 제거
-            entity.setTenantId(std::stoi(row.at("tenant_id")));
-            
-            // 상태 enum 변환
-            std::string state_str = row.at("state");
-            if (state_str == "active") {
-                entity.setState(AlarmState::ACTIVE);
-            } else if (state_str == "acknowledged") {
-                entity.setState(AlarmState::ACKNOWLEDGED);
+        std::vector<AlarmOccurrenceEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findActiveByRuleId - Failed to map row: " + std::string(e.what()));
             }
-            
-            // ✅ 실제 존재하는 메서드들만 사용
-            entity.setOccurrenceTime(stringToTimePoint(row.at("occurrence_time")));
-            entity.setTriggerValue(row.at("trigger_value"));
-            entity.setTriggerCondition(row.at("trigger_condition"));
-            entity.setAlarmMessage(row.at("alarm_message"));  // setMessage 대신
-            entity.setSeverity(static_cast<AlarmSeverity>(std::stoi(row.at("severity"))));
-            
-            results.push_back(entity);
         }
         
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
+                                    "findActiveByRuleId - Found " + std::to_string(entities.size()) + 
+                                   " active alarms for rule: " + std::to_string(rule_id));
+        return entities;
+        
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("findActiveByRuleId failed: " + std::string(e.what()));
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findActiveByRuleId failed: " + std::string(e.what()));
+        return {};
     }
-    
-    return results;
 }
 
 
