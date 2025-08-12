@@ -360,22 +360,12 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByIds(const std::v
         
         DatabaseAbstractionLayer db_layer;
         
-        // 🔧 수정: 누락된 FIND_BY_IDS 쿼리를 직접 생성
-        std::string query = R"(
-            SELECT 
-                id, tenant_id, name, display_name, description, category,
-                script_code, parameters, return_type, tags, example_usage,
-                is_system, is_template, usage_count, rating, version,
-                author, license, dependencies, created_at, updated_at
-            FROM script_library 
-            WHERE id IN ()";
+        // ✅ ExtendedSQLQueries.h 상수 사용
+        std::string query = SQL::ScriptLibrary::FIND_BY_IDS;
         
         // ✅ RepositoryHelpers를 사용한 IN절 생성
         std::string in_clause = RepositoryHelpers::buildInClause(ids);
-        size_t pos = query.find("IN ()");
-        if (pos != std::string::npos) {
-            query.replace(pos + 3, 2, in_clause);
-        }
+        RepositoryHelpers::replaceStringPlaceholder(query, "%IN_CLAUSE%", in_clause);
         
         auto results = db_layer.executeQuery(query);
         auto entities = mapResultToEntities(results);
@@ -482,15 +472,12 @@ int ScriptLibraryRepository::deleteByIds(const std::vector<int>& ids) {
         
         DatabaseAbstractionLayer db_layer;
         
-        // 🔧 수정: 누락된 DELETE_BY_IDS 쿼리를 직접 생성
-        std::string query = "DELETE FROM script_library WHERE id IN ()";
+        // ✅ ExtendedSQLQueries.h 상수 사용
+        std::string query = SQL::ScriptLibrary::DELETE_BY_IDS;
         
         // ✅ RepositoryHelpers를 사용한 IN절 생성
         std::string in_clause = RepositoryHelpers::buildInClause(ids);
-        size_t pos = query.find("IN ()");
-        if (pos != std::string::npos) {
-            query.replace(pos + 3, 2, in_clause);
-        }
+        RepositoryHelpers::replaceStringPlaceholder(query, "%IN_CLAUSE%", in_clause);
         
         bool success = db_layer.executeNonQuery(query);
         

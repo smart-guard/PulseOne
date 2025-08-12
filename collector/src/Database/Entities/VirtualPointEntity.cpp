@@ -452,24 +452,6 @@ bool VirtualPointEntity::deleteFromDatabase() {
     }
 }
 
-std::string VirtualPointEntity::preprocessFormula(const std::string& formula, int tenant_id) {
-    try {
-        auto& logger = LogManager::getInstance();
-        
-        // 실제 전처리 로직
-        std::string processed = formula;
-        // ... 전처리 작업 ...
-        
-        logger.Debug("Formula preprocessed for tenant " + std::to_string(tenant_id));
-        return processed;
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Warn("Formula preprocessing failed: " + std::string(e.what()));  // ✅ Warning → Warn
-        return formula; // 원본 반환
-    }
-}
-
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

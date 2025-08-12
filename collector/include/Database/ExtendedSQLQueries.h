@@ -1008,6 +1008,22 @@ namespace ScriptLibrary {
         WHERE tenant_id = ?
     )";
 
+        const std::string FIND_BY_IDS = R"(
+        SELECT 
+            id, tenant_id, name, display_name, description, category,
+            script_code, parameters, return_type, tags, example_usage,
+            is_system, is_template, usage_count, rating, version,
+            author, license, dependencies, created_at, updated_at
+        FROM script_library 
+        WHERE id IN (%IN_CLAUSE%)
+        ORDER BY name
+    )";
+    
+    const std::string DELETE_BY_IDS = R"(
+        DELETE FROM script_library 
+        WHERE id IN (%IN_CLAUSE%)
+    )";
+
 } // namespace ScriptLibrary
 
 namespace VirtualPoint {
