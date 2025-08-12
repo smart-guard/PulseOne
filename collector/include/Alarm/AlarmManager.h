@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Alarm/AlarmManager.h
-// PulseOne 알람 매니저 헤더 - 명확한 싱글톤 패턴 + 초기화 순서 수정
+// PulseOne 알람 매니저 헤더 - 컴파일 에러 완전 해결 버전
 // =============================================================================
 
 #ifndef ALARM_MANAGER_H
@@ -22,11 +22,10 @@
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 
+// 🔥 수정: RedisClientImpl 완전 include (forward declaration 대신)
+#include "Client/RedisClientImpl.h"
+
 namespace PulseOne {
-
-// Forward declarations
-class RedisClientImpl;
-
 namespace Alarm {
 
     using json = nlohmann::json;
@@ -49,7 +48,7 @@ public:
     static AlarmManager& getInstance();
     
     // =======================================================================
-    // 🔥 생성자에서 자동 초기화 (AlarmEngine 패턴 따르기)
+    // 🔥 초기화 상태 확인 (생성자에서 자동 초기화됨)
     // =======================================================================
     
     /**
@@ -127,38 +126,85 @@ private:
     void cleanupScriptEngine();     // JavaScript 엔진 정리
     
     // =======================================================================
-    // 🔥 비즈니스 로직 메서드들
+    // 🔥 새로운 비즈니스 로직 메서드들
     // =======================================================================
     
     /**
-     * @brief 알람 이벤트를 비즈니스 규칙으로 강화
+     * @brief 알람 이벤트를 비즈니스 규칙으로 강화 (새로운 버전)
      */
-    void enhanceAlarmEvent(AlarmEvent& event, const DeviceDataMessage& msg);
+    void enhanceAlarmEventWithBusinessLogic(AlarmEvent& event, const DeviceDataMessage& msg);
     
     /**
-     * @brief 심각도 및 우선순위 조정 (시간대, 연속발생 등)
+     * @brief 비즈니스 규칙에 따른 심각도 조정
      */
-    void adjustSeverityAndPriority(AlarmEvent& event, const AlarmRule& rule);
+    void adjustSeverityByBusinessRules(AlarmEvent& event);
+    
+    /**
+     * @brief 위치 및 컨텍스트 정보 추가
+     */
+    void addLocationAndContext(AlarmEvent& event, const DeviceDataMessage& msg);
+    
+    /**
+     * @brief 다국어 메시지 생성
+     */
+    void generateLocalizedMessage(AlarmEvent& event);
+    
+    /**
+     * @brief 연속 알람 패턴 분석
+     */
+    void analyzeContinuousAlarmPattern(AlarmEvent& event);
+    
+    /**
+     * @brief 카테고리별 특수 규칙 적용
+     */
+    void applyCategorySpecificRules(AlarmEvent& event);
+    
+    // =======================================================================
+    // 🔥 외부 시스템 연동 메서드들
+    // =======================================================================
+    
+    /**
+     * @brief 외부 알림 시스템 총괄 호출
+     */
+    void sendNotifications(const AlarmEvent& event);
+    
+    /**
+     * @brief 이메일 알림 발송
+     */
+    void sendEmailNotification(const AlarmEvent& event);
+    
+    /**
+     * @brief SMS 알림 발송
+     */
+    void sendSMSNotification(const AlarmEvent& event);
+    
+    /**
+     * @brief Slack 알림 발송
+     */
+    void sendSlackNotification(const AlarmEvent& event);
+    
+    /**
+     * @brief Discord 알림 발송
+     */
+    void sendDiscordNotification(const AlarmEvent& event);
+    
+    /**
+     * @brief Redis 비즈니스 채널 발송
+     */
+    void publishToRedisChannels(const AlarmEvent& event);
+    
+    // =======================================================================
+    // 🔥 유틸리티 메서드들
+    // =======================================================================
     
     /**
      * @brief AlarmRule을 AlarmRuleEntity로 변환 (AlarmEngine 호출용)
      */
     Database::Entities::AlarmRuleEntity convertToEntity(const AlarmRule& rule);
     
-    // =======================================================================
-    // 외부 시스템 연동 (고수준)
-    // =======================================================================
-    void publishToRedis(const AlarmEvent& event);    // 다중 채널 Redis 발송
-    void sendNotifications(const AlarmEvent& event); // 이메일, SMS, Slack 등
-    
-    // =======================================================================
-    // 데이터베이스 작업
-    // =======================================================================
-    bool loadAlarmRulesFromDB(int tenant_id);
-    
-    // =======================================================================
-    // 메시지 템플릿 처리
-    // =======================================================================
+    /**
+     * @brief 메시지 템플릿 처리
+     */
     std::string interpolateTemplate(const std::string& tmpl, 
                                    const std::map<std::string, std::string>& variables);
 
