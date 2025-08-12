@@ -337,7 +337,8 @@ private:
     // ==========================================================================
     // 헬퍼 메서드들
     // ==========================================================================
-    
+    std::string getDeviceIdForPoint(int point_id);
+    void SaveAlarmEventToRedis(const PulseOne::Alarm::AlarmEvent& alarm_event, size_t thread_index);
     /**
      * @brief TimestampedValue를 Redis에 저장
      * @param value 저장할 값
