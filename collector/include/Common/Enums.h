@@ -369,6 +369,39 @@ namespace Enums {
         INPUT_REGISTER = 3     ///< 입력 레지스터 (0x04)
     };
 
+    enum class DeviceStatus {
+        ONLINE = 0,
+        OFFLINE = 1, 
+        MAINTENANCE = 2,
+        ERROR = 3,
+        WARNING = 4
+    };
+
+    /**
+     * @brief 디바이스 상태를 문자열로 변환
+     */
+    inline std::string DeviceStatusToString(DeviceStatus status) {
+        switch (status) {
+            case DeviceStatus::ONLINE:      return "ONLINE";
+            case DeviceStatus::OFFLINE:     return "OFFLINE";
+            case DeviceStatus::MAINTENANCE: return "MAINTENANCE";
+            case DeviceStatus::ERROR:       return "ERROR";
+            case DeviceStatus::WARNING:     return "WARNING";
+            default:                        return "UNKNOWN";
+        }
+    }
+
+    /**
+     * @brief 문자열을 디바이스 상태로 변환
+     */
+    inline DeviceStatus StringToDeviceStatus(const std::string& status_str) {
+        if (status_str == "ONLINE") return DeviceStatus::ONLINE;
+        if (status_str == "OFFLINE") return DeviceStatus::OFFLINE;
+        if (status_str == "MAINTENANCE") return DeviceStatus::MAINTENANCE;
+        if (status_str == "ERROR") return DeviceStatus::ERROR;
+        if (status_str == "WARNING") return DeviceStatus::WARNING;
+        return DeviceStatus::OFFLINE;  // 기본값
+    }
 
 } // namespace Enums
 } // namespace PulseOne
