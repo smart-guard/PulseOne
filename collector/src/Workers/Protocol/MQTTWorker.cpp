@@ -31,6 +31,7 @@ devices 테이블:
 #include "Workers/Protocol/MQTTWorker.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
+#include <climits>
 #include <sstream>
 #include <iomanip>
 #include <thread>
@@ -254,79 +255,66 @@ bool MQTTWorker::SendKeepAlive() {
 
 bool MQTTWorker::SendMQTTDataToPipeline(const std::string& topic, 
                                        const std::string& payload,
-                                       const DataPoint* data_point,
+                                       const PulseOne::Structs::DataPoint* data_point,
                                        uint32_t priority) {
-    if (data_point) {
-        LogMessage(LogLevel::DEBUG_LEVEL, "Processing for DataPoint: " + data_point->name);
-    }
-
-    if (payload.empty()) {
-        return false;
-    }
-    
     try {
-        std::vector<TimestampedValue> timestamped_values;
-        auto timestamp = std::chrono::system_clock::now();
-        
+        LogMessage(LogLevel::DEBUG_LEVEL, 
+                  "Processing MQTT message: topic=" + topic + ", size=" + std::to_string(payload.size()));
+
 #ifdef HAS_NLOHMANN_JSON
+        // JSON 파싱 시도
+        nlohmann::json json_data;
         try {
-            // JSON 파싱 시도
-            auto json_payload = nlohmann::json::parse(payload);
-            
-            if (json_payload.is_object()) {
-                // JSON 객체인 경우: 각 필드를 별도 TimestampedValue로 변환
-                for (auto& [key, value] : json_payload.items()) {
-                    TimestampedValue tv;
-                    
-                    // JSON 값을 DataValue로 변환
-                    if (ConvertJsonToDataValue(value, tv.value)) {
-                        tv.timestamp = timestamp;
-                        tv.quality = DataQuality::GOOD;
-                        tv.source = "mqtt_" + topic + "_" + key;
-                        timestamped_values.push_back(tv);
-                    }
-                }
-            } else {
-                // JSON 단일 값인 경우
-                TimestampedValue tv;
-                if (ConvertJsonToDataValue(json_payload, tv.value)) {
-                    tv.timestamp = timestamp;
-                    tv.quality = DataQuality::GOOD;
-                    tv.source = "mqtt_" + topic + "_value";
-                    timestamped_values.push_back(tv);
-                }
-            }
-        } catch (const std::exception& e) {
-            // JSON 파싱 실패 시 문자열로 처리
-            LogMessage(LogLevel::WARN, "JSON parsing failed, treating as string: " + std::string(e.what()));
-            worker_stats_.json_parse_errors++;
-            
-            TimestampedValue tv;
-            tv.value = payload;  // DataValue는 std::string 지원
-            tv.timestamp = timestamp;
-            tv.quality = DataQuality::GOOD;
-            tv.source = "mqtt_" + topic + "_raw";
-            timestamped_values.push_back(tv);
+            json_data = nlohmann::json::parse(payload);
+            return SendJsonValuesToPipeline(json_data, topic, priority);
+        } catch (const nlohmann::json::parse_error& e) {
+            // JSON이 아닌 경우 문자열로 처리
+            LogMessage(LogLevel::DEBUG_LEVEL, "Payload is not JSON, treating as string");
         }
-#else
-        // JSON 라이브러리가 없는 경우: 문자열로 처리
-        TimestampedValue tv;
-        tv.value = payload;  // DataValue는 std::string 지원
-        tv.timestamp = timestamp;
-        tv.quality = DataQuality::GOOD;
-        tv.source = "mqtt_" + topic + "_raw";
-        timestamped_values.push_back(tv);
 #endif
         
-        // 공통 전송 함수 호출
-        return SendValuesToPipelineWithLogging(timestamped_values, 
-                                              "MQTT topic: " + topic, 
-                                              priority);
-                                              
+        // JSON이 아닌 경우 또는 JSON 라이브러리가 없는 경우
+        std::vector<PulseOne::Structs::TimestampedValue> values;
+        
+        PulseOne::Structs::TimestampedValue tv;
+        tv.value = payload;  // 문자열로 저장
+        tv.timestamp = std::chrono::system_clock::now();
+        tv.quality = PulseOne::Enums::DataQuality::GOOD;
+        tv.source = "mqtt_" + topic;
+        
+        // DataPoint가 있으면 ID 설정
+        if (data_point) {
+            tv.point_id = std::stoi(data_point->id);
+            
+            // 이전값과 비교 (protected 멤버 접근)
+            auto prev_it = previous_values_.find(tv.point_id);
+            if (prev_it != previous_values_.end()) {
+                tv.previous_value = prev_it->second;
+                tv.value_changed = (tv.value != prev_it->second);
+            } else {
+                tv.previous_value = PulseOne::Structs::DataValue{};
+                tv.value_changed = true;
+            }
+            
+            // 이전값 캐시 업데이트
+            previous_values_[tv.point_id] = tv.value;
+            
+            tv.sequence_number = GetNextSequenceNumber();
+        } else {
+            // DataPoint가 없는 경우 토픽을 기반으로 임시 ID 생성
+            tv.point_id = std::hash<std::string>{}(topic) % 100000;
+            tv.value_changed = true;
+            tv.sequence_number = GetNextSequenceNumber();
+        }
+        
+        values.push_back(tv);
+        
+        // 🔥 BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
+        return SendValuesToPipelineWithLogging(values, "MQTT topic: " + topic, priority);
+        
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, 
                   "SendMQTTDataToPipeline 예외: " + std::string(e.what()));
-        worker_stats_.json_parse_errors++;
         return false;
     }
 }
@@ -336,45 +324,102 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json& json_data,
                                          const std::string& topic_context,
                                          uint32_t priority) {
     try {
-        std::vector<TimestampedValue> timestamped_values;
+        std::vector<PulseOne::Structs::TimestampedValue> values;
         auto timestamp = std::chrono::system_clock::now();
         
+        // JSON 객체의 각 필드를 TimestampedValue로 변환
         if (json_data.is_object()) {
-            // JSON 객체의 각 필드를 처리
             for (auto& [key, value] : json_data.items()) {
-                TimestampedValue tv;
+                PulseOne::Structs::TimestampedValue tv;
                 
-                if (ConvertJsonToDataValue(value, tv.value)) {
-                    tv.timestamp = timestamp;
-                    tv.quality = DataQuality::GOOD;
-                    tv.source = "mqtt_json_" + key;
-                    timestamped_values.push_back(tv);
+                // JSON 값을 DataValue로 변환 - 🔥 int64_t 안전 변환
+                if (value.is_number_integer()) {
+                    // int64_t를 int로 안전하게 변환
+                    int64_t int64_val = value.get<int64_t>();
+                    if (int64_val >= INT_MIN && int64_val <= INT_MAX) {
+                        tv.value = static_cast<int>(int64_val);
+                    } else {
+                        // 범위 초과 시 double로 변환
+                        tv.value = static_cast<double>(int64_val);
+                    }
+                } else if (value.is_number_float()) {
+                    tv.value = value.get<double>();
+                } else if (value.is_boolean()) {
+                    tv.value = value.get<bool>();
+                } else if (value.is_string()) {
+                    tv.value = value.get<std::string>();
+                } else {
+                    tv.value = value.dump();  // 복잡한 객체는 JSON 문자열로
                 }
-            }
-        } else if (json_data.is_array()) {
-            // JSON 배열 처리
-            for (size_t i = 0; i < json_data.size(); ++i) {
-                TimestampedValue tv;
                 
-                if (ConvertJsonToDataValue(json_data[i], tv.value)) {
-                    tv.timestamp = timestamp;
-                    tv.quality = DataQuality::GOOD;
-                    tv.source = "mqtt_json_array_" + std::to_string(i);
-                    timestamped_values.push_back(tv);
+                tv.timestamp = timestamp;
+                tv.quality = PulseOne::Enums::DataQuality::GOOD;
+                tv.source = "mqtt_json_" + topic_context + "_" + key;
+                
+                // 키를 기반으로 임시 point_id 생성
+                std::string combined_key = topic_context + "." + key;
+                tv.point_id = std::hash<std::string>{}(combined_key) % 100000;
+                
+                // 이전값과 비교
+                auto prev_it = previous_values_.find(tv.point_id);
+                if (prev_it != previous_values_.end()) {
+                    tv.previous_value = prev_it->second;
+                    tv.value_changed = (tv.value != prev_it->second);
+                } else {
+                    tv.previous_value = PulseOne::Structs::DataValue{};
+                    tv.value_changed = true;
                 }
+                
+                // 이전값 캐시 업데이트
+                previous_values_[tv.point_id] = tv.value;
+                tv.sequence_number = GetNextSequenceNumber();
+                
+                values.push_back(tv);
             }
         } else {
-            // JSON 단일 값
-            TimestampedValue tv;
-            if (ConvertJsonToDataValue(json_data, tv.value)) {
-                tv.timestamp = timestamp;
-                tv.quality = DataQuality::GOOD;
-                tv.source = "mqtt_json_value";
-                timestamped_values.push_back(tv);
+            // 단일 값인 경우
+            PulseOne::Structs::TimestampedValue tv;
+            
+            // 🔥 int64_t 안전 변환
+            if (json_data.is_number_integer()) {
+                // int64_t를 int로 안전하게 변환
+                int64_t int64_val = json_data.get<int64_t>();
+                if (int64_val >= INT_MIN && int64_val <= INT_MAX) {
+                    tv.value = static_cast<int>(int64_val);
+                } else {
+                    // 범위 초과 시 double로 변환
+                    tv.value = static_cast<double>(int64_val);
+                }
+            } else if (json_data.is_number_float()) {
+                tv.value = json_data.get<double>();
+            } else if (json_data.is_boolean()) {
+                tv.value = json_data.get<bool>();
+            } else if (json_data.is_string()) {
+                tv.value = json_data.get<std::string>();
+            } else {
+                tv.value = json_data.dump();
             }
+            
+            tv.timestamp = timestamp;
+            tv.quality = PulseOne::Enums::DataQuality::GOOD;
+            tv.source = "mqtt_json_" + topic_context;
+            tv.point_id = std::hash<std::string>{}(topic_context) % 100000;
+            tv.value_changed = true;
+            tv.sequence_number = GetNextSequenceNumber();
+            
+            values.push_back(tv);
         }
         
-        return SendValuesToPipelineWithLogging(timestamped_values, topic_context, priority);
+        if (values.empty()) {
+            LogMessage(LogLevel::DEBUG_LEVEL, "No values extracted from JSON");
+            return true;
+        }
+        
+        // 🔥 BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
+        return SendValuesToPipelineWithLogging(values, 
+                                              "MQTT JSON: " + topic_context + " (" + 
+                                              std::to_string(values.size()) + " fields)",
+                                              priority);
         
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, 
@@ -382,55 +427,144 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json& json_data,
         return false;
     }
 }
-#endif
-
-bool MQTTWorker::SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
-                                                const std::string& context,
-                                                uint32_t priority) {
-    if (values.empty()) {
-        return false;
-    }
-    
-    try {
-        // BaseDeviceWorker::SendDataToPipeline() 호출
-        bool success = SendDataToPipeline(values, priority);
-        
-        if (success) {
-            LogMessage(LogLevel::DEBUG_LEVEL, 
-                      "파이프라인 전송 성공 (" + context + "): " + 
-                      std::to_string(values.size()) + "개 포인트");
-        } else {
-            LogMessage(LogLevel::WARN, 
-                      "파이프라인 전송 실패 (" + context + "): " + 
-                      std::to_string(values.size()) + "개 포인트");
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                  "SendValuesToPipelineWithLogging 예외: " + std::string(e.what()));
-        return false;
-    }
+#else
+bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json& json_data,
+                                         const std::string& topic_context,
+                                         uint32_t priority) {
+    (void)json_data;
+    (void)topic_context;
+    (void)priority;
+    LogMessage(LogLevel::WARN, "JSON support not available (HAS_NLOHMANN_JSON not defined)");
+    return false;
 }
+#endif
 
 bool MQTTWorker::SendSingleTopicValueToPipeline(const std::string& topic,
                                                const PulseOne::Structs::DataValue& value,
                                                uint32_t priority) {
     try {
-        TimestampedValue tv;
+        PulseOne::Structs::TimestampedValue tv;
         tv.value = value;
         tv.timestamp = std::chrono::system_clock::now();
-        tv.quality = DataQuality::GOOD;
+        tv.quality = PulseOne::Enums::DataQuality::GOOD;
         tv.source = "mqtt_single_" + topic;
         
-        return SendValuesToPipelineWithLogging({tv}, 
-                                              "Single MQTT value: " + topic, 
+        // 🔥 개선: DataPoint 연결 시도
+        PulseOne::Structs::DataPoint* data_point = FindDataPointByTopic(topic);
+        if (data_point) {
+            tv.point_id = std::stoi(data_point->id);
+            
+            // 🔥 이전값과 비교 (protected 멤버 접근)
+            auto prev_it = previous_values_.find(tv.point_id);
+            if (prev_it != previous_values_.end()) {
+                tv.previous_value = prev_it->second;
+                tv.value_changed = (tv.value != prev_it->second);
+            } else {
+                tv.previous_value = PulseOne::Structs::DataValue{};
+                tv.value_changed = true;
+            }
+            
+            // 🔥 이전값 캐시 업데이트
+            previous_values_[tv.point_id] = tv.value;
+            tv.sequence_number = GetNextSequenceNumber();
+            
+            // DataPoint 설정 적용
+            tv.scaling_factor = data_point->scaling_factor;
+            tv.scaling_offset = data_point->scaling_offset;
+            tv.change_threshold = data_point->log_deadband;
+            tv.force_rdb_store = tv.value_changed;
+            
+        } else {
+            // DataPoint가 없는 경우 토픽 기반 임시 ID
+            tv.point_id = std::hash<std::string>{}(topic) % 100000;
+            tv.value_changed = true;
+            tv.sequence_number = GetNextSequenceNumber();
+            tv.scaling_factor = 1.0;
+            tv.scaling_offset = 0.0;
+            tv.change_threshold = 0.0;
+            tv.force_rdb_store = true;
+        }
+        
+        // 🔥 BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
+        return SendValuesToPipelineWithLogging({tv},
+                                              "Single MQTT value: " + topic,
                                               priority);
                                               
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::ERROR,
                   "SendSingleTopicValueToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::SendMultipleTopicValuesToPipeline(const std::map<std::string, PulseOne::Structs::DataValue>& topic_values,
+                                                  const std::string& batch_context,
+                                                  uint32_t priority) {
+    if (topic_values.empty()) {
+        return false;
+    }
+    
+    try {
+        std::vector<PulseOne::Structs::TimestampedValue> timestamped_values;
+        timestamped_values.reserve(topic_values.size());
+        
+        auto timestamp = std::chrono::system_clock::now();
+        
+        for (const auto& [topic, value] : topic_values) {
+            PulseOne::Structs::TimestampedValue tv;
+            
+            tv.value = value;
+            tv.timestamp = timestamp;
+            tv.quality = PulseOne::Enums::DataQuality::GOOD;
+            tv.source = "mqtt_batch_" + topic;
+            
+            // DataPoint 연결 시도
+            PulseOne::Structs::DataPoint* data_point = FindDataPointByTopic(topic);
+            if (data_point) {
+                tv.point_id = std::stoi(data_point->id);
+                
+                // 이전값과 비교
+                auto prev_it = previous_values_.find(tv.point_id);
+                if (prev_it != previous_values_.end()) {
+                    tv.previous_value = prev_it->second;
+                    tv.value_changed = (tv.value != prev_it->second);
+                } else {
+                    tv.previous_value = PulseOne::Structs::DataValue{};
+                    tv.value_changed = true;
+                }
+                
+                // 이전값 캐시 업데이트
+                previous_values_[tv.point_id] = tv.value;
+                
+                // DataPoint 설정 적용
+                tv.scaling_factor = data_point->scaling_factor;
+                tv.scaling_offset = data_point->scaling_offset;
+                tv.change_threshold = data_point->log_deadband;
+                tv.force_rdb_store = tv.value_changed;
+                
+            } else {
+                // DataPoint가 없는 경우
+                tv.point_id = std::hash<std::string>{}(topic) % 100000;
+                tv.value_changed = true;
+                tv.scaling_factor = 1.0;
+                tv.scaling_offset = 0.0;
+                tv.change_threshold = 0.0;
+                tv.force_rdb_store = true;
+            }
+            
+            tv.sequence_number = GetNextSequenceNumber();
+            timestamped_values.push_back(tv);
+        }
+        
+        // 일괄 전송
+        return SendValuesToPipelineWithLogging(timestamped_values,
+                                              "MQTT Batch: " + batch_context + " (" + 
+                                              std::to_string(topic_values.size()) + " topics)",
+                                              priority);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR,
+                  "SendMultipleTopicValuesToPipeline 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1702,7 +1836,14 @@ bool MQTTWorker::ConvertJsonToDataValue(const nlohmann::json& json_val,
     try {
         // PulseOne의 DataValue는 std::variant이므로 직접 값을 할당
         if (json_val.is_number_integer()) {
-            data_value = json_val.get<int>();
+            // 🔥 int64_t를 int로 안전하게 변환
+            int64_t int64_val = json_val.get<int64_t>();
+            if (int64_val >= INT_MIN && int64_val <= INT_MAX) {
+                data_value = static_cast<int>(int64_val);
+            } else {
+                // 범위 초과 시 double로 변환
+                data_value = static_cast<double>(int64_val);
+            }
         } else if (json_val.is_number_float()) {
             data_value = json_val.get<double>();
         } else if (json_val.is_boolean()) {

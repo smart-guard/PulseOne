@@ -179,30 +179,97 @@ bool BACnetWorker::ProcessReceivedPacket(const UdpPacket& packet) {
 // ✅ Worker의 진짜 기능들 - 데이터 스캔 + 파이프라인 전송
 // =============================================================================
 
-bool BACnetWorker::SendBACnetDataToPipeline(const std::map<std::string, DataValue>& object_values,
-                                           const std::string& context,
-                                           uint32_t priority) {
+bool BACnetWorker::SendBACnetDataToPipeline(
+    const std::map<std::string, PulseOne::Structs::DataValue>& object_values,
+    const std::string& context,
+    uint32_t priority) {
+    
     if (object_values.empty()) {
         return false;
     }
     
     try {
-        std::vector<TimestampedValue> timestamped_values;
+        std::vector<PulseOne::Structs::TimestampedValue> timestamped_values;
         timestamped_values.reserve(object_values.size());
         
         auto timestamp = std::chrono::system_clock::now();
         
         for (const auto& [object_id, value] : object_values) {
-            TimestampedValue tv;
+            PulseOne::Structs::TimestampedValue tv;
+            
+            // 핵심 필드들
             tv.value = value;
             tv.timestamp = timestamp;
-            tv.quality = DataQuality::GOOD;
+            tv.quality = PulseOne::Enums::DataQuality::GOOD;
             tv.source = "bacnet_" + object_id;
+            
+            // DataPoint 찾기
+            PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectId(object_id);
+            if (data_point) {
+                tv.point_id = std::stoi(data_point->id);
+                
+                // 스케일링 적용
+                tv.scaling_factor = data_point->scaling_factor;
+                tv.scaling_offset = data_point->scaling_offset;
+                
+                // 🔥 핵심 수정: object_id를 키로 사용 (string to string)
+                auto prev_it = previous_values_.find(object_id);
+                if (prev_it != previous_values_.end()) {
+                    tv.previous_value = prev_it->second;
+                    tv.value_changed = (tv.value != prev_it->second);
+                } else {
+                    tv.previous_value = PulseOne::Structs::DataValue{};
+                    tv.value_changed = true;
+                }
+                
+                // 이전값 캐시 업데이트
+                previous_values_[object_id] = tv.value;
+                
+            } else {
+                // DataPoint가 없는 경우 객체 ID 기반으로 임시 ID 생성
+                tv.point_id = std::hash<std::string>{}(object_id) % 100000;
+                tv.value_changed = true;
+                tv.scaling_factor = 1.0;
+                tv.scaling_offset = 0.0;
+                
+                // 이전값 캐시도 object_id 기반으로 관리
+                auto prev_it = previous_values_.find(object_id);
+                if (prev_it != previous_values_.end()) {
+                    tv.previous_value = prev_it->second;
+                    tv.value_changed = (tv.value != prev_it->second);
+                } else {
+                    tv.previous_value = PulseOne::Structs::DataValue{};
+                    tv.value_changed = true;
+                }
+                previous_values_[object_id] = tv.value;
+            }
+            
+            tv.sequence_number = GetNextSequenceNumber();
+            tv.change_threshold = 0.0;  // BACnet은 COV 기반
+            tv.force_rdb_store = tv.value_changed;
+            
             timestamped_values.push_back(tv);
         }
         
-        return SendValuesToPipelineWithLogging(timestamped_values, context, priority);
-                                              
+        if (timestamped_values.empty()) {
+            LogMessage(LogLevel::DEBUG_LEVEL, "No BACnet values to send: " + context);
+            return true;
+        }
+        
+        // BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
+        bool success = SendValuesToPipelineWithLogging(timestamped_values, 
+                                                      "BACnet " + context + " (" + 
+                                                      std::to_string(object_values.size()) + " objects)",
+                                                      priority);
+        
+        if (success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "BACnet 데이터 전송 성공: " + std::to_string(timestamped_values.size()) + 
+                      "/" + std::to_string(object_values.size()) + " 객체");
+        }
+        
+        return success;
+        
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, 
                   "SendBACnetDataToPipeline 예외: " + std::string(e.what()));
@@ -210,26 +277,74 @@ bool BACnetWorker::SendBACnetDataToPipeline(const std::map<std::string, DataValu
     }
 }
 
+
 bool BACnetWorker::SendBACnetPropertyToPipeline(const std::string& object_id,
-                                               const DataValue& property_value,
+                                               const PulseOne::Structs::DataValue& property_value,
                                                const std::string& object_name,
                                                uint32_t priority) {
     try {
-        TimestampedValue tv;
+        PulseOne::Structs::TimestampedValue tv;
+        
         tv.value = property_value;
         tv.timestamp = std::chrono::system_clock::now();
-        tv.quality = DataQuality::GOOD;
+        tv.quality = PulseOne::Enums::DataQuality::GOOD;
+        tv.source = "bacnet_" + object_id + (!object_name.empty() ? "_" + object_name : "");
         
-        if (!object_name.empty()) {
-            tv.source = "bacnet_" + object_id + "_" + object_name;
+        // DataPoint 찾기
+        PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectId(object_id);
+        if (data_point) {
+            tv.point_id = std::stoi(data_point->id);
+            tv.scaling_factor = data_point->scaling_factor;
+            tv.scaling_offset = data_point->scaling_offset;
+            
+            // 🔥 핵심 수정: object_id를 키로 사용 (string to string)
+            auto prev_it = previous_values_.find(object_id);
+            if (prev_it != previous_values_.end()) {
+                tv.previous_value = prev_it->second;
+                tv.value_changed = (tv.value != prev_it->second);
+            } else {
+                tv.previous_value = PulseOne::Structs::DataValue{};
+                tv.value_changed = true;
+            }
+            
+            // 이전값 캐시 업데이트
+            previous_values_[object_id] = tv.value;
+            
         } else {
-            tv.source = "bacnet_" + object_id;
+            tv.point_id = std::hash<std::string>{}(object_id) % 100000;
+            tv.value_changed = true;
+            tv.scaling_factor = 1.0;
+            tv.scaling_offset = 0.0;
+            
+            // 이전값 캐시도 object_id 기반으로 관리
+            auto prev_it = previous_values_.find(object_id);
+            if (prev_it != previous_values_.end()) {
+                tv.previous_value = prev_it->second;
+                tv.value_changed = (tv.value != prev_it->second);
+            } else {
+                tv.previous_value = PulseOne::Structs::DataValue{};
+                tv.value_changed = true;
+            }
+            previous_values_[object_id] = tv.value;
         }
         
-        return SendValuesToPipelineWithLogging({tv}, 
-                                              "BACnet Property: " + object_id, 
-                                              priority);
-                                              
+        tv.sequence_number = GetNextSequenceNumber();
+        tv.change_threshold = 0.0;
+        tv.force_rdb_store = tv.value_changed;
+        
+        // BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
+        bool success = SendValuesToPipelineWithLogging({tv}, 
+                                                      "BACnet Property: " + object_id + 
+                                                      (!object_name.empty() ? " (" + object_name + ")" : ""),
+                                                      priority);
+        
+        if (success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "BACnet Property 전송 성공: " + object_id);
+        }
+        
+        return success;
+        
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, 
                   "SendBACnetPropertyToPipeline 예외: " + std::string(e.what()));
@@ -237,53 +352,42 @@ bool BACnetWorker::SendBACnetPropertyToPipeline(const std::string& object_id,
     }
 }
 
-bool BACnetWorker::SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
-                                                  const std::string& context,
-                                                  uint32_t priority) {
-    if (values.empty()) {
-        return false;
-    }
-    
-    try {
-        // 🔥 핵심: BaseDeviceWorker::SendDataToPipeline() 호출
-        bool success = SendDataToPipeline(values, priority);
-        
-        if (success) {
-            LogMessage(LogLevel::DEBUG_LEVEL, 
-                      "✅ 파이프라인 전송 성공 (" + context + "): " + 
-                      std::to_string(values.size()) + "개 포인트");
-        } else {
-            LogMessage(LogLevel::WARN, 
-                      "❌ 파이프라인 전송 실패 (" + context + "): " + 
-                      std::to_string(values.size()) + "개 포인트");
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                  "SendValuesToPipelineWithLogging 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
 bool BACnetWorker::SendCOVNotificationToPipeline(const std::string& object_id,
-                                                const DataValue& new_value,
-                                                const DataValue& previous_value) {
-
-    (void)previous_value;
+                                                const PulseOne::Structs::DataValue& new_value,
+                                                const PulseOne::Structs::DataValue& previous_value) {
+    (void)previous_value;  // 사용하지 않는 매개변수 경고 방지
 
     try {
-        TimestampedValue tv;
+        PulseOne::Structs::TimestampedValue tv;
         tv.value = new_value;
         tv.timestamp = std::chrono::system_clock::now();
-        tv.quality = DataQuality::GOOD;
+        tv.quality = PulseOne::Enums::DataQuality::GOOD;
         tv.source = "bacnet_cov_" + object_id;
         
+        // COV 알림은 높은 우선순위
+        uint32_t cov_priority = 5;
+        
+        // 🔥 DataPoint 찾기
+        PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectId(object_id);
+        if (data_point) {
+            tv.point_id = std::stoi(data_point->id);
+            tv.scaling_factor = data_point->scaling_factor;
+            tv.scaling_offset = data_point->scaling_offset;
+        } else {
+            tv.point_id = std::hash<std::string>{}(object_id) % 100000;
+            tv.scaling_factor = 1.0;
+            tv.scaling_offset = 0.0;
+        }
+        
+        tv.sequence_number = GetNextSequenceNumber();
+        tv.value_changed = true;  // COV는 항상 변화
+        tv.change_threshold = 0.0;
+        tv.force_rdb_store = true;  // COV는 항상 저장
+        
+        // 🔥 BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
         bool success = SendValuesToPipelineWithLogging({tv}, 
-                                                      "BACnet COV: " + object_id, 
-                                                      5  // 높은 우선순위
-                                                     );
+                                                      "BACnet COV: " + object_id,
+                                                      cov_priority);
         
         if (success) {
             LogMessage(LogLevel::INFO, 
@@ -297,6 +401,32 @@ bool BACnetWorker::SendCOVNotificationToPipeline(const std::string& object_id,
                   "SendCOVNotificationToPipeline 예외: " + std::string(e.what()));
         return false;
     }
+}
+
+PulseOne::Structs::DataPoint* BACnetWorker::FindDataPointByObjectId(const std::string& object_id) {
+    // configured_data_points_ 멤버를 직접 검색 (안전한 방법)
+    std::lock_guard<std::mutex> lock(data_points_mutex_);
+    
+    for (auto& point : configured_data_points_) {
+        // BACnet 객체 ID로 매칭 - 기본 필드들 먼저 확인
+        if (point.name == object_id || point.id == object_id) {
+            return &point;
+        }
+        
+        // 🔥 수정: protocol_params 사용 (properties 아님)
+        auto obj_prop = point.protocol_params.find("object_id");
+        if (obj_prop != point.protocol_params.end() && obj_prop->second == object_id) {
+            return &point;
+        }
+        
+        // protocol_params에서 bacnet_object_id 확인
+        auto bacnet_obj_prop = point.protocol_params.find("bacnet_object_id");
+        if (bacnet_obj_prop != point.protocol_params.end() && bacnet_obj_prop->second == object_id) {
+            return &point;
+        }
+    }
+    
+    return nullptr;
 }
 
 // =============================================================================
@@ -649,6 +779,7 @@ void BACnetWorker::ProcessValueChangeForCOV(const std::string& object_id,
                                            const TimestampedValue& new_value) {
     std::lock_guard<std::mutex> lock(previous_values_mutex_);
     
+    // 🔥 문제 해결: object_id를 직접 키로 사용 (string to string)
     auto it = previous_values_.find(object_id);
     if (it != previous_values_.end()) {
         const DataValue& previous_value = it->second;

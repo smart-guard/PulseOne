@@ -1027,31 +1027,97 @@ bool ModbusRtuWorker::SendModbusRtuDataToPipeline(const std::vector<uint16_t>& r
     }
     
     try {
-        std::vector<TimestampedValue> timestamped_values;
+        std::vector<PulseOne::Structs::TimestampedValue> timestamped_values;
         timestamped_values.reserve(raw_values.size());
         
         auto timestamp = std::chrono::system_clock::now();
         
+        // 🔥 protected 멤버에 접근
+        const auto& current_data_points = GetDataPoints();
+        
         for (size_t i = 0; i < raw_values.size(); ++i) {
-            TimestampedValue tv;
-            tv.value = static_cast<int32_t>(raw_values[i]);  // DataValue는 variant
+            uint32_t modbus_address = start_address + i;
+            
+            // 🔥 DataPoint 찾기
+            const PulseOne::Structs::DataPoint* data_point = nullptr;
+            for (const auto& dp : current_data_points) {
+                if (dp.address == modbus_address) {
+                    data_point = &dp;
+                    break;
+                }
+            }
+            
+            if (!data_point) {
+                LogMessage(LogLevel::DEBUG_LEVEL, "설정되지 않은 Modbus RTU 주소: " + std::to_string(modbus_address));
+                continue; // 🔥 설정되지 않은 주소는 건너뛰기
+            }
+            
+            PulseOne::Structs::TimestampedValue tv;
+            
+            // 🔥 핵심 필드들
+            tv.value = static_cast<int32_t>(raw_values[i]);
             tv.timestamp = timestamp;
-            tv.quality = DataQuality::GOOD;
-            tv.source = "modbus_rtu_" + register_type + "_" + std::to_string(start_address + i);
+            tv.quality = PulseOne::Enums::DataQuality::GOOD;
+            tv.point_id = std::stoi(data_point->id);
+            tv.source = "modbus_rtu_" + register_type + "_" + std::to_string(modbus_address);
+            
+            // 🔥 상태변화 감지 (이전값 비교) - protected 멤버 접근
+            auto prev_it = previous_values_.find(tv.point_id);
+            if (prev_it != previous_values_.end()) {
+                tv.previous_value = prev_it->second;
+                tv.value_changed = (tv.value != prev_it->second);
+            } else {
+                tv.previous_value = PulseOne::Structs::DataValue{};
+                tv.value_changed = true; // 첫 수집은 변화로 간주
+            }
+            
+            // 🔥 DataPoint 설정값들 적용
+            tv.change_threshold = data_point->log_deadband;
+            tv.force_rdb_store = tv.value_changed || (data_point->log_enabled && data_point->log_interval_ms <= 1000);
+            tv.sequence_number = GetNextSequenceNumber();
+            tv.raw_value = static_cast<double>(raw_values[i]);
+            tv.scaling_factor = data_point->scaling_factor;
+            tv.scaling_offset = data_point->scaling_offset;
+            
+            // 🔥 스케일링 적용 (필요시)
+            if (data_point->scaling_factor != 1.0 || data_point->scaling_offset != 0.0) {
+                double scaled_value = (static_cast<double>(raw_values[i]) * data_point->scaling_factor) + data_point->scaling_offset;
+                tv.value = scaled_value;
+            }
+            
             timestamped_values.push_back(tv);
+            
+            // 🔥 이전값 캐시 업데이트 - protected 멤버 접근
+            previous_values_[tv.point_id] = tv.value;
         }
         
-        // 공통 전송 함수 호출
-        return SendValuesToPipelineWithLogging(timestamped_values, 
-                                               register_type + " registers", 
-                                               priority);
+        // 실제로 전송할 데이터가 있는 경우만 전송
+        if (timestamped_values.empty()) {
+            LogMessage(LogLevel::DEBUG_LEVEL, "전송할 설정된 데이터포인트가 없음: " + register_type + " " + std::to_string(start_address));
+            return true; // 에러는 아니므로 true 반환
+        }
+        
+        // 🔥 BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
+        bool success = SendValuesToPipelineWithLogging(timestamped_values, 
+                                                       "RTU " + register_type + " registers", 
+                                                       priority);
+        
+        if (success) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "Modbus RTU 데이터 전송 성공: " + std::to_string(timestamped_values.size()) + 
+                      "/" + std::to_string(raw_values.size()) + " 포인트 (주소 " + 
+                      std::to_string(start_address) + "-" + std::to_string(start_address + raw_values.size() - 1) + ")");
+        }
+        
+        return success;
                                                
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("SendModbusRtuDataToPipeline 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::ERROR, 
+                  "SendModbusRtuDataToPipeline 예외: " + std::string(e.what()));
         return false;
     }
 }
+
 
 // 🔥 2-2. bool 값들 (Coil/Discrete Input) 파이프라인 전송
 bool ModbusRtuWorker::SendModbusRtuBoolDataToPipeline(const std::vector<bool>& raw_values,
@@ -1063,60 +1129,85 @@ bool ModbusRtuWorker::SendModbusRtuBoolDataToPipeline(const std::vector<bool>& r
     }
     
     try {
-        std::vector<TimestampedValue> timestamped_values;
+        std::vector<PulseOne::Structs::TimestampedValue> timestamped_values;
         timestamped_values.reserve(raw_values.size());
         
         auto timestamp = std::chrono::system_clock::now();
         
+        // 🔥 protected 멤버에 접근
+        const auto& current_data_points = GetDataPoints();
+        
         for (size_t i = 0; i < raw_values.size(); ++i) {
-            TimestampedValue tv;
-            tv.value = raw_values[i];  // DataValue는 bool 지원
+            uint32_t modbus_address = start_address + i;
+            
+            // 🔥 DataPoint 찾기
+            const PulseOne::Structs::DataPoint* data_point = nullptr;
+            for (const auto& dp : current_data_points) {
+                if (dp.address == modbus_address) {
+                    data_point = &dp;
+                    break;
+                }
+            }
+            
+            if (!data_point) {
+                LogMessage(LogLevel::DEBUG_LEVEL, "설정되지 않은 Modbus RTU 주소: " + std::to_string(modbus_address));
+                continue;
+            }
+            
+            PulseOne::Structs::TimestampedValue tv;
+            
+            // 🔥 핵심 필드들
+            tv.value = static_cast<bool>(raw_values[i]);
             tv.timestamp = timestamp;
-            tv.quality = DataQuality::GOOD;
-            tv.source = "modbus_rtu_" + register_type + "_" + std::to_string(start_address + i);
+            tv.quality = PulseOne::Enums::DataQuality::GOOD;
+            tv.point_id = std::stoi(data_point->id);
+            tv.source = "modbus_rtu_" + register_type + "_" + std::to_string(modbus_address);
+            
+            // 🔥 상태변화 감지 (디지털 신호)
+            auto prev_it = previous_values_.find(tv.point_id);
+            if (prev_it != previous_values_.end()) {
+                tv.previous_value = prev_it->second;
+                tv.value_changed = (tv.value != prev_it->second);
+            } else {
+                tv.previous_value = PulseOne::Structs::DataValue{};
+                tv.value_changed = true;
+            }
+            
+            // 🔥 DataPoint 설정값들 적용
+            tv.change_threshold = 0.0; // 디지털은 임계값 없음
+            tv.force_rdb_store = tv.value_changed; // 디지털은 상태변화시만 저장
+            tv.sequence_number = GetNextSequenceNumber();
+            tv.raw_value = static_cast<double>(raw_values[i]); // 0.0 또는 1.0
+            tv.scaling_factor = 1.0; // 디지털은 스케일링 없음
+            tv.scaling_offset = 0.0;
+            
             timestamped_values.push_back(tv);
+            
+            // 🔥 이전값 캐시 업데이트
+            previous_values_[tv.point_id] = tv.value;
         }
         
-        // 공통 전송 함수 호출
-        return SendValuesToPipelineWithLogging(timestamped_values,
-                                               register_type + " inputs",
-                                               priority);
-                                               
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("SendModbusRtuBoolDataToPipeline 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-// 🔥 2-3. 최종 공통 전송 함수 (로깅 포함)
-bool ModbusRtuWorker::SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
-                                                      const std::string& context,
-                                                      uint32_t priority) {
-    if (values.empty()) {
-        return false;
-    }
-    
-    try {
-        // BaseDeviceWorker::SendDataToPipeline() 호출
-        bool success = SendDataToPipeline(values, priority);
+        if (timestamped_values.empty()) {
+            LogMessage(LogLevel::DEBUG_LEVEL, "전송할 설정된 데이터포인트가 없음: " + register_type + " " + std::to_string(start_address));
+            return true;
+        }
         
-        auto& logger = LogManager::getInstance();
+        // 🔥 BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
+        bool success = SendValuesToPipelineWithLogging(timestamped_values,
+                                                       "RTU " + register_type + " inputs",
+                                                       priority);
         
         if (success) {
-            logger.Debug("🚀 RTU 파이프라인 전송 성공 (" + context + "): " + 
-                      std::to_string(values.size()) + "개 포인트");
-        } else {
-            logger.Warn("⚠️ RTU 파이프라인 전송 실패 (" + context + "): " + 
-                      std::to_string(values.size()) + "개 포인트");
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "Modbus RTU Bool 데이터 전송 성공: " + std::to_string(timestamped_values.size()) + 
+                      "/" + std::to_string(raw_values.size()) + " 포인트");
         }
         
         return success;
-        
+                                               
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("SendValuesToPipelineWithLogging 예외 (" + context + "): " + 
-                  std::string(e.what()));
+        LogMessage(LogLevel::ERROR, 
+                  "SendModbusRtuBoolDataToPipeline 예외: " + std::string(e.what()));
         return false;
     }
 }

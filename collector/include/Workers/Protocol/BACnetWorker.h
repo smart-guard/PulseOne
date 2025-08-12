@@ -1,23 +1,7 @@
 /**
- * @file BACnetWorker 최종 완성본 - Discovery 제거, 데이터 스캔만!
- * @brief BACnetWorker.h/.cpp 완전 수정본
- * @author PulseOne Development Team
- * @date 2025-08-09
- * @version 6.0.0 - 최종 완성
- * 
- * ✅ 올바른 역할:
- * 1. 설정된 DataPoint만 스캔
- * 2. 파이프라인으로 전송
- * 3. COV 처리
- * 
- * ❌ 제거된 잘못된 역할:
- * 1. Discovery (BACnetDiscoveryService가 담당)
- * 2. DB 저장 (DataProcessingService가 담당)
+ * @file BACnetWorker.h - 컴파일 에러 완전 수정
+ * @brief extra qualification 및 타입 불일치 해결
  */
-
-// =============================================================================
-// 📄 collector/include/Workers/Protocol/BACnetWorker.h - 수정본
-// =============================================================================
 
 #ifndef BACNET_WORKER_H
 #define BACNET_WORKER_H
@@ -128,19 +112,15 @@ public:
                                      uint32_t priority = 0);
 
     /**
-     * @brief TimestampedValue 배열을 직접 파이프라인 전송 (로깅 포함)
-     */
-    bool SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
-                                        const std::string& context,
-                                        uint32_t priority = 0);
-
-    /**
      * @brief COV (Change of Value) 알림을 파이프라인 전송
      */
     bool SendCOVNotificationToPipeline(const std::string& object_id,
                                       const DataValue& new_value,
                                       const DataValue& previous_value = DataValue{});
-
+    
+    // 🔥 문제 1 해결: extra qualification 제거
+    PulseOne::Structs::DataPoint* FindDataPointByObjectId(const std::string& object_id);
+    
     // =============================================================================
     // ✅ 설정 및 상태 관리
     // =============================================================================
@@ -172,6 +152,7 @@ public:
     Drivers::BACnetDriver* GetBACnetDriver() const {
         return bacnet_driver_.get();
     }
+    
     bool WriteProperty(uint32_t device_id,
                       BACNET_OBJECT_TYPE object_type,
                       uint32_t object_instance,
@@ -229,7 +210,7 @@ private:
     // 콜백 함수
     ValueChangedCallback on_value_changed_;
 
-    // COV용 이전 값 저장
+    // 🔥 문제 2 해결: COV용 이전 값 저장 - 키를 std::string으로 변경
     std::map<std::string, DataValue> previous_values_;
     std::mutex previous_values_mutex_;
 

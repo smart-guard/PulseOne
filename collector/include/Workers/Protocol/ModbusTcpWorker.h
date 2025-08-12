@@ -420,17 +420,6 @@ private:
                                       const std::string& register_type,
                                       uint32_t priority = 0);
     
-    /**
-     * @brief TimestampedValue 배열을 직접 파이프라인 전송 (로깅 포함)
-     * @param values TimestampedValue 배열
-     * @param context 컨텍스트 (로깅용)
-     * @param priority 파이프라인 우선순위 (기본: 0)
-     * @return 전송 성공 시 true
-     */
-    bool SendValuesToPipelineWithLogging(const std::vector<TimestampedValue>& values,
-                                         const std::string& context,
-                                         uint32_t priority = 0);                                  
-
     // ==========================================================================
     // 🔥 공통 헬퍼 함수들
     // ==========================================================================
