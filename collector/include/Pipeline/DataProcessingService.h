@@ -156,7 +156,7 @@ private:
      */
     void EvaluateAlarms(const std::vector<Structs::TimestampedValue>& data, 
                        size_t thread_index);
-    
+    void evaluateAlarmsForMessage(const Structs::DeviceDataMessage& message);
     /**
      * @brief 알람 이벤트 후처리
      */

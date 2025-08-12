@@ -1123,7 +1123,9 @@ void AlarmEngine::updateLastDigitalState(int rule_id, bool state) {
 // =============================================================================
 
 void AlarmEngine::publishToRedis(const AlarmEvent& event) {
-    if (!redis_client_) return;
+    if (!redis_client_) {
+        return; // Redis 비활성화 시 조용히 스킵
+    }
     
     try {
         json alarm_json = {
@@ -1132,14 +1134,40 @@ void AlarmEngine::publishToRedis(const AlarmEvent& event) {
             {"rule_id", event.rule_id},
             {"tenant_id", event.tenant_id},
             {"point_id", event.point_id},
-            {"severity", event.getSeverityString()},
-            {"state", event.state},
+            {"device_id", event.device_id},
+            {"alarm_type", static_cast<int>(event.alarm_type)},
+            {"severity", static_cast<int>(event.severity)},
+            {"state", static_cast<int>(event.state)},
+            {"trigger_condition", static_cast<int>(event.trigger_condition)},
             {"message", event.message},
-            {"timestamp", std::chrono::system_clock::to_time_t(event.occurrence_time)}
+            {"timestamp", std::chrono::system_clock::to_time_t(event.timestamp)},
+            {"occurrence_time", std::chrono::system_clock::to_time_t(event.occurrence_time)},
+            {"source_name", event.source_name},
+            {"location", event.location}
         };
         
+        // 트리거 값 추가
+        std::visit([&alarm_json](auto&& v) {
+            alarm_json["trigger_value"] = v;
+        }, event.trigger_value);
+        
+        // 현재 값 추가 (다를 수 있음)
+        std::visit([&alarm_json](auto&& v) {
+            alarm_json["current_value"] = v;
+        }, event.current_value);
+        
+        // 임계값 추가
+        alarm_json["threshold_value"] = event.threshold_value;
+        
+        // 텐넌트별 채널로 발송
         std::string channel = "tenant:" + std::to_string(event.tenant_id) + ":alarms";
         redis_client_->publish(channel, alarm_json.dump());
+        
+        // 전체 알람 채널로도 발송 (선택적)
+        redis_client_->publish("alarms:all", alarm_json.dump());
+        
+        LogManager::getInstance().Debug("Alarm event published to Redis: " + 
+                                      std::to_string(event.occurrence_id));
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Failed to publish alarm to Redis: " + std::string(e.what()));
@@ -1153,39 +1181,57 @@ void AlarmEngine::publishToRedis(const AlarmEvent& event) {
 // =============================================================================
 
 nlohmann::json AlarmEngine::getStatistics() const {
-    return {
-        {"total_evaluations", total_evaluations_.load()},
-        {"alarms_raised", alarms_raised_.load()},
-        {"alarms_cleared", alarms_cleared_.load()},
-        {"evaluation_errors", evaluations_errors_.load()},
-        {"cached_rules_count", tenant_rules_.size()},
-        {"active_alarms_count", rule_occurrence_map_.size()},
-        {"initialized", initialized_.load()}
-    };
+    try {
+        return {
+            {"initialized", initialized_.load()},
+            {"total_evaluations", total_evaluations_.load()},
+            {"alarms_raised", alarms_raised_.load()},
+            {"alarms_cleared", alarms_cleared_.load()},
+            {"evaluation_errors", evaluations_errors_.load()},
+            {"active_alarms_count", getActiveAlarmsCount()},
+            {"js_engine_available", (js_context_ != nullptr)},
+            {"redis_connected", (redis_client_ && redis_client_->isConnected())},
+            {"next_occurrence_id", next_occurrence_id_.load()}
+        };
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("getStatistics failed: " + std::string(e.what()));
+        return {{"error", "Failed to get statistics"}};
+    }
 }
 
 std::vector<AlarmOccurrenceEntity> AlarmEngine::getActiveAlarms(int tenant_id) const {
-    if (!initialized_.load()) {
-        return {};
-    }
-    
     try {
-        return alarm_occurrence_repo_->findActiveByRuleId(tenant_id);
+        if (!alarm_occurrence_repo_) {
+            return {};
+        }
+        
+        auto all_active = alarm_occurrence_repo_->findActive();
+        std::vector<AlarmOccurrenceEntity> tenant_active;
+        
+        for (const auto& alarm : all_active) {
+            if (alarm.getTenantId() == tenant_id) {
+                tenant_active.push_back(alarm);
+            }
+        }
+        
+        return tenant_active;
+        
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Failed to get active alarms: " + std::string(e.what()));
+        LogManager::getInstance().Error("getActiveAlarms failed: " + std::string(e.what()));
         return {};
     }
 }
 
 std::optional<AlarmOccurrenceEntity> AlarmEngine::getAlarmOccurrence(int64_t occurrence_id) const {
-    if (!initialized_.load()) {
-        return std::nullopt;
-    }
-    
     try {
-        return alarm_occurrence_repo_->findById(occurrence_id);
+        if (!alarm_occurrence_repo_) {
+            return std::nullopt;
+        }
+        
+        return alarm_occurrence_repo_->findById(static_cast<int>(occurrence_id));
+        
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Failed to get alarm occurrence: " + std::string(e.what()));
+        LogManager::getInstance().Error("getAlarmOccurrence failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
@@ -1217,33 +1263,32 @@ std::string AlarmEngine::generateMessage(
     return message;
 }
 
-std::vector<AlarmRuleEntity> AlarmEngine::getAlarmRulesForPoint(int point_id, const std::string& tag_name, int tenant_id) const {
+std::vector<AlarmRuleEntity> AlarmEngine::getAlarmRulesForPoint(int tenant_id, 
+                                                               const std::string& point_type, 
+                                                               int target_id) const {
     std::vector<AlarmRuleEntity> filtered_rules;
     
     try {
-        auto& logger = LogManager::getInstance();
-        
         if (!alarm_rule_repo_) {
-            logger.Error("AlarmRuleRepository not available");
+            LogManager::getInstance().Error("AlarmRuleRepository not available");
             return filtered_rules;
         }
         
-        // 모든 알람 규칙 조회
-        auto all_rules = alarm_rule_repo_->findAll();
+        // findByTarget 메서드 사용
+        auto rules = alarm_rule_repo_->findByTarget(point_type, target_id);
         
-        // 필터링 (실제 존재하는 메서드들만 사용)
-        for (const auto& rule : all_rules) {
-            if (rule.isEnabled() &&  
-                rule.getTenantId() == tenant_id) {
-                // ❌ getPointId(), getTagName() 대신 다른 방법 사용
-                // 예: 설정이나 조건으로 필터링
+        // 텐넌트 필터링
+        for (const auto& rule : rules) {
+            if (rule.isEnabled() && rule.getTenantId() == tenant_id) {
                 filtered_rules.push_back(rule);
             }
         }
         
+        LogManager::getInstance().Debug("Found " + std::to_string(filtered_rules.size()) + 
+                                      " rules for " + point_type + ":" + std::to_string(target_id));
+        
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("getAlarmRulesForPoint failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("getAlarmRulesForPoint failed: " + std::string(e.what()));
     }
     
     return filtered_rules;
@@ -1251,38 +1296,45 @@ std::vector<AlarmRuleEntity> AlarmEngine::getAlarmRulesForPoint(int point_id, co
 
 bool AlarmEngine::clearActiveAlarm(int rule_id, const DataValue& current_value) {
     try {
-        auto& logger = LogManager::getInstance();
-        
         if (!alarm_occurrence_repo_) {
-            logger.Error("AlarmOccurrenceRepository not available");
+            LogManager::getInstance().Error("AlarmOccurrenceRepository not available");
             return false;
         }
         
-        // 활성 알람 조회
-        auto active_alarms = alarm_occurrence_repo_->findActiveByRuleId(rule_id);
+        auto all_active = alarm_occurrence_repo_->findActive();
         
         bool any_cleared = false;
-        for (auto& alarm : active_alarms) {
-            // ✅ 올바른 enum과 메서드 사용
-            alarm.setState(AlarmState::CLEARED);
-            alarm.setClearedTime(std::chrono::system_clock::now());  // setClearTime → setClearedTime
-            alarm.markModified();
-            
-            // 데이터베이스 업데이트
-            if (alarm_occurrence_repo_->update(alarm)) {
-                any_cleared = true;
+        for (auto& alarm : all_active) {
+            if (alarm.getRuleId() == rule_id) {
+                alarm.setState(AlarmState::CLEARED);
+                alarm.setClearedTime(std::chrono::system_clock::now());
                 
-                // ❌ AlarmEvent와 publishAlarmEvent가 정의되지 않음 - 제거하거나 간단한 로깅으로 대체
-                logger.Info("Alarm cleared: rule_id=" + std::to_string(rule_id) + 
-                           ", occurrence_id=" + std::to_string(alarm.getId()));
+                // 🔥 수정: setClearValue → setClearedValue
+                json clear_value_json;
+                std::visit([&clear_value_json](auto&& v) {
+                    clear_value_json = v;
+                }, current_value);
+                alarm.setClearedValue(clear_value_json.dump());
+                
+                alarm.markModified();
+                
+                if (alarm_occurrence_repo_->update(alarm)) {
+                    any_cleared = true;
+                    LogManager::getInstance().Info("Alarm cleared: rule_id=" + std::to_string(rule_id) + 
+                                                 ", occurrence_id=" + std::to_string(alarm.getId()));
+                }
             }
+        }
+        
+        if (any_cleared) {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            alarm_states_[rule_id] = false;
         }
         
         return any_cleared;
         
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("clearActiveAlarm failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("clearActiveAlarm failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -1290,16 +1342,14 @@ bool AlarmEngine::clearActiveAlarm(int rule_id, const DataValue& current_value) 
 
 bool AlarmEngine::clearAlarm(int64_t occurrence_id, const DataValue& current_value) {
     try {
-        auto& logger = LogManager::getInstance();
-        
         if (!alarm_occurrence_repo_) {
-            logger.Error("AlarmOccurrenceRepository not available");
+            LogManager::getInstance().Error("AlarmOccurrenceRepository not available");
             return false;
         }
         
         auto alarm_opt = alarm_occurrence_repo_->findById(static_cast<int>(occurrence_id));
-        if (!alarm_opt) {
-            logger.Warn("Alarm occurrence not found: " + std::to_string(occurrence_id));  // ✅ Warning → Warn
+        if (!alarm_opt.has_value()) {
+            LogManager::getInstance().Warn("Alarm occurrence not found: " + std::to_string(occurrence_id));
             return false;
         }
         
@@ -1307,18 +1357,74 @@ bool AlarmEngine::clearAlarm(int64_t occurrence_id, const DataValue& current_val
         alarm.setState(AlarmState::CLEARED);
         alarm.setClearedTime(std::chrono::system_clock::now());
         
+        // 🔥 수정: setClearValue → setClearedValue
+        json clear_value_json;
+        std::visit([&clear_value_json](auto&& v) {
+            clear_value_json = v;
+        }, current_value);
+        alarm.setClearedValue(clear_value_json.dump());
+        
         bool success = alarm_occurrence_repo_->update(alarm);
         
         if (success) {
-            logger.Info("Alarm manually cleared: occurrence_id=" + std::to_string(occurrence_id));
+            LogManager::getInstance().Info("Alarm manually cleared: occurrence_id=" + std::to_string(occurrence_id));
+            
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            alarm_states_[alarm.getRuleId()] = false;
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.Error("clearAlarm failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("clearAlarm failed: " + std::string(e.what()));
         return false;
+    }
+}
+
+
+void AlarmEngine::publishAlarmClearedEvent(const AlarmOccurrenceEntity& alarm) {
+    if (!redis_client_) {
+        return;
+    }
+    
+    try {
+        json clear_json = {
+            {"type", "alarm_cleared"},
+            {"occurrence_id", alarm.getId()},
+            {"rule_id", alarm.getRuleId()},
+            {"tenant_id", alarm.getTenantId()},
+            {"state", "cleared"},
+            {"message", "Alarm cleared: " + alarm.getAlarmMessage()}
+        };
+        
+        // 🔥 수정: optional 처리
+        auto cleared_time_opt = alarm.getClearedTime();
+        if (cleared_time_opt.has_value()) {
+            clear_json["cleared_time"] = std::chrono::system_clock::to_time_t(cleared_time_opt.value());
+        } else {
+            clear_json["cleared_time"] = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        }
+        
+        std::string channel = "tenant:" + std::to_string(alarm.getTenantId()) + ":alarms";
+        redis_client_->publish(channel, clear_json.dump());
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Failed to publish alarm cleared event: " + std::string(e.what()));
+    }
+}
+
+size_t AlarmEngine::getActiveAlarmsCount() const {
+    try {
+        if (!alarm_occurrence_repo_) {
+            return 0;
+        }
+        
+        auto active_alarms = alarm_occurrence_repo_->findActive();
+        return active_alarms.size();
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("getActiveAlarmsCount failed: " + std::string(e.what()));
+        return 0;
     }
 }
 
