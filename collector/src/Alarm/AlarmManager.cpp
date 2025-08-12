@@ -32,31 +32,43 @@ AlarmManager& AlarmManager::getInstance() {
 }
 
 AlarmManager::AlarmManager() 
-    : initialized_(false),
-      next_occurrence_id_(1),
-      total_evaluations_(0),
-      alarms_raised_(0),
-      alarms_cleared_(0),
-      js_runtime_(nullptr),
-      js_context_(nullptr) {
-    
-    // ✅ 올바른 LogManager 사용법
-    auto& logger = LogManager::getInstance();
-    logger.log("alarm", LogLevel::DEBUG_LEVEL, "AlarmManager constructor starting...");
-    
+    // 🔥 헤더 파일의 멤버 변수 선언 순서와 정확히 일치시키기
+    : initialized_(false)                    // 1. 원시 타입들 (atomic)
+    , total_evaluations_(0)
+    , alarms_raised_(0)
+    , alarms_cleared_(0)
+    , next_occurrence_id_(1)
+    , js_runtime_(nullptr)                   // 2. 포인터들
+    , js_context_(nullptr)
+    , redis_client_(nullptr)                 // 3. 스마트 포인터들
+    // 4. 뮤텍스들은 기본 생성자 사용 (초기화 리스트에 넣지 않음)
+    // 5. 컨테이너들도 기본 생성자 사용
+{
     try {
+        auto& logger = LogManager::getInstance();
+        logger.log("alarm", LogLevel::DEBUG, "AlarmManager constructor starting...");
+        
+        // 클라이언트 초기화
         initializeClients();
+        
+        // JavaScript 엔진 초기화
+        if (!initScriptEngine()) {
+            logger.log("alarm", LogLevel::WARN, "JavaScript engine initialization failed");
+        }
+        
+        // 초기 데이터 로드
         initializeData();
-        initScriptEngine();
         
         initialized_ = true;
         logger.log("alarm", LogLevel::INFO, "AlarmManager initialized successfully in constructor");
         
     } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
         logger.log("alarm", LogLevel::ERROR, "AlarmManager constructor failed: " + std::string(e.what()));
         initialized_ = false;
     }
 }
+
 
 AlarmManager::~AlarmManager() {
     shutdown();
@@ -68,14 +80,30 @@ AlarmManager::~AlarmManager() {
 
 void AlarmManager::initializeClients() {
     try {
-        // ✅ 올바른 ConfigManager 사용법
         auto& config = ConfigManager::getInstance();
         
-        std::string redis_host = config.getOrDefault("redis.host", "localhost");
-        int redis_port = config.getInt("redis.port", 6379);
-        std::string redis_password = config.getOrDefault("redis.password", "");
-        
-        // redis_client_ = std::make_shared<RedisClientImpl>(); // 🔥 임시 주석
+        // Redis 클라이언트 생성 (선택적)
+        try {
+            redis_client_ = std::make_shared<RedisClientImpl>();
+            
+            std::string redis_host = config.getOrDefault("REDIS_HOST", "localhost");
+            int redis_port = config.getInt("REDIS_PORT", 6379);
+            std::string redis_endpoint = redis_host + ":" + std::to_string(redis_port);
+            
+            if (!redis_client_->connect(redis_endpoint)) {
+                auto& logger = LogManager::getInstance();
+                logger.log("alarm", LogLevel::WARN, "Redis connection failed for AlarmManager");
+                redis_client_.reset();
+            } else {
+                auto& logger = LogManager::getInstance();
+                logger.log("alarm", LogLevel::INFO, "AlarmManager Redis connected successfully");
+            }
+            
+        } catch (const std::exception& e) {
+            auto& logger = LogManager::getInstance();
+            logger.log("alarm", LogLevel::WARN, "Failed to initialize Redis client: " + std::string(e.what()));
+            redis_client_.reset();
+        }
         
         auto& logger = LogManager::getInstance();
         logger.log("alarm", LogLevel::INFO, "Clients initialization completed (Redis temporarily disabled)");
@@ -88,37 +116,21 @@ void AlarmManager::initializeClients() {
 
 void AlarmManager::initializeData() {
     try {
-        auto& alarm_engine = AlarmEngine::getInstance();
-        if (!alarm_engine.isInitialized()) {
-            auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::WARN, "AlarmEngine not initialized - some features may be limited");
-        }
+        // 기본 설정으로 초기화
+        next_occurrence_id_ = 1;
         
-        // ✅ 올바른 DatabaseManager 사용법
-        auto& db_manager = DatabaseManager::getInstance();
-        std::string query = "SELECT MAX(id) as max_id FROM alarm_occurrences";
-        
-        // ✅ 올바른 executeQuery 사용법 (vector<vector<string>> 형태)
-        std::vector<std::vector<std::string>> raw_results;
-        bool success = db_manager.executeQuery(query, raw_results);
-        
-        if (success && !raw_results.empty() && !raw_results[0].empty()) {
-            try {
-                std::string max_id_str = raw_results[0][0];
-                if (!max_id_str.empty() && max_id_str != "NULL") {
-                    next_occurrence_id_ = std::stoll(max_id_str) + 1;
-                } else {
-                    next_occurrence_id_ = 1;
-                }
-            } catch (...) {
-                next_occurrence_id_ = 1;
-            }
-        } else {
-            next_occurrence_id_ = 1;
+        // 알람 규칙 캐시 초기화
+        {
+            std::unique_lock<std::shared_mutex> rules_lock(rules_mutex_);
+            std::unique_lock<std::shared_mutex> index_lock(index_mutex_);
+            
+            alarm_rules_.clear();
+            point_alarm_map_.clear();
+            group_alarm_map_.clear();
         }
         
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::DEBUG_LEVEL, "Initial data loaded, next occurrence ID: " + std::to_string(next_occurrence_id_.load()));
+        logger.log("alarm", LogLevel::DEBUG, "Initial data loaded successfully");
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
@@ -130,7 +142,7 @@ void AlarmManager::initializeData() {
 bool AlarmManager::initScriptEngine() {
     try {
         if (js_context_) {
-            return true;
+            return true; // 이미 초기화됨
         }
         
         js_runtime_ = JS_NewRuntime();
@@ -140,6 +152,7 @@ bool AlarmManager::initScriptEngine() {
             return false;
         }
         
+        // 메모리 제한 설정 (8MB)
         JS_SetMemoryLimit((JSRuntime*)js_runtime_, 8 * 1024 * 1024);
         
         js_context_ = JS_NewContext((JSRuntime*)js_runtime_);
@@ -179,12 +192,15 @@ void AlarmManager::shutdown() {
     auto& logger = LogManager::getInstance();
     logger.log("alarm", LogLevel::INFO, "Shutting down AlarmManager");
     
+    // JavaScript 엔진 정리
     cleanupScriptEngine();
     
+    // Redis 클라이언트 정리
     if (redis_client_) {
         redis_client_.reset();
     }
     
+    // 캐시 정리
     {
         std::unique_lock<std::shared_mutex> rules_lock(rules_mutex_);
         std::unique_lock<std::shared_mutex> index_lock(index_mutex_);
@@ -198,95 +214,71 @@ void AlarmManager::shutdown() {
     logger.log("alarm", LogLevel::INFO, "AlarmManager shutdown completed");
 }
 
+
 // =============================================================================
 // 🔥 메인 비즈니스 인터페이스 (Pipeline에서 호출)
 // =============================================================================
 
 std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage& msg) {
+    std::vector<AlarmEvent> events;
+    
     if (!initialized_.load()) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "AlarmManager not properly initialized");
-        return {};
+        logger.log("alarm", LogLevel::ERROR, "AlarmManager not initialized");
+        return events;
     }
     
     try {
+        // 🔥 AlarmEngine에 위임하는 방식으로 구현
         auto& alarm_engine = AlarmEngine::getInstance();
-        auto engine_events = alarm_engine.evaluateForMessage(msg);
+        events = alarm_engine.evaluateForMessage(msg);
         
-        std::vector<AlarmEvent> enhanced_events;
-        enhanced_events.reserve(engine_events.size());
-        
-        for (auto& event : engine_events) {
+        // 🔥 비즈니스 로직으로 이벤트 강화
+        for (auto& event : events) {
             enhanceAlarmEvent(event, msg);
-            publishToRedis(event);
-            sendNotifications(event);
-            enhanced_events.push_back(std::move(event));
         }
         
         total_evaluations_.fetch_add(1);
         
-        if (!enhanced_events.empty()) {
-            auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::INFO, "AlarmManager processed " + std::to_string(enhanced_events.size()) + " enhanced alarm events");
-        }
-        
-        return enhanced_events;
+        auto& logger = LogManager::getInstance();
+        logger.log("alarm", LogLevel::INFO, "AlarmManager processed " + 
+                  std::to_string(events.size()) + " enhanced alarm events");
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "AlarmManager::evaluateForMessage failed: " + std::string(e.what()));
-        return {};
-    }
-}
-
-// =============================================================================
-// 🔥 비즈니스 로직 - 알람 이벤트 강화
-// =============================================================================
-
-void AlarmManager::enhanceAlarmEvent(AlarmEvent& event, const DeviceDataMessage& msg) {
-    if (!initialized_.load()) {
-        return;
+        logger.log("alarm", LogLevel::ERROR, "Failed to evaluate message: " + std::string(e.what()));
     }
     
+    return events;
+}
+
+void AlarmManager::enhanceAlarmEvent(AlarmEvent& event, const DeviceDataMessage& msg) {
     try {
-        // 기본 메타데이터 추가
+        // 🔥 추가 메타데이터 설정
+        event.tenant_id = msg.tenant_id;
         event.device_id = msg.device_id;
         
-        // 알람 규칙 조회 (캐시에서)
-        auto rule = getAlarmRule(event.rule_id);
-        if (rule.has_value()) {
-            // 1. 고급 메시지 생성
-            event.message = generateAdvancedMessage(rule.value(), event);
-            
-            // 2. 알림 채널 설정
-            if (!rule->notification_channels.empty()) {
-                try {
-                    auto channels = rule->notification_channels;
-                    // TODO: event에 channels 추가 (Structs::AlarmEvent 확장 필요)
-                } catch (...) {
-                    auto& logger = LogManager::getInstance();
-                    logger.log("alarm", LogLevel::DEBUG_LEVEL, "Failed to parse notification channels for rule " + std::to_string(event.rule_id));
-                }
-            }
-            
-            // 3. 심각도 및 우선순위 조정
-            adjustSeverityAndPriority(event, rule.value());
-            
-            // 4. 컨텍스트 정보 추가
-            json context_data;
-            context_data["rule_name"] = rule->name;
-            context_data["target_type"] = rule->target_type;
-            context_data["target_id"] = rule->target_id;
-            context_data["enhanced_by"] = "AlarmManager";
-            context_data["enhancement_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
+        // 🔥 타임스탬프 강화
+        if (event.timestamp == std::chrono::system_clock::time_point{}) {
+            event.timestamp = std::chrono::system_clock::now();
+        }
+        
+        // 🔥 소스 정보 강화
+        if (event.source_name.empty()) {
+            event.source_name = "Point_" + std::to_string(event.point_id);
+        }
+        
+        // 🔥 위치 정보 설정 (향후 개선)
+        if (event.location.empty()) {
+            event.location = "Device_" + event.device_id.toString();
         }
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to enhance alarm event: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::WARN, "Failed to enhance alarm event: " + std::string(e.what()));
     }
 }
+
 
 std::string AlarmManager::generateAdvancedMessage(const AlarmRule& rule, const AlarmEvent& event) {
     if (!initialized_.load()) {
@@ -641,42 +633,23 @@ Database::Entities::AlarmRuleEntity AlarmManager::convertToEntity(const AlarmRul
 // 🔥 통계 및 상태 메서드들
 // =============================================================================
 
-json AlarmManager::getStatistics() const {
-    json stats;
-    
-    if (!initialized_.load()) {
-        stats["error"] = "AlarmManager not initialized";
-        return stats;
-    }
-    
+nlohmann::json AlarmManager::getStatistics() const {
     try {
-        // AlarmEngine 통계 가져오기
-        auto& alarm_engine = AlarmEngine::getInstance();
-        auto engine_stats = alarm_engine.getStatistics();
-        
-        // AlarmManager 고유 통계
-        std::shared_lock<std::shared_mutex> rules_lock(rules_mutex_);
-        
-        json manager_stats = {
-            {"manager_rules", alarm_rules_.size()},
-            {"manager_evaluations", total_evaluations_.load()},
-            {"manager_alarms_raised", alarms_raised_.load()},
-            {"manager_alarms_cleared", alarms_cleared_.load()},
-            {"redis_connected", redis_client_ != nullptr},
-            {"script_engine_active", js_context_ != nullptr},
-            {"next_occurrence_id", next_occurrence_id_.load()}
+        return {
+            {"initialized", initialized_.load()},
+            {"total_evaluations", total_evaluations_.load()},
+            {"alarms_raised", alarms_raised_.load()},
+            {"alarms_cleared", alarms_cleared_.load()},
+            {"next_occurrence_id", next_occurrence_id_.load()},
+            {"js_engine_available", (js_context_ != nullptr)},
+            {"redis_connected", (redis_client_ && redis_client_->isConnected())},
+            {"cached_rules_count", alarm_rules_.size()}
         };
-        
-        // 통합 통계
-        stats["engine"] = engine_stats;
-        stats["manager"] = manager_stats;
-        stats["initialized"] = initialized_.load();
-        
     } catch (const std::exception& e) {
-        stats["error"] = "Failed to get statistics: " + std::string(e.what());
+        auto& logger = LogManager::getInstance();
+        logger.log("alarm", LogLevel::ERROR, "getStatistics failed: " + std::string(e.what()));
+        return {{"error", "Failed to get statistics"}};
     }
-    
-    return stats;
 }
 
 std::optional<AlarmRule> AlarmManager::getAlarmRule(int rule_id) const {

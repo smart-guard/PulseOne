@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Alarm/AlarmManager.h
-// PulseOne 알람 매니저 헤더 - 명확한 싱글톤 패턴 적용
+// PulseOne 알람 매니저 헤더 - 명확한 싱글톤 패턴 + 초기화 순서 수정
 // =============================================================================
 
 #ifndef ALARM_MANAGER_H
@@ -37,6 +37,7 @@ namespace Alarm {
     using AlarmSeverity = PulseOne::Alarm::AlarmSeverity;
     using TargetType = PulseOne::Alarm::TargetType;
     using DigitalTrigger = PulseOne::Alarm::DigitalTrigger;
+
 // =============================================================================
 // AlarmManager 클래스 - 🔥 명확한 싱글톤 패턴
 // =============================================================================
@@ -163,44 +164,32 @@ private:
 
 private:
     // =======================================================================
-    // 🔥 초기화 상태 (AlarmEngine과 동일)
+    // 🔥 멤버 변수들 - 초기화 순서에 맞게 정렬 (경고 해결)
     // =======================================================================
+    
+    // 1. 원시 타입들 (atomic 포함)
     std::atomic<bool> initialized_{false};
-       
-    // =======================================================================
-    // 🔥 내부에서 생성하는 객체들
-    // =======================================================================
-    std::shared_ptr<RedisClientImpl> redis_client_;
-    
-    // =======================================================================
-    // 알람 규칙 저장소 (비즈니스 레이어)
-    // =======================================================================
-    std::map<int, AlarmRule> alarm_rules_;
-    mutable std::shared_mutex rules_mutex_;
-    
-    // 포인트별 알람 규칙 인덱스
-    std::map<int, std::vector<int>> point_alarm_map_;  // point_id -> [rule_ids]
-    std::map<std::string, std::vector<int>> group_alarm_map_;  // group -> [rule_ids]
-    mutable std::shared_mutex index_mutex_;
-    
-    // =======================================================================
-    // JavaScript 엔진 (스크립트 알람용)
-    // =======================================================================
-    void* js_runtime_{nullptr};  // JSRuntime*
-    void* js_context_{nullptr};  // JSContext*
-    mutable std::mutex js_mutex_;
-    
-    // =======================================================================
-    // 통계
-    // =======================================================================
     std::atomic<uint64_t> total_evaluations_{0};
     std::atomic<uint64_t> alarms_raised_{0};
     std::atomic<uint64_t> alarms_cleared_{0};
-    
-    // =======================================================================
-    // ID 생성기
-    // =======================================================================
     std::atomic<int64_t> next_occurrence_id_{1};
+    
+    // 2. 포인터들 (JavaScript 엔진)
+    void* js_runtime_{nullptr};  // JSRuntime*
+    void* js_context_{nullptr};  // JSContext*
+    
+    // 3. 스마트 포인터들
+    std::shared_ptr<RedisClientImpl> redis_client_;
+    
+    // 4. 뮤텍스들 (mutable 키워드 순서)
+    mutable std::shared_mutex rules_mutex_;
+    mutable std::shared_mutex index_mutex_;
+    mutable std::mutex js_mutex_;
+    
+    // 5. 컨테이너들 (복잡한 객체들)
+    std::map<int, AlarmRule> alarm_rules_;
+    std::map<int, std::vector<int>> point_alarm_map_;  // point_id -> [rule_ids]
+    std::map<std::string, std::vector<int>> group_alarm_map_;  // group -> [rule_ids]
 };
 
 } // namespace Alarm

@@ -1,0 +1,1291 @@
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from EnhancedPipelineTest
+[ RUN      ] EnhancedPipelineTest.Alarm_Triggering_Simulation
+
+🚀 === 알람 + 가상포인트 + Redis 통합 테스트 시작 ===
+🔧 LogManager 자동 초기화 시작...
+✅ LogManager 자동 초기화 완료
+[2025-08-12T13:12:56.165Z][INFO][config] 🔧 ConfigManager 실용적 초기화 시작...
+[2025-08-12T13:12:56.166Z][INFO][config] 📁 설정 디렉토리: /app/collector/tests/config
+[2025-08-12T13:12:56.166Z][INFO][config] 📄 .env - 30/53 라인 파싱됨
+[2025-08-12T13:12:56.166Z][INFO][config] ✅ 메인 설정 로드: .env
+[2025-08-12T13:12:56.166Z][INFO][config] 🔍 추가 설정 파일 확인 시작
+[2025-08-12T13:12:56.167Z][INFO][config] 📄 database.env - 38/60 라인 파싱됨
+[2025-08-12T13:12:56.167Z][INFO][config] ✅ 추가 설정 로드: database.env
+[2025-08-12T13:12:56.167Z][INFO][config] 📄 redis.env - 18/29 라인 파싱됨
+[2025-08-12T13:12:56.167Z][INFO][config] ✅ 추가 설정 로드: redis.env
+[2025-08-12T13:12:56.168Z][INFO][config] 📄 timeseries.env - 29/48 라인 파싱됨
+[2025-08-12T13:12:56.168Z][INFO][config] ✅ 추가 설정 로드: timeseries.env
+[2025-08-12T13:12:56.168Z][INFO][config] ✅ 추가 설정 파일 확인 완료
+[2025-08-12T13:12:56.168Z][INFO][config] ✅ ConfigManager 실용적 초기화 완료 (115개 설정, 4개 파일)
+[2025-08-12T13:12:56.168Z][INFO][config] 🔧 ConfigManager 실용적 초기화 시작...
+[2025-08-12T13:12:56.168Z][INFO][config] 📁 설정 디렉토리: /app/collector/tests/config
+[2025-08-12T13:12:56.169Z][INFO][config] 📄 .env - 0/53 라인 파싱됨
+[2025-08-12T13:12:56.169Z][INFO][config] ✅ 메인 설정 로드: .env
+[2025-08-12T13:12:56.169Z][INFO][config] 🔍 추가 설정 파일 확인 시작
+[2025-08-12T13:12:56.169Z][INFO][config] 📄 database.env - 0/60 라인 파싱됨
+[2025-08-12T13:12:56.169Z][INFO][config] ✅ 추가 설정 로드: database.env
+[2025-08-12T13:12:56.169Z][INFO][config] 📄 redis.env - 0/29 라인 파싱됨
+[2025-08-12T13:12:56.169Z][INFO][config] ✅ 추가 설정 로드: redis.env
+[2025-08-12T13:12:56.170Z][INFO][config] 📄 timeseries.env - 0/48 라인 파싱됨
+[2025-08-12T13:12:56.170Z][INFO][config] ✅ 추가 설정 로드: timeseries.env
+[2025-08-12T13:12:56.170Z][INFO][config] ✅ 추가 설정 파일 확인 완료
+[2025-08-12T13:12:56.170Z][INFO][config] ✅ ConfigManager 실용적 초기화 완료 (115개 설정, 8개 파일)
+[2025-08-12T13:12:56.170Z][INFO][database] 🔧 DatabaseManager 자동 초기화 시작...
+[2025-08-12T13:12:56.170Z][INFO][database] 🔧 데이터베이스 설정 로드 중...
+[2025-08-12T13:12:56.170Z][INFO][database] 📋 설정된 DATABASE_TYPE: SQLITE
+[2025-08-12T13:12:56.171Z][INFO][database] ✅ SQLite 모드 선택됨
+[2025-08-12T13:12:56.171Z][INFO][database] 🔧 최종 데이터베이스 설정:
+[2025-08-12T13:12:56.171Z][INFO][database]    📊 메인 RDB: SQLite
+[2025-08-12T13:12:56.171Z][INFO][database]    🔄 Redis: 활성화
+[2025-08-12T13:12:56.171Z][INFO][database]    📈 InfluxDB: 활성화
+[2025-08-12T13:12:56.171Z][INFO][database] 🔧 SQLite 연결 시도...
+[2025-08-12T13:12:56.171Z][INFO][database] 🔧 SQLite 연결 시도: db/pulseone_test.db
+[2025-08-12T13:12:56.175Z][INFO][database] ✅ SQLite 연결 성공: db/pulseone_test.db
+[2025-08-12T13:12:56.175Z][INFO][database] ✅ 메인 RDB (SQLite) 연결 성공
+[2025-08-12T13:12:56.175Z][INFO][database] 🔧 Redis 연결 시도...
+[2025-08-12T13:12:56.175Z][INFO][database] 🔄 Redis 연결 시작...
+[2025-08-12T13:12:56.175Z][INFO][database] Redis 연결 시도: localhost:6379
+[2025-08-12T13:12:56.176Z][ERROR][redis] Redis connect 에러: 연결 실패: Connection refused
+[2025-08-12T13:12:56.176Z][ERROR][database] ❌ Redis 연결 실패: localhost:6379
+[2025-08-12T13:12:56.176Z][WARN][database] ⚠️ Redis 연결 실패 - 계속 진행
+[2025-08-12T13:12:56.176Z][INFO][database] 🔧 InfluxDB 연결 시도...
+[2025-08-12T13:12:56.177Z][WARN][database] ⚠️ InfluxClientImpl 미구현 - 임시로 비활성화
+[2025-08-12T13:12:56.177Z][WARN][database] ⚠️ InfluxDB 연결 실패 - 계속 진행
+[2025-08-12T13:12:56.177Z][INFO][database] ❌ InfluxDB: 연결 안됨
+[2025-08-12T13:12:56.177Z][INFO][database] ❌ MSSQL: 연결 안됨
+[2025-08-12T13:12:56.177Z][INFO][database] ❌ MySQL/MariaDB: 연결 안됨
+[2025-08-12T13:12:56.177Z][INFO][database] ❌ PostgreSQL: 연결 안됨
+[2025-08-12T13:12:56.177Z][INFO][database] ❌ Redis: 연결 안됨
+[2025-08-12T13:12:56.177Z][INFO][database] ✅ SQLite: 연결됨
+[2025-08-12T13:12:56.177Z][INFO][database] ✅ DatabaseManager 자동 초기화 완료 (메인 RDB 연결 성공)
+[2025-08-12T13:12:56.177Z][INFO][database] 🚀 DatabaseManager 자동 초기화 성공!
+[2025-08-12T13:12:56.177Z][INFO][database] ⚡ DatabaseManager 이미 자동 초기화됨 - 수동 초기화 건너뜀
+[2025-08-12T13:12:56.178Z][INFO] 🏭 RepositoryFactory created
+[2025-08-12T13:12:56.178Z][INFO] 🔧 RepositoryFactory initializing...
+[2025-08-12T13:12:56.178Z][INFO] Creating repository instances...
+[2025-08-12T13:12:56.178Z][INFO] 🏭 DeviceRepository initialized with BaseEntity pattern
+[2025-08-12T13:12:56.178Z][INFO] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.178Z][INFO] 🔧 DeviceSettingsRepository initialized with device_id-based operations
+[2025-08-12T13:12:56.178Z][INFO] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.178Z][INFO] 🗄️ DataPointRepository initialized with caching enabled
+[2025-08-12T13:12:56.178Z][INFO] 🏭 DataPointRepository initialized with IRepository caching system
+[2025-08-12T13:12:56.179Z][INFO] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.179Z][INFO] 🏭 UserRepository initialized with BaseEntity pattern
+[2025-08-12T13:12:56.179Z][INFO] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.179Z][INFO] 🏭 TenantRepository initialized with BaseEntity pattern
+[2025-08-12T13:12:56.179Z][INFO] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.179Z][INFO] 🏭 SiteRepository initialized with BaseEntity pattern
+[2025-08-12T13:12:56.179Z][INFO] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.179Z][INFO] 🗄️ VirtualPointRepository initialized with caching enabled
+[2025-08-12T13:12:56.179Z][INFO][VirtualPointRepository] 🧮 VirtualPointRepository initialized with ScriptLibraryRepository pattern
+[2025-08-12T13:12:56.180Z][INFO][VirtualPointRepository] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.180Z][INFO] 🏭 CurrentValueRepository initialized with IRepository caching system
+[2025-08-12T13:12:56.180Z][INFO] ✅ Cache enabled: true
+[2025-08-12T13:12:56.180Z][INFO] 📊 Cache stats: 7 entries tracked
+[2025-08-12T13:12:56.180Z][INFO] 🗄️ AlarmRuleRepository initialized with caching enabled
+[2025-08-12T13:12:56.180Z][INFO][AlarmRuleRepository] 🚨 AlarmRuleRepository initialized with ScriptLibraryRepository pattern
+[2025-08-12T13:12:56.180Z][INFO][AlarmRuleRepository] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.180Z][INFO] 🗄️ AlarmOccurrenceRepository initialized with caching enabled
+[2025-08-12T13:12:56.180Z][INFO][AlarmOccurrenceRepository] 🚨 AlarmOccurrenceRepository initialized with ScriptLibraryRepository pattern
+[2025-08-12T13:12:56.181Z][INFO][AlarmOccurrenceRepository] ✅ Cache enabled: YES
+[2025-08-12T13:12:56.181Z][INFO] ⚠️ ScriptLibraryRepository not created (implementation pending)
+[2025-08-12T13:12:56.181Z][INFO] All repository instances created successfully
+[2025-08-12T13:12:56.181Z][INFO] Connecting repository dependencies...
+[2025-08-12T13:12:56.181Z][INFO] ✅ CurrentValueRepository injected into DataPointRepository
+[2025-08-12T13:12:56.181Z][INFO] ✅ CurrentValueRepository connected to DataPointRepository
+[2025-08-12T13:12:56.181Z][INFO] ✅ Repository dependencies connected successfully
+[2025-08-12T13:12:56.181Z][INFO] Injecting dependencies into repositories...
+[2025-08-12T13:12:56.181Z][INFO] Dependencies injected successfully
+[2025-08-12T13:12:56.181Z][INFO] Applying repository configurations...
+[2025-08-12T13:12:56.181Z][INFO] Step 1: Checking global cache settings
+[2025-08-12T13:12:56.181Z][INFO] Step 2: Applying cache settings
+[2025-08-12T13:12:56.181Z][INFO] Cache enabled globally
+[2025-08-12T13:12:56.181Z][INFO] Step 3: Cache settings applied
+[2025-08-12T13:12:56.182Z][INFO] Step 4: Configuration complete
+[2025-08-12T13:12:56.182Z][INFO] ✅ Repository configurations applied successfully
+[2025-08-12T13:12:56.182Z][INFO] ✅ RepositoryFactory initialized successfully
+🔧 Redis 연결 시도: pulseone-redis:6379
+[2025-08-12T13:12:56.183Z][INFO][redis] Redis 연결 성공: pulseone-redis:6379
+✅ Redis 연결 성공: pulseone-redis:6379
+🔧 파이프라인 시스템 초기화 중...
+[2025-08-12T13:12:56.183Z][INFO] ✅ PipelineManager 큐 시스템 시작됨
+✅ PipelineManager 시작됨
+[2025-08-12T13:12:56.183Z][INFO][processing] ✅ DataProcessingService 생성됨 - 스레드 수: 4
+[2025-08-12T13:12:56.183Z][INFO][processing] 🔧 스레드 수 설정: 2
+[2025-08-12T13:12:56.183Z][INFO][processing] 🚀 DataProcessingService 시작 중...
+[2025-08-12T13:12:56.184Z][INFO][processing] ✅ DataProcessingService 시작 완료 (스레드 2개)
+✅ DataProcessingService 시작됨 (2개 처리 스레드)
+
+🔍 === 테스트 데이터 확인 ===
+[2025-08-12T13:12:56.184Z][DEBUG][processing] 🧵 처리 스레드 1 시작
+[2025-08-12T13:12:56.184Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.184Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.185Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.185Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.188Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_PLC_Temperature_Alarm
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Emergency_Stop_Alarm
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Current_Alarm
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Overload_Script
+[2025-08-12T13:12:56.189Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.190Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Zone1_Temperature_Alarm
+[2025-08-12T13:12:56.190Z][INFO][AlarmRuleRepository] findAll - Found 5 alarm rules
+📊 총 알람 규칙: 5개
+🧪 테스트 알람 규칙: 5개
+[2025-08-12T13:12:56.190Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.190Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.190Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.190Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.191Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.191Z][DEBUG][database] 🔍 테이블 'devices' 존재 여부: 존재
+[2025-08-12T13:12:56.191Z][DEBUG][database] ✅ 테이블 이미 존재: devices
+[2025-08-12T13:12:56.191Z][DEBUG] DeviceRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:12:56.191Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.191Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.192Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:12:56.192Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:12:56.192Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.192Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.192Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.192Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.192Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.192Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.193Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.193Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.193Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.193Z][INFO] DeviceRepository::findAll - Found 8 devices
+📊 총 디바이스: 8개
+[2025-08-12T13:12:56.193Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.194Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.194Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.194Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.194Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.194Z][DEBUG][database] 🔍 테이블 'data_points' 존재 여부: 존재
+[2025-08-12T13:12:56.195Z][DEBUG][database] ✅ 테이블 이미 존재: data_points
+[2025-08-12T13:12:56.195Z][DEBUG] DataPointRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:12:56.195Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.195Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.196Z][DEBUG] Original: 
+        SELECT 
+            -- 기본 식별 정�...
+[2025-08-12T13:12:56.196Z][DEBUG] Adapted: 
+        SELECT 
+            -- 기본 식별 정�...
+[2025-08-12T13:12:56.196Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.196Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.197Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.198Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.199Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.199Z][INFO] DataPointRepository::findAll - Found 18 data points
+📊 총 데이터포인트: 18개
+✅ 향상된 파이프라인 테스트 환경 완료
+
+🔍 === 알람 발생 시뮬레이션 테스트 ===
+[2025-08-12T13:12:56.199Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.199Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.199Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.200Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.200Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.200Z][DEBUG][database] 🔍 테이블 'devices' 존재 여부: 존재
+[2025-08-12T13:12:56.200Z][DEBUG][database] ✅ 테이블 이미 존재: devices
+[2025-08-12T13:12:56.200Z][DEBUG] DeviceRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:12:56.200Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.200Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.201Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:12:56.201Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:12:56.201Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.201Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.201Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.201Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.201Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.201Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.201Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.202Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.202Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.202Z][INFO] DeviceRepository::findAll - Found 8 devices
+[2025-08-12T13:12:56.202Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.202Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.202Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.202Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:12:56.203Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.203Z][DEBUG][database] 🔍 테이블 'data_points' 존재 여부: 존재
+[2025-08-12T13:12:56.203Z][DEBUG][database] ✅ 테이블 이미 존재: data_points
+[2025-08-12T13:12:56.203Z][DEBUG] DataPointRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:12:56.203Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.203Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.204Z][DEBUG] Original: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:12:56.204Z][DEBUG] Adapted: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:12:56.204Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.204Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.204Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.204Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.205Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.205Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.205Z][INFO] DataPointRepository::findByDeviceId - Found 5 data points for device: 1
+🎯 선택된 디바이스: PLC-001
+📊 데이터포인트: 5개
+🎯 알람 시나리오 설정:
+   - 온도 알람: 발생
+   - 모터 과부하: 발생
+   - 비상정지: 정상
+🔥 [PLC-001] 알람 발생 시뮬레이션...
+   📍 Production_Count = 956
+   📊 라인 속도: Line_Speed = 15.0 m/min
+   🚨 모터 과부하 데이터: Motor_Current = 32.0A
+   🚨 온도 알람 발생 데이터: Temperature = 38.5°C
+   ✅ 비상정지 정상: Emergency_Stop = FALSE
+✅ 알람 발생 시뮬레이션 완료: 5개 포인트
+✅ 알람 발생 메시지 전송 성공
+⏰ 알람 평가 및 가상포인트 계산 대기 중 (10초)...
+[2025-08-12T13:12:56.205Z][DEBUG][processing] 🔄 배치 처리 시작: 1개
+[2025-08-12T13:12:56.205Z][DEBUG][processing] 🧮 가상포인트 계산 시작: 1개
+[2025-08-12T13:12:56.206Z][INFO][VirtualPointEngine] 🔧 VirtualPointEngine 자동 초기화 시작...
+[2025-08-12T13:12:56.207Z][INFO][VirtualPointEngine] ✅ JavaScript 엔진 초기화 완료
+[2025-08-12T13:12:56.208Z][INFO][VirtualPointEngine] 시스템 함수 8/8 개 등록 완료
+[2025-08-12T13:12:56.208Z][INFO][VirtualPointEngine] ✅ VirtualPointEngine 자동 초기화 완료
+[2025-08-12T13:12:56.208Z][INFO][VirtualPointEngine] 🚀 VirtualPointEngine 자동 초기화 성공!
+[2025-08-12T13:12:56.208Z][DEBUG][processing] ✅ 가상포인트 계산 완료: 총 5개
+[2025-08-12T13:12:56.208Z][DEBUG][alarm] AlarmManager constructor starting...
+[2025-08-12T13:12:56.208Z][INFO][alarm] Clients initialization completed (Redis temporarily disabled)
+[2025-08-12T13:12:56.208Z][DEBUG] AlarmEngine constructor starting...
+[2025-08-12T13:12:56.208Z][DEBUG][redis] RedisClientImpl 생성됨 (hiredis 기반)
+[2025-08-12T13:12:56.209Z][ERROR][redis] Redis connect 에러: 연결 실패: Connection refused
+[2025-08-12T13:12:56.209Z][WARN] Failed to connect to Redis - alarm events will not be published
+[2025-08-12T13:12:56.209Z][DEBUG][redis] RedisClientImpl 소멸됨
+[2025-08-12T13:12:56.209Z][INFO] JavaScript engine initialized for script alarms
+[2025-08-12T13:12:56.209Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.210Z][DEBUG] DatabaseAbstractionLayer::executeNonQuery - Adapted query
+[2025-08-12T13:12:56.210Z][ERROR][database] SQLite non-query failed: near "(": syntax error
+[2025-08-12T13:12:56.210Z][DEBUG][AlarmEngine] Next occurrence ID initialized to: 1
+[2025-08-12T13:12:56.211Z][DEBUG][AlarmEngine] Initial data loaded successfully
+[2025-08-12T13:12:56.211Z][INFO] AlarmEngine initialized successfully in constructor
+[2025-08-12T13:12:56.211Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.211Z][DEBUG][alarm] Initial data loaded, next occurrence ID: 1
+[2025-08-12T13:12:56.211Z][INFO][alarm] Script engine initialized for AlarmManager
+[2025-08-12T13:12:56.211Z][INFO][alarm] AlarmManager initialized successfully in constructor
+[2025-08-12T13:12:56.211Z][DEBUG][processing] 🚨 알람 평가 시작: 5개
+[2025-08-12T13:12:56.212Z][DEBUG] Evaluating alarms for point 1
+[2025-08-12T13:12:56.212Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.212Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.212Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.213Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.213Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.213Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.213Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:1
+[2025-08-12T13:12:56.213Z][DEBUG] 🔍 Repository returned 0 rules for data_point:1
+[2025-08-12T13:12:56.213Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:1 (tenant:0)
+[2025-08-12T13:12:56.214Z][DEBUG] No alarm rules found for point 1
+[2025-08-12T13:12:56.214Z][DEBUG] Evaluating alarms for point 2
+[2025-08-12T13:12:56.214Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.214Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.214Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.214Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.215Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.215Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.215Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:2
+[2025-08-12T13:12:56.215Z][DEBUG] 🔍 Repository returned 0 rules for data_point:2
+[2025-08-12T13:12:56.215Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:2 (tenant:0)
+[2025-08-12T13:12:56.215Z][DEBUG] No alarm rules found for point 2
+[2025-08-12T13:12:56.215Z][DEBUG] Evaluating alarms for point 3
+[2025-08-12T13:12:56.216Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.216Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.216Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.216Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.217Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.217Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.217Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.217Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Current_Alarm
+[2025-08-12T13:12:56.217Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.217Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Overload_Script
+[2025-08-12T13:12:56.217Z][INFO][AlarmRuleRepository] findByTarget - Found 2 alarm rules for data_point:3
+[2025-08-12T13:12:56.218Z][DEBUG] 🔍 Repository returned 2 rules for data_point:3
+[2025-08-12T13:12:56.218Z][DEBUG] 📋 Rule 1/2: ID=12, Name=TEST_Motor_Current_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=3
+[2025-08-12T13:12:56.218Z][DEBUG] 🔍 Filter check for rule 12: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:12:56.218Z][DEBUG] ✅ Rule 12 (TEST_Motor_Current_Alarm) ADDED to filtered list
+[2025-08-12T13:12:56.218Z][DEBUG] 📋 Rule 2/2: ID=15, Name=TEST_Motor_Overload_Script, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=3
+[2025-08-12T13:12:56.218Z][DEBUG] 🔍 Filter check for rule 15: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:12:56.219Z][DEBUG] ✅ Rule 15 (TEST_Motor_Overload_Script) ADDED to filtered list
+[2025-08-12T13:12:56.219Z][DEBUG] 🎯 Final result: 2 rules passed filtering for data_point:3 (tenant:0)
+[2025-08-12T13:12:56.219Z][DEBUG] Found 2 alarm rules for point 3
+[2025-08-12T13:12:56.219Z][DEBUG] Evaluating rule 12 (TEST_Motor_Current_Alarm) for point 3
+[2025-08-12T13:12:56.219Z][DEBUG] Evaluating analog alarm for rule 12, value: 32.000000
+[2025-08-12T13:12:56.220Z][DEBUG] HIGH condition met: 32.000000 >= 30.000000
+[2025-08-12T13:12:56.220Z][DEBUG] Rule 12 - condition_triggered: 1, currently_in_alarm: 0
+[2025-08-12T13:12:56.220Z][INFO] Analog alarm TRIGGERED for rule 12: HIGH
+[2025-08-12T13:12:56.220Z][INFO] 🚨 Alarm TRIGGERED: Rule 12 (TEST_Motor_Current_Alarm) for point 3
+[2025-08-12T13:12:56.220Z][DEBUG] Evaluating rule 15 (TEST_Motor_Overload_Script) for point 3
+[2025-08-12T13:12:56.220Z][DEBUG] Evaluating script alarm for rule 15
+[2025-08-12T13:12:56.220Z][DEBUG] Executing condition script: var current = getPointValue(3); var temp = getPointValue(4); return current > 25 && temp > 30;
+[2025-08-12T13:12:56.221Z][ERROR] JavaScript execution error: SyntaxError: return not in a function
+[2025-08-12T13:12:56.221Z][DEBUG] No state change for rule 15 on point 3
+[2025-08-12T13:12:56.221Z][INFO] Generated 1 alarm events for point 3
+[2025-08-12T13:12:56.221Z][DEBUG][alarm] Notification processing completed for alarm 0
+[2025-08-12T13:12:56.221Z][INFO][alarm] AlarmManager processed 1 enhanced alarm events
+[2025-08-12T13:12:56.221Z][DEBUG][processing] 📝 Redis 알람 저장: alarm:active:12
+[2025-08-12T13:12:56.221Z][INFO][processing] 🚨 알람 발생: TEST_Motor_Current_Alarm - HIGH (값: 32.000000) (point_id=3)
+[2025-08-12T13:12:56.221Z][DEBUG] Evaluating alarms for point 4
+[2025-08-12T13:12:56.222Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.222Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.222Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.223Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.223Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.223Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.223Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.223Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_PLC_Temperature_Alarm
+[2025-08-12T13:12:56.223Z][INFO][AlarmRuleRepository] findByTarget - Found 1 alarm rules for data_point:4
+[2025-08-12T13:12:56.224Z][DEBUG] 🔍 Repository returned 1 rules for data_point:4
+[2025-08-12T13:12:56.224Z][DEBUG] 📋 Rule 1/1: ID=11, Name=TEST_PLC_Temperature_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=4
+[2025-08-12T13:12:56.224Z][DEBUG] 🔍 Filter check for rule 11: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:12:56.224Z][DEBUG] ✅ Rule 11 (TEST_PLC_Temperature_Alarm) ADDED to filtered list
+[2025-08-12T13:12:56.224Z][DEBUG] 🎯 Final result: 1 rules passed filtering for data_point:4 (tenant:0)
+[2025-08-12T13:12:56.224Z][DEBUG] Found 1 alarm rules for point 4
+[2025-08-12T13:12:56.224Z][DEBUG] Evaluating rule 11 (TEST_PLC_Temperature_Alarm) for point 4
+[2025-08-12T13:12:56.224Z][DEBUG] Evaluating analog alarm for rule 11, value: 38.500000
+[2025-08-12T13:12:56.224Z][DEBUG] HIGH condition met: 38.500000 >= 35.000000
+[2025-08-12T13:12:56.225Z][DEBUG] Rule 11 - condition_triggered: 1, currently_in_alarm: 0
+[2025-08-12T13:12:56.225Z][INFO] Analog alarm TRIGGERED for rule 11: HIGH
+[2025-08-12T13:12:56.225Z][INFO] 🚨 Alarm TRIGGERED: Rule 11 (TEST_PLC_Temperature_Alarm) for point 4
+[2025-08-12T13:12:56.225Z][INFO] Generated 1 alarm events for point 4
+[2025-08-12T13:12:56.225Z][DEBUG][alarm] Notification processing completed for alarm 0
+[2025-08-12T13:12:56.225Z][INFO][alarm] AlarmManager processed 1 enhanced alarm events
+[2025-08-12T13:12:56.225Z][DEBUG][processing] 📝 Redis 알람 저장: alarm:active:11
+[2025-08-12T13:12:56.225Z][INFO][processing] 🚨 알람 발생: TEST_PLC_Temperature_Alarm - HIGH (값: 38.500000) (point_id=4)
+[2025-08-12T13:12:56.225Z][DEBUG] Evaluating alarms for point 5
+[2025-08-12T13:12:56.225Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.225Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:12:56.225Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:12:56.226Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.226Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:12:56.226Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:12:56.227Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:12:56.227Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Emergency_Stop_Alarm
+[2025-08-12T13:12:56.227Z][INFO][AlarmRuleRepository] findByTarget - Found 1 alarm rules for data_point:5
+[2025-08-12T13:12:56.227Z][DEBUG] 🔍 Repository returned 1 rules for data_point:5
+[2025-08-12T13:12:56.227Z][DEBUG] 📋 Rule 1/1: ID=13, Name=TEST_Emergency_Stop_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=5
+[2025-08-12T13:12:56.227Z][DEBUG] 🔍 Filter check for rule 13: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:12:56.227Z][DEBUG] ✅ Rule 13 (TEST_Emergency_Stop_Alarm) ADDED to filtered list
+[2025-08-12T13:12:56.227Z][DEBUG] 🎯 Final result: 1 rules passed filtering for data_point:5 (tenant:0)
+[2025-08-12T13:12:56.227Z][DEBUG] Found 1 alarm rules for point 5
+[2025-08-12T13:12:56.227Z][DEBUG] Evaluating rule 13 (TEST_Emergency_Stop_Alarm) for point 5
+[2025-08-12T13:12:56.227Z][DEBUG] Evaluating digital alarm for rule 13, value: false
+[2025-08-12T13:12:56.228Z][DEBUG] ON_TRUE trigger: 0
+[2025-08-12T13:12:56.228Z][DEBUG] Rule 13 - condition_triggered: 0, currently_in_alarm: 0
+[2025-08-12T13:12:56.228Z][DEBUG] No state change for rule 13 on point 5
+[2025-08-12T13:12:56.228Z][DEBUG] No state change for rule 13 on point 5
+[2025-08-12T13:12:56.228Z][DEBUG] No alarm events generated for point 5
+[2025-08-12T13:12:56.228Z][DEBUG][processing] ✅ 알람 평가 완료: 평가=5개, 발생=2개
+[2025-08-12T13:12:56.228Z][DEBUG][processing] 🔄 Redis 저장 (전체 데이터): 1개
+[2025-08-12T13:12:56.229Z][DEBUG][processing] ✅ Redis 저장 완료 (전체 데이터): 1개
+[2025-08-12T13:12:56.229Z][DEBUG][processing] ✅ 배치 처리 완료: 1개
+[2025-08-12T13:12:56.229Z][DEBUG][processing] 🧵 스레드 0 배치 처리 완료: 1개
+   처리 진행... 1/10초 (큐: 0, 처리: 1)
+   처리 진행... 2/10초 (큐: 0, 처리: 1)
+   처리 진행... 3/10초 (큐: 0, 처리: 1)
+   처리 진행... 4/10초 (큐: 0, 처리: 1)
+   처리 진행... 5/10초 (큐: 0, 처리: 1)
+   처리 진행... 6/10초 (큐: 0, 처리: 1)
+   처리 진행... 7/10초 (큐: 0, 처리: 1)
+   처리 진행... 8/10초 (큐: 0, 처리: 1)
+   처리 진행... 9/10초 (큐: 0, 처리: 1)
+   처리 진행... 10/10초 (큐: 0, 처리: 1)
+
+🔍 === 알람 Redis 키 검증 ===
+❌ 알람 키 누락: alarm:active:6
+❌ 알람 키 누락: alarm:active:7
+❌ 알람 키 누락: alarm:active:8
+❌ 알람 키 누락: alarm:active:10
+📊 발견된 알람 키: 0/4
+
+🔍 === 가상포인트 Redis 키 검증 ===
+❌ 가상포인트 키 누락: virtual_point:4:result
+❌ 가상포인트 키 누락: virtual_point:5:result
+❌ 가상포인트 키 누락: virtual_point:6:result
+❌ 가상포인트 키 누락: virtual_point:7:result
+❌ 가상포인트 키 누락: virtual_point:8:result
+📊 발견된 가상포인트 키: 0/5
+
+🔍 === 기본 데이터 Redis 키 검증 ===
+✅ 기본 키 발견: device:full:1
+✅ 기본 키 발견: point:4:latest
+✅ 기본 키 발견: point:3:latest
+✅ 기본 키 발견: point:5:latest
+📊 발견된 기본 키: 4/4
+
+📈 === 알람 발생 테스트 최종 결과 ===
+📤 파이프라인 처리: 1개
+🚨 알람 평가: 5개
+🔥 알람 발생: 2개
+✅ 기본 키: 성공
+🚨 알람 키: 실패
+🧮 가상포인트: 실패
+
+🎉🎉🎉 알람 발생 시뮬레이션 성공! 🎉🎉🎉
+✅ DB → Worker스캔 → 파이프라인 → 알람평가 → Redis 완전 동작!
+[2025-08-12T13:13:06.235Z][INFO][processing] 🛑 DataProcessingService 중지 중...
+[2025-08-12T13:13:06.290Z][DEBUG][processing] 🧵 처리 스레드 0 종료
+[2025-08-12T13:13:06.315Z][DEBUG][processing] 🧵 처리 스레드 1 종료
+[2025-08-12T13:13:06.316Z][INFO][processing] ✅ DataProcessingService 중지 완료
+[2025-08-12T13:13:06.316Z][INFO][processing] ✅ DataProcessingService 소멸됨
+✅ DataProcessingService 정리됨
+[2025-08-12T13:13:06.316Z][INFO] 🛑 PipelineManager 큐 시스템 종료 시작...
+[2025-08-12T13:13:06.317Z][INFO] ✅ PipelineManager 큐 시스템 종료 완료
+✅ PipelineManager 정리됨
+[2025-08-12T13:13:06.318Z][INFO][redis] Redis 연결 해제 완료
+✅ 향상된 파이프라인 테스트 정리 완료
+[2025-08-12T13:13:06.318Z][DEBUG][redis] RedisClientImpl 소멸됨
+[       OK ] EnhancedPipelineTest.Alarm_Triggering_Simulation (10153 ms)
+[ RUN      ] EnhancedPipelineTest.Virtual_Point_Calculation_Verification
+
+🚀 === 알람 + 가상포인트 + Redis 통합 테스트 시작 ===
+[2025-08-12T13:13:06.318Z][INFO][config] 🔧 ConfigManager 실용적 초기화 시작...
+[2025-08-12T13:13:06.319Z][INFO][config] 📁 설정 디렉토리: /app/collector/tests/config
+[2025-08-12T13:13:06.321Z][INFO][config] 📄 .env - 0/53 라인 파싱됨
+[2025-08-12T13:13:06.321Z][INFO][config] ✅ 메인 설정 로드: .env
+[2025-08-12T13:13:06.321Z][INFO][config] 🔍 추가 설정 파일 확인 시작
+[2025-08-12T13:13:06.322Z][INFO][config] 📄 database.env - 0/60 라인 파싱됨
+[2025-08-12T13:13:06.323Z][INFO][config] ✅ 추가 설정 로드: database.env
+[2025-08-12T13:13:06.324Z][INFO][config] 📄 redis.env - 0/29 라인 파싱됨
+[2025-08-12T13:13:06.324Z][INFO][config] ✅ 추가 설정 로드: redis.env
+[2025-08-12T13:13:06.325Z][INFO][config] 📄 timeseries.env - 0/48 라인 파싱됨
+[2025-08-12T13:13:06.325Z][INFO][config] ✅ 추가 설정 로드: timeseries.env
+[2025-08-12T13:13:06.325Z][INFO][config] ✅ 추가 설정 파일 확인 완료
+[2025-08-12T13:13:06.326Z][INFO][config] ✅ ConfigManager 실용적 초기화 완료 (115개 설정, 12개 파일)
+[2025-08-12T13:13:06.326Z][INFO][database] ⚡ DatabaseManager 이미 자동 초기화됨 - 수동 초기화 건너뜀
+[2025-08-12T13:13:06.326Z][WARN] RepositoryFactory already initialized
+[2025-08-12T13:13:06.326Z][DEBUG][redis] RedisClientImpl 생성됨 (hiredis 기반)
+🔧 Redis 연결 시도: pulseone-redis:6379
+[2025-08-12T13:13:06.328Z][DEBUG][redis] Redis 컨텍스트 설정 완료 (타임아웃: 3000ms)
+[2025-08-12T13:13:06.328Z][INFO][redis] Redis 연결 성공: pulseone-redis:6379
+✅ Redis 연결 성공: pulseone-redis:6379
+🔧 파이프라인 시스템 초기화 중...
+[2025-08-12T13:13:06.328Z][INFO] ✅ PipelineManager 큐 시스템 시작됨
+✅ PipelineManager 시작됨
+[2025-08-12T13:13:06.328Z][INFO][processing] ✅ DataProcessingService 생성됨 - 스레드 수: 4
+[2025-08-12T13:13:06.329Z][INFO][processing] 🔧 스레드 수 설정: 2
+[2025-08-12T13:13:06.329Z][INFO][processing] 🚀 DataProcessingService 시작 중...
+[2025-08-12T13:13:06.329Z][DEBUG][processing] 🧵 처리 스레드 0 시작
+[2025-08-12T13:13:06.330Z][INFO][processing] ✅ DataProcessingService 시작 완료 (스레드 2개)
+✅ DataProcessingService 시작됨 (2개 처리 스레드)
+
+🔍 === 테스트 데이터 확인 ===
+[2025-08-12T13:13:06.330Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.331Z][DEBUG][processing] 🧵 처리 스레드 1 시작
+[2025-08-12T13:13:06.331Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.331Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.333Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.333Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.334Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.334Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:06.334Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_PLC_Temperature_Alarm
+[2025-08-12T13:13:06.334Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:06.335Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Emergency_Stop_Alarm
+[2025-08-12T13:13:06.335Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:06.335Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Current_Alarm
+[2025-08-12T13:13:06.335Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:06.336Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Overload_Script
+[2025-08-12T13:13:06.336Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:06.336Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Zone1_Temperature_Alarm
+[2025-08-12T13:13:06.336Z][INFO][AlarmRuleRepository] findAll - Found 5 alarm rules
+📊 총 알람 규칙: 5개
+🧪 테스트 알람 규칙: 5개
+[2025-08-12T13:13:06.337Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.338Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.339Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.340Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.341Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.341Z][DEBUG][database] 🔍 테이블 'devices' 존재 여부: 존재
+[2025-08-12T13:13:06.341Z][DEBUG][database] ✅ 테이블 이미 존재: devices
+[2025-08-12T13:13:06.341Z][DEBUG] DeviceRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:06.341Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.342Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.343Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:06.343Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:06.343Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.343Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.344Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.344Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.344Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.344Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.344Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.344Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.344Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.345Z][INFO] DeviceRepository::findAll - Found 8 devices
+📊 총 디바이스: 8개
+[2025-08-12T13:13:06.345Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.345Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.346Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.346Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.347Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.347Z][DEBUG][database] 🔍 테이블 'data_points' 존재 여부: 존재
+[2025-08-12T13:13:06.347Z][DEBUG][database] ✅ 테이블 이미 존재: data_points
+[2025-08-12T13:13:06.347Z][DEBUG] DataPointRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:06.347Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.347Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.349Z][DEBUG] Original: 
+        SELECT 
+            -- 기본 식별 정�...
+[2025-08-12T13:13:06.349Z][DEBUG] Adapted: 
+        SELECT 
+            -- 기본 식별 정�...
+[2025-08-12T13:13:06.349Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.350Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.350Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.350Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.350Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.350Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.350Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.351Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.351Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.351Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.351Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.351Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.351Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.352Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.352Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.352Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.352Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.352Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.352Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.352Z][INFO] DataPointRepository::findAll - Found 18 data points
+📊 총 데이터포인트: 18개
+✅ 향상된 파이프라인 테스트 환경 완료
+
+🔍 === 가상포인트 계산 검증 테스트 ===
+[2025-08-12T13:13:06.353Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.353Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.354Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.354Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.354Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.354Z][DEBUG][database] 🔍 테이블 'devices' 존재 여부: 존재
+[2025-08-12T13:13:06.354Z][DEBUG][database] ✅ 테이블 이미 존재: devices
+[2025-08-12T13:13:06.354Z][DEBUG] DeviceRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:06.355Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.355Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.356Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:06.356Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:06.356Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.356Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.356Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.356Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.357Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.357Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.357Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.357Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.357Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.357Z][INFO] DeviceRepository::findAll - Found 8 devices
+[2025-08-12T13:13:06.358Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.358Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.358Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.359Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:06.359Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.359Z][DEBUG][database] 🔍 테이블 'data_points' 존재 여부: 존재
+[2025-08-12T13:13:06.359Z][DEBUG][database] ✅ 테이블 이미 존재: data_points
+[2025-08-12T13:13:06.359Z][DEBUG] DataPointRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:06.359Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.359Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.360Z][DEBUG] Original: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:13:06.360Z][DEBUG] Adapted: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:13:06.360Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.360Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.361Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.361Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.361Z][INFO] DataPointRepository::findByDeviceId - Found 3 data points for device: 12
+🎯 선택된 디바이스: RTU-TEMP-001
+📊 데이터포인트: 3개
+🎯 알람 시나리오 설정:
+   - 온도 알람: 정상
+   - 모터 과부하: 정상
+   - 비상정지: 정상
+🔥 [RTU-TEMP-001] 알람 발생 시뮬레이션...
+   📍 Zone1_Temperature = 24
+   📍 Zone2_Temperature = 26
+   📍 Ambient_Temperature = 28.1906
+✅ 알람 발생 시뮬레이션 완료: 3개 포인트
+✅ 가상포인트 계산용 메시지 전송 성공
+⏰ 가상포인트 계산 대기 중 (8초)...
+[2025-08-12T13:13:06.361Z][DEBUG][processing] 🔄 배치 처리 시작: 1개
+[2025-08-12T13:13:06.361Z][DEBUG][processing] 🧮 가상포인트 계산 시작: 1개
+[2025-08-12T13:13:06.362Z][DEBUG][processing] ✅ 가상포인트 계산 완료: 총 3개
+[2025-08-12T13:13:06.362Z][DEBUG][processing] 🚨 알람 평가 시작: 3개
+[2025-08-12T13:13:06.362Z][DEBUG] Evaluating alarms for point 13
+[2025-08-12T13:13:06.362Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.363Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.363Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.364Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.364Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.364Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.364Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:06.364Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Zone1_Temperature_Alarm
+[2025-08-12T13:13:06.365Z][INFO][AlarmRuleRepository] findByTarget - Found 1 alarm rules for data_point:13
+[2025-08-12T13:13:06.365Z][DEBUG] 🔍 Repository returned 1 rules for data_point:13
+[2025-08-12T13:13:06.365Z][DEBUG] 📋 Rule 1/1: ID=14, Name=TEST_Zone1_Temperature_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=13
+[2025-08-12T13:13:06.365Z][DEBUG] 🔍 Filter check for rule 14: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:13:06.365Z][DEBUG] ✅ Rule 14 (TEST_Zone1_Temperature_Alarm) ADDED to filtered list
+[2025-08-12T13:13:06.365Z][DEBUG] 🎯 Final result: 1 rules passed filtering for data_point:13 (tenant:0)
+[2025-08-12T13:13:06.365Z][DEBUG] Found 1 alarm rules for point 13
+[2025-08-12T13:13:06.365Z][DEBUG] Evaluating rule 14 (TEST_Zone1_Temperature_Alarm) for point 13
+[2025-08-12T13:13:06.365Z][DEBUG] Evaluating analog alarm for rule 14, value: 24.000000
+[2025-08-12T13:13:06.365Z][DEBUG] Value in normal range: 24.000000
+[2025-08-12T13:13:06.366Z][DEBUG] Rule 14 - condition_triggered: 0, currently_in_alarm: 0
+[2025-08-12T13:13:06.366Z][DEBUG] No state change for rule 14 on point 13
+[2025-08-12T13:13:06.366Z][DEBUG] No state change for rule 14 on point 13
+[2025-08-12T13:13:06.366Z][DEBUG] No alarm events generated for point 13
+[2025-08-12T13:13:06.366Z][DEBUG] Evaluating alarms for point 14
+[2025-08-12T13:13:06.366Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.366Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.366Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.367Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.367Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.368Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.368Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:14
+[2025-08-12T13:13:06.368Z][DEBUG] 🔍 Repository returned 0 rules for data_point:14
+[2025-08-12T13:13:06.368Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:14 (tenant:0)
+[2025-08-12T13:13:06.368Z][DEBUG] No alarm rules found for point 14
+[2025-08-12T13:13:06.368Z][DEBUG] Evaluating alarms for point 15
+[2025-08-12T13:13:06.369Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.369Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:06.369Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:06.370Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.370Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:06.370Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:06.370Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:15
+[2025-08-12T13:13:06.371Z][DEBUG] 🔍 Repository returned 0 rules for data_point:15
+[2025-08-12T13:13:06.371Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:15 (tenant:0)
+[2025-08-12T13:13:06.371Z][DEBUG] No alarm rules found for point 15
+[2025-08-12T13:13:06.371Z][DEBUG][processing] ✅ 알람 평가 완료: 평가=3개, 발생=0개
+[2025-08-12T13:13:06.371Z][DEBUG][processing] 🔄 Redis 저장 (전체 데이터): 1개
+[2025-08-12T13:13:06.372Z][DEBUG][processing] ✅ Redis 저장 완료 (전체 데이터): 1개
+[2025-08-12T13:13:06.372Z][DEBUG][processing] ✅ 배치 처리 완료: 1개
+[2025-08-12T13:13:06.372Z][DEBUG][processing] 🧵 스레드 0 배치 처리 완료: 1개
+
+🔍 === 가상포인트 Redis 키 검증 ===
+❌ 가상포인트 키 누락: virtual_point:4:result
+❌ 가상포인트 키 누락: virtual_point:5:result
+❌ 가상포인트 키 누락: virtual_point:6:result
+❌ 가상포인트 키 누락: virtual_point:7:result
+❌ 가상포인트 키 누락: virtual_point:8:result
+📊 발견된 가상포인트 키: 0/5
+
+🔍 === 기본 데이터 Redis 키 검증 ===
+✅ 기본 키 발견: device:full:12
+✅ 기본 키 발견: point:4:latest
+✅ 기본 키 발견: point:3:latest
+✅ 기본 키 발견: point:5:latest
+📊 발견된 기본 키: 4/4
+
+📈 === 가상포인트 계산 최종 결과 ===
+📊 처리된 메시지: 1개
+✅ 기본 키: 성공
+🧮 가상포인트: 실패
+
+🎯 === 가상포인트 계산 검증 완료 ===
+[2025-08-12T13:13:14.363Z][INFO][processing] 🛑 DataProcessingService 중지 중...
+[2025-08-12T13:13:14.446Z][DEBUG][processing] 🧵 처리 스레드 1 종료
+[2025-08-12T13:13:14.466Z][DEBUG][processing] 🧵 처리 스레드 0 종료
+[2025-08-12T13:13:14.466Z][INFO][processing] ✅ DataProcessingService 중지 완료
+[2025-08-12T13:13:14.466Z][INFO][processing] ✅ DataProcessingService 소멸됨
+✅ DataProcessingService 정리됨
+[2025-08-12T13:13:14.466Z][INFO] 🛑 PipelineManager 큐 시스템 종료 시작...
+[2025-08-12T13:13:14.467Z][INFO] ✅ PipelineManager 큐 시스템 종료 완료
+✅ PipelineManager 정리됨
+[2025-08-12T13:13:14.467Z][INFO][redis] Redis 연결 해제 완료
+✅ 향상된 파이프라인 테스트 정리 완료
+[2025-08-12T13:13:14.467Z][DEBUG][redis] RedisClientImpl 소멸됨
+[       OK ] EnhancedPipelineTest.Virtual_Point_Calculation_Verification (8148 ms)
+[ RUN      ] EnhancedPipelineTest.Complete_Alarm_And_VirtualPoint_Integration
+
+🚀 === 알람 + 가상포인트 + Redis 통합 테스트 시작 ===
+[2025-08-12T13:13:14.467Z][INFO][config] 🔧 ConfigManager 실용적 초기화 시작...
+[2025-08-12T13:13:14.468Z][INFO][config] 📁 설정 디렉토리: /app/collector/tests/config
+[2025-08-12T13:13:14.468Z][INFO][config] 📄 .env - 0/53 라인 파싱됨
+[2025-08-12T13:13:14.469Z][INFO][config] ✅ 메인 설정 로드: .env
+[2025-08-12T13:13:14.469Z][INFO][config] 🔍 추가 설정 파일 확인 시작
+[2025-08-12T13:13:14.469Z][INFO][config] 📄 database.env - 0/60 라인 파싱됨
+[2025-08-12T13:13:14.469Z][INFO][config] ✅ 추가 설정 로드: database.env
+[2025-08-12T13:13:14.470Z][INFO][config] 📄 redis.env - 0/29 라인 파싱됨
+[2025-08-12T13:13:14.470Z][INFO][config] ✅ 추가 설정 로드: redis.env
+[2025-08-12T13:13:14.470Z][INFO][config] 📄 timeseries.env - 0/48 라인 파싱됨
+[2025-08-12T13:13:14.470Z][INFO][config] ✅ 추가 설정 로드: timeseries.env
+[2025-08-12T13:13:14.470Z][INFO][config] ✅ 추가 설정 파일 확인 완료
+[2025-08-12T13:13:14.471Z][INFO][config] ✅ ConfigManager 실용적 초기화 완료 (115개 설정, 16개 파일)
+[2025-08-12T13:13:14.471Z][INFO][database] ⚡ DatabaseManager 이미 자동 초기화됨 - 수동 초기화 건너뜀
+[2025-08-12T13:13:14.471Z][WARN] RepositoryFactory already initialized
+[2025-08-12T13:13:14.471Z][DEBUG][redis] RedisClientImpl 생성됨 (hiredis 기반)
+🔧 Redis 연결 시도: pulseone-redis:6379
+[2025-08-12T13:13:14.471Z][DEBUG][redis] Redis 컨텍스트 설정 완료 (타임아웃: 3000ms)
+[2025-08-12T13:13:14.471Z][INFO][redis] Redis 연결 성공: pulseone-redis:6379
+✅ Redis 연결 성공: pulseone-redis:6379
+🔧 파이프라인 시스템 초기화 중...
+[2025-08-12T13:13:14.472Z][INFO] ✅ PipelineManager 큐 시스템 시작됨
+✅ PipelineManager 시작됨
+[2025-08-12T13:13:14.472Z][INFO][processing] ✅ DataProcessingService 생성됨 - 스레드 수: 4
+[2025-08-12T13:13:14.472Z][INFO][processing] 🔧 스레드 수 설정: 2
+[2025-08-12T13:13:14.472Z][INFO][processing] 🚀 DataProcessingService 시작 중...
+[2025-08-12T13:13:14.472Z][DEBUG][processing] 🧵 처리 스레드 0 시작
+[2025-08-12T13:13:14.473Z][INFO][processing] ✅ DataProcessingService 시작 완료 (스레드 2개)
+✅ DataProcessingService 시작됨 (2개 처리 스레드)
+
+🔍 === 테스트 데이터 확인 ===
+[2025-08-12T13:13:14.473Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.473Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.473Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.473Z][DEBUG][processing] 🧵 처리 스레드 1 시작
+[2025-08-12T13:13:14.474Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.474Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.474Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.474Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_PLC_Temperature_Alarm
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Emergency_Stop_Alarm
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Current_Alarm
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Overload_Script
+[2025-08-12T13:13:14.475Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.476Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Zone1_Temperature_Alarm
+[2025-08-12T13:13:14.476Z][INFO][AlarmRuleRepository] findAll - Found 5 alarm rules
+📊 총 알람 규칙: 5개
+🧪 테스트 알람 규칙: 5개
+[2025-08-12T13:13:14.476Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.476Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.477Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.477Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.477Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.477Z][DEBUG][database] 🔍 테이블 'devices' 존재 여부: 존재
+[2025-08-12T13:13:14.477Z][DEBUG][database] ✅ 테이블 이미 존재: devices
+[2025-08-12T13:13:14.477Z][DEBUG] DeviceRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:14.478Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.478Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.478Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:14.478Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:14.479Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.479Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.479Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.479Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.479Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.479Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.479Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.480Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.480Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.480Z][INFO] DeviceRepository::findAll - Found 8 devices
+📊 총 디바이스: 8개
+[2025-08-12T13:13:14.480Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.480Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.481Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.481Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.481Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.481Z][DEBUG][database] 🔍 테이블 'data_points' 존재 여부: 존재
+[2025-08-12T13:13:14.481Z][DEBUG][database] ✅ 테이블 이미 존재: data_points
+[2025-08-12T13:13:14.481Z][DEBUG] DataPointRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:14.481Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.482Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.482Z][DEBUG] Original: 
+        SELECT 
+            -- 기본 식별 정�...
+[2025-08-12T13:13:14.482Z][DEBUG] Adapted: 
+        SELECT 
+            -- 기본 식별 정�...
+[2025-08-12T13:13:14.483Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.483Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.483Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.483Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.483Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.483Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.484Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.484Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.484Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.484Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.484Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.484Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.485Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.485Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.485Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.485Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.485Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.485Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.485Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.486Z][INFO] DataPointRepository::findAll - Found 18 data points
+📊 총 데이터포인트: 18개
+✅ 향상된 파이프라인 테스트 환경 완료
+
+🔍 === 🚀 완전 통합 테스트 (알람 + 가상포인트) ===
+[2025-08-12T13:13:14.486Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.486Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.487Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.487Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.487Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.487Z][DEBUG][database] 🔍 테이블 'devices' 존재 여부: 존재
+[2025-08-12T13:13:14.487Z][DEBUG][database] ✅ 테이블 이미 존재: devices
+[2025-08-12T13:13:14.487Z][DEBUG] DeviceRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:14.487Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.488Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.488Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:14.488Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, site_i...
+[2025-08-12T13:13:14.489Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.489Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.489Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.489Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.489Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.489Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.490Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.490Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.490Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.490Z][INFO] DeviceRepository::findAll - Found 8 devices
+🎯 모든 디바이스 종합 테스트: 8개
+
+🔧 === PLC-001 처리 ===
+[2025-08-12T13:13:14.490Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.490Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.491Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.491Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.491Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.491Z][DEBUG][database] 🔍 테이블 'data_points' 존재 여부: 존재
+[2025-08-12T13:13:14.491Z][DEBUG][database] ✅ 테이블 이미 존재: data_points
+[2025-08-12T13:13:14.491Z][DEBUG] DataPointRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:14.492Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.492Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.493Z][DEBUG] Original: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:13:14.493Z][DEBUG] Adapted: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:13:14.493Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.493Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.493Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.493Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.493Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.494Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.494Z][INFO] DataPointRepository::findByDeviceId - Found 5 data points for device: 1
+🎯 알람 시나리오 설정:
+   - 온도 알람: 발생
+   - 모터 과부하: 정상
+   - 비상정지: 활성화
+🔥 [PLC-001] 알람 발생 시뮬레이션...
+   📍 Production_Count = 785
+   📊 라인 속도: Line_Speed = 15.0 m/min
+   ✅ 모터 정상: Motor_Current = 20.0A
+   🚨 온도 알람 발생 데이터: Temperature = 38.5°C
+   🚨 비상정지 활성화: Emergency_Stop = TRUE
+✅ 알람 발생 시뮬레이션 완료: 5개 포인트
+   📤 메시지 전송 성공: 5개 포인트
+
+🔧 === RTU-TEMP-001 처리 ===
+[2025-08-12T13:13:14.494Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.494Z][DEBUG][processing] 🔄 배치 처리 시작: 1개
+[2025-08-12T13:13:14.494Z][DEBUG][processing] 🧮 가상포인트 계산 시작: 1개
+[2025-08-12T13:13:14.494Z][DEBUG][processing] ✅ 가상포인트 계산 완료: 총 5개
+[2025-08-12T13:13:14.494Z][DEBUG][processing] 🚨 알람 평가 시작: 5개
+[2025-08-12T13:13:14.494Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.494Z][DEBUG] Evaluating alarms for point 1
+[2025-08-12T13:13:14.495Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.495Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.495Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.495Z][DEBUG] Original: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.496Z][DEBUG] Adapted: SELECT name FROM sqlite_master WHERE type='table' ...
+[2025-08-12T13:13:14.496Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.496Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.496Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.496Z][DEBUG][database] 🔍 테이블 'data_points' 존재 여부: 존재
+[2025-08-12T13:13:14.496Z][DEBUG][database] ✅ 테이블 이미 존재: data_points
+[2025-08-12T13:13:14.497Z][DEBUG] DataPointRepository::ensureTableExists - Table creation/check completed
+[2025-08-12T13:13:14.497Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.497Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:1
+[2025-08-12T13:13:14.497Z][DEBUG] 🔍 Repository returned 0 rules for data_point:1
+[2025-08-12T13:13:14.497Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:1 (tenant:0)
+[2025-08-12T13:13:14.497Z][DEBUG] No alarm rules found for point 1
+[2025-08-12T13:13:14.497Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.498Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.498Z][DEBUG] Evaluating alarms for point 2
+[2025-08-12T13:13:14.498Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.498Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.498Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.498Z][DEBUG] Original: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:13:14.499Z][DEBUG] Adapted: 
+        SELECT 
+            id, device_id, name, ...
+[2025-08-12T13:13:14.499Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.499Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.499Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.499Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.499Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.500Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.500Z][INFO] DataPointRepository::findByDeviceId - Found 3 data points for device: 12
+🎯 알람 시나리오 설정:
+   - 온도 알람: 정상
+   - 모터 과부하: 정상
+   - 비상정지: 정상
+🔥 [RTU-TEMP-001] 알람 발생 시뮬레이션...
+   📍 Zone1_Temperature = [2025-08-12T13:13:14.500Z][INFO][database] SQLite query executed successfully
+24
+   📍 Zone2_Temperature = 26
+   📍 Ambient_Temperature = 34.1902
+✅ 알람 발생 시뮬레이션 완료: 3개 포인트
+[2025-08-12T13:13:14.500Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:2
+   📤 메시지 전송 성공: 3개 포인트
+
+⏰ 전체 처리 대기 중 (15초)...
+[2025-08-12T13:13:14.500Z][DEBUG] 🔍 Repository returned 0 rules for data_point:2
+[2025-08-12T13:13:14.500Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:2 (tenant:0)
+[2025-08-12T13:13:14.500Z][DEBUG] No alarm rules found for point 2
+[2025-08-12T13:13:14.500Z][DEBUG] Evaluating alarms for point 3
+[2025-08-12T13:13:14.500Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.501Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.501Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.501Z][DEBUG][processing] 🔄 배치 처리 시작: 1개
+[2025-08-12T13:13:14.501Z][DEBUG][processing] 🧮 가상포인트 계산 시작: 1개
+[2025-08-12T13:13:14.501Z][DEBUG][processing] ✅ 가상포인트 계산 완료: 총 3개
+[2025-08-12T13:13:14.501Z][DEBUG][processing] 🚨 알람 평가 시작: 3개
+[2025-08-12T13:13:14.501Z][DEBUG] Evaluating alarms for point 13
+[2025-08-12T13:13:14.502Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.502Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.502Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.502Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.502Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.502Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.503Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.503Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.503Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.503Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Current_Alarm
+[2025-08-12T13:13:14.503Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.503Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Motor_Overload_Script
+[2025-08-12T13:13:14.503Z][INFO][AlarmRuleRepository] findByTarget - Found 2 alarm rules for data_point:3
+[2025-08-12T13:13:14.504Z][DEBUG] 🔍 Repository returned 2 rules for data_point:3
+[2025-08-12T13:13:14.504Z][DEBUG] 📋 Rule 1/2: ID=12, Name=TEST_Motor_Current_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=3
+[2025-08-12T13:13:14.504Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.504Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.504Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Zone1_Temperature_Alarm
+[2025-08-12T13:13:14.504Z][INFO][AlarmRuleRepository] findByTarget - Found 1 alarm rules for data_point:13
+[2025-08-12T13:13:14.505Z][DEBUG] 🔍 Repository returned 1 rules for data_point:13
+[2025-08-12T13:13:14.505Z][DEBUG] 📋 Rule 1/1: ID=14, Name=TEST_Zone1_Temperature_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=13
+[2025-08-12T13:13:14.505Z][DEBUG] 🔍 Filter check for rule 14: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:13:14.505Z][DEBUG] ✅ Rule 14 (TEST_Zone1_Temperature_Alarm) ADDED to filtered list
+[2025-08-12T13:13:14.505Z][DEBUG] 🎯 Final result: 1 rules passed filtering for data_point:13 (tenant:0)
+[2025-08-12T13:13:14.505Z][DEBUG] Found 1 alarm rules for point 13
+[2025-08-12T13:13:14.505Z][DEBUG] 🔍 Filter check for rule 12: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:13:14.505Z][DEBUG] Evaluating rule 14 (TEST_Zone1_Temperature_Alarm) for point 13
+[2025-08-12T13:13:14.506Z][DEBUG] ✅ Rule 12 (TEST_Motor_Current_Alarm) ADDED to filtered list
+[2025-08-12T13:13:14.506Z][DEBUG] 📋 Rule 2/2: ID=15, Name=TEST_Motor_Overload_Script, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=3
+[2025-08-12T13:13:14.506Z][DEBUG] 🔍 Filter check for rule 15: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:13:14.506Z][DEBUG] ✅ Rule 15 (TEST_Motor_Overload_Script) ADDED to filtered list
+[2025-08-12T13:13:14.506Z][DEBUG] 🎯 Final result: 2 rules passed filtering for data_point:3 (tenant:0)
+[2025-08-12T13:13:14.507Z][DEBUG] Found 2 alarm rules for point 3
+[2025-08-12T13:13:14.507Z][DEBUG] Evaluating rule 12 (TEST_Motor_Current_Alarm) for point 3
+[2025-08-12T13:13:14.507Z][DEBUG] Evaluating analog alarm for rule 12, value: 20.000000
+[2025-08-12T13:13:14.507Z][DEBUG] Value in normal range: 20.000000
+[2025-08-12T13:13:14.507Z][DEBUG] Rule 12 - condition_triggered: 0, currently_in_alarm: 1
+[2025-08-12T13:13:14.507Z][DEBUG] Hysteresis check for clearing: 1, deadband: 1.000000
+[2025-08-12T13:13:14.507Z][INFO] Analog alarm CLEARED for rule 12: AUTO_CLEAR
+[2025-08-12T13:13:14.507Z][INFO] ✅ Alarm CLEARED: Rule 12 (TEST_Motor_Current_Alarm) for point 3
+[2025-08-12T13:13:14.507Z][DEBUG] Evaluating rule 15 (TEST_Motor_Overload_Script) for point 3
+[2025-08-12T13:13:14.508Z][DEBUG] Evaluating script alarm for rule 15
+[2025-08-12T13:13:14.506Z][DEBUG] Evaluating analog alarm for rule 14, value: 24.000000
+[2025-08-12T13:13:14.508Z][DEBUG] Value in normal range: 24.000000
+[2025-08-12T13:13:14.508Z][DEBUG] Rule 14 - condition_triggered: 0, currently_in_alarm: 0
+[2025-08-12T13:13:14.508Z][DEBUG] No state change for rule 14 on point 13
+[2025-08-12T13:13:14.508Z][DEBUG] No state change for rule 14 on point 13
+[2025-08-12T13:13:14.508Z][DEBUG] No alarm events generated for point 13
+[2025-08-12T13:13:14.508Z][DEBUG] Evaluating alarms for point 14
+[2025-08-12T13:13:14.509Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.509Z][DEBUG] Executing condition script: var current = getPointValue(3); var temp = getPointValue(4); return current > 25 && temp > 30;
+[2025-08-12T13:13:14.509Z][ERROR] JavaScript execution error: SyntaxError: return not in a function
+[2025-08-12T13:13:14.509Z][DEBUG] No state change for rule 15 on point 3
+[2025-08-12T13:13:14.509Z][INFO] Generated 1 alarm events for point 3
+[2025-08-12T13:13:14.509Z][DEBUG][alarm] Notification processing completed for alarm 0
+[2025-08-12T13:13:14.509Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.510Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.510Z][INFO][alarm] AlarmManager processed 1 enhanced alarm events
+[2025-08-12T13:13:14.510Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.510Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.511Z][DEBUG][processing] 📝 Redis 알람 저장: alarm:active:12
+[2025-08-12T13:13:14.511Z][INFO][processing] 🚨 알람 발생: Alarm cleared: TEST_Motor_Current_Alarm - AUTO_CLEAR (값: 20.000000) (point_id=3)
+[2025-08-12T13:13:14.511Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.511Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:14
+[2025-08-12T13:13:14.511Z][DEBUG] 🔍 Repository returned 0 rules for data_point:14
+[2025-08-12T13:13:14.511Z][DEBUG] Evaluating alarms for point 4
+[2025-08-12T13:13:14.512Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.512Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.512Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.512Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:14 (tenant:0)
+[2025-08-12T13:13:14.512Z][DEBUG] No alarm rules found for point 14
+[2025-08-12T13:13:14.512Z][DEBUG] Evaluating alarms for point 15
+[2025-08-12T13:13:14.512Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.513Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.513Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.513Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.513Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.513Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.514Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.514Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.514Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.514Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_PLC_Temperature_Alarm
+[2025-08-12T13:13:14.514Z][INFO][AlarmRuleRepository] findByTarget - Found 1 alarm rules for data_point:4
+[2025-08-12T13:13:14.514Z][DEBUG] 🔍 Repository returned 1 rules for data_point:4
+[2025-08-12T13:13:14.514Z][DEBUG] 📋 Rule 1/1: ID=11, Name=TEST_PLC_Temperature_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=4
+[2025-08-12T13:13:14.514Z][DEBUG] 🔍 Filter check for rule 11: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:13:14.514Z][DEBUG] ✅ Rule 11 (TEST_PLC_Temperature_Alarm) ADDED to filtered list
+[2025-08-12T13:13:14.515Z][DEBUG] 🎯 Final result: 1 rules passed filtering for data_point:4 (tenant:0)
+[2025-08-12T13:13:14.515Z][DEBUG] Found 1 alarm rules for point 4
+[2025-08-12T13:13:14.515Z][DEBUG] Evaluating rule 11 (TEST_PLC_Temperature_Alarm) for point 4
+[2025-08-12T13:13:14.515Z][DEBUG] Evaluating analog alarm for rule 11, value: 38.500000
+[2025-08-12T13:13:14.515Z][DEBUG] HIGH condition met: 38.500000 >= 35.000000
+[2025-08-12T13:13:14.515Z][DEBUG] Rule 11 - condition_triggered: 1, currently_in_alarm: 1
+[2025-08-12T13:13:14.515Z][DEBUG] No state change for rule 11 on point 4
+[2025-08-12T13:13:14.515Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.515Z][INFO][AlarmRuleRepository] findByTarget - Found 0 alarm rules for data_point:15
+[2025-08-12T13:13:14.516Z][DEBUG] 🔍 Repository returned 0 rules for data_point:15
+[2025-08-12T13:13:14.516Z][DEBUG] 🎯 Final result: 0 rules passed filtering for data_point:15 (tenant:0)
+[2025-08-12T13:13:14.516Z][DEBUG] No alarm rules found for point 15
+[2025-08-12T13:13:14.516Z][DEBUG][processing] ✅ 알람 평가 완료: 평가=3개, 발생=0개
+[2025-08-12T13:13:14.516Z][DEBUG][processing] 🔄 Redis 저장 (전체 데이터): 1개
+[2025-08-12T13:13:14.516Z][DEBUG] No state change for rule 11 on point 4
+[2025-08-12T13:13:14.516Z][DEBUG] No alarm events generated for point 4
+[2025-08-12T13:13:14.517Z][DEBUG] Evaluating alarms for point 5
+[2025-08-12T13:13:14.517Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.517Z][DEBUG] DatabaseAbstractionLayer created for DB type: SQLITE
+[2025-08-12T13:13:14.517Z][DEBUG] DatabaseAbstractionLayer::executeQuery - Processing query
+[2025-08-12T13:13:14.517Z][DEBUG][processing] ✅ Redis 저장 완료 (전체 데이터): 1개
+[2025-08-12T13:13:14.518Z][DEBUG][processing] ✅ 배치 처리 완료: 1개
+[2025-08-12T13:13:14.518Z][DEBUG][processing] 🧵 스레드 1 배치 처리 완료: 1개
+[2025-08-12T13:13:14.518Z][DEBUG] Original: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.518Z][DEBUG] Adapted: 
+        SELECT 
+            id, tenant_id, name, ...
+[2025-08-12T13:13:14.518Z][INFO][database] SQLite query executed successfully
+[2025-08-12T13:13:14.518Z][DEBUG][AlarmRuleRepository] mapRowToEntity - Processing 35 columns
+[2025-08-12T13:13:14.518Z][DEBUG][AlarmRuleRepository] Successfully mapped alarm rule: TEST_Emergency_Stop_Alarm
+[2025-08-12T13:13:14.519Z][INFO][AlarmRuleRepository] findByTarget - Found 1 alarm rules for data_point:5
+[2025-08-12T13:13:14.519Z][DEBUG] 🔍 Repository returned 1 rules for data_point:5
+[2025-08-12T13:13:14.519Z][DEBUG] 📋 Rule 1/1: ID=13, Name=TEST_Emergency_Stop_Alarm, TenantId=1, Enabled=YES, TargetType=data_point, TargetId=5
+[2025-08-12T13:13:14.519Z][DEBUG] 🔍 Filter check for rule 13: tenant_match=NO (요청:0, 규칙:1), enabled=YES
+[2025-08-12T13:13:14.519Z][DEBUG] ✅ Rule 13 (TEST_Emergency_Stop_Alarm) ADDED to filtered list
+[2025-08-12T13:13:14.519Z][DEBUG] 🎯 Final result: 1 rules passed filtering for data_point:5 (tenant:0)
+[2025-08-12T13:13:14.519Z][DEBUG] Found 1 alarm rules for point 5
+[2025-08-12T13:13:14.519Z][DEBUG] Evaluating rule 13 (TEST_Emergency_Stop_Alarm) for point 5
+[2025-08-12T13:13:14.519Z][DEBUG] Evaluating digital alarm for rule 13, value: true
+[2025-08-12T13:13:14.519Z][DEBUG] ON_TRUE trigger: 1
+[2025-08-12T13:13:14.519Z][DEBUG] Rule 13 - condition_triggered: 1, currently_in_alarm: 0
+[2025-08-12T13:13:14.520Z][INFO] Digital alarm TRIGGERED for rule 13: DIGITAL_TRUE
+[2025-08-12T13:13:14.520Z][INFO] 🚨 Alarm TRIGGERED: Rule 13 (TEST_Emergency_Stop_Alarm) for point 5
+[2025-08-12T13:13:14.520Z][INFO] Generated 1 alarm events for point 5
+[2025-08-12T13:13:14.520Z][DEBUG][alarm] Notification processing completed for alarm 0
+[2025-08-12T13:13:14.520Z][INFO][alarm] AlarmManager processed 1 enhanced alarm events
+[2025-08-12T13:13:14.520Z][DEBUG][processing] 📝 Redis 알람 저장: alarm:active:13
+[2025-08-12T13:13:14.521Z][INFO][processing] 🚨 알람 발생: TEST_Emergency_Stop_Alarm - DIGITAL_TRUE (값: 1.000000) (point_id=5)
+[2025-08-12T13:13:14.521Z][DEBUG][processing] ✅ 알람 평가 완료: 평가=5개, 발생=2개
+[2025-08-12T13:13:14.521Z][DEBUG][processing] 🔄 Redis 저장 (전체 데이터): 1개
+[2025-08-12T13:13:14.522Z][DEBUG][processing] ✅ Redis 저장 완료 (전체 데이터): 1개
+[2025-08-12T13:13:14.522Z][DEBUG][processing] ✅ 배치 처리 완료: 1개
+[2025-08-12T13:13:14.522Z][DEBUG][processing] 🧵 스레드 0 배치 처리 완료: 1개
+   통합 처리... 1/15초 (큐: 0, 완료: 4)
+   통합 처리... 2/15초 (큐: 0, 완료: 4)
+   통합 처리... 3/15초 (큐: 0, 완료: 4)
+   통합 처리... 4/15초 (큐: 0, 완료: 4)
+   통합 처리... 5/15초 (큐: 0, 완료: 4)
+   통합 처리... 6/15초 (큐: 0, 완료: 4)
+   통합 처리... 7/15초 (큐: 0, 완료: 4)
+   통합 처리... 8/15초 (큐: 0, 완료: 4)
+   통합 처리... 9/15초 (큐: 0, 완료: 4)
+   통합 처리... 10/15초 (큐: 0, 완료: 4)
+   통합 처리... 11/15초 (큐: 0, 완료: 4)
+   통합 처리... 12/15초 (큐: 0, 완료: 4)
+   통합 처리... 13/15초 (큐: 0, 완료: 4)
+   통합 처리... 14/15초 (큐: 0, 완료: 4)
+   통합 처리... 15/15초 (큐: 0, 완료: 4)
+
+🔍 === 알람 Redis 키 검증 ===
+❌ 알람 키 누락: alarm:active:6
+❌ 알람 키 누락: alarm:active:7
+❌ 알람 키 누락: alarm:active:8
+❌ 알람 키 누락: alarm:active:10
+📊 발견된 알람 키: 0/4
+
+🔍 === 가상포인트 Redis 키 검증 ===
+❌ 가상포인트 키 누락: virtual_point:4:result
+❌ 가상포인트 키 누락: virtual_point:5:result
+❌ 가상포인트 키 누락: virtual_point:6:result
+❌ 가상포인트 키 누락: virtual_point:7:result
+❌ 가상포인트 키 누락: virtual_point:8:result
+📊 발견된 가상포인트 키: 0/5
+
+🔍 === 기본 데이터 Redis 키 검증 ===
+✅ 기본 키 발견: device:full:1
+✅ 기본 키 발견: point:4:latest
+✅ 기본 키 발견: point:3:latest
+✅ 기본 키 발견: point:5:latest
+📊 발견된 기본 키: 4/4
+
+📈 === 🎉 완전 통합 테스트 최종 결과 🎉 ===
+📊 테스트 디바이스: 8개
+📤 전송 메시지: 2개
+🚨 알람 시나리오: 1개
+📥 파이프라인 처리: 4개
+🔍 알람 평가: 8개
+🔥 알람 발생: 2개
+📊 Redis 저장: 10개
+
+🎯 검증 결과:
+✅ 기본 파이프라인: 성공
+🚨 알람 시스템: 실패
+🧮 가상포인트: 실패
+
+🎉🎉🎉 완전 통합 테스트 대성공! 🎉🎉🎉
+🚀 DB → Worker → 파이프라인 → 알람평가 → 가상포인트계산 → Redis 완전 동작!
+✅ PulseOne 알람 + 가상포인트 시스템 검증 완료!
+
+🎯 === 완전 통합 테스트 완료! ===
+[2025-08-12T13:13:29.548Z][INFO][processing] 🛑 DataProcessingService 중지 중...
+[2025-08-12T13:13:29.601Z][DEBUG][processing] 🧵 처리 스레드 0 종료
+[2025-08-12T13:13:29.639Z][DEBUG][processing] 🧵 처리 스레드 1 종료
+[2025-08-12T13:13:29.640Z][INFO][processing] ✅ DataProcessingService 중지 완료
+[2025-08-12T13:13:29.640Z][INFO][processing] ✅ DataProcessingService 소멸됨
+✅ DataProcessingService 정리됨
+[2025-08-12T13:13:29.640Z][INFO] 🛑 PipelineManager 큐 시스템 종료 시작...
+[2025-08-12T13:13:29.641Z][INFO] ✅ PipelineManager 큐 시스템 종료 완료
+✅ PipelineManager 정리됨
+[2025-08-12T13:13:29.642Z][INFO][redis] Redis 연결 해제 완료
+✅ 향상된 파이프라인 테스트 정리 완료
+[2025-08-12T13:13:29.642Z][DEBUG][redis] RedisClientImpl 소멸됨
+[       OK ] EnhancedPipelineTest.Complete_Alarm_And_VirtualPoint_Integration (15175 ms)
+[----------] 3 tests from EnhancedPipelineTest (33477 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (33477 ms total)
+[  PASSED  ] 3 tests.
+[2025-08-12T13:13:29.643Z][INFO][alarm] Shutting down AlarmManager
+[2025-08-12T13:13:29.643Z][INFO][alarm] AlarmManager shutdown completed
+[2025-08-12T13:13:29.643Z][INFO] Shutting down AlarmEngine
+[2025-08-12T13:13:29.644Z][INFO] AlarmEngine shutdown completed
+[2025-08-12T13:13:29.644Z][INFO][VirtualPointEngine] VirtualPointEngine 종료 중...
+[2025-08-12T13:13:29.645Z][INFO][VirtualPointEngine] JavaScript 엔진 정리 완료
+[2025-08-12T13:13:29.645Z][INFO][VirtualPointEngine] VirtualPointEngine 종료 완료
+[2025-08-12T13:13:29.645Z][INFO] 🔧 RepositoryFactory shutting down...
