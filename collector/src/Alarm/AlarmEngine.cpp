@@ -142,14 +142,26 @@ void AlarmEngine::loadInitialData() {
     try {
         // 다음 occurrence ID 로드
         if (alarm_occurrence_repo_) {
-            auto max_occurrence = alarm_occurrence_repo_->findMaxId();
-            next_occurrence_id_ = max_occurrence ? (*max_occurrence + 1) : 1;
+            // 🔥 수정: int 반환값 처리 (optional 제거)
+            int max_occurrence = alarm_occurrence_repo_->findMaxId();
+            next_occurrence_id_ = (max_occurrence > 0) ? (max_occurrence + 1) : 1;
+                                 
+            LogManager::getInstance().log("AlarmEngine", LogLevel::DEBUG,
+                                        "Next occurrence ID initialized to: " + 
+                                        std::to_string(next_occurrence_id_));
+        } else {
+            // Repository가 없으면 기본값 사용
+            next_occurrence_id_ = 1;
+            LogManager::getInstance().log("AlarmEngine", LogLevel::WARN,
+                                        "AlarmOccurrenceRepository not available, using default occurrence ID");
         }
         
-        LogManager::getInstance().Debug("Initial data loaded successfully");
+        LogManager::getInstance().log("AlarmEngine", LogLevel::DEBUG, 
+                                    "Initial data loaded successfully");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Failed to load initial data: " + std::string(e.what()));
+        LogManager::getInstance().log("AlarmEngine", LogLevel::ERROR,
+                                    "Failed to load initial data: " + std::string(e.what()));
         // 에러가 있어도 계속 진행 (기본값 사용)
         next_occurrence_id_ = 1;
     }

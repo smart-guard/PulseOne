@@ -1023,6 +1023,33 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActiveByRuleId
     }
 }
 
+int AlarmOccurrenceRepository::findMaxId() {
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // 🔥 수정: ExtendedSQLQueries.h 상수 사용 (프로젝트 표준)
+        auto results = db_layer.executeQuery(SQL::Alarm::Occurrence::FIND_MAX_ID);
+        
+        if (!results.empty() && results[0].find("max_id") != results[0].end()) {
+            const std::string& max_id_str = results[0].at("max_id");
+            if (!max_id_str.empty() && max_id_str != "NULL") {
+                return std::stoi(max_id_str);
+            }
+        }
+        
+        return 0; // 테이블이 비어있으면 0 반환
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findMaxId failed: " + std::string(e.what()));
+        return 0; // 에러 시에도 0 반환
+    }
+}
+
 
 } // namespace Repositories
 } // namespace Database

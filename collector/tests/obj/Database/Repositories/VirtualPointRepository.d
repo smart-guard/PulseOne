@@ -17,5 +17,6 @@ obj/Database/Repositories/VirtualPointRepository.o: \
  ../include/Database/Entities/BaseEntity.h \
  ../include/Common/DriverStatistics.h \
  ../include/Database/Repositories/RepositoryHelpers.h \
- ../include/Database/SQLQueries.h \
- ../include/Database/DatabaseAbstractionLayer.h
+ ../include/Database/DatabaseAbstractionLayer.h \
+ ../include/Database/ExtendedSQLQueries.h \
+ ../include/Database/SQLQueries.h
