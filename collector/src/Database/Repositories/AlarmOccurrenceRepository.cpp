@@ -48,7 +48,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll() {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 사용
-        auto results = db_layer.executeQuery(SQL::Alarm::Occurrence::FIND_ALL);
+        auto results = db_layer.executeQuery(SQL::AlarmOccurrence::FIND_ALL);
         
         std::vector<AlarmOccurrenceEntity> entities;
         entities.reserve(results.size());
@@ -92,7 +92,7 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        std::string query = RepositoryHelpers::replaceParameter(SQL::Alarm::Occurrence::FIND_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -135,7 +135,7 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         auto params = entityToParams(entity);
-        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::Alarm::Occurrence::INSERT, params);
+        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::AlarmOccurrence::INSERT, params);
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -176,7 +176,7 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         auto params = entityToParams(entity);
         params["id"] = std::to_string(entity.getId()); // WHERE 절용
-        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::Alarm::Occurrence::UPDATE, params);
+        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::AlarmOccurrence::UPDATE, params);
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -208,7 +208,7 @@ bool AlarmOccurrenceRepository::deleteById(int id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        std::string query = RepositoryHelpers::replaceParameter(SQL::Alarm::Occurrence::DELETE_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::DELETE_BY_ID, std::to_string(id));
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -248,7 +248,7 @@ bool AlarmOccurrenceRepository::exists(int id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        std::string query = RepositoryHelpers::replaceParameter(SQL::Alarm::Occurrence::EXISTS_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::EXISTS_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
         return !results.empty() && std::stoi(results[0].at("count")) > 0;
@@ -284,7 +284,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByIds(const st
         }
         
         // 🎯 기본 쿼리에 WHERE 절 추가
-        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
+        std::string query = SQL::AlarmOccurrence::FIND_ALL;
         // ORDER BY 앞에 WHERE 절 삽입
         size_t order_pos = query.find("ORDER BY");
         if (order_pos != std::string::npos) {
@@ -329,7 +329,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByConditions(
         }
         
         // 🎯 RepositoryHelpers를 사용한 동적 쿼리 구성
-        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
+        std::string query = SQL::AlarmOccurrence::FIND_ALL;
         query += RepositoryHelpers::buildWhereClause(conditions);
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
@@ -366,7 +366,7 @@ int AlarmOccurrenceRepository::countByConditions(const std::vector<QueryConditio
         }
         
         // 🎯 ExtendedSQLQueries.h 상수 + RepositoryHelpers 패턴
-        std::string query = SQL::Alarm::Occurrence::COUNT_ALL;
+        std::string query = SQL::AlarmOccurrence::COUNT_ALL;
         query += RepositoryHelpers::buildWhereClause(conditions);
         
         DatabaseAbstractionLayer db_layer;
@@ -475,7 +475,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActive(std::op
             return {};
         }
         
-        std::string query = SQL::Alarm::Occurrence::FIND_ACTIVE;
+        std::string query = SQL::AlarmOccurrence::FIND_ACTIVE;
         
         if (tenant_id.has_value()) {
             // 🎯 RepositoryHelpers를 사용한 조건 추가
@@ -519,7 +519,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByRuleId(int r
             return {};
         }
         
-        std::string query = SQL::Alarm::Occurrence::FIND_BY_RULE_ID;
+        std::string query = SQL::AlarmOccurrence::FIND_BY_RULE_ID;
         
         // 🎯 RepositoryHelpers 패턴
         query = RepositoryHelpers::replaceParameter(query, std::to_string(rule_id));
@@ -566,7 +566,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTenant(int t
             return {};
         }
         
-        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
+        std::string query = SQL::AlarmOccurrence::FIND_ALL;
         
         // 🎯 WHERE 절 구성
         std::string where_clause = "WHERE tenant_id = " + std::to_string(tenant_id);
@@ -618,7 +618,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTimeRange(
             return {};
         }
         
-        std::string query = SQL::Alarm::Occurrence::FIND_ALL;
+        std::string query = SQL::AlarmOccurrence::FIND_ALL;
         
         // 🎯 WHERE 절 구성
         std::string start_str = timePointToString(start_time);
@@ -675,7 +675,7 @@ bool AlarmOccurrenceRepository::acknowledge(int64_t occurrence_id, int acknowled
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        std::string query = SQL::Alarm::Occurrence::ACKNOWLEDGE;
+        std::string query = SQL::AlarmOccurrence::ACKNOWLEDGE;
         query = RepositoryHelpers::replaceParameter(query, std::to_string(acknowledged_by));
         query = RepositoryHelpers::replaceParameter(query, escapeString(comment));
         query = RepositoryHelpers::replaceParameter(query, std::to_string(occurrence_id));
@@ -710,7 +710,7 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, const std::string& 
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        std::string query = SQL::Alarm::Occurrence::CLEAR;
+        std::string query = SQL::AlarmOccurrence::CLEAR;
         query = RepositoryHelpers::replaceParameter(query, escapeString(cleared_value));
         query = RepositoryHelpers::replaceParameter(query, escapeString(comment));
         query = RepositoryHelpers::replaceParameter(query, std::to_string(occurrence_id));
@@ -904,7 +904,7 @@ bool AlarmOccurrenceRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
         // 🔥 ExtendedSQLQueries.h 사용
-        return db_layer.executeNonQuery(SQL::Alarm::Occurrence::CREATE_TABLE);
+        return db_layer.executeNonQuery(SQL::AlarmOccurrence::CREATE_TABLE);
     } catch (const std::exception& e) {
         LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
                                     "ensureTableExists failed: " + std::string(e.what()));
@@ -1032,7 +1032,7 @@ int AlarmOccurrenceRepository::findMaxId() {
         DatabaseAbstractionLayer db_layer;
         
         // 🔥 수정: ExtendedSQLQueries.h 상수 사용 (프로젝트 표준)
-        auto results = db_layer.executeQuery(SQL::Alarm::Occurrence::FIND_MAX_ID);
+        auto results = db_layer.executeQuery(SQL::AlarmOccurrence::FIND_MAX_ID);
         
         if (!results.empty() && results[0].find("max_id") != results[0].end()) {
             const std::string& max_id_str = results[0].at("max_id");
