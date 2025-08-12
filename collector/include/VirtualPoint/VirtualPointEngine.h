@@ -257,8 +257,21 @@ private:
     mutable std::mutex stats_mutex_;
     
     // 런타임 상태
-    int current_vp_id_{0};
     int tenant_id_{0};
+
+    mutable std::mutex current_vp_mutex_;
+    int current_vp_id_ = 0;
+    
+    // 안전한 접근 메서드들:
+    void setCurrentVpId(int vp_id) {
+        std::lock_guard<std::mutex> lock(current_vp_mutex_);
+        current_vp_id_ = vp_id;
+    }
+    
+    int getCurrentVpId() const {
+        std::lock_guard<std::mutex> lock(current_vp_mutex_);
+        return current_vp_id_;
+    }
 };
 
 } // namespace VirtualPoint
