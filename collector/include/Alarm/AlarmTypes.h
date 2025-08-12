@@ -535,6 +535,160 @@ struct AlarmFilter {
     int offset = 0;
 };
 
+
+/**
+ * @brief 알람 처리 통계
+ * @details 시스템 전체의 알람 처리 현황을 추적
+ */
+struct AlarmProcessingStats {
+    uint64_t total_evaluated = 0;      // 총 평가된 알람 수
+    uint64_t total_triggered = 0;      // 총 발생한 알람 수
+    uint64_t total_cleared = 0;        // 총 해제된 알람 수
+    uint64_t total_acknowledged = 0;   // 총 인지된 알람 수
+    
+    // 심각도별 통계
+    uint64_t critical_count = 0;       // Critical 알람 수
+    uint64_t high_count = 0;           // High 알람 수
+    uint64_t medium_count = 0;         // Medium 알람 수
+    uint64_t low_count = 0;            // Low 알람 수
+    uint64_t info_count = 0;           // Info 알람 수
+    
+    // 타입별 통계
+    uint64_t analog_alarms = 0;        // 아날로그 알람 수
+    uint64_t digital_alarms = 0;       // 디지털 알람 수
+    uint64_t script_alarms = 0;        // 스크립트 알람 수
+    
+    // 성능 통계
+    double avg_evaluation_time_us = 0.0;  // 평균 평가 시간 (마이크로초)
+    uint64_t evaluation_errors = 0;       // 평가 에러 수
+    
+    // 시간 정보
+    std::chrono::system_clock::time_point last_alarm_time;
+    std::chrono::system_clock::time_point stats_start_time;
+    
+    /**
+     * @brief 기본 생성자 - 시작 시간 초기화
+     */
+    AlarmProcessingStats() 
+        : stats_start_time(std::chrono::system_clock::now()) {}
+    
+    /**
+     * @brief 총 활성 알람 수 계산
+     */
+    uint64_t getTotalActiveAlarms() const {
+        return total_triggered - total_cleared;
+    }
+    
+    /**
+     * @brief 알람 발생률 계산 (알람/평가)
+     */
+    double getAlarmRate() const {
+        return (total_evaluated > 0) ? 
+               static_cast<double>(total_triggered) / static_cast<double>(total_evaluated) : 0.0;
+    }
+    
+    /**
+     * @brief 통계를 JSON으로 변환
+     */
+    nlohmann::json toJson() const {
+        nlohmann::json j;
+        j["total_evaluated"] = total_evaluated;
+        j["total_triggered"] = total_triggered;
+        j["total_cleared"] = total_cleared;
+        j["total_acknowledged"] = total_acknowledged;
+        j["total_active"] = getTotalActiveAlarms();
+        
+        j["by_severity"] = {
+            {"critical", critical_count},
+            {"high", high_count},
+            {"medium", medium_count},
+            {"low", low_count},
+            {"info", info_count}
+        };
+        
+        j["by_type"] = {
+            {"analog", analog_alarms},
+            {"digital", digital_alarms},
+            {"script", script_alarms}
+        };
+        
+        j["performance"] = {
+            {"avg_evaluation_time_us", avg_evaluation_time_us},
+            {"evaluation_errors", evaluation_errors},
+            {"alarm_rate", getAlarmRate()}
+        };
+        
+        return j;
+    }
+};
+
+/**
+ * @brief 알람 시스템 상태 정보
+ */
+struct AlarmSystemStatus {
+    bool engine_initialized = false;
+    bool repositories_available = false;
+    bool script_engine_ready = false;
+    
+    size_t active_rules_count = 0;
+    size_t total_rules_count = 0;
+    
+    std::chrono::system_clock::time_point last_evaluation_time;
+    std::chrono::system_clock::time_point system_start_time;
+    
+    AlarmSystemStatus() 
+        : system_start_time(std::chrono::system_clock::now()) {}
+    
+    /**
+     * @brief 시스템 가동 시간 계산
+     */
+    std::chrono::duration<double> getUptime() const {
+        return std::chrono::system_clock::now() - system_start_time;
+    }
+    
+    /**
+     * @brief 시스템이 완전히 준비되었는지 확인
+     */
+    bool isFullyReady() const {
+        return engine_initialized && repositories_available && script_engine_ready;
+    }
+    
+    nlohmann::json toJson() const {
+        nlohmann::json j;
+        j["engine_initialized"] = engine_initialized;
+        j["repositories_available"] = repositories_available;
+        j["script_engine_ready"] = script_engine_ready;
+        j["fully_ready"] = isFullyReady();
+        
+        j["rules"] = {
+            {"active", active_rules_count},
+            {"total", total_rules_count}
+        };
+        
+        j["uptime_seconds"] = getUptime().count();
+        
+        return j;
+    }
+};
+
+/**
+ * @brief 통합 알람 메트릭스
+ * @details 모든 알람 관련 메트릭을 포함하는 최상위 구조체
+ */
+struct AlarmMetrics {
+    AlarmProcessingStats processing;
+    AlarmSystemStatus system;
+    
+    nlohmann::json toJson() const {
+        nlohmann::json j;
+        j["processing"] = processing.toJson();
+        j["system"] = system.toJson();
+        j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        return j;
+    }
+};
+
 // 알람 통계
 struct AlarmStatistics {
     int total_rules = 0;

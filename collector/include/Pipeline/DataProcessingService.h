@@ -9,6 +9,7 @@
 #include "Common/Structs.h"
 #include "Client/RedisClient.h"
 #include "Client/InfluxClient.h"
+#include "VirtualPoint/VirtualPointEngine.h"
 #include <vector>
 #include <thread>
 #include <atomic>
@@ -178,6 +179,63 @@ private:
      * @brief 통계 업데이트 헬퍼
      */
     void UpdateStatistics(size_t processed_count, double processing_time_ms);
+
+    // 알람 관련 통계
+    std::atomic<uint64_t> total_alarms_evaluated_{0};
+    std::atomic<uint64_t> total_alarms_triggered_{0};
+    std::atomic<uint64_t> critical_alarms_count_{0};
+    std::atomic<uint64_t> high_alarms_count_{0};
+
+    /**
+     * @brief 가상포인트 계산 (누락되었던 메서드!)
+     * @param batch 디바이스 데이터 메시지 배치
+     * @return 원본 데이터 + 가상포인트 계산 결과
+     */
+    std::vector<Structs::TimestampedValue> CalculateVirtualPoints(
+        const std::vector<Structs::DeviceDataMessage>& batch);
+    
+    /**
+     * @brief 알람 평가 실행
+     * @param data TimestampedValue 데이터 (원본 + 가상포인트)
+     * @param thread_index 스레드 인덱스 (로깅용)
+     */
+    void EvaluateAlarms(const std::vector<Structs::TimestampedValue>& data, size_t thread_index);
+    
+    /**
+     * @brief 알람 이벤트 후처리 (Redis 저장, 알림 등)
+     * @param alarm_events 발생한 알람 이벤트들
+     * @param source_data 소스 데이터 (참조용)
+     * @param thread_index 스레드 인덱스 (로깅용)
+     */
+    void ProcessAlarmEvents(const std::vector<PulseOne::Alarm::AlarmEvent>& alarm_events,
+                           const Structs::TimestampedValue& source_data,
+                           size_t thread_index);
+    std::vector<Structs::TimestampedValue> CalculateVirtualPoints(
+        const std::vector<Structs::DeviceDataMessage>& batch);                        
+    
+    PulseOne::Alarm::AlarmProcessingStats GetAlarmStatistics() const;
+    ExtendedProcessingStats GetExtendedStatistics() const;                      
+    /**
+     * @brief 확장된 통계 조회 (처리 통계 + 알람 통계)
+     */
+    struct ExtendedProcessingStats {
+        ProcessingStats processing;                        // 기존 처리 통계
+        PulseOne::Alarm::AlarmProcessingStats alarms;     // 알람 통계 (AlarmTypes.h에서)
+        
+        nlohmann::json toJson() const {
+            nlohmann::json j;
+            j["processing"] = {
+                {"total_batches", processing.total_batches_processed},
+                {"total_messages", processing.total_messages_processed},
+                {"redis_writes", processing.redis_writes},
+                {"influx_writes", processing.influx_writes},
+                {"errors", processing.processing_errors},
+                {"avg_time_ms", processing.avg_processing_time_ms}
+            };
+            j["alarms"] = alarms.toJson();
+            return j;
+        }
+    };                       
 };
 
 } // namespace Pipeline

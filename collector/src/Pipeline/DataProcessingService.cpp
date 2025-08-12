@@ -7,7 +7,7 @@
 #include "Utils/LogManager.h"
 #include "Common/Structs.h"
 #include "Common/Enums.h"
-#include "Alarm/AlarmManager.h"
+#include "Alarm/AlarmEngine.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
 
@@ -196,11 +196,15 @@ void DataProcessingService::ProcessBatch(
     }
     
     try {
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "🔄 스레드 " + std::to_string(thread_index) + 
+                                     " 배치 처리 시작: " + std::to_string(batch.size()) + "개 메시지");
+        
         // 1단계: 가상포인트 계산
         auto enriched_data = CalculateVirtualPoints(batch);
         
-        // 2단계: 알람 체크
-        CheckAlarms(enriched_data);
+        // 🔥 2단계: 알람 체크 (새로 추가!)
+        EvaluateAlarms(enriched_data, thread_index);
         
         // 3단계: Redis 저장
         SaveToRedis(enriched_data);
@@ -208,16 +212,277 @@ void DataProcessingService::ProcessBatch(
         // 4단계: InfluxDB 저장
         SaveToInfluxDB(enriched_data);
         
-        total_batches_processed_.fetch_add(1);
-        total_messages_processed_.fetch_add(batch.size());
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "✅ 스레드 " + std::to_string(thread_index) + 
+                                     " 배치 처리 완료: " + std::to_string(batch.size()) + "개");
         
     } catch (const std::exception& e) {
-        processing_errors_.fetch_add(1);
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "배치 처리 실패 (스레드 " + std::to_string(thread_index) + 
+                                     "💥 배치 처리 실패 (스레드 " + std::to_string(thread_index) + 
                                      "): " + std::string(e.what()));
         throw;
     }
+}
+
+void DataProcessingService::EvaluateAlarms(
+    const std::vector<Structs::TimestampedValue>& data, 
+    size_t thread_index) {
+    
+    if (data.empty()) {
+        return;
+    }
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    size_t alarms_evaluated = 0;
+    size_t alarms_triggered = 0;
+    
+    try {
+        // AlarmEngine 싱글톤 가져오기
+        auto& alarm_engine = PulseOne::Alarm::AlarmEngine::getInstance();
+        
+        if (!alarm_engine.isInitialized()) {
+            LogManager::getInstance().log("processing", LogLevel::WARN, 
+                                         "⚠️ AlarmEngine이 초기화되지 않음 - 알람 평가 건너뜀");
+            return;
+        }
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "🚨 알람 평가 시작 (스레드 " + std::to_string(thread_index) + 
+                                     "): " + std::to_string(data.size()) + "개 포인트");
+        
+        // =============================================================================
+        // 🎯 각 데이터 포인트에 대해 알람 평가 실행
+        // =============================================================================
+        
+        for (const auto& timestamped_value : data) {
+            try {
+                // tenant_id 결정 (기본값 1, 실제로는 device나 site에서 가져와야 함)
+                int tenant_id = 1;  // TODO: 실제 tenant_id 로직 구현
+                
+                // point_id 추출
+                int point_id = std::stoi(timestamped_value.point_id);
+                
+                // DataValue 변환 (TimestampedValue.value → AlarmEngine.DataValue)
+                PulseOne::BasicTypes::DataVariant alarm_value;
+                std::visit([&alarm_value](const auto& val) {
+                    alarm_value = val;
+                }, timestamped_value.value);
+                
+                // =============================================================================
+                // 🔥 실제 알람 평가 호출!
+                // =============================================================================
+                auto alarm_events = alarm_engine.evaluateForPoint(tenant_id, point_id, alarm_value);
+                
+                alarms_evaluated++;
+                
+                // 알람 이벤트 처리
+                if (!alarm_events.empty()) {
+                    alarms_triggered += alarm_events.size();
+                    
+                    LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                                 "🚨 알람 발생! point_id=" + timestamped_value.point_id + 
+                                                 ", 이벤트 수=" + std::to_string(alarm_events.size()));
+                    
+                    // 알람 이벤트 후처리 (Redis, 알림 등)
+                    ProcessAlarmEvents(alarm_events, timestamped_value, thread_index);
+                }
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                             "💥 알람 평가 실패 (point_id=" + timestamped_value.point_id + 
+                                             "): " + std::string(e.what()));
+                // 개별 포인트 실패는 전체 배치를 중단시키지 않음
+            }
+        }
+        
+        // =============================================================================
+        // 🎯 성능 통계 업데이트
+        // =============================================================================
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        
+        // 통계 업데이트 (원자적 연산)
+        total_alarms_evaluated_.fetch_add(alarms_evaluated);
+        total_alarms_triggered_.fetch_add(alarms_triggered);
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "✅ 알람 평가 완료 (스레드 " + std::to_string(thread_index) + 
+                                     "): 평가=" + std::to_string(alarms_evaluated) + 
+                                     "개, 발생=" + std::to_string(alarms_triggered) + 
+                                     "개, 시간=" + std::to_string(duration.count()) + "μs");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "💥 알람 평가 전체 실패 (스레드 " + std::to_string(thread_index) + 
+                                     "): " + std::string(e.what()));
+        // 알람 평가 실패해도 데이터 처리는 계속 진행
+    }
+}
+
+void DataProcessingService::ProcessAlarmEvents(
+    const std::vector<PulseOne::Alarm::AlarmEvent>& alarm_events,
+    const Structs::TimestampedValue& source_data,
+    size_t thread_index) {
+    
+    if (alarm_events.empty()) {
+        return;
+    }
+    
+    try {
+        LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                     "🔔 알람 이벤트 후처리 시작 (스레드 " + std::to_string(thread_index) + 
+                                     "): " + std::to_string(alarm_events.size()) + "개 이벤트");
+        
+        for (const auto& alarm_event : alarm_events) {
+            try {
+                // =============================================================================
+                // 🎯 Redis에 알람 이벤트 저장 (실시간 조회용)
+                // =============================================================================
+                
+                if (redis_client_) {
+                    // Redis 키: "alarm:active:{rule_id}"
+                    std::string redis_key = "alarm:active:" + std::to_string(alarm_event.rule_id);
+                    
+                    // JSON 형태로 알람 정보 저장
+                    nlohmann::json alarm_json;
+                    alarm_json["rule_id"] = alarm_event.rule_id;
+                    alarm_json["point_id"] = alarm_event.point_id;
+                    alarm_json["message"] = alarm_event.message;
+                    alarm_json["severity"] = alarm_event.getSeverityString();
+                    alarm_json["state"] = alarm_event.getStateString();
+                    alarm_json["trigger_value"] = alarm_event.getTriggerValueString();
+                    alarm_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        alarm_event.timestamp.time_since_epoch()).count();
+                    
+                    // Redis에 저장 (TTL 24시간)
+                    redis_client_->SetWithExpiry(redis_key, alarm_json.dump(), 86400);
+                    
+                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                                 "📝 Redis 알람 저장: " + redis_key);
+                }
+                
+                // =============================================================================
+                // 🎯 알람 통계 업데이트
+                // =============================================================================
+                
+                // 심각도별 통계
+                if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::CRITICAL) {
+                    critical_alarms_count_.fetch_add(1);
+                } else if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::HIGH) {
+                    high_alarms_count_.fetch_add(1);
+                }
+                
+                // =============================================================================
+                // 🎯 실시간 알림 큐에 추가 (향후 확장)
+                // =============================================================================
+                
+                // TODO: RabbitMQ 또는 Kafka에 알람 이벤트 발송
+                // TODO: 이메일/SMS 알림 큐에 추가
+                // TODO: WebSocket으로 실시간 대시보드에 알림
+                
+                LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                             "✅ 알람 이벤트 처리 완료: rule_id=" + 
+                                             std::to_string(alarm_event.rule_id) + 
+                                             ", severity=" + alarm_event.getSeverityString());
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                             "💥 개별 알람 이벤트 처리 실패 (rule_id=" + 
+                                             std::to_string(alarm_event.rule_id) + "): " + 
+                                             std::string(e.what()));
+            }
+        }
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "✅ 모든 알람 이벤트 후처리 완료 (스레드 " + 
+                                     std::to_string(thread_index) + ")");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "💥 알람 이벤트 후처리 전체 실패 (스레드 " + 
+                                     std::to_string(thread_index) + "): " + 
+                                     std::string(e.what()));
+    }
+}
+
+std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPoints(
+    const std::vector<Structs::DeviceDataMessage>& batch) {
+    
+    std::vector<Structs::TimestampedValue> enriched_data;
+    
+    if (batch.empty()) {
+        return enriched_data;
+    }
+    
+    try {
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "🧮 가상포인트 계산 시작: " + std::to_string(batch.size()) + "개 메시지");
+        
+        // =============================================================================
+        // 🎯 1단계: 원본 데이터를 TimestampedValue로 변환
+        // =============================================================================
+        
+        for (const auto& device_msg : batch) {
+            for (const auto& point : device_msg.points) {
+                Structs::TimestampedValue tv;
+                tv.point_id = std::to_string(point.point_id);
+                tv.value = point.value;
+                tv.timestamp = point.timestamp;
+                tv.quality = point.quality;
+                
+                enriched_data.push_back(tv);
+            }
+        }
+        
+        // =============================================================================
+        // 🎯 2단계: VirtualPointEngine으로 가상포인트 계산
+        // =============================================================================
+        
+        auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
+        
+        if (vp_engine.isInitialized()) {
+            // 각 메시지에 대해 가상포인트 계산
+            for (const auto& device_msg : batch) {
+                try {
+                    auto vp_results = vp_engine.calculateForMessage(device_msg);
+                    
+                    // 계산된 가상포인트 결과를 enriched_data에 추가
+                    for (const auto& vp_result : vp_results) {
+                        enriched_data.push_back(vp_result);
+                    }
+                    
+                    if (!vp_results.empty()) {
+                        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                                     "✅ 가상포인트 " + std::to_string(vp_results.size()) + 
+                                                     "개 계산 완료 (device_id=" + device_msg.device_id + ")");
+                    }
+                    
+                } catch (const std::exception& e) {
+                    LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                                 "💥 가상포인트 계산 실패 (device_id=" + device_msg.device_id + 
+                                                 "): " + std::string(e.what()));
+                    // 개별 실패는 전체 프로세스를 중단시키지 않음
+                }
+            }
+        } else {
+            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                         "⚠️ VirtualPointEngine이 초기화되지 않음 - 가상포인트 계산 건너뜀");
+        }
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                     "✅ 가상포인트 계산 완료: 총 " + std::to_string(enriched_data.size()) + 
+                                     "개 데이터 포인트 (원본 + 가상포인트)");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "💥 가상포인트 계산 전체 실패: " + std::string(e.what()));
+        
+        // 가상포인트 계산 실패 시에도 원본 데이터는 반환
+        // (이미 enriched_data에 원본 데이터가 들어있음)
+    }
+    
+    return enriched_data;
 }
 
 // =============================================================================
@@ -415,6 +680,30 @@ DataProcessingService::ProcessingStats DataProcessingService::GetStatistics() co
     stats.processing_errors = processing_errors_.load();
     stats.avg_processing_time_ms = 0.0; // 구현 필요
     
+    return stats;
+}
+
+
+/**
+ * @brief 알람 처리 통계 조회 (AlarmTypes.h에서 정의된 타입 사용)
+ * @return AlarmProcessingStats 구조체
+ */
+PulseOne::Alarm::AlarmProcessingStats DataProcessingService::GetAlarmStatistics() const {
+    PulseOne::Alarm::AlarmProcessingStats stats;
+    stats.total_evaluated = total_alarms_evaluated_.load();
+    stats.total_triggered = total_alarms_triggered_.load();
+    stats.critical_count = critical_alarms_count_.load();
+    stats.high_count = high_alarms_count_.load();
+    return stats;
+}
+
+/**
+ * @brief 모든 통계 조회
+ */
+ExtendedProcessingStats DataProcessingService::GetExtendedStatistics() const {
+    ExtendedProcessingStats stats;
+    stats.processing = GetStatistics();
+    stats.alarms = GetAlarmStatistics();
     return stats;
 }
 
