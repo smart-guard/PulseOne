@@ -1890,8 +1890,9 @@ namespace Structs {
         DeviceDataMessage() : timestamp(std::chrono::system_clock::now()) {}
         
         DeviceDataMessage(const UUID& id, const std::string& proto, const std::string& worker = "")
-            : device_id(id), protocol(proto), source_worker(worker),
-            timestamp(std::chrono::system_clock::now()) {
+            : device_id(id), protocol(proto), 
+            timestamp(std::chrono::system_clock::now()), 
+            source_worker(worker) {
             correlation_id = GenerateCorrelationId();
         }
         
@@ -1958,7 +1959,7 @@ namespace Structs {
             previous_status = device_status;
             device_status = new_status;
             manual_status = (new_status == Enums::DeviceStatus::MAINTENANCE);
-            status_message = message.empty() ? Enums::GetDefaultDeviceStatusMessage(new_status) : message;
+            status_message = message.empty() ? Enums::DeviceStatusToString(new_status) : message;
             status_changed = (device_status != previous_status);
             status_changed_time = std::chrono::system_clock::now();
             status_changed_by = user_id;

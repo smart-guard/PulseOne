@@ -1,19 +1,16 @@
-/**
- * @file BaseDeviceWorker.h
- * @brief 모든 프로토콜 워커의 공통 기반 클래스 (재연결 로직 포함)
- * @details 프로토콜에 독립적인 핵심 인터페이스와 공통 기능 제공
- * @author PulseOne Development Team
- * @date 2025-01-20
- * @version 2.0.0
- */
+// ==========================================================================
+// 📁 파일: collector/include/Workers/Base/BaseDeviceWorker.h  
+// 🔥 컴파일 에러 수정: Timestamp, WorkerState::UNKNOWN, 멤버 변수 등
+// ==========================================================================
 
 #ifndef WORKERS_BASE_DEVICE_WORKER_H
 #define WORKERS_BASE_DEVICE_WORKER_H
 
 #include "Common/Structs.h"
 #include "Common/Enums.h"
+#include "Common/BasicTypes.h"        // 🔥 Timestamp 타입을 위해 추가
 #include "Utils/LogManager.h"
-#include "Pipeline/PipelineManager.h"  // 🔥 전역 파이프라인 매니저
+#include "Pipeline/PipelineManager.h"
 #include <memory>
 #include <future>
 #include <atomic>
@@ -27,8 +24,9 @@
 namespace PulseOne {
 namespace Workers {
 
-// 워커 상태 열거형 (현장 운영 상황 반영)
+// 🔥 WorkerState enum 수정 (UNKNOWN 추가)
 enum class WorkerState {
+    UNKNOWN = -1,               ///< 알 수 없는 상태 (🔥 추가!)
     STOPPED = 0,                ///< 정지됨
     STARTING = 1,               ///< 시작 중
     RUNNING = 2,                ///< 정상 실행 중
@@ -60,6 +58,9 @@ enum class WorkerState {
     MAX_RETRIES_EXCEEDED = 42   ///< 최대 재시도 횟수 초과
 };
 
+// 🔥 Timestamp 별칭 정의 (BasicTypes에서 가져오기)
+using Timestamp = PulseOne::BasicTypes::Timestamp;
+
 /**
  * @brief 재연결 설정 구조체 (데이터베이스에서 로드)
  */
@@ -72,17 +73,7 @@ struct ReconnectionSettings {
     int keep_alive_interval_seconds = 30;       ///< Keep-alive 간격 (초)
     int connection_timeout_seconds = 10;        ///< 연결 타임아웃 (초)
     
-    /**
-     * @brief 데이터베이스에서 JSON으로 저장/로드
-     * @return JSON 문자열
-     */
     std::string ToJson() const;
-    
-    /**
-     * @brief JSON에서 설정 로드
-     * @param json_str JSON 문자열
-     * @return 성공 시 true
-     */
     bool FromJson(const std::string& json_str);
 };
 
@@ -90,342 +81,200 @@ struct ReconnectionSettings {
  * @brief 재연결 통계 정보
  */
 struct ReconnectionStats {
-    std::atomic<uint64_t> total_connections{0};           ///< 총 연결 횟수
-    std::atomic<uint64_t> successful_connections{0};      ///< 성공한 연결 횟수
-    std::atomic<uint64_t> failed_connections{0};          ///< 실패한 연결 횟수
-    std::atomic<uint64_t> reconnection_cycles{0};         ///< 재연결 사이클 횟수
-    std::atomic<uint64_t> wait_cycles{0};                 ///< 대기 사이클 횟수
-    std::atomic<uint64_t> keep_alive_sent{0};             ///< 전송한 Keep-alive 횟수
-    std::atomic<uint64_t> keep_alive_failed{0};           ///< 실패한 Keep-alive 횟수
-    std::atomic<double> avg_connection_duration_seconds{0.0}; ///< 평균 연결 지속 시간
+    std::atomic<uint64_t> total_connections{0};
+    std::atomic<uint64_t> successful_connections{0};
+    std::atomic<uint64_t> failed_connections{0};
+    std::atomic<uint64_t> reconnection_cycles{0};
+    std::atomic<uint64_t> wait_cycles{0};
+    std::atomic<uint64_t> keep_alive_sent{0};
+    std::atomic<uint64_t> keep_alive_failed{0};
+    std::atomic<double> avg_connection_duration_seconds{0.0};
     
-    std::chrono::system_clock::time_point first_connection_time; ///< 첫 연결 시간
-    std::chrono::system_clock::time_point last_successful_connection; ///< 마지막 성공 연결 시간
-    std::chrono::system_clock::time_point last_failure_time;     ///< 마지막 실패 시간
+    std::chrono::system_clock::time_point first_connection_time;
+    std::chrono::system_clock::time_point last_successful_connection;
+    std::chrono::system_clock::time_point last_failure_time;
 };
 
 /**
  * @brief 모든 디바이스 워커의 기반 클래스
- * @details 재연결, Keep-alive, 상태 관리 등 공통 기능을 제공
  */
 class BaseDeviceWorker {
 public:
-    /**
-     * @brief 생성자
-     * @param device_info 디바이스 정보
-     */
-    explicit BaseDeviceWorker(const PulseOne::DeviceInfo& device_info); 
-    
-    /**
-     * @brief 가상 소멸자
-     */
+    explicit BaseDeviceWorker(const PulseOne::Structs::DeviceInfo& device_info); // 🔥 Structs:: 추가
     virtual ~BaseDeviceWorker();
     
     // 복사/이동 방지
     BaseDeviceWorker(const BaseDeviceWorker&) = delete;
-    BaseDeviceWorker& operator=(const BaseDeviceWorker&) = delete;    
+    BaseDeviceWorker& operator=(const BaseDeviceWorker&) = delete;
+
     // =============================================================================
     // 순수 가상 함수들 (파생 클래스에서 구현 필수)
     // =============================================================================
     virtual std::future<bool> Start() = 0;
     virtual std::future<bool> Stop() = 0;
-    /**
-     * @brief 프로토콜별 연결 수립 (파생 클래스에서 구현)
-     * @return 성공 시 true
-     */
     virtual bool EstablishConnection() = 0;
-    
-    /**
-     * @brief 프로토콜별 연결 해제 (파생 클래스에서 구현)
-     * @return 성공 시 true
-     */
     virtual bool CloseConnection() = 0;
-    
-    /**
-     * @brief 프로토콜별 연결 상태 확인 (파생 클래스에서 구현)
-     * @return 연결 상태
-     */
     virtual bool CheckConnection() = 0;
-    
-    /**
-     * @brief 프로토콜별 Keep-alive 전송 (파생 클래스에서 구현)
-     * @return 성공 시 true
-     */
-    virtual bool SendKeepAlive() { return true; } // 기본 구현 (선택사항)
+    virtual bool SendKeepAlive() { return true; }
     
     // =============================================================================
-    // 공통 인터페이스 (기본 구현 제공)
+    // 공통 인터페이스
     // =============================================================================
-    
-    /**
-     * @brief 현재 워커 상태 조회
-     * @return 워커 상태
-     */
     virtual WorkerState GetState() const { return current_state_.load(); }
-    
-    /**
-     * @brief 워커 일시정지
-     * @return Future<bool> 일시정지 결과
-     */
     virtual std::future<bool> Pause();
-    
-    /**
-     * @brief 워커 재개
-     * @return Future<bool> 재개 결과
-     */
     virtual std::future<bool> Resume();
-    
-    /**
-     * @brief 데이터 포인트 추가
-     * @param point 추가할 데이터 포인트
-     * @return 성공 시 true
-     */
-    virtual bool AddDataPoint(const PulseOne::DataPoint& point);
-    
-    /**
-     * @brief 현재 등록된 데이터 포인트 목록 조회
-     * @return 데이터 포인트 벡터
-     */
-    virtual std::vector<PulseOne::DataPoint> GetDataPoints() const;
+    virtual bool AddDataPoint(const PulseOne::Structs::DataPoint& point); // 🔥 Structs:: 추가
+    virtual std::vector<PulseOne::Structs::DataPoint> GetDataPoints() const; // 🔥 Structs:: 추가
     
     // =============================================================================
-    // 재연결 관리 (공통 기능 - 모든 프로토콜에서 사용)
+    // 재연결 관리
     // =============================================================================
-    
-    /**
-     * @brief 재연결 설정 업데이트 (데이터베이스에서 로드 또는 웹에서 변경)
-     * @param settings 새로운 재연결 설정
-     * @return 성공 시 true
-     */
     bool UpdateReconnectionSettings(const ReconnectionSettings& settings);
-    
-    /**
-     * @brief 현재 재연결 설정 조회
-     * @return 재연결 설정
-     */
     ReconnectionSettings GetReconnectionSettings() const;
-    
-    /**
-     * @brief 강제 재연결 시도 (엔지니어 수동 명령)
-     * @return Future<bool> 재연결 결과
-     */
     std::future<bool> ForceReconnect();
-    
-    /**
-     * @brief 재연결 통계 조회
-     * @return JSON 형태의 통계 정보
-     */
     std::string GetReconnectionStats() const;
-    
-    /**
-     * @brief 재시도 카운터 및 대기 상태 리셋
-     */
     void ResetReconnectionState();
     WorkerState GetCurrentState() const { return current_state_.load(); }
-    /**
-     * @brief 연결 상태 조회
-     * @return 연결 상태
-     */
     bool IsConnected() const { return is_connected_.load(); }
     
     // =============================================================================
     // 상태 관리 및 모니터링
     // =============================================================================
-    
-    /**
-     * @brief 워커 상태 정보 JSON 반환
-     * @return JSON 형태의 상태 정보
-     */
     virtual std::string GetStatusJson() const;
     
-    // ==========================================================================
-    // 🔥 파이프라인 연결 메서드들 (임시 비활성화)
-    // ==========================================================================
-    
-    /**
-     * @brief 스캔된 데이터를 전역 파이프라인에 전송
-     * @param values 스캔된 데이터 값들
-     * @param priority 우선순위 (0: 일반, 1: 높음, 2: 긴급)
-     * @return 성공 시 true
-     */
-    bool SendDataToPipeline(const std::vector<PulseOne::TimestampedValue>& values, 
+    // =============================================================================
+    // 파이프라인 연결
+    // =============================================================================
+    bool SendDataToPipeline(const std::vector<PulseOne::Structs::TimestampedValue>& values, // 🔥 Structs:: 추가
                            uint32_t priority = 0);
     
-    /**
-     * @brief Worker ID 조회
-     */
     const std::string& GetWorkerId() const { return worker_id_; }
-    
- protected:
+
+protected:
     // =============================================================================
     // 파생 클래스에서 사용할 수 있는 보호된 메서드들
     // =============================================================================
-    /**
-     * @brief 워커 상태 변경
-     * @param new_state 새로운 상태
-     */
-    void ChangeState(WorkerState new_state);   
-    /**
-     * @brief 연결 상태 설정 (재연결 로직에서 사용)
-     * @param connected 새로운 연결 상태
-     */
+    void ChangeState(WorkerState new_state);
     void SetConnectionState(bool connected);
-    
-    /**
-     * @brief 네트워크 오류 처리 (재연결 트리거)
-     * @param error_message 오류 메시지
-     */
     void HandleConnectionError(const std::string& error_message);
-    
-    /**
-     * @brief 로그 메시지 출력
-     * @param level 로그 레벨
-     * @param message 메시지
-     */
     void LogMessage(LogLevel level, const std::string& message) const;
+    
     // =============================================================================
-    // WorkerState 유틸리티 함수들 (네임스페이스 레벨)
+    // WorkerState 유틸리티 함수들
     // =============================================================================
-
-    /**
-     * @brief WorkerState를 문자열로 변환
-     * @param state 워커 상태
-     * @return 상태 문자열
-     */
     std::string WorkerStateToString(WorkerState state) const;
-
-    /**
-     * @brief 활성 상태인지 확인
-     * @param state 워커 상태
-     * @return 활성 상태이면 true
-     */
     bool IsActiveState(WorkerState state);
-
-    /**
-     * @brief 에러 상태인지 확인
-     * @param state 워커 상태
-     * @return 에러 상태이면 true
-     */
     bool IsErrorState(WorkerState state);
-
-    // 프로토콜 타입은 device_info_에서 가져오기
+    
+    // DeviceInfo 접근자들
     std::string GetProtocolType() const { 
-        return device_info_.protocol_type;  // ✅ 이미 있음!
+        return device_info_.protocol_type;
     }
     
     void SetProtocolType(const std::string& protocol_type) { 
-        device_info_.protocol_type = protocol_type;  // ✅ DeviceInfo 직접 수정
+        device_info_.protocol_type = protocol_type;
     }
     
-    // 속성도 device_info_에서 가져오기
     std::string GetProperty(const std::string& key, const std::string& default_value = "") const {
-        auto it = device_info_.properties.find(key);  // ✅ 이미 있는 properties 사용!
+        auto it = device_info_.properties.find(key);
         return (it != device_info_.properties.end()) ? it->second : default_value;
     }
     
     void SetProperty(const std::string& key, const std::string& value) {
-        device_info_.properties[key] = value;  // ✅ DeviceInfo.properties 직접 수정
+        device_info_.properties[key] = value;
     }
     
-    // 기타 DeviceInfo 정보들도 직접 접근
     const std::string& GetDeviceName() const { return device_info_.name; }
     const std::string& GetEndpoint() const { return device_info_.endpoint; }
     bool IsEnabled() const { return device_info_.is_enabled; }
     uint32_t GetPollingInterval() const { return device_info_.polling_interval_ms; }
     uint32_t GetTimeout() const { return device_info_.timeout_ms; }
     
-    // DeviceInfo 전체 접근
     const PulseOne::Structs::DeviceInfo& GetDeviceInfo() const { return device_info_; }
     PulseOne::Structs::DeviceInfo& GetDeviceInfo() { return device_info_; }
     
-    // DataPoints 접근
     std::vector<PulseOne::Structs::DataPoint>& GetDataPoints() { return data_points_; }
 
+    // =============================================================================
+    // 통신 결과 업데이트 메서드들 (CPP에서 구현)
+    // =============================================================================
+    void UpdateCommunicationResult(bool success, 
+                                 const std::string& error_msg = "",
+                                 int error_code = 0,
+                                 std::chrono::milliseconds response_time = std::chrono::milliseconds{0});
+    
+    void OnStateChanged(WorkerState old_state, WorkerState new_state);
 
-    PulseOne::DeviceInfo device_info_;                    ///< 디바이스 정보
+    // =============================================================================
+    // 상태 변환 메서드들 (CPP에서 구현)
+    // =============================================================================
+    PulseOne::Enums::DeviceStatus ConvertWorkerStateToDeviceStatus(WorkerState state) const;
+    std::string GetStatusMessage() const;
+    std::string GenerateCorrelationId() const;
+    std::string GetWorkerIdString() const;
+
+    // =============================================================================
+    // 멤버 변수들
+    // =============================================================================
+    PulseOne::Structs::DeviceInfo device_info_;              ///< 디바이스 정보
     std::string worker_id_;
 
 private:
     // =============================================================================
     // 내부 데이터 멤버
     // =============================================================================
+    std::atomic<WorkerState> current_state_{WorkerState::STOPPED};
+    std::atomic<bool> is_connected_{false};
     
-    std::atomic<WorkerState> current_state_{WorkerState::STOPPED}; ///< 현재 상태
-    std::atomic<bool> is_connected_{false};              ///< 연결 상태
+    // 🔥 누락된 멤버 변수들 추가!
+    uint32_t batch_sequence_counter_ = 0;
+    uint32_t consecutive_failures_ = 0;
+    uint32_t total_failures_ = 0;
+    uint32_t total_attempts_ = 0;
+    std::chrono::milliseconds last_response_time_{0};
+    Timestamp last_success_time_;                    // 🔥 이제 정의됨!
+    Timestamp state_change_time_;                    // 🔥 이제 정의됨!
+    std::string last_error_message_ = "";
+    int last_error_code_ = 0;
+    WorkerState previous_state_ = WorkerState::UNKNOWN; // 🔥 이제 UNKNOWN 사용 가능!
     
     // =============================================================================
     // 재연결 관리
     // =============================================================================
+    mutable std::mutex settings_mutex_;
+    ReconnectionSettings reconnection_settings_;
+    ReconnectionStats reconnection_stats_;
     
-    mutable std::mutex settings_mutex_;                  ///< 설정 뮤텍스
-    ReconnectionSettings reconnection_settings_;         ///< 재연결 설정
-    ReconnectionStats reconnection_stats_;               ///< 재연결 통계
-    
-    std::atomic<int> current_retry_count_{0};            ///< 현재 재시도 횟수
-    std::atomic<bool> in_wait_cycle_{false};             ///< 대기 사이클 중인지
-    std::chrono::system_clock::time_point wait_start_time_; ///< 대기 시작 시간
-    std::chrono::system_clock::time_point last_keep_alive_time_; ///< 마지막 Keep-alive 시간
+    std::atomic<int> current_retry_count_{0};
+    std::atomic<bool> in_wait_cycle_{false};
+    std::chrono::system_clock::time_point wait_start_time_;
+    std::chrono::system_clock::time_point last_keep_alive_time_;
     
     // =============================================================================
     // 백그라운드 스레드 관리
     // =============================================================================
+    std::unique_ptr<std::thread> reconnection_thread_;
+    std::atomic<bool> thread_running_{false};
     
-    std::unique_ptr<std::thread> reconnection_thread_;   ///< 재연결 관리 스레드
-    std::atomic<bool> thread_running_{false};           ///< 스레드 실행 상태
-    
-    std::string status_channel_;                         ///< Redis 상태 채널
-    std::string reconnection_channel_;                   ///< Redis 재연결 채널
+    std::string status_channel_;
+    std::string reconnection_channel_;
     
     // =============================================================================
     // 데이터 포인트 관리
     // =============================================================================
-    
-    mutable std::mutex data_points_mutex_;               ///< 데이터 포인트 뮤텍스
-    std::vector<PulseOne::DataPoint> data_points_;        ///< 등록된 데이터 포인트들
+    mutable std::mutex data_points_mutex_;
+    std::vector<PulseOne::Structs::DataPoint> data_points_;   // 🔥 Structs:: 추가
     
     // =============================================================================
     // 내부 메서드들
     // =============================================================================
-    
-    /**
-     * @brief 재연결 관리 스레드 메인 함수
-     */
     void ReconnectionThreadMain();
-    
-    /**
-     * @brief 재연결 시도 로직
-     * @return 성공 시 true
-     */
     bool AttemptReconnection();
-    
-    /**
-     * @brief 대기 사이클 관리
-     * @return 대기 완료 시 true
-     */
     bool HandleWaitCycle();
-    
-    /**
-     * @brief Keep-alive 관리
-     */
     void HandleKeepAlive();
-    
-    /**
-     * @brief Redis 채널명 초기화
-     */
     void InitializeRedisChannels();
-    
-    /**
-     * @brief 재연결 통계 업데이트
-     * @param connection_successful 연결 성공 여부
-     */
     void UpdateReconnectionStats(bool connection_successful);
-
-    std::string GetWorkerIdString() const;
-
-    
 };
-
-
 
 } // namespace Workers
 } // namespace PulseOne
