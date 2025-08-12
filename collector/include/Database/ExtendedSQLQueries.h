@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/ExtendedSQLQueries.h
-// 🎯 완전한 ExtendedSQLQueries.h - 실제 코드 분석 기반 완벽 구현
+// 🔧 완전 SQLite 호환 버전 - FOREIGN KEY 모두 제거
 // =============================================================================
 
 #ifndef EXTENDED_SQL_QUERIES_H
@@ -13,11 +13,11 @@ namespace Database {
 namespace SQL {
 
 // =============================================================================
-// AlarmOccurrence 관련 쿼리들 (AlarmOccurrenceRepository.cpp 기반)
+// AlarmOccurrence 관련 쿼리들 (FOREIGN KEY 제거됨)
 // =============================================================================
 namespace AlarmOccurrence {
     
-    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 제거)
+    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS alarm_occurrences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,7 +90,7 @@ namespace AlarmOccurrence {
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM alarm_occurrences";
     const std::string FIND_MAX_ID = "SELECT COALESCE(MAX(id), 0) as max_id FROM alarm_occurrences";
     
-    // ✅ 실제 코드에서 사용되는 특화 쿼리들
+    // 특화 조회 쿼리들
     const std::string FIND_ACTIVE = R"(
         SELECT 
             id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
@@ -115,7 +115,7 @@ namespace AlarmOccurrence {
         ORDER BY occurrence_time DESC
     )";
     
-    // ✅ AlarmOccurrenceRepository.cpp에서 실제 사용하는 상태 관리 쿼리들
+    // 알람 상태 관리 쿼리들
     const std::string ACKNOWLEDGE = R"(
         UPDATE alarm_occurrences SET
             state = 'acknowledged',
@@ -136,17 +136,17 @@ namespace AlarmOccurrence {
         WHERE id = ?
     )";
     
-    // CLEAR_ALARM는 CLEAR의 별칭 (호환성)
+    // CLEAR_ALARM는 CLEAR의 별칭
     const std::string CLEAR_ALARM = CLEAR;
     
 } // namespace AlarmOccurrence
 
 // =============================================================================
-// AlarmRule 관련 쿼리들 (AlarmRuleRepository.cpp 기반)
+// AlarmRule 관련 쿼리들 (FOREIGN KEY 제거됨)
 // =============================================================================
 namespace AlarmRule {
     
-    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 제거)
+    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS alarm_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -216,7 +216,6 @@ namespace AlarmRule {
         WHERE id = ?
     )";
     
-    // ✅ AlarmRuleRepository.cpp에서 실제 사용하는 FIND_BY_TARGET 쿼리
     const std::string FIND_BY_TARGET = R"(
         SELECT 
             id, tenant_id, name, description, target_type, target_id, target_group,
@@ -232,7 +231,6 @@ namespace AlarmRule {
         ORDER BY priority DESC
     )";
     
-    // ✅ AlarmRuleRepository.cpp에서 실제 사용하는 FIND_ENABLED 쿼리
     const std::string FIND_ENABLED = R"(
         SELECT 
             id, tenant_id, name, description, target_type, target_id, target_group,
@@ -283,11 +281,11 @@ namespace AlarmRule {
 } // namespace AlarmRule
 
 // =============================================================================
-// ScriptLibrary 관련 쿼리들 (ScriptLibraryRepository.cpp 기반)
+// ScriptLibrary 관련 쿼리들 (FOREIGN KEY 제거됨)
 // =============================================================================
 namespace ScriptLibrary {
     
-    // 테이블 생성 (SQLite 호환)
+    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS script_library (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -335,7 +333,6 @@ namespace ScriptLibrary {
         WHERE id = ?
     )";
     
-    // ✅ ScriptLibraryRepository.cpp에서 실제 사용하는 FIND_BY_CATEGORY 쿼리
     const std::string FIND_BY_CATEGORY = R"(
         SELECT 
             id, tenant_id, name, display_name, description, category,
@@ -366,7 +363,6 @@ namespace ScriptLibrary {
         WHERE id = ?
     )";
     
-    // ✅ ScriptLibraryRepository.cpp에서 실제 사용하는 UPDATE_BY_ID (UPDATE의 별칭)
     const std::string UPDATE_BY_ID = UPDATE;
     
     const std::string DELETE_BY_ID = "DELETE FROM script_library WHERE id = ?";
@@ -374,7 +370,7 @@ namespace ScriptLibrary {
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM script_library";
     const std::string INCREMENT_USAGE_COUNT = "UPDATE script_library SET usage_count = usage_count + 1 WHERE id = ?";
     
-    // ✅ ScriptLibraryRepository.cpp에서 실제 사용하는 특화 쿼리들
+    // 특화 조회 쿼리들
     const std::string FIND_BY_IDS = R"(
         SELECT 
             id, tenant_id, name, display_name, description, category,
@@ -503,12 +499,11 @@ namespace ScriptLibrary {
 } // namespace ScriptLibrary
 
 // =============================================================================
-// VirtualPoint 관련 쿼리들 (VirtualPointRepository.cpp + VirtualPointEntity.cpp 기반)
-// ✅ 실제 필드명 사용: formula, calculation_trigger, execution_type 등
+// VirtualPoint 관련 쿼리들 (FOREIGN KEY 제거됨)
 // =============================================================================
 namespace VirtualPoint {
     
-    // ✅ 실제 VirtualPointEntity 필드에 맞춘 테이블 생성 (SQLite 호환)
+    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS virtual_points (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -581,14 +576,13 @@ namespace VirtualPoint {
         WHERE id = ?
     )";
     
-    // ✅ VirtualPointRepository.cpp에서 실제 사용하는 UPDATE_BY_ID (UPDATE의 별칭)
     const std::string UPDATE_BY_ID = UPDATE;
     
     const std::string DELETE_BY_ID = "DELETE FROM virtual_points WHERE id = ?";
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM virtual_points WHERE id = ?";
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM virtual_points";
     
-    // ✅ VirtualPointRepository.cpp에서 실제 사용하는 특화 쿼리들
+    // 특화 조회 쿼리들
     const std::string FIND_BY_TENANT = R"(
         SELECT 
             id, tenant_id, site_id, device_id,
@@ -654,7 +648,6 @@ namespace VirtualPoint {
         ORDER BY name
     )";
     
-    // ✅ VirtualPointRepository.cpp에서 실제 사용하는 FIND_BY_EXECUTION_TYPE 쿼리
     const std::string FIND_BY_EXECUTION_TYPE = R"(
         SELECT 
             id, tenant_id, site_id, device_id,
@@ -668,7 +661,6 @@ namespace VirtualPoint {
         ORDER BY calculation_interval, name
     )";
     
-    // ✅ VirtualPointRepository.cpp에서 실제 사용하는 FIND_BY_IDS 쿼리
     const std::string FIND_BY_IDS = R"(
         SELECT 
             id, tenant_id, site_id, device_id,
@@ -682,10 +674,9 @@ namespace VirtualPoint {
         ORDER BY name
     )";
     
-    // ✅ VirtualPointRepository.cpp에서 실제 사용하는 DELETE_BY_IDS 쿼리
     const std::string DELETE_BY_IDS = "DELETE FROM virtual_points WHERE id IN (%IN_CLAUSE%)";
     
-    // ✅ VirtualPointRepository.cpp에서 실제 사용하는 실행 통계 업데이트 쿼리들
+    // 실행 통계 업데이트 쿼리들
     const std::string UPDATE_EXECUTION_STATS = R"(
         UPDATE virtual_points SET 
             execution_count = execution_count + 1,
@@ -709,8 +700,7 @@ namespace VirtualPoint {
         WHERE id = ?
     )";
     
-    // ✅ 실제 VirtualPointRepository.cpp에서 사용하는 가상포인트 입력 매핑 테이블
-    // 필드명도 실제 코드에 맞춰 variable_name 사용
+    // 가상포인트 입력 매핑 테이블 (FOREIGN KEY 없음)
     const std::string CREATE_INPUTS_TABLE = R"(
         CREATE TABLE IF NOT EXISTS virtual_point_inputs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -742,14 +732,6 @@ namespace VirtualPoint {
     )";
     
 } // namespace VirtualPoint
-
-// =============================================================================
-// 공통 쿼리들은 기존 SQLQueries.h의 Common 네임스페이스 사용
-// - SQL::Common::GET_LAST_INSERT_ID
-// - SQL::Common::CHECK_TABLE_EXISTS  
-// - SQL::Common::COUNT_TABLES
-// - SQL::Common::BEGIN_TRANSACTION, COMMIT_TRANSACTION, ROLLBACK_TRANSACTION
-// =============================================================================
 
 } // namespace SQL
 } // namespace Database
