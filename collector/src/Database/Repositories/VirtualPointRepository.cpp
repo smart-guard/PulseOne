@@ -203,7 +203,7 @@ bool VirtualPointRepository::deleteById(int id) {
         DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::DELETE_BY_ID, std::to_string(id));
+        std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::DELETE_BY_IDS, std::to_string(id));
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -686,21 +686,53 @@ bool VirtualPointRepository::ensureTableExists() {
         return false;
     }
 }
+
+
 std::vector<VirtualPointEntity> VirtualPointRepository::findByIds(const std::vector<int>& ids) {
-    std::vector<VirtualPointEntity> results;
-    results.reserve(ids.size());
-    
-    for (int id : ids) {
-        auto entity_opt = findById(id);
-        if (entity_opt.has_value()) {
-            results.push_back(entity_opt.value());
-        }
+    if (ids.empty()) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "findByIds: 빈 ID 리스트, 빈 결과 반환");
+        return {};
     }
     
-    LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
-                                "findByIds - Found " + std::to_string(results.size()) + 
-                                " virtual points for " + std::to_string(ids.size()) + " IDs");
-    return results;
+    try {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "findByIds: " + std::to_string(ids.size()) + "개 ID로 벌크 조회 시작");
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // ✅ ExtendedSQLQueries.h 상수 사용
+        std::string query = SQL::VirtualPoint::FIND_BY_IDS;
+        
+        // ✅ RepositoryHelpers를 사용한 IN절 생성
+        std::string in_clause = RepositoryHelpers::buildInClause(ids);
+        RepositoryHelpers::replaceStringPlaceholder(query, "%IN_CLAUSE%", in_clause);
+        
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("VirtualPointRepository", LogLevel::WARN,
+                                            "findByIds - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                     "✅ findByIds: " + std::to_string(entities.size()) + "/" + 
+                                     std::to_string(ids.size()) + " 개 조회 완료");
+        
+        return entities;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                     "findByIds 실행 실패: " + std::string(e.what()));
+        return {};
+    }
 }
 
 std::vector<VirtualPointEntity> VirtualPointRepository::findByConditions(
@@ -708,131 +740,336 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    // 현재는 메모리 필터링으로 구현 (나중에 SQL 최적화)
-    auto all_entities = findAll();
-    std::vector<VirtualPointEntity> filtered;
-    
-    for (const auto& entity : all_entities) {
-        bool matches = true;
-        
-        for (const auto& condition : conditions) {
-            // 간단한 조건 매칭 (확장 가능)
-            if (condition.field == "tenant_id") {
-                if (std::to_string(entity.getTenantId()) != condition.value) {
-                    matches = false;
-                    break;
-                }
-            } else if (condition.field == "is_enabled") {
-                bool is_enabled = (condition.value == "1" || condition.value == "true");
-                if (entity.getIsEnabled() != is_enabled) {
-                    matches = false;
-                    break;
-                }
-            } else if (condition.field == "category") {
-                if (entity.getCategory() != condition.value) {
-                    matches = false;
-                    break;
-                }
-            }
-            // 필요에 따라 더 많은 필드 추가
-        }
-        
-        if (matches) {
-            filtered.push_back(entity);
-        }
-    }
-    
-    // 정렬 적용
-    if (order_by.has_value()) {
-        std::sort(filtered.begin(), filtered.end(), [&](const auto& a, const auto& b) {
-            if (order_by->field == "name") {
-                return order_by->ascending ? (a.getName() < b.getName()) : (a.getName() > b.getName());
-            }
-            return true;
-        });
-    }
-    
-    // 페이징 적용
-    if (pagination.has_value()) {
-        size_t start = pagination->offset;
-        size_t count = pagination->limit;
-        if (start >= filtered.size()) {
+    try {
+        if (!ensureTableExists()) {
             return {};
         }
-        size_t end = std::min(start + count, filtered.size());
-        return std::vector<VirtualPointEntity>(filtered.begin() + start, filtered.begin() + end);
+        
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "findByConditions: " + std::to_string(conditions.size()) + "개 조건으로 검색 시작");
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // ✅ 기본 쿼리에서 시작
+        std::string query = SQL::VirtualPoint::FIND_ALL;
+        
+        if (!conditions.empty()) {
+            // ✅ WHERE절 생성
+            std::string where_clause = " WHERE ";
+            bool first = true;
+            
+            for (const auto& condition : conditions) {
+                if (!first) where_clause += " AND ";
+                
+                // ✅ 조건 타입에 따른 처리
+                if (condition.operation == "=") {
+                    where_clause += condition.field + " = '" + condition.value + "'";
+                } else if (condition.operation == "!=") {
+                    where_clause += condition.field + " != '" + condition.value + "'";
+                } else if (condition.operation == "LIKE") {
+                    where_clause += condition.field + " LIKE '%" + condition.value + "%'";
+                } else if (condition.operation == "IN") {
+                    where_clause += condition.field + " IN (" + condition.value + ")";
+                } else {
+                    // 기본은 = 연산자
+                    where_clause += condition.field + " = '" + condition.value + "'";
+                }
+                
+                first = false;
+            }
+            
+            // ✅ ORDER BY 앞에 WHERE절 삽입
+            size_t order_pos = query.find("ORDER BY");
+            if (order_pos != std::string::npos) {
+                query.insert(order_pos, where_clause + " ");
+            } else {
+                query += where_clause;
+            }
+        }
+        
+        // ✅ ORDER BY 처리
+        if (order_by.has_value()) {
+            size_t order_pos = query.find("ORDER BY");
+            if (order_pos != std::string::npos) {
+                // 기존 ORDER BY 교체
+                query = query.substr(0, order_pos);
+            }
+            query += " ORDER BY " + order_by->field + " " + (order_by->ascending ? "ASC" : "DESC");
+        }
+        
+        // ✅ LIMIT/OFFSET 처리
+        if (pagination.has_value()) {
+            query += " LIMIT " + std::to_string(pagination->limit);
+            if (pagination->offset > 0) {
+                query += " OFFSET " + std::to_string(pagination->offset);
+            }
+        }
+        
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<VirtualPointEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("VirtualPointRepository", LogLevel::WARN,
+                                            "findByConditions - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "findByConditions: " + std::to_string(entities.size()) + "개 조회 완료");
+        
+        return entities;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                     "findByConditions 실행 실패: " + std::string(e.what()));
+        return {};
     }
-    
-    return filtered;
 }
 
 int VirtualPointRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    // findByConditions를 재사용
-    auto results = findByConditions(conditions);
-    return static_cast<int>(results.size());
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "countByConditions: " + std::to_string(conditions.size()) + "개 조건으로 카운트 시작");
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // ✅ ExtendedSQLQueries.h의 COUNT 쿼리 사용
+        std::string query = SQL::VirtualPoint::COUNT_ALL;
+        
+        if (!conditions.empty()) {
+            // ✅ WHERE절 생성
+            std::string where_clause = " WHERE ";
+            bool first = true;
+            
+            for (const auto& condition : conditions) {
+                if (!first) where_clause += " AND ";
+                
+                if (condition.operation == "=") {
+                    where_clause += condition.field + " = '" + condition.value + "'";
+                } else if (condition.operation == "!=") {
+                    where_clause += condition.field + " != '" + condition.value + "'";
+                } else if (condition.operation == "LIKE") {
+                    where_clause += condition.field + " LIKE '%" + condition.value + "%'";
+                } else {
+                    where_clause += condition.field + " = '" + condition.value + "'";
+                }
+                
+                first = false;
+            }
+            
+            // ✅ FROM 테이블명 뒤에 WHERE절 추가
+            size_t from_pos = query.find("FROM virtual_points");
+            if (from_pos != std::string::npos) {
+                size_t insert_pos = from_pos + strlen("FROM virtual_points");
+                query.insert(insert_pos, " " + where_clause);
+            }
+        }
+        
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                         "countByConditions: " + std::to_string(count) + "개 카운트 완료");
+            return count;
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                     "countByConditions 실행 실패: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 int VirtualPointRepository::saveBulk(std::vector<VirtualPointEntity>& entities) {
-    int saved_count = 0;
-    
-    for (auto& entity : entities) {
-        try {
-            if (save(entity)) {
-                saved_count++;
-            }
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
-                                        "saveBulk - Failed to save entity: " + std::string(e.what()));
-        }
+    if (entities.empty()) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "saveBulk: 빈 엔티티 리스트, 0 반환");
+        return 0;
     }
     
-    LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
-                                "saveBulk - Saved " + std::to_string(saved_count) + 
-                                " out of " + std::to_string(entities.size()) + " virtual points");
-    return saved_count;
+    try {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                     "🔄 saveBulk: " + std::to_string(entities.size()) + "개 엔티티 벌크 저장 시작");
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // ✅ 트랜잭션 시작
+        if (!db_layer.executeNonQuery("BEGIN TRANSACTION")) {
+            LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                         "saveBulk: 트랜잭션 시작 실패");
+            return 0;
+        }
+        
+        int success_count = 0;
+        
+        try {
+            for (auto& entity : entities) {
+                if (validateVirtualPoint(entity)) {
+                    auto params = entityToParams(entity);
+                    std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::VirtualPoint::INSERT, params);
+                    
+                    if (db_layer.executeNonQuery(query)) {
+                        // 새로 생성된 ID 가져오기 (SQLite AUTO_INCREMENT)
+                        if (entity.getId() <= 0) {
+                            auto id_results = db_layer.executeQuery(SQL::Common::GET_LAST_INSERT_ID);
+                            if (!id_results.empty() && id_results[0].find("id") != id_results[0].end()) {
+                                entity.setId(std::stoll(id_results[0].at("id")));
+                            }
+                        }
+                        success_count++;
+                    }
+                }
+            }
+            
+            // ✅ 트랜잭션 커밋
+            if (!db_layer.executeNonQuery("COMMIT")) {
+                LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                             "saveBulk: 트랜잭션 커밋 실패");
+                return 0;
+            }
+            
+        } catch (const std::exception& e) {
+            // ✅ 트랜잭션 롤백
+            db_layer.executeNonQuery("ROLLBACK");
+            throw;
+        }
+        
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                     "✅ saveBulk: " + std::to_string(success_count) + 
+                                     "개 엔티티 벌크 저장 완료 (트랜잭션)");
+        return success_count;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                     "saveBulk 실행 실패: " + std::string(e.what()));
+        return 0;
+    }
 }
 
+
 int VirtualPointRepository::updateBulk(const std::vector<VirtualPointEntity>& entities) {
-    int updated_count = 0;
-    
-    for (const auto& entity : entities) {
-        try {
-            if (update(entity)) {
-                updated_count++;
-            }
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
-                                        "updateBulk - Failed to update entity: " + std::string(e.what()));
-        }
+    if (entities.empty()) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "updateBulk: 빈 엔티티 리스트, 0 반환");
+        return 0;
     }
     
-    LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
-                                "updateBulk - Updated " + std::to_string(updated_count) + 
-                                " out of " + std::to_string(entities.size()) + " virtual points");
-    return updated_count;
+    try {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                     "🔄 updateBulk: " + std::to_string(entities.size()) + "개 엔티티 벌크 업데이트 시작");
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // ✅ 트랜잭션 시작
+        if (!db_layer.executeNonQuery("BEGIN TRANSACTION")) {
+            LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                         "updateBulk: 트랜잭션 시작 실패");
+            return 0;
+        }
+        
+        int success_count = 0;
+        
+        try {
+            for (const auto& entity : entities) {
+                if (entity.getId() > 0 && validateVirtualPoint(entity)) {
+                    auto params = entityToParams(entity);
+                    params["id"] = std::to_string(entity.getId()); // WHERE 절용
+                    std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::VirtualPoint::UPDATE_BY_ID, params);
+                    
+                    if (db_layer.executeNonQuery(query)) {
+                        success_count++;
+                        
+                        // 캐시 무효화
+                        if (isCacheEnabled()) {
+                            clearCacheForId(static_cast<int>(entity.getId()));
+                        }
+                    }
+                }
+            }
+            
+            // ✅ 트랜잭션 커밋
+            if (!db_layer.executeNonQuery("COMMIT")) {
+                LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                             "updateBulk: 트랜잭션 커밋 실패");
+                return 0;
+            }
+            
+        } catch (const std::exception& e) {
+            // ✅ 트랜잭션 롤백
+            db_layer.executeNonQuery("ROLLBACK");
+            throw;
+        }
+        
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                     "✅ updateBulk: " + std::to_string(success_count) + 
+                                     "개 엔티티 벌크 업데이트 완료 (트랜잭션)");
+        return success_count;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                     "updateBulk 실행 실패: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 int VirtualPointRepository::deleteByIds(const std::vector<int>& ids) {
-    int deleted_count = 0;
-    
-    for (int id : ids) {
-        try {
-            if (deleteById(id)) {
-                deleted_count++;
-            }
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
-                                        "deleteByIds - Failed to delete ID " + std::to_string(id) + 
-                                        ": " + std::string(e.what()));
-        }
+    if (ids.empty()) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::DEBUG,
+                                     "deleteByIds: 빈 ID 리스트, 0 반환");
+        return 0;
     }
     
-    LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
-                                "deleteByIds - Deleted " + std::to_string(deleted_count) + 
-                                " out of " + std::to_string(ids.size()) + " virtual points");
-    return deleted_count;
+    try {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                     "🗑️ deleteByIds: " + std::to_string(ids.size()) + "개 ID 벌크 삭제 시작");
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // ✅ ExtendedSQLQueries.h 상수 사용
+        std::string query = SQL::VirtualPoint::DELETE_BY_IDS;
+        
+        // ✅ RepositoryHelpers를 사용한 IN절 생성
+        std::string in_clause = RepositoryHelpers::buildInClause(ids);
+        RepositoryHelpers::replaceStringPlaceholder(query, "%IN_CLAUSE%", in_clause);
+        
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success) {
+            // ✅ 캐시에서 모든 ID 제거
+            if (isCacheEnabled()) {
+                for (int id : ids) {
+                    clearCacheForId(id);
+                }
+            }
+            
+            LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                         "✅ deleteByIds: " + std::to_string(ids.size()) + 
+                                         "개 엔티티 벌크 삭제 완료");
+            return ids.size();
+        }
+        
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::WARN,
+                                     "deleteByIds: 삭제 실패");
+        return 0;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::ERROR,
+                                     "deleteByIds 실행 실패: " + std::string(e.what()));
+        return 0;
+    }
 }
-
 // =============================================================================
 // 캐시 관리 메서드들 (IRepository 위임 패턴)
 // =============================================================================

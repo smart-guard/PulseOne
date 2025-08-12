@@ -1323,6 +1323,33 @@ namespace VirtualPoint {
         DELETE FROM virtual_point_execution_log 
         WHERE executed_at < datetime('now', '-7 days')
     )";
+
+        // 벌크 조회용 쿼리 (%IN_CLAUSE%는 RepositoryHelpers::buildInClause()로 치환)
+    const std::string FIND_BY_IDS = R"(
+        SELECT 
+            id, tenant_id, site_id, device_id, name, description, formula,
+            data_type, unit, calculation_interval, calculation_trigger,
+            cache_duration_ms, is_enabled, category, tags, scope_type,
+            execution_count, last_value, avg_execution_time_ms, last_error,
+            created_by, created_at, updated_at
+        FROM virtual_points 
+        WHERE id IN (%IN_CLAUSE%) 
+        ORDER BY id
+    )";
+    
+    // 벌크 삭제용 쿼리
+    const std::string DELETE_BY_IDS = R"(
+        DELETE FROM virtual_points 
+        WHERE id IN (%IN_CLAUSE%)
+    )";
+
+    
+    
+
+    
+
+
+    
     
 } // namespace VirtualPoint
 
