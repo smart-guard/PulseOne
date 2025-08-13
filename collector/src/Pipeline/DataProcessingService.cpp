@@ -254,76 +254,45 @@ void DataProcessingService::ProcessBatch(
         for (const auto& message : batch) {
             try {
                 // ===============================================================
-                // 🔥 올바른 처리 순서 (데이터 완성 → 평가 → 저장)
+                // 🔥 효율적인 처리 순서 (원본 → 가상포인트 → 알람 → 저장)
                 // ===============================================================
                 
-                // 1️⃣ 가상포인트 계산 (항상 시도하도록 변경)
-                auto enriched_data = message; // 원본 메시지 복사
+                // 1️⃣ 가상포인트 계산 및 메시지 확장
+                auto enriched_data = CalculateVirtualPointsAndEnrich(message);
                 
-                // 🔥 수정: 무조건 가상포인트 계산 시도
-                LogManager::getInstance().log("processing", LogLevel::INFO,
-                    "🧮 가상포인트 계산 시도 (device_id=" + message.device_id + ")");
-                
-                // VirtualPointEngine 호출하여 실제 가상포인트 존재 여부 확인
-                auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
-                if (vp_engine.isInitialized()) {
-                    auto vp_results = vp_engine.calculateForMessage(message);
-                    
-                    if (!vp_results.empty()) {
-                        LogManager::getInstance().log("processing", LogLevel::INFO,
-                            "✅ 가상포인트 " + std::to_string(vp_results.size()) + "개 계산됨");
-                        
-                        // 🔥 가상포인트 결과를 enriched_data에 추가
-                        for (const auto& vp_result : vp_results) {
-                            enriched_data.points.push_back(vp_result);
-                        }
-                        
-                        virtual_points_calculated_.fetch_add(vp_results.size());
-                        
-                        LogManager::getInstance().log("processing", LogLevel::INFO,
-                            "✅ 가상포인트 계산 완료 - 총 포인트: " + 
-                            std::to_string(enriched_data.points.size()));
-                    } else {
-                        LogManager::getInstance().log("processing", LogLevel::INFO,
-                            "ℹ️ 해당 디바이스에 계산 가능한 가상포인트 없음");
-                    }
-                } else {
-                    LogManager::getInstance().log("processing", LogLevel::WARN,
-                        "⚠️ VirtualPointEngine이 초기화되지 않음");
+                // 가상포인트 계산 통계 업데이트
+                size_t vp_count = enriched_data.points.size() - message.points.size();
+                if (vp_count > 0) {
+                    virtual_points_calculated_.fetch_add(vp_count);
+                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                        "✅ 가상포인트 " + std::to_string(vp_count) + "개 계산됨");
                 }
                 
                 // 2️⃣ 알람 평가 (가상포인트 포함된 완전한 데이터로 평가)
                 if (alarm_evaluation_enabled_.load()) {
-                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                        "🚨 알람 평가 시작 (device_id=" + enriched_data.device_id + ")");
-                    
                     std::vector<Structs::DeviceDataMessage> single_message_batch = {enriched_data};
                     EvaluateAlarms(single_message_batch, thread_index);
                     alarms_evaluated_.fetch_add(1);
-                    
-                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                        "✅ 알람 평가 완료");
                 }
                 
-                // 3️⃣ Redis 저장 (완전한 데이터: 원본 + 가상포인트 + 알람 상태)
+                // 3️⃣ 데이터 저장
+                // Redis 저장 (실시간 데이터)
                 if (use_lightweight_redis_.load()) {
                     auto converted_data = ConvertToTimestampedValues(enriched_data);
                     SaveToRedisLightweight(converted_data);
                 } else {
-                    SaveToRedisFullData(enriched_data);  // 🔥 테스트 모드에서 사용
+                    SaveToRedisFullData(enriched_data);
                 }
                 redis_writes_.fetch_add(1);
                 
-                LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                    "✅ Redis 저장 완료 (키 수: " + std::to_string(enriched_data.points.size()) + ")");
-                
-                // 4️⃣ RDB 저장 (변화된 포인트만)
+                // RDB 저장 (변화된 포인트만)
                 SaveChangedPointsToRDB(enriched_data);
                 
-                // 5️⃣ InfluxDB 버퍼링 (완전한 데이터)
+                // InfluxDB 버퍼링 (시계열 데이터)
                 BufferForInfluxDB(enriched_data);
                 influx_writes_.fetch_add(1);
                 
+                // 통계 업데이트
                 UpdateStatistics(static_cast<size_t>(enriched_data.points.size()), 0.0);
                 
             } catch (const std::exception& e) {
@@ -355,83 +324,6 @@ void DataProcessingService::ProcessBatch(
 Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnrich(
     const Structs::DeviceDataMessage& original_message) {
     
-    // 🔧 디버그 로그 1: 메서드 진입
-    LogManager::getInstance().log("processing", LogLevel::INFO,
-        "🧮 === CalculateVirtualPointsAndEnrich() 호출됨 ===");
-    LogManager::getInstance().log("processing", LogLevel::INFO,
-        "📊 입력 메시지: device_id=" + original_message.device_id + 
-        ", 포인트수=" + std::to_string(original_message.points.size()));
-    
-    try {
-        // 🔧 디버그 로그 2: VirtualPointEngine 호출 시도
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "🔄 VirtualPointEngine::getInstance() 호출 시도...");
-        
-        auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
-        
-        // 🔧 디버그 로그 3: getInstance 성공
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "✅ VirtualPointEngine::getInstance() 성공");
-        
-        // 🔧 디버그 로그 4: 초기화 상태 확인
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "🔄 VirtualPointEngine 초기화 상태 확인 중...");
-        
-        if (!vp_engine.isInitialized()) {
-            // 🔧 디버그 로그 5: 초기화 안됨
-            LogManager::getInstance().log("processing", LogLevel::WARN,
-                "⚠️ VirtualPointEngine이 초기화되지 않음 - 원본 메시지 반환");
-            return original_message;
-        }
-        
-        // 🔧 디버그 로그 6: 초기화 확인됨 - 계산 시작
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "✅ VirtualPointEngine 초기화 확인됨 - 가상포인트 계산 시작");
-        
-        // 🔧 디버그 로그 7: calculateForMessage 호출
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "🧮 vp_engine.calculateForMessage() 호출 중...");
-        
-        // 🔥 간소화: 계산만 수행하고 메시지는 그대로 반환
-        auto vp_results = vp_engine.calculateForMessage(original_message);
-        
-        // 🔧 디버그 로그 8: 계산 결과
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "✅ 가상포인트 계산 완료: " + std::to_string(vp_results.size()) + "개 결과");
-        
-        // 🔧 디버그 로그 9: 각 결과 상세
-        for (size_t i = 0; i < vp_results.size(); ++i) {
-            const auto& result = vp_results[i];
-            LogManager::getInstance().log("processing", LogLevel::INFO,
-                "  📊 VP결과 " + std::to_string(i+1) + ": point_id=" + 
-                std::to_string(result.point_id) + ", 값=" + 
-                std::visit([](auto&& v) -> std::string { 
-                    if constexpr (std::is_arithmetic_v<std::decay_t<decltype(v)>>) {
-                        return std::to_string(v);
-                    } else {
-                        return std::string(v);
-                    }
-                }, result.value));
-        }
-        
-        // 원본 메시지 그대로 반환 (가상포인트는 VirtualPointEngine이 별도 처리)
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "🔄 원본 메시지 반환 (가상포인트는 별도 처리됨)");
-        
-        return original_message;
-        
-    } catch (const std::exception& e) {
-        // 🔧 디버그 로그 10: 예외 발생
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
-            "💥 가상포인트 계산 예외: " + std::string(e.what()));
-        return original_message;
-    }
-}
-
-/*
-Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnrich(
-    const Structs::DeviceDataMessage& original_message) {
-    
     try {
         auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
         
@@ -456,7 +348,7 @@ Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnric
         return original_message;
     }
 }
-*/
+
 
 std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPoints(
     const std::vector<Structs::DeviceDataMessage>& batch) {
