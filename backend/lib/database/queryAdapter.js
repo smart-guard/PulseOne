@@ -1,37 +1,31 @@
-// backend/lib/database/queryAdapter.js
-// DB별 쿼리 문법 변환 어댑터
+// ============================================================================
+// backend/lib/database/queryAdapter.js  
+// DB별 쿼리 문법 자동 변환 (SQLite ↔ PostgreSQL ↔ MariaDB)
+// ============================================================================
 
 class QueryAdapter {
     constructor() {
-        // DB별 어댑터 정의
         this.adapters = {
-            'sqlite': new SQLiteAdapter(),
-            'sqlite3': new SQLiteAdapter(),
-            'postgresql': new PostgreSQLAdapter(),
-            'postgres': new PostgreSQLAdapter(),
-            'mssql': new MSSQLAdapter(),
-            'mariadb': new MariaDBAdapter(),
-            'mysql': new MariaDBAdapter()
+            'sqlite': new SqliteAdapter(),
+            'sqlite3': new SqliteAdapter(),
+            'postgresql': new PostgresAdapter(),
+            'postgres': new PostgresAdapter(),
+            'mariadb': new MariadbAdapter(),
+            'mysql': new MariadbAdapter(),
+            'mssql': new MssqlAdapter(),
+            'sqlserver': new MssqlAdapter()
         };
     }
 
     /**
-     * 특정 DB 타입의 어댑터 반환
+     * DB 타입별 어댑터 반환
      */
     getAdapter(dbType) {
         const adapter = this.adapters[dbType.toLowerCase()];
         if (!adapter) {
-            throw new Error(`지원하지 않는 데이터베이스 타입: ${dbType}`);
+            throw new Error(`지원하지 않는 DB 타입: ${dbType}`);
         }
         return adapter;
-    }
-
-    /**
-     * 쿼리 변환 (DB 타입별 자동 변환)
-     */
-    adaptQuery(query, dbType, params = []) {
-        const adapter = this.getAdapter(dbType);
-        return adapter.adaptQuery(query, params);
     }
 }
 
@@ -39,331 +33,348 @@ class QueryAdapter {
  * 기본 어댑터 클래스
  */
 class BaseAdapter {
-    constructor() {
-        this.autoIncrement = 'SERIAL';
-        this.uuid = 'VARCHAR(36)';
-        this.timestamp = 'TIMESTAMP';
-        this.boolean = 'BOOLEAN';
-        this.text = 'TEXT';
-        this.json = 'JSON';
-        this.parameterPlaceholder = '?';
+    constructor(dbType) {
+        this.dbType = dbType;
     }
 
     /**
-     * 쿼리 변환 (기본 구현)
+     * 쿼리 변환
      */
-    adaptQuery(query, params = []) {
-        return { query, params };
+    adaptQuery(query) {
+        let adaptedQuery = query;
+        
+        // 기본 변환들
+        adaptedQuery = this.convertDataTypes(adaptedQuery);
+        adaptedQuery = this.convertFunctions(adaptedQuery);
+        adaptedQuery = this.convertSyntax(adaptedQuery);
+        
+        return adaptedQuery;
     }
 
     /**
-     * 테이블 존재 여부 확인 쿼리
+     * 데이터 타입 변환 (기본)
      */
-    getTableExistsQuery(tableName) {
-        return `SELECT name FROM sqlite_master WHERE type='table' AND name=?`;
+    convertDataTypes(query) {
+        return query;
     }
 
     /**
-     * 컬럼 존재 여부 확인 쿼리
+     * 함수 변환 (기본)
      */
-    getColumnExistsQuery(tableName, columnName) {
-        return `PRAGMA table_info(${tableName})`;
+    convertFunctions(query) {
+        return query;
     }
 
     /**
-     * 인덱스 생성 쿼리
+     * 문법 변환 (기본)
      */
-    createIndexQuery(indexName, tableName, columns) {
-        const columnList = Array.isArray(columns) ? columns.join(', ') : columns;
-        return `CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName} (${columnList})`;
+    convertSyntax(query) {
+        return query;
     }
 
     /**
-     * UPSERT 쿼리 (INSERT OR UPDATE)
+     * 자동 증가 필드
      */
-    upsertQuery(tableName, data, conflictColumns) {
-        throw new Error('UPSERT는 각 DB별로 구현이 필요합니다');
+    get autoIncrement() {
+        return 'INTEGER PRIMARY KEY';
     }
 
     /**
-     * 페이징 쿼리
+     * 현재 시간
      */
-    paginateQuery(baseQuery, limit, offset) {
-        return `${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
+    get timestamp() {
+        return 'DATETIME';
+    }
+
+    /**
+     * 불린 타입
+     */
+    get boolean() {
+        return 'INTEGER';
     }
 }
 
 /**
  * SQLite 어댑터
  */
-class SQLiteAdapter extends BaseAdapter {
+class SqliteAdapter extends BaseAdapter {
     constructor() {
-        super();
-        this.autoIncrement = 'INTEGER PRIMARY KEY AUTOINCREMENT';
-        this.uuid = 'TEXT';
-        this.timestamp = 'DATETIME DEFAULT CURRENT_TIMESTAMP';
-        this.boolean = 'INTEGER';
-        this.text = 'TEXT';
-        this.json = 'TEXT';
-        this.parameterPlaceholder = '?';
+        super('sqlite');
     }
 
-    getTableExistsQuery(tableName) {
-        return {
-            query: `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
-            params: [tableName]
-        };
+    get autoIncrement() {
+        return 'INTEGER PRIMARY KEY AUTOINCREMENT';
     }
 
-    getColumnExistsQuery(tableName, columnName) {
-        return {
-            query: `PRAGMA table_info(${tableName})`,
-            params: []
-        };
+    get timestamp() {
+        return "DATETIME DEFAULT (datetime('now'))";
     }
 
-    upsertQuery(tableName, data, conflictColumns) {
-        const columns = Object.keys(data);
-        const values = Object.values(data);
-        const placeholders = values.map(() => '?').join(', ');
+    get boolean() {
+        return 'INTEGER'; // SQLite는 BOOLEAN이 없음
+    }
+
+    convertDataTypes(query) {
+        let adaptedQuery = query;
         
-        const updateSet = columns
-            .filter(col => !conflictColumns.includes(col))
-            .map(col => `${col} = excluded.${col}`)
-            .join(', ');
-
-        const query = `
-            INSERT INTO ${tableName} (${columns.join(', ')}) 
-            VALUES (${placeholders})
-            ON CONFLICT(${conflictColumns.join(', ')}) 
-            DO UPDATE SET ${updateSet}
-        `;
-
-        return { query, params: values };
+        // PostgreSQL → SQLite 변환
+        adaptedQuery = adaptedQuery.replace(/SERIAL PRIMARY KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT');
+        adaptedQuery = adaptedQuery.replace(/TIMESTAMP/gi, 'DATETIME');
+        adaptedQuery = adaptedQuery.replace(/BOOLEAN/gi, 'INTEGER');
+        adaptedQuery = adaptedQuery.replace(/VARCHAR\(\d+\)/gi, 'TEXT');
+        
+        // MariaDB → SQLite 변환
+        adaptedQuery = adaptedQuery.replace(/INT AUTO_INCREMENT PRIMARY KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT');
+        adaptedQuery = adaptedQuery.replace(/TINYINT\(1\)/gi, 'INTEGER');
+        adaptedQuery = adaptedQuery.replace(/AUTO_INCREMENT/gi, 'AUTOINCREMENT');
+        
+        return adaptedQuery;
     }
 
-    adaptQuery(query, params = []) {
-        // SQLite 특화 변환
-        let adaptedQuery = query
-            .replace(/SERIAL/g, 'INTEGER PRIMARY KEY AUTOINCREMENT')
-            .replace(/BOOLEAN/g, 'INTEGER')
-            .replace(/TIMESTAMP WITH TIME ZONE/g, 'DATETIME')
-            .replace(/UUID/g, 'TEXT')
-            .replace(/JSONB/g, 'TEXT');
+    convertFunctions(query) {
+        let adaptedQuery = query;
+        
+        // PostgreSQL → SQLite 함수 변환
+        adaptedQuery = adaptedQuery.replace(/NOW\(\)/gi, "datetime('now')");
+        adaptedQuery = adaptedQuery.replace(/CURRENT_TIMESTAMP/gi, "datetime('now')");
+        
+        // LIMIT/OFFSET 변환 (MariaDB → SQLite)
+        adaptedQuery = adaptedQuery.replace(/LIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
+        
+        return adaptedQuery;
+    }
 
-        return { query: adaptedQuery, params };
+    convertSyntax(query) {
+        let adaptedQuery = query;
+        
+        // PostgreSQL 파라미터 → SQLite
+        adaptedQuery = adaptedQuery.replace(/\$(\d+)/g, '?');
+        
+        // IF NOT EXISTS 처리
+        adaptedQuery = adaptedQuery.replace(/CREATE TABLE IF NOT EXISTS/gi, 'CREATE TABLE IF NOT EXISTS');
+        
+        return adaptedQuery;
     }
 }
 
 /**
- * PostgreSQL 어댑터  
+ * PostgreSQL 어댑터
  */
-class PostgreSQLAdapter extends BaseAdapter {
+class PostgresAdapter extends BaseAdapter {
     constructor() {
-        super();
-        this.autoIncrement = 'SERIAL PRIMARY KEY';
-        this.uuid = 'UUID';
-        this.timestamp = 'TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP';
-        this.boolean = 'BOOLEAN';
-        this.text = 'TEXT';
-        this.json = 'JSONB';
-        this.parameterPlaceholder = '$';
+        super('postgresql');
     }
 
-    getTableExistsQuery(tableName) {
-        return {
-            query: `SELECT table_name FROM information_schema.tables WHERE table_name=$1`,
-            params: [tableName]
-        };
+    get autoIncrement() {
+        return 'SERIAL PRIMARY KEY';
     }
 
-    getColumnExistsQuery(tableName, columnName) {
-        return {
-            query: `SELECT column_name FROM information_schema.columns WHERE table_name=$1 AND column_name=$2`,
-            params: [tableName, columnName]
-        };
+    get timestamp() {
+        return 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
     }
 
-    upsertQuery(tableName, data, conflictColumns) {
-        const columns = Object.keys(data);
-        const values = Object.values(data);
-        const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    get boolean() {
+        return 'BOOLEAN';
+    }
+
+    convertDataTypes(query) {
+        let adaptedQuery = query;
         
-        const updateSet = columns
-            .filter(col => !conflictColumns.includes(col))
-            .map(col => `${col} = EXCLUDED.${col}`)
-            .join(', ');
-
-        const query = `
-            INSERT INTO ${tableName} (${columns.join(', ')}) 
-            VALUES (${placeholders})
-            ON CONFLICT(${conflictColumns.join(', ')}) 
-            DO UPDATE SET ${updateSet}
-        `;
-
-        return { query, params: values };
-    }
-
-    adaptQuery(query, params = []) {
-        // PostgreSQL 파라미터 변환 (? → $1, $2, ...)
-        let paramIndex = 1;
-        const adaptedQuery = query.replace(/\?/g, () => `$${paramIndex++}`);
+        // SQLite → PostgreSQL 변환
+        adaptedQuery = adaptedQuery.replace(/INTEGER PRIMARY KEY AUTOINCREMENT/gi, 'SERIAL PRIMARY KEY');
+        adaptedQuery = adaptedQuery.replace(/DATETIME/gi, 'TIMESTAMP');
+        adaptedQuery = adaptedQuery.replace(/TEXT/gi, 'VARCHAR(255)');
         
-        return { query: adaptedQuery, params };
-    }
-}
-
-/**
- * MS SQL Server 어댑터
- */
-class MSSQLAdapter extends BaseAdapter {
-    constructor() {
-        super();
-        this.autoIncrement = 'IDENTITY(1,1) PRIMARY KEY';
-        this.uuid = 'UNIQUEIDENTIFIER';
-        this.timestamp = 'DATETIME2 DEFAULT GETDATE()';
-        this.boolean = 'BIT';
-        this.text = 'NVARCHAR(MAX)';
-        this.json = 'NVARCHAR(MAX)';
-        this.parameterPlaceholder = '@param';
+        // MariaDB → PostgreSQL 변환
+        adaptedQuery = adaptedQuery.replace(/INT AUTO_INCREMENT PRIMARY KEY/gi, 'SERIAL PRIMARY KEY');
+        adaptedQuery = adaptedQuery.replace(/TINYINT\(1\)/gi, 'BOOLEAN');
+        
+        return adaptedQuery;
     }
 
-    getTableExistsQuery(tableName) {
-        return {
-            query: `SELECT table_name FROM information_schema.tables WHERE table_name=@tableName`,
-            params: { tableName }
-        };
+    convertFunctions(query) {
+        let adaptedQuery = query;
+        
+        // SQLite → PostgreSQL 함수 변환
+        adaptedQuery = adaptedQuery.replace(/datetime\('now'\)/gi, 'NOW()');
+        
+        // LIMIT/OFFSET 변환 (MariaDB → PostgreSQL)
+        adaptedQuery = adaptedQuery.replace(/LIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
+        
+        return adaptedQuery;
     }
 
-    getColumnExistsQuery(tableName, columnName) {
-        return {
-            query: `SELECT column_name FROM information_schema.columns WHERE table_name=@tableName AND column_name=@columnName`,
-            params: { tableName, columnName }
-        };
-    }
-
-    upsertQuery(tableName, data, conflictColumns) {
-        const columns = Object.keys(data);
-        const updateSet = columns
-            .filter(col => !conflictColumns.includes(col))
-            .map(col => `${col} = @${col}`)
-            .join(', ');
-
-        const whereClause = conflictColumns
-            .map(col => `${col} = @${col}`)
-            .join(' AND ');
-
-        const insertColumns = columns.join(', ');
-        const insertValues = columns.map(col => `@${col}`).join(', ');
-
-        const query = `
-            MERGE ${tableName} AS target
-            USING (SELECT ${insertValues}) AS source (${insertColumns})
-            ON ${whereClause}
-            WHEN MATCHED THEN
-                UPDATE SET ${updateSet}
-            WHEN NOT MATCHED THEN
-                INSERT (${insertColumns}) VALUES (${insertValues});
-        `;
-
-        // 파라미터를 객체 형태로 변환
-        const params = {};
-        columns.forEach((col, i) => {
-            params[col] = Object.values(data)[i];
-        });
-
-        return { query, params };
-    }
-
-    adaptQuery(query, params = []) {
-        // MSSQL 특화 변환
-        let adaptedQuery = query
-            .replace(/SERIAL/g, 'IDENTITY(1,1)')
-            .replace(/BOOLEAN/g, 'BIT')
-            .replace(/TIMESTAMP WITH TIME ZONE/g, 'DATETIME2')
-            .replace(/UUID/g, 'UNIQUEIDENTIFIER')
-            .replace(/JSONB/g, 'NVARCHAR(MAX)')
-            .replace(/TEXT/g, 'NVARCHAR(MAX)');
-
-        // 파라미터 변환 (? → @param1, @param2, ...)
-        if (Array.isArray(params)) {
-            let paramIndex = 1;
-            adaptedQuery = adaptedQuery.replace(/\?/g, () => `@param${paramIndex++}`);
-            
-            // 배열을 객체로 변환
-            const paramObj = {};
-            params.forEach((value, i) => {
-                paramObj[`param${i + 1}`] = value;
-            });
-            
-            return { query: adaptedQuery, params: paramObj };
-        }
-
-        return { query: adaptedQuery, params };
-    }
-
-    paginateQuery(baseQuery, limit, offset) {
-        return `${baseQuery} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`;
+    convertSyntax(query) {
+        let adaptedQuery = query;
+        
+        // SQLite 파라미터 → PostgreSQL
+        let paramCounter = 1;
+        adaptedQuery = adaptedQuery.replace(/\?/g, () => `${paramCounter++}`);
+        
+        // 대소문자 구분 문자열 비교
+        adaptedQuery = adaptedQuery.replace(/LIKE\s+'([^']+)'/gi, "ILIKE '$1'");
+        
+        return adaptedQuery;
     }
 }
 
 /**
  * MariaDB/MySQL 어댑터
  */
-class MariaDBAdapter extends BaseAdapter {
+class MariadbAdapter extends BaseAdapter {
     constructor() {
-        super();
-        this.autoIncrement = 'INT AUTO_INCREMENT PRIMARY KEY';
-        this.uuid = 'CHAR(36)';
-        this.timestamp = 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
-        this.boolean = 'BOOLEAN';
-        this.text = 'TEXT';
-        this.json = 'JSON';
-        this.parameterPlaceholder = '?';
+        super('mariadb');
     }
 
-    getTableExistsQuery(tableName) {
-        return {
-            query: `SELECT table_name FROM information_schema.tables WHERE table_name=?`,
-            params: [tableName]
-        };
+    get autoIncrement() {
+        return 'INT AUTO_INCREMENT PRIMARY KEY';
     }
 
-    getColumnExistsQuery(tableName, columnName) {
-        return {
-            query: `SELECT column_name FROM information_schema.columns WHERE table_name=? AND column_name=?`,
-            params: [tableName, columnName]
-        };
+    get timestamp() {
+        return 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
     }
 
-    upsertQuery(tableName, data, conflictColumns) {
-        const columns = Object.keys(data);
-        const values = Object.values(data);
-        const placeholders = values.map(() => '?').join(', ');
+    get boolean() {
+        return 'TINYINT(1)';
+    }
+
+    convertDataTypes(query) {
+        let adaptedQuery = query;
         
-        const updateSet = columns
-            .filter(col => !conflictColumns.includes(col))
-            .map(col => `${col} = VALUES(${col})`)
-            .join(', ');
-
-        const query = `
-            INSERT INTO ${tableName} (${columns.join(', ')}) 
-            VALUES (${placeholders})
-            ON DUPLICATE KEY UPDATE ${updateSet}
-        `;
-
-        return { query, params: values };
+        // SQLite → MariaDB 변환
+        adaptedQuery = adaptedQuery.replace(/INTEGER PRIMARY KEY AUTOINCREMENT/gi, 'INT AUTO_INCREMENT PRIMARY KEY');
+        adaptedQuery = adaptedQuery.replace(/DATETIME/gi, 'TIMESTAMP');
+        adaptedQuery = adaptedQuery.replace(/TEXT/gi, 'VARCHAR(255)');
+        
+        // PostgreSQL → MariaDB 변환
+        adaptedQuery = adaptedQuery.replace(/SERIAL PRIMARY KEY/gi, 'INT AUTO_INCREMENT PRIMARY KEY');
+        adaptedQuery = adaptedQuery.replace(/BOOLEAN/gi, 'TINYINT(1)');
+        
+        return adaptedQuery;
     }
 
-    adaptQuery(query, params = []) {
-        // MariaDB/MySQL 특화 변환
-        let adaptedQuery = query
-            .replace(/SERIAL/g, 'INT AUTO_INCREMENT')
-            .replace(/TIMESTAMP WITH TIME ZONE/g, 'TIMESTAMP')
-            .replace(/UUID/g, 'CHAR(36)')
-            .replace(/JSONB/g, 'JSON');
+    convertFunctions(query) {
+        let adaptedQuery = query;
+        
+        // SQLite → MariaDB 함수 변환
+        adaptedQuery = adaptedQuery.replace(/datetime\('now'\)/gi, 'NOW()');
+        
+        // PostgreSQL LIMIT/OFFSET → MariaDB LIMIT
+        adaptedQuery = adaptedQuery.replace(/LIMIT\s+(\d+)\s+OFFSET\s+(\d+)/gi, 'LIMIT $2, $1');
+        
+        return adaptedQuery;
+    }
 
-        return { query: adaptedQuery, params };
+    convertSyntax(query) {
+        let adaptedQuery = query;
+        
+        // PostgreSQL 파라미터 → MariaDB
+        adaptedQuery = adaptedQuery.replace(/\$(\d+)/g, '?');
+        
+        // 백틱으로 테이블/컬럼명 감싸기
+        adaptedQuery = adaptedQuery.replace(/CREATE TABLE\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi, 'CREATE TABLE `$1`');
+        
+        return adaptedQuery;
+    }
+}
+
+/**
+ * MSSQL (SQL Server) 어댑터
+ */
+class MssqlAdapter extends BaseAdapter {
+    constructor() {
+        super('mssql');
+    }
+
+    get autoIncrement() {
+        return 'INT IDENTITY(1,1) PRIMARY KEY';
+    }
+
+    get timestamp() {
+        return 'DATETIME2 DEFAULT GETDATE()';
+    }
+
+    get boolean() {
+        return 'BIT';
+    }
+
+    convertDataTypes(query) {
+        let adaptedQuery = query;
+        
+        // SQLite → MSSQL 변환
+        adaptedQuery = adaptedQuery.replace(/INTEGER PRIMARY KEY AUTOINCREMENT/gi, 'INT IDENTITY(1,1) PRIMARY KEY');
+        adaptedQuery = adaptedQuery.replace(/DATETIME/gi, 'DATETIME2');
+        adaptedQuery = adaptedQuery.replace(/TEXT/gi, 'NVARCHAR(MAX)');
+        
+        // PostgreSQL → MSSQL 변환
+        adaptedQuery = adaptedQuery.replace(/SERIAL PRIMARY KEY/gi, 'INT IDENTITY(1,1) PRIMARY KEY');
+        adaptedQuery = adaptedQuery.replace(/BOOLEAN/gi, 'BIT');
+        adaptedQuery = adaptedQuery.replace(/VARCHAR\(/gi, 'NVARCHAR(');
+        
+        // MariaDB → MSSQL 변환
+        adaptedQuery = adaptedQuery.replace(/INT AUTO_INCREMENT PRIMARY KEY/gi, 'INT IDENTITY(1,1) PRIMARY KEY');
+        adaptedQuery = adaptedQuery.replace(/TINYINT\(1\)/gi, 'BIT');
+        adaptedQuery = adaptedQuery.replace(/TIMESTAMP/gi, 'DATETIME2');
+        
+        return adaptedQuery;
+    }
+
+    convertFunctions(query) {
+        let adaptedQuery = query;
+        
+        // 다른 DB → MSSQL 함수 변환
+        adaptedQuery = adaptedQuery.replace(/datetime\('now'\)/gi, 'GETDATE()');
+        adaptedQuery = adaptedQuery.replace(/NOW\(\)/gi, 'GETDATE()');
+        adaptedQuery = adaptedQuery.replace(/CURRENT_TIMESTAMP/gi, 'GETDATE()');
+        
+        // LIMIT/OFFSET → TOP 및 OFFSET/FETCH
+        adaptedQuery = this.convertLimitToTopOrOffset(adaptedQuery);
+        
+        return adaptedQuery;
+    }
+
+    convertSyntax(query) {
+        let adaptedQuery = query;
+        
+        // PostgreSQL 파라미터 → MSSQL
+        adaptedQuery = adaptedQuery.replace(/\$(\d+)/g, '@param$1');
+        
+        // SQLite 파라미터 → MSSQL  
+        let paramCounter = 1;
+        adaptedQuery = adaptedQuery.replace(/\?/g, () => `@param${paramCounter++}`);
+        
+        // IF NOT EXISTS → IF NOT EXISTS (MSSQL 2016+)
+        adaptedQuery = adaptedQuery.replace(/CREATE TABLE IF NOT EXISTS\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi, 
+            'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=\'$1\' AND xtype=\'U\') CREATE TABLE $1');
+        
+        // 대괄호로 테이블/컬럼명 감싸기
+        adaptedQuery = adaptedQuery.replace(/CREATE TABLE\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi, 'CREATE TABLE [$1]');
+        
+        return adaptedQuery;
+    }
+
+    /**
+     * LIMIT/OFFSET을 MSSQL TOP이나 OFFSET/FETCH로 변환
+     */
+    convertLimitToTopOrOffset(query) {
+        let adaptedQuery = query;
+        
+        // LIMIT만 있는 경우 → TOP 사용
+        const limitOnlyRegex = /LIMIT\s+(\d+)(?!\s+OFFSET)/gi;
+        adaptedQuery = adaptedQuery.replace(limitOnlyRegex, (match, limit) => {
+            // SELECT 다음에 TOP 추가
+            return adaptedQuery.replace(/SELECT/gi, `SELECT TOP ${limit}`);
+        });
+        
+        // LIMIT + OFFSET → OFFSET/FETCH 사용 (SQL Server 2012+)
+        const limitOffsetRegex = /LIMIT\s+(\d+)\s+OFFSET\s+(\d+)/gi;
+        adaptedQuery = adaptedQuery.replace(limitOffsetRegex, `OFFSET $2 ROWS FETCH NEXT $1 ROWS ONLY`);
+        
+        // MariaDB 스타일 LIMIT → OFFSET/FETCH
+        const mariaLimitRegex = /LIMIT\s+(\d+)\s*,\s*(\d+)/gi;
+        adaptedQuery = adaptedQuery.replace(mariaLimitRegex, `OFFSET $1 ROWS FETCH NEXT $2 ROWS ONLY`);
+        
+        return adaptedQuery;
     }
 }
 
