@@ -301,53 +301,51 @@ std::vector<Structs::DeviceDataMessage> DataProcessingService::CollectBatchFromP
     return pipeline_manager.GetBatch(batch_size_, 100); // 100ms 타임아웃
 }
 
-void DataProcessingService::ProcessBatch(
-    const std::vector<Structs::DeviceDataMessage>& batch, 
-    size_t thread_index) {
+void DataProcessingService::ProcessBatch(const std::vector<Structs::DeviceDataMessage>& batch, size_t thread_index) {
+    if (batch.empty()) return;
     
-    if (batch.empty()) {
-        return;
-    }
+    auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "🔄 배치 처리 시작: " + std::to_string(batch.size()) + "개");
+            "🔄 ProcessBatch 시작: " + std::to_string(batch.size()) + "개 메시지 (Thread " + std::to_string(thread_index) + ")");
         
-        // 🔥 1단계: 알람 평가 (DeviceDataMessage 직접 사용)
-        if (alarm_evaluation_enabled_.load()) {
-            EvaluateAlarms(batch, thread_index);
-        }
-        
-        // 2단계: 가상포인트 계산 및 TimestampedValue 변환
-        std::vector<Structs::TimestampedValue> enriched_data;
-        if (virtual_point_calculation_enabled_.load()) {
-            enriched_data = CalculateVirtualPoints(batch);
-        } else {
-            // 가상포인트 계산 비활성화 시 기본 변환만 수행
-            for (const auto& device_msg : batch) {
-                auto converted = ConvertToTimestampedValues(device_msg);
-                enriched_data.insert(enriched_data.end(), converted.begin(), converted.end());
+        for (const auto& message : batch) {
+            try {
+                // 1. 기본 포인트 데이터 저장 (항상 수행)
+                SavePointDataToRedis(message);
+                
+                // 2. RDB 저장 (변화된 포인트만)
+                SaveChangedPointsToRDB(message);
+                
+                // 3. InfluxDB 버퍼링
+                BufferForInfluxDB(message);
+                
+                // 4. 🔥 스마트 알람 처리 (중복 방지)
+                ProcessAlarmsSmartly(message);
+                
+                // 5. 🔥 스마트 가상포인트 처리 (중복 방지)  
+                ProcessVirtualPointsSmartly(message);
+                
+                UpdateStatistics(message.points.size());
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("processing", LogLevel::ERROR,
+                    "메시지 처리 실패 (device=" + message.device_id + "): " + std::string(e.what()));
+                processing_errors_.fetch_add(1);
             }
         }
         
-        // 3단계: 저장 (모드에 따라 다르게 처리)
-        if (use_lightweight_redis_.load()) {
-            SaveToRedisLightweight(enriched_data);
-        } else {
-            SaveToRedisFullData(batch);
-        }
-        
-        // 4단계: InfluxDB 저장 (시계열 데이터)
-        if (influx_client_) {
-            SaveToInfluxDB(enriched_data);
-        }
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "✅ 배치 처리 완료: " + std::to_string(batch.size()) + "개");
+            "✅ ProcessBatch 완료: " + std::to_string(batch.size()) + "개 처리됨 (" + std::to_string(duration.count()) + "ms)");
         
     } catch (const std::exception& e) {
-        HandleError("배치 처리 실패", e.what());
-        throw;
+        LogManager::getInstance().log("processing", LogLevel::ERROR,
+            "배치 처리 전체 실패: " + std::string(e.what()));
+        processing_errors_.fetch_add(batch.size());
     }
 }
 

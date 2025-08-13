@@ -662,7 +662,51 @@ bool AlarmEngine::registerSystemFunctions() {
     }
     
     try {
-        // getPointValue() 함수 등록
+        LogManager::getInstance().Info("🔄 JavaScript 시스템 함수 등록 시작...");
+        
+        // =======================================================================
+        // 🔥 1. console 객체 등록 (추가!)
+        // =======================================================================
+        std::string consoleObj = R"(
+var console = {
+    log: function(msg) {
+        // JavaScript에서 console.log 호출 시 무시 (C++에서 로깅 처리)
+    },
+    error: function(msg) {
+        // JavaScript에서 console.error 호출 시 무시
+    },
+    warn: function(msg) {
+        // JavaScript에서 console.warn 호출 시 무시
+    },
+    info: function(msg) {
+        // JavaScript에서 console.info 호출 시 무시
+    }
+};
+)";
+        
+        JSValue console_result = JS_Eval((JSContext*)js_context_, 
+                                        consoleObj.c_str(), 
+                                        consoleObj.length(), 
+                                        "<console_object>", 
+                                        JS_EVAL_TYPE_GLOBAL);
+        
+        if (JS_IsException(console_result)) {
+            JSValue exception = JS_GetException((JSContext*)js_context_);
+            const char* error_str = JS_ToCString((JSContext*)js_context_, exception);
+            LogManager::getInstance().Error("console 객체 등록 실패: " + 
+                                          std::string(error_str ? error_str : "알 수 없는 오류"));
+            if (error_str) JS_FreeCString((JSContext*)js_context_, error_str);
+            JS_FreeValue((JSContext*)js_context_, exception);
+            JS_FreeValue((JSContext*)js_context_, console_result);
+            return false;
+        }
+        
+        JS_FreeValue((JSContext*)js_context_, console_result);
+        LogManager::getInstance().Info("✅ console 객체 등록 완료");
+        
+        // =======================================================================
+        // 🔥 2. getPointValue() 함수 등록 (기존 코드)
+        // =======================================================================
         std::string getPointValueFunc = R"(
 function getPointValue(pointId) {
     var id = parseInt(pointId);
@@ -680,7 +724,8 @@ function getPointValue(pointId) {
         return window[varName];
     }
     
-    console.log('[getPointValue] Point ' + pointId + ' not found');
+    // console.log 대신 주석으로 처리
+    // console.log('[getPointValue] Point ' + pointId + ' not found');
     return null;
 }
 )";
@@ -688,7 +733,7 @@ function getPointValue(pointId) {
         JSValue func_result = JS_Eval((JSContext*)js_context_, 
                                      getPointValueFunc.c_str(), 
                                      getPointValueFunc.length(), 
-                                     "<system_functions>", 
+                                     "<system_getPointValue>", 
                                      JS_EVAL_TYPE_GLOBAL);
         
         if (JS_IsException(func_result)) {
@@ -703,8 +748,67 @@ function getPointValue(pointId) {
         }
         
         JS_FreeValue((JSContext*)js_context_, func_result);
+        LogManager::getInstance().Info("✅ getPointValue() 함수 등록 완료");
         
-        LogManager::getInstance().Info("✅ 시스템 함수 등록 완료");
+        // =======================================================================
+        // 🔥 3. 수학 및 유틸리티 함수들 등록 (기존 코드)
+        // =======================================================================
+        std::string utilityFunctions = R"(
+// 수학 함수들
+function abs(x) { return Math.abs(x); }
+function max(a, b) { return Math.max(a, b); }
+function min(a, b) { return Math.min(a, b); }
+function round(x) { return Math.round(x); }
+function floor(x) { return Math.floor(x); }
+function ceil(x) { return Math.ceil(x); }
+
+// 조건 체크 함수들
+function between(value, min, max) {
+    return value >= min && value <= max;
+}
+
+function outside(value, min, max) {
+    return value < min || value > max;
+}
+
+// 상태 변화 감지 (나중에 구현)
+function rising(pointId) {
+    // TODO: 이전 값과 비교
+    return false;
+}
+
+function falling(pointId) {
+    // TODO: 이전 값과 비교
+    return false;
+}
+
+// 로깅 (console 대신)
+function log(message) {
+    // C++ 로깅으로 대체
+}
+)";
+        
+        JSValue util_result = JS_Eval((JSContext*)js_context_, 
+                                     utilityFunctions.c_str(), 
+                                     utilityFunctions.length(), 
+                                     "<system_utilities>", 
+                                     JS_EVAL_TYPE_GLOBAL);
+        
+        if (JS_IsException(util_result)) {
+            JSValue exception = JS_GetException((JSContext*)js_context_);
+            const char* error_str = JS_ToCString((JSContext*)js_context_, exception);
+            LogManager::getInstance().Error("유틸리티 함수 등록 실패: " + 
+                                          std::string(error_str ? error_str : "알 수 없는 오류"));
+            if (error_str) JS_FreeCString((JSContext*)js_context_, error_str);
+            JS_FreeValue((JSContext*)js_context_, exception);
+            JS_FreeValue((JSContext*)js_context_, util_result);
+            return false;
+        }
+        
+        JS_FreeValue((JSContext*)js_context_, util_result);
+        LogManager::getInstance().Info("✅ 유틸리티 함수들 등록 완료");
+        
+        LogManager::getInstance().Info("🎉 모든 시스템 함수 등록 완료! (console + getPointValue + utils)");
         return true;
         
     } catch (const std::exception& e) {
