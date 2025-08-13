@@ -29,11 +29,26 @@ AlarmEngine::AlarmEngine() {
     LogManager::getInstance().Debug("🎯 AlarmEngine 초기화 시작 (순수 평가 모드)");
     
     try {
-        // ❌ 제거: Redis 클라이언트 초기화
-        // initializeClients();
-        
+        // 1. Repository 초기화
         initializeRepositories(); 
-        initScriptEngine();
+        
+        // 2. JavaScript 엔진 초기화
+        if (!initScriptEngine()) {
+            LogManager::getInstance().Error("❌ JavaScript 엔진 초기화 실패");
+            initialized_ = false;
+            return;
+        }
+        
+        // 3. 🔥 시스템 함수 등록 (핵심! 이 부분이 누락되어 있었음)
+        if (!registerSystemFunctions()) {
+            LogManager::getInstance().Error("❌ 시스템 함수 등록 실패");
+            cleanupScriptEngine();
+            initialized_ = false;
+            return;
+        }
+        LogManager::getInstance().Info("✅ JavaScript 시스템 함수 등록 완료 (getPointValue 포함)");
+        
+        // 4. 초기 데이터 로드
         loadInitialData();
         
         initialized_ = true;
