@@ -283,7 +283,21 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByTenant(int tenant_
         }
         
         DatabaseAbstractionLayer db_layer;
-        std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_TENANT, std::to_string(tenant_id));
+        std::string query = R"(
+            SELECT 
+                id, tenant_id, site_id, device_id,
+                name, description, formula, data_type, unit,
+                calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
+                category, tags, scope_type,
+                execution_count, last_value, last_error, avg_execution_time_ms,
+                created_by, created_at, updated_at
+            FROM virtual_points 
+            WHERE tenant_id = )" + std::to_string(tenant_id) + R"(
+            ORDER BY name
+        )";
+        std::string query2 = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_TENANT, std::to_string(tenant_id));
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                    "🔍 FIND_BY_TENANT 실행할 SQL: " + query2);
         auto results = db_layer.executeQuery(query);
         
         std::vector<VirtualPointEntity> entities;
@@ -314,7 +328,14 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findBySite(int site_id) 
         }
         
         DatabaseAbstractionLayer db_layer;
-        std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_SITE, std::to_string(site_id));
+        std::string query2 = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_SITE, std::to_string(site_id));
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                    "🔍 FIND_BY_SITE 실행할 SQL: " + query2);
+        std::string query = R"(
+            SELECT ... FROM virtual_points 
+            WHERE site_id = )" + std::to_string(site_id) + R"(
+            ORDER BY name
+        )";
         auto results = db_layer.executeQuery(query);
         
         std::vector<VirtualPointEntity> entities;
@@ -345,7 +366,14 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByDevice(int device_
         }
         
         DatabaseAbstractionLayer db_layer;
-        std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_DEVICE, std::to_string(device_id));
+        std::string query2 = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_DEVICE, std::to_string(device_id));
+        LogManager::getInstance().log("VirtualPointRepository", LogLevel::INFO,
+                                    "🔍 FIND_BY_DEVICE 실행할 SQL: " + query2);
+        std::string query = R"(
+            SELECT ... FROM virtual_points 
+            WHERE device_id = )" + std::to_string(device_id) + R"(
+            ORDER BY name
+        )";
         auto results = db_layer.executeQuery(query);
         
         std::vector<VirtualPointEntity> entities;
