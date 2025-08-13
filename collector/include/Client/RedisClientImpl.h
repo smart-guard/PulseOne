@@ -1,71 +1,57 @@
 // =============================================================================
-// 🔥 개선된 RedisClientImpl.h - 완전 자동화 버전
-// 다른 클래스는 그냥 생성만 하면 끝!
+// RedisClientImpl.h - 완전한 Redis 클라이언트 구현 (중복 제거 완료)
 // =============================================================================
-
 #ifndef REDIS_CLIENT_IMPL_H
 #define REDIS_CLIENT_IMPL_H
 
 #include "Client/RedisClient.h"
-#include <string>
+#include "Utils/ConfigManager.h"
+#include "Utils/LogManager.h"
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <memory>
-#include <vector>
 #include <mutex>
 #include <thread>
-#include <atomic>
-#include <condition_variable>
-#include <queue>
-#include <unordered_set>
-#include <chrono>
-#include <map>
+#include <functional>
 
-// hiredis 헤더 포함
+// hiredis 라이브러리 체크
 #ifdef HAS_HIREDIS
 #include <hiredis/hiredis.h>
-#include <hiredis/async.h>
-#else
-struct redisContext;
-struct redisAsyncContext;  
-struct redisReply;
 #endif
 
 /**
  * @brief 완전 자동화된 Redis 클라이언트 구현체
- * @details 생성만 하면 자동으로 설정 읽고 연결, 재연결, 에러 처리 모두 자동
+ * @details 모든 Redis 명령어를 완전히 구현하고 자동 연결 관리 제공
  */
 class RedisClientImpl : public RedisClient {
 public:
     // =============================================================================
-    // 🔥 사용자 친화적 인터페이스 - 이것만 알면 됨!
+    // 생성자/소멸자 - 완전 자동화
     // =============================================================================
     
-    /**
-     * @brief 기본 생성자 - 자동으로 설정 읽고 연결 시도
-     */
     RedisClientImpl();
-    
-    /**
-     * @brief 소멸자 - 자동으로 연결 해제
-     */
     ~RedisClientImpl() override;
     
-    /**
-     * @brief 현재 연결 상태 확인
-     * @return 연결되어 있으면 true
-     */
+    // 복사/이동 방지 (싱글톤 패턴)
+    RedisClientImpl(const RedisClientImpl&) = delete;
+    RedisClientImpl& operator=(const RedisClientImpl&) = delete;
+    RedisClientImpl(RedisClientImpl&&) = delete;
+    RedisClientImpl& operator=(RedisClientImpl&&) = delete;
+    
+    // =============================================================================
+    // 기본 연결 관리 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
+    bool connect(const std::string& host, int port, const std::string& password = "") override;
+    void disconnect() override;
     bool isConnected() const override;
     
-    /**
-     * @brief 수동 재연결 (보통 필요 없음, 자동으로 처리됨)
-     * @return 재연결 성공 시 true
-     */
-    bool reconnect();
-    
     // =============================================================================
-    // 🔥 Redis 명령어들 - 자동으로 연결 상태 확인하고 재연결까지!
+    // Key-Value 조작 (RedisClient 인터페이스 구현)
     // =============================================================================
     
-    // Key-Value 조작
     bool set(const std::string& key, const std::string& value) override;
     bool setex(const std::string& key, const std::string& value, int expire_seconds) override;
     std::string get(const std::string& key) override;
@@ -74,7 +60,10 @@ public:
     bool expire(const std::string& key, int seconds) override;
     int ttl(const std::string& key) override;
     
-    // Hash 조작
+    // =============================================================================
+    // Hash 조작 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
     bool hset(const std::string& key, const std::string& field, const std::string& value) override;
     std::string hget(const std::string& key, const std::string& field) override;
     StringMap hgetall(const std::string& key) override;
@@ -82,8 +71,10 @@ public:
     bool hexists(const std::string& key, const std::string& field) override;
     int hlen(const std::string& key) override;
     
-    // List, Set, Sorted Set, Pub/Sub, 트랜잭션 등 모든 명령어
-    // (기존과 동일하지만 내부에서 자동 연결 관리)
+    // =============================================================================
+    // List 조작 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
     int lpush(const std::string& key, const std::string& value) override;
     int rpush(const std::string& key, const std::string& value) override;
     std::string lpop(const std::string& key) override;
@@ -91,28 +82,72 @@ public:
     StringList lrange(const std::string& key, int start, int stop) override;
     int llen(const std::string& key) override;
     
+    // =============================================================================
+    // Set 조작 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
     int sadd(const std::string& key, const std::string& member) override;
     int srem(const std::string& key, const std::string& member) override;
     bool sismember(const std::string& key, const std::string& member) override;
     StringList smembers(const std::string& key) override;
     int scard(const std::string& key) override;
     
-    int publish(const std::string& channel, const std::string& message) override;
-    bool ping() override;
+    // =============================================================================
+    // Sorted Set 조작 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
+    int zadd(const std::string& key, double score, const std::string& member) override;
+    int zrem(const std::string& key, const std::string& member) override;
+    StringList zrange(const std::string& key, int start, int stop) override;
+    int zcard(const std::string& key) override;
     
     // =============================================================================
-    // 🔥 진단 및 통계 (선택적 사용)
+    // Pub/Sub (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
+    int publish(const std::string& channel, const std::string& message) override;
+    bool subscribe(const std::string& channel) override;
+    bool unsubscribe(const std::string& channel) override;
+    bool psubscribe(const std::string& pattern) override;
+    bool punsubscribe(const std::string& pattern) override;
+    void setMessageCallback(MessageCallback callback) override;
+    
+    // =============================================================================
+    // 배치 처리 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
+    bool mset(const StringMap& key_values) override;
+    StringList mget(const StringList& keys) override;
+    
+    // =============================================================================
+    // 트랜잭션 지원 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
+    bool multi() override;
+    bool exec() override;
+    bool discard() override;
+    
+    // =============================================================================
+    // 상태 및 진단 (RedisClient 인터페이스 구현)
+    // =============================================================================
+    
+    StringMap info() override;
+    bool ping() override;
+    bool select(int db_index) override;
+    int dbsize() override;
+    
+    // =============================================================================
+    // 추가 기능들 (자동화 및 편의성)
     // =============================================================================
     
     struct ConnectionStats {
-        bool is_connected;
-        std::string host;
-        int port;
-        uint64_t total_commands;
-        uint64_t successful_commands;
-        uint64_t failed_commands;
-        uint64_t reconnect_count;
-        std::chrono::steady_clock::time_point last_connect_time;
+        uint64_t total_commands{0};
+        uint64_t successful_commands{0};
+        uint64_t failed_commands{0};
+        uint64_t total_reconnects{0};
+        int current_reconnect_attempts{0};
+        std::chrono::steady_clock::time_point connect_time;
+        bool is_connected{false};
     };
     
     ConnectionStats getStats() const;
@@ -120,44 +155,70 @@ public:
 
 private:
     // =============================================================================
-    // 🔥 내부 구현 - 사용자가 신경 쓸 필요 없음
+    // 내부 헬퍼 메서드들
     // =============================================================================
     
-    // 복사/이동 방지
-    RedisClientImpl(const RedisClientImpl&) = delete;
-    RedisClientImpl& operator=(const RedisClientImpl&) = delete;
-    
-    // 연결 관리 (완전 자동화)
-    void loadConfiguration();           // 설정 파일에서 자동 로드
-    bool attemptConnection();           // 연결 시도
-    bool ensureConnected();            // 연결 보장 (명령 실행 전 호출)
-    void scheduleReconnect();          // 백그라운드 재연결 스케줄링
-    void connectionWatchdog();         // 연결 감시 스레드
-    
-    // 명령 실행 (자동 재연결 포함)
-    template<typename T>
-    T executeWithRetry(std::function<T()> operation, T default_value);
-    
-    redisReply* executeCommand(const char* format, ...);
-    redisReply* executeCommandSafe(const char* format, ...);  // 재연결 포함
-    
-    // 응답 처리
-    std::string replyToString(redisReply* reply) const;
-    long long replyToInteger(redisReply* reply) const;
-    StringList replyToStringList(redisReply* reply) const;
-    StringMap replyToStringMap(redisReply* reply) const;
-    bool isReplyOK(redisReply* reply) const;
+    // 설정 및 연결 관리
+    void loadConfiguration();
+    bool attemptConnection();
+    bool ensureConnected();
+    void connectionWatchdog();
     
     // 에러 처리 및 로깅
     void logInfo(const std::string& message) const;
     void logWarning(const std::string& message) const;
     void logError(const std::string& message) const;
+    
+    // 통계 업데이트
+    void incrementCommand();
+    void incrementSuccess();
+    void incrementFailure();
+    
+    // =============================================================================
+    // 템플릿 메서드 (헤더에 구현)
+    // =============================================================================
+    
+    template<typename T>
+    T executeWithRetry(std::function<T()> operation, T default_value) {
+        total_commands_++;
+        
+        try {
+            if (ensureConnected()) {
+                T result = operation();
+                successful_commands_++;
+                return result;
+            }
+        } catch (const std::exception& e) {
+            logError("Redis 작업 중 예외: " + std::string(e.what()));
+        }
+        
+        failed_commands_++;
+        return default_value;
+    }
+    
+#ifdef HAS_HIREDIS
+    // hiredis 전용 메서드들
+    redisReply* executeCommandSafe(const char* format, ...);
+    std::string replyToString(redisReply* reply) const;
+    long long replyToInteger(redisReply* reply) const;
+    StringList replyToStringList(redisReply* reply) const;
+    StringMap replyToStringMap(redisReply* reply) const;
+    bool isReplyOK(redisReply* reply) const;
     bool isConnectionError() const;
+#endif
     
-    // 멤버 변수
+    // =============================================================================
+    // 멤버 변수들
+    // =============================================================================
+    
+    // hiredis 연결 컨텍스트
+#ifdef HAS_HIREDIS
     redisContext* context_{nullptr};
+#else
+    void* context_{nullptr};  // 호환성을 위한 더미
+#endif
     
-    // 연결 설정 (자동 로드)
+    // 연결 설정 (자동 로드됨)
     std::string host_{"localhost"};
     int port_{6379};
     std::string password_;
@@ -175,6 +236,7 @@ private:
     static constexpr int MAX_RECONNECT_ATTEMPTS = 10;
     static constexpr std::chrono::milliseconds RECONNECT_DELAY{2000};
     static constexpr std::chrono::milliseconds CONNECTION_TIMEOUT{5000};
+    static constexpr std::chrono::seconds WATCHDOG_INTERVAL{30};
     
     // 통계
     std::atomic<uint64_t> total_commands_{0};
@@ -190,6 +252,10 @@ private:
     std::unique_ptr<std::thread> watchdog_thread_;
     std::condition_variable watchdog_cv_;
     mutable std::mutex watchdog_mutex_;
+    
+    // Pub/Sub 콜백
+    MessageCallback message_callback_;
+    std::mutex callback_mutex_;
 };
 
 #endif // REDIS_CLIENT_IMPL_H
