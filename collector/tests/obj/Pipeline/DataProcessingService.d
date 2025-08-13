@@ -15,5 +15,6 @@ obj/Pipeline/DataProcessingService.o: \
  ../include/Database/DatabaseManager.h \
  ../include/Client/RedisClientImpl.h ../include/Utils/ConfigManager.h \
  ../include/Utils/LogManager.h ../include/Common/DriverStatistics.h \
+ ../include/VirtualPoint/VirtualPointBatchWriter.h \
  ../include/Pipeline/PipelineManager.h ../include/Alarm/AlarmManager.h \
  ../include/Database/Entities/AlarmRuleEntity.h

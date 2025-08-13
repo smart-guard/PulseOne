@@ -9,6 +9,7 @@
 #include "Client/RedisClient.h"
 #include "Client/InfluxClient.h"
 #include "VirtualPoint/VirtualPointEngine.h"
+#include "VirtualPoint/VirtualPointBatchWriter.h"
 #include "Alarm/AlarmTypes.h"
 #include <vector>
 #include <thread>
@@ -133,6 +134,10 @@ private:
     std::atomic<uint64_t> total_processing_time_ms_{0};
     std::atomic<uint64_t> total_operations_{0};
     
+    std::unique_ptr<VirtualPoint::VirtualPointBatchWriter> vp_batch_writer_;
+    nlohmann::json GetVirtualPointBatchStats() const;
+    void FlushVirtualPointBatch();
+    void LogPerformanceComparison();
     // ==========================================================================
     // 내부 처리 메서드들
     // ==========================================================================
@@ -173,6 +178,11 @@ private:
     std::string ConvertToLightDeviceStatus(const Structs::DeviceDataMessage& message);
     std::string ConvertToLightPointValue(const Structs::TimestampedValue& value, const std::string& device_id);
     std::string ConvertToBatchPointData(const Structs::DeviceDataMessage& message);
+     /**
+     * @brief 가상포인트 계산 결과를 Redis에 저장
+     */
+    void StoreVirtualPointToRedis(const Structs::TimestampedValue& vp_result);
+    
 };
 
 } // namespace Pipeline
