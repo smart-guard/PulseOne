@@ -18,6 +18,7 @@
 #include "Utils/LogManager.h"
 #include "Alarm/AlarmTypes.h"
 #include "VirtualPoint/VirtualPointBatchWriter.h"
+#include "Database/Entities/CurrentValueEntity.h"
 #include <vector>
 #include <memory>
 #include <atomic>
