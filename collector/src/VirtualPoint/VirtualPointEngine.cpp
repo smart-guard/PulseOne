@@ -577,26 +577,65 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
         return results;
     }
     
+    // 🔥 디버깅: 메시지 내용 분석
+    LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+        "📨 메시지 수신: device_id=" + msg.device_id + 
+        ", points=" + std::to_string(msg.points.size()) + "개");
+    
+    for (const auto& point : msg.points) {
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+            "📍 point_id=" + std::to_string(point.point_id) + 
+            ", is_virtual=" + (point.is_virtual_point ? "true" : "false"));
+    }    
+    
     // 이 메시지에 영향받는 가상포인트들 찾기
     auto affected_vps = getAffectedVirtualPoints(msg);
-    
+    LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+        "🎯 영향받는 가상포인트: " + std::to_string(affected_vps.size()) + "개");
+
     if (affected_vps.empty()) {
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+            "📊 이 메시지와 관련된 가상포인트가 없음");
+        
+        // 🔥 추가 디버깅: 전체 가상포인트 상태 확인
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+            "🔍 전체 가상포인트 개수: " + std::to_string(virtual_points_.size()));
+        
+        // 🔥 강제로 하나라도 있는지 확인
+        if (!virtual_points_.empty()) {
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                "🔧 가상포인트가 존재하지만 해당 디바이스와 연결되지 않음");
+            
+            // 첫 번째 가상포인트 정보 출력
+            auto first_vp = virtual_points_.begin();
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                "📋 첫 번째 가상포인트: ID=" + std::to_string(first_vp->first) + 
+                ", name=" + first_vp->second.name);
+        }
+        
         return results;
     }
     
-    LogManager::getInstance().log("VirtualPointEngine", LogLevel::DEBUG,
+    LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
                                  "메시지로 인해 " + std::to_string(affected_vps.size()) + " 개 가상포인트 재계산 필요");
     
     // 각 가상포인트 계산
     for (int vp_id : affected_vps) {
         try {
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                "🧮 가상포인트 ID " + std::to_string(vp_id) + " 계산 시작");
+            
             auto vp_opt = getVirtualPoint(vp_id);
             if (!vp_opt || !vp_opt->is_enabled) {
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                    "⚠️ 가상포인트 ID " + std::to_string(vp_id) + " 비활성화되어 건너뜀");
                 continue;
             }
             
             // 입력값 수집
             json inputs = collectInputValues(*vp_opt, msg);
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                "📊 입력값 수집 완료: " + inputs.dump());
             
             // ✅ VirtualPointTypes의 CalculationResult 사용
             auto calc_result = calculate(vp_id, inputs);
@@ -607,7 +646,28 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
                 tv.timestamp = std::chrono::system_clock::now();
                 tv.quality = DataQuality::GOOD;
                 
+                // 🔥 핵심 수정: is_virtual_point = true 설정!
+                tv.is_virtual_point = true;
+                
+                // 🔥 추가 가상포인트 관련 필드들 설정
+                tv.point_id = vp_id;  // 가상포인트 ID 설정
+                tv.source = "VirtualPointEngine";
+                tv.sequence_number = static_cast<uint32_t>(vp_id);
+                
+                // 가상포인트는 항상 변화된 것으로 간주 (재계산되었으므로)
+                tv.value_changed = true;
+                
+                // RDB 저장이 필요한 경우 플래그 설정
+                tv.force_rdb_store = true;  // 가상포인트 결과는 항상 저장
+                
+                // 알람 체크 활성화
+                tv.trigger_alarm_check = true;
+                
                 results.push_back(tv);
+                
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                    "✅ 가상포인트 " + vp_opt->name + " (ID:" + std::to_string(vp_id) + 
+                    ") 계산 완료 - 값: " + std::to_string(tv.GetDoubleValue()));
                 
                 // 통계 업데이트
                 updateVirtualPointStats(vp_id, calc_result);
@@ -632,11 +692,11 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
         }
     }
     
-    LogManager::getInstance().log("VirtualPointEngine", LogLevel::DEBUG,
-                                 std::to_string(results.size()) + " 개 가상포인트 계산 완료");
+    LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                                 "🧮 가상포인트 계산 완료: " + std::to_string(results.size()) + " 개 결과 생성");
+    
     return results;
 }
-
 // =============================================================================
 // ✅ 개별 계산 (VirtualPointTypes 활용)
 // =============================================================================
