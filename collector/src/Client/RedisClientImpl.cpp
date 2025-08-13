@@ -826,16 +826,56 @@ void RedisClientImpl::loadConfiguration() {
     try {
         auto& config = ConfigManager::getInstance();
         
-        host_ = config.getOrDefault("REDIS_HOST", "localhost");
-        port_ = config.getInt("REDIS_PORT", 6379);
-        password_ = config.getOrDefault("REDIS_PASSWORD", "");
-        database_ = config.getInt("REDIS_DATABASE", 0);
+        logInfo("🔧 Redis 설정 로드 시작...");
         
-        logInfo("Redis 설정 로드 완료: " + host_ + ":" + std::to_string(port_) + 
+        // 🔥 올바른 설정 키 사용 (REDIS_PRIMARY_* 사용)
+        host_ = config.getOrDefault("REDIS_PRIMARY_HOST", "localhost");
+        logInfo("📍 읽은 호스트: " + host_);
+        
+        port_ = config.getInt("REDIS_PRIMARY_PORT", 6379);
+        logInfo("🔌 읽은 포트: " + std::to_string(port_));
+        
+        password_ = config.getOrDefault("REDIS_PRIMARY_PASSWORD", "");
+        if (password_.empty()) {
+            logInfo("🔐 Redis 패스워드: 없음");
+        } else {
+            logInfo("🔐 Redis 패스워드: 설정됨 (****)");
+        }
+        
+        database_ = config.getInt("REDIS_PRIMARY_DB", 0);
+        logInfo("🗄️ Redis DB: " + std::to_string(database_));
+        
+        // 🔥 추가 설정들
+        bool enabled = config.getBool("REDIS_PRIMARY_ENABLED", true);
+        logInfo("✅ Redis 활성화: " + std::string(enabled ? "true" : "false"));
+        
+        int timeout_ms = config.getInt("REDIS_PRIMARY_TIMEOUT_MS", 5000);
+        logInfo("⏰ Redis 타임아웃: " + std::to_string(timeout_ms) + "ms");
+        
+        int connect_timeout_ms = config.getInt("REDIS_PRIMARY_CONNECT_TIMEOUT_MS", 3000);
+        logInfo("🔗 Redis 연결 타임아웃: " + std::to_string(connect_timeout_ms) + "ms");
+        
+        bool test_mode = config.getBool("REDIS_TEST_MODE", false);
+        logInfo("🧪 Redis 테스트 모드: " + std::string(test_mode ? "true" : "false"));
+        
+        logInfo("✅ Redis 설정 로드 완료: " + host_ + ":" + std::to_string(port_) + 
                 " (DB " + std::to_string(database_) + ")");
         
+        // 🔥 활성화 체크 - 비활성화되어 있으면 연결 건너뛰기
+        if (!enabled) {
+            logWarning("⚠️ Redis가 비활성화되어 있습니다 (REDIS_PRIMARY_ENABLED=false)");
+        }
+        
     } catch (const std::exception& e) {
-        logWarning("설정 로드 실패, 기본값 사용: " + std::string(e.what()));
+        logError("❌ Redis 설정 로드 실패: " + std::string(e.what()));
+        
+        // 기본값으로 폴백
+        host_ = "localhost";
+        port_ = 6379;
+        password_ = "";
+        database_ = 0;
+        
+        logWarning("⚠️ Redis 기본값으로 폴백: " + host_ + ":" + std::to_string(port_));
     }
 }
 
