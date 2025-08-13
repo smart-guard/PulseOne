@@ -227,43 +227,241 @@ bool VirtualPointEngine::registerSystemFunctions() {
     
     std::lock_guard<std::mutex> lock(js_mutex_);
     
-    // 기본 수학 함수들 등록
-    const std::vector<std::pair<std::string, std::string>> system_functions = {
-        {"Math.max", "Math.max"},
-        {"Math.min", "Math.min"}, 
-        {"Math.abs", "Math.abs"},
-        {"Math.sqrt", "Math.sqrt"},
-        {"Math.pow", "Math.pow"},
-        {"Math.round", "Math.round"},
-        {"Math.floor", "Math.floor"},
-        {"Math.ceil", "Math.ceil"}
-    };
-    
-    int success_count = 0;
-    for (const auto& [name, code] : system_functions) {
-        try {
-            JSValue result = JS_Eval(js_context_, 
-                                   ("var " + name.substr(5) + " = " + code + ";").c_str(),
-                                   (name + code).length(),
-                                   "<system>",
-                                   JS_EVAL_TYPE_GLOBAL);
-            
-            if (!JS_IsException(result)) {
-                success_count++;
-            }
-            JS_FreeValue(js_context_, result);
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
-                                         "시스템 함수 '" + name + "' 등록 실패: " + std::string(e.what()));
-        }
+    try {
+        int success_count = 0;
+        
+        // =============================================================================
+        // 🔥 1. getPointValue() 함수 등록 (핵심!)
+        // =============================================================================
+        
+        std::string getPointValueFunc = R"(
+function getPointValue(pointId) {
+    // pointId를 숫자로 변환
+    var id = parseInt(pointId);
+    if (isNaN(id)) {
+        console.log('[getPointValue] Invalid pointId: ' + pointId);
+        return null;
     }
     
-    LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
-                                 "시스템 함수 " + std::to_string(success_count) + "/" + 
-                                 std::to_string(system_functions.size()) + " 개 등록 완료");
+    // point_values 객체에서 찾기 (숫자 키)
+    if (typeof point_values !== 'undefined' && point_values[id] !== undefined) {
+        return point_values[id];
+    }
     
-    return success_count > 0;
+    // point_values 객체에서 찾기 (문자열 키)
+    if (typeof point_values !== 'undefined' && point_values[pointId] !== undefined) {
+        return point_values[pointId];
+    }
+    
+    // 동적 변수명으로 찾기 (point_123 형태)
+    var varName = 'point_' + id;
+    try {
+        if (typeof eval(varName) !== 'undefined') {
+            return eval(varName);
+        }
+    } catch (e) {
+        // eval 실패는 무시
+    }
+    
+    // 전역 스코프에서 직접 찾기
+    if (typeof globalThis !== 'undefined' && globalThis[varName] !== undefined) {
+        return globalThis[varName];
+    }
+    
+    console.log('[getPointValue] Point ' + pointId + ' not found in any scope');
+    return null;
+}
+)";
+        
+        JSValue func_result = JS_Eval(js_context_, 
+                                     getPointValueFunc.c_str(), 
+                                     getPointValueFunc.length(), 
+                                     "<getPointValue>", 
+                                     JS_EVAL_TYPE_GLOBAL);
+        
+        if (!JS_IsException(func_result)) {
+            success_count++;
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                                         "✅ getPointValue() 함수 등록 성공");
+        } else {
+            JSValue exception = JS_GetException(js_context_);
+            const char* error_str = JS_ToCString(js_context_, exception);
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                                         "❌ getPointValue() 등록 실패: " + 
+                                         std::string(error_str ? error_str : "Unknown error"));
+            JS_FreeCString(js_context_, error_str);
+            JS_FreeValue(js_context_, exception);
+        }
+        JS_FreeValue(js_context_, func_result);
+        
+        // =============================================================================
+        // 🔥 2. getCurrentValue() 함수 등록 (별칭)
+        // =============================================================================
+        
+        std::string getCurrentValueFunc = R"(
+function getCurrentValue(pointId) {
+    return getPointValue(pointId);
+}
+)";
+        
+        JSValue getCurrentValue_result = JS_Eval(js_context_, 
+                                                getCurrentValueFunc.c_str(), 
+                                                getCurrentValueFunc.length(), 
+                                                "<getCurrentValue>", 
+                                                JS_EVAL_TYPE_GLOBAL);
+        
+        if (!JS_IsException(getCurrentValue_result)) {
+            success_count++;
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                                         "✅ getCurrentValue() 함수 등록 성공");
+        }
+        JS_FreeValue(js_context_, getCurrentValue_result);
+        
+        // =============================================================================
+        // 🔥 3. 디버깅 함수들 등록
+        // =============================================================================
+        
+        std::string debugFuncs = R"(
+function debugPointValues() {
+    console.log('[DEBUG] Available point_values:', typeof point_values !== 'undefined' ? Object.keys(point_values) : 'undefined');
+    if (typeof point_values !== 'undefined') {
+        for (var key in point_values) {
+            console.log('[DEBUG] point_values[' + key + '] = ' + point_values[key]);
+        }
+    }
+}
+
+function logMessage(msg) {
+    console.log('[VP] ' + msg);
+}
+
+function isPointAvailable(pointId) {
+    return getPointValue(pointId) !== null;
+}
+)";
+        
+        JSValue debug_result = JS_Eval(js_context_, 
+                                      debugFuncs.c_str(), 
+                                      debugFuncs.length(), 
+                                      "<debug_functions>", 
+                                      JS_EVAL_TYPE_GLOBAL);
+        
+        if (!JS_IsException(debug_result)) {
+            success_count++;
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                                         "✅ 디버깅 함수들 등록 성공");
+        }
+        JS_FreeValue(js_context_, debug_result);
+        
+        // =============================================================================
+        // 🔥 4. 기본 Math 함수들 등록 (기존 코드 유지)
+        // =============================================================================
+        
+        const std::vector<std::pair<std::string, std::string>> math_functions = {
+            {"Math.max", "Math.max"},
+            {"Math.min", "Math.min"}, 
+            {"Math.abs", "Math.abs"},
+            {"Math.sqrt", "Math.sqrt"},
+            {"Math.pow", "Math.pow"},
+            {"Math.round", "Math.round"},
+            {"Math.floor", "Math.floor"},
+            {"Math.ceil", "Math.ceil"},
+            {"Math.sin", "Math.sin"},
+            {"Math.cos", "Math.cos"},
+            {"Math.tan", "Math.tan"},
+            {"Math.log", "Math.log"},
+            {"Math.exp", "Math.exp"}
+        };
+        
+        for (const auto& [name, code] : math_functions) {
+            try {
+                // 함수를 전역 스코프에 복사
+                std::string func_copy = "var " + name.substr(5) + " = " + code + ";";
+                
+                JSValue result = JS_Eval(js_context_, 
+                                       func_copy.c_str(),
+                                       func_copy.length(),
+                                       "<math_function>",
+                                       JS_EVAL_TYPE_GLOBAL);
+                
+                if (!JS_IsException(result)) {
+                    success_count++;
+                } else {
+                    LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                                                 "Math 함수 '" + name + "' 등록 실패");
+                }
+                JS_FreeValue(js_context_, result);
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                                             "Math 함수 '" + name + "' 등록 예외: " + std::string(e.what()));
+            }
+        }
+        
+        // =============================================================================
+        // 🔥 5. 유틸리티 함수들 등록
+        // =============================================================================
+        
+        std::string utilityFuncs = R"(
+function toNumber(value) {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+        var num = parseFloat(value);
+        return isNaN(num) ? 0 : num;
+    }
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    return 0;
+}
+
+function toString(value) {
+    if (value === null || value === undefined) return '';
+    return String(value);
+}
+
+function toBool(value) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') return value !== '' && value !== '0' && value.toLowerCase() !== 'false';
+    return false;
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+)";
+        
+        JSValue utility_result = JS_Eval(js_context_, 
+                                        utilityFuncs.c_str(), 
+                                        utilityFuncs.length(), 
+                                        "<utility_functions>", 
+                                        JS_EVAL_TYPE_GLOBAL);
+        
+        if (!JS_IsException(utility_result)) {
+            success_count++;
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                                         "✅ 유틸리티 함수들 등록 성공");
+        }
+        JS_FreeValue(js_context_, utility_result);
+        
+        // =============================================================================
+        // 최종 결과 로깅
+        // =============================================================================
+        
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
+                                     "🎉 시스템 함수 등록 완료: " + std::to_string(success_count) + "개 성공");
+        
+        // 핵심 함수인 getPointValue가 등록되었으면 성공으로 간주
+        return success_count >= 1;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                                     "❌ 시스템 함수 등록 중 예외: " + std::string(e.what()));
+        return false;
+    }
 }
 
 // =============================================================================
@@ -559,73 +757,198 @@ DataValue VirtualPointEngine::evaluateFormula(const std::string& formula, const 
     // 수식 전처리 (라이브러리 함수 주입)
     std::string processed_formula = preprocessFormula(formula, tenant_id_);
     
-    // 입력 변수들을 JavaScript 전역 객체로 설정
-    for (auto& [key, value] : inputs.items()) {
-        std::string js_code;
+    try {
+        // =============================================================================
+        // 🔥 1. point_values 객체 생성 (핵심 수정!)
+        // =============================================================================
         
-        if (value.is_number()) {
-            js_code = "var " + key + " = " + std::to_string(value.get<double>()) + ";";
-        } else if (value.is_boolean()) {
-            js_code = "var " + key + " = " + (value.get<bool>() ? "true" : "false") + ";";
-        } else if (value.is_string()) {
-            js_code = "var " + key + " = '" + value.get<std::string>() + "';";
-        } else if (value.is_array()) {
-            js_code = "var " + key + " = " + value.dump() + ";";
-        } else {
-            js_code = "var " + key + " = null;";
+        // point_values 객체를 전역에 생성
+        std::string point_values_setup = "var point_values = {};";
+        JSValue setup_result = JS_Eval(js_context_, 
+                                      point_values_setup.c_str(), 
+                                      point_values_setup.length(), 
+                                      "<point_values_setup>", 
+                                      JS_EVAL_TYPE_GLOBAL);
+        
+        if (JS_IsException(setup_result)) {
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                                         "❌ point_values 객체 생성 실패");
         }
+        JS_FreeValue(js_context_, setup_result);
         
-        JSValue var_result = JS_Eval(js_context_, js_code.c_str(), js_code.length(), 
-                                     "<input>", JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsException(var_result)) {
+        // =============================================================================
+        // 🔥 2. 입력 변수들을 JavaScript 전역 객체와 point_values에 동시 설정
+        // =============================================================================
+        
+        for (auto& [key, value] : inputs.items()) {
+            std::string js_code;
+            std::string point_values_code;
+            
+            if (value.is_number()) {
+                double num_val = value.get<double>();
+                js_code = "var " + key + " = " + std::to_string(num_val) + ";";
+                
+                // point_values에도 저장 (포인트 ID 추출 시도)
+                if (key.find("point_") == 0) {
+                    std::string point_id = key.substr(6); // "point_" 제거
+                    point_values_code = "point_values[" + point_id + "] = " + std::to_string(num_val) + "; " +
+                                       "point_values['" + point_id + "'] = " + std::to_string(num_val) + ";";
+                } else {
+                    // 일반 변수명도 point_values에 저장
+                    point_values_code = "point_values['" + key + "'] = " + std::to_string(num_val) + ";";
+                }
+                
+            } else if (value.is_boolean()) {
+                bool bool_val = value.get<bool>();
+                js_code = "var " + key + " = " + (bool_val ? "true" : "false") + ";";
+                
+                if (key.find("point_") == 0) {
+                    std::string point_id = key.substr(6);
+                    point_values_code = "point_values[" + point_id + "] = " + (bool_val ? "true" : "false") + "; " +
+                                       "point_values['" + point_id + "'] = " + (bool_val ? "true" : "false") + ";";
+                } else {
+                    point_values_code = "point_values['" + key + "'] = " + (bool_val ? "true" : "false") + ";";
+                }
+                
+            } else if (value.is_string()) {
+                std::string str_val = value.get<std::string>();
+                // 문자열 이스케이프 처리
+                std::string escaped_str = str_val;
+                size_t pos = 0;
+                while ((pos = escaped_str.find("'", pos)) != std::string::npos) {
+                    escaped_str.replace(pos, 1, "\\'");
+                    pos += 2;
+                }
+                
+                js_code = "var " + key + " = '" + escaped_str + "';";
+                
+                if (key.find("point_") == 0) {
+                    std::string point_id = key.substr(6);
+                    point_values_code = "point_values[" + point_id + "] = '" + escaped_str + "'; " +
+                                       "point_values['" + point_id + "'] = '" + escaped_str + "';";
+                } else {
+                    point_values_code = "point_values['" + key + "'] = '" + escaped_str + "';";
+                }
+                
+            } else if (value.is_array()) {
+                std::string array_str = value.dump();
+                js_code = "var " + key + " = " + array_str + ";";
+                point_values_code = "point_values['" + key + "'] = " + array_str + ";";
+                
+            } else {
+                js_code = "var " + key + " = null;";
+                point_values_code = "point_values['" + key + "'] = null;";
+            }
+            
+            // 전역 변수 설정
+            JSValue var_result = JS_Eval(js_context_, js_code.c_str(), js_code.length(), 
+                                        "<input_var>", JS_EVAL_TYPE_GLOBAL);
+            if (JS_IsException(var_result)) {
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                                             "⚠️ 입력 변수 '" + key + "' 설정 실패");
+            }
             JS_FreeValue(js_context_, var_result);
-            throw std::runtime_error("입력 변수 '" + key + "' 설정 실패");
+            
+            // point_values 객체에 설정
+            if (!point_values_code.empty()) {
+                JSValue pv_result = JS_Eval(js_context_, point_values_code.c_str(), point_values_code.length(), 
+                                           "<point_values>", JS_EVAL_TYPE_GLOBAL);
+                if (JS_IsException(pv_result)) {
+                    LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                                                 "⚠️ point_values['" + key + "'] 설정 실패");
+                }
+                JS_FreeValue(js_context_, pv_result);
+            }
         }
-        JS_FreeValue(js_context_, var_result);
-    }
-    
-    // 전처리된 수식 실행
-    JSValue eval_result = JS_Eval(js_context_, 
-                                  processed_formula.c_str(), 
-                                  processed_formula.length(),
-                                  "<formula>", 
-                                  JS_EVAL_TYPE_GLOBAL);
-    
-    // 예외 처리
-    if (JS_IsException(eval_result)) {
-        JSValue exception = JS_GetException(js_context_);
-        const char* error_str = JS_ToCString(js_context_, exception);
-        std::string error_msg = error_str ? error_str : "Unknown error";
-        JS_FreeCString(js_context_, error_str);
-        JS_FreeValue(js_context_, exception);
+        
+        // =============================================================================
+        // 🔥 3. 디버깅 정보 출력 (선택적)
+        // =============================================================================
+        
+        
+        std::string debug_code = "debugPointValues();";
+        JSValue debug_result = JS_Eval(js_context_, debug_code.c_str(), debug_code.length(), 
+                                      "<debug>", JS_EVAL_TYPE_GLOBAL);
+        JS_FreeValue(js_context_, debug_result);
+        
+        
+        // =============================================================================
+        // 🔥 4. 전처리된 수식 실행
+        // =============================================================================
+        
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::DEBUG_LEVEL,
+                                     "🧮 수식 실행: " + processed_formula.substr(0, 100) + 
+                                     (processed_formula.length() > 100 ? "..." : ""));
+        
+        JSValue eval_result = JS_Eval(js_context_, 
+                                      processed_formula.c_str(), 
+                                      processed_formula.length(),
+                                      "<formula>", 
+                                      JS_EVAL_TYPE_GLOBAL);
+        
+        // =============================================================================
+        // 🔥 5. 예외 처리 및 결과 변환
+        // =============================================================================
+        
+        if (JS_IsException(eval_result)) {
+            JSValue exception = JS_GetException(js_context_);
+            const char* error_str = JS_ToCString(js_context_, exception);
+            std::string error_msg = error_str ? error_str : "Unknown error";
+            
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                                         "❌ JavaScript 실행 오류: " + error_msg);
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                                         "📝 실행한 수식: " + processed_formula);
+            
+            JS_FreeCString(js_context_, error_str);
+            JS_FreeValue(js_context_, exception);
+            JS_FreeValue(js_context_, eval_result);
+            
+            throw std::runtime_error("JavaScript 실행 오류: " + error_msg);
+        }
+        
+        // 결과 변환
+        DataValue result;
+        
+        if (JS_IsBool(eval_result)) {
+            bool bool_val = static_cast<bool>(JS_ToBool(js_context_, eval_result));
+            result = DataValue(bool_val);
+            std::string bool_str = bool_val ? "true" : "false";
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::DEBUG_LEVEL,
+                                         "✅ 수식 결과 (bool): " + bool_str);
+        } else if (JS_IsNumber(eval_result)) {
+            double val;
+            if (JS_ToFloat64(js_context_, &val, eval_result) == 0) {
+                result = DataValue(val);
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::DEBUG_LEVEL,
+                                             "✅ 수식 결과 (number): " + std::to_string(val));
+            } else {
+                result = DataValue(0.0);
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                                             "⚠️ 수치 변환 실패, 0.0으로 설정");
+            }
+        } else if (JS_IsString(eval_result)) {
+            const char* str = JS_ToCString(js_context_, eval_result);
+            std::string str_result = str ? str : "";
+            result = DataValue(str_result);
+            JS_FreeCString(js_context_, str);
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::DEBUG_LEVEL,
+                                         "✅ 수식 결과 (string): " + str_result);
+        } else {
+            result = DataValue(0.0);  // 기본값
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                                         "⚠️ 알 수 없는 결과 타입, 0.0으로 설정");
+        }
+        
         JS_FreeValue(js_context_, eval_result);
         
-        throw std::runtime_error("JavaScript 실행 오류: " + error_msg);
+        return result;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                                     "❌ evaluateFormula 예외: " + std::string(e.what()));
+        throw;
     }
-    
-    // 결과 변환
-    DataValue result;
-    
-    if (JS_IsBool(eval_result)) {
-        result = DataValue(static_cast<bool>(JS_ToBool(js_context_, eval_result)));
-    } else if (JS_IsNumber(eval_result)) {
-        double val;
-        if (JS_ToFloat64(js_context_, &val, eval_result) == 0) {
-            result = DataValue(val);
-        } else {
-            result = DataValue(0.0);
-        }
-    } else if (JS_IsString(eval_result)) {
-        const char* str = JS_ToCString(js_context_, eval_result);
-        result = DataValue(std::string(str ? str : ""));
-        JS_FreeCString(js_context_, str);
-    } else {
-        result = DataValue();  // null
-    }
-    
-    JS_FreeValue(js_context_, eval_result);
-    
-    return result;
 }
 
 std::string VirtualPointEngine::preprocessFormula(const std::string& formula, int tenant_id) {
