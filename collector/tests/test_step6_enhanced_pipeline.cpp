@@ -268,7 +268,7 @@ protected:
         );
         
         data_processing_service_->SetThreadCount(2);  // 2개 스레드로 설정
-        data_processing_service_->EnableLightweightMode(false);  // 테스트용 전체 데이터
+        data_processing_service_->EnableLightweightRedis(false);  // 테스트용 전체 데이터
         
         if (!data_processing_service_->Start()) {
             std::cout << "❌ DataProcessingService 시작 실패" << std::endl;

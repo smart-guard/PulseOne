@@ -14,8 +14,9 @@
 #include "VirtualPoint/VirtualPointEngine.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
-#include "Database/Repositories/RepositoryFactory.h"
+#include "Database/RepositoryFactory.h"
 #include "Database/Entities/CurrentValueEntity.h"
+#include "Database/Repositories/CurrentValueRepository.h"
 #include <chrono>
 #include <thread>
 #include <algorithm>
@@ -301,7 +302,7 @@ void DataProcessingService::ProcessBatch(
                 BufferForInfluxDB(enriched_data);
                 influx_writes_.fetch_add(1);
                 
-                UpdateStatistics(static_cast<size_t>(enriched_data.points.size()));
+                UpdateStatistics(static_cast<size_t>(enriched_data.points.size()), 0.0);
                 
             } catch (const std::exception& e) {
                 LogManager::getInstance().log("processing", LogLevel::ERROR,
@@ -835,28 +836,6 @@ void DataProcessingService::SaveChangedPointsToRDB(
     }
 }
 
-void DataProcessingService::SaveChangedPointsToRDB(
-    const Structs::DeviceDataMessage& message, 
-    const std::vector<Structs::TimestampedValue>& changed_points) {  // 🔥 TimestampedValueData → TimestampedValue
-    
-    if (changed_points.empty()) {
-        return;
-    }
-    
-    try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "🔄 RDB 저장: " + std::to_string(changed_points.size()) + "개 변화된 포인트");
-        
-        // TODO: 실제 RDB 저장 로직 구현
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "✅ RDB 저장 완료: " + std::to_string(changed_points.size()) + "개");
-            
-    } catch (const std::exception& e) {
-        HandleError("RDB 저장 실패", e.what());
-    }
-}
-
 // =============================================================================
 // InfluxDB 저장 메서드들
 // =============================================================================
@@ -1226,17 +1205,6 @@ void DataProcessingService::HandleError(const std::string& error_message, const 
 // JSON 구조체 변환 구현
 // =============================================================================
 
-nlohmann::json DataProcessingService::ProcessingStats::toJson() const {
-    nlohmann::json j;
-    j["total_batches"] = total_batches_processed.load();
-    j["total_messages"] = total_messages_processed.load();
-    j["redis_writes"] = redis_writes.load();
-    j["influx_writes"] = influx_writes.load();
-    j["errors"] = processing_errors.load();
-    j["avg_time_ms"] = avg_processing_time_ms;
-    return j;
-}
-
 nlohmann::json DataProcessingService::ExtendedProcessingStats::toJson() const {
     nlohmann::json j;
     j["processing"] = processing.toJson();
@@ -1254,62 +1222,47 @@ PulseOne::Database::Entities::CurrentValueEntity DataProcessingService::ConvertT
     CurrentValueEntity entity;
     
     try {
-        // 🔥 기본 필드 설정
+        // 🔧 수정: 올바른 메서드명 사용
         entity.setPointId(point.point_id);
         entity.setValueTimestamp(point.timestamp);
-        entity.setQualityCode(point.quality);
+        entity.setQuality(point.quality);  // setQualityCode → setQuality
         
-        // 🔥 DataVariant → 적절한 타입별 필드로 변환
+        // 🔧 수정: DataVariant → JSON 문자열로 변환
+        json value_json;
+        std::visit([&value_json](const auto& value) {
+            value_json["value"] = value;
+        }, point.value);
+        
+        entity.setCurrentValue(value_json.dump());  // JSON 문자열로 저장
+        entity.setRawValue(value_json.dump());      // 원시값도 동일하게
+        
+        // 타입 설정
         std::visit([&entity](const auto& value) {
             using T = std::decay_t<decltype(value)>;
             
             if constexpr (std::is_same_v<T, bool>) {
-                entity.setCurrentValueBool(value);
-                entity.setActiveValueType("bool");
+                entity.setValueType("bool");
             } else if constexpr (std::is_same_v<T, int16_t>) {
-                entity.setCurrentValueInt16(value);
-                entity.setActiveValueType("int16");
+                entity.setValueType("int16");
             } else if constexpr (std::is_same_v<T, uint16_t>) {
-                entity.setCurrentValueUint16(value);
-                entity.setActiveValueType("uint16");
+                entity.setValueType("uint16");
             } else if constexpr (std::is_same_v<T, int32_t>) {
-                entity.setCurrentValueInt32(value);
-                entity.setActiveValueType("int32");
+                entity.setValueType("int32");
             } else if constexpr (std::is_same_v<T, uint32_t>) {
-                entity.setCurrentValueUint32(value);
-                entity.setActiveValueType("uint32");
+                entity.setValueType("uint32");
             } else if constexpr (std::is_same_v<T, float>) {
-                entity.setCurrentValueFloat(value);
-                entity.setActiveValueType("float");
+                entity.setValueType("float");
             } else if constexpr (std::is_same_v<T, double>) {
-                entity.setCurrentValueDouble(value);
-                entity.setActiveValueType("double");
+                entity.setValueType("double");
             } else if constexpr (std::is_same_v<T, std::string>) {
-                entity.setCurrentValueString(value);
-                entity.setActiveValueType("string");
+                entity.setValueType("string");
             }
         }, point.value);
         
-        // 🔥 품질 정보 설정
-        entity.setQualityTimestamp(point.timestamp);  // 품질도 같은 시간
-        
-        // 🔥 메타데이터 설정
+        // 타임스탬프 설정
         auto now = std::chrono::system_clock::now();
         entity.setLastReadTime(now);
-        entity.setLastLogTime(now);
-        
-        // 🔥 카운터 증가 (기존 값이 있다면 증가, 없다면 1로 설정)
-        // 실제로는 기존 엔티티를 조회해서 카운터를 증가시켜야 하지만,
-        // 성능상 여기서는 단순히 1 증가만 시킴
-        entity.setReadCount(entity.getReadCount() + 1);
-        
-        // 🔥 value_changed 플래그 활용
-        if (point.value_changed) {
-            entity.setLastLogTime(now);  // 값이 변경되었을 때만 로그 시간 업데이트
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "🔄 Point " + std::to_string(point.point_id) + " → CurrentValueEntity 변환 완료");
+        entity.setUpdatedAt(now);
         
         return entity;
         
@@ -1391,7 +1344,26 @@ void DataProcessingService::SaveChangedPointsToRDBBatch(
     }
 }
 
-
+void DataProcessingService::SaveChangedPointsToRDB(const Structs::DeviceDataMessage& message) {
+    try {
+        // 변화된 포인트만 추출
+        auto changed_points = GetChangedPoints(message);
+        
+        if (changed_points.empty()) {
+            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                "⚠️ 변화된 포인트가 없음, RDB 저장 건너뜀");
+            return;
+        }
+        
+        // 2개 매개변수 버전 호출
+        SaveChangedPointsToRDB(message, changed_points);
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR,
+            "💥 SaveChangedPointsToRDB(단일) 실패: " + std::string(e.what()));
+        HandleError("RDB 저장 실패", e.what());
+    }
+}
 
 } // namespace Pipeline
 } // namespace PulseOne
