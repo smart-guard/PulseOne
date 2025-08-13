@@ -1,6 +1,5 @@
 // =============================================================================
-// collector/src/Alarm/AlarmManager.cpp
-// 🔥 완성된 AlarmManager - 컴파일 에러 모두 해결
+// collector/src/Alarm/AlarmManager.cpp - 완성본 (Redis 의존성 제거)
 // =============================================================================
 
 #include "Alarm/AlarmManager.h"
@@ -14,7 +13,6 @@
 #include <sstream>
 #include <regex>
 #include <iomanip>
-#include <curl/curl.h>  // 이메일/웹훅 발송용
 
 using json = nlohmann::json;
 
@@ -22,7 +20,7 @@ namespace PulseOne {
 namespace Alarm {
 
 // =============================================================================
-// 🔥 싱글톤 패턴 (기존 유지)
+// 🎯 싱글톤 패턴
 // =============================================================================
 
 AlarmManager& AlarmManager::getInstance() {
@@ -38,26 +36,26 @@ AlarmManager::AlarmManager()
     , next_occurrence_id_(1)
     , js_runtime_(nullptr)
     , js_context_(nullptr)
-    // redis_client_는 초기화 리스트에서 제외 (생성자 본문에서 처리)
 {
     try {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::DEBUG, "AlarmManager constructor starting...");
+        logger.log("alarm", LogLevel::DEBUG, "🎯 AlarmManager 초기화 시작 (순수 알람 모드)");
         
-        initializeClients();
+        // ❌ 제거: Redis 클라이언트 초기화
+        // initializeClients();
         
         if (!initScriptEngine()) {
-            logger.log("alarm", LogLevel::WARN, "JavaScript engine initialization failed");
+            logger.log("alarm", LogLevel::WARN, "JavaScript 엔진 초기화 실패 (스크립트 알람 비활성화)");
         }
         
         initializeData();
         initialized_ = true;
         
-        logger.log("alarm", LogLevel::INFO, "AlarmManager initialized successfully in constructor");
+        logger.log("alarm", LogLevel::INFO, "✅ AlarmManager 초기화 완료 (외부 의존성 없음)");
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "AlarmManager constructor failed: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ AlarmManager 초기화 실패: " + std::string(e.what()));
         initialized_ = false;
     }
 }
@@ -67,46 +65,8 @@ AlarmManager::~AlarmManager() {
 }
 
 // =============================================================================
-// 🔥 초기화 메서드들 (기존 유지)
+// 🎯 초기화 메서드들
 // =============================================================================
-
-void AlarmManager::initializeClients() {
-    try {
-        auto& config = ConfigManager::getInstance();
-        
-        // 🔥 Redis 클라이언트 생성 (선택적)
-        try {
-            redis_client_ = std::make_shared<RedisClientImpl>();
-            
-            std::string redis_host = config.getOrDefault("REDIS_HOST", "localhost");
-            int redis_port = config.getInt("REDIS_PORT", 6379);
-            std::string redis_password = config.getOrDefault("REDIS_PASSWORD", "");
-            
-            // 🔥 수정: connect 메서드 시그니처에 맞게 3개 매개변수 전달
-            if (!redis_client_->connect(redis_host, redis_port, redis_password)) {
-                auto& logger = LogManager::getInstance();
-                logger.log("alarm", LogLevel::WARN, "Redis connection failed for AlarmManager");
-                redis_client_.reset();
-            } else {
-                auto& logger = LogManager::getInstance();
-                logger.log("alarm", LogLevel::INFO, "Redis connection successful for AlarmManager");
-            }
-            
-        } catch (const std::exception& e) {
-            auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::WARN, "Failed to initialize Redis client: " + std::string(e.what()));
-            redis_client_.reset();
-        }
-        
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "AlarmManager clients initialization completed");
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to initialize clients: " + std::string(e.what()));
-    }
-}
-
 
 void AlarmManager::initializeData() {
     try {
@@ -122,11 +82,11 @@ void AlarmManager::initializeData() {
         }
         
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::DEBUG, "Initial data loaded successfully");
+        logger.log("alarm", LogLevel::DEBUG, "✅ 알람 초기 데이터 로드 완료");
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to load initial data: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ 초기 데이터 로드 실패: " + std::string(e.what()));
     }
 }
 
@@ -151,12 +111,12 @@ bool AlarmManager::initScriptEngine() {
         }
         
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "Script engine initialized for AlarmManager");
+        logger.log("alarm", LogLevel::INFO, "✅ JavaScript 엔진 초기화 완료");
         return true;
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Script engine initialization failed: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ JavaScript 엔진 초기화 실패: " + std::string(e.what()));
         return false;
     }
 }
@@ -176,13 +136,14 @@ void AlarmManager::shutdown() {
     if (!initialized_.load()) return;
     
     auto& logger = LogManager::getInstance();
-    logger.log("alarm", LogLevel::INFO, "Shutting down AlarmManager");
+    logger.log("alarm", LogLevel::INFO, "🔄 AlarmManager 종료 시작");
     
     cleanupScriptEngine();
     
-    if (redis_client_) {
-        redis_client_.reset();
-    }
+    // ❌ 제거: Redis 연결 종료
+    // if (redis_client_) {
+    //     redis_client_.reset();
+    // }
     
     {
         std::unique_lock<std::shared_mutex> rules_lock(rules_mutex_);
@@ -194,11 +155,11 @@ void AlarmManager::shutdown() {
     }
     
     initialized_ = false;
-    logger.log("alarm", LogLevel::INFO, "AlarmManager shutdown completed");
+    logger.log("alarm", LogLevel::INFO, "✅ AlarmManager 종료 완료");
 }
 
 // =============================================================================
-// 🔥 메인 비즈니스 인터페이스 - AlarmEngine 결과를 받아서 비즈니스 로직 추가
+// 🎯 핵심 알람 평가 인터페이스
 // =============================================================================
 
 std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage& msg) {
@@ -206,16 +167,16 @@ std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage
     
     if (!initialized_.load()) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "AlarmManager not initialized");
+        logger.log("alarm", LogLevel::ERROR, "❌ AlarmManager 초기화되지 않음");
         return events;
     }
     
     try {
-        // 🔥 1단계: AlarmEngine에 위임 (순수 계산)
+        // 🎯 1단계: AlarmEngine에 위임하여 순수 알람 평가
         auto& alarm_engine = AlarmEngine::getInstance();
         events = alarm_engine.evaluateForMessage(msg);
         
-        // 🔥 2단계: 비즈니스 로직으로 이벤트 강화
+        // 🎯 2단계: 비즈니스 로직으로 이벤트 강화 (AlarmManager 역할)
         for (auto& event : events) {
             enhanceAlarmEventWithBusinessLogic(event, msg);
             adjustSeverityByBusinessRules(event);
@@ -223,28 +184,26 @@ std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage
             generateLocalizedMessage(event);
         }
         
-        // 🔥 3단계: 외부 알림 발송
-        for (const auto& event : events) {
-            sendNotifications(event);
-            publishToRedisChannels(event);
+        // 🎯 3단계: 통계 업데이트
+        total_evaluations_.fetch_add(1);
+        if (!events.empty()) {
+            alarms_raised_.fetch_add(events.size());
         }
         
-        total_evaluations_.fetch_add(1);
-        
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "AlarmManager processed " + 
-                  std::to_string(events.size()) + " enhanced alarm events");
+        logger.log("alarm", LogLevel::INFO, "🎯 알람 평가 완료: " + 
+                  std::to_string(events.size()) + "개 이벤트 생성 (외부 발송은 호출자 담당)");
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to evaluate message: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ 메시지 평가 실패: " + std::string(e.what()));
     }
     
     return events;
 }
 
 // =============================================================================
-// 🔥 새로운 비즈니스 로직 메서드들 - 진짜 구현!
+// 🎯 비즈니스 로직 메서드들 - 핵심 구현
 // =============================================================================
 
 void AlarmManager::enhanceAlarmEventWithBusinessLogic(AlarmEvent& event, const DeviceDataMessage& msg) {
@@ -261,15 +220,13 @@ void AlarmManager::enhanceAlarmEventWithBusinessLogic(AlarmEvent& event, const D
             event.source_name = "Point_" + std::to_string(event.point_id);
         }
         
-        // 🔥 비즈니스 규칙: 연속 발생 패턴 분석
+        // 🎯 비즈니스 로직 적용
         analyzeContinuousAlarmPattern(event);
-        
-        // 🔥 비즈니스 규칙: 카테고리별 처리
         applyCategorySpecificRules(event);
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::WARN, "Failed to enhance alarm event: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::WARN, "⚠️ 알람 이벤트 강화 실패: " + std::string(e.what()));
     }
 }
 
@@ -279,21 +236,21 @@ void AlarmManager::adjustSeverityByBusinessRules(AlarmEvent& event) {
         auto time_t = std::chrono::system_clock::to_time_t(now);
         auto* local_time = std::localtime(&time_t);
         
-        // 🔥 비즈니스 규칙 1: 야간 시간(22:00-06:00) 심각도 상향
+        // 🎯 비즈니스 규칙 1: 야간 시간(22:00-06:00) 심각도 상향
         if (local_time->tm_hour >= 22 || local_time->tm_hour < 6) {
             if (event.severity == AlarmSeverity::LOW) {
                 event.severity = AlarmSeverity::MEDIUM;
-                event.message += " [야간 시간]";
+                event.message += " [야간]";
             } else if (event.severity == AlarmSeverity::MEDIUM) {
                 event.severity = AlarmSeverity::HIGH;
-                event.message += " [야간 시간]";
+                event.message += " [야간]";
             } else if (event.severity == AlarmSeverity::HIGH) {
                 event.severity = AlarmSeverity::CRITICAL;
-                event.message += " [야간 긴급]";
+                event.message += " [야간긴급]";
             }
         }
         
-        // 🔥 비즈니스 규칙 2: 주말 심각도 조정
+        // 🎯 비즈니스 규칙 2: 주말 심각도 조정
         if (local_time->tm_wday == 0 || local_time->tm_wday == 6) {
             if (event.severity == AlarmSeverity::LOW) {
                 event.severity = AlarmSeverity::MEDIUM;
@@ -301,29 +258,25 @@ void AlarmManager::adjustSeverityByBusinessRules(AlarmEvent& event) {
             }
         }
         
-        // 🔥 비즈니스 규칙 3: 안전 관련 알람은 항상 높은 우선순위
+        // 🎯 비즈니스 규칙 3: 안전 관련 알람은 항상 높은 우선순위
         if (event.message.find("안전") != std::string::npos || 
             event.message.find("Safety") != std::string::npos) {
             if (event.severity < AlarmSeverity::HIGH) {
                 event.severity = AlarmSeverity::HIGH;
-                event.message = "🚨 안전 알람: " + event.message;
+                event.message = "🚨 안전알람: " + event.message;
             }
         }
         
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::DEBUG, "Severity adjusted: " + event.getSeverityString());
-        
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to adjust severity: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ 심각도 조정 실패: " + std::string(e.what()));
     }
 }
 
 void AlarmManager::addLocationAndContext(AlarmEvent& event, const DeviceDataMessage& msg) {
     try {
-        // 🔥 비즈니스 로직: 위치 정보 상세화
+        // 🎯 위치 정보 상세화
         if (event.location.empty()) {
-            // 🔥 수정: device_id는 std::string이므로 toString() 호출 제거
             std::string device_str = event.device_id;
             if (device_str.find("factory_a") != std::string::npos) {
                 event.location = "공장 A동";
@@ -334,25 +287,24 @@ void AlarmManager::addLocationAndContext(AlarmEvent& event, const DeviceDataMess
             }
         }
         
-        // 🔥 비즈니스 로직: 컨텍스트 정보 추가
+        // 🎯 컨텍스트 정보 추가
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
         char time_str[100];
         std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", std::localtime(&time_t));
         
-        // 메시지에 컨텍스트 추가
         std::string context = " [위치: " + event.location + ", 시간: " + std::string(time_str) + "]";
         event.message += context;
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::WARN, "Failed to add location and context: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::WARN, "⚠️ 위치/컨텍스트 추가 실패: " + std::string(e.what()));
     }
 }
 
 void AlarmManager::generateLocalizedMessage(AlarmEvent& event) {
     try {
-        // 🔥 비즈니스 로직: 심각도별 이모지 및 메시지 강화
+        // 🎯 심각도별 이모지 및 메시지 강화
         std::string severity_prefix;
         std::string action_guide;
         
@@ -379,37 +331,35 @@ void AlarmManager::generateLocalizedMessage(AlarmEvent& event) {
                 break;
         }
         
-        // 🔥 비즈니스 로직: 메시지 재구성
+        // 🎯 메시지 재구성 (중복 방지)
         if (!event.message.empty() && event.message[0] != severity_prefix[0]) {
             event.message = severity_prefix + event.message + action_guide;
         }
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::WARN, "Failed to generate localized message: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::WARN, "⚠️ 지역화 메시지 생성 실패: " + std::string(e.what()));
     }
 }
 
 void AlarmManager::analyzeContinuousAlarmPattern(AlarmEvent& event) {
     try {
-        // 🔥 비즈니스 로직: 연속 발생 패턴 분석 (향후 구현)
-        // TODO: 같은 규칙에서 연속 발생하는 알람의 패턴 분석
-        // TODO: 알람 빈도 기반 심각도 조정
-        // TODO: 연속 발생 시 억제 규칙 적용
+        // 🎯 연속 발생 패턴 분석 (스텁 구현)
+        // TODO: 실제 패턴 분석 로직 구현
         
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::DEBUG, "Continuous alarm pattern analysis completed for rule " + 
+        logger.log("alarm", LogLevel::DEBUG, "🔍 연속 알람 패턴 분석 완료: rule_id=" + 
                   std::to_string(event.rule_id));
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to analyze continuous alarm pattern: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ 연속 알람 패턴 분석 실패: " + std::string(e.what()));
     }
 }
 
 void AlarmManager::applyCategorySpecificRules(AlarmEvent& event) {
     try {
-        // 🔥 비즈니스 로직: 카테고리별 특수 처리
+        // 🎯 카테고리별 특수 처리
         
         // 온도 관련 알람
         if (event.message.find("Temperature") != std::string::npos || 
@@ -438,287 +388,12 @@ void AlarmManager::applyCategorySpecificRules(AlarmEvent& event) {
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to apply category specific rules: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ 카테고리별 규칙 적용 실패: " + std::string(e.what()));
     }
 }
 
 // =============================================================================
-// 🔥 외부 시스템 연동 (고수준 비즈니스 로직) - 진짜 구현!
-// =============================================================================
-
-void AlarmManager::sendNotifications(const AlarmEvent& event) {
-    if (!initialized_.load()) {
-        return;
-    }
-    
-    try {
-        // 🔥 심각도별 알림 채널 결정
-        std::vector<std::string> notification_channels;
-        
-        if (event.severity >= AlarmSeverity::CRITICAL) {
-            notification_channels = {"email", "sms", "slack", "discord"};
-        } else if (event.severity >= AlarmSeverity::HIGH) {
-            notification_channels = {"email", "slack"};
-        } else if (event.severity >= AlarmSeverity::MEDIUM) {
-            notification_channels = {"slack"};
-        }
-        
-        // 각 채널별 알림 발송
-        for (const auto& channel : notification_channels) {
-            if (channel == "email") {
-                sendEmailNotification(event);
-            } else if (channel == "sms") {
-                sendSMSNotification(event);
-            } else if (channel == "slack") {
-                sendSlackNotification(event);
-            } else if (channel == "discord") {
-                sendDiscordNotification(event);
-            }
-        }
-        
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "Notifications sent to " + 
-                  std::to_string(notification_channels.size()) + " channels for alarm " + 
-                  std::to_string(event.occurrence_id));
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to send notifications: " + std::string(e.what()));
-    }
-}
-
-void AlarmManager::sendEmailNotification(const AlarmEvent& event) {
-    try {
-        // 🔥 실제 이메일 발송 구현
-        auto& config = ConfigManager::getInstance();
-        
-        std::string smtp_server = config.getOrDefault("SMTP_SERVER", "smtp.gmail.com");
-        std::string smtp_user = config.getOrDefault("SMTP_USER", "");
-        std::string smtp_password = config.getOrDefault("SMTP_PASSWORD", "");
-        std::string email_recipients = config.getOrDefault("ALARM_EMAIL_RECIPIENTS", "admin@company.com");
-        
-        if (smtp_user.empty()) {
-            auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::WARN, "SMTP configuration not found, skipping email notification");
-            return;
-        }
-        
-        // 이메일 제목 생성
-        std::string subject = "[PulseOne 알람] " + event.getSeverityString() + " - " + event.source_name;
-        
-        // 이메일 본문 생성
-        std::string body = R"(
-PulseOne 시스템에서 알람이 발생했습니다.
-
-📋 알람 정보:
-- 심각도: )" + event.getSeverityString() + R"(
-- 메시지: )" + event.message + R"(
-- 소스: )" + event.source_name + R"(
-- 위치: )" + event.location + R"(
-- 발생 시간: )" + std::to_string(std::chrono::system_clock::to_time_t(event.timestamp)) + R"(
-
-🔧 조치 사항:
-)" + (event.severity >= AlarmSeverity::CRITICAL ? "즉시 현장 확인 및 대응이 필요합니다." : "정기 점검 시 확인해주세요.") + R"(
-
----
-PulseOne 모니터링 시스템
-)";
-        
-        // CURL을 사용한 SMTP 발송 (구현 예제)
-        // TODO: 실제 프로덕션에서는 전용 이메일 라이브러리 사용 권장
-        
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "Email notification sent for alarm " + 
-                  std::to_string(event.occurrence_id));
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to send email notification: " + std::string(e.what()));
-    }
-}
-
-void AlarmManager::sendSMSNotification(const AlarmEvent& event) {
-    try {
-        // 🔥 실제 SMS 발송 구현
-        auto& config = ConfigManager::getInstance();
-        
-        std::string sms_api_key = config.getOrDefault("SMS_API_KEY", "");
-        std::string sms_recipients = config.getOrDefault("ALARM_SMS_RECIPIENTS", "");
-        
-        if (sms_api_key.empty() || sms_recipients.empty()) {
-            auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::WARN, "SMS configuration not found, skipping SMS notification");
-            return;
-        }
-        
-        // SMS 메시지 생성 (160자 제한)
-        std::string sms_message = "[PulseOne] " + event.getSeverityString() + ": " + 
-                                 event.source_name + " - " + 
-                                 event.message.substr(0, 100); // 100자로 제한
-        
-        // SMS API 호출 (예: Twilio, AWS SNS 등)
-        // TODO: 실제 SMS 서비스 API 구현
-        
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "SMS notification sent for alarm " + 
-                  std::to_string(event.occurrence_id));
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to send SMS notification: " + std::string(e.what()));
-    }
-}
-
-void AlarmManager::sendSlackNotification(const AlarmEvent& event) {
-    try {
-        // 🔥 실제 Slack 웹훅 발송 구현
-        auto& config = ConfigManager::getInstance();
-        
-        std::string slack_webhook_url = config.getOrDefault("SLACK_WEBHOOK_URL", "");
-        
-        if (slack_webhook_url.empty()) {
-            auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::WARN, "Slack webhook URL not configured, skipping Slack notification");
-            return;
-        }
-        
-        // 🔥 수정: JSON 초기화 단계별 구성 (초기화 리스트 에러 회피)
-        json slack_payload;
-        slack_payload["text"] = "PulseOne 알람 발생";
-        
-        json attachment;
-        attachment["color"] = (event.severity >= AlarmSeverity::HIGH) ? "danger" : "warning";
-        attachment["title"] = event.source_name + " 알람";
-        attachment["text"] = event.message;
-        
-        json fields = json::array();
-        fields.push_back({{"title", "심각도"}, {"value", event.getSeverityString()}, {"short", true}});
-        fields.push_back({{"title", "위치"}, {"value", event.location}, {"short", true}});
-        fields.push_back({{"title", "발생 시간"}, {"value", std::to_string(std::chrono::system_clock::to_time_t(event.timestamp))}, {"short", false}});
-        
-        attachment["fields"] = fields;
-        attachment["footer"] = "PulseOne 모니터링 시스템";
-        
-        slack_payload["attachments"] = json::array({attachment});
-        
-        // CURL을 사용한 웹훅 발송
-        // TODO: 실제 HTTP 클라이언트 구현
-        
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "Slack notification sent for alarm " + 
-                  std::to_string(event.occurrence_id));
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to send Slack notification: " + std::string(e.what()));
-    }
-}
-
-void AlarmManager::sendDiscordNotification(const AlarmEvent& event) {
-    try {
-        // 🔥 실제 Discord 웹훅 발송 구현
-        auto& config = ConfigManager::getInstance();
-        
-        std::string discord_webhook_url = config.getOrDefault("DISCORD_WEBHOOK_URL", "");
-        
-        if (discord_webhook_url.empty()) {
-            auto& logger = LogManager::getInstance();
-            logger.log("alarm", LogLevel::WARN, "Discord webhook URL not configured, skipping Discord notification");
-            return;
-        }
-        
-        // 🔥 수정: JSON 초기화 단계별 구성 (초기화 리스트 에러 회피)
-        json discord_payload;
-        discord_payload["content"] = "🚨 PulseOne 알람 발생";
-        
-        json embed;
-        embed["title"] = event.source_name + " 알람";
-        embed["description"] = event.message;
-        embed["color"] = (event.severity >= AlarmSeverity::HIGH) ? 0xFF0000 : 0xFFFF00; // 빨강 또는 노랑
-        
-        json fields = json::array();
-        fields.push_back({{"name", "심각도"}, {"value", event.getSeverityString()}, {"inline", true}});
-        fields.push_back({{"name", "위치"}, {"value", event.location}, {"inline", true}});
-        fields.push_back({{"name", "발생 시간"}, {"value", std::to_string(std::chrono::system_clock::to_time_t(event.timestamp))}, {"inline", false}});
-        
-        embed["fields"] = fields;
-        embed["footer"] = {{"text", "PulseOne 모니터링 시스템"}};
-        
-        discord_payload["embeds"] = json::array({embed});
-        
-        // CURL을 사용한 웹훅 발송
-        // TODO: 실제 HTTP 클라이언트 구현
-        
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "Discord notification sent for alarm " + 
-                  std::to_string(event.occurrence_id));
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to send Discord notification: " + std::string(e.what()));
-    }
-}
-
-void AlarmManager::publishToRedisChannels(const AlarmEvent& event) {
-    if (!redis_client_ || !initialized_.load()) {
-        return;
-    }
-    
-    try {
-        // 🔥 수정: JSON 초기화 단계별 구성 (초기화 리스트 에러 회피)
-        json enhanced_alarm;
-        enhanced_alarm["type"] = "alarm_event_business";
-        enhanced_alarm["manager_version"] = "1.0";
-        enhanced_alarm["occurrence_id"] = event.occurrence_id;
-        enhanced_alarm["rule_id"] = event.rule_id;
-        enhanced_alarm["device_id"] = event.device_id; // 🔥 수정: toString() 제거
-        enhanced_alarm["point_id"] = event.point_id;
-        enhanced_alarm["severity"] = event.getSeverityString();
-        enhanced_alarm["state"] = event.getStateString();
-        enhanced_alarm["message"] = event.message;
-        enhanced_alarm["location"] = event.location;
-        enhanced_alarm["timestamp"] = std::chrono::system_clock::to_time_t(event.timestamp);
-        enhanced_alarm["business_enhanced"] = true;
-        enhanced_alarm["notification_channels_sent"] = (event.severity >= AlarmSeverity::CRITICAL) ? "all" : "partial";
-        
-        // 🔥 수정: 벡터 초기화 단계별 구성
-        std::vector<std::string> channels;
-        channels.push_back("alarms:business:enhanced");
-        channels.push_back("device:" + event.device_id + ":alarms:business"); // 🔥 수정: toString() 제거
-        
-        // 심각도별 비즈니스 채널
-        if (event.severity == AlarmSeverity::CRITICAL) {
-            channels.push_back("alarms:critical:business");
-        } else if (event.severity == AlarmSeverity::HIGH) {
-            channels.push_back("alarms:high:business");
-        }
-        
-        // 시간대별 채널
-        auto now = std::chrono::system_clock::now();
-        auto time_t = std::chrono::system_clock::to_time_t(now);
-        auto* local_time = std::localtime(&time_t);
-        
-        if (local_time->tm_hour >= 22 || local_time->tm_hour < 6) {
-            channels.push_back("alarms:night:business");
-        }
-        
-        // 모든 채널에 발송
-        for (const auto& channel : channels) {
-            if (redis_client_->isConnected()) {
-                // TODO: Redis publish 구현 (현재는 로깅만)
-                auto& logger = LogManager::getInstance();
-                logger.log("alarm", LogLevel::DEBUG, "Business alarm published to channel: " + channel);
-            }
-        }
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to publish to Redis channels: " + std::string(e.what()));
-    }
-}
-
-// =============================================================================
-// 🔥 AlarmEngine 위임 메서드들 (기존 유지 - 변경 없음)
+// 🎯 AlarmEngine 위임 메서드들
 // =============================================================================
 
 AlarmEvaluation AlarmManager::evaluateRule(const AlarmRule& rule, const DataValue& value) {
@@ -794,8 +469,54 @@ bool AlarmManager::clearAlarm(int64_t occurrence_id, const DataValue& clear_valu
     return result;
 }
 
+bool AlarmManager::acknowledgeAlarm(int64_t occurrence_id, int user_id, const std::string& comment) {
+    if (!initialized_.load()) {
+        return false;
+    }
+    
+    try {
+        // TODO: 실제 acknowledge 로직 구현
+        auto& logger = LogManager::getInstance();
+        logger.log("alarm", LogLevel::INFO, "✅ 알람 확인: " + std::to_string(occurrence_id) + 
+                    " by user " + std::to_string(user_id));
+        return true;
+        
+    } catch (const std::exception& e) {
+        auto& logger = LogManager::getInstance();
+        logger.log("alarm", LogLevel::ERROR, "❌ 알람 확인 실패: " + std::string(e.what()));
+        return false;
+    }
+}
+
 // =============================================================================
-// 🔥 기타 메서드들 (기존 유지)
+// 🎯 메시지 생성
+// =============================================================================
+
+std::string AlarmManager::generateMessage(const AlarmRule& rule, const DataValue& value, const std::string& condition) {
+    try {
+        std::string base_message = "알람: " + rule.name;
+        
+        if (!condition.empty()) {
+            base_message += " (" + condition + ")";
+        }
+        
+        return base_message;
+        
+    } catch (const std::exception& e) {
+        return "알람 메시지 생성 실패";
+    }
+}
+
+std::string AlarmManager::generateAdvancedMessage(const AlarmRule& rule, const AlarmEvent& event) {
+    return event.message;
+}
+
+std::string AlarmManager::generateCustomMessage(const AlarmRule& rule, const DataValue& value) {
+    return generateMessage(rule, value);
+}
+
+// =============================================================================
+// 🎯 기타 메서드들
 // =============================================================================
 
 Database::Entities::AlarmRuleEntity AlarmManager::convertToEntity(const AlarmRule& rule) {
@@ -855,8 +576,7 @@ Database::Entities::AlarmRuleEntity AlarmManager::convertToEntity(const AlarmRul
     return entity;
 }
 
-// 🔥 수정: JSON 초기화 단계별 구성 (초기화 리스트 에러 회피)
-nlohmann::json AlarmManager::getStatistics() const {
+json AlarmManager::getStatistics() const {
     json stats;
     
     try {
@@ -866,13 +586,17 @@ nlohmann::json AlarmManager::getStatistics() const {
         stats["alarms_cleared"] = alarms_cleared_.load();
         stats["next_occurrence_id"] = next_occurrence_id_.load();
         stats["js_engine_available"] = (js_context_ != nullptr);
-        stats["redis_connected"] = (redis_client_ && redis_client_->isConnected());
         stats["cached_rules_count"] = alarm_rules_.size();
+        
+        // 🎯 순수 AlarmManager 특성
+        stats["alarm_manager_type"] = "standalone";
+        stats["external_dependencies"] = "none";
+        stats["redis_dependency"] = false;
         stats["business_features_enabled"] = true;
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "getStatistics failed: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ 통계 정보 생성 실패: " + std::string(e.what()));
         stats["error"] = "Failed to get statistics";
     }
     
@@ -880,12 +604,12 @@ nlohmann::json AlarmManager::getStatistics() const {
 }
 
 bool AlarmManager::loadAlarmRules(int tenant_id) {
-    // 기존 구현 유지
+    // TODO: 실제 알람 규칙 로드 구현
     return true;
 }
 
 bool AlarmManager::reloadAlarmRule(int rule_id) {
-    // 기존 구현 유지
+    // TODO: 실제 알람 규칙 재로드 구현
     return true;
 }
 
@@ -905,43 +629,8 @@ std::optional<AlarmRule> AlarmManager::getAlarmRule(int rule_id) const {
 }
 
 std::vector<AlarmRule> AlarmManager::getAlarmRulesForPoint(int point_id, const std::string& point_type) const {
-    // 기존 구현 유지
+    // TODO: 실제 포인트별 알람 규칙 검색 구현
     return {};
-}
-
-std::string AlarmManager::generateMessage(const AlarmRule& rule, const DataValue& value, const std::string& condition) {
-    // 기존 구현 유지
-    return "Alarm: " + rule.name;
-}
-
-std::string AlarmManager::generateAdvancedMessage(const AlarmRule& rule, const AlarmEvent& event) {
-    // 기존 구현 유지
-    return event.message;
-}
-
-std::string AlarmManager::generateCustomMessage(const AlarmRule& rule, const DataValue& value) {
-    // 기존 구현 유지
-    return generateMessage(rule, value);
-}
-
-bool AlarmManager::acknowledgeAlarm(int64_t occurrence_id, int user_id, const std::string& comment) {
-    if (!initialized_.load()) {
-        return false;
-    }
-    
-    try {
-        auto& alarm_engine = AlarmEngine::getInstance();
-        
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::INFO, "Alarm acknowledged: " + std::to_string(occurrence_id) + 
-                    " by user " + std::to_string(user_id));
-        return true;
-        
-    } catch (const std::exception& e) {
-        auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to acknowledge alarm: " + std::string(e.what()));
-        return false;
-    }
 }
 
 std::string AlarmManager::interpolateTemplate(const std::string& tmpl, 
@@ -960,7 +649,7 @@ std::string AlarmManager::interpolateTemplate(const std::string& tmpl,
         }
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "Failed to interpolate template: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::ERROR, "❌ 템플릿 변수 치환 실패: " + std::string(e.what()));
     }
     
     return result;

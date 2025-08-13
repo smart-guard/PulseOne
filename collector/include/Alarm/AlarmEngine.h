@@ -1,5 +1,5 @@
 // =============================================================================
-// collector/include/Alarm/AlarmEngine.h - 컴파일 오류 해결
+// collector/include/Alarm/AlarmEngine.h - Redis 의존성 완전 제거
 // =============================================================================
 
 #ifndef ALARM_ENGINE_H
@@ -27,7 +27,9 @@
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Client/RedisClientImpl.h"
+
+// ❌ 제거: Redis 의존성 완전 제거
+// #include "Client/RedisClientImpl.h"
 
 // 🔥 JSON include
 #include <nlohmann/json.hpp>
@@ -48,7 +50,7 @@ using AlarmRuleRepository = Database::Repositories::AlarmRuleRepository;
 using AlarmOccurrenceRepository = Database::Repositories::AlarmOccurrenceRepository;
 
 // =============================================================================
-// AlarmEngine 클래스 선언
+// AlarmEngine 클래스 선언 - 순수 알람 평가 엔진
 // =============================================================================
 class AlarmEngine {
 public:
@@ -73,7 +75,7 @@ public:
     AlarmEvaluation evaluateDigitalAlarm(const AlarmRuleEntity& rule, bool value);
     AlarmEvaluation evaluateScriptAlarm(const AlarmRuleEntity& rule, const nlohmann::json& context);
     
-    // 알람 관리
+    // 알람 관리 (데이터베이스만)
     std::optional<int64_t> raiseAlarm(const AlarmRuleEntity& rule, const AlarmEvaluation& eval, const DataValue& trigger_value);
     bool clearAlarm(int64_t occurrence_id, const DataValue& current_value);
     bool clearActiveAlarm(int rule_id, const DataValue& current_value);
@@ -96,9 +98,8 @@ private:
     AlarmEngine& operator=(const AlarmEngine&) = delete;
 
     // =======================================================================
-    // 초기화 메서드들
+    // 초기화 메서드들 (간소화)
     // =======================================================================
-    void initializeClients();
     void initializeRepositories();
     void loadInitialData();
 
@@ -110,17 +111,11 @@ private:
     bool registerSystemFunctions();
 
     // =======================================================================
-    // 🔥 수정: 올바른 시그니처로 선언 (extra qualification 제거)
+    // 스크립트 컨텍스트 준비
     // =======================================================================
-    std::map<std::string, std::variant<double, bool, std::string>> 
-    prepareScriptContext(const AlarmRuleEntity& rule, 
-                        const std::vector<TimestampedValue>& point_values);
     nlohmann::json prepareScriptContextFromValue(const AlarmRuleEntity& rule, 
-                                                          int point_id,
-                                                          const DataValue& value);
-    std::string generateScriptAlarmMessage(const AlarmRuleEntity& rule,
-                                         const std::map<std::string, std::variant<double, bool, std::string>>& context,
-                                         bool triggered);
+                                                  int point_id,
+                                                  const DataValue& value);
 
     // =======================================================================
     // 헬퍼 메서드들
@@ -135,10 +130,6 @@ private:
     bool getLastDigitalState(int rule_id) const;
     void updateLastDigitalState(int rule_id, bool state);
     
-    // 외부 시스템 연동
-    void publishToRedis(const AlarmEvent& event);
-    void publishAlarmClearedEvent(const AlarmOccurrenceEntity& alarm);
-    
     // 유틸리티
     UUID getDeviceIdForPoint(int point_id);
     std::string getPointLocation(int point_id);
@@ -148,7 +139,7 @@ private:
     size_t getActiveAlarmsCount() const;
 
     // =======================================================================
-    // 멤버 변수들
+    // 멤버 변수들 (간소화)
     // =======================================================================
     
     // 상태 관리
@@ -158,9 +149,9 @@ private:
     std::shared_ptr<AlarmRuleRepository> alarm_rule_repo_;
     std::shared_ptr<AlarmOccurrenceRepository> alarm_occurrence_repo_;
     
-    // 클라이언트들
-    std::shared_ptr<RedisClientImpl> redis_client_;
-    bool redis_available_{false};
+    // ❌ 제거: Redis 클라이언트
+    // std::shared_ptr<RedisClientImpl> redis_client_;
+    // bool redis_available_{false};
     
     // JavaScript 엔진
     void* js_runtime_{nullptr};  // JSRuntime*
@@ -170,7 +161,7 @@ private:
     mutable std::shared_mutex rules_cache_mutex_;
     mutable std::shared_mutex state_cache_mutex_;
     mutable std::shared_mutex occurrence_map_mutex_;
-    mutable std::mutex state_mutex_;  // 추가: 간단한 뮤텍스
+    mutable std::mutex state_mutex_;
     
     std::unordered_map<int, std::vector<AlarmRuleEntity>> tenant_rules_;
     std::unordered_map<std::string, std::vector<int>> point_rule_index_;
@@ -193,4 +184,4 @@ private:
 } // namespace Alarm
 } // namespace PulseOne
 
-#endif // ALARM_ENGIN
+#endif // ALARM_ENGINE_H
