@@ -1,25 +1,36 @@
-# backend/Dockerfile.dev - 개발용
+# backend/Dockerfile.dev - nodemon 문제 해결
 FROM node:20
 
-# Claude Code 설치를 위한 개발 도구
+# 개발 도구 설치
 RUN apt-get update && apt-get install -y \
     curl \
     git \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 글로벌 패키지 설치 (nodemon 포함)
+RUN npm install -g @anthropic-ai/claude-code nodemon
+
+# package.json 복사
+COPY backend/package*.json ./backend/
+
+# 의존성 설치 (devDependencies 포함)
 WORKDIR /app/backend
-
-# Claude Code 글로벌 설치 (개발용만)
-RUN npm install -g @anthropic-ai/claude-code
-
-COPY backend/package*.json ./
 RUN npm install
 
-COPY backend /app/backend
-COPY config /app/config
+# 소스 코드 복사
+WORKDIR /app
+COPY backend ./backend
+COPY config ./config
 
 # 포트 노출
 EXPOSE 3000 9229
 
-# 개발 모드에서는 bash 실행
-CMD ["/bin/bash"]
+# 작업 디렉토리를 backend로 설정
+WORKDIR /app/backend
+
+# nodemon 직접 실행
+CMD ["nodemon", "app.js"]

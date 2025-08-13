@@ -1,33 +1,37 @@
 // ============================================================================
-// backend/lib/config/ConfigManager.js
-// 동적 설정 관리 시스템 (C++ ConfigManager 패턴 적용)
+// config/ConfigManager.js
+// 환경변수 전용 관리 시스템 (C++ ConfigManager 패턴 적용)
 // ============================================================================
 
-const fs = require('fs').promises;
 const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
 
 /**
- * 설정 관리자 클래스 (싱글톤)
- * 데이터베이스와 파일 기반 설정을 통합 관리
+ * 환경변수 관리자 클래스 (싱글톤)
+ * 모든 .env 파일들을 통합 관리하고 전역 환경변수 제공
  */
 class ConfigManager {
     constructor() {
-        this.configs = new Map();
-        this.configPaths = {
-            protocols: path.join(__dirname, '../../../config/protocols.json'),
-            deviceTypes: path.join(__dirname, '../../../config/device-types.json'),
-            deviceStatus: path.join(__dirname, '../../../config/device-status.json'),
-            alarmTypes: path.join(__dirname, '../../../config/alarm-types.json'),
-            userRoles: path.join(__dirname, '../../../config/user-roles.json'),
-            siteTypes: path.join(__dirname, '../../../config/site-types.json')
-        };
-        
-        this.dbConfigs = new Map(); // 데이터베이스에서 로드된 설정
-        this.fileConfigs = new Map(); // 파일에서 로드된 설정
-        this.cacheTimeout = 5 * 60 * 1000; // 5분 캐시
+        this.configDir = __dirname;
+        this.loaded = false;
+        this.loadedFiles = [];
+        this.env = new Map();
         this.lastLoad = new Map();
+        this.logger = console;
         
-        this.logger = console; // TODO: 실제 LogManager로 교체
+        // 환경변수 파일 우선순위 정의
+        this.envFilePriority = [
+            '.env',              // 기본 환경변수
+            'database.env',      // 데이터베이스 설정
+            'redis.env',         // Redis 설정
+            'timeseries.env',    // InfluxDB 설정
+            'messaging.env',     // RabbitMQ 설정
+            'security.env'       // 보안 설정
+        ];
+        
+        // 자동 초기화
+        this.initialize();
     }
 
     // ========================================================================
@@ -46,257 +50,308 @@ class ConfigManager {
     // ========================================================================
 
     /**
-     * 모든 설정 초기화
+     * 환경변수 초기화 및 로딩
      */
-    async initialize() {
+    initialize() {
+        if (this.loaded) {
+            return this.env;
+        }
+
+        this.logger.log('🔧 ConfigManager 환경변수 로딩 시작...');
+
         try {
-            this.logger.log('📋 Initializing ConfigManager...');
+            // 1. 우선순위에 따라 환경변수 파일 로드
+            this.loadEnvironmentFiles();
+
+            // 2. 환경변수를 내부 Map으로 복사
+            this.copyProcessEnv();
+
+            this.loaded = true;
+            this.logger.log(`✅ 환경변수 로딩 완료 (${this.loadedFiles.length}개 파일)`);
             
-            // 파일 기반 설정 로드
-            await this.loadAllFileConfigs();
-            
-            // 데이터베이스 설정 로드 (나중에 구현)
-            // await this.loadDatabaseConfigs();
-            
-            this.logger.log('✅ ConfigManager initialized successfully');
+            // 3. 개발 환경에서 디버깅 정보 출력
+            if (this.get('NODE_ENV') === 'development') {
+                this.printDebugInfo();
+            }
+
+            return this.env;
+
         } catch (error) {
-            this.logger.error('❌ ConfigManager initialization failed:', error);
+            this.logger.error('❌ ConfigManager 환경변수 로딩 실패:', error.message);
             throw error;
         }
     }
 
     /**
-     * 모든 파일 설정 로드
+     * 환경변수 파일들 로드 (우선순위 기반)
      */
-    async loadAllFileConfigs() {
-        const promises = Object.entries(this.configPaths).map(async ([key, filePath]) => {
-            try {
-                await this.loadFileConfig(key, filePath);
-            } catch (error) {
-                this.logger.warn(`⚠️  Failed to load ${key} config:`, error.message);
-                // 기본값 설정
-                await this.setDefaultConfig(key);
-            }
+    loadEnvironmentFiles() {
+        // 우선순위 파일들 먼저 로드
+        this.envFilePriority.forEach(filename => {
+            this.loadEnvFile(filename);
         });
 
-        await Promise.all(promises);
+        // 추가 .env 파일들 자동 탐지 및 로드
+        const additionalFiles = this.findAdditionalEnvFiles();
+        additionalFiles.forEach(filename => {
+            if (!this.envFilePriority.includes(filename)) {
+                this.loadEnvFile(filename);
+            }
+        });
     }
 
     /**
-     * 개별 파일 설정 로드
+     * 추가 환경변수 파일 탐지
      */
-    async loadFileConfig(key, filePath) {
+    findAdditionalEnvFiles() {
+        const envFiles = [];
+        
         try {
-            const content = await fs.readFile(filePath, 'utf8');
-            const config = JSON.parse(content);
+            const files = fs.readdirSync(this.configDir);
             
-            this.fileConfigs.set(key, config);
-            this.lastLoad.set(key, Date.now());
+            // .env로 끝나는 파일들 필터링
+            const additionalEnvFiles = files
+                .filter(file => file.endsWith('.env'))
+                .sort();
             
-            this.logger.log(`✅ Loaded ${key} config from ${filePath}`);
+            envFiles.push(...additionalEnvFiles);
+
         } catch (error) {
-            if (error.code === 'ENOENT') {
-                // 파일이 없으면 기본값으로 생성
-                await this.createDefaultConfigFile(key, filePath);
-            } else {
-                throw error;
+            this.logger.warn('⚠️ config 디렉토리 읽기 실패:', error.message);
+        }
+
+        return envFiles;
+    }
+
+    /**
+     * 개별 환경변수 파일 로드
+     */
+    loadEnvFile(filename) {
+        const filePath = path.join(this.configDir, filename);
+        
+        if (!fs.existsSync(filePath)) {
+            if (filename === '.env') {
+                this.logger.warn(`⚠️ 기본 환경변수 파일 없음: ${filename}`);
             }
-        }
-    }
-
-    /**
-     * 기본 설정 파일 생성
-     */
-    async createDefaultConfigFile(key, filePath) {
-        const defaultConfig = this.getDefaultConfigData(key);
-        
-        // 디렉토리 생성
-        const dir = path.dirname(filePath);
-        await fs.mkdir(dir, { recursive: true });
-        
-        // 파일 생성
-        await fs.writeFile(filePath, JSON.stringify(defaultConfig, null, 2), 'utf8');
-        
-        this.fileConfigs.set(key, defaultConfig);
-        this.lastLoad.set(key, Date.now());
-        
-        this.logger.log(`📄 Created default ${key} config at ${filePath}`);
-    }
-
-    // ========================================================================
-    // 설정 조회 메서드들
-    // ========================================================================
-
-    /**
-     * 지원하는 프로토콜 목록 조회
-     */
-    async getSupportedProtocols() {
-        return await this.getConfig('protocols');
-    }
-
-    /**
-     * 디바이스 타입 목록 조회
-     */
-    async getDeviceTypes() {
-        return await this.getConfig('deviceTypes');
-    }
-
-    /**
-     * 디바이스 상태 목록 조회
-     */
-    async getDeviceStatus() {
-        return await this.getConfig('deviceStatus');
-    }
-
-    /**
-     * 알람 타입 목록 조회
-     */
-    async getAlarmTypes() {
-        return await this.getConfig('alarmTypes');
-    }
-
-    /**
-     * 사용자 역할 목록 조회
-     */
-    async getUserRoles() {
-        return await this.getConfig('userRoles');
-    }
-
-    /**
-     * 사이트 타입 목록 조회
-     */
-    async getSiteTypes() {
-        return await this.getConfig('siteTypes');
-    }
-
-    /**
-     * 범용 설정 조회
-     */
-    async getConfig(key) {
-        // 캐시 확인
-        if (this.shouldReloadConfig(key)) {
-            await this.reloadConfig(key);
+            return false;
         }
 
-        const config = this.fileConfigs.get(key) || this.dbConfigs.get(key);
-        
-        if (!config) {
-            this.logger.warn(`⚠️  Config not found: ${key}`);
-            return this.getDefaultConfigData(key);
-        }
-
-        return config;
-    }
-
-    /**
-     * 설정 유효성 검증
-     */
-    async validateValue(configType, value) {
-        const config = await this.getConfig(configType);
-        
-        if (Array.isArray(config)) {
-            return config.includes(value);
-        }
-
-        if (config.values && Array.isArray(config.values)) {
-            return config.values.includes(value);
-        }
-
-        if (config.items) {
-            return config.items.some(item => item.value === value || item.code === value);
-        }
-
-        return false;
-    }
-
-    // ========================================================================
-    // 설정 업데이트 메서드들
-    // ========================================================================
-
-    /**
-     * 설정 업데이트 (파일 기반)
-     */
-    async updateConfig(key, newConfig) {
         try {
-            const filePath = this.configPaths[key];
-            if (!filePath) {
-                throw new Error(`Config path not found for: ${key}`);
+            const result = dotenv.config({ path: filePath });
+            
+            if (result.error) {
+                this.logger.warn(`⚠️ ${filename} 로딩 오류:`, result.error.message);
+                return false;
             }
 
-            // 백업 생성
-            await this.createBackup(key);
-
-            // 파일 업데이트
-            await fs.writeFile(filePath, JSON.stringify(newConfig, null, 2), 'utf8');
-            
-            // 캐시 업데이트
-            this.fileConfigs.set(key, newConfig);
-            this.lastLoad.set(key, Date.now());
-
-            this.logger.log(`✅ Updated ${key} config`);
+            this.loadedFiles.push(filename);
+            this.lastLoad.set(filename, Date.now());
+            this.logger.log(`✅ 로드됨: ${filename}`);
             return true;
+
         } catch (error) {
-            this.logger.error(`❌ Failed to update ${key} config:`, error);
-            throw error;
+            this.logger.error(`❌ ${filename} 로딩 실패:`, error.message);
+            return false;
         }
     }
 
     /**
-     * 프로토콜 추가
+     * process.env를 내부 Map으로 복사
      */
-    async addProtocol(protocolData) {
-        const protocols = await this.getSupportedProtocols();
-        
-        // 중복 체크
-        const exists = protocols.items.some(p => 
-            p.value === protocolData.value || p.name === protocolData.name
-        );
-        
-        if (exists) {
-            throw new Error(`Protocol already exists: ${protocolData.value}`);
-        }
-
-        protocols.items.push({
-            value: protocolData.value,
-            name: protocolData.name,
-            description: protocolData.description,
-            port: protocolData.port,
-            config_schema: protocolData.config_schema || {},
-            enabled: protocolData.enabled !== false,
-            added_at: new Date().toISOString()
+    copyProcessEnv() {
+        // 모든 환경변수를 내부 Map으로 복사
+        Object.keys(process.env).forEach(key => {
+            this.env.set(key, process.env[key]);
         });
+    }
 
-        await this.updateConfig('protocols', protocols);
-        return true;
+    // ========================================================================
+    // 환경변수 조회 메서드들
+    // ========================================================================
+
+    /**
+     * 환경변수 값 조회 (기본값 지원)
+     */
+    get(key, defaultValue = undefined) {
+        const value = this.env.get(key) || process.env[key];
+        return value !== undefined ? value : defaultValue;
     }
 
     /**
-     * 디바이스 타입 추가
+     * 환경변수 값 설정 (메모리상에서만)
      */
-    async addDeviceType(typeData) {
-        const deviceTypes = await this.getDeviceTypes();
-        
-        // 중복 체크
-        const exists = deviceTypes.items.some(t => 
-            t.value === typeData.value || t.name === typeData.name
-        );
-        
-        if (exists) {
-            throw new Error(`Device type already exists: ${typeData.value}`);
-        }
+    set(key, value) {
+        this.env.set(key, value);
+        process.env[key] = value;
+    }
 
-        deviceTypes.items.push({
-            value: typeData.value,
-            name: typeData.name,
-            description: typeData.description,
-            icon: typeData.icon || 'fas fa-microchip',
-            category: typeData.category || 'general',
-            enabled: typeData.enabled !== false,
-            added_at: new Date().toISOString()
+    /**
+     * Boolean 값 조회
+     */
+    getBoolean(key, defaultValue = false) {
+        const value = this.get(key);
+        if (value === undefined) return defaultValue;
+        
+        return value.toLowerCase() === 'true' || value === '1';
+    }
+
+    /**
+     * Number 값 조회
+     */
+    getNumber(key, defaultValue = 0) {
+        const value = this.get(key);
+        if (value === undefined) return defaultValue;
+        
+        const num = parseInt(value, 10);
+        return isNaN(num) ? defaultValue : num;
+    }
+
+    /**
+     * 배열 값 조회 (쉼표로 구분)
+     */
+    getArray(key, defaultValue = []) {
+        const value = this.get(key);
+        if (!value) return defaultValue;
+        
+        return value.split(',').map(item => item.trim()).filter(item => item);
+    }
+
+    /**
+     * 필수 환경변수 확인
+     */
+    require(key) {
+        const value = this.get(key);
+        if (value === undefined || value === '') {
+            throw new Error(`필수 환경변수가 설정되지 않음: ${key}`);
+        }
+        return value;
+    }
+
+    /**
+     * 여러 환경변수 일괄 확인
+     */
+    requireAll(keys) {
+        const missing = [];
+        const values = {};
+
+        keys.forEach(key => {
+            try {
+                values[key] = this.require(key);
+            } catch (error) {
+                missing.push(key);
+            }
         });
 
-        await this.updateConfig('deviceTypes', deviceTypes);
-        return true;
+        if (missing.length > 0) {
+            throw new Error(`누락된 필수 환경변수들: ${missing.join(', ')}`);
+        }
+
+        return values;
+    }
+
+    // ========================================================================
+    // 설정 그룹별 조회 메서드들
+    // ========================================================================
+
+    /**
+     * 환경별 설정 조회
+     */
+    getEnvironmentConfig() {
+        const env = this.get('NODE_ENV', 'development');
+        
+        return {
+            isDevelopment: env === 'development',
+            isProduction: env === 'production',
+            isTest: env === 'test',
+            isStaging: env === 'staging',
+            environment: env
+        };
+    }
+
+    /**
+     * 데이터베이스 설정 조회
+     */
+    getDatabaseConfig() {
+        return {
+            type: this.get('DATABASE_TYPE', 'SQLITE'),
+            enabled: this.getBoolean('DATABASE_ENABLED', true),
+            
+            // SQLite
+            sqlite: {
+                enabled: this.getBoolean('SQLITE_ENABLED', true),
+                path: this.get('SQLITE_DB_PATH', './data/db/pulseone.db'),
+                timeout: this.getNumber('SQLITE_TIMEOUT_MS', 30000),
+                journalMode: this.get('SQLITE_JOURNAL_MODE', 'WAL'),
+                foreignKeys: this.getBoolean('SQLITE_FOREIGN_KEYS', true)
+            },
+
+            // PostgreSQL
+            postgresql: {
+                enabled: this.getBoolean('POSTGRESQL_ENABLED', false),
+                host: this.get('POSTGRESQL_HOST', 'localhost'),
+                port: this.getNumber('POSTGRESQL_PORT', 5432),
+                database: this.get('POSTGRESQL_DATABASE', 'pulseone'),
+                username: this.get('POSTGRESQL_USERNAME', 'postgres'),
+                password: this.get('POSTGRESQL_PASSWORD', '')
+            }
+        };
+    }
+
+    /**
+     * Redis 설정 조회
+     */
+    getRedisConfig() {
+        return {
+            enabled: this.getBoolean('REDIS_PRIMARY_ENABLED', true),
+            host: this.get('REDIS_PRIMARY_HOST', 'localhost'),
+            port: this.getNumber('REDIS_PRIMARY_PORT', 6379),
+            password: this.get('REDIS_PRIMARY_PASSWORD', ''),
+            db: this.getNumber('REDIS_PRIMARY_DB', 0),
+            poolSize: this.getNumber('REDIS_POOL_SIZE', 20),
+            keyPrefix: this.get('REDIS_KEY_PREFIX', 'pulseone:'),
+            testMode: this.getBoolean('REDIS_TEST_MODE', false)
+        };
+    }
+
+    /**
+     * 서버 설정 조회
+     */
+    getServerConfig() {
+        return {
+            port: this.getNumber('BACKEND_PORT', 3000),
+            host: this.get('BACKEND_HOST', '0.0.0.0'),
+            env: this.get('NODE_ENV', 'development'),
+            logLevel: this.get('LOG_LEVEL', 'info')
+        };
+    }
+
+    /**
+     * InfluxDB 설정 조회
+     */
+    getInfluxConfig() {
+        return {
+            enabled: this.getBoolean('INFLUX_ENABLED', false),
+            host: this.get('INFLUXDB_HOST', 'localhost'),
+            port: this.getNumber('INFLUXDB_PORT', 8086),
+            token: this.get('INFLUXDB_TOKEN', ''),
+            org: this.get('INFLUXDB_ORG', 'pulseone'),
+            bucket: this.get('INFLUXDB_BUCKET', 'timeseries')
+        };
+    }
+
+    /**
+     * RabbitMQ 설정 조회
+     */
+    getRabbitMQConfig() {
+        return {
+            enabled: this.getBoolean('RABBITMQ_ENABLED', false),
+            host: this.get('RABBITMQ_HOST', 'localhost'),
+            port: this.getNumber('RABBITMQ_PORT', 5672),
+            user: this.get('RABBITMQ_USER', 'guest'),
+            password: this.get('RABBITMQ_PASSWORD', 'guest'),
+            vhost: this.get('RABBITMQ_VHOST', '/'),
+            managementPort: this.getNumber('RABBITMQ_MANAGEMENT_PORT', 15672)
+        };
     }
 
     // ========================================================================
@@ -304,258 +359,126 @@ class ConfigManager {
     // ========================================================================
 
     /**
-     * 설정 리로드 필요 여부 확인
+     * 환경변수 유효성 검증
      */
-    shouldReloadConfig(key) {
-        const lastLoadTime = this.lastLoad.get(key);
-        if (!lastLoadTime) return true;
-        
-        return (Date.now() - lastLoadTime) > this.cacheTimeout;
-    }
+    validate(validationRules) {
+        const errors = [];
 
-    /**
-     * 설정 리로드
-     */
-    async reloadConfig(key) {
-        const filePath = this.configPaths[key];
-        if (filePath) {
-            await this.loadFileConfig(key, filePath);
-        }
-    }
+        Object.entries(validationRules).forEach(([key, rules]) => {
+            const value = this.get(key);
 
-    /**
-     * 백업 생성
-     */
-    async createBackup(key) {
-        const filePath = this.configPaths[key];
-        if (!filePath) return;
-
-        const backupDir = path.join(path.dirname(filePath), 'backups');
-        await fs.mkdir(backupDir, { recursive: true });
-
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const backupPath = path.join(backupDir, `${key}_${timestamp}.json`);
-
-        try {
-            await fs.copyFile(filePath, backupPath);
-            this.logger.log(`📦 Backup created: ${backupPath}`);
-        } catch (error) {
-            this.logger.warn(`⚠️  Backup failed for ${key}:`, error.message);
-        }
-    }
-
-    /**
-     * 기본값 설정
-     */
-    async setDefaultConfig(key) {
-        const defaultConfig = this.getDefaultConfigData(key);
-        this.fileConfigs.set(key, defaultConfig);
-        this.lastLoad.set(key, Date.now());
-    }
-
-    /**
-     * 기본 설정 데이터 반환
-     */
-    getDefaultConfigData(key) {
-        const defaultConfigs = {
-            protocols: {
-                version: "1.0.0",
-                last_updated: new Date().toISOString(),
-                items: [
-                    {
-                        value: "modbus_tcp",
-                        name: "Modbus TCP",
-                        description: "Modbus TCP/IP protocol",
-                        port: 502,
-                        config_schema: {
-                            ip_address: { type: "string", required: true },
-                            port: { type: "number", default: 502 },
-                            slave_id: { type: "number", default: 1 },
-                            timeout: { type: "number", default: 3000 }
-                        },
-                        enabled: true
-                    },
-                    {
-                        value: "modbus_rtu",
-                        name: "Modbus RTU",
-                        description: "Modbus RTU serial protocol",
-                        config_schema: {
-                            serial_port: { type: "string", required: true },
-                            baud_rate: { type: "number", default: 9600 },
-                            data_bits: { type: "number", default: 8 },
-                            stop_bits: { type: "number", default: 1 },
-                            parity: { type: "string", default: "none" },
-                            slave_id: { type: "number", default: 1 }
-                        },
-                        enabled: true
-                    },
-                    {
-                        value: "mqtt",
-                        name: "MQTT",
-                        description: "Message Queuing Telemetry Transport",
-                        port: 1883,
-                        config_schema: {
-                            broker_url: { type: "string", required: true },
-                            port: { type: "number", default: 1883 },
-                            username: { type: "string" },
-                            password: { type: "string" },
-                            client_id: { type: "string" },
-                            topics: { type: "array", required: true }
-                        },
-                        enabled: true
-                    },
-                    {
-                        value: "bacnet",
-                        name: "BACnet",
-                        description: "Building Automation and Control Networks",
-                        port: 47808,
-                        config_schema: {
-                            device_id: { type: "number", required: true },
-                            network_number: { type: "number", default: 0 },
-                            max_apdu: { type: "number", default: 1476 }
-                        },
-                        enabled: true
-                    }
-                ]
-            },
-
-            deviceTypes: {
-                version: "1.0.0",
-                last_updated: new Date().toISOString(),
-                items: [
-                    { value: "PLC", name: "PLC (Programmable Logic Controller)", description: "산업용 제어기", icon: "fas fa-microchip", category: "control" },
-                    { value: "HMI", name: "HMI (Human Machine Interface)", description: "사람-기계 인터페이스", icon: "fas fa-desktop", category: "interface" },
-                    { value: "SENSOR", name: "Sensor", description: "각종 센서", icon: "fas fa-thermometer-half", category: "sensor" },
-                    { value: "GATEWAY", name: "Gateway", description: "프로토콜 게이트웨이", icon: "fas fa-exchange-alt", category: "network" },
-                    { value: "METER", name: "Meter", description: "계측기", icon: "fas fa-tachometer-alt", category: "measurement" },
-                    { value: "CONTROLLER", name: "Controller", description: "제어기", icon: "fas fa-cogs", category: "control" },
-                    { value: "DRIVE", name: "Drive", description: "모터 드라이브", icon: "fas fa-bolt", category: "power" },
-                    { value: "ROBOT", name: "Robot", description: "로봇", icon: "fas fa-robot", category: "automation" },
-                    { value: "CAMERA", name: "Camera", description: "비전 카메라", icon: "fas fa-camera", category: "vision" },
-                    { value: "OTHER", name: "Other", description: "기타", icon: "fas fa-question", category: "general" }
-                ]
-            },
-
-            deviceStatus: {
-                version: "1.0.0",
-                last_updated: new Date().toISOString(),
-                items: [
-                    { value: "connected", name: "Connected", description: "정상 연결됨", color: "green", icon: "fas fa-check-circle" },
-                    { value: "disconnected", name: "Disconnected", description: "연결 끊어짐", color: "red", icon: "fas fa-times-circle" },
-                    { value: "error", name: "Error", description: "오류 상태", color: "red", icon: "fas fa-exclamation-triangle" },
-                    { value: "maintenance", name: "Maintenance", description: "유지보수 모드", color: "yellow", icon: "fas fa-wrench" },
-                    { value: "offline", name: "Offline", description: "오프라인", color: "gray", icon: "fas fa-power-off" }
-                ]
-            },
-
-            alarmTypes: {
-                version: "1.0.0",
-                last_updated: new Date().toISOString(),
-                items: [
-                    { value: "critical", name: "Critical", description: "심각한 알람", priority: 1, color: "red", auto_notify: true },
-                    { value: "high", name: "High", description: "높은 우선순위", priority: 2, color: "orange", auto_notify: true },
-                    { value: "medium", name: "Medium", description: "중간 우선순위", priority: 3, color: "yellow", auto_notify: false },
-                    { value: "low", name: "Low", description: "낮은 우선순위", priority: 4, color: "blue", auto_notify: false },
-                    { value: "info", name: "Information", description: "정보성 알람", priority: 5, color: "gray", auto_notify: false }
-                ]
-            },
-
-            userRoles: {
-                version: "1.0.0",
-                last_updated: new Date().toISOString(),
-                items: [
-                    { 
-                        value: "system_admin", 
-                        name: "System Administrator", 
-                        description: "시스템 최고 관리자",
-                        permissions: ["*"],
-                        hierarchy_level: 0
-                    },
-                    { 
-                        value: "company_admin", 
-                        name: "Company Administrator", 
-                        description: "회사 관리자",
-                        permissions: ["manage_company", "manage_users", "manage_sites", "manage_devices", "view_all_data"],
-                        hierarchy_level: 1
-                    },
-                    { 
-                        value: "site_admin", 
-                        name: "Site Administrator", 
-                        description: "사이트 관리자",
-                        permissions: ["manage_site", "manage_devices", "manage_alarms", "view_site_data"],
-                        hierarchy_level: 2
-                    },
-                    { 
-                        value: "engineer", 
-                        name: "Engineer", 
-                        description: "엔지니어",
-                        permissions: ["manage_devices", "manage_data_points", "view_data", "control_devices"],
-                        hierarchy_level: 3
-                    },
-                    { 
-                        value: "operator", 
-                        name: "Operator", 
-                        description: "운영자",
-                        permissions: ["view_data", "acknowledge_alarms"],
-                        hierarchy_level: 4
-                    },
-                    { 
-                        value: "viewer", 
-                        name: "Viewer", 
-                        description: "조회 전용",
-                        permissions: ["view_data"],
-                        hierarchy_level: 5
-                    }
-                ]
-            },
-
-            siteTypes: {
-                version: "1.0.0",
-                last_updated: new Date().toISOString(),
-                items: [
-                    { value: "company", name: "Company", description: "회사 본부", hierarchy_level: 0, icon: "fas fa-building" },
-                    { value: "factory", name: "Factory", description: "공장", hierarchy_level: 1, icon: "fas fa-industry" },
-                    { value: "office", name: "Office", description: "사무소", hierarchy_level: 1, icon: "fas fa-building" },
-                    { value: "building", name: "Building", description: "건물", hierarchy_level: 2, icon: "fas fa-building" },
-                    { value: "floor", name: "Floor", description: "층", hierarchy_level: 3, icon: "fas fa-layer-group" },
-                    { value: "line", name: "Line", description: "생산라인", hierarchy_level: 4, icon: "fas fa-project-diagram" },
-                    { value: "area", name: "Area", description: "구역", hierarchy_level: 5, icon: "fas fa-map-marked-alt" },
-                    { value: "zone", name: "Zone", description: "영역", hierarchy_level: 6, icon: "fas fa-map-pin" }
-                ]
+            // Required 체크
+            if (rules.required && (value === undefined || value === '')) {
+                errors.push(`${key}: 필수 값이 누락됨`);
+                return;
             }
-        };
 
-        return defaultConfigs[key] || { version: "1.0.0", items: [] };
-    }
+            // Type 체크
+            if (value && rules.type) {
+                switch (rules.type) {
+                    case 'number':
+                        if (isNaN(Number(value))) {
+                            errors.push(`${key}: 숫자 형식이 아님 (현재값: ${value})`);
+                        }
+                        break;
+                    case 'boolean':
+                        if (!['true', 'false', '1', '0'].includes(value.toLowerCase())) {
+                            errors.push(`${key}: boolean 형식이 아님 (현재값: ${value})`);
+                        }
+                        break;
+                    case 'email':
+                        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+                            errors.push(`${key}: 이메일 형식이 아님 (현재값: ${value})`);
+                        }
+                        break;
+                }
+            }
 
-    // ========================================================================
-    // 정보 조회 메서드들
-    // ========================================================================
+            // Enum 체크
+            if (value && rules.enum && !rules.enum.includes(value)) {
+                errors.push(`${key}: 허용되지 않는 값 (현재값: ${value}, 허용값: ${rules.enum.join(', ')})`);
+            }
+        });
 
-    /**
-     * 모든 설정 정보 조회
-     */
-    async getAllConfigs() {
-        const configs = {};
-        
-        for (const key of Object.keys(this.configPaths)) {
-            configs[key] = await this.getConfig(key);
+        if (errors.length > 0) {
+            throw new Error(`환경변수 유효성 검증 실패:\n${errors.join('\n')}`);
         }
-        
-        return configs;
+
+        return true;
     }
 
     /**
-     * 설정 상태 정보
+     * 디버깅용 정보 출력
      */
-    getConfigStatus() {
-        return {
-            file_configs: Array.from(this.fileConfigs.keys()),
-            db_configs: Array.from(this.dbConfigs.keys()),
-            last_loads: Object.fromEntries(this.lastLoad),
-            cache_timeout: this.cacheTimeout
-        };
+    printDebugInfo() {
+        this.logger.log('\n📋 ConfigManager 환경변수 디버깅 정보:');
+        this.logger.log(`   로딩된 파일들: ${this.loadedFiles.join(', ')}`);
+        this.logger.log(`   NODE_ENV: ${this.get('NODE_ENV')}`);
+        this.logger.log(`   DATABASE_TYPE: ${this.get('DATABASE_TYPE')}`);
+        this.logger.log(`   REDIS_PRIMARY_HOST: ${this.get('REDIS_PRIMARY_HOST')}`);
+        this.logger.log(`   BACKEND_PORT: ${this.get('BACKEND_PORT')}`);
+        this.logger.log('');
+    }
+
+    /**
+     * 모든 환경변수 조회 (디버깅용)
+     */
+    getAll() {
+        const result = {};
+        this.env.forEach((value, key) => {
+            result[key] = value;
+        });
+        return result;
+    }
+
+    /**
+     * 로드된 파일 목록 조회
+     */
+    getLoadedFiles() {
+        return [...this.loadedFiles];
+    }
+
+    /**
+     * 재로드 (개발 중 설정 변경 시)
+     */
+    reload() {
+        this.loaded = false;
+        this.loadedFiles = [];
+        this.env.clear();
+        this.lastLoad.clear();
+        return this.initialize();
     }
 }
 
-module.exports = ConfigManager;
+// 싱글톤 인스턴스 생성 및 내보내기
+const configManager = ConfigManager.getInstance();
+
+// 기존 방식 호환성을 위한 직접 export (redis.js 등에서 사용)
+module.exports = {
+    // ConfigManager 인스턴스
+    getInstance: () => configManager,
+
+    // 기존 방식 호환성 (redis.js에서 사용하는 이름들)
+    REDIS_MAIN_HOST: configManager.get('REDIS_PRIMARY_HOST', 'localhost'),
+    REDIS_MAIN_PORT: configManager.get('REDIS_PRIMARY_PORT', '6379'),
+    REDIS_MAIN_PASSWORD: configManager.get('REDIS_PRIMARY_PASSWORD', ''),
+
+    // 자주 사용되는 환경변수들
+    NODE_ENV: configManager.get('NODE_ENV', 'development'),
+    LOG_LEVEL: configManager.get('LOG_LEVEL', 'info'),
+    BACKEND_PORT: configManager.getNumber('BACKEND_PORT', 3000),
+    DATABASE_TYPE: configManager.get('DATABASE_TYPE', 'SQLITE'),
+
+    // 헬퍼 함수들 (전역에서 사용 가능)
+    get: (key, defaultValue) => configManager.get(key, defaultValue),
+    getBoolean: (key, defaultValue) => configManager.getBoolean(key, defaultValue),
+    getNumber: (key, defaultValue) => configManager.getNumber(key, defaultValue),
+    require: (key) => configManager.require(key),
+    
+    // 설정 그룹들
+    getDatabaseConfig: () => configManager.getDatabaseConfig(),
+    getRedisConfig: () => configManager.getRedisConfig(),
+    getServerConfig: () => configManager.getServerConfig(),
+    getInfluxConfig: () => configManager.getInfluxConfig(),
+    getRabbitMQConfig: () => configManager.getRabbitMQConfig()
+};
