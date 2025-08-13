@@ -99,6 +99,11 @@ bool VirtualPointEngine::doInitialize() {
             LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
                                          "시스템 함수 등록 일부 실패");
         }
+
+        if (!loadVirtualPoints(0)) {  // tenant_id = 0
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN,
+                                     "⚠️ 가상포인트 로드 실패 - 빈 엔진으로 시작");
+        }
         
         LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
                                      "✅ VirtualPointEngine 자동 초기화 완료");
