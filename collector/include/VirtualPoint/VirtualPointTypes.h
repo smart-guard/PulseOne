@@ -55,7 +55,7 @@ enum class ScriptReturnType : uint8_t {
 
 /**
  * @brief 가상포인트 상태
- */
+ */ 
 enum class VirtualPointState : uint8_t {
     INACTIVE = 0,       // 비활성
     ACTIVE = 1,         // 활성

@@ -251,7 +251,7 @@ private:
     std::unordered_map<int, std::unordered_set<int>> point_to_vp_map_;
     std::unordered_map<int, std::unordered_set<int>> vp_dependencies_;
     mutable std::shared_mutex dep_mutex_;
-    
+
     // ✅ VirtualPointTypes의 통계 구조체 활용
     VirtualPointStatistics statistics_;
     mutable std::mutex stats_mutex_;
