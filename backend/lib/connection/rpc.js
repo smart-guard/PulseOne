@@ -1,15 +1,17 @@
 // ===========================================================================
-// lib/connection/rpc.js
+// backend/lib/connection/rpc.js - ConfigManager 사용하도록 수정
 // ===========================================================================
 const jayson = require('jayson');
-const env = require('../../../config/env');
+const ConfigManager = require('../config/ConfigManager');
+
+const config = ConfigManager.getInstance();
 
 class RPCClient {
   constructor(customConfig = {}) {
     this.config = {
-      host: customConfig.host || env.RPC_HOST || 'localhost',
-      port: parseInt(customConfig.port || env.RPC_PORT || '4000', 10),
-      timeout: customConfig.timeout || 5000
+      host: customConfig.host || config.get('RPC_HOST', 'localhost'),
+      port: customConfig.port || config.getNumber('RPC_PORT', 4000),
+      timeout: customConfig.timeout || config.getNumber('RPC_TIMEOUT_MS', 5000)
     };
 
     if (!this.config.host || !this.config.port) {
@@ -22,7 +24,10 @@ class RPCClient {
       timeout: this.config.timeout
     });
 
-    console.log(`✅ RPC 클라이언트 초기화: ${this.config.host}:${this.config.port}`);
+    console.log(`📋 RPC 클라이언트 설정:
+   호스트: ${this.config.host}
+   포트: ${this.config.port}
+   타임아웃: ${this.config.timeout}ms`);
   }
 
   /**
@@ -95,14 +100,28 @@ class RPCClient {
       return false;
     }
   }
+
+  /**
+   * 연결 정보 조회
+   */
+  getConnectionInfo() {
+    return {
+      host: this.config.host,
+      port: this.config.port,
+      timeout: this.config.timeout,
+      url: `http://${this.config.host}:${this.config.port}`
+    };
+  }
 }
 
 // 기본 인스턴스 생성
 let defaultRPCClient;
 try {
   defaultRPCClient = new RPCClient();
+  console.log('✅ 기본 RPC 클라이언트 초기화 성공');
 } catch (error) {
   console.warn('⚠️ 기본 RPC 클라이언트 초기화 실패:', error.message);
+  console.log('⚠️  RPC 없이 계속 진행합니다.');
   defaultRPCClient = null;
 }
 

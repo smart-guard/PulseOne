@@ -85,6 +85,7 @@ services:
 
   # Backend (Node.js)
   # Backend (Node.js) - 기존 환경변수 구조에 맞춤
+# Backend (Node.js) - 스마트 자동 시작
   backend:
     build:
       context: .
@@ -98,120 +99,52 @@ services:
       - ./config/timeseries.env
       - ./config/messaging.env
     environment:
-      # 기본 설정
       NODE_ENV: development
       ENV_STAGE: ${ENV_STAGE:-dev}
       BACKEND_PORT: 3000
-      
-      # 데이터베이스 설정 (기존 구조 유지)
       DATABASE_TYPE: SQLITE
-      DATABASE_ENABLED: "true"
-      SQLITE_ENABLED: "true"
       SQLITE_DB_PATH: ./data/db/pulseone.db
-      SQLITE_TIMEOUT_MS: 30000
-      SQLITE_JOURNAL_MODE: WAL
-      
-      # PostgreSQL (Docker 서비스 연결)
-      POSTGRESQL_ENABLED: "true"
-      POSTGRESQL_HOST: postgres
-      POSTGRESQL_PORT: 5432
-      POSTGRESQL_DATABASE: pulseone
-      POSTGRESQL_USERNAME: postgres
-      POSTGRESQL_PASSWORD: postgres123
-      
-      # Redis (Docker 서비스 연결)
-      REDIS_PRIMARY_ENABLED: "true"
+      REDIS_PRIMARY_ENABLED: "false"
       REDIS_PRIMARY_HOST: redis
       REDIS_PRIMARY_PORT: 6379
-      REDIS_PRIMARY_DB: 0
-      REDIS_PRIMARY_PASSWORD: ""
-      REDIS_POOL_SIZE: 20
-      REDIS_KEY_PREFIX: "pulseone:"
-      REDIS_TEST_MODE: "true"
-      
-      # InfluxDB (기존 이름 유지하되 Docker 서비스 연결)
-      INFLUXDB_HOST: influxdb
-      INFLUXDB_PORT: 8086
-      INFLUXDB_TOKEN: my-super-secret-auth-token
-      INFLUXDB_ORG: pulseone
-      INFLUXDB_BUCKET: timeseries
-      
-      # RabbitMQ
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: rabbitmq
-      RABBITMQ_PASSWORD: rabbitmq123
-      
     ports:
       - "3000:3000"
       - "9229:9229"
     volumes:
       - ./backend:/app/backend
       - ./config:/app/config
-      - ./secrets:/app/secrets
       - ./data:/app/data
-      - ./logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      influxdb:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     networks:
       - pulseone_network
+    # 🚀 스마트 자동 시작 (포트 충돌 시 다른 포트 사용)
     command: >
       sh -c '
-        echo "🚀 PulseOne Backend Development Environment"
-        echo "============================================="
-        
-        # 환경 확인
-        echo "📋 Environment Info:"
-        echo "  NODE_ENV: $$NODE_ENV"
-        echo "  ENV_STAGE: $$ENV_STAGE" 
-        echo "  Backend Port: $$BACKEND_PORT"
-        echo "  Database Type: $$DATABASE_TYPE"
-        
-        # 데이터베이스 연결 확인
-        echo "🌐 Service Connectivity Check:"
-        nc -zv postgres 5432 2>&1 | grep -q succeeded && echo "  ✅ PostgreSQL: Connected" || echo "  ❌ PostgreSQL: Failed"
-        nc -zv redis 6379 2>&1 | grep -q succeeded && echo "  ✅ Redis: Connected" || echo "  ❌ Redis: Failed"
-        nc -zv influxdb 8086 2>&1 | grep -q succeeded && echo "  ✅ InfluxDB: Connected" || echo "  ❌ InfluxDB: Failed"
-        nc -zv rabbitmq 5672 2>&1 | grep -q succeeded && echo "  ✅ RabbitMQ: Connected" || echo "  ❌ RabbitMQ: Failed"
+        echo "🚀 PulseOne Backend Container Starting..."
         
         # 데이터 디렉토리 생성
-        echo "📁 Creating data directories..."
         mkdir -p /app/data/db /app/data/backup /app/data/logs /app/data/temp
         
-        # SQLite 데이터베이스 파일 확인
-        if [ ! -f "$$SQLITE_DB_PATH" ]; then
-          echo "📝 Creating SQLite database file: $$SQLITE_DB_PATH"
-          touch "$$SQLITE_DB_PATH"
-        else
-          echo "✅ SQLite database exists: $$SQLITE_DB_PATH"
-        fi
-        
-        # npm 의존성 설치
+        # 의존성 확인
         cd /app/backend
         if [ ! -d node_modules ]; then
           echo "📦 Installing npm dependencies..."
           npm install
-        else
-          echo "✅ npm dependencies already installed"
         fi
         
-        # 환경 변수 검증
-        echo "🔍 Validating environment variables..."
-        if node scripts/validate-env.js; then
-          echo "✅ Environment validation passed"
+        # 포트 사용 체크 및 자동 조정
+        if netstat -tuln | grep -q ":3000 "; then
+          echo "⚠️  포트 3000이 사용 중입니다. 포트 3001을 사용합니다."
+          export BACKEND_PORT=3001
         else
-          echo "⚠️ Environment validation failed - continuing anyway"
+          export BACKEND_PORT=3000
         fi
         
-        # 개발 서버 시작
-        echo "🚀 Starting Backend Development Server..."
+        echo "🚀 Starting server on port $$BACKEND_PORT..."
         npm run dev
       '
 
