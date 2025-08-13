@@ -74,18 +74,22 @@ void AlarmManager::initializeClients() {
     try {
         auto& config = ConfigManager::getInstance();
         
-        // 🔥 수정: Redis 클라이언트 생성 (make_shared 사용)
+        // 🔥 Redis 클라이언트 생성 (선택적)
         try {
             redis_client_ = std::make_shared<RedisClientImpl>();
             
             std::string redis_host = config.getOrDefault("REDIS_HOST", "localhost");
             int redis_port = config.getInt("REDIS_PORT", 6379);
-            std::string redis_endpoint = redis_host + ":" + std::to_string(redis_port);
+            std::string redis_password = config.getOrDefault("REDIS_PASSWORD", "");
             
-            if (!redis_client_->connect(redis_endpoint)) {
+            // 🔥 수정: connect 메서드 시그니처에 맞게 3개 매개변수 전달
+            if (!redis_client_->connect(redis_host, redis_port, redis_password)) {
                 auto& logger = LogManager::getInstance();
                 logger.log("alarm", LogLevel::WARN, "Redis connection failed for AlarmManager");
                 redis_client_.reset();
+            } else {
+                auto& logger = LogManager::getInstance();
+                logger.log("alarm", LogLevel::INFO, "Redis connection successful for AlarmManager");
             }
             
         } catch (const std::exception& e) {
@@ -102,6 +106,7 @@ void AlarmManager::initializeClients() {
         logger.log("alarm", LogLevel::ERROR, "Failed to initialize clients: " + std::string(e.what()));
     }
 }
+
 
 void AlarmManager::initializeData() {
     try {

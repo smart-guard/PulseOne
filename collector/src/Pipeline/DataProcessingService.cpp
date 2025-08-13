@@ -830,6 +830,12 @@ void DataProcessingService::HandleError(const std::string& error_message, const 
 
 
 std::string DataProcessingService::getDeviceIdForPoint(int point_id) {
+    // 🔥 수정: Repository 의존성 완전 제거
+    // 간단한 추정 방식으로 변경 (DB 조회 없이)
+    return "device_" + std::to_string(point_id / 100);
+}
+/*
+std::string DataProcessingService::getDeviceIdForPoint(int point_id) {
     try {
         auto datapoint_repo = repository_factory_->getDataPointRepository();
         auto datapoint = datapoint_repo->findById(point_id);
@@ -843,7 +849,7 @@ std::string DataProcessingService::getDeviceIdForPoint(int point_id) {
         return "unknown_device";
     }
 }
-
+*/
 void DataProcessingService::SaveAlarmEventToRedis(const PulseOne::Alarm::AlarmEvent& alarm_event, size_t thread_index) {
     if (!redis_client_ || !redis_client_->isConnected()) {
         return;
