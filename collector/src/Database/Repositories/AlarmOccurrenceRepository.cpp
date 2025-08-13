@@ -133,9 +133,23 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
         
         DatabaseAbstractionLayer db_layer;
         
-        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        auto params = entityToParams(entity);
-        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::AlarmOccurrence::INSERT, params);
+        // 🔥 INSERT 쿼리 순서에 맞춰 파라미터 직접 배치
+        std::vector<std::string> params;
+        params.push_back(std::to_string(entity.getRuleId()));
+        params.push_back(std::to_string(entity.getTenantId()));
+        params.push_back(escapeString(entity.getTriggerValue()));
+        params.push_back(escapeString(entity.getTriggerCondition()));
+        params.push_back(escapeString(entity.getAlarmMessage()));
+        params.push_back(escapeString(PulseOne::Alarm::severityToString(entity.getSeverity())));
+        params.push_back(escapeString(entity.getContextData()));
+        params.push_back(escapeString(entity.getSourceName()));
+        
+        // 파라미터 순서대로 쿼리 치환
+        std::string query = SQL::AlarmOccurrence::INSERT;
+        query = RepositoryHelpers::replaceParametersInOrder(query, params);
+        
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
+                                    "save - Executing query: " + query);
         
         bool success = db_layer.executeNonQuery(query);
         
@@ -147,7 +161,12 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
             }
             
             LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
-                                        "save - Saved alarm occurrence for rule ID: " + std::to_string(entity.getRuleId()));
+                                        "save - ✅ 알람 발생 저장 성공: ID=" + std::to_string(entity.getId()) + 
+                                        ", Rule=" + std::to_string(entity.getRuleId()) +
+                                        ", Message=" + entity.getAlarmMessage());
+        } else {
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                        "save - ❌ 알람 발생 저장 실패: Rule=" + std::to_string(entity.getRuleId()));
         }
         
         return success;
@@ -165,27 +184,26 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
             return false;
         }
         
-        if (!validateAlarmOccurrence(entity)) {
-            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
-                                        "update - Invalid alarm occurrence data");
-            return false;
-        }
-        
         DatabaseAbstractionLayer db_layer;
         
-        // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
-        auto params = entityToParams(entity);
-        params["id"] = std::to_string(entity.getId()); // WHERE 절용
-        std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::AlarmOccurrence::UPDATE, params);
+        // 🔧 수정: std::map 방식으로 파라미터 생성
+        std::map<std::string, std::string> params;
+        params["trigger_value"] = escapeString(entity.getTriggerValue());
+        params["trigger_condition"] = escapeString(entity.getTriggerCondition());
+        params["alarm_message"] = escapeString(entity.getAlarmMessage());  // getMessage() → getAlarmMessage()
+        params["severity"] = escapeString(PulseOne::Alarm::severityToString(entity.getSeverity()));
+        params["state"] = escapeString(PulseOne::Alarm::stateToString(entity.getState()));
+        params["context_data"] = escapeString(entity.getContextData());
+        params["source_name"] = escapeString(entity.getSourceName());
+        params["id"] = std::to_string(entity.getId());
+        
+        // 🔧 수정: 올바른 RepositoryHelpers 메서드 사용
+        std::string query = SQL::AlarmOccurrence::UPDATE;
+        query = RepositoryHelpers::replaceParametersInOrder(query, params);  // map 버전 사용
         
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
-            // 캐시 무효화
-            if (isCacheEnabled()) {
-                clearCacheForId(static_cast<int>(entity.getId()));
-            }
-            
             LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
                                         "update - Updated alarm occurrence ID: " + std::to_string(entity.getId()));
         }
@@ -198,6 +216,7 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
         return false;
     }
 }
+
 
 bool AlarmOccurrenceRepository::deleteById(int id) {
     try {
@@ -864,41 +883,25 @@ AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const std::map<s
 std::map<std::string, std::string> AlarmOccurrenceRepository::entityToParams(const AlarmOccurrenceEntity& entity) {
     std::map<std::string, std::string> params;
     
-    // 기본 정보
+    // 🔥 INSERT 쿼리와 정확히 일치하는 8개 파라미터만!
+    // INSERT: rule_id, tenant_id, trigger_value, trigger_condition, alarm_message, severity, context_data, source_name
+    
     params["rule_id"] = std::to_string(entity.getRuleId());
     params["tenant_id"] = std::to_string(entity.getTenantId());
-    params["occurrence_time"] = timePointToString(entity.getOccurrenceTime());
     params["trigger_value"] = escapeString(entity.getTriggerValue());
+    params["trigger_condition"] = escapeString(entity.getTriggerCondition());
     params["alarm_message"] = escapeString(entity.getAlarmMessage());
     
     // 🎯 AlarmSeverity 변환 - PulseOne::Alarm 네임스페이스 사용
     params["severity"] = escapeString(PulseOne::Alarm::severityToString(entity.getSeverity()));
     
-    // 🎯 AlarmState 변환 - PulseOne::Alarm 네임스페이스 사용
-    params["state"] = escapeString(PulseOne::Alarm::stateToString(entity.getState()));
-    
-    // Acknowledge 정보
-    if (entity.getAcknowledgedTime().has_value()) {
-        params["acknowledged_time"] = timePointToString(entity.getAcknowledgedTime().value());
-    } else {
-        params["acknowledged_time"] = "NULL";
-    }
-    
-    if (entity.getAcknowledgedBy().has_value()) {
-        params["acknowledged_by"] = std::to_string(entity.getAcknowledgedBy().value());
-    } else {
-        params["acknowledged_by"] = "NULL";
-    }
-    
-    // Clear 정보
-    if (entity.getClearedTime().has_value()) {
-        params["cleared_time"] = timePointToString(entity.getClearedTime().value());
-    } else {
-        params["cleared_time"] = "NULL";
-    }
+    // 추가 컬럼들
+    params["context_data"] = escapeString(entity.getContextData());
+    params["source_name"] = escapeString(entity.getSourceName());
     
     return params;
 }
+
 
 bool AlarmOccurrenceRepository::ensureTableExists() {
     try {

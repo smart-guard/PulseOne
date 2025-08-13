@@ -72,16 +72,16 @@ namespace AlarmOccurrence {
     
     const std::string INSERT = R"(
         INSERT INTO alarm_occurrences (
-            rule_id, tenant_id, trigger_value, trigger_condition, alarm_message,
-            severity, state, context_data, source_name, location
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            rule_id, tenant_id, trigger_value, trigger_condition,
+            alarm_message, severity, context_data, source_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE = R"(
         UPDATE alarm_occurrences SET
-            rule_id = ?, tenant_id = ?, trigger_value = ?, trigger_condition = ?,
-            alarm_message = ?, severity = ?, state = ?, context_data = ?,
-            source_name = ?, location = ?, updated_at = CURRENT_TIMESTAMP
+            trigger_value = ?, trigger_condition = ?, alarm_message = ?,
+            severity = ?, state = ?, context_data = ?, source_name = ?,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
     
