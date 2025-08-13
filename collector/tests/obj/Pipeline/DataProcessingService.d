@@ -22,4 +22,6 @@ obj/Pipeline/DataProcessingService.o: \
  ../include/Database/RepositoryFactory.h \
  ../include/Database/Repositories/CurrentValueRepository.h \
  ../include/Database/Repositories/IRepository.h \
- ../include/Database/DatabaseTypes.h
+ ../include/Database/DatabaseTypes.h \
+ ../include/Database/Entities/AlarmOccurrenceEntity.h \
+ ../include/Database/Repositories/AlarmOccurrenceRepository.h

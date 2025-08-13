@@ -17,6 +17,8 @@
 #include "Database/RepositoryFactory.h"
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/Entities/AlarmOccurrenceEntity.h"
+#include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include <chrono>
 #include <thread>
 #include <algorithm>
@@ -497,6 +499,10 @@ void DataProcessingService::ProcessAlarmEvents(
         
         for (const auto& alarm_event : alarm_events) {
             try {
+
+                if (alarm_event.state == PulseOne::Alarm::AlarmState::ACTIVE) {
+                    SaveAlarmToDatabase(alarm_event);
+                }
                 PublishAlarmToRedis(alarm_event);
                 
                 if (external_notification_enabled_.load()) {
@@ -1362,6 +1368,70 @@ void DataProcessingService::SaveChangedPointsToRDB(const Structs::DeviceDataMess
         LogManager::getInstance().log("processing", LogLevel::ERROR,
             "💥 SaveChangedPointsToRDB(단일) 실패: " + std::string(e.what()));
         HandleError("RDB 저장 실패", e.what());
+    }
+}
+
+// ✨ 파일 끝에 추가할 함수 구현들
+
+void DataProcessingService::SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event) {
+    try {
+        auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
+        auto alarm_occurrence_repo = factory.getAlarmOccurrenceRepository();
+        
+        if (!alarm_occurrence_repo) {
+            LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                         "❌ AlarmOccurrenceRepository 없음");
+            return;
+        }
+        
+        // AlarmOccurrenceEntity 생성
+        PulseOne::Database::Entities::AlarmOccurrenceEntity occurrence;
+        occurrence.setRuleId(event.rule_id);
+        occurrence.setTenantId(event.tenant_id);
+        occurrence.setOccurrenceTime(event.occurrence_time);
+        
+        // trigger_value를 JSON 문자열로 변환
+        std::string trigger_value_str;
+        std::visit([&trigger_value_str](auto&& v) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>) {
+                trigger_value_str = v;  // 이미 string이면 그대로
+            } else {
+                trigger_value_str = std::to_string(v);  // 숫자면 변환
+            }
+        }, event.trigger_value);
+        occurrence.setTriggerValue(trigger_value_str);
+        
+        occurrence.setAlarmMessage(event.message);
+        occurrence.setSeverityString(getSeverityString(event.severity));
+        occurrence.setState("active");
+        occurrence.setSourceName(event.source_name);
+        occurrence.setLocation(event.location);
+        occurrence.setContextData("{}");
+        
+        // DB 저장
+        if (alarm_occurrence_repo->save(occurrence)) {
+            LogManager::getInstance().log("processing", LogLevel::INFO, 
+                                         "✅ 알람 DB 저장 성공: rule_id=" + std::to_string(event.rule_id) + 
+                                         ", id=" + std::to_string(occurrence.getId()));
+        } else {
+            LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                         "❌ 알람 DB 저장 실패: rule_id=" + std::to_string(event.rule_id));
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                                     "❌ 알람 DB 저장 예외: " + std::string(e.what()));
+    }
+}
+
+std::string DataProcessingService::getSeverityString(PulseOne::Alarm::AlarmSeverity severity) {
+    switch (severity) {
+        case PulseOne::Alarm::AlarmSeverity::CRITICAL: return "critical";
+        case PulseOne::Alarm::AlarmSeverity::HIGH: return "high"; 
+        case PulseOne::Alarm::AlarmSeverity::MEDIUM: return "medium";
+        case PulseOne::Alarm::AlarmSeverity::LOW: return "low";
+        case PulseOne::Alarm::AlarmSeverity::INFO: return "info";
+        default: return "medium";
     }
 }
 

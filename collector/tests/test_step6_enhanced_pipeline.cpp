@@ -177,7 +177,8 @@ void VerifyActualCurrentValueData(std::shared_ptr<Repositories::CurrentValueRepo
                 }
                 
                 std::cout << "   🏷️ 값 타입: " << current_value->getValueType() << std::endl;
-                std::cout << "   ✅ 품질: " << static_cast<int>(current_value->getQuality()) << std::endl;
+                // 🔧 수정: getQuality()가 string을 반환하므로 직접 출력
+                std::cout << "   ✅ 품질: " << current_value->getQuality() << std::endl;
                 std::cout << "   ⏰ 타임스탬프: " << TimeToString(current_value->getValueTimestamp()) << std::endl;
                 std::cout << "   📊 읽기 횟수: " << current_value->getReadCount() << std::endl;
                 std::cout << "   🔄 업데이트: " << TimeToString(current_value->getUpdatedAt()) << std::endl;
@@ -584,12 +585,15 @@ TEST_F(RealDataVerificationTest, Test_Redis_Connectivity) {
         return;
     }
     
-    // 간단한 set/get 테스트
+    // 간단한 set/get 테스트 (TTL 없는 버전)
     std::string test_key = "test:connectivity:" + std::to_string(std::time(nullptr));
     std::string test_value = "test_value_" + std::to_string(std::time(nullptr));
     
-    bool set_result = redis_client_->set(test_key, test_value, 60);
+    bool set_result = redis_client_->set(test_key, test_value);
     ASSERT_TRUE(set_result) << "Redis SET 명령 실패";
+    
+    // TTL 설정 (별도 명령)
+    redis_client_->expire(test_key, 60);
     
     std::string get_result = redis_client_->get(test_key);
     ASSERT_EQ(get_result, test_value) << "Redis GET 결과가 예상과 다름";
