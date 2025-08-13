@@ -84,6 +84,7 @@ services:
       - pulseone_network
 
   # Backend (Node.js)
+  # Backend (Node.js) - 기존 환경변수 구조에 맞춤
   backend:
     build:
       context: .
@@ -97,11 +98,50 @@ services:
       - ./config/timeseries.env
       - ./config/messaging.env
     environment:
+      # 기본 설정
       NODE_ENV: development
       ENV_STAGE: ${ENV_STAGE:-dev}
-      # Backend는 redis.env 파일의 설정을 그대로 사용
-      # env_file로 로드되므로 추가 설정 불필요
       BACKEND_PORT: 3000
+      
+      # 데이터베이스 설정 (기존 구조 유지)
+      DATABASE_TYPE: SQLITE
+      DATABASE_ENABLED: "true"
+      SQLITE_ENABLED: "true"
+      SQLITE_DB_PATH: ./data/db/pulseone.db
+      SQLITE_TIMEOUT_MS: 30000
+      SQLITE_JOURNAL_MODE: WAL
+      
+      # PostgreSQL (Docker 서비스 연결)
+      POSTGRESQL_ENABLED: "true"
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_DATABASE: pulseone
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: postgres123
+      
+      # Redis (Docker 서비스 연결)
+      REDIS_PRIMARY_ENABLED: "true"
+      REDIS_PRIMARY_HOST: redis
+      REDIS_PRIMARY_PORT: 6379
+      REDIS_PRIMARY_DB: 0
+      REDIS_PRIMARY_PASSWORD: ""
+      REDIS_POOL_SIZE: 20
+      REDIS_KEY_PREFIX: "pulseone:"
+      REDIS_TEST_MODE: "true"
+      
+      # InfluxDB (기존 이름 유지하되 Docker 서비스 연결)
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_TOKEN: my-super-secret-auth-token
+      INFLUXDB_ORG: pulseone
+      INFLUXDB_BUCKET: timeseries
+      
+      # RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: rabbitmq
+      RABBITMQ_PASSWORD: rabbitmq123
+      
     ports:
       - "3000:3000"
       - "9229:9229"
@@ -129,9 +169,10 @@ services:
         
         # 환경 확인
         echo "📋 Environment Info:"
-        echo "  NODE_ENV: $NODE_ENV"
-        echo "  ENV_STAGE: $ENV_STAGE"
-        echo "  Backend Port: $BACKEND_PORT"
+        echo "  NODE_ENV: $$NODE_ENV"
+        echo "  ENV_STAGE: $$ENV_STAGE" 
+        echo "  Backend Port: $$BACKEND_PORT"
+        echo "  Database Type: $$DATABASE_TYPE"
         
         # 데이터베이스 연결 확인
         echo "🌐 Service Connectivity Check:"
@@ -140,16 +181,34 @@ services:
         nc -zv influxdb 8086 2>&1 | grep -q succeeded && echo "  ✅ InfluxDB: Connected" || echo "  ❌ InfluxDB: Failed"
         nc -zv rabbitmq 5672 2>&1 | grep -q succeeded && echo "  ✅ RabbitMQ: Connected" || echo "  ❌ RabbitMQ: Failed"
         
+        # 데이터 디렉토리 생성
+        echo "📁 Creating data directories..."
+        mkdir -p /app/data/db /app/data/backup /app/data/logs /app/data/temp
+        
+        # SQLite 데이터베이스 파일 확인
+        if [ ! -f "$$SQLITE_DB_PATH" ]; then
+          echo "📝 Creating SQLite database file: $$SQLITE_DB_PATH"
+          touch "$$SQLITE_DB_PATH"
+        else
+          echo "✅ SQLite database exists: $$SQLITE_DB_PATH"
+        fi
+        
         # npm 의존성 설치
         cd /app/backend
         if [ ! -d node_modules ]; then
           echo "📦 Installing npm dependencies..."
           npm install
+        else
+          echo "✅ npm dependencies already installed"
         fi
         
         # 환경 변수 검증
         echo "🔍 Validating environment variables..."
-        node scripts/validate-env.js || echo "⚠️ Environment validation failed"
+        if node scripts/validate-env.js; then
+          echo "✅ Environment validation passed"
+        else
+          echo "⚠️ Environment validation failed - continuing anyway"
+        fi
         
         # 개발 서버 시작
         echo "🚀 Starting Backend Development Server..."
