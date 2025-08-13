@@ -525,23 +525,26 @@ namespace VirtualPoint {
             tags TEXT DEFAULT '',
             scope_type VARCHAR(20) NOT NULL DEFAULT 'tenant',
             execution_count INTEGER DEFAULT 0,
-            last_value REAL DEFAULT 0.0,
             last_error TEXT DEFAULT '',
             avg_execution_time_ms REAL DEFAULT 0.0,
+            dependencies TEXT,
+            error_handling VARCHAR(20) DEFAULT 'return_null',
+            last_execution_time DATETIME,
             created_by VARCHAR(100) DEFAULT 'system',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     )";
     
-    // 기본 CRUD 쿼리들
+    // 🔥 수정된 기본 CRUD 쿼리들 (last_value 제거, 실제 컬럼들 추가)
     const std::string FIND_ALL = R"(
         SELECT 
             id, tenant_id, site_id, device_id,
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         ORDER BY tenant_id, name
@@ -553,7 +556,8 @@ namespace VirtualPoint {
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE id = ?
@@ -563,8 +567,8 @@ namespace VirtualPoint {
         INSERT INTO virtual_points (
             tenant_id, site_id, device_id, name, description, formula,
             data_type, unit, calculation_interval, calculation_trigger, execution_type, cache_duration_ms,
-            is_enabled, category, tags, scope_type, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_enabled, category, tags, scope_type, dependencies, error_handling, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE = R"(
@@ -573,6 +577,7 @@ namespace VirtualPoint {
             description = ?, formula = ?, data_type = ?, unit = ?,
             calculation_interval = ?, calculation_trigger = ?, execution_type = ?, cache_duration_ms = ?,
             is_enabled = ?, category = ?, tags = ?, scope_type = ?,
+            dependencies = ?, error_handling = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -583,16 +588,17 @@ namespace VirtualPoint {
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM virtual_points WHERE id = ?";
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM virtual_points";
     
-    // 특화 조회 쿼리들
+    // 🔥 수정된 특화 조회 쿼리들 (모두 last_value 제거)
     const std::string FIND_BY_TENANT = R"(
-        SELECT 
+        SELECT
             id, tenant_id, site_id, device_id,
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
-        FROM virtual_points 
+        FROM virtual_points
         WHERE tenant_id = ?
         ORDER BY name
     )";
@@ -603,7 +609,8 @@ namespace VirtualPoint {
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE site_id = ?
@@ -616,7 +623,8 @@ namespace VirtualPoint {
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE device_id = ?
@@ -629,7 +637,8 @@ namespace VirtualPoint {
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE is_enabled = 1
@@ -642,7 +651,8 @@ namespace VirtualPoint {
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE category = ?
@@ -655,7 +665,8 @@ namespace VirtualPoint {
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE calculation_trigger = ?
@@ -668,7 +679,8 @@ namespace VirtualPoint {
             name, description, formula, data_type, unit,
             calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
             category, tags, scope_type,
-            execution_count, last_value, last_error, avg_execution_time_ms,
+            execution_count, last_error, avg_execution_time_ms,
+            dependencies, error_handling, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE id IN (%IN_CLAUSE%)
@@ -677,12 +689,12 @@ namespace VirtualPoint {
     
     const std::string DELETE_BY_IDS = "DELETE FROM virtual_points WHERE id IN (%IN_CLAUSE%)";
     
-    // 실행 통계 업데이트 쿼리들
+    // 🔥 수정된 실행 통계 업데이트 쿼리들 (last_value 관련 쿼리들 수정)
     const std::string UPDATE_EXECUTION_STATS = R"(
         UPDATE virtual_points SET 
             execution_count = execution_count + 1,
-            last_value = ?,
             avg_execution_time_ms = ((avg_execution_time_ms * (execution_count - 1)) + ?) / execution_count,
+            last_execution_time = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -694,9 +706,10 @@ namespace VirtualPoint {
         WHERE id = ?
     )";
     
-    const std::string UPDATE_LAST_VALUE = R"(
+    // 🔥 last_value 관련 쿼리 제거 또는 수정
+    const std::string UPDATE_EXECUTION_TIME = R"(
         UPDATE virtual_points SET 
-            last_value = ?,
+            last_execution_time = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
