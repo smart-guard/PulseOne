@@ -121,59 +121,76 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
 
 bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
     try {
+        auto& logger = LogManager::getInstance();
+        logger.log("AlarmOccurrenceRepository", LogLevel::INFO, "🚀 save() 메서드 시작");
+        
         if (!ensureTableExists()) {
+            logger.log("AlarmOccurrenceRepository", LogLevel::ERROR, "❌ 테이블 존재 확인 실패");
             return false;
         }
         
-        if (!validateAlarmOccurrence(entity)) {
-            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
-                                        "save - Invalid alarm occurrence data");
-            return false;
-        }
+        // 🔧 문자열 안전 처리
+        std::string safe_message = entity.getAlarmMessage();
+        std::replace(safe_message.begin(), safe_message.end(), '\'', '"');
+        
+        std::string safe_trigger_value = entity.getTriggerValue().empty() ? "NULL" : "'" + entity.getTriggerValue() + "'";
+        std::string safe_trigger_condition = entity.getTriggerCondition().empty() ? "NULL" : "'" + entity.getTriggerCondition() + "'";
+        std::string safe_context = entity.getContextData().empty() ? "'{}'" : "'" + entity.getContextData() + "'";
+        std::string safe_source = entity.getSourceName().empty() ? "'Unknown'" : "'" + entity.getSourceName() + "'";
+        std::string safe_location = entity.getLocation().empty() ? "'Unknown Location'" : "'" + entity.getLocation() + "'";
+        
+        // 🔧 enum을 문자열로 변환
+        std::string severity_str = entity.getSeverityString();  // ✅ 수정된 부분
+        
+        std::string insert_query = 
+            "INSERT INTO alarm_occurrences ("
+            "rule_id, tenant_id, occurrence_time, trigger_value, "
+            "trigger_condition, alarm_message, severity, state, "
+            "context_data, source_name, location, "
+            "created_at, updated_at"
+            ") VALUES ("
+            + std::to_string(entity.getRuleId()) + ", "
+            + std::to_string(entity.getTenantId()) + ", "
+            + "datetime('now'), "
+            + safe_trigger_value + ", "
+            + safe_trigger_condition + ", "
+            + "'" + safe_message + "', "
+            + "'" + severity_str + "', "  // ✅ 수정된 부분
+            + "'active', "
+            + safe_context + ", "
+            + safe_source + ", "
+            + safe_location + ", "
+            + "datetime('now'), "
+            + "datetime('now')"
+            + ")";
+        
+        logger.log("AlarmOccurrenceRepository", LogLevel::INFO, 
+                   "🔧 실행할 INSERT 쿼리: " + insert_query);
         
         DatabaseAbstractionLayer db_layer;
-        
-        // 🔥 INSERT 쿼리 순서에 맞춰 파라미터 직접 배치
-        std::vector<std::string> params;
-        params.push_back(std::to_string(entity.getRuleId()));
-        params.push_back(std::to_string(entity.getTenantId()));
-        params.push_back(escapeString(entity.getTriggerValue()));
-        params.push_back(escapeString(entity.getTriggerCondition()));
-        params.push_back(escapeString(entity.getAlarmMessage()));
-        params.push_back(escapeString(PulseOne::Alarm::severityToString(entity.getSeverity())));
-        params.push_back(escapeString(entity.getContextData()));
-        params.push_back(escapeString(entity.getSourceName()));
-        
-        // 파라미터 순서대로 쿼리 치환
-        std::string query = SQL::AlarmOccurrence::INSERT;
-        query = RepositoryHelpers::replaceParametersInOrder(query, params);
-        
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::DEBUG,
-                                    "save - Executing query: " + query);
-        
-        bool success = db_layer.executeNonQuery(query);
+        bool success = db_layer.executeNonQuery(insert_query);
         
         if (success) {
+            logger.log("AlarmOccurrenceRepository", LogLevel::INFO, "✅ INSERT 쿼리 실행 성공");
+            
             // 새로 생성된 ID 조회
-            auto id_results = db_layer.executeQuery(SQL::Common::GET_LAST_INSERT_ID);
+            auto id_results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
             if (!id_results.empty() && id_results[0].find("id") != id_results[0].end()) {
-                entity.setId(std::stoll(id_results[0].at("id")));
+                int new_id = std::stoi(id_results[0].at("id"));
+                entity.setId(new_id);
+                logger.log("AlarmOccurrenceRepository", LogLevel::INFO,
+                          "✅ 새 ID 설정 완료: " + std::to_string(new_id));
             }
             
-            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
-                                        "save - ✅ 알람 발생 저장 성공: ID=" + std::to_string(entity.getId()) + 
-                                        ", Rule=" + std::to_string(entity.getRuleId()) +
-                                        ", Message=" + entity.getAlarmMessage());
+            return true;
         } else {
-            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
-                                        "save - ❌ 알람 발생 저장 실패: Rule=" + std::to_string(entity.getRuleId()));
+            logger.log("AlarmOccurrenceRepository", LogLevel::ERROR, "❌ INSERT 쿼리 실행 실패");
+            return false;
         }
-        
-        return success;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
-                                    "save failed: " + std::string(e.what()));
+                                    "❌ save() 메서드 예외 발생: " + std::string(e.what()));
         return false;
     }
 }
@@ -906,6 +923,15 @@ std::map<std::string, std::string> AlarmOccurrenceRepository::entityToParams(con
 bool AlarmOccurrenceRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
+
+        // 먼저 테이블 존재 여부 확인
+        std::string check_query = "SELECT name FROM sqlite_master WHERE type='table' AND name='alarm_occurrences'";
+        auto results = db_layer.executeQuery(check_query);
+        
+        if (!results.empty()) {
+            return true;  // 이미 존재하면 성공
+        }
+
         // 🔥 ExtendedSQLQueries.h 사용
         return db_layer.executeNonQuery(SQL::AlarmOccurrence::CREATE_TABLE);
     } catch (const std::exception& e) {

@@ -273,6 +273,7 @@ private:
     
     void SaveChangedPointsToRDBBatch(const Structs::DeviceDataMessage& message, 
         const std::vector<Structs::TimestampedValue>& changed_points);
+    void SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event);    
 };
 
 } // namespace Pipeline
