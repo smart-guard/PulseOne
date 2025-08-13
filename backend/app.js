@@ -252,7 +252,7 @@ function gracefulShutdown(signal) {
 // Start Server (기존 + 초기화 상태 표시 추가)
 // =============================================================================
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`
 🚀 PulseOne Backend Server Started!

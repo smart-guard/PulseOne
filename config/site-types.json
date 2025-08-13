@@ -1,0 +1,62 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-08-13T23:26:12.237Z",
+  "items": [
+    {
+      "value": "company",
+      "name": "Company",
+      "description": "회사 본부",
+      "hierarchy_level": 0,
+      "icon": "fas fa-building"
+    },
+    {
+      "value": "factory",
+      "name": "Factory",
+      "description": "공장",
+      "hierarchy_level": 1,
+      "icon": "fas fa-industry"
+    },
+    {
+      "value": "office",
+      "name": "Office",
+      "description": "사무소",
+      "hierarchy_level": 1,
+      "icon": "fas fa-building"
+    },
+    {
+      "value": "building",
+      "name": "Building",
+      "description": "건물",
+      "hierarchy_level": 2,
+      "icon": "fas fa-building"
+    },
+    {
+      "value": "floor",
+      "name": "Floor",
+      "description": "층",
+      "hierarchy_level": 3,
+      "icon": "fas fa-layer-group"
+    },
+    {
+      "value": "line",
+      "name": "Line",
+      "description": "생산라인",
+      "hierarchy_level": 4,
+      "icon": "fas fa-project-diagram"
+    },
+    {
+      "value": "area",
+      "name": "Area",
+      "description": "구역",
+      "hierarchy_level": 5,
+      "icon": "fas fa-map-marked-alt"
+    },
+    {
+      "value": "zone",
+      "name": "Zone",
+      "description": "영역",
+      "hierarchy_level": 6,
+      "icon": "fas fa-map-pin"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 // lib/connection/influx.js  
 // ===========================================================================
 const { InfluxDB, Point } = require('@influxdata/influxdb-client');
-const env = require('../../../config/env');
+const env = require('../config/ConfigManager');
 
 class InfluxDBManager {
   constructor() {
