@@ -32,7 +32,7 @@ obj/Workers/WorkerFactory.o: ../src/Workers/WorkerFactory.cpp \
  ../include/Database/Entities/BaseEntity.h \
  ../include/Database/DatabaseManager.h \
  ../include/Client/RedisClientImpl.h ../include/Client/RedisClient.h \
- ../include/Client/InfluxClient.h ../include/Utils/ConfigManager.h \
+ ../include/Utils/ConfigManager.h ../include/Client/InfluxClient.h \
  ../include/Database/Entities/DataPointEntity.h \
  ../include/Database/Entities/DeviceSettingsEntity.h \
  ../include/Database/Entities/CurrentValueEntity.h \
