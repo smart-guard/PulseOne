@@ -238,3 +238,6 @@ const sqliteConnection = new SQLiteConnection();
 
 module.exports = sqliteConnection;
 module.exports.SQLiteConnection = SQLiteConnection;
+// SQLiteConnection 클래스 export
+module.exports = SQLiteConnection;
+

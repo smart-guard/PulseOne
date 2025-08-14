@@ -1,4 +1,5 @@
-// backend/lib/database/dbFactory.js
+const ConfigManager = require("../config/ConfigManager");
+// backend/lib/database/DatabaseFactory.js
 // 데이터베이스 팩토리 - 모든 DB 타입을 통합 관리
 
 const path = require('path');
@@ -31,13 +32,9 @@ class DatabaseFactory {
     /**
      * 설정 로드 (환경변수 기반)
      */
-    loadConfig() {
-        // 환경변수 로드
-        require('dotenv').config({ 
-            path: path.join(__dirname, '../../../config/.env.dev') 
-        });
-
-        const dbType = process.env.DB_TYPE || 'sqlite';
+loadConfig() {
+    const configManager = ConfigManager.getInstance();
+    const dbType = configManager.get("DATABASE_TYPE") || "sqlite";
         
         const config = {
             database: {

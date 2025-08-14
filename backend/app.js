@@ -189,7 +189,7 @@ const userRoutes = require('./routes/user');
 
 app.use('/api/system', systemRoutes);
 app.use('/api/processes', processRoutes);
-//app.use('/api/devices', deviceRoutes);
+app.use('/api/devices', deviceRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 
