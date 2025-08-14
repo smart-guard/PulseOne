@@ -1,6 +1,6 @@
 // =============================================================================
 // backend/lib/database/DeviceQueries.js
-// 디바이스 관리 통합 SQL 쿼리 모음 - 모든 디바이스 관련 테이블 포함
+// 디바이스 관리 통합 SQL 쿼리 모음 - 스키마와 완전 일치하도록 수정됨
 // =============================================================================
 
 class DeviceQueries {
@@ -45,9 +45,10 @@ class DeviceQueries {
         ds.keep_alive_interval_s,
         ds.updated_at as settings_updated_at,
         
-        -- 디바이스 상태
-        dst.status,
-        dst.last_seen,
+        -- 🔥 디바이스 상태 (실제 스키마와 일치하도록 수정)
+        dst.connection_status,  -- status -> connection_status로 수정
+        dst.last_communication, -- last_seen -> last_communication으로 수정
+        dst.error_count,        -- 새로 추가
         dst.last_error,
         dst.response_time,
         dst.firmware_version,
@@ -106,8 +107,9 @@ class DeviceQueries {
     return ` AND d.id = ?`;
   }
 
-  static addStatusFilter() {
-    return ` AND dst.status = ?`;
+  // 🔥 수정: connection_status 필드로 수정
+  static addConnectionStatusFilter() {
+    return ` AND dst.connection_status = ?`;
   }
 
   static addSearchFilter() {
@@ -191,16 +193,16 @@ class DeviceQueries {
   }
 
   // =============================================================================
-  // 디바이스 상태 쿼리들
+  // 🔥 디바이스 상태 쿼리들 (스키마와 일치하도록 수정)
   // =============================================================================
 
   // 디바이스 상태 UPSERT
   static upsertDeviceStatus() {
     return `
       INSERT OR REPLACE INTO device_status (
-        device_id, status, last_seen, last_error, response_time,
-        firmware_version, hardware_info, diagnostic_data, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        device_id, connection_status, last_communication, error_count, last_error, 
+        response_time, firmware_version, hardware_info, diagnostic_data, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
   }
 
@@ -209,13 +211,13 @@ class DeviceQueries {
     return `SELECT * FROM device_status WHERE device_id = ?`;
   }
 
-  // 온라인 디바이스 수 조회
+  // 🔥 수정: connection_status = 'connected'로 온라인 디바이스 카운트
   static getOnlineDeviceCount() {
     return `
       SELECT COUNT(*) as online_count
       FROM device_status dst
       INNER JOIN devices d ON dst.device_id = d.id
-      WHERE d.tenant_id = ? AND dst.status = 'online'
+      WHERE d.tenant_id = ? AND dst.connection_status = 'connected'
     `;
   }
 
@@ -359,7 +361,7 @@ class DeviceQueries {
   }
 
   // =============================================================================
-  // 통계 및 모니터링 쿼리들
+  // 🔥 통계 및 모니터링 쿼리들 (connection_status로 수정)
   // =============================================================================
 
   // 프로토콜별 디바이스 수
@@ -369,7 +371,7 @@ class DeviceQueries {
         protocol_type,
         COUNT(*) as total_count,
         SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
-        SUM(CASE WHEN dst.status = 'online' THEN 1 ELSE 0 END) as online_count
+        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
       FROM devices d
       LEFT JOIN device_status dst ON d.id = dst.device_id
       WHERE d.tenant_id = ?
@@ -387,9 +389,9 @@ class DeviceQueries {
         s.code as site_code,
         COUNT(d.id) as device_count,
         SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
-        SUM(CASE WHEN dst.status = 'online' THEN 1 ELSE 0 END) as online_count,
-        SUM(CASE WHEN dst.status = 'offline' THEN 1 ELSE 0 END) as offline_count,
-        SUM(CASE WHEN dst.status = 'error' THEN 1 ELSE 0 END) as error_count
+        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count,
+        SUM(CASE WHEN dst.connection_status = 'disconnected' THEN 1 ELSE 0 END) as disconnected_count,
+        SUM(CASE WHEN dst.connection_status = 'error' THEN 1 ELSE 0 END) as error_count
       FROM sites s
       LEFT JOIN devices d ON s.id = d.site_id
       LEFT JOIN device_status dst ON d.id = dst.device_id
@@ -419,9 +421,9 @@ class DeviceQueries {
       SELECT 
         COUNT(d.id) as total_devices,
         SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_devices,
-        SUM(CASE WHEN dst.status = 'online' THEN 1 ELSE 0 END) as online_devices,
-        SUM(CASE WHEN dst.status = 'offline' THEN 1 ELSE 0 END) as offline_devices,
-        SUM(CASE WHEN dst.status = 'error' THEN 1 ELSE 0 END) as error_devices,
+        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_devices,
+        SUM(CASE WHEN dst.connection_status = 'disconnected' THEN 1 ELSE 0 END) as disconnected_devices,
+        SUM(CASE WHEN dst.connection_status = 'error' THEN 1 ELSE 0 END) as error_devices,
         COUNT(DISTINCT d.protocol_type) as protocol_types,
         COUNT(DISTINCT d.site_id) as sites_with_devices,
         COUNT(dp.id) as total_data_points,
@@ -433,37 +435,38 @@ class DeviceQueries {
     `;
   }
 
-  // 최근 활동한 디바이스 목록
+  // 🔥 수정: 최근 활동한 디바이스 목록 (last_communication 사용)
   static getRecentActiveDevices() {
     return `
       SELECT 
         d.id,
         d.name,
         d.protocol_type,
-        dst.status,
-        dst.last_seen,
+        dst.connection_status,
+        dst.last_communication,
         dst.response_time
       FROM devices d
       INNER JOIN device_status dst ON d.id = dst.device_id
-      WHERE d.tenant_id = ? AND dst.last_seen IS NOT NULL
-      ORDER BY dst.last_seen DESC
+      WHERE d.tenant_id = ? AND dst.last_communication IS NOT NULL
+      ORDER BY dst.last_communication DESC
       LIMIT ?
     `;
   }
 
-  // 오류가 있는 디바이스 목록
+  // 🔥 수정: 오류가 있는 디바이스 목록
   static getDevicesWithErrors() {
     return `
       SELECT 
         d.id,
         d.name,
         d.protocol_type,
-        dst.status,
+        dst.connection_status,
         dst.last_error,
-        dst.last_seen
+        dst.error_count,
+        dst.last_communication
       FROM devices d
       INNER JOIN device_status dst ON d.id = dst.device_id
-      WHERE d.tenant_id = ? AND (dst.status = 'error' OR dst.last_error IS NOT NULL)
+      WHERE d.tenant_id = ? AND (dst.connection_status = 'error' OR dst.last_error IS NOT NULL OR dst.error_count > 0)
       ORDER BY dst.updated_at DESC
     `;
   }
@@ -526,6 +529,65 @@ class DeviceQueries {
       WHERE dg.tenant_id = ?
       GROUP BY dg.id, dg.name, dg.group_type
       ORDER BY dg.name
+    `;
+  }
+
+  // =============================================================================
+  // 🔥 추가: 연결 상태별 상세 조회
+  // =============================================================================
+
+  // 연결 상태별 디바이스 목록
+  static getDevicesByConnectionStatus() {
+    return `
+      SELECT 
+        d.id,
+        d.name,
+        d.protocol_type,
+        d.endpoint,
+        dst.connection_status,
+        dst.last_communication,
+        dst.error_count,
+        dst.last_error,
+        dst.response_time
+      FROM devices d
+      INNER JOIN device_status dst ON d.id = dst.device_id
+      WHERE d.tenant_id = ? AND dst.connection_status = ?
+      ORDER BY dst.last_communication DESC
+    `;
+  }
+
+  // 연결 상태 통계 (전체)
+  static getConnectionStatusSummary() {
+    return `
+      SELECT 
+        dst.connection_status,
+        COUNT(*) as count,
+        AVG(dst.response_time) as avg_response_time,
+        SUM(dst.error_count) as total_errors
+      FROM device_status dst
+      INNER JOIN devices d ON dst.device_id = d.id
+      WHERE d.tenant_id = ?
+      GROUP BY dst.connection_status
+      ORDER BY dst.connection_status
+    `;
+  }
+
+  // 오류 카운트가 높은 디바이스 목록
+  static getTopErrorDevices() {
+    return `
+      SELECT 
+        d.id,
+        d.name,
+        d.protocol_type,
+        dst.connection_status,
+        dst.error_count,
+        dst.last_error,
+        dst.last_communication
+      FROM devices d
+      INNER JOIN device_status dst ON d.id = dst.device_id
+      WHERE d.tenant_id = ? AND dst.error_count > 0
+      ORDER BY dst.error_count DESC, dst.last_communication DESC
+      LIMIT ?
     `;
   }
 }
