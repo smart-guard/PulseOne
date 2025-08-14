@@ -1,6 +1,6 @@
 // ============================================================================
 // backend/lib/database/repositories/BaseRepository.js
-// DatabaseFactory를 활용한 멀티 DB 지원 BaseRepository
+// DatabaseFactory를 활용한 멀티 DB 지원 BaseRepository - 최종 완성본
 // ============================================================================
 
 const DatabaseFactory = require('../DatabaseFactory');
@@ -41,11 +41,13 @@ class BaseRepository {
             
             const results = await this.dbFactory.executeQuery(adaptedQuery, params);
             
-            // DB별 결과 처리
+            // DB별 결과 처리 - SQLite는 rows 배열에서 추출
             switch (this.dbType) {
                 case 'sqlite':
                 case 'sqlite3':
-                    return results.length > 0 ? results[0] : null;
+                case 'SQLITE':
+                case 'SQLITE3':
+                    return results.rows && results.rows.length > 0 ? results.rows[0] : null;
                 
                 case 'postgresql':
                 case 'postgres':
@@ -78,11 +80,13 @@ class BaseRepository {
             
             const results = await this.dbFactory.executeQuery(adaptedQuery, params);
             
-            // DB별 결과 처리
+            // DB별 결과 처리 - SQLite는 rows 배열 반환
             switch (this.dbType) {
                 case 'sqlite':
                 case 'sqlite3':
-                    return results || [];
+                case 'SQLITE':
+                case 'SQLITE3':
+                    return results.rows || [];
                 
                 case 'postgresql':
                 case 'postgres':
@@ -119,35 +123,37 @@ class BaseRepository {
             switch (this.dbType) {
                 case 'sqlite':
                 case 'sqlite3':
+                case 'SQLITE':
+                case 'SQLITE3':
                     return {
-                        lastID: result.lastID || result.insertId,
-                        changes: result.changes || result.affectedRows || (result.length || 0)
+                        lastInsertRowid: result.lastInsertRowid || result.insertId,
+                        changes: result.changes || result.affectedRows || 0
                     };
                 
                 case 'postgresql':
                 case 'postgres':
                     return {
-                        lastID: result.insertId || (result.rows && result.rows[0] ? result.rows[0].id : null),
+                        lastInsertRowid: result.insertId || (result.rows && result.rows[0] ? result.rows[0].id : null),
                         changes: result.rowCount || 0
                     };
                 
                 case 'mariadb':
                 case 'mysql':
                     return {
-                        lastID: result.insertId,
+                        lastInsertRowid: result.insertId,
                         changes: result.affectedRows || 0
                     };
                 
                 case 'mssql':
                 case 'sqlserver':
                     return {
-                        lastID: result.recordset && result.recordset[0] ? result.recordset[0].id : null,
+                        lastInsertRowid: result.recordset && result.recordset[0] ? result.recordset[0].id : null,
                         changes: result.rowsAffected ? result.rowsAffected[0] : 0
                     };
                 
                 default:
                     return {
-                        lastID: null,
+                        lastInsertRowid: null,
                         changes: 0
                     };
             }
@@ -176,6 +182,8 @@ class BaseRepository {
         switch (this.dbType) {
             case 'sqlite':
             case 'sqlite3':
+            case 'SQLITE':
+            case 'SQLITE3':
                 return this.getSqliteDataType(fieldType);
             
             case 'postgresql':
@@ -313,12 +321,7 @@ class BaseRepository {
 
         // 테넌트 필터 자동 추가
         if (tenantId) {
-            clauses.push(this.getParameterPlaceholder(params.length + 1) + ' = ?');
-            if (this.dbType === 'postgresql') {
-                clauses[clauses.length - 1] = clauses[clauses.length - 1].replace('?', `$${params.length + 1}`);
-            }
-            clauses[clauses.length - 1] = clauses[clauses.length - 1].replace('?', 'tenant_id');
-            clauses[clauses.length - 1] = `tenant_id = ${this.getParameterPlaceholder(params.length + 1)}`;
+            clauses.push(`tenant_id = ${this.getParameterPlaceholder(params.length + 1)}`);
             params.push(tenantId);
         }
 
@@ -340,7 +343,7 @@ class BaseRepository {
         switch (this.dbType) {
             case 'postgresql':
             case 'postgres':
-                return `${index}`;
+                return `$${index}`;
             
             case 'mssql':
             case 'sqlserver':
@@ -348,6 +351,8 @@ class BaseRepository {
             
             case 'sqlite':
             case 'sqlite3':
+            case 'SQLITE':
+            case 'SQLITE3':
             case 'mariadb':
             case 'mysql':
             default:
@@ -364,12 +369,24 @@ class BaseRepository {
         
         // DB별 키워드 이스케이프
         let escapedSortBy = sortBy;
-        if (this.dbType === 'postgresql' && ['order', 'user', 'group'].includes(sortBy.toLowerCase())) {
-            escapedSortBy = `"${sortBy}"`;
-        } else if (this.dbType === 'mssql' && ['order', 'user', 'group'].includes(sortBy.toLowerCase())) {
-            escapedSortBy = `[${sortBy}]`;
-        } else if ((this.dbType === 'mariadb' || this.dbType === 'mysql') && ['order', 'user', 'group'].includes(sortBy.toLowerCase())) {
-            escapedSortBy = `\`${sortBy}\``;
+        const lowerSortBy = sortBy.toLowerCase();
+        const reservedWords = ['order', 'user', 'group'];
+        
+        if (reservedWords.includes(lowerSortBy)) {
+            switch (this.dbType) {
+                case 'postgresql':
+                case 'postgres':
+                    escapedSortBy = `"${sortBy}"`;
+                    break;
+                case 'mssql':
+                case 'sqlserver':
+                    escapedSortBy = `[${sortBy}]`;
+                    break;
+                case 'mariadb':
+                case 'mysql':
+                    escapedSortBy = `\`${sortBy}\``;
+                    break;
+            }
         }
         
         return ` ORDER BY ${escapedSortBy} ${order}`;
@@ -386,6 +403,8 @@ class BaseRepository {
             case 'postgres':
             case 'sqlite':
             case 'sqlite3':
+            case 'SQLITE':
+            case 'SQLITE3':
                 return ` LIMIT ${limit} OFFSET ${offset}`;
             
             case 'mariadb':
@@ -413,6 +432,8 @@ class BaseRepository {
             
             case 'sqlite':
             case 'sqlite3':
+            case 'SQLITE':
+            case 'SQLITE3':
                 return "datetime('now')";
             
             case 'mariadb':
