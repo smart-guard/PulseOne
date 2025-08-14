@@ -45,10 +45,10 @@ class DeviceQueries {
         ds.keep_alive_interval_s,
         ds.updated_at as settings_updated_at,
         
-        -- 🔥 디바이스 상태 (실제 스키마와 일치하도록 수정)
-        dst.connection_status,  -- status -> connection_status로 수정
-        dst.last_communication, -- last_seen -> last_communication으로 수정
-        dst.error_count,        -- 새로 추가
+        -- 디바이스 상태
+        dst.connection_status,
+        dst.last_communication,
+        dst.error_count,
         dst.last_error,
         dst.response_time,
         dst.firmware_version,
@@ -56,9 +56,9 @@ class DeviceQueries {
         dst.diagnostic_data,
         dst.updated_at as status_updated_at,
         
-        -- 사이트 정보
+        -- 사이트 정보 (code 컬럼 안전 처리)
         s.name as site_name,
-        s.code as site_code,
+        COALESCE(s.code, 'SITE' || s.id) as site_code,  -- ✅ 안전한 fallback
         
         -- 그룹 정보
         dg.name as group_name,
@@ -75,7 +75,7 @@ class DeviceQueries {
       LEFT JOIN device_groups dg ON d.device_group_id = dg.id
       LEFT JOIN data_points dp ON d.id = dp.device_id
       WHERE 1=1
-    `;
+     `;
   }
 
   // 필터 조건들
@@ -386,7 +386,7 @@ class DeviceQueries {
       SELECT 
         s.id as site_id,
         s.name as site_name,
-        s.code as site_code,
+        COALESCE(s.code, 'SITE' || s.id) as site_code,  -- ✅ 안전한 fallback
         COUNT(d.id) as device_count,
         SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count,
@@ -396,7 +396,7 @@ class DeviceQueries {
       LEFT JOIN devices d ON s.id = d.site_id
       LEFT JOIN device_status dst ON d.id = dst.device_id
       WHERE s.tenant_id = ?
-      GROUP BY s.id, s.name, s.code
+      GROUP BY s.id, s.name
       ORDER BY s.name
     `;
   }
