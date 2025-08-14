@@ -4,7 +4,7 @@
 // =============================================================================
 
 const DatabaseFactory = require('../connection/db');
-const DeviceQueries = require('./DeviceQueries');
+const DeviceQueries = require('../queries/DeviceQueries');
 
 class DeviceRepository {
   constructor() {

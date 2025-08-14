@@ -4,7 +4,7 @@
 // =============================================================================
 
 const DatabaseFactory = require('../connection/db');
-const VirtualPointQueries = require('./VirtualPointQueries');
+const VirtualPointQueries = require('../queries/VirtualPointQueries');
 
 class VirtualPointRepository {
   constructor() {
