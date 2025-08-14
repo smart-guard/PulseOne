@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 
 // 디바이스 타입 정의 (백엔드 스키마 기반)
 interface Device {
-  // devices 테이블 기본 정보
   id: number;
   tenant_id: number;
   site_id: number;
@@ -16,7 +15,7 @@ interface Device {
   serial_number?: string;
   protocol_type: string;
   endpoint: string;
-  config?: any; // JSON
+  config?: any;
   polling_interval: number;
   timeout: number;
   retry_count: number;
@@ -26,7 +25,6 @@ interface Device {
   created_at: string;
   updated_at: string;
   
-  // device_settings 상세 설정
   settings?: {
     polling_interval_ms: number;
     connection_timeout_ms: number;
@@ -43,7 +41,6 @@ interface Device {
     diagnostic_mode_enabled: boolean;
   };
   
-  // device_status 실시간 상태
   status?: {
     connection_status: string;
     last_communication?: string;
@@ -55,14 +52,13 @@ interface Device {
     successful_requests: number;
     failed_requests: number;
     firmware_version?: string;
-    hardware_info?: any; // JSON
-    diagnostic_data?: any; // JSON
+    hardware_info?: any;
+    diagnostic_data?: any;
     cpu_usage?: number;
     memory_usage?: number;
     uptime_percentage: number;
   };
   
-  // 관련 정보
   site_name?: string;
   group_name?: string;
   data_points?: DataPoint[];
@@ -102,36 +98,27 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState('basic');
   const [editData, setEditData] = useState<Device | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailData, setDetailData] = useState<Device | null>(null);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
 
-  // 모달이 열릴 때 상세 정보 로드
+  // 모달이 열릴 때 데이터 초기화 (API 호출 제거)
   useEffect(() => {
     if (isOpen && device && mode !== 'create') {
-      loadDeviceDetails(device.id);
-      setActiveTab('basic'); // 항상 기본정보 탭으로 시작
+      // 전달받은 device 데이터 직접 사용
+      setEditData({ ...device });
+      setActiveTab('basic');
     } else if (mode === 'create') {
       initializeNewDevice();
-      setActiveTab('basic'); // 생성 모드에서는 항상 기본정보 탭으로 시작
+      setActiveTab('basic');
     }
   }, [isOpen, device, mode]);
 
-  // 편집 데이터 초기화
-  useEffect(() => {
-    if (detailData) {
-      setEditData({ ...detailData });
-    }
-  }, [detailData]);
-
   // 새 디바이스 초기화
   const initializeNewDevice = () => {
-    setDetailData(null);
     setDataPoints([]);
     setEditData({
       id: 0,
-      tenant_id: 1, // 기본값
-      site_id: 1, // 기본값
+      tenant_id: 1,
+      site_id: 1,
       name: '',
       description: '',
       device_type: 'PLC',
@@ -165,61 +152,7 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
     });
   };
 
-  // 디바이스 상세 정보 로드
-  const loadDeviceDetails = async (deviceId: number) => {
-    try {
-      setDetailLoading(true);
-      console.log('🔍 디바이스 상세 정보 로드:', deviceId);
-
-      // 디바이스 기본 정보 조회
-      const deviceResponse = await fetch(`http://localhost:3000/api/devices/${deviceId}`);
-      if (!deviceResponse.ok) {
-        throw new Error(`디바이스 조회 실패: ${deviceResponse.status}`);
-      }
-      const deviceResult = await deviceResponse.json();
-      
-      if (!deviceResult.success) {
-        throw new Error(deviceResult.error || '디바이스 조회 실패');
-      }
-
-      console.log('📋 디바이스 상세 데이터:', deviceResult.data);
-      setDetailData(deviceResult.data);
-
-      // 디바이스 설정 정보 조회
-      try {
-        const settingsResponse = await fetch(`http://localhost:3000/api/devices/${deviceId}/settings`);
-        if (settingsResponse.ok) {
-          const settingsResult = await settingsResponse.json();
-          if (settingsResult.success) {
-            setDetailData(prev => prev ? { ...prev, settings: settingsResult.data } : null);
-          }
-        }
-      } catch (settingsError) {
-        console.warn('⚠️ 디바이스 설정 조회 실패:', settingsError);
-      }
-
-      // 데이터 포인트 조회
-      try {
-        const dataPointsResponse = await fetch(`http://localhost:3000/api/devices/${deviceId}/data-points`);
-        if (dataPointsResponse.ok) {
-          const dataPointsResult = await dataPointsResponse.json();
-          if (dataPointsResult.success && Array.isArray(dataPointsResult.data)) {
-            setDataPoints(dataPointsResult.data);
-          }
-        }
-      } catch (dpError) {
-        console.warn('⚠️ 데이터 포인트 조회 실패:', dpError);
-      }
-
-    } catch (error) {
-      console.error('❌ 디바이스 상세 정보 로드 실패:', error);
-      alert(`디바이스 정보를 불러오는데 실패했습니다: ${error.message}`);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  // 디바이스 저장
+  // 디바이스 저장 (단순화)
   const handleSave = async () => {
     if (!editData) return;
 
@@ -227,54 +160,8 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
       setIsLoading(true);
       console.log('💾 디바이스 저장:', editData);
 
-      const url = mode === 'create' 
-        ? 'http://localhost:3000/api/devices'
-        : `http://localhost:3000/api/devices/${editData.id}`;
-      
-      const method = mode === 'create' ? 'POST' : 'PUT';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`저장 실패 (${response.status}): ${errorText}`);
-      }
-
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || '저장 실패');
-      }
-
-      console.log('✅ 디바이스 저장 성공:', result.data);
-      
-      // 설정도 별도로 저장 (편집 모드인 경우)
-      if (mode === 'edit' && editData.settings) {
-        try {
-          const settingsResponse = await fetch(`http://localhost:3000/api/devices/${editData.id}/settings`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(editData.settings),
-          });
-
-          if (settingsResponse.ok) {
-            const settingsResult = await settingsResponse.json();
-            console.log('✅ 디바이스 설정 저장 성공:', settingsResult);
-          }
-        } catch (settingsError) {
-          console.warn('⚠️ 설정 저장은 실패했지만 기본 정보는 저장됨:', settingsError);
-        }
-      }
-
       if (onSave) {
-        onSave(result.data);
+        onSave(editData);
       }
       onClose();
 
@@ -286,28 +173,13 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
     }
   };
 
-  // 디바이스 삭제
+  // 디바이스 삭제 (단순화)
   const handleDelete = async () => {
     if (!device || !onDelete) return;
     
     if (confirm(`${device.name} 디바이스를 삭제하시겠습니까?`)) {
       setIsLoading(true);
       try {
-        const response = await fetch(`http://localhost:3000/api/devices/${device.id}`, {
-          method: 'DELETE',
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`삭제 실패 (${response.status}): ${errorText}`);
-        }
-
-        const result = await response.json();
-        if (!result.success) {
-          throw new Error(result.error || '삭제 실패');
-        }
-
-        console.log('✅ 디바이스 삭제 성공');
         await onDelete(device.id);
         onClose();
       } catch (error) {
@@ -351,21 +223,8 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 표시할 데이터 결정 (상세 데이터 우선, 없으면 기본 device 데이터)
-  const displayData = detailData || device || editData;
-
-  if (detailLoading) {
-    return (
-      <div className="modal-overlay">
-        <div className="modal-container">
-          <div className="loading-container">
-            <div className="loading-spinner"></div>
-            <p>디바이스 정보를 불러오는 중...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // 표시할 데이터 결정 (전달받은 device 또는 editData 사용)
+  const displayData = device || editData;
 
   return (
     <div className="modal-overlay">
@@ -398,7 +257,7 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
           </button>
         </div>
 
-        {/* 탭 네비게이션 - 수정된 부분 */}
+        {/* 탭 네비게이션 */}
         <div className="tab-navigation">
           <button 
             className={`tab-btn ${activeTab === 'basic' ? 'active' : ''}`}
@@ -421,7 +280,6 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
             <i className="fas fa-list"></i>
             데이터포인트 ({dataPoints.length})
           </button>
-          {/* 상태 탭은 생성 모드에서만 숨김 */}
           {mode !== 'create' && (
             <button 
               className={`tab-btn ${activeTab === 'status' ? 'active' : ''}`}
@@ -431,7 +289,6 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
               상태
             </button>
           )}
-          {/* 로그 탭은 보기 모드에서만 표시 */}
           {mode === 'view' && (
             <button 
               className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
@@ -443,7 +300,7 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
           )}
         </div>
 
-        {/* 탭 내용 - 고정 높이 적용 */}
+        {/* 탭 내용 */}
         <div className="modal-content">
           {/* 기본정보 탭 */}
           {activeTab === 'basic' && (
@@ -604,8 +461,9 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
           {activeTab === 'settings' && (
             <div className="tab-panel">
               <div className="settings-sections">
+                {/* 폴링 및 타이밍 설정 */}
                 <div className="setting-section">
-                  <h3>통신 설정</h3>
+                  <h3>📡 폴링 및 타이밍 설정</h3>
                   <div className="form-grid">
                     <div className="form-group">
                       <label>폴링 주기 (ms)</label>
@@ -621,6 +479,58 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
                         />
                       )}
                     </div>
+                    <div className="form-group">
+                      <label>스캔 주기 오버라이드 (ms)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.scan_rate_override || '기본값 사용'}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="10"
+                          max="60000"
+                          value={editData?.settings?.scan_rate_override || ''}
+                          onChange={(e) => updateSettings('scan_rate_override', e.target.value ? parseInt(e.target.value) : null)}
+                          placeholder="기본값 사용"
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>스캔 그룹</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.scan_group || 1}</div>
+                      ) : (
+                        <select
+                          value={editData?.settings?.scan_group || 1}
+                          onChange={(e) => updateSettings('scan_group', parseInt(e.target.value))}
+                        >
+                          <option value={1}>그룹 1 (높은 우선순위)</option>
+                          <option value={2}>그룹 2 (보통 우선순위)</option>
+                          <option value={3}>그룹 3 (낮은 우선순위)</option>
+                          <option value={4}>그룹 4 (백그라운드)</option>
+                        </select>
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>프레임 간 지연 (ms)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.inter_frame_delay_ms || 10}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="0"
+                          max="1000"
+                          value={editData?.settings?.inter_frame_delay_ms || 10}
+                          onChange={(e) => updateSettings('inter_frame_delay_ms', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 연결 및 통신 설정 */}
+                <div className="setting-section">
+                  <h3>🔌 연결 및 통신 설정</h3>
+                  <div className="form-grid">
                     <div className="form-group">
                       <label>연결 타임아웃 (ms)</label>
                       {mode === 'view' ? (
@@ -650,6 +560,69 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
                       )}
                     </div>
                     <div className="form-group">
+                      <label>쓰기 타임아웃 (ms)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.write_timeout_ms || 5000}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="1000"
+                          max="30000"
+                          value={editData?.settings?.write_timeout_ms || 5000}
+                          onChange={(e) => updateSettings('write_timeout_ms', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>읽기 버퍼 크기 (bytes)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.read_buffer_size || 1024}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="256"
+                          max="65536"
+                          value={editData?.settings?.read_buffer_size || 1024}
+                          onChange={(e) => updateSettings('read_buffer_size', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>쓰기 버퍼 크기 (bytes)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.write_buffer_size || 1024}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="256"
+                          max="65536"
+                          value={editData?.settings?.write_buffer_size || 1024}
+                          onChange={(e) => updateSettings('write_buffer_size', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>명령 큐 크기</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.queue_size || 100}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="10"
+                          max="1000"
+                          value={editData?.settings?.queue_size || 100}
+                          onChange={(e) => updateSettings('queue_size', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 재시도 정책 */}
+                <div className="setting-section">
+                  <h3>🔄 재시도 정책</h3>
+                  <div className="form-grid">
+                    <div className="form-group">
                       <label>최대 재시도 횟수</label>
                       {mode === 'view' ? (
                         <div className="form-value">{displayData?.settings?.max_retry_count || displayData?.retry_count || 'N/A'}</div>
@@ -663,11 +636,69 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
                         />
                       )}
                     </div>
+                    <div className="form-group">
+                      <label>재시도 간격 (ms)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.retry_interval_ms || 5000}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="100"
+                          max="60000"
+                          value={editData?.settings?.retry_interval_ms || 5000}
+                          onChange={(e) => updateSettings('retry_interval_ms', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>백오프 승수</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.backoff_multiplier || 1.5}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="1.0"
+                          max="5.0"
+                          step="0.1"
+                          value={editData?.settings?.backoff_multiplier || 1.5}
+                          onChange={(e) => updateSettings('backoff_multiplier', parseFloat(e.target.value))}
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>백오프 시간 (ms)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.backoff_time_ms || 60000}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="1000"
+                          max="3600000"
+                          value={editData?.settings?.backoff_time_ms || 60000}
+                          onChange={(e) => updateSettings('backoff_time_ms', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>최대 백오프 시간 (ms)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.max_backoff_time_ms || 300000}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="10000"
+                          max="1800000"
+                          value={editData?.settings?.max_backoff_time_ms || 300000}
+                          onChange={(e) => updateSettings('max_backoff_time_ms', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 
+                {/* Keep-alive 설정 */}
                 <div className="setting-section">
-                  <h3>고급 옵션</h3>
+                  <h3>❤️ Keep-alive 설정</h3>
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Keep-Alive 활성화</label>
@@ -683,6 +714,124 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
                             type="checkbox"
                             checked={editData?.settings?.keep_alive_enabled || false}
                             onChange={(e) => updateSettings('keep_alive_enabled', e.target.checked)}
+                          />
+                          <span className="slider"></span>
+                        </label>
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>Keep-Alive 간격 (초)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.keep_alive_interval_s || 30}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="5"
+                          max="300"
+                          value={editData?.settings?.keep_alive_interval_s || 30}
+                          onChange={(e) => updateSettings('keep_alive_interval_s', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>Keep-Alive 타임아웃 (초)</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">{displayData?.settings?.keep_alive_timeout_s || 10}</div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="1"
+                          max="60"
+                          value={editData?.settings?.keep_alive_timeout_s || 10}
+                          onChange={(e) => updateSettings('keep_alive_timeout_s', parseInt(e.target.value))}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 데이터 품질 관리 */}
+                <div className="setting-section">
+                  <h3>🎯 데이터 품질 관리</h3>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>데이터 검증 활성화</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">
+                          <span className={`status-badge ${displayData?.settings?.data_validation_enabled ? 'enabled' : 'disabled'}`}>
+                            {displayData?.settings?.data_validation_enabled ? '활성화' : '비활성화'}
+                          </span>
+                        </div>
+                      ) : (
+                        <label className="switch">
+                          <input
+                            type="checkbox"
+                            checked={editData?.settings?.data_validation_enabled || false}
+                            onChange={(e) => updateSettings('data_validation_enabled', e.target.checked)}
+                          />
+                          <span className="slider"></span>
+                        </label>
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>이상값 탐지 활성화</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">
+                          <span className={`status-badge ${displayData?.settings?.outlier_detection_enabled ? 'enabled' : 'disabled'}`}>
+                            {displayData?.settings?.outlier_detection_enabled ? '활성화' : '비활성화'}
+                          </span>
+                        </div>
+                      ) : (
+                        <label className="switch">
+                          <input
+                            type="checkbox"
+                            checked={editData?.settings?.outlier_detection_enabled || false}
+                            onChange={(e) => updateSettings('outlier_detection_enabled', e.target.checked)}
+                          />
+                          <span className="slider"></span>
+                        </label>
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>데드밴드 활성화</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">
+                          <span className={`status-badge ${displayData?.settings?.deadband_enabled ? 'enabled' : 'disabled'}`}>
+                            {displayData?.settings?.deadband_enabled ? '활성화' : '비활성화'}
+                          </span>
+                        </div>
+                      ) : (
+                        <label className="switch">
+                          <input
+                            type="checkbox"
+                            checked={editData?.settings?.deadband_enabled || false}
+                            onChange={(e) => updateSettings('deadband_enabled', e.target.checked)}
+                          />
+                          <span className="slider"></span>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 로깅 및 진단 */}
+                <div className="setting-section">
+                  <h3>📊 로깅 및 진단</h3>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>상세 로깅</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">
+                          <span className={`status-badge ${displayData?.settings?.detailed_logging_enabled ? 'enabled' : 'disabled'}`}>
+                            {displayData?.settings?.detailed_logging_enabled ? '활성화' : '비활성화'}
+                          </span>
+                        </div>
+                      ) : (
+                        <label className="switch">
+                          <input
+                            type="checkbox"
+                            checked={editData?.settings?.detailed_logging_enabled || false}
+                            onChange={(e) => updateSettings('detailed_logging_enabled', e.target.checked)}
                           />
                           <span className="slider"></span>
                         </label>
@@ -708,25 +857,6 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
                       )}
                     </div>
                     <div className="form-group">
-                      <label>상세 로깅</label>
-                      {mode === 'view' ? (
-                        <div className="form-value">
-                          <span className={`status-badge ${displayData?.settings?.detailed_logging_enabled ? 'enabled' : 'disabled'}`}>
-                            {displayData?.settings?.detailed_logging_enabled ? '활성화' : '비활성화'}
-                          </span>
-                        </div>
-                      ) : (
-                        <label className="switch">
-                          <input
-                            type="checkbox"
-                            checked={editData?.settings?.detailed_logging_enabled || false}
-                            onChange={(e) => updateSettings('detailed_logging_enabled', e.target.checked)}
-                          />
-                          <span className="slider"></span>
-                        </label>
-                      )}
-                    </div>
-                    <div className="form-group">
                       <label>진단 모드</label>
                       {mode === 'view' ? (
                         <div className="form-value">
@@ -744,6 +874,44 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
                           <span className="slider"></span>
                         </label>
                       )}
+                    </div>
+                    <div className="form-group">
+                      <label>통신 로깅</label>
+                      {mode === 'view' ? (
+                        <div className="form-value">
+                          <span className={`status-badge ${displayData?.settings?.communication_logging_enabled ? 'enabled' : 'disabled'}`}>
+                            {displayData?.settings?.communication_logging_enabled ? '활성화' : '비활성화'}
+                          </span>
+                        </div>
+                      ) : (
+                        <label className="switch">
+                          <input
+                            type="checkbox"
+                            checked={editData?.settings?.communication_logging_enabled || false}
+                            onChange={(e) => updateSettings('communication_logging_enabled', e.target.checked)}
+                          />
+                          <span className="slider"></span>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 메타데이터 */}
+                <div className="setting-section">
+                  <h3>ℹ️ 메타데이터</h3>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>생성일</label>
+                      <div className="form-value">{displayData?.settings?.created_at ? new Date(displayData.settings.created_at).toLocaleString() : '정보 없음'}</div>
+                    </div>
+                    <div className="form-group">
+                      <label>마지막 수정일</label>
+                      <div className="form-value">{displayData?.settings?.updated_at ? new Date(displayData.settings.updated_at).toLocaleString() : '정보 없음'}</div>
+                    </div>
+                    <div className="form-group">
+                      <label>수정한 사용자</label>
+                      <div className="form-value">{displayData?.settings?.updated_by || '시스템'}</div>
                     </div>
                   </div>
                 </div>
@@ -1025,12 +1193,14 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
             border-radius: 12px;
             width: 100%;
             max-width: 900px;
-            height: 85vh;
-            max-height: 85vh;
+            height: 85vh !important;
+            max-height: 85vh !important;
+            min-height: 85vh !important;
             overflow: hidden;
             box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
             display: flex;
             flex-direction: column;
+            position: relative;
           }
 
           .loading-container {
@@ -1162,16 +1332,19 @@ const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({
           }
 
           .modal-content {
-            flex: 1;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
+            flex: 1 1 auto !important;
+            overflow: hidden !important;
+            display: flex !important;
+            flex-direction: column !important;
+            height: calc(85vh - 200px) !important;
           }
 
           .tab-panel {
-            flex: 1;
-            overflow-y: auto;
-            padding: 2rem;
+            flex: 1 1 auto !important;
+            overflow-y: auto !important;
+            padding: 2rem !important;
+            height: 100% !important;
+            max-height: calc(85vh - 250px) !important;
           }
 
           .form-grid {
