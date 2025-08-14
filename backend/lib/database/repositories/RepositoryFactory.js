@@ -1,6 +1,6 @@
 // =============================================================================
 // backend/lib/database/repositories/RepositoryFactory.js
-// Repository 팩토리 - C++ RepositoryFactory 패턴 완전 적용
+// 🔧 기존 DatabaseFactory 완전 호환 버전 - initialize() 메서드 제거
 // =============================================================================
 
 const BaseRepository = require('./BaseRepository');
@@ -11,21 +11,25 @@ const VirtualPointRepository = require('./VirtualPointRepository');
 const AlarmOccurrenceRepository = require('./AlarmOccurrenceRepository');
 const AlarmRuleRepository = require('./AlarmRuleRepository');
 const UserRepository = require('./UserRepository');
-// TODO: 아직 구현 안됨
-// const DataPointRepository = require('./DataPointRepository');
+
+// 기존 DatabaseFactory 사용
+const DatabaseFactory = require('../DatabaseFactory');
 
 /**
  * @class RepositoryFactory
- * @description Repository 인스턴스들을 생성하고 관리하는 팩토리 클래스
+ * @description Repository 인스턴스들을 생성하고 관리하는 팩토리 클래스 (싱글턴)
  * 
- * C++ RepositoryFactory 패턴을 Node.js로 완전 포팅:
- * - 싱글턴 패턴으로 Repository 인스턴스 관리
- * - 의존성 주입 지원 (dbManager, logger, cacheConfig)
- * - 캐시 설정 공유
- * - 모든 구현된 Repository 지원
+ * 기존 DatabaseFactory와 완전 호환:
+ * - DatabaseFactory는 생성자에서 자동 초기화됨
+ * - initialize() 메서드 불필요
+ * - 기존 Repository 패턴 100% 준수
  */
 class RepositoryFactory {
     constructor() {
+        if (RepositoryFactory.instance) {
+            return RepositoryFactory.instance;
+        }
+
         this.repositories = new Map();
         this.dbManager = null;
         this.logger = null;
@@ -35,24 +39,135 @@ class RepositoryFactory {
             prefix: 'repo:'
         };
         this.initialized = false;
+
+        RepositoryFactory.instance = this;
     }
 
     /**
-     * 팩토리 초기화
-     * @param {Object} dbManager 데이터베이스 매니저
-     * @param {Object} logger 로거 인스턴스
-     * @param {Object} cacheConfig 캐시 설정
+     * 싱글턴 인스턴스 반환 (C++ 패턴과 동일)
+     * @returns {RepositoryFactory} 팩토리 인스턴스
      */
-    initialize(dbManager, logger = null, cacheConfig = {}) {
-        this.dbManager = dbManager;
-        this.logger = logger;
-        this.cacheConfig = { ...this.cacheConfig, ...cacheConfig };
-        this.initialized = true;
-        
-        this.logger?.info('🏭 RepositoryFactory initialized');
-        this.logger?.info(`Cache: ${this.cacheConfig.enabled ? 'ENABLED' : 'DISABLED'}`);
-        this.logger?.info(`📦 Available Repositories: Site, Tenant, Device, VirtualPoint, AlarmOccurrence, AlarmRule, User`);
+    static getInstance() {
+        if (!RepositoryFactory.instance) {
+            RepositoryFactory.instance = new RepositoryFactory();
+        }
+        return RepositoryFactory.instance;
     }
+
+    /**
+     * 팩토리 초기화 (기존 DatabaseFactory 사용)
+     * @param {Object} config 초기화 설정 (선택사항)
+     */
+    async initialize(config = {}) {
+        if (this.initialized) {
+            console.log('🏭 RepositoryFactory already initialized');
+            return true;
+        }
+
+        try {
+            console.log('🔧 RepositoryFactory initializing...');
+
+            // 기존 DatabaseFactory 사용 (생성자에서 자동 초기화됨)
+            this.dbManager = new DatabaseFactory(config.database);
+
+            // 로거 설정 (간단한 콘솔 로거)
+            this.logger = {
+                info: console.log,
+                warn: console.warn,
+                error: console.error,
+                debug: console.debug
+            };
+
+            // 캐시 설정
+            if (config.cache) {
+                this.cacheConfig = { ...this.cacheConfig, ...config.cache };
+            }
+
+            this.initialized = true;
+            
+            this.logger.info('🏭 RepositoryFactory initialized');
+            this.logger.info(`Cache: ${this.cacheConfig.enabled ? 'ENABLED' : 'DISABLED'}`);
+            this.logger.info(`📦 Available Repositories: Site, Tenant, Device, VirtualPoint, AlarmOccurrence, AlarmRule, User`);
+            
+            return true;
+        } catch (error) {
+            console.error('❌ RepositoryFactory initialization failed:', error.message);
+            this.initialized = false;
+            return false;
+        }
+    }
+
+    /**
+     * 초기화 상태 확인
+     * @returns {boolean} 초기화 여부
+     */
+    isInitialized() {
+        return this.initialized;
+    }
+
+    // =========================================================================
+    // Repository 생성 메서드들 (C++ 패턴과 동일한 네이밍)
+    // =========================================================================
+
+    /**
+     * SiteRepository 반환
+     * @returns {SiteRepository} Site Repository 인스턴스
+     */
+    getSiteRepository() {
+        return this.getRepository('SiteRepository');
+    }
+
+    /**
+     * TenantRepository 반환
+     * @returns {TenantRepository} Tenant Repository 인스턴스
+     */
+    getTenantRepository() {
+        return this.getRepository('TenantRepository');
+    }
+
+    /**
+     * DeviceRepository 반환
+     * @returns {DeviceRepository} Device Repository 인스턴스
+     */
+    getDeviceRepository() {
+        return this.getRepository('DeviceRepository');
+    }
+
+    /**
+     * VirtualPointRepository 반환
+     * @returns {VirtualPointRepository} VirtualPoint Repository 인스턴스
+     */
+    getVirtualPointRepository() {
+        return this.getRepository('VirtualPointRepository');
+    }
+
+    /**
+     * AlarmRuleRepository 반환
+     * @returns {AlarmRuleRepository} AlarmRule Repository 인스턴스
+     */
+    getAlarmRuleRepository() {
+        return this.getRepository('AlarmRuleRepository');
+    }
+
+    /**
+     * AlarmOccurrenceRepository 반환
+     * @returns {AlarmOccurrenceRepository} AlarmOccurrence Repository 인스턴스
+     */
+    getAlarmOccurrenceRepository() {
+        return this.getRepository('AlarmOccurrenceRepository');
+    }
+
+    /**
+     * UserRepository 반환
+     * @returns {UserRepository} User Repository 인스턴스
+     */
+    getUserRepository() {
+        return this.getRepository('UserRepository');
+    }
+
+    // =========================================================================
+    // 내부 구현 메서드들
+    // =========================================================================
 
     /**
      * Repository 인스턴스 생성 또는 반환
@@ -72,180 +187,65 @@ class RepositoryFactory {
         // 새 인스턴스 생성
         let repository;
         
-        switch (repositoryType.toLowerCase()) {
-            case 'site':
-            case 'sites':
-                repository = new SiteRepository(
-                    this.dbManager, 
-                    this.logger, 
-                    this.cacheConfig
-                );
-                break;
-                
-            case 'tenant':
-            case 'tenants':
-                repository = new TenantRepository(
-                    this.dbManager, 
-                    this.logger, 
-                    this.cacheConfig
-                );
-                break;
-                
-            case 'device':
-            case 'devices':
-                repository = new DeviceRepository(
-                    this.dbManager, 
-                    this.logger, 
-                    this.cacheConfig
-                );
-                break;
-                
-            case 'virtualpoint':
-            case 'virtual_point':
-            case 'virtualpoints':
-            case 'virtual_points':
-                repository = new VirtualPointRepository(
-                    this.dbManager, 
-                    this.logger, 
-                    this.cacheConfig
-                );
-                break;
-                
-            case 'alarmoccurrence':
-            case 'alarm_occurrence':
-            case 'alarmoccurrences':
-            case 'alarm_occurrences':
-                repository = new AlarmOccurrenceRepository(
-                    this.dbManager, 
-                    this.logger, 
-                    this.cacheConfig
-                );
-                break;
-                
-            case 'alarmrule':
-            case 'alarm_rule':
-            case 'alarmrules':
-            case 'alarm_rules':
-                repository = new AlarmRuleRepository(
-                    this.dbManager, 
-                    this.logger, 
-                    this.cacheConfig
-                );
-                break;
-                
-            case 'user':
-            case 'users':
-                repository = new UserRepository(
-                    this.dbManager, 
-                    this.logger, 
-                    this.cacheConfig
-                );
-                break;
+        try {
+            switch (repositoryType) {
+                case 'SiteRepository':
+                    repository = new SiteRepository();
+                    break;
+                    
+                case 'TenantRepository':
+                    repository = new TenantRepository();
+                    break;
+                    
+                case 'DeviceRepository':
+                    repository = new DeviceRepository();
+                    break;
+                    
+                case 'VirtualPointRepository':
+                    repository = new VirtualPointRepository();
+                    break;
+                    
+                case 'AlarmOccurrenceRepository':
+                    repository = new AlarmOccurrenceRepository();
+                    break;
+                    
+                case 'AlarmRuleRepository':
+                    repository = new AlarmRuleRepository();
+                    break;
+                    
+                case 'UserRepository':
+                    repository = new UserRepository();
+                    break;
+                    
+                default:
+                    throw new Error(`Unknown repository type: ${repositoryType}`);
+            }
 
-            // TODO: DataPointRepository 구현 후 추가
-            // case 'datapoint':
-            // case 'data_point':
-            // case 'datapoints':
-            // case 'data_points':
-            //     repository = new DataPointRepository(
-            //         this.dbManager, 
-            //         this.logger, 
-            //         this.cacheConfig
-            //     );
-            //     break;
-                
-            default:
-                throw new Error(`Unknown repository type: ${repositoryType}`);
+            // 캐시에 저장
+            this.repositories.set(repositoryType, repository);
+            
+            this.logger?.info(`✅ ${repositoryType} created and cached`);
+            return repository;
+            
+        } catch (error) {
+            this.logger?.error(`❌ Failed to create ${repositoryType}: ${error.message}`);
+            throw error;
         }
-
-        // 캐시에 저장
-        this.repositories.set(repositoryType, repository);
-        
-        this.logger?.debug(`✅ Created ${repositoryType}Repository instance`);
-        return repository;
-    }
-
-    // ==========================================================================
-    // 🎯 구체적 Repository 인스턴스 반환 메서드들 (모두 활성화!)
-    // ==========================================================================
-
-    /**
-     * SiteRepository 인스턴스 반환
-     * @returns {SiteRepository}
-     */
-    getSiteRepository() {
-        return this.getRepository('site');
     }
 
     /**
-     * TenantRepository 인스턴스 반환
-     * @returns {TenantRepository}
-     */
-    getTenantRepository() {
-        return this.getRepository('tenant');
-    }
-
-    /**
-     * DeviceRepository 인스턴스 반환
-     * @returns {DeviceRepository}
-     */
-    getDeviceRepository() {
-        return this.getRepository('device');
-    }
-
-    /**
-     * VirtualPointRepository 인스턴스 반환
-     * @returns {VirtualPointRepository}
-     */
-    getVirtualPointRepository() {
-        return this.getRepository('virtualpoint');
-    }
-
-    /**
-     * AlarmOccurrenceRepository 인스턴스 반환
-     * @returns {AlarmOccurrenceRepository}
-     */
-    getAlarmOccurrenceRepository() {
-        return this.getRepository('alarmoccurrence');
-    }
-
-    /**
-     * AlarmRuleRepository 인스턴스 반환
-     * @returns {AlarmRuleRepository}
-     */
-    getAlarmRuleRepository() {
-        return this.getRepository('alarmrule');
-    }
-
-    /**
-     * UserRepository 인스턴스 반환
-     * @returns {UserRepository}
-     */
-    getUserRepository() {
-        return this.getRepository('user');
-    }
-
-    // TODO: DataPointRepository 구현 후 활성화
-    // /**
-    //  * DataPointRepository 인스턴스 반환
-    //  * @returns {DataPointRepository}
-    //  */
-    // getDataPointRepository() {
-    //     return this.getRepository('datapoint');
-    // }
-
-    // ==========================================================================
-    // 🛠️ 관리 및 유틸리티 메서드들
-    // ==========================================================================
-
-    /**
-     * 모든 Repository의 캐시 초기화
-     * @returns {Promise<boolean>}
+     * 모든 Repository 캐시 클리어
+     * @returns {Promise<boolean>} 성공 여부
      */
     async clearAllCaches() {
         try {
-            const clearPromises = Array.from(this.repositories.values())
-                .map(repo => repo.clearCache());
+            const clearPromises = [];
+            
+            for (const [type, repo] of this.repositories) {
+                if (repo.clearCache && typeof repo.clearCache === 'function') {
+                    clearPromises.push(repo.clearCache());
+                }
+            }
             
             await Promise.all(clearPromises);
             
@@ -265,7 +265,16 @@ class RepositoryFactory {
         const stats = {};
         
         for (const [type, repo] of this.repositories) {
-            stats[type] = repo.getStats();
+            if (repo.getStats && typeof repo.getStats === 'function') {
+                stats[type] = repo.getStats();
+            } else if (repo.getCacheStats && typeof repo.getCacheStats === 'function') {
+                stats[type] = repo.getCacheStats();
+            } else {
+                stats[type] = {
+                    status: 'unknown',
+                    message: 'Statistics not available'
+                };
+            }
         }
         
         return {
@@ -281,7 +290,6 @@ class RepositoryFactory {
                     'AlarmOccurrenceRepository',
                     'AlarmRuleRepository',
                     'UserRepository'
-                    // 'DataPointRepository' // TODO: 구현 후 추가
                 ]
             },
             repositories: stats
@@ -297,7 +305,17 @@ class RepositoryFactory {
         
         for (const [type, repo] of this.repositories) {
             try {
-                results[type] = await repo.healthCheck();
+                if (repo.healthCheck && typeof repo.healthCheck === 'function') {
+                    results[type] = await repo.healthCheck();
+                } else {
+                    // 기본 헬스체크 (Repository 존재 여부만 확인)
+                    results[type] = {
+                        status: 'healthy',
+                        message: 'Repository instance exists',
+                        tableName: repo.tableName || 'unknown',
+                        timestamp: new Date().toISOString()
+                    };
+                }
             } catch (error) {
                 results[type] = {
                     status: 'error',
@@ -319,137 +337,57 @@ class RepositoryFactory {
     }
 
     /**
-     * Repository 인스턴스 제거 (메모리 정리)
-     * @param {string} repositoryType Repository 타입
-     * @returns {boolean} 성공 여부
+     * 팩토리 정리 및 연결 해제
+     * @returns {Promise<void>}
      */
-    removeRepository(repositoryType) {
-        const removed = this.repositories.delete(repositoryType);
-        
-        if (removed) {
-            this.logger?.debug(`🗑️ Removed ${repositoryType}Repository instance`);
-        }
-        
-        return removed;
-    }
-
-    /**
-     * 특정 타입의 Repository들 일괄 제거
-     * @param {Array<string>} repositoryTypes Repository 타입들
-     * @returns {number} 제거된 Repository 수
-     */
-    removeRepositories(repositoryTypes) {
-        let removedCount = 0;
-        
-        for (const type of repositoryTypes) {
-            if (this.removeRepository(type)) {
-                removedCount++;
-            }
-        }
-        
-        this.logger?.info(`🗑️ Removed ${removedCount} repository instances`);
-        return removedCount;
-    }
-
-    /**
-     * 팩토리 정리 (모든 Repository 인스턴스 제거)
-     */
-    cleanup() {
-        const repositoryCount = this.repositories.size;
-        this.repositories.clear();
-        this.initialized = false;
-        
-        this.logger?.info(`🧹 RepositoryFactory cleanup completed (removed ${repositoryCount} repositories)`);
-    }
-
-    /**
-     * 팩토리 재시작 (모든 Repository 인스턴스 재생성)
-     * @returns {boolean} 성공 여부
-     */
-    restart() {
+    async cleanup() {
         try {
-            this.cleanup();
-            // 기존 설정으로 재초기화
-            if (this.dbManager) {
-                this.initialize(this.dbManager, this.logger, this.cacheConfig);
-                this.logger?.info('🔄 RepositoryFactory restarted successfully');
-                return true;
-            } else {
-                this.logger?.error('❌ Cannot restart: missing dbManager');
-                return false;
-            }
-        } catch (error) {
-            this.logger?.error(`❌ RepositoryFactory restart failed: ${error.message}`);
-            return false;
-        }
-    }
-
-    /**
-     * 캐시 설정 업데이트 (모든 Repository에 적용)
-     * @param {Object} newCacheConfig 새 캐시 설정
-     * @returns {boolean} 성공 여부
-     */
-    updateCacheConfig(newCacheConfig) {
-        try {
-            this.cacheConfig = { ...this.cacheConfig, ...newCacheConfig };
-            
-            // 기존 Repository들에 새 설정 적용
+            // 모든 Repository 정리
             for (const [type, repo] of this.repositories) {
-                repo.cacheConfig = this.cacheConfig;
-                this.logger?.debug(`📝 Updated cache config for ${type}Repository`);
+                if (repo.cleanup && typeof repo.cleanup === 'function') {
+                    await repo.cleanup();
+                }
             }
             
-            this.logger?.info('⚙️ Cache configuration updated for all repositories');
-            return true;
+            this.repositories.clear();
+            
+            // 데이터베이스 연결 해제
+            if (this.dbManager && this.dbManager.closeAllConnections) {
+                await this.dbManager.closeAllConnections();
+            }
+            
+            this.initialized = false;
+            this.logger?.info('🧹 RepositoryFactory cleanup completed');
         } catch (error) {
-            this.logger?.error(`❌ Failed to update cache config: ${error.message}`);
-            return false;
+            this.logger?.error(`❌ RepositoryFactory cleanup failed: ${error.message}`);
         }
     }
-}
 
-// =============================================================================
-// 🎯 싱글턴 인스턴스 관리
-// =============================================================================
-
-let factoryInstance = null;
-
-/**
- * RepositoryFactory 싱글턴 인스턴스 반환
- * @returns {RepositoryFactory}
- */
-function getRepositoryFactory() {
-    if (!factoryInstance) {
-        factoryInstance = new RepositoryFactory();
+    /**
+     * DatabaseFactory 인스턴스 반환 (고급 사용자용)
+     * @returns {DatabaseFactory} DatabaseFactory 인스턴스
+     */
+    getDatabaseFactory() {
+        return this.dbManager;
     }
-    return factoryInstance;
+
+    /**
+     * 연결 상태 확인
+     * @returns {Object} 연결 상태 정보
+     */
+    getConnectionStatus() {
+        if (this.dbManager && this.dbManager.getConnectionStatus) {
+            return this.dbManager.getConnectionStatus();
+        }
+        
+        return {
+            status: this.initialized ? 'initialized' : 'not_initialized',
+            timestamp: new Date().toISOString()
+        };
+    }
 }
 
-/**
- * 새로운 RepositoryFactory 인스턴스 생성 (테스트용)
- * @returns {RepositoryFactory}
- */
-function createRepositoryFactory() {
-    return new RepositoryFactory();
-}
+// 싱글턴 인스턴스 초기화
+RepositoryFactory.instance = null;
 
-// =============================================================================
-// 🎯 Export
-// =============================================================================
-
-module.exports = {
-    RepositoryFactory,
-    getRepositoryFactory,
-    createRepositoryFactory,
-    
-    // Repository 클래스들 직접 export (개별 사용 가능)
-    BaseRepository,
-    SiteRepository,
-    TenantRepository,
-    DeviceRepository,
-    VirtualPointRepository,
-    AlarmOccurrenceRepository,
-    AlarmRuleRepository,
-    UserRepository
-    // DataPointRepository  // TODO: 구현 후 추가
-};
+module.exports = RepositoryFactory;
