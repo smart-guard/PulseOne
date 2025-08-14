@@ -185,7 +185,7 @@ router.post('/:id/acknowledge', async (req, res) => {
                 type: 'alarm_acknowledged',
                 alarm_id: id,
                 acknowledged_by: user.username,
-                acknowledged_at: new Date().toISOString(),
+                acknowledged_time: new Date().toISOString(),
                 comment
             });
         }

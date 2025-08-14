@@ -1,49 +1,47 @@
 // ============================================================================
 // backend/lib/database/repositories/AlarmOccurrenceRepository.js
-// BaseRepository 상속받은 AlarmOccurrenceRepository - C++ 패턴과 100% 일치
+// BaseRepository 상속받은 AlarmOccurrenceRepository - 실제 스키마 기반
 // ============================================================================
 
 const BaseRepository = require('./BaseRepository');
 const AlarmQueries = require('../queries/AlarmQueries');
 
 /**
- * 알람 발생 Repository 클래스 (C++ AlarmOccurrenceRepository와 동일한 구조)
+ * 알람 발생 Repository 클래스 (실제 데이터베이스 스키마와 100% 일치)
  * BaseRepository를 상속받아 공통 기능 활용
  */
 class AlarmOccurrenceRepository extends BaseRepository {
     constructor() {
         super('alarm_occurrences');
         
-        // 알람 발생 특화 필드 정의 (C++ AlarmOccurrenceEntity와 동일)
+        // 실제 alarm_occurrences 테이블 필드 정의
         this.fields = {
             id: 'autoIncrement',
             rule_id: 'int',
-            device_id: 'int',
-            point_id: 'int',
+            tenant_id: 'int',
             occurrence_time: 'timestamp',
-            state: 'varchar(20)', // 'active', 'acknowledged', 'cleared', 'suppressed'
-            trigger_value: 'varchar(100)', // 트리거된 값
-            message: 'text',
-            severity: 'varchar(20)', // 'critical', 'high', 'medium', 'low'
-            priority: 'int',
-            
-            // 확인 관련
-            acknowledged_at: 'timestamp',
+            trigger_value: 'text',
+            trigger_condition: 'text',
+            alarm_message: 'text',
+            severity: 'varchar(20)',
+            state: 'varchar(20)',
+            acknowledged_time: 'timestamp',
             acknowledged_by: 'int',
-            
-            // 해제 관련
-            cleared_at: 'timestamp',
-            cleared_by: 'int',
+            acknowledge_comment: 'text',
+            cleared_time: 'timestamp',
+            cleared_value: 'text',
             clear_comment: 'text',
-            
-            // 고급 기능
-            escalation_level: 'int',
-            suppress_until: 'timestamp',
-            tags: 'text', // JSON 배열
-            
-            // 메타데이터
+            notification_sent: 'int',
+            notification_time: 'timestamp',
+            notification_count: 'int',
+            notification_result: 'text',
+            context_data: 'text',
+            source_name: 'varchar(100)',
+            location: 'varchar(200)',
             created_at: 'timestamp',
-            updated_at: 'timestamp'
+            updated_at: 'timestamp',
+            device_id: 'text',
+            point_id: 'int'
         };
 
         console.log('✅ AlarmOccurrenceRepository 초기화 완료');
@@ -76,9 +74,9 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const params = [];
             const conditions = [];
 
-            // 테넌트 필터링 (알람 규칙을 통해)
+            // 테넌트 필터링
             if (tenantId) {
-                conditions.push('rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)');
+                conditions.push('tenant_id = ?');
                 params.push(tenantId);
             }
 
@@ -109,9 +107,9 @@ class AlarmOccurrenceRepository extends BaseRepository {
             // 확인 상태 필터링
             if (acknowledged !== undefined) {
                 if (acknowledged) {
-                    conditions.push('acknowledged_at IS NOT NULL');
+                    conditions.push('acknowledged_time IS NOT NULL');
                 } else {
-                    conditions.push('acknowledged_at IS NULL');
+                    conditions.push('acknowledged_time IS NULL');
                 }
             }
 
@@ -174,7 +172,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
             // 테넌트 필터링
             if (tenantId) {
-                query += AlarmQueries.AlarmOccurrence.CONDITIONS.TENANT_ID;
+                query += ' AND tenant_id = ?';
                 params.push(tenantId);
             }
 
@@ -202,29 +200,31 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const data = {
                 ...alarmOccurrenceData,
                 occurrence_time: alarmOccurrenceData.occurrence_time || new Date().toISOString(),
-                state: alarmOccurrenceData.state || 'active',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                state: alarmOccurrenceData.state || 'active'
             };
 
             // 필수 필드 검증
-            const requiredFields = ['rule_id', 'message', 'severity'];
+            const requiredFields = ['rule_id', 'tenant_id', 'alarm_message', 'severity'];
             for (const field of requiredFields) {
                 if (!data[field]) {
                     throw new Error(`필수 필드 누락: ${field}`);
                 }
             }
 
-            // JSON 필드들 문자열화
-            if (data.tags && Array.isArray(data.tags)) {
-                data.tags = JSON.stringify(data.tags);
-            }
-
             const params = [
-                data.rule_id, data.device_id, data.point_id, data.occurrence_time, data.state,
-                data.trigger_value, data.message, data.severity, data.priority || 1, data.acknowledged_at,
-                data.acknowledged_by, data.cleared_at, data.cleared_by, data.clear_comment,
-                data.escalation_level || 0, data.suppress_until, data.tags, data.created_at, data.updated_at
+                data.rule_id, 
+                data.tenant_id, 
+                data.occurrence_time, 
+                data.trigger_value, 
+                data.trigger_condition,
+                data.alarm_message, 
+                data.severity, 
+                data.state, 
+                data.context_data, 
+                data.source_name, 
+                data.location, 
+                data.device_id, 
+                data.point_id
             ];
 
             const result = await this.executeNonQuery(AlarmQueries.AlarmOccurrence.CREATE, params);
@@ -250,28 +250,26 @@ class AlarmOccurrenceRepository extends BaseRepository {
      */
     async update(id, updateData, tenantId = null) {
         try {
-            const data = {
-                ...updateData,
-                updated_at: new Date().toISOString()
-            };
-
-            // JSON 필드들 문자열화
-            if (data.tags && Array.isArray(data.tags)) {
-                data.tags = JSON.stringify(data.tags);
-            }
-
             const params = [
-                data.state, data.acknowledged_at, data.acknowledged_by,
-                data.cleared_at, data.cleared_by, data.clear_comment,
-                data.escalation_level, data.suppress_until, data.tags, data.updated_at, id
+                updateData.state, 
+                updateData.acknowledged_time, 
+                updateData.acknowledged_by, 
+                updateData.acknowledge_comment,
+                updateData.cleared_time, 
+                updateData.cleared_value, 
+                updateData.clear_comment, 
+                updateData.notification_sent,
+                updateData.notification_time, 
+                updateData.notification_count, 
+                updateData.notification_result,
+                id
             ];
 
             let query = AlarmQueries.AlarmOccurrence.UPDATE;
             
             // 테넌트 필터링
             if (tenantId) {
-                query = query.replace('WHERE id = ?', 
-                    'WHERE id = ? AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)');
+                query = query.replace('WHERE id = ?', 'WHERE id = ? AND tenant_id = ?');
                 params.push(tenantId);
             }
 
@@ -303,8 +301,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
             // 테넌트 필터링
             if (tenantId) {
-                query = `DELETE FROM alarm_occurrences 
-                        WHERE id = ? AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)`;
+                query = 'DELETE FROM alarm_occurrences WHERE id = ? AND tenant_id = ?';
                 params.push(tenantId);
             }
 
@@ -335,8 +332,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const params = [id];
 
             if (tenantId) {
-                query = `SELECT 1 FROM alarm_occurrences 
-                        WHERE id = ? AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?) LIMIT 1`;
+                query = 'SELECT 1 FROM alarm_occurrences WHERE id = ? AND tenant_id = ? LIMIT 1';
                 params.push(tenantId);
             }
 
@@ -350,7 +346,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
     }
 
     // ========================================================================
-    // 🔥 알람 발생 특화 메서드들 (C++ 메서드와 동일)
+    // 🔥 알람 발생 특화 메서드들
     // ========================================================================
 
     /**
@@ -366,11 +362,9 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const params = [];
 
             if (tenantId) {
-                query += AlarmQueries.AlarmOccurrence.CONDITIONS.TENANT_ID;
+                query += ' AND tenant_id = ?';
                 params.push(tenantId);
             }
-
-            query += AlarmQueries.AlarmOccurrence.CONDITIONS.ORDER_BY_SEVERITY;
 
             const results = await this.executeQuery(query, params);
             const activeAlarms = results.map(occurrence => this.formatAlarmOccurrence(occurrence));
@@ -394,11 +388,9 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const params = [];
 
             if (tenantId) {
-                query += AlarmQueries.AlarmOccurrence.CONDITIONS.TENANT_ID;
+                query += ' AND tenant_id = ?';
                 params.push(tenantId);
             }
-
-            query += AlarmQueries.AlarmOccurrence.CONDITIONS.ORDER_BY_TIME;
 
             const results = await this.executeQuery(query, params);
             return results.map(occurrence => this.formatAlarmOccurrence(occurrence));
@@ -418,7 +410,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const params = [ruleId];
 
             if (tenantId) {
-                query += AlarmQueries.AlarmOccurrence.CONDITIONS.TENANT_ID;
+                query += ' AND tenant_id = ?';
                 params.push(tenantId);
             }
 
@@ -440,7 +432,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const params = [deviceId];
 
             if (tenantId) {
-                query += AlarmQueries.AlarmOccurrence.CONDITIONS.TENANT_ID;
+                query += ' AND tenant_id = ?';
                 params.push(tenantId);
             }
 
@@ -454,7 +446,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
     }
 
     // ========================================================================
-    // 🔥 알람 상태 변경 메서드들 (C++ 메서드와 동일)
+    // 🔥 알람 상태 변경 메서드들
     // ========================================================================
 
     /**
@@ -462,15 +454,13 @@ class AlarmOccurrenceRepository extends BaseRepository {
      */
     async acknowledge(id, userId, comment = '', tenantId = null) {
         try {
-            const acknowledgeTime = new Date().toISOString();
-            const params = [acknowledgeTime, userId, acknowledgeTime, id];
+            const params = [userId, comment, id];
 
             let query = AlarmQueries.AlarmOccurrence.ACKNOWLEDGE;
             
             // 테넌트 필터링
             if (tenantId) {
-                query = query.replace('WHERE id = ?', 
-                    'WHERE id = ? AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)');
+                query = query.replace('WHERE id = ?', 'WHERE id = ? AND tenant_id = ?');
                 params.push(tenantId);
             }
 
@@ -495,17 +485,15 @@ class AlarmOccurrenceRepository extends BaseRepository {
     /**
      * 알람 해제 (Clear)
      */
-    async clear(id, userId, comment = '', tenantId = null) {
+    async clear(id, clearedValue, comment = '', tenantId = null) {
         try {
-            const clearTime = new Date().toISOString();
-            const params = [clearTime, userId, comment, clearTime, id];
+            const params = [clearedValue, comment, id];
 
             let query = AlarmQueries.AlarmOccurrence.CLEAR;
             
             // 테넌트 필터링
             if (tenantId) {
-                query = query.replace('WHERE id = ?', 
-                    'WHERE id = ? AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)');
+                query = query.replace('WHERE id = ?', 'WHERE id = ? AND tenant_id = ?');
                 params.push(tenantId);
             }
 
@@ -515,7 +503,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 // 캐시 무효화
                 this.invalidateCache();
                 
-                console.log(`✅ 알람 ID ${id} 해제 처리 완료 (사용자: ${userId})`);
+                console.log(`✅ 알람 ID ${id} 해제 처리 완료`);
                 return await this.findById(id, tenantId);
             }
 
@@ -523,41 +511,6 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
         } catch (error) {
             console.error(`❌ clear(${id}) 실패:`, error);
-            throw error;
-        }
-    }
-
-    /**
-     * 알람 억제 (Suppress)
-     */
-    async suppress(id, suppressUntil, tenantId = null) {
-        try {
-            const updateTime = new Date().toISOString();
-            const params = [suppressUntil, updateTime, id];
-
-            let query = AlarmQueries.AlarmOccurrence.SUPPRESS;
-            
-            // 테넌트 필터링
-            if (tenantId) {
-                query = query.replace('WHERE id = ?', 
-                    'WHERE id = ? AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)');
-                params.push(tenantId);
-            }
-
-            const result = await this.executeNonQuery(query, params);
-
-            if (result && result.changes > 0) {
-                // 캐시 무효화
-                this.invalidateCache();
-                
-                console.log(`✅ 알람 ID ${id} 억제 처리 완료 (${suppressUntil}까지)`);
-                return await this.findById(id, tenantId);
-            }
-
-            return null;
-
-        } catch (error) {
-            console.error(`❌ suppress(${id}) 실패:`, error);
             throw error;
         }
     }
@@ -573,23 +526,20 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
             // 활성 알람 개수
             const activeResult = await this.executeQuerySingle(
-                `SELECT COUNT(*) as count FROM alarm_occurrences 
-                 WHERE state = 'active' AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)`,
+                AlarmQueries.AlarmOccurrence.COUNT_ACTIVE + ' AND tenant_id = ?',
                 [tenantId]
             );
 
             // 미확인 알람 개수
             const unackResult = await this.executeQuerySingle(
-                `SELECT COUNT(*) as count FROM alarm_occurrences 
-                 WHERE acknowledged_at IS NULL AND state = 'active' 
-                 AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?)`,
+                AlarmQueries.AlarmOccurrence.COUNT_UNACKNOWLEDGED + ' AND tenant_id = ?',
                 [tenantId]
             );
 
             // 심각도별 분포
             const severityResults = await this.executeQuery(
                 `SELECT severity, COUNT(*) as count FROM alarm_occurrences 
-                 WHERE state = 'active' AND rule_id IN (SELECT id FROM alarm_rules WHERE tenant_id = ?) 
+                 WHERE state = 'active' AND tenant_id = ? 
                  GROUP BY severity`,
                 [tenantId]
             );
@@ -618,7 +568,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
     // ========================================================================
 
     /**
-     * 알람 발생 데이터 포맷팅 (JSON 필드 파싱 포함)
+     * 알람 발생 데이터 포맷팅
      */
     formatAlarmOccurrence(occurrence) {
         if (!occurrence) return null;
@@ -626,14 +576,10 @@ class AlarmOccurrenceRepository extends BaseRepository {
         try {
             return {
                 ...occurrence,
-                tags: occurrence.tags ? JSON.parse(occurrence.tags) : [],
-                is_acknowledged: !!occurrence.acknowledged_at,
-                is_cleared: !!occurrence.cleared_at,
-                occurrence_time: occurrence.occurrence_time,
-                acknowledged_at: occurrence.acknowledged_at,
-                cleared_at: occurrence.cleared_at,
-                created_at: occurrence.created_at,
-                updated_at: occurrence.updated_at
+                is_acknowledged: !!occurrence.acknowledged_time,
+                is_cleared: !!occurrence.cleared_time,
+                context_data: occurrence.context_data ? JSON.parse(occurrence.context_data) : null,
+                notification_result: occurrence.notification_result ? JSON.parse(occurrence.notification_result) : null
             };
         } catch (error) {
             console.warn(`JSON 파싱 실패 for occurrence ${occurrence.id}:`, error);
