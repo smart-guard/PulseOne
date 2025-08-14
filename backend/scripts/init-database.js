@@ -7,7 +7,7 @@
 
 const path = require('path');
 const fs = require('fs').promises;
-const DatabaseFactory = require('../lib/database/dbFactory');
+const DatabaseFactory = require('../lib/database/DatabaseFactory');
 
 class DatabaseInitializer {
     constructor() {

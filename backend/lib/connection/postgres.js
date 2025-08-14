@@ -148,3 +148,6 @@ module.exports = postgresConnection;
 
 // 추가 export (팩토리 패턴 지원)
 module.exports.PostgresConnection = PostgresConnection;
+// 마지막에 추가
+module.exports = PostgresConnection;
+

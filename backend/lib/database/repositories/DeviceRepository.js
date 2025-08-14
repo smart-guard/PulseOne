@@ -168,6 +168,12 @@ class DeviceRepository extends BaseRepository {
             }
             if (deviceType) {
                 countQuery += ` AND d.device_type = ?`;
+            // 🔍 DatabaseFactory executeQuery 결과 확인
+            console.log("🔍 Raw executeQuery 결과:", typeof devices, devices);
+            console.log("🔍 devices 배열 여부:", Array.isArray(devices));
+            if (devices && typeof devices === "object" && !Array.isArray(devices)) {
+                console.log("🔍 devices 객체 키:", Object.keys(devices));
+            }
                 countParams.push(deviceType);
             }
             if (protocol) {
@@ -185,7 +191,7 @@ class DeviceRepository extends BaseRepository {
 
             // 결과 구성
             const result = {
-                items: devices.map(device => this.formatDevice(device)),
+                items: (Array.isArray(devices) ? devices : []).map(device => this.formatDevice(device)),
                 pagination: {
                     current_page: parseInt(page),
                     total_pages: Math.ceil(totalCount / limit),
@@ -194,17 +200,17 @@ class DeviceRepository extends BaseRepository {
                 },
                 summary: {
                     total_devices: totalCount,
-                    running: devices.filter(d => d.is_enabled && d.is_connected).length,
-                    stopped: devices.filter(d => !d.is_enabled || !d.is_connected).length,
-                    enabled: devices.filter(d => d.is_enabled).length,
-                    disabled: devices.filter(d => !d.is_enabled).length
+                    running: (Array.isArray(devices) ? devices : []).filter(d => d.is_enabled && d.is_connected).length,
+                    stopped: (Array.isArray(devices) ? devices : []).filter(d => !d.is_enabled || !d.is_connected).length,
+                    enabled: (Array.isArray(devices) ? devices : []).filter(d => d.is_enabled).length,
+                    disabled: (Array.isArray(devices) ? devices : []).filter(d => !d.is_enabled).length
                 }
             };
 
             // 캐시 저장
             this.setCache(cacheKey, result);
 
-            console.log(`✅ ${devices.length}개 디바이스 조회 완료 (총 ${totalCount}개)`);
+            console.log(`✅ ${(Array.isArray(devices) ? devices : []).length}개 디바이스 조회 완료 (총 ${totalCount}개)`);
             return result;
 
         } catch (error) {
@@ -455,7 +461,7 @@ class DeviceRepository extends BaseRepository {
             query += ` ORDER BY d.name`;
 
             const devices = await this.executeQuery(query, params);
-            const result = devices.map(device => this.formatDevice(device));
+            const result = (Array.isArray(devices) ? devices : []).map(device => this.formatDevice(device));
 
             this.setCache(cacheKey, result);
             return result;

@@ -3,7 +3,7 @@
 // DatabaseFactory를 활용한 멀티 DB 지원 BaseRepository
 // ============================================================================
 
-const DatabaseFactory = require('../dbFactory');
+const DatabaseFactory = require('../DatabaseFactory');
 
 /**
  * 기본 Repository 클래스 (C++ IRepository<T> 역할)
