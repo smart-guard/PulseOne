@@ -1,4 +1,8 @@
-// backend/app.js - 메인 애플리케이션 (기존 구조 + 자동 초기화 + 알람 API)
+// =============================================================================
+// backend/app.js - 메인 애플리케이션 (완전 통합 버전)
+// Device Management + Virtual Points + Alarms + 자동 초기화 시스템
+// =============================================================================
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -142,7 +146,7 @@ async function initializeSystem() {
 initializeSystem();
 
 // =============================================================================
-// Routes 등록 (라우팅만 담당) - 기존 + 알람 API 추가
+// Routes 등록 (라우팅만 담당) - 기존 + 새로운 API들 추가
 // =============================================================================
 
 // Health check (기존 + 초기화 상태 추가)
@@ -257,39 +261,58 @@ app.get('/', (req, res) => {
 });
 
 // ============================================================================
-// 🌐 API Routes 등록 (기존 + 새로운 라우트들)
+// 🌐 API Routes 등록 (기존 + 새로운 핵심 API들)
 // ============================================================================
 
 // 기존 API Routes (유지)
 const systemRoutes = require('./routes/system');
 const processRoutes = require('./routes/processes');
-const deviceRoutes = require('./routes/devices');
 const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/user');
 
 app.use('/api/system', systemRoutes);
 app.use('/api/processes', processRoutes);
-app.use('/api/devices', deviceRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 
 // ============================================================================
-// 🚨 NEW: 알람 관리 API (프런트엔드 연동용)
+// 🚨 핵심 비즈니스 API - 우선순위 1 (필수)
 // ============================================================================
 
+// 1. 알람 관리 API (완성됨)
 try {
     const alarmRoutes = require('./routes/alarms');
     app.use('/api/alarms', alarmRoutes);
     console.log('✅ Alarm API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Alarm 라우트 로드 실패:', error.message);
-    console.warn('   알람 기능이 비활성화됩니다.');
+}
+
+// 2. 디바이스 관리 API (새로 구현 완료)
+try {
+    const deviceRoutes = require('./routes/devices');
+    app.use('/api/devices', deviceRoutes);
+    console.log('✅ Device Management API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Device 라우트 로드 실패:', error.message);
+    console.warn('   디바이스 관리 기능이 비활성화됩니다.');
+}
+
+// 3. 가상포인트 관리 API (새로 구현 완료)
+try {
+    const virtualPointRoutes = require('./routes/virtual-points');
+    app.use('/api/virtual-points', virtualPointRoutes);
+    console.log('✅ Virtual Points API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Virtual Points 라우트 로드 실패:', error.message);
+    console.warn('   가상포인트 기능이 비활성화됩니다.');
 }
 
 // ============================================================================
-// 🔄 프런트엔드 요구사항 추가 라우트들 (선택적 등록)
+// 📊 확장 API - 우선순위 2 (선택적 등록)
 // ============================================================================
 
+// 대시보드 API
 try {
     const dashboardRoutes = require('./routes/dashboard');
     app.use('/api/dashboard', dashboardRoutes);
@@ -298,42 +321,38 @@ try {
     console.warn('⚠️ Dashboard 라우트 로드 실패:', error.message);
 }
 
+// 실시간 데이터 API
 try {
     const realtimeRoutes = require('./routes/realtime');
     app.use('/api/realtime', realtimeRoutes);
-    console.log('✅ Realtime API 라우트 등록 완료');
+    console.log('✅ Realtime Data API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Realtime 라우트 로드 실패:', error.message);
 }
 
+// 데이터 탐색기 API
 try {
     const dataRoutes = require('./routes/data');
     app.use('/api/data', dataRoutes);
-    console.log('✅ Data API 라우트 등록 완료');
+    console.log('✅ Data Explorer API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Data 라우트 로드 실패:', error.message);
 }
 
-try {
-    const virtualPointRoutes = require('./routes/virtual-points');
-    app.use('/api/virtual-points', virtualPointRoutes);
-    console.log('✅ Virtual Points API 라우트 등록 완료');
-} catch (error) {
-    console.warn('⚠️ Virtual Points 라우트 로드 실패:', error.message);
-}
-
+// 시스템 모니터링 API
 try {
     const monitoringRoutes = require('./routes/monitoring');
     app.use('/api/monitoring', monitoringRoutes);
-    console.log('✅ Monitoring API 라우트 등록 완료');
+    console.log('✅ System Monitoring API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Monitoring 라우트 로드 실패:', error.message);
 }
 
+// 백업 관리 API
 try {
     const backupRoutes = require('./routes/backup');
     app.use('/api/backup', backupRoutes);
-    console.log('✅ Backup API 라우트 등록 완료');
+    console.log('✅ Backup Management API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Backup 라우트 로드 실패:', error.message);
 }
@@ -432,25 +451,28 @@ function gracefulShutdown(signal) {
 }
 
 // =============================================================================
-// Start Server (기존 + 알람 API 상태 표시 추가)
+// Start Server (완전 통합 버전 - 모든 API 상태 표시)
 // =============================================================================
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`
-🚀 PulseOne Backend Server Started!
+🚀 PulseOne Backend Server Started! (완전 통합 버전)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Dashboard:     http://localhost:${PORT}
 🔧 API Health:    http://localhost:${PORT}/api/health
 📈 System Info:   http://localhost:${PORT}/api/system/info
 💾 DB Status:     http://localhost:${PORT}/api/system/databases
 🔧 Processes:     http://localhost:${PORT}/api/processes
-📱 Devices:       http://localhost:${PORT}/api/devices
 ⚙️  Services:      http://localhost:${PORT}/api/services
+👤 Users:         http://localhost:${PORT}/api/users
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚨 알람 관리:     http://localhost:${PORT}/api/alarms
+
+🔥 핵심 비즈니스 API (우선순위 1 - 필수)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 알람 관리 API: http://localhost:${PORT}/api/alarms
    ├─ 활성 알람:  GET  /api/alarms/active
-   ├─ 알람 이력:  GET  /api/alarms/history
+   ├─ 알람 이력:  GET  /api/alarms/history  
    ├─ 알람 확인:  POST /api/alarms/:id/acknowledge
    ├─ 알람 해제:  POST /api/alarms/:id/clear
    ├─ 알람 규칙:  GET  /api/alarms/rules
@@ -458,17 +480,62 @@ const server = app.listen(PORT, () => {
    ├─ 규칙 수정:  PUT  /api/alarms/rules/:id
    ├─ 규칙 삭제:  DEL  /api/alarms/rules/:id
    └─ 알람 통계:  GET  /api/alarms/statistics
+
+📱 디바이스 관리 API: http://localhost:${PORT}/api/devices
+   ├─ 디바이스 목록:     GET  /api/devices
+   ├─ 디바이스 생성:     POST /api/devices
+   ├─ 디바이스 상세:     GET  /api/devices/:id
+   ├─ 디바이스 수정:     PUT  /api/devices/:id
+   ├─ 디바이스 삭제:     DEL  /api/devices/:id
+   ├─ 설정 관리:        GET  /api/devices/:id/settings
+   ├─ 설정 업데이트:     PUT  /api/devices/:id/settings
+   ├─ 데이터포인트:      GET  /api/devices/:id/data-points
+   ├─ 포인트 생성:      POST /api/devices/:id/data-points
+   ├─ 현재값 조회:      GET  /api/devices/:id/current-values
+   ├─ 값 업데이트:      PUT  /api/devices/:deviceId/data-points/:pointId/value
+   ├─ 연결 테스트:      POST /api/devices/:id/test-connection
+   ├─ 디바이스 제어:     POST /api/devices/:id/enable|disable|restart
+   ├─ 일괄 작업:        POST /api/devices/batch/enable|disable
+   ├─ 통계 (프로토콜):   GET  /api/devices/stats/protocol
+   ├─ 통계 (사이트):     GET  /api/devices/stats/site
+   ├─ 시스템 요약:      GET  /api/devices/stats/summary
+   ├─ 최근 활동:        GET  /api/devices/stats/recent-active
+   ├─ 오류 목록:        GET  /api/devices/stats/errors
+   ├─ 응답시간 통계:     GET  /api/devices/stats/response-time
+   ├─ 포인트 검색:      GET  /api/devices/search/data-points
+   └─ 헬스체크:         GET  /api/devices/health
+
+🔮 가상포인트 API: http://localhost:${PORT}/api/virtual-points
+   ├─ 가상포인트 목록:   GET  /api/virtual-points
+   ├─ 가상포인트 생성:   POST /api/virtual-points
+   ├─ 가상포인트 상세:   GET  /api/virtual-points/:id
+   ├─ 가상포인트 수정:   PUT  /api/virtual-points/:id
+   ├─ 가상포인트 삭제:   DEL  /api/virtual-points/:id
+   ├─ 의존성 조회:      GET  /api/virtual-points/:id/dependencies
+   ├─ 실행 이력:        GET  /api/virtual-points/:id/history
+   ├─ 계산 테스트:      POST /api/virtual-points/:id/test
+   ├─ 수동 실행:        POST /api/virtual-points/:id/execute
+   ├─ 값 업데이트:      PUT  /api/virtual-points/:id/value
+   ├─ 카테고리 통계:     GET  /api/virtual-points/stats/category
+   └─ 성능 통계:        GET  /api/virtual-points/stats/performance
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚀 자동 초기화:   http://localhost:${PORT}/api/init/status
+
+📊 확장 API (우선순위 2 - 선택적)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 대시보드:     GET  /api/dashboard/overview
+🔄 실시간 데이터: GET  /api/realtime/current-values
+📊 데이터 탐색기: GET  /api/data/explorer
+📈 모니터링:     GET  /api/monitoring/system-metrics
+💾 백업 관리:    GET  /api/backup/list
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 시스템 초기화
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 자동 초기화:   http://localhost:${PORT}/api/init/status
 🔄 초기화 트리거: POST http://localhost:${PORT}/api/init/trigger
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 프런트엔드 확장 API (선택적):
-   ├─ 대시보드:   GET  /api/dashboard/overview
-   ├─ 실시간:     GET  /api/realtime/current-values  
-   ├─ 데이터:     GET  /api/data/explorer
-   ├─ 가상포인트: GET  /api/virtual-points
-   ├─ 모니터링:   GET  /api/monitoring/system-metrics
-   └─ 백업:       GET  /api/backup/list
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Environment: ${process.env.NODE_ENV || 'development'}
@@ -477,6 +544,14 @@ Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enable
 Authentication: 🔓 Development Mode (Basic Auth)
 Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 PulseOne 통합 백엔드 시스템 완전 가동!
+   - 알람 관리 ✅
+   - 디바이스 관리 ✅  
+   - 가상포인트 관리 ✅
+   - 자동 초기화 ✅
+   - 멀티테넌트 지원 ✅
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
 });
