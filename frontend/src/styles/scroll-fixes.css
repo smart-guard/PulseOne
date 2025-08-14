@@ -1,0 +1,51 @@
+/* 기존 CSS 파일에 추가할 스크롤 스타일만 - 다른 건 건드리지 않음 */
+
+/* ActiveAlarms 스크롤 */
+.alarms-list {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* AlarmHistory 스크롤 */
+.events-list {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.events-table .table-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* 타임라인 뷰 스크롤 */
+.timeline-container {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* 스크롤바 스타일링 */
+.alarms-list::-webkit-scrollbar,
+.events-list::-webkit-scrollbar,
+.timeline-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.alarms-list::-webkit-scrollbar-track,
+.events-list::-webkit-scrollbar-track,
+.timeline-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.alarms-list::-webkit-scrollbar-thumb,
+.events-list::-webkit-scrollbar-thumb,
+.timeline-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.alarms-list::-webkit-scrollbar-thumb:hover,
+.events-list::-webkit-scrollbar-thumb:hover,
+.timeline-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

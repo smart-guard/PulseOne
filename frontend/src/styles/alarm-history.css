@@ -1030,3 +1030,354 @@
   }
 }
 
+/* 알람 이력 테이블 스크롤 개선 */
+.history-table-container {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  max-height: 600px; /* 최대 높이 설정 */
+  overflow-y: auto; /* 세로 스크롤 */
+  overflow-x: auto; /* 가로 스크롤 (테이블이 넓을 때) */
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+}
+
+.history-table thead {
+  position: sticky;
+  top: 0;
+  background: var(--neutral-50);
+  z-index: 10;
+}
+
+.history-table th {
+  padding: var(--space-4);
+  text-align: left;
+  font-weight: 600;
+  color: var(--neutral-700);
+  border-bottom: 2px solid var(--neutral-200);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.history-table td {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--neutral-100);
+  vertical-align: top;
+}
+
+.history-row {
+  transition: background-color 0.2s ease;
+}
+
+.history-row:hover {
+  background: var(--neutral-25);
+}
+
+.history-row.critical {
+  border-left: 4px solid var(--error-500);
+}
+
+.history-row.high {
+  border-left: 4px solid var(--warning-500);
+}
+
+.history-row.medium {
+  border-left: 4px solid var(--primary-500);
+}
+
+.history-row.low {
+  border-left: 4px solid var(--success-500);
+}
+
+/* 스크롤바 스타일링 */
+.history-table-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.history-table-container::-webkit-scrollbar-track {
+  background: var(--neutral-100);
+}
+
+.history-table-container::-webkit-scrollbar-thumb {
+  background: var(--neutral-300);
+  border-radius: 4px;
+}
+
+.history-table-container::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-400);
+}
+
+/* 테이블 셀 스타일 */
+.event-id {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: var(--neutral-600);
+}
+
+.priority-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.priority-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.source-cell {
+  min-width: 150px;
+}
+
+.source-name {
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin-bottom: var(--space-1);
+}
+
+.source-location {
+  font-size: 0.75rem;
+  color: var(--neutral-500);
+}
+
+.message-cell {
+  max-width: 250px;
+}
+
+.message-text {
+  color: var(--neutral-800);
+  margin-bottom: var(--space-1);
+  line-height: 1.4;
+}
+
+.triggered-value {
+  font-size: 0.75rem;
+  color: var(--neutral-500);
+  font-family: 'Courier New', monospace;
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.status-indicator {
+  font-size: 0.875rem;
+}
+
+.time-cell {
+  min-width: 120px;
+}
+
+.time-main {
+  font-weight: 500;
+  color: var(--neutral-800);
+  margin-bottom: var(--space-1);
+}
+
+.time-detail {
+  font-size: 0.75rem;
+  color: var(--neutral-500);
+  font-family: 'Courier New', monospace;
+}
+
+.duration-cell {
+  font-family: 'Courier New', monospace;
+  color: var(--neutral-600);
+  white-space: nowrap;
+}
+
+.action-cell {
+  min-width: 80px;
+}
+
+/* 타임라인 뷰 스크롤 */
+.timeline-view {
+  max-height: 600px;
+  overflow-y: auto;
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-4);
+}
+
+.timeline-container {
+  position: relative;
+}
+
+.timeline-item {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  position: relative;
+}
+
+.timeline-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 48px;
+  bottom: -24px;
+  width: 2px;
+  background: var(--neutral-200);
+}
+
+.timeline-marker {
+  flex-shrink: 0;
+}
+
+.timeline-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 4px solid white;
+  box-shadow: 0 0 0 2px var(--neutral-200);
+}
+
+.timeline-content {
+  flex: 1;
+  background: var(--neutral-50);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  border: 1px solid var(--neutral-200);
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+
+.timeline-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.priority-badge {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.timeline-time {
+  font-size: 0.875rem;
+  color: var(--neutral-500);
+  font-family: 'Courier New', monospace;
+}
+
+.timeline-message {
+  font-weight: 500;
+  color: var(--neutral-800);
+  margin-bottom: var(--space-2);
+}
+
+.timeline-source {
+  font-size: 0.875rem;
+  color: var(--neutral-600);
+  margin-bottom: var(--space-3);
+}
+
+.timeline-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.timeline-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.timeline-duration {
+  color: var(--neutral-500);
+  font-family: 'Courier New', monospace;
+}
+
+/* 버튼 스타일 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+}
+
+.btn-small {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.75rem;
+}
+
+.btn-primary {
+  background: var(--primary-500);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--primary-600);
+}
+
+.btn-secondary {
+  background: var(--neutral-200);
+  color: var(--neutral-700);
+}
+
+.btn-secondary:hover {
+  background: var(--neutral-300);
+}
+
+/* 빈 상태 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: var(--space-16);
+  text-align: center;
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+}
+
+.empty-icon {
+  font-size: 4rem;
+  color: var(--neutral-300);
+  margin-bottom: var(--space-4);
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--neutral-600);
+  margin-bottom: var(--space-2);
+  font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+}
+
+.empty-state p {
+  color: var(--neutral-500);
+  font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  line-height: 1.5;
+}
