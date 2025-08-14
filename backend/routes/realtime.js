@@ -665,8 +665,7 @@ setInterval(() => {
 // 모듈 초기화
 initializeRedis();
 
-module.exports = {
-    router,
-    initializeWebSocket,
-    initializeRedis
-};
+module.exports = router;
+
+module.exports.initializeWebSocket = initializeWebSocket;
+module.exports.initializeRedis = initializeRedis;

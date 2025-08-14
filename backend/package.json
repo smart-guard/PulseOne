@@ -4,13 +4,23 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "test": "jest --runInBand",
+    "test": "jest",
     "setup": "node scripts/smart-db-initializer.js",
     "db:status": "node scripts/database-initializer.js",
     "db:init": "node scripts/database-initializer.js",
     "start:auto": "AUTO_INITIALIZE_ON_START=true node app.js",
     "dev": "nodemon app.js",
-    "dev:auto": "AUTO_INITIALIZE_ON_START=true nodemon app.js"
+    "dev:auto": "AUTO_INITIALIZE_ON_START=true nodemon app.js",
+    "test:watch": "jest --watch --verbose",
+    "test:coverage": "jest --coverage --verbose",
+    "test:api": "jest __tests__/backend-api-comprehensive.test.js --forceExit --maxWorkers=1 --verbose",
+    "test:api:original": "jest __tests__/backend-api-comprehensive.test.js --forceExit --maxWorkers=1 --verbose",
+    "test:unit": "jest __tests__/repositoryFactory.test.js __tests__/apiIntegration.test.js --forceExit --maxWorkers=1 --verbose",
+    "test:basic": "jest __tests__/app.test.js --forceExit --maxWorkers=1 --verbose",
+    "test:all": "npm run test:basic && npm run test:unit && npm run test:api",
+    "test:legacy": "jest --runInBand",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@influxdata/influxdb-client": "^1.33.2",
@@ -26,11 +36,74 @@
     "mysql2": "^3.14.3",
     "pg": "^8.11.3",
     "redis": "^4.6.5",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "compression": "^1.7.4",
+    "helmet": "^7.0.0",
+    "morgan": "^1.10.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0",
+    "joi": "^17.9.2",
+    "uuid": "^9.0.0",
+    "moment": "^2.29.4",
+    "lodash": "^4.17.21",
+    "winston": "^3.9.0"
   },
   "devDependencies": {
     "jest": "^30.0.5",
     "nodemon": "^3.0.1",
-    "supertest": "^7.1.4"
+    "supertest": "^7.1.4",
+    "eslint": "^8.42.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.1.1",
+    "@types/jest": "^29.5.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "lib/**/*.js",
+      "routes/**/*.js",
+      "app.js",
+      "!**/__tests__/**",
+      "!**/__mocks__/**",
+      "!**/node_modules/**"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/__tests__/setup.js"
+    ],
+    "testTimeout": 30000,
+    "maxWorkers": 1,
+    "forceExit": true,
+    "detectOpenHandles": true
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "keywords": [
+    "iot",
+    "data-collection",
+    "industrial",
+    "modbus",
+    "mqtt",
+    "bacnet",
+    "scada",
+    "realtime"
+  ],
+  "author": "PulseOne Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smart-guard/PulseOne.git"
   }
 }
