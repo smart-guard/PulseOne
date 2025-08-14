@@ -211,20 +211,25 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 }
             }
 
+            // CREATE 쿼리와 정확히 일치하는 파라미터 순서
+            // INSERT INTO alarm_occurrences (
+            //     rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+            //     alarm_message, severity, state, context_data, source_name, location, device_id, point_id
+            // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             const params = [
-                data.rule_id, 
-                data.tenant_id, 
-                data.occurrence_time, 
-                data.trigger_value, 
-                data.trigger_condition,
-                data.alarm_message, 
-                data.severity, 
-                data.state, 
-                data.context_data, 
-                data.source_name, 
-                data.location, 
-                data.device_id, 
-                data.point_id
+                data.rule_id,           // 1
+                data.tenant_id,         // 2  
+                data.occurrence_time,   // 3
+                data.trigger_value,     // 4
+                data.trigger_condition, // 5
+                data.alarm_message,     // 6
+                data.severity,          // 7
+                data.state,             // 8
+                data.context_data,      // 9
+                data.source_name,       // 10
+                data.location,          // 11
+                data.device_id,         // 12
+                data.point_id           // 13
             ];
 
             const result = await this.executeNonQuery(AlarmQueries.AlarmOccurrence.CREATE, params);
@@ -354,17 +359,31 @@ class AlarmOccurrenceRepository extends BaseRepository {
      */
     async findActive(tenantId = null) {
         try {
-            const cacheKey = `activeAlarms_${tenantId}`;
+            const cacheKey = `activeAlarms_${tenantId || 'all'}`;
             const cached = this.getFromCache(cacheKey);
             if (cached) return cached;
 
-            let query = AlarmQueries.AlarmOccurrence.FIND_ACTIVE;
+            // 🔥 기본 쿼리에서 시작
+            let query = `
+                SELECT 
+                    id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+                    alarm_message, severity, state, acknowledged_time, acknowledged_by,
+                    acknowledge_comment, cleared_time, cleared_value, clear_comment,
+                    notification_sent, notification_time, notification_count, notification_result,
+                    context_data, source_name, location, created_at, updated_at, device_id, point_id
+                FROM alarm_occurrences 
+                WHERE state = 'active'
+            `;
+            
             const params = [];
 
+            // 테넌트 필터링이 필요한 경우만 추가
             if (tenantId) {
                 query += ' AND tenant_id = ?';
                 params.push(tenantId);
             }
+
+            query += ' ORDER BY occurrence_time DESC';
 
             const results = await this.executeQuery(query, params);
             const activeAlarms = results.map(occurrence => this.formatAlarmOccurrence(occurrence));
@@ -384,13 +403,27 @@ class AlarmOccurrenceRepository extends BaseRepository {
      */
     async findUnacknowledged(tenantId = null) {
         try {
-            let query = AlarmQueries.AlarmOccurrence.FIND_UNACKNOWLEDGED;
+            // 🔥 기본 쿼리에서 시작
+            let query = `
+                SELECT 
+                    id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+                    alarm_message, severity, state, acknowledged_time, acknowledged_by,
+                    acknowledge_comment, cleared_time, cleared_value, clear_comment,
+                    notification_sent, notification_time, notification_count, notification_result,
+                    context_data, source_name, location, created_at, updated_at, device_id, point_id
+                FROM alarm_occurrences 
+                WHERE acknowledged_time IS NULL AND state = 'active'
+            `;
+            
             const params = [];
 
+            // 테넌트 필터링이 필요한 경우만 추가
             if (tenantId) {
                 query += ' AND tenant_id = ?';
                 params.push(tenantId);
             }
+
+            query += ' ORDER BY occurrence_time DESC';
 
             const results = await this.executeQuery(query, params);
             return results.map(occurrence => this.formatAlarmOccurrence(occurrence));
@@ -400,6 +433,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
             throw error;
         }
     }
+
 
     /**
      * 규칙별 알람 발생 조회

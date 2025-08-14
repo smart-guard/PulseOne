@@ -1,6 +1,6 @@
 // ============================================================================
 // backend/routes/alarms.js
-// 완전한 알람 관리 API - Repository 패턴 활용
+// 완전한 알람 관리 API - Repository 패턴 활용 (완성본)
 // ============================================================================
 
 const express = require('express');
@@ -79,7 +79,7 @@ router.use(tenantIsolation);
 
 /**
  * GET /api/alarms/active
- * 활성 알람 목록 조회 (ActiveAlarms.tsx용)
+ * 활성 알람 목록 조회 (ActiveAlarms.tsx용) - 수정됨
  */
 router.get('/active', async (req, res) => {
     try {
@@ -94,24 +94,110 @@ router.get('/active', async (req, res) => {
         
         console.log('🔍 활성 알람 조회 시작...');
 
-        const options = {
-            tenantId,
-            state: 'active',
-            severity,
-            deviceId: device_id,
-            acknowledged: acknowledged === 'true',
-            page: parseInt(page),
-            limit: parseInt(limit)
-        };
-
-        const result = await getAlarmOccurrenceRepo().findAll(options);
+        // 🔥 findAll 대신 findActive 직접 호출
+        const activeAlarms = await getAlarmOccurrenceRepo().findActive(tenantId);
         
-        console.log(`✅ 활성 알람 ${result.items.length}개 조회 완료`);
+        // 클라이언트 측에서 필터링 (임시)
+        let filteredAlarms = activeAlarms;
+        
+        if (severity) {
+            filteredAlarms = filteredAlarms.filter(alarm => 
+                alarm.severity && alarm.severity.toLowerCase() === severity.toLowerCase()
+            );
+        }
+        
+        if (device_id) {
+            filteredAlarms = filteredAlarms.filter(alarm => 
+                alarm.device_id === device_id || alarm.device_id === parseInt(device_id)
+            );
+        }
+        
+        // 페이징 처리
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        const endIndex = startIndex + parseInt(limit);
+        const paginatedAlarms = filteredAlarms.slice(startIndex, endIndex);
+        
+        const result = {
+            items: paginatedAlarms,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: filteredAlarms.length,
+                totalPages: Math.ceil(filteredAlarms.length / parseInt(limit))
+            }
+        };
+        
+        console.log(`✅ 활성 알람 ${paginatedAlarms.length}개 조회 완료`);
         res.json(createResponse(true, result, 'Active alarms retrieved successfully'));
 
     } catch (error) {
         console.error('❌ 활성 알람 조회 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ACTIVE_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/occurrences
+ * 모든 알람 발생 조회 (페이징 지원) - 누락된 핵심 엔드포인트!
+ */
+router.get('/occurrences', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const {
+            page = 1,
+            limit = 50,
+            state,
+            severity,
+            ruleId,
+            deviceId
+        } = req.query;
+        
+        console.log('🔍 알람 발생 목록 조회 시작...');
+
+        const options = {
+            tenantId: parseInt(tenantId),
+            page: parseInt(page),
+            limit: parseInt(limit),
+            state,
+            severity,
+            ruleId: ruleId ? parseInt(ruleId) : null,
+            deviceId
+        };
+
+        const result = await getAlarmOccurrenceRepo().findAll(options);
+        
+        console.log(`✅ 알람 발생 ${result.items.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'Alarm occurrences retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 알람 발생 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_OCCURRENCES_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/occurrences/:id
+ * 특정 알람 발생 상세 조회
+ */
+router.get('/occurrences/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        
+        console.log(`🔍 알람 발생 ID ${id} 조회 시작...`);
+
+        const alarmOccurrence = await getAlarmOccurrenceRepo().findById(parseInt(id), tenantId);
+        
+        if (!alarmOccurrence) {
+            return res.status(404).json(createResponse(false, null, 'Alarm occurrence not found', 'ALARM_NOT_FOUND'));
+        }
+
+        console.log(`✅ 알람 발생 ID ${id} 조회 완료`);
+        res.json(createResponse(true, alarmOccurrence, 'Alarm occurrence retrieved successfully'));
+
+    } catch (error) {
+        console.error(`❌ 알람 발생 ID ${req.params.id} 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_OCCURRENCE_ERROR'));
     }
 });
 
@@ -200,20 +286,54 @@ router.post('/:id/acknowledge', async (req, res) => {
 });
 
 /**
+ * POST /api/alarms/occurrences/:id/acknowledge
+ * 알람 확인 처리 (occurrences 경로)
+ */
+router.post('/occurrences/:id/acknowledge', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { comment = '' } = req.body;
+        const { user, tenantId } = req;
+        
+        console.log(`✅ 알람 발생 ${id} 확인 처리 시작...`);
+
+        const result = await getAlarmOccurrenceRepo().acknowledge(
+            parseInt(id), 
+            user.id, 
+            comment, 
+            tenantId
+        );
+
+        if (!result) {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm occurrence not found or already acknowledged', 'ALARM_NOT_FOUND')
+            );
+        }
+
+        console.log(`✅ 알람 발생 ${id} 확인 처리 완료`);
+        res.json(createResponse(true, result, 'Alarm occurrence acknowledged successfully'));
+
+    } catch (error) {
+        console.error(`❌ 알람 발생 ${req.params.id} 확인 처리 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_ACKNOWLEDGE_ERROR'));
+    }
+});
+
+/**
  * POST /api/alarms/:id/clear
  * 알람 해제 처리
  */
 router.post('/:id/clear', async (req, res) => {
     try {
         const { id } = req.params;
-        const { comment = '' } = req.body;
+        const { comment = '', clearedValue = '' } = req.body;
         const { user, tenantId } = req;
         
         console.log(`🗑️ 알람 ${id} 해제 처리 시작...`);
 
         const result = await getAlarmOccurrenceRepo().clear(
             parseInt(id), 
-            user.id, 
+            clearedValue, 
             comment, 
             tenantId
         );
@@ -240,6 +360,40 @@ router.post('/:id/clear', async (req, res) => {
 
     } catch (error) {
         console.error(`❌ 알람 ${req.params.id} 해제 처리 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_CLEAR_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/occurrences/:id/clear
+ * 알람 해제 처리 (occurrences 경로)
+ */
+router.post('/occurrences/:id/clear', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { comment = '', clearedValue = '' } = req.body;
+        const { tenantId } = req;
+        
+        console.log(`🗑️ 알람 발생 ${id} 해제 처리 시작...`);
+
+        const result = await getAlarmOccurrenceRepo().clear(
+            parseInt(id), 
+            clearedValue, 
+            comment, 
+            tenantId
+        );
+
+        if (!result) {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm occurrence not found', 'ALARM_NOT_FOUND')
+            );
+        }
+
+        console.log(`✅ 알람 발생 ${id} 해제 처리 완료`);
+        res.json(createResponse(true, result, 'Alarm occurrence cleared successfully'));
+
+    } catch (error) {
+        console.error(`❌ 알람 발생 ${req.params.id} 해제 처리 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_CLEAR_ERROR'));
     }
 });
@@ -475,7 +629,7 @@ router.get('/device/:deviceId', async (req, res) => {
         
         console.log(`🔍 디바이스 ${deviceId} 알람 조회 시작...`);
 
-        const deviceAlarms = await getAlarmOccurrenceRepo().findByDevice(parseInt(deviceId), tenantId);
+        const deviceAlarms = await getAlarmOccurrenceRepo().findByDevice(deviceId, tenantId);
         
         console.log(`✅ 디바이스 ${deviceId} 알람 ${deviceAlarms.length}개 조회 완료`);
         res.json(createResponse(true, deviceAlarms, 'Device alarms retrieved successfully'));
@@ -496,7 +650,27 @@ router.get('/test', (req, res) => {
         repositories: {
             alarm_rules: 'AlarmRuleRepository ready',
             alarm_occurrences: 'AlarmOccurrenceRepository ready'
-        }
+        },
+        available_endpoints: [
+            'GET /api/alarms/active',
+            'GET /api/alarms/occurrences',
+            'GET /api/alarms/occurrences/:id',
+            'POST /api/alarms/occurrences/:id/acknowledge',
+            'POST /api/alarms/occurrences/:id/clear',
+            'GET /api/alarms/history',
+            'POST /api/alarms/:id/acknowledge',
+            'POST /api/alarms/:id/clear',
+            'GET /api/alarms/statistics',
+            'GET /api/alarms/rules',
+            'GET /api/alarms/rules/:id',
+            'POST /api/alarms/rules',
+            'PUT /api/alarms/rules/:id',
+            'DELETE /api/alarms/rules/:id',
+            'GET /api/alarms/rules/statistics',
+            'GET /api/alarms/unacknowledged',
+            'GET /api/alarms/device/:deviceId',
+            'GET /api/alarms/test'
+        ]
     }, 'Test successful'));
 });
 
