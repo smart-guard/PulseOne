@@ -3,7 +3,7 @@
 // 가상포인트 리포지토리 - AlarmOccurrenceRepository.js 패턴 준수
 // =============================================================================
 
-const DatabaseFactory = require('../connection/db');
+const DatabaseFactory = require('./BaseRepository');
 const VirtualPointQueries = require('../queries/VirtualPointQueries');
 
 class VirtualPointRepository {

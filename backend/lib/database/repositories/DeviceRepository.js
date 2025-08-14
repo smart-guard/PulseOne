@@ -3,7 +3,7 @@
 // 디바이스 관리 통합 리포지토리 - AlarmOccurrenceRepository.js 패턴 준수
 // =============================================================================
 
-const DatabaseFactory = require('../connection/db');
+const DatabaseFactory = require('./BaseRepository');
 const DeviceQueries = require('../queries/DeviceQueries');
 
 class DeviceRepository {
