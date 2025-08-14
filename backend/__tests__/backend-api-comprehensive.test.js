@@ -295,7 +295,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             try {
                 const response = await request(app)
                     .post('/api/devices')
-                    .send('invalid json')
+                    .send('{"test": "invalid"}')
                     .set('Content-Type', 'application/json')
                     .timeout(3000);
 

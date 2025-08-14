@@ -72,7 +72,8 @@ class DeviceRepository {
         params.push(parseInt(filters.limit));
       }
 
-      const results = await this.dbFactory.executeQuery(query, params);
+      const queryResult = await this.dbFactory.executeQuery(query, params);
+      const results = queryResult.rows || queryResult;
       return results.map(device => this.parseDevice(device));
     } catch (error) {
       console.error('Error finding devices:', error);
