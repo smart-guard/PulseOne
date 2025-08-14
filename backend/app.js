@@ -1,10 +1,10 @@
-// backend/app.js - 메인 애플리케이션 (기존 구조 + 자동 초기화)
+// backend/app.js - 메인 애플리케이션 (기존 구조 + 자동 초기화 + 알람 API)
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { initializeConnections } = require('./lib/connection/db');
 
-// 🚀 자동 초기화 시스템 (새로 추가)
+// 🚀 자동 초기화 시스템 (기존)
 let DatabaseInitializer;
 try {
     DatabaseInitializer = require('./scripts/database-initializer');
@@ -14,10 +14,86 @@ try {
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// ============================================================================
+// 🔧 미들웨어 설정 (기존 + 확장)
+// ============================================================================
+
+// CORS 설정 (프런트엔드 연동 강화)
+app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID']
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '../frontend')));
+
+// 요청 로깅 미들웨어 (새로 추가)
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] ${req.method} ${req.path}`);
+    next();
+});
+
+// ============================================================================
+// 🔐 글로벌 인증 및 테넌트 미들웨어 (새로 추가)
+// ============================================================================
+
+/**
+ * 기본 인증 미들웨어 (개발용)
+ */
+const authenticateToken = (req, res, next) => {
+    // API 경로가 아니거나 특정 경로는 인증 스킵
+    if (!req.originalUrl.startsWith('/api/') || 
+        req.originalUrl.startsWith('/api/health') ||
+        req.originalUrl.startsWith('/api/init/')) {
+        return next();
+    }
+
+    const authHeader = req.headers['authorization'];
+    
+    if (!authHeader) {
+        // 개발 단계에서는 기본 사용자 설정
+        req.user = {
+            id: 1,
+            username: 'admin',
+            email: 'admin@pulseone.com',
+            tenant_id: 1,
+            role: 'admin',
+            permissions: ['*'] // 모든 권한
+        };
+    } else {
+        // 토큰이 있는 경우 검증 (추후 구현)
+        req.user = {
+            id: 1,
+            username: 'admin',
+            email: 'admin@pulseone.com',
+            tenant_id: 1,
+            role: 'admin',
+            permissions: ['*']
+        };
+    }
+    
+    next();
+};
+
+/**
+ * 테넌트 격리 미들웨어
+ */
+const tenantIsolation = (req, res, next) => {
+    if (req.user) {
+        req.tenantId = req.user.tenant_id;
+        res.locals.user = req.user;
+        res.locals.tenantId = req.tenantId;
+    }
+    next();
+};
+
+// 글로벌 미들웨어 적용
+app.use(authenticateToken);
+app.use(tenantIsolation);
 
 // Database connections 초기화 + 자동 초기화
 let connections = {};
@@ -31,7 +107,7 @@ async function initializeSystem() {
         app.locals.getDB = () => connections;
         console.log('✅ Database connections initialized');
         
-        // 2. 자동 초기화 시스템 (새로 추가)
+        // 2. 자동 초기화 시스템 (기존 코드 유지)
         if (process.env.AUTO_INITIALIZE_ON_START === 'true' && DatabaseInitializer) {
             console.log('🔄 자동 초기화 확인 중...');
             
@@ -66,7 +142,7 @@ async function initializeSystem() {
 initializeSystem();
 
 // =============================================================================
-// Routes 등록 (라우팅만 담당) - 기존 코드 유지
+// Routes 등록 (라우팅만 담당) - 기존 + 알람 API 추가
 // =============================================================================
 
 // Health check (기존 + 초기화 상태 추가)
@@ -80,7 +156,7 @@ app.get('/api/health', async (req, res) => {
             pid: process.pid
         };
         
-        // 초기화 상태 추가 (새로 추가)
+        // 초기화 상태 추가 (기존)
         if (process.env.AUTO_INITIALIZE_ON_START === 'true' && DatabaseInitializer) {
             try {
                 const initializer = new DatabaseInitializer();
@@ -111,7 +187,7 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// 초기화 관련 엔드포인트 추가 (새로 추가)
+// 초기화 관련 엔드포인트 (기존 유지)
 app.get('/api/init/status', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
@@ -180,7 +256,11 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// API Routes (기존 코드 유지)
+// ============================================================================
+// 🌐 API Routes 등록 (기존 + 새로운 라우트들)
+// ============================================================================
+
+// 기존 API Routes (유지)
 const systemRoutes = require('./routes/system');
 const processRoutes = require('./routes/processes');
 const deviceRoutes = require('./routes/devices');
@@ -193,26 +273,129 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 
-// =============================================================================
-// Error Handling (기존 코드 유지)
-// =============================================================================
+// ============================================================================
+// 🚨 NEW: 알람 관리 API (프런트엔드 연동용)
+// ============================================================================
 
-// 404 handler
-app.use('*', (req, res) => {
-    if (req.originalUrl.startsWith('/api/')) {
-        res.status(404).json({ error: 'API endpoint not found' });
-    } else {
+try {
+    const alarmRoutes = require('./routes/alarms');
+    app.use('/api/alarms', alarmRoutes);
+    console.log('✅ Alarm API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Alarm 라우트 로드 실패:', error.message);
+    console.warn('   알람 기능이 비활성화됩니다.');
+}
+
+// ============================================================================
+// 🔄 프런트엔드 요구사항 추가 라우트들 (선택적 등록)
+// ============================================================================
+
+try {
+    const dashboardRoutes = require('./routes/dashboard');
+    app.use('/api/dashboard', dashboardRoutes);
+    console.log('✅ Dashboard API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Dashboard 라우트 로드 실패:', error.message);
+}
+
+try {
+    const realtimeRoutes = require('./routes/realtime');
+    app.use('/api/realtime', realtimeRoutes);
+    console.log('✅ Realtime API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Realtime 라우트 로드 실패:', error.message);
+}
+
+try {
+    const dataRoutes = require('./routes/data');
+    app.use('/api/data', dataRoutes);
+    console.log('✅ Data API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Data 라우트 로드 실패:', error.message);
+}
+
+try {
+    const virtualPointRoutes = require('./routes/virtual-points');
+    app.use('/api/virtual-points', virtualPointRoutes);
+    console.log('✅ Virtual Points API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Virtual Points 라우트 로드 실패:', error.message);
+}
+
+try {
+    const monitoringRoutes = require('./routes/monitoring');
+    app.use('/api/monitoring', monitoringRoutes);
+    console.log('✅ Monitoring API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Monitoring 라우트 로드 실패:', error.message);
+}
+
+try {
+    const backupRoutes = require('./routes/backup');
+    app.use('/api/backup', backupRoutes);
+    console.log('✅ Backup API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ Backup 라우트 로드 실패:', error.message);
+}
+
+// ============================================================================
+// 🎯 프런트엔드 SPA 라우팅 지원 (새로 추가)
+// ============================================================================
+
+// React Router를 위한 catch-all 라우트
+app.get('*', (req, res) => {
+    // API 요청이 아닌 경우에만 React 앱 서빙
+    if (!req.originalUrl.startsWith('/api/')) {
         res.sendFile(path.join(__dirname, '../frontend/index.html'));
+    } else {
+        res.status(404).json({ 
+            success: false,
+            error: 'API endpoint not found',
+            path: req.originalUrl,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
-// Global error handler
+// =============================================================================
+// Error Handling (기존 + 확장)
+// =============================================================================
+
+// 404 handler (API 전용)
+app.use('/api/*', (req, res) => {
+    res.status(404).json({ 
+        success: false,
+        error: 'API endpoint not found',
+        path: req.originalUrl,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Global error handler (개선됨)
 app.use((error, req, res, next) => {
-    console.error('Unhandled error:', error);
+    console.error('🚨 Unhandled error:', error);
     
-    res.status(500).json({
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    // 에러 타입별 처리
+    let statusCode = 500;
+    let message = 'Internal server error';
+    
+    if (error.name === 'ValidationError') {
+        statusCode = 400;
+        message = 'Validation failed';
+    } else if (error.name === 'UnauthorizedError') {
+        statusCode = 401;
+        message = 'Unauthorized';
+    } else if (error.name === 'ForbiddenError') {
+        statusCode = 403;
+        message = 'Forbidden';
+    }
+    
+    res.status(statusCode).json({
+        success: false,
+        error: message,
+        message: process.env.NODE_ENV === 'development' ? error.message : message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -249,7 +432,7 @@ function gracefulShutdown(signal) {
 }
 
 // =============================================================================
-// Start Server (기존 + 초기화 상태 표시 추가)
+// Start Server (기존 + 알람 API 상태 표시 추가)
 // =============================================================================
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
@@ -265,13 +448,34 @@ const server = app.listen(PORT, () => {
 📱 Devices:       http://localhost:${PORT}/api/devices
 ⚙️  Services:      http://localhost:${PORT}/api/services
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 알람 관리:     http://localhost:${PORT}/api/alarms
+   ├─ 활성 알람:  GET  /api/alarms/active
+   ├─ 알람 이력:  GET  /api/alarms/history
+   ├─ 알람 확인:  POST /api/alarms/:id/acknowledge
+   ├─ 알람 해제:  POST /api/alarms/:id/clear
+   ├─ 알람 규칙:  GET  /api/alarms/rules
+   ├─ 규칙 생성:  POST /api/alarms/rules
+   ├─ 규칙 수정:  PUT  /api/alarms/rules/:id
+   ├─ 규칙 삭제:  DEL  /api/alarms/rules/:id
+   └─ 알람 통계:  GET  /api/alarms/statistics
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚀 자동 초기화:   http://localhost:${PORT}/api/init/status
 🔄 초기화 트리거: POST http://localhost:${PORT}/api/init/trigger
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 프런트엔드 확장 API (선택적):
+   ├─ 대시보드:   GET  /api/dashboard/overview
+   ├─ 실시간:     GET  /api/realtime/current-values  
+   ├─ 데이터:     GET  /api/data/explorer
+   ├─ 가상포인트: GET  /api/virtual-points
+   ├─ 모니터링:   GET  /api/monitoring/system-metrics
+   └─ 백업:       GET  /api/backup/list
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Environment: ${process.env.NODE_ENV || 'development'}
 Stage: ${process.env.ENV_STAGE || 'dev'}
 Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enabled' : '❌ Disabled'}
+Authentication: 🔓 Development Mode (Basic Auth)
+Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
