@@ -1,218 +1,143 @@
 // =============================================================================
 // backend/lib/database/repositories/UserRepository.js
-// User Repository - C++ UserRepository 패턴 그대로 적용
+// 🔧 DeviceRepository 패턴과 완전 동일 (쿼리 분리 적용)
 // =============================================================================
 
 const BaseRepository = require('./BaseRepository');
 const UserQueries = require('../queries/UserQueries');
 
-/**
- * @class UserRepository
- * @extends BaseRepository
- * @description C++ UserRepository 패턴을 Node.js로 포팅
- * 
- * 주요 기능:
- * - 사용자 CRUD 연산
- * - 역할별 조회
- * - 테넌트별 조회
- * - 인증 관련 기능
- * - 권한 관리
- */
 class UserRepository extends BaseRepository {
-    constructor(dbManager, logger, cacheConfig = null) {
-        super('users', dbManager, logger, cacheConfig);
-        this.entityName = 'User';
-        
-        if (this.logger) {
-            this.logger.info('👤 UserRepository initialized with BaseEntity pattern');
-            this.logger.info(`✅ Cache enabled: ${this.isCacheEnabled() ? 'YES' : 'NO'}`);
-        }
+    constructor() {
+        // DeviceRepository와 동일한 패턴: 매개변수 없는 생성자
+        super('users');
+        console.log('👤 UserRepository initialized with standard pattern');
     }
 
     // ==========================================================================
-    // 기본 CRUD 연산 (BaseRepository 상속)
+    // 기본 CRUD 연산 (UserQueries 사용)
     // ==========================================================================
 
-    /**
-     * 모든 사용자 조회
-     * @returns {Promise<Array>} 사용자 목록
-     */
     async findAll() {
         try {
             const query = UserQueries.findAll();
             const results = await this.executeQuery(query);
-            this.logger?.debug(`UserRepository::findAll - Found ${results.length} users`);
             return results;
         } catch (error) {
-            this.logger?.error(`UserRepository::findAll failed: ${error.message}`);
+            console.error(`UserRepository::findAll failed: ${error.message}`);
             throw error;
         }
     }
 
-    /**
-     * ID로 사용자 조회
-     * @param {number} id 사용자 ID
-     * @returns {Promise<Object|null>} 사용자 객체 또는 null
-     */
     async findById(id) {
         try {
-            const cacheKey = `user:${id}`;
-            
-            // 캐시 확인
-            if (this.isCacheEnabled()) {
-                const cached = await this.getFromCache(cacheKey);
-                if (cached) {
-                    this.logger?.debug(`UserRepository::findById - Cache hit for ID: ${id}`);
-                    return cached;
-                }
-            }
-
             const query = UserQueries.findById();
             const results = await this.executeQuery(query, [id]);
-            
-            const user = results.length > 0 ? results[0] : null;
-            
-            // 캐시에 저장
-            if (user && this.isCacheEnabled()) {
-                await this.setCache(cacheKey, user);
-            }
-            
-            this.logger?.debug(`UserRepository::findById - ${user ? 'Found' : 'Not found'} user with ID: ${id}`);
-            return user;
+            return results.length > 0 ? results[0] : null;
         } catch (error) {
-            this.logger?.error(`UserRepository::findById failed: ${error.message}`);
+            console.error(`UserRepository::findById failed: ${error.message}`);
             throw error;
         }
     }
 
-    // ==========================================================================
-    // 인증 관련 조회
-    // ==========================================================================
-
-    /**
-     * 사용자명으로 조회
-     * @param {string} username 사용자명
-     * @returns {Promise<Object|null>} 사용자 객체 또는 null
-     */
     async findByUsername(username) {
         try {
-            const cacheKey = `user:username:${username}`;
-            
-            // 캐시 확인
-            if (this.isCacheEnabled()) {
-                const cached = await this.getFromCache(cacheKey);
-                if (cached) {
-                    this.logger?.debug(`UserRepository::findByUsername - Cache hit for username: ${username}`);
-                    return cached;
-                }
-            }
-
             const query = UserQueries.findByUsername();
             const results = await this.executeQuery(query, [username]);
-            
-            const user = results.length > 0 ? results[0] : null;
-            
-            // 캐시에 저장
-            if (user && this.isCacheEnabled()) {
-                await this.setCache(cacheKey, user);
-            }
-            
-            this.logger?.debug(`UserRepository::findByUsername - ${user ? 'Found' : 'Not found'} user: ${username}`);
-            return user;
+            return results.length > 0 ? results[0] : null;
         } catch (error) {
-            this.logger?.error(`UserRepository::findByUsername failed: ${error.message}`);
+            console.error(`UserRepository::findByUsername failed: ${error.message}`);
             throw error;
         }
     }
 
-    /**
-     * 이메일로 조회
-     * @param {string} email 이메일
-     * @returns {Promise<Object|null>} 사용자 객체 또는 null
-     */
     async findByEmail(email) {
         try {
             const query = UserQueries.findByEmail();
             const results = await this.executeQuery(query, [email]);
-            
-            const user = results.length > 0 ? results[0] : null;
-            this.logger?.debug(`UserRepository::findByEmail - ${user ? 'Found' : 'Not found'} user: ${email}`);
-            return user;
+            return results.length > 0 ? results[0] : null;
         } catch (error) {
-            this.logger?.error(`UserRepository::findByEmail failed: ${error.message}`);
+            console.error(`UserRepository::findByEmail failed: ${error.message}`);
             throw error;
         }
     }
 
-    // ==========================================================================
-    // 테넌트/역할별 조회
-    // ==========================================================================
+    async findForAuthentication(usernameOrEmail) {
+        try {
+            const query = UserQueries.findForAuthentication();
+            const results = await this.executeQuery(query, [usernameOrEmail, usernameOrEmail]);
+            return results.length > 0 ? results[0] : null;
+        } catch (error) {
+            console.error(`UserRepository::findForAuthentication failed: ${error.message}`);
+            throw error;
+        }
+    }
 
-    /**
-     * 테넌트별 사용자 조회
-     * @param {number} tenantId 테넌트 ID
-     * @returns {Promise<Array>} 사용자 목록
-     */
     async findByTenant(tenantId) {
         try {
             const query = UserQueries.findByTenant();
             const results = await this.executeQuery(query, [tenantId]);
-            this.logger?.debug(`UserRepository::findByTenant - Found ${results.length} users for tenant ${tenantId}`);
             return results;
         } catch (error) {
-            this.logger?.error(`UserRepository::findByTenant failed: ${error.message}`);
+            console.error(`UserRepository::findByTenant failed: ${error.message}`);
             throw error;
         }
     }
 
-    /**
-     * 역할별 사용자 조회
-     * @param {string} role 역할 (system_admin, company_admin, site_admin, engineer, operator, viewer)
-     * @returns {Promise<Array>} 사용자 목록
-     */
     async findByRole(role) {
         try {
             const query = UserQueries.findByRole();
             const results = await this.executeQuery(query, [role]);
-            this.logger?.debug(`UserRepository::findByRole - Found ${results.length} users with role: ${role}`);
             return results;
         } catch (error) {
-            this.logger?.error(`UserRepository::findByRole failed: ${error.message}`);
+            console.error(`UserRepository::findByRole failed: ${error.message}`);
             throw error;
         }
     }
 
-    /**
-     * 활성 사용자 조회
-     * @param {number} tenantId 테넌트 ID (선택사항)
-     * @returns {Promise<Array>} 활성 사용자 목록
-     */
-    async findActiveUsers(tenantId = null) {
+    async findActiveUsers() {
         try {
-            const query = tenantId 
-                ? UserQueries.findActiveUsersByTenant()
-                : UserQueries.findActiveUsers();
-            
-            const params = tenantId ? [tenantId] : [];
-            const results = await this.executeQuery(query, params);
-            
-            this.logger?.debug(`UserRepository::findActiveUsers - Found ${results.length} active users`);
+            const query = UserQueries.findActiveUsers();
+            const results = await this.executeQuery(query);
             return results;
         } catch (error) {
-            this.logger?.error(`UserRepository::findActiveUsers failed: ${error.message}`);
+            console.error(`UserRepository::findActiveUsers failed: ${error.message}`);
             throw error;
         }
     }
 
-    // ==========================================================================
-    // CRUD 연산 (생성, 수정, 삭제)
-    // ==========================================================================
+    async findActiveUsersByTenant(tenantId) {
+        try {
+            const query = UserQueries.findActiveUsersByTenant();
+            const results = await this.executeQuery(query, [tenantId]);
+            return results;
+        } catch (error) {
+            console.error(`UserRepository::findActiveUsersByTenant failed: ${error.message}`);
+            throw error;
+        }
+    }
 
-    /**
-     * 새 사용자 생성
-     * @param {Object} userData 사용자 데이터
-     * @returns {Promise<number>} 생성된 사용자 ID
-     */
+    async findInactiveUsers(days = 30) {
+        try {
+            const query = UserQueries.findInactiveUsers();
+            const results = await this.executeQuery(query, [days]);
+            return results;
+        } catch (error) {
+            console.error(`UserRepository::findInactiveUsers failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async findWithSessions(id) {
+        try {
+            const query = UserQueries.findWithSessions();
+            const results = await this.executeQuery(query, [id]);
+            return results.length > 0 ? results[0] : null;
+        } catch (error) {
+            console.error(`UserRepository::findWithSessions failed: ${error.message}`);
+            throw error;
+        }
+    }
+
     async create(userData) {
         try {
             const query = UserQueries.create();
@@ -227,302 +152,226 @@ class UserRepository extends BaseRepository {
                 userData.permissions ? JSON.stringify(userData.permissions) : null,
                 userData.site_access ? JSON.stringify(userData.site_access) : null,
                 userData.device_access ? JSON.stringify(userData.device_access) : null,
-                userData.is_active !== undefined ? userData.is_active : 1
+                userData.is_active !== false ? 1 : 0
             ];
-
+            
             const result = await this.executeNonQuery(query, params);
-            const userId = result.lastID;
-            
-            // 캐시 무효화
-            if (this.isCacheEnabled()) {
-                await this.invalidateCache(`user:${userId}`);
-                await this.invalidateCache(`user:username:${userData.username}`);
-            }
-            
-            this.logger?.info(`UserRepository::create - Created user ${userData.username} with ID: ${userId}`);
-            return userId;
+            return result.insertId || result.lastInsertRowid;
         } catch (error) {
-            this.logger?.error(`UserRepository::create failed: ${error.message}`);
+            console.error(`UserRepository::create failed: ${error.message}`);
             throw error;
         }
     }
 
-    /**
-     * 사용자 정보 수정
-     * @param {number} id 사용자 ID
-     * @param {Object} updateData 수정할 데이터
-     * @returns {Promise<boolean>} 성공 여부
-     */
-    async update(id, updateData) {
+    async update(id, userData) {
         try {
             const query = UserQueries.update();
             const params = [
-                updateData.username,
-                updateData.email,
-                updateData.full_name,
-                updateData.department,
-                updateData.role,
-                updateData.permissions ? JSON.stringify(updateData.permissions) : null,
-                updateData.site_access ? JSON.stringify(updateData.site_access) : null,
-                updateData.device_access ? JSON.stringify(updateData.device_access) : null,
-                updateData.is_active,
+                userData.username,
+                userData.email,
+                userData.full_name || null,
+                userData.department || null,
+                userData.role || 'viewer',
+                userData.permissions ? JSON.stringify(userData.permissions) : null,
+                userData.site_access ? JSON.stringify(userData.site_access) : null,
+                userData.device_access ? JSON.stringify(userData.device_access) : null,
+                userData.is_active !== false ? 1 : 0,
                 id
             ];
-
+            
             const result = await this.executeNonQuery(query, params);
-            const success = result.changes > 0;
-            
-            // 캐시 무효화
-            if (success && this.isCacheEnabled()) {
-                await this.invalidateCache(`user:${id}`);
-                await this.invalidateCache(`user:username:*`);
-            }
-            
-            this.logger?.info(`UserRepository::update - ${success ? 'Updated' : 'Failed to update'} user ID: ${id}`);
-            return success;
+            return result.affectedRows > 0 || result.changes > 0;
         } catch (error) {
-            this.logger?.error(`UserRepository::update failed: ${error.message}`);
+            console.error(`UserRepository::update failed: ${error.message}`);
             throw error;
         }
     }
 
-    /**
-     * 사용자 삭제
-     * @param {number} id 사용자 ID
-     * @returns {Promise<boolean>} 성공 여부
-     */
-    async delete(id) {
+    async updatePassword(id, passwordHash) {
+        try {
+            const query = UserQueries.updatePassword();
+            const result = await this.executeNonQuery(query, [passwordHash, id]);
+            return result.affectedRows > 0 || result.changes > 0;
+        } catch (error) {
+            console.error(`UserRepository::updatePassword failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async updateLastLogin(id) {
+        try {
+            const query = UserQueries.updateLastLogin();
+            const result = await this.executeNonQuery(query, [id]);
+            return result.affectedRows > 0 || result.changes > 0;
+        } catch (error) {
+            console.error(`UserRepository::updateLastLogin failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async updatePermissions(id, permissions) {
+        try {
+            const query = UserQueries.updatePermissions();
+            const permissionsJson = permissions ? JSON.stringify(permissions) : null;
+            const result = await this.executeNonQuery(query, [permissionsJson, id]);
+            return result.affectedRows > 0 || result.changes > 0;
+        } catch (error) {
+            console.error(`UserRepository::updatePermissions failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async updateSiteAccess(id, siteAccess) {
+        try {
+            const query = UserQueries.updateSiteAccess();
+            const siteAccessJson = siteAccess ? JSON.stringify(siteAccess) : null;
+            const result = await this.executeNonQuery(query, [siteAccessJson, id]);
+            return result.affectedRows > 0 || result.changes > 0;
+        } catch (error) {
+            console.error(`UserRepository::updateSiteAccess failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async updateDeviceAccess(id, deviceAccess) {
+        try {
+            const query = UserQueries.updateDeviceAccess();
+            const deviceAccessJson = deviceAccess ? JSON.stringify(deviceAccess) : null;
+            const result = await this.executeNonQuery(query, [deviceAccessJson, id]);
+            return result.affectedRows > 0 || result.changes > 0;
+        } catch (error) {
+            console.error(`UserRepository::updateDeviceAccess failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async setPasswordResetToken(id, token, expiresAt) {
+        try {
+            const query = UserQueries.setPasswordResetToken();
+            const result = await this.executeNonQuery(query, [token, expiresAt, id]);
+            return result.affectedRows > 0 || result.changes > 0;
+        } catch (error) {
+            console.error(`UserRepository::setPasswordResetToken failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async clearPasswordResetToken(id) {
+        try {
+            const query = UserQueries.clearPasswordResetToken();
+            const result = await this.executeNonQuery(query, [id]);
+            return result.affectedRows > 0 || result.changes > 0;
+        } catch (error) {
+            console.error(`UserRepository::clearPasswordResetToken failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async deleteById(id) {
         try {
             const query = UserQueries.delete();
             const result = await this.executeNonQuery(query, [id]);
-            const success = result.changes > 0;
-            
-            // 캐시 무효화
-            if (success && this.isCacheEnabled()) {
-                await this.invalidateCache(`user:${id}`);
-                await this.invalidateCache(`user:username:*`);
-            }
-            
-            this.logger?.info(`UserRepository::delete - ${success ? 'Deleted' : 'Failed to delete'} user ID: ${id}`);
-            return success;
+            return result.affectedRows > 0 || result.changes > 0;
         } catch (error) {
-            this.logger?.error(`UserRepository::delete failed: ${error.message}`);
+            console.error(`UserRepository::deleteById failed: ${error.message}`);
             throw error;
         }
     }
 
-    // ==========================================================================
-    // 인증 및 세션 관리
-    // ==========================================================================
-
-    /**
-     * 비밀번호 업데이트
-     * @param {number} userId 사용자 ID
-     * @param {string} passwordHash 해시된 비밀번호
-     * @returns {Promise<boolean>} 성공 여부
-     */
-    async updatePassword(userId, passwordHash) {
-        try {
-            const query = UserQueries.updatePassword();
-            const result = await this.executeNonQuery(query, [passwordHash, userId]);
-            const success = result.changes > 0;
-            
-            // 캐시 무효화
-            if (success && this.isCacheEnabled()) {
-                await this.invalidateCache(`user:${userId}`);
-            }
-            
-            this.logger?.info(`UserRepository::updatePassword - ${success ? 'Updated' : 'Failed to update'} password for user ${userId}`);
-            return success;
-        } catch (error) {
-            this.logger?.error(`UserRepository::updatePassword failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * 마지막 로그인 시간 업데이트
-     * @param {number} userId 사용자 ID
-     * @returns {Promise<boolean>} 성공 여부
-     */
-    async updateLastLogin(userId) {
-        try {
-            const query = UserQueries.updateLastLogin();
-            const result = await this.executeNonQuery(query, [userId]);
-            const success = result.changes > 0;
-            
-            // 캐시 무효화
-            if (success && this.isCacheEnabled()) {
-                await this.invalidateCache(`user:${userId}`);
-            }
-            
-            this.logger?.debug(`UserRepository::updateLastLogin - Updated last login for user ${userId}`);
-            return success;
-        } catch (error) {
-            this.logger?.error(`UserRepository::updateLastLogin failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    // ==========================================================================
-    // 유효성 검증
-    // ==========================================================================
-
-    /**
-     * 사용자명 중복 확인
-     * @param {string} username 사용자명
-     * @param {number} excludeId 제외할 사용자 ID (수정 시 사용)
-     * @returns {Promise<boolean>} 중복 여부
-     */
-    async isUsernameTaken(username, excludeId = null) {
-        try {
-            const query = excludeId 
-                ? UserQueries.isUsernameTakenExcluding()
-                : UserQueries.isUsernameTaken();
-            
-            const params = excludeId 
-                ? [username, excludeId]
-                : [username];
-            
-            const results = await this.executeQuery(query, params);
-            const isTaken = results[0]?.count > 0;
-            
-            this.logger?.debug(`UserRepository::isUsernameTaken - Username ${username} ${isTaken ? 'taken' : 'available'}`);
-            return isTaken;
-        } catch (error) {
-            this.logger?.error(`UserRepository::isUsernameTaken failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * 이메일 중복 확인
-     * @param {string} email 이메일
-     * @param {number} excludeId 제외할 사용자 ID
-     * @returns {Promise<boolean>} 중복 여부
-     */
-    async isEmailTaken(email, excludeId = null) {
-        try {
-            const query = excludeId 
-                ? UserQueries.isEmailTakenExcluding()
-                : UserQueries.isEmailTaken();
-            
-            const params = excludeId 
-                ? [email, excludeId]
-                : [email];
-            
-            const results = await this.executeQuery(query, params);
-            const isTaken = results[0]?.count > 0;
-            
-            this.logger?.debug(`UserRepository::isEmailTaken - Email ${email} ${isTaken ? 'taken' : 'available'}`);
-            return isTaken;
-        } catch (error) {
-            this.logger?.error(`UserRepository::isEmailTaken failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    // ==========================================================================
-    // 통계 및 집계
-    // ==========================================================================
-
-    /**
-     * 테넌트별 사용자 수 조회
-     * @param {number} tenantId 테넌트 ID
-     * @returns {Promise<number>} 사용자 수
-     */
-    async countByTenant(tenantId) {
-        try {
-            const query = UserQueries.countByTenant();
-            const results = await this.executeQuery(query, [tenantId]);
-            const count = results[0]?.count || 0;
-            this.logger?.debug(`UserRepository::countByTenant - Found ${count} users for tenant ${tenantId}`);
-            return count;
-        } catch (error) {
-            this.logger?.error(`UserRepository::countByTenant failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * 역할별 사용자 통계
-     * @param {number} tenantId 테넌트 ID (선택사항)
-     * @returns {Promise<Array>} 역할별 사용자 수
-     */
-    async getStatsByRole(tenantId = null) {
-        try {
-            const query = tenantId 
-                ? UserQueries.getStatsByRoleAndTenant()
-                : UserQueries.getStatsByRole();
-            
-            const params = tenantId ? [tenantId] : [];
-            const results = await this.executeQuery(query, params);
-            
-            this.logger?.debug(`UserRepository::getStatsByRole - Found stats for ${results.length} roles`);
-            return results;
-        } catch (error) {
-            this.logger?.error(`UserRepository::getStatsByRole failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * 전체 사용자 수 조회
-     * @returns {Promise<number>} 사용자 수
-     */
-    async getTotalCount() {
-        try {
-            const query = UserQueries.getTotalCount();
-            const results = await this.executeQuery(query);
-            const count = results[0]?.count || 0;
-            this.logger?.debug(`UserRepository::getTotalCount - Total users: ${count}`);
-            return count;
-        } catch (error) {
-            this.logger?.error(`UserRepository::getTotalCount failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    // ==========================================================================
-    // 유틸리티 메서드
-    // ==========================================================================
-
-    /**
-     * 사용자가 존재하는지 확인
-     * @param {number} id 사용자 ID
-     * @returns {Promise<boolean>} 존재 여부
-     */
     async exists(id) {
         try {
-            const user = await this.findById(id);
-            return user !== null;
+            const query = UserQueries.exists();
+            const result = await this.executeQuerySingle(query, [id]);
+            return result && result.count > 0;
         } catch (error) {
-            this.logger?.error(`UserRepository::exists failed: ${error.message}`);
-            return false;
+            console.error(`UserRepository::exists failed: ${error.message}`);
+            throw error;
         }
     }
 
-    /**
-     * 사용자 활성화/비활성화
-     * @param {number} userId 사용자 ID
-     * @param {boolean} isActive 활성화 여부
-     * @returns {Promise<boolean>} 성공 여부
-     */
-    async setActive(userId, isActive) {
+    // ==========================================================================
+    // 특화 메서드들 (UserQueries 사용)
+    // ==========================================================================
+
+    async checkUsernameExists(username, excludeId = null) {
         try {
-            const query = UserQueries.setActive();
-            const result = await this.executeNonQuery(query, [isActive ? 1 : 0, userId]);
-            const success = result.changes > 0;
+            let query = UserQueries.checkUsernameExists();
+            let params = [username];
             
-            // 캐시 무효화
-            if (success && this.isCacheEnabled()) {
-                await this.invalidateCache(`user:${userId}`);
+            if (excludeId) {
+                query += ' AND id != ?';
+                params.push(excludeId);
             }
             
-            this.logger?.info(`UserRepository::setActive - ${success ? 'Updated' : 'Failed to update'} active status for user ${userId} to ${isActive}`);
-            return success;
+            const result = await this.executeQuerySingle(query, params);
+            return result && result.count > 0;
         } catch (error) {
-            this.logger?.error(`UserRepository::setActive failed: ${error.message}`);
+            console.error(`UserRepository::checkUsernameExists failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async checkEmailExists(email, excludeId = null) {
+        try {
+            let query = UserQueries.checkEmailExists();
+            let params = [email];
+            
+            if (excludeId) {
+                query += ' AND id != ?';
+                params.push(excludeId);
+            }
+            
+            const result = await this.executeQuerySingle(query, params);
+            return result && result.count > 0;
+        } catch (error) {
+            console.error(`UserRepository::checkEmailExists failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async getUserStatistics(tenantId) {
+        try {
+            const query = UserQueries.getUserStatistics();
+            const results = await this.executeQuery(query, [tenantId]);
+            return results.length > 0 ? results[0] : null;
+        } catch (error) {
+            console.error(`UserRepository::getUserStatistics failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async searchByName(searchTerm, tenantId = null) {
+        try {
+            let query = UserQueries.searchByName();
+            let params = [`%${searchTerm}%`];
+            
+            if (tenantId) {
+                query += ' AND tenant_id = ?';
+                params.push(tenantId);
+            }
+            
+            const results = await this.executeQuery(query, params);
+            return results;
+        } catch (error) {
+            console.error(`UserRepository::searchByName failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async getUsersByPermission(permission, tenantId = null) {
+        try {
+            let query = UserQueries.getUsersByPermission();
+            let params = [`%${permission}%`];
+            
+            if (tenantId) {
+                query += ' AND tenant_id = ?';
+                params.push(tenantId);
+            }
+            
+            const results = await this.executeQuery(query, params);
+            return results;
+        } catch (error) {
+            console.error(`UserRepository::getUsersByPermission failed: ${error.message}`);
             throw error;
         }
     }
