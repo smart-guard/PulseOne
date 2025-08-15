@@ -65,23 +65,6 @@ export const Pagination: React.FC<PaginationProps> = ({
         </div>
       )}
 
-      {/* 페이지 크기 선택 */}
-      {showSizeChanger && (
-        <div className="pagination-size-changer">
-          <select
-            value={pageSize}
-            onChange={(e) => handleSizeChange(Number(e.target.value))}
-            className="page-size-select"
-          >
-            {pageSizeOptions.map(size => (
-              <option key={size} value={size}>
-                {size}개씩
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
       {/* 페이지 네비게이션 */}
       <div className="pagination-controls">
         {/* 첫 페이지 */}
@@ -157,25 +140,56 @@ export const Pagination: React.FC<PaginationProps> = ({
         </div>
       )}
 
-      {/* 인라인 스타일 */}
+      {/* 페이지 크기 선택 */}
+      {showSizeChanger && (
+        <div className="pagination-size-changer">
+          <select
+            value={pageSize}
+            onChange={(e) => handleSizeChange(Number(e.target.value))}
+            className="page-size-select"
+          >
+            {pageSizeOptions.map(size => (
+              <option key={size} value={size}>
+                {size}개씩
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <style jsx>{`
         .pagination-container {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           gap: 1rem;
           padding: 1rem 0;
           border-top: 1px solid #e5e7eb;
+          width: 100%;
         }
 
         .pagination-info {
           color: #6b7280;
           font-size: 0.875rem;
+          order: 1;
+          flex: 1;
+          text-align: left;
+        }
+
+        .pagination-controls {
+          display: flex;
+          gap: 0.25rem;
+          order: 2;
+          justify-content: center;
+          flex: 1;
         }
 
         .pagination-size-changer {
           display: flex;
           align-items: center;
           gap: 0.5rem;
+          order: 3;
+          flex: 1;
+          justify-content: flex-end;
         }
 
         .page-size-select {
@@ -183,11 +197,6 @@ export const Pagination: React.FC<PaginationProps> = ({
           border: 1px solid #d1d5db;
           border-radius: 0.375rem;
           font-size: 0.875rem;
-        }
-
-        .pagination-controls {
-          display: flex;
-          gap: 0.25rem;
         }
 
         .pagination-btn {
@@ -222,20 +231,11 @@ export const Pagination: React.FC<PaginationProps> = ({
         }
 
         .pagination-jumper {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-size: 0.875rem;
-          color: #6b7280;
+          display: none;
         }
 
         .page-jumper-input {
-          width: 4rem;
-          padding: 0.25rem 0.5rem;
-          border: 1px solid #d1d5db;
-          border-radius: 0.375rem;
-          text-align: center;
-          font-size: 0.875rem;
+          display: none;
         }
 
         /* 크기별 스타일 */
