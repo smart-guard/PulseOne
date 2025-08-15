@@ -1,14 +1,14 @@
 // ============================================================================
 // frontend/src/hooks/usePagination.ts
-// 페이지네이션 로직 전용 커스텀 훅
+// 페이지네이션 로직 전용 커스텀 훅 - 상수 업데이트
 // ============================================================================
 
 import { useState, useMemo, useCallback } from 'react';
 import { 
   PaginationHookReturn, 
-  PaginationHookState,
-  DEFAULT_PAGINATION_CONFIG 
+  PaginationHookState
 } from '../types/common';
+import { DEFAULT_PAGINATION_CONFIG } from '../constants/pagination';
 
 interface UsePaginationOptions {
   initialPage?: number;
@@ -24,7 +24,7 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
     initialPageSize = DEFAULT_PAGINATION_CONFIG.defaultPageSize,
     totalCount = 0,
     pageSizeOptions = DEFAULT_PAGINATION_CONFIG.pageSizeOptions,
-    maxVisiblePages = 5
+    maxVisiblePages = DEFAULT_PAGINATION_CONFIG.maxVisiblePages
   } = options;
 
   // ==========================================================================
