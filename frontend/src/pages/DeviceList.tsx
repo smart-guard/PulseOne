@@ -1,3 +1,8 @@
+// ============================================================================
+// frontend/src/pages/DeviceList.tsx 
+// 📝 디바이스 목록 페이지 - 완전 수정된 최종 버전
+// ============================================================================
+
 import React, { useState, useEffect } from 'react';
 import DeviceDetailModal from '../components/modals/DeviceDetailModal';
 import { Pagination } from '../components/common/Pagination';
@@ -6,6 +11,7 @@ import { DeviceApiService } from '../api/services/deviceApi';
 import { DEVICE_LIST_PAGINATION } from '../constants/pagination';
 import '../styles/base.css';
 import '../styles/device-list.css';
+import '../styles/pagination.css'; // 🔥 페이징 전용 CSS 추가
 
 interface Device {
   id: number;
@@ -303,14 +309,31 @@ const DeviceList: React.FC = () => {
 
   return (
     <div className="device-management-container">
-      {/* 페이지 헤더 */}
+      {/* 🔥 수정된 페이지 헤더 - 자동새로고침 통합 */}
       <div className="page-header">
         <div className="header-left">
           <h1 className="page-title">
             <i className="fas fa-network-wired"></i>
             디바이스 관리
           </h1>
-          <p className="subtitle">마지막 업데이트: {lastUpdate.toLocaleTimeString()}</p>
+          <div className="header-meta">
+            <span className="update-time">
+              마지막 업데이트: {lastUpdate.toLocaleTimeString()}
+            </span>
+            <div className="auto-refresh-inline">
+              <label className="refresh-toggle">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                />
+                <span className="refresh-text">
+                  <i className="fas fa-sync-alt"></i>
+                  30초 자동새로고침
+                </span>
+              </label>
+            </div>
+          </div>
         </div>
         <div className="page-actions">
           <button 
@@ -443,25 +466,14 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 디바이스 목록 - 헤더에 자동새로고침 통합 */}
+      {/* 🔥 수정된 디바이스 목록 - 헤더 간소화 */}
       <div className="device-list">
-        <div className="device-list-header">
-          <div className="device-list-title">
-            <h3>디바이스 목록</h3>
-            <div className="header-controls">
-              <span className="device-count">{filteredDevices.length}개</span>
-              <div className="auto-refresh-control">
-                <label className="refresh-label">
-                  <input
-                    type="checkbox"
-                    checked={autoRefresh}
-                    onChange={(e) => setAutoRefresh(e.target.checked)}
-                  />
-                  <i className="fas fa-sync-alt"></i>
-                  <span>30초 자동새로고침</span>
-                </label>
-              </div>
-            </div>
+        <div className="device-list-header-simple">
+          <div className="list-title-section">
+            <h3 className="list-title">디바이스 목록</h3>
+            <span className="device-count-badge">
+              {filteredDevices.length}개
+            </span>
           </div>
         </div>
 
@@ -656,7 +668,7 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 🔥 페이징에 className 추가 */}
+      {/* 🔥 수정된 페이징 컴포넌트 */}
       {filteredDevices.length > 0 && (
         <Pagination
           className="device-pagination"
@@ -665,7 +677,7 @@ const DeviceList: React.FC = () => {
           pageSize={pagination.pageSize}
           pageSizeOptions={DEVICE_LIST_PAGINATION.PAGE_SIZE_OPTIONS}
           showSizeChanger={true}
-          showQuickJumper={true}
+          showQuickJumper={false}
           showTotal={true}
           onChange={pagination.goToPage}
           onShowSizeChange={pagination.changePageSize}
