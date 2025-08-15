@@ -62,7 +62,7 @@ const DeviceList: React.FC = () => {
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // 🔥 공통 페이징 훅 사용 - 상수에서 설정값 가져오기
+  // 🔥 공통 페이징 훅 사용
   const pagination = usePagination({
     initialPageSize: DEVICE_LIST_PAGINATION.DEFAULT_PAGE_SIZE,
     totalCount: filteredDevices.length,
@@ -99,18 +99,12 @@ const DeviceList: React.FC = () => {
       setIsLoading(true);
       setError(null);
       
-      console.log('🔍 디바이스 목록 조회 시작...');
-      
-      // 🔥 공통 API 서비스 사용
       const response = await DeviceApiService.getDevices({
         page: 1,
-        limit: 1000 // 일단 전체 조회 후 프론트에서 페이징
+        limit: 1000
       });
       
-      console.log('🔍 API 응답:', response);
-      
       if (response.success && Array.isArray(response.data)) {
-        // 백엔드 필드명을 프론트엔드 필드명으로 매핑
         const transformedDevices = response.data.map(device => ({
           id: device.id,
           name: device.name,
@@ -133,11 +127,9 @@ const DeviceList: React.FC = () => {
           uptime: calculateUptime(device.created_at)
         }));
         
-        console.log('✅ 변환된 디바이스 데이터:', transformedDevices);
         setDevices(transformedDevices);
         setLastUpdate(new Date());
       } else {
-        console.warn('⚠️ 예상과 다른 API 응답:', response);
         setDevices([]);
         setError('올바른 형식의 데이터를 받지 못했습니다.');
       }
@@ -152,11 +144,9 @@ const DeviceList: React.FC = () => {
     }
   };
 
-  // 컴포넌트 마운트 시 디바이스 목록 조회
   useEffect(() => {
     fetchDevices();
     
-    // 자동 새로고침 설정 (30초마다)
     const interval = setInterval(() => {
       if (autoRefresh && !isModalOpen) {
         fetchDevices();
@@ -170,7 +160,6 @@ const DeviceList: React.FC = () => {
   useEffect(() => {
     let filtered = [...devices];
 
-    // 검색어 필터
     if (searchTerm) {
       filtered = filtered.filter(device => 
         device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -179,17 +168,14 @@ const DeviceList: React.FC = () => {
       );
     }
 
-    // 상태 필터
     if (statusFilter !== 'all') {
       filtered = filtered.filter(device => device.status === statusFilter);
     }
 
-    // 프로토콜 필터
     if (protocolFilter !== 'all') {
       filtered = filtered.filter(device => device.protocol_type === protocolFilter);
     }
 
-    // 연결 상태 필터
     if (connectionFilter !== 'all') {
       filtered = filtered.filter(device => device.connection_status === connectionFilter);
     }
@@ -197,12 +183,10 @@ const DeviceList: React.FC = () => {
     setFilteredDevices(filtered);
   }, [devices, searchTerm, statusFilter, protocolFilter, connectionFilter]);
 
-  // 🔥 디바이스 액션 처리 - API 서비스 사용
+  // 🔥 디바이스 액션 처리
   const handleDeviceAction = async (device: Device, action: string) => {
     setIsProcessing(true);
     try {
-      console.log(`🔧 디바이스 ${action} 실행:`, device.name);
-      
       switch (action) {
         case 'start':
           await DeviceApiService.enableDevice(device.id);
@@ -220,8 +204,7 @@ const DeviceList: React.FC = () => {
           throw new Error(`알 수 없는 액션: ${action}`);
       }
       
-      console.log(`✅ 디바이스 ${action} 성공`);
-      await fetchDevices(); // 상태 새로고침
+      await fetchDevices();
     } catch (err) {
       console.error(`❌ 디바이스 ${action} 오류:`, err);
       setError(`디바이스 ${action} 중 오류가 발생했습니다.`);
@@ -230,7 +213,36 @@ const DeviceList: React.FC = () => {
     }
   };
 
-  // 모달 관련 핸들러
+  // 🔥 일괄 액션 처리
+  const handleBulkAction = async (action: string) => {
+    if (selectedDevices.length === 0) return;
+    
+    setIsProcessing(true);
+    try {
+      const promises = selectedDevices.map(deviceId => {
+        switch (action) {
+          case 'start':
+            return DeviceApiService.enableDevice(deviceId);
+          case 'stop':
+            return DeviceApiService.disableDevice(deviceId);
+          case 'restart':
+            return DeviceApiService.restartDevice(deviceId);
+          default:
+            return Promise.resolve();
+        }
+      });
+      
+      await Promise.all(promises);
+      setSelectedDevices([]);
+      await fetchDevices();
+    } catch (err) {
+      console.error(`❌ 일괄 ${action} 오류:`, err);
+      setError(`일괄 ${action} 중 오류가 발생했습니다.`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleModalOpen = (device: Device | null, mode: 'view' | 'edit' | 'create') => {
     setSelectedDevice(device);
     setModalMode(mode);
@@ -253,10 +265,10 @@ const DeviceList: React.FC = () => {
   };
 
   const handleSelectAll = () => {
-    if (selectedDevices.length === filteredDevices.length) {
+    if (selectedDevices.length === paginatedDevices.length && paginatedDevices.length > 0) {
       setSelectedDevices([]);
     } else {
-      setSelectedDevices(filteredDevices.map(device => device.id));
+      setSelectedDevices(paginatedDevices.map(device => device.id));
     }
   };
 
@@ -270,18 +282,15 @@ const DeviceList: React.FC = () => {
     disconnected: devices?.filter(d => d.connection_status === 'disconnected')?.length || 0
   };
 
-  // 고유 프로토콜 목록
   const protocols = devices && devices.length > 0 
     ? [...new Set(devices.map(device => device.protocol_type))]
     : [];
 
-  // 🔥 페이징된 디바이스 목록
   const paginatedDevices = filteredDevices.slice(
     (pagination.currentPage - 1) * pagination.pageSize,
     pagination.currentPage * pagination.pageSize
   );
 
-  // 로딩 상태
   if (isLoading && devices.length === 0) {
     return (
       <div className="loading-container">
@@ -324,7 +333,7 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 🔥 통계 패널 - 올바른 CSS 클래스 사용 */}
+      {/* 통계 패널 */}
       <div className="stats-panel">
         <div className="stat-card status-running">
           <div className="stat-value">{stats.total}</div>
@@ -344,7 +353,7 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 필터 패널 - device-list.css 스타일 사용 */}
+      {/* 필터 패널 */}
       <div className="filter-panel">
         <div className="filter-row">
           <div className="filter-group flex-1">
@@ -401,7 +410,7 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 공통 제어 패널 - base.css 스타일 사용 */}
+      {/* 공통 제어 패널 */}
       <div className="control-panel">
         <div className="control-section">
           <div className="selected-info">
@@ -415,10 +424,18 @@ const DeviceList: React.FC = () => {
           <div className="control-buttons">
             {selectedDevices.length > 0 && (
               <>
-                <button className="btn btn-success btn-sm" disabled={isProcessing}>
+                <button 
+                  className="btn btn-success btn-sm" 
+                  disabled={isProcessing}
+                  onClick={() => handleBulkAction('start')}
+                >
                   <i className="fas fa-play"></i> 일괄 시작
                 </button>
-                <button className="btn btn-warning btn-sm" disabled={isProcessing}>
+                <button 
+                  className="btn btn-warning btn-sm" 
+                  disabled={isProcessing}
+                  onClick={() => handleBulkAction('stop')}
+                >
                   <i className="fas fa-pause"></i> 일괄 중지
                 </button>
               </>
@@ -438,7 +455,7 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 디바이스 목록 - device-list.css 스타일 사용 */}
+      {/* 🔥 디바이스 목록 - 기존 Table 구조로 복원 */}
       <div className="device-list">
         <div className="device-list-header">
           <div className="device-list-title">
@@ -447,37 +464,39 @@ const DeviceList: React.FC = () => {
           </div>
         </div>
 
-        <table className="device-table">
-          <thead className="device-table-header">
-            <tr>
-              <th>
-                <input
-                  type="checkbox"
-                  checked={selectedDevices.length === paginatedDevices.length && paginatedDevices.length > 0}
-                  onChange={handleSelectAll}
-                />
-              </th>
-              <th>디바이스 정보</th>
-              <th>프로토콜</th>
-              <th>상태</th>
-              <th>연결 정보</th>
-              <th>데이터 정보</th>
-              <th>성능 정보</th>
-              <th>네트워크 정보</th>
-              <th>작업</th>
-            </tr>
-          </thead>
-          <tbody>
+        {/* 🔥 기존 CSS와 정확히 매칭되는 구조 */}
+        <div className="device-table">
+          {/* 헤더 - 기존 CSS .device-table-header 클래스 사용 */}
+          <div className="device-table-header">
+            <div>
+              <input
+                type="checkbox"
+                checked={selectedDevices.length === paginatedDevices.length && paginatedDevices.length > 0}
+                onChange={handleSelectAll}
+              />
+            </div>
+            <div>디바이스 정보</div>
+            <div>프로토콜</div>
+            <div>상태</div>
+            <div>연결 정보</div>
+            <div>데이터 정보</div>
+            <div>성능 정보</div>
+            <div>네트워크 정보</div>
+            <div>작업</div>
+          </div>
+
+          {/* 바디 - 스크롤 가능한 영역 */}
+          <div className="device-table-body" style={{ maxHeight: '500px', overflowY: 'auto' }}>
             {paginatedDevices.map((device) => (
-              <tr key={device.id} className="device-table-row">
-                <td className="device-table-cell">
+              <div key={device.id} className="device-table-row">
+                <div className="device-table-cell">
                   <input
                     type="checkbox"
                     checked={selectedDevices.includes(device.id)}
                     onChange={() => handleDeviceSelect(device.id)}
                   />
-                </td>
-                <td className="device-table-cell">
+                </div>
+                <div className="device-table-cell">
                   <div className="device-info">
                     <div className="device-icon">
                       <i className="fas fa-microchip"></i>
@@ -493,8 +512,8 @@ const DeviceList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                </td>
-                <td className="device-table-cell">
+                </div>
+                <div className="device-table-cell">
                   <span className={`protocol-badge ${
                     device.protocol_type === 'MODBUS_TCP' ? 'bg-blue-100 text-blue-800' :
                     device.protocol_type === 'MQTT' ? 'bg-green-100 text-green-800' :
@@ -503,15 +522,15 @@ const DeviceList: React.FC = () => {
                   }`}>
                     {device.protocol_type}
                   </span>
-                </td>
-                <td className="device-table-cell">
+                </div>
+                <div className="device-table-cell">
                   <span className={`status status-${device.connection_status || 'unknown'}`}>
                     <span className={`status-dot status-dot-${device.connection_status || 'unknown'}`}></span>
                     {device.connection_status === 'connected' ? '연결됨' : 
-                     device.connection_status === 'disconnected' ? '연결 안됨' : '알 수 없음'}
+                    device.connection_status === 'disconnected' ? '연결 안됨' : '알 수 없음'}
                   </span>
-                </td>
-                <td className="device-table-cell">
+                </div>
+                <div className="device-table-cell">
                   <div>
                     <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
                       {device.site_name || 'Unknown Site'}
@@ -520,8 +539,8 @@ const DeviceList: React.FC = () => {
                       마지막 통신: {device.last_seen ? new Date(device.last_seen).toLocaleString() : 'N/A'}
                     </div>
                   </div>
-                </td>
-                <td className="device-table-cell data-info">
+                </div>
+                <div className="device-table-cell data-info">
                   <div>
                     <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
                       {device.data_points_count || 0}개 포인트
@@ -530,8 +549,8 @@ const DeviceList: React.FC = () => {
                       폴링: {device.polling_interval || 1000}ms
                     </div>
                   </div>
-                </td>
-                <td className="device-table-cell performance-info">
+                </div>
+                <div className="device-table-cell performance-info">
                   <div>
                     <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
                       응답: {device.response_time || 0}ms
@@ -540,8 +559,8 @@ const DeviceList: React.FC = () => {
                       오류: {device.error_count || 0}회
                     </div>
                   </div>
-                </td>
-                <td className="device-table-cell network-info">
+                </div>
+                <div className="device-table-cell network-info">
                   <div>
                     <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
                       가동시간
@@ -550,8 +569,8 @@ const DeviceList: React.FC = () => {
                       {device.uptime || 'N/A'}
                     </div>
                   </div>
-                </td>
-                <td className="device-table-cell">
+                </div>
+                <div className="device-table-cell">
                   <div style={{ display: 'flex', gap: '0.25rem' }}>
                     <button 
                       className="btn btn-sm btn-outline"
@@ -567,7 +586,7 @@ const DeviceList: React.FC = () => {
                     >
                       <i className="fas fa-edit"></i>
                     </button>
-                    {device.status === 'running' ? (
+                    {device.connection_status === 'connected' ? (
                       <button 
                         className="btn btn-sm btn-warning"
                         onClick={() => handleDeviceAction(device, 'stop')}
@@ -587,13 +606,12 @@ const DeviceList: React.FC = () => {
                       </button>
                     )}
                   </div>
-                </td>
-              </tr>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
-
       {/* 빈 상태 */}
       {filteredDevices.length === 0 && !isLoading && (
         <div className="empty-state">
@@ -603,7 +621,7 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 🔥 공통 페이지네이션 컴포넌트 사용 - 상수 활용 */}
+      {/* 페이지네이션 */}
       {filteredDevices.length > 0 && (
         <Pagination
           current={pagination.currentPage}

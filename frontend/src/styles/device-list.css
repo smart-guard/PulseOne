@@ -1,12 +1,21 @@
-/* device-list.css - 디바이스 목록 관리 페이지 전용 스타일 */
+/* 🚨 긴급 레이아웃 복구 - device-list.css에 추가 */
 
-/* 메인 컨테이너 */
+/* 1. 기본 컨테이너 구조 복구 */
 .device-management-container {
   width: 100%;
   max-width: none;
+  padding: var(--space-6);
 }
 
-/* 필터 및 검색 패널 */
+/* 2. 통계 패널 Grid 복구 */
+.stats-panel {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+/* 3. 필터 패널 복구 */
 .filter-panel {
   background: white;
   border-radius: var(--radius-lg);
@@ -17,126 +26,13 @@
 }
 
 .filter-row {
-  display: flex;
+  display: flex !important;
   gap: var(--space-4);
   align-items: end;
   flex-wrap: wrap;
 }
 
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  min-width: 150px;
-}
-
-.filter-group.flex-1 {
-  flex: 1;
-  min-width: 250px;
-}
-
-.filter-group label {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--neutral-700);
-  margin-bottom: var(--space-1);
-}
-
-.filter-select {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--neutral-300);
-  border-radius: var(--radius-md);
-  background-color: white;
-  font-size: var(--text-sm);
-  transition: border-color 0.2s, box-shadow 0.2s;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right var(--space-2) center;
-  background-repeat: no-repeat;
-  background-size: 1.5em 1.5em;
-  padding-right: 2.5rem;
-}
-
-.filter-select:focus {
-  outline: none;
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-100);
-}
-
-.search-input-container {
-  position: relative;
-}
-
-.search-input {
-  width: 100%;
-  padding: var(--space-2) var(--space-3) var(--space-2) 2.25rem;
-  border: 1px solid var(--neutral-300);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-100);
-}
-
-.search-icon {
-  position: absolute;
-  left: var(--space-3);
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--neutral-500);
-  pointer-events: none;
-}
-
-/* 통계 패널 */
-.stats-panel {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
-.stat-card {
-  background: white;
-  padding: var(--space-5);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  text-align: center;
-  border-top: 4px solid var(--neutral-200);
-  border: 1px solid var(--neutral-200);
-}
-
-.stat-card.status-running {
-  border-top-color: var(--success-500);
-}
-
-.stat-card.status-paused {
-  border-top-color: var(--warning-500);
-}
-
-.stat-card.status-stopped {
-  border-top-color: var(--neutral-400);
-}
-
-.stat-card.status-error {
-  border-top-color: var(--error-500);
-}
-
-.stat-value {
-  font-size: var(--text-3xl);
-  font-weight: 700;
-  color: var(--neutral-800);
-  line-height: 1;
-}
-
-.stat-label {
-  font-size: var(--text-sm);
-  color: var(--neutral-500);
-  margin-top: var(--space-1);
-}
-
-/* 디바이스 테이블 */
+/* 4. 디바이스 리스트 컨테이너 복구 */
 .device-list {
   background: white;
   border-radius: var(--radius-lg);
@@ -145,40 +41,14 @@
   overflow: hidden;
 }
 
-.device-list-header {
-  padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--neutral-200);
-  background-color: var(--neutral-50);
-}
-
-.device-list-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.device-list-title h3 {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--neutral-700);
-}
-
-.device-count {
-  font-size: var(--text-sm);
-  color: var(--neutral-500);
-  background: var(--neutral-100);
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-xl);
-}
-
+/* 5. 디바이스 테이블 구조 강제 적용 */
 .device-table {
   width: 100%;
 }
 
 .device-table-header {
-  display: grid;
-  grid-template-columns: 50px 2fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 120px;
+  display: grid !important;
+  grid-template-columns: 50px 2fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 120px !important;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
   background-color: var(--neutral-50);
@@ -188,315 +58,57 @@
   color: var(--neutral-700);
 }
 
-.device-table-row {
-  display: grid;
-  grid-template-columns: 50px 2fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 120px;
+.device-table-body {
+  max-height: 600px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.device-table-body .device-table-row {
+  display: grid !important;
+  grid-template-columns: 50px 2fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 120px !important;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--neutral-100);
   transition: background-color 0.2s;
 }
 
-.device-table-row:hover {
+.device-table-body .device-table-row:hover {
   background-color: var(--neutral-50);
 }
 
-.device-table-row:last-child {
-  border-bottom: none;
-}
-
 .device-table-cell {
-  display: flex;
-  align-items: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   font-size: var(--text-sm);
+  min-height: 60px;
 }
 
-/* 디바이스 정보 */
-.device-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+/* 디바이스 정보 셀만 왼쪽 정렬 */
+.device-table-cell:nth-child(2) {
+  justify-content: flex-start !important;
 }
 
-.device-icon {
-  width: 2.5rem;
-  height: 2.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background-color: var(--neutral-100);
-  font-size: var(--text-lg);
+/* 6. 페이지 헤더 복구 */
+.page-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--neutral-200);
 }
 
-.device-name {
-  font-weight: 600;
-  color: var(--neutral-800);
-  margin-bottom: var(--space-1);
+/* 7. 제어 패널 복구 */
+.control-panel {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: var(--space-8);
 }
-
-.device-details {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  margin-bottom: var(--space-1);
-}
-
-.device-type {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-  background-color: var(--neutral-100);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-}
-
-.device-manufacturer {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-}
-
-/* 프로토콜 배지 */
-.protocol-badge {
-  font-size: var(--text-xs);
-  font-weight: 500;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-}
-
-.bg-blue-100 { background-color: var(--primary-50); }
-.text-blue-800 { color: var(--primary-700); }
-.bg-green-100 { background-color: var(--success-50); }
-.text-green-800 { color: var(--success-700); }
-.bg-purple-100 { background-color: #f3e8ff; }
-.text-purple-800 { color: #6b21a8; }
-.bg-orange-100 { background-color: var(--warning-50); }
-.text-orange-800 { color: var(--warning-700); }
-.bg-indigo-100 { background-color: #e0e7ff; }
-.text-indigo-800 { color: #3730a3; }
-.bg-gray-100 { background-color: var(--neutral-100); }
-.text-gray-800 { color: var(--neutral-700); }
-
-/* 상태 표시 */
-.uptime {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-  margin-top: var(--space-1);
-}
-
-/* 연결 상태 */
-.connection-status {
-  font-weight: 500;
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-1);
-}
-
-.status-connected { color: var(--success-600); }
-.status-disconnected { color: var(--error-600); }
-
-.communication-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.communication-info .text-xs {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-}
-
-/* 위치 정보 */
-.location-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.factory-name {
-  font-weight: 500;
-  color: var(--neutral-800);
-  margin-bottom: var(--space-1);
-}
-
-.location-detail {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-}
-
-/* 네트워크 정보 */
-.network-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.ip-address {
-  font-weight: 500;
-  color: var(--neutral-800);
-  font-family: var(--font-family-mono);
-}
-
-.serial-number,
-.firmware {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-}
-
-/* 데이터 정보 */
-.data-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.data-points {
-  font-weight: 500;
-  color: var(--neutral-800);
-}
-
-.polling-interval {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-}
-
-/* 성능 정보 */
-.performance-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.performance-info .text-xs {
-  font-size: var(--text-xs);
-  color: var(--neutral-500);
-}
-
-/* 디바이스 제어 버튼 */
-.device-controls {
-  display: flex;
-  justify-content: center;
-}
-
-.device-controls .control-buttons {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.device-controls .btn {
-  padding: var(--space-2) var(--space-2);
-  min-width: 2rem;
-}
-
-/* 빈 상태 */
-.empty-state {
-  padding: var(--space-16) var(--space-8);
-  text-align: center;
-  color: var(--neutral-500);
-}
-
-.empty-icon {
-  font-size: 3rem;
-  color: var(--neutral-300);
-  margin-bottom: var(--space-4);
-}
-
-.empty-title {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--neutral-700);
-  margin-bottom: var(--space-2);
-}
-
-.empty-description {
-  font-size: var(--text-sm);
-  color: var(--neutral-500);
-}
-
-/* 반응형 디자인 */
-@media (max-width: 1400px) {
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 50px 2fr 1fr 1fr 1.5fr 1fr 100px;
-  }
-  
-  .network-info {
-    display: none;
-  }
-}
-
-@media (max-width: 1200px) {
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 50px 2fr 1fr 1fr 1fr 100px;
-  }
-  
-  .performance-info {
-    display: none;
-  }
-}
-
-@media (max-width: 992px) {
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 50px 2fr 1fr 1fr 100px;
-  }
-  
-  .data-info {
-    display: none;
-  }
-}
-
-@media (max-width: 768px) {
-  .filter-row {
-    flex-direction: column;
-  }
-  
-  .filter-group {
-    min-width: auto;
-  }
-  
-  .stats-panel {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 1fr;
-    gap: var(--space-2);
-  }
-  
-  .device-table-header {
-    display: none;
-  }
-  
-  .device-table-row {
-    display: block;
-    padding: var(--space-4);
-    border: 1px solid var(--neutral-200);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-3);
-  }
-  
-  .device-table-cell {
-    display: block;
-    margin-bottom: var(--space-3);
-    border-bottom: 1px solid var(--neutral-100);
-    padding-bottom: var(--space-2);
-  }
-  
-  .device-table-cell:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-  }
-  
-  .device-table-cell::before {
-    content: attr(data-label);
-    font-weight: 600;
-    color: var(--neutral-700);
-    display: block;
-    margin-bottom: var(--space-1);
-    font-size: var(--text-xs);
-    text-transform: uppercase;
-  }
-}
-
-
