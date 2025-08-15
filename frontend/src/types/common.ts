@@ -1,3 +1,7 @@
+// ============================================================================
+// frontend/src/types/common.ts - 중복 상수 제거, 인터페이스만 유지
+// ============================================================================
+
 export interface ApiResponse<T = any> {
   success: boolean;
   data: T;
@@ -27,6 +31,12 @@ export interface PaginatedResponse<T> {
 
 export interface PaginatedApiResponse<T> extends ApiResponse<PaginatedResponse<T>> {}
 
+export interface BulkActionRequest<T = any> {
+  action: string;
+  ids: string[];
+  data?: T;
+}
+
 export interface BulkActionResponse {
   success: boolean;
   processed_count: number;
@@ -37,13 +47,58 @@ export interface BulkActionResponse {
   }>;
 }
 
-export const DEFAULT_PAGINATION_CONFIG = {
-  defaultPageSize: 50,
-  pageSizeOptions: [25, 50, 100, 200],
-  showSizeChanger: true,
-  showQuickJumper: true,
-  showTotal: true
-};
+// ============================================================================
+// 🆕 페이지네이션 훅 관련 인터페이스 (누락된 부분 추가)
+// ============================================================================
+
+/**
+ * 페이지네이션 훅 상태
+ */
+export interface PaginationHookState {
+  currentPage: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
+
+/**
+ * 페이지네이션 훅 반환값
+ */
+export interface PaginationHookReturn extends PaginationHookState {
+  hasNext: boolean;
+  hasPrev: boolean;
+  startIndex: number;
+  endIndex: number;
+  goToPage: (page: number) => void;
+  changePageSize: (size: number) => void;
+  goToFirst: () => void;
+  goToLast: () => void;
+  goToNext: () => void;
+  goToPrev: () => void;
+  reset: () => void;
+  getPageNumbers: (maxVisible?: number) => number[];
+}
+
+/**
+ * 페이지네이션 컴포넌트 Props
+ */
+export interface PaginationProps {
+  current: number;
+  total: number;
+  pageSize: number;
+  pageSizeOptions?: number[];
+  showSizeChanger?: boolean;
+  showQuickJumper?: boolean;
+  showTotal?: boolean;
+  onChange?: (page: number, pageSize: number) => void;
+  onShowSizeChange?: (page: number, pageSize: number) => void;
+  className?: string;
+  size?: 'small' | 'default' | 'large';
+}
+
+// ============================================================================
+// 🗑️ 중복 제거: DEFAULT_PAGINATION_CONFIG는 constants/pagination.ts에서만 관리
+// ============================================================================
 
 export const LOADING_STATES = {
   IDLE: 'idle' as const,
