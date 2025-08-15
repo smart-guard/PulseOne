@@ -1,0 +1,158 @@
+/* ============================================================================
+   frontend/src/styles/pagination.css 
+   📝 페이징 컴포넌트 전용 스타일 - 완전히 새로 작성
+   ============================================================================ */
+
+/* 🔥 페이징 전체 래퍼 - 3분할 레이아웃 */
+.pagination-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 16px 24px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0 0 8px 8px;
+  margin-top: 8px;
+  min-height: 60px;
+}
+
+/* 🔥 왼쪽: 페이지 정보 (1-8 / 8개) */
+.pagination-info {
+  flex: 1;
+  text-align: left;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 🔥 중앙: 페이지 네비게이션 버튼들 */
+.pagination-navigation {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pagination-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.pagination-button:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.pagination-button:disabled {
+  background: #f9fafb;
+  color: #d1d5db;
+  cursor: not-allowed;
+  border-color: #e5e7eb;
+}
+
+.pagination-button.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.pagination-button.active:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+/* 🔥 오른쪽: 페이지 크기 선택기 */
+.pagination-size-selector {
+  flex: 1;
+  text-align: right;
+}
+
+.page-size-select {
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+}
+
+.page-size-select:hover {
+  border-color: #9ca3af;
+}
+
+.page-size-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* 🔥 반응형 디자인 */
+@media (max-width: 768px) {
+  .pagination-wrapper {
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  
+  .pagination-info,
+  .pagination-size-selector {
+    flex: none;
+    text-align: center;
+  }
+  
+  .pagination-navigation {
+    order: -1;
+  }
+}
+
+/* 🔥 크기 변형 */
+.pagination-wrapper.pagination-small .pagination-button {
+  min-width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.pagination-wrapper.pagination-large .pagination-button {
+  min-width: 40px;
+  height: 40px;
+  font-size: 16px;
+}
+
+/* 🔥 디바이스 목록 페이지 전용 스타일 */
+.device-pagination {
+  border-top: 2px solid #f3f4f6;
+  background: #fafafa;
+}
+
+.device-pagination .pagination-info {
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.device-pagination .pagination-button {
+  border-color: #d1d5db;
+}
+
+.device-pagination .pagination-button:hover:not(:disabled) {
+  border-color: #6b7280;
+  background: #f3f4f6;
+}
