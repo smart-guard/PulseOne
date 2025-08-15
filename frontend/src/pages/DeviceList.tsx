@@ -189,6 +189,7 @@ const DeviceList: React.FC = () => {
     try {
       switch (action) {
         case 'start':
+        case 'pause':
           await DeviceApiService.enableDevice(device.id);
           break;
         case 'stop':
@@ -410,9 +411,9 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 공통 제어 패널 */}
-      <div className="control-panel">
-        <div className="control-section">
+      {/* 🔥 간소화된 제어 패널 - 한 줄로 */}
+      <div className="compact-control-panel">
+        <div className="control-left">
           <div className="selected-info">
             <input
               type="checkbox"
@@ -421,46 +422,46 @@ const DeviceList: React.FC = () => {
             />
             <span>{selectedDevices.length}개 선택됨</span>
           </div>
-          <div className="control-buttons">
-            {selectedDevices.length > 0 && (
-              <>
-                <button 
-                  className="btn btn-success btn-sm" 
-                  disabled={isProcessing}
-                  onClick={() => handleBulkAction('start')}
-                >
-                  <i className="fas fa-play"></i> 일괄 시작
-                </button>
-                <button 
-                  className="btn btn-warning btn-sm" 
-                  disabled={isProcessing}
-                  onClick={() => handleBulkAction('stop')}
-                >
-                  <i className="fas fa-pause"></i> 일괄 중지
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="control-section">
-          <div className="section-title">자동 새로고침</div>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
-            <span className="text-sm">30초마다 자동 업데이트</span>
-          </label>
+          {selectedDevices.length > 0 && (
+            <div className="control-buttons">
+              <button 
+                className="btn btn-success btn-sm" 
+                disabled={isProcessing}
+                onClick={() => handleBulkAction('start')}
+              >
+                <i className="fas fa-play"></i> 일괄 시작
+              </button>
+              <button 
+                className="btn btn-warning btn-sm" 
+                disabled={isProcessing}
+                onClick={() => handleBulkAction('stop')}
+              >
+                <i className="fas fa-pause"></i> 일괄 중지
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 🔥 디바이스 목록 - 완전히 수정된 구조 */}
+      {/* 🔥 디바이스 목록 - 헤더에 자동새로고침 통합 */}
       <div className="device-list">
         <div className="device-list-header">
           <div className="device-list-title">
             <h3>디바이스 목록</h3>
-            <span className="device-count">{filteredDevices.length}개</span>
+            <div className="header-controls">
+              <span className="device-count">{filteredDevices.length}개</span>
+              <div className="auto-refresh-control">
+                <label className="refresh-label">
+                  <input
+                    type="checkbox"
+                    checked={autoRefresh}
+                    onChange={(e) => setAutoRefresh(e.target.checked)}
+                  />
+                  <i className="fas fa-sync-alt"></i>
+                  <span>30초 자동새로고침</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -506,7 +507,6 @@ const DeviceList: React.FC = () => {
                     </div>
                     <div>
                       <div className="device-name">{device.name}</div>
-                      {/* 🔥 세로 배치로 수정 */}
                       <div className="device-details">
                         <span className="device-type">{device.device_type || 'DEVICE'}</span>
                         <span className="device-manufacturer">{device.manufacturer || 'Unknown'}</span>
@@ -518,10 +518,11 @@ const DeviceList: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* 🚨 프로토콜 - 테두리 제거 */}
+                {/* 🚨 프로토콜 */}
                 <div className="device-table-cell">
                   <span className={`protocol-badge ${
                     device.protocol_type === 'MODBUS_TCP' ? 'bg-blue-100' :
+                    device.protocol_type === 'MODBUS_RTU' ? 'bg-orange-100' :
                     device.protocol_type === 'MQTT' ? 'bg-green-100' :
                     device.protocol_type === 'BACNET' ? 'bg-purple-100' :
                     'bg-orange-100'
@@ -530,7 +531,7 @@ const DeviceList: React.FC = () => {
                   </span>
                 </div>
                 
-                {/* 🚨 상태 - 테두리 제거 */}
+                {/* 🚨 상태 */}
                 <div className="device-table-cell">
                   <span className={`status status-${device.connection_status || 'unknown'}`}>
                     <span className={`status-dot status-dot-${device.connection_status || 'unknown'}`}></span>
@@ -587,43 +588,22 @@ const DeviceList: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* 작업 버튼 */}
+                {/* 🔥 수정된 작업 버튼 */}
                 <div className="device-table-cell">
-                  <div className="action-buttons">
-                    <button 
-                      className="btn btn-sm btn-outline"
-                      onClick={() => handleModalOpen(device, 'view')}
-                      title="보기"
-                    >
-                      <i className="fas fa-eye"></i>
-                    </button>
-                    <button 
-                      className="btn btn-sm btn-outline"
-                      onClick={() => handleModalOpen(device, 'edit')}
-                      title="편집"
-                    >
-                      <i className="fas fa-edit"></i>
-                    </button>
-                    <button 
-                      className="btn btn-sm btn-outline"
-                      onClick={() => handleDeviceAction(device, 'test')}
-                      disabled={isProcessing}
-                      title="테스트"
-                    >
-                      <i className="fas fa-vial"></i>
-                    </button>
+                  <div className="device-actions">
+                    {/* 시작/일시정지 버튼 (상태에 따라 토글) */}
                     {device.connection_status === 'connected' ? (
                       <button 
-                        className="btn btn-sm btn-warning"
-                        onClick={() => handleDeviceAction(device, 'stop')}
+                        className="action-btn btn-pause"
+                        onClick={() => handleDeviceAction(device, 'pause')}
                         disabled={isProcessing}
-                        title="정지"
+                        title="일시정지"
                       >
-                        <i className="fas fa-stop"></i>
+                        <i className="fas fa-pause"></i>
                       </button>
                     ) : (
                       <button 
-                        className="btn btn-sm btn-success"
+                        className="action-btn btn-start"
                         onClick={() => handleDeviceAction(device, 'start')}
                         disabled={isProcessing}
                         title="시작"
@@ -631,6 +611,34 @@ const DeviceList: React.FC = () => {
                         <i className="fas fa-play"></i>
                       </button>
                     )}
+                    
+                    {/* 정지 버튼 */}
+                    <button 
+                      className="action-btn btn-stop"
+                      onClick={() => handleDeviceAction(device, 'stop')}
+                      disabled={isProcessing}
+                      title="정지"
+                    >
+                      <i className="fas fa-stop"></i>
+                    </button>
+                    
+                    {/* 보기 버튼 */}
+                    <button 
+                      className="action-btn btn-view"
+                      onClick={() => handleModalOpen(device, 'view')}
+                      title="상세보기"
+                    >
+                      <i className="fas fa-eye"></i>
+                    </button>
+                    
+                    {/* 편집 버튼 */}
+                    <button 
+                      className="action-btn btn-edit"
+                      onClick={() => handleModalOpen(device, 'edit')}
+                      title="편집"
+                    >
+                      <i className="fas fa-edit"></i>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -648,9 +656,10 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 페이지네이션 */}
+      {/* 🔥 페이징에 className 추가 */}
       {filteredDevices.length > 0 && (
         <Pagination
+          className="device-pagination"
           current={pagination.currentPage}
           total={filteredDevices.length}
           pageSize={pagination.pageSize}
