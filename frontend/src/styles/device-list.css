@@ -1,114 +1,877 @@
-/* 🚨 긴급 레이아웃 복구 - device-list.css에 추가 */
+/* device-list.css - 디바이스 관리 페이지 (기존 프로젝트 스타일 유지) */
 
-/* 1. 기본 컨테이너 구조 복구 */
+/* ============================================
+   전체 컨테이너 및 기본 레이아웃
+   ============================================ */
+
 .device-management-container {
   width: 100%;
-  max-width: none;
+  max-width: 1400px;
+  margin: 0 auto;
   padding: var(--space-6);
+  min-height: calc(100vh - var(--topbar-height));
 }
 
-/* 2. 통계 패널 Grid 복구 */
+/* ============================================
+   페이지 헤더 개선
+   ============================================ */
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-6);
+  border-bottom: 2px solid var(--neutral-200);
+}
+
+.header-left {
+  flex: 1;
+}
+
+.page-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--neutral-800);
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.page-title i {
+  color: var(--primary-500);
+  font-size: 2.25rem;
+}
+
+.subtitle {
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
+  margin: 0;
+}
+
+.page-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+/* ============================================
+   에러 배너 스타일링
+   ============================================ */
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  background: var(--error-50);
+  border: 1px solid var(--error-200);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-6);
+  color: var(--error-700);
+}
+
+.error-banner i {
+  color: var(--error-500);
+  font-size: var(--text-lg);
+}
+
+.error-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--error-500);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
+}
+
+.error-close:hover {
+  background: var(--error-100);
+}
+
+/* ============================================
+   통계 패널 개선
+   ============================================ */
+
 .stats-panel {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
 }
 
-/* 3. 필터 패널 복구 */
-.filter-panel {
+.stat-card {
   background: white;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: var(--space-6);
-  margin-bottom: var(--space-6);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   border: 1px solid var(--neutral-200);
-}
-
-.filter-row {
-  display: flex !important;
-  gap: var(--space-4);
-  align-items: end;
-  flex-wrap: wrap;
-}
-
-/* 4. 디바이스 리스트 컨테이너 복구 */
-.device-list {
-  background: white;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--neutral-200);
+  transition: all 0.3s ease;
+  position: relative;
   overflow: hidden;
 }
 
-/* 5. 디바이스 테이블 구조 강제 적용 */
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary-500), var(--primary-400));
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.stat-card.status-running::before {
+  background: linear-gradient(90deg, var(--success-500), var(--success-400));
+}
+
+.stat-card.status-paused::before {
+  background: linear-gradient(90deg, var(--warning-500), var(--warning-400));
+}
+
+.stat-card.status-error::before {
+  background: linear-gradient(90deg, var(--error-500), var(--error-400));
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--neutral-800);
+  line-height: 1;
+  margin-bottom: var(--space-2);
+}
+
+.stat-label {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ============================================
+   필터 패널 완전 재설계
+   ============================================ */
+
+.filter-panel {
+  background: white;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: var(--space-6);
+  align-items: end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.filter-group.flex-1 {
+  grid-column: span 1;
+}
+
+.filter-group label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--neutral-700);
+  margin-bottom: var(--space-1);
+}
+
+.search-input-container {
+  position: relative;
+}
+
+.search-input {
+  width: 100%;
+  padding: var(--space-4) var(--space-4) var(--space-4) 3rem;
+  border: 2px solid var(--neutral-300);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
+  background: white;
+  transition: all 0.3s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+
+.search-icon {
+  position: absolute;
+  left: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--neutral-500);
+  font-size: var(--text-lg);
+  pointer-events: none;
+}
+
+.filter-select {
+  padding: var(--space-4);
+  border: 2px solid var(--neutral-300);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right var(--space-3) center;
+  background-repeat: no-repeat;
+  background-size: 1.25em 1.25em;
+  padding-right: 3rem;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+
+/* ============================================
+   제어 패널 재설계
+   ============================================ */
+
+.control-panel {
+  background: white;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--neutral-200);
+  padding: var(--space-8);
+  margin-bottom: var(--space-8);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+}
+
+.control-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-700);
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.selected-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--neutral-50);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--neutral-200);
+}
+
+.selected-info input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--neutral-300);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.selected-info span {
+  font-weight: 500;
+  color: var(--neutral-700);
+}
+
+.control-buttons {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* ============================================
+   🔥 Grid 기반 테이블 (시스템 상태 스타일 유지)
+   ============================================ */
+
+.device-list {
+  background: white;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--neutral-200);
+  overflow: hidden;
+  margin-bottom: var(--space-8);
+}
+
+.device-list-header {
+  padding: var(--space-6) var(--space-8);
+  background: linear-gradient(135deg, var(--neutral-50) 0%, white 100%);
+  border-bottom: 2px solid var(--neutral-200);
+}
+
+.device-list-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.device-list-title h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--neutral-800);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.device-list-title h3::before {
+  content: '🔧';
+  font-size: 1.25rem;
+}
+
+.device-count {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--primary-600);
+  background: var(--primary-50);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--primary-200);
+}
+
+/* 🔥 Grid 테이블 (시스템 상태 스타일 기반) */
 .device-table {
   width: 100%;
 }
 
 .device-table-header {
-  display: grid !important;
-  grid-template-columns: 50px 2fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 120px !important;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: 50px 200px 100px 90px 140px 120px 120px 100px 180px;
+  gap: var(--space-3);
   padding: var(--space-4) var(--space-6);
-  background-color: var(--neutral-50);
-  border-bottom: 1px solid var(--neutral-200);
-  font-weight: 600;
+  background: var(--neutral-50);
+  border-bottom: 2px solid var(--neutral-200);
   font-size: var(--text-sm);
+  font-weight: 700;
   color: var(--neutral-700);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.device-table-header > div {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-xs);
+  padding: var(--space-2) 0;
+}
+
+/* 🔥 체크박스와 디바이스 정보는 왼쪽 정렬 */
+.device-table-header > div:first-child,
+.device-table-header > div:nth-child(2) {
+  justify-content: flex-start;
+}
+
+/* 🔥 나머지는 중앙 정렬 */
+.device-table-header > div:not(:first-child):not(:nth-child(2)) {
+  justify-content: center;
+  text-align: center;
 }
 
 .device-table-body {
-  max-height: 600px;
+  max-height: 60vh;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-.device-table-body .device-table-row {
-  display: grid !important;
-  grid-template-columns: 50px 2fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 120px !important;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-6);
+.device-table-row {
+  display: grid;
+  grid-template-columns: 50px 200px 100px 90px 140px 120px 120px 100px 180px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--neutral-100);
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  background: white;
+  min-height: 50px;
+  align-items: center;
 }
 
-.device-table-body .device-table-row:hover {
-  background-color: var(--neutral-50);
+.device-table-row:hover {
+  background: var(--neutral-25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.device-table-row:nth-child(even) {
+  background: var(--neutral-25);
+}
+
+.device-table-row:nth-child(even):hover {
+  background: var(--neutral-50);
 }
 
 .device-table-cell {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  display: flex;
+  align-items: center;
   font-size: var(--text-sm);
-  min-height: 60px;
+  padding: 0;
 }
 
-/* 디바이스 정보 셀만 왼쪽 정렬 */
+/* 🔥 체크박스와 디바이스 정보는 왼쪽 정렬 */
+.device-table-cell:first-child,
 .device-table-cell:nth-child(2) {
-  justify-content: flex-start !important;
+  justify-content: flex-start;
 }
 
-/* 6. 페이지 헤더 복구 */
-.page-header {
-  display: flex !important;
-  justify-content: space-between !important;
-  align-items: center !important;
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--neutral-200);
+/* 🔥 나머지는 중앙 정렬 */
+.device-table-cell:not(:first-child):not(:nth-child(2)) {
+  justify-content: center;
+  text-align: center;
 }
 
-/* 7. 제어 패널 복구 */
-.control-panel {
-  background: white;
+/* ============================================
+   디바이스 정보 셀 스타일링 (알람이력 스타일)
+   ============================================ */
+
+.device-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.device-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--primary-500), var(--primary-400));
   border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.875rem;
+  flex-shrink: 0;
   box-shadow: var(--shadow-sm);
-  border: 1px solid var(--neutral-200);
-  padding: var(--space-6);
+}
+
+.device-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.device-name {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--neutral-800);
+  margin-bottom: 2px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-type-manufacturer {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+
+.device-type {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--primary-600);
+  background: var(--primary-50);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.device-manufacturer {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--neutral-600);
+  background: var(--neutral-100);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.device-endpoint {
+  font-size: 10px;
+  color: var(--neutral-500);
+  font-family: var(--font-family-mono);
+  background: var(--neutral-50);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   프로토콜 배지 (실시간 데이터 스타일)
+   ============================================ */
+
+.protocol-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.protocol-badge.bg-blue-100 {
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+
+.protocol-badge.bg-green-100 {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.protocol-badge.bg-purple-100 {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.protocol-badge.bg-orange-100 {
+  background: var(--warning-100);
+  color: var(--warning-700);
+}
+
+/* ============================================
+   상태 표시 (알람 스타일)
+   ============================================ */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.status-connected {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.status-disconnected {
+  background: var(--error-100);
+  color: var(--error-700);
+}
+
+.status-unknown {
+  background: var(--neutral-100);
+  color: var(--neutral-600);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: pulse 2s infinite;
+}
+
+.status-dot-connected {
+  background: var(--success-500);
+}
+
+.status-dot-disconnected {
+  background: var(--error-500);
+}
+
+.status-dot-unknown {
+  background: var(--neutral-400);
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ============================================
+   정보 그룹 스타일링
+   ============================================ */
+
+.info-group {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.info-title {
+  font-weight: 600;
+  color: var(--neutral-800);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.info-subtitle {
+  font-size: 10px;
+  color: var(--neutral-500);
+  line-height: 1.2;
+}
+
+/* ============================================
+   액션 버튼 (실시간 데이터 스타일)
+   ============================================ */
+
+.action-buttons {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.action-buttons .btn {
+  padding: var(--space-1) var(--space-2);
+  min-width: 28px;
+  height: 28px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.action-buttons .btn i {
+  font-size: 10px;
+}
+
+.action-buttons .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ============================================
+   빈 상태 스타일링
+   ============================================ */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16) var(--space-8);
+  text-align: center;
+  background: white;
+  border-radius: var(--radius-xl);
+  border: 2px dashed var(--neutral-300);
+  margin: var(--space-8) 0;
+}
+
+.empty-icon {
+  font-size: 4rem;
+  color: var(--neutral-400);
   margin-bottom: var(--space-6);
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: var(--space-8);
+}
+
+.empty-title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--neutral-600);
+  margin-bottom: var(--space-3);
+}
+
+.empty-description {
+  font-size: var(--text-base);
+  color: var(--neutral-500);
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+/* ============================================
+   로딩 상태 스타일링
+   ============================================ */
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16);
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 3rem;
+  height: 3rem;
+  border: 3px solid var(--neutral-200);
+  border-radius: 50%;
+  border-top-color: var(--primary-500);
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: var(--space-4);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-container p {
+  font-size: var(--text-lg);
+  color: var(--neutral-600);
+  font-weight: 500;
+}
+
+/* ============================================
+   커스텀 스크롤바
+   ============================================ */
+
+.device-table-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.device-table-body::-webkit-scrollbar-track {
+  background: var(--neutral-100);
+  border-radius: var(--radius-sm);
+}
+
+.device-table-body::-webkit-scrollbar-thumb {
+  background: var(--neutral-300);
+  border-radius: var(--radius-sm);
+  transition: background 0.2s;
+}
+
+.device-table-body::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-400);
+}
+
+/* ============================================
+   반응형 디자인
+   ============================================ */
+
+@media (max-width: 1200px) {
+  .device-management-container {
+    padding: var(--space-4);
+  }
+  
+  .stats-panel {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .filter-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+  
+  .control-panel {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+  
+  .device-table-header,
+  .device-table-row {
+    grid-template-columns: 40px 180px 80px 70px 120px;
+  }
+  
+  .device-table-cell:nth-child(n+6) {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+  
+  .stats-panel {
+    grid-template-columns: 1fr;
+  }
+  
+  .device-table-header,
+  .device-table-row {
+    grid-template-columns: 30px 1fr 80px;
+    gap: var(--space-1);
+  }
+  
+  .device-table-cell:nth-child(n+4) {
+    display: none;
+  }
+  
+  .device-info {
+    gap: var(--space-2);
+  }
+  
+  .device-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+  
+  .device-name {
+    font-size: var(--text-sm);
+  }
+}
+
+/* ============================================
+   애니메이션 효과
+   ============================================ */
+
+.device-table-row {
+  animation: fadeInUp 0.3s ease-out forwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-card {
+  animation: slideInDown 0.4s ease-out forwards;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

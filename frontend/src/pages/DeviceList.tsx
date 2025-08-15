@@ -82,7 +82,7 @@ const DeviceList: React.FC = () => {
       const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
       
       if (days > 0) {
-        return `${days}일 ${hours}시간 ${minutes}분`;
+        return `${days}일 ${hours}시간`;
       } else if (hours > 0) {
         return `${hours}시간 ${minutes}분`;
       } else {
@@ -455,7 +455,7 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 디바이스 목록 - 기존 Table 구조로 복원 */}
+      {/* 🔥 디바이스 목록 - 완전히 수정된 구조 */}
       <div className="device-list">
         <div className="device-list-header">
           <div className="device-list-title">
@@ -464,9 +464,9 @@ const DeviceList: React.FC = () => {
           </div>
         </div>
 
-        {/* 🔥 기존 CSS와 정확히 매칭되는 구조 */}
+        {/* 🚨 완전히 수정된 테이블 구조 */}
         <div className="device-table">
-          {/* 헤더 - 기존 CSS .device-table-header 클래스 사용 */}
+          {/* 헤더 */}
           <div className="device-table-header">
             <div>
               <input
@@ -485,10 +485,11 @@ const DeviceList: React.FC = () => {
             <div>작업</div>
           </div>
 
-          {/* 바디 - 스크롤 가능한 영역 */}
-          <div className="device-table-body" style={{ maxHeight: '500px', overflowY: 'auto' }}>
+          {/* 바디 */}
+          <div className="device-table-body">
             {paginatedDevices.map((device) => (
               <div key={device.id} className="device-table-row">
+                {/* 체크박스 */}
                 <div className="device-table-cell">
                   <input
                     type="checkbox"
@@ -496,6 +497,8 @@ const DeviceList: React.FC = () => {
                     onChange={() => handleDeviceSelect(device.id)}
                   />
                 </div>
+                
+                {/* 🚨 디바이스 정보 - 완전히 수정된 구조 */}
                 <div className="device-table-cell">
                   <div className="device-info">
                     <div className="device-icon">
@@ -503,26 +506,31 @@ const DeviceList: React.FC = () => {
                     </div>
                     <div>
                       <div className="device-name">{device.name}</div>
+                      {/* 🔥 세로 배치로 수정 */}
                       <div className="device-details">
                         <span className="device-type">{device.device_type || 'DEVICE'}</span>
                         <span className="device-manufacturer">{device.manufacturer || 'Unknown'}</span>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>
+                      <div className="device-endpoint">
                         {device.endpoint}
                       </div>
                     </div>
                   </div>
                 </div>
+                
+                {/* 🚨 프로토콜 - 테두리 제거 */}
                 <div className="device-table-cell">
                   <span className={`protocol-badge ${
-                    device.protocol_type === 'MODBUS_TCP' ? 'bg-blue-100 text-blue-800' :
-                    device.protocol_type === 'MQTT' ? 'bg-green-100 text-green-800' :
-                    device.protocol_type === 'BACNET' ? 'bg-purple-100 text-purple-800' :
-                    'bg-orange-100 text-orange-800'
+                    device.protocol_type === 'MODBUS_TCP' ? 'bg-blue-100' :
+                    device.protocol_type === 'MQTT' ? 'bg-green-100' :
+                    device.protocol_type === 'BACNET' ? 'bg-purple-100' :
+                    'bg-orange-100'
                   }`}>
                     {device.protocol_type}
                   </span>
                 </div>
+                
+                {/* 🚨 상태 - 테두리 제거 */}
                 <div className="device-table-cell">
                   <span className={`status status-${device.connection_status || 'unknown'}`}>
                     <span className={`status-dot status-dot-${device.connection_status || 'unknown'}`}></span>
@@ -530,48 +538,58 @@ const DeviceList: React.FC = () => {
                     device.connection_status === 'disconnected' ? '연결 안됨' : '알 수 없음'}
                   </span>
                 </div>
+                
+                {/* 연결 정보 */}
                 <div className="device-table-cell">
                   <div>
-                    <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
+                    <div className="info-title">
                       {device.site_name || 'Unknown Site'}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                      마지막 통신: {device.last_seen ? new Date(device.last_seen).toLocaleString() : 'N/A'}
+                    <div className="info-subtitle">
+                      마지막: {device.last_seen ? new Date(device.last_seen).toLocaleDateString() : 'N/A'}
                     </div>
                   </div>
                 </div>
+                
+                {/* 데이터 정보 */}
                 <div className="device-table-cell data-info">
                   <div>
-                    <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
+                    <div className="info-title">
                       {device.data_points_count || 0}개 포인트
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                    <div className="info-subtitle">
                       폴링: {device.polling_interval || 1000}ms
                     </div>
                   </div>
                 </div>
+                
+                {/* 성능 정보 */}
                 <div className="device-table-cell performance-info">
                   <div>
-                    <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
+                    <div className="info-title">
                       응답: {device.response_time || 0}ms
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                    <div className="info-subtitle">
                       오류: {device.error_count || 0}회
                     </div>
                   </div>
                 </div>
+                
+                {/* 네트워크 정보 */}
                 <div className="device-table-cell network-info">
                   <div>
-                    <div style={{ fontSize: '0.75rem', color: '#374151', fontWeight: '500' }}>
+                    <div className="info-title">
                       가동시간
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                    <div className="info-subtitle">
                       {device.uptime || 'N/A'}
                     </div>
                   </div>
                 </div>
+                
+                {/* 작업 버튼 */}
                 <div className="device-table-cell">
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  <div className="action-buttons">
                     <button 
                       className="btn btn-sm btn-outline"
                       onClick={() => handleModalOpen(device, 'view')}
@@ -585,6 +603,14 @@ const DeviceList: React.FC = () => {
                       title="편집"
                     >
                       <i className="fas fa-edit"></i>
+                    </button>
+                    <button 
+                      className="btn btn-sm btn-outline"
+                      onClick={() => handleDeviceAction(device, 'test')}
+                      disabled={isProcessing}
+                      title="테스트"
+                    >
+                      <i className="fas fa-vial"></i>
                     </button>
                     {device.connection_status === 'connected' ? (
                       <button 
@@ -612,6 +638,7 @@ const DeviceList: React.FC = () => {
           </div>
         </div>
       </div>
+
       {/* 빈 상태 */}
       {filteredDevices.length === 0 && !isLoading && (
         <div className="empty-state">
