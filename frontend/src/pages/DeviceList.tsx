@@ -1,27 +1,16 @@
+// ============================================================================
+// frontend/src/pages/DeviceList.tsx
+// 리팩토링된 디바이스 목록 페이지 (새 API 구조 적용)
+// ============================================================================
+
 import React, { useState, useEffect } from 'react';
 import DeviceDetailModal from '../components/modals/DeviceDetailModal';
 
-interface Device {
-  id: number;
-  name: string;
-  protocol_type: string;
-  device_type?: string;
-  endpoint: string;
-  is_enabled: boolean;
-  connection_status: string;
-  status: string;
-  last_seen?: string;
-  site_name?: string;
-  data_points_count?: number;
-  description?: string;
-  manufacturer?: string;
-  model?: string;
-  response_time?: number;
-  error_count?: number;
-  polling_interval?: number;
-  created_at?: string;
-  uptime?: string;
-}
+// 🆕 새로운 API 구조 사용
+import { DeviceApiService } from '../api/services/deviceApi';
+import { usePagination } from '../hooks/usePagination';
+import type { Device, DeviceListParams } from '../api/services/deviceApi';
+import type { ApiResponse, PaginatedApiResponse } from '../types/common';
 
 interface DeviceStats {
   total: number;
@@ -33,8 +22,10 @@ interface DeviceStats {
 }
 
 const DeviceList: React.FC = () => {
+  // ==========================================================================
+  // 상태 관리 (기존 유지)
+  // ==========================================================================
   const [devices, setDevices] = useState<Device[]>([]);
-  const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
   const [selectedDevices, setSelectedDevices] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -46,7 +37,7 @@ const DeviceList: React.FC = () => {
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
   const [connectionFilter, setConnectionFilter] = useState<string>('all');
 
-  // 실시간 업데이트 (모달 열림 상태에 따라 제어)
+  // 실시간 업데이트
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
 
@@ -55,164 +46,334 @@ const DeviceList: React.FC = () => {
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // API 호출 함수
+  // 🆕 페이지네이션 훅 사용
+  const pagination = usePagination({
+    initialPageSize: 10,
+    totalCount: devices.length
+  });
+
+  // ==========================================================================
+  // 🚀 새로운 API 호출 함수들
+  // ==========================================================================
+
+  /**
+   * 디바이스 목록 조회 (새 API 사용)
+   */
   const fetchDevices = async () => {
     try {
       setIsLoading(true);
       setError(null);
       
-      console.log('🔍 디바이스 목록 조회 시작...');
+      console.log('🔍 디바이스 목록 조회 시작... (새 API)');
       
-      const response = await fetch('http://localhost:3000/api/devices');
+      // 🆕 필터 파라미터 구성
+      const params: DeviceListParams = {
+        page: pagination.currentPage,
+        limit: pagination.pageSize,
+        ...(protocolFilter !== 'all' && { protocol_type: protocolFilter }),
+        ...(connectionFilter !== 'all' && { connection_status: connectionFilter }),
+        ...(searchTerm && { search: searchTerm })
+      };
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ API 응답 오류:', response.status, errorText);
-        throw new Error(`서버 오류 (${response.status}): ${errorText.substring(0, 200)}`);
-      }
+      // 🆕 새로운 API 서비스 사용
+      const response: PaginatedApiResponse<Device> = await DeviceApiService.getDevices(params);
       
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const responseText = await response.text();
-        console.error('❌ JSON이 아닌 응답:', responseText.substring(0, 500));
-        throw new Error('서버가 JSON 응답을 반환하지 않았습니다. 백엔드 서버가 실행 중인지 확인하세요.');
-      }
-      
-      const result = await response.json();
-      console.log('📋 디바이스 API 응답:', result);
-      
-      if (result.success && Array.isArray(result.data)) {
-        console.log('🔄 데이터 변환 시작...');
-        setDevices(result.data);
+      if (response.success) {
+        console.log('📋 디바이스 목록 조회 성공:', response.data);
+        setDevices(response.data.items);
+        
+        // 페이지네이션 정보 업데이트 (향후 구현)
+        // setPagination(response.data.pagination);
       } else {
-        console.warn('⚠️ 예상과 다른 응답 구조:', result);
-        setDevices([]);
+        throw new Error(response.error || '디바이스 목록 조회 실패');
       }
     } catch (error) {
       console.error('❌ 디바이스 목록 조회 실패:', error);
       setError(error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.');
-      setDevices([]);
+      
+      // 🔄 기존 방식으로 폴백 (개발 중)
+      await fetchDevicesFallback();
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 실시간 업데이트 제어 (모달이 열린 상태에서는 새로고침 중지)
-  useEffect(() => {
-    if (!autoRefresh || isModalOpen) return;
-
-    const interval = setInterval(() => {
-      if (!isModalOpen) { // 모달이 닫힌 상태에서만 업데이트
-        fetchDevices();
-        setLastUpdate(new Date());
-      }
-    }, 30000); // 30초 간격
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, isModalOpen]); // isModalOpen 의존성 추가
-
-  // 컴포넌트 마운트 시 초기 데이터 로드
-  useEffect(() => {
-    fetchDevices();
-  }, []);
-
-  // 디바이스 필터링
-  useEffect(() => {
-    let filtered = devices;
-
-    // 검색어 필터링
-    if (searchTerm) {
-      filtered = filtered.filter(device =>
-        device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        device.endpoint.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        device.protocol_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (device.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (device.model?.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    }
-
-    // 상태 필터링
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(device => device.status === statusFilter);
-    }
-
-    // 프로토콜 필터링
-    if (protocolFilter !== 'all') {
-      filtered = filtered.filter(device => device.protocol_type === protocolFilter);
-    }
-
-    // 연결 상태 필터링
-    if (connectionFilter !== 'all') {
-      filtered = filtered.filter(device => device.connection_status === connectionFilter);
-    }
-
-    setFilteredDevices(filtered);
-  }, [devices, searchTerm, statusFilter, protocolFilter, connectionFilter]);
-
-  // 모달 핸들러들
-  const handleModalOpen = (device: Device | null, mode: 'view' | 'edit' | 'create') => {
-    setSelectedDevice(device);
-    setModalMode(mode);
-    setIsModalOpen(true);
-    setAutoRefresh(false); // 모달이 열릴 때 자동 새로고침 중지
-  };
-
-  const handleModalClose = () => {
-    setIsModalOpen(false);
-    setSelectedDevice(null);
-    setAutoRefresh(true); // 모달이 닫힐 때 자동 새로고침 재개
-  };
-
-  const handleDeviceAction = async (device: Device, action: string) => {
-    setIsProcessing(true);
+  /**
+   * 폴백: 기존 방식으로 디바이스 조회
+   */
+  const fetchDevicesFallback = async () => {
     try {
-      console.log(`🔄 디바이스 ${action} 액션 실행:`, device.name);
-      // TODO: 실제 API 호출 구현
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log(`✅ 디바이스 ${action} 완료:`, device.name);
+      console.log('🔄 기존 API로 폴백...');
+      const response = await fetch('http://localhost:3000/api/devices');
       
-      // 액션 완료 후 데이터 새로고침
-      if (!isModalOpen) {
-        await fetchDevices();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success && Array.isArray(result.data)) {
+        setDevices(result.data);
+      } else {
+        setDevices([]);
       }
     } catch (error) {
-      console.error(`❌ 디바이스 ${action} 실패:`, error);
+      console.error('❌ 폴백 API도 실패:', error);
+      setDevices([]);
+    }
+  };
+
+  // ==========================================================================
+  // 🎮 디바이스 제어 함수들 (새 API 사용)
+  // ==========================================================================
+
+  /**
+   * 디바이스 활성화/비활성화
+   */
+  const handleDeviceToggle = async (device: Device) => {
+    try {
+      setIsProcessing(true);
+      
+      if (device.is_enabled) {
+        console.log('🔄 디바이스 비활성화:', device.name);
+        await DeviceApiService.disableDevice(device.id);
+      } else {
+        console.log('🔄 디바이스 활성화:', device.name);
+        await DeviceApiService.enableDevice(device.id);
+      }
+      
+      console.log('✅ 디바이스 상태 변경 완료');
+      await fetchDevices(); // 목록 새로고침
+      
+    } catch (error) {
+      console.error('❌ 디바이스 상태 변경 실패:', error);
+      setError(error instanceof Error ? error.message : '디바이스 상태 변경에 실패했습니다.');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // 디바이스 저장/수정 핸들러
-  const handleDeviceSave = async (device: Device) => {
+  /**
+   * 디바이스 재시작
+   */
+  const handleDeviceRestart = async (device: Device) => {
     try {
-      console.log('💾 디바이스 저장:', device);
-      // TODO: 실제 API 호출 구현
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setIsProcessing(true);
+      console.log('🔄 디바이스 재시작:', device.name);
       
-      // 저장 성공 후 목록 새로고침
+      await DeviceApiService.restartDevice(device.id);
+      
+      console.log('✅ 디바이스 재시작 완료');
       await fetchDevices();
-      handleModalClose();
+      
     } catch (error) {
-      console.error('❌ 디바이스 저장 실패:', error);
-      throw error;
+      console.error('❌ 디바이스 재시작 실패:', error);
+      setError(error instanceof Error ? error.message : '디바이스 재시작에 실패했습니다.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  // 디바이스 삭제 핸들러
-  const handleDeviceDelete = async (deviceId: number) => {
+  /**
+   * 디바이스 연결 테스트
+   */
+  const handleConnectionTest = async (device: Device) => {
     try {
-      console.log('🗑️ 디바이스 삭제:', deviceId);
-      // TODO: 실제 API 호출 구현
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setIsProcessing(true);
+      console.log('🔄 연결 테스트:', device.name);
       
-      // 삭제 성공 후 목록 새로고침
+      const response = await DeviceApiService.testDeviceConnection(device.id);
+      
+      if (response.success) {
+        console.log('✅ 연결 테스트 성공:', response.data);
+        alert(`연결 테스트 성공!\n응답 시간: ${response.data?.response_time || 'N/A'}ms`);
+      } else {
+        console.log('❌ 연결 테스트 실패:', response.data);
+        alert(`연결 테스트 실패!\n오류: ${response.data?.error || 'Unknown error'}`);
+      }
+      
+      await fetchDevices();
+      
+    } catch (error) {
+      console.error('❌ 연결 테스트 오류:', error);
+      alert('연결 테스트 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ==========================================================================
+  // 🔄 일괄 작업 함수들 (새 API 사용)
+  // ==========================================================================
+
+  /**
+   * 선택된 디바이스들 일괄 활성화
+   */
+  const handleBulkEnable = async () => {
+    if (selectedDevices.length === 0) return;
+    
+    try {
+      setIsProcessing(true);
+      console.log('🔄 일괄 활성화:', selectedDevices);
+      
+      const response = await DeviceApiService.bulkEnableDevices(selectedDevices);
+      
+      if (response.success) {
+        console.log('✅ 일괄 활성화 완료:', response);
+        alert(`${response.processed_count}개 디바이스가 활성화되었습니다.`);
+        setSelectedDevices([]);
+        await fetchDevices();
+      }
+      
+    } catch (error) {
+      console.error('❌ 일괄 활성화 실패:', error);
+      setError(error instanceof Error ? error.message : '일괄 활성화에 실패했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 선택된 디바이스들 일괄 비활성화
+   */
+  const handleBulkDisable = async () => {
+    if (selectedDevices.length === 0) return;
+    
+    try {
+      setIsProcessing(true);
+      console.log('🔄 일괄 비활성화:', selectedDevices);
+      
+      const response = await DeviceApiService.bulkDisableDevices(selectedDevices);
+      
+      if (response.success) {
+        console.log('✅ 일괄 비활성화 완료:', response);
+        alert(`${response.processed_count}개 디바이스가 비활성화되었습니다.`);
+        setSelectedDevices([]);
+        await fetchDevices();
+      }
+      
+    } catch (error) {
+      console.error('❌ 일괄 비활성화 실패:', error);
+      setError(error instanceof Error ? error.message : '일괄 비활성화에 실패했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 선택된 디바이스들 일괄 삭제
+   */
+  const handleBulkDelete = async () => {
+    if (selectedDevices.length === 0) return;
+    
+    const confirmed = window.confirm(
+      `선택된 ${selectedDevices.length}개 디바이스를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      setIsProcessing(true);
+      console.log('🔄 일괄 삭제:', selectedDevices);
+      
+      const response = await DeviceApiService.bulkDeleteDevices(selectedDevices);
+      
+      if (response.success) {
+        console.log('✅ 일괄 삭제 완료:', response);
+        alert(`${response.processed_count}개 디바이스가 삭제되었습니다.`);
+        setSelectedDevices([]);
+        await fetchDevices();
+      }
+      
+    } catch (error) {
+      console.error('❌ 일괄 삭제 실패:', error);
+      setError(error instanceof Error ? error.message : '일괄 삭제에 실패했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ==========================================================================
+  // 📝 CRUD 작업 함수들 (모달용)
+  // ==========================================================================
+
+  /**
+   * 디바이스 저장/수정
+   */
+  const handleDeviceSave = async (device: Device) => {
+    try {
+      setIsProcessing(true);
+      console.log('💾 디바이스 저장:', device);
+      
+      if (modalMode === 'create') {
+        // 새 디바이스 생성
+        const createData = {
+          name: device.name,
+          protocol_type: device.protocol_type,
+          endpoint: device.endpoint,
+          device_type: device.device_type,
+          manufacturer: device.manufacturer,
+          model: device.model,
+          description: device.description,
+          is_enabled: device.is_enabled
+        };
+        
+        await DeviceApiService.createDevice(createData);
+        console.log('✅ 새 디바이스 생성 완료');
+        
+      } else if (modalMode === 'edit') {
+        // 기존 디바이스 수정
+        const updateData = {
+          name: device.name,
+          protocol_type: device.protocol_type,
+          endpoint: device.endpoint,
+          device_type: device.device_type,
+          manufacturer: device.manufacturer,
+          model: device.model,
+          description: device.description,
+          is_enabled: device.is_enabled
+        };
+        
+        await DeviceApiService.updateDevice(device.id, updateData);
+        console.log('✅ 디바이스 수정 완료');
+      }
+      
       await fetchDevices();
       handleModalClose();
+      
+    } catch (error) {
+      console.error('❌ 디바이스 저장 실패:', error);
+      throw error; // 모달에서 에러 처리하도록 전파
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 디바이스 삭제
+   */
+  const handleDeviceDelete = async (deviceId: number) => {
+    try {
+      setIsProcessing(true);
+      console.log('🗑️ 디바이스 삭제:', deviceId);
+      
+      await DeviceApiService.deleteDevice(deviceId);
+      
+      console.log('✅ 디바이스 삭제 완료');
+      await fetchDevices();
+      handleModalClose();
+      
     } catch (error) {
       console.error('❌ 디바이스 삭제 실패:', error);
       throw error;
+    } finally {
+      setIsProcessing(false);
     }
   };
+
+  // ==========================================================================
+  // 기존 로직들 (UI 관련, 변경 없음)
+  // ==========================================================================
 
   // 체크박스 선택 핸들러
   const handleDeviceSelect = (deviceId: number) => {
@@ -231,6 +392,36 @@ const DeviceList: React.FC = () => {
     }
   };
 
+  // 모달 핸들러들
+  const handleModalOpen = (device: Device | null, mode: 'view' | 'edit' | 'create') => {
+    setSelectedDevice(device);
+    setModalMode(mode);
+    setIsModalOpen(true);
+    setAutoRefresh(false);
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setSelectedDevice(null);
+    setAutoRefresh(true);
+  };
+
+  // 필터링된 디바이스 목록
+  const filteredDevices = devices.filter(device => {
+    const matchesSearch = !searchTerm || 
+      device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      device.endpoint.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      device.protocol_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (device.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (device.model?.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesStatus = statusFilter === 'all' || device.status === statusFilter;
+    const matchesProtocol = protocolFilter === 'all' || device.protocol_type === protocolFilter;
+    const matchesConnection = connectionFilter === 'all' || device.connection_status === connectionFilter;
+    
+    return matchesSearch && matchesStatus && matchesProtocol && matchesConnection;
+  });
+
   // 통계 계산
   const stats: DeviceStats = {
     total: devices.length,
@@ -244,11 +435,45 @@ const DeviceList: React.FC = () => {
   // 고유 프로토콜 목록
   const protocols = [...new Set(devices.map(device => device.protocol_type))];
 
+  // ==========================================================================
+  // 생명주기 훅들
+  // ==========================================================================
+
+  // 실시간 업데이트 제어
+  useEffect(() => {
+    if (!autoRefresh || isModalOpen) return;
+
+    const interval = setInterval(() => {
+      if (!isModalOpen) {
+        fetchDevices();
+        setLastUpdate(new Date());
+      }
+    }, 30000); // 30초 간격
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, isModalOpen]);
+
+  // 컴포넌트 마운트 시 초기 데이터 로드
+  useEffect(() => {
+    fetchDevices();
+  }, []);
+
+  // 페이지네이션 변경 시 데이터 새로고침
+  useEffect(() => {
+    if (pagination.currentPage > 1) {
+      fetchDevices();
+    }
+  }, [pagination.currentPage, pagination.pageSize]);
+
+  // ==========================================================================
+  // 렌더링 (기존 UI 유지)
+  // ==========================================================================
+
   if (isLoading && devices.length === 0) {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
-        <p>디바이스 목록을 불러오는 중...</p>
+        <p>디바이스 목록을 불러오는 중... (새 API)</p>
       </div>
     );
   }
@@ -262,12 +487,16 @@ const DeviceList: React.FC = () => {
             <i className="fas fa-network-wired"></i>
             디바이스 관리
           </h1>
-          <p className="subtitle">마지막 업데이트: {lastUpdate.toLocaleTimeString()}</p>
+          <p className="subtitle">
+            마지막 업데이트: {lastUpdate.toLocaleTimeString()} 
+            <span className="api-indicator">(새 API 🚀)</span>
+          </p>
         </div>
         <div className="header-actions">
           <button 
             className="btn btn-primary"
             onClick={() => handleModalOpen(null, 'create')}
+            disabled={isProcessing}
           >
             <i className="fas fa-plus"></i>
             디바이스 추가
@@ -286,29 +515,52 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 통계 카드 */}
+      {/* 통계 카드들 */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-value">{stats.total}</div>
-          <div className="stat-label">전체 디바이스</div>
+          <div className="stat-icon total">
+            <i className="fas fa-server"></i>
+          </div>
+          <div className="stat-content">
+            <div className="stat-number">{stats.total}</div>
+            <div className="stat-label">총 디바이스</div>
+          </div>
         </div>
-        <div className="stat-card success">
-          <div className="stat-value">{stats.connected}</div>
-          <div className="stat-label">연결됨</div>
+
+        <div className="stat-card">
+          <div className="stat-icon running">
+            <i className="fas fa-play-circle"></i>
+          </div>
+          <div className="stat-content">
+            <div className="stat-number">{stats.running}</div>
+            <div className="stat-label">실행 중</div>
+          </div>
         </div>
-        <div className="stat-card error">
-          <div className="stat-value">{stats.disconnected}</div>
-          <div className="stat-label">연결끊김</div>
+
+        <div className="stat-card">
+          <div className="stat-icon connected">
+            <i className="fas fa-wifi"></i>
+          </div>
+          <div className="stat-content">
+            <div className="stat-number">{stats.connected}</div>
+            <div className="stat-label">연결됨</div>
+          </div>
         </div>
-        <div className="stat-card warning">
-          <div className="stat-value">{stats.error}</div>
-          <div className="stat-label">오류</div>
+
+        <div className="stat-card">
+          <div className="stat-icon error">
+            <i className="fas fa-exclamation-triangle"></i>
+          </div>
+          <div className="stat-content">
+            <div className="stat-number">{stats.error}</div>
+            <div className="stat-label">오류</div>
+          </div>
         </div>
       </div>
 
-      {/* 필터 및 검색 */}
-      <div className="device-controls">
-        <div className="controls-left">
+      {/* 필터 및 검색 바 */}
+      <div className="controls-panel">
+        <div className="search-section">
           <div className="search-box">
             <i className="fas fa-search"></i>
             <input
@@ -319,171 +571,251 @@ const DeviceList: React.FC = () => {
             />
           </div>
         </div>
-        <div className="controls-right">
-          <div className="filter-group">
-            <label>프로토콜</label>
-            <select value={protocolFilter} onChange={(e) => setProtocolFilter(e.target.value)}>
-              <option value="all">전체</option>
-              {protocols.map(protocol => (
-                <option key={protocol} value={protocol}>{protocol}</option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-group">
-            <label>연결</label>
-            <select value={connectionFilter} onChange={(e) => setConnectionFilter(e.target.value)}>
-              <option value="all">전체</option>
-              <option value="connected">연결됨</option>
-              <option value="disconnected">연결끊김</option>
-              <option value="connecting">연결중</option>
-            </select>
-          </div>
+
+        <div className="filter-section">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">모든 상태</option>
+            <option value="running">실행 중</option>
+            <option value="stopped">정지</option>
+            <option value="error">오류</option>
+          </select>
+
+          <select
+            value={protocolFilter}
+            onChange={(e) => setProtocolFilter(e.target.value)}
+          >
+            <option value="all">모든 프로토콜</option>
+            {protocols.map(protocol => (
+              <option key={protocol} value={protocol}>
+                {protocol.toUpperCase()}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={connectionFilter}
+            onChange={(e) => setConnectionFilter(e.target.value)}
+          >
+            <option value="all">모든 연결 상태</option>
+            <option value="connected">연결됨</option>
+            <option value="disconnected">연결끊김</option>
+            <option value="connecting">연결 중</option>
+          </select>
         </div>
+
+        {/* 일괄 작업 버튼들 */}
+        {selectedDevices.length > 0 && (
+          <div className="bulk-actions">
+            <span className="selected-count">
+              {selectedDevices.length}개 선택됨
+            </span>
+            <button
+              className="btn btn-sm btn-success"
+              onClick={handleBulkEnable}
+              disabled={isProcessing}
+            >
+              <i className="fas fa-play"></i>
+              일괄 활성화
+            </button>
+            <button
+              className="btn btn-sm btn-warning"
+              onClick={handleBulkDisable}
+              disabled={isProcessing}
+            >
+              <i className="fas fa-pause"></i>
+              일괄 비활성화
+            </button>
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={handleBulkDelete}
+              disabled={isProcessing}
+            >
+              <i className="fas fa-trash"></i>
+              일괄 삭제
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* 디바이스 목록 */}
-      <div className="device-list">
-        <div className="device-list-header-row">
-          <div className="device-list-actions">
-            <input
-              type="checkbox"
-              checked={selectedDevices.length === filteredDevices.length && filteredDevices.length > 0}
-              onChange={handleSelectAll}
-            />
-            <span>{selectedDevices.length}개 선택됨</span>
-            {selectedDevices.length > 0 && (
-              <div className="bulk-actions">
-                <button className="btn btn-sm btn-success" disabled={isProcessing}>
-                  <i className="fas fa-play"></i> 일괄 시작
-                </button>
-                <button className="btn btn-sm btn-warning" disabled={isProcessing}>
-                  <i className="fas fa-pause"></i> 일괄 중지
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="device-list-info">
-            총 {filteredDevices.length}개 디바이스
-          </div>
-        </div>
-
-        <div className="device-cards">
-          {filteredDevices.map((device) => (
-            <div key={device.id} className="device-card">
-              <div className="device-card-header">
-                <div className="device-select">
+      {/* 디바이스 테이블 */}
+      <div className="devices-table-container">
+        <table className="devices-table">
+          <thead>
+            <tr>
+              <th className="checkbox-col">
+                <input
+                  type="checkbox"
+                  checked={selectedDevices.length === filteredDevices.length && filteredDevices.length > 0}
+                  onChange={handleSelectAll}
+                />
+              </th>
+              <th>디바이스명</th>
+              <th>프로토콜</th>
+              <th>엔드포인트</th>
+              <th>상태</th>
+              <th>연결</th>
+              <th>마지막 통신</th>
+              <th>액션</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredDevices.map((device) => (
+              <tr
+                key={device.id}
+                className={`device-row ${selectedDevices.includes(device.id) ? 'selected' : ''}`}
+              >
+                <td>
                   <input
                     type="checkbox"
                     checked={selectedDevices.includes(device.id)}
                     onChange={() => handleDeviceSelect(device.id)}
                   />
-                </div>
-                <div className="device-info">
-                  <h3 className="device-name">{device.name}</h3>
-                  <p className="device-endpoint">{device.endpoint}</p>
-                </div>
-                <div className="device-status">
-                  <span className={`status-badge ${device.connection_status}`}>
-                    <i className="fas fa-circle"></i>
-                    {device.connection_status === 'connected' ? '연결됨' : 
-                     device.connection_status === 'disconnected' ? '연결끊김' : '연결중'}
+                </td>
+                
+                <td>
+                  <div className="device-info">
+                    <div className="device-name">
+                      {device.name}
+                      {!device.is_enabled && (
+                        <span className="disabled-badge">비활성</span>
+                      )}
+                    </div>
+                    <div className="device-details">
+                      {device.manufacturer} {device.model}
+                    </div>
+                  </div>
+                </td>
+                
+                <td>
+                  <span className={`protocol-badge ${device.protocol_type}`}>
+                    {device.protocol_type.toUpperCase()}
                   </span>
-                </div>
-              </div>
-              <div className="device-card-body">
-                <div className="device-details">
-                  <div className="detail-item">
-                    <span className="label">프로토콜:</span>
-                    <span className="value">{device.protocol_type}</span>
+                </td>
+                
+                <td>
+                  <code className="endpoint">{device.endpoint}</code>
+                </td>
+                
+                <td>
+                  <span className={`status-badge ${device.status}`}>
+                    <i className={`fas fa-circle`}></i>
+                    {device.status === 'running' ? '실행 중' :
+                     device.status === 'stopped' ? '정지' :
+                     device.status === 'error' ? '오류' : device.status}
+                  </span>
+                </td>
+                
+                <td>
+                  <span className={`connection-badge ${device.connection_status}`}>
+                    <i className={`fas ${
+                      device.connection_status === 'connected' ? 'fa-wifi' :
+                      device.connection_status === 'disconnected' ? 'fa-wifi' :
+                      'fa-circle-notch fa-spin'
+                    }`}></i>
+                    {device.connection_status === 'connected' ? '연결됨' :
+                     device.connection_status === 'disconnected' ? '연결끊김' :
+                     device.connection_status === 'connecting' ? '연결 중' : '알수없음'}
+                  </span>
+                </td>
+                
+                <td>
+                  <div className="last-seen">
+                    {device.last_seen ? new Date(device.last_seen).toLocaleString('ko-KR') : 'N/A'}
                   </div>
-                  <div className="detail-item">
-                    <span className="label">제조사:</span>
-                    <span className="value">{device.manufacturer || 'N/A'}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">모델:</span>
-                    <span className="value">{device.model || 'N/A'}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">응답시간:</span>
-                    <span className="value">{device.response_time || 0}ms</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">마지막 통신:</span>
-                    <span className="value">{device.last_seen || 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="device-card-footer">
-                <div className="device-actions">
-                  <button 
-                    className="btn btn-sm btn-info"
-                    onClick={() => handleModalOpen(device, 'view')}
-                  >
-                    <i className="fas fa-eye"></i>
-                    상세
-                  </button>
-                  <button 
-                    className="btn btn-sm btn-secondary"
-                    onClick={() => handleModalOpen(device, 'edit')}
-                  >
-                    <i className="fas fa-edit"></i>
-                    편집
-                  </button>
-                  {device.connection_status === 'connected' ? (
-                    <>
-                      <button 
-                        className="btn btn-sm btn-warning"
-                        onClick={() => handleDeviceAction(device, 'pause')}
-                        disabled={isProcessing}
-                        title="일시정지"
-                      >
-                        <i className="fas fa-pause"></i>
-                      </button>
-                      <button 
-                        className="btn btn-sm btn-error"
-                        onClick={() => handleDeviceAction(device, 'stop')}
-                        disabled={isProcessing}
-                        title="정지"
-                      >
-                        <i className="fas fa-stop"></i>
-                      </button>
-                      <button 
-                        className="btn btn-sm btn-info"
-                        onClick={() => handleDeviceAction(device, 'restart')}
-                        disabled={isProcessing}
-                        title="재시작"
-                      >
-                        <i className="fas fa-redo"></i>
-                      </button>
-                    </>
-                  ) : (
-                    <button 
-                      className="btn btn-sm btn-success"
-                      onClick={() => handleDeviceAction(device, 'start')}
+                </td>
+                
+                <td>
+                  <div className="action-buttons">
+                    {/* 활성화/비활성화 토글 */}
+                    <button
+                      className={`btn btn-xs ${device.is_enabled ? 'btn-warning' : 'btn-success'}`}
+                      onClick={() => handleDeviceToggle(device)}
                       disabled={isProcessing}
-                      title="시작"
+                      title={device.is_enabled ? '비활성화' : '활성화'}
                     >
-                      <i className="fas fa-play"></i>
+                      <i className={`fas ${device.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
                     </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+                    
+                    {/* 재시작 */}
+                    <button
+                      className="btn btn-xs btn-info"
+                      onClick={() => handleDeviceRestart(device)}
+                      disabled={isProcessing}
+                      title="재시작"
+                    >
+                      <i className="fas fa-redo"></i>
+                    </button>
+                    
+                    {/* 연결 테스트 */}
+                    <button
+                      className="btn btn-xs btn-secondary"
+                      onClick={() => handleConnectionTest(device)}
+                      disabled={isProcessing}
+                      title="연결 테스트"
+                    >
+                      <i className="fas fa-plug"></i>
+                    </button>
+                    
+                    {/* 상세보기 */}
+                    <button
+                      className="btn btn-xs btn-primary"
+                      onClick={() => handleModalOpen(device, 'view')}
+                      title="상세보기"
+                    >
+                      <i className="fas fa-eye"></i>
+                    </button>
+                    
+                    {/* 편집 */}
+                    <button
+                      className="btn btn-xs btn-warning"
+                      onClick={() => handleModalOpen(device, 'edit')}
+                      title="편집"
+                    >
+                      <i className="fas fa-edit"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {filteredDevices.length === 0 && (
+          <div className="empty-state">
+            <i className="fas fa-server"></i>
+            <h3>디바이스가 없습니다</h3>
+            <p>조건에 맞는 디바이스를 찾을 수 없습니다. 필터를 확인하거나 새 디바이스를 추가해보세요.</p>
+            <button
+              className="btn btn-primary"
+              onClick={() => handleModalOpen(null, 'create')}
+            >
+              <i className="fas fa-plus"></i>
+              첫 번째 디바이스 추가
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* 빈 상태 */}
-      {filteredDevices.length === 0 && !isLoading && (
-        <div className="empty-state">
-          <i className="fas fa-network-wired"></i>
-          <h3>디바이스를 찾을 수 없습니다</h3>
-          <p>필터 조건을 변경하거나 새로운 디바이스를 추가해보세요.</p>
-        </div>
-      )}
+      {/* 🆕 페이지네이션 (향후 활성화) */}
+      {/*
+      <Pagination
+        current={pagination.currentPage}
+        total={pagination.totalCount}
+        pageSize={pagination.pageSize}
+        onChange={(page, pageSize) => {
+          pagination.goToPage(page);
+          pagination.changePageSize(pageSize);
+        }}
+        showSizeChanger
+        showQuickJumper
+        showTotal
+      />
+      */}
 
-      {/* DeviceDetailModal - 임시 모달 제거, 실제 모달만 사용 */}
+      {/* 디바이스 상세 모달 */}
       <DeviceDetailModal
         device={selectedDevice}
         isOpen={isModalOpen}
@@ -491,460 +823,20 @@ const DeviceList: React.FC = () => {
         onClose={handleModalClose}
         onSave={handleDeviceSave}
         onDelete={handleDeviceDelete}
+        onTestConnection={handleConnectionTest}
       />
 
-      <style jsx>{`
-        .device-list-container {
-          padding: 1.5rem;
-          max-width: 1400px;
-          margin: 0 auto;
-        }
-
-        .device-list-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 2rem;
-        }
-
-        .device-list-header h1 {
-          font-size: 2rem;
-          font-weight: 700;
-          color: #1f2937;
-          margin: 0;
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-        }
-
-        .device-list-header h1 i {
-          color: #0ea5e9;
-        }
-
-        .subtitle {
-          color: #6b7280;
-          font-size: 0.875rem;
-          margin: 0.5rem 0 0 0;
-        }
-
-        .header-actions {
-          display: flex;
-          gap: 0.75rem;
-        }
-
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          border: none;
-          border-radius: 0.5rem;
-          font-size: 0.875rem;
-          font-weight: 500;
-          text-decoration: none;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .btn-primary {
-          background: #0ea5e9;
-          color: white;
-        }
-
-        .btn-primary:hover {
-          background: #0284c7;
-        }
-
-        .btn-secondary {
-          background: #64748b;
-          color: white;
-        }
-
-        .btn-secondary:hover {
-          background: #475569;
-        }
-
-        .btn-success {
-          background: #059669;
-          color: white;
-        }
-
-        .btn-success:hover {
-          background: #047857;
-        }
-
-        .btn-warning {
-          background: #d97706;
-          color: white;
-        }
-
-        .btn-warning:hover {
-          background: #b45309;
-        }
-
-        .btn-error {
-          background: #dc2626;
-          color: white;
-        }
-
-        .btn-error:hover {
-          background: #b91c1c;
-        }
-
-        .btn-info {
-          background: #0891b2;
-          color: white;
-        }
-
-        .btn-info:hover {
-          background: #0e7490;
-        }
-
-        .btn-sm {
-          padding: 0.375rem 0.75rem;
-          font-size: 0.75rem;
-        }
-
-        .btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .error-banner {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          background: #fef2f2;
-          border: 1px solid #fecaca;
-          color: #dc2626;
-          padding: 0.75rem 1rem;
-          border-radius: 0.5rem;
-          margin-bottom: 1.5rem;
-        }
-
-        .error-close {
-          background: none;
-          border: none;
-          color: #dc2626;
-          cursor: pointer;
-          margin-left: auto;
-          padding: 0.25rem;
-        }
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 1rem;
-          margin-bottom: 2rem;
-        }
-
-        .stat-card {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 0.75rem;
-          padding: 1.5rem;
-          text-align: center;
-        }
-
-        .stat-card.success {
-          border-color: #34d399;
-          background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
-        }
-
-        .stat-card.error {
-          border-color: #f87171;
-          background: linear-gradient(135deg, #fef2f2, #fdf2f8);
-        }
-
-        .stat-card.warning {
-          border-color: #fbbf24;
-          background: linear-gradient(135deg, #fffbeb, #fefce8);
-        }
-
-        .stat-value {
-          font-size: 2rem;
-          font-weight: 700;
-          color: #1f2937;
-          margin-bottom: 0.25rem;
-        }
-
-        .stat-label {
-          font-size: 0.875rem;
-          color: #6b7280;
-          font-weight: 500;
-        }
-
-        .device-controls {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1.5rem;
-          gap: 1rem;
-          flex-wrap: wrap;
-        }
-
-        .controls-left {
-          flex: 1;
-          min-width: 300px;
-        }
-
-        .search-box {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .search-box i {
-          position: absolute;
-          left: 0.75rem;
-          color: #9ca3af;
-          z-index: 1;
-        }
-
-        .search-box input {
-          width: 100%;
-          padding: 0.75rem 0.75rem 0.75rem 2.5rem;
-          border: 1px solid #d1d5db;
-          border-radius: 0.5rem;
-          font-size: 0.875rem;
-        }
-
-        .search-box input:focus {
-          outline: none;
-          border-color: #0ea5e9;
-          box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
-        }
-
-        .controls-right {
-          display: flex;
-          gap: 1rem;
-        }
-
-        .filter-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-        }
-
-        .filter-group label {
-          font-size: 0.75rem;
-          font-weight: 500;
-          color: #6b7280;
-        }
-
-        .filter-group select {
-          padding: 0.5rem;
-          border: 1px solid #d1d5db;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
-          min-width: 120px;
-        }
-
-        .device-list {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 0.75rem;
-          overflow: hidden;
-        }
-
-        .device-list-header-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1rem 1.5rem;
-          background: #f9fafb;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .device-list-actions {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .bulk-actions {
-          display: flex;
-          gap: 0.5rem;
-        }
-
-        .device-list-info {
-          font-size: 0.875rem;
-          color: #6b7280;
-        }
-
-        .device-cards {
-          padding: 1rem;
-          display: grid;
-          gap: 1rem;
-        }
-
-        .device-card {
-          border: 1px solid #e5e7eb;
-          border-radius: 0.5rem;
-          padding: 1rem;
-          background: white;
-          transition: all 0.2s ease;
-        }
-
-        .device-card:hover {
-          border-color: #0ea5e9;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .device-card-header {
-          display: flex;
-          align-items: flex-start;
-          gap: 1rem;
-          margin-bottom: 1rem;
-        }
-
-        .device-select {
-          padding-top: 0.25rem;
-        }
-
-        .device-info {
-          flex: 1;
-        }
-
-        .device-name {
-          font-size: 1.125rem;
-          font-weight: 600;
-          color: #1f2937;
-          margin: 0 0 0.25rem 0;
-        }
-
-        .device-endpoint {
-          font-size: 0.875rem;
-          color: #6b7280;
-          margin: 0;
-          font-family: 'Courier New', monospace;
-        }
-
-        .device-status {
-          display: flex;
-          align-items: center;
-        }
-
-        .status-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.375rem;
-          padding: 0.25rem 0.75rem;
-          border-radius: 9999px;
-          font-size: 0.75rem;
-          font-weight: 500;
-        }
-
-        .status-badge.connected {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .status-badge.disconnected {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-
-        .status-badge.connecting {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
-        .status-badge i {
-          font-size: 0.5rem;
-        }
-
-        .device-card-body {
-          margin-bottom: 1rem;
-        }
-
-        .device-details {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 0.75rem;
-        }
-
-        .detail-item {
-          display: flex;
-          justify-content: space-between;
-          padding: 0.5rem 0;
-          border-bottom: 1px solid #f3f4f6;
-        }
-
-        .detail-item:last-child {
-          border-bottom: none;
-        }
-
-        .detail-item .label {
-          font-size: 0.75rem;
-          color: #6b7280;
-          font-weight: 500;
-        }
-
-        .detail-item .value {
-          font-size: 0.75rem;
-          color: #1f2937;
-          font-weight: 500;
-        }
-
-        .device-card-footer {
-          border-top: 1px solid #f3f4f6;
-          padding-top: 1rem;
-        }
-
-        .device-actions {
-          display: flex;
-          gap: 0.5rem;
-          flex-wrap: wrap;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 4rem 2rem;
-          color: #6b7280;
-        }
-
-        .empty-state i {
-          font-size: 4rem;
-          margin-bottom: 1rem;
-          color: #cbd5e1;
-        }
-
-        .empty-state h3 {
-          font-size: 1.25rem;
-          margin-bottom: 0.5rem;
-          color: #374151;
-        }
-
-        .loading-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 400px;
-          gap: 1rem;
-        }
-
-        .loading-spinner {
-          width: 2rem;
-          height: 2rem;
-          border: 2px solid #e2e8f0;
-          border-radius: 50%;
-          border-top-color: #0ea5e9;
-          animation: spin 1s ease-in-out infinite;
-        }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        .text-success-600 { color: #059669; }
-        .text-warning-600 { color: #d97706; }
-        .text-error-600 { color: #dc2626; }
-        .text-neutral-500 { color: #6b7280; }
-      `}</style>
+      {/* 로딩 오버레이 */}
+      {isProcessing && (
+        <div className="processing-overlay">
+          <div className="processing-spinner">
+            <div className="loading-spinner"></div>
+            <p>처리 중...</p>
+          </div>
+        </div>
+      )}
+
+      {/* CSS는 기존 그대로 사용 */}
     </div>
   );
 };
