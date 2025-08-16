@@ -7,8 +7,8 @@ const express = require('express');
 const router = express.Router();
 
 // Repository imports (기존 완성된 것들 사용)
-const DataPointRepository = require('../lib/database/repositories/DataPointRepository');
-const CurrentValueRepository = require('../lib/database/repositories/CurrentValueRepository');
+// DataPointRepository는 DeviceRepository에 포함됨
+// CurrentValueRepository는 DeviceRepository에 포함됨
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
 const SiteRepository = require('../lib/database/repositories/SiteRepository');
 

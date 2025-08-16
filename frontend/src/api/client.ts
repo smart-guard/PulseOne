@@ -1,309 +1,384 @@
 // ============================================================================
-// frontend/src/api/config.ts
-// 🔧 수정된 Frontend API 설정 - 개발환경 최적화
+// frontend/src/api/client.ts
+// 🔧 완전 통일된 Fetch 기반 API 클라이언트 (axios 완전 대체)
 // ============================================================================
 
-// 🔥 환경 감지 및 동적 URL 설정
-function getApiBaseUrl(): string {
-  // 1. 환경변수에서 확인
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+import { API_CONFIG } from './config';
+
+// ============================================================================
+// 🔧 공통 타입 정의
+// ============================================================================
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T | null;
+  message: string;
+  error?: string;
+  timestamp: string;
+}
+
+export interface RequestConfig {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  headers?: Record<string, string>;
+  timeout?: number;
+  baseUrl?: string;
+  body?: any;
+}
+
+// ============================================================================
+// 🌐 통합 HTTP 클라이언트 클래스 (모든 API 서비스에서 공용)
+// ============================================================================
+
+class UnifiedHttpClient {
+  private baseUrl: string;
+  private defaultTimeout: number;
+  private defaultHeaders: Record<string, string>;
+
+  constructor(
+    baseUrl: string = API_CONFIG.BASE_URL,
+    timeout: number = API_CONFIG.TIMEOUT,
+    headers: Record<string, string> = API_CONFIG.DEFAULT_HEADERS
+  ) {
+    this.baseUrl = baseUrl;
+    this.defaultTimeout = timeout;
+    this.defaultHeaders = headers;
   }
-  
-  // 2. 현재 호스트 기반으로 자동 설정
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-    
-    // 개발 환경 감지
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') {
-      return `${protocol}//${hostname}:3000`;
+
+  // ========================================================================
+  // 🔧 요청 전처리 (axios interceptors.request 대체)
+  // ========================================================================
+
+  private preprocessRequest(endpoint: string, config: RequestConfig = {}): [string, RequestInit] {
+    const url = config.baseUrl ? 
+      `${config.baseUrl}${endpoint}` : 
+      `${this.baseUrl}${endpoint}`;
+
+    // 🔄 API 요청 로깅 (기존 axios 패턴과 동일)
+    console.log(`🔄 API 요청: ${(config.method || 'GET').toUpperCase()} ${url}`);
+
+    // 🔐 인증 토큰 자동 추가 (기존 axios 인터셉터와 동일)
+    const token = localStorage.getItem('auth_token');
+    const headers = {
+      ...this.defaultHeaders,
+      ...config.headers,
+      ...(token && { Authorization: `Bearer ${token}` })
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config.timeout || this.defaultTimeout);
+
+    const fetchConfig: RequestInit = {
+      method: config.method || 'GET',
+      headers,
+      signal: controller.signal,
+      ...(config.body && { 
+        body: typeof config.body === 'string' ? config.body : JSON.stringify(config.body) 
+      })
+    };
+
+    // 타임아웃 관리를 위해 저장
+    (fetchConfig as any)._timeoutId = timeoutId;
+
+    return [url, fetchConfig];
+  }
+
+  // ========================================================================
+  // 🔧 응답 후처리 (axios interceptors.response 대체)
+  // ========================================================================
+
+  private async processResponse<T>(response: Response, url: string, fetchConfig: RequestInit): Promise<ApiResponse<T>> {
+    // 타임아웃 정리
+    if ((fetchConfig as any)._timeoutId) {
+      clearTimeout((fetchConfig as any)._timeoutId);
     }
-    
-    // 프로덕션 환경에서는 같은 호스트 사용
-    return `${protocol}//${hostname}:3000`;
-  }
-  
-  // 3. 기본값
-  return 'http://localhost:3000';
-}
 
-function getCollectorUrl(): string {
-  if (import.meta.env.VITE_COLLECTOR_URL) {
-    return import.meta.env.VITE_COLLECTOR_URL;
-  }
-  
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-    return `${protocol}//${hostname}:8080`;
-  }
-  
-  return 'http://localhost:8080';
-}
+    console.log(`✅ API 응답: ${response.status} ${url}`);
 
-function getWebSocketUrl(): string {
-  const baseUrl = getApiBaseUrl();
-  return baseUrl.replace(/^http/, 'ws');
-}
+    try {
+      // 🚨 에러 상태 처리 (기존 axios 인터셉터와 동일)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        // 기존 axios 에러 처리 로직과 동일
+        switch (response.status) {
+          case 401:
+            console.warn('🔐 인증이 만료되었습니다. 다시 로그인해주세요.');
+            localStorage.removeItem('auth_token');
+            window.location.href = '/login';
+            break;
+          case 403:
+            console.warn('🚫 접근 권한이 없습니다.');
+            break;
+          case 404:
+            console.warn('🔍 요청한 리소스를 찾을 수 없습니다.');
+            break;
+          case 500:
+            console.error('🔥 서버에서 오류가 발생했습니다.');
+            break;
+          default:
+            console.error('⚠️ 알 수 없는 오류가 발생했습니다.');
+        }
 
-// ============================================================================
-// 🔧 API 설정 객체
-// ============================================================================
+        return {
+          success: false,
+          data: null,
+          message: errorData.message || `HTTP ${response.status}`,
+          error: errorData.error || response.statusText,
+          timestamp: new Date().toISOString()
+        };
+      }
 
-export const API_CONFIG = {
-  // 🌐 기본 URL들
-  BASE_URL: getApiBaseUrl(),
-  COLLECTOR_URL: getCollectorUrl(), 
-  WS_URL: getWebSocketUrl(),
-  
-  // ⚙️ 타임아웃 및 재시도 설정
-  TIMEOUT: 30000, // 30초 (개발환경에서 더 길게)
-  RETRY_COUNT: 3,
-  RETRY_DELAY: 1000, // 1초
-  
-  // 📄 페이지네이션 설정
-  DEFAULT_PAGE_SIZE: 25,
-  MAX_PAGE_SIZE: 200,
-  PAGE_SIZE_OPTIONS: [10, 25, 50, 100, 200],
-  
-  // 🔄 실시간 데이터 설정
-  POLLING_INTERVAL: 5000, // 5초
-  WEBSOCKET_RECONNECT_DELAY: 2000, // 2초
-  MAX_RECONNECT_ATTEMPTS: 5,
-  
-  // 📱 HTTP 헤더 설정
-  DEFAULT_HEADERS: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest'
-  },
-  
-  // 🏷️ 캐시 설정
-  CACHE_TTL: 300000, // 5분 (ms)
-  ENABLE_CACHE: true,
-  
-  // 🔍 디버그 설정
-  DEBUG_API_CALLS: import.meta.env.DEV, // Vite의 개발 모드 감지
-  LOG_LEVEL: import.meta.env.DEV ? 'debug' : 'error'
-};
+      // ✅ 성공 응답 처리
+      const data = await response.json();
+      
+      // Backend 응답이 이미 ApiResponse 형식인 경우
+      if ('success' in data && typeof data.success === 'boolean') {
+        return data;
+      }
 
-// ============================================================================
-// 🧪 환경별 설정 오버라이드
-// ============================================================================
+      // 일반 데이터를 ApiResponse로 래핑
+      return {
+        success: true,
+        data: data,
+        message: 'Request successful',
+        timestamp: new Date().toISOString()
+      };
 
-// 개발 환경 특화 설정
-if (import.meta.env.DEV) {
-  Object.assign(API_CONFIG, {
-    TIMEOUT: 60000, // 개발환경에서는 더 긴 타임아웃
-    DEBUG_API_CALLS: true,
-    LOG_LEVEL: 'debug'
-  });
-  
-  console.log('🔧 개발 환경 API 설정:', {
-    BASE_URL: API_CONFIG.BASE_URL,
-    COLLECTOR_URL: API_CONFIG.COLLECTOR_URL,
-    WS_URL: API_CONFIG.WS_URL,
-    TIMEOUT: API_CONFIG.TIMEOUT
-  });
-}
+    } catch (parseError) {
+      // 타임아웃 정리
+      if ((fetchConfig as any)._timeoutId) {
+        clearTimeout((fetchConfig as any)._timeoutId);
+      }
 
-// 프로덕션 환경 특화 설정
-if (import.meta.env.PROD) {
-  Object.assign(API_CONFIG, {
-    TIMEOUT: 10000, // 프로덕션에서는 더 짧은 타임아웃
-    DEBUG_API_CALLS: false,
-    LOG_LEVEL: 'error',
-    RETRY_COUNT: 2 // 프로덕션에서는 더 적은 재시도
-  });
-}
-
-// ============================================================================
-// 🌍 환경변수 타입 정의 (TypeScript)
-// ============================================================================
-
-declare global {
-  interface ImportMetaEnv {
-    readonly VITE_API_URL?: string;
-    readonly VITE_COLLECTOR_URL?: string;
-    readonly VITE_WS_URL?: string;
-    readonly VITE_DEBUG_API?: string;
-    readonly VITE_ENABLE_MOCK?: string;
-    readonly DEV: boolean;
-    readonly PROD: boolean;
-  }
-
-  interface ImportMeta {
-    readonly env: ImportMetaEnv;
-  }
-}
-
-// ============================================================================
-// 🔧 유틸리티 함수들
-// ============================================================================
-
-/**
- * API URL 유효성 검사
- */
-export function validateApiConfig(): {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  
-  // BASE_URL 검사
-  try {
-    new URL(API_CONFIG.BASE_URL);
-  } catch {
-    errors.push(`Invalid BASE_URL: ${API_CONFIG.BASE_URL}`);
-  }
-  
-  // COLLECTOR_URL 검사
-  try {
-    new URL(API_CONFIG.COLLECTOR_URL);
-  } catch {
-    warnings.push(`Invalid COLLECTOR_URL: ${API_CONFIG.COLLECTOR_URL}`);
-  }
-  
-  // 타임아웃 검사
-  if (API_CONFIG.TIMEOUT < 1000) {
-    warnings.push(`Timeout is very short: ${API_CONFIG.TIMEOUT}ms`);
-  }
-  
-  // 개발환경에서 localhost 체크
-  if (import.meta.env.DEV) {
-    if (!API_CONFIG.BASE_URL.includes('localhost') && !API_CONFIG.BASE_URL.includes('127.0.0.1')) {
-      warnings.push('Development mode but not using localhost');
+      console.error('❌ 응답 파싱 실패:', parseError);
+      
+      return {
+        success: false,
+        data: null,
+        message: 'Failed to parse response',
+        error: parseError instanceof Error ? parseError.message : 'Parse error',
+        timestamp: new Date().toISOString()
+      };
     }
   }
-  
-  return {
-    isValid: errors.length === 0,
-    errors,
-    warnings
+
+  // ========================================================================
+  // 🔧 HTTP 메서드들 (axios API 완전 호환)
+  // ========================================================================
+
+  async request<T>(config: RequestConfig & { url: string }): Promise<ApiResponse<T>> {
+    try {
+      const [url, fetchConfig] = this.preprocessRequest(config.url, config);
+      const response = await fetch(url, fetchConfig);
+      return await this.processResponse<T>(response, url, fetchConfig);
+
+    } catch (error) {
+      console.error(`❌ API 요청 실패: ${config.url}`, error);
+
+      // AbortError (타임아웃) 처리
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          success: false,
+          data: null,
+          message: 'Request timeout',
+          error: 'The request took too long to complete',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        success: false,
+        data: null,
+        message: 'Request failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  async get<T>(url: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
+    // 쿼리 파라미터 처리
+    let finalUrl = url;
+    if (params) {
+      const queryParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          queryParams.append(key, String(value));
+        }
+      });
+      
+      if (queryParams.toString()) {
+        finalUrl += `?${queryParams.toString()}`;
+      }
+    }
+
+    return this.request<T>({ url: finalUrl, method: 'GET' });
+  }
+
+  async post<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>({ 
+      url, 
+      method: 'POST', 
+      body: data,
+      headers: data ? { 'Content-Type': 'application/json' } : {}
+    });
+  }
+
+  async put<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>({ 
+      url, 
+      method: 'PUT', 
+      body: data,
+      headers: data ? { 'Content-Type': 'application/json' } : {}
+    });
+  }
+
+  async delete<T>(url: string): Promise<ApiResponse<T>> {
+    return this.request<T>({ url, method: 'DELETE' });
+  }
+
+  async patch<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>({ 
+      url, 
+      method: 'PATCH', 
+      body: data,
+      headers: data ? { 'Content-Type': 'application/json' } : {}
+    });
+  }
+
+  // ========================================================================
+  // 🔧 Axios 호환 속성들
+  // ========================================================================
+
+  get defaults() {
+    return {
+      baseURL: this.baseUrl,
+      timeout: this.defaultTimeout,
+      headers: this.defaultHeaders
+    };
+  }
+
+  // interceptors 속성 (호환성을 위해)
+  interceptors = {
+    request: {
+      use: (onFulfilled?: any, onRejected?: any) => {
+        console.log('🔧 Request interceptor registered (compatibility mode)');
+        // 실제 구현은 preprocessRequest에서 처리됨
+      }
+    },
+    response: {
+      use: (onFulfilled?: any, onRejected?: any) => {
+        console.log('🔧 Response interceptor registered (compatibility mode)');
+        // 실제 구현은 processResponse에서 처리됨
+      }
+    }
   };
 }
 
-/**
- * 동적 API URL 생성
- */
-export function buildApiUrl(endpoint: string, params?: Record<string, any>): string {
-  let url = `${API_CONFIG.BASE_URL}${endpoint}`;
-  
-  if (params) {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        searchParams.append(key, String(value));
-      }
-    });
-    
-    const queryString = searchParams.toString();
-    if (queryString) {
-      url += `?${queryString}`;
-    }
-  }
-  
-  return url;
-}
-
-/**
- * WebSocket URL 생성
- */
-export function buildWebSocketUrl(endpoint: string): string {
-  return `${API_CONFIG.WS_URL}${endpoint}`;
-}
-
-/**
- * 네트워크 연결 테스트
- */
-export async function testNetworkConnection(): Promise<{
-  backend: boolean;
-  collector: boolean;
-  latency: number;
-}> {
-  const startTime = performance.now();
-  
-  try {
-    // Backend 연결 테스트
-    const backendResponse = await fetch(`${API_CONFIG.BASE_URL}/health`, {
-      method: 'GET',
-      timeout: 5000
-    });
-    const backendOk = backendResponse.ok;
-    
-    // Collector 연결 테스트 (옵셔널)
-    let collectorOk = false;
-    try {
-      const collectorResponse = await fetch(`${API_CONFIG.COLLECTOR_URL}/health`, {
-        method: 'GET',
-        timeout: 3000
-      });
-      collectorOk = collectorResponse.ok;
-    } catch {
-      collectorOk = false;
-    }
-    
-    const endTime = performance.now();
-    const latency = endTime - startTime;
-    
-    return {
-      backend: backendOk,
-      collector: collectorOk,
-      latency: Math.round(latency)
-    };
-    
-  } catch (error) {
-    console.error('Network connection test failed:', error);
-    return {
-      backend: false,
-      collector: false,
-      latency: -1
-    };
-  }
-}
-
-/**
- * 개발 환경에서 설정 정보 출력
- */
-export function logApiConfig(): void {
-  if (!import.meta.env.DEV) return;
-  
-  console.group('🔧 PulseOne API Configuration');
-  console.log('Environment:', import.meta.env.MODE);
-  console.log('Backend URL:', API_CONFIG.BASE_URL);
-  console.log('Collector URL:', API_CONFIG.COLLECTOR_URL);
-  console.log('WebSocket URL:', API_CONFIG.WS_URL);
-  console.log('Timeout:', `${API_CONFIG.TIMEOUT}ms`);
-  console.log('Debug Mode:', API_CONFIG.DEBUG_API_CALLS);
-  
-  const validation = validateApiConfig();
-  if (validation.errors.length > 0) {
-    console.error('❌ Configuration errors:', validation.errors);
-  }
-  if (validation.warnings.length > 0) {
-    console.warn('⚠️ Configuration warnings:', validation.warnings);
-  }
-  console.groupEnd();
-}
-
-// 개발 환경에서 자동으로 설정 정보 출력
-if (import.meta.env.DEV) {
-  // 약간의 지연 후 출력 (다른 초기화 로그와 겹치지 않게)
-  setTimeout(logApiConfig, 100);
-}
-
 // ============================================================================
-// 🔄 핫 리로드 지원 (Vite HMR)
+// 🏭 클라이언트 인스턴스 생성 (기존 axios.create 패턴과 동일)
 // ============================================================================
 
-if (import.meta.hot) {
-  import.meta.hot.accept(() => {
-    console.log('🔄 API Config hot reloaded');
-    logApiConfig();
+// 기본 API 클라이언트 생성
+export const apiClient = new UnifiedHttpClient(
+  API_CONFIG.BASE_URL,
+  API_CONFIG.TIMEOUT,
+  API_CONFIG.DEFAULT_HEADERS
+);
+
+// Collector 전용 클라이언트 생성 (향후 사용)
+export const collectorClient = new UnifiedHttpClient(
+  API_CONFIG.COLLECTOR_URL,
+  API_CONFIG.TIMEOUT,
+  API_CONFIG.DEFAULT_HEADERS
+);
+
+// ============================================================================
+// 🔧 기존 axios 유틸리티 함수들 (완전 호환)
+// ============================================================================
+
+/**
+ * 쿼리 파라미터 빌더 (기존과 동일)
+ */
+export const buildQueryParams = (params: Record<string, any>): string => {
+  const searchParams = new URLSearchParams();
+  
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams.append(key, String(value));
+    }
   });
-}
+  
+  return searchParams.toString();
+};
 
-export default API_CONFIG;
+/**
+ * 페이지네이션 파라미터 빌더 (기존과 동일)
+ */
+export const buildPaginationParams = (
+  page: number = 1, 
+  limit: number = API_CONFIG.DEFAULT_PAGE_SIZE,
+  additionalParams: Record<string, any> = {}
+) => {
+  return {
+    page,
+    limit: Math.min(limit, API_CONFIG.MAX_PAGE_SIZE),
+    ...additionalParams
+  };
+};
+
+/**
+ * 에러 메시지 추출 (기존 axios 버전과 호환)
+ */
+export const extractErrorMessage = (error: any): string => {
+  // ApiResponse 에러 형식
+  if (error.error) {
+    return error.error;
+  }
+  if (error.message) {
+    return error.message;
+  }
+  
+  // 기존 axios 에러 형식 호환
+  if (error.response?.data?.error) {
+    return error.response.data.error;
+  }
+  if (error.response?.data?.message) {
+    return error.response.data.message;
+  }
+  
+  return '알 수 없는 오류가 발생했습니다.';
+};
+
+/**
+ * 재시도 함수 (기존과 동일)
+ */
+export const retryRequest = async <T>(
+  requestFn: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000
+): Promise<T> => {
+  let lastError: any;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      lastError = error;
+      
+      // 마지막 시도가 아니라면 지연 후 재시도
+      if (i < maxRetries - 1) {
+        console.warn(`🔄 재시도 ${i + 1}/${maxRetries} (${delay}ms 후)`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError;
+};
+
+// ============================================================================
+// 기본 내보내기 (기존 axios 호환)
+// ============================================================================
+
+export default apiClient;
