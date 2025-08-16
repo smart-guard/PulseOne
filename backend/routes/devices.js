@@ -8,7 +8,7 @@ const router = express.Router();
 
 // Repository imports (기존 완성된 것들 사용)
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
-const DataPointRepository = require('../lib/database/repositories/DataPointRepository');
+// DataPointRepository는 DeviceRepository에 포함됨
 const SiteRepository = require('../lib/database/repositories/SiteRepository');
 const { 
     authenticateToken, 
