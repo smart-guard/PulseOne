@@ -402,74 +402,113 @@ router.get('/redis/stats', async (req, res) => {
 // Redis 키 트리 구조 조회 (루트) - ConfigManager 패턴 준수
 router.get('/redis/tree', async (req, res) => {
   try {
+    console.log('🌳 Redis 트리 조회 요청:', req.query);
+    
     const { parent_path } = req.query;
     
-    // ConfigManager에서 Redis 키 접두사 가져오기
+    // ConfigManager에서 Redis 설정 가져오기 (기존 패턴 준수)
     const redisConfig = config.getRedisConfig();
     const keyPrefix = redisConfig.keyPrefix || 'pulseone:';
     
-    // 시뮬레이션 트리 데이터 생성 (ConfigManager 설정 반영)
     let treeData = [];
     
     if (!parent_path) {
-      // 루트 레벨 - 테넌트들 (키 접두사 사용)
+      // 루트 레벨 - 테스트 데이터 생성
       treeData = [
         {
-          id: 'tenant_1',
-          name: 'Samsung Electronics',
-          path: `${keyPrefix}samsung`,
+          id: 'tenant_demo',
+          name: 'Demo Corporation',
+          path: `${keyPrefix}demo`,
           type: 'tenant',
-          icon: 'fas fa-building',
           isExpanded: false,
           isLoaded: false,
           childCount: 3,
-          description: '삼성전자 제조 시설'
+          metadata: {
+            tenant_id: 1,
+            last_update: new Date().toISOString()
+          }
         },
         {
-          id: 'tenant_2', 
-          name: 'LG Electronics',
-          path: `${keyPrefix}lg`,
+          id: 'tenant_test',
+          name: 'Test Factory',
+          path: `${keyPrefix}test`,
           type: 'tenant',
-          icon: 'fas fa-building',
           isExpanded: false,
           isLoaded: false,
           childCount: 2,
-          description: 'LG전자 제조 시설'
+          metadata: {
+            tenant_id: 2,
+            last_update: new Date().toISOString()
+          }
         },
         {
-          id: 'tenant_3',
-          name: 'Hyundai Motor',
-          path: `${keyPrefix}hyundai`,
+          id: 'tenant_samsung',
+          name: 'Samsung Electronics',
+          path: `${keyPrefix}samsung`,
           type: 'tenant',
-          icon: 'fas fa-building',
           isExpanded: false,
           isLoaded: false,
           childCount: 4,
-          description: '현대자동차 제조 시설'
+          metadata: {
+            tenant_id: 3,
+            last_update: new Date().toISOString()
+          }
         }
       ];
+    } else {
+      // 하위 레벨 - 부모 경로에 따라 다른 데이터
+      if (parent_path.includes('demo')) {
+        treeData = [
+          {
+            id: 'device_demo_1',
+            name: 'Demo Device 1',
+            path: `${parent_path}:device1`,
+            type: 'device',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 5,
+            metadata: {
+              device_id: 1,
+              last_update: new Date().toISOString()
+            }
+          },
+          {
+            id: 'device_demo_2',
+            name: 'Demo Device 2',
+            path: `${parent_path}:device2`,
+            type: 'device',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 3,
+            metadata: {
+              device_id: 2,
+              last_update: new Date().toISOString()
+            }
+          }
+        ];
+      } else {
+        // 빈 결과
+        treeData = [];
+      }
     }
     
+    console.log('✅ Redis 트리 데이터 생성:', { count: treeData.length, data: treeData });
+    
+    // 🔥 Frontend가 기대하는 응답 구조로 수정 (data에 직접 배열)
     res.json({
       status: 'success',
       message: 'Redis 트리 구조 조회 완료',
-      data: {
-        tree_nodes: treeData,
-        config_info: {
-          key_prefix: keyPrefix,
-          redis_host: redisConfig.host,
-          redis_port: redisConfig.port,
-          redis_db: redisConfig.db
-        }
-      },
+      data: treeData,  // ✅ 직접 배열로 전달
       timestamp: new Date().toISOString()
     });
+    
   } catch (error) {
-    console.error('Redis 트리 조회 실패:', error.message);
+    console.error('❌ Redis 트리 조회 실패:', error.message);
     res.status(500).json({
       status: 'error',
       message: 'Redis 트리 조회 실패',
       error: error.message,
+      data: [],  // 에러 시에도 빈 배열
       timestamp: new Date().toISOString()
     });
   }
@@ -957,6 +996,392 @@ router.get('/devices', async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: '디바이스 목록 조회 실패',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 🔥 누락된 Redis 키 트리 조회 (Backend 응답 구조에 맞게 수정)
+router.get('/redis/tree', async (req, res) => {
+  try {
+    console.log('🌳 Redis 트리 조회 요청:', req.query);
+    
+    const { parent_path } = req.query;
+    
+    // ConfigManager에서 Redis 설정 가져오기 (기존 패턴 준수)
+    const redisConfig = config.getRedisConfig();
+    const keyPrefix = redisConfig.keyPrefix || 'pulseone:';
+    
+    let treeData = [];
+    
+    if (!parent_path) {
+      // 루트 레벨 - 테스트 데이터 생성
+      treeData = [
+        {
+          id: 'tenant_demo',
+          name: 'Demo Corporation',
+          path: `${keyPrefix}demo`,
+          type: 'tenant',
+          isExpanded: false,
+          isLoaded: false,
+          childCount: 3,
+          metadata: {
+            tenant_id: 1,
+            last_update: new Date().toISOString()
+          }
+        },
+        {
+          id: 'tenant_test',
+          name: 'Test Factory',
+          path: `${keyPrefix}test`,
+          type: 'tenant',
+          isExpanded: false,
+          isLoaded: false,
+          childCount: 2,
+          metadata: {
+            tenant_id: 2,
+            last_update: new Date().toISOString()
+          }
+        }
+      ];
+    } else {
+      // 하위 레벨 - 부모 경로에 따라 다른 데이터
+      if (parent_path.includes('demo')) {
+        treeData = [
+          {
+            id: 'device_demo_1',
+            name: 'Demo Device 1',
+            path: `${parent_path}:device1`,
+            type: 'device',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 5,
+            metadata: {
+              device_id: 1,
+              last_update: new Date().toISOString()
+            }
+          },
+          {
+            id: 'device_demo_2',
+            name: 'Demo Device 2',
+            path: `${parent_path}:device2`,
+            type: 'device',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 3,
+            metadata: {
+              device_id: 2,
+              last_update: new Date().toISOString()
+            }
+          }
+        ];
+      } else {
+        // 빈 결과
+        treeData = [];
+      }
+    }
+    
+    console.log('✅ Redis 트리 데이터 생성:', { count: treeData.length });
+    
+    // 🔥 Frontend가 기대하는 응답 구조로 수정
+    res.json({
+      status: 'success',
+      message: 'Redis 트리 구조 조회 완료',
+      data: treeData,  // Frontend가 response.data에서 treeData를 기대함
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Redis 트리 조회 실패:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: 'Redis 트리 조회 실패',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 🔥 누락된 Redis 통계 조회 (Frontend가 기대하는 필드명으로 수정)
+router.get('/redis/stats', async (req, res) => {
+  try {
+    console.log('📊 Redis 통계 조회 요청');
+    
+    // Frontend RedisStats 인터페이스에 맞는 데이터 생성
+    const stats = {
+      total_keys: Math.floor(Math.random() * 1000) + 142,
+      memory_usage: Math.floor(Math.random() * 100 * 1024 * 1024) + 45 * 1024 * 1024, // bytes
+      connected_clients: Math.floor(Math.random() * 10) + 5,
+      commands_processed: Math.floor(Math.random() * 100000) + 125847,
+      hits: Math.floor(Math.random() * 50000) + 98234,
+      misses: Math.floor(Math.random() * 5000) + 1247,
+      expired_keys: Math.floor(Math.random() * 100) + 23
+    };
+    
+    console.log('✅ Redis 통계 생성:', stats);
+    
+    // 🔥 Frontend가 기대하는 응답 구조로 수정
+    res.json({
+      status: 'success',
+      message: 'Redis 통계 조회 완료',
+      data: stats,  // ✅ 직접 stats 객체 전달
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Redis 통계 조회 실패:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: 'Redis 통계 조회 실패',
+      error: error.message,
+      data: {
+        total_keys: 0,
+        memory_usage: 0,
+        connected_clients: 0,
+        commands_processed: 0,
+        hits: 0,
+        misses: 0,
+        expired_keys: 0
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 🔥 누락된 Redis 키 검색
+router.get('/redis/keys/search', async (req, res) => {
+  try {
+    console.log('🔍 Redis 키 검색 요청:', req.query);
+    
+    const { pattern, limit = 100 } = req.query;
+    
+    // Mock 키 데이터 생성
+    const mockKeys = [
+      'pulseone:demo:device1:temperature',
+      'pulseone:demo:device1:pressure',
+      'pulseone:demo:device1:flow_rate',
+      'pulseone:demo:device2:voltage',
+      'pulseone:demo:device2:current',
+      'pulseone:test:device1:rpm',
+      'pulseone:test:device1:vibration'
+    ];
+    
+    let filteredKeys = mockKeys;
+    
+    if (pattern && pattern !== '*') {
+      const regex = new RegExp(pattern.replace(/\*/g, '.*'), 'i');
+      filteredKeys = mockKeys.filter(key => regex.test(key));
+    }
+    
+    const result = {
+      keys: filteredKeys.slice(0, parseInt(limit)),
+      total: filteredKeys.length,
+      cursor: null
+    };
+    
+    console.log('✅ Redis 키 검색 완료:', { pattern, found: result.keys.length });
+    
+    res.json({
+      status: 'success',
+      message: 'Redis 키 검색 완료',
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Redis 키 검색 실패:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: 'Redis 키 검색 실패',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// =============================================================================
+// 🔥 누락된 디바이스 관리 API 추가 (간단한 Mock 버전)
+// =============================================================================
+
+// 디바이스 목록 조회 (기존 것과 중복되지 않도록 주의)
+if (!router.stack.some(layer => layer.route && layer.route.path === '/devices')) {
+  router.get('/devices', async (req, res) => {
+    try {
+      console.log('📱 디바이스 목록 조회 요청');
+      
+      // Mock 디바이스 데이터 생성
+      const mockDevices = [
+        {
+          id: 1,
+          name: 'Demo Modbus Device',
+          protocol_type: 'MODBUS_TCP',
+          device_type: 'PLC',
+          endpoint: '192.168.1.100:502',
+          is_enabled: true,
+          connection_status: 'connected',
+          status: 'running',
+          last_seen: new Date().toISOString(),
+          manufacturer: 'Schneider Electric',
+          model: 'M340',
+          data_points_count: 15,
+          created_at: '2025-01-01T00:00:00Z'
+        },
+        {
+          id: 2,
+          name: 'Demo MQTT Sensor',
+          protocol_type: 'MQTT',
+          device_type: 'Sensor',
+          endpoint: 'mqtt://broker.example.com:1883',
+          is_enabled: true,
+          connection_status: 'connected',
+          status: 'running',
+          last_seen: new Date(Date.now() - 30000).toISOString(),
+          manufacturer: 'Generic',
+          model: 'IoT-Sensor-v2',
+          data_points_count: 8,
+          created_at: '2025-01-02T00:00:00Z'
+        },
+        {
+          id: 3,
+          name: 'Demo BACnet Controller',
+          protocol_type: 'BACNET',
+          device_type: 'Controller',
+          endpoint: '192.168.1.200',
+          is_enabled: false,
+          connection_status: 'disconnected',
+          status: 'stopped',
+          last_seen: new Date(Date.now() - 3600000).toISOString(),
+          manufacturer: 'Honeywell',
+          model: 'BACnet-Pro',
+          data_points_count: 22,
+          created_at: '2025-01-03T00:00:00Z'
+        }
+      ];
+      
+      console.log('✅ 디바이스 목록 생성:', { count: mockDevices.length });
+      
+      // 🔥 Backend 응답 구조에 맞게 수정
+      res.json({
+        status: 'success',
+        message: '디바이스 목록 조회 완료',
+        data: mockDevices,
+        pagination: {
+          total: mockDevices.length,
+          page: 1,
+          pageSize: 20,
+          totalPages: 1
+        },
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('❌ 디바이스 목록 조회 실패:', error.message);
+      res.status(500).json({
+        status: 'error',
+        message: '디바이스 목록 조회 실패',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+}
+
+// 디바이스 상태 변경 엔드포인트들
+router.post('/devices/:id/enable', async (req, res) => {
+  try {
+    const deviceId = parseInt(req.params.id);
+    console.log(`🟢 디바이스 ${deviceId} 활성화 요청`);
+    
+    res.json({
+      status: 'success',
+      message: `디바이스 ${deviceId} 활성화 완료`,
+      data: { device_id: deviceId, enabled: true },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ 디바이스 활성화 실패:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: '디바이스 활성화 실패',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+router.post('/devices/:id/disable', async (req, res) => {
+  try {
+    const deviceId = parseInt(req.params.id);
+    console.log(`🔴 디바이스 ${deviceId} 비활성화 요청`);
+    
+    res.json({
+      status: 'success',
+      message: `디바이스 ${deviceId} 비활성화 완료`,
+      data: { device_id: deviceId, enabled: false },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ 디바이스 비활성화 실패:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: '디바이스 비활성화 실패',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+router.post('/devices/:id/restart', async (req, res) => {
+  try {
+    const deviceId = parseInt(req.params.id);
+    console.log(`🔄 디바이스 ${deviceId} 재시작 요청`);
+    
+    res.json({
+      status: 'success',
+      message: `디바이스 ${deviceId} 재시작 완료`,
+      data: { device_id: deviceId, restarted: true },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ 디바이스 재시작 실패:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: '디바이스 재시작 실패',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+router.post('/devices/:id/test-connection', async (req, res) => {
+  try {
+    const deviceId = parseInt(req.params.id);
+    console.log(`🔗 디바이스 ${deviceId} 연결 테스트 요청`);
+    
+    // Mock 연결 테스트 결과
+    const testResult = {
+      device_id: deviceId,
+      connection_successful: Math.random() > 0.2, // 80% 성공률
+      response_time: Math.floor(Math.random() * 200) + 50, // 50-250ms
+      tested_at: new Date().toISOString()
+    };
+    
+    res.json({
+      status: 'success',
+      message: `디바이스 ${deviceId} 연결 테스트 완료`,
+      data: testResult,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ 디바이스 연결 테스트 실패:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: '디바이스 연결 테스트 실패',
       error: error.message,
       timestamp: new Date().toISOString()
     });
