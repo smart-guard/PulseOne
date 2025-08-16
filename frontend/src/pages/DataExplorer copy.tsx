@@ -1,56 +1,48 @@
-// ============================================================================
-// frontend/src/pages/DataExplorer.tsx
-// 📝 Redis 데이터 익스플로러 - 실제 API 연동 버전
-// ============================================================================
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { Pagination } from '../components/common/Pagination';
-import { usePagination } from '../hooks/usePagination';
-import { RedisDataApiService } from '../api/services/redisDataApi';
-import type { 
-  RedisTreeNode, 
-  RedisDataPoint, 
-  RedisStats 
-} from '../api/services/redisDataApi';
-import { PAGINATION_CONSTANTS } from '../constants/pagination';
 import '../styles/base.css';
 import '../styles/data-explorer.css';
-import '../styles/pagination.css';
+
+interface DataPoint {
+  id: string;
+  key: string;
+  name: string;
+  value: any;
+  dataType: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  unit?: string;
+  timestamp: Date;
+  quality: 'good' | 'bad' | 'uncertain';
+  size: number;
+  ttl?: number;
+}
+
+interface TreeNode {
+  id: string;
+  name: string;
+  path: string;
+  type: 'tenant' | 'factory' | 'device' | 'folder' | 'datapoint';
+  children?: TreeNode[];
+  isExpanded: boolean;
+  isLoaded: boolean;
+  dataPoint?: DataPoint;
+  childCount?: number;
+}
 
 const DataExplorer: React.FC = () => {
-  // 🔧 기본 상태들
-  const [treeData, setTreeData] = useState<RedisTreeNode[]>([]);
-  const [selectedNode, setSelectedNode] = useState<RedisTreeNode | null>(null);
-  const [selectedDataPoints, setSelectedDataPoints] = useState<RedisDataPoint[]>([]);
+  const [treeData, setTreeData] = useState<TreeNode[]>([]);
+  const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
+  const [selectedDataPoints, setSelectedDataPoints] = useState<DataPoint[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Redis 연결 및 통계
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
-  const [redisStats, setRedisStats] = useState<RedisStats | null>(null);
-  
-  // 실시간 업데이트
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(5000);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // 페이징
-  const pagination = usePagination({
-    initialPageSize: PAGINATION_CONSTANTS.DEFAULT_PAGE_SIZE,
-    totalCount: selectedDataPoints.length,
-    pageSizeOptions: PAGINATION_CONSTANTS.PAGE_SIZE_OPTIONS
-  });
-
-  // =============================================================================
-  // 초기화 및 데이터 로드
-  // =============================================================================
-
+  // 초기 트리 데이터 로드
   useEffect(() => {
-    initializeConnection();
     loadInitialTree();
   }, []);
 
+  // 실시간 업데이트
   useEffect(() => {
     if (!autoRefresh) return;
 
@@ -58,281 +50,179 @@ const DataExplorer: React.FC = () => {
       if (selectedDataPoints.length > 0) {
         refreshSelectedDataPoints();
       }
-      updateConnectionStatus();
     }, refreshInterval);
 
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, selectedDataPoints]);
 
-  // =============================================================================
-  // API 호출 함수들
-  // =============================================================================
-
-  const initializeConnection = async () => {
-    try {
-      setConnectionStatus('connecting');
-      const response = await RedisDataApiService.getConnectionStatus();
-      
-      if (response.success) {
-        setConnectionStatus(response.data.status);
-        if (response.data.status === 'connected') {
-          await loadRedisStats();
-        }
-      } else {
-        setConnectionStatus('disconnected');
-        setError('Redis 서버에 연결할 수 없습니다.');
-      }
-    } catch (err) {
-      console.error('Redis 연결 초기화 실패:', err);
-      setConnectionStatus('disconnected');
-      setError('Redis 연결 중 오류가 발생했습니다.');
-    }
-  };
-
-  const loadRedisStats = async () => {
-    try {
-      const response = await RedisDataApiService.getStats();
-      if (response.success) {
-        setRedisStats(response.data);
-      }
-    } catch (err) {
-      console.error('Redis 통계 로드 실패:', err);
-    }
-  };
-
   const loadInitialTree = async () => {
     setIsLoading(true);
-    setError(null);
-    
     try {
-      const response = await RedisDataApiService.getKeyTree();
+      // 시뮬레이션 데이터
+      const initialTree: TreeNode[] = [
+        {
+          id: 'tenant_samsung',
+          name: 'Samsung Electronics',
+          path: 'pulseone:samsung',
+          type: 'tenant',
+          isExpanded: false,
+          isLoaded: false,
+          childCount: 3
+        },
+        {
+          id: 'tenant_lg',
+          name: 'LG Electronics',
+          path: 'pulseone:lg',
+          type: 'tenant',
+          isExpanded: false,
+          isLoaded: false,
+          childCount: 2
+        },
+        {
+          id: 'tenant_hyundai',
+          name: 'Hyundai Motor',
+          path: 'pulseone:hyundai',
+          type: 'tenant',
+          isExpanded: false,
+          isLoaded: false,
+          childCount: 4
+        }
+      ];
       
-      if (response.success) {
-        setTreeData(response.data);
-      } else {
-        setError(response.error || 'Redis 키 트리 로드에 실패했습니다.');
-        // 폴백: 연결 끊김 상태에서도 기본 구조 표시
-        setTreeData(createFallbackTree());
-      }
-    } catch (err) {
-      console.error('초기 트리 로드 실패:', err);
-      setError('Redis 데이터를 불러올 수 없습니다.');
-      setTreeData(createFallbackTree());
+      setTreeData(initialTree);
+    } catch (error) {
+      console.error('Failed to load initial tree:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadNodeChildren = async (node: RedisTreeNode) => {
-    setIsLoading(true);
-    
-    try {
-      const response = await RedisDataApiService.getNodeChildren(node.id);
-      
-      if (response.success) {
-        // 트리 데이터 업데이트
-        setTreeData(prev => updateTreeNode(prev, node.id, { 
-          children: response.data, 
-          isLoaded: true, 
-          isExpanded: true 
-        }));
-      } else {
-        setError(`노드 ${node.name}의 자식을 로드할 수 없습니다.`);
-      }
-    } catch (err) {
-      console.error('노드 자식 로드 실패:', err);
-      setError('하위 노드를 불러올 수 없습니다.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadDataPointDetails = async (node: RedisTreeNode) => {
-    if (!node.dataPoint) return;
-    
-    try {
-      const response = await RedisDataApiService.getKeyData(node.dataPoint.key);
-      
-      if (response.success) {
-        // 최신 데이터로 업데이트
-        const updatedDataPoint = response.data;
-        setSelectedDataPoints(prev => {
-          const exists = prev.find(dp => dp.id === updatedDataPoint.id);
-          if (exists) {
-            return prev.map(dp => dp.id === updatedDataPoint.id ? updatedDataPoint : dp);
-          } else {
-            return [...prev, updatedDataPoint];
-          }
-        });
-        
-        // 트리 노드도 업데이트
-        setTreeData(prev => updateTreeNode(prev, node.id, {
-          dataPoint: updatedDataPoint
-        }));
-      }
-    } catch (err) {
-      console.error('데이터 포인트 상세 로드 실패:', err);
-      setError('데이터 포인트 정보를 불러올 수 없습니다.');
-    }
-  };
-
-  const refreshSelectedDataPoints = async () => {
-    if (selectedDataPoints.length === 0) return;
-    
-    try {
-      const keys = selectedDataPoints.map(dp => dp.key);
-      const response = await RedisDataApiService.getBulkKeyData(keys);
-      
-      if (response.success) {
-        setSelectedDataPoints(response.data);
-        setLastUpdate(new Date());
-      }
-    } catch (err) {
-      console.error('선택된 데이터 포인트 새로고침 실패:', err);
-    }
-  };
-
-  const updateConnectionStatus = async () => {
-    try {
-      const response = await RedisDataApiService.getConnectionStatus();
-      if (response.success) {
-        setConnectionStatus(response.data.status);
-      }
-    } catch (err) {
-      setConnectionStatus('disconnected');
-    }
-  };
-
-  // =============================================================================
-  // 이벤트 핸들러들
-  // =============================================================================
-
-  const handleNodeClick = async (node: RedisTreeNode) => {
-    setSelectedNode(node);
-    
-    if (node.type === 'datapoint' && node.dataPoint) {
-      // 데이터 포인트 선택 시 상세 정보 로드
-      await loadDataPointDetails(node);
-    } else if (!node.isLoaded && node.childCount && node.childCount > 0) {
-      // 자식 노드 로드
-      await loadNodeChildren(node);
-    } else if (node.isLoaded) {
-      // 확장/축소 토글
-      setTreeData(prev => updateTreeNode(prev, node.id, { 
-        isExpanded: !node.isExpanded 
-      }));
-    }
-  };
-
-  const handleDataPointSelect = (dataPoint: RedisDataPoint) => {
-    setSelectedDataPoints(prev => {
-      const exists = prev.find(dp => dp.id === dataPoint.id);
-      if (exists) {
-        return prev.filter(dp => dp.id !== dataPoint.id);
-      } else {
-        return [...prev, dataPoint];
-      }
-    });
-  };
-
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) {
-      await loadInitialTree();
-      return;
-    }
-    
+  const loadNodeChildren = async (node: TreeNode) => {
     setIsLoading(true);
     try {
-      const response = await RedisDataApiService.searchKeys({
-        pattern: `*${searchTerm}*`,
-        limit: 100
-      });
+      let children: TreeNode[] = [];
       
-      if (response.success) {
-        // 검색 결과를 트리 구조로 변환
-        const searchResults = createSearchResultTree(response.data.keys || []);
-        setTreeData(searchResults);
-      }
-    } catch (err) {
-      console.error('검색 실패:', err);
-      setError('검색 중 오류가 발생했습니다.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const clearSelection = () => {
-    setSelectedDataPoints([]);
-  };
-
-  const exportData = async () => {
-    if (selectedDataPoints.length === 0) return;
-    
-    try {
-      const keys = selectedDataPoints.map(dp => dp.key);
-      const blob = await RedisDataApiService.exportData(keys, 'json');
-      
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `redis_data_${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('데이터 내보내기 실패:', err);
-      setError('데이터 내보내기 중 오류가 발생했습니다.');
-    }
-  };
-
-  // =============================================================================
-  // 유틸리티 함수들
-  // =============================================================================
-
-  const createFallbackTree = (): RedisTreeNode[] => {
-    return [
-      {
-        id: 'offline_notice',
-        name: 'Redis 서버 연결 끊김',
-        path: 'offline',
-        type: 'folder',
-        isExpanded: false,
-        isLoaded: true,
-        children: [
+      // 시뮬레이션 데이터 생성
+      if (node.type === 'tenant') {
+        children = [
           {
-            id: 'offline_message',
-            name: '실시간 데이터를 불러올 수 없습니다',
-            path: 'offline:message',
-            type: 'folder',
+            id: `${node.id}_factory_seoul`,
+            name: 'Seoul Factory',
+            path: `${node.path}:seoul_fab`,
+            type: 'factory',
             isExpanded: false,
-            isLoaded: true
+            isLoaded: false,
+            childCount: 5
+          },
+          {
+            id: `${node.id}_factory_busan`,
+            name: 'Busan Factory',
+            path: `${node.path}:busan_fab`,
+            type: 'factory',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 3
           }
-        ]
+        ];
+      } else if (node.type === 'factory') {
+        children = [
+          {
+            id: `${node.id}_device_plc001`,
+            name: 'Main PLC #001',
+            path: `${node.path}:plc001`,
+            type: 'device',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 15
+          },
+          {
+            id: `${node.id}_device_plc002`,
+            name: 'Backup PLC #002',
+            path: `${node.path}:plc002`,
+            type: 'device',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 12
+          },
+          {
+            id: `${node.id}_device_hmi001`,
+            name: 'Operator HMI #001',
+            path: `${node.path}:hmi001`,
+            type: 'device',
+            isExpanded: false,
+            isLoaded: false,
+            childCount: 8
+          }
+        ];
+      } else if (node.type === 'device') {
+        // 데이터 포인트들
+        const dataPointNames = [
+          'temperature_01', 'temperature_02', 'pressure_main', 'pressure_backup',
+          'motor_speed', 'motor_current', 'vibration_x', 'vibration_y',
+          'flow_rate', 'level_tank1', 'level_tank2', 'ph_value',
+          'conductivity', 'turbidity', 'alarm_status'
+        ];
+        
+        children = dataPointNames.slice(0, node.childCount || 10).map((name, index) => ({
+          id: `${node.id}_dp_${name}`,
+          name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          path: `${node.path}:${name}`,
+          type: 'datapoint',
+          isExpanded: false,
+          isLoaded: true,
+          dataPoint: generateDataPoint(`${node.path}:${name}`, name)
+        }));
       }
-    ];
+
+      // 트리 데이터 업데이트
+      setTreeData(prev => updateTreeNode(prev, node.id, { 
+        children, 
+        isLoaded: true, 
+        isExpanded: true 
+      }));
+      
+    } catch (error) {
+      console.error('Failed to load node children:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const createSearchResultTree = (keys: string[]): RedisTreeNode[] => {
-    return keys.map((key, index) => ({
-      id: `search_${index}`,
-      name: key,
-      path: key,
-      type: 'datapoint',
-      isExpanded: false,
-      isLoaded: true,
-      dataPoint: {
-        id: key,
-        key,
-        name: key.split(':').pop() || key,
-        value: 'Loading...',
-        dataType: 'string',
-        timestamp: new Date().toISOString(),
-        quality: 'uncertain',
-        size: 0
-      }
-    }));
+  const generateDataPoint = (key: string, name: string): DataPoint => {
+    const dataTypes = ['number', 'boolean', 'string'] as const;
+    const qualities = ['good', 'bad', 'uncertain'] as const;
+    const units = ['°C', 'bar', 'rpm', 'A', 'mm', 'pH', '%', 'L/min'];
+    
+    const dataType = dataTypes[Math.floor(Math.random() * dataTypes.length)];
+    let value: any;
+    
+    switch (dataType) {
+      case 'number':
+        value = (Math.random() * 100).toFixed(2);
+        break;
+      case 'boolean':
+        value = Math.random() > 0.5;
+        break;
+      case 'string':
+        value = `Status_${Math.floor(Math.random() * 10)}`;
+        break;
+    }
+    
+    return {
+      id: key,
+      key,
+      name,
+      value,
+      dataType,
+      unit: dataType === 'number' ? units[Math.floor(Math.random() * units.length)] : undefined,
+      timestamp: new Date(),
+      quality: qualities[Math.floor(Math.random() * qualities.length)],
+      size: Math.floor(Math.random() * 1024) + 64,
+      ttl: Math.random() > 0.7 ? Math.floor(Math.random() * 3600) : undefined
+    };
   };
 
-  const updateTreeNode = (nodes: RedisTreeNode[], nodeId: string, updates: Partial<RedisTreeNode>): RedisTreeNode[] => {
+  const updateTreeNode = (nodes: TreeNode[], nodeId: string, updates: Partial<TreeNode>): TreeNode[] => {
     return nodes.map(node => {
       if (node.id === nodeId) {
         return { ...node, ...updates };
@@ -344,7 +234,69 @@ const DataExplorer: React.FC = () => {
     });
   };
 
-  const renderTreeNode = (node: RedisTreeNode, level: number = 0): React.ReactNode => {
+  const handleNodeClick = (node: TreeNode) => {
+    setSelectedNode(node);
+    
+    if (node.type === 'datapoint' && node.dataPoint) {
+      // 데이터 포인트 선택 시 상세 정보 표시
+      setSelectedDataPoints([node.dataPoint]);
+    } else if (!node.isLoaded && node.childCount && node.childCount > 0) {
+      // 자식 노드 로드
+      loadNodeChildren(node);
+    } else if (node.isLoaded) {
+      // 확장/축소 토글
+      setTreeData(prev => updateTreeNode(prev, node.id, { 
+        isExpanded: !node.isExpanded 
+      }));
+    }
+  };
+
+  const handleDataPointSelect = (dataPoint: DataPoint) => {
+    setSelectedDataPoints(prev => {
+      const exists = prev.find(dp => dp.id === dataPoint.id);
+      if (exists) {
+        return prev.filter(dp => dp.id !== dataPoint.id);
+      } else {
+        return [...prev, dataPoint];
+      }
+    });
+  };
+
+  const refreshSelectedDataPoints = async () => {
+    if (selectedDataPoints.length === 0) return;
+    
+    setSelectedDataPoints(prev => prev.map(dp => ({
+      ...dp,
+      value: generateDataPoint(dp.key, dp.name).value,
+      timestamp: new Date(),
+      quality: Math.random() > 0.9 ? 'uncertain' : 'good'
+    })));
+  };
+
+  const clearSelection = () => {
+    setSelectedDataPoints([]);
+  };
+
+  const exportData = () => {
+    const data = selectedDataPoints.map(dp => ({
+      key: dp.key,
+      name: dp.name,
+      value: dp.value,
+      unit: dp.unit,
+      timestamp: dp.timestamp.toISOString(),
+      quality: dp.quality
+    }));
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `redis_data_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const renderTreeNode = (node: TreeNode, level: number = 0): React.ReactNode => {
     const hasChildren = node.childCount && node.childCount > 0;
     const isExpanded = node.isExpanded && node.children;
     
@@ -391,7 +343,7 @@ const DataExplorer: React.FC = () => {
   const getNodeIcon = (type: string): string => {
     switch (type) {
       case 'tenant': return 'fas fa-building';
-      case 'site': return 'fas fa-industry';
+      case 'factory': return 'fas fa-industry';
       case 'device': return 'fas fa-microchip';
       case 'folder': return 'fas fa-folder';
       case 'datapoint': return 'fas fa-chart-line';
@@ -399,7 +351,7 @@ const DataExplorer: React.FC = () => {
     }
   };
 
-  const formatDataValue = (dataPoint: RedisDataPoint): string => {
+  const formatDataValue = (dataPoint: DataPoint): string => {
     if (dataPoint.dataType === 'boolean') {
       return dataPoint.value ? 'TRUE' : 'FALSE';
     }
@@ -409,8 +361,8 @@ const DataExplorer: React.FC = () => {
     return String(dataPoint.value);
   };
 
-  const formatTimestamp = (timestamp: string): string => {
-    return new Date(timestamp).toLocaleString('ko-KR', {
+  const formatTimestamp = (timestamp: Date): string => {
+    return timestamp.toLocaleString('ko-KR', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -426,39 +378,16 @@ const DataExplorer: React.FC = () => {
       )
     : treeData;
 
-  // 페이징된 데이터 포인트
-  const paginatedDataPoints = selectedDataPoints.slice(
-    (pagination.currentPage - 1) * pagination.pageSize,
-    pagination.currentPage * pagination.pageSize
-  );
-
   return (
     <div className="data-explorer-container">
       {/* 페이지 헤더 */}
       <div className="page-header">
-        <div className="header-left">
-          <h1 className="page-title">
-            <i className="fas fa-database"></i>
-            데이터 익스플로러
-          </h1>
-          <div className="header-meta">
-            <span className="update-time">
-              마지막 업데이트: {lastUpdate.toLocaleTimeString()}
-            </span>
-            {redisStats && (
-              <span className="redis-stats">
-                총 키: {redisStats.total_keys.toLocaleString()}개 | 
-                메모리: {(redisStats.memory_usage / 1024 / 1024).toFixed(1)}MB
-              </span>
-            )}
-          </div>
-        </div>
+        <h1 className="page-title">데이터 익스플로러</h1>
         <div className="page-actions">
           <div className={`connection-status ${connectionStatus}`}>
             <i className={`fas ${connectionStatus === 'connected' ? 'fa-link' : 'fa-unlink'}`}></i>
             <span className="status-text">
-              {connectionStatus === 'connected' ? 'Redis 연결됨' : 
-               connectionStatus === 'connecting' ? 'Redis 연결 중...' : 'Redis 연결 끊김'}
+              {connectionStatus === 'connected' ? 'Redis 연결됨' : 'Redis 연결 끊김'}
             </span>
           </div>
           <button 
@@ -472,17 +401,6 @@ const DataExplorer: React.FC = () => {
         </div>
       </div>
 
-      {/* 에러 메시지 */}
-      {error && (
-        <div className="error-banner">
-          <i className="fas fa-exclamation-triangle"></i>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="error-close">
-            <i className="fas fa-times"></i>
-          </button>
-        </div>
-      )}
-
       <div className="explorer-layout">
         {/* 좌측 트리 패널 */}
         <div className="tree-panel">
@@ -495,12 +413,9 @@ const DataExplorer: React.FC = () => {
                   placeholder="키 검색..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                   className="search-input"
                 />
-                <button onClick={handleSearch} className="search-button">
-                  <i className="fas fa-search"></i>
-                </button>
+                <i className="fas fa-search search-icon"></i>
               </div>
             </div>
           </div>
@@ -508,12 +423,6 @@ const DataExplorer: React.FC = () => {
           <div className="tree-content">
             {isLoading && <div className="loading-indicator">로딩 중...</div>}
             {filteredTreeData.map(node => renderTreeNode(node))}
-            {filteredTreeData.length === 0 && !isLoading && (
-              <div className="empty-tree">
-                <i className="fas fa-search empty-icon"></i>
-                <p>검색 결과가 없습니다</p>
-              </div>
-            )}
           </div>
         </div>
 
@@ -645,7 +554,7 @@ const DataExplorer: React.FC = () => {
             <h3>실시간 감시 ({selectedDataPoints.length}개)</h3>
             <div className="watch-controls">
               <span className="last-update">
-                마지막 업데이트: {formatTimestamp(lastUpdate.toISOString())}
+                마지막 업데이트: {formatTimestamp(new Date())}
               </span>
             </div>
           </div>
@@ -659,7 +568,7 @@ const DataExplorer: React.FC = () => {
                 <div className="watch-cell">타임스탬프</div>
                 <div className="watch-cell">동작</div>
               </div>
-              {paginatedDataPoints.map(dataPoint => (
+              {selectedDataPoints.map(dataPoint => (
                 <div key={dataPoint.id} className="watch-table-row">
                   <div className="watch-cell monospace">{dataPoint.key}</div>
                   <div className="watch-cell">{dataPoint.name}</div>
@@ -687,22 +596,6 @@ const DataExplorer: React.FC = () => {
                 </div>
               ))}
             </div>
-            
-            {/* 페이징 */}
-            {selectedDataPoints.length > pagination.pageSize && (
-              <Pagination
-                className="watch-pagination"
-                current={pagination.currentPage}
-                total={selectedDataPoints.length}
-                pageSize={pagination.pageSize}
-                pageSizeOptions={PAGINATION_CONSTANTS.PAGE_SIZE_OPTIONS}
-                showSizeChanger={true}
-                showQuickJumper={false}
-                showTotal={true}
-                onChange={pagination.goToPage}
-                onShowSizeChange={pagination.changePageSize}
-              />
-            )}
           </div>
         </div>
       )}
@@ -711,3 +604,4 @@ const DataExplorer: React.FC = () => {
 };
 
 export default DataExplorer;
+
