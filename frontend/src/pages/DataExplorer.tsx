@@ -1,9 +1,9 @@
 // ============================================================================
 // frontend/src/pages/DataExplorer.tsx
-// 📝 Redis 데이터 익스플로러 - 실제 API 연동 버전
+// 📝 Redis 데이터 익스플로러 - 완성된 최종 버전
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Pagination } from '../components/common/Pagination';
 import { usePagination } from '../hooks/usePagination';
 import { RedisDataApiService } from '../api/services/redisDataApi';
@@ -65,58 +65,113 @@ const DataExplorer: React.FC = () => {
   }, [autoRefresh, refreshInterval, selectedDataPoints]);
 
   // =============================================================================
-  // API 호출 함수들
+  // API 호출 함수들 - 완성된 버전
   // =============================================================================
 
   const initializeConnection = async () => {
     try {
+      console.log('🔍 연결 초기화 시작...');
       setConnectionStatus('connecting');
+      setError(null); // 기존 에러 클리어
+      
       const response = await RedisDataApiService.getConnectionStatus();
       
-      if (response.success) {
+      console.log('📡 연결 상태 응답 받음:', response);
+      
+      if (response.success && response.data) {
+        console.log('✅ 연결 성공, 상태 설정:', response.data.status);
         setConnectionStatus(response.data.status);
+        
         if (response.data.status === 'connected') {
+          console.log('🔗 연결됨 - Redis 통계 로드 시작');
           await loadRedisStats();
+          setError(null); // 연결 성공 시 에러 클리어
+        } else {
+          console.log('⚠️ 연결되지 않음, 상태:', response.data.status);
+          setError(`Redis 상태: ${response.data.status}`);
         }
       } else {
+        console.log('❌ 연결 실패:', response.error || '알 수 없는 오류');
         setConnectionStatus('disconnected');
-        setError('Redis 서버에 연결할 수 없습니다.');
+        setError(response.error || 'Redis 서버에 연결할 수 없습니다.');
       }
     } catch (err) {
-      console.error('Redis 연결 초기화 실패:', err);
+      console.error('❌ 연결 초기화 예외:', err);
       setConnectionStatus('disconnected');
-      setError('Redis 연결 중 오류가 발생했습니다.');
+      setError('Redis 연결 중 예외가 발생했습니다.');
     }
   };
 
   const loadRedisStats = async () => {
     try {
+      console.log('📊 Redis 통계 로드 시작...');
       const response = await RedisDataApiService.getStats();
-      if (response.success) {
-        setRedisStats(response.data);
+      
+      if (response.success && response.data) {
+        console.log('✅ Redis 통계 로드 성공:', response.data);
+        
+        // 통계 데이터 유효성 검증
+        const validStats = {
+          total_keys: typeof response.data.total_keys === 'number' ? response.data.total_keys : 0,
+          memory_usage: typeof response.data.memory_usage === 'number' ? response.data.memory_usage : 0,
+          connected_clients: typeof response.data.connected_clients === 'number' ? response.data.connected_clients : 0,
+          commands_processed: typeof response.data.commands_processed === 'number' ? response.data.commands_processed : 0,
+          hits: typeof response.data.hits === 'number' ? response.data.hits : 0,
+          misses: typeof response.data.misses === 'number' ? response.data.misses : 0,
+          expired_keys: typeof response.data.expired_keys === 'number' ? response.data.expired_keys : 0
+        };
+        
+        console.log('🔍 검증된 통계 데이터:', validStats);
+        setRedisStats(validStats);
+      } else {
+        console.log('⚠️ Redis 통계 로드 실패:', response.error);
+        // 통계 로드 실패 시 기본값 설정
+        setRedisStats({
+          total_keys: 0,
+          memory_usage: 0,
+          connected_clients: 0,
+          commands_processed: 0,
+          hits: 0,
+          misses: 0,
+          expired_keys: 0
+        });
       }
     } catch (err) {
-      console.error('Redis 통계 로드 실패:', err);
+      console.error('❌ Redis 통계 로드 예외:', err);
+      // 예외 발생 시 기본값 설정
+      setRedisStats({
+        total_keys: 0,
+        memory_usage: 0,
+        connected_clients: 0,
+        commands_processed: 0,
+        hits: 0,
+        misses: 0,
+        expired_keys: 0
+      });
     }
   };
 
   const loadInitialTree = async () => {
+    console.log('🌳 초기 트리 로드 시작...');
     setIsLoading(true);
-    setError(null);
     
     try {
       const response = await RedisDataApiService.getKeyTree();
       
-      if (response.success) {
+      console.log('📡 트리 응답 받음:', response);
+      
+      if (response.success && response.data) {
+        console.log('✅ 트리 로드 성공, 노드 수:', response.data.length);
         setTreeData(response.data);
       } else {
-        setError(response.error || 'Redis 키 트리 로드에 실패했습니다.');
+        console.log('⚠️ 트리 로드 실패:', response.error);
+        
         // 폴백: 연결 끊김 상태에서도 기본 구조 표시
+        console.log('🔄 폴백 트리 생성');
         setTreeData(createFallbackTree());
       }
     } catch (err) {
-      console.error('초기 트리 로드 실패:', err);
-      setError('Redis 데이터를 불러올 수 없습니다.');
+      console.error('❌ 트리 로드 예외:', err);
       setTreeData(createFallbackTree());
     } finally {
       setIsLoading(false);
@@ -177,13 +232,13 @@ const DataExplorer: React.FC = () => {
   };
 
   const refreshSelectedDataPoints = async () => {
-    if (selectedDataPoints.length === 0) return;
+    if (!Array.isArray(selectedDataPoints) || selectedDataPoints.length === 0) return;
     
     try {
       const keys = selectedDataPoints.map(dp => dp.key);
       const response = await RedisDataApiService.getBulkKeyData(keys);
       
-      if (response.success) {
+      if (response.success && Array.isArray(response.data)) {
         setSelectedDataPoints(response.data);
         setLastUpdate(new Date());
       }
@@ -192,14 +247,31 @@ const DataExplorer: React.FC = () => {
     }
   };
 
+  // 🔄 연결 상태 업데이트 (주기적 호출)
   const updateConnectionStatus = async () => {
     try {
+      console.log('🔄 주기적 연결 상태 업데이트...');
       const response = await RedisDataApiService.getConnectionStatus();
-      if (response.success) {
-        setConnectionStatus(response.data.status);
+      
+      if (response.success && response.data) {
+        const newStatus = response.data.status;
+        
+        // 상태가 변경된 경우에만 업데이트
+        if (newStatus !== connectionStatus) {
+          console.log(`🔄 연결 상태 변경: ${connectionStatus} → ${newStatus}`);
+          setConnectionStatus(newStatus);
+          
+          if (newStatus === 'connected') {
+            setError(null); // 연결 복구 시 에러 클리어
+            await loadRedisStats();
+          } else {
+            setError(`Redis 상태: ${newStatus}`);
+          }
+        }
       }
     } catch (err) {
-      setConnectionStatus('disconnected');
+      console.warn('⚠️ 주기적 연결 상태 확인 실패 (무시):', err);
+      // 주기적 확인 실패는 에러 상태 변경하지 않음
     }
   };
 
@@ -248,9 +320,9 @@ const DataExplorer: React.FC = () => {
         limit: 100
       });
       
-      if (response.success) {
+      if (response.success && Array.isArray(response.data.keys)) {
         // 검색 결과를 트리 구조로 변환
-        const searchResults = createSearchResultTree(response.data.keys || []);
+        const searchResults = createSearchResultTree(response.data.keys);
         setTreeData(searchResults);
       }
     } catch (err) {
@@ -266,7 +338,7 @@ const DataExplorer: React.FC = () => {
   };
 
   const exportData = async () => {
-    if (selectedDataPoints.length === 0) return;
+    if (!Array.isArray(selectedDataPoints) || selectedDataPoints.length === 0) return;
     
     try {
       const keys = selectedDataPoints.map(dp => dp.key);
@@ -291,20 +363,21 @@ const DataExplorer: React.FC = () => {
   const createFallbackTree = (): RedisTreeNode[] => {
     return [
       {
-        id: 'offline_notice',
-        name: 'Redis 서버 연결 끊김',
-        path: 'offline',
+        id: 'fallback-root',
+        name: 'Redis (연결 없음)',
+        path: '',
         type: 'folder',
         isExpanded: false,
         isLoaded: true,
         children: [
           {
-            id: 'offline_message',
-            name: '실시간 데이터를 불러올 수 없습니다',
-            path: 'offline:message',
+            id: 'fallback-message',
+            name: '연결을 확인하세요',
+            path: 'message',
             type: 'folder',
             isExpanded: false,
-            isLoaded: true
+            isLoaded: true,
+            children: []
           }
         ]
       }
@@ -312,6 +385,12 @@ const DataExplorer: React.FC = () => {
   };
 
   const createSearchResultTree = (keys: string[]): RedisTreeNode[] => {
+    // keys가 배열인지 확인
+    if (!Array.isArray(keys)) {
+      console.warn('⚠️ createSearchResultTree: keys is not an array:', keys);
+      return [];
+    }
+    
     return keys.map((key, index) => ({
       id: `search_${index}`,
       name: key,
@@ -333,11 +412,17 @@ const DataExplorer: React.FC = () => {
   };
 
   const updateTreeNode = (nodes: RedisTreeNode[], nodeId: string, updates: Partial<RedisTreeNode>): RedisTreeNode[] => {
+    // nodes가 배열인지 확인
+    if (!Array.isArray(nodes)) {
+      console.warn('⚠️ updateTreeNode: nodes is not an array:', nodes);
+      return [];
+    }
+    
     return nodes.map(node => {
       if (node.id === nodeId) {
         return { ...node, ...updates };
       }
-      if (node.children) {
+      if (node.children && Array.isArray(node.children)) {
         return { ...node, children: updateTreeNode(node.children, nodeId, updates) };
       }
       return node;
@@ -345,8 +430,14 @@ const DataExplorer: React.FC = () => {
   };
 
   const renderTreeNode = (node: RedisTreeNode, level: number = 0): React.ReactNode => {
+    // node 유효성 검사
+    if (!node || typeof node !== 'object') {
+      console.warn('⚠️ renderTreeNode: invalid node:', node);
+      return null;
+    }
+    
     const hasChildren = node.childCount && node.childCount > 0;
-    const isExpanded = node.isExpanded && node.children;
+    const isExpanded = node.isExpanded && Array.isArray(node.children);
     
     return (
       <div key={node.id} className="tree-node-container">
@@ -362,7 +453,7 @@ const DataExplorer: React.FC = () => {
             
             <i className={`tree-node-icon ${getNodeIcon(node.type)}`}></i>
             
-            <span className="tree-node-label">{node.name}</span>
+            <span className="tree-node-label">{node.name || 'Unknown'}</span>
             
             {node.type === 'datapoint' && node.dataPoint && (
               <div className="data-point-preview">
@@ -379,7 +470,7 @@ const DataExplorer: React.FC = () => {
           </div>
         </div>
         
-        {isExpanded && node.children && (
+        {isExpanded && node.children && Array.isArray(node.children) && (
           <div className="tree-children">
             {node.children.map(child => renderTreeNode(child, level + 1))}
           </div>
@@ -400,6 +491,10 @@ const DataExplorer: React.FC = () => {
   };
 
   const formatDataValue = (dataPoint: RedisDataPoint): string => {
+    if (!dataPoint || dataPoint.value === undefined || dataPoint.value === null) {
+      return 'N/A';
+    }
+    
     if (dataPoint.dataType === 'boolean') {
       return dataPoint.value ? 'TRUE' : 'FALSE';
     }
@@ -410,27 +505,113 @@ const DataExplorer: React.FC = () => {
   };
 
   const formatTimestamp = (timestamp: string): string => {
-    return new Date(timestamp).toLocaleString('ko-KR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    if (!timestamp) return 'N/A';
+    
+    try {
+      return new Date(timestamp).toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (err) {
+      console.warn('⚠️ 타임스탬프 포맷 실패:', timestamp, err);
+      return timestamp;
+    }
   };
 
-  const filteredTreeData = searchTerm 
-    ? treeData.filter(node => 
-        node.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : treeData;
+  // =============================================================================
+  // 연결 상태 및 에러 렌더링 함수들
+  // =============================================================================
 
-  // 페이징된 데이터 포인트
-  const paginatedDataPoints = selectedDataPoints.slice(
-    (pagination.currentPage - 1) * pagination.pageSize,
-    pagination.currentPage * pagination.pageSize
-  );
+  const renderConnectionStatus = () => {
+    const statusConfig = {
+      connected: { 
+        text: 'Redis 연결됨', 
+        className: 'status-connected',
+        icon: '🟢'
+      },
+      connecting: { 
+        text: 'Redis 연결 중...', 
+        className: 'status-connecting',
+        icon: '🟡'
+      },
+      disconnected: { 
+        text: 'Redis 연결 끊김', 
+        className: 'status-disconnected',
+        icon: '🔴'
+      }
+    };
+
+    const config = statusConfig[connectionStatus] || statusConfig.disconnected;
+
+    return (
+      <div className={`connection-status ${config.className}`}>
+        <span className="status-icon">{config.icon}</span>
+        <span className="status-text">{config.text}</span>
+        {connectionStatus === 'connected' && redisStats && redisStats.total_keys !== undefined && (
+          <span className="stats-info">
+            (키: {redisStats.total_keys.toLocaleString() || 0})
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  // 에러 표시 개선
+  const renderError = () => {
+    if (!error) return null;
+
+    return (
+      <div className="error-banner">
+        <div className="error-content">
+          <span className="error-icon">⚠️</span>
+          <span className="error-message">{error}</span>
+          <button 
+            className="error-retry"
+            onClick={() => {
+              setError(null);
+              initializeConnection();
+            }}
+          >
+            다시 시도
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // 🔥 안전한 필터링 - 배열 타입 보장
+  const filteredTreeData = useMemo(() => {
+    // treeData가 배열인지 확인
+    if (!Array.isArray(treeData)) {
+      console.warn('⚠️ treeData is not an array:', treeData);
+      return [];
+    }
+    
+    if (searchTerm && searchTerm.trim()) {
+      return treeData.filter(node => 
+        node && node.name && 
+        node.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    return treeData;
+  }, [treeData, searchTerm]);
+
+  // 🔥 안전한 페이징 데이터 처리
+  const paginatedDataPoints = useMemo(() => {
+    if (!Array.isArray(selectedDataPoints)) {
+      console.warn('⚠️ selectedDataPoints is not an array:', selectedDataPoints);
+      return [];
+    }
+    
+    const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
+    const endIndex = startIndex + pagination.pageSize;
+    return selectedDataPoints.slice(startIndex, endIndex);
+  }, [selectedDataPoints, pagination.currentPage, pagination.pageSize]);
 
   return (
     <div className="data-explorer-container">
@@ -445,22 +626,16 @@ const DataExplorer: React.FC = () => {
             <span className="update-time">
               마지막 업데이트: {lastUpdate.toLocaleTimeString()}
             </span>
-            {redisStats && (
+            {redisStats && redisStats.total_keys !== undefined && (
               <span className="redis-stats">
                 총 키: {redisStats.total_keys.toLocaleString()}개 | 
-                메모리: {(redisStats.memory_usage / 1024 / 1024).toFixed(1)}MB
+                메모리: {((redisStats.memory_usage || 0) / 1024 / 1024).toFixed(1)}MB
               </span>
             )}
           </div>
         </div>
         <div className="page-actions">
-          <div className={`connection-status ${connectionStatus}`}>
-            <i className={`fas ${connectionStatus === 'connected' ? 'fa-link' : 'fa-unlink'}`}></i>
-            <span className="status-text">
-              {connectionStatus === 'connected' ? 'Redis 연결됨' : 
-               connectionStatus === 'connecting' ? 'Redis 연결 중...' : 'Redis 연결 끊김'}
-            </span>
-          </div>
+          {renderConnectionStatus()}
           <button 
             className="btn btn-outline"
             onClick={loadInitialTree}
@@ -473,15 +648,7 @@ const DataExplorer: React.FC = () => {
       </div>
 
       {/* 에러 메시지 */}
-      {error && (
-        <div className="error-banner">
-          <i className="fas fa-exclamation-triangle"></i>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="error-close">
-            <i className="fas fa-times"></i>
-          </button>
-        </div>
-      )}
+      {renderError()}
 
       <div className="explorer-layout">
         {/* 좌측 트리 패널 */}
@@ -506,12 +673,24 @@ const DataExplorer: React.FC = () => {
           </div>
           
           <div className="tree-content">
-            {isLoading && <div className="loading-indicator">로딩 중...</div>}
-            {filteredTreeData.map(node => renderTreeNode(node))}
-            {filteredTreeData.length === 0 && !isLoading && (
-              <div className="empty-tree">
-                <i className="fas fa-search empty-icon"></i>
-                <p>검색 결과가 없습니다</p>
+            {isLoading && (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <div className="loading-text">로딩 중...</div>
+              </div>
+            )}
+            {!isLoading && Array.isArray(filteredTreeData) && filteredTreeData.length > 0 && 
+              filteredTreeData.map(node => renderTreeNode(node))
+            }
+            {!isLoading && (!Array.isArray(filteredTreeData) || filteredTreeData.length === 0) && (
+              <div className="empty-state">
+                <div className="empty-state-icon">🔍</div>
+                <div className="empty-state-title">
+                  {searchTerm ? '검색 결과가 없습니다' : '데이터가 없습니다'}
+                </div>
+                <div className="empty-state-description">
+                  {searchTerm ? '다른 검색어를 시도해보세요' : 'Redis 연결을 확인하세요'}
+                </div>
               </div>
             )}
           </div>
@@ -542,7 +721,7 @@ const DataExplorer: React.FC = () => {
                   <option value={30000}>30초</option>
                 </select>
               )}
-              {selectedDataPoints.length > 0 && (
+              {Array.isArray(selectedDataPoints) && selectedDataPoints.length > 0 && (
                 <>
                   <button className="btn btn-sm btn-outline" onClick={clearSelection}>
                     <i className="fas fa-times"></i>
@@ -629,9 +808,12 @@ const DataExplorer: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="no-selection">
-                <i className="fas fa-mouse-pointer empty-icon"></i>
-                <p>탐색기에서 항목을 선택하세요</p>
+              <div className="empty-state">
+                <div className="empty-state-icon">👆</div>
+                <div className="empty-state-title">항목을 선택하세요</div>
+                <div className="empty-state-description">
+                  탐색기에서 항목을 선택하여 상세 정보를 확인하세요
+                </div>
               </div>
             )}
           </div>
@@ -659,7 +841,7 @@ const DataExplorer: React.FC = () => {
                 <div className="watch-cell">타임스탬프</div>
                 <div className="watch-cell">동작</div>
               </div>
-              {paginatedDataPoints.map(dataPoint => (
+                              {Array.isArray(paginatedDataPoints) && paginatedDataPoints.map(dataPoint => (
                 <div key={dataPoint.id} className="watch-table-row">
                   <div className="watch-cell monospace">{dataPoint.key}</div>
                   <div className="watch-cell">{dataPoint.name}</div>

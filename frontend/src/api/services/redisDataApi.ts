@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/services/redisDataApi.ts
-// 📝 Redis 데이터 조회 API 서비스 - API 설정 통합 버전
+// 📝 Redis 데이터 조회 API 서비스 - 완성된 최종 버전
 // ============================================================================
 
 // 🔥 API 설정 import 추가
@@ -74,6 +74,16 @@ export interface RedisSearchParams {
   cursor?: string;
 }
 
+// Backend 실제 응답 구조
+interface BackendApiResponse<T = any> {
+  status: 'success' | 'error';
+  message?: string;
+  data: T;
+  error?: string;
+  timestamp?: string;
+}
+
+// Frontend 기대 응답 구조
 interface ApiResponse<T = any> {
   success: boolean;
   data: T;
@@ -83,16 +93,26 @@ interface ApiResponse<T = any> {
 }
 
 // =============================================================================
-// 개선된 HTTP 클라이언트 - API 설정 통합
+// 완성된 HTTP 클라이언트 - Backend 응답 변환 포함
 // =============================================================================
 
 class SimpleHttpClient {
   private baseURL: string;
 
   constructor(baseURL?: string) {
-    // 🔥 API_CONFIG 사용하도록 수정
     this.baseURL = baseURL || API_CONFIG.BASE_URL;
     console.log('🔗 Redis API Base URL:', this.baseURL);
+  }
+
+  // 🔥 Backend 응답을 Frontend 형식으로 변환하는 헬퍼
+  private transformResponse<T>(backendResponse: BackendApiResponse<T>): ApiResponse<T> {
+    return {
+      success: backendResponse.status === 'success',
+      data: backendResponse.data,
+      message: backendResponse.message,
+      error: backendResponse.error,
+      timestamp: backendResponse.timestamp
+    };
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
@@ -127,8 +147,18 @@ class SimpleHttpClient {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      return data;
+      const backendData: BackendApiResponse<T> = await response.json();
+      
+      // 🔥 Backend 응답을 Frontend 형식으로 변환
+      const transformedResponse = this.transformResponse(backendData);
+      
+      console.log('🔄 Response Transformed:', {
+        original: backendData,
+        transformed: transformedResponse
+      });
+      
+      return transformedResponse;
+      
     } catch (error) {
       console.error('❌ API Request failed:', {
         endpoint,
@@ -180,11 +210,11 @@ class SimpleHttpClient {
   }
 }
 
-// 🔥 API_CONFIG를 사용하는 HTTP 클라이언트 인스턴스
+// 🔥 완성된 HTTP 클라이언트 인스턴스
 const httpClient = new SimpleHttpClient();
 
 // =============================================================================
-// Redis 데이터 API 서비스 클래스 - 디버깅 강화
+// 완성된 Redis 데이터 API 서비스 클래스
 // =============================================================================
 
 export class RedisDataApiService {
@@ -201,16 +231,22 @@ export class RedisDataApiService {
   }
 
   /**
-   * Redis 연결 상태 확인
+   * Redis 연결 상태 확인 - 완성된 응답 처리
    */
   static async getConnectionStatus(): Promise<ApiResponse<{ status: 'connected' | 'disconnected' | 'connecting'; info?: any }>> {
     try {
       console.log('🔍 Redis 연결 상태 확인 시작...');
-      RedisDataApiService.getApiInfo(); // 디버깅 정보 출력
+      RedisDataApiService.getApiInfo();
       
       const response = await httpClient.get('/api/redis/status');
       
-      console.log('✅ Redis 연결 상태 응답:', response);
+      console.log('✅ Redis 연결 상태 최종 응답:', response);
+      
+      // 🔥 이제 response.success를 신뢰할 수 있음
+      if (response.success && response.data) {
+        console.log('🎯 연결 상태 데이터:', response.data);
+      }
+      
       return response;
     } catch (error) {
       console.error('❌ Redis 연결 상태 확인 실패:', error);
@@ -385,6 +421,54 @@ export class RedisDataApiService {
       
     } catch (error) {
       console.error('❌ 직접 API 호출 테스트 실패:', error);
+    }
+  }
+}
+
+// =============================================================================
+// 🔧 디버깅용 - Backend 응답 구조 테스트 클래스
+// =============================================================================
+
+export class RedisApiDebugger {
+  /**
+   * Backend 응답 구조 확인
+   */
+  static async testBackendResponse(): Promise<void> {
+    console.log('🧪 Backend 응답 구조 테스트 시작...');
+    
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/redis/status`);
+      const rawData = await response.json();
+      
+      console.log('📋 Backend 원시 응답:', rawData);
+      console.log('📊 응답 구조 분석:', {
+        hasStatus: 'status' in rawData,
+        hasData: 'data' in rawData,
+        hasSuccess: 'success' in rawData,
+        statusValue: rawData.status,
+        dataValue: rawData.data
+      });
+      
+    } catch (error) {
+      console.error('❌ Backend 응답 테스트 실패:', error);
+    }
+  }
+
+  /**
+   * API 변환 로직 테스트
+   */
+  static async testResponseTransformation(): Promise<void> {
+    console.log('🔄 응답 변환 로직 테스트 시작...');
+    
+    try {
+      const response = await RedisDataApiService.getConnectionStatus();
+      
+      console.log('🎯 변환된 응답:', response);
+      console.log('✅ 변환 성공 여부:', response.success);
+      console.log('📊 응답 데이터:', response.data);
+      
+    } catch (error) {
+      console.error('❌ 응답 변환 테스트 실패:', error);
     }
   }
 }
