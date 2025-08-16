@@ -186,6 +186,5 @@ class VirtualPointRepository extends BaseRepository {
       constant_value: input.constant_value ? parseFloat(input.constant_value) : null
     };
   }
-}
-
+}   
 module.exports = VirtualPointRepository;
