@@ -262,7 +262,7 @@ class DeviceQueries {
         dp.log_enabled, dp.log_interval_ms, dp.log_deadband,
         dp.polling_interval_ms, dp.tags, dp.metadata,
         dp.protocol_params, dp.created_at, dp.updated_at,
-        cv.current_value, cv.raw_value, cv.quality, cv.timestamp as last_update
+        cv.current_value, cv.raw_value, cv.quality, cv.value_timestamp as last_update
       FROM data_points dp
       LEFT JOIN current_values cv ON dp.id = cv.point_id
       WHERE dp.device_id = ?

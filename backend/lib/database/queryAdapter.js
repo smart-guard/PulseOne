@@ -119,7 +119,7 @@ class SqliteAdapter extends BaseAdapter {
         
         // PostgreSQL → SQLite 변환
         adaptedQuery = adaptedQuery.replace(/SERIAL PRIMARY KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT');
-        adaptedQuery = adaptedQuery.replace(/TIMESTAMP/gi, 'DATETIME');
+        adaptedQuery = adaptedQuery.replace(/\bTIMESTAMP\b/gi, 'DATETIME');
         adaptedQuery = adaptedQuery.replace(/BOOLEAN/gi, 'INTEGER');
         adaptedQuery = adaptedQuery.replace(/VARCHAR\(\d+\)/gi, 'TEXT');
         
