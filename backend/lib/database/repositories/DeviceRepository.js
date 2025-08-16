@@ -18,68 +18,133 @@ class DeviceRepository {
   // 디바이스 목록 조회 (모든 관련 정보 포함)
   async findAllDevices(filters = {}) {
     try {
-      let query = DeviceQueries.getDevicesWithAllInfo();
-      const params = [];
+        console.log('🔍 DeviceRepository.findAllDevices 호출:', filters);
+        
+        // 🔥 DeviceQueries의 기존 JOIN 쿼리 사용 (그대로)
+        let query = DeviceQueries.getDevicesWithAllInfo();
+        const params = [];
 
-      // 필터 적용
-      if (filters.tenant_id) {
+        // 기본 tenant 필터 (필수)
         query += DeviceQueries.addTenantFilter();
-        params.push(filters.tenant_id);
-      }
+        params.push(filters.tenantId || filters.tenant_id || 1);
 
-      if (filters.site_id) {
+        // 선택적 필터들
+        if (filters.siteId || filters.site_id) {
         query += DeviceQueries.addSiteFilter();
-        params.push(filters.site_id);
-      }
+        params.push(filters.siteId || filters.site_id);
+        }
 
-      if (filters.device_group_id) {
-        query += DeviceQueries.addDeviceGroupFilter();
-        params.push(filters.device_group_id);
-      }
-
-      if (filters.protocol_type) {
+        if (filters.protocolType || filters.protocol_type) {
         query += DeviceQueries.addProtocolTypeFilter();
-        params.push(filters.protocol_type);
-      }
+        params.push(filters.protocolType || filters.protocol_type);
+        }
 
-      if (filters.device_type) {
+        if (filters.deviceType || filters.device_type) {
         query += DeviceQueries.addDeviceTypeFilter();
-        params.push(filters.device_type);
-      }
+        params.push(filters.deviceType || filters.device_type);
+        }
 
-      if (filters.is_enabled !== undefined) {
-        query += DeviceQueries.addEnabledFilter();
-        params.push(filters.is_enabled ? 1 : 0);
-      }
-
-      if (filters.status) {
-        query += DeviceQueries.addStatusFilter();
-        params.push(filters.status);
-      }
-
-      if (filters.search) {
+        if (filters.search) {
         query += DeviceQueries.addSearchFilter();
         const searchTerm = `%${filters.search}%`;
         params.push(searchTerm, searchTerm, searchTerm, searchTerm);
-      }
+        }
 
-      // 그룹화 및 정렬
-      query += DeviceQueries.getGroupByAndOrder();
+        // 그룹화 및 정렬
+        query += DeviceQueries.getGroupByAndOrder();
 
-      // 제한
-      if (filters.limit) {
+        // 페이징
+        const limit = filters.limit || 25;
+        const page = filters.page || 1;
+        const offset = (page - 1) * limit;
+        
         query += DeviceQueries.addLimit();
-        params.push(parseInt(filters.limit));
-      }
+        params.push(limit);
 
-      const queryResult = await this.dbFactory.executeQuery(query, params);
-      const results = queryResult.rows || queryResult;
-      return results.map(device => this.parseDevice(device));
+        console.log('🔍 실행할 쿼리:', query.substring(0, 200) + '...');
+        console.log('🔍 파라미터:', params);
+
+        const queryResult = await this.dbFactory.executeQuery(query, params);
+        console.log('🔍 쿼리 결과 타입:', typeof queryResult);
+        
+        // 결과 처리
+        let results = [];
+        if (queryResult && queryResult.rows) {
+        results = queryResult.rows;
+        } else if (Array.isArray(queryResult)) {
+        results = queryResult;
+        } else {
+        console.warn('⚠️ 예상하지 못한 쿼리 결과 구조:', typeof queryResult);
+        results = [];
+        }
+
+        console.log(`✅ ${results.length}개 디바이스 조회 완료`);
+
+        // 디바이스 파싱 (안전하게)
+        const parsedDevices = results.map((device, index) => {
+        try {
+            return this.parseDevice(device);
+        } catch (parseError) {
+            console.error(`❌ 디바이스 파싱 실패 (인덱스 ${index}):`, parseError.message);
+            console.error('문제 디바이스 데이터:', device);
+            
+            // 파싱 실패 시 기본 구조로 반환
+            return {
+            id: device.id,
+            name: device.name || 'Unknown Device',
+            device_type: device.device_type || 'Unknown',
+            protocol_type: device.protocol_type || 'Unknown',
+            is_enabled: !!device.is_enabled,
+            created_at: device.created_at,
+            _parse_error: parseError.message
+            };
+        }
+        });
+
+        // 🔥 DeviceQueries 사용해서 카운트 조회
+        let totalCount = 0;
+        try {
+        let countQuery = DeviceQueries.getDeviceCountSimple();
+        const countParams = [filters.tenantId || filters.tenant_id || 1];
+        
+        if (filters.protocolType || filters.protocol_type) {
+            countQuery += DeviceQueries.addSimpleProtocolFilter();
+            countParams.push(filters.protocolType || filters.protocol_type);
+        }
+
+        if (filters.search) {
+            countQuery += DeviceQueries.addSimpleSearchFilter();
+            const searchTerm = `%${filters.search}%`;
+            countParams.push(searchTerm, searchTerm);
+        }
+
+        const countResult = await this.dbFactory.executeQuery(countQuery, countParams);
+        const countData = countResult.rows ? countResult.rows[0] : countResult[0];
+        totalCount = countData ? countData.total_count : 0;
+        } catch (countError) {
+        console.error('❌ 전체 개수 조회 실패:', countError.message);
+        totalCount = results.length; // 폴백
+        }
+
+        // Repository 표준 응답 형식으로 반환
+        return {
+        items: parsedDevices,
+        pagination: {
+            page: page,
+            limit: limit,
+            total_items: totalCount,
+            total_pages: Math.ceil(totalCount / limit),
+            has_next: page * limit < totalCount,
+            has_prev: page > 1
+        }
+        };
+
     } catch (error) {
-      console.error('Error finding devices:', error);
-      throw error;
+        console.error('❌ DeviceRepository.findAllDevices 실패:', error.message);
+        console.error('❌ 스택:', error.stack);
+        throw error;
     }
-  }
+    }
 
   // 디바이스 상세 조회
   async findDeviceById(id) {
