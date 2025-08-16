@@ -590,6 +590,43 @@ class DeviceQueries {
       LIMIT ?
     `;
   }
+
+  // devices 테이블만 조회 (성능 최적화)
+    static getDevicesSimple() {
+    return `
+        SELECT 
+        id, tenant_id, site_id, device_group_id, edge_server_id,
+        name, description, device_type, manufacturer, model, 
+        serial_number, protocol_type, endpoint, config,
+        polling_interval, timeout, retry_count, is_enabled,
+        installation_date, last_maintenance, created_at, updated_at
+        FROM devices 
+        WHERE 1=1
+    `;
+    }
+
+    // 간단한 필터들 (d. 없이)
+    static addSimpleTenantFilter() {
+    return ` AND tenant_id = ?`;
+    }
+
+    static addSimpleProtocolFilter() {
+    return ` AND protocol_type = ?`;
+    }
+
+    static addSimpleSearchFilter() {
+    return ` AND (name LIKE ? OR description LIKE ?)`;
+    }
+
+    // 간단한 정렬 및 페이징
+    static addSimpleOrderAndLimit() {
+    return ` ORDER BY name ASC LIMIT ? OFFSET ?`;
+    }
+
+    // 간단한 카운트 쿼리
+    static getDeviceCountSimple() {
+    return `SELECT COUNT(*) as total_count FROM devices WHERE tenant_id = ?`;
+    }
 }
 
 module.exports = DeviceQueries;

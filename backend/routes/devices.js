@@ -151,13 +151,67 @@ router.get('/', async (req, res) => {
             sortOrder: sort_order.toUpperCase()
         };
 
-        const result = await getDeviceRepo().findAll(options);
+        // 🔥 에러 처리 강화
+        let result;
+        try {
+            result = await getDeviceRepo().findAllDevices(options);
+            
+            // result가 undefined이거나 잘못된 형태인 경우 처리
+            if (!result) {
+                console.warn('⚠️ Repository에서 null/undefined 반환됨, 빈 결과로 처리');
+                result = {
+                    items: [],
+                    pagination: {
+                        page: parseInt(page),
+                        limit: parseInt(limit),
+                        total_items: 0,
+                        has_next: false,
+                        has_prev: false
+                    }
+                };
+            }
+            
+            // result.items가 없는 경우 처리
+            if (!result.items || !Array.isArray(result.items)) {
+                console.warn('⚠️ result.items가 배열이 아님, 빈 배열로 처리');
+                result.items = [];
+            }
 
-        console.log(`✅ 디바이스 ${result.items.length}개 조회 완료`);
+            // pagination이 없는 경우 처리
+            if (!result.pagination) {
+                console.warn('⚠️ pagination 정보 없음, 기본값으로 설정');
+                result.pagination = {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total_items: result.items.length,
+                    has_next: false,
+                    has_prev: false
+                };
+            }
+
+        } catch (repoError) {
+            console.error('❌ Repository 호출 실패:', repoError.message);
+            console.error('❌ Repository 스택:', repoError.stack);
+            
+            // Repository 에러 시 빈 결과 반환
+            result = {
+                items: [],
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total_items: 0,
+                    has_next: false,
+                    has_prev: false
+                }
+            };
+        }
+
+        console.log(`✅ 디바이스 ${result.items ? result.items.length : 0}개 조회 완료`);
         res.json(createPaginatedResponse(result.items, result.pagination, 'Devices retrieved successfully'));
 
     } catch (error) {
         console.error('❌ 디바이스 목록 조회 실패:', error.message);
+        console.error('❌ 전체 스택:', error.stack);
         res.status(500).json(createResponse(false, null, error.message, 'DEVICES_LIST_ERROR'));
     }
 });
@@ -677,6 +731,198 @@ router.post('/bulk-action', async (req, res) => {
     } catch (error) {
         console.error('❌ 일괄 작업 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'BULK_ACTION_ERROR'));
+    }
+});
+
+const sqlite3 = require('sqlite3').verbose();
+const ConfigManager = require('../lib/config/ConfigManager');
+const configManager = ConfigManager.getInstance();
+
+/**
+ * GET /api/devices/debug/direct
+ * SQLite 직접 조회 (디버깅용)
+ */
+router.get('/debug/direct', async (req, res) => {
+    try {
+        const dbPath = configManager.get('SQLITE_PATH', './data/db/pulseone.db');
+        console.log(`🔍 직접 SQLite 조회: ${dbPath}`);
+
+        const devices = await new Promise((resolve, reject) => {
+            const db = new sqlite3.Database(dbPath, (err) => {
+                if (err) {
+                    reject(new Error(`Database connection failed: ${err.message}`));
+                    return;
+                }
+            });
+
+            const sql = `
+                SELECT 
+                    id, tenant_id, site_id, device_group_id, edge_server_id,
+                    name, description, device_type, manufacturer, model, 
+                    serial_number, protocol_type, endpoint, config,
+                    polling_interval, timeout, retry_count, is_enabled,
+                    installation_date, last_maintenance, created_at, updated_at
+                FROM devices 
+                WHERE tenant_id = 1
+                ORDER BY id
+                LIMIT 10
+            `;
+
+            db.all(sql, [], (err, rows) => {
+                if (err) {
+                    db.close();
+                    reject(new Error(`Query failed: ${err.message}`));
+                    return;
+                }
+                
+                db.close();
+                resolve(rows);
+            });
+        });
+
+        console.log(`✅ SQLite 직접 조회 결과: ${devices.length}개 디바이스`);
+        
+        res.json({
+            success: true,
+            debug: true,
+            source: 'direct_sqlite',
+            database_path: dbPath,
+            data: {
+                devices: devices.map(device => ({
+                    ...device,
+                    is_enabled: !!device.is_enabled,
+                    config: device.config ? JSON.parse(device.config) : null
+                })),
+                count: devices.length
+            },
+            message: 'Direct SQLite query successful'
+        });
+
+    } catch (error) {
+        console.error('❌ SQLite 직접 조회 실패:', error.message);
+        res.status(500).json({
+            success: false,
+            debug: true,
+            error: error.message,
+            database_path: configManager.get('SQLITE_PATH', './data/db/pulseone.db')
+        });
+    }
+});
+
+/**
+ * GET /api/devices/debug/repository
+ * Repository 상태 확인
+ */
+router.get('/debug/repository', async (req, res) => {
+    try {
+        console.log('🔍 Repository 디버깅...');
+        
+        const repo = getDeviceRepo();
+        console.log('Repository 인스턴스:', typeof repo);
+        console.log('Repository 메소드들:', Object.getOwnPropertyNames(Object.getPrototypeOf(repo)));
+        
+        // Repository의 DatabaseFactory 상태 확인
+        if (repo.dbFactory) {
+            console.log('DatabaseFactory 존재:', typeof repo.dbFactory);
+        } else {
+            console.log('DatabaseFactory 없음');
+        }
+
+        res.json({
+            success: true,
+            debug: true,
+            repository_info: {
+                type: typeof repo,
+                has_db_factory: !!repo.dbFactory,
+                db_factory_type: repo.dbFactory ? typeof repo.dbFactory : null,
+                methods: Object.getOwnPropertyNames(Object.getPrototypeOf(repo)),
+                config: {
+                    database_type: configManager.get('DATABASE_TYPE'),
+                    sqlite_path: configManager.get('SQLITE_PATH')
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Repository 디버깅 실패:', error.message);
+        res.status(500).json({
+            success: false,
+            debug: true,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/devices/debug/query
+ * 실제 쿼리 실행 테스트
+ */
+router.get('/debug/query', async (req, res) => {
+    try {
+        console.log('🔍 DeviceQueries.getDevicesWithAllInfo() 테스트...');
+        
+        const DeviceQueries = require('../lib/database/queries/DeviceQueries');
+        const DatabaseFactory = require('../lib/database/DatabaseFactory');
+        
+        // 실제 Repository에서 사용하는 것과 동일한 방식으로 테스트
+        const dbFactory = new DatabaseFactory();
+        
+        let query = DeviceQueries.getDevicesWithAllInfo();
+        const params = [];
+
+        // 테넌트 필터 추가 (기본값)
+        query += DeviceQueries.addTenantFilter();
+        params.push(1);
+
+        // 그룹화 및 정렬
+        query += DeviceQueries.getGroupByAndOrder();
+
+        // 제한
+        query += DeviceQueries.addLimit();
+        params.push(10);
+
+        console.log('🔍 실행할 쿼리:');
+        console.log(query);
+        console.log('🔍 파라미터:', params);
+
+        // 실제 쿼리 실행
+        const queryResult = await dbFactory.executeQuery(query, params);
+        
+        console.log('🔍 쿼리 결과 타입:', typeof queryResult);
+        console.log('🔍 쿼리 결과 구조:', Object.keys(queryResult || {}));
+        
+        if (Array.isArray(queryResult)) {
+            console.log('🔍 배열 길이:', queryResult.length);
+        } else if (queryResult && queryResult.rows) {
+            console.log('🔍 rows 길이:', queryResult.rows.length);
+        }
+
+        res.json({
+            success: true,
+            debug: true,
+            query_info: {
+                sql: query,
+                params: params,
+                result_type: typeof queryResult,
+                result_keys: Object.keys(queryResult || {}),
+                is_array: Array.isArray(queryResult),
+                has_rows: !!(queryResult && queryResult.rows),
+                length: Array.isArray(queryResult) ? queryResult.length : 
+                       (queryResult && queryResult.rows ? queryResult.rows.length : 'unknown')
+            },
+            raw_result: queryResult
+        });
+
+    } catch (error) {
+        console.error('❌ 쿼리 테스트 실패:', error.message);
+        console.error('❌ 스택:', error.stack);
+        
+        res.status(500).json({
+            success: false,
+            debug: true,
+            error: error.message,
+            stack: error.stack
+        });
     }
 });
 
