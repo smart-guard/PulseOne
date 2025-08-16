@@ -26,7 +26,7 @@ class DeviceRepository {
       const params = [];
 
       // WHERE 조건 추가
-      query += ` WHERE d.id = ?`;
+      query += ` AND d.id = ?`;
       params.push(id);
 
       if (tenantId) {
@@ -658,14 +658,78 @@ class DeviceRepository {
   }
 
   // 디바이스의 모든 현재값 조회
-  async getCurrentValuesByDevice(deviceId) {
+  async getCurrentValuesByDevice(deviceId, tenantId = null) {
     try {
-      const results = await this.dbFactory.executeQuery(DeviceQueries.getCurrentValuesByDevice(), [deviceId]);
-      return results.map(cv => this.parseCurrentValue(cv));
+      console.log(`📊 DeviceRepository.getCurrentValuesByDevice 호출: deviceId=${deviceId}, tenantId=${tenantId}`);
+      
+      // DeviceQueries 사용 (기존 코드 그대로)
+      const result = await this.dbFactory.executeQuery(DeviceQueries.getCurrentValuesByDevice(), [deviceId]);
+      const rawValues = Array.isArray(result) ? result : (result.rows || []);
+      
+      console.log(`✅ 디바이스 ID ${deviceId} 현재값 ${rawValues.length}개 조회 완료`);
+
+      // parseCurrentValue 메서드 사용 (없으면 직접 파싱)
+      return rawValues.map(cv => {
+        try {
+          return this.parseCurrentValue ? this.parseCurrentValue(cv) : this.parseCurrentValueInline(cv);
+        } catch (parseError) {
+          console.warn(`현재값 파싱 실패 for point ${cv.point_id}:`, parseError.message);
+          return this.parseCurrentValueInline(cv);
+        }
+      });
+      
     } catch (error) {
-      console.error('Error getting current values by device:', error);
-      throw error;
+      console.error(`❌ DeviceRepository.getCurrentValuesByDevice 실패:`, error.message);
+      throw new Error(`디바이스 현재값 조회 실패: ${error.message}`);
     }
+  }
+  /**
+   * 현재값 인라인 파싱 메서드 (parseCurrentValue가 없을 때 사용)
+   */
+  parseCurrentValueInline(cv) {
+    let parsedCurrentValue = null;
+    let parsedRawValue = null;
+
+    // JSON 파싱 처리
+    if (cv.current_value) {
+      try {
+        parsedCurrentValue = typeof cv.current_value === 'string' 
+          ? JSON.parse(cv.current_value) 
+          : cv.current_value;
+      } catch (parseError) {
+        parsedCurrentValue = cv.current_value;
+      }
+    }
+
+    if (cv.raw_value) {
+      try {
+        parsedRawValue = typeof cv.raw_value === 'string' 
+          ? JSON.parse(cv.raw_value) 
+          : cv.raw_value;
+      } catch (parseError) {
+        parsedRawValue = cv.raw_value;
+      }
+    }
+
+    return {
+      point_id: cv.point_id,
+      point_name: cv.point_name || `Point_${cv.point_id}`,
+      unit: cv.unit || '',
+      current_value: parsedCurrentValue,
+      raw_value: parsedRawValue,
+      value_type: cv.value_type || 'double',
+      quality_code: cv.quality_code || 0,
+      quality: cv.quality || 'not_connected',
+      value_timestamp: cv.value_timestamp,
+      quality_timestamp: cv.quality_timestamp,
+      last_log_time: cv.last_log_time,
+      last_read_time: cv.last_read_time,
+      last_write_time: cv.last_write_time,
+      read_count: cv.read_count || 0,
+      write_count: cv.write_count || 0,
+      error_count: cv.error_count || 0,
+      updated_at: cv.updated_at
+    };
   }
 
   // =============================================================================
@@ -804,12 +868,282 @@ class DeviceRepository {
 
   // 현재값 데이터 파싱
   parseCurrentValue(cv) {
+    try {
+      let parsedCurrentValue = null;
+      let parsedRawValue = null;
+
+      // JSON 파싱 처리
+      if (cv.current_value) {
+        try {
+          parsedCurrentValue = typeof cv.current_value === 'string' 
+            ? JSON.parse(cv.current_value) 
+            : cv.current_value;
+        } catch (parseError) {
+          console.warn(`current_value JSON 파싱 실패 for point ${cv.point_id}:`, parseError.message);
+          parsedCurrentValue = cv.current_value;
+        }
+      }
+
+      if (cv.raw_value) {
+        try {
+          parsedRawValue = typeof cv.raw_value === 'string' 
+            ? JSON.parse(cv.raw_value) 
+            : cv.raw_value;
+        } catch (parseError) {
+          console.warn(`raw_value JSON 파싱 실패 for point ${cv.point_id}:`, parseError.message);
+          parsedRawValue = cv.raw_value;
+        }
+      }
+
+      return {
+        point_id: cv.point_id,
+        point_name: cv.point_name || `Point_${cv.point_id}`,
+        unit: cv.unit || '',
+        current_value: parsedCurrentValue,
+        raw_value: parsedRawValue,
+        value_type: cv.value_type || 'double',
+        quality_code: cv.quality_code || 0,
+        quality: cv.quality || 'not_connected',
+        value_timestamp: cv.value_timestamp,
+        quality_timestamp: cv.quality_timestamp,
+        last_log_time: cv.last_log_time,
+        last_read_time: cv.last_read_time,
+        last_write_time: cv.last_write_time,
+        read_count: cv.read_count || 0,
+        write_count: cv.write_count || 0,
+        error_count: cv.error_count || 0,
+        updated_at: cv.updated_at
+      };
+    } catch (error) {
+      console.error(`parseCurrentValue 실패 for point ${cv?.point_id}:`, error.message);
+      return {
+        point_id: cv?.point_id || 0,
+        point_name: cv?.point_name || 'Unknown',
+        unit: cv?.unit || '',
+        current_value: null,
+        raw_value: null,
+        value_type: 'double',
+        quality_code: 0,
+        quality: 'not_connected',
+        value_timestamp: null,
+        quality_timestamp: null,
+        last_log_time: null,
+        last_read_time: null,
+        last_write_time: null,
+        read_count: 0,
+        write_count: 0,
+        error_count: 0,
+        updated_at: cv?.updated_at || null
+      };
+    }
+  }
+
+  /**
+   * 지원 프로토콜 목록 조회
+   * @param {number} tenantId 
+   * @returns {Promise<Array>}
+   */
+  async getAvailableProtocols(tenantId) {
+    try {
+      console.log(`📋 DeviceRepository.getAvailableProtocols 호출: tenantId=${tenantId}`);
+      
+      // DeviceQueries 사용 (기존 패턴 준수)
+      const query = DeviceQueries.getAvailableProtocols();
+      const params = [tenantId];
+
+      console.log(`🔍 프로토콜 조회 쿼리: ${query.substring(0, 100)}...`);
+      console.log(`🔍 파라미터:`, params);
+
+      const result = await this.dbFactory.executeQuery(query, params);
+      const protocols = Array.isArray(result) ? result : (result.rows || []);
+      
+      console.log(`✅ 지원 프로토콜 ${protocols.length}개 조회 완료`);
+
+      // 프로토콜 데이터 가공
+      return protocols.map(protocol => ({
+        protocol_type: protocol.protocol_type,
+        device_count: protocol.device_count || 0,
+        connected_count: protocol.connected_count || 0,
+        enabled_count: protocol.enabled_count || 0,
+        description: this.getProtocolDescription(protocol.protocol_type)
+      }));
+      
+    } catch (error) {
+      console.error(`❌ DeviceRepository.getAvailableProtocols 실패:`, error.message);
+      
+      // 에러 발생 시 기본 프로토콜 목록 반환
+      console.log('🔄 기본 프로토콜 목록으로 대체...');
+      return this.getDefaultProtocols();
+    }
+  }
+
+  /**
+   * 테넌트별 디바이스 통계 조회
+   * @param {number} tenantId 
+   * @returns {Promise<Object>}
+   */
+  async getStatsByTenant(tenantId) {
+    try {
+      console.log(`📊 DeviceRepository.getStatsByTenant 호출: tenantId=${tenantId}`);
+      
+      // 여러 통계 쿼리 실행
+      const stats = {};
+
+      // 1. 전체 디바이스 통계
+      const deviceCountQuery = DeviceQueries.getDeviceCountByStatus();
+      const deviceCounts = await this.dbFactory.executeQuery(deviceCountQuery, [tenantId]);
+      
+      // 2. 프로토콜별 통계
+      const protocolStatsQuery = DeviceQueries.getDeviceCountByProtocol();
+      const protocolStats = await this.dbFactory.executeQuery(protocolStatsQuery, [tenantId]);
+      
+      // 3. 사이트별 통계
+      const siteStatsQuery = DeviceQueries.getDeviceCountBySite();
+      const siteStats = await this.dbFactory.executeQuery(siteStatsQuery, [tenantId]);
+
+      // 통계 데이터 조합
+      stats.total_devices = this.calculateTotalDevices(deviceCounts);
+      stats.connected_devices = this.calculateConnectedDevices(deviceCounts);
+      stats.disconnected_devices = stats.total_devices - stats.connected_devices;
+      stats.enabled_devices = this.calculateEnabledDevices(deviceCounts);
+      stats.protocol_distribution = this.formatProtocolStats(protocolStats);
+      stats.site_distribution = this.formatSiteStats(siteStats);
+      stats.connection_rate = stats.total_devices > 0 
+        ? ((stats.connected_devices / stats.total_devices) * 100).toFixed(1) + '%'
+        : '0%';
+      stats.last_updated = new Date().toISOString();
+
+      console.log(`✅ 디바이스 통계 조회 완료: ${stats.total_devices}개 디바이스`);
+      return stats;
+      
+    } catch (error) {
+      console.error(`❌ DeviceRepository.getStatsByTenant 실패:`, error.message);
+      
+      // 에러 발생 시 기본 통계 반환
+      console.log('🔄 기본 통계 데이터로 대체...');
+      return this.getDefaultStats(tenantId);
+    }
+  }
+
+  /**
+   * 프로토콜 설명 반환
+   * @param {string} protocolType 
+   * @returns {string}
+   */
+  getProtocolDescription(protocolType) {
+    const descriptions = {
+      'MODBUS_TCP': 'Modbus TCP/IP - 산업용 이더넷 통신',
+      'MODBUS_RTU': 'Modbus RTU - 시리얼 통신 프로토콜',
+      'BACNET': 'BACnet - 빌딩 자동화 네트워크',
+      'MQTT': 'MQTT - IoT 메시징 프로토콜',
+      'OPC_UA': 'OPC UA - 산업용 표준 통신',
+      'ETHERNET_IP': 'EtherNet/IP - 산업용 이더넷',
+      'PROFINET': 'PROFINET - 지멘스 산업용 네트워크'
+    };
+    return descriptions[protocolType] || `${protocolType} 프로토콜`;
+  }
+
+  /**
+   * 기본 프로토콜 목록 (에러 시 사용)
+   * @returns {Array}
+   */
+  getDefaultProtocols() {
+    return [
+      {
+        protocol_type: 'MODBUS_TCP',
+        device_count: 0,
+        connected_count: 0,
+        enabled_count: 0,
+        description: 'Modbus TCP/IP - 산업용 이더넷 통신'
+      },
+      {
+        protocol_type: 'MODBUS_RTU', 
+        device_count: 0,
+        connected_count: 0,
+        enabled_count: 0,
+        description: 'Modbus RTU - 시리얼 통신 프로토콜'
+      },
+      {
+        protocol_type: 'BACNET',
+        device_count: 0,
+        connected_count: 0,
+        enabled_count: 0,
+        description: 'BACnet - 빌딩 자동화 네트워크'
+      },
+      {
+        protocol_type: 'MQTT',
+        device_count: 0,
+        connected_count: 0,
+        enabled_count: 0,
+        description: 'MQTT - IoT 메시징 프로토콜'
+      }
+    ];
+  }
+
+  /**
+   * 기본 통계 데이터 (에러 시 사용)
+   * @param {number} tenantId 
+   * @returns {Object}
+   */
+  getDefaultStats(tenantId) {
     return {
-      ...cv,
-      current_value: cv.current_value ? JSON.parse(cv.current_value) : null,
-      raw_value: cv.raw_value ? JSON.parse(cv.raw_value) : null
+      total_devices: 0,
+      connected_devices: 0,
+      disconnected_devices: 0,
+      enabled_devices: 0,
+      protocol_distribution: [],
+      site_distribution: [],
+      connection_rate: '0%',
+      last_updated: new Date().toISOString(),
+      note: 'Default statistics due to query error'
     };
   }
+
+  /**
+   * 디바이스 개수 계산 헬퍼 메서드들
+   */
+  calculateTotalDevices(deviceCounts) {
+    if (!Array.isArray(deviceCounts) || deviceCounts.length === 0) return 0;
+    return deviceCounts.reduce((total, row) => total + (parseInt(row.device_count) || 0), 0);
+  }
+
+  calculateConnectedDevices(deviceCounts) {
+    if (!Array.isArray(deviceCounts) || deviceCounts.length === 0) return 0;
+    return deviceCounts
+      .filter(row => row.connection_status === 'connected')
+      .reduce((total, row) => total + (parseInt(row.device_count) || 0), 0);
+  }
+
+  calculateEnabledDevices(deviceCounts) {
+    if (!Array.isArray(deviceCounts) || deviceCounts.length === 0) return 0;
+    return deviceCounts
+      .filter(row => row.is_enabled === 1)
+      .reduce((total, row) => total + (parseInt(row.device_count) || 0), 0);
+  }
+
+  formatProtocolStats(protocolStats) {
+    if (!Array.isArray(protocolStats)) return [];
+    return protocolStats.map(stat => ({
+      protocol_type: stat.protocol_type,
+      total_count: parseInt(stat.total_count) || 0,
+      enabled_count: parseInt(stat.enabled_count) || 0,
+      connected_count: parseInt(stat.connected_count) || 0,
+      percentage: stat.total_count > 0 
+        ? ((parseInt(stat.total_count) / parseInt(stat.total_count)) * 100).toFixed(1)
+        : '0'
+    }));
+  }
+
+  formatSiteStats(siteStats) {
+    if (!Array.isArray(siteStats)) return [];
+    return siteStats.map(stat => ({
+      site_id: parseInt(stat.site_id) || 0,
+      site_name: stat.site_name || 'Unknown Site',
+      device_count: parseInt(stat.device_count) || 0,
+      connected_count: parseInt(stat.connected_count) || 0
+    }));
+  }
+
 }
 
 module.exports = DeviceRepository;
