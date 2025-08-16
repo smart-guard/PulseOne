@@ -1,398 +1,405 @@
+// ============================================================================
 // frontend/src/pages/ActiveAlarms.tsx
-import React, { useState, useEffect, useRef } from 'react';
+// 📝 활성 알람 페이지 - 새로운 AlarmApiService 완전 연결
+// ============================================================================
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Pagination } from '../components/common/Pagination';
+import { usePagination } from '../hooks/usePagination';
 import '../styles/base.css';
 import '../styles/active-alarms.css';
+import '../styles/pagination.css';
 
-// 기존 인터페이스 100% 그대로 유지
+// 🚨 알람 관련 인터페이스들
 interface ActiveAlarm {
-  id: string;
-  ruleId: string;
-  ruleName: string;
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  severity: 1 | 2 | 3 | 4 | 5;
-  
-  // 소스 정보
-  sourceType: 'data_point' | 'virtual_point' | 'device_status';
-  sourceName: string;
-  factory: string;
-  category: string;
-  
-  // 알람 정보
+  id: number;
+  rule_id: number;
+  rule_name: string;
+  device_id?: number;
+  device_name?: string;
+  data_point_id?: number;
+  data_point_name?: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  priority: number;
   message: string;
   description?: string;
-  currentValue: any;
-  thresholdValue: any;
-  unit: string;
-  
-  // 시간 정보
-  triggeredAt: Date;
-  acknowledgedAt?: Date;
-  acknowledgedBy?: string;
-  acknowledgmentComment?: string;
-  duration: number; // milliseconds
-  occurrenceCount: number;
-  
-  // 상태
-  status: 'active' | 'acknowledged' | 'auto_acknowledged';
-  isNew: boolean;
-  escalated: boolean;
-  escalationLevel: number;
-  
-  // 알림 정보
-  soundPlayed: boolean;
-  emailSent: boolean;
-  smsSent: boolean;
-  
-  // 메타데이터
-  tags: string[];
+  triggered_value?: any;
+  threshold_value?: any;
+  condition_type?: string;
+  triggered_at: string;
+  acknowledged_at?: string;
+  acknowledged_by?: string;
+  acknowledgment_comment?: string;
+  state: 'active' | 'acknowledged' | 'cleared';
+  quality: string;
+  tags?: string[];
+  metadata?: any;
 }
 
 interface AlarmStats {
-  totalActive: number;
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
-  acknowledged: number;
-  newAlarms: number;
-  escalated: number;
-  avgResponseTime: number; // minutes
+  total_active: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  unacknowledged_count: number;
+  acknowledged_count: number;
+  by_device: Array<{
+    device_id: number;
+    device_name: string;
+    alarm_count: number;
+  }>;
+  by_severity: Array<{
+    severity: string;
+    count: number;
+  }>;
 }
 
 const ActiveAlarms: React.FC = () => {
-  // 기존 상태 100% 그대로 유지
+  // 🔧 기본 상태들
   const [alarms, setAlarms] = useState<ActiveAlarm[]>([]);
-  const [stats, setStats] = useState<AlarmStats>({
-    totalActive: 0,
-    critical: 0,
-    high: 0,
-    medium: 0,
-    low: 0,
-    acknowledged: 0,
-    newAlarms: 0,
-    escalated: 0,
-    avgResponseTime: 0
-  });
-  
-  const [isRealtime, setIsRealtime] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
-  const [selectedAlarms, setSelectedAlarms] = useState<Set<string>>(new Set());
-  const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false);
-  const [acknowledgmentComment, setAcknowledgmentComment] = useState('');
+  const [alarmStats, setAlarmStats] = useState<AlarmStats | null>(null);
+  const [selectedAlarms, setSelectedAlarms] = useState<number[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // 필터 상태
-  const [filterPriority, setFilterPriority] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterCategory, setFilterCategory] = useState('all');
-  const [filterFactory, setFilterFactory] = useState('all');
-  const [quickFilter, setQuickFilter] = useState('all');
+  const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [deviceFilter, setDeviceFilter] = useState<string>('all');
+  const [acknowledgedFilter, setAcknowledgedFilter] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState('');
   
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const intervalRef = useRef<NodeJS.Timeout>();
+  // 실시간 업데이트
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5000);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // 🔥 추가: API 데이터를 기존 인터페이스로 변환하는 함수만 추가
-  const transformApiData = (apiData: any): ActiveAlarm => {
-    const priorityMap: Record<string, 'critical' | 'high' | 'medium' | 'low'> = {
-      'critical': 'critical',
-      'high': 'high', 
-      'medium': 'medium',
-      'low': 'low'
-    };
+  // 알람 확인 모달
+  const [showAckModal, setShowAckModal] = useState(false);
+  const [ackComment, setAckComment] = useState('');
+  const [selectedAlarmForAck, setSelectedAlarmForAck] = useState<ActiveAlarm | null>(null);
 
-    return {
-      id: apiData.id?.toString() || Math.random().toString(),
-      ruleId: apiData.rule_id?.toString() || '',
-      ruleName: apiData.rule_name || 'Unknown Rule',
-      priority: priorityMap[apiData.severity] || 'medium',
-      severity: apiData.severity === 'critical' ? 5 : apiData.severity === 'high' ? 4 : apiData.severity === 'medium' ? 3 : 2,
-      
-      sourceType: 'data_point',
-      sourceName: apiData.data_point_name || apiData.device_name || 'Unknown Source',
-      factory: 'Factory A',
-      category: 'Process',
-      
-      message: apiData.message || 'Alarm triggered',
-      description: apiData.description,
-      currentValue: apiData.triggered_value,
-      thresholdValue: null,
-      unit: '',
-      
-      triggeredAt: new Date(apiData.triggered_at || Date.now()),
-      acknowledgedAt: apiData.acknowledged_at ? new Date(apiData.acknowledged_at) : undefined,
-      acknowledgedBy: apiData.acknowledged_by,
-      acknowledgmentComment: apiData.acknowledgment_comment,
-      duration: Date.now() - new Date(apiData.triggered_at || Date.now()).getTime(),
-      occurrenceCount: 1,
-      
-      status: apiData.state === 'acknowledged' ? 'acknowledged' : 'active',
-      isNew: Date.now() - new Date(apiData.triggered_at || Date.now()).getTime() < 300000,
-      escalated: false,
-      escalationLevel: 0,
-      
-      soundPlayed: false,
-      emailSent: false,
-      smsSent: false,
-      
-      tags: []
-    };
-  };
-
-  // 🔥 추가: API 호출 함수 (기존 목업 데이터 함수 수정)
-  const fetchActiveAlarms = async () => {
-    try {
-      const response = await fetch('/api/alarms/active');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && Array.isArray(data.data)) {
-          const transformedAlarms = data.data.map(transformApiData);
-          setAlarms(transformedAlarms);
-          calculateStats(transformedAlarms);
-          setLastUpdate(new Date());
-          return;
-        }
-      }
-    } catch (err) {
-      console.error('API 호출 실패:', err);
-    }
-    
-    // API 실패 시 기존 목업 데이터 사용
-    initializeMockData();
-  };
-
-  // 🔥 추가: 알람 확인 API 호출
-  const acknowledgeAlarmAPI = async (alarmId: string, comment: string = '') => {
-    try {
-      const response = await fetch(`/api/alarms/${alarmId}/acknowledge`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment })
-      });
-      return response.ok;
-    } catch (err) {
-      console.error('알람 확인 API 실패:', err);
-      return false;
-    }
-  };
-
-  // 기존 목업 데이터 함수 그대로 유지
-  const initializeMockData = () => {
-    const mockAlarms: ActiveAlarm[] = [];
-    const now = new Date();
-    
-    const priorities: ActiveAlarm['priority'][] = ['critical', 'high', 'medium', 'low'];
-    const categories = ['Safety', 'Process', 'Production', 'System', 'Quality', 'Energy'];
-    const factories = ['Factory A', 'Factory B', 'Factory C'];
-    const statuses: ActiveAlarm['status'][] = ['active', 'acknowledged'];
-    
-    for (let i = 0; i < 21; i++) {
-      const alarmTime = new Date(now.getTime() - Math.random() * 8 * 60 * 60 * 1000);
-      const priority = priorities[Math.floor(Math.random() * priorities.length)];
-      const category = categories[Math.floor(Math.random() * categories.length)];
-      const factory = factories[Math.floor(Math.random() * factories.length)];
-      const status = statuses[Math.floor(Math.random() * statuses.length)];
-      
-      const alarm: ActiveAlarm = {
-        id: `alarm_${i + 1000}`,
-        ruleId: `rule_${Math.floor(Math.random() * 20) + 1}`,
-        ruleName: `${category} 알람 ${Math.floor(Math.random() * 5) + 1}`,
-        priority,
-        severity: priority === 'critical' ? 5 : priority === 'high' ? 4 : priority === 'medium' ? 3 : 2,
-        
-        sourceType: Math.random() > 0.7 ? 'virtual_point' : 'data_point',
-        sourceName: `${category} 센서 ${Math.floor(Math.random() * 10) + 1}`,
-        factory,
-        category,
-        
-        message: `${category} 임계값 초과 - 즉시 확인 필요`,
-        description: `${category} 시스템에서 비정상적인 값이 감지되었습니다.`,
-        currentValue: Math.random() > 0.5 ? (Math.random() * 100).toFixed(2) : Math.random() > 0.5,
-        thresholdValue: Math.random() > 0.5 ? (Math.random() * 50).toFixed(2) : null,
-        unit: Math.random() > 0.5 ? ['°C', 'bar', '%', 'RPM', 'V'][Math.floor(Math.random() * 5)] : '',
-        
-        triggeredAt: alarmTime,
-        acknowledgedAt: status === 'acknowledged' ? new Date(alarmTime.getTime() + Math.random() * 60 * 60 * 1000) : undefined,
-        acknowledgedBy: status === 'acknowledged' ? ['김철수', '이영희', '박민수'][Math.floor(Math.random() * 3)] : undefined,
-        acknowledgmentComment: status === 'acknowledged' ? '확인 완료' : undefined,
-        duration: now.getTime() - alarmTime.getTime(),
-        occurrenceCount: Math.floor(Math.random() * 5) + 1,
-        
-        status,
-        isNew: now.getTime() - alarmTime.getTime() < 30 * 60 * 1000,
-        escalated: Math.random() > 0.9,
-        escalationLevel: Math.floor(Math.random() * 3),
-        
-        soundPlayed: Math.random() > 0.5,
-        emailSent: Math.random() > 0.7,
-        smsSent: Math.random() > 0.8,
-        
-        tags: []
-      };
-      
-      mockAlarms.push(alarm);
-    }
-    
-    setAlarms(mockAlarms);
-    calculateStats(mockAlarms);
-  };
-
-  // 기존 함수들 그대로 유지
-  const calculateStats = (alarmList: ActiveAlarm[]) => {
-    const newStats = alarmList.reduce((acc, alarm) => {
-      acc.totalActive++;
-      
-      switch (alarm.priority) {
-        case 'critical':
-          acc.critical++;
-          break;
-        case 'high':
-          acc.high++;
-          break;
-        case 'medium':
-          acc.medium++;
-          break;
-        case 'low':
-          acc.low++;
-          break;
-      }
-      
-      if (alarm.status === 'acknowledged') {
-        acc.acknowledged++;
-      }
-      
-      if (alarm.isNew) {
-        acc.newAlarms++;
-      }
-      
-      if (alarm.escalated) {
-        acc.escalated++;
-      }
-      
-      return acc;
-    }, {
-      totalActive: 0,
-      critical: 0,
-      high: 0,
-      medium: 0,
-      low: 0,
-      acknowledged: 0,
-      newAlarms: 0,
-      escalated: 0,
-      avgResponseTime: 25
-    });
-
-    setStats(newStats);
-  };
-
-  const startRealTimeUpdates = () => {
-    if (!isRealtime) return;
-    
-    intervalRef.current = setInterval(() => {
-      fetchActiveAlarms();
-    }, 30000); // 30초마다
-  };
-
-  // 🔥 수정: 알람 확인 시 API 호출 추가
-  const acknowledgeAlarm = async (alarmId: string) => {
-    // API 호출 시도
-    const success = await acknowledgeAlarmAPI(alarmId, '');
-    
-    // 로컬 상태 업데이트 (API 성공 여부와 관계없이)
-    setAlarms(prevAlarms => 
-      prevAlarms.map(alarm => 
-        alarm.id === alarmId 
-          ? { 
-              ...alarm, 
-              status: 'acknowledged' as const,
-              acknowledgedAt: new Date(),
-              acknowledgedBy: '사용자'
-            }
-          : alarm
-      )
-    );
-
-    // 선택에서 제거
-    setSelectedAlarms(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(alarmId);
-      return newSet;
-    });
-  };
-
-  const handleAcknowledgeSelected = async () => {
-    if (selectedAlarms.size === 0) return;
-
-    for (const alarmId of selectedAlarms) {
-      await acknowledgeAlarm(alarmId);
-    }
-    
-    setSelectedAlarms(new Set());
-    setAcknowledgmentComment('');
-    setShowAcknowledgeModal(false);
-  };
-
-  const handleSelectAlarm = (alarmId: string, checked: boolean) => {
-    setSelectedAlarms(prev => {
-      const newSet = new Set(prev);
-      if (checked) {
-        newSet.add(alarmId);
-      } else {
-        newSet.delete(alarmId);
-      }
-      return newSet;
-    });
-  };
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      const unacknowledgedAlarms = filteredAlarms
-        .filter(alarm => alarm.status === 'active')
-        .map(alarm => alarm.id);
-      setSelectedAlarms(new Set(unacknowledgedAlarms));
-    } else {
-      setSelectedAlarms(new Set());
-    }
-  };
-
-  // 필터링된 알람 목록
-  const filteredAlarms = alarms.filter(alarm => {
-    if (quickFilter === 'critical' && alarm.priority !== 'critical') return false;
-    if (quickFilter === 'unacknowledged' && alarm.status !== 'active') return false;
-    if (filterPriority !== 'all' && alarm.priority !== filterPriority) return false;
-    if (filterStatus !== 'all') {
-      if (filterStatus === 'acknowledged' && alarm.status !== 'acknowledged') return false;
-      if (filterStatus === 'active' && alarm.status !== 'active') return false;
-    }
-    if (filterCategory !== 'all' && alarm.category !== filterCategory) return false;
-    if (filterFactory !== 'all' && alarm.factory !== filterFactory) return false;
-    return true;
+  // 페이징
+  const pagination = usePagination({
+    initialPage: 1,
+    initialPageSize: 50,
+    totalCount: 0
   });
 
-  const emergencyCount = alarms.filter(alarm => 
-    alarm.priority === 'critical' && alarm.status === 'active'
-  ).length;
+  // =============================================================================
+  // 🔄 데이터 로드 함수들 (새로운 알람 API 사용)
+  // =============================================================================
 
-  // 생명주기 - 초기 로드 시 API 호출
-  useEffect(() => {
-    fetchActiveAlarms();
+  /**
+   * 활성 알람 목록 로드
+   */
+  const loadActiveAlarms = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('🚨 활성 알람 목록 로드 시작...');
+
+      // 새로운 알람 API 호출
+      const response = await fetch('/api/alarms/active?' + new URLSearchParams({
+        page: pagination.currentPage.toString(),
+        limit: pagination.pageSize.toString(),
+        severity: severityFilter !== 'all' ? severityFilter : '',
+        device_id: deviceFilter !== 'all' ? deviceFilter : '',
+        acknowledged: acknowledgedFilter !== 'all' ? acknowledgedFilter : '',
+        search: searchTerm || ''
+      }).toString());
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        setAlarms(data.data.items);
+        pagination.updateTotalCount(data.data.pagination.total);
+        
+        console.log(`✅ 활성 알람 ${data.data.items.length}개 로드 완료`);
+      } else {
+        throw new Error(data.message || '활성 알람 로드 실패');
+      }
+
+    } catch (err) {
+      console.error('❌ 활성 알람 로드 실패:', err);
+      setError(err instanceof Error ? err.message : '알 수 없는 오류');
+    } finally {
+      setIsLoading(false);
+      setLastUpdate(new Date());
+    }
+  }, [pagination.currentPage, pagination.pageSize, severityFilter, deviceFilter, acknowledgedFilter, searchTerm]);
+
+  /**
+   * 알람 통계 로드
+   */
+  const loadAlarmStats = useCallback(async () => {
+    try {
+      console.log('📊 알람 통계 로드 시작...');
+
+      const response = await fetch('/api/alarms/statistics');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        setAlarmStats(data.data);
+        console.log('✅ 알람 통계 로드 완료');
+      } else {
+        console.warn('⚠️ 알람 통계 로드 실패:', data.message);
+      }
+    } catch (err) {
+      console.warn('⚠️ 알람 통계 로드 실패:', err);
+    }
   }, []);
 
-  useEffect(() => {
-    if (isRealtime) {
-      startRealTimeUpdates();
-    }
-    
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [isRealtime]);
+  // =============================================================================
+  // 🔄 알람 액션 함수들
+  // =============================================================================
 
-  // 유틸리티 함수들 그대로 유지
-  const formatDuration = (ms: number): string => {
-    const hours = Math.floor(ms / (1000 * 60 * 60));
-    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  /**
+   * 알람 확인 처리
+   */
+  const handleAcknowledgeAlarm = async (alarmId: number, comment: string = '') => {
+    try {
+      setIsProcessing(true);
+      console.log(`✅ 알람 ${alarmId} 확인 처리 시작...`);
+
+      const response = await fetch(`/api/alarms/occurrences/${alarmId}/acknowledge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ comment })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log(`✅ 알람 ${alarmId} 확인 처리 완료`);
+        await loadActiveAlarms(); // 목록 새로고침
+        await loadAlarmStats(); // 통계 새로고침
+        setShowAckModal(false);
+        setAckComment('');
+        setSelectedAlarmForAck(null);
+      } else {
+        throw new Error(data.message || '알람 확인 처리 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 알람 ${alarmId} 확인 처리 실패:`, err);
+      setError(err instanceof Error ? err.message : '알람 확인 처리 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 알람 해제 처리
+   */
+  const handleClearAlarm = async (alarmId: number, comment: string = '') => {
+    try {
+      setIsProcessing(true);
+      console.log(`🗑️ 알람 ${alarmId} 해제 처리 시작...`);
+
+      const response = await fetch(`/api/alarms/occurrences/${alarmId}/clear`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ comment })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log(`✅ 알람 ${alarmId} 해제 처리 완료`);
+        await loadActiveAlarms();
+        await loadAlarmStats();
+      } else {
+        throw new Error(data.message || '알람 해제 처리 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 알람 ${alarmId} 해제 처리 실패:`, err);
+      setError(err instanceof Error ? err.message : '알람 해제 처리 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 일괄 확인 처리
+   */
+  const handleBulkAcknowledge = async () => {
+    if (selectedAlarms.length === 0) {
+      alert('확인할 알람을 선택해주세요.');
+      return;
+    }
+
+    if (!window.confirm(`선택된 ${selectedAlarms.length}개 알람을 확인 처리하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log('🔄 일괄 확인 처리 시작:', selectedAlarms);
+
+      const results = await Promise.allSettled(
+        selectedAlarms.map(alarmId => 
+          fetch(`/api/alarms/occurrences/${alarmId}/acknowledge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment: '일괄 확인 처리' })
+          })
+        )
+      );
+
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      alert(`일괄 처리 완료: 성공 ${successful}개, 실패 ${failed}개`);
+      
+      setSelectedAlarms([]);
+      await loadActiveAlarms();
+      await loadAlarmStats();
+
+    } catch (err) {
+      console.error('❌ 일괄 확인 처리 실패:', err);
+      setError(err instanceof Error ? err.message : '일괄 확인 처리 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // =============================================================================
+  // 🔄 이벤트 핸들러들
+  // =============================================================================
+
+  const handleSearch = useCallback((term: string) => {
+    setSearchTerm(term);
+    pagination.goToFirst();
+  }, [pagination]);
+
+  const handleFilterChange = useCallback((filterType: string, value: string) => {
+    switch (filterType) {
+      case 'severity':
+        setSeverityFilter(value);
+        break;
+      case 'device':
+        setDeviceFilter(value);
+        break;
+      case 'acknowledged':
+        setAcknowledgedFilter(value);
+        break;
+    }
+    pagination.goToFirst();
+  }, [pagination]);
+
+  const handleAlarmSelect = (alarmId: number, selected: boolean) => {
+    setSelectedAlarms(prev => 
+      selected 
+        ? [...prev, alarmId]
+        : prev.filter(id => id !== alarmId)
+    );
+  };
+
+  const handleSelectAll = (selected: boolean) => {
+    setSelectedAlarms(selected ? alarms.map(a => a.id) : []);
+  };
+
+  const handleAckModalOpen = (alarm: ActiveAlarm) => {
+    setSelectedAlarmForAck(alarm);
+    setAckComment('');
+    setShowAckModal(true);
+  };
+
+  const handleAckModalSubmit = async () => {
+    if (selectedAlarmForAck) {
+      await handleAcknowledgeAlarm(selectedAlarmForAck.id, ackComment);
+    }
+  };
+
+  // =============================================================================
+  // 🔄 라이프사이클 hooks
+  // =============================================================================
+
+  useEffect(() => {
+    loadActiveAlarms();
+    loadAlarmStats();
+  }, [loadActiveAlarms, loadAlarmStats]);
+
+  // 자동 새로고침
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      loadActiveAlarms();
+      loadAlarmStats();
+    }, refreshInterval);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, loadActiveAlarms, loadAlarmStats]);
+
+  // =============================================================================
+  // 🎨 렌더링 헬퍼 함수들
+  // =============================================================================
+
+  const getSeverityBadgeClass = (severity: string) => {
+    switch (severity.toLowerCase()) {
+      case 'critical': return 'severity-badge severity-critical';
+      case 'high': return 'severity-badge severity-high';
+      case 'medium': return 'severity-badge severity-medium';
+      case 'low': return 'severity-badge severity-low';
+      default: return 'severity-badge severity-unknown';
+    }
+  };
+
+  const getSeverityIcon = (severity: string) => {
+    switch (severity.toLowerCase()) {
+      case 'critical': return 'fas fa-exclamation-triangle';
+      case 'high': return 'fas fa-exclamation-circle';
+      case 'medium': return 'fas fa-exclamation';
+      case 'low': return 'fas fa-info-circle';
+      default: return 'fas fa-question-circle';
+    }
+  };
+
+  const getStateBadgeClass = (state: string) => {
+    switch (state) {
+      case 'active': return 'state-badge state-active';
+      case 'acknowledged': return 'state-badge state-acknowledged';
+      case 'cleared': return 'state-badge state-cleared';
+      default: return 'state-badge state-unknown';
+    }
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
+
+  const formatDuration = (triggeredAt: string) => {
+    const now = new Date();
+    const triggered = new Date(triggeredAt);
+    const diffMs = now.getTime() - triggered.getTime();
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     
     if (hours > 0) {
       return `${hours}시간 ${minutes}분`;
@@ -401,377 +408,387 @@ const ActiveAlarms: React.FC = () => {
     }
   };
 
-  const getPriorityColor = (priority: string): string => {
-    switch (priority) {
-      case 'critical': return '#ef4444';
-      case 'high': return '#f97316';
-      case 'medium': return '#3b82f6';
-      case 'low': return '#10b981';
-      default: return '#6b7280';
-    }
-  };
+  // =============================================================================
+  // 🎨 UI 렌더링
+  // =============================================================================
 
-  const getPriorityIcon = (priority: string): string => {
-    switch (priority) {
-      case 'critical': return 'fas fa-exclamation-triangle';
-      case 'high': return 'fas fa-exclamation';
-      case 'medium': return 'fas fa-info-circle';
-      case 'low': return 'fas fa-check-circle';
-      default: return 'fas fa-question-circle';
-    }
-  };
-
-  // 기존 JSX 100% 그대로 유지
   return (
     <div className="active-alarms-container">
-      {/* 오디오 요소 */}
-      <audio ref={audioRef} preload="auto">
-        <source src="/sounds/alarm.mp3" type="audio/mpeg" />
-      </audio>
-
-      {/* 긴급 알람 배너 */}
-      {emergencyCount > 0 && (
-        <div className="emergency-banner">
-          <div className="emergency-icon">
-            <i className="fas fa-exclamation-triangle"></i>
+      {/* 페이지 헤더 */}
+      <div className="page-header">
+        <div className="header-left">
+          <h1 className="page-title">활성 알람</h1>
+          <div className="page-subtitle">
+            현재 발생 중인 알람을 실시간으로 모니터링하고 관리합니다
           </div>
-          <div className="emergency-content">
-            <h2>🚨 긴급 알람 발생</h2>
-            <p>{emergencyCount}개의 Critical 알람이 활성 상태입니다. 즉시 확인하세요!</p>
-          </div>
-          <div className="emergency-actions">
+        </div>
+        <div className="header-right">
+          <div className="header-actions">
             <button 
-              className="btn btn-critical"
-              onClick={() => setQuickFilter('critical')}
+              className="btn btn-secondary"
+              onClick={() => setAutoRefresh(!autoRefresh)}
             >
-              Critical 알람 보기
+              <i className={`fas fa-${autoRefresh ? 'pause' : 'play'}`}></i>
+              {autoRefresh ? '자동새로고침 중지' : '자동새로고침 시작'}
+            </button>
+            <button 
+              className="btn btn-warning"
+              onClick={handleBulkAcknowledge}
+              disabled={selectedAlarms.length === 0 || isProcessing}
+            >
+              <i className="fas fa-check"></i>
+              일괄 확인
             </button>
           </div>
         </div>
-      )}
-
-      {/* 알람 통계 패널 */}
-      <div className="alarm-stats-panel">
-        <div className={`alarm-stat-card critical ${stats.critical > 0 ? 'has-alarms' : ''}`}>
-          <div className="alarm-stat-icon critical">
-            <i className="fas fa-exclamation-triangle"></i>
-          </div>
-          <div className="alarm-stat-value">{stats.critical}</div>
-          <div className="alarm-stat-label">Critical</div>
-          {stats.critical > 7 && <div className="alarm-stat-badge">+{stats.critical - 7}</div>}
-        </div>
-
-        <div className={`alarm-stat-card high ${stats.high > 0 ? 'has-alarms' : ''}`}>
-          <div className="alarm-stat-icon high">
-            <i className="fas fa-exclamation"></i>
-          </div>
-          <div className="alarm-stat-value">{stats.high}</div>
-          <div className="alarm-stat-label">High</div>
-        </div>
-
-        <div className={`alarm-stat-card medium ${stats.medium > 0 ? 'has-alarms' : ''}`}>
-          <div className="alarm-stat-icon medium">
-            <i className="fas fa-info-circle"></i>
-          </div>
-          <div className="alarm-stat-value">{stats.medium}</div>
-          <div className="alarm-stat-label">Medium</div>
-        </div>
-
-        <div className={`alarm-stat-card low ${stats.low > 0 ? 'has-alarms' : ''}`}>
-          <div className="alarm-stat-icon low">
-            <i className="fas fa-check-circle"></i>
-          </div>
-          <div className="alarm-stat-value">{stats.low}</div>
-          <div className="alarm-stat-label">Low</div>
-        </div>
-
-        <div className="alarm-stat-card">
-          <div className="alarm-stat-icon">
-            <i className="fas fa-clock"></i>
-          </div>
-          <div className="alarm-stat-value">{stats.avgResponseTime}</div>
-          <div className="alarm-stat-label">평균 응답시간 (분)</div>
-        </div>
       </div>
 
-      {/* 실시간 제어 패널 */}
-      <div className="realtime-controls">
-        <div className="realtime-status">
-          <div className="live-indicator">
-            <div className="live-dot"></div>
-            실시간 모니터링
+      {/* 알람 통계 대시보드 */}
+      {alarmStats && (
+        <div className="alarm-stats-grid">
+          <div className="stat-card critical">
+            <div className="stat-icon">
+              <i className="fas fa-exclamation-triangle"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">심각</div>
+              <div className="stat-value">{alarmStats.critical_count}</div>
+            </div>
           </div>
-          <div className="last-update">
-            마지막 업데이트: {lastUpdate.toLocaleTimeString('ko-KR')}
+          <div className="stat-card high">
+            <div className="stat-icon">
+              <i className="fas fa-exclamation-circle"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">높음</div>
+              <div className="stat-value">{alarmStats.high_count}</div>
+            </div>
           </div>
-        </div>
-
-        <div className="sound-controls">
-          <label htmlFor="soundToggle" className="text-sm font-medium text-neutral-700 mr-2">
-            알람 사운드
-          </label>
-          <label className="sound-toggle">
-            <input
-              id="soundToggle"
-              type="checkbox"
-              checked={soundEnabled}
-              onChange={(e) => setSoundEnabled(e.target.checked)}
-            />
-            <span className="sound-slider"></span>
-          </label>
-        </div>
-      </div>
-
-      {/* 필터 패널 */}
-      <div className="alarm-filters">
-        <div className="filter-group">
-          <label>우선순위</label>
-          <select
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-          >
-            <option value="all">전체</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label>상태</label>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">전체</option>
-            <option value="active">미확인</option>
-            <option value="acknowledged">확인됨</option>
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label>카테고리</label>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-          >
-            <option value="all">전체</option>
-            <option value="Safety">안전</option>
-            <option value="Process">공정</option>
-            <option value="Production">생산</option>
-            <option value="System">시스템</option>
-            <option value="Quality">품질</option>
-            <option value="Energy">에너지</option>
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label>공장</label>
-          <select
-            value={filterFactory}
-            onChange={(e) => setFilterFactory(e.target.value)}
-          >
-            <option value="all">전체</option>
-            <option value="Factory A">Factory A</option>
-            <option value="Factory B">Factory B</option>
-            <option value="Factory C">Factory C</option>
-          </select>
-        </div>
-
-        <div className="quick-filters">
-          <button
-            className={`filter-btn ${quickFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setQuickFilter('all')}
-          >
-            전체
-          </button>
-          <button
-            className={`filter-btn ${quickFilter === 'critical' ? 'active' : ''}`}
-            onClick={() => setQuickFilter('critical')}
-          >
-            <i className="fas fa-exclamation-triangle"></i>
-            Critical
-          </button>
-          <button
-            className={`filter-btn ${quickFilter === 'unacknowledged' ? 'active' : ''}`}
-            onClick={() => setQuickFilter('unacknowledged')}
-          >
-            <i className="fas fa-bell"></i>
-            미확인
-          </button>
-        </div>
-      </div>
-
-      {/* 선택된 알람 액션 */}
-      {selectedAlarms.size > 0 && (
-        <div className="selected-actions">
-          <span className="selected-count">{selectedAlarms.size}개 알람 선택됨</span>
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowAcknowledgeModal(true)}
-          >
-            <i className="fas fa-check"></i>
-            일괄 확인
-          </button>
+          <div className="stat-card medium">
+            <div className="stat-icon">
+              <i className="fas fa-exclamation"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">보통</div>
+              <div className="stat-value">{alarmStats.medium_count}</div>
+            </div>
+          </div>
+          <div className="stat-card low">
+            <div className="stat-icon">
+              <i className="fas fa-info-circle"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">낮음</div>
+              <div className="stat-value">{alarmStats.low_count}</div>
+            </div>
+          </div>
+          <div className="stat-card unack">
+            <div className="stat-icon">
+              <i className="fas fa-bell"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">미확인</div>
+              <div className="stat-value">{alarmStats.unacknowledged_count}</div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* 알람 목록 - 스크롤 가능하도록 수정 */}
-      <div className="alarms-list">
-        {filteredAlarms.length === 0 ? (
-          <div className="empty-alarms">
-            <div className="empty-icon">
-              <i className="fas fa-bell-slash"></i>
-            </div>
-            <h3 className="empty-title">활성 알람이 없습니다</h3>
-            <p className="empty-description">
-              현재 발생한 알람이 없습니다. 시스템이 정상 상태입니다.
-            </p>
+      {/* 필터 및 검색 */}
+      <div className="filters-section">
+        <div className="search-box">
+          <i className="fas fa-search"></i>
+          <input
+            type="text"
+            placeholder="알람 메시지 또는 디바이스 이름 검색..."
+            value={searchTerm}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+        </div>
+        
+        <div className="filter-group">
+          <select
+            value={severityFilter}
+            onChange={(e) => handleFilterChange('severity', e.target.value)}
+          >
+            <option value="all">모든 심각도</option>
+            <option value="critical">심각</option>
+            <option value="high">높음</option>
+            <option value="medium">보통</option>
+            <option value="low">낮음</option>
+          </select>
+
+          <select
+            value={acknowledgedFilter}
+            onChange={(e) => handleFilterChange('acknowledged', e.target.value)}
+          >
+            <option value="all">모든 상태</option>
+            <option value="false">미확인</option>
+            <option value="true">확인됨</option>
+          </select>
+
+          <select
+            value={deviceFilter}
+            onChange={(e) => handleFilterChange('device', e.target.value)}
+          >
+            <option value="all">모든 디바이스</option>
+            {/* TODO: 디바이스 목록을 실제 API에서 가져와서 렌더링 */}
+          </select>
+        </div>
+
+        {selectedAlarms.length > 0 && (
+          <div className="bulk-actions">
+            <span className="selected-count">
+              {selectedAlarms.length}개 선택됨
+            </span>
+            <button 
+              onClick={handleBulkAcknowledge}
+              disabled={isProcessing}
+              className="btn btn-sm btn-warning"
+            >
+              일괄 확인
+            </button>
+            <button 
+              onClick={() => setSelectedAlarms([])}
+              className="btn btn-sm btn-secondary"
+            >
+              선택 해제
+            </button>
           </div>
-        ) : (
-          <>
-            {/* 선택 모두 체크박스 */}
-            <div className="select-all">
-              <input
-                type="checkbox"
-                checked={selectedAlarms.size === filteredAlarms.filter(a => a.status === 'active').length && filteredAlarms.filter(a => a.status === 'active').length > 0}
-                onChange={(e) => handleSelectAll(e.target.checked)}
-              />
-              <label>모든 미확인 알람 선택</label>
-            </div>
-
-            {filteredAlarms.map((alarm) => (
-              <div
-                key={alarm.id}
-                className={`alarm-item ${alarm.priority} ${alarm.status === 'acknowledged' ? 'acknowledged' : ''} ${alarm.isNew ? 'new' : ''}`}
-              >
-                {alarm.status === 'active' && (
-                  <div className="alarm-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedAlarms.has(alarm.id)}
-                      onChange={(e) => handleSelectAlarm(alarm.id, e.target.checked)}
-                    />
-                  </div>
-                )}
-
-                <div className="alarm-header">
-                  <div className="alarm-priority">
-                    <div 
-                      className="priority-indicator"
-                      style={{ backgroundColor: getPriorityColor(alarm.priority) }}
-                    >
-                      <i className={getPriorityIcon(alarm.priority)}></i>
-                    </div>
-                    <span className="priority-text">{alarm.priority.toUpperCase()}</span>
-                  </div>
-
-                  <div className="alarm-source">
-                    <div className="source-name">{alarm.sourceName}</div>
-                    <div className="source-location">{alarm.factory} • {alarm.category}</div>
-                  </div>
-
-                  <div className="alarm-time">
-                    <div className="triggered-time">
-                      {alarm.triggeredAt.toLocaleString('ko-KR')}
-                    </div>
-                    <div className="duration">
-                      지속: {formatDuration(alarm.duration)}
-                    </div>
-                  </div>
-
-                  <div className="alarm-status">
-                    <span className={`status-badge ${alarm.status}`}>
-                      {alarm.status === 'active' ? '활성' : '확인됨'}
-                    </span>
-                    {alarm.isNew && <span className="new-badge">NEW</span>}
-                  </div>
-                </div>
-
-                <div className="alarm-body">
-                  <div className="alarm-message">
-                    <div className="message-text">{alarm.message}</div>
-                    {alarm.description && (
-                      <div className="message-description">{alarm.description}</div>
-                    )}
-                  </div>
-
-                  <div className="alarm-value">
-                    {alarm.currentValue !== null && alarm.currentValue !== undefined && (
-                      <div className="current-value">
-                        <span className="value-label">현재값:</span>
-                        <span className="value-number">{alarm.currentValue}</span>
-                        {alarm.unit && <span className="value-unit">{alarm.unit}</span>}
-                      </div>
-                    )}
-                    {alarm.thresholdValue && (
-                      <div className="threshold-value">
-                        <span className="value-label">임계값:</span>
-                        <span className="value-number">{alarm.thresholdValue}</span>
-                        {alarm.unit && <span className="value-unit">{alarm.unit}</span>}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="alarm-footer">
-                  {alarm.status === 'active' ? (
-                    <div className="alarm-actions">
-                      <button
-                        className="btn btn-small btn-primary"
-                        onClick={() => acknowledgeAlarm(alarm.id)}
-                      >
-                        <i className="fas fa-check"></i>
-                        확인
-                      </button>
-                      <button className="btn btn-small btn-secondary">
-                        <i className="fas fa-eye"></i>
-                        상세
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="acknowledged-info">
-                      <div className="acknowledged-by">
-                        확인자: {alarm.acknowledgedBy}
-                      </div>
-                      {alarm.acknowledgmentComment && (
-                        <div className="acknowledged-comment">
-                          코멘트: {alarm.acknowledgmentComment}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </>
         )}
       </div>
 
-      {/* 일괄 확인 모달 */}
-      {showAcknowledgeModal && (
-        <div className="acknowledge-modal">
-          <div className="acknowledge-content">
-            <h3>알람 일괄 확인</h3>
-            <p>{selectedAlarms.size}개의 알람을 확인하시겠습니까?</p>
-            <textarea
-              value={acknowledgmentComment}
-              onChange={(e) => setAcknowledgmentComment(e.target.value)}
-              placeholder="확인 코멘트를 입력하세요 (선택사항)"
-            />
-            <div className="acknowledge-actions">
-              <button
+      {/* 에러 표시 */}
+      {error && (
+        <div className="error-message">
+          <i className="fas fa-exclamation-circle"></i>
+          {error}
+          <button onClick={() => setError(null)}>
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+
+      {/* 알람 목록 */}
+      <div className="alarms-content">
+        {isLoading ? (
+          <div className="loading-spinner">
+            <i className="fas fa-spinner fa-spin"></i>
+            <span>활성 알람을 불러오는 중...</span>
+          </div>
+        ) : alarms.length === 0 ? (
+          <div className="empty-state">
+            <i className="fas fa-check-circle text-success"></i>
+            <h3>활성 알람이 없습니다</h3>
+            <p>현재 발생 중인 알람이 없습니다. 시스템이 정상적으로 동작 중입니다.</p>
+          </div>
+        ) : (
+          <div className="alarms-table-container">
+            <table className="alarms-table">
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={selectedAlarms.length === alarms.length}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                    />
+                  </th>
+                  <th>심각도</th>
+                  <th>메시지</th>
+                  <th>디바이스</th>
+                  <th>발생 시간</th>
+                  <th>지속 시간</th>
+                  <th>상태</th>
+                  <th>작업</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alarms.map((alarm) => (
+                  <tr 
+                    key={alarm.id}
+                    className={`${selectedAlarms.includes(alarm.id) ? 'selected' : ''} severity-${alarm.severity}`}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedAlarms.includes(alarm.id)}
+                        onChange={(e) => handleAlarmSelect(alarm.id, e.target.checked)}
+                      />
+                    </td>
+                    <td>
+                      <span className={getSeverityBadgeClass(alarm.severity)}>
+                        <i className={getSeverityIcon(alarm.severity)}></i>
+                        {alarm.severity.toUpperCase()}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="alarm-message">
+                        <div className="message-text">{alarm.message}</div>
+                        {alarm.description && (
+                          <div className="message-description">{alarm.description}</div>
+                        )}
+                        {alarm.triggered_value !== undefined && (
+                          <div className="triggered-value">
+                            현재값: {alarm.triggered_value}
+                            {alarm.threshold_value !== undefined && ` (임계값: ${alarm.threshold_value})`}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="device-info">
+                        <div className="device-name">{alarm.device_name || `Device ${alarm.device_id}`}</div>
+                        {alarm.data_point_name && (
+                          <div className="data-point-name">{alarm.data_point_name}</div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="timestamp">
+                        {formatTimestamp(alarm.triggered_at)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="duration">
+                        {formatDuration(alarm.triggered_at)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={getStateBadgeClass(alarm.state)}>
+                        {alarm.state === 'active' ? '활성' : 
+                         alarm.state === 'acknowledged' ? '확인됨' : 
+                         alarm.state === 'cleared' ? '해제됨' : alarm.state}
+                      </span>
+                      {alarm.acknowledged_at && (
+                        <div className="ack-info">
+                          <small>확인: {alarm.acknowledged_by}</small>
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <div className="alarm-actions">
+                        {alarm.state === 'active' && (
+                          <button 
+                            onClick={() => handleAckModalOpen(alarm)}
+                            disabled={isProcessing}
+                            className="btn btn-sm btn-warning"
+                            title="확인"
+                          >
+                            <i className="fas fa-check"></i>
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleClearAlarm(alarm.id, '수동 해제')}
+                          disabled={isProcessing}
+                          className="btn btn-sm btn-success"
+                          title="해제"
+                        >
+                          <i className="fas fa-times"></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 페이징 */}
+      {alarms.length > 0 && (
+        <div className="pagination-section">
+          <Pagination
+            current={pagination.currentPage}
+            total={pagination.totalCount}
+            pageSize={pagination.pageSize}
+            pageSizeOptions={[25, 50, 100]}
+            showSizeChanger={true}
+            showTotal={true}
+            onChange={(page, pageSize) => {
+              pagination.goToPage(page);
+              if (pageSize !== pagination.pageSize) {
+                pagination.changePageSize(pageSize);
+              }
+            }}
+            onShowSizeChange={(page, pageSize) => {
+              pagination.changePageSize(pageSize);
+              pagination.goToPage(1);
+            }}
+          />
+        </div>
+      )}
+
+      {/* 상태 정보 */}
+      <div className="status-bar">
+        <div className="status-info">
+          <span>마지막 업데이트: {lastUpdate.toLocaleTimeString()}</span>
+          {isProcessing && (
+            <span className="processing-indicator">
+              <i className="fas fa-spinner fa-spin"></i>
+              처리 중...
+            </span>
+          )}
+          {autoRefresh && (
+            <span className="auto-refresh-indicator">
+              <i className="fas fa-sync-alt"></i>
+              {refreshInterval / 1000}초마다 자동 새로고침
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 알람 확인 모달 */}
+      {showAckModal && selectedAlarmForAck && (
+        <div className="modal-overlay" onClick={() => setShowAckModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>알람 확인</h3>
+              <button onClick={() => setShowAckModal(false)}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="alarm-summary">
+                <div className="alarm-info">
+                  <span className={getSeverityBadgeClass(selectedAlarmForAck.severity)}>
+                    <i className={getSeverityIcon(selectedAlarmForAck.severity)}></i>
+                    {selectedAlarmForAck.severity.toUpperCase()}
+                  </span>
+                  <div className="alarm-message">{selectedAlarmForAck.message}</div>
+                  <div className="alarm-device">
+                    {selectedAlarmForAck.device_name || `Device ${selectedAlarmForAck.device_id}`}
+                  </div>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>확인 코멘트:</label>
+                <textarea
+                  value={ackComment}
+                  onChange={(e) => setAckComment(e.target.value)}
+                  placeholder="알람 확인에 대한 설명을 입력하세요 (선택사항)"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
                 className="btn btn-secondary"
-                onClick={() => setShowAcknowledgeModal(false)}
+                onClick={() => setShowAckModal(false)}
               >
                 취소
               </button>
-              <button
-                className="btn btn-primary"
-                onClick={handleAcknowledgeSelected}
+              <button 
+                className="btn btn-warning"
+                onClick={handleAckModalSubmit}
+                disabled={isProcessing}
               >
-                확인
+                {isProcessing ? (
+                  <><i className="fas fa-spinner fa-spin"></i> 처리 중...</>
+                ) : (
+                  <><i className="fas fa-check"></i> 확인</>
+                )}
               </button>
             </div>
           </div>
