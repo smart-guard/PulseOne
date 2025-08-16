@@ -8,7 +8,7 @@ const router = express.Router();
 
 // Repository imports (기존 완성된 것들 사용)
 // CurrentValueRepository는 DeviceRepository에 포함됨
-// DataPointRepository는 DeviceRepository에 포함됨
+// DeviceRepository는 DeviceRepository에 포함됨
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
 
 // Connection modules
@@ -30,8 +30,8 @@ function getCurrentValueRepo() {
 
 function getDataPointRepo() {
     if (!dataPointRepo) {
-        dataPointRepo = new DataPointRepository();
-        console.log("✅ DataPointRepository 인스턴스 생성 완료");
+        dataPointRepo = new DeviceRepository();
+        console.log("✅ DeviceRepository 인스턴스 생성 완료");
     }
     return dataPointRepo;
 }
