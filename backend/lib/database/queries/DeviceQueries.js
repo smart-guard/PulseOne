@@ -181,9 +181,8 @@ class DeviceQueries {
 
   // 디바이스 삭제
   static deleteDevice() {
-    return `DELETE FROM devices WHERE id = ?`;
+    return `DELETE FROM devices WHERE id = ? AND tenant_id = ?`;
   }
-
   // =============================================================================
   // 디바이스 설정 쿼리들
   // =============================================================================
@@ -715,6 +714,204 @@ class DeviceQueries {
       ORDER BY device_count DESC
     `;
   }
+
+    /**
+   * 디바이스 상태 업데이트 (활성화/비활성화)
+   */
+  static updateDeviceStatus() {
+    return `
+      UPDATE devices 
+      SET is_enabled = ?, 
+          status = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `;
+  }
+
+  /**
+   * 디바이스 연결 상태 업데이트
+   */
+  static updateDeviceConnection() {
+    return `
+      UPDATE devices 
+      SET connection_status = ?,
+          last_seen = COALESCE(?, last_seen),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `;
+  }
+
+  /**
+   * 디바이스 재시작 상태 업데이트
+   */
+  static updateDeviceRestartStatus() {
+    return `
+      UPDATE devices 
+      SET status = ?,
+          last_restart = CASE WHEN ? = 'restarting' THEN CURRENT_TIMESTAMP ELSE last_restart END,
+          connection_status = CASE WHEN ? = 'running' THEN 'connected' ELSE connection_status END,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `;
+  }
+
+  /**
+   * 디바이스 기본 정보 업데이트 (동적 필드)
+   */
+  static updateDeviceFields(fields) {
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    return `
+      UPDATE devices 
+      SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `;
+  }
+
+  /**
+   * 디바이스 엔드포인트 업데이트
+   */
+  static updateDeviceEndpoint() {
+    return `
+      UPDATE devices 
+      SET endpoint = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `;
+  }
+
+  /**
+   * 디바이스 설정 업데이트
+   */
+  static updateDeviceConfig() {
+    return `
+      UPDATE devices 
+      SET config = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `;
+  }
+
+  /**
+   * 디바이스 삭제
+   */
+  static deleteDevice() {
+    return `DELETE FROM devices WHERE id = ? AND tenant_id = ?`;
+  }
+
+  /**
+   * 디바이스 생성
+   */
+  static createDevice() {
+    return `
+      INSERT INTO devices (
+        tenant_id, site_id, device_group_id, edge_server_id,
+        name, description, device_type, manufacturer, model, serial_number,
+        protocol_type, endpoint, config, polling_interval, timeout, retry_count,
+        is_enabled, installation_date, created_by, created_at, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )
+    `;
+  }
+  /**
+   * 디바이스 설정 생성 (device_settings)
+   */
+  static createDeviceSettings() {
+    return `
+      INSERT INTO device_settings (
+        device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
+        retry_interval_ms, keep_alive_enabled, keep_alive_interval_s,
+        data_validation_enabled, performance_monitoring_enabled, 
+        created_at, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )
+    `;
+  }
+  /**
+   * 디바이스 상태 생성 (device_status)
+   */
+  static createDeviceStatus() {
+    return `
+      INSERT INTO device_status (
+        device_id, connection_status, error_count, total_requests, 
+        successful_requests, failed_requests, uptime_percentage, updated_at
+      ) VALUES (
+        ?, 'disconnected', 0, 0, 0, 0, 0.0, CURRENT_TIMESTAMP
+      )
+    `;
+  }
+  /**
+   * 디바이스 삭제 - 관련 테이블들도 함께 삭제 (CASCADE로 자동 처리됨)
+   */
+  static deleteDeviceComplete() {
+    return `DELETE FROM devices WHERE id = ? AND tenant_id = ?`;
+  }
+  /**
+   * 디바이스 설정 업데이트
+   */
+  static updateDeviceSettings() {
+    return `
+      UPDATE device_settings 
+      SET polling_interval_ms = ?,
+          connection_timeout_ms = ?,
+          max_retry_count = ?,
+          retry_interval_ms = ?,
+          keep_alive_enabled = ?,
+          keep_alive_interval_s = ?,
+          updated_at = CURRENT_TIMESTAMP,
+          updated_by = ?
+      WHERE device_id = ?
+    `;
+  }
+  /**
+   * 디바이스 활성화/비활성화 (devices 테이블의 is_enabled만 업데이트)
+   */
+  static updateDeviceEnabled() {
+    return `
+      UPDATE devices 
+      SET is_enabled = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `;
+  }
+  /**
+   * 디바이스 연결 상태 업데이트 (device_status 테이블)
+   */
+  static updateDeviceConnectionStatus() {
+    return `
+      INSERT OR REPLACE INTO device_status (
+        device_id, connection_status, last_communication, updated_at
+      ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    `;
+  } 
+  /**
+   * 디바이스 재시작 상태 업데이트 (device_status 테이블)
+   */
+  static updateDeviceRestartConnectionStatus() {
+    return `
+      INSERT OR REPLACE INTO device_status (
+        device_id, connection_status, last_communication, updated_at
+      ) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `;
+  }  
+  
+  /**
+   * 디바이스 상태 업데이트
+   */
+  static updateDeviceStatusInfo() {
+    return `
+      UPDATE device_status 
+      SET connection_status = ?,
+          last_communication = ?,
+          error_count = ?,
+          last_error = ?,
+          response_time = ?,
+          uptime_percentage = ?,
+          firmware_version = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE device_id = ?
+    `;
+  }
+
 }
 
 module.exports = DeviceQueries;
