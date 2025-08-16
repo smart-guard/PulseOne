@@ -56,9 +56,9 @@ class DeviceQueries {
         dst.diagnostic_data,
         dst.updated_at as status_updated_at,
         
-        -- 사이트 정보 (code 컬럼 안전 처리)
+        -- 사이트 정보
         s.name as site_name,
-        COALESCE(s.code, 'SITE' || s.id) as site_code,  -- ✅ 안전한 fallback
+        COALESCE(s.code, 'SITE' || s.id) as site_code,
         
         -- 그룹 정보
         dg.name as group_name,
@@ -70,59 +70,85 @@ class DeviceQueries {
         
       FROM devices d
       LEFT JOIN device_settings ds ON d.id = ds.device_id
-      LEFT JOIN device_status dst ON d.id = dst.device_id
+      LEFT JOIN device_status dst ON d.id = dst.device_id  
       LEFT JOIN sites s ON d.site_id = s.id
       LEFT JOIN device_groups dg ON d.device_group_id = dg.id
       LEFT JOIN data_points dp ON d.id = dp.device_id
       WHERE 1=1
-     `;
+    `;
   }
 
-  // 필터 조건들
+  // 테넌트 필터 추가
   static addTenantFilter() {
     return ` AND d.tenant_id = ?`;
   }
 
+  // 사이트 필터 추가
   static addSiteFilter() {
     return ` AND d.site_id = ?`;
   }
 
-  static addDeviceGroupFilter() {
-    return ` AND d.device_group_id = ?`;
-  }
-
+  // 프로토콜 타입 필터 추가
   static addProtocolTypeFilter() {
     return ` AND d.protocol_type = ?`;
   }
 
+  // 디바이스 타입 필터 추가
   static addDeviceTypeFilter() {
     return ` AND d.device_type = ?`;
   }
 
-  static addEnabledFilter() {
-    return ` AND d.is_enabled = ?`;
-  }
-
-  static addDeviceIdFilter() {
-    return ` AND d.id = ?`;
-  }
-
-  // 🔥 수정: connection_status 필드로 수정
+  // 연결 상태 필터 추가
   static addConnectionStatusFilter() {
     return ` AND dst.connection_status = ?`;
   }
 
+  // 상태 필터 추가
+  static addStatusFilter() {
+    return ` AND d.is_enabled = ?`;
+  }
+
+  // 검색 필터 추가
   static addSearchFilter() {
     return ` AND (d.name LIKE ? OR d.description LIKE ? OR d.manufacturer LIKE ? OR d.model LIKE ?)`;
   }
 
   // 그룹화 및 정렬
   static getGroupByAndOrder() {
-    return ` GROUP BY d.id ORDER BY d.name`;
+    return ` 
+      GROUP BY 
+        d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
+        d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
+        d.protocol_type, d.endpoint, d.config, d.polling_interval, d.timeout, d.retry_count,
+        d.is_enabled, d.installation_date, d.last_maintenance, d.created_at, d.updated_at,
+        ds.polling_interval_ms, ds.connection_timeout_ms, ds.max_retry_count,
+        ds.retry_interval_ms, ds.backoff_time_ms, ds.keep_alive_enabled, ds.keep_alive_interval_s,
+        ds.updated_at, dst.connection_status, dst.last_communication, dst.error_count,
+        dst.last_error, dst.response_time, dst.firmware_version, dst.hardware_info,
+        dst.diagnostic_data, dst.updated_at, s.name, s.code, dg.name, dg.group_type
+      ORDER BY d.id
+    `;
   }
 
+  // 제한 추가
   static addLimit() {
     return ` LIMIT ?`;
+  }
+
+  // 오프셋 추가
+  static addOffset() {
+    return ` OFFSET ?`;
+  }
+
+  // 정렬 변경
+  static addCustomSort(sortBy = 'id', sortOrder = 'ASC') {
+    const validSortColumns = ['id', 'name', 'device_type', 'protocol_type', 'created_at', 'updated_at'];
+    const validOrders = ['ASC', 'DESC'];
+    
+    const column = validSortColumns.includes(sortBy) ? `d.${sortBy}` : 'd.id';
+    const order = validOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'ASC';
+    
+    return ` ORDER BY ${column} ${order}`;
   }
 
   // =============================================================================
@@ -229,52 +255,43 @@ class DeviceQueries {
   static getDataPointsByDevice() {
     return `
       SELECT 
-        dp.id,
-        dp.device_id,
-        dp.name,
-        dp.description,
-        dp.address,
-        dp.address_string,
-        dp.data_type,
-        dp.access_mode,
-        dp.is_enabled,
-        dp.is_writable,
-        dp.unit,
-        dp.scaling_factor,
-        dp.scaling_offset,
-        dp.min_value,
-        dp.max_value,
-        dp.log_enabled,
-        dp.log_interval_ms,
-        dp.log_deadband,
-        dp.polling_interval_ms,
-        dp.group_name,
-        dp.tags,
-        dp.metadata,
-        dp.protocol_params,
-        dp.created_at,
-        dp.updated_at,
-        
-        -- 현재값 정보
-        cv.current_value,
-        cv.raw_value,
-        cv.value_type,
-        cv.quality_code,
-        cv.quality,
-        cv.value_timestamp,
-        cv.quality_timestamp,
-        cv.last_log_time,
-        cv.last_read_time,
-        cv.last_write_time,
-        cv.read_count,
-        cv.write_count,
-        cv.error_count,
-        cv.updated_at as value_updated_at
-        
+        dp.id, dp.device_id, dp.name, dp.description,
+        dp.address, dp.address_string, dp.data_type, dp.access_mode,
+        dp.is_enabled, dp.is_writable, dp.unit, dp.scaling_factor,
+        dp.scaling_offset, dp.min_value, dp.max_value,
+        dp.log_enabled, dp.log_interval_ms, dp.log_deadband,
+        dp.polling_interval_ms, dp.tags, dp.metadata,
+        dp.protocol_params, dp.created_at, dp.updated_at,
+        cv.current_value, cv.raw_value, cv.quality, cv.timestamp as last_update
       FROM data_points dp
       LEFT JOIN current_values cv ON dp.id = cv.point_id
       WHERE dp.device_id = ?
-      ORDER BY dp.address
+    `;
+  }
+    /**
+   * 데이터포인트용 테넌트 필터 추가
+   */
+  static addTenantFilterForDataPoints() {
+    return ` AND EXISTS (SELECT 1 FROM devices d WHERE d.id = dp.device_id AND d.tenant_id = ?)`;
+  }
+
+  /**
+   * 데이터포인트 정렬
+   */
+  static getDataPointsOrderBy() {
+    return ` ORDER BY dp.address, dp.name`;
+  }
+
+  /**
+   * 디바이스 수 조회 쿼리
+   */
+  static getDeviceCount() {
+    return `
+      SELECT COUNT(DISTINCT d.id) as count
+      FROM devices d
+      LEFT JOIN sites s ON d.site_id = s.id
+      LEFT JOIN device_groups dg ON d.device_group_id = dg.id
+      WHERE 1=1
     `;
   }
 

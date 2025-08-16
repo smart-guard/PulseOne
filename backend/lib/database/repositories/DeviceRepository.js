@@ -14,7 +14,134 @@ class DeviceRepository {
   // =============================================================================
   // 디바이스 조회 메소드들
   // =============================================================================
+  /**
+   * ID로 디바이스 조회 (누락된 메서드)
+   */
+  async findById(id, tenantId = null) {
+    try {
+      console.log(`📱 DeviceRepository.findById 호출: id=${id}, tenantId=${tenantId}`);
+      
+      // DeviceQueries에서 쿼리 가져오기
+      let query = DeviceQueries.getDevicesWithAllInfo();
+      const params = [];
 
+      // WHERE 조건 추가
+      query += ` WHERE d.id = ?`;
+      params.push(id);
+
+      if (tenantId) {
+        query += ` AND d.tenant_id = ?`;
+        params.push(tenantId);
+      }
+
+      // 그룹화 (JOIN으로 인한 중복 방지)
+      query += DeviceQueries.getGroupByAndOrder();
+
+      console.log(`🔍 실행할 쿼리: ${query.substring(0, 100)}...`);
+      console.log(`🔍 파라미터:`, params);
+
+      const result = await this.dbFactory.executeQuery(query, params);
+      const devices = Array.isArray(result) ? result : (result.rows || []);
+      
+      if (devices.length === 0) {
+        console.log(`❌ 디바이스 ID ${id} 찾을 수 없음`);
+        return null;
+      }
+      
+      console.log(`✅ 디바이스 ID ${id} 조회 성공: ${devices[0].name}`);
+      return this.parseDevice(devices[0]);
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.findById 오류:', error);
+      throw new Error(`디바이스 조회 실패: ${error.message}`);
+    }
+  }
+
+  /**
+   * 이름으로 디바이스 조회 (누락된 메서드)
+   */
+  async findByName(name, tenantId = null) {
+    try {
+      console.log(`📱 DeviceRepository.findByName 호출: name=${name}, tenantId=${tenantId}`);
+      
+      // DeviceQueries에서 쿼리 가져오기
+      let query = DeviceQueries.getDevicesWithAllInfo();
+      const params = [];
+
+      // WHERE 조건 추가
+      query += ` WHERE d.name = ?`;
+      params.push(name);
+
+      if (tenantId) {
+        query += ` AND d.tenant_id = ?`;
+        params.push(tenantId);
+      }
+
+      // 그룹화 (JOIN으로 인한 중복 방지)
+      query += DeviceQueries.getGroupByAndOrder();
+
+      console.log(`🔍 실행할 쿼리: ${query.substring(0, 100)}...`);
+      console.log(`🔍 파라미터:`, params);
+
+      const result = await this.dbFactory.executeQuery(query, params);
+      const devices = Array.isArray(result) ? result : (result.rows || []);
+      
+      if (devices.length === 0) {
+        console.log(`❌ 디바이스 이름 '${name}' 찾을 수 없음`);
+        return null;
+      }
+      
+      console.log(`✅ 디바이스 이름 '${name}' 조회 성공: ID ${devices[0].id}`);
+      return this.parseDevice(devices[0]);
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.findByName 오류:', error);
+      throw new Error(`디바이스 이름 조회 실패: ${error.message}`);
+    }
+  }
+
+  /**
+   * 디바이스의 데이터포인트들 조회 (누락된 메서드) - DeviceQueries 사용
+   */
+  async getDeviceDataPoints(deviceId, tenantId = null) {
+    try {
+      console.log(`📊 DeviceRepository.getDeviceDataPoints 호출: deviceId=${deviceId}, tenantId=${tenantId}`);
+      
+      // 먼저 디바이스가 존재하는지 확인
+      const device = await this.findById(deviceId, tenantId);
+      if (!device) {
+        throw new Error(`디바이스 ID ${deviceId}를 찾을 수 없습니다`);
+      }
+
+      // DeviceQueries에서 데이터포인트 쿼리 가져오기
+      let query = DeviceQueries.getDataPointsByDevice();
+      const params = [deviceId];
+
+      if (tenantId) {
+        // 테넌트 조건 추가
+        query += DeviceQueries.addTenantFilterForDataPoints();
+        params.push(tenantId);
+      }
+
+      // 정렬
+      query += DeviceQueries.getDataPointsOrderBy();
+
+      console.log(`🔍 데이터포인트 쿼리: ${query.substring(0, 100)}...`);
+      console.log(`🔍 파라미터:`, params);
+
+      const result = await this.dbFactory.executeQuery(query, params);
+      const dataPoints = Array.isArray(result) ? result : (result.rows || []);
+      
+      console.log(`✅ 디바이스 ${deviceId}의 데이터포인트 ${dataPoints.length}개 조회 성공`);
+      
+      // 데이터포인트 파싱
+      return dataPoints.map(dp => this.parseDataPoint(dp));
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.getDeviceDataPoints 오류:', error);
+      throw new Error(`디바이스 데이터포인트 조회 실패: ${error.message}`);
+    }
+  }
   // 디바이스 목록 조회 (모든 관련 정보 포함)
   async findAllDevices(filters = {}) {
     try {
@@ -62,89 +189,95 @@ class DeviceRepository {
         params.push(limit);
 
         console.log('🔍 실행할 쿼리:', query.substring(0, 200) + '...');
-        console.log('🔍 파라미터:', params);
+        console.log('🔍 파라미터:', params.length + '개');
 
-        const queryResult = await this.dbFactory.executeQuery(query, params);
-        console.log('🔍 쿼리 결과 타입:', typeof queryResult);
+        const result = await this.dbFactory.executeQuery(query, params);
+        console.log('🔍 Query result type:', typeof result);
+        console.log('🔍 Query result keys:', Object.keys(result || {}));
         
-        // 결과 처리
-        let results = [];
-        if (queryResult && queryResult.rows) {
-        results = queryResult.rows;
-        } else if (Array.isArray(queryResult)) {
-        results = queryResult;
+        // 결과 처리 (다양한 DB 드라이버 대응)
+        let devices = [];
+        if (Array.isArray(result)) {
+            devices = result;
+        } else if (result && result.rows) {
+            devices = result.rows;
+        } else if (result && result.recordset) {
+            devices = result.recordset;
         } else {
-        console.warn('⚠️ 예상하지 못한 쿼리 결과 구조:', typeof queryResult);
-        results = [];
+            console.warn('🔍 예상치 못한 쿼리 결과 구조:', result);
+            devices = [];
         }
 
-        console.log(`✅ ${results.length}개 디바이스 조회 완료`);
+        console.log(`✅ ${devices.length}개 디바이스 조회 완료`);
 
-        // 디바이스 파싱 (안전하게)
-        const parsedDevices = results.map((device, index) => {
-        try {
-            return this.parseDevice(device);
-        } catch (parseError) {
-            console.error(`❌ 디바이스 파싱 실패 (인덱스 ${index}):`, parseError.message);
-            console.error('문제 디바이스 데이터:', device);
-            
-            // 파싱 실패 시 기본 구조로 반환
-            return {
-            id: device.id,
-            name: device.name || 'Unknown Device',
-            device_type: device.device_type || 'Unknown',
-            protocol_type: device.protocol_type || 'Unknown',
-            is_enabled: !!device.is_enabled,
-            created_at: device.created_at,
-            _parse_error: parseError.message
-            };
-        }
-        });
+        // 데이터 파싱
+        const parsedDevices = devices.map(device => this.parseDevice(device));
 
-        // 🔥 DeviceQueries 사용해서 카운트 조회
-        let totalCount = 0;
-        try {
-        let countQuery = DeviceQueries.getDeviceCountSimple();
-        const countParams = [filters.tenantId || filters.tenant_id || 1];
+        // 페이징 정보 계산
+        const totalCount = devices.length > 0 ? 
+            (filters.page && filters.limit ? await this.getDeviceCount(filters) : devices.length) : 0;
         
-        if (filters.protocolType || filters.protocol_type) {
-            countQuery += DeviceQueries.addSimpleProtocolFilter();
-            countParams.push(filters.protocolType || filters.protocol_type);
-        }
-
-        if (filters.search) {
-            countQuery += DeviceQueries.addSimpleSearchFilter();
-            const searchTerm = `%${filters.search}%`;
-            countParams.push(searchTerm, searchTerm);
-        }
-
-        const countResult = await this.dbFactory.executeQuery(countQuery, countParams);
-        const countData = countResult.rows ? countResult.rows[0] : countResult[0];
-        totalCount = countData ? countData.total_count : 0;
-        } catch (countError) {
-        console.error('❌ 전체 개수 조회 실패:', countError.message);
-        totalCount = results.length; // 폴백
-        }
-
-        // Repository 표준 응답 형식으로 반환
-        return {
-        items: parsedDevices,
-        pagination: {
-            page: page,
-            limit: limit,
+        const pagination = {
+            page: parseInt(page),
+            limit: parseInt(limit),
             total_items: totalCount,
-            total_pages: Math.ceil(totalCount / limit),
             has_next: page * limit < totalCount,
             has_prev: page > 1
-        }
+        };
+
+        return {
+            items: parsedDevices,
+            pagination: pagination
         };
 
     } catch (error) {
-        console.error('❌ DeviceRepository.findAllDevices 실패:', error.message);
+        console.error('❌ DeviceRepository.findAllDevices 오류:', error.message);
         console.error('❌ 스택:', error.stack);
-        throw error;
+        throw new Error(`디바이스 목록 조회 실패: ${error.message}`);
     }
+  }
+
+  // 디바이스 수 조회
+  async getDeviceCount(filters = {}) {
+    try {
+        let query = DeviceQueries.getDeviceCount();
+        const params = [];
+
+        // 기본 tenant 필터
+        query += DeviceQueries.addTenantFilter();
+        params.push(filters.tenantId || filters.tenant_id || 1);
+
+        // 추가 필터들
+        if (filters.siteId || filters.site_id) {
+        query += DeviceQueries.addSiteFilter();
+        params.push(filters.siteId || filters.site_id);
+        }
+
+        if (filters.protocolType || filters.protocol_type) {
+        query += DeviceQueries.addProtocolTypeFilter();
+        params.push(filters.protocolType || filters.protocol_type);
+        }
+
+        if (filters.deviceType || filters.device_type) {
+        query += DeviceQueries.addDeviceTypeFilter();
+        params.push(filters.deviceType || filters.device_type);
+        }
+
+        if (filters.search) {
+        query += DeviceQueries.addSearchFilter();
+        const searchTerm = `%${filters.search}%`;
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        const result = await this.dbFactory.executeQuery(query, params);
+        const countResult = Array.isArray(result) ? result[0] : (result.rows ? result.rows[0] : result);
+        
+        return countResult?.count || 0;
+    } catch (error) {
+        console.error('❌ 디바이스 수 조회 실패:', error.message);
+        return 0;
     }
+  }
 
   // 디바이스 상세 조회
   async findDeviceById(id) {
@@ -626,26 +759,24 @@ class DeviceRepository {
 
   // 디바이스 데이터 파싱
   parseDevice(device) {
+    if (!device) return null;
+
     return {
       ...device,
       is_enabled: !!device.is_enabled,
-      keep_alive_enabled: !!device.keep_alive_enabled,
       config: device.config ? JSON.parse(device.config) : {},
-      hardware_info: device.hardware_info ? JSON.parse(device.hardware_info) : null,
-      diagnostic_data: device.diagnostic_data ? JSON.parse(device.diagnostic_data) : null,
       settings: {
-        polling_interval_ms: device.polling_interval_ms || 1000,
-        connection_timeout_ms: device.connection_timeout_ms || 10000,
-        max_retry_count: device.max_retry_count || 3,
-        retry_interval_ms: device.retry_interval_ms || 5000,
-        backoff_time_ms: device.backoff_time_ms || 60000,
+        polling_interval_ms: device.polling_interval_ms,
+        connection_timeout_ms: device.connection_timeout_ms,
+        max_retry_count: device.max_retry_count,
+        retry_interval_ms: device.retry_interval_ms,
+        backoff_time_ms: device.backoff_time_ms,
         keep_alive_enabled: !!device.keep_alive_enabled,
-        keep_alive_interval_s: device.keep_alive_interval_s || 30,
+        keep_alive_interval_s: device.keep_alive_interval_s,
         updated_at: device.settings_updated_at
       },
       status: {
-        status: device.status || 'unknown',
-        last_seen: device.last_seen,
+        status: device.connection_status || 'unknown',
         last_error: device.last_error,
         response_time: device.response_time,
         firmware_version: device.firmware_version,

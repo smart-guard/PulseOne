@@ -1,42 +1,59 @@
 // ============================================================================
 // backend/routes/data.js
-// 데이터 익스플로러 API - Repository 패턴 100% 활용한 상용 버전
+// 데이터 익스플로러 API - Repository 패턴 100% 활용한 상용 버전 (최소 수정)
 // ============================================================================
 
 const express = require('express');
 const router = express.Router();
 
-// Repository imports (기존 완성된 것들 사용)
-// DataPointRepository는 DeviceRepository에 포함됨
-// CurrentValueRepository는 DeviceRepository에 포함됨
+// Repository imports (수정됨 - DeviceRepository만 사용)
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
 const SiteRepository = require('../lib/database/repositories/SiteRepository');
-
 // Connection modules
-const redisClient = require('../lib/connection/redis');
-const { query: postgresQuery } = require('../lib/connection/postgres');
-const { queryRange: influxQuery } = require('../lib/connection/influx');
+let redisClient = null;
+let postgresQuery = null;
+let influxQuery = null;
 
-// Repository 인스턴스 생성
-let dataPointRepo = null;
-let currentValueRepo = null;
+try {
+    redisClient = require('../lib/connection/redis');
+} catch (error) {
+    console.warn('⚠️ Redis 연결 모듈 로드 실패:', error.message);
+}
+
+try {
+    const postgres = require('../lib/connection/postgres');
+    postgresQuery = postgres.query;
+} catch (error) {
+    console.warn('⚠️ PostgreSQL 연결 모듈 로드 실패:', error.message);
+}
+
+try {
+    const influx = require('../lib/connection/influx');
+    influxQuery = influx.queryRange;
+} catch (error) {
+    console.warn('⚠️ InfluxDB 연결 모듈 로드 실패:', error.message);
+}
+
+
+// Repository 인스턴스 생성 (수정됨 - DeviceRepository 통합)
 let deviceRepo = null;
 let siteRepo = null;
 
+// DeviceRepository가 DataPoint와 CurrentValue 기능을 모두 포함
 function getDataPointRepo() {
-    if (!dataPointRepo) {
-        dataPointRepo = new DataPointRepository();
-        console.log("✅ DataPointRepository 인스턴스 생성 완료");
+    if (!deviceRepo) {
+        deviceRepo = new DeviceRepository();
+        console.log("✅ DeviceRepository 인스턴스 생성 완료 (DataPoint 포함)");
     }
-    return dataPointRepo;
+    return deviceRepo;
 }
 
 function getCurrentValueRepo() {
-    if (!currentValueRepo) {
-        currentValueRepo = new CurrentValueRepository();
-        console.log("✅ CurrentValueRepository 인스턴스 생성 완료");
+    if (!deviceRepo) {
+        deviceRepo = new DeviceRepository();
+        console.log("✅ DeviceRepository 인스턴스 생성 완료 (CurrentValue 포함)");
     }
-    return currentValueRepo;
+    return deviceRepo;
 }
 
 function getDeviceRepo() {
@@ -55,8 +72,11 @@ function getSiteRepo() {
     return siteRepo;
 }
 
+// 호환성을 위한 별칭들
+const getDataPointRepo = getDeviceRepo;
+const getCurrentValueRepo = getDeviceRepo;
 // ============================================================================
-// 🛡️ 유틸리티 및 헬퍼 함수들
+// 🛡️ 유틸리티 및 헬퍼 함수들 (원본 그대로)
 // ============================================================================
 
 /**
@@ -115,12 +135,12 @@ router.use(devAuthMiddleware);
 router.use(devTenantMiddleware);
 
 // ============================================================================
-// 🔍 데이터포인트 검색 및 조회 API
+// 🔍 데이터포인트 검색 및 조회 API (수정됨)
 // ============================================================================
 
 /**
  * GET /api/data/points
- * 데이터포인트 검색 (페이징, 필터링, 정렬 지원)
+ * 데이터포인트 검색 - 기존 getDataPointsByDevice 메서드 사용
  */
 router.get('/points', async (req, res) => {
     try {
@@ -145,37 +165,81 @@ router.get('/points', async (req, res) => {
             filters: { search, device_id, site_id, data_type, enabled_only }
         });
 
-        const options = {
-            tenantId,
-            search,
-            deviceId: device_id ? parseInt(device_id) : null,
-            siteId: site_id ? parseInt(site_id) : null,
-            dataType: data_type,
-            enabledOnly: enabled_only === 'true',
-            page: parseInt(page),
-            limit: parseInt(limit),
-            sortBy: sort_by,
-            sortOrder: sort_order.toUpperCase(),
-            includeCurrentValue: include_current_value === 'true'
-        };
+        let allDataPoints = [];
 
-        const result = await getDataPointRepo().findAll(options);
-
-        // 현재값 포함 요청 시
-        if (include_current_value === 'true' && result.items.length > 0) {
-            for (const dataPoint of result.items) {
-                try {
-                    const currentValue = await getCurrentValueRepo().findByPointId(dataPoint.id, tenantId);
-                    dataPoint.current_value = currentValue;
-                } catch (error) {
-                    console.warn(`현재값 조회 실패 (포인트 ID: ${dataPoint.id}):`, error.message);
-                    dataPoint.current_value = null;
+        if (device_id) {
+            // 특정 디바이스의 데이터포인트 조회 (기존 메서드 사용)
+            try {
+                const dataPoints = await getDeviceRepo().getDataPointsByDevice(parseInt(device_id));
+                allDataPoints = dataPoints;
+            } catch (error) {
+                console.error(`디바이스 ${device_id} 데이터포인트 조회 실패:`, error.message);
+                return res.status(500).json(createResponse(false, null, error.message, 'DATA_POINTS_SEARCH_ERROR'));
+            }
+        } else {
+            // 모든 디바이스의 데이터포인트 조회 (기존 메서드 사용)
+            try {
+                const devicesResult = await getDeviceRepo().findAllDevices({ 
+                    tenantId, 
+                    siteId: site_id ? parseInt(site_id) : null 
+                });
+                
+                for (const device of devicesResult.items) {
+                    try {
+                        const deviceDataPoints = await getDeviceRepo().getDataPointsByDevice(device.id);
+                        allDataPoints.push(...deviceDataPoints);
+                    } catch (error) {
+                        console.warn(`디바이스 ${device.id} 데이터포인트 조회 실패:`, error.message);
+                    }
                 }
+            } catch (error) {
+                console.error('디바이스 목록 조회 실패:', error.message);
+                return res.status(500).json(createResponse(false, null, error.message, 'DATA_POINTS_SEARCH_ERROR'));
             }
         }
 
-        console.log(`✅ 데이터포인트 ${result.items.length}개 검색 완료`);
-        res.json(createPaginatedResponse(result.items, result.pagination, 'Data points retrieved successfully'));
+        // 필터링
+        let filteredDataPoints = allDataPoints;
+
+        if (search) {
+            const searchLower = search.toLowerCase();
+            filteredDataPoints = filteredDataPoints.filter(dp => 
+                (dp.name && dp.name.toLowerCase().includes(searchLower)) ||
+                (dp.description && dp.description.toLowerCase().includes(searchLower))
+            );
+        }
+
+        if (data_type) {
+            filteredDataPoints = filteredDataPoints.filter(dp => dp.data_type === data_type);
+        }
+
+        if (enabled_only === 'true') {
+            filteredDataPoints = filteredDataPoints.filter(dp => dp.is_enabled);
+        }
+
+        // 정렬
+        filteredDataPoints.sort((a, b) => {
+            const aValue = a[sort_by] || '';
+            const bValue = b[sort_by] || '';
+            const result = aValue.toString().localeCompare(bValue.toString());
+            return sort_order.toUpperCase() === 'DESC' ? -result : result;
+        });
+
+        // 페이징
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        const endIndex = startIndex + parseInt(limit);
+        const paginatedDataPoints = filteredDataPoints.slice(startIndex, endIndex);
+
+        const pagination = {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total_items: filteredDataPoints.length,
+            has_next: endIndex < filteredDataPoints.length,
+            has_prev: parseInt(page) > 1
+        };
+
+        console.log(`✅ 데이터포인트 ${paginatedDataPoints.length}개 검색 완료 (전체 ${filteredDataPoints.length}개)`);
+        res.json(createPaginatedResponse(paginatedDataPoints, pagination, 'Data points retrieved successfully'));
 
     } catch (error) {
         console.error('❌ 데이터포인트 검색 실패:', error.message);
@@ -185,7 +249,7 @@ router.get('/points', async (req, res) => {
 
 /**
  * GET /api/data/points/:id
- * 특정 데이터포인트 상세 조회
+ * 특정 데이터포인트 상세 조회 - 기존 메서드 사용
  */
 router.get('/points/:id', async (req, res) => {
     try {
@@ -195,31 +259,31 @@ router.get('/points/:id', async (req, res) => {
 
         console.log(`🔍 데이터포인트 ID ${id} 상세 조회...`);
 
-        const dataPoint = await getDataPointRepo().findById(parseInt(id), tenantId);
+        // 모든 디바이스를 검색하여 해당 데이터포인트 찾기
+        const devicesResult = await getDeviceRepo().findAllDevices({ tenantId });
+        let dataPoint = null;
+        let deviceInfo = null;
+
+        for (const device of devicesResult.items) {
+            try {
+                const deviceDataPoints = await getDeviceRepo().getDataPointsByDevice(device.id);
+                dataPoint = deviceDataPoints.find(dp => dp.id === parseInt(id));
+                if (dataPoint) {
+                    deviceInfo = device;
+                    break;
+                }
+            } catch (error) {
+                console.warn(`디바이스 ${device.id} 데이터포인트 검색 실패:`, error.message);
+            }
+        }
+
         if (!dataPoint) {
             return res.status(404).json(createResponse(false, null, 'Data point not found', 'DATA_POINT_NOT_FOUND'));
         }
 
-        // 현재값 포함
-        if (include_current_value === 'true') {
-            try {
-                const currentValue = await getCurrentValueRepo().findByPointId(dataPoint.id, tenantId);
-                dataPoint.current_value = currentValue;
-            } catch (error) {
-                console.warn(`현재값 조회 실패 (포인트 ID: ${id}):`, error.message);
-                dataPoint.current_value = null;
-            }
-        }
-
         // 디바이스 정보 포함
-        if (include_device_info === 'true' && dataPoint.device_id) {
-            try {
-                const device = await getDeviceRepo().findById(dataPoint.device_id, tenantId);
-                dataPoint.device_info = device;
-            } catch (error) {
-                console.warn(`디바이스 정보 조회 실패 (디바이스 ID: ${dataPoint.device_id}):`, error.message);
-                dataPoint.device_info = null;
-            }
+        if (include_device_info === 'true' && deviceInfo) {
+            dataPoint.device_info = deviceInfo;
         }
 
         console.log(`✅ 데이터포인트 ID ${id} 조회 완료`);
@@ -231,13 +295,14 @@ router.get('/points/:id', async (req, res) => {
     }
 });
 
+
 // ============================================================================
-// 🕐 실시간 데이터 조회 API
+// 🕐 실시간 데이터 조회 API (수정됨)
 // ============================================================================
 
 /**
  * GET /api/data/current-values
- * 현재값 일괄 조회
+ * 현재값 일괄 조회 - 기존 getCurrentValuesByDevice 메서드 사용
  */
 router.get('/current-values', async (req, res) => {
     try {
@@ -258,23 +323,69 @@ router.get('/current-values', async (req, res) => {
             data_type
         });
 
-        const options = {
-            tenantId,
-            pointIds: point_ids ? point_ids.split(',').map(id => parseInt(id)) : null,
-            deviceIds: device_ids ? device_ids.split(',').map(id => parseInt(id)) : null,
-            siteId: site_id ? parseInt(site_id) : null,
-            dataType: data_type,
-            qualityFilter: quality_filter,
-            limit: parseInt(limit)
-        };
+        let allCurrentValues = [];
 
-        const currentValues = await getCurrentValueRepo().findByFilter(options);
+        if (device_ids) {
+            // 특정 디바이스들의 현재값 조회
+            const deviceIdList = device_ids.split(',').map(id => parseInt(id));
+            for (const deviceId of deviceIdList) {
+                try {
+                    const currentValues = await getDeviceRepo().getCurrentValuesByDevice(deviceId);
+                    allCurrentValues.push(...currentValues);
+                } catch (error) {
+                    console.warn(`디바이스 ${deviceId} 현재값 조회 실패:`, error.message);
+                }
+            }
+        } else {
+            // 모든 디바이스의 현재값 조회
+            const devicesResult = await getDeviceRepo().findAllDevices({ 
+                tenantId, 
+                siteId: site_id ? parseInt(site_id) : null 
+            });
+            
+            for (const device of devicesResult.items) {
+                try {
+                    const currentValues = await getDeviceRepo().getCurrentValuesByDevice(device.id);
+                    allCurrentValues.push(...currentValues);
+                } catch (error) {
+                    console.warn(`디바이스 ${device.id} 현재값 조회 실패:`, error.message);
+                }
+            }
+        }
 
-        console.log(`✅ 현재값 ${currentValues.length}개 조회 완료`);
+        // 필터링
+        let filteredCurrentValues = allCurrentValues;
+
+        if (point_ids) {
+            const pointIdList = point_ids.split(',').map(id => parseInt(id));
+            filteredCurrentValues = filteredCurrentValues.filter(cv => pointIdList.includes(cv.point_id));
+        }
+
+        if (data_type) {
+            // 현재값에는 data_type이 직접 없으므로 현재값 구조에 맞게 조정
+            filteredCurrentValues = filteredCurrentValues.filter(cv => cv.data_type === data_type);
+        }
+
+        if (quality_filter) {
+            filteredCurrentValues = filteredCurrentValues.filter(cv => cv.quality === quality_filter);
+        }
+
+        // 제한
+        const limitedCurrentValues = filteredCurrentValues.slice(0, parseInt(limit));
+
+        console.log(`✅ 현재값 ${limitedCurrentValues.length}개 조회 완료`);
         res.json(createResponse(true, {
-            current_values: currentValues,
-            total_count: currentValues.length,
-            filters_applied: options
+            current_values: limitedCurrentValues,
+            total_count: limitedCurrentValues.length,
+            filters_applied: {
+                tenantId,
+                pointIds: point_ids ? point_ids.split(',').map(id => parseInt(id)) : null,
+                deviceIds: device_ids ? device_ids.split(',').map(id => parseInt(id)) : null,
+                siteId: site_id ? parseInt(site_id) : null,
+                dataType: data_type,
+                qualityFilter: quality_filter,
+                limit: parseInt(limit)
+            }
         }, 'Current values retrieved successfully'));
 
     } catch (error) {
@@ -285,7 +396,7 @@ router.get('/current-values', async (req, res) => {
 
 /**
  * GET /api/data/device/:id/current-values
- * 특정 디바이스의 현재값 조회
+ * 특정 디바이스의 현재값 조회 - 기존 getCurrentValuesByDevice 메서드 사용
  */
 router.get('/device/:id/current-values', async (req, res) => {
     try {
@@ -295,20 +406,20 @@ router.get('/device/:id/current-values', async (req, res) => {
 
         console.log(`⚡ 디바이스 ID ${id} 현재값 조회...`);
 
-        // 디바이스 존재 확인
+        // 디바이스 존재 확인 (기존 메서드 사용)
         const device = await getDeviceRepo().findById(parseInt(id), tenantId);
         if (!device) {
             return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
         }
 
-        const options = {
-            tenantId,
-            deviceIds: [parseInt(id)],
-            dataType: data_type,
-            includeMetadata: include_metadata === 'true'
-        };
+        // 디바이스의 현재값 조회 (기존 메서드 사용)
+        const currentValues = await getDeviceRepo().getCurrentValuesByDevice(parseInt(id));
 
-        const currentValues = await getCurrentValueRepo().findByFilter(options);
+        // 데이터 타입 필터링
+        let filteredCurrentValues = currentValues;
+        if (data_type) {
+            filteredCurrentValues = currentValues.filter(cv => cv.data_type === data_type);
+        }
 
         const responseData = {
             device_id: device.id,
@@ -316,11 +427,11 @@ router.get('/device/:id/current-values', async (req, res) => {
             device_status: device.status,
             connection_status: device.connection_status,
             last_communication: device.last_seen,
-            current_values: currentValues,
-            total_points: currentValues.length
+            current_values: filteredCurrentValues,
+            total_points: filteredCurrentValues.length
         };
 
-        console.log(`✅ 디바이스 ID ${id} 현재값 ${currentValues.length}개 조회 완료`);
+        console.log(`✅ 디바이스 ID ${id} 현재값 ${filteredCurrentValues.length}개 조회 완료`);
         res.json(createResponse(true, responseData, 'Device current values retrieved successfully'));
 
     } catch (error) {
@@ -330,7 +441,7 @@ router.get('/device/:id/current-values', async (req, res) => {
 });
 
 // ============================================================================
-// 📈 이력 데이터 조회 API
+// 📈 이력 데이터 조회 API (원본 그대로, 단 데이터포인트 존재 확인 부분만 수정)
 // ============================================================================
 
 /**
@@ -368,13 +479,25 @@ router.get('/historical', async (req, res) => {
 
         const pointIds = point_ids.split(',').map(id => parseInt(id));
         
-        // 데이터포인트 존재 확인
-        const dataPoints = await getDataPointRepo().findByIds(pointIds, tenantId);
+        // 데이터포인트 존재 확인 (기존 메서드 사용)
+        let dataPoints = [];
+        const devicesResult = await getDeviceRepo().findAllDevices({ tenantId });
+        
+        for (const device of devicesResult.items) {
+            try {
+                const deviceDataPoints = await getDeviceRepo().getDataPointsByDevice(device.id);
+                const foundPoints = deviceDataPoints.filter(dp => pointIds.includes(dp.id));
+                dataPoints.push(...foundPoints);
+            } catch (error) {
+                console.warn(`디바이스 ${device.id} 데이터포인트 조회 실패:`, error.message);
+            }
+        }
+
         if (dataPoints.length === 0) {
             return res.status(404).json(createResponse(false, null, 'No valid data points found', 'DATA_POINTS_NOT_FOUND'));
         }
 
-        // InfluxDB 쿼리 구성
+        // InfluxDB 쿼리 구성 (원본 그대로)
         const influxOptions = {
             measurement: 'data_values',
             fields: ['value'],
@@ -436,7 +559,7 @@ router.get('/historical', async (req, res) => {
 });
 
 // ============================================================================
-// 🔍 고급 검색 및 쿼리 API
+// 🔍 고급 검색 및 쿼리 API (원본 그대로)
 // ============================================================================
 
 /**
@@ -485,12 +608,12 @@ router.post('/query', async (req, res) => {
 });
 
 // ============================================================================
-// 📊 데이터 통계 및 분석 API
+// 📊 데이터 통계 및 분석 API (기존 메서드 사용)
 // ============================================================================
 
 /**
  * GET /api/data/statistics
- * 데이터 통계 조회
+ * 데이터 통계 조회 - 기존 메서드들 사용
  */
 router.get('/statistics', async (req, res) => {
     try {
@@ -499,12 +622,45 @@ router.get('/statistics', async (req, res) => {
 
         console.log('📊 데이터 통계 조회...', { device_id, site_id, time_range });
 
+        // 기존 메서드를 사용한 통계 수집
+        const devicesResult = await getDeviceRepo().findAllDevices({ 
+            tenantId, 
+            siteId: site_id ? parseInt(site_id) : null 
+        });
+
+        let totalDataPoints = 0;
+        let enabledDataPoints = 0;
+        const dataTypeDistribution = {};
+
+        for (const device of devicesResult.items) {
+            try {
+                const dataPoints = await getDeviceRepo().getDataPointsByDevice(device.id);
+                totalDataPoints += dataPoints.length;
+                enabledDataPoints += dataPoints.filter(dp => dp.is_enabled).length;
+
+                // 데이터 타입 분포
+                dataPoints.forEach(dp => {
+                    dataTypeDistribution[dp.data_type] = (dataTypeDistribution[dp.data_type] || 0) + 1;
+                });
+            } catch (error) {
+                console.warn(`디바이스 ${device.id} 통계 수집 실패:`, error.message);
+            }
+        }
+
         const stats = {
             // 데이터포인트 통계
-            data_points: await getDataPointRepo().getStatsByTenant(tenantId),
+            data_points: {
+                total: totalDataPoints,
+                enabled: enabledDataPoints,
+                disabled: totalDataPoints - enabledDataPoints,
+                by_type: dataTypeDistribution
+            },
             
             // 현재값 통계
-            current_values: await getCurrentValueRepo().getStatsByTenant(tenantId),
+            current_values: {
+                total_with_values: enabledDataPoints,
+                estimated_collection_rate: '95%' // 시뮬레이션
+            },
             
             // 디바이스별 통계 (요청 시)
             device_stats: device_id ? await getDeviceDataStats(parseInt(device_id), tenantId) : null,
@@ -514,9 +670,9 @@ router.get('/statistics', async (req, res) => {
             
             // 시스템 전체 통계
             system_stats: {
-                total_devices: await getDeviceRepo().countByTenant(tenantId),
-                active_devices: await getDeviceRepo().countActive(tenantId),
-                data_collection_rate: '98.5%', // 시뮬레이션
+                total_devices: devicesResult.items.length,
+                active_devices: devicesResult.items.filter(d => d.connection_status === 'connected').length,
+                data_collection_rate: totalDataPoints > 0 ? ((enabledDataPoints / totalDataPoints) * 100).toFixed(1) + '%' : '0%',
                 average_response_time: Math.floor(Math.random() * 100) + 50, // ms
                 last_updated: new Date().toISOString()
             }
@@ -532,7 +688,7 @@ router.get('/statistics', async (req, res) => {
 });
 
 // ============================================================================
-// 📤 데이터 내보내기 API
+// 📤 데이터 내보내기 API (수정됨 - DeviceRepository 사용)
 // ============================================================================
 
 /**
@@ -601,11 +757,11 @@ router.post('/export', async (req, res) => {
 });
 
 // ============================================================================
-// 🔧 헬퍼 함수들
+// 🔧 헬퍼 함수들 (원본 그대로, 단 Repository 호출 부분만 수정)
 // ============================================================================
 
 /**
- * 시뮬레이션 이력 데이터 생성
+ * 시뮬레이션 이력 데이터 생성 (원본 그대로)
  */
 function generateSimulatedHistoricalData(pointIds, startTime, endTime, interval) {
     const start = new Date(startTime);
@@ -627,7 +783,7 @@ function generateSimulatedHistoricalData(pointIds, startTime, endTime, interval)
 }
 
 /**
- * 인터벌 문자열을 밀리초로 변환
+ * 인터벌 문자열을 밀리초로 변환 (원본 그대로)
  */
 function parseInterval(interval) {
     const unit = interval.slice(-1);
@@ -643,56 +799,75 @@ function parseInterval(interval) {
 }
 
 /**
- * 데이터포인트 쿼리 실행
+ * 데이터포인트 쿼리 실행 (수정됨 - DeviceRepository 사용)
  */
 async function executeDataPointsQuery(filters, tenantId) {
-    const options = {
-        tenantId,
-        ...filters
-    };
-    const result = await getDataPointRepo().findAll(options);
+    // DeviceRepository를 통해 모든 데이터포인트 조회
+    let allDataPoints = [];
+    const devicesResult = await getDeviceRepo().findAllDevices({ tenantId, ...filters });
+    
+    for (const device of devicesResult.items) {
+        try {
+            const dataPoints = await getDeviceRepo().getDeviceDataPoints(device.id, tenantId);
+            allDataPoints.push(...dataPoints);
+        } catch (error) {
+            console.warn(`디바이스 ${device.id} 데이터포인트 조회 실패:`, error.message);
+        }
+    }
+
     return {
         query_type: 'data_points_search',
-        total_results: result.items.length,
-        results: result.items
+        total_results: allDataPoints.length,
+        results: allDataPoints
     };
 }
 
 /**
- * 현재값 집계 실행
+ * 현재값 집계 실행 (수정됨 - DeviceRepository 사용)
  */
 async function executeCurrentValuesAggregation(filters, aggregations, tenantId) {
-    const options = {
-        tenantId,
-        ...filters
-    };
-    const currentValues = await getCurrentValueRepo().findByFilter(options);
+    // DeviceRepository를 통해 현재값 조회
+    let allCurrentValues = [];
+    const devicesResult = await getDeviceRepo().findAllDevices({ tenantId, ...filters });
     
+    for (const device of devicesResult.items) {
+        try {
+            const dataPoints = await getDeviceRepo().getDeviceDataPoints(device.id, tenantId);
+            const currentValues = dataPoints
+                .filter(dp => dp.current_value !== null)
+                .map(dp => ({ ...dp, value: dp.current_value }));
+            allCurrentValues.push(...currentValues);
+        } catch (error) {
+            console.warn(`디바이스 ${device.id} 현재값 조회 실패:`, error.message);
+        }
+    }
+
     // 집계 계산 (시뮬레이션)
+    const values = allCurrentValues.map(v => parseFloat(v.value) || 0);
     const results = {
-        total_count: currentValues.length,
+        total_count: allCurrentValues.length,
         value_stats: {
-            min: Math.min(...currentValues.map(v => parseFloat(v.value) || 0)),
-            max: Math.max(...currentValues.map(v => parseFloat(v.value) || 0)),
-            avg: currentValues.reduce((sum, v) => sum + (parseFloat(v.value) || 0), 0) / currentValues.length,
-            count: currentValues.length
+            min: values.length > 0 ? Math.min(...values) : 0,
+            max: values.length > 0 ? Math.max(...values) : 0,
+            avg: values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : 0,
+            count: values.length
         },
         quality_distribution: {
-            good: currentValues.filter(v => v.quality === 'good').length,
-            bad: currentValues.filter(v => v.quality === 'bad').length,
-            uncertain: currentValues.filter(v => v.quality === 'uncertain').length
+            good: allCurrentValues.filter(v => v.quality === 'good').length,
+            bad: allCurrentValues.filter(v => v.quality === 'bad').length,
+            uncertain: allCurrentValues.filter(v => v.quality === 'uncertain').length
         }
     };
     
     return {
         query_type: 'current_values_aggregate',
-        total_results: currentValues.length,
+        total_results: allCurrentValues.length,
         aggregations: results
     };
 }
 
 /**
- * 이력 분석 실행
+ * 이력 분석 실행 (원본 그대로)
  */
 async function executeHistoricalAnalysis(filters, timeRange, aggregations, tenantId) {
     // 시뮬레이션 분석 결과
@@ -710,66 +885,127 @@ async function executeHistoricalAnalysis(filters, timeRange, aggregations, tenan
 }
 
 /**
- * 디바이스 요약 쿼리 실행
+ * 디바이스 요약 쿼리 실행 (수정됨 - DeviceRepository 사용)
  */
 async function executeDeviceSummaryQuery(filters, tenantId) {
-    const devices = await getDeviceRepo().findAll({ tenantId, ...filters });
+    const devicesResult = await getDeviceRepo().findAllDevices({ tenantId, ...filters });
     
     return {
         query_type: 'device_summary',
-        total_devices: devices.items.length,
-        devices: devices.items.map(device => ({
+        total_devices: devicesResult.items.length,
+        devices: devicesResult.items.map(device => ({
             id: device.id,
             name: device.name,
             status: device.status,
             connection_status: device.connection_status,
-            data_points_count: Math.floor(Math.random() * 20) + 5 // 시뮬레이션
+            data_points_count: device.data_point_count || 0
         }))
     };
 }
 
 /**
- * 디바이스 데이터 통계 조회
+ * 디바이스 데이터 통계 조회 (수정됨 - DeviceRepository 사용)
  */
 async function getDeviceDataStats(deviceId, tenantId) {
-    const dataPoints = await getDataPointRepo().findByDeviceId(deviceId, tenantId);
-    return {
-        device_id: deviceId,
-        total_data_points: dataPoints.length,
-        enabled_data_points: dataPoints.filter(dp => dp.is_enabled).length,
-        data_types: [...new Set(dataPoints.map(dp => dp.data_type))]
-    };
+    try {
+        const dataPoints = await getDeviceRepo().getDeviceDataPoints(deviceId, tenantId);
+        return {
+            device_id: deviceId,
+            total_data_points: dataPoints.length,
+            enabled_data_points: dataPoints.filter(dp => dp.is_enabled).length,
+            data_types: [...new Set(dataPoints.map(dp => dp.data_type))]
+        };
+    } catch (error) {
+        console.warn(`디바이스 ${deviceId} 통계 조회 실패:`, error.message);
+        return {
+            device_id: deviceId,
+            total_data_points: 0,
+            enabled_data_points: 0,
+            data_types: [],
+            error: error.message
+        };
+    }
 }
 
 /**
- * 사이트 데이터 통계 조회
+ * 사이트 데이터 통계 조회 (수정됨 - DeviceRepository 사용)
  */
 async function getSiteDataStats(siteId, tenantId) {
-    // 시뮬레이션 통계
-    return {
-        site_id: siteId,
-        total_devices: Math.floor(Math.random() * 20) + 5,
-        total_data_points: Math.floor(Math.random() * 200) + 50,
-        data_collection_rate: (95 + Math.random() * 5).toFixed(1) + '%'
-    };
+    try {
+        const devicesResult = await getDeviceRepo().findAllDevices({ tenantId, siteId });
+        let totalDataPoints = 0;
+        let enabledDataPoints = 0;
+
+        for (const device of devicesResult.items) {
+            try {
+                const dataPoints = await getDeviceRepo().getDeviceDataPoints(device.id, tenantId);
+                totalDataPoints += dataPoints.length;
+                enabledDataPoints += dataPoints.filter(dp => dp.is_enabled).length;
+            } catch (error) {
+                console.warn(`사이트 통계용 디바이스 ${device.id} 조회 실패:`, error.message);
+            }
+        }
+
+        return {
+            site_id: siteId,
+            total_devices: devicesResult.items.length,
+            total_data_points: totalDataPoints,
+            enabled_data_points: enabledDataPoints,
+            data_collection_rate: totalDataPoints > 0 ? ((enabledDataPoints / totalDataPoints) * 100).toFixed(1) + '%' : '0%'
+        };
+    } catch (error) {
+        console.warn(`사이트 ${siteId} 통계 조회 실패:`, error.message);
+        return {
+            site_id: siteId,
+            total_devices: 0,
+            total_data_points: 0,
+            enabled_data_points: 0,
+            error: error.message
+        };
+    }
 }
 
 /**
- * 현재값 내보내기
+ * 현재값 내보내기 (수정됨 - DeviceRepository 사용)
  */
 async function exportCurrentValues(pointIds, deviceIds, tenantId, includeMetadata) {
-    const options = {
-        tenantId,
-        pointIds,
-        deviceIds,
-        includeMetadata
-    };
-    const currentValues = await getCurrentValueRepo().findByFilter(options);
-    return currentValues;
+    let allCurrentValues = [];
+    
+    if (deviceIds) {
+        for (const deviceId of deviceIds) {
+            try {
+                const dataPoints = await getDeviceRepo().getDeviceDataPoints(deviceId, tenantId);
+                const currentValues = dataPoints
+                    .filter(dp => dp.current_value !== null)
+                    .map(dp => ({
+                        point_id: dp.id,
+                        device_id: dp.device_id,
+                        name: dp.name,
+                        value: dp.current_value,
+                        quality: dp.quality,
+                        timestamp: dp.last_update,
+                        ...(includeMetadata && {
+                            data_type: dp.data_type,
+                            unit: dp.unit,
+                            address: dp.address
+                        })
+                    }));
+                allCurrentValues.push(...currentValues);
+            } catch (error) {
+                console.warn(`디바이스 ${deviceId} 현재값 내보내기 실패:`, error.message);
+            }
+        }
+    }
+    
+    if (pointIds) {
+        allCurrentValues = allCurrentValues.filter(cv => pointIds.includes(cv.point_id));
+    }
+    
+    return allCurrentValues;
 }
 
 /**
- * 이력 데이터 내보내기
+ * 이력 데이터 내보내기 (원본 그대로)
  */
 async function exportHistoricalData(pointIds, startTime, endTime, tenantId, includeMetadata) {
     // 시뮬레이션 이력 데이터
@@ -777,14 +1013,27 @@ async function exportHistoricalData(pointIds, startTime, endTime, tenantId, incl
 }
 
 /**
- * 설정 내보내기
+ * 설정 내보내기 (수정됨 - DeviceRepository 사용)
  */
 async function exportConfiguration(pointIds, deviceIds, tenantId) {
-    const dataPoints = pointIds ? 
-        await getDataPointRepo().findByIds(pointIds, tenantId) :
-        await getDataPointRepo().findByDeviceIds(deviceIds, tenantId);
+    let allDataPoints = [];
     
-    return dataPoints.map(dp => ({
+    if (deviceIds) {
+        for (const deviceId of deviceIds) {
+            try {
+                const dataPoints = await getDeviceRepo().getDeviceDataPoints(deviceId, tenantId);
+                allDataPoints.push(...dataPoints);
+            } catch (error) {
+                console.warn(`디바이스 ${deviceId} 설정 내보내기 실패:`, error.message);
+            }
+        }
+    }
+    
+    if (pointIds) {
+        allDataPoints = allDataPoints.filter(dp => pointIds.includes(dp.id));
+    }
+    
+    return allDataPoints.map(dp => ({
         id: dp.id,
         name: dp.name,
         device_id: dp.device_id,
@@ -796,7 +1045,7 @@ async function exportConfiguration(pointIds, deviceIds, tenantId) {
 }
 
 /**
- * 데이터 포맷 변환
+ * 데이터 포맷 변환 (원본 그대로)
  */
 function convertToFormat(data, format) {
     switch (format) {
@@ -812,7 +1061,7 @@ function convertToFormat(data, format) {
 }
 
 /**
- * CSV 변환
+ * CSV 변환 (원본 그대로)
  */
 function convertToCSV(data) {
     if (!data.length) return '';
@@ -828,7 +1077,7 @@ function convertToCSV(data) {
 }
 
 /**
- * XML 변환 (간단한 구현)
+ * XML 변환 (원본 그대로)
  */
 function convertToXML(data) {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<data>\n';
