@@ -64,12 +64,12 @@ class DeviceRepository {
     try {
       console.log(`📱 DeviceRepository.findByName 호출: name=${name}, tenantId=${tenantId}`);
       
-      // DeviceQueries에서 쿼리 가져오기
+      // DeviceQueries에서 쿼리 가져오기 (이미 WHERE 1=1 포함)
       let query = DeviceQueries.getDevicesWithAllInfo();
       const params = [];
 
-      // WHERE 조건 추가
-      query += ` WHERE d.name = ?`;
+      // AND 조건으로 추가 (WHERE가 아니라 AND!)
+      query += ` AND d.name = ?`;
       params.push(name);
 
       if (tenantId) {
@@ -310,55 +310,173 @@ class DeviceRepository {
   // =============================================================================
 
   // 디바이스 생성 (설정과 상태도 함께 생성)
-  async createDevice(deviceData) {
-    const connection = await this.dbFactory.getConnection();
-    
+/**
+   * 완전한 디바이스 생성 (디바이스 + 설정 + 상태)
+   */
+  async createDevice(deviceData, tenantId = null) {
     try {
-      await connection.query('BEGIN');
-
-      // 디바이스 생성
-      const deviceParams = [
-        deviceData.tenant_id,
-        deviceData.site_id,
-        deviceData.device_group_id || null,
-        deviceData.edge_server_id || null,
-        deviceData.name,
-        deviceData.description || null,
-        deviceData.device_type,
-        deviceData.manufacturer || null,
-        deviceData.model || null,
-        deviceData.serial_number || null,
-        deviceData.protocol_type,
-        deviceData.endpoint,
-        deviceData.config ? JSON.stringify(deviceData.config) : null,
-        deviceData.polling_interval || 1000,
-        deviceData.timeout || 3000,
-        deviceData.retry_count || 3,
-        deviceData.is_enabled !== false ? 1 : 0,
-        deviceData.installation_date || null,
-        deviceData.created_by || null
-      ];
-
-      const result = await connection.query(DeviceQueries.createDevice(), deviceParams);
-      const deviceId = result.insertId || result.lastInsertRowid;
-
-      // 기본 설정 생성
-      await this.createDefaultDeviceSettings(connection, deviceId, deviceData.settings);
-
-      // 초기 상태 생성
-      await this.createInitialDeviceStatus(connection, deviceId);
-
-      await connection.query('COMMIT');
-      return await this.findDeviceById(deviceId);
+      console.log(`📱 DeviceRepository.createDevice: ${deviceData.name}`);
+      
+      // 🔥 트랜잭션 시작
+      await this.dbFactory.executeQuery('BEGIN TRANSACTION');
+      
+      try {
+        // 1. 메인 디바이스 생성
+        const deviceQuery = DeviceQueries.createDevice();
+        const deviceParams = [
+          tenantId || deviceData.tenant_id,
+          deviceData.site_id || 1, // 기본 사이트
+          deviceData.device_group_id || null,
+          deviceData.edge_server_id || null,
+          deviceData.name,
+          deviceData.description || null,
+          deviceData.device_type || 'PLC',
+          deviceData.manufacturer || null,
+          deviceData.model || null,
+          deviceData.serial_number || null,
+          deviceData.protocol_type,
+          deviceData.endpoint,
+          deviceData.config ? JSON.stringify(deviceData.config) : '{}',
+          deviceData.polling_interval || 1000,
+          deviceData.timeout || 3000,
+          deviceData.retry_count || 3,
+          deviceData.is_enabled !== false ? 1 : 0,
+          deviceData.installation_date || null,
+          deviceData.created_by || 1
+        ];
+        
+        const deviceResult = await this.dbFactory.executeQuery(deviceQuery, deviceParams);
+        console.log('🔍 INSERT 결과 타입:', typeof deviceResult);
+        console.log('🔍 INSERT 결과 키들:', Object.keys(deviceResult || {}));
+        console.log('🔍 INSERT 결과 전체:', deviceResult);
+        
+        // SQLite에서 다양한 방식으로 ID 추출 시도
+        let deviceId = null;
+        
+        if (deviceResult) {
+          // 방법 1: insertId (일반적)
+          if (deviceResult.insertId) {
+            deviceId = deviceResult.insertId;
+            console.log('✅ insertId로 ID 획득:', deviceId);
+          }
+          // 방법 2: lastInsertRowid (SQLite)
+          else if (deviceResult.lastInsertRowid) {
+            deviceId = deviceResult.lastInsertRowid;
+            console.log('✅ lastInsertRowid로 ID 획득:', deviceId);
+          }
+          // 방법 3: changes가 있으면 별도 쿼리로 ID 조회
+          else if (deviceResult.changes && deviceResult.changes > 0) {
+            console.log('🔍 changes 감지, last_insert_rowid() 쿼리 실행...');
+            const idResult = await this.dbFactory.executeQuery('SELECT last_insert_rowid() as id');
+            if (idResult && idResult.length > 0 && idResult[0].id) {
+              deviceId = idResult[0].id;
+              console.log('✅ last_insert_rowid() 쿼리로 ID 획득:', deviceId);
+            }
+          }
+          // 방법 4: 결과가 배열이고 첫 번째 요소에 id가 있는 경우
+          else if (Array.isArray(deviceResult) && deviceResult.length > 0 && deviceResult[0].id) {
+            deviceId = deviceResult[0].id;
+            console.log('✅ 배열 결과에서 ID 획득:', deviceId);
+          }
+        }
+        
+        if (!deviceId) {
+          console.error('❌ 모든 방법으로 ID 획득 실패, 이름으로 디바이스 조회 시도...');
+          // 최후의 수단: 이름으로 방금 생성된 디바이스 찾기
+          const createdDevice = await this.findByName(deviceData.name, tenantId);
+          if (createdDevice && createdDevice.id) {
+            deviceId = createdDevice.id;
+            console.log('✅ 이름으로 디바이스 조회해서 ID 획득:', deviceId);
+          } else {
+            throw new Error('디바이스 생성 실패: 모든 방법으로 ID를 얻을 수 없음');
+          }
+        }
+        
+        console.log(`✅ 디바이스 생성 완료: ID ${deviceId}`);
+        
+        // 2. 디바이스 상태 생성 (간단 버전)
+        try {
+          const statusQuery = `
+            INSERT INTO device_status (device_id, connection_status, error_count, updated_at) 
+            VALUES (?, 'disconnected', 0, CURRENT_TIMESTAMP)
+          `;
+          await this.dbFactory.executeQuery(statusQuery, [deviceId]);
+          console.log(`✅ 디바이스 상태 생성 완료: ID ${deviceId}`);
+        } catch (statusError) {
+          console.warn('⚠️ 디바이스 상태 생성 실패 (계속 진행):', statusError.message);
+        }
+        
+        // 3. 디바이스 설정 생성 (간단 버전)
+        try {
+          const settingsQuery = `
+            INSERT INTO device_settings (
+              device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
+              keep_alive_enabled, data_validation_enabled, performance_monitoring_enabled,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `;
+          
+          const settingsData = deviceData.settings || {};
+          const settingsParams = [
+            deviceId,
+            settingsData.polling_interval_ms || 1000,
+            settingsData.connection_timeout_ms || 10000,
+            settingsData.max_retry_count || 3,
+            settingsData.keep_alive_enabled !== false ? 1 : 0,
+            settingsData.data_validation_enabled !== false ? 1 : 0,
+            settingsData.performance_monitoring_enabled !== false ? 1 : 0
+          ];
+          
+          await this.dbFactory.executeQuery(settingsQuery, settingsParams);
+          console.log(`✅ 디바이스 설정 생성 완료: ID ${deviceId}`);
+        } catch (settingsError) {
+          console.warn('⚠️ 디바이스 설정 생성 실패 (계속 진행):', settingsError.message);
+        }
+        
+        // 🔥 트랜잭션 커밋
+        await this.dbFactory.executeQuery('COMMIT');
+        
+        // 생성된 디바이스 조회해서 반환
+        const createdDevice = await this.findById(deviceId, tenantId);
+        console.log(`🎉 완전한 디바이스 생성 성공: ${deviceData.name} (ID: ${deviceId})`);
+        
+        return createdDevice;
+        
+      } catch (error) {
+        // 🔥 트랜잭션 롤백
+        await this.dbFactory.executeQuery('ROLLBACK');
+        throw error;
+      }
+      
     } catch (error) {
-      await connection.query('ROLLBACK');
-      console.error('Error creating device:', error);
-      throw error;
-    } finally {
-      connection.release();
+      console.error('❌ DeviceRepository.createDevice 실패:', error.message);
+      throw new Error(`완전한 디바이스 생성 실패: ${error.message}`);
     }
   }
-
+  /**
+   * 디바이스 삭제
+   */
+  async deleteById(id, tenantId = null) {
+    try {
+      console.log(`📱 DeviceRepository.deleteById: ID ${id}`);
+      
+      // CASCADE 설정으로 device_settings, device_status, data_points 자동 삭제
+      const query = DeviceQueries.deleteDevice();
+      const params = [id, tenantId || 1];
+      
+      const result = await this.dbFactory.executeQuery(query, params);
+      
+      // SQLite에서는 changes 프로퍼티로 영향받은 행 수 확인
+      const affected = result.changes || result.affectedRows || 0;
+      
+      console.log(`✅ 디바이스 완전 삭제 완료: ${affected}개 행 영향받음`);
+      return affected > 0;
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.deleteById 실패:', error.message);
+      throw new Error(`디바이스 삭제 실패: ${error.message}`);
+    }
+  }
   // 디바이스 업데이트
   async updateDevice(id, deviceData) {
     const connection = await this.dbFactory.getConnection();
@@ -420,26 +538,61 @@ class DeviceRepository {
   // =============================================================================
 
   // 디바이스 설정 업데이트
-  async updateDeviceSettings(connection, deviceId, settings) {
+  async updateDeviceSettings(deviceId, settingsData, updatedBy = 1) {
     try {
-      const settingsParams = [
-        deviceId,
-        settings.polling_interval_ms || 1000,
-        settings.connection_timeout_ms || 10000,
-        settings.max_retry_count || 3,
-        settings.retry_interval_ms || 5000,
-        settings.backoff_time_ms || 60000,
-        settings.keep_alive_enabled !== false ? 1 : 0,
-        settings.keep_alive_interval_s || 30
+      console.log(`📱 DeviceRepository.updateDeviceSettings: ID ${deviceId}`);
+      
+      const query = DeviceQueries.updateDeviceSettings();
+      const params = [
+        settingsData.polling_interval_ms || 1000,
+        settingsData.connection_timeout_ms || 10000,
+        settingsData.max_retry_count || 3,
+        settingsData.retry_interval_ms || 5000,
+        settingsData.keep_alive_enabled !== false ? 1 : 0,
+        settingsData.keep_alive_interval_s || 30,
+        updatedBy,
+        deviceId
       ];
-
-      await (connection || this.dbFactory).executeQuery(DeviceQueries.upsertDeviceSettings(), settingsParams);
+      
+      await this.dbFactory.executeQuery(query, params);
+      console.log(`✅ 디바이스 설정 업데이트 완료: ID ${deviceId}`);
+      
+      return true;
+      
     } catch (error) {
-      console.error('Error updating device settings:', error);
-      throw error;
+      console.error('❌ DeviceRepository.updateDeviceSettings 실패:', error.message);
+      throw new Error(`디바이스 설정 업데이트 실패: ${error.message}`);
     }
   }
-
+  /**
+   * 디바이스 상태 정보 업데이트
+   */
+  async updateDeviceStatusInfo(deviceId, statusData) {
+    try {
+      console.log(`📱 DeviceRepository.updateDeviceStatusInfo: ID ${deviceId}`);
+      
+      const query = DeviceQueries.updateDeviceStatusInfo();
+      const params = [
+        statusData.connection_status || 'disconnected',
+        statusData.last_communication || null,
+        statusData.error_count || 0,
+        statusData.last_error || null,
+        statusData.response_time || null,
+        statusData.uptime_percentage || 0.0,
+        statusData.firmware_version || null,
+        deviceId
+      ];
+      
+      await this.dbFactory.executeQuery(query, params);
+      console.log(`✅ 디바이스 상태 정보 업데이트 완료: ID ${deviceId}`);
+      
+      return true;
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.updateDeviceStatusInfo 실패:', error.message);
+      throw new Error(`디바이스 상태 정보 업데이트 실패: ${error.message}`);
+    }
+  }
   // 디바이스 설정 조회
   async getDeviceSettings(deviceId) {
     try {
@@ -477,26 +630,130 @@ class DeviceRepository {
   // =============================================================================
 
   // 디바이스 상태 업데이트
-  async updateDeviceStatus(deviceId, status) {
+  async updateDeviceStatus(id, isEnabled, tenantId = null) {
     try {
-      const statusParams = [
-        deviceId,
-        status.status || 'unknown',
-        status.last_seen || null,
-        status.last_error || null,
-        status.response_time || null,
-        status.firmware_version || null,
-        status.hardware_info ? JSON.stringify(status.hardware_info) : null,
-        status.diagnostic_data ? JSON.stringify(status.diagnostic_data) : null
-      ];
-
-      await this.dbFactory.executeQuery(DeviceQueries.upsertDeviceStatus(), statusParams);
+      console.log(`📱 DeviceRepository.updateDeviceStatus: ID ${id}, enabled=${isEnabled}`);
+      
+      const query = DeviceQueries.updateDeviceEnabled();
+      const params = [isEnabled ? 1 : 0, id, tenantId || 1];
+      
+      await this.dbFactory.executeQuery(query, params);
+      
+      // 연결 상태도 함께 업데이트 (비활성화 시 disconnected로 설정)
+      if (!isEnabled) {
+        await this.updateDeviceConnection(id, 'disconnected', null, tenantId);
+      }
+      
+      // 업데이트된 디바이스 조회해서 반환
+      return await this.findById(id, tenantId);
+      
     } catch (error) {
-      console.error('Error updating device status:', error);
-      throw error;
+      console.error('❌ DeviceRepository.updateDeviceStatus 실패:', error.message);
+      throw new Error(`디바이스 상태 업데이트 실패: ${error.message}`);
     }
   }
-
+  /**
+   * 디바이스 연결 상태 업데이트
+   */
+  async updateDeviceConnection(id, connectionStatus, lastCommunication = null, tenantId = null) {
+    try {
+      console.log(`📱 DeviceRepository.updateDeviceConnection: ID ${id}, status=${connectionStatus}`);
+      
+      const query = DeviceQueries.updateDeviceConnectionStatus();
+      const params = [
+        id, 
+        connectionStatus, 
+        lastCommunication || (connectionStatus === 'connected' ? new Date().toISOString() : null)
+      ];
+      
+      await this.dbFactory.executeQuery(query, params);
+      
+      // 업데이트된 디바이스 조회해서 반환
+      return await this.findById(id, tenantId);
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.updateDeviceConnection 실패:', error.message);
+      throw new Error(`디바이스 연결 상태 업데이트 실패: ${error.message}`);
+    }
+  }
+  /**
+   * 디바이스 재시작 상태 업데이트
+   */
+    async updateDeviceRestartStatus(id, status, tenantId = null) {
+    try {
+      console.log(`📱 DeviceRepository.updateDeviceRestartStatus: ID ${id}, status=${status}`);
+      
+      let connectionStatus;
+      if (status === 'restarting') {
+        connectionStatus = 'connecting';
+      } else if (status === 'running') {
+        connectionStatus = 'connected';
+      } else {
+        connectionStatus = 'disconnected';
+      }
+      
+      const query = DeviceQueries.updateDeviceRestartConnectionStatus();
+      const params = [id, connectionStatus];
+      
+      await this.dbFactory.executeQuery(query, params);
+      
+      // 업데이트된 디바이스 조회해서 반환
+      return await this.findById(id, tenantId);
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.updateDeviceRestartStatus 실패:', error.message);
+      throw new Error(`디바이스 재시작 상태 업데이트 실패: ${error.message}`);
+    }
+  }
+  /**
+   * 디바이스 정보 업데이트 (동적 필드)
+   */
+  async updateDeviceInfo(id, updateData, tenantId = null) {
+    try {
+      console.log(`📱 DeviceRepository.updateDeviceInfo: ID ${id}`);
+      
+      // 실제 devices 테이블의 컬럼들만 허용
+      const allowedFields = [
+        'name', 'description', 'device_type', 'manufacturer', 'model', 'serial_number',
+        'protocol_type', 'endpoint', 'config', 'polling_interval', 'timeout', 
+        'retry_count', 'is_enabled', 'installation_date', 'last_maintenance'
+      ];
+      
+      const updateFields = [];
+      const params = [];
+      
+      allowedFields.forEach(field => {
+        if (updateData[field] !== undefined) {
+          updateFields.push(field);
+          if (field === 'config' && typeof updateData[field] === 'object') {
+            params.push(JSON.stringify(updateData[field]));
+          } else if (field === 'is_enabled') {
+            params.push(updateData[field] ? 1 : 0);
+          } else {
+            params.push(updateData[field]);
+          }
+        }
+      });
+      
+      if (updateFields.length === 0) {
+        console.warn('⚠️ 업데이트할 필드가 없습니다');
+        return await this.findById(id, tenantId);
+      }
+      
+      // 동적 쿼리 생성
+      const query = DeviceQueries.updateDeviceFields(updateFields);
+      params.push(id, tenantId || 1);
+      
+      await this.dbFactory.executeQuery(query, params);
+      
+      // 업데이트된 디바이스 조회해서 반환
+      return await this.findById(id, tenantId);
+      
+    } catch (error) {
+      console.error('❌ DeviceRepository.updateDeviceInfo 실패:', error.message);
+      throw new Error(`디바이스 정보 업데이트 실패: ${error.message}`);
+    }
+  }
   // 초기 상태 생성
   async createInitialDeviceStatus(connection, deviceId) {
     try {
