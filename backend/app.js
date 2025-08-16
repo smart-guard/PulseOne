@@ -275,6 +275,14 @@ app.use('/api/processes', processRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 
+try {
+    const apiRoutes = require('./routes/api');
+    app.use('/api', apiRoutes);
+    console.log('✅ API Routes (Redis, 기본 테스트 등) 등록 완료');
+} catch (error) {
+    console.warn('⚠️ API 라우트 로드 실패:', error.message);
+}
+
 // ============================================================================
 // 🚨 핵심 비즈니스 API - 우선순위 1 (필수)
 // ============================================================================
