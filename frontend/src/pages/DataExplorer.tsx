@@ -1,34 +1,40 @@
 // ============================================================================
 // frontend/src/pages/DataExplorer.tsx
-// 📝 Redis 데이터 익스플로러 - 완성된 최종 버전
+// 📝 데이터 익스플로러 - 새로운 DataApiService 완전 연결
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Pagination } from '../components/common/Pagination';
 import { usePagination } from '../hooks/usePagination';
-import { RedisDataApiService } from '../api/services/redisDataApi';
-import type { 
-  RedisTreeNode, 
-  RedisDataPoint, 
-  RedisStats 
-} from '../api/services/redisDataApi';
-import { PAGINATION_CONSTANTS } from '../constants/pagination';
+import { DataApiService, DataPoint, CurrentValue, DataStatistics } from '../api/services/dataApi';
+import { DeviceApiService } from '../api/services/deviceApi';
 import '../styles/base.css';
 import '../styles/data-explorer.css';
 import '../styles/pagination.css';
 
 const DataExplorer: React.FC = () => {
   // 🔧 기본 상태들
-  const [treeData, setTreeData] = useState<RedisTreeNode[]>([]);
-  const [selectedNode, setSelectedNode] = useState<RedisTreeNode | null>(null);
-  const [selectedDataPoints, setSelectedDataPoints] = useState<RedisDataPoint[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
+  const [selectedDataPoints, setSelectedDataPoints] = useState<DataPoint[]>([]);
+  const [currentValues, setCurrentValues] = useState<CurrentValue[]>([]);
+  const [dataStatistics, setDataStatistics] = useState<DataStatistics | null>(null);
+  const [devices, setDevices] = useState<any[]>([]);
+  
+  // 로딩 및 에러 상태
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingValues, setIsLoadingValues] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Redis 연결 및 통계
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
-  const [redisStats, setRedisStats] = useState<RedisStats | null>(null);
+  // 검색 및 필터 상태
+  const [searchTerm, setSearchTerm] = useState('');
+  const [deviceFilter, setDeviceFilter] = useState<number | 'all'>('all');
+  const [dataTypeFilter, setDataTypeFilter] = useState<string>('all');
+  const [enabledFilter, setEnabledFilter] = useState<boolean | 'all'>('all');
+  const [qualityFilter, setQualityFilter] = useState<string>('all');
+  
+  // 뷰 모드
+  const [viewMode, setViewMode] = useState<'table' | 'card' | 'tree'>('table');
+  const [showCurrentValues, setShowCurrentValues] = useState(true);
   
   // 실시간 업데이트
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -37,857 +43,763 @@ const DataExplorer: React.FC = () => {
 
   // 페이징
   const pagination = usePagination({
-    initialPageSize: PAGINATION_CONSTANTS.DEFAULT_PAGE_SIZE,
-    totalCount: selectedDataPoints.length,
-    pageSizeOptions: PAGINATION_CONSTANTS.PAGE_SIZE_OPTIONS
+    initialPage: 1,
+    initialPageSize: 50,
+    totalCount: 0
   });
 
   // =============================================================================
-  // 초기화 및 데이터 로드
+  // 🔄 데이터 로드 함수들 (새로운 API 사용)
+  // =============================================================================
+
+  /**
+   * 데이터포인트 목록 로드
+   */
+  const loadDataPoints = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('📊 데이터포인트 목록 로드 시작...');
+
+      const response = await DataApiService.searchDataPoints({
+        page: pagination.currentPage,
+        limit: pagination.pageSize,
+        search: searchTerm || undefined,
+        device_id: deviceFilter !== 'all' ? Number(deviceFilter) : undefined,
+        data_type: dataTypeFilter !== 'all' ? dataTypeFilter : undefined,
+        enabled_only: enabledFilter !== 'all' ? Boolean(enabledFilter) : undefined,
+        sort_by: 'name',
+        sort_order: 'ASC',
+        include_current_value: showCurrentValues
+      });
+
+      if (response.success && response.data) {
+        setDataPoints(response.data.items);
+        pagination.updateTotalCount(response.data.pagination.total);
+        
+        console.log(`✅ 데이터포인트 ${response.data.items.length}개 로드 완료`);
+      } else {
+        throw new Error(response.error || '데이터포인트 로드 실패');
+      }
+
+    } catch (err) {
+      console.error('❌ 데이터포인트 로드 실패:', err);
+      setError(err instanceof Error ? err.message : '알 수 없는 오류');
+    } finally {
+      setIsLoading(false);
+      setLastUpdate(new Date());
+    }
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, deviceFilter, dataTypeFilter, enabledFilter, showCurrentValues]);
+
+  /**
+   * 선택된 데이터포인트들의 현재값 로드
+   */
+  const loadCurrentValues = useCallback(async () => {
+    if (selectedDataPoints.length === 0) {
+      setCurrentValues([]);
+      return;
+    }
+
+    try {
+      setIsLoadingValues(true);
+      console.log('⚡ 현재값 로드 시작...', selectedDataPoints.length);
+
+      const pointIds = selectedDataPoints.map(dp => dp.id);
+      const response = await DataApiService.getCurrentValues({
+        point_ids: pointIds,
+        quality_filter: qualityFilter !== 'all' ? qualityFilter : undefined,
+        limit: 1000
+      });
+
+      if (response.success && response.data) {
+        setCurrentValues(response.data.current_values);
+        console.log(`✅ 현재값 ${response.data.current_values.length}개 로드 완료`);
+      } else {
+        throw new Error(response.error || '현재값 로드 실패');
+      }
+
+    } catch (err) {
+      console.error('❌ 현재값 로드 실패:', err);
+      setCurrentValues([]);
+    } finally {
+      setIsLoadingValues(false);
+    }
+  }, [selectedDataPoints, qualityFilter]);
+
+  /**
+   * 데이터 통계 로드
+   */
+  const loadDataStatistics = useCallback(async () => {
+    try {
+      console.log('📊 데이터 통계 로드 시작...');
+
+      const response = await DataApiService.getDataStatistics({
+        device_id: deviceFilter !== 'all' ? Number(deviceFilter) : undefined,
+        time_range: '24h'
+      });
+
+      if (response.success && response.data) {
+        setDataStatistics(response.data);
+        console.log('✅ 데이터 통계 로드 완료');
+      } else {
+        console.warn('⚠️ 데이터 통계 로드 실패:', response.error);
+      }
+    } catch (err) {
+      console.warn('⚠️ 데이터 통계 로드 실패:', err);
+    }
+  }, [deviceFilter]);
+
+  /**
+   * 디바이스 목록 로드 (필터용)
+   */
+  const loadDevices = useCallback(async () => {
+    try {
+      console.log('📱 디바이스 목록 로드 시작...');
+
+      const response = await DeviceApiService.getDevices({
+        page: 1,
+        limit: 1000 // 모든 디바이스 가져오기
+      });
+
+      if (response.success && response.data) {
+        setDevices(response.data.items);
+        console.log(`✅ 디바이스 ${response.data.items.length}개 로드 완료`);
+      } else {
+        console.warn('⚠️ 디바이스 목록 로드 실패:', response.error);
+      }
+    } catch (err) {
+      console.warn('⚠️ 디바이스 목록 로드 실패:', err);
+    }
+  }, []);
+
+  // =============================================================================
+  // 🔄 액션 함수들
+  // =============================================================================
+
+  /**
+   * 데이터포인트 선택/해제
+   */
+  const handleDataPointSelect = (dataPoint: DataPoint, selected: boolean) => {
+    setSelectedDataPoints(prev => 
+      selected 
+        ? [...prev, dataPoint]
+        : prev.filter(dp => dp.id !== dataPoint.id)
+    );
+  };
+
+  /**
+   * 전체 선택/해제
+   */
+  const handleSelectAll = (selected: boolean) => {
+    setSelectedDataPoints(selected ? [...dataPoints] : []);
+  };
+
+  /**
+   * 데이터 내보내기
+   */
+  const handleExportData = async (format: 'json' | 'csv' | 'xml') => {
+    if (selectedDataPoints.length === 0) {
+      alert('내보낼 데이터포인트를 선택해주세요.');
+      return;
+    }
+
+    try {
+      console.log(`📤 데이터 내보내기 시작 (${format}):`, selectedDataPoints.length);
+
+      const pointIds = selectedDataPoints.map(dp => dp.id);
+      const response = await DataApiService.exportCurrentValues({
+        point_ids: pointIds,
+        format,
+        include_metadata: true
+      });
+
+      if (response.success && response.data) {
+        const result = response.data;
+        
+        // 파일 다운로드 시뮬레이션
+        if (format === 'json') {
+          const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = result.filename;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        
+        console.log(`✅ 데이터 내보내기 완료: ${result.total_records}개 레코드`);
+        alert(`데이터 내보내기 완료: ${result.total_records}개 레코드`);
+      } else {
+        throw new Error(response.error || '데이터 내보내기 실패');
+      }
+
+    } catch (err) {
+      console.error('❌ 데이터 내보내기 실패:', err);
+      setError(err instanceof Error ? err.message : '데이터 내보내기 실패');
+    }
+  };
+
+  /**
+   * 필터 초기화
+   */
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setDeviceFilter('all');
+    setDataTypeFilter('all');
+    setEnabledFilter('all');
+    setQualityFilter('all');
+    pagination.goToFirst();
+  };
+
+  // =============================================================================
+  // 🔄 이벤트 핸들러들
+  // =============================================================================
+
+  const handleSearch = useCallback((term: string) => {
+    setSearchTerm(term);
+    pagination.goToFirst();
+  }, [pagination]);
+
+  const handleFilterChange = useCallback((filterType: string, value: any) => {
+    switch (filterType) {
+      case 'device':
+        setDeviceFilter(value);
+        break;
+      case 'dataType':
+        setDataTypeFilter(value);
+        break;
+      case 'enabled':
+        setEnabledFilter(value);
+        break;
+      case 'quality':
+        setQualityFilter(value);
+        break;
+    }
+    pagination.goToFirst();
+  }, [pagination]);
+
+  // =============================================================================
+  // 🔄 라이프사이클 hooks
   // =============================================================================
 
   useEffect(() => {
-    initializeConnection();
-    loadInitialTree();
-  }, []);
+    loadDevices();
+    loadDataStatistics();
+  }, [loadDevices, loadDataStatistics]);
 
+  useEffect(() => {
+    loadDataPoints();
+  }, [loadDataPoints]);
+
+  useEffect(() => {
+    if (showCurrentValues) {
+      loadCurrentValues();
+    }
+  }, [loadCurrentValues, showCurrentValues]);
+
+  // 자동 새로고침
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(() => {
-      if (selectedDataPoints.length > 0) {
-        refreshSelectedDataPoints();
+      if (showCurrentValues) {
+        loadCurrentValues();
       }
-      updateConnectionStatus();
+      loadDataStatistics();
     }, refreshInterval);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, selectedDataPoints]);
+  }, [autoRefresh, refreshInterval, loadCurrentValues, loadDataStatistics, showCurrentValues]);
 
   // =============================================================================
-  // API 호출 함수들 - 완성된 버전
+  // 🎨 렌더링 헬퍼 함수들
   // =============================================================================
 
-  const initializeConnection = async () => {
-    try {
-      console.log('🔍 연결 초기화 시작...');
-      setConnectionStatus('connecting');
-      setError(null); // 기존 에러 클리어
-      
-      const response = await RedisDataApiService.getConnectionStatus();
-      
-      console.log('📡 연결 상태 응답 받음:', response);
-      
-      if (response.success && response.data) {
-        console.log('✅ 연결 성공, 상태 설정:', response.data.status);
-        setConnectionStatus(response.data.status);
-        
-        if (response.data.status === 'connected') {
-          console.log('🔗 연결됨 - Redis 통계 로드 시작');
-          await loadRedisStats();
-          setError(null); // 연결 성공 시 에러 클리어
-        } else {
-          console.log('⚠️ 연결되지 않음, 상태:', response.data.status);
-          setError(`Redis 상태: ${response.data.status}`);
-        }
-      } else {
-        console.log('❌ 연결 실패:', response.error || '알 수 없는 오류');
-        setConnectionStatus('disconnected');
-        setError(response.error || 'Redis 서버에 연결할 수 없습니다.');
-      }
-    } catch (err) {
-      console.error('❌ 연결 초기화 예외:', err);
-      setConnectionStatus('disconnected');
-      setError('Redis 연결 중 예외가 발생했습니다.');
+  const getDataTypeIcon = (dataType: string) => {
+    switch (dataType) {
+      case 'number': return 'fas fa-hashtag';
+      case 'boolean': return 'fas fa-toggle-on';
+      case 'string': return 'fas fa-font';
+      default: return 'fas fa-question';
     }
   };
 
-  const loadRedisStats = async () => {
-    try {
-      console.log('📊 Redis 통계 로드 시작...');
-      const response = await RedisDataApiService.getStats();
-      
-      if (response.success && response.data) {
-        console.log('✅ Redis 통계 로드 성공:', response.data);
-        
-        // 통계 데이터 유효성 검증
-        const validStats = {
-          total_keys: typeof response.data.total_keys === 'number' ? response.data.total_keys : 0,
-          memory_usage: typeof response.data.memory_usage === 'number' ? response.data.memory_usage : 0,
-          connected_clients: typeof response.data.connected_clients === 'number' ? response.data.connected_clients : 0,
-          commands_processed: typeof response.data.commands_processed === 'number' ? response.data.commands_processed : 0,
-          hits: typeof response.data.hits === 'number' ? response.data.hits : 0,
-          misses: typeof response.data.misses === 'number' ? response.data.misses : 0,
-          expired_keys: typeof response.data.expired_keys === 'number' ? response.data.expired_keys : 0
-        };
-        
-        console.log('🔍 검증된 통계 데이터:', validStats);
-        setRedisStats(validStats);
-      } else {
-        console.log('⚠️ Redis 통계 로드 실패:', response.error);
-        // 통계 로드 실패 시 기본값 설정
-        setRedisStats({
-          total_keys: 0,
-          memory_usage: 0,
-          connected_clients: 0,
-          commands_processed: 0,
-          hits: 0,
-          misses: 0,
-          expired_keys: 0
-        });
-      }
-    } catch (err) {
-      console.error('❌ Redis 통계 로드 예외:', err);
-      // 예외 발생 시 기본값 설정
-      setRedisStats({
-        total_keys: 0,
-        memory_usage: 0,
-        connected_clients: 0,
-        commands_processed: 0,
-        hits: 0,
-        misses: 0,
-        expired_keys: 0
-      });
+  const getQualityBadgeClass = (quality: string) => {
+    switch (quality) {
+      case 'good': return 'quality-badge quality-good';
+      case 'bad': return 'quality-badge quality-bad';
+      case 'uncertain': return 'quality-badge quality-uncertain';
+      default: return 'quality-badge quality-unknown';
     }
   };
 
-  const loadInitialTree = async () => {
-    console.log('🌳 초기 트리 로드 시작...');
-    setIsLoading(true);
+  const formatValue = (value: any, dataType: string, unit?: string) => {
+    if (value === null || value === undefined) return '-';
     
-    try {
-      const response = await RedisDataApiService.getKeyTree();
-      
-      console.log('📡 트리 응답 받음:', response);
-      
-      if (response.success && response.data) {
-        console.log('✅ 트리 로드 성공, 노드 수:', response.data.length);
-        setTreeData(response.data);
-      } else {
-        console.log('⚠️ 트리 로드 실패:', response.error);
-        
-        // 폴백: 연결 끊김 상태에서도 기본 구조 표시
-        console.log('🔄 폴백 트리 생성');
-        setTreeData(createFallbackTree());
-      }
-    } catch (err) {
-      console.error('❌ 트리 로드 예외:', err);
-      setTreeData(createFallbackTree());
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadNodeChildren = async (node: RedisTreeNode) => {
-    setIsLoading(true);
+    let formattedValue = String(value);
     
-    try {
-      const response = await RedisDataApiService.getNodeChildren(node.id);
-      
-      if (response.success) {
-        // 트리 데이터 업데이트
-        setTreeData(prev => updateTreeNode(prev, node.id, { 
-          children: response.data, 
-          isLoaded: true, 
-          isExpanded: true 
-        }));
-      } else {
-        setError(`노드 ${node.name}의 자식을 로드할 수 없습니다.`);
+    if (dataType === 'number') {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        formattedValue = num.toFixed(2);
       }
-    } catch (err) {
-      console.error('노드 자식 로드 실패:', err);
-      setError('하위 노드를 불러올 수 없습니다.');
-    } finally {
-      setIsLoading(false);
     }
-  };
-
-  const loadDataPointDetails = async (node: RedisTreeNode) => {
-    if (!node.dataPoint) return;
     
-    try {
-      const response = await RedisDataApiService.getKeyData(node.dataPoint.key);
-      
-      if (response.success) {
-        // 최신 데이터로 업데이트
-        const updatedDataPoint = response.data;
-        setSelectedDataPoints(prev => {
-          const exists = prev.find(dp => dp.id === updatedDataPoint.id);
-          if (exists) {
-            return prev.map(dp => dp.id === updatedDataPoint.id ? updatedDataPoint : dp);
-          } else {
-            return [...prev, updatedDataPoint];
-          }
-        });
-        
-        // 트리 노드도 업데이트
-        setTreeData(prev => updateTreeNode(prev, node.id, {
-          dataPoint: updatedDataPoint
-        }));
-      }
-    } catch (err) {
-      console.error('데이터 포인트 상세 로드 실패:', err);
-      setError('데이터 포인트 정보를 불러올 수 없습니다.');
-    }
+    return unit ? `${formattedValue} ${unit}` : formattedValue;
   };
 
-  const refreshSelectedDataPoints = async () => {
-    if (!Array.isArray(selectedDataPoints) || selectedDataPoints.length === 0) return;
-    
-    try {
-      const keys = selectedDataPoints.map(dp => dp.key);
-      const response = await RedisDataApiService.getBulkKeyData(keys);
-      
-      if (response.success && Array.isArray(response.data)) {
-        setSelectedDataPoints(response.data);
-        setLastUpdate(new Date());
-      }
-    } catch (err) {
-      console.error('선택된 데이터 포인트 새로고침 실패:', err);
-    }
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
   };
 
-  // 🔄 연결 상태 업데이트 (주기적 호출)
-  const updateConnectionStatus = async () => {
-    try {
-      console.log('🔄 주기적 연결 상태 업데이트...');
-      const response = await RedisDataApiService.getConnectionStatus();
-      
-      if (response.success && response.data) {
-        const newStatus = response.data.status;
-        
-        // 상태가 변경된 경우에만 업데이트
-        if (newStatus !== connectionStatus) {
-          console.log(`🔄 연결 상태 변경: ${connectionStatus} → ${newStatus}`);
-          setConnectionStatus(newStatus);
-          
-          if (newStatus === 'connected') {
-            setError(null); // 연결 복구 시 에러 클리어
-            await loadRedisStats();
-          } else {
-            setError(`Redis 상태: ${newStatus}`);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('⚠️ 주기적 연결 상태 확인 실패 (무시):', err);
-      // 주기적 확인 실패는 에러 상태 변경하지 않음
-    }
-  };
-
-  // =============================================================================
-  // 이벤트 핸들러들
-  // =============================================================================
-
-  const handleNodeClick = async (node: RedisTreeNode) => {
-    setSelectedNode(node);
-    
-    if (node.type === 'datapoint' && node.dataPoint) {
-      // 데이터 포인트 선택 시 상세 정보 로드
-      await loadDataPointDetails(node);
-    } else if (!node.isLoaded && node.childCount && node.childCount > 0) {
-      // 자식 노드 로드
-      await loadNodeChildren(node);
-    } else if (node.isLoaded) {
-      // 확장/축소 토글
-      setTreeData(prev => updateTreeNode(prev, node.id, { 
-        isExpanded: !node.isExpanded 
-      }));
-    }
-  };
-
-  const handleDataPointSelect = (dataPoint: RedisDataPoint) => {
-    setSelectedDataPoints(prev => {
-      const exists = prev.find(dp => dp.id === dataPoint.id);
-      if (exists) {
-        return prev.filter(dp => dp.id !== dataPoint.id);
-      } else {
-        return [...prev, dataPoint];
-      }
+  // 필터링된 현재값들
+  const filteredCurrentValues = useMemo(() => {
+    return currentValues.filter(cv => {
+      if (qualityFilter !== 'all' && cv.quality !== qualityFilter) return false;
+      return true;
     });
-  };
-
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) {
-      await loadInitialTree();
-      return;
-    }
-    
-    setIsLoading(true);
-    try {
-      const response = await RedisDataApiService.searchKeys({
-        pattern: `*${searchTerm}*`,
-        limit: 100
-      });
-      
-      if (response.success && Array.isArray(response.data.keys)) {
-        // 검색 결과를 트리 구조로 변환
-        const searchResults = createSearchResultTree(response.data.keys);
-        setTreeData(searchResults);
-      }
-    } catch (err) {
-      console.error('검색 실패:', err);
-      setError('검색 중 오류가 발생했습니다.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const clearSelection = () => {
-    setSelectedDataPoints([]);
-  };
-
-  const exportData = async () => {
-    if (!Array.isArray(selectedDataPoints) || selectedDataPoints.length === 0) return;
-    
-    try {
-      const keys = selectedDataPoints.map(dp => dp.key);
-      const blob = await RedisDataApiService.exportData(keys, 'json');
-      
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `redis_data_${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('데이터 내보내기 실패:', err);
-      setError('데이터 내보내기 중 오류가 발생했습니다.');
-    }
-  };
+  }, [currentValues, qualityFilter]);
 
   // =============================================================================
-  // 유틸리티 함수들
+  // 🎨 UI 렌더링
   // =============================================================================
-
-  const createFallbackTree = (): RedisTreeNode[] => {
-    return [
-      {
-        id: 'fallback-root',
-        name: 'Redis (연결 없음)',
-        path: '',
-        type: 'folder',
-        isExpanded: false,
-        isLoaded: true,
-        children: [
-          {
-            id: 'fallback-message',
-            name: '연결을 확인하세요',
-            path: 'message',
-            type: 'folder',
-            isExpanded: false,
-            isLoaded: true,
-            children: []
-          }
-        ]
-      }
-    ];
-  };
-
-  const createSearchResultTree = (keys: string[]): RedisTreeNode[] => {
-    // keys가 배열인지 확인
-    if (!Array.isArray(keys)) {
-      console.warn('⚠️ createSearchResultTree: keys is not an array:', keys);
-      return [];
-    }
-    
-    return keys.map((key, index) => ({
-      id: `search_${index}`,
-      name: key,
-      path: key,
-      type: 'datapoint',
-      isExpanded: false,
-      isLoaded: true,
-      dataPoint: {
-        id: key,
-        key,
-        name: key.split(':').pop() || key,
-        value: 'Loading...',
-        dataType: 'string',
-        timestamp: new Date().toISOString(),
-        quality: 'uncertain',
-        size: 0
-      }
-    }));
-  };
-
-  const updateTreeNode = (nodes: RedisTreeNode[], nodeId: string, updates: Partial<RedisTreeNode>): RedisTreeNode[] => {
-    // nodes가 배열인지 확인
-    if (!Array.isArray(nodes)) {
-      console.warn('⚠️ updateTreeNode: nodes is not an array:', nodes);
-      return [];
-    }
-    
-    return nodes.map(node => {
-      if (node.id === nodeId) {
-        return { ...node, ...updates };
-      }
-      if (node.children && Array.isArray(node.children)) {
-        return { ...node, children: updateTreeNode(node.children, nodeId, updates) };
-      }
-      return node;
-    });
-  };
-
-  const renderTreeNode = (node: RedisTreeNode, level: number = 0): React.ReactNode => {
-    // node 유효성 검사
-    if (!node || typeof node !== 'object') {
-      console.warn('⚠️ renderTreeNode: invalid node:', node);
-      return null;
-    }
-    
-    const hasChildren = node.childCount && node.childCount > 0;
-    const isExpanded = node.isExpanded && Array.isArray(node.children);
-    
-    return (
-      <div key={node.id} className="tree-node-container">
-        <div 
-          className={`tree-node ${selectedNode?.id === node.id ? 'selected' : ''}`}
-          style={{ paddingLeft: `${level * 1.5}rem` }}
-          onClick={() => handleNodeClick(node)}
-        >
-          <div className="tree-node-content">
-            {hasChildren && (
-              <i className={`tree-expand-icon fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}`}></i>
-            )}
-            
-            <i className={`tree-node-icon ${getNodeIcon(node.type)}`}></i>
-            
-            <span className="tree-node-label">{node.name || 'Unknown'}</span>
-            
-            {node.type === 'datapoint' && node.dataPoint && (
-              <div className="data-point-preview">
-                <span className={`data-value ${node.dataPoint.quality}`}>
-                  {formatDataValue(node.dataPoint)}
-                </span>
-                <span className={`quality-indicator ${node.dataPoint.quality}`}></span>
-              </div>
-            )}
-            
-            {hasChildren && (
-              <span className="child-count">({node.childCount})</span>
-            )}
-          </div>
-        </div>
-        
-        {isExpanded && node.children && Array.isArray(node.children) && (
-          <div className="tree-children">
-            {node.children.map(child => renderTreeNode(child, level + 1))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const getNodeIcon = (type: string): string => {
-    switch (type) {
-      case 'tenant': return 'fas fa-building';
-      case 'site': return 'fas fa-industry';
-      case 'device': return 'fas fa-microchip';
-      case 'folder': return 'fas fa-folder';
-      case 'datapoint': return 'fas fa-chart-line';
-      default: return 'fas fa-file';
-    }
-  };
-
-  const formatDataValue = (dataPoint: RedisDataPoint): string => {
-    if (!dataPoint || dataPoint.value === undefined || dataPoint.value === null) {
-      return 'N/A';
-    }
-    
-    if (dataPoint.dataType === 'boolean') {
-      return dataPoint.value ? 'TRUE' : 'FALSE';
-    }
-    if (dataPoint.dataType === 'number') {
-      return `${dataPoint.value}${dataPoint.unit || ''}`;
-    }
-    return String(dataPoint.value);
-  };
-
-  const formatTimestamp = (timestamp: string): string => {
-    if (!timestamp) return 'N/A';
-    
-    try {
-      return new Date(timestamp).toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-    } catch (err) {
-      console.warn('⚠️ 타임스탬프 포맷 실패:', timestamp, err);
-      return timestamp;
-    }
-  };
-
-  // =============================================================================
-  // 연결 상태 및 에러 렌더링 함수들
-  // =============================================================================
-
-  const renderConnectionStatus = () => {
-    const statusConfig = {
-      connected: { 
-        text: 'Redis 연결됨', 
-        className: 'status-connected',
-        icon: '🟢'
-      },
-      connecting: { 
-        text: 'Redis 연결 중...', 
-        className: 'status-connecting',
-        icon: '🟡'
-      },
-      disconnected: { 
-        text: 'Redis 연결 끊김', 
-        className: 'status-disconnected',
-        icon: '🔴'
-      }
-    };
-
-    const config = statusConfig[connectionStatus] || statusConfig.disconnected;
-
-    return (
-      <div className={`connection-status ${config.className}`}>
-        <span className="status-icon">{config.icon}</span>
-        <span className="status-text">{config.text}</span>
-        {connectionStatus === 'connected' && redisStats && redisStats.total_keys !== undefined && (
-          <span className="stats-info">
-            (키: {redisStats.total_keys.toLocaleString() || 0})
-          </span>
-        )}
-      </div>
-    );
-  };
-
-  // 에러 표시 개선
-  const renderError = () => {
-    if (!error) return null;
-
-    return (
-      <div className="error-banner">
-        <div className="error-content">
-          <span className="error-icon">⚠️</span>
-          <span className="error-message">{error}</span>
-          <button 
-            className="error-retry"
-            onClick={() => {
-              setError(null);
-              initializeConnection();
-            }}
-          >
-            다시 시도
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  // 🔥 안전한 필터링 - 배열 타입 보장
-  const filteredTreeData = useMemo(() => {
-    // treeData가 배열인지 확인
-    if (!Array.isArray(treeData)) {
-      console.warn('⚠️ treeData is not an array:', treeData);
-      return [];
-    }
-    
-    if (searchTerm && searchTerm.trim()) {
-      return treeData.filter(node => 
-        node && node.name && 
-        node.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    
-    return treeData;
-  }, [treeData, searchTerm]);
-
-  // 🔥 안전한 페이징 데이터 처리
-  const paginatedDataPoints = useMemo(() => {
-    if (!Array.isArray(selectedDataPoints)) {
-      console.warn('⚠️ selectedDataPoints is not an array:', selectedDataPoints);
-      return [];
-    }
-    
-    const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
-    const endIndex = startIndex + pagination.pageSize;
-    return selectedDataPoints.slice(startIndex, endIndex);
-  }, [selectedDataPoints, pagination.currentPage, pagination.pageSize]);
 
   return (
     <div className="data-explorer-container">
       {/* 페이지 헤더 */}
       <div className="page-header">
         <div className="header-left">
-          <h1 className="page-title">
-            <i className="fas fa-database"></i>
-            데이터 익스플로러
-          </h1>
-          <div className="header-meta">
-            <span className="update-time">
-              마지막 업데이트: {lastUpdate.toLocaleTimeString()}
-            </span>
-            {redisStats && redisStats.total_keys !== undefined && (
-              <span className="redis-stats">
-                총 키: {redisStats.total_keys.toLocaleString()}개 | 
-                메모리: {((redisStats.memory_usage || 0) / 1024 / 1024).toFixed(1)}MB
-              </span>
-            )}
+          <h1 className="page-title">데이터 익스플로러</h1>
+          <div className="page-subtitle">
+            실시간 데이터포인트와 현재값을 탐색하고 분석합니다
           </div>
         </div>
-        <div className="page-actions">
-          {renderConnectionStatus()}
-          <button 
-            className="btn btn-outline"
-            onClick={loadInitialTree}
-            disabled={isLoading}
-          >
-            <i className="fas fa-sync-alt"></i>
-            새로고침
-          </button>
+        <div className="header-right">
+          <div className="header-actions">
+            <button 
+              className="btn btn-secondary"
+              onClick={() => setAutoRefresh(!autoRefresh)}
+            >
+              <i className={`fas fa-${autoRefresh ? 'pause' : 'play'}`}></i>
+              {autoRefresh ? '자동새로고침 중지' : '자동새로고침 시작'}
+            </button>
+            <button 
+              className="btn btn-primary"
+              onClick={() => handleExportData('json')}
+              disabled={selectedDataPoints.length === 0}
+            >
+              <i className="fas fa-download"></i>
+              데이터 내보내기
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 에러 메시지 */}
-      {renderError()}
-
-      <div className="explorer-layout">
-        {/* 좌측 트리 패널 */}
-        <div className="tree-panel">
-          <div className="tree-header">
-            <h3>Redis 키 탐색기</h3>
-            <div className="tree-controls">
-              <div className="search-container">
-                <input
-                  type="text"
-                  placeholder="키 검색..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                  className="search-input"
-                />
-                <button onClick={handleSearch} className="search-button">
-                  <i className="fas fa-search"></i>
-                </button>
-              </div>
+      {/* 통계 대시보드 */}
+      {dataStatistics && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon">
+              <i className="fas fa-database text-primary"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">전체 데이터포인트</div>
+              <div className="stat-value">{dataStatistics.data_points.total_data_points}</div>
             </div>
           </div>
-          
-          <div className="tree-content">
-            {isLoading && (
-              <div className="loading-container">
-                <div className="loading-spinner"></div>
-                <div className="loading-text">로딩 중...</div>
-              </div>
-            )}
-            {!isLoading && Array.isArray(filteredTreeData) && filteredTreeData.length > 0 && 
-              filteredTreeData.map(node => renderTreeNode(node))
-            }
-            {!isLoading && (!Array.isArray(filteredTreeData) || filteredTreeData.length === 0) && (
-              <div className="empty-state">
-                <div className="empty-state-icon">🔍</div>
-                <div className="empty-state-title">
-                  {searchTerm ? '검색 결과가 없습니다' : '데이터가 없습니다'}
-                </div>
-                <div className="empty-state-description">
-                  {searchTerm ? '다른 검색어를 시도해보세요' : 'Redis 연결을 확인하세요'}
-                </div>
-              </div>
-            )}
+          <div className="stat-card">
+            <div className="stat-icon">
+              <i className="fas fa-check-circle text-success"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">활성화됨</div>
+              <div className="stat-value">{dataStatistics.data_points.enabled_data_points}</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">
+              <i className="fas fa-clock text-info"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">현재값 (양호)</div>
+              <div className="stat-value">{dataStatistics.current_values.good_quality}</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">
+              <i className="fas fa-network-wired text-warning"></i>
+            </div>
+            <div className="stat-content">
+              <div className="stat-label">활성 디바이스</div>
+              <div className="stat-value">{dataStatistics.system_stats.active_devices}</div>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* 우측 상세 패널 */}
-        <div className="details-panel">
-          <div className="details-header">
-            <h3>데이터 상세 정보</h3>
-            <div className="details-controls">
-              <label className="refresh-control">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                />
-                자동 새로고침
-              </label>
-              {autoRefresh && (
-                <select
-                  value={refreshInterval}
-                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                  className="refresh-interval"
-                >
-                  <option value={1000}>1초</option>
-                  <option value={5000}>5초</option>
-                  <option value={10000}>10초</option>
-                  <option value={30000}>30초</option>
-                </select>
-              )}
-              {Array.isArray(selectedDataPoints) && selectedDataPoints.length > 0 && (
-                <>
-                  <button className="btn btn-sm btn-outline" onClick={clearSelection}>
-                    <i className="fas fa-times"></i>
-                    선택 해제
-                  </button>
-                  <button className="btn btn-sm btn-primary" onClick={exportData}>
-                    <i className="fas fa-download"></i>
-                    내보내기
-                  </button>
-                </>
-              )}
-            </div>
+      {/* 필터 및 검색 */}
+      <div className="filters-section">
+        <div className="search-box">
+          <i className="fas fa-search"></i>
+          <input
+            type="text"
+            placeholder="데이터포인트 이름 또는 설명 검색..."
+            value={searchTerm}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+        </div>
+        
+        <div className="filter-group">
+          <select
+            value={deviceFilter}
+            onChange={(e) => handleFilterChange('device', e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+          >
+            <option value="all">모든 디바이스</option>
+            {devices.map(device => (
+              <option key={device.id} value={device.id}>{device.name}</option>
+            ))}
+          </select>
+
+          <select
+            value={dataTypeFilter}
+            onChange={(e) => handleFilterChange('dataType', e.target.value)}
+          >
+            <option value="all">모든 데이터 타입</option>
+            <option value="number">숫자</option>
+            <option value="boolean">불린</option>
+            <option value="string">문자열</option>
+          </select>
+
+          <select
+            value={enabledFilter}
+            onChange={(e) => handleFilterChange('enabled', e.target.value === 'all' ? 'all' : e.target.value === 'true')}
+          >
+            <option value="all">모든 상태</option>
+            <option value="true">활성화됨</option>
+            <option value="false">비활성화됨</option>
+          </select>
+
+          {showCurrentValues && (
+            <select
+              value={qualityFilter}
+              onChange={(e) => handleFilterChange('quality', e.target.value)}
+            >
+              <option value="all">모든 품질</option>
+              <option value="good">양호</option>
+              <option value="bad">불량</option>
+              <option value="uncertain">불확실</option>
+            </select>
+          )}
+
+          <button 
+            className="btn btn-secondary btn-sm"
+            onClick={handleResetFilters}
+          >
+            <i className="fas fa-undo"></i>
+            필터 초기화
+          </button>
+        </div>
+
+        <div className="view-controls">
+          <div className="view-mode-toggle">
+            <button 
+              className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('table')}
+            >
+              <i className="fas fa-table"></i>
+              테이블
+            </button>
+            <button 
+              className={`btn btn-sm ${viewMode === 'card' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('card')}
+            >
+              <i className="fas fa-th"></i>
+              카드
+            </button>
           </div>
+          
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={showCurrentValues}
+              onChange={(e) => setShowCurrentValues(e.target.checked)}
+            />
+            현재값 표시
+          </label>
+        </div>
 
-          <div className="details-content">
-            {selectedNode ? (
-              <div className="node-details">
-                <div className="node-info">
-                  <h4>
-                    <i className={`${getNodeIcon(selectedNode.type)} node-type-icon`}></i>
-                    {selectedNode.name}
-                  </h4>
-                  <div className="node-metadata">
-                    <div className="metadata-item">
-                      <span className="label">경로:</span>
-                      <span className="value monospace">{selectedNode.path}</span>
+        {selectedDataPoints.length > 0 && (
+          <div className="selection-actions">
+            <span className="selected-count">
+              {selectedDataPoints.length}개 선택됨
+            </span>
+            <button 
+              onClick={() => handleExportData('json')}
+              className="btn btn-sm btn-primary"
+            >
+              JSON 내보내기
+            </button>
+            <button 
+              onClick={() => handleExportData('csv')}
+              className="btn btn-sm btn-primary"
+            >
+              CSV 내보내기
+            </button>
+            <button 
+              onClick={() => setSelectedDataPoints([])}
+              className="btn btn-sm btn-secondary"
+            >
+              선택 해제
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 에러 표시 */}
+      {error && (
+        <div className="error-message">
+          <i className="fas fa-exclamation-circle"></i>
+          {error}
+          <button onClick={() => setError(null)}>
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+
+      {/* 데이터포인트 목록 */}
+      <div className="data-content">
+        {isLoading ? (
+          <div className="loading-spinner">
+            <i className="fas fa-spinner fa-spin"></i>
+            <span>데이터포인트를 불러오는 중...</span>
+          </div>
+        ) : dataPoints.length === 0 ? (
+          <div className="empty-state">
+            <i className="fas fa-database"></i>
+            <h3>데이터포인트가 없습니다</h3>
+            <p>검색 조건을 변경하거나 필터를 초기화해보세요</p>
+            <button className="btn btn-secondary" onClick={handleResetFilters}>
+              <i className="fas fa-undo"></i>
+              필터 초기화
+            </button>
+          </div>
+        ) : viewMode === 'table' ? (
+          <div className="data-table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={selectedDataPoints.length === dataPoints.length}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                    />
+                  </th>
+                  <th>이름</th>
+                  <th>디바이스</th>
+                  <th>데이터 타입</th>
+                  <th>주소</th>
+                  <th>상태</th>
+                  {showCurrentValues && (
+                    <>
+                      <th>현재값</th>
+                      <th>품질</th>
+                      <th>업데이트 시간</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {dataPoints.map((dataPoint) => {
+                  const currentValue = currentValues.find(cv => cv.point_id === dataPoint.id);
+                  const isSelected = selectedDataPoints.some(dp => dp.id === dataPoint.id);
+                  
+                  return (
+                    <tr 
+                      key={dataPoint.id}
+                      className={isSelected ? 'selected' : ''}
+                    >
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => handleDataPointSelect(dataPoint, e.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <div className="data-point-info">
+                          <div className="data-point-name">
+                            <i className={getDataTypeIcon(dataPoint.data_type)}></i>
+                            {dataPoint.name}
+                          </div>
+                          {dataPoint.description && (
+                            <div className="data-point-description">{dataPoint.description}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="device-name">{dataPoint.device_info?.name || `Device ${dataPoint.device_id}`}</span>
+                      </td>
+                      <td>
+                        <span className="data-type-badge">{dataPoint.data_type}</span>
+                      </td>
+                      <td>
+                        <span className="address">{dataPoint.address}</span>
+                      </td>
+                      <td>
+                        <span className={`status-badge ${dataPoint.is_enabled ? 'status-enabled' : 'status-disabled'}`}>
+                          {dataPoint.is_enabled ? '활성' : '비활성'}
+                        </span>
+                      </td>
+                      {showCurrentValues && (
+                        <>
+                          <td>
+                            <div className="current-value">
+                              {currentValue ? (
+                                formatValue(currentValue.value, currentValue.data_type, currentValue.unit)
+                              ) : (
+                                <span className="no-value">-</span>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            {currentValue && (
+                              <span className={getQualityBadgeClass(currentValue.quality)}>
+                                {currentValue.quality}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {currentValue && (
+                              <span className="timestamp">
+                                {formatTimestamp(currentValue.timestamp)}
+                              </span>
+                            )}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="data-cards-container">
+            {dataPoints.map((dataPoint) => {
+              const currentValue = currentValues.find(cv => cv.point_id === dataPoint.id);
+              const isSelected = selectedDataPoints.some(dp => dp.id === dataPoint.id);
+              
+              return (
+                <div 
+                  key={dataPoint.id}
+                  className={`data-card ${isSelected ? 'selected' : ''}`}
+                  onClick={() => handleDataPointSelect(dataPoint, !isSelected)}
+                >
+                  <div className="card-header">
+                    <div className="card-title">
+                      <i className={getDataTypeIcon(dataPoint.data_type)}></i>
+                      {dataPoint.name}
                     </div>
-                    <div className="metadata-item">
-                      <span className="label">타입:</span>
-                      <span className="value">{selectedNode.type}</span>
+                    <div className="card-actions">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleDataPointSelect(dataPoint, e.target.checked);
+                        }}
+                      />
                     </div>
-                    {selectedNode.childCount && (
-                      <div className="metadata-item">
-                        <span className="label">자식 수:</span>
-                        <span className="value">{selectedNode.childCount}</span>
+                  </div>
+                  <div className="card-body">
+                    <div className="card-info">
+                      <div className="info-item">
+                        <span className="label">디바이스:</span>
+                        <span className="value">{dataPoint.device_info?.name || `Device ${dataPoint.device_id}`}</span>
+                      </div>
+                      <div className="info-item">
+                        <span className="label">타입:</span>
+                        <span className="value">{dataPoint.data_type}</span>
+                      </div>
+                      <div className="info-item">
+                        <span className="label">주소:</span>
+                        <span className="value">{dataPoint.address}</span>
+                      </div>
+                      <div className="info-item">
+                        <span className="label">상태:</span>
+                        <span className={`status-badge ${dataPoint.is_enabled ? 'status-enabled' : 'status-disabled'}`}>
+                          {dataPoint.is_enabled ? '활성' : '비활성'}
+                        </span>
+                      </div>
+                    </div>
+                    {showCurrentValues && currentValue && (
+                      <div className="current-value-section">
+                        <div className="current-value-label">현재값</div>
+                        <div className="current-value-display">
+                          <span className="value">
+                            {formatValue(currentValue.value, currentValue.data_type, currentValue.unit)}
+                          </span>
+                          <span className={getQualityBadgeClass(currentValue.quality)}>
+                            {currentValue.quality}
+                          </span>
+                        </div>
+                        <div className="update-time">
+                          {formatTimestamp(currentValue.timestamp)}
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-
-                {selectedNode.type === 'datapoint' && selectedNode.dataPoint && (
-                  <div className="datapoint-details">
-                    <div className="datapoint-card">
-                      <div className="datapoint-header">
-                        <h5>실시간 값</h5>
-                        <button
-                          className={`watch-btn ${selectedDataPoints.some(dp => dp.id === selectedNode.dataPoint!.id) ? 'active' : ''}`}
-                          onClick={() => handleDataPointSelect(selectedNode.dataPoint!)}
-                        >
-                          <i className="fas fa-eye"></i>
-                          감시
-                        </button>
-                      </div>
-                      <div className="datapoint-value">
-                        <span className={`value ${selectedNode.dataPoint.quality}`}>
-                          {formatDataValue(selectedNode.dataPoint)}
-                        </span>
-                        <span className={`quality-badge ${selectedNode.dataPoint.quality}`}>
-                          {selectedNode.dataPoint.quality}
-                        </span>
-                      </div>
-                      <div className="datapoint-metadata">
-                        <div className="meta-row">
-                          <span>데이터 타입:</span>
-                          <span>{selectedNode.dataPoint.dataType}</span>
-                        </div>
-                        <div className="meta-row">
-                          <span>마지막 업데이트:</span>
-                          <span>{formatTimestamp(selectedNode.dataPoint.timestamp)}</span>
-                        </div>
-                        <div className="meta-row">
-                          <span>크기:</span>
-                          <span>{selectedNode.dataPoint.size} bytes</span>
-                        </div>
-                        {selectedNode.dataPoint.ttl && (
-                          <div className="meta-row">
-                            <span>TTL:</span>
-                            <span>{selectedNode.dataPoint.ttl}초</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <div className="empty-state-icon">👆</div>
-                <div className="empty-state-title">항목을 선택하세요</div>
-                <div className="empty-state-description">
-                  탐색기에서 항목을 선택하여 상세 정보를 확인하세요
-                </div>
-              </div>
-            )}
+              );
+            })}
           </div>
-        </div>
+        )}
       </div>
 
-      {/* 하단 감시 패널 */}
-      {selectedDataPoints.length > 0 && (
-        <div className="watch-panel">
-          <div className="watch-header">
-            <h3>실시간 감시 ({selectedDataPoints.length}개)</h3>
-            <div className="watch-controls">
-              <span className="last-update">
-                마지막 업데이트: {formatTimestamp(lastUpdate.toISOString())}
-              </span>
-            </div>
-          </div>
-          <div className="watch-content">
-            <div className="watch-table">
-              <div className="watch-table-header">
-                <div className="watch-cell">키</div>
-                <div className="watch-cell">이름</div>
-                <div className="watch-cell">값</div>
-                <div className="watch-cell">품질</div>
-                <div className="watch-cell">타임스탬프</div>
-                <div className="watch-cell">동작</div>
-              </div>
-                              {Array.isArray(paginatedDataPoints) && paginatedDataPoints.map(dataPoint => (
-                <div key={dataPoint.id} className="watch-table-row">
-                  <div className="watch-cell monospace">{dataPoint.key}</div>
-                  <div className="watch-cell">{dataPoint.name}</div>
-                  <div className="watch-cell">
-                    <span className={`data-value ${dataPoint.quality}`}>
-                      {formatDataValue(dataPoint)}
-                    </span>
-                  </div>
-                  <div className="watch-cell">
-                    <span className={`quality-badge ${dataPoint.quality}`}>
-                      {dataPoint.quality}
-                    </span>
-                  </div>
-                  <div className="watch-cell monospace">
-                    {formatTimestamp(dataPoint.timestamp)}
-                  </div>
-                  <div className="watch-cell">
-                    <button
-                      className="btn btn-sm btn-error"
-                      onClick={() => handleDataPointSelect(dataPoint)}
-                    >
-                      <i className="fas fa-times"></i>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {/* 페이징 */}
-            {selectedDataPoints.length > pagination.pageSize && (
-              <Pagination
-                className="watch-pagination"
-                current={pagination.currentPage}
-                total={selectedDataPoints.length}
-                pageSize={pagination.pageSize}
-                pageSizeOptions={PAGINATION_CONSTANTS.PAGE_SIZE_OPTIONS}
-                showSizeChanger={true}
-                showQuickJumper={false}
-                showTotal={true}
-                onChange={pagination.goToPage}
-                onShowSizeChange={pagination.changePageSize}
-              />
-            )}
-          </div>
+      {/* 페이징 */}
+      {dataPoints.length > 0 && (
+        <div className="pagination-section">
+          <Pagination
+            current={pagination.currentPage}
+            total={pagination.totalCount}
+            pageSize={pagination.pageSize}
+            pageSizeOptions={[25, 50, 100, 200]}
+            showSizeChanger={true}
+            showTotal={true}
+            onChange={(page, pageSize) => {
+              pagination.goToPage(page);
+              if (pageSize !== pagination.pageSize) {
+                pagination.changePageSize(pageSize);
+              }
+            }}
+            onShowSizeChange={(page, pageSize) => {
+              pagination.changePageSize(pageSize);
+              pagination.goToPage(1);
+            }}
+          />
         </div>
       )}
+
+      {/* 상태 정보 */}
+      <div className="status-bar">
+        <div className="status-info">
+          <span>마지막 업데이트: {lastUpdate.toLocaleTimeString()}</span>
+          {isLoadingValues && (
+            <span className="processing-indicator">
+              <i className="fas fa-spinner fa-spin"></i>
+              현재값 업데이트 중...
+            </span>
+          )}
+          {selectedDataPoints.length > 0 && (
+            <span className="selection-info">
+              {selectedDataPoints.length}개 선택됨
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

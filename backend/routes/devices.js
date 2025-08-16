@@ -1,153 +1,287 @@
-// =============================================================================
+// ============================================================================
 // backend/routes/devices.js
-// 디바이스 관리 통합 API 라우트 - routes/alarms.js 패턴 준수
-// =============================================================================
+// 디바이스 관리 API - Repository 패턴 100% 활용한 상용 버전
+// ============================================================================
 
 const express = require('express');
 const router = express.Router();
+
+// Repository imports (기존 완성된 것들 사용)
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
+const DataPointRepository = require('../lib/database/repositories/DataPointRepository');
+const SiteRepository = require('../lib/database/repositories/SiteRepository');
+const { 
+    authenticateToken, 
+    tenantIsolation, 
+    validateTenantStatus 
+} = require('../middleware/tenantIsolation');
 
 // Repository 인스턴스 생성
-const deviceRepo = new DeviceRepository();
+let deviceRepo = null;
+let dataPointRepo = null;
+let siteRepo = null;
 
-// =============================================================================
-// 디바이스 CRUD API
-// =============================================================================
+function getDeviceRepo() {
+    if (!deviceRepo) {
+        deviceRepo = new DeviceRepository();
+        console.log("✅ DeviceRepository 인스턴스 생성 완료");
+    }
+    return deviceRepo;
+}
+
+function getDataPointRepo() {
+    if (!dataPointRepo) {
+        dataPointRepo = new DataPointRepository();
+        console.log("✅ DataPointRepository 인스턴스 생성 완료");
+    }
+    return dataPointRepo;
+}
+
+function getSiteRepo() {
+    if (!siteRepo) {
+        siteRepo = new SiteRepository();
+        console.log("✅ SiteRepository 인스턴스 생성 완료");
+    }
+    return siteRepo;
+}
+
+// ============================================================================
+// 🛡️ 미들웨어 및 헬퍼 함수들
+// ============================================================================
+
+/**
+ * 표준 응답 생성
+ */
+function createResponse(success, data, message, error_code) {
+    return {
+        success,
+        data,
+        message: message || (success ? 'Success' : 'Error'),
+        error_code: error_code || null,
+        timestamp: new Date().toISOString()
+    };
+}
+
+/**
+ * 페이징 응답 생성
+ */
+function createPaginatedResponse(items, pagination, message) {
+    return createResponse(true, {
+        items,
+        pagination: {
+            page: pagination.page,
+            limit: pagination.limit,
+            total: pagination.total_items,
+            totalPages: Math.ceil(pagination.total_items / pagination.limit),
+            hasNext: pagination.has_next,
+            hasPrev: pagination.has_prev
+        }
+    }, message);
+}
+
+/**
+ * 인증 미들웨어 (개발용)
+ */
+const devAuthMiddleware = (req, res, next) => {
+    // 개발 단계에서는 기본 사용자 설정
+    req.user = {
+        id: 1,
+        username: 'admin',
+        tenant_id: 1,
+        role: 'admin'
+    };
+    next();
+};
+
+/**
+ * 테넌트 격리 미들웨어
+ */
+const devTenantMiddleware = (req, res, next) => {
+    req.tenantId = req.user.tenant_id;
+    next();
+};
+
+// 글로벌 미들웨어 적용
+router.use(devAuthMiddleware);
+router.use(devTenantMiddleware);
+
+// ============================================================================
+// 📱 디바이스 CRUD API
+// ============================================================================
 
 /**
  * GET /api/devices
- * 디바이스 목록 조회 (모든 관련 정보 포함)
+ * 디바이스 목록 조회 (페이징, 필터링, 정렬 지원)
  */
 router.get('/', async (req, res) => {
-  try {
-    const filters = {
-      tenant_id: req.query.tenant_id,
-      site_id: req.query.site_id,
-      device_group_id: req.query.device_group_id,
-      protocol_type: req.query.protocol_type,
-      device_type: req.query.device_type,
-      is_enabled: req.query.is_enabled !== undefined ? req.query.is_enabled === 'true' : undefined,
-      status: req.query.status,
-      search: req.query.search,
-      limit: req.query.limit
-    };
+    try {
+        const { tenantId } = req;
+        const {
+            page = 1,
+            limit = 25,
+            protocol_type,
+            device_type,
+            connection_status,
+            status,
+            site_id,
+            search,
+            sort_by = 'id',
+            sort_order = 'ASC'
+        } = req.query;
 
-    // undefined 값 제거
-    Object.keys(filters).forEach(key => filters[key] === undefined && delete filters[key]);
+        console.log('📱 디바이스 목록 조회 요청:', {
+            tenantId,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            filters: { protocol_type, device_type, connection_status, status, site_id, search }
+        });
 
-    const devices = await deviceRepo.findAllDevices(filters);
+        // Repository를 통한 조회
+        const options = {
+            tenantId,
+            protocolType: protocol_type,
+            deviceType: device_type,
+            connectionStatus: connection_status,
+            status,
+            siteId: site_id ? parseInt(site_id) : null,
+            search,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sortBy: sort_by,
+            sortOrder: sort_order.toUpperCase()
+        };
 
-    res.json({
-      success: true,
-      data: devices,
-      count: devices.length
-    });
-  } catch (error) {
-    console.error('Error fetching devices:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch devices',
-      details: error.message
-    });
-  }
+        const result = await getDeviceRepo().findAll(options);
+
+        console.log(`✅ 디바이스 ${result.items.length}개 조회 완료`);
+        res.json(createPaginatedResponse(result.items, result.pagination, 'Devices retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 디바이스 목록 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICES_LIST_ERROR'));
+    }
 });
 
 /**
  * GET /api/devices/:id
- * 디바이스 상세 조회 (데이터 포인트 포함)
+ * 특정 디바이스 상세 조회
  */
 router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const device = await deviceRepo.findDeviceById(id);
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const { include_data_points = false } = req.query;
 
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device not found'
-      });
+        console.log(`📱 디바이스 ID ${id} 상세 조회 시작...`);
+
+        const device = await getDeviceRepo().findById(parseInt(id), tenantId);
+
+        if (!device) {
+            return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
+        }
+
+        // 데이터포인트 포함 요청 시
+        if (include_data_points === 'true') {
+            const dataPoints = await getDataPointRepo().findByDeviceId(device.id, tenantId);
+            device.data_points = dataPoints;
+            device.data_points_count = dataPoints.length;
+        }
+
+        console.log(`✅ 디바이스 ID ${id} 조회 완료`);
+        res.json(createResponse(true, device, 'Device retrieved successfully'));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_DETAIL_ERROR'));
     }
-
-    res.json({
-      success: true,
-      data: device
-    });
-  } catch (error) {
-    console.error('Error fetching device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch device',
-      details: error.message
-    });
-  }
 });
 
 /**
  * POST /api/devices
- * 디바이스 생성
+ * 새 디바이스 등록
  */
 router.post('/', async (req, res) => {
-  try {
-    const deviceData = req.body;
+    try {
+        const { tenantId, user } = req;
+        const deviceData = {
+            ...req.body,
+            tenant_id: tenantId,
+            created_by: user.id,
+            created_at: new Date().toISOString()
+        };
 
-    // 필수 필드 검증
-    if (!deviceData.name || !deviceData.protocol_type || !deviceData.endpoint || !deviceData.tenant_id) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: name, protocol_type, endpoint, tenant_id'
-      });
+        console.log('📱 새 디바이스 등록 요청:', {
+            name: deviceData.name,
+            protocol_type: deviceData.protocol_type,
+            endpoint: deviceData.endpoint
+        });
+
+        // 유효성 검사
+        if (!deviceData.name || !deviceData.protocol_type || !deviceData.endpoint) {
+            return res.status(400).json(
+                createResponse(false, null, 'Name, protocol_type, and endpoint are required', 'VALIDATION_ERROR')
+            );
+        }
+
+        // 같은 이름의 디바이스 중복 확인
+        const existingDevice = await getDeviceRepo().findByName(deviceData.name, tenantId);
+        if (existingDevice) {
+            return res.status(409).json(
+                createResponse(false, null, 'Device with this name already exists', 'DEVICE_NAME_CONFLICT')
+            );
+        }
+
+        const newDevice = await getDeviceRepo().create(deviceData, tenantId);
+
+        console.log(`✅ 새 디바이스 등록 완료: ID ${newDevice.id}`);
+        res.status(201).json(createResponse(true, newDevice, 'Device created successfully'));
+
+    } catch (error) {
+        console.error('❌ 디바이스 등록 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_CREATE_ERROR'));
     }
-
-    const createdDevice = await deviceRepo.createDevice(deviceData);
-
-    res.status(201).json({
-      success: true,
-      data: createdDevice,
-      message: 'Device created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create device',
-      details: error.message
-    });
-  }
 });
 
 /**
  * PUT /api/devices/:id
- * 디바이스 업데이트
+ * 디바이스 정보 수정
  */
 router.put('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const deviceData = req.body;
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const updateData = {
+            ...req.body,
+            updated_at: new Date().toISOString()
+        };
 
-    // 존재 확인
-    const existing = await deviceRepo.findDeviceById(id);
-    if (!existing) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device not found'
-      });
+        console.log(`📱 디바이스 ID ${id} 수정 요청:`, Object.keys(updateData));
+
+        // 이름 중복 확인 (이름 변경 시)
+        if (updateData.name) {
+            const existingDevice = await getDeviceRepo().findByName(updateData.name, tenantId);
+            if (existingDevice && existingDevice.id !== parseInt(id)) {
+                return res.status(409).json(
+                    createResponse(false, null, 'Device with this name already exists', 'DEVICE_NAME_CONFLICT')
+                );
+            }
+        }
+
+        const updatedDevice = await getDeviceRepo().update(parseInt(id), updateData, tenantId);
+
+        if (!updatedDevice) {
+            return res.status(404).json(
+                createResponse(false, null, 'Device not found or update failed', 'DEVICE_UPDATE_FAILED')
+            );
+        }
+
+        console.log(`✅ 디바이스 ID ${id} 수정 완료`);
+        res.json(createResponse(true, updatedDevice, 'Device updated successfully'));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 수정 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_UPDATE_ERROR'));
     }
-
-    const updatedDevice = await deviceRepo.updateDevice(id, deviceData);
-
-    res.json({
-      success: true,
-      data: updatedDevice,
-      message: 'Device updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update device',
-      details: error.message
-    });
-  }
 });
 
 /**
@@ -155,582 +289,87 @@ router.put('/:id', async (req, res) => {
  * 디바이스 삭제
  */
 router.delete('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
 
-    // 존재 확인
-    const existing = await deviceRepo.findDeviceById(id);
-    if (!existing) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device not found'
-      });
+        console.log(`📱 디바이스 ID ${id} 삭제 요청...`);
+
+        // 연관된 데이터포인트 확인
+        const dataPoints = await getDataPointRepo().findByDeviceId(parseInt(id), tenantId);
+        if (dataPoints.length > 0) {
+            console.log(`⚠️ 디바이스에 ${dataPoints.length}개의 데이터포인트가 연결되어 있음`);
+            
+            // 옵션: force=true인 경우 연관 데이터도 삭제
+            if (req.query.force !== 'true') {
+                return res.status(409).json(createResponse(
+                    false, 
+                    { data_points_count: dataPoints.length }, 
+                    'Device has associated data points. Use force=true to delete them.', 
+                    'DEVICE_HAS_DEPENDENCIES'
+                ));
+            }
+
+            // 연관 데이터포인트 삭제
+            for (const dataPoint of dataPoints) {
+                await getDataPointRepo().deleteById(dataPoint.id, tenantId);
+            }
+            console.log(`✅ 연관된 ${dataPoints.length}개 데이터포인트 삭제 완료`);
+        }
+
+        const deleted = await getDeviceRepo().deleteById(parseInt(id), tenantId);
+
+        if (!deleted) {
+            return res.status(404).json(
+                createResponse(false, null, 'Device not found or delete failed', 'DEVICE_DELETE_FAILED')
+            );
+        }
+
+        console.log(`✅ 디바이스 ID ${id} 삭제 완료`);
+        res.json(createResponse(true, { deleted: true }, 'Device deleted successfully'));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 삭제 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_DELETE_ERROR'));
     }
-
-    const deleted = await deviceRepo.deleteDevice(id);
-
-    if (deleted) {
-      res.json({
-        success: true,
-        message: 'Device deleted successfully'
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        error: 'Failed to delete device'
-      });
-    }
-  } catch (error) {
-    console.error('Error deleting device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to delete device',
-      details: error.message
-    });
-  }
 });
 
-// =============================================================================
-// 디바이스 설정 API
-// =============================================================================
-
-/**
- * GET /api/devices/:id/settings
- * 디바이스 설정 조회
- */
-router.get('/:id/settings', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const settings = await deviceRepo.getDeviceSettings(id);
-
-    if (!settings) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device settings not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: settings
-    });
-  } catch (error) {
-    console.error('Error fetching device settings:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch device settings',
-      details: error.message
-    });
-  }
-});
-
-/**
- * PUT /api/devices/:id/settings
- * 디바이스 설정 업데이트
- */
-router.put('/:id/settings', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const settings = req.body;
-
-    await deviceRepo.updateDeviceSettings(null, id, settings);
-
-    const updatedSettings = await deviceRepo.getDeviceSettings(id);
-
-    res.json({
-      success: true,
-      data: updatedSettings,
-      message: 'Device settings updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating device settings:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update device settings',
-      details: error.message
-    });
-  }
-});
-
-// =============================================================================
-// 디바이스 상태 API
-// =============================================================================
-
-/**
- * PUT /api/devices/:id/status
- * 디바이스 상태 업데이트
- */
-router.put('/:id/status', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const status = req.body;
-
-    await deviceRepo.updateDeviceStatus(id, status);
-
-    res.json({
-      success: true,
-      message: 'Device status updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating device status:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update device status',
-      details: error.message
-    });
-  }
-});
-
-// =============================================================================
-// 데이터 포인트 API
-// =============================================================================
-
-/**
- * GET /api/devices/:id/data-points
- * 디바이스의 데이터 포인트 목록 조회
- */
-router.get('/:id/data-points', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const dataPoints = await deviceRepo.getDataPointsByDevice(id);
-
-    res.json({
-      success: true,
-      data: dataPoints,
-      count: dataPoints.length
-    });
-  } catch (error) {
-    console.error('Error fetching data points:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch data points',
-      details: error.message
-    });
-  }
-});
-
-/**
- * POST /api/devices/:id/data-points
- * 데이터 포인트 생성
- */
-router.post('/:id/data-points', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const dataPointData = { ...req.body, device_id: parseInt(id) };
-
-    // 필수 필드 검증
-    if (!dataPointData.name || dataPointData.address === undefined) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: name, address'
-      });
-    }
-
-    const dataPointId = await deviceRepo.createDataPoint(dataPointData);
-
-    res.status(201).json({
-      success: true,
-      data: { id: dataPointId },
-      message: 'Data point created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating data point:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create data point',
-      details: error.message
-    });
-  }
-});
-
-/**
- * PUT /api/devices/:deviceId/data-points/:pointId
- * 데이터 포인트 업데이트
- */
-router.put('/:deviceId/data-points/:pointId', async (req, res) => {
-  try {
-    const { pointId } = req.params;
-    const dataPointData = req.body;
-
-    const updated = await deviceRepo.updateDataPoint(pointId, dataPointData);
-
-    if (updated) {
-      res.json({
-        success: true,
-        message: 'Data point updated successfully'
-      });
-    } else {
-      res.status(404).json({
-        success: false,
-        error: 'Data point not found'
-      });
-    }
-  } catch (error) {
-    console.error('Error updating data point:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update data point',
-      details: error.message
-    });
-  }
-});
-
-/**
- * DELETE /api/devices/:deviceId/data-points/:pointId
- * 데이터 포인트 삭제
- */
-router.delete('/:deviceId/data-points/:pointId', async (req, res) => {
-  try {
-    const { pointId } = req.params;
-
-    const deleted = await deviceRepo.deleteDataPoint(pointId);
-
-    if (deleted) {
-      res.json({
-        success: true,
-        message: 'Data point deleted successfully'
-      });
-    } else {
-      res.status(404).json({
-        success: false,
-        error: 'Data point not found'
-      });
-    }
-  } catch (error) {
-    console.error('Error deleting data point:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to delete data point',
-      details: error.message
-    });
-  }
-});
-
-// =============================================================================
-// 현재값 API
-// =============================================================================
-
-/**
- * GET /api/devices/:id/current-values
- * 디바이스의 모든 현재값 조회
- */
-router.get('/:id/current-values', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const currentValues = await deviceRepo.getCurrentValuesByDevice(id);
-
-    res.json({
-      success: true,
-      data: currentValues,
-      count: currentValues.length
-    });
-  } catch (error) {
-    console.error('Error fetching current values:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch current values',
-      details: error.message
-    });
-  }
-});
-
-/**
- * PUT /api/devices/:deviceId/data-points/:pointId/value
- * 특정 데이터 포인트의 현재값 업데이트
- */
-router.put('/:deviceId/data-points/:pointId/value', async (req, res) => {
-  try {
-    const { pointId } = req.params;
-    const valueData = req.body;
-
-    await deviceRepo.updateCurrentValue(pointId, valueData);
-
-    res.json({
-      success: true,
-      message: 'Current value updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating current value:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update current value',
-      details: error.message
-    });
-  }
-});
-
-// =============================================================================
-// 통계 및 모니터링 API
-// =============================================================================
-
-/**
- * GET /api/devices/stats/protocol
- * 프로토콜별 디바이스 통계
- */
-router.get('/stats/protocol', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
-    }
-
-    const stats = await deviceRepo.getDeviceStatsByProtocol(tenantId);
-
-    res.json({
-      success: true,
-      data: stats
-    });
-  } catch (error) {
-    console.error('Error fetching protocol stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch protocol stats',
-      details: error.message
-    });
-  }
-});
-
-/**
- * GET /api/devices/stats/site
- * 사이트별 디바이스 통계
- */
-router.get('/stats/site', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
-    }
-
-    const stats = await deviceRepo.getDeviceStatsBySite(tenantId);
-
-    res.json({
-      success: true,
-      data: stats
-    });
-  } catch (error) {
-    console.error('Error fetching site stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch site stats',
-      details: error.message
-    });
-  }
-});
-
-/**
- * GET /api/devices/stats/summary
- * 전체 시스템 상태 요약
- */
-router.get('/stats/summary', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
-    }
-
-    const summary = await deviceRepo.getSystemStatusSummary(tenantId);
-
-    res.json({
-      success: true,
-      data: summary
-    });
-  } catch (error) {
-    console.error('Error fetching system summary:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch system summary',
-      details: error.message
-    });
-  }
-});
-
-/**
- * GET /api/devices/stats/recent-active
- * 최근 활동한 디바이스 목록
- */
-router.get('/stats/recent-active', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    const limit = parseInt(req.query.limit) || 10;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
-    }
-
-    const devices = await deviceRepo.getRecentActiveDevices(tenantId, limit);
-
-    res.json({
-      success: true,
-      data: devices,
-      count: devices.length
-    });
-  } catch (error) {
-    console.error('Error fetching recent active devices:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch recent active devices',
-      details: error.message
-    });
-  }
-});
-
-/**
- * GET /api/devices/stats/errors
- * 오류가 있는 디바이스 목록
- */
-router.get('/stats/errors', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
-    }
-
-    const devices = await deviceRepo.getDevicesWithErrors(tenantId);
-
-    res.json({
-      success: true,
-      data: devices,
-      count: devices.length
-    });
-  } catch (error) {
-    console.error('Error fetching devices with errors:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch devices with errors',
-      details: error.message
-    });
-  }
-});
-
-/**
- * GET /api/devices/stats/response-time
- * 응답 시간 통계
- */
-router.get('/stats/response-time', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
-    }
-
-    const stats = await deviceRepo.getResponseTimeStats(tenantId);
-
-    res.json({
-      success: true,
-      data: stats
-    });
-  } catch (error) {
-    console.error('Error fetching response time stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch response time stats',
-      details: error.message
-    });
-  }
-});
-
-// =============================================================================
-// 고급 검색 API
-// =============================================================================
-
-/**
- * GET /api/devices/search/data-points
- * 데이터 포인트 검색 (크로스 디바이스)
- */
-router.get('/search/data-points', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    const searchTerm = req.query.q;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
-    }
-
-    if (!searchTerm) {
-      return res.status(400).json({
-        success: false,
-        error: 'Search term (q) is required'
-      });
-    }
-
-    const dataPoints = await deviceRepo.searchDataPoints(tenantId, searchTerm);
-
-    res.json({
-      success: true,
-      data: dataPoints,
-      count: dataPoints.length,
-      search_term: searchTerm
-    });
-  } catch (error) {
-    console.error('Error searching data points:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to search data points',
-      details: error.message
-    });
-  }
-});
-
-// =============================================================================
-// 디바이스 제어 API
-// =============================================================================
+// ============================================================================
+// 📊 디바이스 상태 및 제어 API
+// ============================================================================
 
 /**
  * POST /api/devices/:id/enable
  * 디바이스 활성화
  */
 router.post('/:id/enable', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
 
-    const device = await deviceRepo.findDeviceById(id);
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device not found'
-      });
+        console.log(`🟢 디바이스 ID ${id} 활성화 요청...`);
+
+        const updatedDevice = await getDeviceRepo().update(
+            parseInt(id),
+            { 
+                is_enabled: true, 
+                status: 'enabled',
+                updated_at: new Date().toISOString()
+            },
+            tenantId
+        );
+
+        if (!updatedDevice) {
+            return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
+        }
+
+        console.log(`✅ 디바이스 ID ${id} 활성화 완료`);
+        res.json(createResponse(true, updatedDevice, 'Device enabled successfully'));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 활성화 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_ENABLE_ERROR'));
     }
-
-    await deviceRepo.updateDevice(id, { ...device, is_enabled: true });
-
-    res.json({
-      success: true,
-      message: 'Device enabled successfully'
-    });
-  } catch (error) {
-    console.error('Error enabling device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to enable device',
-      details: error.message
-    });
-  }
 });
 
 /**
@@ -738,70 +377,87 @@ router.post('/:id/enable', async (req, res) => {
  * 디바이스 비활성화
  */
 router.post('/:id/disable', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
 
-    const device = await deviceRepo.findDeviceById(id);
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device not found'
-      });
+        console.log(`🔴 디바이스 ID ${id} 비활성화 요청...`);
+
+        const updatedDevice = await getDeviceRepo().update(
+            parseInt(id),
+            { 
+                is_enabled: false, 
+                status: 'disabled',
+                connection_status: 'disconnected',
+                updated_at: new Date().toISOString()
+            },
+            tenantId
+        );
+
+        if (!updatedDevice) {
+            return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
+        }
+
+        console.log(`✅ 디바이스 ID ${id} 비활성화 완료`);
+        res.json(createResponse(true, updatedDevice, 'Device disabled successfully'));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 비활성화 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_DISABLE_ERROR'));
     }
-
-    await deviceRepo.updateDevice(id, { ...device, is_enabled: false });
-
-    res.json({
-      success: true,
-      message: 'Device disabled successfully'
-    });
-  } catch (error) {
-    console.error('Error disabling device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to disable device',
-      details: error.message
-    });
-  }
 });
 
 /**
  * POST /api/devices/:id/restart
- * 디바이스 재시작 요청 (시뮬레이션)
+ * 디바이스 재시작
  */
 router.post('/:id/restart', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
 
-    const device = await deviceRepo.findDeviceById(id);
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device not found'
-      });
+        console.log(`🔄 디바이스 ID ${id} 재시작 요청...`);
+
+        // 실제로는 Collector에 재시작 명령 전송
+        // 여기서는 상태만 업데이트
+        const updatedDevice = await getDeviceRepo().update(
+            parseInt(id),
+            { 
+                status: 'restarting',
+                last_restart: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            },
+            tenantId
+        );
+
+        if (!updatedDevice) {
+            return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
+        }
+
+        // 3초 후 running 상태로 변경 (시뮬레이션)
+        setTimeout(async () => {
+            try {
+                await getDeviceRepo().update(
+                    parseInt(id),
+                    { 
+                        status: 'running',
+                        connection_status: 'connected',
+                        updated_at: new Date().toISOString()
+                    },
+                    tenantId
+                );
+                console.log(`✅ 디바이스 ID ${id} 재시작 완료`);
+            } catch (err) {
+                console.error(`❌ 디바이스 ID ${id} 재시작 후 상태 업데이트 실패:`, err.message);
+            }
+        }, 3000);
+
+        res.json(createResponse(true, updatedDevice, 'Device restart initiated'));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 재시작 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_RESTART_ERROR'));
     }
-
-    // 상태를 재시작 중으로 업데이트
-    await deviceRepo.updateDeviceStatus(id, {
-      status: 'restarting',
-      last_seen: new Date(),
-      last_error: null
-    });
-
-    // 실제 구현에서는 여기서 디바이스 재시작 명령을 전송
-
-    res.json({
-      success: true,
-      message: 'Device restart requested successfully'
-    });
-  } catch (error) {
-    console.error('Error restarting device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to restart device',
-      details: error.message
-    });
-  }
 });
 
 /**
@@ -809,280 +465,219 @@ router.post('/:id/restart', async (req, res) => {
  * 디바이스 연결 테스트
  */
 router.post('/:id/test-connection', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
 
-    const device = await deviceRepo.findDeviceById(id);
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        error: 'Device not found'
-      });
-    }
+        console.log(`🔗 디바이스 ID ${id} 연결 테스트 요청...`);
 
-    // 연결 테스트 시뮬레이션
-    const startTime = Date.now();
-    const success = Math.random() > 0.1; // 90% 성공률
-    const responseTime = startTime + Math.floor(Math.random() * 1000) + 50;
-
-    if (success) {
-      await deviceRepo.updateDeviceStatus(id, {
-        status: 'online',
-        last_seen: new Date(),
-        response_time: responseTime - startTime,
-        last_error: null
-      });
-
-      res.json({
-        success: true,
-        data: {
-          connection_status: 'online',
-          response_time: responseTime - startTime,
-          tested_at: new Date()
-        },
-        message: 'Connection test successful'
-      });
-    } else {
-      const error = 'Connection timeout';
-      await deviceRepo.updateDeviceStatus(id, {
-        status: 'offline',
-        last_error: error,
-        response_time: null
-      });
-
-      res.json({
-        success: false,
-        data: {
-          connection_status: 'offline',
-          error: error,
-          tested_at: new Date()
-        },
-        message: 'Connection test failed'
-      });
-    }
-  } catch (error) {
-    console.error('Error testing device connection:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to test device connection',
-      details: error.message
-    });
-  }
-});
-
-// =============================================================================
-// 배치 작업 API
-// =============================================================================
-
-/**
- * POST /api/devices/batch/enable
- * 디바이스 일괄 활성화
- */
-router.post('/batch/enable', async (req, res) => {
-  try {
-    const { device_ids } = req.body;
-
-    if (!device_ids || !Array.isArray(device_ids) || device_ids.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'device_ids array is required'
-      });
-    }
-
-    const results = [];
-    for (const deviceId of device_ids) {
-      try {
-        const device = await deviceRepo.findDeviceById(deviceId);
-        if (device) {
-          await deviceRepo.updateDevice(deviceId, { ...device, is_enabled: true });
-          results.push({ device_id: deviceId, success: true });
-        } else {
-          results.push({ device_id: deviceId, success: false, error: 'Device not found' });
+        const device = await getDeviceRepo().findById(parseInt(id), tenantId);
+        if (!device) {
+            return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
         }
-      } catch (error) {
-        results.push({ device_id: deviceId, success: false, error: error.message });
-      }
+
+        // 실제로는 Collector에 연결 테스트 요청
+        // 여기서는 시뮬레이션
+        const testStartTime = Date.now();
+        
+        // 연결 테스트 시뮬레이션 (90% 성공률)
+        const isSuccessful = Math.random() > 0.1;
+        const responseTime = Math.floor(Math.random() * 200) + 50; // 50-250ms
+        
+        const testResult = {
+            device_id: device.id,
+            device_name: device.name,
+            endpoint: device.endpoint,
+            protocol_type: device.protocol_type,
+            test_successful: isSuccessful,
+            response_time_ms: responseTime,
+            test_timestamp: new Date().toISOString(),
+            error_message: isSuccessful ? null : 'Connection timeout or unreachable'
+        };
+
+        // 테스트 결과에 따라 디바이스 상태 업데이트
+        const newConnectionStatus = isSuccessful ? 'connected' : 'disconnected';
+        await getDeviceRepo().update(
+            device.id,
+            {
+                connection_status: newConnectionStatus,
+                last_seen: isSuccessful ? new Date().toISOString() : device.last_seen,
+                updated_at: new Date().toISOString()
+            },
+            tenantId
+        );
+
+        console.log(`✅ 디바이스 ID ${id} 연결 테스트 완료: ${isSuccessful ? '성공' : '실패'}`);
+        res.json(createResponse(true, testResult, `Connection test ${isSuccessful ? 'successful' : 'failed'}`));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 연결 테스트 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'CONNECTION_TEST_ERROR'));
     }
-
-    const successCount = results.filter(r => r.success).length;
-
-    res.json({
-      success: true,
-      data: {
-        total: device_ids.length,
-        successful: successCount,
-        failed: device_ids.length - successCount,
-        results: results
-      },
-      message: `${successCount}/${device_ids.length} devices enabled successfully`
-    });
-  } catch (error) {
-    console.error('Error in batch enable:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to enable devices',
-      details: error.message
-    });
-  }
 });
 
+// ============================================================================
+// 📊 디바이스 데이터포인트 관리 API
+// ============================================================================
+
 /**
- * POST /api/devices/batch/disable
- * 디바이스 일괄 비활성화
+ * GET /api/devices/:id/data-points
+ * 디바이스의 데이터포인트 목록 조회
  */
-router.post('/batch/disable', async (req, res) => {
-  try {
-    const { device_ids } = req.body;
+router.get('/:id/data-points', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const {
+            page = 1,
+            limit = 50,
+            data_type,
+            enabled_only = false
+        } = req.query;
 
-    if (!device_ids || !Array.isArray(device_ids) || device_ids.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'device_ids array is required'
-      });
-    }
+        console.log(`📊 디바이스 ID ${id} 데이터포인트 조회...`);
 
-    const results = [];
-    for (const deviceId of device_ids) {
-      try {
-        const device = await deviceRepo.findDeviceById(deviceId);
-        if (device) {
-          await deviceRepo.updateDevice(deviceId, { ...device, is_enabled: false });
-          results.push({ device_id: deviceId, success: true });
-        } else {
-          results.push({ device_id: deviceId, success: false, error: 'Device not found' });
+        const device = await getDeviceRepo().findById(parseInt(id), tenantId);
+        if (!device) {
+            return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
         }
-      } catch (error) {
-        results.push({ device_id: deviceId, success: false, error: error.message });
-      }
+
+        const options = {
+            deviceId: device.id,
+            tenantId,
+            dataType: data_type,
+            enabledOnly: enabled_only === 'true',
+            page: parseInt(page),
+            limit: parseInt(limit)
+        };
+
+        const result = await getDataPointRepo().findByDevice(options);
+
+        console.log(`✅ 디바이스 ID ${id} 데이터포인트 ${result.items.length}개 조회 완료`);
+        res.json(createPaginatedResponse(result.items, result.pagination, 'Device data points retrieved successfully'));
+
+    } catch (error) {
+        console.error(`❌ 디바이스 ID ${req.params.id} 데이터포인트 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_DATA_POINTS_ERROR'));
     }
+});
 
-    const successCount = results.filter(r => r.success).length;
+// ============================================================================
+// 🔍 검색 및 필터 API
+// ============================================================================
 
-    res.json({
-      success: true,
-      data: {
-        total: device_ids.length,
-        successful: successCount,
-        failed: device_ids.length - successCount,
-        results: results
-      },
-      message: `${successCount}/${device_ids.length} devices disabled successfully`
-    });
-  } catch (error) {
-    console.error('Error in batch disable:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to disable devices',
-      details: error.message
-    });
-  }
+/**
+ * GET /api/devices/protocols
+ * 지원하는 프로토콜 목록 조회
+ */
+router.get('/protocols', async (req, res) => {
+    try {
+        const { tenantId } = req;
+
+        console.log('📋 지원 프로토콜 목록 조회...');
+
+        const protocols = await getDeviceRepo().getAvailableProtocols(tenantId);
+
+        console.log(`✅ ${protocols.length}개 프로토콜 조회 완료`);
+        res.json(createResponse(true, protocols, 'Available protocols retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 프로토콜 목록 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOLS_LIST_ERROR'));
+    }
 });
 
 /**
- * POST /api/devices/batch/update-settings
- * 디바이스 설정 일괄 업데이트
+ * GET /api/devices/statistics
+ * 디바이스 통계 조회
  */
-router.post('/batch/update-settings', async (req, res) => {
-  try {
-    const { device_ids, settings } = req.body;
+router.get('/statistics', async (req, res) => {
+    try {
+        const { tenantId } = req;
 
-    if (!device_ids || !Array.isArray(device_ids) || device_ids.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'device_ids array is required'
-      });
+        console.log('📊 디바이스 통계 조회...');
+
+        const stats = await getDeviceRepo().getStatsByTenant(tenantId);
+
+        console.log('✅ 디바이스 통계 조회 완료');
+        res.json(createResponse(true, stats, 'Device statistics retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 디바이스 통계 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_STATS_ERROR'));
     }
-
-    if (!settings) {
-      return res.status(400).json({
-        success: false,
-        error: 'settings object is required'
-      });
-    }
-
-    const results = [];
-    for (const deviceId of device_ids) {
-      try {
-        await deviceRepo.updateDeviceSettings(null, deviceId, settings);
-        results.push({ device_id: deviceId, success: true });
-      } catch (error) {
-        results.push({ device_id: deviceId, success: false, error: error.message });
-      }
-    }
-
-    const successCount = results.filter(r => r.success).length;
-
-    res.json({
-      success: true,
-      data: {
-        total: device_ids.length,
-        successful: successCount,
-        failed: device_ids.length - successCount,
-        results: results
-      },
-      message: `${successCount}/${device_ids.length} device settings updated successfully`
-    });
-  } catch (error) {
-    console.error('Error in batch settings update:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update device settings',
-      details: error.message
-    });
-  }
 });
 
-// =============================================================================
-// 헬스체크 및 진단 API
-// =============================================================================
-
 /**
- * GET /api/devices/health
- * 전체 디바이스 헬스체크
+ * POST /api/devices/bulk-action
+ * 일괄 작업 (활성화/비활성화/삭제)
  */
-router.get('/health', async (req, res) => {
-  try {
-    const tenantId = req.query.tenant_id;
-    
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        error: 'tenant_id is required'
-      });
+router.post('/bulk-action', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const { action, device_ids } = req.body;
+
+        if (!Array.isArray(device_ids) || device_ids.length === 0) {
+            return res.status(400).json(
+                createResponse(false, null, 'device_ids array is required', 'VALIDATION_ERROR')
+            );
+        }
+
+        console.log(`🔄 일괄 작업 요청: ${action}, 대상: ${device_ids.length}개 디바이스`);
+
+        let successCount = 0;
+        let failedCount = 0;
+        const errors = [];
+
+        for (const deviceId of device_ids) {
+            try {
+                let updateData = { updated_at: new Date().toISOString() };
+
+                switch (action) {
+                    case 'enable':
+                        updateData = { ...updateData, is_enabled: true, status: 'enabled' };
+                        break;
+                    case 'disable':
+                        updateData = { ...updateData, is_enabled: false, status: 'disabled', connection_status: 'disconnected' };
+                        break;
+                    case 'delete':
+                        const deleted = await getDeviceRepo().deleteById(parseInt(deviceId), tenantId);
+                        if (deleted) successCount++;
+                        else failedCount++;
+                        continue;
+                    default:
+                        throw new Error(`Unknown action: ${action}`);
+                }
+
+                if (action !== 'delete') {
+                    const updated = await getDeviceRepo().update(parseInt(deviceId), updateData, tenantId);
+                    if (updated) successCount++;
+                    else failedCount++;
+                }
+
+            } catch (error) {
+                failedCount++;
+                errors.push({
+                    device_id: deviceId,
+                    error: error.message
+                });
+            }
+        }
+
+        const result = {
+            total_processed: device_ids.length,
+            successful: successCount,
+            failed: failedCount,
+            errors: errors.length > 0 ? errors : undefined
+        };
+
+        console.log(`✅ 일괄 작업 완료: 성공 ${successCount}, 실패 ${failedCount}`);
+        res.json(createResponse(true, result, `Bulk ${action} completed`));
+
+    } catch (error) {
+        console.error('❌ 일괄 작업 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'BULK_ACTION_ERROR'));
     }
-
-    const [summary, protocolStats, siteStats, recentActive, errors] = await Promise.all([
-      deviceRepo.getSystemStatusSummary(tenantId),
-      deviceRepo.getDeviceStatsByProtocol(tenantId),
-      deviceRepo.getDeviceStatsBySite(tenantId),
-      deviceRepo.getRecentActiveDevices(tenantId, 5),
-      deviceRepo.getDevicesWithErrors(tenantId)
-    ]);
-
-    const healthScore = summary.total_devices > 0 
-      ? Math.round((summary.online_devices / summary.total_devices) * 100)
-      : 0;
-
-    res.json({
-      success: true,
-      data: {
-        health_score: healthScore,
-        summary,
-        protocol_stats: protocolStats,
-        site_stats: siteStats,
-        recent_active: recentActive,
-        errors: errors.slice(0, 10), // 최근 10개 오류만
-        last_updated: new Date()
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching device health:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch device health',
-      details: error.message
-    });
-  }
 });
 
 module.exports = router;

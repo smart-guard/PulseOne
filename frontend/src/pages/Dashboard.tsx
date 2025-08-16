@@ -1,1149 +1,742 @@
-import React, { useState, useEffect } from 'react';
+// ============================================================================
+// frontend/src/pages/Dashboard.tsx
+// 📝 대시보드 메인 페이지 - 새로운 통합 API 완전 연결
+// ============================================================================
 
-interface ServiceStatus {
+import React, { useState, useEffect, useCallback } from 'react';
+import { ApiService } from '../api';
+import '../styles/base.css';
+import '../styles/dashboard.css';
+
+// 🎯 대시보드 관련 인터페이스들
+interface DashboardData {
+  services: {
+    total: number;
+    running: number;
+    stopped: number;
+    error: number;
+    details: ServiceInfo[];
+  };
+  system_metrics: SystemMetrics;
+  device_summary: DeviceSummary;
+  alarms: AlarmSummary;
+  health_status: HealthStatus;
+  last_updated: string;
+}
+
+interface ServiceInfo {
   name: string;
   displayName: string;
   status: 'running' | 'stopped' | 'error';
-  platform?: string;
   icon: string;
-  pid?: number;
   controllable: boolean;
   description: string;
-  exists?: boolean;
-  executablePath?: string;
+  uptime?: number;
+  memory_usage?: number;
+  cpu_usage?: number;
+}
+
+interface SystemMetrics {
+  dataPointsPerSecond: number;
+  avgResponseTime: number;
+  dbQueryTime: number;
+  cpuUsage: number;
+  memoryUsage: number;
+  diskUsage: number;
+  networkUsage: number;
+  activeConnections: number;
+  queueSize: number;
+}
+
+interface DeviceSummary {
+  total_devices: number;
+  connected_devices: number;
+  disconnected_devices: number;
+  error_devices: number;
+  protocols_count: number;
+  sites_count: number;
+}
+
+interface AlarmSummary {
+  total: number;
+  unacknowledged: number;
+  critical: number;
+  warnings: number;
+  recent_alarms: RecentAlarm[];
+}
+
+interface RecentAlarm {
+  id: string;
+  type: 'error' | 'warning' | 'info';
+  message: string;
+  icon: string;
+  timestamp: string;
+  device_id: number;
+  acknowledged: boolean;
+}
+
+interface HealthStatus {
+  overall: 'healthy' | 'degraded' | 'critical';
+  database: 'healthy' | 'warning' | 'critical';
+  network: 'healthy' | 'warning' | 'critical';
+  storage: 'healthy' | 'warning' | 'critical';
 }
 
 const Dashboard: React.FC = () => {
-  const [services, setServices] = useState<ServiceStatus[]>([]);
-  const [alarms, setAlarms] = useState<any[]>([]);
-  const [devices, setDevices] = useState<any[]>([]);
-  const [tenantStats, setTenantStats] = useState({
-    activeTenants: 0,
-    edgeServers: 0,
-    connectedDevices: 0,
-    uptime: 0
-  });
-  const [metrics, setMetrics] = useState({
-    dataPointsPerSecond: 0,
-    avgResponseTime: 0,
-    dbQueryTime: 0
-  });
+  // 🔧 기본 상태들
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [realtimeStats, setRealtimeStats] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // 실시간 업데이트
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(10000); // 10초
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 10000);
-    return () => clearInterval(interval);
+  // 차트 데이터 (시뮬레이션)
+  const [chartData, setChartData] = useState<{
+    dataPoints: number[];
+    timestamps: string[];
+    systemLoad: number[];
+  }>({
+    dataPoints: [],
+    timestamps: [],
+    systemLoad: []
+  });
+
+  // =============================================================================
+  // 🔄 데이터 로드 함수들 (새로운 통합 API 사용)
+  // =============================================================================
+
+  /**
+   * 대시보드 개요 데이터 로드
+   */
+  const loadDashboardOverview = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('🎯 대시보드 개요 데이터 로드 시작...');
+
+      // 새로운 대시보드 API 호출
+      const response = await fetch('/api/dashboard/overview');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        setDashboardData(data.data);
+        console.log('✅ 대시보드 개요 데이터 로드 완료');
+      } else {
+        throw new Error(data.message || '대시보드 데이터 로드 실패');
+      }
+
+    } catch (err) {
+      console.error('❌ 대시보드 데이터 로드 실패:', err);
+      setError(err instanceof Error ? err.message : '알 수 없는 오류');
+    } finally {
+      setIsLoading(false);
+      setLastUpdate(new Date());
+    }
   }, []);
 
-  const loadData = async () => {
+  /**
+   * 실시간 통계 로드
+   */
+  const loadRealtimeStats = useCallback(async () => {
     try {
-      setIsRefreshing(true);
-      
-      // 시뮬레이션 데이터 (더 많은 서비스)
-      const mockServices = [
-        {
-          name: 'backend-api',
-          displayName: 'Backend API',
-          status: 'running' as const,
-          platform: 'linux',
-          icon: 'fas fa-server',
-          pid: 1234,
-          controllable: false,
-          description: 'REST API 서버',
-          exists: true
-        },
-        {
-          name: 'data-collector',
-          displayName: 'Data Collector',
-          status: 'stopped' as const,
-          platform: 'linux',
-          icon: 'fas fa-download',
-          controllable: true,
-          description: 'C++ 데이터 수집 서비스',
-          exists: false,
-          executablePath: '/app/collector/bin/collector'
-        },
-        {
-          name: 'redis-server',
-          displayName: 'Redis Server',
-          status: 'running' as const,
-          platform: 'linux',
-          icon: 'fas fa-database',
-          pid: 5678,
-          controllable: true,
-          description: '인메모리 데이터베이스',
-          exists: true
-        },
-        {
-          name: 'postgresql',
-          displayName: 'PostgreSQL',
-          status: 'running' as const,
-          platform: 'linux',
-          icon: 'fas fa-database',
-          pid: 9012,
-          controllable: true,
-          description: '관계형 데이터베이스',
-          exists: true
-        },
-        {
-          name: 'influxdb',
-          displayName: 'InfluxDB',
-          status: 'running' as const,
-          platform: 'linux',
-          icon: 'fas fa-chart-line',
-          pid: 3456,
-          controllable: true,
-          description: '시계열 데이터베이스',
-          exists: true
-        },
-        {
-          name: 'rabbitmq',
-          displayName: 'RabbitMQ',
-          status: 'stopped' as const,
-          platform: 'linux',
-          icon: 'fas fa-exchange-alt',
-          controllable: true,
-          description: '메시지 큐 서버',
-          exists: true
-        }
-      ];
+      console.log('⚡ 실시간 통계 로드 시작...');
 
-      setServices(mockServices);
+      const response = await ApiService.realtime.getRealtimeStats();
 
-      setTenantStats({
-        activeTenants: 3,
-        edgeServers: 8,
-        connectedDevices: 247,
-        uptime: 99.7
-      });
-
-      setMetrics({
-        dataPointsPerSecond: Math.floor(Math.random() * 1000) + 2000,
-        avgResponseTime: Math.floor(Math.random() * 50) + 120,
-        dbQueryTime: Math.floor(Math.random() * 20) + 15
-      });
-
-      // 더 많은 알람 데이터 추가 (테스트용)
-      setAlarms([
-        {
-          id: 1,
-          type: 'error',
-          message: 'Device-001 연결 실패',
-          timestamp: new Date(Date.now() - 5 * 60 * 1000)
-        },
-        {
-          id: 2,
-          type: 'warning',
-          message: '온도 센서 값이 임계치 접근',
-          timestamp: new Date(Date.now() - 15 * 60 * 1000)
-        },
-        {
-          id: 3,
-          type: 'error',
-          message: 'BACnet-HVAC 통신 오류',
-          timestamp: new Date(Date.now() - 25 * 60 * 1000)
-        },
-        {
-          id: 4,
-          type: 'warning',
-          message: 'PLC-002 응답 지연',
-          timestamp: new Date(Date.now() - 35 * 60 * 1000)
-        },
-        {
-          id: 5,
-          type: 'info',
-          message: '에너지 미터 데이터 갱신',
-          timestamp: new Date(Date.now() - 45 * 60 * 1000)
-        },
-        {
-          id: 6,
-          type: 'warning',
-          message: '진동 모니터 값 증가',
-          timestamp: new Date(Date.now() - 55 * 60 * 1000)
-        }
-      ]);
-
-      // 더 많은 디바이스 데이터 추가 (테스트용)
-      setDevices([
-        {
-          id: 1,
-          name: 'PLC-001',
-          type: 'Modbus TCP',
-          status: 'connected',
-          dataPoints: 45
-        },
-        {
-          id: 2,
-          name: 'MQTT-Sensor-01',
-          type: 'MQTT',
-          status: 'connected',
-          dataPoints: 12
-        },
-        {
-          id: 3,
-          name: 'BACnet-HVAC',
-          type: 'BACnet',
-          status: 'disconnected',
-          dataPoints: 0
-        },
-        {
-          id: 4,
-          name: 'PLC-002',
-          type: 'Modbus RTU',
-          status: 'connected',
-          dataPoints: 32
-        },
-        {
-          id: 5,
-          name: 'Energy-Meter-01',
-          type: 'Modbus TCP',
-          status: 'connected',
-          dataPoints: 24
-        },
-        {
-          id: 6,
-          name: 'Temperature-Sensor-Array',
-          type: 'MQTT',
-          status: 'connected',
-          dataPoints: 8
-        },
-        {
-          id: 7,
-          name: 'HVAC-Controller-02',
-          type: 'BACnet',
-          status: 'connected',
-          dataPoints: 16
-        },
-        {
-          id: 8,
-          name: 'Vibration-Monitor',
-          type: 'Ethernet/IP',
-          status: 'disconnected',
-          dataPoints: 0
-        }
-      ]);
-
-      setLastUpdate(new Date());
-      
-    } catch (error) {
-      console.error('Data loading failed:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const handleRefresh = () => {
-    loadData();
-  };
-
-  const handleServiceControl = async (service: ServiceStatus, action: 'start' | 'stop' | 'restart') => {
-    if (!service.controllable) {
-      alert(`${service.displayName}는 필수 서비스로 제어할 수 없습니다.`);
-      return;
-    }
-
-    try {
-      setIsRefreshing(true);
-      
-      // 🚀 실제 백엔드 API 호출
-      let result;
-      switch (action) {
-        case 'start':
-          result = await fetch('/api/services/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service: service.name })
-          }).then(res => res.json());
-          break;
-        case 'stop':
-          result = await fetch('/api/services/stop', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service: service.name })
-          }).then(res => res.json());
-          break;
-        case 'restart':
-          result = await fetch('/api/services/restart', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service: service.name })
-          }).then(res => res.json());
-          break;
-      }
-
-      if (result.success) {
-        alert(`${service.displayName} ${action} 성공!`);
-        setTimeout(loadData, 2000); // 2초 후 데이터 새로고침
+      if (response.success && response.data) {
+        setRealtimeStats(response.data);
+        console.log('✅ 실시간 통계 로드 완료');
       } else {
-        alert(`${action} 실패: ${result.error || result.message}`);
+        console.warn('⚠️ 실시간 통계 로드 실패:', response.error);
       }
-    } catch (error) {
-      console.error('Service control error:', error);
-      alert(`서비스 제어 중 오류가 발생했습니다: ${error}`);
-    } finally {
-      setIsRefreshing(false);
+    } catch (err) {
+      console.warn('⚠️ 실시간 통계 로드 실패:', err);
+    }
+  }, []);
+
+  /**
+   * 시스템 전체 개요 로드 (통합 API 사용)
+   */
+  const loadSystemOverview = useCallback(async () => {
+    try {
+      console.log('🔄 시스템 전체 개요 로드 시작...');
+
+      const overview = await ApiService.getSystemOverview();
+      
+      // 차트 데이터 업데이트
+      const now = new Date();
+      const timeLabel = now.toLocaleTimeString();
+      
+      setChartData(prev => ({
+        dataPoints: [...prev.dataPoints.slice(-19), overview.realtime?.performance?.data_points_monitored || 0],
+        timestamps: [...prev.timestamps.slice(-19), timeLabel],
+        systemLoad: [...prev.systemLoad.slice(-19), overview.system?.overall === 'healthy' ? 85 : 60]
+      }));
+
+      console.log('✅ 시스템 전체 개요 로드 완료');
+    } catch (err) {
+      console.warn('⚠️ 시스템 전체 개요 로드 실패:', err);
+    }
+  }, []);
+
+  // =============================================================================
+  // 🔄 서비스 제어 함수들
+  // =============================================================================
+
+  /**
+   * 서비스 제어 (시작/중지/재시작)
+   */
+  const handleServiceControl = async (serviceName: string, action: 'start' | 'stop' | 'restart') => {
+    try {
+      console.log(`🔧 서비스 ${serviceName} ${action} 요청...`);
+
+      const response = await fetch(`/api/dashboard/service/${serviceName}/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log(`✅ 서비스 ${serviceName} ${action} 완료`);
+        alert(`서비스 ${action} 완료: ${data.data.message}`);
+        
+        // 서비스 상태 새로고침
+        setTimeout(() => {
+          loadDashboardOverview();
+        }, 2000); // 2초 후 새로고침
+
+      } else {
+        throw new Error(data.message || `서비스 ${action} 실패`);
+      }
+    } catch (err) {
+      console.error(`❌ 서비스 ${serviceName} ${action} 실패:`, err);
+      alert(`서비스 ${action} 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     }
   };
 
-  const formatTimeAgo = (date: Date) => {
-    const diff = Math.floor((Date.now() - date.getTime()) / 60000);
-    return diff < 1 ? '방금 전' : diff < 60 ? `${diff}분 전` : `${Math.floor(diff/60)}시간 전`;
+  // =============================================================================
+  // 🔄 라이프사이클 hooks
+  // =============================================================================
+
+  useEffect(() => {
+    loadDashboardOverview();
+    loadRealtimeStats();
+    loadSystemOverview();
+  }, [loadDashboardOverview, loadRealtimeStats, loadSystemOverview]);
+
+  // 자동 새로고침
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      loadDashboardOverview();
+      loadRealtimeStats();
+      loadSystemOverview();
+    }, refreshInterval);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, loadDashboardOverview, loadRealtimeStats, loadSystemOverview]);
+
+  // =============================================================================
+  // 🎨 렌더링 헬퍼 함수들
+  // =============================================================================
+
+  const getServiceStatusIcon = (status: string) => {
+    switch (status) {
+      case 'running': return 'fas fa-check-circle text-success';
+      case 'stopped': return 'fas fa-stop-circle text-warning';
+      case 'error': return 'fas fa-times-circle text-danger';
+      default: return 'fas fa-question-circle text-muted';
+    }
   };
 
-  const renderServiceCard = (service: ServiceStatus) => {
-    const isRunning = service.status === 'running';
-    const isError = service.status === 'error';
+  const getHealthStatusColor = (status: string) => {
+    switch (status) {
+      case 'healthy': return 'success';
+      case 'degraded': 
+      case 'warning': return 'warning';
+      case 'critical': return 'danger';
+      default: return 'muted';
+    }
+  };
 
+  const getAlarmTypeIcon = (type: string) => {
+    switch (type) {
+      case 'error': return 'fas fa-exclamation-triangle text-danger';
+      case 'warning': return 'fas fa-exclamation-circle text-warning';
+      case 'info': return 'fas fa-info-circle text-info';
+      default: return 'fas fa-bell text-muted';
+    }
+  };
+
+  const formatUptime = (seconds?: number) => {
+    if (!seconds) return '알 수 없음';
+    
+    const days = Math.floor(seconds / (24 * 3600));
+    const hours = Math.floor((seconds % (24 * 3600)) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    if (days > 0) {
+      return `${days}일 ${hours}시간`;
+    } else if (hours > 0) {
+      return `${hours}시간 ${minutes}분`;
+    } else {
+      return `${minutes}분`;
+    }
+  };
+
+  const formatMemoryUsage = (mb?: number) => {
+    if (!mb) return '알 수 없음';
+    
+    if (mb >= 1024) {
+      return `${(mb / 1024).toFixed(1)}GB`;
+    } else {
+      return `${mb}MB`;
+    }
+  };
+
+  // =============================================================================
+  // 🎨 UI 렌더링
+  // =============================================================================
+
+  if (isLoading && !dashboardData) {
     return (
-      <div key={service.name} className="service-card">
-        <div className={`service-icon ${
-          isRunning ? 'text-success-600' : 
-          isError ? 'text-error-600' : 'text-neutral-400'
-        }`}>
-          <i className={service.icon}></i>
+      <div className="dashboard-loading">
+        <div className="loading-spinner">
+          <i className="fas fa-spinner fa-spin"></i>
+          <span>대시보드를 불러오는 중...</span>
         </div>
-        
-        <div className="service-name">{service.displayName}</div>
-        
-        <div className={`status ${
-          isRunning ? 'status-running' : 
-          isError ? 'status-error' : 'status-stopped'
-        }`}>
-          {isRunning ? '정상' : isError ? '오류' : '정지'}
-        </div>
-
-        {service.pid && (
-          <div className="service-pid">PID: {service.pid}</div>
-        )}
-
-        <div className="service-controls">
-          {service.controllable ? (
-            <>
-              {isRunning ? (
-                <div className="control-buttons">
-                  <button 
-                    className="btn btn-sm btn-warning"
-                    onClick={() => handleServiceControl(service, 'restart')}
-                    disabled={isRefreshing}
-                  >
-                    <i className="fas fa-redo"></i>
-                    재시작
-                  </button>
-                  <button 
-                    className="btn btn-sm btn-error"
-                    onClick={() => handleServiceControl(service, 'stop')}
-                    disabled={isRefreshing}
-                  >
-                    <i className="fas fa-stop"></i>
-                    정지
-                  </button>
-                </div>
-              ) : (
-                <button 
-                  className="btn btn-sm btn-success"
-                  onClick={() => handleServiceControl(service, 'start')}
-                  disabled={isRefreshing}
-                >
-                  <i className="fas fa-play"></i>
-                  시작
-                </button>
-              )}
-            </>
-          ) : (
-            <span className="text-xs text-neutral-500">필수 서비스</span>
-          )}
-        </div>
-        
-        <div className="service-description">
-          {service.description}
-        </div>
-
-        {service.exists === false && (
-          <div className="warning-box">
-            <i className="fas fa-exclamation-triangle"></i>
-            실행 파일이 없습니다
-            <div className="file-path">{service.executablePath}</div>
-          </div>
-        )}
       </div>
     );
-  };
+  }
 
-  return (
-    <div className="dashboard-container">
-      {/* 대시보드 헤더 */}
-      <div className="dashboard-header">
-        <h1 className="dashboard-title">🚀 PulseOne 시스템 대시보드</h1>
-        <div className="dashboard-actions">
-          <select className="form-select">
-            <option>전체 시스템</option>
-            <option>Factory A</option>
-            <option>Factory B</option>
-          </select>
-        </div>
-      </div>
-
-      {/* 상태 표시줄 */}
-      <div className="dashboard-status-bar">
-        <div className="connection-status">
-          <div className="live-indicator"></div>
-          실시간 연결됨
-        </div>
-        <div className="dashboard-controls">
-          <span className="text-sm text-neutral-600">
-            마지막 업데이트: {formatTimeAgo(lastUpdate)}
-          </span>
-          <button className="refresh-btn" onClick={handleRefresh} disabled={isRefreshing}>
-            <i className={`fas ${isRefreshing ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`}></i>
-            {isRefreshing ? '업데이트 중...' : '새로고침'}
+  if (error && !dashboardData) {
+    return (
+      <div className="dashboard-error">
+        <div className="error-message">
+          <i className="fas fa-exclamation-triangle"></i>
+          <h3>대시보드 로드 실패</h3>
+          <p>{error}</p>
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              setError(null);
+              loadDashboardOverview();
+            }}
+          >
+            <i className="fas fa-redo"></i>
+            다시 시도
           </button>
         </div>
       </div>
+    );
+  }
 
-      {/* 🎯 개선된 레이아웃 - 2x2 그리드 구조 */}
-      <div className="dashboard-improved-grid">
-        {/* 상단 행 */}
-        <div className="top-row">
-          {/* 왼쪽: 서비스 상태 */}
-          <div className="dashboard-widget">
-            <div className="widget-header">
-              <div className="widget-title">
-                <i className="fas fa-server text-primary-600"></i>
-                서비스 상태
-              </div>
-              <div className="service-summary">
-                <span className="text-sm text-success-600">
-                  {services.filter(s => s.status === 'running').length}개 실행 중
-                </span>
-                {services.some(s => s.status === 'error') && (
-                  <span className="text-sm text-error-600 ml-2">
-                    {services.filter(s => s.status === 'error').length}개 오류
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="widget-content">
-              <div className="service-grid-compact">
-                {services.map(service => renderServiceCard(service))}
-              </div>
-            </div>
-          </div>
-
-          {/* 오른쪽: 시스템 현황 + 데이터 처리 성능 */}
-          <div className="top-right-column">
-            {/* 시스템 현황 */}
-            <div className="dashboard-widget">
-              <div className="widget-header">
-                <div className="widget-title">
-                  <i className="fas fa-chart-pie text-primary-600"></i>
-                  시스템 현황
-                </div>
-              </div>
-              <div className="widget-content">
-                <div className="stats-grid">
-                  <div className="stat-card">
-                    <div className="stat-number">{tenantStats.activeTenants}</div>
-                    <div className="stat-label">활성 테넌트</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-number">{tenantStats.edgeServers}</div>
-                    <div className="stat-label">Edge 서버</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-number">{tenantStats.connectedDevices}</div>
-                    <div className="stat-label">연결된 디바이스</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-number">{tenantStats.uptime}%</div>
-                    <div className="stat-label">가동률</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 데이터 처리 성능 */}
-            <div className="dashboard-widget">
-              <div className="widget-header">
-                <div className="widget-title">
-                  <i className="fas fa-chart-line text-primary-600"></i>
-                  데이터 처리 성능
-                </div>
-              </div>
-              <div className="widget-content">
-                <div className="metric-item">
-                  <div className="metric-label">
-                    <i className="fas fa-tachometer-alt text-primary-500"></i>
-                    초당 데이터 포인트
-                  </div>
-                  <div className="metric-value">{metrics.dataPointsPerSecond.toLocaleString()}</div>
-                </div>
-                <div className="metric-item">
-                  <div className="metric-label">
-                    <i className="fas fa-clock text-success-500"></i>
-                    평균 응답 시간
-                  </div>
-                  <div className="metric-value">{metrics.avgResponseTime}ms</div>
-                </div>
-                <div className="metric-item">
-                  <div className="metric-label">
-                    <i className="fas fa-database text-warning-500"></i>
-                    DB 쿼리 시간
-                  </div>
-                  <div className="metric-value">{metrics.dbQueryTime}ms</div>
-                </div>
-              </div>
-            </div>
+  return (
+    <div className="dashboard-container">
+      {/* 페이지 헤더 */}
+      <div className="page-header">
+        <div className="header-left">
+          <h1 className="page-title">시스템 대시보드</h1>
+          <div className="page-subtitle">
+            PulseOne 시스템의 전체 현황을 실시간으로 모니터링합니다
           </div>
         </div>
-
-        {/* 하단 행 */}
-        <div className="bottom-row">
-          {/* 왼쪽: 연결된 디바이스 현황 */}
-          <div className="dashboard-widget">
-            <div className="widget-header">
-              <div className="widget-title">
-                <i className="fas fa-network-wired text-primary-600"></i>
-                연결된 디바이스 현황
-              </div>
-              <button className="btn btn-sm btn-outline">
-                <i className="fas fa-plus"></i> 디바이스 추가
-              </button>
-            </div>
-            <div className="widget-content">
-              <div className="device-list">
-                {devices.map((device) => (
-                  <div key={device.id} className="device-compact-item">
-                    <div className={`status-dot ${device.status === 'connected' ? 'status-connected' : 'status-disconnected'}`}></div>
-                    <div className="device-info-compact">
-                      <div className="device-name">{device.name}</div>
-                      <div className="device-type">{device.type}</div>
-                    </div>
-                    <div className="device-points">
-                      {device.status === 'connected' ? `${device.dataPoints} 포인트` : '연결 실패'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 오른쪽: 최근 알람 */}
-          <div className="dashboard-widget">
-            <div className="widget-header">
-              <div className="widget-title">
-                <i className="fas fa-bell text-primary-600"></i>
-                최근 알람
-              </div>
-              <button className="btn btn-sm btn-outline">
-                <i className="fas fa-cog"></i> 설정
-              </button>
-            </div>
-            <div className="widget-content">
-              <div className="alarm-list">
-                {alarms.map((alarm) => (
-                  <div key={alarm.id} className={`alert-item ${alarm.type}`}>
-                    <i className={`fas fa-${alarm.type === 'error' ? 'exclamation-circle' : 
-                      alarm.type === 'warning' ? 'exclamation-triangle' : 'info-circle'
-                    } text-${alarm.type === 'error' ? 'error' : 
-                      alarm.type === 'warning' ? 'warning' : 'primary'}-500`}></i>
-                    <div className="flex-1">
-                      <div className="alert-message">{alarm.message}</div>
-                      <div className="alert-time">{formatTimeAgo(alarm.timestamp)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <div className="header-right">
+          <div className="header-actions">
+            <button 
+              className="btn btn-secondary"
+              onClick={() => setAutoRefresh(!autoRefresh)}
+            >
+              <i className={`fas fa-${autoRefresh ? 'pause' : 'play'}`}></i>
+              {autoRefresh ? '자동새로고침 중지' : '자동새로고침 시작'}
+            </button>
+            <button 
+              className="btn btn-primary"
+              onClick={() => {
+                loadDashboardOverview();
+                loadRealtimeStats();
+                loadSystemOverview();
+              }}
+            >
+              <i className="fas fa-sync-alt"></i>
+              새로고침
+            </button>
           </div>
         </div>
       </div>
 
-      <style jsx>{`
-        .dashboard-container {
-          width: 100%;
-          max-width: none;
-          padding: 1.5rem;
-          background: #f8fafc;
-          min-height: 100vh;
-        }
-
-        .dashboard-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1.5rem;
-          padding-bottom: 1rem;
-          border-bottom: 1px solid #e2e8f0;
-        }
-
-        .dashboard-title {
-          font-size: 1.875rem;
-          font-weight: 700;
-          color: #1e293b;
-          margin: 0;
-        }
-
-        .dashboard-actions {
-          display: flex;
-          gap: 0.75rem;
-        }
-
-        .form-select {
-          padding: 0.5rem 1rem;
-          border: 1px solid #e2e8f0;
-          border-radius: 0.5rem;
-          background: white;
-          font-size: 0.875rem;
-        }
-
-        .dashboard-status-bar {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1.5rem;
-          padding: 1rem;
-          background: white;
-          border-radius: 0.5rem;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          border: 1px solid #e2e8f0;
-        }
-
-        .connection-status {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          color: #059669;
-          font-weight: 500;
-        }
-
-        .live-indicator {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #10b981;
-          animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-
-        .dashboard-controls {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .refresh-btn {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          background: #0ea5e9;
-          color: white;
-          border: none;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .refresh-btn:hover {
-          background: #0284c7;
-        }
-
-        .refresh-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        /* 🎯 완벽한 2x2 그리드 레이아웃 - 스크롤 가능 */
-        .dashboard-improved-grid {
-          display: grid;
-          grid-template-rows: auto auto;
-          gap: 1.5rem;
-          min-height: 600px;
-        }
-
-        .top-row,
-        .bottom-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-          min-height: 350px;
-        }
-
-        .top-right-column {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-          height: 100%;
-        }
-
-        .top-right-column .dashboard-widget:first-child {
-          flex: 1;
-        }
-
-        .top-right-column .dashboard-widget:last-child {
-          flex: 1;
-        }
-
-        .dashboard-widget {
-          background: white;
-          border-radius: 0.5rem;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          border: 1px solid #e2e8f0;
-          overflow: hidden;
-          transition: all 0.2s ease-in-out;
-          display: flex;
-          flex-direction: column;
-          min-height: 300px;
-        }
-
-        .dashboard-widget:hover {
-          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-
-        .widget-header {
-          padding: 1rem;
-          background: #f8fafc;
-          border-bottom: 1px solid #e2e8f0;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .widget-title {
-          font-size: 1.125rem;
-          font-weight: 600;
-          color: #374151;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .widget-content {
-          padding: 1rem;
-          flex: 1;
-          overflow: hidden;
-        }
-
-        /* 하단 위젯들 가로 배치 */
-        .bottom-widgets-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-        .service-grid-compact {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 0.75rem;
-          max-height: 500px;
-          overflow-y: auto;
-        }
-
-        .service-card {
-          padding: 0.875rem;
-          border: 1px solid #e2e8f0;
-          border-radius: 0.5rem;
-          text-align: center;
-          transition: all 0.2s;
-          background: #fafafa;
-        }
-
-        .service-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-
-        .service-icon {
-          font-size: 1.5rem;
-          margin-bottom: 0.5rem;
-        }
-
-        .service-name {
-          font-size: 0.8rem;
-          font-weight: 500;
-          color: #374151;
-          margin-bottom: 0.25rem;
-        }
-
-        .service-pid {
-          font-size: 0.7rem;
-          color: #6b7280;
-          margin-bottom: 0.5rem;
-          font-family: monospace;
-        }
-
-        .status {
-          display: inline-block;
-          padding: 0.2rem 0.4rem;
-          border-radius: 9999px;
-          font-size: 0.7rem;
-          font-weight: 500;
-          margin-bottom: 0.5rem;
-        }
-
-        .status-running {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .status-stopped {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
-        .status-error {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-
-        .service-controls {
-          margin-bottom: 0.5rem;
-        }
-
-        .control-buttons {
-          display: flex;
-          gap: 0.25rem;
-          justify-content: center;
-        }
-
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-          padding: 0.375rem 0.5rem;
-          border: none;
-          border-radius: 0.375rem;
-          font-size: 0.7rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .btn-sm {
-          padding: 0.25rem 0.375rem;
-          font-size: 0.65rem;
-        }
-
-        .btn-success {
-          background: #10b981;
-          color: white;
-        }
-
-        .btn-success:hover {
-          background: #059669;
-        }
-
-        .btn-warning {
-          background: #f59e0b;
-          color: white;
-        }
-
-        .btn-warning:hover {
-          background: #d97706;
-        }
-
-        .btn-error {
-          background: #ef4444;
-          color: white;
-        }
-
-        .btn-error:hover {
-          background: #dc2626;
-        }
-
-        .btn-outline {
-          background: transparent;
-          color: #6b7280;
-          border: 1px solid #d1d5db;
-        }
-
-        .btn-outline:hover {
-          background: #f9fafb;
-        }
-
-        .btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .service-description {
-          margin-top: 0.25rem;
-          font-size: 0.65rem;
-          color: #6b7280;
-          text-align: center;
-          line-height: 1.2;
-        }
-
-        .warning-box {
-          margin-top: 0.5rem;
-          padding: 0.375rem;
-          background: #fffbeb;
-          border: 1px solid #fed7aa;
-          border-radius: 0.375rem;
-          color: #d97706;
-          font-size: 0.65rem;
-          text-align: center;
-        }
-
-        .file-path {
-          font-family: monospace;
-          font-size: 0.55rem;
-          color: #92400e;
-          margin-top: 0.25rem;
-        }
-
-        /* 시스템 현황 그리드 */
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 1rem;
-        }
-
-        .stat-card {
-          text-align: center;
-          padding: 0.75rem;
-          background: #f8fafc;
-          border-radius: 0.375rem;
-        }
-
-        .stat-number {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: #0ea5e9;
-        }
-
-        .stat-label {
-          font-size: 0.75rem;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        /* 메트릭 아이템 */
-        .metric-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 0.75rem 0;
-          border-bottom: 1px solid #f1f5f9;
-        }
-
-        .metric-item:last-child {
-          border-bottom: none;
-        }
-
-        .metric-label {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-size: 0.875rem;
-          color: #374151;
-        }
-
-        .metric-value {
-          font-weight: 600;
-          color: #1e293b;
-          text-align: right;
-          white-space: nowrap;
-          background: #f0f9ff;
-          padding: 0.25rem 0.75rem;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
-          border: 1px solid #e0f2fe;
-        }
-
-        /* 알람 리스트도 함께 조정 */
-        .alarm-list {
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .alert-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          padding: 0.75rem;
-          background: #f8fafc;
-          border-radius: 0.375rem;
-          margin-bottom: 0.5rem;
-          border-left: 4px solid #ef4444;
-        }
-
-        .alert-item.warning {
-          border-left-color: #f59e0b;
-        }
-
-        .alert-item.info {
-          border-left-color: #0ea5e9;
-        }
-
-        .alert-time {
-          font-size: 0.75rem;
-          color: #6b7280;
-        }
-
-        .alert-message {
-          font-size: 0.875rem;
-          color: #374151;
-        }
-
-        /* 디바이스 리스트 */
-        .device-list {
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .device-compact-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          padding: 0.75rem;
-          background: #ffffff;
-          border: 1px solid #e5e7eb;
-          border-radius: 0.5rem;
-          margin-bottom: 0.5rem;
-        }
-
-        .status-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          flex-shrink: 0;
-        }
-
-        .status-connected {
-          background: #10b981;
-        }
-
-        .status-disconnected {
-          background: #ef4444;
-        }
-
-        .device-info-compact {
-          flex: 1;
-        }
-
-        .device-name {
-          font-weight: 600;
-          color: #111827;
-          font-size: 0.875rem;
-        }
-
-        .device-type {
-          font-size: 0.75rem;
-          color: #6b7280;
-        }
-
-        .device-points {
-          font-weight: 600;
-          font-size: 0.75rem;
-          color: #059669;
-        }
-
-        .service-summary {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .text-sm {
-          font-size: 0.875rem;
-        }
-
-        .text-xs {
-          font-size: 0.75rem;
-        }
-
-        .text-success-600 {
-          color: #059669;
-        }
-
-        .text-error-600 {
-          color: #dc2626;
-        }
-
-        .text-neutral-400 {
-          color: #9ca3af;
-        }
-
-        .text-neutral-500 {
-          color: #6b7280;
-        }
-
-        .text-neutral-600 {
-          color: #4b5563;
-        }
-
-        .text-primary-600 {
-          color: #0284c7;
-        }
-
-        .text-primary-500 {
-          color: #0ea5e9;
-        }
-
-        .text-success-500 {
-          color: #10b981;
-        }
-
-        .text-warning-500 {
-          color: #f59e0b;
-        }
-
-        .text-error-500 {
-          color: #ef4444;
-        }
-
-        .ml-2 {
-          margin-left: 0.5rem;
-        }
-
-        .flex-1 {
-          flex: 1;
-        }
-
-        /* 반응형 디자인 */
-        @media (max-width: 1200px) {
-          .dashboard-improved-grid {
-            grid-template-columns: 1fr;
-            gap: 1rem;
-          }
-          
-          .bottom-widgets-row {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 768px) {
-          .service-grid-compact {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          
-          .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          
-          .bottom-widgets-row {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .service-grid-compact {
-            grid-template-columns: 1fr;
-          }
-          
-          .stats-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
+      {/* 에러 표시 */}
+      {error && (
+        <div className="error-banner">
+          <i className="fas fa-exclamation-triangle"></i>
+          {error}
+          <button onClick={() => setError(null)}>
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+
+      {/* 시스템 상태 개요 */}
+      {dashboardData && (
+        <div className="system-overview">
+          <div className="overview-card">
+            <div className="card-header">
+              <h3>시스템 상태</h3>
+              <span className={`health-badge health-${dashboardData.health_status.overall}`}>
+                <i className="fas fa-heartbeat"></i>
+                {dashboardData.health_status.overall === 'healthy' ? '정상' : 
+                 dashboardData.health_status.overall === 'degraded' ? '주의' : '심각'}
+              </span>
+            </div>
+            <div className="card-body">
+              <div className="health-details">
+                <div className="health-item">
+                  <span className="label">데이터베이스:</span>
+                  <span className={`value text-${getHealthStatusColor(dashboardData.health_status.database)}`}>
+                    {dashboardData.health_status.database === 'healthy' ? '정상' : '문제'}
+                  </span>
+                </div>
+                <div className="health-item">
+                  <span className="label">네트워크:</span>
+                  <span className={`value text-${getHealthStatusColor(dashboardData.health_status.network)}`}>
+                    {dashboardData.health_status.network === 'healthy' ? '정상' : '문제'}
+                  </span>
+                </div>
+                <div className="health-item">
+                  <span className="label">저장소:</span>
+                  <span className={`value text-${getHealthStatusColor(dashboardData.health_status.storage)}`}>
+                    {dashboardData.health_status.storage === 'healthy' ? '정상' : '문제'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 주요 메트릭 카드들 */}
+      {dashboardData && (
+        <div className="metrics-grid">
+          <div className="metric-card">
+            <div className="metric-icon">
+              <i className="fas fa-network-wired text-primary"></i>
+            </div>
+            <div className="metric-content">
+              <div className="metric-value">{dashboardData.device_summary.total_devices}</div>
+              <div className="metric-label">전체 디바이스</div>
+              <div className="metric-detail">
+                연결: {dashboardData.device_summary.connected_devices} / 
+                끊김: {dashboardData.device_summary.disconnected_devices}
+              </div>
+            </div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-icon">
+              <i className="fas fa-chart-line text-success"></i>
+            </div>
+            <div className="metric-content">
+              <div className="metric-value">{dashboardData.system_metrics.dataPointsPerSecond}</div>
+              <div className="metric-label">데이터 포인트/초</div>
+              <div className="metric-detail">
+                평균 응답시간: {dashboardData.system_metrics.avgResponseTime}ms
+              </div>
+            </div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-icon">
+              <i className="fas fa-bell text-warning"></i>
+            </div>
+            <div className="metric-content">
+              <div className="metric-value">{dashboardData.alarms.total}</div>
+              <div className="metric-label">활성 알람</div>
+              <div className="metric-detail">
+                심각: {dashboardData.alarms.critical} / 
+                미확인: {dashboardData.alarms.unacknowledged}
+              </div>
+            </div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-icon">
+              <i className="fas fa-server text-info"></i>
+            </div>
+            <div className="metric-content">
+              <div className="metric-value">{dashboardData.services.running}</div>
+              <div className="metric-label">실행 중인 서비스</div>
+              <div className="metric-detail">
+                전체: {dashboardData.services.total} / 
+                중지: {dashboardData.services.stopped}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 콘텐츠 그리드 */}
+      <div className="dashboard-content">
+        {/* 서비스 상태 */}
+        {dashboardData && (
+          <div className="dashboard-section">
+            <div className="section-header">
+              <h3>서비스 상태</h3>
+              <div className="section-actions">
+                <span className="service-summary">
+                  실행중: {dashboardData.services.running} / 
+                  전체: {dashboardData.services.total}
+                </span>
+              </div>
+            </div>
+            <div className="services-list">
+              {dashboardData.services.details.map((service) => (
+                <div key={service.name} className="service-item">
+                  <div className="service-info">
+                    <div className="service-header">
+                      <i className={service.icon}></i>
+                      <span className="service-name">{service.displayName}</span>
+                      <span className={`service-status status-${service.status}`}>
+                        <i className={getServiceStatusIcon(service.status)}></i>
+                        {service.status === 'running' ? '실행중' : 
+                         service.status === 'stopped' ? '중지됨' : '오류'}
+                      </span>
+                    </div>
+                    <div className="service-description">{service.description}</div>
+                    <div className="service-metrics">
+                      {service.uptime && (
+                        <span>업타임: {formatUptime(service.uptime)}</span>
+                      )}
+                      {service.memory_usage && (
+                        <span>메모리: {formatMemoryUsage(service.memory_usage)}</span>
+                      )}
+                      {service.cpu_usage && (
+                        <span>CPU: {service.cpu_usage}%</span>
+                      )}
+                    </div>
+                  </div>
+                  {service.controllable && (
+                    <div className="service-actions">
+                      {service.status === 'running' ? (
+                        <>
+                          <button 
+                            onClick={() => handleServiceControl(service.name, 'stop')}
+                            className="btn btn-sm btn-warning"
+                            title="중지"
+                          >
+                            <i className="fas fa-stop"></i>
+                          </button>
+                          <button 
+                            onClick={() => handleServiceControl(service.name, 'restart')}
+                            className="btn btn-sm btn-secondary"
+                            title="재시작"
+                          >
+                            <i className="fas fa-redo"></i>
+                          </button>
+                        </>
+                      ) : (
+                        <button 
+                          onClick={() => handleServiceControl(service.name, 'start')}
+                          className="btn btn-sm btn-success"
+                          title="시작"
+                        >
+                          <i className="fas fa-play"></i>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 시스템 리소스 */}
+        {dashboardData && (
+          <div className="dashboard-section">
+            <div className="section-header">
+              <h3>시스템 리소스</h3>
+            </div>
+            <div className="resource-meters">
+              <div className="resource-meter">
+                <div className="meter-header">
+                  <span className="meter-label">CPU 사용률</span>
+                  <span className="meter-value">{dashboardData.system_metrics.cpuUsage}%</span>
+                </div>
+                <div className="meter-bar">
+                  <div 
+                    className="meter-fill"
+                    style={{ width: `${dashboardData.system_metrics.cpuUsage}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="resource-meter">
+                <div className="meter-header">
+                  <span className="meter-label">메모리 사용률</span>
+                  <span className="meter-value">{dashboardData.system_metrics.memoryUsage}%</span>
+                </div>
+                <div className="meter-bar">
+                  <div 
+                    className="meter-fill"
+                    style={{ width: `${dashboardData.system_metrics.memoryUsage}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="resource-meter">
+                <div className="meter-header">
+                  <span className="meter-label">디스크 사용률</span>
+                  <span className="meter-value">{dashboardData.system_metrics.diskUsage}%</span>
+                </div>
+                <div className="meter-bar">
+                  <div 
+                    className="meter-fill"
+                    style={{ width: `${dashboardData.system_metrics.diskUsage}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="resource-meter">
+                <div className="meter-header">
+                  <span className="meter-label">네트워크 사용률</span>
+                  <span className="meter-value">{dashboardData.system_metrics.networkUsage} Mbps</span>
+                </div>
+                <div className="meter-bar">
+                  <div 
+                    className="meter-fill"
+                    style={{ width: `${Math.min(dashboardData.system_metrics.networkUsage, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 최근 알람 */}
+        {dashboardData && dashboardData.alarms.recent_alarms.length > 0 && (
+          <div className="dashboard-section">
+            <div className="section-header">
+              <h3>최근 알람</h3>
+              <a href="#/alarms/active" className="section-link">
+                모든 알람 보기 <i className="fas fa-arrow-right"></i>
+              </a>
+            </div>
+            <div className="recent-alarms">
+              {dashboardData.alarms.recent_alarms.map((alarm) => (
+                <div key={alarm.id} className="alarm-item">
+                  <div className="alarm-icon">
+                    <i className={getAlarmTypeIcon(alarm.type)}></i>
+                  </div>
+                  <div className="alarm-content">
+                    <div className="alarm-message">{alarm.message}</div>
+                    <div className="alarm-meta">
+                      <span className="alarm-time">
+                        {new Date(alarm.timestamp).toLocaleString()}
+                      </span>
+                      <span className="alarm-device">
+                        Device {alarm.device_id}
+                      </span>
+                      {alarm.acknowledged && (
+                        <span className="alarm-ack">
+                          <i className="fas fa-check"></i> 확인됨
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 실시간 통계 */}
+        {realtimeStats && (
+          <div className="dashboard-section">
+            <div className="section-header">
+              <h3>실시간 데이터</h3>
+            </div>
+            <div className="realtime-stats">
+              <div className="stat-item">
+                <div className="stat-icon">
+                  <i className="fas fa-broadcast-tower text-primary"></i>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{realtimeStats.realtime_connections}</div>
+                  <div className="stat-label">실시간 연결</div>
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-icon">
+                  <i className="fas fa-chart-bar text-success"></i>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{realtimeStats.messages_per_second}</div>
+                  <div className="stat-label">메시지/초</div>
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-icon">
+                  <i className="fas fa-database text-info"></i>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{realtimeStats.data_points_monitored}</div>
+                  <div className="stat-label">모니터링 포인트</div>
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-icon">
+                  <i className="fas fa-clock text-warning"></i>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{realtimeStats.average_latency_ms}ms</div>
+                  <div className="stat-label">평균 지연시간</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 상태 정보 */}
+      <div className="status-bar">
+        <div className="status-info">
+          <span>마지막 업데이트: {lastUpdate.toLocaleTimeString()}</span>
+          {autoRefresh && (
+            <span className="auto-refresh-indicator">
+              <i className="fas fa-sync-alt"></i>
+              {refreshInterval / 1000}초마다 자동 새로고침
+            </span>
+          )}
+          {dashboardData && (
+            <span className="system-status">
+              시스템 상태: 
+              <span className={`status-badge status-${dashboardData.health_status.overall}`}>
+                {dashboardData.health_status.overall === 'healthy' ? '정상' : 
+                 dashboardData.health_status.overall === 'degraded' ? '주의' : '심각'}
+              </span>
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
