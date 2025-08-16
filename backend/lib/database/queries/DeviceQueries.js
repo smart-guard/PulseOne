@@ -609,41 +609,114 @@ class DeviceQueries {
   }
 
   // devices 테이블만 조회 (성능 최적화)
-    static getDevicesSimple() {
+  static getDevicesSimple() {
     return `
-        SELECT 
-        id, tenant_id, site_id, device_group_id, edge_server_id,
-        name, description, device_type, manufacturer, model, 
-        serial_number, protocol_type, endpoint, config,
-        polling_interval, timeout, retry_count, is_enabled,
-        installation_date, last_maintenance, created_at, updated_at
-        FROM devices 
-        WHERE 1=1
-    `;
-    }
+      SELECT 
+      id, tenant_id, site_id, device_group_id, edge_server_id,
+      name, description, device_type, manufacturer, model, 
+      serial_number, protocol_type, endpoint, config,
+      polling_interval, timeout, retry_count, is_enabled,
+      installation_date, last_maintenance, created_at, updated_at
+      FROM devices 
+      WHERE 1=1
+  `;
+  }
 
-    // 간단한 필터들 (d. 없이)
-    static addSimpleTenantFilter() {
+  // 간단한 필터들 (d. 없이)
+  static addSimpleTenantFilter() {
     return ` AND tenant_id = ?`;
-    }
+  }
 
-    static addSimpleProtocolFilter() {
+  static addSimpleProtocolFilter() {
     return ` AND protocol_type = ?`;
-    }
+  }
 
-    static addSimpleSearchFilter() {
+  static addSimpleSearchFilter() {
     return ` AND (name LIKE ? OR description LIKE ?)`;
-    }
+  }
 
-    // 간단한 정렬 및 페이징
-    static addSimpleOrderAndLimit() {
+  // 간단한 정렬 및 페이징
+  static addSimpleOrderAndLimit() {
     return ` ORDER BY name ASC LIMIT ? OFFSET ?`;
-    }
+  }
 
-    // 간단한 카운트 쿼리
-    static getDeviceCountSimple() {
+  // 간단한 카운트 쿼리
+  static getDeviceCountSimple() {
     return `SELECT COUNT(*) as total_count FROM devices WHERE tenant_id = ?`;
-    }
+  }
+
+  /**
+   * 지원 프로토콜 목록 조회 쿼리
+   */
+  static getAvailableProtocols() {
+    return `
+      SELECT 
+        d.protocol_type,
+        COUNT(*) as device_count,
+        SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
+        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
+      FROM devices d
+      LEFT JOIN device_status dst ON d.id = dst.device_id
+      WHERE d.tenant_id = ?
+      GROUP BY d.protocol_type
+      ORDER BY device_count DESC, d.protocol_type
+    `;
+  }
+
+  /**
+   * 상태별 디바이스 개수 조회
+   */
+  static getDeviceCountByStatus() {
+    return `
+      SELECT 
+        dst.connection_status,
+        d.is_enabled,
+        COUNT(*) as device_count
+      FROM devices d
+      LEFT JOIN device_status dst ON d.id = dst.device_id
+      WHERE d.tenant_id = ?
+      GROUP BY dst.connection_status, d.is_enabled
+    `;
+  }
+
+  /**
+   * 프로토콜별 디바이스 통계 (이미 존재하는 것 확인 후 추가)
+   */
+  static getDeviceCountByProtocol() {
+    return `
+      SELECT 
+        d.protocol_type,
+        COUNT(*) as total_count,
+        SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
+        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
+      FROM devices d
+      LEFT JOIN device_status dst ON d.id = dst.device_id
+      WHERE d.tenant_id = ?
+      GROUP BY d.protocol_type
+      ORDER BY total_count DESC
+    `;
+  }
+
+  /**
+   * 사이트별 디바이스 통계
+   */
+  static getDeviceCountBySite() {
+    return `
+      SELECT 
+        COALESCE(d.site_id, 0) as site_id,
+        COALESCE(s.name, 'No Site') as site_name,
+        COUNT(*) as device_count,
+        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
+      FROM devices d
+      LEFT JOIN sites s ON d.site_id = s.id
+      LEFT JOIN device_status dst ON d.id = dst.device_id
+      WHERE d.tenant_id = ?
+      GROUP BY d.site_id, s.name
+      ORDER BY device_count DESC
+    `;
+  }
 }
 
 module.exports = DeviceQueries;
+
+
