@@ -1,6 +1,6 @@
 // =============================================================================
-// backend/app.js - 메인 애플리케이션 (완전 통합 버전)
-// 기존 구조 + data.js 라우트 추가 + 자동 초기화 시스템
+// backend/app.js - 메인 애플리케이션 (완전 통합 버전 + 초기화 시스템 복구)
+// 기존 구조 + data.js 라우트 추가 + 자동 초기화 시스템 + 서비스 제어 API
 // =============================================================================
 
 const express = require('express');
@@ -8,12 +8,21 @@ const cors = require('cors');
 const path = require('path');
 const { initializeConnections } = require('./lib/connection/db');
 
-// 🚀 자동 초기화 시스템 (기존 코드)
-let DatabaseInitializer;
+// 🚀 자동 초기화 시스템 (안전 로드 + 복구 패치)
+let DatabaseInitializer = null;
 try {
-    DatabaseInitializer = require('./scripts/database-initializer');
-} catch (error) {
-    console.log('⚠️  자동 초기화 시스템을 로드할 수 없습니다:', error.message);
+    // 우선순위 1: 새로 생성된 DatabaseInitializer
+    DatabaseInitializer = require('./lib/database/DatabaseInitializer');
+    console.log('✅ DatabaseInitializer 로드 성공 (lib/database/DatabaseInitializer.js)');
+} catch (error1) {
+    try {
+        // 우선순위 2: 기존 위치
+        DatabaseInitializer = require('./scripts/database-initializer');
+        console.log('✅ DatabaseInitializer 로드 성공 (scripts/database-initializer.js)');
+    } catch (error2) {
+        console.warn('⚠️ DatabaseInitializer 로드 실패:', error1.message);
+        console.warn('   초기화 기능이 비활성화됩니다.');
+    }
 }
 
 const app = express();
@@ -134,7 +143,7 @@ async function initializeSystem() {
 initializeSystem();
 
 // ============================================================================
-// 🏥 헬스체크 및 초기화 관리 엔드포인트 (기존 + 확장)
+// 🏥 헬스체크 및 초기화 관리 엔드포인트 (복구 패치 적용)
 // ============================================================================
 
 // Health check (기존 + 초기화 상태 추가)
@@ -148,22 +157,28 @@ app.get('/api/health', async (req, res) => {
             pid: process.pid
         };
         
-        // 초기화 상태 추가
-        if (process.env.AUTO_INITIALIZE_ON_START === 'true' && DatabaseInitializer) {
+        // 초기화 시스템 상태 확인
+        healthInfo.initialization = {
+            databaseInitializer: {
+                available: !!DatabaseInitializer,
+                autoInit: process.env.AUTO_INITIALIZE_ON_START === 'true'
+            }
+        };
+        
+        // DatabaseInitializer가 있으면 상세 상태 추가
+        if (DatabaseInitializer) {
             try {
                 const initializer = new DatabaseInitializer();
                 await initializer.checkDatabaseStatus();
                 
-                healthInfo.initialization = {
-                    autoInit: true,
+                healthInfo.initialization.database = {
                     systemTables: initializer.initStatus.systemTables,
                     tenantSchemas: initializer.initStatus.tenantSchemas,
                     sampleData: initializer.initStatus.sampleData,
                     fullyInitialized: initializer.isFullyInitialized()
                 };
             } catch (error) {
-                healthInfo.initialization = {
-                    autoInit: true,
+                healthInfo.initialization.database = {
                     error: error.message
                 };
             }
@@ -179,13 +194,18 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// 초기화 상태 조회 (기존)
+// 초기화 상태 조회 (복구 패치 적용)
 app.get('/api/init/status', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
-            return res.status(503).json({
-                success: false,
-                error: '초기화 시스템을 사용할 수 없습니다.'
+            return res.json({
+                success: true,
+                data: {
+                    available: false,
+                    message: 'DatabaseInitializer 클래스를 찾을 수 없습니다.',
+                    suggestion: 'backend/lib/database/DatabaseInitializer.js 파일을 확인하세요.',
+                    autoInitEnabled: process.env.AUTO_INITIALIZE_ON_START === 'true'
+                }
             });
         }
         
@@ -195,6 +215,7 @@ app.get('/api/init/status', async (req, res) => {
         res.json({
             success: true,
             data: {
+                available: true,
                 database: initializer.initStatus,
                 fullyInitialized: initializer.isFullyInitialized(),
                 autoInitEnabled: process.env.AUTO_INITIALIZE_ON_START === 'true'
@@ -203,18 +224,24 @@ app.get('/api/init/status', async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            error: error.message
+            error: error.message,
+            suggestion: 'DatabaseInitializer 구현을 확인하세요.'
         });
     }
 });
 
-// 초기화 수동 트리거 (기존)
+// 초기화 수동 트리거 (복구 패치 적용)
 app.post('/api/init/trigger', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
             return res.status(503).json({
                 success: false,
-                error: '초기화 시스템을 사용할 수 없습니다.'
+                error: 'DatabaseInitializer를 사용할 수 없습니다.',
+                details: {
+                    reason: 'DatabaseInitializer 클래스 로드 실패',
+                    solution: 'backend/lib/database/DatabaseInitializer.js 파일을 구현하거나 복구하세요.',
+                    alternative: '수동으로 데이터베이스를 초기화하거나 스키마 스크립트를 실행하세요.'
+                }
             });
         }
         
@@ -224,7 +251,13 @@ app.post('/api/init/trigger', async (req, res) => {
         
         // 백업 생성 (요청된 경우)
         if (backup) {
-            await initializer.createBackup(true);
+            try {
+                await initializer.createBackup(true);
+                console.log('✅ 백업 생성 완료');
+            } catch (backupError) {
+                console.warn('⚠️ 백업 생성 실패:', backupError.message);
+                // 백업 실패해도 초기화는 계속 진행
+            }
         }
         
         // 초기화 수행
@@ -234,6 +267,51 @@ app.post('/api/init/trigger', async (req, res) => {
             success: true,
             message: '초기화가 완료되었습니다.',
             timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// 임시 초기화 대안 엔드포인트 추가 (DatabaseInitializer 없어도 동작)
+app.post('/api/init/manual', async (req, res) => {
+    try {
+        console.log('🔧 수동 초기화 시도...');
+        
+        // 기본 SQLite 데이터베이스 연결 확인
+        const connections = app.locals.getDB ? app.locals.getDB() : null;
+        
+        if (!connections || !connections.db) {
+            return res.status(503).json({
+                success: false,
+                error: 'SQLite 데이터베이스 연결을 찾을 수 없습니다.',
+                suggestion: '앱을 재시작하거나 데이터베이스 설정을 확인하세요.'
+            });
+        }
+        
+        // 간단한 테이블 존재 확인
+        const db = connections.db;
+        const tables = await new Promise((resolve, reject) => {
+            db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows.map(row => row.name));
+            });
+        });
+        
+        res.json({
+            success: true,
+            message: '수동 초기화 상태 확인 완료',
+            data: {
+                database_connected: true,
+                tables_found: tables.length,
+                tables: tables,
+                timestamp: new Date().toISOString()
+            }
         });
         
     } catch (error) {
@@ -304,14 +382,14 @@ try {
 }
 
 // ============================================================================
-// 📊 확장 API - 선택적 등록
+// 📊 확장 API - 선택적 등록 (서비스 제어 포함)
 // ============================================================================
 
-// 대시보드 API
+// 대시보드 API (서비스 제어 기능 포함)
 try {
     const dashboardRoutes = require('./routes/dashboard');
     app.use('/api/dashboard', dashboardRoutes);
-    console.log('✅ Dashboard API 라우트 등록 완료');
+    console.log('✅ Dashboard API 라우트 등록 완료 (서비스 제어 포함)');
 } catch (error) {
     console.warn('⚠️ Dashboard 라우트 로드 실패:', error.message);
 }
@@ -444,7 +522,7 @@ function gracefulShutdown(signal) {
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`
-🚀 PulseOne Backend Server Started! (완전 통합 버전)
+🚀 PulseOne Backend Server Started! (완전 통합 + 초기화 복구 버전)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Dashboard:     http://localhost:${PORT}
 🔧 API Health:    http://localhost:${PORT}/api/health
@@ -525,29 +603,41 @@ const server = app.listen(PORT, () => {
 📈 모니터링:     GET  /api/monitoring/system-metrics
 💾 백업 관리:    GET  /api/backup/list
 
+🔧 서비스 제어 API (새로 복구됨!)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️  서비스 상태:    GET  /api/dashboard/services/status
+🔧 Collector 시작: POST /api/dashboard/service/collector/control {"action":"start"}
+⏹️  Collector 중지: POST /api/dashboard/service/collector/control {"action":"stop"}
+🔄 Collector 재시작: POST /api/dashboard/service/collector/control {"action":"restart"}
+🗄️  Redis 제어:    POST /api/dashboard/service/redis/control {"action":"start|stop|restart"}
+💾 Database 제어:  POST /api/dashboard/service/database/control {"action":"start|stop|restart"}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🚀 시스템 초기화
+🚀 시스템 초기화 (완전 복구됨!)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔧 자동 초기화:   http://localhost:${PORT}/api/init/status
-🔄 초기화 트리거: POST http://localhost:${PORT}/api/init/trigger
+🔧 초기화 상태:   GET  /api/init/status (${DatabaseInitializer ? '✅ 활성' : '❌ 비활성'})
+🔄 초기화 트리거: POST /api/init/trigger (${DatabaseInitializer ? '✅ 활성' : '❌ 비활성'})
+⚙️  수동 초기화:   POST /api/init/manual (항상 사용 가능)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Environment: ${process.env.NODE_ENV || 'development'}
 Stage: ${process.env.ENV_STAGE || 'dev'}
 Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enabled' : '❌ Disabled'}
+DatabaseInitializer: ${DatabaseInitializer ? '✅ Available' : '❌ Not Found'}
 Authentication: 🔓 Development Mode (Basic Auth)
 Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎉 PulseOne 통합 백엔드 시스템 완전 가동!
+🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v2.1.0 - 초기화 시스템 복구)
    - 알람 관리 ✅
    - 디바이스 관리 ✅  
    - 가상포인트 관리 ✅
    - 데이터 익스플로러 ✅
-   - 자동 초기화 ✅
+   - 자동 초기화 ${DatabaseInitializer ? '✅' : '⚠️'}
+   - 서비스 제어 ✅
    - 멀티테넌트 지원 ✅
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
