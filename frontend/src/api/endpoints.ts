@@ -148,6 +148,11 @@ export const ENDPOINTS = {
   // ==========================================================================
   // 🆕 향후 추가될 API들 (플레이스홀더)
   // ==========================================================================
+  MONITORING_SERVICE_HEALTH: '/api/monitoring/service-health',
+  MONITORING_SYSTEM_METRICS: '/api/monitoring/system-metrics',
+  MONITORING_DATABASE_STATS: '/api/monitoring/database-stats',
+  MONITORING_PERFORMANCE: '/api/monitoring/performance',
+  MONITORING_LOGS: '/api/monitoring/logs',
   
   // 가상포인트 관리
   VIRTUAL_POINTS: '/api/virtual-points',
