@@ -4,6 +4,9 @@ const os = require('os');
 const fs = require('fs');
 const { promisify } = require('util');
 
+// ✅ ConfigManager import 추가
+const ConfigManager = require('../lib/config/ConfigManager');
+
 // =============================================================================
 // 📊 시스템 메트릭 유틸리티 함수들
 // =============================================================================
@@ -150,7 +153,7 @@ function getProcessInfo() {
 }
 
 /**
- * 서비스 헬스체크 (실제 연결 확인)
+ * ✅ 서비스 헬스체크 (실제 연결 확인) - ConfigManager 기반
  */
 async function checkServiceHealth() {
     const services = {
@@ -160,10 +163,13 @@ async function checkServiceHealth() {
         collector: 'unknown'
     };
     
+    // ConfigManager 인스턴스 가져오기
+    const config = ConfigManager.getInstance();
+    
     // SQLite 데이터베이스 체크
     try {
         const sqlite3 = require('sqlite3');
-        const dbPath = process.env.DATABASE_PATH || './data/pulseone.db';
+        const dbPath = config.get('DATABASE_PATH') || './data/pulseone.db';
         
         await new Promise((resolve, reject) => {
             const db = new sqlite3.Database(dbPath, (err) => {
@@ -181,27 +187,119 @@ async function checkServiceHealth() {
         console.warn('SQLite 연결 체크 실패:', error.message);
     }
     
-    // Redis 연결 체크
+    // ✅ Redis 연결 체크 (ConfigManager + 최신 redis 방식)
     try {
-        const redis = require('redis');
-        const client = redis.createClient({
-            host: process.env.REDIS_PRIMARY_HOST || 'localhost',
-            port: process.env.REDIS_PRIMARY_PORT || 6379,
-            connect_timeout: 2000
-        });
+        console.log('🔍 Redis 연결 체크 시작...');
         
-        await client.ping();
-        services.redis = 'healthy';
-        await client.quit();
+        // ConfigManager에서 Redis 설정 읽기
+        const redisEnabled = config.getBoolean('REDIS_PRIMARY_ENABLED', false);
+        const redisHost = config.get('REDIS_PRIMARY_HOST', 'localhost');
+        const redisPort = config.getNumber('REDIS_PRIMARY_PORT', 6379);
+        const redisPassword = config.get('REDIS_PRIMARY_PASSWORD', '');
+        const redisDb = config.getNumber('REDIS_PRIMARY_DB', 0);
+        const connectTimeout = config.getNumber('REDIS_PRIMARY_CONNECT_TIMEOUT_MS', 3000);
+        
+        console.log(`📋 Redis 설정 확인:
+   활성화: ${redisEnabled}
+   호스트: ${redisHost}:${redisPort}
+   데이터베이스: ${redisDb}
+   패스워드: ${redisPassword ? '설정됨' : '없음'}
+   타임아웃: ${connectTimeout}ms`);
+        
+        // Redis가 비활성화되어 있으면 스킵
+        if (!redisEnabled) {
+            console.log('⚠️ Redis가 비활성화됨 (REDIS_PRIMARY_ENABLED=false)');
+            services.redis = 'disabled';
+        } else {
+            // Redis 클라이언트 생성 (최신 v4+ 방식)
+            const redis = require('redis');
+            
+            // Redis URL 구성
+            let redisUrl = `redis://${redisHost}:${redisPort}`;
+            if (redisPassword) {
+                redisUrl = `redis://:${redisPassword}@${redisHost}:${redisPort}`;
+            }
+            if (redisDb > 0) {
+                redisUrl += `/${redisDb}`;
+            }
+            
+            console.log(`🔗 Redis 연결 시도: ${redisUrl.replace(/:.*@/, ':****@')}`); // 패스워드 마스킹
+            
+            const client = redis.createClient({
+                url: redisUrl,
+                socket: {
+                    connectTimeout: connectTimeout,
+                    commandTimeout: 2000,
+                    reconnectDelay: 1000
+                },
+                retry_unfulfilled_commands: false,
+                disableOfflineQueue: true
+            });
+            
+            // 에러 이벤트 핸들러
+            client.on('error', (err) => {
+                console.warn('Redis 클라이언트 에러:', err.message);
+            });
+            
+            try {
+                // 연결 시도 (타임아웃 설정)
+                const connectPromise = client.connect();
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Connection timeout')), connectTimeout);
+                });
+                
+                await Promise.race([connectPromise, timeoutPromise]);
+                
+                // Ping 테스트
+                const pingResult = await client.ping();
+                console.log('📡 Redis ping 결과:', pingResult);
+                
+                if (pingResult === 'PONG') {
+                    services.redis = 'healthy';
+                    console.log('✅ Redis 연결 성공');
+                } else {
+                    services.redis = 'error';
+                    console.warn('⚠️ Redis ping 실패');
+                }
+                
+                // 연결 해제
+                await client.disconnect();
+                
+            } catch (connectError) {
+                services.redis = 'error';
+                console.warn('❌ Redis 연결 실패:', connectError.message);
+                
+                // 연결 실패 시에도 클라이언트 정리 시도
+                try {
+                    if (client.isOpen) {
+                        await client.disconnect();
+                    }
+                } catch (disconnectError) {
+                    // 무시
+                }
+            }
+        }
+        
     } catch (error) {
         services.redis = 'error';
-        console.warn('Redis 연결 체크 실패:', error.message);
+        console.warn('❌ Redis 연결 체크 전체 실패:', error.message);
+        
+        // 상세 에러 정보 로깅
+        if (error.code === 'ECONNREFUSED') {
+            console.warn('   → Redis 서버가 실행되지 않음');
+        } else if (error.message.includes('timeout')) {
+            console.warn('   → Redis 연결 타임아웃');
+        } else if (error.message.includes('authentication')) {
+            console.warn('   → Redis 인증 실패');
+        }
     }
     
     // Collector 프로세스 체크 (포트 체크)
     try {
         const net = require('net');
-        const collectorPort = process.env.COLLECTOR_PORT || 8080;
+        const collectorPort = config.getNumber('COLLECTOR_PORT', 8080);
+        
+        console.log(`🔍 Collector 포트 체크: ${collectorPort}`);
         
         await new Promise((resolve, reject) => {
             const socket = new net.Socket();
@@ -210,27 +308,31 @@ async function checkServiceHealth() {
             socket.on('connect', () => {
                 services.collector = 'healthy';
                 socket.destroy();
+                console.log('✅ Collector 연결 성공');
                 resolve();
             });
             
             socket.on('timeout', () => {
                 services.collector = 'error';
                 socket.destroy();
+                console.warn('⚠️ Collector 연결 타임아웃');
                 reject(new Error('timeout'));
             });
             
-            socket.on('error', () => {
+            socket.on('error', (err) => {
                 services.collector = 'error';
-                reject(new Error('connection failed'));
+                console.warn('❌ Collector 연결 실패:', err.message);
+                reject(err);
             });
             
             socket.connect(collectorPort, 'localhost');
         });
     } catch (error) {
         services.collector = 'error';
-        console.warn('Collector 연결 체크 실패:', error.message);
+        console.warn('❌ Collector 연결 체크 실패:', error.message);
     }
     
+    console.log('📊 최종 서비스 상태:', services);
     return services;
 }
 
@@ -364,29 +466,35 @@ router.get('/service-health', async (req, res) => {
 });
 
 /**
- * GET /api/monitoring/database-stats
- * 실제 데이터베이스 통계
+ * ✅ GET /api/monitoring/database-stats
+ * 실제 데이터베이스 통계 (ConfigManager 기반)
  */
 router.get('/database-stats', async (req, res) => {
     try {
         console.log('📊 데이터베이스 통계 수집 시작...');
         
+        const config = ConfigManager.getInstance();
         const sqlite3 = require('sqlite3');
-        const dbPath = process.env.DATABASE_PATH || './data/pulseone.db';
+        const dbPath = config.get('DATABASE_PATH') || './data/pulseone.db';
+        
+        console.log('📁 데이터베이스 경로:', dbPath);
         
         const stats = await new Promise((resolve, reject) => {
             const db = new sqlite3.Database(dbPath, (err) => {
                 if (err) {
+                    console.error('❌ SQLite 연결 실패:', err.message);
                     reject(err);
                     return;
                 }
+                
+                console.log('✅ SQLite 연결 성공');
                 
                 const queries = [
                     // 테이블 목록 조회
                     "SELECT COUNT(*) as table_count FROM sqlite_master WHERE type='table'",
                     // 디바이스 수
                     "SELECT COUNT(*) as device_count FROM devices",
-                    // 데이터 포인트 수
+                    // 데이터 포인트 수  
                     "SELECT COUNT(*) as data_point_count FROM data_points",
                     // 활성 알람 수
                     "SELECT COUNT(*) as active_alarm_count FROM alarm_occurrences WHERE state='active'",
@@ -398,15 +506,26 @@ router.get('/database-stats', async (req, res) => {
                 let completed = 0;
                 
                 queries.forEach((query, index) => {
+                    console.log(`🔍 쿼리 실행 ${index + 1}/${queries.length}: ${query}`);
+                    
                     db.get(query, (err, row) => {
-                        if (!err && row) {
+                        if (err) {
+                            console.warn(`⚠️ 쿼리 ${index + 1} 실패:`, err.message);
+                            // 에러가 있어도 0으로 설정
+                            const queryName = query.split(' as ')[1];
+                            if (queryName) {
+                                results[queryName] = 0;
+                            }
+                        } else if (row) {
                             const key = Object.keys(row)[0];
                             results[key] = row[key];
+                            console.log(`✅ ${key}: ${row[key]}`);
                         }
                         
                         completed++;
                         if (completed === queries.length) {
                             db.close();
+                            console.log('📊 모든 쿼리 완료:', results);
                             resolve(results);
                         }
                     });
@@ -419,6 +538,7 @@ router.get('/database-stats', async (req, res) => {
         try {
             const dbStats = fs.statSync(dbPath);
             dbSize = Math.round(dbStats.size / 1024 / 1024 * 100) / 100; // MB
+            console.log(`📁 DB 파일 크기: ${dbSize}MB`);
         } catch (error) {
             console.warn('DB 파일 크기 확인 실패:', error.message);
         }
@@ -435,7 +555,7 @@ router.get('/database-stats', async (req, res) => {
             last_updated: new Date().toISOString()
         };
         
-        console.log('✅ 데이터베이스 통계 수집 완료');
+        console.log('✅ 데이터베이스 통계 수집 완료:', finalStats);
         
         res.json({
             success: true,
