@@ -1,24 +1,33 @@
-# 개발용 Dockerfile
+# 개발용 Dockerfile - React Router 포함
 FROM node:18-alpine
 
 # 작업 디렉토리 설정
 WORKDIR /app
 
 # 패키지 관리자 최적화
-RUN npm install -g pnpm
+RUN npm install -g pnpm@latest
 
 # 개발에 필요한 도구들 설치
 RUN apk add --no-cache \
     git \
     curl \
-    vim
+    vim \
+    bash
 
-# 패키지 파일들 복사 및 의존성 설치
+# 패키지 파일들 복사
 COPY package*.json ./
 COPY pnpm-lock.yaml* ./
 
+# 🔥 React Router 의존성을 package.json에 미리 추가
+RUN npm pkg set dependencies.react-router-dom="^6.20.1"
+RUN npm pkg set devDependencies.@types/react-router-dom="^6.20.1"
+
 # 의존성 설치 (개발 의존성 포함)
-RUN pnpm install
+RUN pnpm install --frozen-lockfile=false
+
+# vite가 제대로 설치되었는지 확인
+RUN pnpm list vite
+RUN which vite || pnpm add -g vite
 
 # 소스 코드 복사
 COPY . .

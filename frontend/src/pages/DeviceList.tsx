@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/DeviceList.tsx 
-// 📝 디바이스 목록 페이지 - 새로운 DeviceApiService 완전 연결
+// 📝 디바이스 목록 페이지 - CSS Grid 테이블 적용 버전
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -369,11 +369,9 @@ const DeviceList: React.FC = () => {
   // =============================================================================
 
   const getStatusBadgeClass = (status: string) => {
-
     if (!status || typeof status !== 'string') {
       return 'status-badge status-unknown';
     }
-
 
     switch (status.toLowerCase()) {
       case 'running': return 'status-badge status-running';
@@ -396,6 +394,7 @@ const DeviceList: React.FC = () => {
       default: return 'connection-badge connection-unknown';
     }
   };
+
   const getStatusText = (status: string | null | undefined) => {
     if (!status || typeof status !== 'string') {
       return '알 수 없음';
@@ -409,6 +408,7 @@ const DeviceList: React.FC = () => {
     }
     return connectionStatus;
   };
+
   const formatLastSeen = (lastSeen?: string) => {
     if (!lastSeen) return '없음';
     
@@ -458,64 +458,125 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 통계 카드들 */}
+      {/* 통계 카드들 - 🔥 가로 4개 배치 */}
       {deviceStats && (
-        <div className="stats-grid">
+        <div 
+          className="stats-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '20px',
+            marginBottom: '32px',
+            padding: '0 32px'
+          }}
+        >
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-network-wired text-primary"></i>
+              <i className="fas fa-network-wired" style={{ color: '#3b82f6' }}></i>
             </div>
             <div className="stat-content">
+              <div className="stat-value">{deviceStats.total_devices || 0}</div>
               <div className="stat-label">전체 디바이스</div>
-              <div className="stat-value">{deviceStats.total_devices}</div>
             </div>
           </div>
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-check-circle text-success"></i>
+              <i className="fas fa-check-circle" style={{ color: '#10b981' }}></i>
             </div>
             <div className="stat-content">
+              <div className="stat-value">{deviceStats.connected_devices || 0}</div>
               <div className="stat-label">연결됨</div>
-              <div className="stat-value">{deviceStats.connected_devices}</div>
             </div>
           </div>
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-times-circle text-danger"></i>
+              <i className="fas fa-times-circle" style={{ color: '#ef4444' }}></i>
             </div>
             <div className="stat-content">
+              <div className="stat-value">{deviceStats.disconnected_devices || 0}</div>
               <div className="stat-label">연결 끊김</div>
-              <div className="stat-value">{deviceStats.disconnected_devices}</div>
             </div>
           </div>
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-exclamation-triangle text-warning"></i>
+              <i className="fas fa-exclamation-triangle" style={{ color: '#f59e0b' }}></i>
             </div>
             <div className="stat-content">
+              <div className="stat-value">{deviceStats.error_devices || 0}</div>
               <div className="stat-label">오류</div>
-              <div className="stat-value">{deviceStats.error_devices}</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 필터 및 검색 */}
-      <div className="filters-section">
-        <div className="search-box">
-          <i className="fas fa-search"></i>
-          <input
-            type="text"
-            placeholder="디바이스 이름, 설명, 제조사 검색..."
-            value={searchTerm}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-        </div>
-        
-        <div className="filter-group">
+      {/* 필터 및 검색 - 🔥 완전 가로 1줄 배치 */}
+      <div 
+        className="filters-section"
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '12px',
+          padding: '20px 32px',
+          marginBottom: '24px'
+        }}
+      >
+        <div 
+          className="filters-row"
+          style={{
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center',
+            width: '100%'
+          }}
+        >
+          {/* 검색창 - 가장 넓게 */}
+          <div 
+            className="search-box"
+            style={{
+              position: 'relative',
+              flex: '3',
+              minWidth: '300px'
+            }}
+          >
+            <i 
+              className="fas fa-search"
+              style={{
+                position: 'absolute',
+                left: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#9ca3af',
+                fontSize: '14px'
+              }}
+            ></i>
+            <input
+              type="text"
+              placeholder="디바이스 이름, 설명, 제조사 검색..."
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px 16px 12px 40px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '14px'
+              }}
+            />
+          </div>
+          
+          {/* 상태 필터 */}
           <select
             value={statusFilter}
             onChange={(e) => handleFilterChange('status', e.target.value)}
+            style={{
+              padding: '12px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              fontSize: '14px',
+              background: '#ffffff',
+              cursor: 'pointer',
+              width: '130px'
+            }}
           >
             <option value="all">모든 상태</option>
             <option value="running">실행 중</option>
@@ -524,9 +585,19 @@ const DeviceList: React.FC = () => {
             <option value="disabled">비활성화</option>
           </select>
 
+          {/* 프로토콜 필터 */}
           <select
             value={protocolFilter}
             onChange={(e) => handleFilterChange('protocol', e.target.value)}
+            style={{
+              padding: '12px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              fontSize: '14px',
+              background: '#ffffff',
+              cursor: 'pointer',
+              width: '140px'
+            }}
           >
             <option value="all">모든 프로토콜</option>
             {availableProtocols.map(protocol => (
@@ -534,9 +605,19 @@ const DeviceList: React.FC = () => {
             ))}
           </select>
 
+          {/* 연결상태 필터 */}
           <select
             value={connectionFilter}
             onChange={(e) => handleFilterChange('connection', e.target.value)}
+            style={{
+              padding: '12px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              fontSize: '14px',
+              background: '#ffffff',
+              cursor: 'pointer',
+              width: '140px'
+            }}
           >
             <option value="all">모든 연결상태</option>
             <option value="connected">연결됨</option>
@@ -545,15 +626,44 @@ const DeviceList: React.FC = () => {
           </select>
         </div>
 
+        {/* 일괄 작업 버튼들 - 선택된 항목이 있을 때만 표시 */}
         {selectedDevices.length > 0 && (
-          <div className="bulk-actions">
-            <span className="selected-count">
+          <div 
+            className="bulk-actions"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '12px 16px',
+              background: '#f3f4f6',
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb',
+              marginTop: '16px'
+            }}
+          >
+            <span 
+              className="selected-count"
+              style={{
+                fontSize: '14px',
+                color: '#374151',
+                fontWeight: '500'
+              }}
+            >
               {selectedDevices.length}개 선택됨
             </span>
             <button 
               onClick={() => handleBulkAction('enable')}
               disabled={isProcessing}
               className="btn btn-sm btn-success"
+              style={{
+                padding: '6px 10px',
+                fontSize: '11px',
+                background: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
             >
               일괄 활성화
             </button>
@@ -561,6 +671,15 @@ const DeviceList: React.FC = () => {
               onClick={() => handleBulkAction('disable')}
               disabled={isProcessing}
               className="btn btn-sm btn-warning"
+              style={{
+                padding: '6px 10px',
+                fontSize: '11px',
+                background: '#f59e0b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
             >
               일괄 비활성화
             </button>
@@ -568,6 +687,15 @@ const DeviceList: React.FC = () => {
               onClick={() => handleBulkAction('delete')}
               disabled={isProcessing}
               className="btn btn-sm btn-danger"
+              style={{
+                padding: '6px 10px',
+                fontSize: '11px',
+                background: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
             >
               일괄 삭제
             </button>
@@ -586,7 +714,7 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 디바이스 테이블 */}
+      {/* 🔥 디바이스 테이블 - CSS Grid 버전으로 완전 교체 */}
       <div className="devices-table-container">
         {isLoading ? (
           <div className="loading-spinner">
@@ -604,24 +732,7 @@ const DeviceList: React.FC = () => {
             </button>
           </div>
         ) : (
-      <div className="devices-table-container">
-        {isLoading ? (
-          <div className="loading-spinner">
-            <i className="fas fa-spinner fa-spin"></i>
-            <span>디바이스 목록을 불러오는 중...</span>
-          </div>
-        ) : devices.length === 0 ? (
-          <div className="empty-state">
-            <i className="fas fa-network-wired"></i>
-            <h3>등록된 디바이스가 없습니다</h3>
-            <p>새 디바이스를 추가하여 시작하세요</p>
-            <button className="btn btn-primary" onClick={handleCreateDevice}>
-              <i className="fas fa-plus"></i>
-              첫 번째 디바이스 추가
-            </button>
-          </div>
-        ) : (
-          {/* 🔥 디바이스 테이블 - Grid 버전 */}
+          /* 🔥 디바이스 테이블 - Grid 버전 */
           <div className="device-table">
             {/* 헤더 */}
             <div className="device-table-header">
@@ -782,8 +893,6 @@ const DeviceList: React.FC = () => {
               ))}
             </div>
           </div>
-        )}
-      </div>
         )}
       </div>
 

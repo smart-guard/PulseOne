@@ -774,3 +774,298 @@
     padding: 8px 0;
   }
 }
+
+//* ============================================================================
+   통계 카드 가로 4개 배치 CSS - device-list.css에 추가할 스타일
+   ============================================================================ */
+
+/* 🔥 통계 그리드 - 가로 4개 고정 배치 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr); /* 4개 컬럼 고정 */
+  gap: 20px;
+  margin-bottom: 32px;
+  padding: 0 32px;
+}
+
+/* 통계 카드 스타일 개선 */
+.stat-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+/* 통계 아이콘 스타일 */
+.stat-icon {
+  margin-bottom: 12px;
+}
+
+.stat-icon i {
+  font-size: 28px;
+}
+
+.text-primary { color: #3b82f6; }
+.text-success { color: #10b981; }
+.text-danger { color: #ef4444; }
+.text-warning { color: #f59e0b; }
+
+/* 통계 콘텐츠 영역 */
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 통계 값 스타일 */
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+  margin: 0;
+}
+
+/* 통계 라벨 스타일 */
+.stat-label {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* ============================================================================
+   🔥 필터 섹션 가로 배치 CSS
+   ============================================================================ */
+
+/* 필터 섹션 전체 */
+.filters-section {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px 32px;
+  margin-bottom: 24px;
+}
+
+/* 필터 메인 로우 - 검색창과 필터들을 가로로 배치 */
+.filters-row {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* 검색박스 */
+.search-box {
+  position: relative;
+  flex: 2; /* 검색창이 더 넓게 */
+  min-width: 300px;
+}
+
+.search-box i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 12px 16px 12px 40px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 필터 그룹 */
+.filter-group {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+}
+
+.filter-group select {
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 140px;
+}
+
+.filter-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.filter-group select:hover {
+  border-color: #9ca3af;
+}
+
+/* 일괄 작업 버튼들 */
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.selected-count {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-sm {
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #059669;
+}
+
+.btn-warning {
+  background: #f59e0b;
+  color: white;
+}
+
+.btn-warning:hover {
+  background: #d97706;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+/* 🔥 반응형 디자인 */
+@media (max-width: 1200px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr); /* 중간 크기에서는 2x2 */
+    gap: 16px;
+  }
+  
+  .filters-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  
+  .search-box {
+    min-width: auto;
+  }
+  
+  .filter-group {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr); /* 모바일에서도 2x2 유지 */
+    gap: 12px;
+    padding: 0 16px;
+  }
+  
+  .stat-card {
+    padding: 16px;
+    min-height: 100px;
+  }
+  
+  .stat-icon i {
+    font-size: 24px;
+  }
+  
+  .stat-value {
+    font-size: 24px;
+  }
+  
+  .stat-label {
+    font-size: 12px;
+  }
+  
+  .filters-section {
+    padding: 16px 20px;
+  }
+  
+  .filter-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .filter-group select {
+    min-width: auto;
+  }
+  
+  .bulk-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .bulk-actions .btn {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr; /* 아주 작은 화면에서는 세로 배치 */
+  }
+  
+  .filters-section {
+    padding: 12px 16px;
+  }
+}
