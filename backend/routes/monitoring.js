@@ -152,9 +152,9 @@ function getProcessInfo() {
     };
 }
 
-/**
- * ✅ 서비스 헬스체크 (실제 연결 확인) - ConfigManager 기반
- */
+  /**
+   * ✅ 서비스 헬스체크 (실제 연결 확인) - ConfigManager 기반
+   */
 async function checkServiceHealth() {
     const services = {
         backend: 'healthy', // 현재 응답하고 있으므로 healthy
@@ -162,9 +162,19 @@ async function checkServiceHealth() {
         redis: 'unknown',
         collector: 'unknown'
     };
+
+    // 포트 정보 추가
+    const ports = {};
     
     // ConfigManager 인스턴스 가져오기
     const config = ConfigManager.getInstance();
+    
+    // 🔥 포트 정보 수집
+    ports.backend = config.getNumber('BACKEND_PORT', 3000);
+    ports.redis = config.getNumber('REDIS_PRIMARY_PORT', 6379);
+    ports.collector = config.getNumber('COLLECTOR_PORT', 8080);
+    ports.rabbitmq = config.getNumber('RABBITMQ_PORT', 5672);
+    ports.postgresql = config.getNumber('POSTGRES_PRIMARY_PORT', 5432);
     
     // SQLite 데이터베이스 체크
     try {
@@ -187,11 +197,10 @@ async function checkServiceHealth() {
         console.warn('SQLite 연결 체크 실패:', error.message);
     }
     
-    // ✅ Redis 연결 체크 (ConfigManager + 최신 redis 방식)
+    // ✅ Redis 연결 체크 (기존 코드와 동일)
     try {
         console.log('🔍 Redis 연결 체크 시작...');
         
-        // ConfigManager에서 Redis 설정 읽기
         const redisEnabled = config.getBoolean('REDIS_PRIMARY_ENABLED', false);
         const redisHost = config.get('REDIS_PRIMARY_HOST', 'localhost');
         const redisPort = config.getNumber('REDIS_PRIMARY_PORT', 6379);
@@ -206,15 +215,12 @@ async function checkServiceHealth() {
    패스워드: ${redisPassword ? '설정됨' : '없음'}
    타임아웃: ${connectTimeout}ms`);
         
-        // Redis가 비활성화되어 있으면 스킵
         if (!redisEnabled) {
             console.log('⚠️ Redis가 비활성화됨 (REDIS_PRIMARY_ENABLED=false)');
             services.redis = 'disabled';
         } else {
-            // Redis 클라이언트 생성 (최신 v4+ 방식)
             const redis = require('redis');
             
-            // Redis URL 구성
             let redisUrl = `redis://${redisHost}:${redisPort}`;
             if (redisPassword) {
                 redisUrl = `redis://:${redisPassword}@${redisHost}:${redisPort}`;
@@ -223,7 +229,7 @@ async function checkServiceHealth() {
                 redisUrl += `/${redisDb}`;
             }
             
-            console.log(`🔗 Redis 연결 시도: ${redisUrl.replace(/:.*@/, ':****@')}`); // 패스워드 마스킹
+            console.log(`🔗 Redis 연결 시도: ${redisUrl.replace(/:.*@/, ':****@')}`);
             
             const client = redis.createClient({
                 url: redisUrl,
@@ -236,13 +242,11 @@ async function checkServiceHealth() {
                 disableOfflineQueue: true
             });
             
-            // 에러 이벤트 핸들러
             client.on('error', (err) => {
                 console.warn('Redis 클라이언트 에러:', err.message);
             });
             
             try {
-                // 연결 시도 (타임아웃 설정)
                 const connectPromise = client.connect();
                 const timeoutPromise = new Promise((_, reject) => {
                     setTimeout(() => reject(new Error('Connection timeout')), connectTimeout);
@@ -250,7 +254,6 @@ async function checkServiceHealth() {
                 
                 await Promise.race([connectPromise, timeoutPromise]);
                 
-                // Ping 테스트
                 const pingResult = await client.ping();
                 console.log('📡 Redis ping 결과:', pingResult);
                 
@@ -262,14 +265,12 @@ async function checkServiceHealth() {
                     console.warn('⚠️ Redis ping 실패');
                 }
                 
-                // 연결 해제
                 await client.disconnect();
                 
             } catch (connectError) {
                 services.redis = 'error';
                 console.warn('❌ Redis 연결 실패:', connectError.message);
                 
-                // 연결 실패 시에도 클라이언트 정리 시도
                 try {
                     if (client.isOpen) {
                         await client.disconnect();
@@ -284,7 +285,6 @@ async function checkServiceHealth() {
         services.redis = 'error';
         console.warn('❌ Redis 연결 체크 전체 실패:', error.message);
         
-        // 상세 에러 정보 로깅
         if (error.code === 'ECONNREFUSED') {
             console.warn('   → Redis 서버가 실행되지 않음');
         } else if (error.message.includes('timeout')) {
@@ -294,7 +294,7 @@ async function checkServiceHealth() {
         }
     }
     
-    // Collector 프로세스 체크 (포트 체크)
+    // Collector 프로세스 체크
     try {
         const net = require('net');
         const collectorPort = config.getNumber('COLLECTOR_PORT', 8080);
@@ -333,9 +333,11 @@ async function checkServiceHealth() {
     }
     
     console.log('📊 최종 서비스 상태:', services);
-    return services;
+    console.log('🔌 포트 정보:', ports);
+    
+    // 🔥 포트 정보를 포함해서 반환
+    return { services, ports };
 }
-
 // =============================================================================
 // 📊 API 엔드포인트들
 // =============================================================================
@@ -432,7 +434,8 @@ router.get('/service-health', async (req, res) => {
     try {
         console.log('🏥 서비스 헬스체크 시작...');
         
-        const services = await checkServiceHealth();
+        // 🔥 수정: services와 ports 정보 모두 받기
+        const { services, ports } = await checkServiceHealth();
         
         // 전체 헬스 상태 계산
         const healthyCount = Object.values(services).filter(status => status === 'healthy').length;
@@ -442,10 +445,12 @@ router.get('/service-health', async (req, res) => {
         
         console.log('✅ 서비스 헬스체크 완료');
         
+        // 🔥 수정: 포트 정보도 포함해서 응답
         res.json({
             success: true,
             data: {
                 services,
+                ports,  // 포트 정보 추가
                 overall: overallHealth,
                 healthy_count: healthyCount,
                 total_count: totalCount,

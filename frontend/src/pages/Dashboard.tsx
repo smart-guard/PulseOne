@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-
+import { ENDPOINTS } from '../api/endpoints';
 // ============================================================================
 // 📋 타입 정의 (확장된 버전)
 // ============================================================================
@@ -269,7 +269,56 @@ const Dashboard: React.FC = () => {
       last_updated: now.toISOString()
     };
   };
+  /**
+ * 디버깅용 safeFetch - 실제 응답 내용을 확인하기 위한 버전
+ */
+const safeFetch = async (url: string, options: RequestInit = {}) => {
+  try {
+    console.log(`🔍 API 요청: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    });
 
+    console.log(`📊 응답 상태: ${response.status} ${response.statusText}`);
+    console.log(`📋 응답 헤더:`, Object.fromEntries(response.headers.entries()));
+    
+    // 🔥 응답을 텍스트로 먼저 읽어보기
+    const responseText = await response.text();
+    console.log(`📄 원시 응답 내용:`, responseText);
+    console.log(`📏 응답 길이:`, responseText.length);
+    console.log(`🔤 첫 50자:`, responseText.substring(0, 50));
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}, response: ${responseText}`);
+    }
+
+    // 빈 응답 체크
+    if (!responseText.trim()) {
+      console.warn(`⚠️ 빈 응답 받음`);
+      return { success: false, error: 'Empty response' };
+    }
+
+    // JSON 파싱 시도
+    try {
+      const data = JSON.parse(responseText);
+      console.log(`✅ JSON 파싱 성공:`, data);
+      return data;
+    } catch (parseError) {
+      console.error(`❌ JSON 파싱 실패:`, parseError);
+      console.error(`📄 파싱 시도한 내용:`, responseText);
+      throw new Error(`Invalid JSON response: ${parseError.message}`);
+    }
+
+  } catch (error) {
+    console.error(`🚨 Fetch error for ${url}:`, error);
+    throw error;
+  }
+};
   /**
    * 대시보드 개요 데이터 로드 (실제 API 연동)
    */
@@ -282,44 +331,44 @@ const Dashboard: React.FC = () => {
 
       console.log('🎯 대시보드 데이터 로드 시작...');
 
-      // 1. 서비스 상태 조회
+      // 1. 서비스 상태 조회 - ENDPOINTS 사용
       let servicesData;
       try {
-        const servicesResponse = await safeFetch('/api/monitoring/service-health');
-        servicesData = servicesResponse.success ? servicesResponse.data : null;
-        console.log('✅ 서비스 상태 로드 성공');
+        const servicesResponse = await safeFetch(ENDPOINTS.MONITORING_SERVICE_HEALTH);  // 🔥 수정
+        servicesData = servicesResponse.success ? servicesResponse.data : servicesResponse;
+        console.log('✅ 서비스 상태 로드 성공', servicesData);
       } catch (error) {
         console.warn('⚠️ 서비스 상태 로드 실패:', error);
         servicesData = null;
       }
 
-      // 2. 시스템 메트릭 조회
+      // 2. 시스템 메트릭 조회 - ENDPOINTS 사용
       let systemMetrics;
       try {
-        const metricsResponse = await safeFetch('/api/monitoring/system-metrics');
-        systemMetrics = metricsResponse.success ? metricsResponse.data : null;
+        const metricsResponse = await safeFetch(ENDPOINTS.MONITORING_SYSTEM_METRICS);  // 🔥 수정
+        systemMetrics = metricsResponse.success ? metricsResponse.data : metricsResponse;
         console.log('✅ 시스템 메트릭 로드 성공');
       } catch (error) {
         console.warn('⚠️ 시스템 메트릭 로드 실패:', error);
         systemMetrics = null;
       }
 
-      // 3. 데이터베이스 통계 조회
+      // 3. 데이터베이스 통계 조회 - ENDPOINTS 사용
       let dbStats;
       try {
-        const dbResponse = await safeFetch('/api/monitoring/database-stats');
-        dbStats = dbResponse.success ? dbResponse.data : null;
+        const dbResponse = await safeFetch(ENDPOINTS.MONITORING_DATABASE_STATS);  // 🔥 수정
+        dbStats = dbResponse.success ? dbResponse.data : dbResponse;
         console.log('✅ 데이터베이스 통계 로드 성공');
       } catch (error) {
         console.warn('⚠️ 데이터베이스 통계 로드 실패:', error);
         dbStats = null;
       }
 
-      // 4. 성능 지표 조회
+      // 4. 성능 지표 조회 - ENDPOINTS 사용
       let performanceData;
       try {
-        const perfResponse = await safeFetch('/api/monitoring/performance');
-        performanceData = perfResponse.success ? perfResponse.data : null;
+        const perfResponse = await safeFetch(ENDPOINTS.MONITORING_PERFORMANCE);  // 🔥 수정
+        performanceData = perfResponse.success ? perfResponse.data : perfResponse;
         console.log('✅ 성능 지표 로드 성공');
       } catch (error) {
         console.warn('⚠️ 성능 지표 로드 실패:', error);
@@ -362,70 +411,74 @@ const Dashboard: React.FC = () => {
     systemMetrics: any,
     dbStats: any,
     performanceData: any
-  ): DashboardData => {
+): DashboardData => {
     const now = new Date();
+
+    // 🔥 포트 정보 추출 (API 응답에서)
+    const ports = servicesData?.ports || {};
 
     // 서비스 상태 변환
     const services = {
-      total: 5,
-      running: 0,
-      stopped: 0,
-      error: 0,
-      details: [
-        {
-          name: 'backend',
-          displayName: 'Backend API',
-          status: 'running' as const,
-          icon: 'server',
-          controllable: false,
-          description: 'Node.js 백엔드 서비스',
-          port: 3000,
-          version: '2.1.0',
-          uptime: systemMetrics?.process?.uptime || 300,
-          memory_usage: systemMetrics?.process?.memory?.rss || 82,
-          cpu_usage: systemMetrics?.cpu?.usage || 8
-        },
-        {
-          name: 'collector',
-          displayName: 'Data Collector',
-          status: (servicesData?.services?.collector === 'healthy' ? 'running' : 'stopped') as const,
-          icon: 'download',
-          controllable: true,
-          description: 'C++ 데이터 수집 서비스',
-          port: 8080,
-          last_error: servicesData?.services?.collector !== 'healthy' ? 'Service not running' : undefined
-        },
-        {
-          name: 'redis',
-          displayName: 'Redis Cache',
-          status: (servicesData?.services?.redis === 'healthy' ? 'running' : 'stopped') as const,
-          icon: 'database',
-          controllable: true,
-          description: '실시간 데이터 캐시',
-          port: 6379,
-          last_error: servicesData?.services?.redis !== 'healthy' ? 'Connection failed' : undefined
-        },
-        {
-          name: 'rabbitmq',
-          displayName: 'RabbitMQ',
-          status: 'stopped' as const,
-          icon: 'exchange',
-          controllable: true,
-          description: '메시지 큐 서비스',
-          port: 5672,
-          last_error: 'Service not installed'
-        },
-        {
-          name: 'postgresql',
-          displayName: 'PostgreSQL',
-          status: 'stopped' as const,
-          icon: 'elephant',
-          controllable: true,
-          description: '메타데이터 저장소',
-          port: 5432,
-          last_error: 'Service not installed'
-        }
-      ]
+        total: 5,
+        running: 0,
+        stopped: 0,
+        error: 0,
+        details: [
+            {
+                name: 'backend',
+                displayName: 'Backend API',
+                status: 'running' as const,
+                icon: 'server',
+                controllable: false,
+                description: 'Node.js 백엔드 서비스',
+                port: ports.backend || 3000,  // 🔥 동적 포트
+                version: '2.1.0',
+                uptime: systemMetrics?.process?.uptime || 300,
+                memory_usage: systemMetrics?.process?.memory?.rss || 82,
+                cpu_usage: systemMetrics?.cpu?.usage || 8
+            },
+            {
+                name: 'collector',
+                displayName: 'Data Collector',
+                status: (servicesData?.services?.collector === 'healthy' ? 'running' : 'stopped') as const,
+                icon: 'download',
+                controllable: true,
+                description: 'C++ 데이터 수집 서비스',
+                port: ports.collector || 8080,  // 🔥 동적 포트
+                last_error: servicesData?.services?.collector !== 'healthy' ? 'Service not running' : undefined
+            },
+            {
+                name: 'redis',
+                displayName: 'Redis Cache',
+                status: (servicesData?.services?.redis === 'healthy' ? 'running' : 'stopped') as const,
+                icon: 'database',
+                controllable: true,
+                description: '실시간 데이터 캐시',
+                port: ports.redis || 6379,  // 🔥 동적 포트
+                last_error: servicesData?.services?.redis === 'healthy' ? undefined :
+                          servicesData?.services?.redis === 'disabled' ? 'Service disabled' : 'Connection failed'
+            },
+            {
+                name: 'rabbitmq',
+                displayName: 'RabbitMQ',
+                status: 'stopped' as const,
+                icon: 'exchange',
+                controllable: true,
+                description: '메시지 큐 서비스',
+                port: ports.rabbitmq || 5672,  // 🔥 동적 포트
+                last_error: 'Service not installed'
+            },
+            {
+                name: 'postgresql',
+                displayName: 'PostgreSQL',
+                status: 'stopped' as const,
+                icon: 'elephant',
+                controllable: true,
+                description: '메타데이터 저장소',
+                port: ports.postgresql || 5432,  // 🔥 동적 포트
+                last_error: 'Service not installed'
+            }
+        ]
     };
 
     // 실행중/중지된 서비스 수 계산
