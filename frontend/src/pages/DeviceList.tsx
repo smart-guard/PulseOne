@@ -369,6 +369,12 @@ const DeviceList: React.FC = () => {
   // =============================================================================
 
   const getStatusBadgeClass = (status: string) => {
+
+    if (!status || typeof status !== 'string') {
+      return 'status-badge status-unknown';
+    }
+
+
     switch (status.toLowerCase()) {
       case 'running': return 'status-badge status-running';
       case 'stopped': return 'status-badge status-stopped';
@@ -380,6 +386,9 @@ const DeviceList: React.FC = () => {
   };
 
   const getConnectionBadgeClass = (connectionStatus: string) => {
+    if (!connectionStatus || typeof connectionStatus !== 'string') {
+      return 'connection-badge connection-unknown';
+    }
     switch (connectionStatus.toLowerCase()) {
       case 'connected': return 'connection-badge connection-connected';
       case 'disconnected': return 'connection-badge connection-disconnected';
@@ -387,7 +396,19 @@ const DeviceList: React.FC = () => {
       default: return 'connection-badge connection-unknown';
     }
   };
+  const getStatusText = (status: string | null | undefined) => {
+    if (!status || typeof status !== 'string') {
+      return '알 수 없음';
+    }
+    return status;
+  };
 
+  const getConnectionStatusText = (connectionStatus: string | null | undefined) => {
+    if (!connectionStatus || typeof connectionStatus !== 'string') {
+      return '알 수 없음';
+    }
+    return connectionStatus;
+  };
   const formatLastSeen = (lastSeen?: string) => {
     if (!lastSeen) return '없음';
     
@@ -583,79 +604,140 @@ const DeviceList: React.FC = () => {
             </button>
           </div>
         ) : (
-          <table className="devices-table">
-            <thead>
-              <tr>
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={selectedDevices.length === devices.length}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                  />
-                </th>
-                <th>이름</th>
-                <th>프로토콜</th>
-                <th>엔드포인트</th>
-                <th>상태</th>
-                <th>연결상태</th>
-                <th>최종 통신</th>
-                <th>작업</th>
-              </tr>
-            </thead>
-            <tbody>
+      <div className="devices-table-container">
+        {isLoading ? (
+          <div className="loading-spinner">
+            <i className="fas fa-spinner fa-spin"></i>
+            <span>디바이스 목록을 불러오는 중...</span>
+          </div>
+        ) : devices.length === 0 ? (
+          <div className="empty-state">
+            <i className="fas fa-network-wired"></i>
+            <h3>등록된 디바이스가 없습니다</h3>
+            <p>새 디바이스를 추가하여 시작하세요</p>
+            <button className="btn btn-primary" onClick={handleCreateDevice}>
+              <i className="fas fa-plus"></i>
+              첫 번째 디바이스 추가
+            </button>
+          </div>
+        ) : (
+          {/* 🔥 디바이스 테이블 - Grid 버전 */}
+          <div className="device-table">
+            {/* 헤더 */}
+            <div className="device-table-header">
+              <div>
+                <input
+                  type="checkbox"
+                  checked={selectedDevices.length === devices.length}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                />
+              </div>
+              <div>디바이스</div>
+              <div>프로토콜</div>
+              <div>상태</div>
+              <div>연결</div>
+              <div>데이터</div>
+              <div>성능</div>
+              <div>네트워크</div>
+              <div>작업</div>
+            </div>
+
+            {/* 바디 */}
+            <div className="device-table-body">
               {devices.map((device) => (
-                <tr 
+                <div 
                   key={device.id}
-                  className={selectedDevices.includes(device.id) ? 'selected' : ''}
+                  className="device-table-row"
                 >
-                  <td>
+                  {/* 체크박스 */}
+                  <div className="device-table-cell">
                     <input
                       type="checkbox"
                       checked={selectedDevices.includes(device.id)}
                       onChange={(e) => handleDeviceSelect(device.id, e.target.checked)}
                     />
-                  </td>
-                  <td>
+                  </div>
+
+                  {/* 디바이스 정보 */}
+                  <div className="device-table-cell">
                     <div className="device-info">
-                      <div 
-                        className="device-name"
-                        onClick={() => handleDeviceClick(device)}
-                      >
-                        {device.name}
+                      <div className="device-icon">
+                        <i className="fas fa-microchip"></i>
                       </div>
-                      {device.description && (
-                        <div className="device-description">{device.description}</div>
-                      )}
+                      <div>
+                        <div 
+                          className="device-name"
+                          onClick={() => handleDeviceClick(device)}
+                        >
+                          {device.name}
+                        </div>
+                        {device.description && (
+                          <div className="device-endpoint">{device.description}</div>
+                        )}
+                        <div className="device-endpoint">{device.endpoint}</div>
+                      </div>
                     </div>
-                  </td>
-                  <td>
-                    <span className="protocol-badge">{device.protocol_type}</span>
-                  </td>
-                  <td>
-                    <span className="endpoint">{device.endpoint}</span>
-                  </td>
-                  <td>
-                    <span className={getStatusBadgeClass(device.status)}>
-                      {device.status}
+                  </div>
+
+                  {/* 프로토콜 */}
+                  <div className="device-table-cell">
+                    <span className="protocol-badge bg-blue-100">
+                      {device.protocol_type?.replace('_', ' ') || 'N/A'}
                     </span>
-                  </td>
-                  <td>
-                    <span className={getConnectionBadgeClass(device.connection_status)}>
-                      {device.connection_status}
+                  </div>
+
+                  {/* 상태 */}
+                  <div className="device-table-cell">
+                    <span className={`status ${getStatusBadgeClass(device.status)}`}>
+                      <span className={`status-dot status-dot-${device.status || 'unknown'}`}></span>
+                      {getStatusText(device.status)}
                     </span>
-                  </td>
-                  <td>
-                    <span className="last-seen">
-                      {formatLastSeen(device.last_seen)}
-                    </span>
-                  </td>
-                  <td>
+                  </div>
+
+                  {/* 연결상태 */}
+                  <div className="device-table-cell">
+                    <div className="connection-info">
+                      <div className="info-title">
+                        {getConnectionStatusText(device.connection_status)}
+                      </div>
+                      <div className="info-subtitle">
+                        {formatLastSeen(device.last_seen)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 데이터 정보 */}
+                  <div className="device-table-cell">
+                    <div className="data-info">
+                      <div className="info-title">포인트: 24</div>
+                      <div className="info-subtitle">활성: 22</div>
+                    </div>
+                  </div>
+
+                  {/* 성능 정보 */}
+                  <div className="device-table-cell">
+                    <div className="performance-info">
+                      <div className="info-title">응답: 45ms</div>
+                      <div className="info-subtitle">처리율: 98%</div>
+                    </div>
+                  </div>
+
+                  {/* 네트워크 정보 */}
+                  <div className="device-table-cell">
+                    <div className="network-info">
+                      <div className="info-title">신호: 좋음</div>
+                      <div className="info-subtitle">대역폭: 1.2MB</div>
+                    </div>
+                  </div>
+
+                  {/* 작업 버튼들 */}
+                  <div className="device-table-cell">
                     <div className="device-actions">
                       {device.is_enabled ? (
                         <button 
                           onClick={() => handleDisableDevice(device.id)}
                           disabled={isProcessing}
-                          className="btn btn-sm btn-warning"
+                          className="action-btn btn-pause"
                           title="비활성화"
                         >
                           <i className="fas fa-pause"></i>
@@ -664,7 +746,7 @@ const DeviceList: React.FC = () => {
                         <button 
                           onClick={() => handleEnableDevice(device.id)}
                           disabled={isProcessing}
-                          className="btn btn-sm btn-success"
+                          className="action-btn btn-start"
                           title="활성화"
                         >
                           <i className="fas fa-play"></i>
@@ -673,7 +755,7 @@ const DeviceList: React.FC = () => {
                       <button 
                         onClick={() => handleRestartDevice(device.id)}
                         disabled={isProcessing}
-                        className="btn btn-sm btn-secondary"
+                        className="action-btn btn-stop"
                         title="재시작"
                       >
                         <i className="fas fa-redo"></i>
@@ -681,7 +763,7 @@ const DeviceList: React.FC = () => {
                       <button 
                         onClick={() => handleTestConnection(device.id)}
                         disabled={isProcessing}
-                        className="btn btn-sm btn-info"
+                        className="action-btn btn-view"
                         title="연결 테스트"
                       >
                         <i className="fas fa-plug"></i>
@@ -689,17 +771,19 @@ const DeviceList: React.FC = () => {
                       <button 
                         onClick={() => handleEditDevice(device)}
                         disabled={isProcessing}
-                        className="btn btn-sm btn-primary"
+                        className="action-btn btn-edit"
                         title="편집"
                       >
                         <i className="fas fa-edit"></i>
                       </button>
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
+        )}
+      </div>
         )}
       </div>
 
