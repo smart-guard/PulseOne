@@ -1,10 +1,13 @@
 // ============================================================================
 // backend/routes/dashboard.js
-// 🏭 상용 대시보드 API - DeviceRepository 직접 사용 (수정됨)
+// 🏭 상용 대시보드 API - DeviceRepository 직접 사용 + 서비스 제어 (완성됨)
 // ============================================================================
 
 const express = require('express');
 const router = express.Router();
+const { spawn, exec } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
 // Repository imports (수정됨 - 실제 존재하는 것들만)
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
@@ -207,8 +210,437 @@ function getActualSystemMetrics() {
     };
 }
 
+// =============================================================================
+// 🆕 서비스 제어 API 구현
+// =============================================================================
+
+/**
+ * POST /api/dashboard/service/:serviceName/control
+ * 서비스 시작/중지/재시작 제어
+ */
+router.post('/service/:serviceName/control', async (req, res) => {
+    try {
+        const { serviceName } = req.params;
+        const { action } = req.body;
+
+        console.log(`🔧 서비스 제어 요청: ${serviceName} ${action}`);
+
+        if (!['start', 'stop', 'restart'].includes(action)) {
+            return res.status(400).json(createResponse(false, null, 
+                `Invalid action: ${action}. Must be start, stop, or restart`, 'INVALID_ACTION'));
+        }
+
+        let result;
+        
+        switch (serviceName.toLowerCase()) {
+            case 'collector':
+                result = await handleCollectorService(action);
+                break;
+            case 'redis':
+                result = await handleRedisService(action);
+                break;
+            case 'database':
+                result = await handleDatabaseService(action);
+                break;
+            default:
+                return res.status(404).json(createResponse(false, null, 
+                    `Unknown service: ${serviceName}`, 'SERVICE_NOT_FOUND'));
+        }
+
+        if (result.success) {
+            console.log(`✅ 서비스 ${serviceName} ${action} 성공`);
+            res.json(createResponse(true, result.data, result.message));
+        } else {
+            console.error(`❌ 서비스 ${serviceName} ${action} 실패:`, result.error);
+            res.status(500).json(createResponse(false, null, result.error, 'SERVICE_CONTROL_ERROR'));
+        }
+
+    } catch (error) {
+        console.error('❌ 서비스 제어 오류:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'SERVICE_CONTROL_ERROR'));
+    }
+});
+
+// =============================================================================
+// 서비스별 제어 함수들
+// =============================================================================
+
+/**
+ * Collector 서비스 제어
+ */
+async function handleCollectorService(action) {
+    const collectorPath = getCollectorPath();
+    
+    switch (action) {
+        case 'start':
+            return startCollectorService(collectorPath);
+        case 'stop':
+            return stopCollectorService();
+        case 'restart':
+            const stopResult = await stopCollectorService();
+            if (stopResult.success) {
+                // 잠시 대기 후 재시작
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return startCollectorService(collectorPath);
+            }
+            return stopResult;
+        default:
+            return { success: false, error: `Unknown action: ${action}` };
+    }
+}
+
+/**
+ * Redis 서비스 제어
+ */
+async function handleRedisService(action) {
+    return new Promise((resolve) => {
+        switch (action) {
+            case 'start':
+                exec('redis-server --daemonize yes', (error, stdout, stderr) => {
+                    if (error) {
+                        resolve({ 
+                            success: false, 
+                            error: `Redis 시작 실패: ${error.message}`,
+                            suggestion: 'Redis가 설치되어 있는지 확인하세요.'
+                        });
+                    } else {
+                        resolve({ 
+                            success: true, 
+                            message: 'Redis 서버가 시작되었습니다.',
+                            data: { stdout, stderr }
+                        });
+                    }
+                });
+                break;
+                
+            case 'stop':
+                exec('redis-cli shutdown', (error, stdout, stderr) => {
+                    resolve({ 
+                        success: true, 
+                        message: 'Redis 서버 중지 명령을 전송했습니다.',
+                        data: { stdout, stderr }
+                    });
+                });
+                break;
+                
+            case 'restart':
+                exec('redis-cli shutdown && sleep 2 && redis-server --daemonize yes', (error, stdout, stderr) => {
+                    if (error) {
+                        resolve({ 
+                            success: false, 
+                            error: `Redis 재시작 실패: ${error.message}`
+                        });
+                    } else {
+                        resolve({ 
+                            success: true, 
+                            message: 'Redis 서버가 재시작되었습니다.',
+                            data: { stdout, stderr }
+                        });
+                    }
+                });
+                break;
+                
+            default:
+                resolve({ success: false, error: `Unknown action: ${action}` });
+        }
+    });
+}
+
+/**
+ * 데이터베이스 서비스 제어 (SQLite는 파일 기반이므로 제한적)
+ */
+async function handleDatabaseService(action) {
+    return new Promise((resolve) => {
+        switch (action) {
+            case 'start':
+                // SQLite는 연결 테스트로 시작 확인
+                testDatabaseConnection()
+                    .then(() => {
+                        resolve({ 
+                            success: true, 
+                            message: 'SQLite 데이터베이스 연결이 정상입니다.',
+                            data: { type: 'sqlite', status: 'connected' }
+                        });
+                    })
+                    .catch((error) => {
+                        resolve({ 
+                            success: false, 
+                            error: `데이터베이스 연결 실패: ${error.message}`
+                        });
+                    });
+                break;
+                
+            case 'stop':
+                resolve({ 
+                    success: true, 
+                    message: 'SQLite는 파일 기반 데이터베이스로 별도 중지가 필요하지 않습니다.',
+                    data: { type: 'sqlite', note: 'File-based database' }
+                });
+                break;
+                
+            case 'restart':
+                resolve({ 
+                    success: true, 
+                    message: 'SQLite 데이터베이스 재연결을 시뮬레이션했습니다.',
+                    data: { type: 'sqlite', action: 'simulated_restart' }
+                });
+                break;
+                
+            default:
+                resolve({ success: false, error: `Unknown action: ${action}` });
+        }
+    });
+}
+
+// =============================================================================
+// 유틸리티 함수들
+// =============================================================================
+
+/**
+ * Collector 실행 파일 경로 찾기
+ */
+function getCollectorPath() {
+    const possiblePaths = [
+        path.join(__dirname, '../../collector/bin/collector'),
+        path.join(__dirname, '../../collector/build/collector'),
+        path.join(__dirname, '../../collector/collector'),
+        '/app/collector/bin/collector',
+        './collector/bin/collector'
+    ];
+    
+    for (const collectorPath of possiblePaths) {
+        if (fs.existsSync(collectorPath)) {
+            return collectorPath;
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Collector 시작
+ */
+function startCollectorService(collectorPath) {
+    return new Promise((resolve) => {
+        if (!collectorPath) {
+            resolve({ 
+                success: false, 
+                error: 'Collector 실행 파일을 찾을 수 없습니다.',
+                suggestion: 'Collector를 빌드하거나 경로를 확인하세요.'
+            });
+            return;
+        }
+
+        if (!fs.existsSync(collectorPath)) {
+            resolve({ 
+                success: false, 
+                error: `Collector 실행 파일이 존재하지 않습니다: ${collectorPath}`,
+                suggestion: 'make 명령으로 Collector를 빌드하세요.'
+            });
+            return;
+        }
+
+        console.log(`🚀 Collector 시작 시도: ${collectorPath}`);
+        
+        const collector = spawn(collectorPath, [], {
+            detached: true,
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        let startupOutput = '';
+        
+        collector.stdout.on('data', (data) => {
+            startupOutput += data.toString();
+        });
+        
+        collector.stderr.on('data', (data) => {
+            startupOutput += data.toString();
+        });
+
+        // 2초 후 상태 확인
+        setTimeout(() => {
+            if (collector.killed) {
+                resolve({ 
+                    success: false, 
+                    error: 'Collector가 시작 후 즉시 종료되었습니다.',
+                    data: { output: startupOutput }
+                });
+            } else {
+                collector.unref(); // 부모 프로세스와 분리
+                resolve({ 
+                    success: true, 
+                    message: 'Collector가 백그라운드에서 시작되었습니다.',
+                    data: { 
+                        pid: collector.pid,
+                        path: collectorPath,
+                        output: startupOutput
+                    }
+                });
+            }
+        }, 2000);
+
+        collector.on('error', (error) => {
+            resolve({ 
+                success: false, 
+                error: `Collector 시작 실패: ${error.message}`,
+                data: { output: startupOutput }
+            });
+        });
+    });
+}
+
+/**
+ * Collector 중지
+ */
+function stopCollectorService() {
+    return new Promise((resolve) => {
+        // 프로세스 이름으로 종료 시도
+        exec('pkill -f collector', (error, stdout, stderr) => {
+            if (error) {
+                resolve({ 
+                    success: false, 
+                    error: `Collector 중지 실패: ${error.message}`,
+                    suggestion: 'Collector 프로세스가 실행 중이지 않을 수 있습니다.'
+                });
+            } else {
+                resolve({ 
+                    success: true, 
+                    message: 'Collector 프로세스를 중지했습니다.',
+                    data: { stdout, stderr }
+                });
+            }
+        });
+    });
+}
+
+/**
+ * 데이터베이스 연결 테스트
+ */
+function testDatabaseConnection() {
+    return new Promise((resolve, reject) => {
+        try {
+            // Express app의 데이터베이스 연결 확인
+            const connections = require('../app').locals.getDB();
+            if (connections && connections.db) {
+                connections.db.get("SELECT 1", (err, row) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(row);
+                    }
+                });
+            } else {
+                reject(new Error('데이터베이스 연결을 찾을 수 없습니다.'));
+            }
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// =============================================================================
+// 🆕 서비스 상태 조회 API
+// =============================================================================
+
+/**
+ * GET /api/dashboard/services/status
+ * 모든 서비스 상태 조회
+ */
+router.get('/services/status', async (req, res) => {
+    try {
+        console.log('📊 서비스 상태 조회 중...');
+
+        const services = await Promise.all([
+            checkCollectorStatus(),
+            checkRedisStatus(),
+            checkDatabaseStatus()
+        ]);
+
+        const summary = {
+            total: services.length,
+            running: services.filter(s => s.status === 'running').length,
+            stopped: services.filter(s => s.status === 'stopped').length,
+            error: services.filter(s => s.status === 'error').length
+        };
+
+        res.json(createResponse(true, {
+            services,
+            summary
+        }, 'Services status retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 서비스 상태 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'STATUS_CHECK_ERROR'));
+    }
+});
+
+// 서비스 상태 확인 함수들
+async function checkCollectorStatus() {
+    return new Promise((resolve) => {
+        exec('pgrep -f collector', (error, stdout) => {
+            if (error || !stdout.trim()) {
+                resolve({
+                    name: 'collector',
+                    displayName: 'Data Collector',
+                    status: 'stopped',
+                    pid: null
+                });
+            } else {
+                resolve({
+                    name: 'collector',
+                    displayName: 'Data Collector',
+                    status: 'running',
+                    pid: parseInt(stdout.trim())
+                });
+            }
+        });
+    });
+}
+
+async function checkRedisStatus() {
+    return new Promise((resolve) => {
+        exec('redis-cli ping', (error, stdout) => {
+            if (error || stdout.trim() !== 'PONG') {
+                resolve({
+                    name: 'redis',
+                    displayName: 'Redis Cache',
+                    status: 'stopped',
+                    pid: null
+                });
+            } else {
+                resolve({
+                    name: 'redis',
+                    displayName: 'Redis Cache',
+                    status: 'running',
+                    pid: null // Redis PID는 별도 조회 필요
+                });
+            }
+        });
+    });
+}
+
+async function checkDatabaseStatus() {
+    try {
+        await testDatabaseConnection();
+        return {
+            name: 'database',
+            displayName: 'SQLite Database',
+            status: 'running',
+            pid: null
+        };
+    } catch (error) {
+        return {
+            name: 'database',
+            displayName: 'SQLite Database',
+            status: 'error',
+            pid: null,
+            error: error.message
+        };
+    }
+}
+
 // ============================================================================
-// 📊 상용 대시보드 API 엔드포인트들 (수정됨)
+// 📊 상용 대시보드 API 엔드포인트들 (기존 코드 유지)
 // ============================================================================
 
 /**
@@ -603,13 +1035,15 @@ router.get('/system-health',
  */
 router.get('/test', (req, res) => {
     res.json(createResponse(true, {
-        message: 'Fixed Dashboard API is working!',
-        data_source: 'DeviceRepository Direct',
+        message: 'Complete Dashboard API is working!',
+        data_source: 'DeviceRepository Direct + Service Control',
         endpoints: [
             'GET /api/dashboard/overview - DeviceRepository 직접 사용',
             'GET /api/dashboard/tenant-stats - DeviceRepository 직접 사용',
             'GET /api/dashboard/recent-devices - DeviceRepository 직접 사용',
-            'GET /api/dashboard/system-health - 실제 시스템 상태'
+            'GET /api/dashboard/system-health - 실제 시스템 상태',
+            '🆕 GET /api/dashboard/services/status - 서비스 상태 조회',
+            '🆕 POST /api/dashboard/service/{name}/control - 서비스 제어'
         ],
         repositories_used: [
             'DeviceRepository (직접 사용)',
@@ -617,13 +1051,18 @@ router.get('/test', (req, res) => {
             'AlarmOccurrenceRepository',
             'AlarmRuleRepository'
         ],
+        service_control: {
+            available_services: ['collector', 'redis', 'database'],
+            available_actions: ['start', 'stop', 'restart'],
+            endpoint_format: 'POST /api/dashboard/service/{serviceName}/control'
+        },
         removed_dependencies: [
             'DataPointRepository (DeviceRepository에 포함됨)',
             'CurrentValueRepository (DeviceRepository에 포함됨)'
         ],
         mock_data: false,
         timestamp: new Date().toISOString()
-    }, 'Fixed Dashboard API test successful'));
+    }, 'Complete Dashboard API with Service Control test successful'));
 });
 
 module.exports = router;
