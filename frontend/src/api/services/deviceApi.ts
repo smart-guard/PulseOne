@@ -1,47 +1,105 @@
 // ============================================================================
 // frontend/src/api/services/deviceApi.ts
-// 디바이스 API 서비스 - 새로운 Backend API 완전 호환
+// 🔥 Device 인터페이스 수정 - 백엔드 API와 필드명 일치
 // ============================================================================
 
-import { API_CONFIG } from '../config';
-import { ENDPOINTS } from '../endpoints';
-import { 
-  ApiResponse, 
-  PaginatedApiResponse, 
-  PaginationParams, 
-  BulkActionResponse 
-} from '../../types/common';
-
-// ============================================================================
-// 🏭 디바이스 관련 인터페이스들
-// ============================================================================
-
+// 🔥 수정된 Device 인터페이스 - 백엔드 API 응답과 완전 일치
 export interface Device {
+  // 🔥 기본 정보
   id: number;
-  name: string;
-  protocol_type: string;
-  device_type?: string;
-  endpoint: string;
-  is_enabled: boolean;
-  connection_status: 'connected' | 'disconnected' | 'error';
-  status: 'running' | 'stopped' | 'error' | 'disabled' | 'restarting';
-  last_seen?: string;
+  tenant_id?: number;
   site_id?: number;
-  site_name?: string;
+  device_group_id?: number;
+  edge_server_id?: number;
+  
+  // 🔥 디바이스 기본 속성
+  name: string;
+  description?: string;
+  device_type: string;
   manufacturer?: string;
   model?: string;
-  description?: string;
-  data_points_count?: number;
+  serial_number?: string;
+  
+  // 🔥 프로토콜 및 네트워크
+  protocol_type: string;
+  endpoint: string;
+  config?: any; // JSON 객체
+  
+  // 🔥 운영 설정
   polling_interval?: number;
+  timeout?: number;
+  retry_count?: number;
+  is_enabled: boolean;
+  
+  // 🔥 상태 정보
+  connection_status?: string;
+  status?: string | any; // 문자열 또는 객체
+  last_seen?: string;
+  last_communication?: string;
+  
+  // 🔥 ✅ 올바른 데이터포인트 필드명 (백엔드 API와 일치)
+  data_point_count?: number;        // ✅ 백엔드: data_point_count
+  enabled_point_count?: number;     // ✅ 백엔드: enabled_point_count
+  
+  // 🔥 성능 및 네트워크 정보
   response_time?: number;
   error_count?: number;
-  uptime?: string;
+  last_error?: string;
+  firmware_version?: string;
+  hardware_info?: string;
+  diagnostic_data?: any;
+  
+  // 🔥 확장된 설정 (API 응답에 포함)
+  polling_interval_ms?: number;
+  connection_timeout_ms?: number;
+  max_retry_count?: number;
+  retry_interval_ms?: number;
+  backoff_time_ms?: number;
+  keep_alive_enabled?: boolean;
+  keep_alive_interval_s?: number;
+  
+  // 🔥 사이트 및 그룹 정보 (조인된 데이터)
+  site_name?: string;
+  site_code?: string;
+  group_name?: string;
+  group_type?: string;
+  
+  // 🔥 설정 및 상태 객체 (중첩된 JSON)
+  settings?: {
+    polling_interval_ms?: number;
+    connection_timeout_ms?: number;
+    max_retry_count?: number;
+    retry_interval_ms?: number;
+    backoff_time_ms?: number;
+    keep_alive_enabled?: boolean;
+    keep_alive_interval_s?: number;
+    updated_at?: string;
+  };
+  
+  status_info?: {
+    status?: string;
+    connection_status?: string;
+    last_error?: string;
+    response_time?: number;
+    firmware_version?: string;
+    hardware_info?: string;
+    diagnostic_data?: any;
+    error_count?: number;
+    successful_requests?: number;
+    total_requests?: number;
+    updated_at?: string;
+  };
+  
+  // 🔥 시간 정보
+  installation_date?: string;
+  last_maintenance?: string;
   created_at: string;
   updated_at: string;
-  created_by?: number;
-  tenant_id?: number;
+  settings_updated_at?: string;
+  status_updated_at?: string;
 }
 
+// 🔥 디바이스 통계 인터페이스
 export interface DeviceStats {
   total_devices: number;
   connected_devices: number;
@@ -61,60 +119,103 @@ export interface DeviceStats {
   }>;
 }
 
-export interface DeviceListParams extends PaginationParams {
+// 🔥 디바이스 생성 요청 인터페이스
+export interface CreateDeviceRequest {
+  name: string;
+  description?: string;
+  device_type: string;
+  manufacturer?: string;
+  model?: string;
+  protocol_type: string;
+  endpoint: string;
+  config?: any;
+  site_id?: number;
+  device_group_id?: number;
+  polling_interval?: number;
+  timeout?: number;
+  retry_count?: number;
+  is_enabled: boolean;
+}
+
+// 🔥 디바이스 수정 요청 인터페이스
+export interface UpdateDeviceRequest {
+  name?: string;
+  description?: string;
+  device_type?: string;
+  manufacturer?: string;
+  model?: string;
+  endpoint?: string;
+  config?: any;
+  polling_interval?: number;
+  timeout?: number;
+  retry_count?: number;
+  is_enabled?: boolean;
+}
+
+// 🔥 디바이스 목록 조회 파라미터
+export interface GetDevicesParams {
+  page?: number;
+  limit?: number;
+  search?: string;
   protocol_type?: string;
   device_type?: string;
   connection_status?: string;
   status?: string;
   site_id?: number;
-  search?: string;
+  device_group_id?: number;
+  is_enabled?: boolean;
   sort_by?: string;
   sort_order?: 'ASC' | 'DESC';
 }
 
-export interface DeviceCreateData {
-  name: string;
-  protocol_type: string;
-  device_type?: string;
-  endpoint: string;
-  site_id?: number;
-  manufacturer?: string;
-  model?: string;
-  description?: string;
-  polling_interval?: number;
-  is_enabled?: boolean;
+// 🔥 API 응답 래퍼
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+  error_code?: string;
+  timestamp?: string;
 }
 
-export interface DeviceUpdateData {
-  name?: string;
-  endpoint?: string;
-  device_type?: string;
-  site_id?: number;
-  manufacturer?: string;
-  model?: string;
-  description?: string;
-  polling_interval?: number;
-  is_enabled?: boolean;
+// 🔥 페이징 정보
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
 }
 
+// 🔥 디바이스 목록 응답
+export interface DevicesResponse {
+  items: Device[];
+  pagination: PaginationInfo;
+}
+
+// 🔥 연결 테스트 결과
 export interface ConnectionTestResult {
   device_id: number;
   device_name: string;
   endpoint: string;
   protocol_type: string;
   test_successful: boolean;
-  response_time_ms: number;
+  response_time_ms?: number;
   test_timestamp: string;
   error_message?: string;
 }
 
+// 🔥 일괄 작업 요청
 export interface BulkActionRequest {
   action: 'enable' | 'disable' | 'delete';
   device_ids: number[];
 }
 
+// 🔥 일괄 작업 결과
 export interface BulkActionResult {
-  total_processed: number;
+  action: string;
+  total_requested: number;
   successful: number;
   failed: number;
   errors?: Array<{
@@ -123,374 +224,225 @@ export interface BulkActionResult {
   }>;
 }
 
-// ============================================================================
-// 🔧 HTTP 클라이언트 클래스
-// ============================================================================
+// 🔥 지원 프로토콜 정보
+export interface ProtocolInfo {
+  protocol_type: string;
+  display_name: string;
+  description?: string;
+  supported_features?: string[];
+  default_port?: number;
+}
 
-class HttpClient {
-  private baseUrl: string;
+// 🔥 DeviceApiService 클래스 (실제 API 호출)
+export class DeviceApiService {
+  private static readonly BASE_URL = '/api/devices';
 
-  constructor(baseUrl: string = API_CONFIG.BASE_URL) {
-    this.baseUrl = baseUrl;
+  // 🔥 디바이스 목록 조회
+  static async getDevices(params?: GetDevicesParams): Promise<ApiResponse<DevicesResponse>> {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, value.toString());
+          }
+        });
+      }
+      
+      const url = `${this.BASE_URL}?${queryParams.toString()}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('디바이스 목록 조회 실패:', error);
+      throw error;
+    }
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
-    
-    console.log('🌐 API Request:', {
-      method: options.method || 'GET',
-      url: url,
-      endpoint: endpoint
-    });
-    
-    const config: RequestInit = {
-      timeout: API_CONFIG.TIMEOUT,
-      headers: {
-        ...API_CONFIG.DEFAULT_HEADERS,
-        ...options.headers,
-      },
-      ...options,
-    };
-
+  // 🔥 디바이스 상세 조회
+  static async getDevice(id: number): Promise<ApiResponse<Device>> {
     try {
-      const response = await fetch(url, config);
+      const response = await fetch(`${this.BASE_URL}/${id}`);
       
-      console.log('📡 API Response:', {
-        status: response.status,
-        ok: response.ok,
-        url: response.url
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${id} 조회 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 🔥 디바이스 생성
+  static async createDevice(data: CreateDeviceRequest): Promise<ApiResponse<Device>> {
+    try {
+      const response = await fetch(this.BASE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
       });
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data: ApiResponse<T> = await response.json();
-      
-      // Backend 응답이 success 필드를 사용하므로 변환
-      if ('success' in data) {
-        return {
-          success: data.success,
-          data: data.data,
-          message: data.message,
-          error: data.error,
-          timestamp: data.timestamp
-        };
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      // 기존 형식 호환
-      return data;
-      
+      return await response.json();
     } catch (error) {
-      console.error('❌ API Request failed:', {
-        endpoint,
-        url,
-        error: error instanceof Error ? error.message : 'Unknown error'
+      console.error('디바이스 생성 실패:', error);
+      throw error;
+    }
+  }
+
+  // 🔥 디바이스 수정
+  static async updateDevice(id: number, data: UpdateDeviceRequest): Promise<ApiResponse<Device>> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
       });
       
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        data: null as any
-      };
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${id} 수정 실패:`, error);
+      throw error;
     }
   }
 
-  async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
-    const queryParams = new URLSearchParams();
-    
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, String(value));
-        }
+  // 🔥 디바이스 삭제
+  static async deleteDevice(id: number): Promise<ApiResponse<void>> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/${id}`, {
+        method: 'DELETE',
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${id} 삭제 실패:`, error);
+      throw error;
     }
-    
-    const url = params && queryParams.toString() ? 
-      `${endpoint}?${queryParams.toString()}` : endpoint;
-    
-    return this.request<T>(url, { method: 'GET' });
   }
 
-  async post<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
-      method: 'POST',
-      body: data ? JSON.stringify(data) : undefined
-    });
+  // 🔥 디바이스 연결 테스트
+  static async testDeviceConnection(id: number): Promise<ApiResponse<ConnectionTestResult>> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/${id}/test-connection`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${id} 연결 테스트 실패:`, error);
+      throw error;
+    }
   }
 
-  async put<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
-      method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined
-    });
+  // 🔥 디바이스 일괄 작업
+  static async bulkAction(data: BulkActionRequest): Promise<ApiResponse<BulkActionResult>> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/bulk-action`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('디바이스 일괄 작업 실패:', error);
+      throw error;
+    }
   }
 
-  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
-  }
-}
-
-// ============================================================================
-// 🏭 디바이스 API 서비스 클래스
-// ============================================================================
-
-export class DeviceApiService {
-  private static httpClient = new HttpClient();
-
-  // ========================================================================
-  // 📋 디바이스 목록 및 조회
-  // ========================================================================
-
-  /**
-   * 디바이스 목록 조회 (페이징, 필터링, 정렬 지원)
-   */
-  static async getDevices(params?: DeviceListParams): Promise<ApiResponse<{
-    items: Device[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      totalPages: number;
-      hasNext: boolean;
-      hasPrev: boolean;
-    };
-  }>> {
-    console.log('📱 디바이스 목록 조회:', params);
-    return this.httpClient.get<any>(ENDPOINTS.DEVICES, params);
+  // 🔥 디바이스 통계 조회
+  static async getDeviceStatistics(): Promise<ApiResponse<DeviceStats>> {
+    try {
+      const response = await fetch('/api/devices/statistics');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('디바이스 통계 조회 실패:', error);
+      throw error;
+    }
   }
 
-  /**
-   * 특정 디바이스 상세 조회
-   */
-  static async getDevice(id: number, options?: {
-    include_data_points?: boolean;
-  }): Promise<ApiResponse<Device>> {
-    console.log('📱 디바이스 상세 조회:', { id, options });
-    return this.httpClient.get<Device>(ENDPOINTS.DEVICE_BY_ID(id), options);
+  // 🔥 지원 프로토콜 목록 조회
+  static async getAvailableProtocols(): Promise<ApiResponse<ProtocolInfo[]>> {
+    try {
+      const response = await fetch('/api/devices/protocols');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('지원 프로토콜 조회 실패:', error);
+      throw error;
+    }
   }
 
-  /**
-   * 디바이스의 데이터포인트 목록 조회
-   */
-  static async getDeviceDataPoints(id: number, params?: {
+  // 🔥 디바이스 데이터포인트 조회
+  static async getDeviceDataPoints(deviceId: number, params?: {
     page?: number;
     limit?: number;
     data_type?: string;
     enabled_only?: boolean;
   }): Promise<ApiResponse<any>> {
-    console.log('📊 디바이스 데이터포인트 조회:', { id, params });
-    return this.httpClient.get<any>(ENDPOINTS.DEVICE_DATA_POINTS(id), params);
-  }
-
-  // ========================================================================
-  // ✏️ 디바이스 생성, 수정, 삭제
-  // ========================================================================
-
-  /**
-   * 새 디바이스 생성
-   */
-  static async createDevice(data: DeviceCreateData): Promise<ApiResponse<Device>> {
-    console.log('➕ 디바이스 생성:', data);
-    return this.httpClient.post<Device>(ENDPOINTS.DEVICES, data);
-  }
-
-  /**
-   * 디바이스 정보 수정
-   */
-  static async updateDevice(id: number, data: DeviceUpdateData): Promise<ApiResponse<Device>> {
-    console.log('✏️ 디바이스 수정:', { id, data });
-    return this.httpClient.put<Device>(ENDPOINTS.DEVICE_BY_ID(id), data);
-  }
-
-  /**
-   * 디바이스 삭제
-   */
-  static async deleteDevice(id: number, force: boolean = false): Promise<ApiResponse<{ deleted: boolean }>> {
-    console.log('🗑️ 디바이스 삭제:', { id, force });
-    const endpoint = force ? `${ENDPOINTS.DEVICE_BY_ID(id)}?force=true` : ENDPOINTS.DEVICE_BY_ID(id);
-    return this.httpClient.delete<{ deleted: boolean }>(endpoint);
-  }
-
-  // ========================================================================
-  // 🔄 디바이스 제어 및 상태 관리
-  // ========================================================================
-
-  /**
-   * 디바이스 활성화
-   */
-  static async enableDevice(id: number): Promise<ApiResponse<Device>> {
-    console.log('🟢 디바이스 활성화:', id);
-    return this.httpClient.post<Device>(ENDPOINTS.DEVICE_ENABLE(id));
-  }
-
-  /**
-   * 디바이스 비활성화
-   */
-  static async disableDevice(id: number): Promise<ApiResponse<Device>> {
-    console.log('🔴 디바이스 비활성화:', id);
-    return this.httpClient.post<Device>(ENDPOINTS.DEVICE_DISABLE(id));
-  }
-
-  /**
-   * 디바이스 재시작
-   */
-  static async restartDevice(id: number): Promise<ApiResponse<Device>> {
-    console.log('🔄 디바이스 재시작:', id);
-    return this.httpClient.post<Device>(ENDPOINTS.DEVICE_RESTART(id));
-  }
-
-  /**
-   * 디바이스 연결 테스트
-   */
-  static async testDeviceConnection(id: number): Promise<ApiResponse<ConnectionTestResult>> {
-    console.log('🔗 디바이스 연결 테스트:', id);
-    return this.httpClient.post<ConnectionTestResult>(ENDPOINTS.DEVICE_TEST_CONNECTION(id));
-  }
-
-  // ========================================================================
-  // 📊 통계 및 검색
-  // ========================================================================
-
-  /**
-   * 지원하는 프로토콜 목록 조회
-   */
-  static async getAvailableProtocols(): Promise<ApiResponse<Array<{
-    protocol_type: string;
-    display_name: string;
-    description: string;
-    supported_features: string[];
-  }>>> {
-    console.log('📋 지원 프로토콜 조회');
-    return this.httpClient.get<any>('/api/devices/protocols');
-  }
-
-  /**
-   * 디바이스 통계 조회
-   */
-  static async getDeviceStatistics(): Promise<ApiResponse<DeviceStats>> {
-    console.log('📊 디바이스 통계 조회');
-    return this.httpClient.get<DeviceStats>('/api/devices/statistics');
-  }
-
-  // ========================================================================
-  // 🔄 일괄 작업
-  // ========================================================================
-
-  /**
-   * 일괄 작업 실행 (활성화, 비활성화, 삭제)
-   */
-  static async bulkAction(request: BulkActionRequest): Promise<ApiResponse<BulkActionResult>> {
-    console.log('🔄 일괄 작업 실행:', request);
-    return this.httpClient.post<BulkActionResult>('/api/devices/bulk-action', request);
-  }
-
-  /**
-   * 여러 디바이스 활성화
-   */
-  static async bulkEnableDevices(deviceIds: number[]): Promise<ApiResponse<BulkActionResult>> {
-    console.log('🟢 일괄 활성화:', deviceIds);
-    return this.bulkAction({ action: 'enable', device_ids: deviceIds });
-  }
-
-  /**
-   * 여러 디바이스 비활성화
-   */
-  static async bulkDisableDevices(deviceIds: number[]): Promise<ApiResponse<BulkActionResult>> {
-    console.log('🔴 일괄 비활성화:', deviceIds);
-    return this.bulkAction({ action: 'disable', device_ids: deviceIds });
-  }
-
-  /**
-   * 여러 디바이스 삭제
-   */
-  static async bulkDeleteDevices(deviceIds: number[]): Promise<ApiResponse<BulkActionResult>> {
-    console.log('🗑️ 일괄 삭제:', deviceIds);
-    return this.bulkAction({ action: 'delete', device_ids: deviceIds });
-  }
-
-  // ========================================================================
-  // 🔧 유틸리티 메서드들
-  // ========================================================================
-
-  /**
-   * 디바이스 상태별 필터링
-   */
-  static filterDevicesByStatus(devices: Device[], status: string): Device[] {
-    if (status === 'all') return devices;
-    return devices.filter(device => device.status === status);
-  }
-
-  /**
-   * 디바이스 연결 상태별 필터링
-   */
-  static filterDevicesByConnection(devices: Device[], connectionStatus: string): Device[] {
-    if (connectionStatus === 'all') return devices;
-    return devices.filter(device => device.connection_status === connectionStatus);
-  }
-
-  /**
-   * 디바이스 프로토콜별 필터링
-   */
-  static filterDevicesByProtocol(devices: Device[], protocol: string): Device[] {
-    if (protocol === 'all') return devices;
-    return devices.filter(device => device.protocol_type === protocol);
-  }
-
-  /**
-   * 디바이스 검색 (이름, 설명, 제조사, 모델)
-   */
-  static searchDevices(devices: Device[], searchTerm: string): Device[] {
-    if (!searchTerm.trim()) return devices;
-    
-    const term = searchTerm.toLowerCase();
-    return devices.filter(device => 
-      device.name.toLowerCase().includes(term) ||
-      device.description?.toLowerCase().includes(term) ||
-      device.manufacturer?.toLowerCase().includes(term) ||
-      device.model?.toLowerCase().includes(term) ||
-      device.endpoint.toLowerCase().includes(term)
-    );
-  }
-
-  /**
-   * 디바이스 상태 요약 계산
-   */
-  static calculateDevicesSummary(devices: Device[]): {
-    total: number;
-    running: number;
-    stopped: number;
-    error: number;
-    connected: number;
-    disconnected: number;
-    enabled: number;
-    disabled: number;
-  } {
-    return {
-      total: devices.length,
-      running: devices.filter(d => d.status === 'running').length,
-      stopped: devices.filter(d => d.status === 'stopped').length,
-      error: devices.filter(d => d.status === 'error').length,
-      connected: devices.filter(d => d.connection_status === 'connected').length,
-      disconnected: devices.filter(d => d.connection_status === 'disconnected').length,
-      enabled: devices.filter(d => d.is_enabled).length,
-      disabled: devices.filter(d => !d.is_enabled).length,
-    };
-  }
-
-  /**
-   * 프로토콜별 디바이스 그룹화
-   */
-  static groupDevicesByProtocol(devices: Device[]): Record<string, Device[]> {
-    return devices.reduce((groups, device) => {
-      const protocol = device.protocol_type;
-      if (!groups[protocol]) {
-        groups[protocol] = [];
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, value.toString());
+          }
+        });
       }
-      groups[protocol].push(device);
-      return groups;
-    }, {} as Record<string, Device[]>);
+      
+      const url = `${this.BASE_URL}/${deviceId}/data-points?${queryParams.toString()}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${deviceId} 데이터포인트 조회 실패:`, error);
+      throw error;
+    }
   }
 }

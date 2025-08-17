@@ -24,8 +24,6 @@ import UserManagement from './pages/UserManagement';
 import PermissionManagement from './pages/PermissionManagement';
 import BackupRestore from './pages/BackupRestore';
 
-// 스타일 import
-import './styles/base.css';
 
 const App: React.FC = () => {
   return (
