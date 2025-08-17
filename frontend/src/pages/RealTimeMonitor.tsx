@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// ============================================================================
+// frontend/src/pages/RealTimeMonitor.tsx
+// ⚡ 실시간 데이터 모니터링 - 진짜 API 연결 + 부드러운 새로고침
+// ============================================================================
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { RealtimeApiService, RealtimeValue } from '../api/services/realtimeApi';
+import { DataApiService } from '../api/services/dataApi';
+import { DeviceApiService } from '../api/services/deviceApi';
 import '../styles/base.css';
 import '../styles/real-time-monitor.css';
 
@@ -21,6 +29,8 @@ interface RealTimeData {
     message: string;
   };
   isFavorite: boolean;
+  point_id: number;
+  device_id: number;
 }
 
 interface ChartData {
@@ -29,6 +39,10 @@ interface ChartData {
 }
 
 const RealTimeMonitor: React.FC = () => {
+  // =============================================================================
+  // 🔧 State 관리
+  // =============================================================================
+  
   const [allData, setAllData] = useState<RealTimeData[]>([]);
   const [filteredData, setFilteredData] = useState<RealTimeData[]>([]);
   const [selectedFactories, setSelectedFactories] = useState<string[]>(['all']);
@@ -47,153 +61,357 @@ const RealTimeMonitor: React.FC = () => {
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  
+  // 로딩 및 연결 상태
+  const [isLoading, setIsLoading] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  
+  // 디바이스 및 데이터포인트 정보 (한 번만 로드)
+  const [devices, setDevices] = useState<any[]>([]);
+  const [dataPoints, setDataPoints] = useState<any[]>([]);
+  const [dataStatistics, setDataStatistics] = useState<any>(null);
 
-  // 초기 데이터 로드
-  useEffect(() => {
-    loadInitialData();
+  // =============================================================================
+  // 🛠️ 헬퍼 함수들
+  // =============================================================================
+
+  /**
+   * 🚨 간단한 알람 생성 함수 (임시)
+   */
+  const generateAlarmIfNeeded = (value: any, category: string) => {
+    // 간단한 임계값 기반 알람 생성
+    if (typeof value !== 'number') return undefined;
+    
+    let threshold: { min?: number; max?: number } = {};
+    
+    switch (category) {
+      case 'Temperature':
+        threshold = { min: 0, max: 80 };
+        break;
+      case 'Pressure':
+        threshold = { min: 0, max: 10 };
+        break;
+      case 'Flow':
+        threshold = { min: 0, max: 150 };
+        break;
+      case 'Level':
+        threshold = { min: 0, max: 100 };
+        break;
+      case 'Current':
+        threshold = { min: 0, max: 25 };
+        break;
+      case 'Voltage':
+        threshold = { min: 180, max: 280 };
+        break;
+      default:
+        return undefined;
+    }
+    
+    if (threshold.min !== undefined && value < threshold.min) {
+      return {
+        level: 'medium' as const,
+        message: `${category} 값이 최소 임계값(${threshold.min}) 미만입니다.`
+      };
+    }
+    
+    if (threshold.max !== undefined && value > threshold.max) {
+      return {
+        level: 'high' as const,
+        message: `${category} 값이 최대 임계값(${threshold.max})을 초과했습니다.`
+      };
+    }
+    
+    return undefined;
+  };
+
+  const inferCategory = (name: string): string => {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('temp')) return 'Temperature';
+    if (lowerName.includes('press')) return 'Pressure';
+    if (lowerName.includes('flow')) return 'Flow';
+    if (lowerName.includes('level')) return 'Level';
+    if (lowerName.includes('speed') || lowerName.includes('rpm')) return 'Speed';
+    if (lowerName.includes('current') || lowerName.includes('amp')) return 'Current';
+    if (lowerName.includes('voltage') || lowerName.includes('volt')) return 'Voltage';
+    if (lowerName.includes('status') || lowerName.includes('state')) return 'Status';
+    return 'Sensor';
+  };
+
+  const extractFactory = (deviceName: string): string => {
+    if (deviceName.toLowerCase().includes('seoul')) return 'Seoul Factory';
+    if (deviceName.toLowerCase().includes('busan')) return 'Busan Factory';
+    if (deviceName.toLowerCase().includes('daegu')) return 'Daegu Factory';
+    return 'Main Factory';
+  };
+
+  // =============================================================================
+  // 🔄 실제 API 데이터 로드 함수들
+  // =============================================================================
+
+  /**
+   * 📱 메타데이터 로드 (한 번만)
+   */
+  const loadMetadata = useCallback(async () => {
+    try {
+      console.log('📱 메타데이터 로드 시작...');
+
+      // 디바이스 목록 로드
+      const devicesResponse = await DeviceApiService.getDevices({
+        page: 1,
+        limit: 1000,
+        enabled_only: true
+      });
+
+      if (devicesResponse.success && devicesResponse.data) {
+        setDevices(devicesResponse.data.items || []);
+        console.log(`✅ 디바이스 ${devicesResponse.data.items?.length || 0}개 로드`);
+      }
+
+      // 데이터포인트 목록 로드
+      const dataPointsResponse = await DataApiService.searchDataPoints({
+        page: 1,
+        limit: 1000,
+        enabled_only: true,
+        include_current_value: false
+      });
+
+      if (dataPointsResponse.success && dataPointsResponse.data) {
+        setDataPoints(dataPointsResponse.data.items || []);
+        console.log(`✅ 데이터포인트 ${dataPointsResponse.data.items?.length || 0}개 로드`);
+      }
+
+      // 데이터 통계 로드
+      const statsResponse = await DataApiService.getDataStatistics({
+        time_range: '1h'
+      });
+
+      if (statsResponse.success && statsResponse.data) {
+        setDataStatistics(statsResponse.data);
+        console.log('✅ 데이터 통계 로드 완료');
+      }
+
+    } catch (err) {
+      console.error('❌ 메타데이터 로드 실패:', err);
+    }
   }, []);
+
+  /**
+   * ⚡ 실시간 현재값 로드 (진짜 API 연결 - 목 데이터 제거)
+   */
+  const loadRealtimeData = useCallback(async () => {
+    try {
+      setError(null);
+      setIsLoading(true);
+
+      console.log('⚡ 실시간 데이터 로드 시작...');
+
+      const response = await RealtimeApiService.getCurrentValues({
+        limit: 1000,
+        quality_filter: 'all',
+        include_metadata: true
+      });
+
+      if (response.success && response.data) {
+        const realtimeValues = response.data.current_values || [];
+        
+        console.log(`📡 백엔드에서 ${realtimeValues.length}개 데이터 수신`);
+
+        if (realtimeValues.length === 0) {
+          console.warn('⚠️ 백엔드에서 데이터가 없습니다');
+          setAllData([]);
+          setIsConnected(true);
+          return;
+        }
+        
+        // 실시간 값을 UI 형식으로 변환
+        const transformedData: RealTimeData[] = realtimeValues.map((value: RealtimeValue) => {
+          // 메타데이터에서 디바이스 정보 찾기
+          const dataPoint = dataPoints.find(dp => dp.id === value.point_id);
+          const device = devices.find(d => d.id === value.device_id || d.id === dataPoint?.device_id);
+          
+          // 카테고리 추론
+          const category = inferCategory(dataPoint?.name || value.point_name || 'Unknown');
+          
+          return {
+            id: `point_${value.point_id}`,
+            key: `pulseone:${device?.name || 'unknown'}:${value.point_id}`,
+            displayName: dataPoint?.name || value.point_name || `Point ${value.point_id}`,
+            value: value.value,
+            unit: value.unit || dataPoint?.unit,
+            dataType: (value.data_type || dataPoint?.data_type || 'string') as 'number' | 'boolean' | 'string',
+            quality: value.quality,
+            timestamp: new Date(value.timestamp),
+            trend: 'stable', // 초기에는 stable
+            factory: device?.site_name || extractFactory(device?.name || 'Main Factory'),
+            device: device?.name || `Device ${value.device_id}`,
+            category,
+            tags: [category.toLowerCase(), device?.protocol_type || 'unknown'],
+            alarm: undefined, // 백엔드에서 알람 정보 제공 시에만 표시
+            isFavorite: favorites.includes(`point_${value.point_id}`),
+            point_id: value.point_id,
+            device_id: value.device_id || dataPoint?.device_id || 0
+          };
+        });
+
+        // 🔄 부드러운 업데이트 (이전 데이터와 비교)
+        setAllData(prevData => {
+          const updatedData = transformedData.map(newItem => {
+            const prevItem = prevData.find(p => p.point_id === newItem.point_id);
+            if (prevItem && newItem.dataType === 'number') {
+              // 트렌드 계산
+              const trend = newItem.value > prevItem.value ? 'up' : 
+                           newItem.value < prevItem.value ? 'down' : 'stable';
+              return { ...newItem, trend };
+            }
+            return newItem;
+          });
+          return updatedData;
+        });
+
+        setIsConnected(true);
+        setLastUpdate(new Date());
+        
+        console.log(`✅ 실시간 데이터 ${transformedData.length}개 변환 완료`);
+
+      } else {
+        throw new Error(response.error || '백엔드 API 응답 오류');
+      }
+
+    } catch (err) {
+      console.error('❌ 실시간 데이터 로드 실패:', err);
+      setError(err instanceof Error ? err.message : '백엔드 API 연결 실패');
+      setIsConnected(false);
+      
+      // 에러 시 빈 배열로 설정
+      setAllData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [devices, dataPoints, favorites]);
+
+  /**
+   * 🔄 실시간 데이터 부드러운 업데이트
+   */
+  const updateRealTimeData = useCallback(async () => {
+    if (!isConnected || allData.length === 0) {
+      return;
+    }
+
+    try {
+      // 모든 포인트의 현재값을 가져와서 부드럽게 업데이트
+      const pointIds = allData.map(item => item.point_id);
+      
+      const response = await RealtimeApiService.getCurrentValues({
+        point_ids: pointIds,
+        limit: pointIds.length,
+        include_metadata: false
+      });
+
+      if (response.success && response.data) {
+        const updatedValues = response.data.current_values || [];
+        
+        // 🔄 부드러운 상태 업데이트 (깜빡임 방지)
+        setAllData(prev => prev.map(item => {
+          const updated = updatedValues.find(uv => uv.point_id === item.point_id);
+          if (updated) {
+            const trend = item.dataType === 'number' 
+              ? (updated.value > item.value ? 'up' : updated.value < item.value ? 'down' : 'stable')
+              : 'stable';
+
+            return {
+              ...item,
+              value: updated.value,
+              quality: updated.quality,
+              timestamp: new Date(updated.timestamp),
+              trend,
+              alarm: updated.alarm || generateAlarmIfNeeded(updated.value, item.category)
+            };
+          }
+          return item;
+        }));
+
+        setLastUpdate(new Date());
+
+        // 차트 데이터 업데이트 (선택된 항목만)
+        selectedData.forEach(item => {
+          const updated = updatedValues.find(uv => uv.point_id === item.point_id);
+          if (updated && item.dataType === 'number') {
+            setChartData(prev => ({
+              ...prev,
+              [item.id]: [
+                ...(prev[item.id] || []).slice(-19), // 최근 20개 포인트만 유지
+                { timestamp: new Date(updated.timestamp), value: updated.value as number }
+              ]
+            }));
+          }
+        });
+      }
+
+    } catch (err) {
+      console.error('❌ 실시간 업데이트 실패:', err);
+      // 네트워크 오류 시 연결 상태 유지 (일시적 오류일 수 있음)
+    }
+  }, [isConnected, allData, selectedData]);
+
+  // =============================================================================
+  // 🎨 계산된 통계 (진짜 데이터 기반)
+  // =============================================================================
+
+  const calculatedStats = useMemo(() => {
+    const totalCount = allData.length;
+    const filteredCount = filteredData.length;
+    const selectedCount = selectedData.length;
+    const favoriteCount = favorites.length;
+    const alarmCount = allData.filter(item => item.alarm).length;
+    const qualityStats = {
+      good: allData.filter(item => item.quality === 'good').length,
+      uncertain: allData.filter(item => item.quality === 'uncertain').length,
+      bad: allData.filter(item => item.quality === 'bad').length
+    };
+
+    return {
+      totalCount,
+      filteredCount,
+      selectedCount,
+      favoriteCount,
+      alarmCount,
+      qualityStats,
+      connectionStatus: isConnected ? 'connected' : 'disconnected'
+    };
+  }, [allData, filteredData, selectedData, favorites, isConnected]);
+
+  // =============================================================================
+  // 🔄 기존 필터링 및 UI 로직
+  // =============================================================================
+
+  useEffect(() => {
+    loadMetadata();
+  }, [loadMetadata]);
+
+  useEffect(() => {
+    if (devices.length > 0 && dataPoints.length > 0) {
+      setIsLoading(true);
+      loadRealtimeData().finally(() => setIsLoading(false));
+    }
+  }, [devices.length, dataPoints.length, loadRealtimeData]);
 
   // 실시간 데이터 업데이트
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || !isConnected) return;
 
     const interval = setInterval(() => {
       updateRealTimeData();
     }, refreshInterval);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval]);
+  }, [autoRefresh, refreshInterval, updateRealTimeData, isConnected]);
 
   // 필터링 및 정렬
   useEffect(() => {
     applyFiltersAndSort();
   }, [allData, selectedFactories, selectedCategories, selectedQualities, searchTerm, sortBy, sortOrder, showFavoritesOnly]);
-
-  const loadInitialData = async () => {
-    // 시뮬레이션 데이터 생성
-    const factories = ['Seoul Factory', 'Busan Factory', 'Daegu Factory'];
-    const devices = ['PLC-001', 'PLC-002', 'HMI-001', 'Sensor-Array-01', 'Motor-Controller-01'];
-    const categories = ['Temperature', 'Pressure', 'Flow', 'Level', 'Speed', 'Current', 'Voltage', 'Status'];
-    const dataTypes: ('number' | 'boolean' | 'string')[] = ['number', 'boolean', 'string'];
-    
-    const mockData: RealTimeData[] = [];
-    
-    for (let i = 0; i < 100; i++) {
-      const factory = factories[Math.floor(Math.random() * factories.length)];
-      const device = devices[Math.floor(Math.random() * devices.length)];
-      const category = categories[Math.floor(Math.random() * categories.length)];
-      const dataType = dataTypes[Math.floor(Math.random() * dataTypes.length)];
-      
-      let value: any;
-      let unit: string | undefined;
-      
-      switch (category) {
-        case 'Temperature':
-          value = (Math.random() * 80 + 20).toFixed(1);
-          unit = '°C';
-          break;
-        case 'Pressure':
-          value = (Math.random() * 5 + 1).toFixed(2);
-          unit = 'bar';
-          break;
-        case 'Flow':
-          value = (Math.random() * 100).toFixed(1);
-          unit = 'L/min';
-          break;
-        case 'Speed':
-          value = (Math.random() * 1500 + 500).toFixed(0);
-          unit = 'rpm';
-          break;
-        case 'Current':
-          value = (Math.random() * 20).toFixed(2);
-          unit = 'A';
-          break;
-        case 'Voltage':
-          value = (Math.random() * 50 + 200).toFixed(1);
-          unit = 'V';
-          break;
-        case 'Level':
-          value = (Math.random() * 100).toFixed(1);
-          unit = '%';
-          break;
-        case 'Status':
-          value = Math.random() > 0.8 ? 'Alarm' : 'Normal';
-          dataType === 'boolean' ? Math.random() > 0.5 : value;
-          break;
-        default:
-          value = (Math.random() * 100).toFixed(2);
-      }
-
-      const hasAlarm = Math.random() > 0.9;
-      
-      mockData.push({
-        id: `data_${i}`,
-        key: `pulseone:${factory.toLowerCase().replace(' ', '_')}:${device.toLowerCase()}:${category.toLowerCase()}_${i}`,
-        displayName: `${category} Sensor ${String.fromCharCode(65 + (i % 26))}`,
-        value: dataType === 'number' ? parseFloat(value) : value,
-        unit,
-        dataType,
-        quality: Math.random() > 0.95 ? 'uncertain' : Math.random() > 0.98 ? 'bad' : 'good',
-        timestamp: new Date(Date.now() - Math.random() * 60000),
-        trend: Math.random() > 0.6 ? 'up' : Math.random() > 0.3 ? 'down' : 'stable',
-        factory,
-        device,
-        category,
-        tags: [category.toLowerCase(), device.toLowerCase(), factory.toLowerCase().split(' ')[0]],
-        alarm: hasAlarm ? {
-          level: ['low', 'medium', 'high', 'critical'][Math.floor(Math.random() * 4)] as any,
-          message: `${category} value out of range`
-        } : undefined,
-        isFavorite: Math.random() > 0.8
-      });
-    }
-    
-    setAllData(mockData);
-  };
-
-  const updateRealTimeData = () => {
-    setAllData(prev => prev.map(item => {
-      let newValue = item.value;
-      
-      if (item.dataType === 'number') {
-        const change = (Math.random() - 0.5) * 0.1 * item.value;
-        newValue = Math.max(0, item.value + change);
-        if (item.unit === '°C') newValue = Math.min(100, newValue);
-        if (item.unit === 'bar') newValue = Math.min(10, newValue);
-        if (item.unit === '%') newValue = Math.min(100, newValue);
-        newValue = parseFloat(newValue.toFixed(2));
-      } else if (item.dataType === 'boolean') {
-        newValue = Math.random() > 0.95 ? !item.value : item.value;
-      } else {
-        newValue = Math.random() > 0.99 ? (item.value === 'Normal' ? 'Alarm' : 'Normal') : item.value;
-      }
-
-      const trend = item.dataType === 'number' 
-        ? (newValue > item.value ? 'up' : newValue < item.value ? 'down' : 'stable')
-        : 'stable';
-
-      return {
-        ...item,
-        value: newValue,
-        timestamp: new Date(),
-        trend,
-        quality: Math.random() > 0.98 ? 'uncertain' : 'good'
-      };
-    }));
-
-    // 차트 데이터 업데이트
-    selectedData.forEach(item => {
-      if (item.dataType === 'number') {
-        setChartData(prev => ({
-          ...prev,
-          [item.id]: [
-            ...(prev[item.id] || []).slice(-19), // 최근 20개 포인트만 유지
-            { timestamp: new Date(), value: item.value as number }
-          ]
-        }));
-      }
-    });
-  };
 
   const applyFiltersAndSort = () => {
     let filtered = allData;
@@ -256,7 +474,7 @@ const RealTimeMonitor: React.FC = () => {
     });
 
     setFilteredData(filtered);
-    setCurrentPage(1); // 필터 변경 시 첫 페이지로
+    setCurrentPage(1);
   };
 
   const toggleFavorite = (dataId: string) => {
@@ -265,7 +483,6 @@ const RealTimeMonitor: React.FC = () => {
         ? prev.filter(id => id !== dataId)
         : [...prev, dataId];
       
-      // 즐겨찾기 상태 업데이트
       setAllData(prevData => prevData.map(item => ({
         ...item,
         isFavorite: newFavorites.includes(item.id)
@@ -319,25 +536,172 @@ const RealTimeMonitor: React.FC = () => {
   const uniqueFactories = [...new Set(allData.map(item => item.factory))];
   const uniqueCategories = [...new Set(allData.map(item => item.category))];
 
+  // =============================================================================
+  // 🎨 메인 렌더링 (DeviceList 스타일 적용)
+  // =============================================================================
+
   return (
     <div className="realtime-monitor-container">
-      {/* 페이지 헤더 */}
+      {/* 📊 페이지 헤더 */}
       <div className="page-header">
-        <h1 className="page-title">실시간 데이터 모니터링</h1>
-        <div className="page-actions">
-          <div className="live-indicator">
-            <span className="pulse-dot"></span>
-            <span>실시간</span>
+        <div className="header-left">
+          <h1 className="page-title">
+            <i className="fas fa-chart-line"></i>
+            실시간 데이터 모니터링
+          </h1>
+          <div className="page-subtitle">
+            실시간 데이터를 모니터링하고 분석합니다
           </div>
-          <button 
-            className="btn btn-outline"
-            onClick={loadInitialData}
-          >
-            <i className="fas fa-sync-alt"></i>
-            새로고침
-          </button>
+        </div>
+
+        <div className="header-right">
+          <div className="header-actions">
+            <div className={`live-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
+              <span className={`pulse-dot ${isConnected ? 'active' : ''}`}></span>
+              <span>{isConnected ? '실시간 연결됨' : '연결 끊어짐'}</span>
+              {isConnected && <span className="data-count">({allData.length}개)</span>}
+            </div>
+            <button 
+              className="btn btn-outline"
+              onClick={loadRealtimeData}
+              disabled={isLoading}
+            >
+              <i className={`fas fa-sync-alt ${isLoading ? 'fa-spin' : ''}`}></i>
+              새로고침
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* ⚠️ 에러 배너 */}
+      {error && (
+        <div className="error-banner">
+          <div className="error-content">
+            <i className="error-icon fas fa-exclamation-triangle"></i>
+            <span className="error-message">{error}</span>
+            <button 
+              className="error-retry"
+              onClick={() => {
+                setError(null);
+                loadRealtimeData();
+              }}
+            >
+              재시도
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 📊 통계 대시보드 - 가로 1줄 전체 폭 배치 */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(6, 1fr)',
+        gap: '16px',
+        marginBottom: '24px',
+        padding: '16px 0'
+      }}>
+        <div style={{
+          background: 'white',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '16px 20px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#111827', marginBottom: '4px' }}>
+            {calculatedStats.totalCount}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>전체</div>
+        </div>
+
+        <div style={{
+          background: 'white',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '16px 20px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#111827', marginBottom: '4px' }}>
+            {calculatedStats.filteredCount}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>필터됨</div>
+        </div>
+
+        <div style={{
+          background: 'white',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '16px 20px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#111827', marginBottom: '4px' }}>
+            {calculatedStats.selectedCount}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>선택됨</div>
+        </div>
+
+        <div style={{
+          background: 'white',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '16px 20px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#f59e0b', marginBottom: '4px' }}>
+            {calculatedStats.favoriteCount}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>즐겨찾기</div>
+        </div>
+
+        <div style={{
+          background: 'white',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '16px 20px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: calculatedStats.alarmCount > 0 ? '#ef4444' : '#111827', marginBottom: '4px' }}>
+            {calculatedStats.alarmCount}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>알람</div>
+        </div>
+
+        <div style={{
+          background: 'white',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '16px 20px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{ 
+            fontSize: '14px', 
+            fontWeight: '600', 
+            color: isConnected ? '#10b981' : '#ef4444', 
+            marginBottom: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px'
+          }}>
+            <i className={`fas fa-circle`} style={{ fontSize: '8px' }}></i>
+            {isConnected ? '온라인' : '오프라인'}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>연결 상태</div>
+        </div>
+      </div>
+
+      {/* 로딩 상태 */}
+      {isLoading && (
+        <div className="loading-banner">
+          <i className="fas fa-spinner fa-spin"></i>
+          <span>실시간 데이터를 불러오는 중...</span>
+        </div>
+      )}
 
       {/* 필터 및 제어 패널 */}
       <div className="filter-control-panel">
@@ -481,33 +845,7 @@ const RealTimeMonitor: React.FC = () => {
         </div>
       </div>
 
-      {/* 통계 정보 */}
-      <div className="stats-bar">
-        <div className="stat-item">
-          <span className="stat-label">전체:</span>
-          <span className="stat-value">{allData.length}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">필터됨:</span>
-          <span className="stat-value">{filteredData.length}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">선택됨:</span>
-          <span className="stat-value">{selectedData.length}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">즐겨찾기:</span>
-          <span className="stat-value">{favorites.length}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">알람:</span>
-          <span className="stat-value text-error">
-            {allData.filter(item => item.alarm).length}
-          </span>
-        </div>
-      </div>
-
-      {/* 데이터 표시 영역 */}
+      {/* 📋 데이터 표시 영역 */}
       <div className="data-display-area">
         {viewMode === 'list' && (
           <div className="data-table">
@@ -524,7 +862,7 @@ const RealTimeMonitor: React.FC = () => {
             </div>
 
             {currentData.map(item => (
-              <div key={item.id} className={`data-table-row ${item.alarm ? 'has-alarm' : ''}`}>
+              <div key={`${item.id}_${item.point_id}`} className={`data-table-row ${item.alarm ? 'has-alarm' : ''}`}>
                 <div className="data-cell">
                   <input
                     type="checkbox"
@@ -577,7 +915,7 @@ const RealTimeMonitor: React.FC = () => {
         {viewMode === 'grid' && (
           <div className="data-grid">
             {currentData.map(item => (
-              <div key={item.id} className={`data-card ${item.alarm ? 'has-alarm' : ''}`}>
+              <div key={`${item.id}_${item.point_id}`} className={`data-card ${item.alarm ? 'has-alarm' : ''}`}>
                 <div className="card-header">
                   <input
                     type="checkbox"
@@ -632,7 +970,7 @@ const RealTimeMonitor: React.FC = () => {
         {viewMode === 'compact' && (
           <div className="data-compact">
             {currentData.map(item => (
-              <div key={item.id} className={`compact-item ${item.alarm ? 'has-alarm' : ''}`}>
+              <div key={`${item.id}_${item.point_id}`} className={`compact-item ${item.alarm ? 'has-alarm' : ''}`}>
                 <input
                   type="checkbox"
                   checked={selectedData.some(d => d.id === item.id)}
@@ -654,59 +992,96 @@ const RealTimeMonitor: React.FC = () => {
             ))}
           </div>
         )}
+
+        {/* 빈 상태 표시 */}
+        {!isLoading && currentData.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              <i className="fas fa-chart-line"></i>
+            </div>
+            <h3 className="empty-state-title">표시할 데이터가 없습니다</h3>
+            <p className="empty-state-description">
+              {filteredData.length === 0 
+                ? '필터 조건을 변경하거나 실시간 연결을 확인해주세요'
+                : '다른 페이지를 확인해보세요'
+              }
+            </p>
+            {!isConnected && (
+              <button className="btn btn-primary" onClick={loadRealtimeData}>
+                <i className="fas fa-plug"></i>
+                재연결 시도
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* 페이지네이션 */}
-      <div className="pagination-container">
-        <div className="pagination-info">
-          {startIndex + 1}-{Math.min(endIndex, filteredData.length)} / {filteredData.length} 항목
-        </div>
-        
-        <div className="pagination-controls">
-          <select
-            value={itemsPerPage}
-            onChange={(e) => setItemsPerPage(Number(e.target.value))}
-            className="items-per-page"
-          >
-            <option value={10}>10개씩</option>
-            <option value={20}>20개씩</option>
-            <option value={50}>50개씩</option>
-            <option value={100}>100개씩</option>
-          </select>
+      {/* 📄 페이지네이션 */}
+      {filteredData.length > 0 && (
+        <div className="pagination-container">
+          <div className="pagination-info">
+            {startIndex + 1}-{Math.min(endIndex, filteredData.length)} / {filteredData.length} 항목
+          </div>
+          
+          <div className="pagination-controls">
+            <select
+              value={itemsPerPage}
+              onChange={(e) => setItemsPerPage(Number(e.target.value))}
+              className="items-per-page"
+            >
+              <option value={10}>10개씩</option>
+              <option value={20}>20개씩</option>
+              <option value={50}>50개씩</option>
+              <option value={100}>100개씩</option>
+            </select>
 
-          <button
-            className="btn btn-sm"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(1)}
-          >
-            <i className="fas fa-angle-double-left"></i>
-          </button>
-          <button
-            className="btn btn-sm"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(prev => prev - 1)}
-          >
-            <i className="fas fa-angle-left"></i>
-          </button>
-          
-          <span className="page-info">
-            {currentPage} / {totalPages}
-          </span>
-          
-          <button
-            className="btn btn-sm"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage(prev => prev + 1)}
-          >
-            <i className="fas fa-angle-right"></i>
-          </button>
-          <button
-            className="btn btn-sm"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage(totalPages)}
-          >
-            <i className="fas fa-angle-double-right"></i>
-          </button>
+            <button
+              className="btn btn-sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(1)}
+            >
+              <i className="fas fa-angle-double-left"></i>
+            </button>
+            <button
+              className="btn btn-sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(prev => prev - 1)}
+            >
+              <i className="fas fa-angle-left"></i>
+            </button>
+            
+            <span className="page-info">
+              {currentPage} / {totalPages}
+            </span>
+            
+            <button
+              className="btn btn-sm"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(prev => prev + 1)}
+            >
+              <i className="fas fa-angle-right"></i>
+            </button>
+            <button
+              className="btn btn-sm"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+            >
+              <i className="fas fa-angle-double-right"></i>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 📊 상태 바 */}
+      <div className="status-bar">
+        <div className="status-info">
+          <span>마지막 업데이트: {lastUpdate.toLocaleTimeString()}</span>
+          {autoRefresh && isConnected && (
+            <span className="auto-refresh-indicator">
+              <i className="fas fa-sync-alt fa-spin"></i>
+              자동 새로고침 활성 ({refreshInterval / 1000}초)
+            </span>
+          )}
         </div>
       </div>
 
@@ -715,13 +1090,22 @@ const RealTimeMonitor: React.FC = () => {
         <div className="chart-panel">
           <div className="chart-header">
             <h3>실시간 차트 ({selectedData.length}개)</h3>
-            <button
-              className="btn btn-sm btn-outline"
-              onClick={() => setShowChart(false)}
-            >
-              <i className="fas fa-times"></i>
-              닫기
-            </button>
+            <div className="chart-controls">
+              <button
+                className="btn btn-sm btn-outline"
+                onClick={() => setChartData({})}
+              >
+                <i className="fas fa-trash"></i>
+                데이터 초기화
+              </button>
+              <button
+                className="btn btn-sm btn-outline"
+                onClick={() => setShowChart(false)}
+              >
+                <i className="fas fa-times"></i>
+                닫기
+              </button>
+            </div>
           </div>
           <div className="chart-content">
             <div className="chart-placeholder">
@@ -730,6 +1114,15 @@ const RealTimeMonitor: React.FC = () => {
               <p className="text-sm text-neutral-500">
                 선택된 {selectedData.filter(d => d.dataType === 'number').length}개의 숫자 데이터 포인트
               </p>
+              <div className="chart-legend">
+                {selectedData.filter(d => d.dataType === 'number').map(item => (
+                  <div key={item.id} className="legend-item">
+                    <span className="legend-color" style={{backgroundColor: `hsl(${item.id.charCodeAt(0) * 137.5 % 360}, 70%, 50%)`}}></span>
+                    <span className="legend-label">{item.displayName}</span>
+                    <span className="legend-value">{formatValue(item)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -750,4 +1143,3 @@ const RealTimeMonitor: React.FC = () => {
 };
 
 export default RealTimeMonitor;
-
