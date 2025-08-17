@@ -113,3 +113,22 @@ export const MODAL_MODES = {
   EDIT: 'edit' as const,
   DELETE: 'delete' as const
 } as const;
+
+/**
+ * 페이지네이션 훅 반환값 (updateTotalCount 메서드 추가)
+ */
+export interface PaginationHookReturn extends PaginationHookState {
+  hasNext: boolean;
+  hasPrev: boolean;
+  startIndex: number;
+  endIndex: number;
+  goToPage: (page: number) => void;
+  changePageSize: (size: number) => void;
+  updateTotalCount: (newTotal: number) => void; // 🔥 추가된 메서드
+  goToFirst: () => void;
+  goToLast: () => void;
+  goToNext: () => void;
+  goToPrev: () => void;
+  reset: () => void;
+  getPageNumbers: (maxVisible?: number) => number[];
+}
