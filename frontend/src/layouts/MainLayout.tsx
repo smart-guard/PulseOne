@@ -1,10 +1,11 @@
 // ============================================================================
 // frontend/src/layouts/MainLayout.tsx
-// CSS import 제거하고 인라인 스타일만 사용
+// 🔥 기존 2depth 메뉴 구조 100% 복원 - 섹션별 서브메뉴
 // ============================================================================
 
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import '../styles/base.css';
 
 export const MainLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -28,58 +29,306 @@ export const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="main-layout">
-      {/* 헤더 */}
-      <header className="main-header" style={{
-        height: '60px',
-        background: '#ffffff',
-        borderBottom: '1px solid #e5e7eb',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 24px',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 1000
-      }}>
-        <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+    <div className="app-layout">
+      {/* 사이드바 - 기존 base.css 클래스 100% 활용 */}
+      <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <div className="sidebar-header">
+          <div className="logo">
+            <i className="fas fa-bolt text-primary"></i>
+            {!sidebarCollapsed && <span className="logo-text">PulseOne</span>}
+          </div>
           <button 
             className="sidebar-toggle"
             onClick={toggleSidebar}
             aria-label="메뉴 토글"
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '18px',
-              cursor: 'pointer',
-              padding: '8px'
-            }}
           >
             <i className="fas fa-bars"></i>
           </button>
-          <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <i className="fas fa-bolt" style={{ color: '#3b82f6', fontSize: '24px' }}></i>
-            <span style={{ fontSize: '20px', fontWeight: '700', color: '#111827' }}>PulseOne</span>
-          </div>
         </div>
         
-        <div className="header-right">
-          <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button className="header-btn" title="알림" style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '16px',
-              cursor: 'pointer',
-              padding: '8px',
-              position: 'relative'
+        <nav className="sidebar-nav">
+          <ul className="menu">
+            {/* 대시보드 - 1depth */}
+            <li className="menu-item">
+              <Link 
+                to="/dashboard" 
+                className={`menu-link ${isActiveMenu('/dashboard') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-tachometer-alt"></i>
+                </div>
+                <span className="menu-title">대시보드</span>
+              </Link>
+            </li>
+
+            {/* 디바이스 관리 - 2depth 구조 */}
+            <li className="menu-item">
+              {!sidebarCollapsed && (
+                <div style={{
+                  padding: '12px 16px 8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: '#9ca3af',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  borderBottom: '1px solid #f1f5f9',
+                  marginBottom: '8px'
+                }}>
+                  디바이스 관리
+                </div>
+              )}
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/devices" 
+                className={`menu-link ${isActiveMenu('/devices') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-network-wired"></i>
+                </div>
+                <span className="menu-title">디바이스 목록</span>
+              </Link>
+            </li>
+
+            {/* 데이터 관리 - 2depth 구조 */}
+            <li className="menu-item">
+              {!sidebarCollapsed && (
+                <div style={{
+                  padding: '16px 16px 8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: '#9ca3af',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  borderBottom: '1px solid #f1f5f9',
+                  marginBottom: '8px'
+                }}>
+                  데이터 관리
+                </div>
+              )}
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/data/explorer" 
+                className={`menu-link ${isActiveSubMenu('/data/explorer') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-search"></i>
+                </div>
+                <span className="menu-title">데이터 탐색기</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/data/realtime" 
+                className={`menu-link ${isActiveSubMenu('/data/realtime') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-chart-line"></i>
+                </div>
+                <span className="menu-title">실시간 모니터</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/data/historical" 
+                className={`menu-link ${isActiveSubMenu('/data/historical') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-history"></i>
+                </div>
+                <span className="menu-title">이력 데이터</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/data/virtual-points" 
+                className={`menu-link ${isActiveSubMenu('/data/virtual-points') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-code-branch"></i>
+                </div>
+                <span className="menu-title">가상 포인트</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/data/export" 
+                className={`menu-link ${isActiveSubMenu('/data/export') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-download"></i>
+                </div>
+                <span className="menu-title">데이터 내보내기</span>
+              </Link>
+            </li>
+
+            {/* 알람 관리 - 2depth 구조 */}
+            <li className="menu-item">
+              {!sidebarCollapsed && (
+                <div style={{
+                  padding: '16px 16px 8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: '#9ca3af',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  borderBottom: '1px solid #f1f5f9',
+                  marginBottom: '8px'
+                }}>
+                  알람 관리
+                </div>
+              )}
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/alarms/active" 
+                className={`menu-link ${isActiveSubMenu('/alarms/active') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-exclamation-triangle"></i>
+                </div>
+                <span className="menu-title">활성 알람</span>
+                {!sidebarCollapsed && (
+                  <span className="status status-error" style={{ 
+                    marginLeft: 'auto',
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    borderRadius: '10px'
+                  }}>5</span>
+                )}
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/alarms/history" 
+                className={`menu-link ${isActiveSubMenu('/alarms/history') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-clock"></i>
+                </div>
+                <span className="menu-title">알람 이력</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/alarms/settings" 
+                className={`menu-link ${isActiveSubMenu('/alarms/settings') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-sliders-h"></i>
+                </div>
+                <span className="menu-title">알람 설정</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/alarms/rules" 
+                className={`menu-link ${isActiveSubMenu('/alarms/rules') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-gavel"></i>
+                </div>
+                <span className="menu-title">알람 규칙</span>
+              </Link>
+            </li>
+
+            {/* 시스템 관리 - 2depth 구조 */}
+            <li className="menu-item">
+              {!sidebarCollapsed && (
+                <div style={{
+                  padding: '16px 16px 8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: '#9ca3af',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  borderBottom: '1px solid #f1f5f9',
+                  marginBottom: '8px'
+                }}>
+                  시스템 관리
+                </div>
+              )}
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/system/status" 
+                className={`menu-link ${isActiveSubMenu('/system/status') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-server"></i>
+                </div>
+                <span className="menu-title">시스템 상태</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/system/users" 
+                className={`menu-link ${isActiveSubMenu('/system/users') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-users"></i>
+                </div>
+                <span className="menu-title">사용자 관리</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/system/permissions" 
+                className={`menu-link ${isActiveSubMenu('/system/permissions') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-shield-alt"></i>
+                </div>
+                <span className="menu-title">권한 관리</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link 
+                to="/system/backup" 
+                className={`menu-link ${isActiveSubMenu('/system/backup') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-database"></i>
+                </div>
+                <span className="menu-title">백업/복원</span>
+              </Link>
+            </li>
+          </ul>
+        </nav>
+      </div>
+
+      {/* 메인 콘텐츠 - 기존 base.css 클래스 100% 활용 */}
+      <div className={`main-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        {/* 상단바 */}
+        <div className="topbar">
+          <div className="topbar-left">
+            <div className="breadcrumb">
+              <span className="breadcrumb-item active">
+                {location.pathname === '/' || location.pathname === '/dashboard' ? '대시보드' : 
+                 location.pathname.includes('/devices') ? '디바이스 관리' :
+                 location.pathname.includes('/data') ? '데이터 관리' :
+                 location.pathname.includes('/alarms') ? '알람 관리' :
+                 location.pathname.includes('/system') ? '시스템 관리' : '페이지'}
+              </span>
+            </div>
+          </div>
+          
+          <div className="topbar-right">
+            <div className="connection-status">
+              <div className="live-indicator"></div>
+              <span className="status-text">실시간 연결됨</span>
+            </div>
+            
+            <button className="btn btn-outline btn-sm" title="알림" style={{
+              position: 'relative',
+              padding: '8px'
             }}>
               <i className="fas fa-bell"></i>
-              <span className="badge" style={{
+              <span style={{
                 position: 'absolute',
-                top: '2px',
-                right: '2px',
+                top: '-2px',
+                right: '-2px',
                 background: '#ef4444',
                 color: 'white',
                 borderRadius: '50%',
@@ -89,398 +338,26 @@ export const MainLayout: React.FC = () => {
                 textAlign: 'center'
               }}>3</span>
             </button>
-            <button className="header-btn" title="설정" style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '16px',
-              cursor: 'pointer',
-              padding: '8px'
-            }}>
+            
+            <button className="btn btn-outline btn-sm" title="설정">
               <i className="fas fa-cog"></i>
             </button>
+            
             <div className="user-menu">
-              <button className="user-avatar" style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '24px',
-                cursor: 'pointer',
-                padding: '4px',
-                color: '#6b7280'
-              }}>
-                <i className="fas fa-user-circle"></i>
-              </button>
+              <div className="user-avatar">
+                <i className="fas fa-user"></i>
+              </div>
+              <span className="user-name">관리자</span>
+              <i className="fas fa-chevron-down" style={{ fontSize: '12px' }}></i>
             </div>
           </div>
         </div>
-      </header>
 
-      {/* 사이드바 */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} style={{
-        position: 'fixed',
-        top: '60px',
-        left: 0,
-        height: 'calc(100vh - 60px)',
-        width: sidebarCollapsed ? '60px' : '260px',
-        background: '#f8fafc',
-        borderRight: '1px solid #e5e7eb',
-        transition: 'width 0.3s ease',
-        overflowY: 'auto',
-        zIndex: 999
-      }}>
-        <nav className="sidebar-nav" style={{ padding: '16px 0' }}>
-          {/* 대시보드 */}
-          <Link 
-            to="/dashboard" 
-            className={`nav-item ${isActiveMenu('/dashboard') ? 'active' : ''}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              padding: '12px 20px',
-              color: isActiveMenu('/dashboard') ? '#3b82f6' : '#6b7280',
-              textDecoration: 'none',
-              background: isActiveMenu('/dashboard') ? '#eff6ff' : 'transparent',
-              borderRight: isActiveMenu('/dashboard') ? '3px solid #3b82f6' : 'none',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <i className="fas fa-tachometer-alt" style={{ fontSize: '16px', width: '16px' }}></i>
-            {!sidebarCollapsed && <span>대시보드</span>}
-          </Link>
-
-          {/* 디바이스 관리 */}
-          <div className="nav-section" style={{ margin: '16px 0' }}>
-            {!sidebarCollapsed && (
-              <div className="nav-section-title" style={{
-                padding: '8px 20px',
-                fontSize: '12px',
-                fontWeight: '600',
-                color: '#9ca3af',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
-              }}>디바이스 관리</div>
-            )}
-            <Link 
-              to="/devices" 
-              className={`nav-item ${isActiveMenu('/devices') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveMenu('/devices') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveMenu('/devices') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveMenu('/devices') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-network-wired" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>디바이스 목록</span>}
-            </Link>
-          </div>
-
-          {/* 데이터 관리 */}
-          <div className="nav-section" style={{ margin: '16px 0' }}>
-            {!sidebarCollapsed && (
-              <div className="nav-section-title" style={{
-                padding: '8px 20px',
-                fontSize: '12px',
-                fontWeight: '600',
-                color: '#9ca3af',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
-              }}>데이터 관리</div>
-            )}
-            <Link 
-              to="/data/explorer" 
-              className={`nav-item ${isActiveSubMenu('/data/explorer') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/data/explorer') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/data/explorer') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/data/explorer') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-search" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>데이터 탐색기</span>}
-            </Link>
-            <Link 
-              to="/data/realtime" 
-              className={`nav-item ${isActiveSubMenu('/data/realtime') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/data/realtime') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/data/realtime') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/data/realtime') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-chart-line" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>실시간 모니터</span>}
-            </Link>
-            <Link 
-              to="/data/historical" 
-              className={`nav-item ${isActiveSubMenu('/data/historical') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/data/historical') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/data/historical') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/data/historical') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-history" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>이력 데이터</span>}
-            </Link>
-            <Link 
-              to="/data/virtual-points" 
-              className={`nav-item ${isActiveSubMenu('/data/virtual-points') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/data/virtual-points') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/data/virtual-points') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/data/virtual-points') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-code-branch" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>가상 포인트</span>}
-            </Link>
-            <Link 
-              to="/data/export" 
-              className={`nav-item ${isActiveSubMenu('/data/export') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/data/export') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/data/export') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/data/export') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-download" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>데이터 내보내기</span>}
-            </Link>
-          </div>
-
-          {/* 알람 관리 */}
-          <div className="nav-section" style={{ margin: '16px 0' }}>
-            {!sidebarCollapsed && (
-              <div className="nav-section-title" style={{
-                padding: '8px 20px',
-                fontSize: '12px',
-                fontWeight: '600',
-                color: '#9ca3af',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
-              }}>알람 관리</div>
-            )}
-            <Link 
-              to="/alarms/active" 
-              className={`nav-item ${isActiveSubMenu('/alarms/active') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/alarms/active') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/alarms/active') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/alarms/active') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-exclamation-triangle" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && (
-                <>
-                  <span>활성 알람</span>
-                  <span style={{
-                    background: '#ef4444',
-                    color: 'white',
-                    borderRadius: '12px',
-                    fontSize: '10px',
-                    padding: '2px 6px',
-                    marginLeft: 'auto'
-                  }}>5</span>
-                </>
-              )}
-            </Link>
-            <Link 
-              to="/alarms/history" 
-              className={`nav-item ${isActiveSubMenu('/alarms/history') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/alarms/history') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/alarms/history') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/alarms/history') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-clock" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>알람 이력</span>}
-            </Link>
-            <Link 
-              to="/alarms/settings" 
-              className={`nav-item ${isActiveSubMenu('/alarms/settings') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/alarms/settings') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/alarms/settings') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/alarms/settings') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-sliders-h" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>알람 설정</span>}
-            </Link>
-            <Link 
-              to="/alarms/rules" 
-              className={`nav-item ${isActiveSubMenu('/alarms/rules') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/alarms/rules') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/alarms/rules') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/alarms/rules') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-gavel" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>알람 규칙</span>}
-            </Link>
-          </div>
-
-          {/* 시스템 관리 */}
-          <div className="nav-section" style={{ margin: '16px 0' }}>
-            {!sidebarCollapsed && (
-              <div className="nav-section-title" style={{
-                padding: '8px 20px',
-                fontSize: '12px',
-                fontWeight: '600',
-                color: '#9ca3af',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
-              }}>시스템 관리</div>
-            )}
-            <Link 
-              to="/system/status" 
-              className={`nav-item ${isActiveSubMenu('/system/status') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/system/status') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/system/status') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/system/status') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-server" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>시스템 상태</span>}
-            </Link>
-            <Link 
-              to="/system/users" 
-              className={`nav-item ${isActiveSubMenu('/system/users') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/system/users') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/system/users') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/system/users') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-users" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>사용자 관리</span>}
-            </Link>
-            <Link 
-              to="/system/permissions" 
-              className={`nav-item ${isActiveSubMenu('/system/permissions') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/system/permissions') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/system/permissions') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/system/permissions') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-shield-alt" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>권한 관리</span>}
-            </Link>
-            <Link 
-              to="/system/backup" 
-              className={`nav-item ${isActiveSubMenu('/system/backup') ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 20px',
-                color: isActiveSubMenu('/system/backup') ? '#3b82f6' : '#6b7280',
-                textDecoration: 'none',
-                background: isActiveSubMenu('/system/backup') ? '#eff6ff' : 'transparent',
-                borderRight: isActiveSubMenu('/system/backup') ? '3px solid #3b82f6' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <i className="fas fa-database" style={{ fontSize: '16px', width: '16px' }}></i>
-              {!sidebarCollapsed && <span>백업/복원</span>}
-            </Link>
-          </div>
-        </nav>
-      </aside>
-
-      {/* 메인 콘텐츠 */}
-      <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={{
-        marginLeft: sidebarCollapsed ? '60px' : '260px',
-        marginTop: '60px',
-        padding: '24px',
-        minHeight: 'calc(100vh - 60px)',
-        background: '#f8fafc',
-        transition: 'margin-left 0.3s ease'
-      }}>
-        <Outlet />
-      </main>
+        {/* 페이지 컨텐츠 */}
+        <div className="page-container">
+          <Outlet />
+        </div>
+      </div>
     </div>
   );
 };
