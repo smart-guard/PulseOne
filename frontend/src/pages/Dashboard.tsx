@@ -225,7 +225,7 @@ const Dashboard: React.FC = () => {
             status: 'running',
             icon: 'server',
             controllable: false,
-            description: 'Node.js 백엔드 서비스',
+            description: '백엔드 서비스',
             port: 3000,
             version: '2.1.0',
             uptime: Math.floor(Math.random() * 3600) + 300,
@@ -502,7 +502,7 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
                 status: 'running' as const,
                 icon: 'server',
                 controllable: false,
-                description: 'Node.js 백엔드 서비스',
+                description: '백엔드 서비스',
                 port: ports.backend || 3000,  // 🔥 동적 포트
                 version: '2.1.0',
                 uptime: systemMetrics?.process?.uptime || 300,
@@ -963,89 +963,118 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
             </div>
             
             <div style={{ padding: '1.5rem' }}>
-              {dashboardData.services.details.map((service) => (
-                <div key={service.name} style={{
+            {dashboardData.services.details.map((service) => (
+              <div key={service.name} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',  // 🔥 1rem → 0.75rem으로 줄임
+                padding: '1rem',
+                background: '#f8fafc',
+                borderRadius: '8px',
+                marginBottom: '0.75rem',
+                border: '1px solid #e2e8f0',
+                position: 'relative',
+                height: '120px'
+              }}>
+                
+                {/* 에러 메시지 - 오른쪽 상단 */}
+                {service.last_error && service.status !== 'running' && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '0.3rem',           // 🔥 0.5rem → 0.3rem (더 위로)
+                    right: '0.3rem',         // 🔥 0.5rem → 0.3rem (더 오른쪽으로)
+                    background: '#fef2f2',
+                    color: '#dc2626',
+                    fontSize: '0.6rem',      // 🔥 0.65rem → 0.6rem (더 작게)
+                    padding: '0.15rem 0.3rem', // 🔥 상하 패딩 더 줄임
+                    borderRadius: '3px',     // 🔥 4px → 3px
+                    border: '1px solid #fecaca',
+                    zIndex: 10,
+                    lineHeight: '1.2'        // 🔥 줄 간격 조정
+                  }}>
+                    {service.last_error}
+                  </div>
+                )}
+                
+                {/* 상태 표시 */}
+                <div style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: service.status === 'running' ? '#22c55e' : '#6b7280',
+                  flexShrink: 0
+                }}></div>
+                
+                {    /* 서비스 아이콘 - 크기 줄임 */}
+                <div style={{
+                  width: '2rem',      // 🔥 2.5rem → 2rem
+                  height: '2rem',     // 🔥 2.5rem → 2rem
+                  background: service.status === 'running' ? '#dcfce7' : '#f1f5f9',
+                  color: service.status === 'running' ? '#16a34a' : '#64748b',
+                  borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '1rem',
-                  padding: '1rem',
-                  background: '#f8fafc',
-                  borderRadius: '8px',
-                  marginBottom: '0.75rem',
-                  border: '1px solid #e2e8f0'
+                  justifyContent: 'center',
+                  fontSize: '1rem',   // 🔥 1.125rem → 1rem
+                  flexShrink: 0
                 }}>
-                  {/* 상태 표시 */}
-                  <div style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: service.status === 'running' ? '#22c55e' : '#6b7280',
-                    flexShrink: 0
-                  }}></div>
-                  
-                  {/* 서비스 아이콘 */}
-                  <div style={{
-                    width: '2.5rem',
-                    height: '2.5rem',
-                    background: service.status === 'running' ? '#dcfce7' : '#f1f5f9',
-                    color: service.status === 'running' ? '#16a34a' : '#64748b',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '1.125rem',
-                    flexShrink: 0
+                  {service.icon === 'server' ? '🖥️' : 
+                  service.icon === 'download' ? '📥' :
+                  service.icon === 'database' ? '🗄️' :
+                  service.icon === 'exchange' ? '🔄' :
+                  service.icon === 'elephant' ? '🐘' : '⚙️'}
+                </div>
+                
+                {/* 서비스 정보 - 더 넓은 공간 확보 */}
+                <div style={{ 
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  minWidth: 0,
+                  paddingRight: '0.5rem'  // 🔥 오른쪽 패딩 추가
+                }}>
+                  <h3 style={{
+                    margin: 0,
+                    marginBottom: '0.5rem',
+                    fontWeight: '600',
+                    color: '#1e293b',
+                    fontSize: '0.875rem'
                   }}>
-                    {service.icon === 'server' ? '🖥️' : 
-                     service.icon === 'download' ? '📥' :
-                     service.icon === 'database' ? '🗄️' :
-                     service.icon === 'exchange' ? '🔄' :
-                     service.icon === 'elephant' ? '🐘' : '⚙️'}
-                  </div>
+                    {service.displayName}
+                  </h3>
                   
-                  {/* 서비스 정보 */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontWeight: '600',
-                      color: '#1e293b',
-                      fontSize: '0.875rem'
-                    }}>
-                      {service.displayName}
-                    </div>
-                    <div style={{
-                      color: '#64748b',
-                      fontSize: '0.75rem',
-                      marginBottom: '0.25rem'
-                    }}>
-                      {service.description}
-                    </div>
-                    {service.port && (
-                      <div style={{
-                        color: '#64748b',
-                        fontSize: '0.75rem'
-                      }}>
-                        포트: {service.port}
-                      </div>
-                    )}
-                    {service.version && (
-                      <div style={{
-                        color: '#64748b',
-                        fontSize: '0.75rem'
-                      }}>
-                        v{service.version}
-                      </div>
-                    )}
-                  </div>
+                  <p style={{
+                    margin: 0,
+                    marginBottom: '0.5rem',
+                    color: '#64748b',
+                    fontSize: '0.75rem',
+                    lineHeight: '1.4'
+                  }}>
+                    {service.description}
+                  </p>
                   
-                  {/* 메트릭 정보 */}
+                  <div style={{
+                    fontSize: '0.75rem',
+                    color: '#64748b'
+                  }}>
+                    {service.port && `포트: ${service.port}`}
+                    {service.port && service.version && ' • '}
+                    {service.version && `v${service.version}`}
+                  </div>
+                </div>
+                
+                {/* 메트릭 정보 - 컴팩트하게 */}
+                {service.status === 'running' && (
                   <div style={{
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '0.25rem',
-                    fontSize: '0.75rem',
+                    fontSize: '0.7rem',   // 🔥 0.75rem → 0.7rem
                     color: '#64748b',
                     textAlign: 'right',
-                    minWidth: '80px'
+                    minWidth: '80px',     // 🔥 100px → 80px
+                    marginRight: '0.5rem' // 🔥 1rem → 0.5rem
                   }}>
                     {service.memory_usage && service.memory_usage > 0 && (
                       <div>메모리: {service.memory_usage}MB</div>
@@ -1056,100 +1085,110 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
                     {service.uptime && service.uptime > 0 && (
                       <div>가동시간: {formatUptime(service.uptime)}</div>
                     )}
-                    {service.last_error && service.status !== 'running' && (
-                      <div style={{ color: '#dc2626', fontSize: '0.7rem' }}>
-                        {service.last_error}
-                      </div>
-                    )}
                   </div>
-                  
-                  {/* 제어 버튼 */}
-                  <div style={{ flexShrink: 0 }}>
-                    {service.controllable ? (
-                      service.status === 'running' ? (
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                            onClick={() => handleServiceAction(service.name, service.displayName, 'stop')}
-                            style={{
-                              padding: '0.5rem 1rem',
-                              background: '#ef4444',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '0.75rem',
-                              fontWeight: '600',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '0.25rem',
-                              minWidth: '70px',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            ⏹️ 중지
-                          </button>
-                          
-                          <button 
-                            onClick={() => handleServiceAction(service.name, service.displayName, 'restart')}
-                            style={{
-                              padding: '0.5rem 1rem',
-                              background: '#f59e0b',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '0.75rem',
-                              fontWeight: '600',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '0.25rem',
-                              minWidth: '70px',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            🔄 재시작
-                          </button>
-                        </div>
-                      ) : (
+                )}
+                
+                {/* 제어 버튼 - 컴팩트하게 */}
+                <div style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.375rem',    // 🔥 0.5rem → 0.375rem
+                  alignItems: 'center'
+                }}>
+                  {service.controllable ? (
+                    service.status === 'running' ? (
+                      <>
                         <button 
-                          onClick={() => handleServiceAction(service.name, service.displayName, 'start')}
+                          onClick={() => handleServiceAction(service.name, service.displayName, 'stop')}
                           style={{
-                            padding: '0.75rem 1.25rem',
-                            background: '#22c55e',
+                            padding: '0.25rem 0.5rem',   // 🔥 패딩 더 줄임
+                            background: '#ef4444',
                             color: 'white',
                             border: 'none',
-                            borderRadius: '6px',
+                            borderRadius: '4px',          // 🔥 6px → 4px
                             cursor: 'pointer',
-                            fontSize: '0.75rem',
+                            fontSize: '0.65rem',          // 🔥 0.7rem → 0.65rem
                             fontWeight: '600',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.25rem',
-                            minWidth: '70px',
+                            minWidth: '50px',             // 🔥 60px → 50px
                             whiteSpace: 'nowrap'
                           }}
                         >
-                          ▶️ 시작
+                          ⏹️ 중지
                         </button>
-                      )
+                        
+                        <button 
+                          onClick={() => handleServiceAction(service.name, service.displayName, 'restart')}
+                          style={{
+                            padding: '0.25rem 0.5rem',   // 🔥 패딩 더 줄임
+                            background: '#f59e0b',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',          // 🔥 6px → 4px
+                            cursor: 'pointer',
+                            fontSize: '0.65rem',          // 🔥 0.7rem → 0.65rem
+                            fontWeight: '600',
+                            minWidth: '50px',             // 🔥 60px → 50px
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          🔄 재시작
+                        </button>
+                      </>
                     ) : (
-                      <span style={{
-                        fontSize: '0.75rem',
-                        color: '#3b82f6',
-                        background: '#dbeafe',
-                        padding: '0.5rem 0.75rem',
-                        borderRadius: '12px',
-                        fontWeight: '500'
-                      }}>
-                        필수
-                      </span>
-                    )}
-                  </div>
+                      <button 
+                        onClick={() => handleServiceAction(service.name, service.displayName, 'start')}
+                        style={{
+                          padding: '0.4rem 0.7rem',      // 🔥 패딩 더 줄임
+                          background: '#22c55e',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',           // 🔥 6px → 4px
+                          cursor: 'pointer',
+                          fontSize: '0.65rem',           // 🔥 0.7rem → 0.65rem
+                          fontWeight: '600',
+                          minWidth: '50px',              // 🔥 60px → 50px
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        ▶️ 시작
+                      </button>
+                    )
+                  ) : (
+                    <span style={{
+                      fontSize: '0.65rem',              // 🔥 0.7rem → 0.65rem
+                      color: '#3b82f6',
+                      background: '#dbeafe',
+                      padding: '0.25rem 0.5rem',        // 🔥 패딩 더 줄임
+                      borderRadius: '8px',              // 🔥 12px → 8px
+                      fontWeight: '500'
+                    }}>
+                      필수
+                    </span>
+                  )}
+                  
+                  {/* 버튼 아래 상태 정보 - 카드 하단으로 */}
+                  {service.status !== 'running' && (
+                    <div style={{
+                      position: 'absolute',      // 🔥 절대 위치로 변경
+                      bottom: '0.5rem',          // 🔥 카드 하단에서 0.5rem 위
+                      right: '0.5rem',           // 🔥 오른쪽 정렬
+                      fontSize: '0.55rem',       // 🔥 0.6rem → 0.55rem (더 작게)
+                      color: '#64748b',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: '#f59e0b', fontWeight: '500' }}>
+                        서비스 중지됨
+                      </div>
+                      {service.port && (
+                        <div style={{ color: '#9ca3af', marginTop: '0.2rem' }}>
+                          포트 {service.port} 비활성
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ))}
+              </div>
+            ))}
             </div>
           </div>
         )}
