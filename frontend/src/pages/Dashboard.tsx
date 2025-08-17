@@ -112,7 +112,14 @@ const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
-  
+  const [confirmModal, setConfirmModal] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    action: () => void;
+    type: 'danger' | 'warning' | 'info';
+  } | null>(null);
   // 실시간 업데이트 설정
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(10000); // 10초
@@ -133,7 +140,72 @@ const Dashboard: React.FC = () => {
       return `${minutes}분`;
     }
   };
+  // 🆕 서비스 제어 함수들 추가
+  const handleServiceAction = (serviceName: string, displayName: string, action: 'start' | 'stop' | 'restart') => {
+    const actionConfig = {
+      start: {
+        title: '서비스 시작',
+        message: `${displayName}를 시작하시겠습니까?`,
+        confirmText: '시작하기',
+        type: 'info' as const
+      },
+      stop: {
+        title: '서비스 중지', 
+        message: `${displayName}를 중지하시겠습니까?\n\n중지하면 관련된 모든 기능이 일시적으로 사용할 수 없습니다.`,
+        confirmText: '중지하기',
+        type: 'danger' as const
+      },
+      restart: {
+        title: '서비스 재시작',
+        message: `${displayName}를 재시작하시겠습니까?\n\n재시작 중에는 일시적으로 서비스가 중단됩니다.`,
+        confirmText: '재시작하기', 
+        type: 'warning' as const
+      }
+    };
 
+    const config = actionConfig[action];
+    
+    setConfirmModal({
+      show: true,
+      title: config.title,
+      message: config.message,
+      confirmText: config.confirmText,
+      type: config.type,
+      action: () => {
+        executeServiceAction(serviceName, action);
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  const handleRefreshConfirm = () => {
+    setConfirmModal({
+      show: true,
+      title: '대시보드 새로고침',
+      message: '대시보드를 새로고침하시겠습니까?\n\n최신 상태로 업데이트됩니다.',
+      confirmText: '새로고침',
+      type: 'info',
+      action: () => {
+        loadDashboardOverview(true);
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  const executeServiceAction = async (serviceName: string, action: string) => {
+    try {
+      console.log(`🔧 ${serviceName} ${action} 실행중...`);
+      // TODO: 실제 API 호출
+      // await safeFetch(`/api/services/${serviceName}/${action}`, { method: 'POST' });
+      
+      // 임시: 상태 업데이트 시뮬레이션
+      setTimeout(() => {
+        loadDashboardOverview(false);
+      }, 1000);
+    } catch (error) {
+      console.error(`❌ ${serviceName} ${action} 실패:`, error);
+    }
+  };
   /**
    * 폴백 대시보드 데이터 생성
    */
@@ -691,7 +763,7 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
             <option>10초</option>
           </select>
           <button 
-            onClick={() => loadDashboardOverview(true)}
+            onClick={handleRefreshConfirm}
             style={{
               padding: '0.5rem 1rem',
               background: '#3b82f6',
@@ -729,7 +801,111 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
           </div>
         </div>
       )}
-
+      {/* 🆕 확인 모달 - 개선된 디자인 */}
+      {confirmModal?.show && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            padding: '2rem',
+            minWidth: '400px',
+            maxWidth: '500px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            border: '1px solid #e5e7eb'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{
+                width: '2.5rem',
+                height: '2.5rem',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.25rem',
+                background: confirmModal.type === 'danger' ? '#fef2f2' : 
+                           confirmModal.type === 'warning' ? '#fef3c7' : '#dbeafe',
+                color: confirmModal.type === 'danger' ? '#dc2626' : 
+                       confirmModal.type === 'warning' ? '#f59e0b' : '#3b82f6'
+              }}>
+                {confirmModal.type === 'danger' ? '🛑' : 
+                 confirmModal.type === 'warning' ? '⚠️' : 'ℹ️'}
+              </div>
+              <h3 style={{
+                margin: 0,
+                fontSize: '1.25rem',
+                fontWeight: '600',
+                color: '#1e293b'
+              }}>
+                {confirmModal.title}
+              </h3>
+            </div>
+            
+            <div style={{
+              marginBottom: '2rem',
+              color: '#64748b',
+              fontSize: '0.875rem',
+              lineHeight: '1.6',
+              whiteSpace: 'pre-line'
+            }}>
+              {confirmModal.message}
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => setConfirmModal(null)}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: '#f8fafc',
+                  color: '#64748b',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmModal.action}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: confirmModal.type === 'danger' ? '#ef4444' : 
+                             confirmModal.type === 'warning' ? '#f59e0b' : '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                {confirmModal.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 📊 메인 레이아웃: 왼쪽 서비스 + 오른쪽 시스템 상태 */}
       <div style={{
         display: 'grid',
@@ -891,44 +1067,72 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
                   <div style={{ flexShrink: 0 }}>
                     {service.controllable ? (
                       service.status === 'running' ? (
-                        <div style={{ display: 'flex', gap: '0.25rem' }}>
-                          <button style={{
-                            width: '2rem',
-                            height: '2rem',
-                            background: '#f59e0b',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '0.75rem'
-                          }}>
-                            ⏹️
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            onClick={() => handleServiceAction(service.name, service.displayName, 'stop')}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.25rem',
+                              minWidth: '70px',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            ⏹️ 중지
                           </button>
-                          <button style={{
-                            width: '2rem',
-                            height: '2rem',
-                            background: '#6b7280',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '0.75rem'
-                          }}>
-                            🔄
+                          
+                          <button 
+                            onClick={() => handleServiceAction(service.name, service.displayName, 'restart')}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: '#f59e0b',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.25rem',
+                              minWidth: '70px',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            🔄 재시작
                           </button>
                         </div>
                       ) : (
-                        <button style={{
-                          width: '2rem',
-                          height: '2rem',
-                          background: '#22c55e',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '0.75rem'
-                        }}>
-                          ▶️
+                        <button 
+                          onClick={() => handleServiceAction(service.name, service.displayName, 'start')}
+                          style={{
+                            padding: '0.75rem 1.25rem',
+                            background: '#22c55e',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.25rem',
+                            minWidth: '70px',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          ▶️ 시작
                         </button>
                       )
                     ) : (
@@ -936,8 +1140,9 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
                         fontSize: '0.75rem',
                         color: '#3b82f6',
                         background: '#dbeafe',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '12px'
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '12px',
+                        fontWeight: '500'
                       }}>
                         필수
                       </span>
