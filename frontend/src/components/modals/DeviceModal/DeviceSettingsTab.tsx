@@ -1,9 +1,9 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/DeviceSettingsTab.tsx
-// ⚙️ 디바이스 설정 탭 컴포넌트
+// ⚙️ 디바이스 설정 탭 컴포넌트 - 완전 구현
 // ============================================================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import { DeviceSettingsTabProps } from './types';
 
 const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
@@ -13,498 +13,426 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
   onUpdateField,
   onUpdateSettings
 }) => {
+  // ========================================================================
+  // 상태 관리
+  // ========================================================================
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(['communication', 'performance'])
+  );
+
   const displayData = device || editData;
+  const settings = displayData?.settings || {};
+
+  // ========================================================================
+  // 헬퍼 함수들
+  // ========================================================================
+
+  /**
+   * 섹션 펼치기/접기
+   */
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionId)) {
+        newSet.delete(sectionId);
+      } else {
+        newSet.add(sectionId);
+      }
+      return newSet;
+    });
+  };
+
+  /**
+   * 설정값 안전하게 가져오기
+   */
+  const getSettingValue = (key: string, defaultValue: any) => {
+    return settings[key] !== undefined ? settings[key] : defaultValue;
+  };
+
+  /**
+   * 설정값 업데이트
+   */
+  const updateSettingValue = (key: string, value: any) => {
+    if (mode !== 'view') {
+      onUpdateSettings(key, value);
+    }
+  };
+
+  /**
+   * 기본값으로 초기화
+   */
+  const resetToDefaults = () => {
+    if (mode === 'view') return;
+
+    const defaultSettings = {
+      polling_interval_ms: 1000,
+      connection_timeout_ms: 5000,
+      read_timeout_ms: 3000,
+      write_timeout_ms: 3000,
+      max_retry_count: 3,
+      retry_interval_ms: 1000,
+      backoff_time_ms: 2000,
+      keep_alive_enabled: true,
+      keep_alive_interval_s: 30,
+      data_validation_enabled: true,
+      performance_monitoring_enabled: true,
+      detailed_logging_enabled: false,
+      diagnostic_mode_enabled: false
+    };
+
+    Object.entries(defaultSettings).forEach(([key, value]) => {
+      onUpdateSettings(key, value);
+    });
+
+    alert('기본값으로 초기화되었습니다.');
+  };
+
+  // ========================================================================
+  // 렌더링 헬퍼 함수들
+  // ========================================================================
+
+  /**
+   * 섹션 헤더 렌더링
+   */
+  const renderSectionHeader = (id: string, title: string, icon: string) => (
+    <div 
+      className="section-header"
+      onClick={() => toggleSection(id)}
+    >
+      <div className="section-title">
+        <i className={`fas ${icon}`}></i>
+        <h3>{title}</h3>
+      </div>
+      <i className={`fas ${expandedSections.has(id) ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+    </div>
+  );
+
+  /**
+   * 숫자 입력 필드 렌더링
+   */
+  const renderNumberField = (
+    label: string, 
+    key: string, 
+    defaultValue: number, 
+    unit: string,
+    min?: number,
+    max?: number,
+    step?: number
+  ) => (
+    <div className="form-group">
+      <label>{label}</label>
+      {mode === 'view' ? (
+        <div className="form-value">
+          {getSettingValue(key, defaultValue).toLocaleString()} {unit}
+        </div>
+      ) : (
+        <div className="input-with-unit">
+          <input
+            type="number"
+            value={getSettingValue(key, defaultValue)}
+            onChange={(e) => updateSettingValue(key, parseInt(e.target.value))}
+            min={min}
+            max={max}
+            step={step}
+          />
+          <span className="unit">{unit}</span>
+        </div>
+      )}
+    </div>
+  );
+
+  /**
+   * 토글 스위치 렌더링
+   */
+  const renderToggleField = (label: string, key: string, defaultValue: boolean, description?: string) => (
+    <div className="form-group">
+      <div className="toggle-header">
+        <label>{label}</label>
+        {mode === 'view' ? (
+          <span className={`status-badge ${getSettingValue(key, defaultValue) ? 'enabled' : 'disabled'}`}>
+            {getSettingValue(key, defaultValue) ? '활성화' : '비활성화'}
+          </span>
+        ) : (
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={getSettingValue(key, defaultValue)}
+              onChange={(e) => updateSettingValue(key, e.target.checked)}
+            />
+            <span className="slider"></span>
+          </label>
+        )}
+      </div>
+      {description && <div className="form-description">{description}</div>}
+    </div>
+  );
+
+  // ========================================================================
+  // 메인 렌더링
+  // ========================================================================
 
   return (
     <div className="tab-panel">
-      <div className="settings-sections">
-        {/* 폴링 및 타이밍 설정 */}
-        <div className="setting-section">
-          <h3>📡 폴링 및 타이밍 설정</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>폴링 주기 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.polling_interval_ms || displayData?.polling_interval || 'N/A'}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="100"
-                  max="3600000"
-                  value={editData?.settings?.polling_interval_ms || editData?.polling_interval || 5000}
-                  onChange={(e) => onUpdateSettings('polling_interval_ms', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>스캔 주기 오버라이드 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.scan_rate_override || '기본값 사용'}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="10"
-                  max="60000"
-                  value={editData?.settings?.scan_rate_override || ''}
-                  onChange={(e) => onUpdateSettings('scan_rate_override', e.target.value ? parseInt(e.target.value) : null)}
-                  placeholder="기본값 사용"
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>스캔 그룹</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.scan_group || 1}</div>
-              ) : (
-                <select
-                  value={editData?.settings?.scan_group || 1}
-                  onChange={(e) => onUpdateSettings('scan_group', parseInt(e.target.value))}
-                >
-                  <option value={1}>그룹 1 (높은 우선순위)</option>
-                  <option value={2}>그룹 2 (보통 우선순위)</option>
-                  <option value={3}>그룹 3 (낮은 우선순위)</option>
-                  <option value={4}>그룹 4 (백그라운드)</option>
-                </select>
-              )}
-            </div>
-            <div className="form-group">
-              <label>프레임 간 지연 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.inter_frame_delay_ms || 10}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="0"
-                  max="1000"
-                  value={editData?.settings?.inter_frame_delay_ms || 10}
-                  onChange={(e) => onUpdateSettings('inter_frame_delay_ms', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-          </div>
+      <div className="settings-container">
+        
+        {/* 헤더 */}
+        <div className="settings-header">
+          <h2>⚙️ 디바이스 설정</h2>
+          {mode !== 'view' && (
+            <button className="btn btn-secondary btn-sm" onClick={resetToDefaults}>
+              <i className="fas fa-undo"></i>
+              기본값 복원
+            </button>
+          )}
         </div>
 
-        {/* 연결 및 통신 설정 */}
-        <div className="setting-section">
-          <h3>🔌 연결 및 통신 설정</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>연결 타임아웃 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.connection_timeout_ms || displayData?.timeout || 'N/A'}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="1000"
-                  max="60000"
-                  value={editData?.settings?.connection_timeout_ms || editData?.timeout || 10000}
-                  onChange={(e) => onUpdateSettings('connection_timeout_ms', parseInt(e.target.value))}
-                />
+        {/* 통신 설정 섹션 */}
+        <div className="settings-section">
+          {renderSectionHeader('communication', '통신 설정', 'fa-wifi')}
+          
+          {expandedSections.has('communication') && (
+            <div className="section-content">
+              <div className="form-row">
+                {renderNumberField('폴링 간격', 'polling_interval_ms', 1000, 'ms', 100, 60000, 100)}
+                {renderNumberField('연결 타임아웃', 'connection_timeout_ms', 5000, 'ms', 1000, 30000, 1000)}
+              </div>
+              
+              <div className="form-row">
+                {renderNumberField('읽기 타임아웃', 'read_timeout_ms', 3000, 'ms', 1000, 10000, 500)}
+                {renderNumberField('쓰기 타임아웃', 'write_timeout_ms', 3000, 'ms', 1000, 10000, 500)}
+              </div>
+
+              <div className="form-row">
+                {renderNumberField('최대 재시도', 'max_retry_count', 3, '회', 0, 10, 1)}
+                {renderNumberField('재시도 간격', 'retry_interval_ms', 1000, 'ms', 500, 10000, 500)}
+              </div>
+
+              <div className="form-row">
+                {renderNumberField('백오프 시간', 'backoff_time_ms', 2000, 'ms', 1000, 30000, 1000)}
+              </div>
+
+              {renderToggleField(
+                'Keep-Alive 활성화',
+                'keep_alive_enabled',
+                true,
+                '연결 유지를 위한 주기적 통신 활성화'
+              )}
+
+              {getSettingValue('keep_alive_enabled', true) && (
+                <div className="form-row">
+                  {renderNumberField('Keep-Alive 간격', 'keep_alive_interval_s', 30, '초', 10, 300, 10)}
+                </div>
               )}
             </div>
-            <div className="form-group">
-              <label>읽기 타임아웃 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.read_timeout_ms || 5000}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="1000"
-                  max="30000"
-                  value={editData?.settings?.read_timeout_ms || 5000}
-                  onChange={(e) => onUpdateSettings('read_timeout_ms', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>쓰기 타임아웃 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.write_timeout_ms || 5000}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="1000"
-                  max="30000"
-                  value={editData?.settings?.write_timeout_ms || 5000}
-                  onChange={(e) => onUpdateSettings('write_timeout_ms', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>읽기 버퍼 크기 (bytes)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.read_buffer_size || 1024}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="256"
-                  max="65536"
-                  value={editData?.settings?.read_buffer_size || 1024}
-                  onChange={(e) => onUpdateSettings('read_buffer_size', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>쓰기 버퍼 크기 (bytes)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.write_buffer_size || 1024}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="256"
-                  max="65536"
-                  value={editData?.settings?.write_buffer_size || 1024}
-                  onChange={(e) => onUpdateSettings('write_buffer_size', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>명령 큐 크기</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.queue_size || 100}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="10"
-                  max="1000"
-                  value={editData?.settings?.queue_size || 100}
-                  onChange={(e) => onUpdateSettings('queue_size', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* 재시도 정책 */}
-        <div className="setting-section">
-          <h3>🔄 재시도 정책</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>최대 재시도 횟수</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.max_retry_count || displayData?.retry_count || 'N/A'}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="0"
-                  max="10"
-                  value={editData?.settings?.max_retry_count || editData?.retry_count || 3}
-                  onChange={(e) => onUpdateSettings('max_retry_count', parseInt(e.target.value))}
-                />
+        {/* 성능 및 최적화 섹션 */}
+        <div className="settings-section">
+          {renderSectionHeader('performance', '성능 및 최적화', 'fa-tachometer-alt')}
+          
+          {expandedSections.has('performance') && (
+            <div className="section-content">
+              {renderToggleField(
+                '데이터 검증',
+                'data_validation_enabled',
+                true,
+                '수신된 데이터의 유효성 검사 수행'
               )}
-            </div>
-            <div className="form-group">
-              <label>재시도 간격 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.retry_interval_ms || 5000}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="100"
-                  max="60000"
-                  value={editData?.settings?.retry_interval_ms || 5000}
-                  onChange={(e) => onUpdateSettings('retry_interval_ms', parseInt(e.target.value))}
-                />
+
+              {renderToggleField(
+                '성능 모니터링',
+                'performance_monitoring_enabled',
+                true,
+                '응답시간, 처리량 등 성능 지표 수집'
               )}
+
+              <div className="form-row">
+                {renderNumberField('스캔 레이트 오버라이드', 'scan_rate_override', 0, 'ms', 0, 10000, 100)}
+                {renderNumberField('스캔 그룹', 'scan_group', 1, '', 1, 10, 1)}
+              </div>
+
+              <div className="form-row">
+                {renderNumberField('프레임 간 지연', 'inter_frame_delay_ms', 0, 'ms', 0, 1000, 10)}
+                {renderNumberField('큐 크기', 'queue_size', 100, '개', 10, 1000, 10)}
+              </div>
+
+              <div className="form-row">
+                {renderNumberField('읽기 버퍼', 'read_buffer_size', 1024, 'bytes', 512, 8192, 512)}
+                {renderNumberField('쓰기 버퍼', 'write_buffer_size', 1024, 'bytes', 512, 8192, 512)}
+              </div>
             </div>
-            <div className="form-group">
-              <label>백오프 승수</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.backoff_multiplier || 1.5}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="1.0"
-                  max="5.0"
-                  step="0.1"
-                  value={editData?.settings?.backoff_multiplier || 1.5}
-                  onChange={(e) => onUpdateSettings('backoff_multiplier', parseFloat(e.target.value))}
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>백오프 시간 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.backoff_time_ms || 60000}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="1000"
-                  max="3600000"
-                  value={editData?.settings?.backoff_time_ms || 60000}
-                  onChange={(e) => onUpdateSettings('backoff_time_ms', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-            <div className="form-group">
-              <label>최대 백오프 시간 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.max_backoff_time_ms || 300000}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="10000"
-                  max="1800000"
-                  value={editData?.settings?.max_backoff_time_ms || 300000}
-                  onChange={(e) => onUpdateSettings('max_backoff_time_ms', parseInt(e.target.value))}
-                />
-              )}
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Keep-alive 설정 */}
-        <div className="setting-section">
-          <h3>❤️ Keep-alive 설정</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>Keep-Alive 활성화</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.keep_alive_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.keep_alive_enabled ? '활성화' : '비활성화'}
-                  </span>
-                </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.keep_alive_enabled || false}
-                    onChange={(e) => onUpdateSettings('keep_alive_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
+        {/* 고급 설정 섹션 */}
+        <div className="settings-section">
+          {renderSectionHeader('advanced', '고급 설정', 'fa-cogs')}
+          
+          {expandedSections.has('advanced') && (
+            <div className="section-content">
+              {renderToggleField(
+                '상세 로깅',
+                'detailed_logging_enabled',
+                false,
+                '디버깅을 위한 상세한 로그 기록 (성능에 영향을 줄 수 있음)'
               )}
-            </div>
-            <div className="form-group">
-              <label>Keep-Alive 간격 (초)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.keep_alive_interval_s || 30}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="5"
-                  max="300"
-                  value={editData?.settings?.keep_alive_interval_s || 30}
-                  onChange={(e) => onUpdateSettings('keep_alive_interval_s', parseInt(e.target.value))}
-                />
+
+              {renderToggleField(
+                '진단 모드',
+                'diagnostic_mode_enabled',
+                false,
+                '문제 해결을 위한 진단 정보 수집'
               )}
-            </div>
-            <div className="form-group">
-              <label>Keep-Alive 타임아웃 (초)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.settings?.keep_alive_timeout_s || 10}</div>
-              ) : (
-                <input
-                  type="number"
-                  min="1"
-                  max="60"
-                  value={editData?.settings?.keep_alive_timeout_s || 10}
-                  onChange={(e) => onUpdateSettings('keep_alive_timeout_s', parseInt(e.target.value))}
-                />
+
+              {renderToggleField(
+                '통신 로깅',
+                'communication_logging_enabled',
+                false,
+                '모든 통신 내용을 로그로 기록'
               )}
+
+              {renderToggleField(
+                '이상값 탐지',
+                'outlier_detection_enabled',
+                false,
+                '통계적 방법으로 이상값 자동 탐지'
+              )}
+
+              {renderToggleField(
+                '데드밴드',
+                'deadband_enabled',
+                false,
+                '미세한 변화 무시로 통신량 최적화'
+              )}
+
+              <div className="form-row">
+                {renderNumberField('백오프 배수', 'backoff_multiplier', 2, '배', 1, 10, 0.5)}
+                {renderNumberField('최대 백오프', 'max_backoff_time_ms', 30000, 'ms', 5000, 300000, 5000)}
+              </div>
+
+              <div className="form-row">
+                {renderNumberField('Keep-Alive 타임아웃', 'keep_alive_timeout_s', 60, '초', 30, 600, 30)}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* 데이터 품질 관리 */}
-        <div className="setting-section">
-          <h3>🎯 데이터 품질 관리</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>데이터 검증 활성화</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.data_validation_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.data_validation_enabled ? '활성화' : '비활성화'}
-                  </span>
-                </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.data_validation_enabled || false}
-                    onChange={(e) => onUpdateSettings('data_validation_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              )}
-            </div>
-            <div className="form-group">
-              <label>이상값 탐지 활성화</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.outlier_detection_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.outlier_detection_enabled ? '활성화' : '비활성화'}
-                  </span>
-                </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.outlier_detection_enabled || false}
-                    onChange={(e) => onUpdateSettings('outlier_detection_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              )}
-            </div>
-            <div className="form-group">
-              <label>데드밴드 활성화</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.deadband_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.deadband_enabled ? '활성화' : '비활성화'}
-                  </span>
-                </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.deadband_enabled || false}
-                    onChange={(e) => onUpdateSettings('deadband_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* 설정 정보 섹션 */}
+        {mode === 'view' && settings && Object.keys(settings).length > 0 && (
+          <div className="settings-section">
+            {renderSectionHeader('info', '설정 정보', 'fa-info-circle')}
+            
+            {expandedSections.has('info') && (
+              <div className="section-content">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>설정 생성일시</label>
+                    <div className="form-value">
+                      {settings.created_at ? new Date(settings.created_at).toLocaleString() : 'N/A'}
+                    </div>
+                  </div>
 
-        {/* 로깅 및 진단 */}
-        <div className="setting-section">
-          <h3>📊 로깅 및 진단</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>상세 로깅</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.detailed_logging_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.detailed_logging_enabled ? '활성화' : '비활성화'}
-                  </span>
+                  <div className="form-group">
+                    <label>설정 수정일시</label>
+                    <div className="form-value">
+                      {settings.updated_at ? new Date(settings.updated_at).toLocaleString() : 'N/A'}
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.detailed_logging_enabled || false}
-                    onChange={(e) => onUpdateSettings('detailed_logging_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              )}
-            </div>
-            <div className="form-group">
-              <label>성능 모니터링</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.performance_monitoring_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.performance_monitoring_enabled ? '활성화' : '비활성화'}
-                  </span>
-                </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.performance_monitoring_enabled || false}
-                    onChange={(e) => onUpdateSettings('performance_monitoring_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              )}
-            </div>
-            <div className="form-group">
-              <label>진단 모드</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.diagnostic_mode_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.diagnostic_mode_enabled ? '활성화' : '비활성화'}
-                  </span>
-                </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.diagnostic_mode_enabled || false}
-                    onChange={(e) => onUpdateSettings('diagnostic_mode_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              )}
-            </div>
-            <div className="form-group">
-              <label>통신 로깅</label>
-              {mode === 'view' ? (
-                <div className="form-value">
-                  <span className={`status-badge ${displayData?.settings?.communication_logging_enabled ? 'enabled' : 'disabled'}`}>
-                    {displayData?.settings?.communication_logging_enabled ? '활성화' : '비활성화'}
-                  </span>
-                </div>
-              ) : (
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={editData?.settings?.communication_logging_enabled || false}
-                    onChange={(e) => onUpdateSettings('communication_logging_enabled', e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* 메타데이터 */}
-        <div className="setting-section">
-          <h3>ℹ️ 메타데이터</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>생성일</label>
-              <div className="form-value">{displayData?.settings?.created_at ? new Date(displayData.settings.created_at).toLocaleString() : '정보 없음'}</div>
-            </div>
-            <div className="form-group">
-              <label>마지막 수정일</label>
-              <div className="form-value">{displayData?.settings?.updated_at ? new Date(displayData.settings.updated_at).toLocaleString() : '정보 없음'}</div>
-            </div>
-            <div className="form-group">
-              <label>수정한 사용자</label>
-              <div className="form-value">{displayData?.settings?.updated_by || '시스템'}</div>
-            </div>
+                {settings.updated_by && (
+                  <div className="form-group">
+                    <label>수정자</label>
+                    <div className="form-value">{settings.updated_by}</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
 
+      {/* 스타일 */}
       <style jsx>{`
         .tab-panel {
           flex: 1;
+          padding: 1.5rem;
           overflow-y: auto;
-          padding: 2rem;
-          height: 100%;
+          background: #f8fafc;
         }
 
-        .settings-sections {
+        .settings-container {
           display: flex;
           flex-direction: column;
-          gap: 2rem;
+          gap: 1.5rem;
         }
 
-        .setting-section {
-          border: 1px solid #e5e7eb;
-          border-radius: 0.75rem;
-          padding: 1.5rem;
+        .settings-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
         }
 
-        .setting-section h3 {
-          margin: 0 0 1rem 0;
-          font-size: 1.125rem;
+        .settings-header h2 {
+          margin: 0;
+          font-size: 1.25rem;
           font-weight: 600;
           color: #1f2937;
         }
 
-        .form-grid {
+        .settings-section {
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 0.5rem;
+          overflow: hidden;
+        }
+
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 1.5rem;
+          background: #f9fafb;
+          border-bottom: 1px solid #e5e7eb;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+        }
+
+        .section-header:hover {
+          background: #f3f4f6;
+        }
+
+        .section-title {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .section-title i {
+          color: #6b7280;
+          width: 1.25rem;
+        }
+
+        .section-title h3 {
+          margin: 0;
+          font-size: 1rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .section-content {
+          padding: 1.5rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+
+        .form-row {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 1.5rem;
+          gap: 1rem;
         }
 
         .form-group {
@@ -521,9 +449,9 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
 
         .form-group input,
         .form-group select {
-          padding: 0.75rem;
+          padding: 0.5rem 0.75rem;
           border: 1px solid #d1d5db;
-          border-radius: 0.5rem;
+          border-radius: 0.375rem;
           font-size: 0.875rem;
           transition: border-color 0.2s ease;
         }
@@ -536,18 +464,53 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
         }
 
         .form-value {
-          padding: 0.75rem;
+          padding: 0.5rem 0.75rem;
           background: #f9fafb;
           border: 1px solid #e5e7eb;
-          border-radius: 0.5rem;
+          border-radius: 0.375rem;
           font-size: 0.875rem;
           color: #374151;
+        }
+
+        .form-description {
+          font-size: 0.75rem;
+          color: #6b7280;
+          line-height: 1.4;
+        }
+
+        .input-with-unit {
+          display: flex;
+          align-items: center;
+          border: 1px solid #d1d5db;
+          border-radius: 0.375rem;
+          overflow: hidden;
+        }
+
+        .input-with-unit input {
+          flex: 1;
+          border: none;
+          outline: none;
+          padding: 0.5rem 0.75rem;
+        }
+
+        .input-with-unit .unit {
+          padding: 0.5rem 0.75rem;
+          background: #f3f4f6;
+          border-left: 1px solid #d1d5db;
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: #6b7280;
+        }
+
+        .toggle-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
 
         .status-badge {
           display: inline-flex;
           align-items: center;
-          gap: 0.25rem;
           padding: 0.25rem 0.75rem;
           border-radius: 9999px;
           font-size: 0.75rem;
@@ -607,6 +570,33 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
 
         input:checked + .slider:before {
           transform: translateX(1.5rem);
+        }
+
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1rem;
+          border: none;
+          border-radius: 0.375rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .btn-sm {
+          padding: 0.375rem 0.75rem;
+          font-size: 0.75rem;
+        }
+
+        .btn-secondary {
+          background: #64748b;
+          color: white;
+        }
+
+        .btn-secondary:hover {
+          background: #475569;
         }
       `}</style>
     </div>
