@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/services/realtimeApi.ts
-// 실시간 데이터 API 서비스 - 새로운 Backend API 완전 호환
+// 실시간 데이터 API 서비스 - 백엔드 realtime.js 완전 호환 버전
 // ============================================================================
 
 import { API_CONFIG } from '../config';
@@ -8,20 +8,22 @@ import { ENDPOINTS } from '../endpoints';
 import { ApiResponse } from '../../types/common';
 
 // ============================================================================
-// 🔄 실시간 데이터 관련 인터페이스들
+// 🔥 백엔드 realtime.js와 완전 일치하는 인터페이스들
 // ============================================================================
 
 export interface RealtimeValue {
   id: string;
   key: string;
   point_id?: number;
-  device_id: number;
-  name: string;
+  device_id: string;                              // 🔥 수정: number → string
+  device_name: string;                            // 🔥 추가
+  point_name: string;                             // 🔥 수정: name → point_name
   value: any;
-  dataType: 'number' | 'boolean' | 'string';
+  data_type: 'number' | 'boolean' | 'string' | 'integer';  // 🔥 수정: dataType → data_type
   unit?: string;
   timestamp: string;
-  quality: 'good' | 'bad' | 'uncertain';
+  quality: 'good' | 'bad' | 'uncertain' | 'comm_failure' | 'last_known';  // 🔥 추가: comm_failure, last_known
+  changed?: boolean;                              // 🔥 추가
   source: 'redis' | 'database' | 'simulation';
   metadata?: {
     update_count: number;
@@ -46,28 +48,33 @@ export interface RealtimeValue {
 export interface DeviceRealtimeData {
   device_id: number;
   device_name: string;
-  device_status: string;
+  device_type: string;                            // 🔥 추가
   connection_status: string;
+  ip_address?: string;                            // 🔥 추가
   last_communication: string;
+  response_time?: number;                         // 🔥 추가
+  error_count: number;                            // 🔥 추가
   data_points: RealtimeValue[];
   total_points: number;
   summary: {
     good_quality: number;
     bad_quality: number;
     uncertain_quality: number;
-    last_update: number | null;
+    comm_failure: number;                         // 🔥 추가
+    last_known: number;                           // 🔥 추가
+    last_update: string;                          // 🔥 수정: number → string
   };
 }
 
 export interface SubscriptionRequest {
   keys?: string[];
   point_ids?: number[];
-  device_ids?: number[];
+  device_ids?: string[];                          // 🔥 수정: number[] → string[]
   update_interval?: number;
   filters?: {
     data_type?: string;
     quality_filter?: string;
-    device_filter?: number[];
+    device_filter?: string[];                     // 🔥 수정: number[] → string[]
   };
   callback_url?: string;
 }
@@ -82,13 +89,14 @@ export interface SubscriptionInfo {
     estimated_updates_per_minute: number;
     expires_at: string;
   };
+  preview_keys: string[];                         // 🔥 추가
   subscription: {
     id: string;
     tenant_id: number;
     user_id: number;
     keys: string[];
     point_ids: number[];
-    device_ids: number[];
+    device_ids: string[];                         // 🔥 수정: number[] → string[]
     update_interval: number;
     filters: any;
     callback_url?: string;
@@ -156,12 +164,13 @@ export interface RealtimeStats {
 }
 
 export interface CurrentValuesParams {
-  device_ids?: number[];
-  point_ids?: number[];
+  device_ids?: string[];                          // 🔥 수정: number[] → string[]
+  point_names?: string[];                         // 🔥 수정: point_ids → point_names
   site_id?: number;
   data_type?: string;
   quality_filter?: string;
   limit?: number;
+  sort_by?: string;                               // 🔥 추가
   source?: 'auto' | 'redis' | 'database';
 }
 
@@ -169,11 +178,36 @@ export interface CurrentValuesResponse {
   current_values: RealtimeValue[];
   total_count: number;
   data_source: string;
-  filters_applied: any;
+  filters_applied: {
+    device_ids: string;
+    point_names: string;
+    quality_filter: string;
+  };
   performance: {
     query_time_ms: number;
-    cache_hit_rate: string;
+    redis_keys_scanned: number;                   // 🔥 수정: cache_hit_rate → redis_keys_scanned
   };
+}
+
+// 🔥 추가: 디바이스 목록 응답
+export interface DevicesResponse {
+  devices: Array<{
+    device_id: string;
+    device_name: string;
+    point_count: number;
+    status: string;
+    last_seen?: string;
+  }>;
+  total_count: number;
+  total_points: number;
+}
+
+// 🔥 추가: 개별 포인트 조회 응답
+export interface PointsResponse {
+  points: RealtimeValue[];
+  requested_count: number;
+  found_count: number;
+  errors?: string[];
 }
 
 // ============================================================================
@@ -300,19 +334,62 @@ export class RealtimeApiService {
    */
   static async getCurrentValues(params?: CurrentValuesParams): Promise<ApiResponse<CurrentValuesResponse>> {
     console.log('⚡ 실시간 현재값 조회:', params);
-    return this.httpClient.get<CurrentValuesResponse>(ENDPOINTS.REALTIME_CURRENT_VALUES, params);
+    
+    // 🔥 백엔드 realtime.js가 기대하는 파라미터 형식으로 변환
+    const queryParams: Record<string, any> = {};
+    
+    if (params?.device_ids && params.device_ids.length > 0) {
+      queryParams.device_ids = params.device_ids.join(',');  // string 배열을 쉼표로 연결
+    }
+    
+    if (params?.point_names && params.point_names.length > 0) {
+      queryParams.point_names = params.point_names.join(',');
+    }
+    
+    if (params?.quality_filter && params.quality_filter !== 'all') {
+      queryParams.quality_filter = params.quality_filter;
+    }
+    
+    if (params?.limit) {
+      queryParams.limit = params.limit;
+    }
+    
+    if (params?.sort_by) {
+      queryParams.sort_by = params.sort_by;
+    }
+
+    return this.httpClient.get<CurrentValuesResponse>('/api/realtime/current-values', queryParams);
   }
 
   /**
    * 특정 디바이스의 실시간 값 조회
    */
-  static async getDeviceValues(deviceId: number, params?: {
+  static async getDeviceValues(deviceId: string, params?: {  // 🔥 수정: number → string
     data_type?: string;
     include_metadata?: boolean;
     include_trends?: boolean;
   }): Promise<ApiResponse<DeviceRealtimeData>> {
     console.log('⚡ 디바이스 실시간 값 조회:', { deviceId, params });
-    return this.httpClient.get<DeviceRealtimeData>(ENDPOINTS.REALTIME_DEVICE_VALUES(deviceId), params);
+    return this.httpClient.get<DeviceRealtimeData>(`/api/realtime/device/${deviceId}/values`, params);
+  }
+
+  /**
+   * 🔥 추가: 모든 디바이스 목록 조회
+   */
+  static async getDevices(): Promise<ApiResponse<DevicesResponse>> {
+    console.log('📋 디바이스 목록 조회');
+    return this.httpClient.get<DevicesResponse>('/api/realtime/devices');
+  }
+
+  /**
+   * 🔥 추가: 개별 포인트들 조회 (키 이름으로)
+   */
+  static async getPoints(keys: string[]): Promise<ApiResponse<PointsResponse>> {
+    console.log('🔍 개별 포인트 조회:', keys);
+    
+    return this.httpClient.get<PointsResponse>('/api/realtime/points', {
+      keys: keys.join(',')
+    });
   }
 
   // ========================================================================
@@ -324,7 +401,7 @@ export class RealtimeApiService {
    */
   static async createSubscription(request: SubscriptionRequest): Promise<ApiResponse<SubscriptionInfo>> {
     console.log('🔄 구독 생성:', request);
-    const response = await this.httpClient.post<SubscriptionInfo>(ENDPOINTS.REALTIME_SUBSCRIBE, request);
+    const response = await this.httpClient.post<SubscriptionInfo>('/api/realtime/subscribe', request);
     
     if (response.success && response.data) {
       this.subscriptions.set(response.data.subscription_id, response.data);
@@ -343,7 +420,7 @@ export class RealtimeApiService {
     cleanup_completed: boolean;
   }>> {
     console.log('🔄 구독 해제:', subscriptionId);
-    const response = await this.httpClient.delete<any>(ENDPOINTS.REALTIME_UNSUBSCRIBE(subscriptionId));
+    const response = await this.httpClient.delete<any>(`/api/realtime/subscribe/${subscriptionId}`);
     
     if (response.success) {
       this.subscriptions.delete(subscriptionId);
@@ -510,7 +587,7 @@ export class RealtimeApiService {
   /**
    * 디바이스별 실시간 값 그룹화
    */
-  static groupValuesByDevice(values: RealtimeValue[]): Record<number, RealtimeValue[]> {
+  static groupValuesByDevice(values: RealtimeValue[]): Record<string, RealtimeValue[]> {  // 🔥 수정: number → string
     return values.reduce((groups, value) => {
       const deviceId = value.device_id;
       if (!groups[deviceId]) {
@@ -518,7 +595,7 @@ export class RealtimeApiService {
       }
       groups[deviceId].push(value);
       return groups;
-    }, {} as Record<number, RealtimeValue[]>);
+    }, {} as Record<string, RealtimeValue[]>);
   }
 
   /**
@@ -526,7 +603,7 @@ export class RealtimeApiService {
    */
   static groupValuesByDataType(values: RealtimeValue[]): Record<string, RealtimeValue[]> {
     return values.reduce((groups, value) => {
-      const dataType = value.dataType;
+      const dataType = value.data_type;              // 🔥 수정: dataType → data_type
       if (!groups[dataType]) {
         groups[dataType] = [];
       }
@@ -542,7 +619,7 @@ export class RealtimeApiService {
     total: number;
     by_quality: Record<string, number>;
     by_data_type: Record<string, number>;
-    by_device: Record<number, number>;
+    by_device: Record<string, number>;              // 🔥 수정: number → string
     latest_timestamp: string | null;
     value_range: {
       numeric_values: number[];
@@ -555,7 +632,7 @@ export class RealtimeApiService {
       total: values.length,
       by_quality: {} as Record<string, number>,
       by_data_type: {} as Record<string, number>,
-      by_device: {} as Record<number, number>,
+      by_device: {} as Record<string, number>,      // 🔥 수정: number → string
       latest_timestamp: null as string | null,
       value_range: {
         numeric_values: [] as number[]
@@ -567,13 +644,13 @@ export class RealtimeApiService {
       stats.by_quality[value.quality] = (stats.by_quality[value.quality] || 0) + 1;
       
       // 데이터 타입별 카운트
-      stats.by_data_type[value.dataType] = (stats.by_data_type[value.dataType] || 0) + 1;
+      stats.by_data_type[value.data_type] = (stats.by_data_type[value.data_type] || 0) + 1;  // 🔥 수정: dataType → data_type
       
       // 디바이스별 카운트
       stats.by_device[value.device_id] = (stats.by_device[value.device_id] || 0) + 1;
       
       // 숫자 값 수집
-      if (value.dataType === 'number' && typeof value.value === 'number') {
+      if (value.data_type === 'number' && typeof value.value === 'number') {  // 🔥 수정: dataType → data_type
         stats.value_range.numeric_values.push(value.value);
       }
     });
@@ -715,7 +792,7 @@ export class RealtimeApiService {
     
     // 최근 값들의 변화율 분석
     const recentChanges = values
-      .filter(v => v.dataType === 'number')
+      .filter(v => v.data_type === 'number')          // 🔥 수정: dataType → data_type
       .map(v => parseFloat(v.value as string) || 0);
     
     if (recentChanges.length < 2) return maxInterval;

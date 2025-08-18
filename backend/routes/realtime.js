@@ -630,3 +630,4 @@ function generateTrendInfo(currentValue) {
 }
 
 module.exports = router;
+
