@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/DeviceLogsTab.tsx
-// 📄 디바이스 로그 탭 컴포넌트 - 완전 구현
+// 📄 디바이스 로그 탭 컴포넌트 - 강화된 스크롤 및 더미데이터
 // ============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -16,7 +16,7 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
   const [filterLevel, setFilterLevel] = useState<string>('ALL');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(false); // 🔥 기본값 false로 변경
   const [refreshInterval, setRefreshInterval] = useState(5); // 초
   const [isRealTime, setIsRealTime] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -44,10 +44,26 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
       'Memory usage warning',
       'Performance metrics updated',
       'Configuration loaded',
-      'Diagnostic mode enabled'
+      'Diagnostic mode enabled',
+      'TCP connection timeout after 30 seconds',
+      'Modbus register 40001 read successfully',
+      'Device response time: 250ms',
+      'Checksum validation failed',
+      'Retry attempt 3/5 for device communication',
+      'Device firmware version: v2.1.3',
+      'Buffer overflow detected in data parser',
+      'Network interface eth0 status changed',
+      'Device driver initialized successfully',
+      'Watchdog timer reset',
+      'Certificate validation completed',
+      'SSL handshake failed - certificate expired',
+      'Data encryption enabled for secure transmission',
+      'Device ID mismatch detected',
+      'Protocol version compatibility check passed',
+      'Emergency stop signal received from device'
     ];
 
-    return Array.from({ length: 100 }, (_, i) => {
+    return Array.from({ length: 150 }, (_, i) => {
       const timestamp = new Date(Date.now() - (i * 30000 + Math.random() * 30000));
       const level = levels[Math.floor(Math.random() * levels.length)];
       const category = categories[Math.floor(Math.random() * categories.length)];
@@ -60,156 +76,124 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
         level,
         category,
         message,
-        details: level === 'ERROR' ? { 
-          error_code: Math.floor(Math.random() * 1000),
-          stack_trace: 'Error occurred in communication module'
+        details: level === 'ERROR' ? {
+          errorCode: Math.floor(Math.random() * 1000),
+          stackTrace: 'at ModbusClient.read() line 127',
+          errorData: { register: 40001, value: null }
         } : undefined
       };
-    }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  };
-
-  // ========================================================================
-  // API 호출 함수들
-  // ========================================================================
-
-  /**
-   * 로그 데이터 로드
-   */
-  const loadLogs = async (showLoading = true) => {
-    try {
-      if (showLoading) setIsLoading(true);
-      setError(null);
-
-      // 실제 API 호출 대신 Mock 데이터 사용
-      // const response = await DeviceApiService.getDeviceLogs(deviceId, {
-      //   page: 1,
-      //   limit: 100,
-      //   level: filterLevel !== 'ALL' ? filterLevel : undefined,
-      //   category: filterCategory !== 'ALL' ? filterCategory : undefined,
-      //   search: searchTerm || undefined
-      // });
-
-      await new Promise(resolve => setTimeout(resolve, 500)); // 로딩 시뮬레이션
-      const mockLogs = generateMockLogs();
-      setLogs(mockLogs);
-      setLastRefresh(new Date());
-
-    } catch (error) {
-      console.error('로그 로드 실패:', error);
-      setError(error instanceof Error ? error.message : 'Unknown error');
-    } finally {
-      if (showLoading) setIsLoading(false);
-    }
-  };
-
-  /**
-   * 로그 내보내기
-   */
-  const exportLogs = () => {
-    try {
-      const filteredLogs = getFilteredLogs();
-      const csvContent = [
-        ['시간', '레벨', '카테고리', '메시지'].join(','),
-        ...filteredLogs.map(log => [
-          new Date(log.timestamp).toLocaleString(),
-          log.level,
-          log.category,
-          `"${log.message.replace(/"/g, '""')}"`
-        ].join(','))
-      ].join('\n');
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `device_${deviceId}_logs_${new Date().toISOString().split('T')[0]}.csv`;
-      link.click();
-    } catch (error) {
-      console.error('로그 내보내기 실패:', error);
-      alert('로그 내보내기에 실패했습니다.');
-    }
-  };
-
-  /**
-   * 로그 클리어
-   */
-  const clearLogs = () => {
-    if (confirm('모든 로그를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      setLogs([]);
-      alert('로그가 삭제되었습니다.');
-    }
-  };
-
-  // ========================================================================
-  // 필터링 및 검색
-  // ========================================================================
-
-  /**
-   * 필터링된 로그 가져오기
-   */
-  const getFilteredLogs = () => {
-    return logs.filter(log => {
-      const matchesLevel = filterLevel === 'ALL' || log.level === filterLevel;
-      const matchesCategory = filterCategory === 'ALL' || log.category === filterCategory;
-      const matchesSearch = !searchTerm || 
-        log.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.category.toLowerCase().includes(searchTerm.toLowerCase());
-
-      return matchesLevel && matchesCategory && matchesSearch;
     });
   };
 
   // ========================================================================
-  // 자동 새로고침
+  // 이벤트 핸들러
   // ========================================================================
-
-  useEffect(() => {
-    if (autoRefresh && refreshInterval > 0) {
-      intervalRef.current = setInterval(() => {
-        loadLogs(false); // 백그라운드 새로고침
-      }, refreshInterval * 1000);
-
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-        }
-      };
+  
+  const loadLogs = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Mock API 호출 시뮬레이션
+      await new Promise(resolve => setTimeout(resolve, 500)); // 🔥 로딩 시간 단축
+      
+      // 🔥 기존 로그가 있으면 유지하고 새 로그만 추가
+      if (logs.length === 0) {
+        const newLogs = generateMockLogs();
+        setLogs(newLogs);
+      } else {
+        // 실제로는 새 로그만 추가하는 로직
+        // 여기서는 데모를 위해 기존 로그 유지
+      }
+      
+      setLastRefresh(new Date());
+    } catch (err) {
+      setError('로그를 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
-  }, [autoRefresh, refreshInterval, deviceId, filterLevel, filterCategory, searchTerm]);
+  };
+
+  const exportLogs = () => {
+    const filteredLogs = getFilteredLogs();
+    const csvContent = [
+      'Timestamp,Level,Category,Message',
+      ...filteredLogs.map(log => 
+        `"${log.timestamp}","${log.level}","${log.category}","${log.message.replace(/"/g, '""')}"`
+      )
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `device-${deviceId}-logs-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearLogs = () => {
+    if (confirm('모든 로그를 삭제하시겠습니까?')) {
+      setLogs([]);
+    }
+  };
+
+  const scrollToBottom = () => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // ========================================================================
+  // 필터링 로직
+  // ========================================================================
+  
+  const getFilteredLogs = () => {
+    return logs.filter(log => {
+      const levelMatch = filterLevel === 'ALL' || log.level === filterLevel;
+      const categoryMatch = filterCategory === 'ALL' || log.category === filterCategory;
+      const searchMatch = !searchTerm || 
+        log.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.category.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      return levelMatch && categoryMatch && searchMatch;
+    });
+  };
 
   // ========================================================================
   // 라이프사이클
   // ========================================================================
-
+  
   useEffect(() => {
     loadLogs();
   }, [deviceId]);
 
   useEffect(() => {
+    if (autoRefresh && refreshInterval > 0) {
+      intervalRef.current = setInterval(() => {
+        if (!isLoading) {
+          // 🔥 새로고침 시 전체 재로딩 대신 타임스탬프만 업데이트
+          setLastRefresh(new Date());
+          // 실제로는 새 로그만 가져오는 API 호출
+        }
+      }, refreshInterval * 1000);
+    }
+    
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [autoRefresh, refreshInterval, isLoading]);
+
+  useEffect(() => {
     if (isRealTime) {
-      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      scrollToBottom();
     }
   }, [logs, isRealTime]);
 
   // ========================================================================
-  // 렌더링 헬퍼 함수들
+  // 헬퍼 함수
   // ========================================================================
-
-  /**
-   * 로그 레벨 색상 가져오기
-   */
-  const getLevelColor = (level: string) => {
-    switch (level) {
-      case 'DEBUG': return 'level-debug';
-      case 'INFO': return 'level-info';
-      case 'WARN': return 'level-warn';
-      case 'ERROR': return 'level-error';
-      default: return 'level-default';
-    }
-  };
-
-  /**
-   * 로그 레벨 아이콘 가져오기
-   */
+  
   const getLevelIcon = (level: string) => {
     switch (level) {
       case 'DEBUG': return 'fa-bug';
@@ -220,15 +204,24 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
     }
   };
 
-  /**
-   * 로그 항목 렌더링
-   */
-  const renderLogEntry = (log: DeviceLogEntry, index: number) => (
-    <div key={log.id} className={`log-entry ${getLevelColor(log.level)}`}>
+  const formatTimestamp = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString('ko-KR', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  // ========================================================================
+  // 로그 엔트리 컴포넌트
+  // ========================================================================
+  
+  const LogEntry: React.FC<{ log: DeviceLogEntry }> = ({ log }) => (
+    <div className={`log-entry level-${log.level.toLowerCase()}`}>
       <div className="log-header">
-        <div className="log-timestamp">
-          {new Date(log.timestamp).toLocaleString()}
-        </div>
+        <div className="log-timestamp">{formatTimestamp(log.timestamp)}</div>
         <div className="log-level">
           <i className={`fas ${getLevelIcon(log.level)}`}></i>
           {log.level}
@@ -254,8 +247,8 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
   // ========================================================================
 
   return (
-    <div className="tab-panel">
-      <div className="logs-container">
+    <div className="logs-tab-wrapper">
+      <div className="logs-tab-container">
         
         {/* 헤더 */}
         <div className="logs-header">
@@ -310,25 +303,19 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
               />
               <i className="fas fa-search"></i>
             </div>
-
-            <select
-              value={filterLevel}
-              onChange={(e) => setFilterLevel(e.target.value)}
-            >
-              <option value="ALL">전체 레벨</option>
+            
+            <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}>
+              <option value="ALL">모든 레벨</option>
               <option value="DEBUG">DEBUG</option>
               <option value="INFO">INFO</option>
               <option value="WARN">WARN</option>
               <option value="ERROR">ERROR</option>
             </select>
-
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-            >
-              <option value="ALL">전체 카테고리</option>
+            
+            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+              <option value="ALL">모든 카테고리</option>
               <option value="COMMUNICATION">통신</option>
-              <option value="DATA_COLLECTION">데이터 수집</option>
+              <option value="DATA_COLLECTION">데이터수집</option>
               <option value="CONNECTION">연결</option>
               <option value="SYSTEM">시스템</option>
               <option value="PROTOCOL">프로토콜</option>
@@ -344,17 +331,19 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
               />
               자동 새로고침
             </label>
+            
             {autoRefresh && (
-              <select
-                value={refreshInterval}
-                onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
+              <select 
+                value={refreshInterval} 
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
               >
+                <option value={3}>3초</option>
                 <option value={5}>5초</option>
                 <option value={10}>10초</option>
                 <option value={30}>30초</option>
-                <option value={60}>1분</option>
               </select>
             )}
+            
             <label className="checkbox-label">
               <input
                 type="checkbox"
@@ -363,74 +352,133 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
               />
               실시간 스크롤
             </label>
+            
+            <button className="btn btn-secondary btn-sm" onClick={scrollToBottom}>
+              <i className="fas fa-arrow-down"></i>
+              맨 아래로
+            </button>
+          </div>
+        </div>
+
+        {/* 통계 정보 */}
+        <div className="logs-stats">
+          <div className="stats-grid">
+            <div className="stat-item debug">
+              <div className="stat-label">DEBUG</div>
+              <div className="stat-value">{logs.filter(l => l.level === 'DEBUG').length}</div>
+            </div>
+            <div className="stat-item info">
+              <div className="stat-label">INFO</div>
+              <div className="stat-value">{logs.filter(l => l.level === 'INFO').length}</div>
+            </div>
+            <div className="stat-item warn">
+              <div className="stat-label">WARN</div>
+              <div className="stat-value">{logs.filter(l => l.level === 'WARN').length}</div>
+            </div>
+            <div className="stat-item error">
+              <div className="stat-label">ERROR</div>
+              <div className="stat-value">{logs.filter(l => l.level === 'ERROR').length}</div>
+            </div>
           </div>
         </div>
 
         {/* 에러 메시지 */}
         {error && (
-          <div className="error-message">
-            <i className="fas fa-exclamation-triangle"></i>
-            {error}
-          </div>
+          <div className="error-message">⚠️ {error}</div>
         )}
 
-        {/* 로그 목록 */}
-        <div className="logs-content">
-          {isLoading && logs.length === 0 ? (
-            <div className="loading">
-              <i className="fas fa-spinner fa-spin"></i>
-              로그를 불러오는 중...
+        {/* 🔥 로그 목록 */}
+        <div className="logs-list-container">
+          <div className="logs-list">
+            {isLoading ? (
+              <div className="empty-state">
+                <i className="fas fa-spinner fa-spin fa-2x"></i>
+                <p>로그를 불러오는 중...</p>
+              </div>
+            ) : filteredLogs.length === 0 ? (
+              <div className="empty-state">
+                <i className="fas fa-file-alt fa-2x"></i>
+                <p>{logs.length === 0 ? '로그가 없습니다.' : '검색 결과가 없습니다.'}</p>
+              </div>
+            ) : (
+              <>
+                {filteredLogs.map((log) => (
+                  <LogEntry key={log.id} log={log} />
+                ))}
+                <div ref={logsEndRef} />
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 로그 정보 */}
+        <div className="logs-info">
+          <div className="info-sections">
+            <div className="info-section">
+              <h4>📊 카테고리별 분포</h4>
+              <div className="category-distribution">
+                {['COMMUNICATION', 'DATA_COLLECTION', 'CONNECTION', 'SYSTEM', 'PROTOCOL'].map(cat => (
+                  <div key={cat} className="category-item">
+                    <span className="category-label">{cat}</span>
+                    <span className="category-count">{logs.filter(l => l.category === cat).length}개</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : filteredLogs.length === 0 ? (
-            <div className="no-logs">
-              {logs.length === 0 ? '로그가 없습니다.' : '검색 결과가 없습니다.'}
+
+            <div className="info-section">
+              <h4>⚙️ 로그 설정</h4>
+              <div className="log-settings">
+                <button className="btn btn-outline">로그 레벨 변경</button>
+                <button className="btn btn-outline">필터 저장</button>
+                <button className="btn btn-outline">설정 초기화</button>
+              </div>
             </div>
-          ) : (
-            <div className="logs-list">
-              {filteredLogs.map(renderLogEntry)}
-              <div ref={logsEndRef} />
-            </div>
-          )}
+          </div>
         </div>
       </div>
 
       {/* 스타일 */}
       <style jsx>{`
-        .tab-panel {
-          flex: 1;
-          padding: 1.5rem;
+        /* 🔥 최상위 래퍼 - 전체 스크롤 활성화 */
+        .logs-tab-wrapper {
+          height: 100%;
+          width: 100%;
           overflow-y: auto;
           background: #f8fafc;
+          padding: 1rem;
         }
 
-        .logs-container {
+        .logs-tab-container {
           display: flex;
           flex-direction: column;
           gap: 1rem;
-          height: 100%;
+          min-height: calc(100vh - 200px);
         }
 
+        /* 🔥 헤더 */
         .logs-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           background: white;
-          padding: 1rem 1.5rem;
-          border-radius: 0.5rem;
+          padding: 1rem;
+          border-radius: 8px;
           border: 1px solid #e5e7eb;
+          flex-shrink: 0;
         }
 
         .header-left {
           display: flex;
           align-items: center;
           gap: 1rem;
+          flex-wrap: wrap;
         }
 
         .header-left h3 {
           margin: 0;
           font-size: 1.125rem;
           font-weight: 600;
-          color: #1f2937;
         }
 
         .log-count {
@@ -439,7 +487,6 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
           padding: 0.25rem 0.75rem;
           border-radius: 9999px;
           font-size: 0.75rem;
-          font-weight: 500;
         }
 
         .last-refresh {
@@ -452,36 +499,36 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
           gap: 0.75rem;
         }
 
+        /* 🔥 컨트롤 */
         .logs-controls {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: white;
-          padding: 1rem 1.5rem;
-          border-radius: 0.5rem;
-          border: 1px solid #e5e7eb;
-          flex-wrap: wrap;
+          flex-direction: column;
           gap: 1rem;
+          background: white;
+          padding: 1rem;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          flex-shrink: 0;
         }
 
         .filters {
           display: flex;
           gap: 1rem;
-          flex: 1;
+          align-items: center;
+          flex-wrap: wrap;
         }
 
         .search-box {
           position: relative;
           flex: 1;
-          max-width: 300px;
+          min-width: 200px;
         }
 
         .search-box input {
           width: 100%;
-          padding: 0.5rem 2.5rem 0.5rem 0.75rem;
+          padding: 0.5rem 2rem 0.5rem 0.5rem;
           border: 1px solid #d1d5db;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
+          border-radius: 6px;
         }
 
         .search-box i {
@@ -493,86 +540,173 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
         }
 
         .filters select {
-          padding: 0.5rem 0.75rem;
+          padding: 0.5rem;
           border: 1px solid #d1d5db;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
+          border-radius: 6px;
           background: white;
         }
 
         .auto-refresh {
           display: flex;
           align-items: center;
-          gap: 0.75rem;
+          gap: 1rem;
+          flex-wrap: wrap;
         }
 
         .checkbox-label {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          font-size: 0.875rem;
-          font-weight: 500;
-          color: #374151;
           cursor: pointer;
-          white-space: nowrap;
+          font-size: 0.875rem;
         }
 
         .checkbox-label input {
           margin: 0;
         }
 
-        .error-message {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          background: #fef2f2;
-          color: #dc2626;
-          padding: 1rem 1.5rem;
-          border-radius: 0.5rem;
-          border: 1px solid #fecaca;
+        /* 🔥 통계 정보 */
+        .logs-stats {
+          background: white;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          padding: 1.5rem;
+          flex-shrink: 0;
         }
 
-        .logs-content {
-          flex: 1;
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 1.5rem;
+        }
+
+        .stat-item {
+          text-align: center;
+          padding: 1rem;
+          border-radius: 8px;
+        }
+
+        .stat-item.debug {
+          background: #f3f4f6;
+        }
+
+        .stat-item.info {
+          background: #dbeafe;
+        }
+
+        .stat-item.warn {
+          background: #fef3c7;
+        }
+
+        .stat-item.error {
+          background: #fee2e2;
+        }
+
+        .stat-label {
+          font-size: 0.75rem;
+          color: #6b7280;
+          margin-bottom: 0.5rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+          font-size: 1.5rem;
+          font-weight: 600;
+        }
+
+        .stat-item.debug .stat-value {
+          color: #6b7280;
+        }
+
+        .stat-item.info .stat-value {
+          color: #1d4ed8;
+        }
+
+        .stat-item.warn .stat-value {
+          color: #92400e;
+        }
+
+        .stat-item.error .stat-value {
+          color: #991b1b;
+        }
+
+        /* 🔥 에러 메시지 */
+        .error-message {
+          background: #fef2f2;
+          color: #dc2626;
+          padding: 1rem;
+          border-radius: 8px;
+          border: 1px solid #fecaca;
+          flex-shrink: 0;
+        }
+
+        /* 🔥 로그 목록 컨테이너 - 강제 스크롤 */
+        .logs-list-container {
           background: white;
-          border-radius: 0.5rem;
+          border-radius: 8px;
           border: 1px solid #e5e7eb;
           overflow: hidden;
           display: flex;
           flex-direction: column;
+          height: 500px; /* 🔥 고정 높이로 강제 스크롤 */
         }
 
-        .loading,
-        .no-logs {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          padding: 2rem;
-          color: #6b7280;
-          flex: 1;
-        }
-
+        /* 🔥 로그 목록 - 스크롤 영역 */
         .logs-list {
           flex: 1;
-          overflow-y: auto;
+          overflow-y: scroll !important;
+          overflow-x: hidden !important;
           padding: 1rem;
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
+          scrollbar-width: thin;
+          scrollbar-color: #94a3b8 #f1f5f9;
         }
 
+        /* 🔥 강화된 스크롤바 스타일 */
+        .logs-list::-webkit-scrollbar {
+          width: 14px !important;
+          background: #f1f5f9 !important;
+          border-left: 1px solid #e5e7eb !important;
+        }
+
+        .logs-list::-webkit-scrollbar-track {
+          background: #f8fafc !important;
+          border-radius: 0 !important;
+        }
+
+        .logs-list::-webkit-scrollbar-thumb {
+          background: #94a3b8 !important;
+          border-radius: 7px !important;
+          border: 2px solid #f8fafc !important;
+          min-height: 40px !important;
+        }
+
+        .logs-list::-webkit-scrollbar-thumb:hover {
+          background: #64748b !important;
+        }
+
+        .logs-list::-webkit-scrollbar-thumb:active {
+          background: #475569 !important;
+        }
+
+        /* 🔥 Firefox 스크롤바 */
+        .logs-list {
+          scrollbar-width: auto !important;
+          scrollbar-color: #94a3b8 #f8fafc !important;
+        }
+
+        /* 🔥 로그 엔트리 - 깜빡임 방지 */
         .log-entry {
+          background: white;
           border: 1px solid #e5e7eb;
-          border-radius: 0.375rem;
+          border-radius: 8px;
           padding: 1rem;
-          background: #fafafa;
-          transition: all 0.2s ease;
-          animation: fadeIn 0.3s ease-in-out;
+          margin-bottom: 0.75rem;
+          transition: box-shadow 0.2s ease, border-color 0.2s ease; /* 🔥 애니메이션 최소화 */
         }
 
         .log-entry:hover {
-          background: #f3f4f6;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           border-color: #d1d5db;
         }
 
@@ -690,17 +824,94 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
           white-space: pre-wrap;
         }
 
+        /* 🔥 빈 상태 */
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 4rem 2rem;
+          color: #6b7280;
+          text-align: center;
+        }
+
+        .empty-state i {
+          margin-bottom: 1rem;
+          color: #d1d5db;
+        }
+
+        .empty-state p {
+          margin: 0;
+          font-size: 1rem;
+        }
+
+        /* 🔥 추가 정보 섹션 */
+        .logs-info {
+          background: white;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          padding: 1.5rem;
+          flex-shrink: 0;
+        }
+
+        .info-sections {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 2rem;
+        }
+
+        .info-section h4 {
+          margin: 0 0 1rem 0;
+          font-size: 1rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .category-distribution {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .category-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.5rem;
+          background: #f8fafc;
+          border-radius: 6px;
+        }
+
+        .category-label {
+          font-size: 0.875rem;
+          color: #374151;
+        }
+
+        .category-count {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #0ea5e9;
+        }
+
+        .log-settings {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        /* 🔥 버튼 스타일 */
         .btn {
           display: inline-flex;
           align-items: center;
           gap: 0.5rem;
           padding: 0.5rem 1rem;
           border: none;
-          border-radius: 0.375rem;
+          border-radius: 6px;
           font-size: 0.875rem;
           font-weight: 500;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: all 0.2s;
+          white-space: nowrap;
         }
 
         .btn-sm {
@@ -735,31 +946,23 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
           background: #b91c1c;
         }
 
+        .btn-outline {
+          background: transparent;
+          color: #0ea5e9;
+          border: 1px solid #0ea5e9;
+        }
+
+        .btn-outline:hover {
+          background: #0ea5e9;
+          color: white;
+        }
+
         .btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
 
-        /* 스크롤바 스타일링 */
-        .logs-list::-webkit-scrollbar {
-          width: 8px;
-        }
-
-        .logs-list::-webkit-scrollbar-track {
-          background: #f1f5f9;
-          border-radius: 4px;
-        }
-
-        .logs-list::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 4px;
-        }
-
-        .logs-list::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-
-        /* 애니메이션 */
+        /* 🔥 애니메이션 */
         @keyframes fadeIn {
           from {
             opacity: 0;
@@ -771,12 +974,8 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
           }
         }
 
-        /* 반응형 디자인 */
+        /* 🔥 반응형 */
         @media (max-width: 768px) {
-          .tab-panel {
-            padding: 1rem;
-          }
-
           .logs-header {
             flex-direction: column;
             align-items: stretch;
@@ -829,45 +1028,9 @@ const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
           .log-entry {
             padding: 0.75rem;
           }
-        }
 
-        @media (max-width: 480px) {
-          .header-left h3 {
-            font-size: 1rem;
-          }
-
-          .log-count,
-          .last-refresh {
-            font-size: 0.625rem;
-          }
-
-          .btn-sm {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.625rem;
-          }
-
-          .filters select {
-            font-size: 0.75rem;
-          }
-
-          .search-box input {
-            font-size: 0.75rem;
-          }
-
-          .checkbox-label {
-            font-size: 0.75rem;
-          }
-        }
-
-        /* 애니메이션 감소 모드 지원 */
-        @media (prefers-reduced-motion: reduce) {
-          .log-entry {
-            animation: none;
-          }
-
-          .btn,
-          .log-entry {
-            transition: none;
+          .info-sections {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
