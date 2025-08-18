@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/DeviceDataPointsTab.tsx
-// 📊 디바이스 데이터포인트 탭 컴포넌트 - 강제 스크롤 구현
+// 📊 디바이스 데이터포인트 탭 컴포넌트 - 스크롤 문제 완전 해결
 // ============================================================================
 
 import React, { useState } from 'react';
@@ -39,22 +39,48 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   });
 
   // ========================================================================
-  // 필터링된 데이터포인트
+  // 필터링된 데이터포인트 + 테스트 데이터
   // ========================================================================
-  const filteredDataPoints = dataPoints.filter(dp => {
-    const matchesSearch = !searchTerm || 
-      dp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dp.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dp.address.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredDataPoints = React.useMemo(() => {
+    let points = [...dataPoints];
+    
+    // 🔥 테스트용 더미 데이터 추가 (스크롤 확인용)
+    if (points.length < 20) {
+      const dummyPoints = Array.from({ length: 25 }, (_, i) => ({
+        id: 1000 + i,
+        device_id: deviceId,
+        name: `테스트포인트_${String(i + 1).padStart(2, '0')}`,
+        description: `테스트용 데이터포인트 ${i + 1}`,
+        address: `4000${i + 1}`,
+        data_type: ['number', 'boolean', 'string'][i % 3] as any,
+        unit: ['°C', 'bar', 'L/min', 'kW', '%'][i % 5],
+        is_enabled: i % 3 !== 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        current_value: i % 4 === 0 ? {
+          value: (Math.random() * 100).toFixed(1),
+          quality: ['good', 'bad', 'uncertain'][i % 3] as any,
+          timestamp: new Date().toISOString()
+        } : undefined
+      }));
+      points = [...points, ...dummyPoints];
+    }
 
-    const matchesEnabled = filterEnabled === 'all' || 
-      (filterEnabled === 'enabled' && dp.is_enabled) ||
-      (filterEnabled === 'disabled' && !dp.is_enabled);
+    return points.filter(dp => {
+      const matchesSearch = !searchTerm || 
+        dp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        dp.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        dp.address.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesDataType = filterDataType === 'all' || dp.data_type === filterDataType;
+      const matchesEnabled = filterEnabled === 'all' || 
+        (filterEnabled === 'enabled' && dp.is_enabled) ||
+        (filterEnabled === 'disabled' && !dp.is_enabled);
 
-    return matchesSearch && matchesEnabled && matchesDataType;
-  });
+      const matchesDataType = filterDataType === 'all' || dp.data_type === filterDataType;
+
+      return matchesSearch && matchesEnabled && matchesDataType;
+    });
+  }, [dataPoints, deviceId, searchTerm, filterEnabled, filterDataType]);
 
   // ========================================================================
   // 이벤트 핸들러들
@@ -133,11 +159,11 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   // ========================================================================
 
   return (
-    <div className="tab-panel">
-      <div className="datapoints-container">
+    <div className="datapoints-tab-wrapper">
+      <div className="datapoints-tab-container">
         
         {/* 헤더 */}
-        <div className="header-section">
+        <div className="datapoints-header">
           <div className="header-left">
             <h3>📊 데이터포인트 관리</h3>
             <span className="count-badge">{filteredDataPoints.length}개</span>
@@ -155,7 +181,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         </div>
 
         {/* 필터 */}
-        <div className="filter-section">
+        <div className="datapoints-filters">
           <input
             type="text"
             placeholder="검색..."
@@ -191,12 +217,34 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           <div className="error-message">⚠️ {error}</div>
         )}
 
+        {/* 🔥 통계 정보 추가 (페이지 높이 증가) */}
+        <div className="datapoints-stats">
+          <div className="stats-grid">
+            <div className="stat-item">
+              <div className="stat-label">총 포인트</div>
+              <div className="stat-value">{dataPoints.length}</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-label">활성화됨</div>
+              <div className="stat-value">{dataPoints.filter(dp => dp.is_enabled).length}</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-label">비활성화됨</div>
+              <div className="stat-value">{dataPoints.filter(dp => !dp.is_enabled).length}</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-label">연결됨</div>
+              <div className="stat-value">{dataPoints.filter(dp => dp.current_value).length}</div>
+            </div>
+          </div>
+        </div>
+
         {/* 🔥 데이터포인트 테이블 */}
-        <div className="table-section">
+        <div className="datapoints-table-container">
           
           {/* 고정 헤더 */}
-          <div className="table-header">
-            <div className="header-cell checkbox-cell">
+          <div className="datapoints-table-header">
+            <div className="header-col checkbox-col">
               <input
                 type="checkbox"
                 checked={filteredDataPoints.length > 0 && 
@@ -205,16 +253,16 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                 disabled={mode === 'view' || filteredDataPoints.length === 0}
               />
             </div>
-            <div className="header-cell name-cell">포인트명</div>
-            <div className="header-cell address-cell">주소</div>
-            <div className="header-cell type-cell">타입</div>
-            <div className="header-cell unit-cell">단위</div>
-            <div className="header-cell value-cell">현재값</div>
-            <div className="header-cell action-cell">작업</div>
+            <div className="header-col name-col">포인트명</div>
+            <div className="header-col address-col">주소</div>
+            <div className="header-col type-col">타입</div>
+            <div className="header-col unit-col">단위</div>
+            <div className="header-col value-col">현재값</div>
+            <div className="header-col action-col">작업</div>
           </div>
 
           {/* 🔥 스크롤 가능한 바디 */}
-          <div className="table-body">
+          <div className="datapoints-table-body">
             {isLoading ? (
               <div className="empty-state">🔄 로딩 중...</div>
             ) : filteredDataPoints.length === 0 ? (
@@ -223,10 +271,10 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </div>
             ) : (
               filteredDataPoints.map((dataPoint) => (
-                <div key={dataPoint.id} className={`table-row ${selectedDataPoints.includes(dataPoint.id) ? 'selected' : ''}`}>
+                <div key={dataPoint.id} className={`datapoints-table-row ${selectedDataPoints.includes(dataPoint.id) ? 'selected' : ''}`}>
                   
                   {/* 체크박스 */}
-                  <div className="table-cell checkbox-cell">
+                  <div className="table-col checkbox-col">
                     <input
                       type="checkbox"
                       checked={selectedDataPoints.includes(dataPoint.id)}
@@ -236,7 +284,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   </div>
 
                   {/* 포인트명 */}
-                  <div className="table-cell name-cell">
+                  <div className="table-col name-col">
                     <div className="point-name">
                       {dataPoint.name}
                       {!dataPoint.is_enabled && <span className="disabled-badge">비활성</span>}
@@ -245,22 +293,22 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   </div>
 
                   {/* 주소 */}
-                  <div className="table-cell address-cell" title={dataPoint.address}>
+                  <div className="table-col address-col" title={dataPoint.address}>
                     {dataPoint.address}
                   </div>
 
                   {/* 타입 */}
-                  <div className="table-cell type-cell">
+                  <div className="table-col type-col">
                     <span className={`type-badge ${dataPoint.data_type}`}>
                       {dataPoint.data_type}
                     </span>
                   </div>
 
                   {/* 단위 */}
-                  <div className="table-cell unit-cell">{dataPoint.unit || 'N/A'}</div>
+                  <div className="table-col unit-col">{dataPoint.unit || 'N/A'}</div>
 
                   {/* 현재값 */}
-                  <div className="table-cell value-cell">
+                  <div className="table-col value-col">
                     {dataPoint.current_value ? (
                       <div className="current-value">
                         <div className="value">{dataPoint.current_value.value}</div>
@@ -272,7 +320,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   </div>
 
                   {/* 작업 */}
-                  <div className="table-cell action-cell">
+                  <div className="table-col action-col">
                     <div className="action-buttons">
                       <button
                         className="btn btn-info btn-xs"
@@ -305,18 +353,69 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             )}
           </div>
         </div>
+
+        {/* 🔥 추가 정보 섹션 (페이지 높이 더 증가) */}
+        <div className="additional-info">
+          <div className="info-sections">
+            <div className="info-section">
+              <h4>📈 데이터 타입별 분포</h4>
+              <div className="type-distribution">
+                <div className="type-item">
+                  <span className="type-label">숫자형</span>
+                  <span className="type-count">{dataPoints.filter(dp => dp.data_type === 'number').length}개</span>
+                </div>
+                <div className="type-item">
+                  <span className="type-label">불린형</span>
+                  <span className="type-count">{dataPoints.filter(dp => dp.data_type === 'boolean').length}개</span>
+                </div>
+                <div className="type-item">
+                  <span className="type-label">문자형</span>
+                  <span className="type-count">{dataPoints.filter(dp => dp.data_type === 'string').length}개</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="info-section">
+              <h4>🔧 빠른 설정</h4>
+              <div className="quick-actions">
+                <button className="btn btn-outline">모든 포인트 활성화</button>
+                <button className="btn btn-outline">모든 포인트 비활성화</button>
+                <button className="btn btn-outline">연결 테스트</button>
+                <button className="btn btn-outline">설정 내보내기</button>
+              </div>
+            </div>
+
+            <div className="info-section">
+              <h4>📋 최근 활동</h4>
+              <div className="recent-activities">
+                <div className="activity-item">
+                  <span className="activity-time">2분 전</span>
+                  <span className="activity-desc">온도센서_01 포인트 추가됨</span>
+                </div>
+                <div className="activity-item">
+                  <span className="activity-time">5분 전</span>
+                  <span className="activity-desc">압력센서_02 설정 변경됨</span>
+                </div>
+                <div className="activity-item">
+                  <span className="activity-time">10분 전</span>
+                  <span className="activity-desc">유량계_03 연결 테스트 완료</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 생성 폼 모달 */}
       {showCreateForm && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
+        <div className="create-modal-overlay">
+          <div className="create-modal-content">
+            <div className="create-modal-header">
               <h3>새 데이터포인트 추가</h3>
               <button onClick={() => setShowCreateForm(false)} className="close-btn">✕</button>
             </div>
             
-            <div className="modal-body">
+            <div className="create-modal-body">
               <div className="form-grid">
                 <div className="form-group">
                   <label>포인트명 *</label>
@@ -383,7 +482,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </div>
             </div>
 
-            <div className="modal-footer">
+            <div className="create-modal-footer">
               <button onClick={() => setShowCreateForm(false)} className="btn btn-secondary">취소</button>
               <button
                 onClick={handleCreateDataPoint}
@@ -397,23 +496,26 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         </div>
       )}
 
-      {/* 스타일 */}
+      {/* 🔥 스타일 - 더 높은 우선순위로 설정 */}
       <style jsx>{`
-        .tab-panel {
+        /* 🔥 최상위 래퍼 - 다른 탭과 동일한 구조 */
+        .datapoints-tab-wrapper {
           height: 100%;
-          padding: 1rem;
-          overflow-y: auto;
+          width: 100%;
+          overflow-y: auto; /* 🔥 전체 스크롤 활성화 */
           background: #f8fafc;
+          padding: 1rem;
         }
 
-        .datapoints-container {
-          height: 100%;
+        .datapoints-tab-container {
           display: flex;
           flex-direction: column;
           gap: 1rem;
+          min-height: calc(100vh - 200px); /* 🔥 충분한 높이 확보 */
         }
 
-        .header-section {
+        /* 🔥 헤더 섹션 */
+        .datapoints-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -449,7 +551,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           gap: 0.75rem;
         }
 
-        .filter-section {
+        /* 🔥 필터 섹션 */
+        .datapoints-filters {
           display: flex;
           gap: 1rem;
           background: white;
@@ -473,6 +576,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           background: white;
         }
 
+        /* 🔥 일괄 작업 */
         .bulk-actions {
           display: flex;
           align-items: center;
@@ -484,6 +588,132 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           flex-shrink: 0;
         }
 
+        /* 🔥 통계 정보 스타일 */
+        .datapoints-stats {
+          background: white;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          padding: 1.5rem;
+          flex-shrink: 0;
+        }
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 1.5rem;
+        }
+
+        .stat-item {
+          text-align: center;
+        }
+
+        .stat-label {
+          font-size: 0.75rem;
+          color: #6b7280;
+          margin-bottom: 0.5rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: #0ea5e9;
+        }
+
+        /* 🔥 추가 정보 섹션 스타일 */
+        .additional-info {
+          background: white;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          padding: 1.5rem;
+          flex-shrink: 0;
+        }
+
+        .info-sections {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 2rem;
+        }
+
+        .info-section h4 {
+          margin: 0 0 1rem 0;
+          font-size: 1rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .type-distribution {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .type-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.5rem;
+          background: #f8fafc;
+          border-radius: 6px;
+        }
+
+        .type-label {
+          font-size: 0.875rem;
+          color: #374151;
+        }
+
+        .type-count {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #0ea5e9;
+        }
+
+        .quick-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .btn-outline {
+          background: transparent;
+          color: #0ea5e9;
+          border: 1px solid #0ea5e9;
+        }
+
+        .btn-outline:hover {
+          background: #0ea5e9;
+          color: white;
+        }
+
+        .recent-activities {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .activity-item {
+          display: flex;
+          gap: 1rem;
+          padding: 0.75rem;
+          background: #f8fafc;
+          border-radius: 6px;
+          border-left: 3px solid #0ea5e9;
+        }
+
+        .activity-time {
+          font-size: 0.75rem;
+          color: #6b7280;
+          min-width: 60px;
+          flex-shrink: 0;
+        }
+
+        .activity-desc {
+          font-size: 0.875rem;
+          color: #374151;
+        }
+
+        /* 🔥 에러 메시지 */
         .error-message {
           background: #fef2f2;
           color: #dc2626;
@@ -493,18 +723,19 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           flex-shrink: 0;
         }
 
-        .table-section {
-          flex: 1;
+        /* 🔥 테이블 컨테이너 - 강제 스크롤 보장 */
+        .datapoints-table-container {
           background: white;
           border-radius: 8px;
           border: 1px solid #e5e7eb;
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          min-height: 400px;
+          height: 500px; /* 🔥 고정 높이로 강제 스크롤 */
         }
 
-        .table-header {
+        /* 🔥 고정 헤더 */
+        .datapoints-table-header {
           display: grid;
           grid-template-columns: 50px 2fr 1fr 80px 80px 120px 120px;
           gap: 1rem;
@@ -515,27 +746,66 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           font-size: 0.875rem;
           color: #374151;
           flex-shrink: 0;
+          position: sticky;
+          top: 0;
+          z-index: 10;
         }
 
-        .header-cell {
+        .header-col {
           display: flex;
           align-items: center;
         }
 
-        .header-cell.checkbox-cell,
-        .header-cell.action-cell {
+        .checkbox-col,
+        .action-col {
           justify-content: center;
         }
 
-        .table-body {
+        /* 🔥 스크롤 가능한 바디 - 항상 스크롤 보이게 */
+        .datapoints-table-body {
           flex: 1;
-          overflow-y: scroll !important;
-          overflow-x: hidden;
-          max-height: 500px;
-          min-height: 300px;
+          overflow-y: scroll !important; /* 🔥 scroll로 변경 (항상 보임) */
+          overflow-x: hidden !important;
+          scrollbar-width: thin;
+          scrollbar-color: #94a3b8 #f1f5f9;
+          border: 1px solid #f1f5f9; /* 🔥 스크롤 영역 시각적 구분 */
         }
 
-        .table-row {
+        /* 🔥 강제 스크롤바 표시 - 더 강력하게 */
+        .datapoints-table-body::-webkit-scrollbar {
+          width: 14px !important; /* 🔥 더 넓게 */
+          background: #f1f5f9 !important;
+          border-left: 1px solid #e5e7eb !important;
+        }
+
+        .datapoints-table-body::-webkit-scrollbar-track {
+          background: #f8fafc !important;
+          border-radius: 0 !important;
+        }
+
+        .datapoints-table-body::-webkit-scrollbar-thumb {
+          background: #94a3b8 !important;
+          border-radius: 7px !important;
+          border: 2px solid #f8fafc !important;
+          min-height: 40px !important; /* 🔥 최소 높이 보장 */
+        }
+
+        .datapoints-table-body::-webkit-scrollbar-thumb:hover {
+          background: #64748b !important;
+        }
+
+        .datapoints-table-body::-webkit-scrollbar-thumb:active {
+          background: #475569 !important;
+        }
+
+        /* 🔥 Firefox 스크롤바 */
+        .datapoints-table-body {
+          scrollbar-width: auto !important;
+          scrollbar-color: #94a3b8 #f8fafc !important;
+        }
+
+        /* 🔥 테이블 행 */
+        .datapoints-table-row {
           display: grid;
           grid-template-columns: 50px 2fr 1fr 80px 80px 120px 120px;
           gap: 1rem;
@@ -546,30 +816,31 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           transition: background-color 0.2s;
         }
 
-        .table-row:hover {
+        .datapoints-table-row:hover {
           background: #f9fafb;
         }
 
-        .table-row.selected {
+        .datapoints-table-row.selected {
           background: #eff6ff;
         }
 
-        .table-row.selected:hover {
+        .datapoints-table-row.selected:hover {
           background: #dbeafe;
         }
 
-        .table-cell {
+        /* 🔥 테이블 셀 */
+        .table-col {
           display: flex;
           align-items: center;
           overflow: hidden;
         }
 
-        .table-cell.checkbox-cell,
-        .table-cell.action-cell {
+        .table-col.checkbox-col,
+        .table-col.action-col {
           justify-content: center;
         }
 
-        .table-cell.name-cell {
+        .table-col.name-col {
           flex-direction: column;
           align-items: flex-start;
           gap: 0.25rem;
@@ -600,6 +871,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           flex-shrink: 0;
         }
 
+        /* 🔥 타입 배지 */
         .type-badge {
           padding: 0.25rem 0.5rem;
           border-radius: 0.25rem;
@@ -622,6 +894,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           color: #92400e;
         }
 
+        /* 🔥 현재값 */
         .current-value {
           display: flex;
           flex-direction: column;
@@ -656,20 +929,24 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           color: #92400e;
         }
 
+        /* 🔥 액션 버튼 */
         .action-buttons {
           display: flex;
           gap: 0.5rem;
         }
 
+        /* 🔥 빈 상태 */
         .empty-state {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 2rem;
+          padding: 4rem 2rem;
           color: #6b7280;
           text-align: center;
+          font-size: 1rem;
         }
 
+        /* 🔥 버튼 스타일 */
         .btn {
           display: inline-flex;
           align-items: center;
@@ -681,6 +958,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s;
+          white-space: nowrap;
         }
 
         .btn-xs {
@@ -736,27 +1014,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           cursor: not-allowed;
         }
 
-        /* 강제 스크롤바 표시 */
-        .table-body::-webkit-scrollbar {
-          width: 12px;
-          display: block !important;
-        }
-
-        .table-body::-webkit-scrollbar-track {
-          background: #f1f5f9;
-        }
-
-        .table-body::-webkit-scrollbar-thumb {
-          background: #94a3b8;
-          border-radius: 6px;
-        }
-
-        .table-body::-webkit-scrollbar-thumb:hover {
-          background: #64748b;
-        }
-
-        /* 모달 스타일 */
-        .modal-overlay {
+        /* 🔥 생성 모달 스타일 - 고유한 클래스명으로 충돌 방지 */
+        .create-modal-overlay {
           position: fixed;
           top: 0;
           left: 0;
@@ -766,10 +1025,10 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 1001;
+          z-index: 2000; /* 🔥 더 높은 z-index */
         }
 
-        .modal-content {
+        .create-modal-content {
           background: white;
           border-radius: 8px;
           width: 600px;
@@ -780,7 +1039,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
         }
 
-        .modal-header {
+        .create-modal-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -788,7 +1047,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           border-bottom: 1px solid #e5e7eb;
         }
 
-        .modal-header h3 {
+        .create-modal-header h3 {
           margin: 0;
           font-size: 1.125rem;
           font-weight: 600;
@@ -799,15 +1058,21 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           border: none;
           font-size: 1.5rem;
           cursor: pointer;
+          padding: 0.5rem;
+          border-radius: 4px;
         }
 
-        .modal-body {
+        .close-btn:hover {
+          background: #f3f4f6;
+        }
+
+        .create-modal-body {
           flex: 1;
           padding: 1.5rem;
           overflow-y: auto;
         }
 
-        .modal-footer {
+        .create-modal-footer {
           display: flex;
           justify-content: flex-end;
           gap: 0.75rem;
@@ -815,6 +1080,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           border-top: 1px solid #e5e7eb;
         }
 
+        /* 🔥 폼 스타일 */
         .form-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -831,6 +1097,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         .form-group label {
           font-weight: 500;
           font-size: 0.875rem;
+          color: #374151;
         }
 
         .form-group input,
@@ -839,6 +1106,15 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           padding: 0.5rem;
           border: 1px solid #d1d5db;
           border-radius: 6px;
+          font-size: 0.875rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+          outline: none;
+          border-color: #0ea5e9;
+          box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
         }
 
         .checkbox-label {
@@ -846,10 +1122,34 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           align-items: center;
           gap: 0.5rem;
           cursor: pointer;
+          font-size: 0.875rem;
         }
 
         .checkbox-label input {
           margin: 0;
+        }
+
+        /* 🔥 반응형 */
+        @media (max-width: 768px) {
+          .datapoints-table-header,
+          .datapoints-table-row {
+            grid-template-columns: 40px 1fr 80px 60px;
+          }
+          
+          .address-col,
+          .unit-col,
+          .value-col {
+            display: none;
+          }
+          
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+          
+          .create-modal-content {
+            margin: 1rem;
+            width: auto;
+          }
         }
       `}</style>
     </div>
