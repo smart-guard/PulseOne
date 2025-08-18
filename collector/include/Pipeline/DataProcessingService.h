@@ -26,6 +26,9 @@
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <iomanip>          // std::setprecision, std::setfill, std::setw
+#include <sstream>          // std::ostringstream  
+#include <ctime>            // std::put_time, std::gmtime
 #include <nlohmann/json.hpp>
 
 // 전방 선언

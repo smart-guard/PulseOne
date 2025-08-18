@@ -1067,6 +1067,152 @@ std::string DataProcessingService::ConvertToLightPointValue(
     const std::string& device_id) {
     
     json light_point;
+    
+    // =======================================================================
+    // 🔥 기본 식별 정보
+    // =======================================================================
+    light_point["point_id"] = value.point_id;
+    light_point["device_id"] = device_id;
+    
+    // 🔥 간단한 네이밍 (DB 조회 없이)
+    std::string point_name = "point_" + std::to_string(value.point_id);
+    std::string device_name = "device_" + device_id;
+    light_point["key"] = "device:" + device_id + ":" + point_name;
+    
+    light_point["device_name"] = device_name;
+    light_point["point_name"] = point_name;
+    
+    // =======================================================================
+    // 🔥 실제 값 처리
+    // =======================================================================
+    std::visit([&light_point](const auto& v) {
+        using T = std::decay_t<decltype(v)>;
+        
+        if constexpr (std::is_same_v<T, bool>) {
+            light_point["value"] = v ? "true" : "false";
+            light_point["data_type"] = "boolean";
+        }
+        else if constexpr (std::is_integral_v<T>) {
+            light_point["value"] = std::to_string(v);
+            light_point["data_type"] = "integer";
+        }
+        else if constexpr (std::is_floating_point_v<T>) {
+            // 소수점 2자리까지 문자열로 변환
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(2) << v;
+            light_point["value"] = oss.str();
+            light_point["data_type"] = "number";
+        }
+        else if constexpr (std::is_same_v<T, std::string>) {
+            light_point["value"] = v;
+            light_point["data_type"] = "string";
+        }
+        else {
+            light_point["value"] = "unknown";
+            light_point["data_type"] = "unknown";
+        }
+    }, value.value);
+    
+    // =======================================================================
+    // 🔥 타임스탬프 (ISO 8601 형식)
+    // =======================================================================
+    auto time_t = std::chrono::system_clock::to_time_t(value.timestamp);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        value.timestamp.time_since_epoch()) % 1000;
+    
+    std::ostringstream timestamp_stream;
+    timestamp_stream << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+    timestamp_stream << "." << std::setfill('0') << std::setw(3) << ms.count() << "Z";
+    light_point["timestamp"] = timestamp_stream.str();
+    
+    // =======================================================================
+    // 🔥 품질 상태 (사람이 읽기 쉬운 형태)
+    // =======================================================================
+    std::string quality_str = "unknown";
+    switch (value.quality) {
+        case DataQuality::GOOD:
+            quality_str = "good";
+            break;
+        case DataQuality::BAD:
+            quality_str = "bad";
+            break;
+        case DataQuality::UNCERTAIN:
+            quality_str = "uncertain";
+            break;
+        case DataQuality::COMM_FAILURE:
+            quality_str = "comm_failure";
+            break;
+        case DataQuality::CONFIG_ERROR:
+            quality_str = "config_error";
+            break;
+        case DataQuality::NOT_CONNECTED:
+            quality_str = "not_connected";
+            break;
+        case DataQuality::DEVICE_FAILURE:
+            quality_str = "device_failure";
+            break;
+        case DataQuality::SENSOR_FAILURE:
+            quality_str = "sensor_failure";
+            break;
+        case DataQuality::LAST_KNOWN_VALUE:
+            quality_str = "last_known";
+            break;
+        case DataQuality::COMM_STATE_ALARM:
+            quality_str = "comm_alarm";
+            break;
+        case DataQuality::LOCAL_OVERRIDE:
+            quality_str = "local_override";
+            break;
+        case DataQuality::SUBSTITUTE:
+            quality_str = "substitute";
+            break;
+        default:
+            quality_str = "unknown";
+            break;
+    }
+    light_point["quality"] = quality_str;
+    
+    // =======================================================================
+    // 🔥 기본 단위 (간단히 처리)
+    // =======================================================================
+    std::string unit = "";
+    
+    // 포인트 ID 패턴으로 간단한 단위 추정 (실제 환경에서는 설정에서 가져오기)
+    if (point_name.find("temp") != std::string::npos || 
+        point_name.find("temperature") != std::string::npos) {
+        unit = "°C";
+    } else if (point_name.find("pressure") != std::string::npos) {
+        unit = "bar";
+    } else if (point_name.find("flow") != std::string::npos) {
+        unit = "L/min";
+    } else if (point_name.find("voltage") != std::string::npos) {
+        unit = "V";
+    } else if (point_name.find("current") != std::string::npos) {
+        unit = "A";
+    } else if (point_name.find("power") != std::string::npos) {
+        unit = "W";
+    } else if (point_name.find("energy") != std::string::npos) {
+        unit = "kWh";
+    } else if (point_name.find("level") != std::string::npos || 
+               point_name.find("percent") != std::string::npos) {
+        unit = "%";
+    }
+    
+    light_point["unit"] = unit;
+    
+    // 값 변경 여부
+    if (value.value_changed) {
+        light_point["changed"] = true;
+    }
+    
+    return light_point.dump();
+}
+/*
+std::string DataProcessingService::ConvertToLightPointValue(
+    const Structs::TimestampedValue& value, 
+    const std::string& device_id) {
+    
+    json light_point;
     light_point["id"] = value.point_id;
     light_point["dev"] = device_id;
     
@@ -1083,7 +1229,7 @@ std::string DataProcessingService::ConvertToLightPointValue(
     }
     
     return light_point.dump();
-}
+}*/
 
 std::string DataProcessingService::ConvertToBatchPointData(const Structs::DeviceDataMessage& message) {
     json batch_data;
