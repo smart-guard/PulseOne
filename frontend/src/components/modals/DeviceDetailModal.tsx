@@ -1,11 +1,11 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceDetailModal.tsx
-// 🔥 분할된 디바이스 상세 모달 - 메인 컴포넌트
+// 🔥 분할된 디바이스 상세 모달 - 메인 컴포넌트 (완전 구현)
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
 import { DeviceApiService } from '../../api/services/deviceApi';
-import { DataPointApiService, DataPoint } from '../../api/services/dataPointApi';
+import { DataApiService, DataPoint } from '../../api/services/dataApi';
 
 // 분할된 컴포넌트들 import
 import DeviceBasicInfoTab from './DeviceModal/DeviceBasicInfoTab';
@@ -38,7 +38,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   const [dataPointsError, setDataPointsError] = useState<string | null>(null);
 
   // ========================================================================
-  // 데이터포인트 관리 함수들
+  // 데이터포인트 관리 함수들 - 올바른 API 사용
   // ========================================================================
 
   /**
@@ -50,10 +50,13 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       setDataPointsError(null);
       console.log(`📊 디바이스 ${deviceId} 데이터포인트 로드 시작...`);
 
-      const response = await DataPointApiService.getDeviceDataPoints(deviceId, {
+      // 🔥 올바른 API 호출 - DataApiService 사용
+      const response = await DataApiService.searchDataPoints({
+        device_id: deviceId,
         page: 1,
         limit: 100,
-        enabled_only: false
+        enabled_only: false,
+        include_current_value: true
       });
 
       if (response.success && response.data) {
@@ -65,19 +68,9 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
 
     } catch (error) {
       console.error(`❌ 디바이스 ${deviceId} 데이터포인트 로드 실패:`, error);
-      setDataPointsError(error instanceof Error ? error.message : '데이터포인트를 불러올 수 없습니다');
-      setDataPoints([]);
+      setDataPointsError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsLoadingDataPoints(false);
-    }
-  };
-
-  /**
-   * 데이터포인트 새로고침
-   */
-  const handleRefreshDataPoints = async () => {
-    if (device && mode !== 'create') {
-      await loadDataPoints(device.id);
     }
   };
 
@@ -89,12 +82,12 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   };
 
   /**
-   * 데이터포인트 수정
+   * 데이터포인트 업데이트
    */
   const handleUpdateDataPoint = (updatedDataPoint: DataPoint) => {
-    setDataPoints(prev => prev.map(dp => 
-      dp.id === updatedDataPoint.id ? updatedDataPoint : dp
-    ));
+    setDataPoints(prev => 
+      prev.map(dp => dp.id === updatedDataPoint.id ? updatedDataPoint : dp)
+    );
   };
 
   /**
@@ -104,19 +97,25 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     setDataPoints(prev => prev.filter(dp => dp.id !== pointId));
   };
 
+  /**
+   * 데이터포인트 새로고침
+   */
+  const handleRefreshDataPoints = async () => {
+    if (device?.id) {
+      await loadDataPoints(device.id);
+    }
+  };
+
   // ========================================================================
-  // 디바이스 관리 함수들
+  // 디바이스 관리 함수들 - DeviceApiService 사용
   // ========================================================================
 
   /**
    * 새 디바이스 초기화
    */
   const initializeNewDevice = () => {
-    setDataPoints([]);
     setEditData({
       id: 0,
-      tenant_id: 1,
-      site_id: 1,
       name: '',
       description: '',
       device_type: 'PLC',
@@ -125,28 +124,12 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       serial_number: '',
       protocol_type: 'MODBUS_TCP',
       endpoint: '',
-      config: {},
-      polling_interval: 5000,
-      timeout: 10000,
+      polling_interval: 1000,
+      timeout: 5000,
       retry_count: 3,
       is_enabled: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      settings: {
-        polling_interval_ms: 5000,
-        connection_timeout_ms: 10000,
-        read_timeout_ms: 5000,
-        write_timeout_ms: 5000,
-        max_retry_count: 3,
-        retry_interval_ms: 1000,
-        backoff_time_ms: 2000,
-        keep_alive_enabled: true,
-        keep_alive_interval_s: 30,
-        data_validation_enabled: true,
-        performance_monitoring_enabled: true,
-        detailed_logging_enabled: false,
-        diagnostic_mode_enabled: false,
-      }
+      created_at: '',
+      updated_at: ''
     });
   };
 
@@ -158,16 +141,64 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
 
     try {
       setIsLoading(true);
-      console.log('💾 디바이스 저장:', editData);
+      let savedDevice: Device;
 
-      if (onSave) {
-        onSave(editData);
+      if (mode === 'create') {
+        // 생성 요청 데이터 변환
+        const createData = {
+          name: editData.name,
+          description: editData.description,
+          device_type: editData.device_type,
+          manufacturer: editData.manufacturer,
+          model: editData.model,
+          protocol_type: editData.protocol_type,
+          endpoint: editData.endpoint,
+          config: editData.config,
+          site_id: editData.site_id,
+          device_group_id: editData.device_group_id,
+          polling_interval: editData.polling_interval,
+          timeout: editData.timeout,
+          retry_count: editData.retry_count,
+          is_enabled: editData.is_enabled
+        };
+
+        const response = await DeviceApiService.createDevice(createData);
+        if (response.success && response.data) {
+          savedDevice = response.data;
+        } else {
+          throw new Error(response.error || '생성 실패');
+        }
+      } else if (mode === 'edit') {
+        // 수정 요청 데이터 변환
+        const updateData = {
+          name: editData.name,
+          description: editData.description,
+          device_type: editData.device_type,
+          manufacturer: editData.manufacturer,
+          model: editData.model,
+          endpoint: editData.endpoint,
+          config: editData.config,
+          polling_interval: editData.polling_interval,
+          timeout: editData.timeout,
+          retry_count: editData.retry_count,
+          is_enabled: editData.is_enabled
+        };
+
+        const response = await DeviceApiService.updateDevice(editData.id, updateData);
+        if (response.success && response.data) {
+          savedDevice = response.data;
+        } else {
+          throw new Error(response.error || '수정 실패');
+        }
+      } else {
+        return;
       }
-      onClose();
 
+      onSave?.(savedDevice);
+      onClose();
     } catch (error) {
-      console.error('❌ 디바이스 저장 실패:', error);
-      alert(`저장에 실패했습니다: ${error.message}`);
+      console.error('디바이스 저장 실패:', error);
+      alert(`저장 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -177,16 +208,21 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
    * 디바이스 삭제
    */
   const handleDelete = async () => {
-    if (!device || !onDelete) return;
-    
-    if (confirm(`${device.name} 디바이스를 삭제하시겠습니까?`)) {
-      setIsLoading(true);
+    if (!device) return;
+
+    if (confirm(`"${device.name}" 디바이스를 삭제하시겠습니까?`)) {
       try {
-        await onDelete(device.id);
-        onClose();
+        setIsLoading(true);
+        const response = await DeviceApiService.deleteDevice(device.id);
+        if (response.success) {
+          onDelete?.(device.id);
+          onClose();
+        } else {
+          throw new Error(response.error || '삭제 실패');
+        }
       } catch (error) {
-        console.error('❌ 디바이스 삭제 실패:', error);
-        alert(`삭제에 실패했습니다: ${error.message}`);
+        console.error('디바이스 삭제 실패:', error);
+        alert(`삭제 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
       } finally {
         setIsLoading(false);
       }
@@ -196,7 +232,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   /**
    * 필드 업데이트
    */
-  const updateEditData = (field: string, value: any) => {
+  const updateField = (field: string, value: any) => {
     setEditData(prev => prev ? { ...prev, [field]: value } : null);
   };
 
@@ -247,12 +283,12 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                 {mode === 'create' ? '새 디바이스 추가' : 
                  mode === 'edit' ? '디바이스 편집' : '디바이스 상세'}
               </h2>
-              {displayData?.status && (
-                <span className={`status-indicator ${displayData.status.connection_status}`}>
+              {displayData?.connection_status && (
+                <span className={`status-indicator ${displayData.connection_status}`}>
                   <i className="fas fa-circle"></i>
-                  {displayData.status.connection_status === 'connected' ? '연결됨' :
-                   displayData.status.connection_status === 'disconnected' ? '연결끊김' :
-                   displayData.status.connection_status === 'connecting' ? '연결중' : '알수없음'}
+                  {displayData.connection_status === 'connected' ? '연결됨' :
+                   displayData.connection_status === 'disconnected' ? '연결끊김' :
+                   displayData.connection_status === 'connecting' ? '연결중' : '알수없음'}
                 </span>
               )}
             </div>
@@ -314,26 +350,26 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         <div className="modal-content">
           {activeTab === 'basic' && (
             <DeviceBasicInfoTab
-              device={displayData}
+              device={device}
               editData={editData}
               mode={mode}
-              onUpdateField={updateEditData}
+              onUpdateField={updateField}
             />
           )}
 
           {activeTab === 'settings' && (
             <DeviceSettingsTab
-              device={displayData}
+              device={device}
               editData={editData}
               mode={mode}
-              onUpdateField={updateEditData}
+              onUpdateField={updateField}
               onUpdateSettings={updateSettings}
             />
           )}
 
           {activeTab === 'datapoints' && (
             <DeviceDataPointsTab
-              deviceId={device?.id || 0}
+              deviceId={device?.id || editData?.id || 0}
               dataPoints={dataPoints}
               isLoading={isLoadingDataPoints}
               error={dataPointsError}
@@ -346,23 +382,20 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           )}
 
           {activeTab === 'status' && mode !== 'create' && (
-            <DeviceStatusTab
-              device={displayData}
-            />
+            <DeviceStatusTab device={device} />
           )}
 
           {activeTab === 'logs' && mode === 'view' && (
-            <DeviceLogsTab
-              deviceId={device?.id || 0}
-            />
+            <DeviceLogsTab deviceId={device?.id || 0} />
           )}
         </div>
 
         {/* 모달 푸터 */}
         <div className="modal-footer">
           <div className="footer-left">
-            {mode !== 'create' && mode !== 'view' && onDelete && (
-              <button 
+            {mode === 'edit' && onDelete && (
+              <button
+                type="button"
                 className="btn btn-error"
                 onClick={handleDelete}
                 disabled={isLoading}
@@ -373,14 +406,15 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             )}
           </div>
           <div className="footer-right">
-            <button className="btn btn-secondary" onClick={onClose}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
               취소
             </button>
             {mode !== 'view' && (
-              <button 
+              <button
+                type="button"
                 className="btn btn-primary"
                 onClick={handleSave}
-                disabled={isLoading || !editData?.name}
+                disabled={isLoading}
               >
                 {isLoading ? (
                   <>
@@ -398,6 +432,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           </div>
         </div>
 
+        {/* 스타일 */}
         <style jsx>{`
           .modal-overlay {
             position: fixed;
@@ -410,52 +445,54 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             align-items: center;
             justify-content: center;
             z-index: 1000;
-            padding: 2rem;
           }
 
           .modal-container {
             background: white;
-            border-radius: 12px;
-            width: 100%;
-            max-width: 900px;
-            height: 85vh;
-            max-height: 85vh;
-            overflow: hidden;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+            border-radius: 0.75rem;
+            width: 90vw;
+            max-width: 1200px;
+            height: 90vh;
+            max-height: 800px;
             display: flex;
             flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
           }
 
           .modal-header {
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: flex-start;
-            padding: 1.5rem 2rem 1rem 2rem;
+            padding: 1.5rem 2rem;
             border-bottom: 1px solid #e5e7eb;
             flex-shrink: 0;
           }
 
-          .modal-title .title-row {
+          .modal-title {
+            flex: 1;
+          }
+
+          .title-row {
             display: flex;
             align-items: center;
             gap: 1rem;
             margin-bottom: 0.5rem;
           }
 
-          .modal-title h2 {
+          .title-row h2 {
             margin: 0;
-            font-size: 1.75rem;
+            font-size: 1.5rem;
             font-weight: 600;
-            color: #1f2937;
+            color: #111827;
           }
 
           .device-subtitle {
-            font-size: 0.875rem;
             color: #6b7280;
+            font-size: 0.875rem;
           }
 
           .status-indicator {
-            display: inline-flex;
+            display: flex;
             align-items: center;
             gap: 0.375rem;
             padding: 0.25rem 0.75rem;
@@ -470,32 +507,31 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           }
 
           .status-indicator.disconnected {
-            background: #fee2e2;
-            color: #991b1b;
+            background: #fef2f2;
+            color: #dc2626;
           }
 
           .status-indicator.connecting {
             background: #fef3c7;
-            color: #92400e;
-          }
-
-          .status-indicator i {
-            font-size: 0.5rem;
+            color: #d97706;
           }
 
           .close-btn {
-            background: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.5rem;
+            height: 2.5rem;
             border: none;
-            font-size: 1.5rem;
+            border-radius: 0.5rem;
+            background: #f3f4f6;
             color: #6b7280;
             cursor: pointer;
-            padding: 0.5rem;
-            border-radius: 0.375rem;
             transition: all 0.2s ease;
           }
 
           .close-btn:hover {
-            background: #f3f4f6;
+            background: #e5e7eb;
             color: #374151;
           }
 
@@ -517,8 +553,8 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             font-size: 0.875rem;
             font-weight: 500;
             cursor: pointer;
-            border-bottom: 3px solid transparent;
             transition: all 0.2s ease;
+            border-bottom: 2px solid transparent;
           }
 
           .tab-btn:hover {

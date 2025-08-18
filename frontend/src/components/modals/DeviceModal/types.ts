@@ -1,9 +1,9 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/types.ts
-// 🎯 디바이스 모달 관련 타입 정의
+// 🎯 디바이스 모달 관련 타입 정의 - 올바른 import 경로
 // ============================================================================
 
-import { DataPoint } from '../../../api/services/dataPointApi';
+import { DataPoint } from '../../../api/services/dataApi';
 
 // ============================================================================
 // 🏭 디바이스 타입 정의
@@ -11,8 +11,8 @@ import { DataPoint } from '../../../api/services/dataPointApi';
 
 export interface Device {
   id: number;
-  tenant_id: number;
-  site_id: number;
+  tenant_id?: number;
+  site_id?: number;
   device_group_id?: number;
   edge_server_id?: number;
   name: string;
@@ -24,17 +24,24 @@ export interface Device {
   protocol_type: string;
   endpoint: string;
   config?: any;
-  polling_interval: number;
-  timeout: number;
-  retry_count: number;
+  polling_interval?: number;
+  timeout?: number;
+  retry_count?: number;
   is_enabled: boolean;
   installation_date?: string;
   last_maintenance?: string;
   created_at: string;
   updated_at: string;
   
+  // 상태 정보
+  connection_status?: string;
+  status?: string | any;
+  last_seen?: string;
+  last_communication?: string;
+  
+  // 확장 정보
   settings?: DeviceSettings;
-  status?: DeviceStatus;
+  status_info?: DeviceStatus;
   
   site_name?: string;
   group_name?: string;
