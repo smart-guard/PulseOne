@@ -115,7 +115,7 @@ export const MainLayout: React.FC = () => {
                 <div className="menu-icon">
                   <i className="fas fa-search"></i>
                 </div>
-                <span className="menu-title">데이터 탐색기</span>
+                <span className="menu-title">실시간 데이터 탐색기</span>
               </Link>
             </li>
             <li className="menu-item">

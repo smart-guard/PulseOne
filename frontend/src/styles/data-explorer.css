@@ -156,11 +156,13 @@
 
 .explorer-layout {
   display: grid;
-  grid-template-columns: 400px 1fr;
-  gap: 24px;
-  height: calc(100vh - 200px);
+  grid-template-columns: 350px 1fr;  /* 기존: 400px 1fr */
+  gap: 20px;                         /* 기존: 24px */
+  height: calc(100vh - 180px);       /* 기존: calc(100vh - 200px) */
   min-height: 600px;
-  padding: 0 32px;
+  padding: 0 24px;                   /* 기존: 0 32px */
+  max-width: 100vw;                  /* 🆕 추가 */
+  overflow: hidden;                  /* 🆕 추가 */
 }
 
 /* =============================================================================
@@ -175,6 +177,8 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  min-width: 300px;                  /* 🆕 추가 */
+  max-width: 350px;                  /* 🆕 추가 */
 }
 
 .tree-header {
@@ -399,6 +403,23 @@
   border-radius: 4px;
   font-size: 12px;
   background: white;
+  
+  /* 🔥 브라우저 기본 화살표 제거 */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  
+  /* 🔥 커스텀 화살표 추가 */
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+  padding-right: 28px;
+}
+
+/* IE 지원 */
+.filter-select::-ms-expand {
+  display: none;
 }
 
 .realtime-filter {
@@ -414,10 +435,13 @@
   gap: 8px;
 }
 
+/* 4. 상세 컨텐츠 수정 (줄 218번 근처) */
 .details-content {
   flex: 1;
-  overflow-y: auto;
-  padding: 20px;
+  overflow: hidden;                  /* 기존: overflow-y: auto */
+  padding: 16px;                     /* 기존: padding: 20px */
+  display: flex;                     /* 🆕 추가 */
+  flex-direction: column;            /* 🆕 추가 */
 }
 
 /* =============================================================================
@@ -425,7 +449,7 @@
    ============================================================================= */
 
 .realtime-data h4 {
-  margin: 0 0 16px 0;
+  margin: 0 0 12px 0;               /* 기존: 0 0 16px 0 */
   font-size: 16px;
   font-weight: 600;
   color: #111827;
@@ -434,21 +458,22 @@
 /* 🔥 메인 테이블 컨테이너 */
 .data-table-container {
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 6px;               /* 기존: 8px */
   overflow: hidden;
   background: white;
-  max-height: 600px;
+  flex: 1;                          /* 기존: max-height: 600px 제거 */
   display: flex;
   flex-direction: column;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  min-height: 0;                    /* 🆕 추가 */
 }
 
 /* 🔥 테이블 헤더 - CSS Grid */
 .data-table-header {
   display: grid !important;
-  grid-template-columns: 60px 320px 150px 200px 100px 80px 130px !important;
+  grid-template-columns: 40px 200px 120px 100px 70px 60px 80px !important;  /* 🔥 핵심 수정 */
   gap: 0 !important;
-  background: #f9fafb !important;
+  background: #f8fafc !important;    /* 기존: #f9fafb */
   border-bottom: 2px solid #e5e7eb !important;
   position: sticky !important;
   top: 0 !important;
@@ -456,7 +481,7 @@
 }
 
 .header-cell {
-  padding: 16px 12px !important;
+  padding: 8px 4px !important;      /* 기존: 16px 12px */
   border-right: 1px solid #e5e7eb !important;
   text-align: center !important;
   font-weight: 700 !important;
@@ -464,12 +489,13 @@
   text-transform: uppercase !important;
   letter-spacing: 0.5px !important;
   white-space: nowrap !important;
-  font-size: 11px !important;
+  font-size: 9px !important;        /* 기존: 11px */
   color: #374151 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   margin: 0 !important;
+  min-height: 34px !important;      /* 🆕 추가 */
 }
 
 .header-cell:last-child {
@@ -481,16 +507,17 @@
   flex: 1 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
+  min-height: 0 !important;         /* 🆕 추가 */
 }
 
 /* 🔥 테이블 행 - 동일한 Grid 구조 */
 .data-table-row {
   display: grid !important;
-  grid-template-columns: 60px 320px 150px 200px 100px 80px 130px !important;
+  grid-template-columns: 40px 200px 120px 100px 70px 60px 80px !important;  /* 🔥 핵심 수정 */
   gap: 0 !important;
   border-bottom: 1px solid #f1f5f9 !important;
   align-items: center !important;
-  min-height: 60px !important;
+  min-height: 34px !important;      /* 기존: 60px */
   transition: background-color 0.15s ease !important;
   margin: 0 !important;
   padding: 0 !important;
@@ -506,15 +533,15 @@
 
 /* 🔥 공통 셀 스타일 */
 .table-cell {
-  padding: 8px 12px !important;
+  padding: 4px 6px !important;      /* 기존: 8px 12px */
   border-right: 1px solid #f1f5f9 !important;
   overflow: hidden !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   text-align: center !important;
-  font-size: 13px !important;
-  min-height: 60px !important;
+  font-size: 11px !important;       /* 기존: 13px */
+  min-height: 34px !important;      /* 기존: 60px */
   margin: 0 !important;
 }
 
@@ -845,9 +872,13 @@
    ============================================================================= */
 
 @media (max-width: 1400px) {
+  .explorer-layout {
+    grid-template-columns: 320px 1fr;  /* 기존: 그대로 */
+  }
+
   .data-table-header,
   .data-table-row {
-    grid-template-columns: 50px 280px 130px 180px 90px 70px 110px !important;
+    grid-template-columns: 35px 180px 100px 90px 60px 50px 70px !important;
   }
   
   .point-name {
@@ -866,7 +897,7 @@
   
   .data-table-header,
   .data-table-row {
-    grid-template-columns: 45px 240px 110px 160px 80px 60px 100px !important;
+    grid-template-columns: 30px 160px 90px 80px 50px 45px 60px !important;
   }
 }
 
