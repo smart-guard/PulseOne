@@ -9,7 +9,7 @@ import {
 import '../styles/data-explorer.css';
 
 // ============================================================================
-// 🔥 수정된 API 서비스와 완전 연동된 DataExplorer
+// 🔥 완성된 PulseOne 실시간 데이터 탐색기
 // ============================================================================
 
 interface TreeNode {
@@ -68,10 +68,10 @@ const DataExplorer: React.FC = () => {
   const [showChart, setShowChart] = useState(false);
 
   // ========================================================================
-  // 🔥 수정된 API 서비스 사용
+  // 🔥 API 서비스 연동
   // ========================================================================
 
-  // 🔥 디바이스 목록 로드 (수정된 API 서비스 사용)
+  // 🔥 디바이스 목록 로드
   const loadDevices = useCallback(async () => {
     try {
       console.log('🔄 디바이스 목록 로드 시작...');
@@ -93,58 +93,19 @@ const DataExplorer: React.FC = () => {
         return deviceList;
       } else {
         console.warn('⚠️ 디바이스 API 응답 이상:', response);
-        // 🔥 디바이스 API 실패 시 실시간 데이터에서 디바이스 추출
-        if (realtimeData.length > 0) {
-          const uniqueDevices = Array.from(new Set(realtimeData.map(dp => dp.device_id)))
-            .map(deviceId => {
-              const devicePoints = realtimeData.filter(dp => dp.device_id === deviceId);
-              return {
-                device_id: deviceId,
-                device_name: devicePoints[0]?.device_name || `Device ${deviceId}`,
-                device_type: 'Unknown',
-                point_count: devicePoints.length,
-                status: 'connected',
-                last_seen: new Date().toISOString()
-              };
-            });
-          
-          setDevices(uniqueDevices);
-          console.log(`✅ 실시간 데이터에서 ${uniqueDevices.length}개 디바이스 추출:`, uniqueDevices);
-          return uniqueDevices;
-        }
         return [];
       }
     } catch (error: any) {
       console.error('❌ 디바이스 로드 실패:', error);
-      // 🔥 에러 시에도 실시간 데이터에서 디바이스 추출 시도
-      if (realtimeData.length > 0) {
-        const uniqueDevices = Array.from(new Set(realtimeData.map(dp => dp.device_id)))
-          .map(deviceId => {
-            const devicePoints = realtimeData.filter(dp => dp.device_id === deviceId);
-            return {
-              device_id: deviceId,
-              device_name: devicePoints[0]?.device_name || `Device ${deviceId}`,
-              device_type: 'Unknown',
-              point_count: devicePoints.length,
-              status: 'connected',
-              last_seen: new Date().toISOString()
-            };
-          });
-        
-        setDevices(uniqueDevices);
-        console.log(`✅ 에러 복구: 실시간 데이터에서 ${uniqueDevices.length}개 디바이스 추출`);
-        return uniqueDevices;
-      }
       throw error;
     }
-  }, [realtimeData]);
+  }, []);
 
-  // 🔥 실시간 데이터 로드 (수정된 API 서비스 사용)
+  // 🔥 실시간 데이터 로드
   const loadRealtimeData = useCallback(async () => {
     try {
       console.log('🔄 실시간 데이터 로드 시작...');
       
-      // 🔥 수정된 API 파라미터 형식 사용
       const queryParams: any = {
         limit: 100
       };
@@ -155,7 +116,7 @@ const DataExplorer: React.FC = () => {
       }
       
       if (filters.device !== 'all') {
-        queryParams.device_ids = [filters.device];  // string 배열
+        queryParams.device_ids = [filters.device];
       }
 
       const response: ApiResponse<CurrentValuesResponse> = await RealtimeApiService.getCurrentValues(queryParams);
@@ -180,19 +141,19 @@ const DataExplorer: React.FC = () => {
       
       // 🔥 에러 시 시뮬레이션 데이터 생성 (디버깅용)
       console.log('🔧 시뮬레이션 데이터 생성 중...');
-      const simulationData: RealtimeValue[] = Array.from({ length: 5 }, (_, i) => ({
+      const simulationData: RealtimeValue[] = Array.from({ length: 12 }, (_, i) => ({
         id: `sim_${i}`,
-        key: `device:${i+1}:temp_${i+1}`,
+        key: `device:${Math.floor(i/4)+1}:${['temp', 'pressure', 'flow', 'pump'][i%4]}_${String(i + 1).padStart(2, '0')}`,
         point_id: i + 1,
-        device_id: String(i + 1),
-        device_name: `시뮬레이션 Device ${i + 1}`,
-        point_name: `temperature_sensor_${String(i + 1).padStart(2, '0')}`,
-        value: (20 + Math.random() * 10).toFixed(2),
-        timestamp: new Date().toISOString(),
-        quality: ['good', 'bad', 'uncertain'][i % 3] as any,
-        data_type: 'number',
-        unit: '°C',
-        changed: Math.random() > 0.5,
+        device_id: String(Math.floor(i/4)+1),
+        device_name: `${['PLC-001', 'HVAC01', 'Energy-Meter'][Math.floor(i/4)]}`,
+        point_name: `${['temperature_sensor', 'pressure_sensor', 'flow_rate', 'pump_status'][i%4]}_${String(i + 1).padStart(2, '0')}`,
+        value: i % 4 === 3 ? (Math.random() > 0.5 ? 'true' : 'false') : (20 + Math.random() * 50).toFixed(2),
+        timestamp: new Date(Date.now() - Math.random() * 60000).toISOString(),
+        quality: ['good', 'good', 'good', 'bad', 'uncertain'][i % 5] as any,
+        data_type: i % 4 === 3 ? 'boolean' : 'number',
+        unit: i % 4 === 3 ? '' : ['°C', 'bar', 'l/min', ''][i % 4],
+        changed: Math.random() > 0.7,
         source: 'simulation'
       }));
       
@@ -202,7 +163,7 @@ const DataExplorer: React.FC = () => {
     }
   }, [filters.quality, filters.device]);
 
-  // 🔥 특정 디바이스 데이터 로드 (수정된 API 서비스 사용)
+  // 🔥 특정 디바이스 데이터 로드
   const loadDeviceData = useCallback(async (deviceId: string) => {
     try {
       console.log(`🔄 디바이스 ${deviceId} 데이터 로드...`);
@@ -224,7 +185,7 @@ const DataExplorer: React.FC = () => {
     }
   }, []);
 
-  // 🔥 트리 데이터 생성 (실제 디바이스 기반)
+  // 🔥 트리 데이터 생성 (DB 디바이스 기반)
   const generateTreeData = useCallback((devices: DeviceInfo[]): TreeNode[] => {
     if (!devices || devices.length === 0) {
       return [{
@@ -238,10 +199,10 @@ const DataExplorer: React.FC = () => {
       }];
     }
 
-    // 디바이스들을 사이트별로 그룹화
+    // 🎯 DB에서 가져온 실제 디바이스 이름으로 트리 노드 생성
     const deviceNodes: TreeNode[] = devices.map(device => ({
       id: `device-${device.device_id}`,
-      label: device.device_name,
+      label: device.device_name, // 🎯 DB의 실제 디바이스 이름 사용
       type: 'device',
       level: 2,
       isExpanded: false,
@@ -314,7 +275,7 @@ const DataExplorer: React.FC = () => {
     }
   }, [loadDeviceData]);
 
-  // 🔥 트리 초기화 (수정: 실시간 데이터 로드 후 디바이스 추출)
+  // 🔥 시스템 초기화 (DB API 우선 사용)
   const initializeData = useCallback(async () => {
     setIsLoading(true);
     setConnectionStatus('connecting');
@@ -325,10 +286,10 @@ const DataExplorer: React.FC = () => {
       // 1. 실시간 데이터 먼저 로드
       const realtimeDataPoints = await loadRealtimeData();
       
-      // 2. 디바이스 목록 로드 (실시간 데이터 기반으로 폴백)
+      // 2. 🎯 디바이스 목록을 DB에서 정확히 가져오기
       const deviceList = await loadDevices();
       
-      // 3. 트리 구조 생성
+      // 3. 트리 구조 생성 (DB 디바이스 이름 사용)
       const treeStructure = generateTreeData(deviceList);
       setTreeData(treeStructure);
       
@@ -336,7 +297,7 @@ const DataExplorer: React.FC = () => {
       setError(null);
       
       console.log('✅ 데이터 초기화 완료');
-      console.log(`📊 디바이스: ${deviceList.length}개, 실시간 포인트: ${realtimeDataPoints.length}개`);
+      console.log(`📊 DB 디바이스: ${deviceList.length}개, 실시간 포인트: ${realtimeDataPoints.length}개`);
       
     } catch (error: any) {
       console.error('❌ 데이터 초기화 실패:', error);
@@ -393,7 +354,7 @@ const DataExplorer: React.FC = () => {
   };
 
   // ========================================================================
-  // 🔥 필터링된 데이터 - 수정된 필드명 사용
+  // 🔥 필터링된 데이터
   // ========================================================================
 
   const filteredDataPoints = useMemo(() => {
@@ -406,7 +367,7 @@ const DataExplorer: React.FC = () => {
       initialPoints: points.length
     });
     
-    // 🔥 검색 필터 적용 (수정된 필드명 사용)
+    // 🔥 검색 필터 적용
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase();
       points = points.filter(dp => 
@@ -417,7 +378,7 @@ const DataExplorer: React.FC = () => {
       console.log(`🔍 검색 필터 "${filters.search}" 적용 후: ${points.length}개`);
     }
     
-    // 🔥 데이터 타입 필터 적용 (data_type 사용)
+    // 🔥 데이터 타입 필터 적용
     if (filters.dataType !== 'all') {
       points = points.filter(dp => dp.data_type === filters.dataType);
       console.log(`🔍 데이터타입 필터 "${filters.dataType}" 적용 후: ${points.length}개`);
@@ -429,7 +390,7 @@ const DataExplorer: React.FC = () => {
       console.log(`🔍 품질 필터 "${filters.quality}" 적용 후: ${points.length}개`);
     }
     
-    // 🔥 디바이스 필터 적용 (device_id는 string)
+    // 🔥 디바이스 필터 적용
     if (filters.device !== 'all') {
       points = points.filter(dp => dp.device_id === filters.device);
       console.log(`🔍 디바이스 필터 "${filters.device}" 적용 후: ${points.length}개`);
@@ -509,7 +470,7 @@ const DataExplorer: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `redis_data_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `pulseone_data_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }, [filteredDataPoints]);
@@ -606,16 +567,8 @@ const DataExplorer: React.FC = () => {
     );
   };
 
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('ko-KR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
-
   // ========================================================================
-  // 메인 렌더링 - 제공된 CSS 클래스 사용
+  // 메인 렌더링 - 스크롤바 정렬 완벽 적용
   // ========================================================================
 
   return (
@@ -625,7 +578,7 @@ const DataExplorer: React.FC = () => {
         <div className="header-left">
           <h1 className="page-title">
             <i className="fas fa-database"></i>
-            Redis 실시간 데이터 탐색기
+            PulseOne 실시간 데이터 탐색기
           </h1>
           <div className="header-meta">
             <div className={`connection-status status-${connectionStatus}`}>
@@ -710,10 +663,29 @@ const DataExplorer: React.FC = () => {
       )}
 
       {/* 메인 레이아웃 */}
-      <div className="explorer-layout">
+      <div className="explorer-layout" style={{
+        display: 'grid',
+        gridTemplateColumns: '350px 1fr',
+        gap: '20px',
+        height: 'calc(100vh - 180px)',
+        minHeight: '600px',
+        padding: '0 24px',
+        maxWidth: '100vw',
+        overflow: 'hidden'
+      }}>
         
         {/* 왼쪽: 트리 패널 */}
-        <div className="tree-panel">
+        <div className="tree-panel" style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+          minWidth: '300px',
+          maxWidth: '350px'
+        }}>
           <div className="tree-header">
             <h3>📋 데이터 구조</h3>
             <div className="search-container">
@@ -753,7 +725,16 @@ const DataExplorer: React.FC = () => {
         </div>
 
         {/* 오른쪽: 상세 정보 패널 */}
-        <div className="details-panel">
+        <div className="details-panel" style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+          minWidth: '600px'
+        }}>
           <div className="details-header">
             <h3>
               📊 실시간 데이터 
@@ -820,7 +801,13 @@ const DataExplorer: React.FC = () => {
             </div>
           </div>
 
-          <div className="details-content">
+          <div className="details-content" style={{
+            flex: 1,
+            overflow: 'hidden',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
             {/* 차트 영역 */}
             {showChart && selectedDataPoints.length > 0 && (
               <div className="chart-section">
@@ -836,9 +823,16 @@ const DataExplorer: React.FC = () => {
               </div>
             )}
 
-            {/* 🔥 실시간 데이터 테이블 - 제공된 CSS 클래스 사용 */}
-            <div className="realtime-data">
-              <h4>⚡ 실시간 데이터 ({filteredDataPoints.length}개)</h4>
+            {/* 🔥 완벽한 스크롤바 정렬 실시간 데이터 테이블 */}
+            <div className="realtime-data" style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'visible', // 스크롤 방해 제거
+              minHeight: 0,
+              width: '100%'
+            }}>
+              <h4 style={{margin: '0 0 12px 0'}}>⚡ 실시간 데이터 ({filteredDataPoints.length}개)</h4>
               
               {filteredDataPoints.length === 0 ? (
                 <div className="empty-state">
@@ -851,134 +845,183 @@ const DataExplorer: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="data-table-container">
-                  {/* 🔥 컴팩트한 테이블 헤더 */}
-                  <div className="data-table-header" style={{
-                    display: 'grid',
-                    gridTemplateColumns: '40px 200px 120px 100px 70px 60px 80px',
-                    gap: '1px',
-                    background: '#f9fafb',
-                    borderBottom: '2px solid #e5e7eb',
-                    position: 'sticky',
-                    top: '0',
-                    zIndex: 10
+                <div className="data-table-container" style={{
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '6px',
+                  overflowX: 'auto', // 가로 스크롤 강제
+                  overflowY: 'hidden', // 세로는 내부에서 처리
+                  background: 'white',
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+                  minHeight: '400px', // 최소 높이 보장
+                  maxHeight: 'calc(100vh - 280px)', // 뷰포트 기준 최대 높이
+                  width: '100%'
+                }}>
+                  {/* 🔥 가로 스크롤용 테이블 래퍼 */}
+                  <div style={{
+                    minWidth: '950px', // 최소 너비 보장
+                    width: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    paddingBottom: '16px' // 하단 여백 추가
                   }}>
-                    <div className="header-cell" style={{padding: '8px 4px', fontSize: '10px', fontWeight: '700', textAlign: 'center'}}>✓</div>
-                    <div className="header-cell" style={{padding: '8px 6px', fontSize: '10px', fontWeight: '700', textAlign: 'left'}}>포인트명</div>
-                    <div className="header-cell" style={{padding: '8px 4px', fontSize: '10px', fontWeight: '700', textAlign: 'center'}}>디바이스</div>
-                    <div className="header-cell" style={{padding: '8px 4px', fontSize: '10px', fontWeight: '700', textAlign: 'center'}}>현재값</div>
-                    <div className="header-cell" style={{padding: '8px 4px', fontSize: '10px', fontWeight: '700', textAlign: 'center'}}>품질</div>
-                    <div className="header-cell" style={{padding: '8px 4px', fontSize: '10px', fontWeight: '700', textAlign: 'center'}}>타입</div>
-                    <div className="header-cell" style={{padding: '8px 4px', fontSize: '10px', fontWeight: '700', textAlign: 'center'}}>시간</div>
-                  </div>
-                  <div className="data-table-body">
-                    {filteredDataPoints.map((dataPoint, index) => (
-                      <div key={dataPoint.key || `row-${index}`} className="data-table-row" style={{
-                        display: 'grid',
-                        gridTemplateColumns: '40px 200px 120px 100px 70px 60px 80px',
-                        gap: '1px',
-                        borderBottom: '1px solid #f1f5f9',
-                        alignItems: 'center',
-                        minHeight: '44px',
-                        fontSize: '12px'
-                      }}>
-                        <div className="table-cell" style={{padding: '4px', textAlign: 'center'}}>
-                          <input
-                            type="checkbox"
-                            checked={selectedDataPoints.some(dp => dp.key === dataPoint.key)}
-                            onChange={() => handleDataPointSelect(dataPoint)}
-                            style={{width: '12px', height: '12px'}}
-                          />
-                        </div>
-                        <div className="table-cell" style={{padding: '6px', textAlign: 'left', overflow: 'hidden'}}>
-                          <div style={{fontWeight: '600', fontSize: '11px', color: '#111827', marginBottom: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                            {dataPoint.point_name || '[포인트명 없음]'}
+                    {/* 🔥 완벽한 정렬 고정 너비 헤더 */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '60px 300px 140px 160px 90px 80px 120px',
+                      gap: 0,
+                      background: '#f8fafc',
+                      borderBottom: '2px solid #e5e7eb',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10,
+                      marginRight: '0px' // 헤더도 동일한 여백
+                    }}>
+                      <div style={{padding: '10px 8px', fontSize: '11px', fontWeight: 700, textAlign: 'center', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px'}}>✓</div>
+                      <div style={{padding: '10px 12px', fontSize: '11px', fontWeight: 700, textAlign: 'left', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', minHeight: '40px'}}>포인트명</div>
+                      <div style={{padding: '10px 8px', fontSize: '11px', fontWeight: 700, textAlign: 'center', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px'}}>디바이스</div>
+                      <div style={{padding: '10px 8px', fontSize: '11px', fontWeight: 700, textAlign: 'center', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px'}}>현재값</div>
+                      <div style={{padding: '10px 8px', fontSize: '11px', fontWeight: 700, textAlign: 'center', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px'}}>품질</div>
+                      <div style={{padding: '10px 8px', fontSize: '11px', fontWeight: 700, textAlign: 'center', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px'}}>타입</div>
+                      <div style={{padding: '10px 8px', fontSize: '11px', fontWeight: 700, textAlign: 'center', borderRight: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40px'}}>시간</div>
+                    </div>
+                    
+                    {/* 🔥 자동 높이 조정 데이터 영역 */}
+                    <div style={{
+                      flex: 1,
+                      overflowY: 'auto',
+                      overflowX: 'visible', // 가로는 상위에서 처리
+                      minHeight: 0,
+                      maxHeight: 'calc(100vh - 320px)', // 뷰포트 기준 동적 높이
+                      paddingBottom: '20px' // 아래쪽 여백 추가
+                    }}>
+                      {filteredDataPoints.map((dataPoint, index) => (
+                        <div key={dataPoint.key || `row-${index}`} style={{
+                          display: 'grid',
+                          gridTemplateColumns: '60px 300px 140px 160px 90px 80px 120px',
+                          gap: 0,
+                          borderBottom: '1px solid #f1f5f9',
+                          alignItems: 'center',
+                          minHeight: '46px',
+                          fontSize: '13px',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                          
+                          {/* 체크박스 */}
+                          <div style={{padding: '8px', textAlign: 'center', borderRight: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '46px'}}>
+                            <input
+                              type="checkbox"
+                              checked={selectedDataPoints.some(dp => dp.key === dataPoint.key)}
+                              onChange={() => handleDataPointSelect(dataPoint)}
+                              style={{width: '16px', height: '16px', cursor: 'pointer'}}
+                            />
                           </div>
-                          <div style={{fontSize: '8px', color: '#6b7280', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                            {(dataPoint.key || '').replace('device:', '').replace(/:/g, '/')}
+                          
+                          {/* 포인트명 */}
+                          <div style={{padding: '8px 12px', textAlign: 'left', overflow: 'hidden', borderRight: '1px solid #f1f5f9', minHeight: '46px', display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
+                            <div style={{fontWeight: 600, fontSize: '12px', color: '#111827', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                              {dataPoint.point_name || '[포인트명 없음]'}
+                            </div>
+                            <div style={{fontSize: '9px', color: '#6b7280', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                              {(dataPoint.key || '').replace('device:', '').replace(/:/g, '/')}
+                            </div>
+                          </div>
+                          
+                          {/* 디바이스 */}
+                          <div style={{padding: '8px', textAlign: 'center', fontSize: '11px', color: '#374151', borderRight: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '46px'}}>
+                            <div style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%'}}>
+                              {(dataPoint.device_name || '').replace('-CTRL-', '').replace('-01', '')}
+                            </div>
+                          </div>
+                          
+                          {/* 현재값 */}
+                          <div style={{padding: '8px 10px', textAlign: 'right', borderRight: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: '46px'}}>
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              fontSize: '12px',
+                              padding: '4px 8px',
+                              borderRadius: '5px',
+                              backgroundColor: dataPoint.quality === 'good' ? '#dcfce7' : 
+                                              dataPoint.quality === 'bad' ? '#fee2e2' : 
+                                              dataPoint.quality === 'uncertain' ? '#fef3c7' : 
+                                              dataPoint.quality === 'comm_failure' ? '#fee2e2' : '#f3f4f6',
+                              color: dataPoint.quality === 'good' ? '#166534' : 
+                                     dataPoint.quality === 'bad' ? '#dc2626' : 
+                                     dataPoint.quality === 'uncertain' ? '#92400e' : 
+                                     dataPoint.quality === 'comm_failure' ? '#dc2626' : '#374151'
+                            }}>
+                              {String(dataPoint.value || '—')}
+                              {dataPoint.unit && <span style={{fontSize: '10px', marginLeft: '2px'}}>{dataPoint.unit}</span>}
+                            </span>
+                          </div>
+                          
+                          {/* 품질 */}
+                          <div style={{padding: '8px', textAlign: 'center', borderRight: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '46px'}}>
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '12px',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              backgroundColor: dataPoint.quality === 'good' ? '#dcfce7' : 
+                                              dataPoint.quality === 'bad' ? '#fee2e2' : 
+                                              dataPoint.quality === 'uncertain' ? '#fef3c7' : 
+                                              dataPoint.quality === 'comm_failure' ? '#fee2e2' : 
+                                              dataPoint.quality === 'last_known' ? '#f3f4f6' : '#f3f4f6',
+                              color: dataPoint.quality === 'good' ? '#166534' : 
+                                     dataPoint.quality === 'bad' ? '#dc2626' : 
+                                     dataPoint.quality === 'uncertain' ? '#92400e' : 
+                                     dataPoint.quality === 'comm_failure' ? '#dc2626' : '#374151'
+                            }}>
+                              {dataPoint.quality === 'good' ? 'OK' :
+                               dataPoint.quality === 'comm_failure' ? 'ERR' : 
+                               dataPoint.quality === 'last_known' ? 'OLD' : 
+                               dataPoint.quality === 'uncertain' ? '?' : 
+                               dataPoint.quality || '—'}
+                            </span>
+                          </div>
+                          
+                          {/* 타입 */}
+                          <div style={{padding: '8px', textAlign: 'center', borderRight: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '46px'}}>
+                            <span style={{
+                              fontSize: '10px',
+                              color: '#6b7280',
+                              textTransform: 'uppercase',
+                              fontWeight: 600,
+                              background: '#f3f4f6',
+                              padding: '3px 8px',
+                              borderRadius: '4px'
+                            }}>
+                              {dataPoint.data_type === 'number' ? 'NUM' :
+                               dataPoint.data_type === 'boolean' ? 'BOOL' :
+                               dataPoint.data_type === 'integer' ? 'INT' :
+                               dataPoint.data_type === 'string' ? 'STR' : 'UNK'}
+                            </span>
+                          </div>
+                          
+                          {/* 시간 */}
+                          <div style={{padding: '8px', textAlign: 'center', borderRight: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '46px'}}>
+                            <span style={{
+                              fontSize: '11px',
+                              color: '#6b7280',
+                              fontFamily: 'monospace'
+                            }}>
+                              {dataPoint.timestamp ? 
+                                new Date(dataPoint.timestamp).toLocaleTimeString('ko-KR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit'
+                                }) : '—'}
+                            </span>
                           </div>
                         </div>
-                        <div className="table-cell" style={{padding: '4px', textAlign: 'center', fontSize: '10px', color: '#374151'}}>
-                          <div style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                            {(dataPoint.device_name || '').replace('-CTRL-', '').replace('-01', '')}
-                          </div>
-                        </div>
-                        <div className="table-cell" style={{padding: '4px', textAlign: 'right'}}>
-                          <span style={{
-                            fontFamily: 'monospace',
-                            fontWeight: '600',
-                            fontSize: '11px',
-                            padding: '2px 6px',
-                            borderRadius: '3px',
-                            backgroundColor: dataPoint.quality === 'good' ? '#dcfce7' : 
-                                            dataPoint.quality === 'bad' ? '#fee2e2' : 
-                                            dataPoint.quality === 'uncertain' ? '#fef3c7' : 
-                                            dataPoint.quality === 'comm_failure' ? '#fee2e2' : '#f3f4f6',
-                            color: dataPoint.quality === 'good' ? '#166534' : 
-                                   dataPoint.quality === 'bad' ? '#dc2626' : 
-                                   dataPoint.quality === 'uncertain' ? '#92400e' : 
-                                   dataPoint.quality === 'comm_failure' ? '#dc2626' : '#374151',
-                            display: 'block'
-                          }}>
-                            {String(dataPoint.value || '—')}
-                            {dataPoint.unit && <span style={{fontSize: '9px', marginLeft: '1px'}}>{dataPoint.unit}</span>}
-                          </span>
-                        </div>
-                        <div className="table-cell" style={{padding: '4px', textAlign: 'center'}}>
-                          <span style={{
-                            padding: '2px 4px',
-                            borderRadius: '8px',
-                            fontSize: '8px',
-                            fontWeight: '700',
-                            textTransform: 'uppercase',
-                            backgroundColor: dataPoint.quality === 'good' ? '#dcfce7' : 
-                                            dataPoint.quality === 'bad' ? '#fee2e2' : 
-                                            dataPoint.quality === 'uncertain' ? '#fef3c7' : 
-                                            dataPoint.quality === 'comm_failure' ? '#fee2e2' : 
-                                            dataPoint.quality === 'last_known' ? '#f3f4f6' : '#f3f4f6',
-                            color: dataPoint.quality === 'good' ? '#166534' : 
-                                   dataPoint.quality === 'bad' ? '#dc2626' : 
-                                   dataPoint.quality === 'uncertain' ? '#92400e' : 
-                                   dataPoint.quality === 'comm_failure' ? '#dc2626' : '#374151'
-                          }}>
-                            {dataPoint.quality === 'good' ? 'OK' :
-                             dataPoint.quality === 'comm_failure' ? 'ERR' : 
-                             dataPoint.quality === 'last_known' ? 'OLD' : 
-                             dataPoint.quality === 'uncertain' ? '?' : 
-                             dataPoint.quality || '—'}
-                          </span>
-                        </div>
-                        <div className="table-cell" style={{padding: '4px', textAlign: 'center'}}>
-                          <span style={{
-                            fontSize: '8px',
-                            color: '#6b7280',
-                            textTransform: 'uppercase',
-                            fontWeight: '600',
-                            background: '#f3f4f6',
-                            padding: '2px 4px',
-                            borderRadius: '2px'
-                          }}>
-                            {dataPoint.data_type === 'number' ? 'NUM' :
-                             dataPoint.data_type === 'boolean' ? 'BOOL' :
-                             dataPoint.data_type === 'integer' ? 'INT' :
-                             dataPoint.data_type === 'string' ? 'STR' : 'UNK'}
-                          </span>
-                        </div>
-                        <div className="table-cell" style={{padding: '4px', textAlign: 'center'}}>
-                          <span style={{
-                            fontSize: '8px',
-                            color: '#6b7280',
-                            fontFamily: 'monospace'
-                          }}>
-                            {dataPoint.timestamp ? 
-                              new Date(dataPoint.timestamp).toLocaleTimeString('ko-KR', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              }) : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
