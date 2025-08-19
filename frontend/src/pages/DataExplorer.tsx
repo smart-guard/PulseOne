@@ -510,37 +510,195 @@ const DataExplorer: React.FC = () => {
   }, [devices, loadRealtimeData, initializeData]);
 
   const handleExportData = useCallback(() => {
-    console.log('📥 데이터 내보내기 시작...');
+    console.log('📥 CSV 데이터 내보내기 시작...');
     
-    const exportData = filteredDataPoints.map((dp: RealtimeValue) => ({
-      key: dp.key,
-      point_name: dp.point_name,
-      device_name: dp.device_name,
-      device_id: dp.device_id,
-      value: dp.value,
-      unit: dp.unit,
-      data_type: dp.data_type,
-      quality: dp.quality,
-      timestamp: dp.timestamp,
-      source: dp.source
-    }));
+    if (filteredDataPoints.length === 0) {
+      console.warn('⚠️ 내보낼 데이터가 없습니다.');
+      alert('내보낼 데이터가 없습니다.');
+      return;
+    }
     
-    // JSON 파일로 다운로드
-    const jsonData = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([jsonData], { type: 'application/json' });
+    // 🔥 CSV 헤더 정의 (한글 + 영문)
+    const csvHeaders = [
+      'Device Name (디바이스명)',
+      'Point Name (포인트명)', 
+      'Point ID (포인트 ID)',
+      'Current Value (현재값)',
+      'Unit (단위)',
+      'Data Type (데이터타입)',
+      'Quality (품질)',
+      'Timestamp (시간)'
+    ];
+    
+    // 🔥 데이터를 CSV 행으로 변환
+    const csvRows = filteredDataPoints.map((dp) => {
+      return [
+        `"${dp.device_name || 'Unknown'}"`,                           // 디바이스명
+        `"${dp.point_name || 'Unknown'}"`,                            // 포인트명  
+        `"${dp.point_id || ''}"`,                                     // 포인트 ID
+        `"${dp.value !== undefined && dp.value !== null ? dp.value : ''}"`,  // 현재값
+        `"${dp.unit || ''}"`,                                         // 단위
+        `"${dp.data_type || 'unknown'}"`,                             // 데이터타입
+        `"${dp.quality || 'unknown'}"`,                               // 품질
+        `"${dp.timestamp ? new Date(dp.timestamp).toLocaleString('ko-KR') : ''}"` // 시간 (한국어)                                          // 키
+      ].join(',');
+    });
+    
+    // 🔥 CSV 내용 조합 (BOM 추가로 Excel 한글 호환성)
+    const csvContent = '\uFEFF' + [csvHeaders.join(','), ...csvRows].join('\n');
+    
+    // 🔥 Blob 생성 및 다운로드
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     
     const link = document.createElement('a');
     link.href = url;
-    link.download = `pulseone_realtime_data_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `pulseone_realtime_data_${new Date().toISOString().split('T')[0]}.csv`;
+    link.style.display = 'none';
+    
+    // 🔥 DOM에 추가해서 클릭 후 정리
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    console.log(`✅ ${exportData.length}개 데이터 내보내기 완료`);
+    console.log(`✅ ${filteredDataPoints.length}개 데이터 CSV 내보내기 완료`);
+    
   }, [filteredDataPoints]);
 
+  const handleExportDataAdvanced = useCallback((format = 'csv') => {
+    console.log(`📥 ${format.toUpperCase()} 데이터 내보내기 시작...`);
+    
+    if (filteredDataPoints.length === 0) {
+      console.warn('⚠️ 내보낼 데이터가 없습니다.');
+      alert('내보낼 데이터가 없습니다.');
+      return;
+    }
+    
+    const timestamp = new Date().toISOString().split('T')[0];
+    
+    if (format === 'csv') {
+      // 🔥 CSV 내보내기 (Excel 완벽 호환)
+      const csvHeaders = [
+        'Device Name', 'Point Name', 'Point ID', 'Current Value', 
+        'Unit', 'Data Type', 'Quality', 'Timestamp', 'Source', 'Key'
+      ];
+      
+      const csvRows = filteredDataPoints.map((dp) => {
+        return [
+          escapeCSVField(dp.device_name || ''),
+          escapeCSVField(dp.point_name || ''),
+          escapeCSVField(dp.point_id || ''),
+          escapeCSVField(dp.value),
+          escapeCSVField(dp.unit || ''),
+          escapeCSVField(dp.data_type || ''),
+          escapeCSVField(dp.quality || ''),
+          escapeCSVField(dp.timestamp ? new Date(dp.timestamp).toLocaleString('ko-KR') : ''),
+          escapeCSVField(dp.source || ''),
+          escapeCSVField(dp.key || '')
+        ].join(',');
+      });
+      
+      // BOM 추가로 Excel 한글 완벽 지원
+      const csvContent = '\uFEFF' + [csvHeaders.join(','), ...csvRows].join('\n');
+      downloadFile(csvContent, `pulseone_realtime_data_${timestamp}.csv`, 'text/csv;charset=utf-8;');
+      
+    } else if (format === 'json') {
+      // 🔥 JSON 내보내기
+      const jsonData = JSON.stringify({
+        export_info: {
+          export_time: new Date().toISOString(),
+          total_records: filteredDataPoints.length,
+          source: 'PulseOne DataExplorer',
+          filters_applied: filters
+        },
+        data: filteredDataPoints
+      }, null, 2);
+      
+      downloadFile(jsonData, `pulseone_realtime_data_${timestamp}.json`, 'application/json');
+      
+    } else if (format === 'xlsx') {
+      // 🔥 Excel 파일 내보내기 (향후 구현 예정)
+      alert('Excel 내보내기는 곧 지원 예정입니다. 현재는 CSV를 사용해주세요.');
+      return;
+    }
+    
+    console.log(`✅ ${filteredDataPoints.length}개 데이터 ${format.toUpperCase()} 내보내기 완료`);
+  }, [filteredDataPoints, filters]);
+
+  // CSV 필드 이스케이프 (쉼표, 따옴표, 줄바꿈 처리)
+  const escapeCSVField = (value) => {
+    if (value === undefined || value === null) return '""';
+    
+    const stringValue = String(value);
+    
+    // 쉼표, 따옴표, 줄바꿈이 있으면 따옴표로 감싸기
+    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+      // 내부 따옴표는 두 개로 이스케이프
+      return '"' + stringValue.replace(/"/g, '""') + '"';
+    }
+    
+    return stringValue;
+  };
+  // 파일 다운로드 헬퍼
+  const downloadFile = (content, filename, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };  
+  
+  const ExportButton = () => {
+    const [exportFormat, setExportFormat] = useState('csv');
+    
+    return (
+      <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+        <select
+          value={exportFormat}
+          onChange={(e) => setExportFormat(e.target.value)}
+          style={{
+            padding: '6px 8px',
+            borderRadius: '4px',
+            border: '1px solid #d1d5db',
+            fontSize: '12px'
+          }}
+        >
+          <option value="csv">CSV (Excel 호환)</option>
+          <option value="json">JSON</option>
+          <option value="xlsx">Excel (예정)</option>
+        </select>
+        
+        <button 
+          onClick={() => handleExportDataAdvanced(exportFormat)}
+          disabled={filteredDataPoints.length === 0}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            border: '1px solid #3b82f6',
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: 500,
+            cursor: filteredDataPoints.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: filteredDataPoints.length === 0 ? 0.6 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          📥 데이터 내보내기 ({filteredDataPoints.length})
+        </button>
+      </div>
+    );
+  };
   const clearSelection = useCallback(() => {
     console.log('🔄 선택 초기화');
     setSelectedDataPoints([]);
