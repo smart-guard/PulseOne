@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/DeviceList.tsx  
-// 🔥 실제 API만 연결 - 목 데이터 완전 제거 + 부드러운 새로고침
+// 🔥 인라인 스타일 제거하고 CSS 클래스만 사용하는 버전
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -654,7 +654,7 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 🎨 UI 렌더링
+  // 🎨 UI 렌더링 - 🔥 인라인 스타일 제거하고 CSS 클래스만 사용
   // =============================================================================
 
   return (
@@ -662,7 +662,10 @@ const DeviceList: React.FC = () => {
       {/* 페이지 헤더 */}
       <div className="page-header">
         <div className="header-left">
-          <h1 className="page-title">디바이스 관리</h1>
+          <h1 className="page-title">
+            <i className="fas fa-network-wired"></i>
+            디바이스 관리
+          </h1>
           <div className="page-subtitle">
             연결된 디바이스 목록을 관리하고 모니터링합니다
           </div>
@@ -688,21 +691,12 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 실제 API 데이터 기반 통계 카드들 */}
+      {/* 🔥 통계 카드들 - 인라인 스타일 제거 */}
       {deviceStats && (
-        <div 
-          className="stats-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '20px',
-            marginBottom: '32px',
-            padding: '0 32px'
-          }}
-        >
+        <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-network-wired" style={{ color: '#3b82f6' }}></i>
+              <i className="fas fa-network-wired text-primary"></i>
             </div>
             <div className="stat-content">
               <div className="stat-value">{deviceStats.total_devices || 0}</div>
@@ -711,7 +705,7 @@ const DeviceList: React.FC = () => {
           </div>
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-check-circle" style={{ color: '#10b981' }}></i>
+              <i className="fas fa-check-circle text-success"></i>
             </div>
             <div className="stat-content">
               <div className="stat-value">{deviceStats.connected_devices || 0}</div>
@@ -720,7 +714,7 @@ const DeviceList: React.FC = () => {
           </div>
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-times-circle" style={{ color: '#ef4444' }}></i>
+              <i className="fas fa-times-circle text-error"></i>
             </div>
             <div className="stat-content">
               <div className="stat-value">{deviceStats.disconnected_devices || 0}</div>
@@ -729,7 +723,7 @@ const DeviceList: React.FC = () => {
           </div>
           <div className="stat-card">
             <div className="stat-icon">
-              <i className="fas fa-exclamation-triangle" style={{ color: '#f59e0b' }}></i>
+              <i className="fas fa-exclamation-triangle text-warning"></i>
             </div>
             <div className="stat-content">
               <div className="stat-value">{deviceStats.error_devices || 0}</div>
@@ -739,58 +733,17 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 필터 및 검색 */}
-      <div 
-        className="filters-section"
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e5e7eb',
-          borderRadius: '12px',
-          padding: '20px 32px',
-          marginBottom: '24px'
-        }}
-      >
-        <div 
-          className="filters-row"
-          style={{
-            display: 'flex',
-            gap: '12px',
-            alignItems: 'center',
-            width: '100%'
-          }}
-        >
+      {/* 필터 및 검색 - 인라인 스타일 제거 */}
+      <div className="filters-section">
+        <div className="filters-row">
           {/* 검색창 */}
-          <div 
-            className="search-box"
-            style={{
-              position: 'relative',
-              flex: '3',
-              minWidth: '300px'
-            }}
-          >
-            <i 
-              className="fas fa-search"
-              style={{
-                position: 'absolute',
-                left: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: '#9ca3af',
-                fontSize: '14px'
-              }}
-            ></i>
+          <div className="search-box">
+            <i className="fas fa-search"></i>
             <input
               type="text"
               placeholder="디바이스 이름, 설명, 제조사 검색..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px 16px 12px 40px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px'
-              }}
             />
           </div>
           
@@ -798,15 +751,6 @@ const DeviceList: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => handleFilterChange('status', e.target.value)}
-            style={{
-              padding: '12px 12px',
-              border: '1px solid #d1d5db',
-              borderRadius: '8px',
-              fontSize: '14px',
-              background: '#ffffff',
-              cursor: 'pointer',
-              width: '130px'
-            }}
           >
             <option value="all">모든 상태</option>
             <option value="running">실행 중</option>
@@ -818,15 +762,6 @@ const DeviceList: React.FC = () => {
           <select
             value={protocolFilter}
             onChange={(e) => handleFilterChange('protocol', e.target.value)}
-            style={{
-              padding: '12px 12px',
-              border: '1px solid #d1d5db',
-              borderRadius: '8px',
-              fontSize: '14px',
-              background: '#ffffff',
-              cursor: 'pointer',
-              width: '140px'
-            }}
           >
             <option value="all">모든 프로토콜</option>
             {availableProtocols.map(protocol => (
@@ -837,15 +772,6 @@ const DeviceList: React.FC = () => {
           <select
             value={connectionFilter}
             onChange={(e) => handleFilterChange('connection', e.target.value)}
-            style={{
-              padding: '12px 12px',
-              border: '1px solid #d1d5db',
-              borderRadius: '8px',
-              fontSize: '14px',
-              background: '#ffffff',
-              cursor: 'pointer',
-              width: '140px'
-            }}
           >
             <option value="all">모든 연결상태</option>
             <option value="connected">연결됨</option>
@@ -856,27 +782,8 @@ const DeviceList: React.FC = () => {
 
         {/* 일괄 작업 버튼들 */}
         {selectedDevices.length > 0 && (
-          <div 
-            className="bulk-actions"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              padding: '12px 16px',
-              background: '#f3f4f6',
-              borderRadius: '8px',
-              border: '1px solid #e5e7eb',
-              marginTop: '16px'
-            }}
-          >
-            <span 
-              className="selected-count"
-              style={{
-                fontSize: '14px',
-                color: '#374151',
-                fontWeight: '500'
-              }}
-            >
+          <div className="bulk-actions">
+            <span className="selected-count">
               {selectedDevices.length}개 선택됨
             </span>
             <button 
@@ -979,7 +886,6 @@ const DeviceList: React.FC = () => {
                         <div 
                           className="device-name"
                           onClick={() => handleDeviceClick(device)}
-                          style={{ cursor: 'pointer', color: '#3b82f6' }}
                         >
                           {device.name}
                         </div>
@@ -995,15 +901,7 @@ const DeviceList: React.FC = () => {
                   <div className="device-table-cell">
                     <span 
                       className="protocol-badge"
-                      style={{
-                        ...getProtocolBadgeStyle(device.protocol_type),
-                        padding: '4px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.025em'
-                      }}
+                      style={getProtocolBadgeStyle(device.protocol_type)}
                     >
                       {getProtocolDisplayName(device.protocol_type)}
                     </span>
@@ -1011,7 +909,7 @@ const DeviceList: React.FC = () => {
 
                   {/* 상태 */}
                   <div className="device-table-cell">
-                    <span className={`status ${getStatusBadgeClass(typeof device.status === 'string' ? device.status : device.status?.connection_status || 'unknown')}`}>
+                    <span className={getStatusBadgeClass(typeof device.status === 'string' ? device.status : device.status?.connection_status || 'unknown')}>
                       <span className={`status-dot status-dot-${typeof device.status === 'string' ? device.status : device.status?.connection_status || 'unknown'}`}></span>
                       {typeof device.status === 'string' ? device.status : device.status?.connection_status || 'unknown'}
                     </span>
@@ -1123,35 +1021,12 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 🔥 부드러운 새로고침 상태바 */}
-      <div style={{
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        padding: '16px 24px',
-        marginTop: '24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '24px'
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '14px',
-            color: '#6b7280'
-          }}>
+      {/* 🔥 부드러운 새로고침 상태바 - 인라인 스타일을 CSS 클래스로 교체 */}
+      <div className="status-bar">
+        <div className="status-bar-left">
+          <div className="last-update">
             <span>마지막 업데이트:</span>
-            <span style={{
-              color: '#111827',
-              fontWeight: '600'
-            }}>
+            <span className="update-time">
               {lastUpdate.toLocaleTimeString('ko-KR', { 
                 hour12: true, 
                 hour: '2-digit', 
@@ -1161,108 +1036,41 @@ const DeviceList: React.FC = () => {
             </span>
           </div>
 
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '14px'
-          }}>
-            <span style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 12px',
-              background: autoRefresh ? '#dcfce7' : '#fef3c7',
-              color: autoRefresh ? '#166534' : '#92400e',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '500'
-            }}>
-              <div style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: autoRefresh ? '#22c55e' : '#f59e0b',
-                animation: autoRefresh ? 'pulse 2s infinite' : 'none'
-              }}></div>
+          <div className="auto-refresh-status">
+            <span className={`refresh-indicator ${autoRefresh ? 'active' : 'inactive'}`}>
+              <div className="refresh-dot"></div>
               {autoRefresh ? '10초마다 자동 새로고침' : '자동새로고침 중지'}
             </span>
           </div>
 
           {/* 🔥 백그라운드 새로고침 상태 표시 */}
           {isBackgroundRefreshing && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              color: '#3b82f6'
-            }}>
-              <i className="fas fa-sync-alt fa-spin" style={{ fontSize: '12px' }}></i>
+            <div className="background-refresh">
+              <i className="fas fa-sync-alt fa-spin"></i>
               <span>백그라운드 업데이트 중...</span>
             </div>
           )}
 
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            fontSize: '14px',
-            color: '#6b7280'
-          }}>
-            <span style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              color: '#059669'
-            }}>
-              <i className="fas fa-circle" style={{ fontSize: '8px' }}></i>
+          <div className="api-status">
+            <span className="api-indicator">
+              <i className="fas fa-circle"></i>
               실제 API 데이터
             </span>
           </div>
         </div>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px'
-        }}>
+        <div className="status-bar-right">
           {isProcessing && (
-            <span style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              color: '#3b82f6',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}>
+            <span className="processing-indicator">
               <i className="fas fa-spinner fa-spin"></i>
               처리 중...
             </span>
           )}
           
           <button
+            className="refresh-button"
             onClick={handleManualRefresh}
             disabled={isProcessing || isBackgroundRefreshing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              background: '#f3f4f6',
-              border: '1px solid #d1d5db',
-              borderRadius: '8px',
-              color: '#374151',
-              fontSize: '14px',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = '#e5e7eb';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
-            }}
           >
             <i className={`fas fa-sync-alt ${isBackgroundRefreshing ? 'fa-spin' : ''}`}></i>
             새로고침
