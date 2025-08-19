@@ -730,54 +730,160 @@
   font-size: 12px;
 }
 
-/* 🔥 반응형 디자인 */
-@media (max-width: 1200px) {
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: stretch;
-  }
-  
-  .header-meta {
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
-  }
-  
-  .filter-row {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  
+/* ============================================
+   🔥 큰 화면 (1400px 이상) - 넓은 간격 (교체)
+   ============================================ */
+
+@media (min-width: 1400px) {
   .device-table-header,
   .device-table-row {
-    grid-template-columns: 40px 150px 70px 70px 100px 80px 80px 70px 140px;
-    gap: 8px;
-    padding: 12px 16px;
+    display: grid;
+    grid-template-columns: 
+      60px           /* 체크박스 */
+      minmax(280px, 2fr)  /* 디바이스 정보 - 넓게 */
+      minmax(120px, 1fr)  /* 프로토콜 */
+      minmax(100px, 1fr)  /* 상태 */
+      minmax(140px, 1fr)  /* 연결 */
+      minmax(120px, 1fr)  /* 데이터 */
+      minmax(120px, 1fr)  /* 성능 */
+      minmax(120px, 1fr)  /* 네트워크 */
+      minmax(200px, 1.5fr); /* 작업 - 여유있게 */
+    gap: 20px;
+    padding: 16px 32px;
+    align-items: center;
   }
 }
 
-@media (max-width: 768px) {
-  .stats-panel {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
+/* ============================================
+   🔥 일반 데스크톱 (1024px ~ 1399px) - 기본 (교체)
+   ============================================ */
+
+@media (min-width: 1024px) and (max-width: 1399px) {
   .device-table-header,
   .device-table-row {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: 
+      50px           /* 체크박스 */
+      minmax(240px, 2fr)  /* 디바이스 정보 */
+      minmax(100px, 1fr)  /* 프로토콜 */
+      minmax(90px, 1fr)   /* 상태 */
+      minmax(120px, 1fr)  /* 연결 */
+      minmax(100px, 1fr)  /* 데이터 */
+      minmax(100px, 1fr)  /* 성능 */
+      minmax(100px, 1fr)  /* 네트워크 */
+      minmax(160px, 1fr); /* 작업 */
+    gap: 16px;
+    padding: 16px 24px;
+    align-items: center;
+  }
+}
+
+/* ============================================
+   🔥 중간 화면 (768px ~ 1023px) - 일부 컬럼 축소 (교체)
+   ============================================ */
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .device-table-header,
+  .device-table-row {
+    display: grid;
+    grid-template-columns: 
+      40px           /* 체크박스 */
+      minmax(200px, 2fr)  /* 디바이스 정보 */
+      minmax(80px, 1fr)   /* 프로토콜 */
+      minmax(80px, 1fr)   /* 상태 */
+      minmax(100px, 1fr)  /* 연결 */
+      minmax(80px, 1fr)   /* 데이터 */
+      minmax(80px, 1fr)   /* 성능 */
+      minmax(80px, 1fr)   /* 네트워크 */
+      minmax(120px, 1fr); /* 작업 */
+    gap: 12px;
+    padding: 12px 20px;
+    align-items: center;
+  }
+}
+
+/* ============================================
+   🔥 작은 화면 (480px ~ 767px) - 중요 컬럼만 (교체)
+   ============================================ */
+
+@media (min-width: 480px) and (max-width: 767px) {
+  .device-table-header,
+  .device-table-row {
+    display: grid;
+    grid-template-columns: 
+      35px           /* 체크박스 */
+      minmax(150px, 3fr)  /* 디바이스 정보 - 더 넓게 */
+      minmax(70px, 1fr)   /* 프로토콜 */
+      minmax(70px, 1fr)   /* 상태 */
+      minmax(100px, 1fr); /* 작업만 */
     gap: 8px;
+    padding: 12px 16px;
+    align-items: center;
+  }
+  
+  /* 불필요한 컬럼 숨기기 */
+  .device-table-header > div:nth-child(5),    /* 연결 */
+  .device-table-header > div:nth-child(6),    /* 데이터 */
+  .device-table-header > div:nth-child(7),    /* 성능 */
+  .device-table-header > div:nth-child(8),    /* 네트워크 */
+  .device-table-row > div:nth-child(5),
+  .device-table-row > div:nth-child(6),
+  .device-table-row > div:nth-child(7),
+  .device-table-row > div:nth-child(8) {
+    display: none;
+  }
+}
+
+/* ============================================
+   🔥 매우 작은 화면 (480px 미만) - 카드 형태 (교체)
+   ============================================ */
+
+@media (max-width: 479px) {
+  .device-table {
+    border: none;
+    background: transparent;
+  }
+  
+  .device-table-header {
+    display: none;
+  }
+  
+  .device-table-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0;
+  }
+  
+  .device-table-row {
+    display: block;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    position: relative;
+  }
+  
+  .device-table-row:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
   
   .device-table-cell {
+    display: block;
+    margin-bottom: 8px;
+    text-align: left;
     justify-content: flex-start;
-    border-bottom: 1px solid #f3f4f6;
-    padding: 8px 0;
+  }
+  
+  .device-table-cell:first-child {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    margin-bottom: 0;
   }
 }
 
-//* ============================================================================
-   통계 카드 가로 4개 배치 CSS - device-list.css에 추가할 스타일
-   ============================================================================ */
 
 /* 🔥 통계 그리드 - 가로 4개 고정 배치 */
 .stats-grid {
