@@ -82,7 +82,7 @@ export const ENDPOINTS = {
   ALARM_BY_ID: (id: number | string) => `/api/alarms/${id}`,
   ALARM_ACKNOWLEDGE: (id: number | string) => `/api/alarms/${id}/acknowledge`,
   ALARM_CLEAR: (id: number | string) => `/api/alarms/${id}/clear`,
-  ALARM_RULES: '/api/alarms/rules',
+  ALARM_RULE_TEMPLATES: '/api/alarms/rules',
   ALARM_RULE_BY_ID: (id: number | string) => `/api/alarms/rules/${id}`,
   ALARM_STATISTICS: '/api/alarms/statistics',
   ALARM_UNACKNOWLEDGED: '/api/alarms/unacknowledged',
