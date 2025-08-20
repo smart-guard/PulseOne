@@ -1,17 +1,43 @@
 /* ============================================================================
-   frontend/src/styles/device-list.css 
-   📝 DeviceList 컴포넌트 전용 CSS - 최종 완성본
+   frontend/src/styles/device-list.css
+   🔥 완전히 새로운 반응형 디바이스 리스트 CSS
    ============================================================================ */
 
 /* ============================================
-   🔥 1. 페이지 레이아웃 기본 구조
+   🔥 1. CSS 변수로 동적 크기 관리 - 적절한 비율로 다시 조정
    ============================================ */
+:root {
+  /* 기본 테이블 설정 */
+  --table-padding: clamp(12px, 1.5vw, 32px);
+  --table-gap: clamp(4px, 0.5vw, 12px);
+  --cell-padding: clamp(6px, 0.6vw, 16px);
+  --font-size-base: clamp(11px, 0.9vw, 13px);
+  --font-size-small: clamp(9px, 0.8vw, 11px);
+  
+  /* 🔥 컨테이너 내에서 균형잡힌 비율 설정 */
+  --col-checkbox: 50px;                      /* 체크박스: 고정 */
+  --col-device: 2.5fr;                       /* 디바이스: 가장 중요한 정보 */
+  --col-protocol: 1.2fr;                     /* 프로토콜: 적당한 크기 */
+  --col-status: 1fr;                         /* 상태: 기본 크기 */
+  --col-connection: 1.1fr;                   /* 연결: 약간 여유 */
+  --col-data: 1fr;                           /* 데이터: 기본 크기 */
+  --col-performance: 1.1fr;                  /* 성능: 약간 여유 */
+  --col-network: 1fr;                        /* 네트워크: 기본 크기 */
+  --col-actions: 100px;                      /* 작업: 버튼 크기에 맞춤 */
+}
 
+/* ============================================
+   🔥 2. 기본 레이아웃 - 부모 컨테이너에 맞추기
+   ============================================ */
 .device-list-container {
-  max-width: 100vw;
-  overflow-x: hidden;
+  width: 100%;                           /* 부모 컨테이너에 맞춤 */
+  max-width: 100%;
+  overflow-x: hidden;                    /* 가로 스크롤 숨김 */
   background: #f8fafc;
   min-height: 100vh;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 /* 페이지 헤더 */
@@ -19,20 +45,24 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 24px 32px;
+  padding: var(--table-padding);
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .header-left {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .page-title {
-  font-size: 24px;
+  font-size: clamp(18px, 2.5vw, 28px);
   font-weight: 700;
   color: #111827;
   margin: 0;
@@ -43,11 +73,11 @@
 
 .page-title i {
   color: #3b82f6;
-  font-size: 20px;
+  font-size: clamp(16px, 2vw, 24px);
 }
 
 .page-subtitle {
-  font-size: 14px;
+  font-size: clamp(12px, 1.2vw, 16px);
   color: #6b7280;
   margin: 0;
 }
@@ -60,29 +90,29 @@
 .header-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 /* ============================================
-   🔥 2. 통계 카드 그리드 - 화면 크기 적응형
+   🔥 3. 통계 카드 - 완전 반응형
    ============================================ */
-
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--table-gap);
   margin-bottom: 32px;
-  padding: 0 32px;
+  padding: 0 var(--table-padding);
 }
 
 .stat-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 24px;
+  padding: clamp(16px, 2vw, 32px);
   text-align: center;
   transition: all 0.3s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  min-height: 120px;
+  min-height: clamp(100px, 12vw, 160px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -99,7 +129,7 @@
 }
 
 .stat-icon i {
-  font-size: 28px;
+  font-size: clamp(20px, 3vw, 36px);
 }
 
 .stat-content {
@@ -110,7 +140,7 @@
 }
 
 .stat-value {
-  font-size: 32px;
+  font-size: clamp(24px, 4vw, 48px);
   font-weight: 700;
   color: #111827;
   line-height: 1;
@@ -118,71 +148,21 @@
 }
 
 .stat-label {
-  font-size: 14px;
+  font-size: clamp(12px, 1.2vw, 18px);
   color: #6b7280;
   font-weight: 500;
   margin: 0;
 }
 
-/* 큰 화면에서 통계 카드 더 크게 */
-@media (min-width: 1600px) {
-  .stats-grid {
-    gap: 32px;
-    padding: 0 48px;
-  }
-  
-  .stat-card {
-    padding: 32px;
-    min-height: 160px;
-  }
-  
-  .stat-icon i {
-    font-size: 36px;
-  }
-  
-  .stat-value {
-    font-size: 40px;
-  }
-  
-  .stat-label {
-    font-size: 16px;
-  }
-}
-
-@media (min-width: 2560px) {
-  .stats-grid {
-    gap: 40px;
-    padding: 0 64px;
-  }
-  
-  .stat-card {
-    padding: 40px;
-    min-height: 200px;
-  }
-  
-  .stat-icon i {
-    font-size: 44px;
-  }
-  
-  .stat-value {
-    font-size: 48px;
-  }
-  
-  .stat-label {
-    font-size: 18px;
-  }
-}
-
 /* ============================================
-   🔥 3. 필터 섹션 - 화면 크기별 적응형
+   🔥 4. 필터 섹션 - 완전 반응형
    ============================================ */
-
 .filters-section {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px 32px;
-  margin-bottom: 24px;
+  padding: var(--table-padding);
+  margin: 0 var(--table-padding) 24px;
 }
 
 .filters-row {
@@ -190,13 +170,15 @@
   gap: 12px;
   align-items: center;
   width: 100%;
+  flex-wrap: wrap;
 }
 
 /* 검색박스 */
 .search-box {
   position: relative;
-  flex: 3;
-  min-width: 300px;
+  flex: 1;
+  min-width: 200px;
+  max-width: 400px;
 }
 
 .search-box i {
@@ -213,8 +195,9 @@
   padding: 12px 16px 12px 40px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   transition: all 0.2s ease;
+  box-sizing: border-box;
 }
 
 .search-box input:focus {
@@ -225,70 +208,20 @@
 
 /* 필터 셀렉트 박스들 */
 .filters-row select {
-  padding: 12px 12px;
+  padding: 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   background: #ffffff;
   cursor: pointer;
-  width: 130px;
+  min-width: 120px;
+  flex-shrink: 0;
 }
 
 .filters-row select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* 큰 화면에서 필터 섹션 더 넓게 */
-@media (min-width: 1600px) {
-  .filters-section {
-    padding: 24px 48px;
-  }
-  
-  .filters-row {
-    gap: 16px;
-  }
-  
-  .search-box {
-    min-width: 400px;
-  }
-  
-  .search-box input {
-    padding: 14px 18px 14px 44px;
-    font-size: 15px;
-  }
-  
-  .filters-row select {
-    padding: 14px 16px;
-    font-size: 15px;
-    width: 150px;
-  }
-}
-
-@media (min-width: 2560px) {
-  .filters-section {
-    padding: 32px 64px;
-  }
-  
-  .filters-row {
-    gap: 24px;
-  }
-  
-  .search-box {
-    min-width: 500px;
-  }
-  
-  .search-box input {
-    padding: 16px 20px 16px 48px;
-    font-size: 16px;
-  }
-  
-  .filters-row select {
-    padding: 16px 20px;
-    font-size: 16px;
-    width: 180px;
-  }
 }
 
 /* 일괄 작업 버튼들 */
@@ -301,18 +234,18 @@
   border-radius: 8px;
   border: 1px solid #e5e7eb;
   margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .selected-count {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: #374151;
   font-weight: 500;
 }
 
 /* ============================================
-   🔥 4. 에러 및 상태 메시지
+   🔥 5. 에러 및 상태 메시지
    ============================================ */
-
 .error-message {
   display: flex;
   align-items: center;
@@ -322,7 +255,7 @@
   border: 1px solid #fecaca;
   border-radius: 8px;
   color: #dc2626;
-  margin-bottom: 16px;
+  margin: 0 var(--table-padding) 16px;
 }
 
 .error-message button {
@@ -373,47 +306,56 @@
 }
 
 /* ============================================
-   🔥 5. 디바이스 테이블 - Grid 기반 (핵심)
+   🔥 6. 핵심 - 완전 반응형 테이블 (CSS Grid) - 부모 컨테이너에 맞추기
    ============================================ */
-
 .devices-table-container {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin: 0 var(--table-padding);
+  width: calc(100% - 2 * var(--table-padding));  /* 부모 컨테이너 기준 */
 }
 
 .device-table {
   width: 100%;
   background: white;
+  overflow: hidden;
 }
 
-/* 기본 테이블 스타일 - 작은 화면을 고려한 기본값 */
-.device-table-header {
+/* 🔥 핵심: 컨테이너 내에서 전체 너비 사용하는 그리드 */
+.device-table-header,
+.device-table-row {
   display: grid;
-  grid-template-columns: 25px 120px 50px 40px 55px 45px 45px 40px 50px;
-  gap: 2px;
-  padding: 6px 8px;
+  grid-template-columns: 
+    var(--col-checkbox)
+    var(--col-device) 
+    var(--col-protocol) 
+    var(--col-status) 
+    var(--col-connection) 
+    var(--col-data) 
+    var(--col-performance) 
+    var(--col-network) 
+    var(--col-actions);
+  gap: var(--table-gap);
+  padding: var(--cell-padding) var(--table-padding);
+  align-items: center;
+  min-height: clamp(35px, 4vw, 50px);
+  word-break: break-word;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.device-table-header {
   background: #f3f4f6;
   border-bottom: 2px solid #e5e7eb;
-  font-size: 8px;
+  font-size: var(--font-size-small);
   font-weight: 700;
   color: #374151;
   text-transform: uppercase;
   letter-spacing: 0.025em;
-}
-
-.device-table-row {
-  display: grid;
-  grid-template-columns: 25px 120px 50px 40px 55px 45px 45px 40px 50px;
-  gap: 2px;
-  padding: 6px 8px;
-  border-bottom: 1px solid #e5e7eb;
-  transition: all 0.2s ease;
-  background: white;
-  min-height: 40px;
-  align-items: center;
 }
 
 .device-table-header > div {
@@ -421,8 +363,8 @@
   align-items: center;
   justify-content: center;
   text-align: center;
+  font-size: var(--font-size-small);
   padding: 4px 0;
-  font-size: 10px;
 }
 
 .device-table-header > div:first-child {
@@ -430,15 +372,21 @@
 }
 
 .device-table-header > div:nth-child(2) {
-  justify-content: center;
-  text-align: center;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 /* 테이블 바디 */
 .device-table-body {
-  max-height: 60vh;
+  max-height: 70vh;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.device-table-row {
+  border-bottom: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+  background: white;
 }
 
 .device-table-row:hover {
@@ -459,9 +407,12 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--font-size-base);
   line-height: 1.3;
-  padding: 1px;
+  padding: 2px;
+  overflow: hidden;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .device-table-cell:first-child {
@@ -474,45 +425,51 @@
 }
 
 /* ============================================
-   🔥 6. 디바이스 정보 셀 (왼쪽 정렬)
+   🔥 7. 디바이스 정보 셀 (최적화) - 여백 줄이기
    ============================================ */
-
 .device-info {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: clamp(4px, 0.6vw, 8px);      /* 간격 줄이기 */
   width: 100%;
-  justify-content: flex-start;
+  min-width: 0;
+  padding: 0;                       /* 추가 패딩 제거 */
 }
 
 .device-info > div {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  margin: 0;                        /* 마진 제거 */
 }
 
 .device-icon {
-  width: 32px;
-  height: 32px;
+  width: clamp(20px, 2.2vw, 32px);   /* 아이콘 크기 줄이기 */
+  height: clamp(20px, 2.2vw, 32px);
   background: linear-gradient(135deg, #3b82f6, #2563eb);
-  border-radius: 8px;
+  border-radius: 6px;                /* 라운드 줄이기 */
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 14px;
+  font-size: clamp(8px, 1.2vw, 14px);
   flex-shrink: 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin-top: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin: 0;                         /* 마진 제거 */
 }
 
 .device-name {
   font-weight: 600;
   color: #111827;
-  font-size: 14px;
-  margin-bottom: 4px;
+  font-size: var(--font-size-base);
+  margin: 0 0 2px 0;                 /* 마진 최소화 */
   text-align: left;
-  line-height: 1.4;
+  line-height: 1.2;                  /* 라인 높이 줄이기 */
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;                        /* 패딩 제거 */
 }
 
 .device-name:hover {
@@ -521,64 +478,74 @@
 
 .device-details {
   display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 2px;                          /* 간격 최소화 */
+  margin: 0 0 2px 0;                 /* 마진 최소화 */
   flex-wrap: wrap;
 }
 
 .device-type,
 .device-manufacturer {
-  font-size: 10px;
+  font-size: clamp(8px, 0.7vw, 10px); /* 폰트 크기 줄이기 */
   color: #6b7280;
   background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 1px 4px;                  /* 패딩 줄이기 */
+  border-radius: 3px;                /* 라운드 줄이기 */
   font-weight: 500;
+  white-space: nowrap;
+  margin: 0;                         /* 마진 제거 */
 }
 
 .device-endpoint {
-  font-size: 10px;
+  font-size: clamp(8px, 0.7vw, 10px); /* 폰트 크기 줄이기 */
   color: #6b7280;
   font-family: 'Courier New', monospace;
   background: #f9fafb;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 1px 4px;                  /* 패딩 줄이기 */
+  border-radius: 3px;
   text-align: left;
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;                         /* 마진 제거 */
 }
 
 /* ============================================
-   🔥 7. 프로토콜 및 상태 배지
+   🔥 8. 프로토콜 및 상태 배지
    ============================================ */
-
 .protocol-badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: clamp(2px, 0.3vw, 6px) clamp(4px, 0.8vw, 12px);
   border-radius: 12px;
-  font-size: 11px;
+  font-size: var(--font-size-small);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.025em;
   border: none;
-  min-width: fit-content;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
-.status {
+.status-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: clamp(2px, 0.3vw, 6px) clamp(4px, 0.8vw, 12px);
   border-radius: 4px;
-  font-size: 10px;
+  font-size: var(--font-size-small);
   font-weight: 600;
   border: none;
-  min-width: fit-content;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: clamp(4px, 0.5vw, 8px);
+  height: clamp(4px, 0.5vw, 8px);
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -609,6 +576,26 @@
   color: #4b5563;
 }
 
+.connection-badge.connection-connected {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.connection-badge.connection-disconnected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.connection-badge.connection-error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.connection-badge.connection-unknown {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
 .status-dot-connected {
   background: #22c55e;
   box-shadow: 0 0 0 1px #bbf7d0;
@@ -626,9 +613,8 @@
 }
 
 /* ============================================
-   🔥 8. 정보 표시 영역 (데이터/성능/네트워크)
+   🔥 9. 정보 표시 영역
    ============================================ */
-
 .connection-info,
 .data-info,
 .performance-info,
@@ -638,48 +624,50 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
 }
 
 .info-title {
-  font-size: 11px;
+  font-size: var(--font-size-small);
   font-weight: 600;
   color: #374151;
   margin-bottom: 1px;
   text-align: center;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
 }
 
 .info-subtitle {
-  font-size: 10px;
+  font-size: clamp(8px, 0.8vw, 11px);
   font-weight: 400;
   color: #6b7280;
   text-align: center;
   line-height: 1.2;
-}
-
-/* 연결 정보는 더 작게 */
-.device-table-cell:nth-child(5) .info-title {
-  font-size: 8px !important;
-}
-
-.device-table-cell:nth-child(5) .info-subtitle {
-  font-size: 8px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
 }
 
 /* ============================================
-   🔥 9. 액션 버튼들
+   🔥 10. 액션 버튼들 - 크기 최적화
    ============================================ */
-
 .device-actions {
   display: flex;
-  gap: 4px;
+  gap: 4px;                              /* 간격 줄이기 */
   align-items: center;
   justify-content: center;
+  width: 100%;
 }
 
 .action-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;                           /* 고정 크기로 변경 */
+  height: 32px;
   border: none;
   border-radius: 6px;
   display: flex;
@@ -687,7 +675,8 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 12px;
+  font-size: 12px;                       /* 고정 폰트 크기 */
+  flex-shrink: 0;
 }
 
 .action-btn:hover {
@@ -724,20 +713,20 @@
 }
 
 /* ============================================
-   🔥 10. 공통 버튼 스타일
+   🔥 11. 공통 버튼 스타일
    ============================================ */
-
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: clamp(6px, 1vw, 12px) clamp(10px, 1.5vw, 20px);
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .btn-primary {
@@ -787,37 +776,39 @@
 }
 
 .btn-sm {
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: clamp(4px, 0.6vw, 8px) clamp(6px, 1vw, 12px);
+  font-size: var(--font-size-small);
 }
 
 /* ============================================
-   🔥 11. 상태바 스타일 (새로고침 상태 표시)
+   🔥 12. 상태바 스타일
    ============================================ */
-
 .status-bar {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 16px 24px;
-  margin-top: 24px;
+  padding: var(--table-padding);
+  margin: 24px var(--table-padding) 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .status-bar-left {
   display: flex;
   align-items: center;
   gap: 24px;
+  flex-wrap: wrap;
 }
 
 .last-update {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: #6b7280;
 }
 
@@ -830,7 +821,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .refresh-indicator {
@@ -839,7 +830,7 @@
   gap: 6px;
   padding: 4px 12px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-weight: 500;
 }
 
@@ -872,19 +863,19 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: #3b82f6;
 }
 
 .background-refresh i {
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .api-status {
   display: flex;
   align-items: center;
   gap: 16px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: #6b7280;
 }
 
@@ -910,7 +901,7 @@
   align-items: center;
   gap: 8px;
   color: #3b82f6;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
@@ -923,7 +914,7 @@
   border: 1px solid #d1d5db;
   border-radius: 8px;
   color: #374151;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -938,432 +929,139 @@
 }
 
 /* ============================================
-   🔥 12. 페이지네이션 섹션 - 화면 크기별 적응형
+   🔥 13. 페이지네이션 섹션
    ============================================ */
-
 .pagination-section {
-  padding: 20px 32px;
+  padding: var(--table-padding);
   background: #ffffff;
   border-top: 1px solid #e5e7eb;
 }
 
-/* 큰 화면에서 페이지네이션 더 넓게 */
-@media (min-width: 1600px) {
-  .pagination-section {
-    padding: 24px 48px;
-  }
-}
-
-@media (min-width: 2560px) {
-  .pagination-section {
-    padding: 32px 64px;
-  }
-}
-
 /* ============================================
-   🔥 13. 반응형 미디어 쿼리 - 큰 화면 최적화
+   🔥 14. 화면 크기별 최적화 - 전체 너비 활용하는 방향으로 조정
    ============================================ */
 
-/* 초대형 화면 (2560px 이상) - 4K, 5K 모니터 */
-@media (min-width: 2560px) {
+/* 🔥 화면 크기별 열 숨기기 - 비율은 그대로 유지 */
+@media (max-width: 1400px) {
+  .device-table-header > div:nth-child(8),
+  .device-table-cell:nth-child(8) {
+    display: none; /* 네트워크 열 숨김 */
+  }
+  
   .device-table-header,
   .device-table-row {
-    grid-template-columns: 80px 400px 140px 120px 160px 140px 140px 120px 160px;
-    gap: 24px;
-    padding: 20px 32px;
-  }
-  
-  .device-table-header {
-    font-size: 14px;
-  }
-  
-  .device-table-cell {
-    font-size: 14px;
-  }
-  
-  .device-icon {
-    width: 40px;
-    height: 40px;
-    font-size: 16px;
-  }
-  
-  .device-name {
-    font-size: 16px;
-  }
-  
-  .device-endpoint,
-  .device-details {
-    display: flex; /* 큰 화면에서는 다시 표시 */
-  }
-  
-  .protocol-badge {
-    font-size: 12px;
-    padding: 6px 12px;
-  }
-  
-  .status {
-    font-size: 12px;
-    padding: 6px 12px;
-  }
-  
-  .info-title {
-    font-size: 13px !important;
-  }
-  
-  .info-subtitle {
-    font-size: 11px !important;
-  }
-  
-  .action-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 14px;
+    grid-template-columns: 
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-connection) 
+      var(--col-data) 
+      var(--col-performance) 
+      var(--col-actions);
   }
 }
 
-/* 대형 외부 모니터 (1920px ~ 2559px) */
-@media (min-width: 1920px) and (max-width: 2559px) {
+@media (max-width: 1200px) {
+  .device-table-header > div:nth-child(7),
+  .device-table-cell:nth-child(7) {
+    display: none; /* 성능 열 숨김 */
+  }
+  
   .device-table-header,
   .device-table-row {
-    grid-template-columns: 70px 350px 130px 110px 150px 130px 130px 110px 150px;
-    gap: 20px;
-    padding: 18px 28px;
-  }
-  
-  .device-table-header {
-    font-size: 13px;
-  }
-  
-  .device-table-cell {
-    font-size: 13px;
-  }
-  
-  .device-icon {
-    width: 36px;
-    height: 36px;
-    font-size: 15px;
-  }
-  
-  .device-name {
-    font-size: 15px;
-  }
-  
-  .device-endpoint,
-  .device-details {
-    display: flex; /* 큰 화면에서는 다시 표시 */
-  }
-  
-  .protocol-badge {
-    font-size: 11px;
-    padding: 5px 10px;
-  }
-  
-  .status {
-    font-size: 11px;
-    padding: 5px 10px;
-  }
-  
-  .info-title {
-    font-size: 12px !important;
-  }
-  
-  .info-subtitle {
-    font-size: 10px !important;
-  }
-  
-  .action-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 13px;
+    grid-template-columns: 
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-connection) 
+      var(--col-data) 
+      var(--col-actions);
   }
 }
 
-/* 큰 화면 (1600px ~ 1919px) */
-@media (min-width: 1600px) and (max-width: 1919px) {
+@media (max-width: 1000px) {
+  .device-table-header > div:nth-child(6),
+  .device-table-cell:nth-child(6) {
+    display: none; /* 데이터 열 숨김 */
+  }
+  
+  :root {
+    --col-actions: 80px;  /* 액션 버튼 크기만 조정 */
+  }
+  
   .device-table-header,
   .device-table-row {
-    grid-template-columns: 60px 300px 120px 100px 140px 120px 120px 100px 140px;
-    gap: 16px;
-    padding: 16px 24px;
-  }
-  
-  .device-table-header {
-    font-size: 12px;
-  }
-  
-  .device-table-cell {
-    font-size: 12px;
-  }
-  
-  .device-icon {
-    width: 34px;
-    height: 34px;
-    font-size: 14px;
-  }
-  
-  .device-name {
-    font-size: 14px;
-  }
-  
-  .device-endpoint {
-    display: block; /* 중간 크기부터 엔드포인트 표시 */
-  }
-  
-  .protocol-badge {
-    font-size: 10px;
-    padding: 4px 8px;
-  }
-  
-  .status {
-    font-size: 10px;
-    padding: 4px 8px;
-  }
-  
-  .action-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 12px;
+    grid-template-columns: 
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-connection) 
+      var(--col-actions);
   }
 }
 
-/* 표준 대형 화면 (1400px ~ 1599px) */
-@media (min-width: 1400px) and (max-width: 1599px) {
+@media (max-width: 800px) {
+  .device-table-header > div:nth-child(5),
+  .device-table-cell:nth-child(5) {
+    display: none; /* 연결 열 숨김 */
+  }
+  
+  :root {
+    --col-actions: 70px;  /* 액션 버튼 더 작게 */
+  }
+  
   .device-table-header,
   .device-table-row {
-    grid-template-columns: 50px 270px 110px 95px 130px 110px 110px 95px 130px;
-    gap: 14px;
-    padding: 15px 22px;
-  }
-  
-  .device-table-header {
-    font-size: 11px;
-  }
-  
-  .device-table-cell {
-    font-size: 11px;
-  }
-  
-  .device-icon {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-  
-  .device-name {
-    font-size: 13px;
+    grid-template-columns: 
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-actions);
   }
 }
 
-/* 일반 데스크톱 (1200px ~ 1399px) */
-@media (min-width: 1200px) and (max-width: 1399px) {
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 45px 240px 100px 85px 120px 100px 100px 85px 120px;
-    gap: 12px;
-    padding: 14px 20px;
-  }
-}
-
-/* 맥북 15인치 (1024px ~ 1199px) - 더 적극적인 크기 축소 */
-@media (min-width: 1024px) and (max-width: 1199px) {
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 25px 120px 55px 45px 60px 50px 50px 45px 55px;
-    gap: 1px;
-    padding: 6px 6px;
-    align-items: center;
-  }
-  
-  .device-table-header {
-    font-size: 8px;
-  }
-  
-  .device-table-cell {
-    font-size: 8px;
-  }
-  
-  .device-icon {
-    width: 18px;
-    height: 18px;
-    font-size: 9px;
-  }
-  
-  .device-name {
-    font-size: 9px;
-    margin-bottom: 1px;
-  }
-  
-  .device-endpoint {
-    display: none;
-  }
-  
-  .protocol-badge {
-    font-size: 6px;
-    padding: 1px 2px;
-  }
-  
-  .status {
-    font-size: 6px;
-    padding: 1px 2px;
-  }
-  
-  .info-title {
-    font-size: 6px !important;
-    margin-bottom: 1px;
-  }
-  
-  .info-subtitle {
-    font-size: 5px !important;
-  }
-  
-  .action-btn {
-    width: 14px;
-    height: 14px;
-    font-size: 6px;
-  }
-  
-  .device-actions {
-    gap: 1px;
-  }
-}
-
-/* 태블릿 (768px ~ 1023px) - 극도로 압축 */
-@media (min-width: 768px) and (max-width: 1023px) {
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 20px 100px 45px 35px 50px 40px 40px 35px 45px;
-    gap: 0;
-    padding: 4px 4px;
-    align-items: center;
-  }
-  
-  .device-table-header {
-    font-size: 7px;
-  }
-  
-  .device-table-cell {
-    font-size: 7px;
-  }
-  
-  .device-icon {
-    width: 14px;
-    height: 14px;
-    font-size: 7px;
-  }
-  
-  .device-name {
-    font-size: 7px;
-    margin-bottom: 0;
-  }
-  
-  .device-endpoint,
-  .device-details {
-    display: none;
-  }
-  
-  .protocol-badge {
-    font-size: 5px;
-    padding: 1px;
-  }
-  
-  .status {
-    font-size: 5px;
-    padding: 1px;
-  }
-  
-  .info-title {
-    font-size: 5px !important;
-    margin-bottom: 0;
-  }
-  
-  .info-subtitle {
-    font-size: 4px !important;
-  }
-  
-  .action-btn {
-    width: 12px;
-    height: 12px;
-    font-size: 5px;
-  }
-  
-  .device-actions {
-    gap: 0;
-  }
-}
-
-/* 모바일 가로 (480px ~ 767px) - 최대한 압축 */
-@media (min-width: 480px) and (max-width: 767px) {
-  .device-table-header,
-  .device-table-row {
-    grid-template-columns: 15px 80px 35px 25px 40px 30px 30px 25px 35px;
-    gap: 0;
-    padding: 2px 2px;
-    align-items: center;
-  }
-  
-  .device-table-header {
-    font-size: 6px;
-  }
-  
-  .device-table-cell {
-    font-size: 6px;
-    padding: 0;
-  }
-  
-  .device-icon {
-    width: 10px;
-    height: 10px;
-    font-size: 5px;
-  }
-  
-  .device-name {
-    font-size: 6px;
-    margin-bottom: 0;
-  }
-  
-  .device-endpoint,
-  .device-details {
-    display: none;
-  }
-  
-  .protocol-badge {
-    font-size: 4px;
-    padding: 0 1px;
-  }
-  
-  .status {
-    font-size: 4px;
-    padding: 0 1px;
-  }
-  
-  .info-title {
-    font-size: 4px !important;
-    margin-bottom: 0;
-  }
-  
-  .info-subtitle {
-    font-size: 3px !important;
-  }
-  
-  .action-btn {
-    width: 10px;
-    height: 10px;
-    font-size: 4px;
-  }
-  
-  .device-actions {
-    gap: 0;
+@media (max-width: 600px) {
+  /* 필터들을 세로로 배치 */
+  .filters-row {
     flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-box {
+    max-width: none;
+  }
+  
+  .filters-row select {
+    min-width: auto;
+  }
+  
+  /* 통계 카드를 2x2로 배치 */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  /* 헤더를 세로로 배치 */
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .header-actions {
+    justify-content: stretch;
+  }
+  
+  .header-actions .btn {
+    flex: 1;
+    justify-content: center;
   }
 }
 
-/* 모바일 세로 (480px 미만) - 카드 형태 */
-@media (max-width: 479px) {
-  .device-table {
-    border: none;
-    background: transparent;
-  }
-  
+/* 매우 작은 화면에서는 카드 형태로 변경 */
+@media (max-width: 480px) {
   .device-table-header {
     display: none;
   }
@@ -1371,165 +1069,49 @@
   .device-table-body {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 0;
+    gap: 12px;
+    padding: 16px;
+    background: #f8fafc;
   }
   
   .device-table-row {
     display: block;
     background: white;
     border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 12px;
+    border-radius: 8px;
+    padding: 16px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     position: relative;
   }
   
   .device-table-cell {
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
     text-align: left;
-    font-size: 11px;
+    font-size: 14px;
   }
   
   .device-table-cell:first-child {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 16px;
+    right: 16px;
     margin-bottom: 0;
   }
   
+  .device-table-cell:last-child {
+    margin-bottom: 0;
+    text-align: right;
+  }
+  
+  /* 통계 카드를 1x4로 배치 */
   .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    padding: 0 8px;
-  }
-  
-  .page-header {
-    padding: 12px 16px;
-  }
-  
-  .page-title {
-    font-size: 20px;
-  }
-  
-  .stat-card {
-    padding: 12px;
-    min-height: 80px;
-  }
-  
-  .stat-value {
-    font-size: 20px;
-  }
-  
-  .stat-label {
-    font-size: 11px;
-  }
-}
-
-/* 반응형 통계 및 필터 영역 조정 */
-@media (max-width: 1199px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    padding: 0 12px;
-  }
-  
-  .filters-section {
-    padding: 12px 16px;
-  }
-  
-  .filters-row {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .search-box {
-    min-width: auto;
-  }
-  
-  .filters-row select {
-    min-width: 80px;
-    font-size: 12px;
-    padding: 8px 10px;
-  }
-}
-
-/* 태블릿에서 통계 카드 조정 */
-@media (max-width: 1023px) {
-  .page-header {
-    padding: 12px 16px;
-  }
-  
-  .page-title {
-    font-size: 20px;
-  }
-  
-  .stat-card {
-    padding: 12px;
-    min-height: 80px;
-  }
-  
-  .stat-value {
-    font-size: 20px;
-  }
-  
-  .stat-label {
-    font-size: 11px;
-  }
-}
-
-/* 모바일에서 통계 카드 1줄 배치 */
-@media (max-width: 767px) {
-  .stats-grid {
-    grid-template-columns: repeat(4, 1fr); /* 4개를 한 줄에 */
-    gap: 4px;
-    padding: 0 8px;
-  }
-  
-  .stat-card {
-    padding: 8px;
-    min-height: 60px;
-  }
-  
-  .stat-icon i {
-    font-size: 16px;
-  }
-  
-  .stat-value {
-    font-size: 14px;
-  }
-  
-  .stat-label {
-    font-size: 8px;
+    grid-template-columns: 1fr;
   }
 }
 
 /* ============================================
-   🔥 14. 추가 최적화
+   🔥 15. 애니메이션 및 유틸리티
    ============================================ */
-
-/* 텍스트 선택 방지 (성능 개선) */
-.device-table-header {
-  user-select: none;
-}
-
-/* 스크롤바 스타일링 */
-.device-table-body::-webkit-scrollbar {
-  height: 4px;
-  width: 4px;
-}
-
-.device-table-body::-webkit-scrollbar-track {
-  background: #f8fafc;
-}
-
-.device-table-body::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 2px;
-}
-
-/* 마우스 오버 애니메이션 */
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
@@ -1539,11 +1121,13 @@
   }
 }
 
-/* CSS 변수 활용 */
-:root {
-  --device-table-row-height: 50px;
-  --device-table-padding: 12px 16px;
-  --device-table-gap: 8px;
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 색상 유틸리티 클래스 */
@@ -1551,3 +1135,41 @@
 .text-success { color: #10b981; }
 .text-error { color: #ef4444; }
 .text-warning { color: #f59e0b; }
+
+/* 스크롤바 스타일링 */
+.device-table-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.device-table-body::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.device-table-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.device-table-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 텍스트 선택 방지 (성능 개선) */
+.device-table-header {
+  user-select: none;
+}
+
+/* ============================================
+   🔥 16. 디버깅용 (개발 시에만 사용)
+   ============================================ */
+/*
+.device-table-header,
+.device-table-row {
+  border: 1px dashed red;
+}
+
+.device-table-cell {
+  border: 1px dashed blue;
+}
+*/
