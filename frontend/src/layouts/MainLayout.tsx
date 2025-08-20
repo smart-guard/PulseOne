@@ -223,8 +223,8 @@ export const MainLayout: React.FC = () => {
             </li>
             <li className="menu-item">
               <Link 
-                to="/api/alarms/ruletemplates" 
-                className={`menu-link ${isActiveSubMenu('/api/alarms/ruletemplates') ? 'active' : ''}`}
+                to="/alarms/rules" 
+                className={`menu-link ${isActiveSubMenu('/alarms/rules') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
                   <i className="fas fa-gavel"></i>
