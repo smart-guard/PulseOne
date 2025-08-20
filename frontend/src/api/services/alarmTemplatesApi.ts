@@ -1,5 +1,5 @@
 // frontend/src/api/services/alarmTemplatesApi.ts
-// 알람 템플릿 관리 API 서비스 - 완전히 수정된 버전
+// 알람 템플릿 관리 API 서비스 - current_value 형식 문제 완전 해결
 
 const BASE_URL = '/api';
 
@@ -29,10 +29,14 @@ export interface DataPoint {
   site_name: string;
   data_type: string;
   unit: string;
-  current_value: number;
+  current_value: number;  // 정규화된 숫자 값만 사용
   last_updated: string;
   supports_analog: boolean;
   supports_digital: boolean;
+  device_id?: number;
+  address?: string;
+  description?: string;
+  is_enabled?: boolean;
 }
 
 export interface CreatedAlarmRule {
@@ -207,6 +211,28 @@ class AlarmTemplatesApi {
     }
   }
 
+  // current_value 정규화 함수
+  private normalizeCurrentValue(value: any): number {
+    if (value === null || value === undefined) {
+      return 0;
+    }
+    
+    if (typeof value === 'number') {
+      return value;
+    }
+    
+    if (typeof value === 'object' && value.value !== undefined) {
+      return Number(value.value) || 0;
+    }
+    
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    
+    return 0;
+  }
+
   // 데이터포인트 목록 조회 - 백엔드 API와 100% 일치하도록 수정
   async getDataPoints(filters?: {
     site_name?: string;
@@ -215,7 +241,7 @@ class AlarmTemplatesApi {
     search?: string;
   }): Promise<DataPoint[]> {
     try {
-      console.log('🔍 데이터포인트 조회 시작:', filters);
+      console.log('데이터포인트 조회 시작:', filters);
       
       // 모든 디바이스에서 데이터포인트 수집하는 방법 사용 (안정적)
       return await this.getDataPointsFromDevices(filters);
@@ -234,7 +260,7 @@ class AlarmTemplatesApi {
     search?: string;
   }): Promise<DataPoint[]> {
     try {
-      console.log('📱 디바이스 기반 데이터포인트 수집 시작');
+      console.log('디바이스 기반 데이터포인트 수집 시작');
       
       // 1. 디바이스 목록 조회 - 실제 백엔드 API 사용
       const devicesResponse = await fetch(`${BASE_URL}/devices?limit=100`, {
@@ -257,14 +283,14 @@ class AlarmTemplatesApi {
         devices = devicesResult;
       }
 
-      console.log(`📱 찾은 디바이스 수: ${devices.length}`);
+      console.log(`찾은 디바이스 수: ${devices.length}`);
 
       // 2. 각 디바이스의 데이터포인트 조회
       const allDataPoints: DataPoint[] = [];
       
       for (const device of devices) {
         try {
-          console.log(`📊 디바이스 ${device.name} (ID: ${device.id}) 데이터포인트 조회`);
+          console.log(`디바이스 ${device.name} (ID: ${device.id}) 데이터포인트 조회`);
           
           const response = await fetch(`${BASE_URL}/devices/${device.id}/data-points?limit=100`, {
             headers: {
@@ -283,49 +309,74 @@ class AlarmTemplatesApi {
               deviceDataPoints = result;
             }
             
-            console.log(`📊 디바이스 ${device.name}에서 ${deviceDataPoints.length}개 데이터포인트 발견`);
+            console.log(`디바이스 ${device.name}에서 ${deviceDataPoints.length}개 데이터포인트 발견`);
             
-            // 데이터포인트에 디바이스 정보 추가
+            // 데이터포인트에 디바이스 정보 추가 및 current_value 정규화
             deviceDataPoints.forEach((dp: any) => {
+              const normalizedValue = this.normalizeCurrentValue(dp.current_value);
+              
+              console.log(`값 변환: ${dp.name}`, {
+                원본: dp.current_value,
+                변환후: normalizedValue,
+                타입: typeof dp.current_value
+              });
+
               allDataPoints.push({
                 id: dp.id,
-                name: dp.name || `점_${dp.id}`,
+                name: dp.name || `DataPoint_${dp.id}`,
                 device_name: device.name || '알 수 없는 장치',
                 site_name: device.site_name || '기본 사이트',
                 data_type: dp.data_type || 'unknown',
                 unit: dp.unit || '',
-                current_value: dp.current_value || 0,
+                current_value: normalizedValue,
                 last_updated: dp.last_updated || new Date().toISOString(),
                 supports_analog: dp.data_type !== 'boolean' && dp.data_type !== 'digital',
-                supports_digital: dp.data_type === 'boolean' || dp.data_type === 'digital'
+                supports_digital: dp.data_type === 'boolean' || dp.data_type === 'digital',
+                device_id: device.id,
+                address: dp.address || '',
+                description: dp.description || '',
+                is_enabled: dp.is_enabled !== false
               });
             });
           } else {
-            console.warn(`⚠️ 디바이스 ${device.id} 데이터포인트 조회 실패: ${response.status}`);
+            console.warn(`디바이스 ${device.id} 데이터포인트 조회 실패: ${response.status}`);
           }
         } catch (error) {
-          console.warn(`⚠️ 디바이스 ${device.id} 데이터포인트 조회 중 오류:`, error);
+          console.warn(`디바이스 ${device.id} 데이터포인트 조회 중 오류:`, error);
         }
       }
 
-      console.log(`📊 총 수집된 데이터포인트 수: ${allDataPoints.length}`);
+      console.log(`총 수집된 데이터포인트 수: ${allDataPoints.length}`);
+      
+      // 디버깅: 처음 몇 개 데이터포인트 상세 출력
+      if (allDataPoints.length > 0) {
+        console.log('샘플 데이터포인트들:', allDataPoints.slice(0, 3).map(dp => ({
+          id: dp.id,
+          name: dp.name,
+          device_name: dp.device_name,
+          current_value: dp.current_value,
+          data_type: dp.data_type,
+          supports_analog: dp.supports_analog,
+          supports_digital: dp.supports_digital
+        })));
+      }
 
       // 3. 필터 적용
       let filteredDataPoints = allDataPoints;
 
       if (filters?.site_name && filters.site_name !== 'all') {
         filteredDataPoints = filteredDataPoints.filter(dp => dp.site_name === filters.site_name);
-        console.log(`🔍 사이트 필터 적용 후: ${filteredDataPoints.length}개`);
+        console.log(`사이트 필터 적용 후: ${filteredDataPoints.length}개`);
       }
 
       if (filters?.device_name && filters.device_name !== 'all') {
         filteredDataPoints = filteredDataPoints.filter(dp => dp.device_name === filters.device_name);
-        console.log(`🔍 디바이스 필터 적용 후: ${filteredDataPoints.length}개`);
+        console.log(`디바이스 필터 적용 후: ${filteredDataPoints.length}개`);
       }
 
       if (filters?.data_type && filters.data_type !== 'all') {
         filteredDataPoints = filteredDataPoints.filter(dp => dp.data_type === filters.data_type);
-        console.log(`🔍 데이터 타입 필터 적용 후: ${filteredDataPoints.length}개`);
+        console.log(`데이터 타입 필터 적용 후: ${filteredDataPoints.length}개`);
       }
 
       if (filters?.search) {
@@ -335,14 +386,14 @@ class AlarmTemplatesApi {
           dp.device_name.toLowerCase().includes(searchTerm) ||
           dp.site_name.toLowerCase().includes(searchTerm)
         );
-        console.log(`🔍 검색 필터 적용 후: ${filteredDataPoints.length}개`);
+        console.log(`검색 필터 적용 후: ${filteredDataPoints.length}개`);
       }
 
-      console.log(`✅ 최종 데이터포인트 수: ${filteredDataPoints.length}`);
+      console.log(`최종 데이터포인트 수: ${filteredDataPoints.length}`);
       return filteredDataPoints;
 
     } catch (error) {
-      console.error('❌ 디바이스 기반 데이터포인트 조회 실패:', error);
+      console.error('디바이스 기반 데이터포인트 조회 실패:', error);
       return [];
     }
   }

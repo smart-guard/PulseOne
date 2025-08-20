@@ -161,104 +161,29 @@ const AlarmRuleTemplates: React.FC = () => {
 
   const loadDataPoints = async () => {
     try {
+      console.log('🔍 데이터포인트 로딩 시작...');
+      
       const data = await alarmTemplatesApi.getDataPoints({});
       
+      console.log('📊 API에서 받은 데이터:', data);
+      console.log('📊 데이터 타입:', typeof data, Array.isArray(data));
+      
       if (Array.isArray(data)) {
+        console.log(`✅ ${data.length}개 데이터포인트 로드 성공`);
+        
+        // 처음 몇 개 항목 상세 로그
+        if (data.length > 0) {
+          console.log('🔍 첫 번째 데이터포인트 샘플:', data[0]);
+        }
+        
         setDataPoints(data);
       } else {
+        console.warn('❌ 예상과 다른 데이터 형식:', data);
         throw new Error('데이터포인트 데이터 형식이 올바르지 않습니다.');
       }
     } catch (error) {
-      console.error('데이터포인트 로딩 실패:', error);
-      
-      // 실패 시 목업 데이터 사용
-      const mockDataPoints: DataPoint[] = [
-        { 
-          id: 1, 
-          name: "Production_Count", 
-          device_name: "PLC-001", 
-          site_name: "Seoul Main Factory", 
-          data_type: "uint32", 
-          unit: "pcs", 
-          current_value: { value: 50 }, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        },
-        { 
-          id: 2, 
-          name: "Line_Speed", 
-          device_name: "PLC-001", 
-          site_name: "Seoul Main Factory", 
-          data_type: "float", 
-          unit: "m/min", 
-          current_value: { value: 50 }, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        },
-        { 
-          id: 3, 
-          name: "Motor_Current", 
-          device_name: "PLC-001", 
-          site_name: "Seoul Main Factory", 
-          data_type: "float", 
-          unit: "A", 
-          current_value: { value: 30 }, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        },
-        { 
-          id: 4, 
-          name: "Temperature", 
-          device_name: "PLC-001", 
-          site_name: "Seoul Main Factory", 
-          data_type: "float", 
-          unit: "°C", 
-          current_value: { value: 95 }, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        },
-        { 
-          id: 5, 
-          name: "Emergency_Stop", 
-          device_name: "PLC-001", 
-          site_name: "Seoul Main Factory", 
-          data_type: "bool", 
-          unit: "N/A", 
-          current_value: { value: 1 }, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: false,
-          supports_digital: true
-        },
-        { 
-          id: 6, 
-          name: "HMI_Status", 
-          device_name: "HMI-001", 
-          site_name: "Seoul Main Factory", 
-          data_type: "uint16", 
-          unit: "N/A", 
-          current_value: { value: 1 }, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: false,
-          supports_digital: true
-        },
-        { 
-          id: 7, 
-          name: "Alarm_Count", 
-          device_name: "HMI-001", 
-          site_name: "Seoul Main Factory", 
-          data_type: "uint16", 
-          unit: "count", 
-          current_value: { value: 3 }, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        }
-      ];
-      setDataPoints(mockDataPoints);
+      console.error('❌ 데이터포인트 로딩 실패:', error);
+      setDataPoints([]);
     }
   };
 

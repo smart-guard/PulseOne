@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/endpoints.ts
-// API 엔드포인트 상수 정의 - 완전한 백엔드 호환 버전
+// API 엔드포인트 상수 정의 - 완전한 알람 API 백엔드 호환 버전
 // ============================================================================
 
 // React 환경에서 process.env 안전하게 접근
@@ -31,8 +31,8 @@ export const ENDPOINTS = {
   // ==========================================================================
   // 헬스체크 및 기본 정보
   // ==========================================================================
-  HEALTH: `${API_BASE}/health`,
-  API_INFO: `${API_BASE}/api/info`,
+  HEALTH: `${API_BASE}/api/health`,
+  API_INFO: `${API_BASE}/api`,
   
   // ==========================================================================
   // 시스템 관리 API
@@ -91,32 +91,24 @@ export const ENDPOINTS = {
   REALTIME_STATS: `${API_BASE}/api/realtime/stats`,
   
   // ==========================================================================
-  // 알람 관리 API - 백엔드 라우트와 완전 일치
+  // 🚨 완전한 알람 관리 API - 백엔드 라우트와 정확히 일치
   // ==========================================================================
   
-  // 알람 발생 관련
+  // ---- 알람 발생 (Alarm Occurrences) ----
   ALARMS_ACTIVE: `${API_BASE}/api/alarms/active`,
   ALARMS_OCCURRENCES: `${API_BASE}/api/alarms/occurrences`,
   ALARMS_OCCURRENCE_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}`,
   ALARMS_OCCURRENCE_ACKNOWLEDGE: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/acknowledge`,
   ALARMS_OCCURRENCE_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`,
   ALARMS_HISTORY: `${API_BASE}/api/alarms/history`,
-  ALARM_UNACKNOWLEDGED: `${API_BASE}/api/alarms/unacknowledged`,
-  ALARM_RECENT: `${API_BASE}/api/alarms/recent`,
-  ALARM_DEVICE: (deviceId: number | string) => `${API_BASE}/api/alarms/device/${deviceId}`,
-  ALARM_STATISTICS: `${API_BASE}/api/alarms/statistics`,
   
-  // 알람 규칙 관련
+  // ---- 알람 규칙 (Alarm Rules) ----
   ALARM_RULES: `${API_BASE}/api/alarms/rules`,
   ALARM_RULE_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}`,
   ALARM_RULES_STATISTICS: `${API_BASE}/api/alarms/rules/statistics`,
   ALARM_RULE_SETTINGS: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/settings`,
-  ALARM_RULES_BULK_UPDATE: `${API_BASE}/api/alarms/rules/bulk-update`,
-  ALARM_RULE_STATISTICS: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/statistics`,
-  ALARM_RULE_CONFIG_HISTORY: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/configuration-history`,
-  ALARM_RULE_TEST: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/test`,
   
-  // 알람 템플릿 관련
+  // ---- 알람 템플릿 (Alarm Templates) ----
   ALARM_TEMPLATES: `${API_BASE}/api/alarms/templates`,
   ALARM_TEMPLATE_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/templates/${id}`,
   ALARM_TEMPLATES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/templates/category/${category}`,
@@ -128,11 +120,17 @@ export const ENDPOINTS = {
   ALARM_TEMPLATES_SEARCH: `${API_BASE}/api/alarms/templates/search`,
   ALARM_TEMPLATES_MOST_USED: `${API_BASE}/api/alarms/templates/most-used`,
   
-  // 호환성을 위한 기존 엔드포인트들
-  ALARM_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/${id}`,
-  ALARM_ACKNOWLEDGE: (id: number | string) => `${API_BASE}/api/alarms/${id}/acknowledge`,
-  ALARM_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/${id}/clear`,
+  // ---- 특화 알람 엔드포인트들 ----
+  ALARM_STATISTICS: `${API_BASE}/api/alarms/statistics`,
+  ALARM_UNACKNOWLEDGED: `${API_BASE}/api/alarms/unacknowledged`,
+  ALARM_RECENT: `${API_BASE}/api/alarms/recent`,
+  ALARM_DEVICE: (deviceId: number | string) => `${API_BASE}/api/alarms/device/${deviceId}`,
   ALARM_TEST: `${API_BASE}/api/alarms/test`,
+  
+  // ---- 기존 호환성 엔드포인트들 (Deprecated but maintained) ----
+  ALARM_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}`, // 리다이렉트
+  ALARM_ACKNOWLEDGE: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/acknowledge`, // 리다이렉트
+  ALARM_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`, // 리다이렉트
   
   // ==========================================================================
   // 대시보드 API
@@ -142,6 +140,7 @@ export const ENDPOINTS = {
   DASHBOARD_RECENT_DEVICES: `${API_BASE}/api/dashboard/recent-devices`,
   DASHBOARD_SYSTEM_HEALTH: `${API_BASE}/api/dashboard/system-health`,
   DASHBOARD_SERVICE_CONTROL: (name: string) => `${API_BASE}/api/dashboard/service/${name}/control`,
+  DASHBOARD_SERVICES_STATUS: `${API_BASE}/api/dashboard/services/status`,
   
   // ==========================================================================
   // 사용자 관리 API
@@ -152,6 +151,19 @@ export const ENDPOINTS = {
   USER_LOGOUT: `${API_BASE}/api/users/logout`,
   USER_PERMISSIONS: (id: number | string) => `${API_BASE}/api/users/${id}/permissions`,
   USER_LOGIN_HISTORY: `${API_BASE}/api/users/login-history`,
+  
+  // ==========================================================================
+  // 가상포인트 관리 API
+  // ==========================================================================
+  VIRTUAL_POINTS: `${API_BASE}/api/virtual-points`,
+  VIRTUAL_POINT_BY_ID: (id: number | string) => `${API_BASE}/api/virtual-points/${id}`,
+  VIRTUAL_POINT_TEST: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/test`,
+  VIRTUAL_POINT_EXECUTE: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/execute`,
+  VIRTUAL_POINT_DEPENDENCIES: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/dependencies`,
+  VIRTUAL_POINT_HISTORY: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/history`,
+  VIRTUAL_POINT_VALUE: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/value`,
+  VIRTUAL_POINTS_STATS_CATEGORY: `${API_BASE}/api/virtual-points/stats/category`,
+  VIRTUAL_POINTS_STATS_PERFORMANCE: `${API_BASE}/api/virtual-points/stats/performance`,
   
   // ==========================================================================
   // WebSocket 엔드포인트
@@ -183,9 +195,10 @@ export const ENDPOINTS = {
   // ==========================================================================
   INIT_STATUS: `${API_BASE}/api/init/status`,
   INIT_TRIGGER: `${API_BASE}/api/init/trigger`,
+  INIT_MANUAL: `${API_BASE}/api/init/manual`,
   
   // ==========================================================================
-  // 향후 추가될 API들
+  // 모니터링 API
   // ==========================================================================
   MONITORING_SERVICE_HEALTH: `${API_BASE}/api/monitoring/service-health`,
   MONITORING_SYSTEM_METRICS: `${API_BASE}/api/monitoring/system-metrics`,
@@ -193,19 +206,17 @@ export const ENDPOINTS = {
   MONITORING_PERFORMANCE: `${API_BASE}/api/monitoring/performance`,
   MONITORING_LOGS: `${API_BASE}/api/monitoring/logs`,
   
-  // 가상포인트 관리
-  VIRTUAL_POINTS: `${API_BASE}/api/virtual-points`,
-  VIRTUAL_POINT_BY_ID: (id: number | string) => `${API_BASE}/api/virtual-points/${id}`,
-  VIRTUAL_POINT_TEST: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/test`,
-  VIRTUAL_POINT_DEPENDENCIES: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/dependencies`,
-  
+  // ==========================================================================
   // 사이트 관리
+  // ==========================================================================
   SITES: `${API_BASE}/api/sites`,
   SITE_BY_ID: (id: number | string) => `${API_BASE}/api/sites/${id}`,
   SITE_DEVICES: (id: number | string) => `${API_BASE}/api/sites/${id}/devices`,
   SITE_STATISTICS: (id: number | string) => `${API_BASE}/api/sites/${id}/statistics`,
   
+  // ==========================================================================
   // 백업/복원
+  // ==========================================================================
   BACKUP_LIST: `${API_BASE}/api/backup/list`,
   BACKUP_CREATE: `${API_BASE}/api/backup/create`,
   BACKUP_RESTORE: (id: number | string) => `${API_BASE}/api/backup/restore/${id}`,
@@ -213,23 +224,31 @@ export const ENDPOINTS = {
   BACKUP_STATUS: (id: number | string) => `${API_BASE}/api/backup/${id}/status`,
   BACKUP_SCHEDULE: `${API_BASE}/api/backup/schedule`,
   
+  // ==========================================================================
   // 네트워크 설정
+  // ==========================================================================
   NETWORK_SETTINGS: `${API_BASE}/api/network/settings`,
   NETWORK_INTERFACES: `${API_BASE}/api/network/interfaces`,
   NETWORK_TEST: `${API_BASE}/api/network/test`,
   
+  // ==========================================================================
   // 권한 관리
+  // ==========================================================================
   PERMISSIONS: `${API_BASE}/api/permissions`,
   PERMISSION_ROLES: `${API_BASE}/api/permissions/roles`,
   PERMISSION_USERS: `${API_BASE}/api/permissions/users`,
   PERMISSION_ASSIGN: `${API_BASE}/api/permissions/assign`,
   
+  // ==========================================================================
   // 로그 관리
+  // ==========================================================================
   LOGS: `${API_BASE}/api/logs`,
   LOGS_DOWNLOAD: `${API_BASE}/api/logs/download`,
   LOGS_CLEAR: `${API_BASE}/api/logs/clear`,
   
+  // ==========================================================================
   // 설정 관리
+  // ==========================================================================
   CONFIG: `${API_BASE}/api/config`,
   CONFIG_UPDATE: `${API_BASE}/api/config/update`,
   CONFIG_RESET: `${API_BASE}/api/config/reset`,
@@ -238,7 +257,7 @@ export const ENDPOINTS = {
 } as const;
 
 // ==========================================================================
-// 타입 안전성을 위한 엔드포인트 그룹화
+// 타입 안전성을 위한 엔드포인트 그룹화 (알람 API 업데이트됨)
 // ==========================================================================
 
 export const API_GROUPS = {
@@ -283,21 +302,52 @@ export const API_GROUPS = {
     STATS: ENDPOINTS.REALTIME_STATS
   },
   
+  // 🚨 완전히 업데이트된 알람 API 그룹
   ALARMS: {
+    // 알람 발생 관련
     ACTIVE: ENDPOINTS.ALARMS_ACTIVE,
     OCCURRENCES: ENDPOINTS.ALARMS_OCCURRENCES,
     OCCURRENCE_DETAIL: ENDPOINTS.ALARMS_OCCURRENCE_BY_ID,
     ACKNOWLEDGE: ENDPOINTS.ALARMS_OCCURRENCE_ACKNOWLEDGE,
     CLEAR: ENDPOINTS.ALARMS_OCCURRENCE_CLEAR,
     HISTORY: ENDPOINTS.ALARMS_HISTORY,
+    UNACKNOWLEDGED: ENDPOINTS.ALARM_UNACKNOWLEDGED,
+    RECENT: ENDPOINTS.ALARM_RECENT,
+    DEVICE_ALARMS: ENDPOINTS.ALARM_DEVICE,
+    
+    // 알람 규칙 관련
     RULES: ENDPOINTS.ALARM_RULES,
     RULE_DETAIL: ENDPOINTS.ALARM_RULE_BY_ID,
+    RULES_STATISTICS: ENDPOINTS.ALARM_RULES_STATISTICS,
+    RULE_SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
+    
+    // 알람 템플릿 관련
     TEMPLATES: ENDPOINTS.ALARM_TEMPLATES,
     TEMPLATE_DETAIL: ENDPOINTS.ALARM_TEMPLATE_BY_ID,
+    TEMPLATES_CATEGORY: ENDPOINTS.ALARM_TEMPLATES_CATEGORY,
+    TEMPLATES_SYSTEM: ENDPOINTS.ALARM_TEMPLATES_SYSTEM,
+    TEMPLATES_DATA_TYPE: ENDPOINTS.ALARM_TEMPLATES_DATA_TYPE,
+    TEMPLATE_APPLY: ENDPOINTS.ALARM_TEMPLATE_APPLY,
+    TEMPLATE_APPLIED_RULES: ENDPOINTS.ALARM_TEMPLATE_APPLIED_RULES,
+    TEMPLATES_STATISTICS: ENDPOINTS.ALARM_TEMPLATES_STATISTICS,
+    TEMPLATES_SEARCH: ENDPOINTS.ALARM_TEMPLATES_SEARCH,
+    TEMPLATES_MOST_USED: ENDPOINTS.ALARM_TEMPLATES_MOST_USED,
+    
+    // 통계 및 기타
     STATISTICS: ENDPOINTS.ALARM_STATISTICS,
-    UNACKNOWLEDGED: ENDPOINTS.ALARM_UNACKNOWLEDGED,
-    DEVICE_ALARMS: ENDPOINTS.ALARM_DEVICE,
     TEST: ENDPOINTS.ALARM_TEST
+  },
+  
+  VIRTUAL_POINTS: {
+    LIST: ENDPOINTS.VIRTUAL_POINTS,
+    DETAIL: ENDPOINTS.VIRTUAL_POINT_BY_ID,
+    TEST: ENDPOINTS.VIRTUAL_POINT_TEST,
+    EXECUTE: ENDPOINTS.VIRTUAL_POINT_EXECUTE,
+    DEPENDENCIES: ENDPOINTS.VIRTUAL_POINT_DEPENDENCIES,
+    HISTORY: ENDPOINTS.VIRTUAL_POINT_HISTORY,
+    VALUE: ENDPOINTS.VIRTUAL_POINT_VALUE,
+    STATS_CATEGORY: ENDPOINTS.VIRTUAL_POINTS_STATS_CATEGORY,
+    STATS_PERFORMANCE: ENDPOINTS.VIRTUAL_POINTS_STATS_PERFORMANCE
   },
   
   DASHBOARD: {
@@ -305,7 +355,8 @@ export const API_GROUPS = {
     TENANT_STATS: ENDPOINTS.DASHBOARD_TENANT_STATS,
     RECENT_DEVICES: ENDPOINTS.DASHBOARD_RECENT_DEVICES,
     SYSTEM_HEALTH: ENDPOINTS.DASHBOARD_SYSTEM_HEALTH,
-    SERVICE_CONTROL: ENDPOINTS.DASHBOARD_SERVICE_CONTROL
+    SERVICE_CONTROL: ENDPOINTS.DASHBOARD_SERVICE_CONTROL,
+    SERVICES_STATUS: ENDPOINTS.DASHBOARD_SERVICES_STATUS
   }
 } as const;
 
@@ -372,6 +423,33 @@ export function buildSortedUrl(endpoint: string, params: {
 }
 
 /**
+ * 알람 관련 검색 URL 빌더
+ */
+export function buildAlarmSearchUrl(baseEndpoint: string, params: {
+  search?: string;
+  severity?: string;
+  state?: string;
+  device_id?: number;
+  date_from?: string;
+  date_to?: string;
+  page?: number;
+  limit?: number;
+}): string {
+  return buildUrlWithParams(baseEndpoint, params);
+}
+
+/**
+ * 템플릿 적용 URL 빌더
+ */
+export function buildTemplateApplyUrl(templateId: number | string, params: {
+  data_point_ids: number[];
+  custom_configs?: Record<string, any>;
+  rule_group_name?: string;
+}): string {
+  return ENDPOINTS.ALARM_TEMPLATE_APPLY(templateId);
+}
+
+/**
  * WebSocket URL 생성 헬퍼 함수
  */
 export function buildWebSocketUrl(baseUrl: string, endpoint: string, params?: Record<string, any>): string {
@@ -406,6 +484,13 @@ export function getEndpointsByGroup(group: keyof typeof API_GROUPS): Record<stri
  */
 export function getAllEndpoints(): string[] {
   return Object.values(ENDPOINTS).filter(value => typeof value === 'string');
+}
+
+/**
+ * 알람 관련 엔드포인트만 가져오는 함수
+ */
+export function getAlarmEndpoints(): Record<string, string | Function> {
+  return API_GROUPS.ALARMS;
 }
 
 // 환경별 설정
@@ -449,7 +534,7 @@ export const HTTP_STATUS = {
   SERVICE_UNAVAILABLE: 503
 } as const;
 
-// 에러 코드 상수
+// 에러 코드 상수 (알람 관련 추가)
 export const ERROR_CODES = {
   // 네트워크 관련
   NETWORK_ERROR: 'NETWORK_ERROR',
@@ -464,16 +549,49 @@ export const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   DUPLICATE_ERROR: 'DUPLICATE_ERROR',
   
-  // 알람 관련
+  // 🚨 알람 관련 에러 코드들 (백엔드와 일치)
   ALARM_NOT_FOUND: 'ALARM_NOT_FOUND',
   ALARM_RULE_NOT_FOUND: 'ALARM_RULE_NOT_FOUND',
   ALARM_TEMPLATE_NOT_FOUND: 'ALARM_TEMPLATE_NOT_FOUND',
   ALARM_ALREADY_ACKNOWLEDGED: 'ALARM_ALREADY_ACKNOWLEDGED',
   ALARM_ALREADY_CLEARED: 'ALARM_ALREADY_CLEARED',
+  ALARM_RULES_ERROR: 'ALARM_RULES_ERROR',
+  ALARM_RULE_CREATE_ERROR: 'ALARM_RULE_CREATE_ERROR',
+  ALARM_RULE_UPDATE_ERROR: 'ALARM_RULE_UPDATE_ERROR',
+  ALARM_RULE_DELETE_ERROR: 'ALARM_RULE_DELETE_ERROR',
+  ALARM_RULE_DETAIL_ERROR: 'ALARM_RULE_DETAIL_ERROR',
+  ALARM_OCCURRENCE_ERROR: 'ALARM_OCCURRENCE_ERROR',
+  ALARM_ACKNOWLEDGE_ERROR: 'ALARM_ACKNOWLEDGE_ERROR',
+  ALARM_CLEAR_ERROR: 'ALARM_CLEAR_ERROR',
+  ALARM_TEMPLATE_CREATE_ERROR: 'ALARM_TEMPLATE_CREATE_ERROR',
+  ALARM_TEMPLATE_UPDATE_ERROR: 'ALARM_TEMPLATE_UPDATE_ERROR',
+  ALARM_TEMPLATE_DELETE_ERROR: 'ALARM_TEMPLATE_DELETE_ERROR',
+  TEMPLATE_APPLY_ERROR: 'TEMPLATE_APPLY_ERROR',
+  TEMPLATE_NOT_FOUND: 'TEMPLATE_NOT_FOUND',
+  SEARCH_TERM_REQUIRED: 'SEARCH_TERM_REQUIRED',
+  SETTINGS_UPDATE_ERROR: 'SETTINGS_UPDATE_ERROR',
+  ACTIVE_ALARMS_ERROR: 'ACTIVE_ALARMS_ERROR',
+  ALARM_STATS_ERROR: 'ALARM_STATS_ERROR',
+  TEST_ERROR: 'TEST_ERROR',
   
   // 서버 관련
   INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE'
 } as const;
+
+// 알람 관련 상수들
+export const ALARM_CONSTANTS = {
+  SEVERITIES: ['critical', 'major', 'minor', 'warning', 'info'] as const,
+  STATES: ['active', 'acknowledged', 'cleared'] as const,
+  CONDITION_TYPES: ['analog', 'digital', 'script', 'time_based', 'calculation'] as const,
+  TEMPLATE_CATEGORIES: ['general', 'temperature', 'pressure', 'flow', 'level', 'vibration', 'electrical', 'safety'] as const,
+  DATA_TYPES: ['number', 'boolean', 'string', 'object'] as const
+} as const;
+
+export type AlarmSeverity = typeof ALARM_CONSTANTS.SEVERITIES[number];
+export type AlarmState = typeof ALARM_CONSTANTS.STATES[number];
+export type AlarmConditionType = typeof ALARM_CONSTANTS.CONDITION_TYPES[number];
+export type AlarmTemplateCategory = typeof ALARM_CONSTANTS.TEMPLATE_CATEGORIES[number];
+export type AlarmDataType = typeof ALARM_CONSTANTS.DATA_TYPES[number];
 
 export default ENDPOINTS;
