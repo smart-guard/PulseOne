@@ -18,7 +18,7 @@ import DataExport from './pages/DataExport';
 import ActiveAlarms from './pages/ActiveAlarms';
 import AlarmHistory from './pages/AlarmHistory';
 import AlarmSettings from './pages/AlarmSettings';
-import AlarmRules from './pages/AlarmRules';
+import AlarmRuleTemplates from './pages/AlarmRuleTemplates';
 import SystemStatus from './pages/SystemStatus';
 import UserManagement from './pages/UserManagement';
 import PermissionManagement from './pages/PermissionManagement';
@@ -57,7 +57,7 @@ const App: React.FC = () => {
               <Route path="active" element={<ActiveAlarms />} />
               <Route path="history" element={<AlarmHistory />} />
               <Route path="settings" element={<AlarmSettings />} />
-              <Route path="rules" element={<AlarmRules />} />
+              <Route path="rules" element={<AlarmRuleTemplates />} />
               {/* 알람 하위 경로 기본값 */}
               <Route index element={<Navigate to="active" replace />} />
             </Route>

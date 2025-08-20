@@ -9,7 +9,7 @@ import VirtualPoints from '../../pages/VirtualPoints';
 import DataExport from '../../pages/DataExport';
 import AlarmSettings from '../../pages/AlarmSettings';
 import AlarmHistory from '../../pages/AlarmHistory';
-import AlarmRules from '../../pages/AlarmRules';
+import AlarmRuleTemplates from '../../pages/AlarmRuleTemplates';
 import ActiveAlarms from '../../pages/ActiveAlarms';
 import PermissionManagement from '../../pages/PermissionManagement';
 import NetworkSettings from '../../pages/NetworkSettings';
@@ -68,7 +68,7 @@ const menuItems: MenuItem[] = [
       { id: 'alarm-history', title: '알람 이력', icon: 'fas fa-clock', path: '/alarms/history' },
       { id: 'alarm-config', title: '알람 설정', icon: 'fas fa-cog', path: '/alarms/config' },
       { id: 'alarm-type', title: '알람 종류', icon: 'fas fa-cog', path: '/alarms/type' },
-      { id: 'alarm-rules', title: '알람 규칙', icon: 'fas fa-cog', path: '/alarms/rules' },
+      { id: 'alarm-rules', title: '알람 규칙', icon: 'fas fa-cog', path: '/api/alarms/ruletemplates' },
       { id: 'notification', title: '알림 설정', icon: 'fas fa-envelope', path: '/alarms/notification' }
     ]
   },
@@ -198,7 +198,7 @@ const MainLayout: React.FC = () => {
       case 'alarm-type':
         return <AlarmRules />;
       case 'alarm-rules':
-        return <AlarmRules />;
+        return <AlarmRuleTemplates />;
       case 'notification':
         return <AlarmSettings />;
       case 'system-status':
