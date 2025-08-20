@@ -9,10 +9,12 @@ const router = express.Router();
 // Repository imports (실제 구현한 것들 사용)
 const AlarmRuleRepository = require('../lib/database/repositories/AlarmRuleRepository');
 const AlarmOccurrenceRepository = require('../lib/database/repositories/AlarmOccurrenceRepository');
+const AlarmTemplateRepository = require('../lib/database/repositories/AlarmTemplateRepository');
 
 // Repository 인스턴스 생성
 let alarmRuleRepo = null;
 let alarmOccurrenceRepo = null;
+let alarmTemplateRepo = null;
 
 function getAlarmRuleRepo() {
     if (!alarmRuleRepo) {
@@ -28,6 +30,14 @@ function getAlarmOccurrenceRepo() {
         console.log("✅ AlarmOccurrenceRepository 초기화 완료");
     }
     return alarmOccurrenceRepo;
+}
+
+function getAlarmTemplateRepo() {
+    if (!alarmTemplateRepo) {
+        alarmTemplateRepo = new AlarmTemplateRepository();
+        console.log("✅ AlarmTemplateRepository 초기화 완료");
+    }
+    return alarmTemplateRepo;
 }
 
 // ============================================================================
@@ -669,9 +679,416 @@ router.get('/test', (req, res) => {
             'GET /api/alarms/rules/statistics',
             'GET /api/alarms/unacknowledged',
             'GET /api/alarms/device/:deviceId',
+            'GET /api/alarms/templates',
+            'GET /api/alarms/templates/:id',
+            'POST /api/alarms/templates',
+            'PUT /api/alarms/templates/:id',
+            'DELETE /api/alarms/templates/:id',
+            'GET /api/alarms/templates/category/:category',
+            'GET /api/alarms/templates/system',
+            'GET /api/alarms/templates/data-type/:dataType',
+            'POST /api/alarms/templates/:id/apply',
+            'GET /api/alarms/templates/:id/applied-rules',
+            'GET /api/alarms/templates/statistics',
+            'GET /api/alarms/templates/search',
+            'GET /api/alarms/templates/most-used',
             'GET /api/alarms/test'
         ]
     }, 'Test successful'));
+});
+
+/**
+ * GET /api/alarms/templates
+ * 알람 템플릿 목록 조회
+ */
+router.get('/templates', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const { 
+            page = 1, 
+            limit = 50,
+            category,
+            is_system_template,
+            search
+        } = req.query;
+        
+        console.log('🎯 알람 템플릿 조회 시작...');
+
+        const options = {
+            tenantId,
+            category,
+            is_system_template: is_system_template !== undefined ? is_system_template === 'true' : undefined,
+            search,
+            page: parseInt(page),
+            limit: parseInt(limit)
+        };
+
+        const result = await getAlarmTemplateRepo().findAll(options);
+        
+        console.log(`✅ 알람 템플릿 ${result.items.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'Alarm templates retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 알람 템플릿 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATES_ERROR'));
+    }
+});
+
+
+
+/**
+ * POST /api/alarms/templates
+ * 새 알람 템플릿 생성
+ */
+router.post('/templates', async (req, res) => {
+    try {
+        const { tenantId, user } = req;
+        const templateData = {
+            ...req.body,
+            created_by: user.id
+        };
+
+        console.log('🎯 새 알람 템플릿 생성...');
+
+        const newTemplate = await getAlarmTemplateRepo().create(templateData, tenantId);
+
+        console.log(`✅ 새 알람 템플릿 생성 완료: ID ${newTemplate.id}`);
+        res.status(201).json(createResponse(true, newTemplate, 'Alarm template created successfully'));
+
+    } catch (error) {
+        console.error('❌ 알람 템플릿 생성 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_CREATE_ERROR'));
+    }
+});
+
+/**
+ * PUT /api/alarms/templates/:id
+ * 알람 템플릿 수정
+ */
+router.put('/templates/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const updateData = req.body;
+
+        console.log(`🎯 알람 템플릿 ${id} 수정...`);
+
+        const updatedTemplate = await getAlarmTemplateRepo().update(parseInt(id), updateData, tenantId);
+
+        if (!updatedTemplate) {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm template not found or update failed', 'ALARM_TEMPLATE_UPDATE_FAILED')
+            );
+        }
+
+        console.log(`✅ 알람 템플릿 ID ${id} 수정 완료`);
+        res.json(createResponse(true, updatedTemplate, 'Alarm template updated successfully'));
+
+    } catch (error) {
+        console.error(`❌ 알람 템플릿 ${req.params.id} 수정 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_UPDATE_ERROR'));
+    }
+});
+
+/**
+ * DELETE /api/alarms/templates/:id
+ * 알람 템플릿 삭제 (소프트 삭제)
+ */
+router.delete('/templates/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+
+        console.log(`🎯 알람 템플릿 ${id} 삭제...`);
+
+        const deleted = await getAlarmTemplateRepo().delete(parseInt(id), tenantId);
+
+        if (!deleted) {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm template not found or delete failed', 'ALARM_TEMPLATE_DELETE_FAILED')
+            );
+        }
+
+        console.log(`✅ 알람 템플릿 ID ${id} 삭제 완료`);
+        res.json(createResponse(true, { deleted: true }, 'Alarm template deleted successfully'));
+
+    } catch (error) {
+        console.error(`❌ 알람 템플릿 ${req.params.id} 삭제 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_DELETE_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/category/:category
+ * 카테고리별 알람 템플릿 조회
+ */
+router.get('/templates/category/:category', async (req, res) => {
+    try {
+        const { category } = req.params;
+        const { tenantId } = req;
+        
+        console.log(`🎯 카테고리 ${category} 템플릿 조회...`);
+
+        const templates = await getAlarmTemplateRepo().findByCategory(category, tenantId);
+        
+        console.log(`✅ 카테고리 ${category} 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'Category templates retrieved successfully'));
+
+    } catch (error) {
+        console.error(`❌ 카테고리 ${req.params.category} 템플릿 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'CATEGORY_TEMPLATES_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/system
+ * 시스템 기본 템플릿 조회
+ */
+router.get('/templates/system', async (req, res) => {
+    try {
+        console.log('🎯 시스템 템플릿 조회...');
+
+        const templates = await getAlarmTemplateRepo().findSystemTemplates();
+        
+        console.log(`✅ 시스템 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'System templates retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 시스템 템플릿 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'SYSTEM_TEMPLATES_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/data-type/:dataType
+ * 데이터 타입별 적용 가능한 템플릿 조회
+ */
+router.get('/templates/data-type/:dataType', async (req, res) => {
+    try {
+        const { dataType } = req.params;
+        const { tenantId } = req;
+        
+        console.log(`🎯 데이터 타입 ${dataType} 적용 가능 템플릿 조회...`);
+
+        const templates = await getAlarmTemplateRepo().findByDataType(dataType, tenantId);
+        
+        console.log(`✅ 데이터 타입 ${dataType} 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'Data type templates retrieved successfully'));
+
+    } catch (error) {
+        console.error(`❌ 데이터 타입 ${req.params.dataType} 템플릿 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DATA_TYPE_TEMPLATES_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/templates/:id/apply
+ * 템플릿을 여러 데이터포인트에 일괄 적용
+ */
+router.post('/templates/:id/apply', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId, user } = req;
+        const { 
+            data_point_ids = [], 
+            custom_configs = {},
+            rule_group_name = null 
+        } = req.body;
+
+        console.log(`🎯 템플릿 ${id}를 ${data_point_ids.length}개 포인트에 적용...`);
+
+        // 템플릿 조회
+        const template = await getAlarmTemplateRepo().findById(parseInt(id), tenantId);
+        if (!template) {
+            return res.status(404).json(
+                createResponse(false, null, 'Template not found', 'TEMPLATE_NOT_FOUND')
+            );
+        }
+
+        // 규칙 그룹 ID 생성 (UUID)
+        const { v4: uuidv4 } = require('uuid');
+        const ruleGroupId = uuidv4();
+
+        // 각 데이터포인트에 대해 알람 규칙 생성
+        const createdRules = [];
+        for (const pointId of data_point_ids) {
+            const customConfig = custom_configs[pointId] || {};
+            const mergedConfig = {
+                ...template.default_config,
+                ...customConfig
+            };
+
+            const ruleData = {
+                tenant_id: tenantId,
+                name: `${template.name}_${pointId}`,
+                description: `${template.description} (자동 생성)`,
+                target_type: 'data_point',
+                target_id: pointId,
+                alarm_type: template.condition_type === 'threshold' ? 'analog' : 
+                           template.condition_type === 'digital' ? 'digital' : 'script',
+                severity: template.severity,
+                high_limit: mergedConfig.threshold || mergedConfig.high_limit || null,
+                low_limit: mergedConfig.low_threshold || mergedConfig.low_limit || null,
+                deadband: mergedConfig.hysteresis || mergedConfig.deadband || 0,
+                message_template: template.message_template,
+                notification_enabled: template.notification_enabled,
+                email_notification: template.email_notification,
+                sms_notification: template.sms_notification,
+                auto_acknowledge: template.auto_acknowledge,
+                auto_clear: template.auto_clear,
+                template_id: template.id,
+                rule_group: ruleGroupId,
+                created_by_template: 1,
+                created_by: user.id
+            };
+
+            try {
+                const newRule = await getAlarmRuleRepo().create(ruleData, tenantId);
+                if (newRule) {
+                    createdRules.push(newRule);
+                }
+            } catch (ruleError) {
+                console.error(`데이터포인트 ${pointId} 규칙 생성 실패:`, ruleError.message);
+            }
+        }
+
+        // 템플릿 사용량 증가
+        await getAlarmTemplateRepo().incrementUsage(template.id, createdRules.length);
+
+        console.log(`✅ 템플릿 적용 완료: ${createdRules.length}개 규칙 생성`);
+        res.json(createResponse(true, {
+            template_id: template.id,
+            template_name: template.name,
+            rule_group_id: ruleGroupId,
+            rules_created: createdRules.length,
+            created_rules: createdRules
+        }, 'Template applied successfully'));
+
+    } catch (error) {
+        console.error(`❌ 템플릿 ${req.params.id} 적용 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TEMPLATE_APPLY_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/:id/applied-rules
+ * 템플릿으로 생성된 규칙들 조회
+ */
+router.get('/templates/:id/applied-rules', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        
+        console.log(`🎯 템플릿 ${id}로 생성된 규칙들 조회...`);
+
+        const appliedRules = await getAlarmTemplateRepo().findAppliedRules(parseInt(id), tenantId);
+        
+        console.log(`✅ 템플릿 ${id}로 생성된 규칙 ${appliedRules.length}개 조회 완료`);
+        res.json(createResponse(true, appliedRules, 'Applied rules retrieved successfully'));
+
+    } catch (error) {
+        console.error(`❌ 템플릿 ${req.params.id} 적용 규칙 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'APPLIED_RULES_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/statistics
+ * 알람 템플릿 통계 조회
+ */
+router.get('/templates/statistics', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        
+        console.log('🎯 알람 템플릿 통계 조회 시작...');
+
+        const stats = await getAlarmTemplateRepo().getStatistics(tenantId);
+        
+        console.log('✅ 알람 템플릿 통계 조회 완료');
+        res.json(createResponse(true, stats, 'Template statistics retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 알람 템플릿 통계 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TEMPLATE_STATS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/:id
+ * 특정 알람 템플릿 조회
+ */
+router.get('/templates/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        
+        console.log(`🎯 알람 템플릿 ID ${id} 조회...`);
+
+        const template = await getAlarmTemplateRepo().findById(parseInt(id), tenantId);
+
+        if (!template) {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm template not found', 'ALARM_TEMPLATE_NOT_FOUND')
+            );
+        }
+
+        console.log(`✅ 알람 템플릿 ID ${id} 조회 완료`);
+        res.json(createResponse(true, template, 'Alarm template retrieved successfully'));
+
+    } catch (error) {
+        console.error(`❌ 알람 템플릿 ${req.params.id} 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_DETAIL_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/search
+ * 알람 템플릿 검색
+ */
+router.get('/templates/search', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const { q: searchTerm, limit = 20 } = req.query;
+        
+        if (!searchTerm) {
+            return res.status(400).json(
+                createResponse(false, null, 'Search term is required', 'SEARCH_TERM_REQUIRED')
+            );
+        }
+
+        console.log(`🎯 알람 템플릿 검색: "${searchTerm}"`);
+
+        const templates = await getAlarmTemplateRepo().search(searchTerm, tenantId, parseInt(limit));
+        
+        console.log(`✅ 검색 결과: ${templates.length}개 템플릿`);
+        res.json(createResponse(true, templates, 'Template search completed successfully'));
+
+    } catch (error) {
+        console.error(`❌ 템플릿 검색 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TEMPLATE_SEARCH_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/most-used
+ * 가장 많이 사용된 템플릿들 조회
+ */
+router.get('/templates/most-used', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const { limit = 10 } = req.query;
+        
+        console.log('🎯 인기 템플릿 조회...');
+
+        const templates = await getAlarmTemplateRepo().findMostUsed(tenantId, parseInt(limit));
+        
+        console.log(`✅ 인기 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'Most used templates retrieved successfully'));
+
+    } catch (error) {
+        console.error('❌ 인기 템플릿 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'MOST_USED_TEMPLATES_ERROR'));
+    }
 });
 
 module.exports = router;
