@@ -1,10 +1,11 @@
 // ============================================================================
 // frontend/src/components/modals/TemplateApplyModal.tsx
-// 템플릿 적용 모달 - 독립 컴포넌트
+// 템플릿 적용 모달 - 독립 컴포넌트 (변수 선언 순서 수정)
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
-import DataPointSelectionTable, { DataPoint } from '../common/DataPointSelectionTable';
+import DataPointSelectionTable from '../common/DataPointSelectionTable';
+import { DataPoint } from '../../api/services/alarmTemplatesApi';
 
 export interface AlarmTemplate {
   id: number;
@@ -52,7 +53,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
 
   // 호환성 체크 함수
   const checkCompatibility = (point: DataPoint): boolean => {
-    if (template.template_type === 'script') return true; // 스크립트는 모든 타입 지원
+    if (template.template_type === 'script') return true;
     if (template.condition_type === 'pattern' && !point.supports_digital) return false;
     if (template.condition_type === 'threshold' && !point.supports_analog) return false;
     if (template.condition_type === 'range' && !point.supports_analog) return false;
@@ -161,6 +162,11 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
 
         {/* 모달 컨텐츠 */}
         <div className="modal-content" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+          {/* 디버깅 정보 */}
+          <div style={{ background: '#f0f9ff', padding: '12px', margin: '12px 0', borderRadius: '6px' }}>
+            디버깅: 전달받은 데이터포인트 {dataPoints.length}개, 필터링된 데이터포인트 {filteredDataPoints.length}개
+          </div>
+
           {/* 필터 섹션 */}
           <div style={{ 
             display: 'grid', 
@@ -180,7 +186,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
                 value={siteFilter} 
                 onChange={(e) => {
                   setSiteFilter(e.target.value);
-                  setDeviceFilter('all'); // 하위 필터 리셋
+                  setDeviceFilter('all');
                 }}
                 style={{ 
                   padding: '10px 12px', 
