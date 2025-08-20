@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/App.tsx
-// React Router 완전 적용 - URL 변경 문제 해결
+// React Router 완전 적용 - alarm-templates 경로 수정
 // ============================================================================
 
 import React from 'react';
@@ -23,7 +23,6 @@ import SystemStatus from './pages/SystemStatus';
 import UserManagement from './pages/UserManagement';
 import PermissionManagement from './pages/PermissionManagement';
 import BackupRestore from './pages/BackupRestore';
-
 
 const App: React.FC = () => {
   return (
@@ -57,10 +56,13 @@ const App: React.FC = () => {
               <Route path="active" element={<ActiveAlarms />} />
               <Route path="history" element={<AlarmHistory />} />
               <Route path="settings" element={<AlarmSettings />} />
-              <Route path="rules" element={<AlarmRuleTemplates />} />
+              {/* alarm-templates는 독립 경로로 이동 */}
               {/* 알람 하위 경로 기본값 */}
               <Route index element={<Navigate to="active" replace />} />
             </Route>
+            
+            {/* 알람 템플릿 - 독립 경로 */}
+            <Route path="alarm-templates" element={<AlarmRuleTemplates />} />
             
             {/* 시스템 관리 */}
             <Route path="system">
