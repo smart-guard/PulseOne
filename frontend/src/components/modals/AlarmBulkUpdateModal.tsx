@@ -1,10 +1,6 @@
-// ============================================================================
-// frontend/src/components/modals/AlarmBulkUpdateModal.tsx
-// 여러 알람 규칙 일괄 업데이트 모달
-// ============================================================================
-
 import React, { useState } from 'react';
 import { AlarmRuleSettings } from '../../api/services/alarmApi';
+import '../styles/alarm-settings.css';
 
 interface AlarmRule {
   id: number;
@@ -74,7 +70,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
     <div className="modal-overlay">
       <div className="modal-container">
         <div className="modal-header">
-          <h2>일괄 설정 변경</h2>
+          <h2 className="modal-title">일괄 설정 변경</h2>
           <button
             className="modal-close-btn"
             onClick={onClose}
@@ -412,122 +408,6 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
           </button>
         </div>
       </div>
-
-      <style jsx>{`
-        .selected-rules-summary {
-          max-height: 150px;
-          overflow-y: auto;
-          border: 1px solid #e5e7eb;
-          border-radius: 0.5rem;
-          padding: 1rem;
-          background: #f9fafb;
-        }
-
-        .rule-summary-item {
-          display: flex;
-          justify-content: space-between;
-          padding: 0.5rem 0;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .rule-summary-item:last-child {
-          border-bottom: none;
-        }
-
-        .rule-summary-item.more {
-          color: #6b7280;
-          font-style: italic;
-          justify-content: center;
-        }
-
-        .rule-name {
-          font-weight: 500;
-          color: #374151;
-        }
-
-        .rule-device {
-          color: #6b7280;
-          font-size: 0.875rem;
-        }
-
-        .bulk-setting-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-          padding: 1rem;
-          border: 1px solid #e5e7eb;
-          border-radius: 0.5rem;
-          margin-bottom: 1rem;
-        }
-
-        .bulk-setting-label {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-weight: 500;
-          color: #374151;
-          cursor: pointer;
-        }
-
-        .bulk-setting-label input[type="checkbox"] {
-          width: 1.125rem;
-          height: 1.125rem;
-        }
-
-        .bulk-setting-options {
-          display: flex;
-          gap: 1rem;
-          margin-left: 1.625rem;
-        }
-
-        .radio-label {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          cursor: pointer;
-          color: #6b7280;
-        }
-
-        .preview-changes {
-          background: #f3f4f6;
-          border-radius: 0.5rem;
-          padding: 1rem;
-          margin-bottom: 1rem;
-        }
-
-        .change-item {
-          display: flex;
-          justify-content: space-between;
-          padding: 0.5rem 0;
-          border-bottom: 1px solid #d1d5db;
-        }
-
-        .change-item:last-child {
-          border-bottom: none;
-        }
-
-        .change-field {
-          font-weight: 500;
-          color: #374151;
-        }
-
-        .change-value {
-          color: #059669;
-          font-weight: 500;
-        }
-
-        .preview-warning {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.75rem;
-          background: #fef3c7;
-          border: 1px solid #f59e0b;
-          border-radius: 0.375rem;
-          color: #92400e;
-          font-size: 0.875rem;
-        }
-      `}</style>
     </div>
   );
 };

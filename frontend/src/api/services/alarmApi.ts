@@ -1,190 +1,195 @@
-// ============================================================================
-// frontend/src/api/services/alarmApi.ts
-// 🚨 알람 관리 API 서비스 - Backend /api/alarms 완전 호환 + AlarmSettings 지원
-// ============================================================================
-
 import { ENDPOINTS } from '../endpoints';
 
-// ============================================================================
-// 📋 알람 관련 타입 정의
-// ============================================================================
-
+// 백엔드 스키마와 정확히 일치하도록 수정된 인터페이스
 export interface AlarmRule {
   id: number;
-  rule_name: string;
+  tenant_id: number;
+  
+  // 기본 정보
+  name: string;
   description?: string;
-  target_type: 'data_point' | 'device' | 'virtual_point';
-  target_id: number;
+  
+  // 타겟 정보 (백엔드 실제 컬럼명)
+  device_id?: number;
+  data_point_id?: number;
+  virtual_point_id?: number;
+  
+  // JOIN으로 가져오는 정보들
   device_name?: string;
   data_point_name?: string;
-  condition_type: 'high_limit' | 'low_limit' | 'range' | 'status' | 'boolean';
-  threshold_high?: number;
-  threshold_low?: number;
-  threshold_value?: any;
+  virtual_point_name?: string;
+  site_name?: string;
+  site_location?: string;
+  target_display?: string;      // 백엔드에서 계산된 필드
+  condition_display?: string;   // 백엔드에서 계산된 필드
+  
+  // 조건 설정 (백엔드 실제 컬럼명)
+  condition_type: string;
+  condition_config?: any;       // JSON 객체 (파싱됨)
+  
+  // 알람 설정
   severity: 'critical' | 'major' | 'minor' | 'warning' | 'info';
-  enabled: boolean;
-  auto_clear: boolean;
-  notification_enabled: boolean;
-  email_recipients?: string;
-  sms_recipients?: string;
-  tenant_id: number;
+  message_template?: string;
+  
+  // 동작 설정 (백엔드 실제 컬럼명)
+  auto_acknowledge?: boolean;
+  auto_clear?: boolean;
+  acknowledgment_required?: boolean;
+  escalation_time_minutes?: number;
+  notification_enabled?: boolean;
+  email_notification?: boolean;
+  sms_notification?: boolean;
+  
+  // 상태
+  is_enabled: boolean;
+  
+  // 메타데이터
+  created_by?: number;
   created_at: string;
   updated_at: string;
 }
 
 export interface AlarmOccurrence {
   id: number;
-  rule_id: number;
-  rule_name: string;
-  target_type: string;
-  target_id: number;
+  tenant_id: number;
+  alarm_rule_id: number;
+  
+  // 규칙 정보
+  rule_name?: string;
+  rule_severity?: string;
+  
+  // 대상 정보 (백엔드 실제 컬럼명)
+  device_id?: number;
+  data_point_id?: number;
+  virtual_point_id?: number;
   device_name?: string;
   data_point_name?: string;
-  message: string;
-  description?: string;
+  virtual_point_name?: string;
+  site_location?: string;
+  
+  // 알람 상세 정보
   severity: string;
-  triggered_value?: any;
-  threshold_value?: any;
+  message: string;
+  trigger_value?: string;
+  condition_details?: string;
+  
+  // 상태 정보 (백엔드 실제 컬럼명)
   state: 'active' | 'acknowledged' | 'cleared';
-  triggered_at: string;
-  acknowledged_at?: string;
-  acknowledged_by?: string;
-  acknowledgment_comment?: string;
-  cleared_at?: string;
-  auto_cleared: boolean;
+  occurrence_time: string;
+  
+  // 확인 정보 (백엔드 실제 컬럼명)
+  acknowledgment_time?: string;
+  acknowledged_by?: number;
+  acknowledgment_note?: string;
+  
+  // 해제 정보 (백엔드 실제 컬럼명)
+  clear_time?: string;
+  cleared_by?: number;
+  resolution_note?: string;
+  
+  // 기타
+  escalation_level?: number;
+  notification_sent?: boolean;
+  
+  // 메타데이터
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlarmTemplate {
+  id: number;
   tenant_id: number;
+  name: string;
+  description?: string;
+  category: string;
+  condition_type: string;
+  condition_template: string;
+  default_config: any;              // JSON 객체
+  severity: string;
+  message_template?: string;
+  applicable_data_types: string[];  // JSON 배열
+  notification_enabled?: boolean;
+  email_notification?: boolean;
+  sms_notification?: boolean;
+  auto_acknowledge?: boolean;
+  auto_clear?: boolean;
+  usage_count: number;
+  is_active: boolean;
+  is_system_template?: boolean;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AlarmStatistics {
-  total_active: number;
-  total_acknowledged: number;
-  total_cleared: number;
-  by_severity: {
-    critical: number;
-    major: number;
-    minor: number;
-    warning: number;
-    info: number;
-  };
-  recent_24h: number;
-  average_response_time: number;
-  top_sources: Array<{
-    name: string;
-    count: number;
-  }>;
-}
-
-// ========================================================================
-// 📋 AlarmSettings 전용 타입 정의
-// ========================================================================
-
-export interface AlarmRuleSettings {
-  // 임계값 설정
-  highHighLimit?: number;
-  highLimit?: number;
-  lowLimit?: number;
-  lowLowLimit?: number;
-  deadband?: number;
-  targetValue?: number;
-  tolerance?: number;
-  timeWindow?: number;
-  pattern?: string;
-  
-  // 동작 설정
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  severity: 1 | 2 | 3 | 4 | 5;
-  autoAcknowledge: boolean;
-  autoReset: boolean;
-  suppressDuration: number; // 중복 억제 시간 (초)
-  maxOccurrences: number;   // 최대 발생 횟수
-  escalationTime: number;   // 에스컬레이션 시간 (분)
-  
-  // 알림 설정
-  emailEnabled: boolean;
-  emailRecipients: string[];
-  smsEnabled: boolean;
-  smsRecipients: string[];
-  soundEnabled: boolean;
-  popupEnabled: boolean;
-  webhookEnabled: boolean;
-  webhookUrl: string;
-  
-  // 메시지 설정
-  messageTemplate: string;
-  emailTemplate: string;
-  
-  // 스케줄 설정
-  schedule: {
-    type: 'always' | 'business_hours' | 'custom';
-    startTime?: string;
-    endTime?: string;
-    weekdays?: number[];
-    holidays?: string[];
-  };
-  
-  // 상태
-  isEnabled: boolean;
-}
-
-export interface AlarmRuleStatistics {
-  rule_info: {
-    id: number;
-    name: string;
-    is_enabled: boolean;
-    severity: string;
-    created_at: string;
-  };
-  period: {
-    start_date: string;
-    end_date: string;
-    days: number;
-  };
-  occurrence_summary: {
+  // 발생 통계
+  occurrences: {
     total_occurrences: number;
-    acknowledged_count: number;
-    cleared_count: number;
-    pending_count: number;
-    acknowledgment_rate: number;
+    active_alarms: number;
+    unacknowledged_alarms: number;
+    acknowledged_alarms: number;
+    cleared_alarms: number;
   };
-  performance_metrics: {
-    avg_response_time_minutes: number;
-    frequency_per_day: number;
-    last_triggered: string | null;
+  
+  // 규칙 통계
+  rules: {
+    total_rules: number;
+    enabled_rules: number;
+    condition_types: number;
+    severity_levels: number;
+    devices_with_rules: number;
   };
-  distributions: {
-    by_severity: Record<string, number>;
-    last_7_days: Array<{ date: string; occurrences: number }>;
-    hourly_pattern: Array<{ hour: number; count: number }>;
+  
+  // 대시보드 요약
+  dashboard_summary: {
+    total_active: number;
+    total_rules: number;
+    unacknowledged: number;
+    enabled_rules: number;
   };
 }
 
-export interface BulkUpdateRequest {
-  rule_ids: number[];
-  settings: Partial<AlarmRuleSettings>;
+// 백엔드 CREATE 스키마와 정확히 일치
+export interface AlarmRuleCreateData {
+  name: string;
+  description?: string;
+  device_id?: number;
+  data_point_id?: number;
+  virtual_point_id?: number;
+  condition_type: string;
+  condition_config?: string;       // JSON 문자열
+  severity: 'critical' | 'major' | 'minor' | 'warning' | 'info';
+  message_template?: string;
+  auto_acknowledge?: boolean;
+  auto_clear?: boolean;
+  acknowledgment_required?: boolean;
+  escalation_time_minutes?: number;
+  notification_enabled?: boolean;
+  email_notification?: boolean;
+  sms_notification?: boolean;
+  is_enabled?: boolean;
 }
 
-export interface BulkUpdateResponse {
-  total_requested: number;
-  successful_updates: number;
-  failed_updates: number;
-  updated_rules: Array<{ rule_id: number; success: boolean }>;
-  failed_rules: Array<{ rule_id: number; error: string }>;
-  applied_settings: string[];
-}
+export interface AlarmRuleUpdateData extends Partial<AlarmRuleCreateData> {}
 
-export interface RuleTestRequest {
-  test_value: number;
-  test_scenario: 'threshold' | 'range' | 'pattern';
-}
-
-export interface RuleTestResponse {
-  rule_id: number;
-  rule_name: string;
-  test_scenario: string;
-  test_value: number;
-  would_trigger: boolean;
-  trigger_reason: string | null;
-  recommended_action: string | null;
+// 백엔드 CREATE 스키마와 정확히 일치
+export interface AlarmTemplateCreateData {
+  name: string;
+  description?: string;
+  category?: string;
+  condition_type: string;
+  condition_template: string;
+  default_config?: any;            // JSON 객체
+  severity?: string;
+  message_template?: string;
+  applicable_data_types?: string[];
+  notification_enabled?: boolean;
+  email_notification?: boolean;
+  sms_notification?: boolean;
+  auto_acknowledge?: boolean;
+  auto_clear?: boolean;
+  is_active?: boolean;
+  is_system_template?: boolean;
 }
 
 export interface AlarmListParams {
@@ -193,58 +198,50 @@ export interface AlarmListParams {
   severity?: string;
   state?: string;
   device_id?: number;
+  rule_id?: number;
   acknowledged?: boolean;
   search?: string;
   sort_by?: string;
   sort_order?: 'ASC' | 'DESC';
-  start_date?: string;
-  end_date?: string;
+  date_from?: string;
+  date_to?: string;
+  enabled?: boolean;
+  condition_type?: string;
 }
 
 export interface AcknowledgeAlarmRequest {
   comment?: string;
-  acknowledged_by?: string;
 }
 
-export interface AlarmRuleCreateData {
-  rule_name: string;
-  description?: string;
-  target_type: 'data_point' | 'device' | 'virtual_point';
-  target_id: number;
-  condition_type: 'high_limit' | 'low_limit' | 'range' | 'status' | 'boolean';
-  threshold_high?: number;
-  threshold_low?: number;
-  threshold_value?: any;
-  severity: 'critical' | 'major' | 'minor' | 'warning' | 'info';
-  enabled?: boolean;
-  auto_clear?: boolean;
-  notification_enabled?: boolean;
-  email_recipients?: string;
-  sms_recipients?: string;
+export interface ClearAlarmRequest {
+  comment?: string;
+  clearedValue?: string;
 }
-
-export interface AlarmRuleUpdateData extends Partial<AlarmRuleCreateData> {}
-
-// ============================================================================
-// 🌐 공통 API 응답 타입
-// ============================================================================
 
 export interface ApiResponse<T> {
   success: boolean;
   data: T | null;
   message: string;
-  error?: string;
+  error_code?: string;
   timestamp: string;
 }
 
-// ============================================================================
-// 🔧 HTTP 클라이언트 클래스 (간단 버전)
-// ============================================================================
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
 
 class HttpClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     try {
-      const response = await fetch(`${endpoint}`, {
+      console.log(`API 요청: ${options.method || 'GET'} ${endpoint}`);
+      
+      const response = await fetch(endpoint, {
         headers: {
           'Content-Type': 'application/json',
           ...options.headers,
@@ -252,24 +249,63 @@ class HttpClient {
         ...options,
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
       
-      if (!response.ok) {
+      if (!responseText || responseText.trim() === '') {
+        console.warn('빈 응답 수신');
         return {
           success: false,
           data: null,
-          message: data.message || `HTTP ${response.status}`,
-          error: data.error || response.statusText,
+          message: 'Empty response from server',
+          error_code: 'EMPTY_RESPONSE',
           timestamp: new Date().toISOString()
         };
       }
 
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON 파싱 실패:', parseError);
+        
+        if (responseText.includes('<html>') || responseText.includes('<!DOCTYPE')) {
+          return {
+            success: false,
+            data: null,
+            message: `서버가 HTML을 반환했습니다 (Status: ${response.status})`,
+            error_code: 'HTML_RESPONSE',
+            timestamp: new Date().toISOString()
+          };
+        }
+        
+        return {
+          success: false,
+          data: null,
+          message: `JSON 파싱 실패: ${parseError.message}`,
+          error_code: 'JSON_PARSE_ERROR',
+          timestamp: new Date().toISOString()
+        };
+      }
+      
+      if (!response.ok) {
+        console.error(`HTTP 에러 ${response.status}:`, data);
+        return {
+          success: false,
+          data: null,
+          message: data.message || `HTTP ${response.status} ${response.statusText}`,
+          error_code: data.error_code || response.statusText,
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      console.log(`API 성공: ${endpoint}`);
       return data;
     } catch (error: any) {
+      console.error('HTTP 요청 실패:', error);
       return {
         success: false,
         message: error.message || 'Network error',
-        error: error.message || 'Unknown error',
+        error_code: 'NETWORK_ERROR',
         data: null as any,
         timestamp: new Date().toISOString()
       };
@@ -319,247 +355,330 @@ class HttpClient {
   }
 }
 
-// ============================================================================
-// 🚨 알람 API 서비스 클래스
-// ============================================================================
-
+// 백엔드와 완전 호환되는 AlarmApiService
 export class AlarmApiService {
   private static httpClient = new HttpClient();
 
-  // ========================================================================
-  // 📋 활성 알람 관리
-  // ========================================================================
-
-  /**
-   * 활성 알람 목록 조회
-   */
-  static async getActiveAlarms(params?: AlarmListParams): Promise<ApiResponse<{
-    items: AlarmOccurrence[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      totalPages: number;
-      hasNext: boolean;
-      hasPrev: boolean;
-    };
-  }>> {
-    console.log('🚨 활성 알람 목록 조회:', params);
-    return this.httpClient.get<any>(ENDPOINTS.ALARMS_ACTIVE, params);
+  // 데이터 변환 없이 백엔드 응답 그대로 사용
+  private static parseConditionConfig(configString: string | any): any {
+    if (typeof configString === 'string') {
+      try {
+        return JSON.parse(configString);
+      } catch {
+        return {};
+      }
+    }
+    return configString || {};
   }
 
-  /**
-   * 알람 이력 조회
-   */
-  static async getAlarmHistory(params?: AlarmListParams): Promise<ApiResponse<{
-    items: AlarmOccurrence[];
-    pagination: any;
-  }>> {
-    console.log('📊 알람 이력 조회:', params);
-    return this.httpClient.get<any>(ENDPOINTS.ALARMS_HISTORY, params);
+  private static stringifyConditionConfig(config: any): string {
+    if (typeof config === 'string') {
+      return config;
+    }
+    return JSON.stringify(config || {});
   }
 
-  /**
-   * 특정 알람 발생 조회
-   */
+  // 활성 알람 조회
+  static async getActiveAlarms(params?: AlarmListParams): Promise<ApiResponse<PaginatedResponse<AlarmOccurrence>>> {
+    try {
+      console.log('활성 알람 목록 조회:', params);
+      
+      const response = await this.httpClient.get<PaginatedResponse<AlarmOccurrence>>(
+        ENDPOINTS.ALARMS_ACTIVE, 
+        params
+      );
+      
+      return response;
+    } catch (error) {
+      console.error('활성 알람 조회 실패:', error);
+      throw error;
+    }
+  }
+
+  // 전체 알람 발생 조회
+  static async getAlarmOccurrences(params?: AlarmListParams): Promise<ApiResponse<PaginatedResponse<AlarmOccurrence>>> {
+    console.log('알람 발생 목록 조회:', params);
+    return this.httpClient.get<PaginatedResponse<AlarmOccurrence>>(ENDPOINTS.ALARMS_OCCURRENCES, params);
+  }
+
+  // 알람 이력 조회
+  static async getAlarmHistory(params?: AlarmListParams): Promise<ApiResponse<PaginatedResponse<AlarmOccurrence>>> {
+    console.log('알람 이력 조회:', params);
+    return this.httpClient.get<PaginatedResponse<AlarmOccurrence>>(ENDPOINTS.ALARMS_HISTORY, params);
+  }
+
+  // 특정 알람 발생 조회
   static async getAlarmOccurrence(id: number): Promise<ApiResponse<AlarmOccurrence>> {
-    console.log('🔍 알람 발생 상세 조회:', id);
+    console.log('알람 발생 상세 조회:', id);
     return this.httpClient.get<AlarmOccurrence>(ENDPOINTS.ALARMS_OCCURRENCE_BY_ID(id));
   }
 
-  /**
-   * 알람 확인 처리
-   */
-  static async acknowledgeAlarm(id: number, data?: AcknowledgeAlarmRequest): Promise<ApiResponse<boolean>> {
-    console.log('✅ 알람 확인 처리:', id, data);
-    return this.httpClient.post<boolean>(ENDPOINTS.ALARMS_OCCURRENCE_ACKNOWLEDGE(id), data);
+  // 알람 규칙 목록 조회
+  static async getAlarmRules(params?: AlarmListParams): Promise<ApiResponse<PaginatedResponse<AlarmRule>>> {
+    try {
+      console.log('알람 규칙 목록 조회:', params);
+      
+      // 백엔드 파라미터 매핑
+      const backendParams: any = {};
+      if (params?.page) backendParams.page = params.page;
+      if (params?.limit) backendParams.limit = params.limit;
+      if (params?.search) backendParams.search = params.search;
+      if (params?.enabled !== undefined) backendParams.enabled = params.enabled;
+      if (params?.severity) backendParams.severity = params.severity;
+      if (params?.condition_type) backendParams.condition_type = params.condition_type;
+      if (params?.device_id) backendParams.device_id = params.device_id;
+      if (params?.data_point_id) backendParams.data_point_id = params.data_point_id;
+      if (params?.virtual_point_id) backendParams.virtual_point_id = params.virtual_point_id;
+      
+      const response = await this.httpClient.get<PaginatedResponse<AlarmRule>>(
+        ENDPOINTS.ALARM_RULES, 
+        backendParams
+      );
+      
+      // condition_config JSON 파싱
+      if (response.success && response.data?.items) {
+        response.data.items = response.data.items.map(rule => ({
+          ...rule,
+          condition_config: this.parseConditionConfig(rule.condition_config)
+        }));
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('알람 규칙 조회 실패:', error);
+      throw error;
+    }
   }
 
-  /**
-   * 알람 해제 처리
-   */
-  static async clearAlarm(id: number, comment?: string): Promise<ApiResponse<boolean>> {
-    console.log('🔄 알람 해제 처리:', id, comment);
-    return this.httpClient.post<boolean>(ENDPOINTS.ALARMS_OCCURRENCE_CLEAR(id), { comment });
+  // 특정 알람 규칙 조회
+  static async getAlarmRule(id: number): Promise<ApiResponse<AlarmRule>> {
+    console.log('알람 규칙 상세 조회:', id);
+    const response = await this.httpClient.get<AlarmRule>(ENDPOINTS.ALARM_RULE_BY_ID(id));
+    
+    if (response.success && response.data) {
+      response.data.condition_config = this.parseConditionConfig(response.data.condition_config);
+    }
+    
+    return response;
   }
 
-  /**
-   * 미확인 알람 목록 조회
-   */
+  // 알람 규칙 생성
+  static async createAlarmRule(data: AlarmRuleCreateData): Promise<ApiResponse<AlarmRule>> {
+    console.log('새 알람 규칙 생성:', data);
+    
+    // 백엔드 형식으로 변환
+    const backendData = {
+      ...data,
+      condition_config: this.stringifyConditionConfig(data.condition_config)
+    };
+    
+    const response = await this.httpClient.post<AlarmRule>(ENDPOINTS.ALARM_RULES, backendData);
+    
+    if (response.success && response.data) {
+      response.data.condition_config = this.parseConditionConfig(response.data.condition_config);
+    }
+    
+    return response;
+  }
+
+  // 알람 규칙 수정
+  static async updateAlarmRule(id: number, data: AlarmRuleUpdateData): Promise<ApiResponse<AlarmRule>> {
+    console.log('알람 규칙 수정:', id, data);
+    
+    // 백엔드 형식으로 변환
+    const backendData = {
+      ...data,
+      condition_config: data.condition_config ? this.stringifyConditionConfig(data.condition_config) : undefined
+    };
+    
+    const response = await this.httpClient.put<AlarmRule>(ENDPOINTS.ALARM_RULE_BY_ID(id), backendData);
+    
+    if (response.success && response.data) {
+      response.data.condition_config = this.parseConditionConfig(response.data.condition_config);
+    }
+    
+    return response;
+  }
+
+  // 알람 규칙 삭제
+  static async deleteAlarmRule(id: number): Promise<ApiResponse<{ deleted: boolean }>> {
+    console.log('알람 규칙 삭제:', id);
+    return this.httpClient.delete<{ deleted: boolean }>(ENDPOINTS.ALARM_RULE_BY_ID(id));
+  }
+
+  // 알람 확인 처리
+  static async acknowledgeAlarm(id: number, data?: AcknowledgeAlarmRequest): Promise<ApiResponse<AlarmOccurrence>> {
+    console.log('알람 확인 처리:', id, data);
+    return this.httpClient.post<AlarmOccurrence>(ENDPOINTS.ALARMS_OCCURRENCE_ACKNOWLEDGE(id), data);
+  }
+
+  // 알람 해제 처리
+  static async clearAlarm(id: number, data?: ClearAlarmRequest): Promise<ApiResponse<AlarmOccurrence>> {
+    console.log('알람 해제 처리:', id, data);
+    return this.httpClient.post<AlarmOccurrence>(ENDPOINTS.ALARMS_OCCURRENCE_CLEAR(id), data);
+  }
+
+  // 미확인 알람 조회
   static async getUnacknowledgedAlarms(): Promise<ApiResponse<AlarmOccurrence[]>> {
-    console.log('⚠️ 미확인 알람 목록 조회');
+    console.log('미확인 알람 목록 조회');
     return this.httpClient.get<AlarmOccurrence[]>(ENDPOINTS.ALARM_UNACKNOWLEDGED);
   }
 
-  /**
-   * 특정 디바이스의 알람 조회
-   */
+  // 최근 알람 조회
+  static async getRecentAlarms(limit: number = 20): Promise<ApiResponse<AlarmOccurrence[]>> {
+    console.log('최근 알람 조회:', limit);
+    return this.httpClient.get<AlarmOccurrence[]>(ENDPOINTS.ALARM_RECENT, { limit });
+  }
+
+  // 디바이스 알람 조회
   static async getDeviceAlarms(deviceId: number): Promise<ApiResponse<AlarmOccurrence[]>> {
-    console.log('🏭 디바이스 알람 조회:', deviceId);
+    console.log('디바이스 알람 조회:', deviceId);
     return this.httpClient.get<AlarmOccurrence[]>(ENDPOINTS.ALARM_DEVICE(deviceId));
   }
 
-  // ========================================================================
-  // 📋 알람 규칙 관리
-  // ========================================================================
-
-  /**
-   * 알람 규칙 목록 조회
-   */
-  static async getAlarmRules(params?: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    enabled?: boolean;
-    severity?: string;
-  }): Promise<ApiResponse<{
-    items: AlarmRule[];
-    pagination: any;
-  }>> {
-    console.log('📋 알람 규칙 목록 조회:', params);
-    return this.httpClient.get<any>(ENDPOINTS.ALARM_RULES, params);
-  }
-
-  /**
-   * 특정 알람 규칙 조회
-   */
-  static async getAlarmRule(id: number): Promise<ApiResponse<AlarmRule>> {
-    console.log('🔍 알람 규칙 상세 조회:', id);
-    return this.httpClient.get<AlarmRule>(ENDPOINTS.ALARM_RULE_BY_ID(id));
-  }
-
-  /**
-   * 새 알람 규칙 생성
-   */
-  static async createAlarmRule(data: AlarmRuleCreateData): Promise<ApiResponse<AlarmRule>> {
-    console.log('➕ 새 알람 규칙 생성:', data);
-    return this.httpClient.post<AlarmRule>(ENDPOINTS.ALARM_RULES, data);
-  }
-
-  /**
-   * 알람 규칙 수정
-   */
-  static async updateAlarmRule(id: number, data: AlarmRuleUpdateData): Promise<ApiResponse<AlarmRule>> {
-    console.log('✏️ 알람 규칙 수정:', id, data);
-    return this.httpClient.put<AlarmRule>(ENDPOINTS.ALARM_RULE_BY_ID(id), data);
-  }
-
-  /**
-   * 알람 규칙 삭제
-   */
-  static async deleteAlarmRule(id: number): Promise<ApiResponse<boolean>> {
-    console.log('🗑️ 알람 규칙 삭제:', id);
-    return this.httpClient.delete<boolean>(ENDPOINTS.ALARM_RULE_BY_ID(id));
-  }
-
-  // ========================================================================
-  // 🔧 AlarmSettings 전용 API 메서드들
-  // ========================================================================
-
-  /**
-   * 알람 규칙 설정 부분 업데이트 (AlarmSettings.tsx용)
-   */
-  static async updateAlarmRuleSettings(
-    ruleId: number, 
-    settings: Partial<AlarmRuleSettings>
-  ): Promise<ApiResponse<AlarmRule>> {
-    console.log('🔧 알람 규칙 설정 업데이트:', ruleId, settings);
-    return this.httpClient.patch<AlarmRule>(`/api/alarms/rules/${ruleId}/settings`, settings);
-  }
-
-  /**
-   * 여러 알람 규칙 일괄 설정 업데이트
-   */
-  static async bulkUpdateAlarmRules(
-    request: BulkUpdateRequest
-  ): Promise<ApiResponse<BulkUpdateResponse>> {
-    console.log('📝 알람 규칙 일괄 업데이트:', request);
-    return this.httpClient.patch<BulkUpdateResponse>('/api/alarms/rules/bulk-update', request);
-  }
-
-  /**
-   * 알람 규칙 상세 통계 조회
-   */
-  static async getAlarmRuleStatistics(
-    ruleId: number, 
-    days: number = 30
-  ): Promise<ApiResponse<AlarmRuleStatistics>> {
-    console.log('📊 알람 규칙 통계 조회:', ruleId, days);
-    return this.httpClient.get<AlarmRuleStatistics>(
-      `/api/alarms/rules/${ruleId}/statistics`,
-      { days }
-    );
-  }
-
-  /**
-   * 알람 규칙 테스트 실행
-   */
-  static async testAlarmRule(
-    ruleId: number, 
-    request: RuleTestRequest
-  ): Promise<ApiResponse<RuleTestResponse>> {
-    console.log('🧪 알람 규칙 테스트:', ruleId, request);
-    return this.httpClient.post<RuleTestResponse>(
-      `/api/alarms/rules/${ruleId}/test`,
-      request
-    );
-  }
-
-  /**
-   * 알람 규칙 설정 변경 이력 조회
-   */
-  static async getAlarmRuleConfigHistory(
-    ruleId: number, 
-    limit: number = 20
-  ): Promise<ApiResponse<any>> {
-    console.log('📜 알람 규칙 설정 이력 조회:', ruleId);
-    return this.httpClient.get<any>(
-      `/api/alarms/rules/${ruleId}/configuration-history`,
-      { limit }
-    );
-  }
-
-  // ========================================================================
-  // 📊 통계 및 기타
-  // ========================================================================
-
-  /**
-   * 알람 통계 조회
-   */
+  // 알람 통계 조회
   static async getAlarmStatistics(): Promise<ApiResponse<AlarmStatistics>> {
-    console.log('📊 알람 통계 조회');
+    console.log('알람 통계 조회');
     return this.httpClient.get<AlarmStatistics>(ENDPOINTS.ALARM_STATISTICS);
   }
 
-  /**
-   * 알람 API 테스트
-   */
+  // 알람 규칙 통계 조회
+  static async getAlarmRuleStatistics(): Promise<ApiResponse<any>> {
+    console.log('알람 규칙 통계 조회');
+    return this.httpClient.get<any>(ENDPOINTS.ALARM_RULES_STATISTICS);
+  }
+
+  // 템플릿 관련 메서드들
+  static async getAlarmTemplates(params?: {
+    page?: number;
+    limit?: number;
+    category?: string;
+    is_system_template?: boolean;
+    search?: string;
+  }): Promise<ApiResponse<PaginatedResponse<AlarmTemplate>>> {
+    console.log('알람 템플릿 목록 조회:', params);
+    return this.httpClient.get<PaginatedResponse<AlarmTemplate>>(ENDPOINTS.ALARM_TEMPLATES, params);
+  }
+
+  static async getAlarmTemplate(id: number): Promise<ApiResponse<AlarmTemplate>> {
+    console.log('알람 템플릿 상세 조회:', id);
+    const response = await this.httpClient.get<AlarmTemplate>(ENDPOINTS.ALARM_TEMPLATE_BY_ID(id));
+    
+    if (response.success && response.data) {
+      // JSON 필드 파싱
+      if (typeof response.data.default_config === 'string') {
+        response.data.default_config = JSON.parse(response.data.default_config);
+      }
+      if (typeof response.data.applicable_data_types === 'string') {
+        response.data.applicable_data_types = JSON.parse(response.data.applicable_data_types);
+      }
+    }
+    
+    return response;
+  }
+
+  static async createAlarmTemplate(data: AlarmTemplateCreateData): Promise<ApiResponse<AlarmTemplate>> {
+    console.log('새 알람 템플릿 생성:', data);
+    
+    // JSON 필드 문자열화
+    const backendData = {
+      ...data,
+      default_config: data.default_config ? JSON.stringify(data.default_config) : '{}',
+      applicable_data_types: data.applicable_data_types ? JSON.stringify(data.applicable_data_types) : '["*"]'
+    };
+    
+    return this.httpClient.post<AlarmTemplate>(ENDPOINTS.ALARM_TEMPLATES, backendData);
+  }
+
+  static async updateAlarmTemplate(id: number, data: Partial<AlarmTemplateCreateData>): Promise<ApiResponse<AlarmTemplate>> {
+    console.log('알람 템플릿 수정:', id, data);
+    
+    // JSON 필드 문자열화
+    const backendData = {
+      ...data,
+      default_config: data.default_config ? JSON.stringify(data.default_config) : undefined,
+      applicable_data_types: data.applicable_data_types ? JSON.stringify(data.applicable_data_types) : undefined
+    };
+    
+    return this.httpClient.put<AlarmTemplate>(ENDPOINTS.ALARM_TEMPLATE_BY_ID(id), backendData);
+  }
+
+  static async deleteAlarmTemplate(id: number): Promise<ApiResponse<{ deleted: boolean }>> {
+    console.log('알람 템플릿 삭제:', id);
+    return this.httpClient.delete<{ deleted: boolean }>(ENDPOINTS.ALARM_TEMPLATE_BY_ID(id));
+  }
+
+  static async getSystemTemplates(): Promise<ApiResponse<AlarmTemplate[]>> {
+    console.log('시스템 템플릿 조회');
+    return this.httpClient.get<AlarmTemplate[]>(ENDPOINTS.ALARM_TEMPLATES_SYSTEM);
+  }
+
+  static async getTemplatesByCategory(category: string): Promise<ApiResponse<AlarmTemplate[]>> {
+    console.log('카테고리별 템플릿 조회:', category);
+    return this.httpClient.get<AlarmTemplate[]>(ENDPOINTS.ALARM_TEMPLATES_CATEGORY(category));
+  }
+
+  static async getTemplatesByDataType(dataType: string): Promise<ApiResponse<AlarmTemplate[]>> {
+    console.log('데이터 타입별 템플릿 조회:', dataType);
+    return this.httpClient.get<AlarmTemplate[]>(ENDPOINTS.ALARM_TEMPLATES_DATA_TYPE(dataType));
+  }
+
+  static async applyTemplate(
+    templateId: number, 
+    data: {
+      data_point_ids: number[];
+      custom_configs?: Record<number, any>;
+      rule_group_name?: string;
+    }
+  ): Promise<ApiResponse<any>> {
+    console.log('템플릿 적용:', templateId, data);
+    return this.httpClient.post<any>(ENDPOINTS.ALARM_TEMPLATE_APPLY(templateId), data);
+  }
+
+  static async getTemplateAppliedRules(templateId: number): Promise<ApiResponse<AlarmRule[]>> {
+    console.log('템플릿 적용 규칙 조회:', templateId);
+    return this.httpClient.get<AlarmRule[]>(ENDPOINTS.ALARM_TEMPLATE_APPLIED_RULES(templateId));
+  }
+
+  static async getTemplateStatistics(): Promise<ApiResponse<any>> {
+    console.log('템플릿 통계 조회');
+    return this.httpClient.get<any>(ENDPOINTS.ALARM_TEMPLATES_STATISTICS);
+  }
+
+  static async searchTemplates(searchTerm: string, limit: number = 20): Promise<ApiResponse<AlarmTemplate[]>> {
+    console.log('템플릿 검색:', searchTerm);
+    return this.httpClient.get<AlarmTemplate[]>(ENDPOINTS.ALARM_TEMPLATES_SEARCH, { q: searchTerm, limit });
+  }
+
+  static async getMostUsedTemplates(limit: number = 10): Promise<ApiResponse<AlarmTemplate[]>> {
+    console.log('인기 템플릿 조회:', limit);
+    return this.httpClient.get<AlarmTemplate[]>(ENDPOINTS.ALARM_TEMPLATES_MOST_USED, { limit });
+  }
+
+  // 설정 관련 메서드들
+  static async updateAlarmRuleSettings(id: number, settings: any): Promise<ApiResponse<AlarmRule>> {
+    console.log('알람 규칙 설정 업데이트:', id, settings);
+    return this.httpClient.patch<AlarmRule>(ENDPOINTS.ALARM_RULE_SETTINGS(id), settings);
+  }
+
+  // API 테스트
   static async testAlarmApi(): Promise<ApiResponse<any>> {
-    console.log('🧪 알람 API 테스트');
+    console.log('알람 API 테스트');
     return this.httpClient.get<any>(ENDPOINTS.ALARM_TEST);
   }
 
-  // ========================================================================
-  // 🔧 클라이언트 사이드 유틸리티 함수들
-  // ========================================================================
-
-  /**
-   * 알람 심각도 색상 반환
-   */
+  // 유틸리티 메서드들
   static getSeverityColor(severity: string): string {
     const colors = {
-      critical: '#dc2626',  // red-600
-      major: '#ea580c',     // orange-600
-      minor: '#ca8a04',     // yellow-600
-      warning: '#0891b2',   // cyan-600
-      info: '#0284c7'       // blue-600
+      critical: '#dc2626',   // 빨간색
+      major: '#ea580c',      // 주황색
+      minor: '#ca8a04',      // 노란색
+      warning: '#0891b2',    // 파란색
+      info: '#0284c7'        // 연한 파란색
     };
     return colors[severity as keyof typeof colors] || colors.info;
   }
 
-  /**
-   * 알람 심각도 아이콘 반환
-   */
   static getSeverityIcon(severity: string): string {
     const icons = {
       critical: 'fas fa-exclamation-triangle',
@@ -571,9 +690,6 @@ export class AlarmApiService {
     return icons[severity as keyof typeof icons] || icons.info;
   }
 
-  /**
-   * 알람 상태 표시 텍스트 반환
-   */
   static getStateDisplayText(state: string): string {
     const texts = {
       active: '활성',
@@ -583,39 +699,20 @@ export class AlarmApiService {
     return texts[state as keyof typeof texts] || state;
   }
 
-  /**
-   * 우선순위별 색상 반환
-   */
-  static getPriorityColor(priority: string): string {
+  static getStateColor(state: string): string {
     const colors = {
-      critical: '#dc2626',  // red-600
-      high: '#ea580c',      // orange-600
-      medium: '#ca8a04',    // yellow-600
-      low: '#22c55e'        // green-500
+      active: '#dc2626',      // 빨간색
+      acknowledged: '#ca8a04', // 노란색
+      cleared: '#16a34a'      // 초록색
     };
-    return colors[priority as keyof typeof colors] || colors.medium;
+    return colors[state as keyof typeof colors] || colors.active;
   }
 
-  /**
-   * 우선순위별 CSS 클래스 반환
-   */
-  static getPriorityClass(priority: string): string {
-    return `priority-${priority}`;
-  }
-
-  /**
-   * 알람 지속 시간 계산 (ms)
-   */
-  static calculateDuration(triggeredAt: string, clearedAt?: string): number {
-    const start = new Date(triggeredAt).getTime();
-    const end = clearedAt ? new Date(clearedAt).getTime() : Date.now();
-    return end - start;
-  }
-
-  /**
-   * 지속 시간을 읽기 쉬운 형식으로 변환
-   */
-  static formatDuration(durationMs: number): string {
+  static formatDuration(startTime: string, endTime?: string): string {
+    const start = new Date(startTime).getTime();
+    const end = endTime ? new Date(endTime).getTime() : Date.now();
+    const durationMs = end - start;
+    
     const seconds = Math.floor(durationMs / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -626,192 +723,61 @@ export class AlarmApiService {
     } else if (hours > 0) {
       return `${hours}시간 ${minutes % 60}분`;
     } else if (minutes > 0) {
-      return `${minutes}분 ${seconds % 60}초`;
+      return `${minutes}분`;
     } else {
       return `${seconds}초`;
     }
   }
 
-  /**
-   * 설정 변경사항 비교
-   */
-  static compareSettings(
-    oldSettings: Partial<AlarmRuleSettings>, 
-    newSettings: Partial<AlarmRuleSettings>
-  ): { changed: string[]; unchanged: string[] } {
-    const changed: string[] = [];
-    const unchanged: string[] = [];
-    
-    const allKeys = new Set([...Object.keys(oldSettings), ...Object.keys(newSettings)]);
-    
-    allKeys.forEach(key => {
-      const oldValue = oldSettings[key as keyof AlarmRuleSettings];
-      const newValue = newSettings[key as keyof AlarmRuleSettings];
-      
-      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-        changed.push(key);
-      } else {
-        unchanged.push(key);
-      }
-    });
-    
-    return { changed, unchanged };
-  }
-
-  /**
-   * 설정 유효성 검증
-   */
-  static validateSettings(settings: Partial<AlarmRuleSettings>): {
-    isValid: boolean;
-    errors: string[];
-    warnings: string[];
-  } {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    
-    // 임계값 검증
-    if (settings.highLimit !== undefined && settings.lowLimit !== undefined) {
-      if (settings.highLimit <= settings.lowLimit) {
-        errors.push('High limit must be greater than low limit');
-      }
-    }
-    
-    // 이메일 수신자 검증
-    if (settings.emailEnabled && (!settings.emailRecipients || settings.emailRecipients.length === 0)) {
-      warnings.push('Email is enabled but no recipients specified');
-    }
-    
-    // SMS 수신자 검증
-    if (settings.smsEnabled && (!settings.smsRecipients || settings.smsRecipients.length === 0)) {
-      warnings.push('SMS is enabled but no recipients specified');
-    }
-    
-    // 억제 시간 검증
-    if (settings.suppressDuration !== undefined && settings.suppressDuration < 0) {
-      errors.push('Suppress duration cannot be negative');
-    }
-    
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    };
-  }
-
-  /**
-   * 설정을 백엔드 형식으로 변환
-   */
-  static transformSettingsForBackend(settings: Partial<AlarmRuleSettings>): Record<string, any> {
-    const transformed: Record<string, any> = {};
-    
-    Object.entries(settings).forEach(([key, value]) => {
-      // 특별한 변환이 필요한 필드들
-      switch (key) {
-        case 'emailRecipients':
-        case 'smsRecipients':
-          transformed[key] = Array.isArray(value) ? value : [];
-          break;
-        case 'schedule':
-          transformed[key] = typeof value === 'object' ? value : {};
-          break;
-        default:
-          transformed[key] = value;
-      }
-    });
-    
-    return transformed;
-  }
-
-  /**
-   * 백엔드 응답을 프론트엔드 형식으로 변환
-   */
-  static transformSettingsFromBackend(backendData: any): Partial<AlarmRuleSettings> {
-    const settings: Partial<AlarmRuleSettings> = {};
-    
-    // 필드 매핑 (백엔드 -> 프론트엔드)
-    const fieldMapping = {
-      'high_high_limit': 'highHighLimit',
-      'high_limit': 'highLimit',
-      'low_limit': 'lowLimit',
-      'low_low_limit': 'lowLowLimit',
-      'auto_acknowledge': 'autoAcknowledge',
-      'auto_clear': 'autoReset',
-      'email_notification': 'emailEnabled',
-      'sms_notification': 'smsEnabled',
-      'message_template': 'messageTemplate',
-      'is_enabled': 'isEnabled'
-    };
-    
-    Object.entries(backendData).forEach(([backendKey, value]) => {
-      const frontendKey = fieldMapping[backendKey as keyof typeof fieldMapping] || backendKey;
-      
-      // 특별한 변환이 필요한 필드들
-      if (backendKey === 'email_recipients' || backendKey === 'sms_recipients') {
-        try {
-          settings[frontendKey as keyof AlarmRuleSettings] = typeof value === 'string' ? JSON.parse(value) : value;
-        } catch {
-          settings[frontendKey as keyof AlarmRuleSettings] = [] as any;
-        }
-      } else {
-        settings[frontendKey as keyof AlarmRuleSettings] = value as any;
-      }
-    });
-    
-    return settings;
-  }
-
-  /**
-   * 알람 목록 필터링 (클라이언트 사이드)
-   */
+  // 필터링 및 정렬
   static filterAlarms(
     alarms: AlarmOccurrence[], 
     filters: {
       search?: string;
       severity?: string;
       state?: string;
+      device_id?: number;
     }
   ): AlarmOccurrence[] {
     return alarms.filter(alarm => {
-      // 검색어 필터
       if (filters.search) {
         const search = filters.search.toLowerCase();
         const matchesSearch = 
-          alarm.rule_name.toLowerCase().includes(search) ||
+          alarm.rule_name?.toLowerCase().includes(search) ||
           alarm.message.toLowerCase().includes(search) ||
-          (alarm.device_name && alarm.device_name.toLowerCase().includes(search)) ||
-          (alarm.data_point_name && alarm.data_point_name.toLowerCase().includes(search));
+          alarm.device_name?.toLowerCase().includes(search) ||
+          alarm.data_point_name?.toLowerCase().includes(search);
         
         if (!matchesSearch) return false;
       }
 
-      // 심각도 필터
       if (filters.severity && filters.severity !== 'all') {
         if (alarm.severity !== filters.severity) return false;
       }
 
-      // 상태 필터
       if (filters.state && filters.state !== 'all') {
         if (alarm.state !== filters.state) return false;
+      }
+
+      if (filters.device_id) {
+        if (alarm.device_id !== filters.device_id) return false;
       }
 
       return true;
     });
   }
 
-  /**
-   * 알람 목록 정렬
-   */
   static sortAlarms(
     alarms: AlarmOccurrence[], 
-    sortBy: 'triggered_at' | 'severity' | 'rule_name' | 'state' = 'triggered_at',
+    sortBy: keyof AlarmOccurrence = 'occurrence_time',
     sortOrder: 'ASC' | 'DESC' = 'DESC'
   ): AlarmOccurrence[] {
     return [...alarms].sort((a, b) => {
       let comparison = 0;
 
       switch (sortBy) {
-        case 'triggered_at':
-          comparison = new Date(a.triggered_at).getTime() - new Date(b.triggered_at).getTime();
+        case 'occurrence_time':
+          comparison = new Date(a.occurrence_time).getTime() - new Date(b.occurrence_time).getTime();
           break;
         case 'severity':
           const severityOrder = { critical: 5, major: 4, minor: 3, warning: 2, info: 1 };
@@ -819,11 +785,13 @@ export class AlarmApiService {
                       (severityOrder[b.severity as keyof typeof severityOrder] || 0);
           break;
         case 'rule_name':
-          comparison = a.rule_name.localeCompare(b.rule_name);
+          comparison = (a.rule_name || '').localeCompare(b.rule_name || '');
           break;
         case 'state':
           comparison = a.state.localeCompare(b.state);
           break;
+        default:
+          comparison = 0;
       }
 
       return sortOrder === 'ASC' ? comparison : -comparison;

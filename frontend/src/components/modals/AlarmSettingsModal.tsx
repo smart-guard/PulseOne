@@ -1,10 +1,6 @@
-// ============================================================================
-// frontend/src/components/modals/AlarmSettingsModal.tsx
-// 개별 알람 규칙 설정 조정 모달
-// ============================================================================
-
 import React, { useState, useEffect } from 'react';
 import { AlarmRuleSettings, AlarmRuleStatistics } from '../../api/services/alarmApi';
+import '../styles/alarm-settings.css';
 
 interface AlarmRule {
   id: number;
@@ -66,7 +62,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
     <div className="modal-overlay">
       <div className="modal-container large">
         <div className="modal-header">
-          <h2>알람 설정 조정: {rule.name}</h2>
+          <h2 className="modal-title">알람 설정 조정: {rule.name}</h2>
           <button
             className="modal-close-btn"
             onClick={onClose}
@@ -77,7 +73,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
         </div>
 
         <div className="modal-content">
-          {/* 📊 읽기전용 정보 */}
+          {/* 읽기전용 정보 */}
           <div className="form-section readonly-section">
             <h3>기본 정보 (읽기전용)</h3>
             <div className="readonly-grid">
@@ -159,7 +155,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 {(rule.condition_type === 'threshold' || rule.condition_type === 'range') && (
                   <div className="form-row">
                     <div className="form-group">
-                      <label>매우 높음 (HH)</label>
+                      <label className="form-label">매우 높음 (HH)</label>
                       <input
                         type="number"
                         value={localSettings.highHighLimit || ''}
@@ -169,7 +165,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label>높음 (H)</label>
+                      <label className="form-label">높음 (H)</label>
                       <input
                         type="number"
                         value={localSettings.highLimit || ''}
@@ -179,7 +175,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label>낮음 (L)</label>
+                      <label className="form-label">낮음 (L)</label>
                       <input
                         type="number"
                         value={localSettings.lowLimit || ''}
@@ -189,7 +185,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label>매우 낮음 (LL)</label>
+                      <label className="form-label">매우 낮음 (LL)</label>
                       <input
                         type="number"
                         value={localSettings.lowLowLimit || ''}
@@ -202,7 +198,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 )}
                 
                 <div className="form-group">
-                  <label>히스테리시스 (Deadband)</label>
+                  <label className="form-label">히스테리시스 (Deadband)</label>
                   <input
                     type="number"
                     value={localSettings.deadband || ''}
@@ -222,7 +218,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 <h3>우선순위 및 동작</h3>
                 <div className="form-row">
                   <div className="form-group">
-                    <label>우선순위</label>
+                    <label className="form-label">우선순위</label>
                     <select
                       value={localSettings.priority}
                       onChange={(e) => handleSettingChange('priority', e.target.value as any)}
@@ -235,7 +231,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>심각도 (1-5)</label>
+                    <label className="form-label">심각도 (1-5)</label>
                     <select
                       value={localSettings.severity}
                       onChange={(e) => handleSettingChange('severity', Number(e.target.value) as any)}
@@ -249,7 +245,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>에스컬레이션 시간 (분)</label>
+                    <label className="form-label">에스컬레이션 시간 (분)</label>
                     <input
                       type="number"
                       value={localSettings.escalationTime}
@@ -262,7 +258,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 
                 <div className="form-row">
                   <div className="form-group">
-                    <label>중복 억제 시간 (초)</label>
+                    <label className="form-label">중복 억제 시간 (초)</label>
                     <input
                       type="number"
                       value={localSettings.suppressDuration}
@@ -273,7 +269,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     <small className="form-help">동일한 알람의 중복 발생을 억제할 시간</small>
                   </div>
                   <div className="form-group">
-                    <label>최대 발생 횟수</label>
+                    <label className="form-label">최대 발생 횟수</label>
                     <input
                       type="number"
                       value={localSettings.maxOccurrences}
@@ -286,30 +282,33 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 </div>
 
                 <div className="checkbox-options">
-                  <label className="checkbox-label">
+                  <div className="checkbox-group">
                     <input
                       type="checkbox"
+                      className="checkbox"
                       checked={localSettings.autoAcknowledge}
                       onChange={(e) => handleSettingChange('autoAcknowledge', e.target.checked)}
                     />
-                    자동 승인
-                  </label>
-                  <label className="checkbox-label">
+                    <label className="checkbox-label">자동 승인</label>
+                  </div>
+                  <div className="checkbox-group">
                     <input
                       type="checkbox"
+                      className="checkbox"
                       checked={localSettings.autoReset}
                       onChange={(e) => handleSettingChange('autoReset', e.target.checked)}
                     />
-                    자동 리셋
-                  </label>
-                  <label className="checkbox-label">
+                    <label className="checkbox-label">자동 리셋</label>
+                  </div>
+                  <div className="checkbox-group">
                     <input
                       type="checkbox"
+                      className="checkbox"
                       checked={localSettings.isEnabled}
                       onChange={(e) => handleSettingChange('isEnabled', e.target.checked)}
                     />
-                    알람 활성화
-                  </label>
+                    <label className="checkbox-label">알람 활성화</label>
+                  </div>
                 </div>
               </div>
             )}
@@ -319,53 +318,58 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
               <div className="form-section">
                 <h3>알림 설정</h3>
                 <div className="notification-options">
-                  <div className="checkbox-group">
-                    <label className="checkbox-label">
+                  <div className="checkbox-options">
+                    <div className="checkbox-group">
                       <input
                         type="checkbox"
+                        className="checkbox"
                         checked={localSettings.emailEnabled}
                         onChange={(e) => handleSettingChange('emailEnabled', e.target.checked)}
                       />
-                      이메일 알림
-                    </label>
-                    <label className="checkbox-label">
+                      <label className="checkbox-label">이메일 알림</label>
+                    </div>
+                    <div className="checkbox-group">
                       <input
                         type="checkbox"
+                        className="checkbox"
                         checked={localSettings.smsEnabled}
                         onChange={(e) => handleSettingChange('smsEnabled', e.target.checked)}
                       />
-                      SMS 알림
-                    </label>
-                    <label className="checkbox-label">
+                      <label className="checkbox-label">SMS 알림</label>
+                    </div>
+                    <div className="checkbox-group">
                       <input
                         type="checkbox"
+                        className="checkbox"
                         checked={localSettings.soundEnabled}
                         onChange={(e) => handleSettingChange('soundEnabled', e.target.checked)}
                       />
-                      소리 알림
-                    </label>
-                    <label className="checkbox-label">
+                      <label className="checkbox-label">소리 알림</label>
+                    </div>
+                    <div className="checkbox-group">
                       <input
                         type="checkbox"
+                        className="checkbox"
                         checked={localSettings.popupEnabled}
                         onChange={(e) => handleSettingChange('popupEnabled', e.target.checked)}
                       />
-                      팝업 알림
-                    </label>
-                    <label className="checkbox-label">
+                      <label className="checkbox-label">팝업 알림</label>
+                    </div>
+                    <div className="checkbox-group">
                       <input
                         type="checkbox"
+                        className="checkbox"
                         checked={localSettings.webhookEnabled}
                         onChange={(e) => handleSettingChange('webhookEnabled', e.target.checked)}
                       />
-                      웹훅 알림
-                    </label>
+                      <label className="checkbox-label">웹훅 알림</label>
+                    </div>
                   </div>
                 </div>
 
                 {localSettings.emailEnabled && (
                   <div className="form-group">
-                    <label>이메일 수신자</label>
+                    <label className="form-label">이메일 수신자</label>
                     <input
                       type="text"
                       value={localSettings.emailRecipients.join(', ')}
@@ -380,7 +384,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
 
                 {localSettings.smsEnabled && (
                   <div className="form-group">
-                    <label>SMS 수신자</label>
+                    <label className="form-label">SMS 수신자</label>
                     <input
                       type="text"
                       value={localSettings.smsRecipients.join(', ')}
@@ -395,7 +399,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
 
                 {localSettings.webhookEnabled && (
                   <div className="form-group">
-                    <label>웹훅 URL</label>
+                    <label className="form-label">웹훅 URL</label>
                     <input
                       type="url"
                       value={localSettings.webhookUrl}
@@ -407,7 +411,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 )}
 
                 <div className="form-group">
-                  <label>알람 메시지 템플릿</label>
+                  <label className="form-label">알람 메시지 템플릿</label>
                   <textarea
                     value={localSettings.messageTemplate}
                     onChange={(e) => handleSettingChange('messageTemplate', e.target.value)}
@@ -422,7 +426,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 
                 {localSettings.emailEnabled && (
                   <div className="form-group">
-                    <label>이메일 메시지 템플릿</label>
+                    <label className="form-label">이메일 메시지 템플릿</label>
                     <textarea
                       value={localSettings.emailTemplate}
                       onChange={(e) => handleSettingChange('emailTemplate', e.target.value)}
@@ -440,7 +444,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
               <div className="form-section">
                 <h3>스케줄 설정</h3>
                 <div className="form-group">
-                  <label>실행 시간</label>
+                  <label className="form-label">실행 시간</label>
                   <select
                     value={localSettings.schedule.type}
                     onChange={(e) => handleScheduleChange({ type: e.target.value as any })}
@@ -455,7 +459,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 {localSettings.schedule.type === 'business_hours' && (
                   <div className="form-row">
                     <div className="form-group">
-                      <label>시작 시간</label>
+                      <label className="form-label">시작 시간</label>
                       <input
                         type="time"
                         value={localSettings.schedule.startTime || '08:00'}
@@ -464,7 +468,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label>종료 시간</label>
+                      <label className="form-label">종료 시간</label>
                       <input
                         type="time"
                         value={localSettings.schedule.endTime || '18:00'}
@@ -477,7 +481,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
 
                 {localSettings.schedule.type === 'custom' && (
                   <div className="form-group">
-                    <label>요일 선택</label>
+                    <label className="form-label">요일 선택</label>
                     <div className="weekday-selector">
                       {['월', '화', '수', '목', '금', '토', '일'].map((day, index) => (
                         <label key={index} className="weekday-label">
