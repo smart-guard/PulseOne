@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/services/alarmApi.ts
-// 🚨 알람 관리 API 서비스 - Backend /api/alarms 완전 호환
+// 🚨 알람 관리 API 서비스 - Backend /api/alarms 완전 호환 + AlarmSettings 지원
 // ============================================================================
 
 import { ENDPOINTS } from '../endpoints';
@@ -72,6 +72,119 @@ export interface AlarmStatistics {
     name: string;
     count: number;
   }>;
+}
+
+// ========================================================================
+// 📋 AlarmSettings 전용 타입 정의
+// ========================================================================
+
+export interface AlarmRuleSettings {
+  // 임계값 설정
+  highHighLimit?: number;
+  highLimit?: number;
+  lowLimit?: number;
+  lowLowLimit?: number;
+  deadband?: number;
+  targetValue?: number;
+  tolerance?: number;
+  timeWindow?: number;
+  pattern?: string;
+  
+  // 동작 설정
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  severity: 1 | 2 | 3 | 4 | 5;
+  autoAcknowledge: boolean;
+  autoReset: boolean;
+  suppressDuration: number; // 중복 억제 시간 (초)
+  maxOccurrences: number;   // 최대 발생 횟수
+  escalationTime: number;   // 에스컬레이션 시간 (분)
+  
+  // 알림 설정
+  emailEnabled: boolean;
+  emailRecipients: string[];
+  smsEnabled: boolean;
+  smsRecipients: string[];
+  soundEnabled: boolean;
+  popupEnabled: boolean;
+  webhookEnabled: boolean;
+  webhookUrl: string;
+  
+  // 메시지 설정
+  messageTemplate: string;
+  emailTemplate: string;
+  
+  // 스케줄 설정
+  schedule: {
+    type: 'always' | 'business_hours' | 'custom';
+    startTime?: string;
+    endTime?: string;
+    weekdays?: number[];
+    holidays?: string[];
+  };
+  
+  // 상태
+  isEnabled: boolean;
+}
+
+export interface AlarmRuleStatistics {
+  rule_info: {
+    id: number;
+    name: string;
+    is_enabled: boolean;
+    severity: string;
+    created_at: string;
+  };
+  period: {
+    start_date: string;
+    end_date: string;
+    days: number;
+  };
+  occurrence_summary: {
+    total_occurrences: number;
+    acknowledged_count: number;
+    cleared_count: number;
+    pending_count: number;
+    acknowledgment_rate: number;
+  };
+  performance_metrics: {
+    avg_response_time_minutes: number;
+    frequency_per_day: number;
+    last_triggered: string | null;
+  };
+  distributions: {
+    by_severity: Record<string, number>;
+    last_7_days: Array<{ date: string; occurrences: number }>;
+    hourly_pattern: Array<{ hour: number; count: number }>;
+  };
+}
+
+export interface BulkUpdateRequest {
+  rule_ids: number[];
+  settings: Partial<AlarmRuleSettings>;
+}
+
+export interface BulkUpdateResponse {
+  total_requested: number;
+  successful_updates: number;
+  failed_updates: number;
+  updated_rules: Array<{ rule_id: number; success: boolean }>;
+  failed_rules: Array<{ rule_id: number; error: string }>;
+  applied_settings: string[];
+}
+
+export interface RuleTestRequest {
+  test_value: number;
+  test_scenario: 'threshold' | 'range' | 'pattern';
+}
+
+export interface RuleTestResponse {
+  rule_id: number;
+  rule_name: string;
+  test_scenario: string;
+  test_value: number;
+  would_trigger: boolean;
+  trigger_reason: string | null;
+  recommended_action: string | null;
 }
 
 export interface AlarmListParams {
@@ -190,6 +303,13 @@ class HttpClient {
   async put<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined
+    });
+  }
+
+  async patch<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
       body: data ? JSON.stringify(data) : undefined
     });
   }
@@ -333,6 +453,73 @@ export class AlarmApiService {
   }
 
   // ========================================================================
+  // 🔧 AlarmSettings 전용 API 메서드들
+  // ========================================================================
+
+  /**
+   * 알람 규칙 설정 부분 업데이트 (AlarmSettings.tsx용)
+   */
+  static async updateAlarmRuleSettings(
+    ruleId: number, 
+    settings: Partial<AlarmRuleSettings>
+  ): Promise<ApiResponse<AlarmRule>> {
+    console.log('🔧 알람 규칙 설정 업데이트:', ruleId, settings);
+    return this.httpClient.patch<AlarmRule>(`/api/alarms/rules/${ruleId}/settings`, settings);
+  }
+
+  /**
+   * 여러 알람 규칙 일괄 설정 업데이트
+   */
+  static async bulkUpdateAlarmRules(
+    request: BulkUpdateRequest
+  ): Promise<ApiResponse<BulkUpdateResponse>> {
+    console.log('📝 알람 규칙 일괄 업데이트:', request);
+    return this.httpClient.patch<BulkUpdateResponse>('/api/alarms/rules/bulk-update', request);
+  }
+
+  /**
+   * 알람 규칙 상세 통계 조회
+   */
+  static async getAlarmRuleStatistics(
+    ruleId: number, 
+    days: number = 30
+  ): Promise<ApiResponse<AlarmRuleStatistics>> {
+    console.log('📊 알람 규칙 통계 조회:', ruleId, days);
+    return this.httpClient.get<AlarmRuleStatistics>(
+      `/api/alarms/rules/${ruleId}/statistics`,
+      { days }
+    );
+  }
+
+  /**
+   * 알람 규칙 테스트 실행
+   */
+  static async testAlarmRule(
+    ruleId: number, 
+    request: RuleTestRequest
+  ): Promise<ApiResponse<RuleTestResponse>> {
+    console.log('🧪 알람 규칙 테스트:', ruleId, request);
+    return this.httpClient.post<RuleTestResponse>(
+      `/api/alarms/rules/${ruleId}/test`,
+      request
+    );
+  }
+
+  /**
+   * 알람 규칙 설정 변경 이력 조회
+   */
+  static async getAlarmRuleConfigHistory(
+    ruleId: number, 
+    limit: number = 20
+  ): Promise<ApiResponse<any>> {
+    console.log('📜 알람 규칙 설정 이력 조회:', ruleId);
+    return this.httpClient.get<any>(
+      `/api/alarms/rules/${ruleId}/configuration-history`,
+      { limit }
+    );
+  }
+
+  // ========================================================================
   // 📊 통계 및 기타
   // ========================================================================
 
@@ -397,6 +584,26 @@ export class AlarmApiService {
   }
 
   /**
+   * 우선순위별 색상 반환
+   */
+  static getPriorityColor(priority: string): string {
+    const colors = {
+      critical: '#dc2626',  // red-600
+      high: '#ea580c',      // orange-600
+      medium: '#ca8a04',    // yellow-600
+      low: '#22c55e'        // green-500
+    };
+    return colors[priority as keyof typeof colors] || colors.medium;
+  }
+
+  /**
+   * 우선순위별 CSS 클래스 반환
+   */
+  static getPriorityClass(priority: string): string {
+    return `priority-${priority}`;
+  }
+
+  /**
    * 알람 지속 시간 계산 (ms)
    */
   static calculateDuration(triggeredAt: string, clearedAt?: string): number {
@@ -423,6 +630,134 @@ export class AlarmApiService {
     } else {
       return `${seconds}초`;
     }
+  }
+
+  /**
+   * 설정 변경사항 비교
+   */
+  static compareSettings(
+    oldSettings: Partial<AlarmRuleSettings>, 
+    newSettings: Partial<AlarmRuleSettings>
+  ): { changed: string[]; unchanged: string[] } {
+    const changed: string[] = [];
+    const unchanged: string[] = [];
+    
+    const allKeys = new Set([...Object.keys(oldSettings), ...Object.keys(newSettings)]);
+    
+    allKeys.forEach(key => {
+      const oldValue = oldSettings[key as keyof AlarmRuleSettings];
+      const newValue = newSettings[key as keyof AlarmRuleSettings];
+      
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        changed.push(key);
+      } else {
+        unchanged.push(key);
+      }
+    });
+    
+    return { changed, unchanged };
+  }
+
+  /**
+   * 설정 유효성 검증
+   */
+  static validateSettings(settings: Partial<AlarmRuleSettings>): {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+  } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    // 임계값 검증
+    if (settings.highLimit !== undefined && settings.lowLimit !== undefined) {
+      if (settings.highLimit <= settings.lowLimit) {
+        errors.push('High limit must be greater than low limit');
+      }
+    }
+    
+    // 이메일 수신자 검증
+    if (settings.emailEnabled && (!settings.emailRecipients || settings.emailRecipients.length === 0)) {
+      warnings.push('Email is enabled but no recipients specified');
+    }
+    
+    // SMS 수신자 검증
+    if (settings.smsEnabled && (!settings.smsRecipients || settings.smsRecipients.length === 0)) {
+      warnings.push('SMS is enabled but no recipients specified');
+    }
+    
+    // 억제 시간 검증
+    if (settings.suppressDuration !== undefined && settings.suppressDuration < 0) {
+      errors.push('Suppress duration cannot be negative');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+
+  /**
+   * 설정을 백엔드 형식으로 변환
+   */
+  static transformSettingsForBackend(settings: Partial<AlarmRuleSettings>): Record<string, any> {
+    const transformed: Record<string, any> = {};
+    
+    Object.entries(settings).forEach(([key, value]) => {
+      // 특별한 변환이 필요한 필드들
+      switch (key) {
+        case 'emailRecipients':
+        case 'smsRecipients':
+          transformed[key] = Array.isArray(value) ? value : [];
+          break;
+        case 'schedule':
+          transformed[key] = typeof value === 'object' ? value : {};
+          break;
+        default:
+          transformed[key] = value;
+      }
+    });
+    
+    return transformed;
+  }
+
+  /**
+   * 백엔드 응답을 프론트엔드 형식으로 변환
+   */
+  static transformSettingsFromBackend(backendData: any): Partial<AlarmRuleSettings> {
+    const settings: Partial<AlarmRuleSettings> = {};
+    
+    // 필드 매핑 (백엔드 -> 프론트엔드)
+    const fieldMapping = {
+      'high_high_limit': 'highHighLimit',
+      'high_limit': 'highLimit',
+      'low_limit': 'lowLimit',
+      'low_low_limit': 'lowLowLimit',
+      'auto_acknowledge': 'autoAcknowledge',
+      'auto_clear': 'autoReset',
+      'email_notification': 'emailEnabled',
+      'sms_notification': 'smsEnabled',
+      'message_template': 'messageTemplate',
+      'is_enabled': 'isEnabled'
+    };
+    
+    Object.entries(backendData).forEach(([backendKey, value]) => {
+      const frontendKey = fieldMapping[backendKey as keyof typeof fieldMapping] || backendKey;
+      
+      // 특별한 변환이 필요한 필드들
+      if (backendKey === 'email_recipients' || backendKey === 'sms_recipients') {
+        try {
+          settings[frontendKey as keyof AlarmRuleSettings] = typeof value === 'string' ? JSON.parse(value) : value;
+        } catch {
+          settings[frontendKey as keyof AlarmRuleSettings] = [] as any;
+        }
+      } else {
+        settings[frontendKey as keyof AlarmRuleSettings] = value as any;
+      }
+    });
+    
+    return settings;
   }
 
   /**
