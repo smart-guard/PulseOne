@@ -1,3 +1,8 @@
+// ============================================================================
+// frontend/src/pages/AlarmRuleTemplates.tsx
+// 리팩토링된 알람 템플릿 관리 페이지 - 컴포넌트 분리 적용
+// ============================================================================
+
 import React, { useState, useEffect } from 'react';
 import '../styles/alarm-rule-templates.css';
 import alarmTemplatesApi, { 
@@ -6,61 +11,60 @@ import alarmTemplatesApi, {
   CreatedAlarmRule,
   ApplyTemplateRequest 
 } from '../api/services/alarmTemplatesApi';
+import TemplateApplyModal from '../components/modals/TemplateApplyModal';
+import TemplateCreateModal, { CreateTemplateRequest } from '../components/modals/TemplateCreateModal';
 
 const AlarmRuleTemplates: React.FC = () => {
+  // ===================================================================
+  // 상태 관리
+  // ===================================================================
   const [templates, setTemplates] = useState<AlarmTemplate[]>([]);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
   const [createdRules, setCreatedRules] = useState<CreatedAlarmRule[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<AlarmTemplate | null>(null);
-  const [selectedDataPoints, setSelectedDataPoints] = useState<number[]>([]);
   
-  // 로딩 상태
+  // UI 상태
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // 탭 및 필터 상태
   const [activeTab, setActiveTab] = useState<'browse' | 'created'>('browse');
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  
+  // 필터 상태
   const [templateFilter, setTemplateFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // 계층 필터
-  const [siteFilter, setSiteFilter] = useState('all');
-  const [deviceFilter, setDeviceFilter] = useState('all');
-  const [dataTypeFilter, setDataTypeFilter] = useState('all');
-  
-  const [showApplyModal, setShowApplyModal] = useState(false);
 
-  useEffect(() => {
-    loadTemplates();
-    loadDataPoints(); 
-    loadCreatedRules();
-  }, []);
-
-  // 필터 변경시 데이터 재로딩
-  useEffect(() => {
-    if (templateFilter !== 'all' || searchTerm) {
-      loadTemplates();
+  // ===================================================================
+  // 안전한 값 처리 헬퍼 함수들
+  // ===================================================================
+  const safeToString = (value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return value.toString();
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return '[객체]';
+      }
     }
-  }, [templateFilter, searchTerm]);
+    return String(value);
+  };
 
-  useEffect(() => {
-    if (siteFilter !== 'all' || deviceFilter !== 'all' || dataTypeFilter !== 'all') {
-      loadDataPoints();
-    }
-  }, [siteFilter, deviceFilter, dataTypeFilter]);
+  const getConfigValue = (config: any, key: string, fallback: string = 'N/A'): string => {
+    if (!config || typeof config !== 'object') return fallback;
+    const value = config[key];
+    return value !== undefined ? safeToString(value) : fallback;
+  };
 
-  useEffect(() => {
-    if (searchTerm && activeTab === 'created') {
-      loadCreatedRules();
-    }
-  }, [searchTerm, activeTab]);
-
+  // ===================================================================
+  // 데이터 로딩 함수들
+  // ===================================================================
   const loadTemplates = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('템플릿 로딩 시작...');
       
       const params = {
         is_active: true,
@@ -76,13 +80,10 @@ const AlarmRuleTemplates: React.FC = () => {
       };
 
       const response = await alarmTemplatesApi.getTemplates(params);
-      console.log('백엔드 응답:', response);
       
       // 백엔드 API 응답 구조 처리
       let templatesData: any[] = [];
-      
       if (response && response.success && response.data) {
-        // 백엔드가 { success: true, data: { items: [...] } } 형태로 응답
         if (Array.isArray(response.data.items)) {
           templatesData = response.data.items;
         } else if (Array.isArray(response.data)) {
@@ -92,34 +93,29 @@ const AlarmRuleTemplates: React.FC = () => {
         templatesData = response;
       }
       
-      console.log('처리된 템플릿 데이터:', templatesData);
-      
-      // 백엔드 템플릿 구조를 프론트엔드 형태로 변환
+      // 데이터 변환 및 안전성 처리
       const transformedTemplates = templatesData.map((template: any) => {
-        // 백엔드의 condition_type을 프론트엔드의 template_type으로 매핑
         let frontendTemplateType = 'simple';
         if (template.condition_type === 'range') {
-          frontendTemplateType = 'simple'; // range는 simple로 분류
+          frontendTemplateType = 'simple';
         } else if (template.condition_type === 'pattern') {
-          frontendTemplateType = 'script'; // pattern은 script로 분류
+          frontendTemplateType = 'script';
         } else if (template.condition_type === 'script') {
           frontendTemplateType = 'script';
         }
         
-        // default_config가 문자열이면 파싱
         let parsedConfig = {};
         try {
           if (typeof template.default_config === 'string') {
             parsedConfig = JSON.parse(template.default_config);
           } else if (typeof template.default_config === 'object') {
-            parsedConfig = template.default_config;
+            parsedConfig = template.default_config || {};
           }
         } catch (e) {
           console.warn('default_config 파싱 실패:', e);
           parsedConfig = {};
         }
         
-        // applicable_data_types가 문자열이면 파싱
         let parsedDataTypes: string[] = [];
         try {
           if (typeof template.applicable_data_types === 'string') {
@@ -134,25 +130,24 @@ const AlarmRuleTemplates: React.FC = () => {
         
         return {
           id: template.id,
-          name: template.name,
-          description: template.description,
-          category: template.category,
+          name: template.name || 'Unknown Template',
+          description: template.description || '',
+          category: template.category || 'general',
           template_type: frontendTemplateType,
-          condition_type: template.condition_type,
+          condition_type: template.condition_type || 'threshold',
           default_config: parsedConfig,
-          severity: template.severity,
-          message_template: template.message_template,
+          severity: template.severity || 'medium',
+          message_template: template.message_template || '',
           usage_count: template.usage_count || 0,
-          is_active: template.is_active,
+          is_active: template.is_active !== false,
           supports_hh_ll: template.condition_type === 'range',
           supports_script: template.condition_type === 'script',
           applicable_data_types: parsedDataTypes,
-          created_at: template.created_at,
-          updated_at: template.updated_at
+          created_at: template.created_at || new Date().toISOString(),
+          updated_at: template.updated_at || new Date().toISOString()
         };
       });
       
-      console.log('변환된 템플릿:', transformedTemplates.length, '개');
       setTemplates(transformedTemplates);
       
     } catch (error) {
@@ -166,19 +161,11 @@ const AlarmRuleTemplates: React.FC = () => {
 
   const loadDataPoints = async () => {
     try {
-      const filters = {
-        ...(siteFilter !== 'all' && { site_name: siteFilter }),
-        ...(deviceFilter !== 'all' && { device_name: deviceFilter }),
-        ...(dataTypeFilter !== 'all' && { data_type: dataTypeFilter })
-      };
-
-      const data = await alarmTemplatesApi.getDataPoints(filters);
+      const data = await alarmTemplatesApi.getDataPoints({});
       
-      // API 응답이 배열인지 확인
       if (Array.isArray(data)) {
         setDataPoints(data);
       } else {
-        console.warn('데이터포인트 응답이 배열이 아님:', data);
         throw new Error('데이터포인트 데이터 형식이 올바르지 않습니다.');
       }
     } catch (error) {
@@ -188,48 +175,84 @@ const AlarmRuleTemplates: React.FC = () => {
       const mockDataPoints: DataPoint[] = [
         { 
           id: 1, 
-          name: "Temperature_Sensor_1", 
+          name: "Production_Count", 
           device_name: "PLC-001", 
-          site_name: "공장A 생산라인1", 
-          data_type: "temperature", 
-          unit: "°C", 
-          current_value: 23.5, 
+          site_name: "Seoul Main Factory", 
+          data_type: "uint32", 
+          unit: "pcs", 
+          current_value: { value: 50 }, 
           last_updated: "2025-01-20T15:30:00Z",
           supports_analog: true,
           supports_digital: false
         },
         { 
           id: 2, 
-          name: "Pressure_Main", 
-          device_name: "RTU-001", 
-          site_name: "공장A 유틸리티", 
-          data_type: "pressure", 
-          unit: "bar", 
-          current_value: 3.2, 
+          name: "Line_Speed", 
+          device_name: "PLC-001", 
+          site_name: "Seoul Main Factory", 
+          data_type: "float", 
+          unit: "m/min", 
+          current_value: { value: 50 }, 
           last_updated: "2025-01-20T15:30:00Z",
           supports_analog: true,
           supports_digital: false
         },
         { 
           id: 3, 
-          name: "Motor_Status", 
-          device_name: "Drive-001", 
-          site_name: "공장B 컨베이어", 
-          data_type: "digital", 
-          unit: "", 
-          current_value: 1, 
+          name: "Motor_Current", 
+          device_name: "PLC-001", 
+          site_name: "Seoul Main Factory", 
+          data_type: "float", 
+          unit: "A", 
+          current_value: { value: 30 }, 
+          last_updated: "2025-01-20T15:30:00Z",
+          supports_analog: true,
+          supports_digital: false
+        },
+        { 
+          id: 4, 
+          name: "Temperature", 
+          device_name: "PLC-001", 
+          site_name: "Seoul Main Factory", 
+          data_type: "float", 
+          unit: "°C", 
+          current_value: { value: 95 }, 
+          last_updated: "2025-01-20T15:30:00Z",
+          supports_analog: true,
+          supports_digital: false
+        },
+        { 
+          id: 5, 
+          name: "Emergency_Stop", 
+          device_name: "PLC-001", 
+          site_name: "Seoul Main Factory", 
+          data_type: "bool", 
+          unit: "N/A", 
+          current_value: { value: 1 }, 
           last_updated: "2025-01-20T15:30:00Z",
           supports_analog: false,
           supports_digital: true
         },
         { 
-          id: 4, 
-          name: "Flow_Rate_01", 
-          device_name: "RTU-002", 
-          site_name: "공장C 냉각수", 
-          data_type: "flow", 
-          unit: "L/min", 
-          current_value: 150.3, 
+          id: 6, 
+          name: "HMI_Status", 
+          device_name: "HMI-001", 
+          site_name: "Seoul Main Factory", 
+          data_type: "uint16", 
+          unit: "N/A", 
+          current_value: { value: 1 }, 
+          last_updated: "2025-01-20T15:30:00Z",
+          supports_analog: false,
+          supports_digital: true
+        },
+        { 
+          id: 7, 
+          name: "Alarm_Count", 
+          device_name: "HMI-001", 
+          site_name: "Seoul Main Factory", 
+          data_type: "uint16", 
+          unit: "count", 
+          current_value: { value: 3 }, 
           last_updated: "2025-01-20T15:30:00Z",
           supports_analog: true,
           supports_digital: false
@@ -245,7 +268,6 @@ const AlarmRuleTemplates: React.FC = () => {
         ...(searchTerm && { search: searchTerm })
       });
       
-      // 백엔드 API 응답 구조 처리: { success: true, data: { items: [...] } }
       let rulesData = [];
       if (response && response.success && response.data) {
         if (Array.isArray(response.data.items)) {
@@ -257,19 +279,18 @@ const AlarmRuleTemplates: React.FC = () => {
         rulesData = response;
       }
       
-      // 백엔드 데이터 구조를 프론트엔드에서 사용하는 형태로 변환
       const transformedRules = rulesData.map((rule: any) => ({
-        id: rule.id,
-        name: rule.name,
+        id: rule.id || 0,
+        name: rule.name || 'Unknown Rule',
         template_name: rule.template_name || "기본 템플릿",
-        data_point_name: rule.data_point_name || `데이터포인트 ${rule.target_id}`,
+        data_point_name: rule.data_point_name || `데이터포인트 ${rule.target_id || 'Unknown'}`,
         device_name: rule.device_name || "알 수 없는 장치",
         site_name: rule.site_name || "기본 사이트",
-        severity: rule.severity ? rule.severity.toUpperCase() : "MEDIUM",
+        severity: (rule.severity ? rule.severity.toString().toUpperCase() : "MEDIUM"),
         enabled: rule.is_enabled !== undefined ? rule.is_enabled : true,
-        created_at: rule.created_at,
+        created_at: rule.created_at || new Date().toISOString(),
         threshold_config: {
-          threshold: rule.high_limit || rule.low_limit,
+          threshold: rule.high_limit || rule.low_limit || 0,
           deadband: rule.deadband || 0
         }
       }));
@@ -281,83 +302,16 @@ const AlarmRuleTemplates: React.FC = () => {
     }
   };
 
-  // 통계 계산
-  const totalRules = createdRules.length;
-  const enabledRules = createdRules.filter(r => r.enabled).length;
-  const disabledRules = totalRules - enabledRules;
-  const criticalRules = createdRules.filter(r => r.severity === 'CRITICAL').length;
-
-  // 필터링된 템플릿
-  const filteredTemplates = templates.filter(template => {
-    const matchesSearch = searchTerm === '' || 
-      template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      template.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = templateFilter === 'all' || 
-      (templateFilter === 'simple' && template.template_type === 'simple') ||
-      (templateFilter === 'advanced' && template.template_type === 'advanced') ||
-      (templateFilter === 'script' && template.template_type === 'script') ||
-      template.category.toLowerCase() === templateFilter.toLowerCase();
-    return matchesSearch && matchesFilter && template.is_active;
-  });
-
-  // 필터링된 생성 규칙
-  const filteredRules = createdRules.filter(rule => {
-    const matchesSearch = searchTerm === '' ||
-      rule.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      rule.data_point_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      rule.site_name.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
-
-  // 필터링된 데이터포인트
-  const filteredDataPoints = dataPoints.filter(point => {
-    const matchesSite = siteFilter === 'all' || point.site_name === siteFilter;
-    const matchesDevice = deviceFilter === 'all' || point.device_name === deviceFilter;
-    const matchesType = dataTypeFilter === 'all' || point.data_type === dataTypeFilter;
-    
-    // 선택된 템플릿과 호환성 체크
-    if (selectedTemplate) {
-      if (selectedTemplate.template_type === 'script') return true; // 스크립트는 모든 타입 지원
-      if (selectedTemplate.condition_type === 'pattern' && !point.supports_digital) return false;
-      if (selectedTemplate.condition_type === 'threshold' && !point.supports_analog) return false;
-      if (selectedTemplate.condition_type === 'range' && !point.supports_analog) return false;
-    }
-    
-    return matchesSite && matchesDevice && matchesType;
-  });
-
-  // 고유 값들
-  const sites = ['all', ...new Set(dataPoints.map(d => d.site_name))];
-  const devices = ['all', ...new Set(dataPoints.filter(d => siteFilter === 'all' || d.site_name === siteFilter).map(d => d.device_name))];
-  const dataTypes = ['all', ...new Set(dataPoints.map(d => d.data_type))];
-
-  const handleApplyTemplate = async () => {
-    if (!selectedTemplate || selectedDataPoints.length === 0) {
-      alert('템플릿과 데이터포인트를 선택해주세요.');
-      return;
-    }
-
-    // 호환성 재검증
-    const incompatiblePoints = selectedDataPoints.filter(pointId => {
-      const point = dataPoints.find(p => p.id === pointId);
-      if (!point) return true;
-      
-      if (selectedTemplate.condition_type === 'pattern' && !point.supports_digital) return true;
-      if (selectedTemplate.condition_type === 'threshold' && !point.supports_analog) return true;
-      if (selectedTemplate.condition_type === 'range' && !point.supports_analog) return true;
-      
-      return false;
-    });
-
-    if (incompatiblePoints.length > 0) {
-      alert(`선택된 데이터포인트 중 ${incompatiblePoints.length}개가 이 템플릿과 호환되지 않습니다.`);
-      return;
-    }
+  // ===================================================================
+  // 이벤트 핸들러
+  // ===================================================================
+  const handleApplyTemplate = async (dataPointIds: number[]) => {
+    if (!selectedTemplate) return;
 
     setLoading(true);
     try {
       const request: ApplyTemplateRequest = {
-        data_point_ids: selectedDataPoints,
+        data_point_ids: dataPointIds,
         custom_configs: {},
         rule_group_name: `${selectedTemplate.name}_${new Date().toISOString().split('T')[0]}`
       };
@@ -367,7 +321,7 @@ const AlarmRuleTemplates: React.FC = () => {
       if (result.success) {
         await loadCreatedRules();
         setShowApplyModal(false);
-        setSelectedDataPoints([]);
+        setSelectedTemplate(null);
         alert(`${result.data.rules_created}개의 알람 규칙이 생성되었습니다.`);
       } else {
         throw new Error(result.message || '템플릿 적용에 실패했습니다.');
@@ -380,6 +334,40 @@ const AlarmRuleTemplates: React.FC = () => {
     }
   };
 
+  const handleTemplateSelect = (template: AlarmTemplate) => {
+    setSelectedTemplate(template);
+    setShowApplyModal(true);
+  };
+
+  const handleModalClose = () => {
+    setShowApplyModal(false);
+    setSelectedTemplate(null);
+  };
+
+  const handleCreateTemplate = async (templateData: CreateTemplateRequest) => {
+    setLoading(true);
+    try {
+      // TODO: API 호출 추가
+      const response = await alarmTemplatesApi.createTemplate(templateData);
+      
+      if (response.success) {
+        await loadTemplates();
+        setShowCreateModal(false);
+        alert('템플릿이 성공적으로 생성되었습니다.');
+      } else {
+        throw new Error(response.message || '템플릿 생성에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('템플릿 생성 실패:', error);
+      alert(error instanceof Error ? error.message : '템플릿 생성에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ===================================================================
+  // UI 헬퍼 함수들
+  // ===================================================================
   const getTemplateTypeIcon = (type: string) => {
     switch(type) {
       case 'simple': return '🔧';
@@ -389,6 +377,84 @@ const AlarmRuleTemplates: React.FC = () => {
     }
   };
 
+  const renderTemplateConfig = (template: AlarmTemplate) => {
+    const { condition_type, default_config } = template;
+    
+    switch (condition_type) {
+      case 'threshold':
+        return `임계값: ${getConfigValue(default_config, 'threshold')}, 데드밴드: ${getConfigValue(default_config, 'deadband') || getConfigValue(default_config, 'hysteresis')}`;
+      
+      case 'range':
+        if (default_config && (default_config.min_value !== undefined && default_config.max_value !== undefined)) {
+          return `범위: ${getConfigValue(default_config, 'min_value')} ~ ${getConfigValue(default_config, 'max_value')}`;
+        } else if (default_config && default_config.high_high_limit !== undefined) {
+          return `HH: ${getConfigValue(default_config, 'high_high_limit')}, H: ${getConfigValue(default_config, 'high_limit')}, L: ${getConfigValue(default_config, 'low_limit')}, LL: ${getConfigValue(default_config, 'low_low_limit')}`;
+        }
+        return '범위 설정';
+      
+      case 'digital':
+        return `디지털 조건: ${getConfigValue(default_config, 'trigger_state') || getConfigValue(default_config, 'condition_template')}`;
+      
+      case 'pattern':
+        return `패턴: ${getConfigValue(default_config, 'trigger_state', 'state_change')}, 시간: ${getConfigValue(default_config, 'hold_time', '1000')}ms`;
+      
+      default:
+        return '사용자 정의 설정';
+    }
+  };
+
+  // ===================================================================
+  // 초기 데이터 로딩
+  // ===================================================================
+  useEffect(() => {
+    loadTemplates();
+    loadDataPoints(); 
+    loadCreatedRules();
+  }, []);
+
+  useEffect(() => {
+    if (templateFilter !== 'all' || searchTerm) {
+      loadTemplates();
+    }
+  }, [templateFilter, searchTerm]);
+
+  useEffect(() => {
+    if (searchTerm && activeTab === 'created') {
+      loadCreatedRules();
+    }
+  }, [searchTerm, activeTab]);
+
+  // ===================================================================
+  // 계산된 값들
+  // ===================================================================
+  const totalRules = createdRules.length;
+  const enabledRules = createdRules.filter(r => r.enabled).length;
+  const disabledRules = totalRules - enabledRules;
+  const criticalRules = createdRules.filter(r => r.severity === 'CRITICAL').length;
+
+  const filteredTemplates = templates.filter(template => {
+    const matchesSearch = searchTerm === '' || 
+      template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      template.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = templateFilter === 'all' || 
+      (templateFilter === 'simple' && template.template_type === 'simple') ||
+      (templateFilter === 'advanced' && template.template_type === 'advanced') ||
+      (templateFilter === 'script' && template.template_type === 'script') ||
+      template.category.toLowerCase() === templateFilter.toLowerCase();
+    return matchesSearch && matchesFilter && template.is_active;
+  });
+
+  const filteredRules = createdRules.filter(rule => {
+    const matchesSearch = searchTerm === '' ||
+      rule.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      rule.data_point_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      rule.site_name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch;
+  });
+
+  // ===================================================================
+  // 렌더링
+  // ===================================================================
   return (
     <div className="alarm-rule-templates-container">
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px' }}>
@@ -407,7 +473,7 @@ const AlarmRuleTemplates: React.FC = () => {
             <button className="btn" disabled={loading}>
               📤 템플릿 가져오기
             </button>
-            <button className="btn btn-primary" disabled={loading}>
+            <button className="btn btn-primary" disabled={loading} onClick={() => setShowCreateModal(true)}>
               ➕ 새 템플릿 생성
             </button>
           </div>
@@ -512,13 +578,9 @@ const AlarmRuleTemplates: React.FC = () => {
                     <div className="template-title">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                         <span className="template-icon">{getTemplateTypeIcon(template.template_type)}</span>
-                        <h3 className="template-name">
-                          {template.name}
-                        </h3>
+                        <h3 className="template-name">{template.name}</h3>
                       </div>
-                      <p className="template-description">
-                        {template.description}
-                      </p>
+                      <p className="template-description">{template.description}</p>
                       <div className="template-badges">
                         <span className={`template-badge type-${template.template_type}`}>
                           {template.template_type}
@@ -534,30 +596,8 @@ const AlarmRuleTemplates: React.FC = () => {
                   </div>
 
                   <div className="template-config">
-                    <div className="config-label">
-                      기본 설정:
-                    </div>
-                    <div className="config-value">
-                      {template.condition_type === 'threshold' && (
-                        `임계값: ${template.default_config.threshold || 'N/A'}, 데드밴드: ${template.default_config.deadband || template.default_config.hysteresis || 'N/A'}`
-                      )}
-                      {template.condition_type === 'range' && (
-                        template.default_config.min_value !== undefined && template.default_config.max_value !== undefined ? (
-                          `범위: ${template.default_config.min_value} ~ ${template.default_config.max_value}`
-                        ) : template.default_config.high_high_limit !== undefined ? (
-                          `HH: ${template.default_config.high_high_limit}, H: ${template.default_config.high_limit}, L: ${template.default_config.low_limit}, LL: ${template.default_config.low_low_limit}`
-                        ) : '범위 설정'
-                      )}
-                      {template.condition_type === 'digital' && (
-                        `디지털 조건: ${template.default_config.trigger_state || template.condition_template || 'N/A'}`
-                      )}
-                      {template.condition_type === 'pattern' && (
-                        `패턴: ${template.default_config.trigger_state || 'state_change'}, 시간: ${template.default_config.hold_time || 1000}ms`
-                      )}
-                      {!['threshold', 'range', 'digital', 'pattern'].includes(template.condition_type) && (
-                        '사용자 정의 설정'
-                      )}
-                    </div>
+                    <div className="config-label">기본 설정:</div>
+                    <div className="config-value">{renderTemplateConfig(template)}</div>
                   </div>
 
                   <div className="template-footer">
@@ -565,10 +605,7 @@ const AlarmRuleTemplates: React.FC = () => {
                       <span className="usage-number">{template.usage_count}</span>회 사용됨
                     </div>
                     <button
-                      onClick={() => {
-                        setSelectedTemplate(template);
-                        setShowApplyModal(true);
-                      }}
+                      onClick={() => handleTemplateSelect(template)}
                       className="apply-button"
                       disabled={loading}
                     >
@@ -627,19 +664,11 @@ const AlarmRuleTemplates: React.FC = () => {
                   <div key={rule.id} className={`rule-card ${rule.enabled ? 'enabled' : 'disabled'}`}>
                     <div className="rule-header">
                       <div className="rule-select">
-                        <input
-                          type="checkbox"
-                          checked={false}
-                          onChange={() => {}}
-                        />
+                        <input type="checkbox" checked={false} onChange={() => {}} />
                       </div>
                       <div className="rule-title">
-                        <h4 className="rule-name">
-                          {rule.name}
-                        </h4>
-                        <div className="rule-template-name">
-                          템플릿: {rule.template_name}
-                        </div>
+                        <h4 className="rule-name">{rule.name}</h4>
+                        <div className="rule-template-name">템플릿: {rule.template_name}</div>
                       </div>
                       <span className={`template-badge ${rule.enabled ? 'enabled' : 'disabled'}`}>
                         {rule.enabled ? '활성' : '비활성'}
@@ -671,192 +700,22 @@ const AlarmRuleTemplates: React.FC = () => {
         )}
 
         {/* 템플릿 적용 모달 */}
-        {showApplyModal && selectedTemplate && (
-          <div className="modal-overlay">
-            <div className="modal-container">
-              <div className="modal-header">
-                <h2 className="modal-title">템플릿 적용: {selectedTemplate.name}</h2>
-                <p className="modal-subtitle">
-                  이 템플릿을 적용할 데이터포인트를 선택하세요
-                </p>
-                {selectedTemplate.template_type !== 'simple' && (
-                  <div className="modal-warning">
-                    <div className="modal-warning-text">
-                      ⚠️ 이 템플릿은 {selectedTemplate.template_type === 'advanced' ? '고급 설정' : '스크립트 기반'} 템플릿입니다. 
-                      적용 후 세부 설정을 확인해주세요.
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="modal-content">
-                {/* 계층 필터 */}
-                <div className="hierarchy-filters">
-                  <div className="filter-step">
-                    <label className="filter-step-label">1️⃣ 사이트 선택</label>
-                    <select 
-                      value={siteFilter} 
-                      onChange={(e) => {
-                        setSiteFilter(e.target.value);
-                        setDeviceFilter('all'); // 하위 필터 리셋
-                      }}
-                      className="filter-step-select"
-                    >
-                      {sites.map(site => <option key={site} value={site}>{site === 'all' ? '모든 사이트' : site}</option>)}
-                    </select>
-                  </div>
-                  <div className="filter-step">
-                    <label className="filter-step-label">2️⃣ 디바이스 선택</label>
-                    <select 
-                      value={deviceFilter} 
-                      onChange={(e) => setDeviceFilter(e.target.value)}
-                      className="filter-step-select"
-                    >
-                      {devices.map(device => <option key={device} value={device}>{device === 'all' ? '모든 디바이스' : device}</option>)}
-                    </select>
-                  </div>
-                  <div className="filter-step">
-                    <label className="filter-step-label">3️⃣ 데이터 타입</label>
-                    <select 
-                      value={dataTypeFilter} 
-                      onChange={(e) => setDataTypeFilter(e.target.value)}
-                      className="filter-step-select"
-                    >
-                      {dataTypes.map(type => <option key={type} value={type}>{type === 'all' ? '모든 타입' : type}</option>)}
-                    </select>
-                  </div>
-                </div>
+        <TemplateApplyModal
+          isOpen={showApplyModal}
+          template={selectedTemplate}
+          dataPoints={dataPoints}
+          onClose={handleModalClose}
+          onApply={handleApplyTemplate}
+          loading={loading}
+        />
 
-                {/* 호환성 정보 */}
-                {selectedTemplate && (
-                  <div className="compatibility-info">
-                    <div className="compatibility-title">
-                      ℹ️ 템플릿 호환성 정보
-                    </div>
-                    <div className="compatibility-text">
-                      이 템플릿은 <strong>{selectedTemplate.condition_type}</strong> 타입으로, 
-                      {selectedTemplate.condition_type === 'threshold' || selectedTemplate.condition_type === 'range' 
-                        ? ' 아날로그 데이터포인트' : ' 디지털 데이터포인트'}에만 적용 가능합니다.
-                      {selectedTemplate.supports_script && ' JavaScript 스크립트를 지원합니다.'}
-                    </div>
-                  </div>
-                )}
-
-                {/* 데이터포인트 목록 */}
-                <div className="datapoints-table">
-                  <div className="table-header">
-                    <div>
-                      <input
-                        type="checkbox"
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedDataPoints(filteredDataPoints.map(p => p.id));
-                          } else {
-                            setSelectedDataPoints([]);
-                          }
-                        }}
-                        checked={selectedDataPoints.length === filteredDataPoints.length && filteredDataPoints.length > 0}
-                        className="table-checkbox"
-                      />
-                    </div>
-                    <div>데이터포인트 정보</div>
-                    <div>디바이스</div>
-                    <div>사이트</div>
-                    <div>현재값</div>
-                  </div>
-                  
-                  {filteredDataPoints.map(point => {
-                    const isSelected = selectedDataPoints.includes(point.id);
-                    const isCompatible = (
-                      selectedTemplate.template_type === 'script' ||
-                      (selectedTemplate.condition_type === 'pattern' && point.supports_digital) ||
-                      ((selectedTemplate.condition_type === 'threshold' || selectedTemplate.condition_type === 'range') && point.supports_analog)
-                    );
-                    
-                    return (
-                      <div 
-                        key={point.id} 
-                        className={`table-row ${isSelected ? 'selected' : ''} ${!isCompatible ? 'incompatible' : ''}`}
-                        data-label=""
-                      >
-                        <div data-label="선택">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            disabled={!isCompatible}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedDataPoints([...selectedDataPoints, point.id]);
-                              } else {
-                                setSelectedDataPoints(selectedDataPoints.filter(id => id !== point.id));
-                              }
-                            }}
-                            className="table-checkbox"
-                          />
-                        </div>
-                        <div className="datapoint-info" data-label="포인트명">
-                          <div className="datapoint-name">
-                            {point.name}
-                          </div>
-                          <div className="datapoint-details">
-                            {point.data_type} • {point.unit || 'N/A'}
-                            {!isCompatible && (
-                              <span className="incompatible-label">
-                                (호환 불가)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="table-cell" data-label="디바이스">{point.device_name}</div>
-                        <div className="table-cell" data-label="사이트">{point.site_name}</div>
-                        <div className="current-value" data-label="현재값">
-                          {point.current_value} {point.unit}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {filteredDataPoints.length === 0 && (
-                  <div className="empty-state">
-                    선택한 조건에 맞는 데이터포인트가 없습니다.
-                  </div>
-                )}
-              </div>
-              
-              <div className="modal-footer">
-                <div>
-                  {selectedDataPoints.length > 0 && (
-                    <span style={{ fontWeight: 600, color: '#1f2937' }}>
-                      {selectedDataPoints.length}개 포인트 선택됨
-                    </span>
-                  )}
-                </div>
-                <div className="modal-actions">
-                  <button
-                    onClick={() => {
-                      setShowApplyModal(false);
-                      setSelectedDataPoints([]);
-                      setSiteFilter('all');
-                      setDeviceFilter('all');
-                      setDataTypeFilter('all');
-                    }}
-                    className="btn"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={handleApplyTemplate}
-                    disabled={selectedDataPoints.length === 0 || loading}
-                    className="btn btn-primary"
-                  >
-                    적용하기 ({selectedDataPoints.length}개)
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* 템플릿 생성 모달 */}
+        <TemplateCreateModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreate={handleCreateTemplate}
+          loading={loading}
+        />
       </div>
     </div>
   );
