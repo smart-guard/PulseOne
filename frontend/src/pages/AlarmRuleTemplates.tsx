@@ -60,6 +60,8 @@ const AlarmRuleTemplates: React.FC = () => {
       setLoading(true);
       setError(null);
       
+      console.log('템플릿 로딩 시작...');
+      
       const params = {
         is_active: true,
         ...(templateFilter !== 'all' && { 
@@ -74,115 +76,89 @@ const AlarmRuleTemplates: React.FC = () => {
       };
 
       const response = await alarmTemplatesApi.getTemplates(params);
+      console.log('백엔드 응답:', response);
       
       // 백엔드 API 응답 구조 처리
-      let templatesData = [];
+      let templatesData: any[] = [];
+      
       if (response && response.success && response.data) {
-        templatesData = Array.isArray(response.data) ? response.data : [];
+        // 백엔드가 { success: true, data: { items: [...] } } 형태로 응답
+        if (Array.isArray(response.data.items)) {
+          templatesData = response.data.items;
+        } else if (Array.isArray(response.data)) {
+          templatesData = response.data;
+        }
       } else if (Array.isArray(response)) {
         templatesData = response;
       }
       
-      // 백엔드 템플릿 구조를 프론트엔드 형태로 변환
-      const transformedTemplates = templatesData.map(template => ({
-        id: template.id,
-        name: template.name,
-        description: template.description,
-        category: template.category,
-        template_type: template.condition_type === 'threshold' ? 'simple' : 
-                     template.condition_type === 'range' ? 'advanced' : 'script',
-        condition_type: template.condition_type,
-        default_config: template.default_config,
-        severity: template.severity,
-        message_template: template.message_template,
-        usage_count: template.usage_count || 0,
-        is_active: template.is_active,
-        supports_hh_ll: template.condition_type === 'range',
-        supports_script: template.condition_type === 'script',
-        applicable_data_types: template.applicable_data_types,
-        created_at: template.created_at,
-        updated_at: template.updated_at
-      }));
+      console.log('처리된 템플릿 데이터:', templatesData);
       
+      // 백엔드 템플릿 구조를 프론트엔드 형태로 변환
+      const transformedTemplates = templatesData.map((template: any) => {
+        // 백엔드의 condition_type을 프론트엔드의 template_type으로 매핑
+        let frontendTemplateType = 'simple';
+        if (template.condition_type === 'range') {
+          frontendTemplateType = 'simple'; // range는 simple로 분류
+        } else if (template.condition_type === 'pattern') {
+          frontendTemplateType = 'script'; // pattern은 script로 분류
+        } else if (template.condition_type === 'script') {
+          frontendTemplateType = 'script';
+        }
+        
+        // default_config가 문자열이면 파싱
+        let parsedConfig = {};
+        try {
+          if (typeof template.default_config === 'string') {
+            parsedConfig = JSON.parse(template.default_config);
+          } else if (typeof template.default_config === 'object') {
+            parsedConfig = template.default_config;
+          }
+        } catch (e) {
+          console.warn('default_config 파싱 실패:', e);
+          parsedConfig = {};
+        }
+        
+        // applicable_data_types가 문자열이면 파싱
+        let parsedDataTypes: string[] = [];
+        try {
+          if (typeof template.applicable_data_types === 'string') {
+            parsedDataTypes = JSON.parse(template.applicable_data_types);
+          } else if (Array.isArray(template.applicable_data_types)) {
+            parsedDataTypes = template.applicable_data_types;
+          }
+        } catch (e) {
+          console.warn('applicable_data_types 파싱 실패:', e);
+          parsedDataTypes = ['unknown'];
+        }
+        
+        return {
+          id: template.id,
+          name: template.name,
+          description: template.description,
+          category: template.category,
+          template_type: frontendTemplateType,
+          condition_type: template.condition_type,
+          default_config: parsedConfig,
+          severity: template.severity,
+          message_template: template.message_template,
+          usage_count: template.usage_count || 0,
+          is_active: template.is_active,
+          supports_hh_ll: template.condition_type === 'range',
+          supports_script: template.condition_type === 'script',
+          applicable_data_types: parsedDataTypes,
+          created_at: template.created_at,
+          updated_at: template.updated_at
+        };
+      });
+      
+      console.log('변환된 템플릿:', transformedTemplates.length, '개');
       setTemplates(transformedTemplates);
+      
     } catch (error) {
       console.error('템플릿 로딩 실패:', error);
       setError(error instanceof Error ? error.message : '템플릿을 불러오는데 실패했습니다.');
-      
-      // 실패 시 목업 데이터 사용
-      const mockTemplates: AlarmTemplate[] = [
-        {
-          id: 1,
-          name: "온도 상한 기본",
-          description: "온도 센서용 단순 상한 임계값 알람", 
-          category: "Temperature",
-          template_type: "simple",
-          condition_type: "threshold",
-          default_config: { 
-            threshold: 80, 
-            deadband: 2,
-            alarm_type: "analog_high"
-          },
-          severity: "high",
-          message_template: "{site_name} {device_name} 온도가 {threshold}°C를 초과했습니다 (현재: {value}°C)",
-          usage_count: 45,
-          is_active: true,
-          supports_hh_ll: false,
-          supports_script: false,
-          applicable_data_types: ["temperature"],
-          created_at: "2025-01-01T00:00:00Z",
-          updated_at: "2025-01-01T00:00:00Z"
-        },
-        {
-          id: 2,
-          name: "온도 4단계 경보",
-          description: "온도 센서용 HH/H/L/LL 4단계 임계값 알람",
-          category: "Temperature", 
-          template_type: "advanced",
-          condition_type: "threshold",
-          default_config: { 
-            high_high_limit: 100,
-            high_limit: 80,
-            low_limit: 5,
-            low_low_limit: 0,
-            deadband: 2,
-            alarm_type: "analog_multi"
-          },
-          severity: "critical",
-          message_template: "{site_name} {device_name} 온도 {level} 알람: {value}°C (임계값: {threshold}°C)",
-          usage_count: 12,
-          is_active: true,
-          supports_hh_ll: true,
-          supports_script: false,
-          applicable_data_types: ["temperature"],
-          created_at: "2025-01-01T00:00:00Z",
-          updated_at: "2025-01-01T00:00:00Z"
-        },
-        {
-          id: 3,
-          name: "압력 범위 모니터링",
-          description: "압력이 정상 범위(1~5bar)를 벗어날 때 알람",
-          category: "Pressure",
-          template_type: "simple",
-          condition_type: "range", 
-          default_config: { 
-            min_value: 1.0,
-            max_value: 5.0,
-            deadband: 0.1,
-            alarm_type: "analog_range"
-          },
-          severity: "medium",
-          message_template: "{site_name} {device_name} 압력이 정상범위를 벗어났습니다: {value}bar",
-          usage_count: 28,
-          is_active: true,
-          supports_hh_ll: false,
-          supports_script: false,
-          applicable_data_types: ["pressure"],
-          created_at: "2025-01-01T00:00:00Z",
-          updated_at: "2025-01-01T00:00:00Z"
-        }
-      ];
-      setTemplates(mockTemplates);
+      setTemplates([]);
     } finally {
       setLoading(false);
     }
@@ -198,15 +174,68 @@ const AlarmRuleTemplates: React.FC = () => {
 
       const data = await alarmTemplatesApi.getDataPoints(filters);
       
-      // API가 배열을 반환하는지 확인하고 State 업데이트
+      // API 응답이 배열인지 확인
       if (Array.isArray(data)) {
         setDataPoints(data);
       } else {
-        setDataPoints([]);
+        console.warn('데이터포인트 응답이 배열이 아님:', data);
+        throw new Error('데이터포인트 데이터 형식이 올바르지 않습니다.');
       }
     } catch (error) {
       console.error('데이터포인트 로딩 실패:', error);
-      setDataPoints([]);
+      
+      // 실패 시 목업 데이터 사용
+      const mockDataPoints: DataPoint[] = [
+        { 
+          id: 1, 
+          name: "Temperature_Sensor_1", 
+          device_name: "PLC-001", 
+          site_name: "공장A 생산라인1", 
+          data_type: "temperature", 
+          unit: "°C", 
+          current_value: 23.5, 
+          last_updated: "2025-01-20T15:30:00Z",
+          supports_analog: true,
+          supports_digital: false
+        },
+        { 
+          id: 2, 
+          name: "Pressure_Main", 
+          device_name: "RTU-001", 
+          site_name: "공장A 유틸리티", 
+          data_type: "pressure", 
+          unit: "bar", 
+          current_value: 3.2, 
+          last_updated: "2025-01-20T15:30:00Z",
+          supports_analog: true,
+          supports_digital: false
+        },
+        { 
+          id: 3, 
+          name: "Motor_Status", 
+          device_name: "Drive-001", 
+          site_name: "공장B 컨베이어", 
+          data_type: "digital", 
+          unit: "", 
+          current_value: 1, 
+          last_updated: "2025-01-20T15:30:00Z",
+          supports_analog: false,
+          supports_digital: true
+        },
+        { 
+          id: 4, 
+          name: "Flow_Rate_01", 
+          device_name: "RTU-002", 
+          site_name: "공장C 냉각수", 
+          data_type: "flow", 
+          unit: "L/min", 
+          current_value: 150.3, 
+          last_updated: "2025-01-20T15:30:00Z",
+          supports_analog: true,
+          supports_digital: false
+        }
+      ];
+      setDataPoints(mockDataPoints);
     }
   };
 
@@ -216,7 +245,7 @@ const AlarmRuleTemplates: React.FC = () => {
         ...(searchTerm && { search: searchTerm })
       });
       
-      // 백엔드 API 응답 구조 처리
+      // 백엔드 API 응답 구조 처리: { success: true, data: { items: [...] } }
       let rulesData = [];
       if (response && response.success && response.data) {
         if (Array.isArray(response.data.items)) {
@@ -288,7 +317,7 @@ const AlarmRuleTemplates: React.FC = () => {
     
     // 선택된 템플릿과 호환성 체크
     if (selectedTemplate) {
-      if (selectedTemplate.template_type === 'script') return true;
+      if (selectedTemplate.template_type === 'script') return true; // 스크립트는 모든 타입 지원
       if (selectedTemplate.condition_type === 'pattern' && !point.supports_digital) return false;
       if (selectedTemplate.condition_type === 'threshold' && !point.supports_analog) return false;
       if (selectedTemplate.condition_type === 'range' && !point.supports_analog) return false;
@@ -387,7 +416,7 @@ const AlarmRuleTemplates: React.FC = () => {
         {/* 에러 표시 */}
         {error && (
           <div style={{ 
-            background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', 
+            background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', 
             padding: '16px', marginBottom: '24px', color: '#dc2626'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -509,17 +538,24 @@ const AlarmRuleTemplates: React.FC = () => {
                       기본 설정:
                     </div>
                     <div className="config-value">
-                      {template.template_type === 'simple' && template.condition_type === 'threshold' && (
-                        `임계값: ${template.default_config.threshold}, 데드밴드: ${template.default_config.deadband}`
+                      {template.condition_type === 'threshold' && (
+                        `임계값: ${template.default_config.threshold || 'N/A'}, 데드밴드: ${template.default_config.deadband || template.default_config.hysteresis || 'N/A'}`
                       )}
-                      {template.template_type === 'advanced' && template.supports_hh_ll && (
-                        `HH: ${template.default_config.high_high_limit}, H: ${template.default_config.high_limit}, L: ${template.default_config.low_limit}, LL: ${template.default_config.low_low_limit}`
+                      {template.condition_type === 'range' && (
+                        template.default_config.min_value !== undefined && template.default_config.max_value !== undefined ? (
+                          `범위: ${template.default_config.min_value} ~ ${template.default_config.max_value}`
+                        ) : template.default_config.high_high_limit !== undefined ? (
+                          `HH: ${template.default_config.high_high_limit}, H: ${template.default_config.high_limit}, L: ${template.default_config.low_limit}, LL: ${template.default_config.low_low_limit}`
+                        ) : '범위 설정'
                       )}
-                      {template.template_type === 'simple' && template.condition_type === 'range' && (
-                        `범위: ${template.default_config.min_value} ~ ${template.default_config.max_value}`
+                      {template.condition_type === 'digital' && (
+                        `디지털 조건: ${template.default_config.trigger_state || template.condition_template || 'N/A'}`
                       )}
-                      {template.template_type === 'script' && template.supports_script && (
-                        `JavaScript 기반 복합 조건`
+                      {template.condition_type === 'pattern' && (
+                        `패턴: ${template.default_config.trigger_state || 'state_change'}, 시간: ${template.default_config.hold_time || 1000}ms`
+                      )}
+                      {!['threshold', 'range', 'digital', 'pattern'].includes(template.condition_type) && (
+                        '사용자 정의 설정'
                       )}
                     </div>
                   </div>
@@ -662,7 +698,7 @@ const AlarmRuleTemplates: React.FC = () => {
                       value={siteFilter} 
                       onChange={(e) => {
                         setSiteFilter(e.target.value);
-                        setDeviceFilter('all');
+                        setDeviceFilter('all'); // 하위 필터 리셋
                       }}
                       className="filter-step-select"
                     >
@@ -741,8 +777,9 @@ const AlarmRuleTemplates: React.FC = () => {
                       <div 
                         key={point.id} 
                         className={`table-row ${isSelected ? 'selected' : ''} ${!isCompatible ? 'incompatible' : ''}`}
+                        data-label=""
                       >
-                        <div>
+                        <div data-label="선택">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -757,7 +794,7 @@ const AlarmRuleTemplates: React.FC = () => {
                             className="table-checkbox"
                           />
                         </div>
-                        <div className="datapoint-info">
+                        <div className="datapoint-info" data-label="포인트명">
                           <div className="datapoint-name">
                             {point.name}
                           </div>
@@ -770,9 +807,9 @@ const AlarmRuleTemplates: React.FC = () => {
                             )}
                           </div>
                         </div>
-                        <div className="table-cell">{point.device_name}</div>
-                        <div className="table-cell">{point.site_name}</div>
-                        <div className="current-value">
+                        <div className="table-cell" data-label="디바이스">{point.device_name}</div>
+                        <div className="table-cell" data-label="사이트">{point.site_name}</div>
+                        <div className="current-value" data-label="현재값">
                           {point.current_value} {point.unit}
                         </div>
                       </div>
