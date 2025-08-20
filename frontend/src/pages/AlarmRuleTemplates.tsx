@@ -23,7 +23,7 @@ const AlarmRuleTemplates: React.FC = () => {
   const [templateFilter, setTemplateFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   
-  // 계층 필터 (올바른 순서)
+  // 계층 필터
   const [siteFilter, setSiteFilter] = useState('all');
   const [deviceFilter, setDeviceFilter] = useState('all');
   const [dataTypeFilter, setDataTypeFilter] = useState('all');
@@ -198,68 +198,15 @@ const AlarmRuleTemplates: React.FC = () => {
 
       const data = await alarmTemplatesApi.getDataPoints(filters);
       
-      // API 응답이 배열인지 확인
+      // API가 배열을 반환하는지 확인하고 State 업데이트
       if (Array.isArray(data)) {
         setDataPoints(data);
       } else {
-        console.warn('데이터포인트 응답이 배열이 아님:', data);
-        throw new Error('데이터포인트 데이터 형식이 올바르지 않습니다.');
+        setDataPoints([]);
       }
     } catch (error) {
       console.error('데이터포인트 로딩 실패:', error);
-      
-      // 실패 시 목업 데이터 사용
-      const mockDataPoints: DataPoint[] = [
-        { 
-          id: 1, 
-          name: "Temperature_Sensor_1", 
-          device_name: "PLC-001", 
-          site_name: "공장A 생산라인1", 
-          data_type: "temperature", 
-          unit: "°C", 
-          current_value: 23.5, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        },
-        { 
-          id: 2, 
-          name: "Pressure_Main", 
-          device_name: "RTU-001", 
-          site_name: "공장A 유틸리티", 
-          data_type: "pressure", 
-          unit: "bar", 
-          current_value: 3.2, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        },
-        { 
-          id: 3, 
-          name: "Motor_Status", 
-          device_name: "Drive-001", 
-          site_name: "공장B 컨베이어", 
-          data_type: "digital", 
-          unit: "", 
-          current_value: 1, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: false,
-          supports_digital: true
-        },
-        { 
-          id: 4, 
-          name: "Flow_Rate_01", 
-          device_name: "RTU-002", 
-          site_name: "공장C 냉각수", 
-          data_type: "flow", 
-          unit: "L/min", 
-          current_value: 150.3, 
-          last_updated: "2025-01-20T15:30:00Z",
-          supports_analog: true,
-          supports_digital: false
-        }
-      ];
-      setDataPoints(mockDataPoints);
+      setDataPoints([]);
     }
   };
 
@@ -269,7 +216,7 @@ const AlarmRuleTemplates: React.FC = () => {
         ...(searchTerm && { search: searchTerm })
       });
       
-      // 백엔드 API 응답 구조 처리: { success: true, data: { items: [...] } }
+      // 백엔드 API 응답 구조 처리
       let rulesData = [];
       if (response && response.success && response.data) {
         if (Array.isArray(response.data.items)) {
@@ -333,7 +280,7 @@ const AlarmRuleTemplates: React.FC = () => {
     return matchesSearch;
   });
 
-  // 필터링된 데이터포인트 (올바른 계층 순서)
+  // 필터링된 데이터포인트
   const filteredDataPoints = dataPoints.filter(point => {
     const matchesSite = siteFilter === 'all' || point.site_name === siteFilter;
     const matchesDevice = deviceFilter === 'all' || point.device_name === deviceFilter;
@@ -341,7 +288,7 @@ const AlarmRuleTemplates: React.FC = () => {
     
     // 선택된 템플릿과 호환성 체크
     if (selectedTemplate) {
-      if (selectedTemplate.template_type === 'script') return true; // 스크립트는 모든 타입 지원
+      if (selectedTemplate.template_type === 'script') return true;
       if (selectedTemplate.condition_type === 'pattern' && !point.supports_digital) return false;
       if (selectedTemplate.condition_type === 'threshold' && !point.supports_analog) return false;
       if (selectedTemplate.condition_type === 'range' && !point.supports_analog) return false;
@@ -350,7 +297,7 @@ const AlarmRuleTemplates: React.FC = () => {
     return matchesSite && matchesDevice && matchesType;
   });
 
-  // 고유 값들 (올바른 계층 순서)
+  // 고유 값들
   const sites = ['all', ...new Set(dataPoints.map(d => d.site_name))];
   const devices = ['all', ...new Set(dataPoints.filter(d => siteFilter === 'all' || d.site_name === siteFilter).map(d => d.device_name))];
   const dataTypes = ['all', ...new Set(dataPoints.map(d => d.data_type))];
@@ -410,25 +357,6 @@ const AlarmRuleTemplates: React.FC = () => {
       case 'advanced': return '⚙️';
       case 'script': return '📝';
       default: return '❓';
-    }
-  };
-
-  const getTemplateTypeColor = (type: string) => {
-    switch(type) {
-      case 'simple': return '#10b981';
-      case 'advanced': return '#f59e0b';
-      case 'script': return '#8b5cf6';
-      default: return '#6b7280';
-    }
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch(severity.toLowerCase()) {
-      case 'critical': return '#dc2626';
-      case 'high': return '#f59e0b'; 
-      case 'medium': return '#3b82f6';
-      case 'low': return '#6b7280';
-      default: return '#6b7280';
     }
   };
 
@@ -726,7 +654,7 @@ const AlarmRuleTemplates: React.FC = () => {
               </div>
               
               <div className="modal-content">
-                {/* 계층 필터 (올바른 순서) */}
+                {/* 계층 필터 */}
                 <div className="hierarchy-filters">
                   <div className="filter-step">
                     <label className="filter-step-label">1️⃣ 사이트 선택</label>
@@ -734,7 +662,7 @@ const AlarmRuleTemplates: React.FC = () => {
                       value={siteFilter} 
                       onChange={(e) => {
                         setSiteFilter(e.target.value);
-                        setDeviceFilter('all'); // 하위 필터 리셋
+                        setDeviceFilter('all');
                       }}
                       className="filter-step-select"
                     >
