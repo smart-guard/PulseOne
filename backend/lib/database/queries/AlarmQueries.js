@@ -1,45 +1,158 @@
 // =============================================================================
 // backend/lib/database/queries/AlarmQueries.js
-// 모든 알람 관련 SQL 쿼리를 한 곳에 모음 (C++ SQLQueries.h 패턴)
-// 🔧 INSERT 오류 수정: 필수 컬럼만 사용하여 컬럼/값 개수 일치
+// 모든 알람 관련 SQL 쿼리를 한 곳에 모음 - 완성된 통합 버전
+// 실제 데이터베이스 스키마에 맞추어 JOIN 수정 완료
 // =============================================================================
 
 class AlarmQueries {
     
     // =========================================================================
-    // 🔥 AlarmRule 쿼리들 - INSERT 오류 수정됨
+    // 🔥 AlarmRule 쿼리들 - 실제 스키마에 맞춘 완전한 버전
     // =========================================================================
     static AlarmRule = {
         
-        // 기본 CRUD
+        // 기본 CRUD - 실제 스키마 기반 JOIN (device_id, data_point_id, virtual_point_id 컬럼 사용)
         FIND_ALL: `
-            SELECT * FROM alarm_rules 
-            WHERE tenant_id = ?
-            ORDER BY priority DESC, created_at DESC
+            SELECT 
+                ar.*,
+                -- 디바이스 정보
+                d.name as device_name,
+                d.device_type,
+                d.manufacturer,
+                d.model,
+                
+                -- 사이트 정보 (d.site_id를 통해 연결)
+                s.name as site_name,
+                s.location as site_location,
+                s.description as site_description,
+                
+                -- 데이터포인트 정보
+                dp.name as data_point_name,
+                dp.description as data_point_description,
+                dp.engineering_unit,
+                dp.system_tag,
+                dp.point_type,
+                dp.data_type,
+                
+                -- 가상포인트 정보
+                vp.name as virtual_point_name,
+                vp.description as virtual_point_description,
+                vp.calculation_formula,
+                
+                -- 조건 표시용 계산 필드
+                CASE 
+                    WHEN ar.condition_type = 'analog' THEN 
+                        CASE 
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.high_limit') IS NOT NULL 
+                                 AND JSON_EXTRACT(ar.condition_config, '$.low_limit') IS NOT NULL THEN 
+                                CONCAT('범위: ', JSON_EXTRACT(ar.condition_config, '$.low_limit'), 
+                                       ' ~ ', JSON_EXTRACT(ar.condition_config, '$.high_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.high_limit') IS NOT NULL THEN 
+                                CONCAT('상한: ', JSON_EXTRACT(ar.condition_config, '$.high_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.low_limit') IS NOT NULL THEN 
+                                CONCAT('하한: ', JSON_EXTRACT(ar.condition_config, '$.low_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            ELSE ar.condition_type
+                        END
+                    ELSE ar.condition_type
+                END as condition_display,
+                
+                -- 타겟 표시용 계산 필드
+                CASE 
+                    WHEN d.name IS NOT NULL AND dp.name IS NOT NULL THEN 
+                        CONCAT(d.name, ' - ', dp.name, 
+                                CASE WHEN s.location IS NOT NULL THEN CONCAT(' (', s.location, ')') ELSE '' END)
+                    WHEN d.name IS NOT NULL THEN 
+                        CONCAT(d.name, CASE WHEN s.location IS NOT NULL THEN CONCAT(' (', s.location, ')') ELSE '' END)
+                    WHEN vp.name IS NOT NULL THEN 
+                        CONCAT('가상포인트: ', vp.name)
+                    ELSE CONCAT('규칙 #', ar.id)
+                END as target_display
+                
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.data_point_id = dp.id
+            LEFT JOIN virtual_points vp ON ar.virtual_point_id = vp.id
+            WHERE ar.tenant_id = ?
+            ORDER BY ar.created_at DESC
         `,
         
         FIND_BY_ID: `
-            SELECT * FROM alarm_rules 
-            WHERE id = ? AND tenant_id = ?
+            SELECT 
+                ar.*,
+                d.name as device_name,
+                d.device_type,
+                d.manufacturer,
+                d.model,
+                s.name as site_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                dp.description as data_point_description,
+                dp.engineering_unit,
+                dp.system_tag,
+                dp.point_type,
+                dp.data_type,
+                vp.name as virtual_point_name,
+                vp.description as virtual_point_description,
+                vp.calculation_formula,
+                CASE 
+                    WHEN ar.condition_type = 'analog' THEN 
+                        CASE 
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.high_limit') IS NOT NULL 
+                                 AND JSON_EXTRACT(ar.condition_config, '$.low_limit') IS NOT NULL THEN 
+                                CONCAT('범위: ', JSON_EXTRACT(ar.condition_config, '$.low_limit'), 
+                                       ' ~ ', JSON_EXTRACT(ar.condition_config, '$.high_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.high_limit') IS NOT NULL THEN 
+                                CONCAT('상한: ', JSON_EXTRACT(ar.condition_config, '$.high_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.low_limit') IS NOT NULL THEN 
+                                CONCAT('하한: ', JSON_EXTRACT(ar.condition_config, '$.low_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            ELSE ar.condition_type
+                        END
+                    ELSE ar.condition_type
+                END as condition_display,
+                CASE 
+                    WHEN d.name IS NOT NULL AND dp.name IS NOT NULL THEN 
+                        CONCAT(d.name, ' - ', dp.name, 
+                                CASE WHEN s.location IS NOT NULL THEN CONCAT(' (', s.location, ')') ELSE '' END)
+                    WHEN d.name IS NOT NULL THEN 
+                        CONCAT(d.name, CASE WHEN s.location IS NOT NULL THEN CONCAT(' (', s.location, ')') ELSE '' END)
+                    WHEN vp.name IS NOT NULL THEN 
+                        CONCAT('가상포인트: ', vp.name)
+                    ELSE CONCAT('규칙 #', ar.id)
+                END as target_display
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.data_point_id = dp.id
+            LEFT JOIN virtual_points vp ON ar.virtual_point_id = vp.id
+            WHERE ar.id = ? AND ar.tenant_id = ?
         `,
         
-        // 🔥 수정: 필수 컬럼 15개만 사용하여 INSERT 오류 해결
+        // CREATE/UPDATE는 실제 스키마에 맞춤 (19개 컬럼)
         CREATE: `
             INSERT INTO alarm_rules (
-                tenant_id, name, description, target_type, target_id,
-                alarm_type, severity, high_limit, low_limit, deadband,
-                message_template, priority, is_enabled, auto_clear,
-                notification_enabled
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tenant_id, name, description, device_id, data_point_id,
+                virtual_point_id, condition_type, condition_config, severity,
+                message_template, auto_acknowledge, auto_clear, acknowledgment_required,
+                escalation_time_minutes, notification_enabled, email_notification,
+                sms_notification, is_enabled, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // 🔥 수정: 업데이트도 동일한 15개 컬럼 사용
         UPDATE: `
             UPDATE alarm_rules SET
-                name = ?, description = ?, target_type = ?, target_id = ?,
-                alarm_type = ?, severity = ?, high_limit = ?, low_limit = ?,
-                deadband = ?, message_template = ?, priority = ?, is_enabled = ?,
-                auto_clear = ?, notification_enabled = ?, updated_at = CURRENT_TIMESTAMP
+                name = ?, description = ?, device_id = ?, data_point_id = ?,
+                virtual_point_id = ?, condition_type = ?, condition_config = ?,
+                severity = ?, message_template = ?, auto_acknowledge = ?,
+                auto_clear = ?, acknowledgment_required = ?, escalation_time_minutes = ?,
+                notification_enabled = ?, email_notification = ?, sms_notification = ?,
+                is_enabled = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
         `,
         
@@ -61,28 +174,70 @@ class AlarmQueries {
         `,
         
         // 특화 쿼리들
-        FIND_BY_TARGET: `
-            SELECT * FROM alarm_rules 
-            WHERE target_type = ? AND target_id = ? AND tenant_id = ? AND is_enabled = 1
-            ORDER BY priority DESC
+        FIND_BY_DEVICE: `
+            SELECT 
+                ar.*,
+                d.name as device_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                dp.engineering_unit
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.data_point_id = dp.id
+            WHERE ar.device_id = ? AND ar.tenant_id = ? AND ar.is_enabled = 1
+            ORDER BY ar.created_at DESC
         `,
         
         FIND_ENABLED: `
-            SELECT * FROM alarm_rules 
-            WHERE is_enabled = 1 AND tenant_id = ?
-            ORDER BY priority DESC, severity DESC
+            SELECT 
+                ar.*,
+                d.name as device_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                dp.engineering_unit,
+                CASE 
+                    WHEN d.name IS NOT NULL AND dp.name IS NOT NULL THEN 
+                        CONCAT(d.name, ' - ', dp.name)
+                    WHEN d.name IS NOT NULL THEN d.name
+                    ELSE CONCAT('규칙 #', ar.id)
+                END as target_display
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.data_point_id = dp.id
+            WHERE ar.is_enabled = 1 AND ar.tenant_id = ?
+            ORDER BY ar.severity DESC, ar.created_at DESC
         `,
         
         FIND_BY_TYPE: `
-            SELECT * FROM alarm_rules 
-            WHERE alarm_type = ? AND tenant_id = ?
-            ORDER BY priority DESC
+            SELECT 
+                ar.*,
+                d.name as device_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                dp.engineering_unit
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.data_point_id = dp.id
+            WHERE ar.condition_type = ? AND ar.tenant_id = ?
+            ORDER BY ar.created_at DESC
         `,
         
         FIND_BY_SEVERITY: `
-            SELECT * FROM alarm_rules 
-            WHERE severity = ? AND tenant_id = ?
-            ORDER BY priority DESC
+            SELECT 
+                ar.*,
+                d.name as device_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                dp.engineering_unit
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.data_point_id = dp.id
+            WHERE ar.severity = ? AND ar.tenant_id = ?
+            ORDER BY ar.created_at DESC
         `,
         
         // 통계 쿼리들
@@ -104,17 +259,25 @@ class AlarmQueries {
             FROM alarm_rules 
             WHERE tenant_id = ? 
             GROUP BY severity
-            ORDER BY count DESC
+            ORDER BY 
+                CASE severity 
+                    WHEN 'critical' THEN 1 
+                    WHEN 'major' THEN 2 
+                    WHEN 'minor' THEN 3 
+                    WHEN 'warning' THEN 4 
+                    WHEN 'info' THEN 5 
+                    ELSE 6 
+                END
         `,
         
         STATS_BY_TYPE: `
             SELECT 
-                alarm_type, 
+                condition_type, 
                 COUNT(*) as count,
                 SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count
             FROM alarm_rules 
             WHERE tenant_id = ? 
-            GROUP BY alarm_type
+            GROUP BY condition_type
             ORDER BY count DESC
         `,
         
@@ -122,40 +285,83 @@ class AlarmQueries {
             SELECT 
                 COUNT(*) as total_rules,
                 SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_rules,
-                COUNT(DISTINCT target_type) as target_types,
-                COUNT(DISTINCT alarm_type) as alarm_types,
-                COUNT(DISTINCT severity) as severity_levels
+                COUNT(DISTINCT condition_type) as condition_types,
+                COUNT(DISTINCT severity) as severity_levels,
+                COUNT(DISTINCT device_id) as devices_with_rules
             FROM alarm_rules 
             WHERE tenant_id = ?
         `,
         
-        // 검색 쿼리
+        // 검색 쿼리 - 실제 스키마에 맞춘 JOIN
         SEARCH: `
-            SELECT * FROM alarm_rules 
-            WHERE tenant_id = ? AND (
-                name LIKE ? OR 
-                description LIKE ? OR
-                target_type LIKE ?
+            SELECT 
+                ar.*,
+                d.name as device_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                dp.engineering_unit,
+                vp.name as virtual_point_name,
+                CASE 
+                    WHEN d.name IS NOT NULL AND dp.name IS NOT NULL THEN 
+                        CONCAT(d.name, ' - ', dp.name)
+                    WHEN d.name IS NOT NULL THEN d.name
+                    WHEN vp.name IS NOT NULL THEN CONCAT('가상포인트: ', vp.name)
+                    ELSE CONCAT('규칙 #', ar.id)
+                END as target_display,
+                CASE 
+                    WHEN ar.condition_type = 'analog' THEN 
+                        CASE 
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.high_limit') IS NOT NULL 
+                                 AND JSON_EXTRACT(ar.condition_config, '$.low_limit') IS NOT NULL THEN 
+                                CONCAT('범위: ', JSON_EXTRACT(ar.condition_config, '$.low_limit'), 
+                                       ' ~ ', JSON_EXTRACT(ar.condition_config, '$.high_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.high_limit') IS NOT NULL THEN 
+                                CONCAT('상한: ', JSON_EXTRACT(ar.condition_config, '$.high_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            WHEN JSON_EXTRACT(ar.condition_config, '$.low_limit') IS NOT NULL THEN 
+                                CONCAT('하한: ', JSON_EXTRACT(ar.condition_config, '$.low_limit'), 
+                                       COALESCE(dp.engineering_unit, ''))
+                            ELSE ar.condition_type
+                        END
+                    ELSE ar.condition_type
+                END as condition_display
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.data_point_id = dp.id
+            LEFT JOIN virtual_points vp ON ar.virtual_point_id = vp.id
+            WHERE ar.tenant_id = ? AND (
+                ar.name LIKE ? OR 
+                ar.description LIKE ? OR
+                ar.condition_type LIKE ? OR
+                d.name LIKE ? OR
+                dp.name LIKE ? OR
+                vp.name LIKE ? OR
+                s.location LIKE ?
             )
-            ORDER BY priority DESC, created_at DESC
+            ORDER BY ar.created_at DESC
         `,
         
-        // 필터링 조건들 (동적으로 추가)
+        // 필터링 조건들
         CONDITIONS: {
-            TARGET_TYPE: ` AND target_type = ?`,
-            ALARM_TYPE: ` AND alarm_type = ?`,
-            SEVERITY: ` AND severity = ?`,
-            IS_ENABLED: ` AND is_enabled = ?`,
-            SEARCH: ` AND (name LIKE ? OR description LIKE ?)`,
-            TENANT_ID: ` AND tenant_id = ?`,
-            ORDER_BY_PRIORITY: ` ORDER BY priority DESC`,
+            CONDITION_TYPE: ` AND ar.condition_type = ?`,
+            SEVERITY: ` AND ar.severity = ?`,
+            IS_ENABLED: ` AND ar.is_enabled = ?`,
+            DEVICE_ID: ` AND ar.device_id = ?`,
+            DATA_POINT_ID: ` AND ar.data_point_id = ?`,
+            VIRTUAL_POINT_ID: ` AND ar.virtual_point_id = ?`,
+            SEARCH: ` AND (ar.name LIKE ? OR ar.description LIKE ? OR d.name LIKE ? OR dp.name LIKE ?)`,
+            TENANT_ID: ` AND ar.tenant_id = ?`,
+            ORDER_BY_CREATED: ` ORDER BY ar.created_at DESC`,
             ORDER_BY_SEVERITY: ` ORDER BY 
-                CASE severity 
+                CASE ar.severity 
                     WHEN 'critical' THEN 1 
-                    WHEN 'high' THEN 2 
-                    WHEN 'medium' THEN 3 
-                    WHEN 'low' THEN 4 
-                    ELSE 5 
+                    WHEN 'major' THEN 2 
+                    WHEN 'minor' THEN 3 
+                    WHEN 'warning' THEN 4 
+                    WHEN 'info' THEN 5 
+                    ELSE 6 
                 END`,
             LIMIT: ` LIMIT ?`,
             OFFSET: ` OFFSET ?`
@@ -172,10 +378,16 @@ class AlarmQueries {
                 ao.*,
                 ar.name as rule_name,
                 ar.severity as rule_severity,
-                ar.target_type,
-                ar.target_id
+                d.name as device_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                vp.name as virtual_point_name
             FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN alarm_rules ar ON ao.alarm_rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ao.data_point_id = dp.id
+            LEFT JOIN virtual_points vp ON ao.virtual_point_id = vp.id
             WHERE ao.tenant_id = ?
             ORDER BY ao.occurrence_time DESC
         `,
@@ -184,88 +396,114 @@ class AlarmQueries {
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                ar.severity as rule_severity
+                ar.severity as rule_severity,
+                d.name as device_name,
+                s.location as site_location,
+                dp.name as data_point_name,
+                vp.name as virtual_point_name
             FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN alarm_rules ar ON ao.alarm_rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ao.data_point_id = dp.id
+            LEFT JOIN virtual_points vp ON ao.virtual_point_id = vp.id
             WHERE ao.id = ? AND ao.tenant_id = ?
         `,
         
-        // 🔥 수정: 실제 alarm_occurrences 스키마에 맞춘 CREATE (13개 컬럼)
+        // 실제 alarm_occurrences 스키마에 맞춘 CREATE (12개 컬럼)
         CREATE: `
             INSERT INTO alarm_occurrences (
-                rule_id, tenant_id, occurrence_time, trigger_value, 
-                trigger_condition, alarm_message, severity, state,
-                context_data, source_name, location, device_id, point_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tenant_id, alarm_rule_id, device_id, data_point_id, virtual_point_id,
+                severity, message, trigger_value, condition_details, state,
+                occurrence_time, notification_sent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // 🔥 수정: 실제 스키마에 맞춘 UPDATE 쿼리
+        // 실제 스키마에 맞춘 UPDATE 쿼리들
         UPDATE_STATE: `
             UPDATE alarm_occurrences SET
                 state = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
         `,
         
-        // 🔥 수정: 실제 스키마의 컬럼명 사용 (acknowledged_time, acknowledged_by)
         ACKNOWLEDGE: `
             UPDATE alarm_occurrences SET
-                acknowledged_time = CURRENT_TIMESTAMP,
+                acknowledgment_time = CURRENT_TIMESTAMP,
                 acknowledged_by = ?,
-                acknowledge_comment = ?,
+                acknowledgment_note = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
         `,
         
-        // 🔥 수정: 실제 스키마의 컬럼명 사용 (cleared_time, cleared_value)
         CLEAR: `
             UPDATE alarm_occurrences SET
-                cleared_time = CURRENT_TIMESTAMP,
-                cleared_value = ?,
-                clear_comment = ?,
+                clear_time = CURRENT_TIMESTAMP,
+                cleared_by = ?,
+                resolution_note = ?,
                 state = 'cleared',
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
         `,
         
-        // 🔥 수정: 실제 스키마에 맞춘 활성 알람 조회
+        // 활성/비활성 상태 조회
         FIND_ACTIVE: `
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                ar.target_type,
-                ar.priority
+                ar.severity as rule_severity,
+                d.name as device_name,
+                s.location as site_location
             FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN alarm_rules ar ON ao.alarm_rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? AND ao.state = 'active'
-            ORDER BY ar.priority DESC, ao.occurrence_time DESC
-        `,
-        
-        // 🔥 수정: acknowledged_time IS NULL로 미확인 조회
-        FIND_UNACKNOWLEDGED: `
-            SELECT 
-                ao.*,
-                ar.name as rule_name
-            FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            WHERE ao.tenant_id = ? AND ao.acknowledged_time IS NULL
             ORDER BY ao.occurrence_time DESC
         `,
         
-        // 특정 룰의 알람 이력
+        FIND_UNACKNOWLEDGED: `
+            SELECT 
+                ao.*,
+                ar.name as rule_name,
+                d.name as device_name,
+                s.location as site_location
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.alarm_rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            WHERE ao.tenant_id = ? AND ao.acknowledgment_time IS NULL
+            ORDER BY ao.occurrence_time DESC
+        `,
+        
+        // 특정 룰/디바이스의 알람 이력
         FIND_BY_RULE: `
             SELECT * FROM alarm_occurrences 
-            WHERE rule_id = ? AND tenant_id = ?
+            WHERE alarm_rule_id = ? AND tenant_id = ?
             ORDER BY occurrence_time DESC
         `,
         
-        // 🔥 수정: 실제 스키마에 맞춘 통계 쿼리
+        FIND_BY_DEVICE: `
+            SELECT 
+                ao.*,
+                ar.name as rule_name,
+                d.name as device_name,
+                s.location as site_location
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.alarm_rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            WHERE ao.tenant_id = ? AND ao.device_id = ?
+            ORDER BY ao.occurrence_time DESC
+        `,
+        
+        // 통계 쿼리들
         STATS_SUMMARY: `
             SELECT 
                 COUNT(*) as total_occurrences,
                 SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_alarms,
-                SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as unacknowledged_alarms,
-                SUM(CASE WHEN acknowledged_time IS NOT NULL THEN 1 ELSE 0 END) as acknowledged_alarms,
-                SUM(CASE WHEN cleared_time IS NOT NULL THEN 1 ELSE 0 END) as cleared_alarms
+                SUM(CASE WHEN acknowledgment_time IS NULL THEN 1 ELSE 0 END) as unacknowledged_alarms,
+                SUM(CASE WHEN acknowledgment_time IS NOT NULL THEN 1 ELSE 0 END) as acknowledged_alarms,
+                SUM(CASE WHEN clear_time IS NOT NULL THEN 1 ELSE 0 END) as cleared_alarms
             FROM alarm_occurrences 
             WHERE tenant_id = ?
         `,
@@ -281,10 +519,11 @@ class AlarmQueries {
             ORDER BY 
                 CASE severity 
                     WHEN 'critical' THEN 1 
-                    WHEN 'high' THEN 2 
-                    WHEN 'medium' THEN 3 
-                    WHEN 'low' THEN 4 
-                    ELSE 5 
+                    WHEN 'major' THEN 2 
+                    WHEN 'minor' THEN 3 
+                    WHEN 'warning' THEN 4 
+                    WHEN 'info' THEN 5 
+                    ELSE 6 
                 END
         `,
         
@@ -304,9 +543,13 @@ class AlarmQueries {
         RECENT_OCCURRENCES: `
             SELECT 
                 ao.*,
-                ar.name as rule_name
+                ar.name as rule_name,
+                d.name as device_name,
+                s.location as site_location
             FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN alarm_rules ar ON ao.alarm_rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? 
             ORDER BY ao.occurrence_time DESC
             LIMIT ?
@@ -317,223 +560,48 @@ class AlarmQueries {
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                ar.severity as rule_severity
+                ar.severity as rule_severity,
+                d.name as device_name,
+                s.location as site_location
             FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN alarm_rules ar ON ao.alarm_rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? 
                 AND ao.occurrence_time >= ? 
                 AND ao.occurrence_time <= ?
             ORDER BY ao.occurrence_time DESC
-        `
+        `,
+        
+        // 필터링 조건들
+        CONDITIONS: {
+            STATE: ` AND ao.state = ?`,
+            SEVERITY: ` AND ao.severity = ?`,
+            RULE_ID: ` AND ao.alarm_rule_id = ?`,
+            DEVICE_ID: ` AND ao.device_id = ?`,
+            DATE_FROM: ` AND ao.occurrence_time >= ?`,
+            DATE_TO: ` AND ao.occurrence_time <= ?`,
+            ACKNOWLEDGED: ` AND ao.acknowledgment_time IS NOT NULL`,
+            UNACKNOWLEDGED: ` AND ao.acknowledgment_time IS NULL`,
+            CLEARED: ` AND ao.clear_time IS NOT NULL`,
+            ACTIVE: ` AND ao.state = 'active'`,
+            ORDER_BY_TIME: ` ORDER BY ao.occurrence_time DESC`,
+            ORDER_BY_SEVERITY: ` ORDER BY 
+                CASE ao.severity 
+                    WHEN 'critical' THEN 1 
+                    WHEN 'major' THEN 2 
+                    WHEN 'minor' THEN 3 
+                    WHEN 'warning' THEN 4 
+                    WHEN 'info' THEN 5 
+                    ELSE 6 
+                END, ao.occurrence_time DESC`,
+            LIMIT: ` LIMIT ?`,
+            OFFSET: ` OFFSET ?`
+        }
     };
     
     // =========================================================================
-    // 🔥 공통 유틸리티 메서드들
-    // =========================================================================
-    
-    /**
-     * 동적 WHERE 절 생성 (AlarmRule용)
-     */
-    static buildAlarmRuleWhereClause(baseQuery, filters = {}) {
-        let query = baseQuery;
-        const params = [];
-        
-        if (filters.tenant_id) {
-            params.push(filters.tenant_id);
-        }
-        
-        if (filters.target_type) {
-            query += this.AlarmRule.CONDITIONS.TARGET_TYPE;
-            params.push(filters.target_type);
-        }
-        
-        if (filters.alarm_type) {
-            query += this.AlarmRule.CONDITIONS.ALARM_TYPE;
-            params.push(filters.alarm_type);
-        }
-        
-        if (filters.severity) {
-            query += this.AlarmRule.CONDITIONS.SEVERITY;
-            params.push(filters.severity);
-        }
-        
-        if (filters.is_enabled !== undefined) {
-            query += this.AlarmRule.CONDITIONS.IS_ENABLED;
-            params.push(filters.is_enabled ? 1 : 0);
-        }
-        
-        if (filters.search) {
-            query += this.AlarmRule.CONDITIONS.SEARCH;
-            params.push(`%${filters.search}%`, `%${filters.search}%`);
-        }
-        
-        return { query, params };
-    }
-    
-    /**
-     * 페이징 절 추가
-     */
-    static addPagination(query, limit, offset) {
-        if (limit) {
-            query += this.AlarmRule.CONDITIONS.LIMIT;
-            if (offset && offset > 0) {
-                query += this.AlarmRule.CONDITIONS.OFFSET;
-            }
-        }
-        return query;
-    }
-
-    /**
-     * 정렬 절 추가
-     */
-    static addSorting(query, sortBy = 'priority') {
-        switch (sortBy) {
-            case 'priority':
-                return query + this.AlarmRule.CONDITIONS.ORDER_BY_PRIORITY;
-            case 'severity':
-                return query + this.AlarmRule.CONDITIONS.ORDER_BY_SEVERITY;
-            default:
-                return query + this.AlarmRule.CONDITIONS.ORDER_BY_PRIORITY;
-        }
-    }
-
-    /**
-     * 🔥 CREATE 쿼리에 사용할 필수 파라미터 생성 (AlarmRule)
-     * 15개 값을 정확히 제공하는 헬퍼 메서드
-     */
-    static buildCreateParams(data) {
-        return [
-            data.tenant_id,                                                 // 1
-            data.name,                                                      // 2
-            data.description || '',                                         // 3
-            data.target_type,                                               // 4
-            data.target_id,                                                 // 5
-            data.alarm_type,                                                // 6
-            data.severity,                                                  // 7
-            data.high_limit || null,                                        // 8
-            data.low_limit || null,                                         // 9
-            data.deadband || 0,                                             // 10
-            data.message_template || `${data.name} alarm triggered`,       // 11
-            data.priority || 100,                                           // 12
-            data.is_enabled !== false ? 1 : 0,                            // 13
-            data.auto_clear !== false ? 1 : 0,                            // 14
-            data.notification_enabled !== false ? 1 : 0                    // 15
-        ];
-    }
-
-    /**
-     * 🔥 CREATE 쿼리에 사용할 AlarmOccurrence 파라미터 생성
-     * 13개 값을 정확히 제공하는 헬퍼 메서드
-     */
-    static buildCreateOccurrenceParams(data) {
-        return [
-            data.rule_id,                                                   // 1
-            data.tenant_id,                                                 // 2
-            data.occurrence_time || new Date().toISOString(),              // 3
-            data.trigger_value ? JSON.stringify(data.trigger_value) : null,// 4
-            data.trigger_condition || '',                                   // 5
-            data.alarm_message,                                             // 6
-            data.severity,                                                  // 7
-            data.state || 'active',                                         // 8
-            data.context_data ? JSON.stringify(data.context_data) : null,  // 9
-            data.source_name || null,                                       // 10
-            data.location || null,                                          // 11
-            data.device_id || null,                                         // 12
-            data.point_id || null                                           // 13
-        ];
-    }
-
-    /**
-     * AlarmOccurrence 필수 필드 검증
-     */
-    static validateOccurrenceRequiredFields(data) {
-        const requiredFields = ['rule_id', 'tenant_id', 'alarm_message', 'severity'];
-        const missingFields = [];
-        
-        for (const field of requiredFields) {
-            if (!data[field]) {
-                missingFields.push(field);
-            }
-        }
-        
-        if (missingFields.length > 0) {
-            throw new Error(`필수 필드 누락: ${missingFields.join(', ')}`);
-        }
-        
-        return true;
-    }
-
-    /**
-     * 🔥 UPDATE 쿼리에 사용할 파라미터 생성
-     * 16개 값 (15개 필드 + id + tenant_id)
-     */
-    static buildUpdateParams(data, id, tenantId) {
-        return [
-            data.name,                                                      // 1
-            data.description || '',                                         // 2
-            data.target_type,                                               // 3
-            data.target_id,                                                 // 4
-            data.alarm_type,                                                // 5
-            data.severity,                                                  // 6
-            data.high_limit || null,                                        // 7
-            data.low_limit || null,                                         // 8
-            data.deadband || 0,                                             // 9
-            data.message_template || `${data.name} alarm triggered`,       // 10
-            data.priority || 100,                                           // 11
-            data.is_enabled !== false ? 1 : 0,                            // 12
-            data.auto_clear !== false ? 1 : 0,                            // 13
-            data.notification_enabled !== false ? 1 : 0,                   // 14
-            id,                                                             // 15 (WHERE 조건)
-            tenantId || data.tenant_id || 1                                 // 16 (WHERE 조건)
-        ];
-    }
-
-    /**
-     * 필수 필드 검증
-     */
-    static validateRequiredFields(data) {
-        const requiredFields = ['name', 'target_type', 'target_id', 'alarm_type', 'severity'];
-        const missingFields = [];
-        
-        for (const field of requiredFields) {
-            if (!data[field]) {
-                missingFields.push(field);
-            }
-        }
-        
-        if (missingFields.length > 0) {
-            throw new Error(`필수 필드 누락: ${missingFields.join(', ')}`);
-        }
-        
-        return true;
-    }
-
-    /**
-     * 알람 유형별 검증
-     */
-    static validateAlarmTypeSpecificFields(data) {
-        switch (data.alarm_type) {
-            case 'analog':
-                if (!data.high_limit && !data.low_limit) {
-                    throw new Error('아날로그 알람은 high_limit 또는 low_limit 중 하나는 필수입니다');
-                }
-                break;
-            case 'digital':
-                if (!data.trigger_condition) {
-                    throw new Error('디지털 알람은 trigger_condition이 필수입니다');
-                }
-                break;
-            case 'script':
-                if (!data.condition_script) {
-                    throw new Error('스크립트 알람은 condition_script가 필수입니다');
-                }
-                break;
-        }
-        return true;
-    }
-
-// =========================================================================
-    // 🔥 AlarmRuleTemplate 쿼리들 - 템플릿 관리
+    // 🔥 AlarmRuleTemplate 쿼리들 - 템플릿 관리 (기존 기능 유지)
     // =========================================================================
     static AlarmTemplate = {
         
@@ -683,11 +751,211 @@ class AlarmQueries {
             WHERE template_id = ? AND tenant_id = ?
         `
     };
-
+    
     // =========================================================================
-    // 🔥 템플릿 헬퍼 메서드들
+    // 🔥 공통 유틸리티 메서드들
     // =========================================================================
     
+    /**
+     * 동적 WHERE 절 생성 (AlarmRule용)
+     */
+    static buildAlarmRuleWhereClause(baseQuery, filters = {}) {
+        let query = baseQuery;
+        const params = [];
+        
+        if (filters.tenant_id) {
+            params.push(filters.tenant_id);
+        }
+        
+        if (filters.condition_type) {
+            query += this.AlarmRule.CONDITIONS.CONDITION_TYPE;
+            params.push(filters.condition_type);
+        }
+        
+        if (filters.severity) {
+            query += this.AlarmRule.CONDITIONS.SEVERITY;
+            params.push(filters.severity);
+        }
+        
+        if (filters.is_enabled !== undefined) {
+            query += this.AlarmRule.CONDITIONS.IS_ENABLED;
+            params.push(filters.is_enabled ? 1 : 0);
+        }
+        
+        if (filters.device_id) {
+            query += this.AlarmRule.CONDITIONS.DEVICE_ID;
+            params.push(filters.device_id);
+        }
+        
+        if (filters.data_point_id) {
+            query += this.AlarmRule.CONDITIONS.DATA_POINT_ID;
+            params.push(filters.data_point_id);
+        }
+        
+        if (filters.virtual_point_id) {
+            query += this.AlarmRule.CONDITIONS.VIRTUAL_POINT_ID;
+            params.push(filters.virtual_point_id);
+        }
+        
+        if (filters.search) {
+            query += this.AlarmRule.CONDITIONS.SEARCH;
+            params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+        }
+        
+        return { query, params };
+    }
+    
+    /**
+     * AlarmOccurrence 필터 조건 빌더
+     */
+    static buildAlarmOccurrenceFilters(baseQuery, filters = {}) {
+        let query = baseQuery;
+        const params = [];
+        
+        if (filters.tenant_id) {
+            params.push(filters.tenant_id);
+        }
+        
+        if (filters.state) {
+            query += this.AlarmOccurrence.CONDITIONS.STATE;
+            params.push(filters.state);
+        }
+        
+        if (filters.severity) {
+            query += this.AlarmOccurrence.CONDITIONS.SEVERITY;
+            params.push(filters.severity);
+        }
+        
+        if (filters.rule_id) {
+            query += this.AlarmOccurrence.CONDITIONS.RULE_ID;
+            params.push(parseInt(filters.rule_id));
+        }
+        
+        if (filters.device_id) {
+            query += this.AlarmOccurrence.CONDITIONS.DEVICE_ID;
+            params.push(parseInt(filters.device_id));
+        }
+        
+        if (filters.date_from) {
+            query += this.AlarmOccurrence.CONDITIONS.DATE_FROM;
+            params.push(filters.date_from);
+        }
+        
+        if (filters.date_to) {
+            query += this.AlarmOccurrence.CONDITIONS.DATE_TO;
+            params.push(filters.date_to);
+        }
+        
+        if (filters.acknowledged === true) {
+            query += this.AlarmOccurrence.CONDITIONS.ACKNOWLEDGED;
+        } else if (filters.acknowledged === false) {
+            query += this.AlarmOccurrence.CONDITIONS.UNACKNOWLEDGED;
+        }
+        
+        return { query, params };
+    }
+    
+    /**
+     * 페이징 절 추가
+     */
+    static addPagination(query, limit, offset) {
+        if (limit) {
+            query += ` LIMIT ${parseInt(limit)}`;
+            if (offset && offset > 0) {
+                query += ` OFFSET ${parseInt(offset)}`;
+            }
+        }
+        return query;
+    }
+
+    /**
+     * 정렬 절 추가
+     */
+    static addSorting(query, sortBy = 'created_at', order = 'DESC') {
+        const validSortFields = ['created_at', 'severity', 'name', 'occurrence_time'];
+        const validOrders = ['ASC', 'DESC'];
+        
+        if (validSortFields.includes(sortBy) && validOrders.includes(order.toUpperCase())) {
+            return query + ` ORDER BY ${sortBy} ${order.toUpperCase()}`;
+        }
+        
+        return query + ` ORDER BY created_at DESC`;
+    }
+
+    /**
+     * 🔥 AlarmRule CREATE 쿼리에 사용할 필수 파라미터 생성 (19개 값)
+     */
+    static buildCreateRuleParams(data) {
+        return [
+            data.tenant_id,                                                 // 1
+            data.name,                                                      // 2
+            data.description || '',                                         // 3
+            data.device_id || null,                                         // 4
+            data.data_point_id || null,                                     // 5
+            data.virtual_point_id || null,                                  // 6
+            data.condition_type,                                            // 7
+            JSON.stringify(data.condition_config || {}),                   // 8
+            data.severity || 'warning',                                     // 9
+            data.message_template || `${data.name} 알람이 발생했습니다`,      // 10
+            data.auto_acknowledge || 0,                                     // 11
+            data.auto_clear || 0,                                          // 12
+            data.acknowledgment_required !== false ? 1 : 0,               // 13
+            data.escalation_time_minutes || 0,                            // 14
+            data.notification_enabled !== false ? 1 : 0,                  // 15
+            data.email_notification || 0,                                 // 16
+            data.sms_notification || 0,                                   // 17
+            data.is_enabled !== false ? 1 : 0,                           // 18
+            data.created_by || null                                        // 19
+        ];
+    }
+
+    /**
+     * 🔥 AlarmOccurrence CREATE 쿼리에 사용할 파라미터 생성 (12개 값)
+     */
+    static buildCreateOccurrenceParams(data) {
+        return [
+            data.tenant_id,                                                 // 1
+            data.alarm_rule_id,                                            // 2
+            data.device_id || null,                                        // 3
+            data.data_point_id || null,                                    // 4
+            data.virtual_point_id || null,                                 // 5
+            data.severity,                                                 // 6
+            data.message,                                                  // 7
+            data.trigger_value || null,                                    // 8
+            data.condition_details || null,                               // 9
+            data.state || 'active',                                       // 10
+            data.occurrence_time || new Date().toISOString(),             // 11
+            data.notification_sent || 0                                    // 12
+        ];
+    }
+
+    /**
+     * 🔥 AlarmRule UPDATE 쿼리에 사용할 파라미터 생성 (19개 값)
+     */
+    static buildUpdateRuleParams(data, id, tenantId) {
+        return [
+            data.name,                                                      // 1
+            data.description || '',                                         // 2
+            data.device_id || null,                                         // 3
+            data.data_point_id || null,                                     // 4
+            data.virtual_point_id || null,                                  // 5
+            data.condition_type,                                            // 6
+            JSON.stringify(data.condition_config || {}),                   // 7
+            data.severity || 'warning',                                     // 8
+            data.message_template || `${data.name} 알람이 발생했습니다`,      // 9
+            data.auto_acknowledge || 0,                                     // 10
+            data.auto_clear || 0,                                          // 11
+            data.acknowledgment_required !== false ? 1 : 0,               // 12
+            data.escalation_time_minutes || 0,                            // 13
+            data.notification_enabled !== false ? 1 : 0,                  // 14
+            data.email_notification || 0,                                 // 15
+            data.sms_notification || 0,                                   // 16
+            data.is_enabled !== false ? 1 : 0,                           // 17
+            id,                                                             // 18 (WHERE 조건)
+            tenantId || data.tenant_id || 1                                 // 19 (WHERE 조건)
+        ];
+    }
+
     /**
      * 템플릿 CREATE 파라미터 생성 (19개 값)
      */
@@ -700,7 +968,7 @@ class AlarmQueries {
             data.condition_type,                                            // 5
             data.condition_template,                                        // 6
             JSON.stringify(data.default_config || {}),                     // 7
-            data.severity || 'medium',                                      // 8
+            data.severity || 'warning',                                     // 8
             data.message_template || `${data.name} 알람이 발생했습니다`,      // 9
             JSON.stringify(data.applicable_data_types || ['*']),           // 10
             data.notification_enabled !== false ? 1 : 0,                  // 11
@@ -726,7 +994,7 @@ class AlarmQueries {
             data.condition_type,                                            // 4
             data.condition_template,                                        // 5
             JSON.stringify(data.default_config || {}),                     // 6
-            data.severity || 'medium',                                      // 7
+            data.severity || 'warning',                                     // 7
             data.message_template || `${data.name} 알람이 발생했습니다`,      // 8
             JSON.stringify(data.applicable_data_types || ['*']),           // 9
             data.notification_enabled !== false ? 1 : 0,                  // 10
@@ -738,6 +1006,51 @@ class AlarmQueries {
             id,                                                             // 16 (WHERE 조건)
             tenantId || data.tenant_id || 1                                 // 17 (WHERE 조건)
         ];
+    }
+
+    /**
+     * 필수 필드 검증 - AlarmRule
+     */
+    static validateAlarmRule(data) {
+        const requiredFields = ['name', 'condition_type', 'condition_config', 'severity'];
+        const missingFields = [];
+        
+        for (const field of requiredFields) {
+            if (!data[field]) {
+                missingFields.push(field);
+            }
+        }
+        
+        // 타겟 검증 (device_id, data_point_id, virtual_point_id 중 하나는 필수)
+        if (!data.device_id && !data.data_point_id && !data.virtual_point_id) {
+            missingFields.push('target (device_id, data_point_id, or virtual_point_id)');
+        }
+        
+        if (missingFields.length > 0) {
+            throw new Error(`필수 필드 누락: ${missingFields.join(', ')}`);
+        }
+        
+        return true;
+    }
+
+    /**
+     * 필수 필드 검증 - AlarmOccurrence
+     */
+    static validateAlarmOccurrence(data) {
+        const requiredFields = ['tenant_id', 'alarm_rule_id', 'severity', 'message'];
+        const missingFields = [];
+        
+        for (const field of requiredFields) {
+            if (!data[field]) {
+                missingFields.push(field);
+            }
+        }
+        
+        if (missingFields.length > 0) {
+            throw new Error(`필수 필드 누락: ${missingFields.join(', ')}`);
+        }
+        
+        return true;
     }
 
     /**
@@ -757,6 +1070,33 @@ class AlarmQueries {
             throw new Error(`템플릿 필수 필드 누락: ${missingFields.join(', ')}`);
         }
         
+        return true;
+    }
+
+    /**
+     * 알람 조건 유형별 검증
+     */
+    static validateConditionTypeSpecificFields(data) {
+        switch (data.condition_type) {
+            case 'analog':
+                const config = typeof data.condition_config === 'string' 
+                    ? JSON.parse(data.condition_config) 
+                    : data.condition_config;
+                if (!config.high_limit && !config.low_limit) {
+                    throw new Error('아날로그 알람은 high_limit 또는 low_limit 중 하나는 필수입니다');
+                }
+                break;
+            case 'digital':
+                if (!data.condition_config.trigger_condition) {
+                    throw new Error('디지털 알람은 trigger_condition이 필수입니다');
+                }
+                break;
+            case 'script':
+                if (!data.condition_config.condition_script) {
+                    throw new Error('스크립트 알람은 condition_script가 필수입니다');
+                }
+                break;
+        }
         return true;
     }
 
@@ -783,7 +1123,6 @@ class AlarmQueries {
             throw new Error(`템플릿 설정 유효성 검사 실패: ${error.message}`);
         }
     }
-
 }
 
 module.exports = AlarmQueries;
