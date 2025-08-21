@@ -201,13 +201,17 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                   <label className="form-label">히스테리시스 (Deadband)</label>
                   <input
                     type="number"
-                    value={localSettings.deadband || ''}
-                    onChange={(e) => handleSettingChange('deadband', Number(e.target.value) || 0)}
+                    value={localSettings.deadband === 0 ? '0' : (localSettings.deadband || '')}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      handleSettingChange('deadband', value === '' ? undefined : Number(value));
+                    }}
                     className="form-input"
                     step="0.1"
                     min="0"
+                    placeholder="데드밴드 값"
                   />
-                  <small className="form-help">알람 chattering 방지를 위한 데드밴드</small>
+                  <small className="form-help">알람 chattering 방지를 위한 데드밴드 (0은 데드밴드 없음)</small>
                 </div>
               </div>
             )}
