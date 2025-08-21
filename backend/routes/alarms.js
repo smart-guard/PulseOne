@@ -568,13 +568,17 @@ router.get('/history', async (req, res) => {
         
         console.log('알람 이력 조회 시작...');
 
-        let query, params;
+        // ✅ 올바른 베이스 쿼리 사용 (ao 별칭이 포함된 JOIN 쿼리)
+        let query = AlarmQueries.AlarmOccurrence.FIND_ALL;
+        let params = [tenantId];
         
-        // 기본 쿼리에서 시작
-        query = AlarmQueries.AlarmOccurrence.FIND_ALL.replace('ORDER BY', ''); // ORDER BY 제거
-        params = [tenantId];
+        // ✅ ORDER BY를 안전하게 제거 (마지막 ORDER BY만 제거)
+        const orderByIndex = query.lastIndexOf('ORDER BY');
+        if (orderByIndex !== -1) {
+            query = query.substring(0, orderByIndex).trim();
+        }
         
-        // 필터 조건들 추가
+        // 필터 조건들 추가 (이제 ao 별칭이 올바르게 정의됨)
         if (severity && severity !== 'all') {
             query += ` AND ao.severity = ?`;
             params.push(severity);
@@ -614,18 +618,61 @@ router.get('/history', async (req, res) => {
 
         const results = await dbAll(query, params);
         
+        // ✅ 총 개수 조회를 위한 별도 쿼리 (더 정확한 카운트)
+        let countQuery = `
+            SELECT COUNT(*) as total
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            WHERE ao.tenant_id = ?
+        `;
+        let countParams = [tenantId];
+        
+        // 동일한 필터 조건을 카운트 쿼리에도 적용
+        if (severity && severity !== 'all') {
+            countQuery += ` AND ao.severity = ?`;
+            countParams.push(severity);
+        }
+        
+        if (device_id) {
+            countQuery += ` AND ao.device_id = ?`;
+            countParams.push(parseInt(device_id));
+        }
+        
+        if (state && state !== 'all') {
+            countQuery += ` AND ao.state = ?`;
+            countParams.push(state);
+        }
+        
+        if (category && category !== 'all') {
+            countQuery += ` AND ao.category = ?`;
+            countParams.push(category);
+        }
+        
+        if (tag && tag.trim()) {
+            countQuery += ` AND ao.tags LIKE ?`;
+            countParams.push(`%${tag}%`);
+        }
+        
+        if (date_from && date_to) {
+            countQuery += ` AND ao.occurrence_time >= ? AND ao.occurrence_time <= ?`;
+            countParams.push(date_from, date_to);
+        }
+        
+        const countResult = await dbGet(countQuery, countParams);
+        const total = countResult?.total || 0;
+        
         // 응답 구성
         const result = {
             items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),
-                total: results.length,
-                totalPages: Math.ceil(results.length / parseInt(limit))
+                total: total,
+                totalPages: Math.ceil(total / parseInt(limit))
             }
         };
         
-        console.log(`알람 이력 ${results.length}개 조회 완료`);
+        console.log(`알람 이력 ${results.length}개 조회 완료 (전체: ${total}개)`);
         res.json(createResponse(true, result, 'Alarm history retrieved successfully'));
 
     } catch (error) {

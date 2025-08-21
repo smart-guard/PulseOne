@@ -1,5 +1,5 @@
 /* ============================================================================
-   alarm-history.css - PulseOne 디자인 시스템 기반 알람 이력 페이지
+   alarm-history.css - PulseOne 디자인 시스템 기반 알람 이력 페이지 (2열 필터 완성본)
    ============================================================================ */
 
 /* 🔥 메인 컨테이너 - 다른 페이지와 동일한 구조 */
@@ -48,10 +48,10 @@
   align-items: center;
 }
 
-/* 🔥 통계 요약 패널 - 그리드 시스템 사용 */
+/* 🔥 통계 요약 패널 - 가로 1열 배치 */
 .summary-panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(5, 1fr); /* 5개 카드를 가로로 배치 */
   gap: var(--space-4);
   margin: 0 var(--space-6) var(--space-6) var(--space-6);
 }
@@ -166,111 +166,173 @@
   background: var(--error-100);
 }
 
-/* 🔥 필터 패널 - 깔끔한 카드 스타일 */
+/* 🔥 필터 패널 - 강제로 한줄 구조 */
 .filter-panel {
   background: white;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--neutral-200);
-  padding: var(--space-6);
+  padding: var(--space-4);
   margin: 0 var(--space-6) var(--space-6) var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-
-.filter-row {
-  display: flex;
-  gap: var(--space-6);
+  display: flex; /* grid 대신 flex 사용 */
+  gap: var(--space-3);
   align-items: end;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
-  min-width: 150px;
-  flex: 0 0 auto;
+  gap: var(--space-1);
+}
+
+/* 각 요소별 크기 지정 */
+.filter-group:nth-child(1) {
+  flex: 1.2; /* 기간 */
+}
+
+.filter-group:nth-child(2) {
+  flex: 0.15; /* 심각도 - 더 줄임 */
+  min-width: 80px; /* 최소 폭 보장 */
+}
+
+.filter-group:nth-child(3) {
+  flex: 0.15; /* 상태 - 더 줄임 */
+  min-width: 80px; /* 최소 폭 보장 */
+}
+
+.filter-group:nth-child(4) {
+  flex: 1; /* 검색 */
+}
+
+/* 검색 그룹을 인라인으로 */
+.search-group {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* 🔥 결과 정보 바 - 뷰 컨트롤 포함 */
+.result-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--neutral-200);
+  margin: 0 var(--space-6) var(--space-6) var(--space-6);
+}
+
+.result-info-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.result-info-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.date-range-display {
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+  font-family: var(--font-family-mono);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .filter-group label {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs); /* 더 작게 */
   font-weight: 600;
   color: var(--neutral-700);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1); /* 간격 줄임 */
 }
 
 .date-range {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--space-2); /* 간격 줄임 */
   align-items: center;
-  gap: var(--space-3);
-  flex: 1;
 }
 
 .date-range input {
-  min-width: 180px;
-  flex: 1;
+  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  background: white;
+  font-size: var(--text-xs); /* 글씨 크기 줄임 */
+  transition: all 0.2s ease;
+  font-family: var(--font-family-sans);
+  min-width: 0;
 }
 
 .date-range span {
   color: var(--neutral-500);
   font-weight: 500;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs); /* 글씨 크기 줄임 */
 }
 
 .filter-group select,
 .filter-group input {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-md);
   background: white;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs); /* 글씨 크기 줄임 */
   transition: all 0.2s ease;
   font-family: var(--font-family-sans);
 }
 
 .filter-group select:focus,
-.filter-group input:focus {
+.filter-group input:focus,
+.date-range input:focus {
   outline: none;
   border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-100);
+  box-shadow: 0 0 0 2px var(--primary-100); /* 포커스 링 줄임 */
 }
 
+/* 🔥 검색 및 뷰 컨트롤 영역 - 컴팩트하게 */
 .search-group {
   display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  flex: 1;
-  min-width: 300px;
+  gap: var(--space-2); /* 간격 줄임 */
+  width: 100%;
 }
 
 .search-group input {
   flex: 1;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-md);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs); /* 글씨 크기 줄임 */
   transition: all 0.2s ease;
 }
 
 .search-group input:focus {
   outline: none;
   border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-100);
+  box-shadow: 0 0 0 2px var(--primary-100);
 }
 
 .search-group button {
   background: var(--primary-500);
   color: white;
   border: none;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
   border-radius: var(--radius-md);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs); /* 글씨 크기 줄임 */
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .search-group button:hover {
@@ -289,16 +351,17 @@
 .view-btn {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
+  gap: var(--space-1); /* 간격 줄임 */
+  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
   background: white;
   border: none;
   border-right: 1px solid var(--neutral-300);
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs); /* 글씨 크기 줄임 */
   font-weight: 500;
   color: var(--neutral-600);
+  white-space: nowrap;
 }
 
 .view-btn:last-child {
@@ -901,40 +964,68 @@
   }
 }
 
-/* 🔥 반응형 디자인 */
-@media (max-width: 1024px) {
+/* =============================================================================
+   반응형 디자인 - 뷰포트 비율 기반 중단점
+   ============================================================================= */
+
+/* 맥북 16인치/스튜디오 디스플레이 최적화 (2560px ~ 3456px) */
+@media (min-width: 2560px) and (max-width: 3456px) {
+  .summary-panel {
+    grid-template-columns: repeat(5, 1fr); /* 가로 5개 유지 */
+  }
+  
+  .filter-panel {
+    grid-template-columns: 2.5fr 1fr; /* 비율 조정 */
+  }
+  
+  .filter-inputs {
+    grid-template-columns: 1fr 0.8fr 0.8fr; /* 기간을 더 넓게 */
+  }
+}
+
+/* 표준 외부 모니터 최적화 (1920px ~ 2559px) */
+@media (min-width: 1920px) and (max-width: 2559px) {
+  .summary-panel {
+    grid-template-columns: repeat(5, 1fr); /* 가로 5개 유지 */
+  }
+  
+  .filter-panel {
+    grid-template-columns: 2.2fr 1fr;
+  }
+  
+  .filter-inputs {
+    grid-template-columns: 1fr 0.75fr 0.75fr;
+  }
+}
+
+/* 작은 데스크톱/큰 노트북 (1400px ~ 1919px) */
+@media (min-width: 1400px) and (max-width: 1919px) {
+  .summary-panel {
+    grid-template-columns: repeat(5, 1fr); /* 가로 5개 유지 */
+  }
+  
+  .filter-panel {
+    grid-template-columns: 2fr 1fr;
+  }
+  
+  .filter-inputs {
+    grid-template-columns: 1fr 0.7fr 0.7fr;
+  }
+}
+
+/* 노트북/작은 데스크톱 (1024px ~ 1399px) */
+@media (max-width: 1399px) {
   .summary-panel {
     grid-template-columns: repeat(3, 1fr);
   }
   
-  .filter-row {
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-  
-  .filter-group {
-    min-width: auto;
-  }
-  
-  .search-group {
-    min-width: auto;
-  }
-  
-  .date-range {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .date-range input {
-    min-width: auto;
+  .filter-panel {
+    grid-template-columns: 1fr 0.8fr 0.8fr 1.5fr 1fr; /* 비율 조정 */
   }
 }
 
-@media (max-width: 768px) {
-  .alarm-history-container {
-    /* 모바일에서도 여백 유지 */
-  }
-  
+/* 태블릿 (768px ~ 1023px) */
+@media (max-width: 1023px) {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
@@ -948,8 +1039,33 @@
     margin: 0 var(--space-4) var(--space-6) var(--space-4);
   }
   
-  .filter-panel,
-  .result-info,
+  .filter-panel {
+    grid-template-columns: 1fr 1fr; /* 2행으로 변경 */
+    grid-template-rows: auto auto auto;
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+  }
+  
+  .filter-group:first-child {
+    grid-column: 1 / -1; /* 기간은 전체 폭 */
+  }
+  
+  .search-group {
+    grid-column: 1 / -1; /* 검색도 전체 폭 */
+  }
+  
+  .view-controls {
+    grid-column: 1 / -1; /* 뷰 컨트롤도 전체 폭 */
+  }
+  
+  .result-info {
+    flex-direction: column;
+    gap: var(--space-2);
+    text-align: center;
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+  }
+  
   .history-table-container,
   .timeline-view,
   .loading-state,
@@ -957,15 +1073,6 @@
   .error-alert {
     margin-left: var(--space-4);
     margin-right: var(--space-4);
-  }
-  
-  .result-info {
-    flex-direction: column;
-    gap: var(--space-2);
-    text-align: center;
-  }
-  
-  .history-table-container {
     overflow-x: auto;
   }
   
@@ -991,9 +1098,21 @@
   }
 }
 
-@media (max-width: 480px) {
+/* 모바일 (480px ~ 767px) */
+@media (max-width: 767px) {
   .summary-panel {
     grid-template-columns: 1fr;
+  }
+  
+  .filter-panel {
+    grid-template-columns: 1fr; /* 모든 요소를 세로로 */
+    grid-template-rows: repeat(5, auto);
+  }
+  
+  .filter-group:first-child,
+  .search-group,
+  .view-controls {
+    grid-column: 1;
   }
   
   .view-controls {
@@ -1003,5 +1122,51 @@
   .view-btn {
     flex: 1;
     justify-content: center;
+  }
+  
+  .date-range {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+  
+  .date-range span {
+    text-align: center;
+  }
+  
+  .search-group {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  
+  .search-group input,
+  .search-group button {
+    width: 100%;
+  }
+}
+
+/* 초소형 모바일 (~ 479px) */
+@media (max-width: 479px) {
+  .page-header {
+    padding: var(--space-3);
+  }
+  
+  .summary-panel,
+  .filter-panel,
+  .result-info,
+  .history-table-container,
+  .timeline-view,
+  .loading-state,
+  .empty-state,
+  .error-alert {
+    margin-left: var(--space-3);
+    margin-right: var(--space-3);
+  }
+  
+  .summary-card {
+    padding: var(--space-4);
+  }
+  
+  .filter-panel {
+    padding: var(--space-4);
   }
 }

@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/AlarmHistory.tsx
-// 알람 이력 페이지 - alarmApi.ts와 완전 호환되도록 수정
+// 알람 이력 페이지 - 2열 필터 패널 완성본
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -407,58 +407,63 @@ const AlarmHistory: React.FC = () => {
         </div>
       )}
 
-      {/* 필터 패널 */}
+      {/* 필터 패널 - 진짜 한줄 구조 */}
       <div className="filter-panel">
-        <div className="filter-row">
-          <div className="filter-group">
-            <label>기간</label>
-            <div className="date-range">
-              <input
-                type="datetime-local"
-                value={filters.dateRange.start.toISOString().slice(0, 16)}
-                onChange={(e) => handleFilterChange({
-                  dateRange: { ...filters.dateRange, start: new Date(e.target.value) }
-                })}
-              />
-              <span>~</span>
-              <input
-                type="datetime-local"
-                value={filters.dateRange.end.toISOString().slice(0, 16)}
-                onChange={(e) => handleFilterChange({
-                  dateRange: { ...filters.dateRange, end: new Date(e.target.value) }
-                })}
-              />
-            </div>
+        {/* 기간 필터 */}
+        <div className="filter-group">
+          <label>기간</label>
+          <div className="date-range">
+            <input
+              type="datetime-local"
+              value={filters.dateRange.start.toISOString().slice(0, 16)}
+              onChange={(e) => handleFilterChange({
+                dateRange: { ...filters.dateRange, start: new Date(e.target.value) }
+              })}
+            />
+            <span>~</span>
+            <input
+              type="datetime-local"
+              value={filters.dateRange.end.toISOString().slice(0, 16)}
+              onChange={(e) => handleFilterChange({
+                dateRange: { ...filters.dateRange, end: new Date(e.target.value) }
+              })}
+            />
           </div>
+        </div>
 
-          <div className="filter-group">
-            <label>심각도</label>
-            <select
-              value={filters.severity}
-              onChange={(e) => handleFilterChange({ severity: e.target.value })}
-            >
-              <option value="all">전체</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="info">Info</option>
-            </select>
-          </div>
+        {/* 심각도 필터 */}
+        <div className="filter-group">
+          <label>심각도</label>
+          <select
+            value={filters.severity}
+            onChange={(e) => handleFilterChange({ severity: e.target.value })}
+          >
+            <option value="all">전체</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="info">Info</option>
+          </select>
+        </div>
 
-          <div className="filter-group">
-            <label>상태</label>
-            <select
-              value={filters.state}
-              onChange={(e) => handleFilterChange({ state: e.target.value })}
-            >
-              <option value="all">전체</option>
-              <option value="active">활성</option>
-              <option value="acknowledged">확인됨</option>
-              <option value="cleared">해제됨</option>
-            </select>
-          </div>
+        {/* 상태 필터 */}
+        <div className="filter-group">
+          <label>상태</label>
+          <select
+            value={filters.state}
+            onChange={(e) => handleFilterChange({ state: e.target.value })}
+          >
+            <option value="all">전체</option>
+            <option value="active">활성</option>
+            <option value="acknowledged">확인됨</option>
+            <option value="cleared">해제됨</option>
+          </select>
+        </div>
 
+        {/* 검색창 */}
+        <div className="filter-group">
+          <label>검색</label>
           <div className="search-group">
             <input
               type="text"
@@ -472,35 +477,40 @@ const AlarmHistory: React.FC = () => {
             </button>
           </div>
         </div>
-
-        <div className="view-controls">
-          <button
-            className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
-            onClick={() => setViewMode('list')}
-          >
-            <i className="fas fa-list"></i>
-            목록
-          </button>
-          <button
-            className={`view-btn ${viewMode === 'timeline' ? 'active' : ''}`}
-            onClick={() => setViewMode('timeline')}
-          >
-            <i className="fas fa-chart-line"></i>
-            타임라인
-          </button>
-        </div>
       </div>
 
-      {/* 결과 정보 */}
+      {/* 결과 정보 - 뷰 컨트롤 포함 */}
       <div className="result-info">
-        <div className="result-count">
-          총 {pagination.totalCount}개의 알람 이력
-          {Array.isArray(alarmEvents) && (
-            <span className="current-showing"> (현재 {alarmEvents.length}개 표시)</span>
-          )}
+        <div className="result-info-left">
+          <div className="result-count">
+            총 {pagination.totalCount}개의 알람 이력
+            {Array.isArray(alarmEvents) && (
+              <span className="current-showing"> (현재 {alarmEvents.length}개 표시)</span>
+            )}
+          </div>
         </div>
-        <div className="date-range-display">
-          {filters.dateRange.start.toLocaleDateString('ko-KR')} ~ {filters.dateRange.end.toLocaleDateString('ko-KR')}
+        
+        <div className="result-info-right">
+          <div className="date-range-display">
+            {filters.dateRange.start.toLocaleDateString('ko-KR')} ~ {filters.dateRange.end.toLocaleDateString('ko-KR')}
+          </div>
+          
+          <div className="view-controls">
+            <button
+              className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+            >
+              <i className="fas fa-list"></i>
+              목록
+            </button>
+            <button
+              className={`view-btn ${viewMode === 'timeline' ? 'active' : ''}`}
+              onClick={() => setViewMode('timeline')}
+            >
+              <i className="fas fa-chart-line"></i>
+              타임라인
+            </button>
+          </div>
         </div>
       </div>
 
