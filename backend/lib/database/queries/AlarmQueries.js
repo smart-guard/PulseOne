@@ -1,13 +1,13 @@
 // =============================================================================
 // backend/lib/database/queries/AlarmQueries.js
 // 실제 데이터베이스 스키마와 100% 일치하는 완전한 알람 쿼리 모음
-// SQLite PRAGMA 확인 결과를 바탕으로 정확히 작성
+// 수정일: 2025-08-20 - 실제 DB 검증 완료
 // =============================================================================
 
 class AlarmQueries {
     
     // =========================================================================
-    // 🔥 AlarmRule 쿼리들 - 실제 스키마 38개 컬럼 완전 호환
+    // AlarmRule 쿼리들 - 실제 스키마 39개 컬럼 완전 호환
     // =========================================================================
     static AlarmRule = {
         
@@ -154,7 +154,7 @@ class AlarmQueries {
             WHERE ar.id = ? AND ar.tenant_id = ?
         `,
         
-        // CREATE - 실제 스키마 38개 컬럼에 맞춤 (39번째 last_template_update 제외)
+        // CREATE - 실제 스키마 39개 컬럼에 맞춤 (AUTO_INCREMENT id 제외한 38개 값)
         CREATE: `
             INSERT INTO alarm_rules (
                 tenant_id, name, description, target_type, target_id, target_group,
@@ -164,8 +164,9 @@ class AlarmQueries {
                 auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
                 notification_enabled, notification_delay_sec, notification_repeat_interval_min,
                 notification_channels, notification_recipients, is_enabled, is_latched,
-                created_by, template_id, rule_group, created_by_template
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_by, template_id, rule_group, created_by_template,
+                last_template_update, escalation_rules, tags
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
         // UPDATE - 실제 스키마에 맞춤
@@ -179,6 +180,7 @@ class AlarmQueries {
                 notification_enabled = ?, notification_delay_sec = ?, notification_repeat_interval_min = ?,
                 notification_channels = ?, notification_recipients = ?, is_enabled = ?, is_latched = ?,
                 template_id = ?, rule_group = ?, created_by_template = ?,
+                last_template_update = ?, escalation_rules = ?, tags = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
         `,
@@ -308,7 +310,7 @@ class AlarmQueries {
     };
     
     // =========================================================================
-    // 🔥 AlarmOccurrence 쿼리들 - 실제 스키마 25개 컬럼 완전 호환
+    // AlarmOccurrence 쿼리들 - 실제 스키마 26개 컬럼 완전 호환
     // =========================================================================
     static AlarmOccurrence = {
         
@@ -357,14 +359,16 @@ class AlarmQueries {
             WHERE ao.id = ? AND ao.tenant_id = ?
         `,
         
-        // 실제 alarm_occurrences 스키마에 맞춘 CREATE (25개 컬럼 중 17개 필수)
+        // 실제 alarm_occurrences 스키마에 맞춘 CREATE (AUTO_INCREMENT id 제외한 25개 값)
         CREATE: `
             INSERT INTO alarm_occurrences (
                 rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
-                alarm_message, severity, state, notification_sent, notification_time,
-                notification_count, notification_result, context_data, source_name,
-                location, device_id, point_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                alarm_message, severity, state, acknowledged_time, acknowledged_by,
+                acknowledge_comment, cleared_time, cleared_value, clear_comment,
+                notification_sent, notification_time, notification_count, notification_result,
+                context_data, source_name, location, created_at, updated_at,
+                device_id, point_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
         // 실제 스키마에 맞춘 UPDATE 쿼리들
@@ -522,7 +526,7 @@ class AlarmQueries {
     };
     
     // =========================================================================
-    // 🔥 AlarmTemplate 쿼리들 - 실제 테이블명 alarm_rule_templates 22개 컬럼
+    // AlarmTemplate 쿼리들 - 실제 테이블명 alarm_rule_templates 22개 컬럼
     // =========================================================================
     static AlarmTemplate = {
         
@@ -572,17 +576,18 @@ class AlarmQueries {
             LIMIT ?
         `,
         
-        // CREATE - 실제 스키마 22개 컬럼에 맞춤 (20개 값)
+        // CREATE - 실제 스키마 22개 컬럼에 맞춤 (AUTO_INCREMENT id 제외한 21개 값)
         CREATE: `
             INSERT INTO alarm_rule_templates (
                 tenant_id, name, description, category, condition_type, condition_template,
                 default_config, severity, message_template, applicable_data_types,
                 applicable_device_types, notification_enabled, email_notification, sms_notification,
-                auto_acknowledge, auto_clear, usage_count, is_active, is_system_template, created_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                auto_acknowledge, auto_clear, usage_count, is_active, is_system_template, 
+                created_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // UPDATE - 실제 스키마에 맞춤 (17개 값)
+        // UPDATE - 실제 스키마에 맞춤
         UPDATE: `
             UPDATE alarm_rule_templates SET 
                 name = ?, description = ?, category = ?, condition_type = ?, condition_template = ?,
@@ -634,7 +639,7 @@ class AlarmQueries {
     };
     
     // =========================================================================
-    // 🔥 공통 유틸리티 메서드들
+    // 공통 유틸리티 메서드들
     // =========================================================================
     
     /**
@@ -644,10 +649,13 @@ class AlarmQueries {
         let query = baseQuery;
         const params = [];
         
-        if (filters.tenant_id) {
-            params.push(filters.tenant_id);
+        // tenant_id는 baseQuery에 이미 WHERE 절에 포함되어 있음
+        // 첫 번째 파라미터는 항상 tenant_id
+        if (filters.tenantId || filters.tenant_id) {
+            params.push(filters.tenantId || filters.tenant_id);
         }
         
+        // 추가 필터들은 AND 조건으로 추가
         if (filters.alarm_type) {
             query += ` AND ar.alarm_type = ?`;
             params.push(filters.alarm_type);
@@ -668,9 +676,9 @@ class AlarmQueries {
             params.push(filters.target_type);
         }
         
-        if (filters.target_id) {
+        if (filters.target_id || filters.device_id || filters.data_point_id || filters.virtual_point_id) {
             query += ` AND ar.target_id = ?`;
-            params.push(filters.target_id);
+            params.push(filters.target_id || filters.device_id || filters.data_point_id || filters.virtual_point_id);
         }
         
         if (filters.template_id) {
@@ -769,7 +777,7 @@ class AlarmQueries {
     }
 
     /**
-     * 🔥 AlarmRule CREATE 파라미터 생성 (실제 스키마 35개 컬럼)
+     * AlarmRule CREATE 파라미터 생성 (실제 스키마 38개 값)
      */
     static buildCreateRuleParams(data) {
         return [
@@ -807,12 +815,15 @@ class AlarmQueries {
             data.created_by || null,                            // 32
             data.template_id || null,                           // 33
             data.rule_group || null,                            // 34
-            data.created_by_template || 0                       // 35
+            data.created_by_template || 0,                     // 35
+            data.last_template_update || null,                 // 36
+            data.escalation_rules || null,                     // 37
+            data.tags || null                                   // 38
         ];
     }
 
     /**
-     * 🔥 AlarmOccurrence CREATE 파라미터 생성 (실제 스키마 17개 컬럼)
+     * AlarmOccurrence CREATE 파라미터 생성 (실제 스키마 25개 값)
      */
     static buildCreateOccurrenceParams(data) {
         return [
@@ -824,20 +835,28 @@ class AlarmQueries {
             data.alarm_message,                                 // 6
             data.severity,                                      // 7
             data.state || 'active',                            // 8
-            data.notification_sent || 0,                       // 9
-            data.notification_time || null,                    // 10
-            data.notification_count || 0,                      // 11
-            data.notification_result || null,                  // 12
-            data.context_data || null,                         // 13
-            data.source_name || null,                          // 14
-            data.location || null,                             // 15
-            data.device_id || null,                            // 16
-            data.point_id || null                              // 17
+            data.acknowledged_time || null,                    // 9
+            data.acknowledged_by || null,                      // 10
+            data.acknowledge_comment || null,                  // 11
+            data.cleared_time || null,                         // 12
+            data.cleared_value || null,                        // 13
+            data.clear_comment || null,                        // 14
+            data.notification_sent || 0,                       // 15
+            data.notification_time || null,                    // 16
+            data.notification_count || 0,                      // 17
+            data.notification_result || null,                  // 18
+            data.context_data || null,                         // 19
+            data.source_name || null,                          // 20
+            data.location || null,                             // 21
+            data.created_at || new Date().toISOString(),       // 22
+            data.updated_at || new Date().toISOString(),       // 23
+            data.device_id || null,                            // 24
+            data.point_id || null                              // 25
         ];
     }
 
     /**
-     * 🔥 AlarmRule UPDATE 파라미터 생성 (실제 스키마 35개 값)
+     * AlarmRule UPDATE 파라미터 생성 (실제 스키마 39개 값)
      */
     static buildUpdateRuleParams(data, id, tenantId) {
         return [
@@ -874,13 +893,16 @@ class AlarmQueries {
             data.template_id || null,                           // 31
             data.rule_group || null,                            // 32
             data.created_by_template || 0,                     // 33
-            id,                                                 // 34 (WHERE 조건)
-            tenantId                                            // 35 (WHERE 조건)
+            data.last_template_update || null,                 // 34
+            data.escalation_rules || null,                     // 35
+            data.tags || null,                                  // 36
+            id,                                                 // 37 (WHERE 조건)
+            tenantId                                            // 38 (WHERE 조건)
         ];
     }
 
     /**
-     * 템플릿 CREATE 파라미터 생성 (20개 값)
+     * 템플릿 CREATE 파라미터 생성 (21개 값)
      */
     static buildCreateTemplateParams(data) {
         return [
@@ -903,7 +925,8 @@ class AlarmQueries {
             data.usage_count || 0,                                         // 17
             data.is_active !== false ? 1 : 0,                             // 18
             data.is_system_template || 0,                                  // 19
-            data.created_by || null                                        // 20
+            data.created_by || null,                                       // 20
+            new Date().toISOString()                                       // 21 (created_at)
         ];
     }
 

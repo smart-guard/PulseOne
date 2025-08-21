@@ -30,7 +30,29 @@ async function dbAll(sql, params = []) {
     const factory = await getDatabaseFactory();
     try {
         const results = await factory.executeQuery(sql, params);
-        return Array.isArray(results) ? results : [];
+        
+        console.log('🔍 DatabaseFactory 원시 결과:', {
+            타입: typeof results,
+            생성자: results?.constructor?.name,
+            키들: results ? Object.keys(results) : '없음',
+            길이: results?.length,
+            rows존재: !!results?.rows,
+            rows길이: results?.rows?.length
+        });
+        
+        // 다양한 가능한 결과 구조 처리
+        if (Array.isArray(results)) {
+            return results;
+        } else if (results && Array.isArray(results.rows)) {
+            return results.rows;
+        } else if (results && results.recordset) {
+            return results.recordset;
+        } else if (results && Array.isArray(results.results)) {
+            return results.results;
+        } else {
+            console.warn('예상하지 못한 결과 구조:', results);
+            return [];
+        }
     } catch (error) {
         console.error('Database query error:', error);
         throw error;
@@ -41,7 +63,25 @@ async function dbGet(sql, params = []) {
     const factory = await getDatabaseFactory();
     try {
         const results = await factory.executeQuery(sql, params);
-        return (Array.isArray(results) && results.length > 0) ? results[0] : null;
+        
+        console.log('🔍 dbGet 원시 결과:', {
+            타입: typeof results,
+            키들: results ? Object.keys(results) : '없음'
+        });
+        
+        // 단일 결과 추출
+        if (Array.isArray(results) && results.length > 0) {
+            return results[0];
+        } else if (results?.rows && Array.isArray(results.rows) && results.rows.length > 0) {
+            return results.rows[0];
+        } else if (results?.recordset && results.recordset.length > 0) {
+            return results.recordset[0];
+        } else if (results && !Array.isArray(results) && typeof results === 'object') {
+            // 단일 객체가 직접 반환된 경우
+            return results;
+        } else {
+            return null;
+        }
     } catch (error) {
         console.error('Database query error:', error);
         throw error;
@@ -53,18 +93,15 @@ async function dbRun(sql, params = []) {
     try {
         const result = await factory.executeQuery(sql, params);
         
-        // INSERT/UPDATE/DELETE 결과 처리
-        if (result && typeof result === 'object') {
-            return {
-                lastID: result.lastID || result.insertId || null,
-                changes: result.changes || result.affectedRows || 1
-            };
-        }
+        console.log('🔍 dbRun 원시 결과:', {
+            타입: typeof result,
+            키들: result ? Object.keys(result) : '없음'
+        });
         
-        // 기본 성공 응답
+        // INSERT/UPDATE/DELETE 결과 처리
         return {
-            lastID: null,
-            changes: 1
+            lastID: result?.lastInsertRowid || result?.insertId || result?.lastID || null,
+            changes: result?.changes || result?.affectedRows || result?.rowsAffected || 1
         };
     } catch (error) {
         console.error('Database execution error:', error);
@@ -111,28 +148,86 @@ function formatAlarmRule(rule) {
         tenant_id: rule.tenant_id,
         name: rule.name,
         description: rule.description,
-        device_id: rule.device_id,
+        
+        // 실제 스키마의 target 정보
+        target_type: rule.target_type,
+        target_id: rule.target_id,
+        target_group: rule.target_group,
+        
+        // 조인된 관련 정보들
         device_name: rule.device_name,
-        data_point_id: rule.data_point_id,
-        data_point_name: rule.data_point_name,
-        virtual_point_id: rule.virtual_point_id,
-        virtual_point_name: rule.virtual_point_name,
-        condition_type: rule.condition_type,
-        condition_config: parseJSON(rule.condition_config),
-        severity: rule.severity,
-        message_template: rule.message_template,
-        auto_acknowledge: !!rule.auto_acknowledge,
-        auto_clear: !!rule.auto_clear,
-        acknowledgment_required: !!rule.acknowledgment_required,
-        escalation_time_minutes: rule.escalation_time_minutes,
-        notification_enabled: !!rule.notification_enabled,
-        email_notification: !!rule.email_notification,
-        sms_notification: !!rule.sms_notification,
-        is_enabled: !!rule.is_enabled,
+        device_type: rule.device_type,
+        manufacturer: rule.manufacturer,
+        model: rule.model,
         site_name: rule.site_name,
         site_location: rule.site_location,
-        target_display: rule.target_display,
+        site_description: rule.site_description,
+        
+        data_point_name: rule.data_point_name,
+        data_point_description: rule.data_point_description,
+        unit: rule.unit,
+        data_type: rule.data_type,
+        
+        virtual_point_name: rule.virtual_point_name,
+        virtual_point_description: rule.virtual_point_description,
+        calculation_formula: rule.calculation_formula,
+        
+        // 계산된 표시 필드들
         condition_display: rule.condition_display,
+        target_display: rule.target_display,
+        
+        // 실제 스키마의 알람 타입 및 조건
+        alarm_type: rule.alarm_type,
+        severity: rule.severity,
+        priority: rule.priority,
+        
+        // 개별 임계값들 (실제 스키마)
+        high_high_limit: rule.high_high_limit,
+        high_limit: rule.high_limit,
+        low_limit: rule.low_limit,
+        low_low_limit: rule.low_low_limit,
+        deadband: rule.deadband,
+        rate_of_change: rule.rate_of_change,
+        
+        // 디지털 알람 조건
+        trigger_condition: rule.trigger_condition,
+        
+        // 스크립트 관련
+        condition_script: rule.condition_script,
+        message_script: rule.message_script,
+        
+        // 메시지 관련
+        message_config: parseJSON(rule.message_config),
+        message_template: rule.message_template,
+        
+        // 동작 설정들
+        auto_acknowledge: !!rule.auto_acknowledge,
+        acknowledge_timeout_min: rule.acknowledge_timeout_min,
+        auto_clear: !!rule.auto_clear,
+        suppression_rules: parseJSON(rule.suppression_rules),
+        
+        // 알림 설정들
+        notification_enabled: !!rule.notification_enabled,
+        notification_delay_sec: rule.notification_delay_sec,
+        notification_repeat_interval_min: rule.notification_repeat_interval_min,
+        notification_channels: parseJSON(rule.notification_channels),
+        notification_recipients: parseJSON(rule.notification_recipients),
+        
+        // 상태 및 제어
+        is_enabled: !!rule.is_enabled,
+        is_latched: !!rule.is_latched,
+        
+        // 템플릿 관련
+        template_id: rule.template_id,
+        rule_group: rule.rule_group,
+        created_by_template: !!rule.created_by_template,
+        last_template_update: rule.last_template_update,
+        
+        // 고급 기능
+        escalation_rules: parseJSON(rule.escalation_rules),
+        tags: parseJSON(rule.tags, []),
+        
+        // 감사 정보
         created_by: rule.created_by,
         created_at: rule.created_at,
         updated_at: rule.updated_at
@@ -771,9 +866,12 @@ router.get('/templates', async (req, res) => {
         // 페이징 적용
         const offset = (parseInt(page) - 1) * parseInt(limit);
         query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-
+        console.log('실행할 쿼리:', query);
+        console.log('파라미터:', params);
         const results = await dbAll(query, params);
-        
+        console.log('쿼리 결과 타입:', typeof results);
+        console.log('쿼리 결과 길이:', results ? results.length : 'null/undefined');
+        console.log('첫 번째 결과 샘플:', results[0]);
         const result = {
             items: results.map(template => formatAlarmTemplate(template)),
             pagination: {
@@ -786,7 +884,7 @@ router.get('/templates', async (req, res) => {
         
         console.log(`알람 템플릿 ${results.length}개 조회 완료`);
         res.json(createResponse(true, result, 'Alarm templates retrieved successfully'));
-
+        
     } catch (error) {
         console.error('알람 템플릿 조회 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATES_ERROR'));
