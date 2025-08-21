@@ -562,57 +562,59 @@ router.get('/history', async (req, res) => {
             date_from,
             date_to,
             state,
-            category,  // 새로 추가
-            tag        // 새로 추가
+            category,
+            tag
         } = req.query;
         
         console.log('알람 이력 조회 시작...');
 
         let query, params;
         
-        if (date_from && date_to) {
-            query = AlarmQueries.AlarmOccurrence.FIND_BY_DATE_RANGE;
-            params = [tenantId, date_from, date_to];
-        } else {
-            // 기본 쿼리 사용하고 수동으로 필터 적용
-            query = AlarmQueries.AlarmOccurrence.FIND_ALL;
-            params = [tenantId];
-            
-            // 추가 필터들을 수동으로 WHERE 절에 추가
-            if (severity && severity !== 'all') {
-                query += ` AND ao.severity = ?`;
-                params.push(severity);
-            }
-            
-            if (device_id) {
-                query += ` AND ao.device_id = ?`;
-                params.push(parseInt(device_id));
-            }
-            
-            if (state && state !== 'all') {
-                query += ` AND ao.state = ?`;
-                params.push(state);
-            }
-            
-            if (category && category !== 'all') {
-                query += ` AND ao.category = ?`;
-                params.push(category);
-            }
-            
-            if (tag && tag.trim()) {
-                query += ` AND ao.tags LIKE ?`;
-                params.push(`%${tag}%`);
-            }
+        // 기본 쿼리에서 시작
+        query = AlarmQueries.AlarmOccurrence.FIND_ALL.replace('ORDER BY', ''); // ORDER BY 제거
+        params = [tenantId];
+        
+        // 필터 조건들 추가
+        if (severity && severity !== 'all') {
+            query += ` AND ao.severity = ?`;
+            params.push(severity);
         }
         
-        query = AlarmQueries.addSorting(query, 'occurrence_time', 'DESC');
+        if (device_id) {
+            query += ` AND ao.device_id = ?`;
+            params.push(parseInt(device_id));
+        }
         
-        // 페이징
+        if (state && state !== 'all') {
+            query += ` AND ao.state = ?`;
+            params.push(state);
+        }
+        
+        if (category && category !== 'all') {
+            query += ` AND ao.category = ?`;
+            params.push(category);
+        }
+        
+        if (tag && tag.trim()) {
+            query += ` AND ao.tags LIKE ?`;
+            params.push(`%${tag}%`);
+        }
+        
+        if (date_from && date_to) {
+            query += ` AND ao.occurrence_time >= ? AND ao.occurrence_time <= ?`;
+            params.push(date_from, date_to);
+        }
+        
+        // ORDER BY 추가
+        query += ` ORDER BY ao.occurrence_time DESC`;
+        
+        // 페이징 추가
         const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
+        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
 
         const results = await dbAll(query, params);
         
+        // 응답 구성
         const result = {
             items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
             pagination: {
