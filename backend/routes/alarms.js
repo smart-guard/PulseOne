@@ -146,42 +146,27 @@ function formatAlarmRule(rule) {
     return {
         id: rule.id,
         tenant_id: rule.tenant_id,
+        
+        // 기본 정보
         name: rule.name,
         description: rule.description,
         
-        // 실제 스키마의 target 정보
+        // 타겟 정보
         target_type: rule.target_type,
         target_id: rule.target_id,
         target_group: rule.target_group,
         
-        // 조인된 관련 정보들
+        // JOIN된 정보들 (이미 완성됨)
         device_name: rule.device_name,
         device_type: rule.device_type,
-        manufacturer: rule.manufacturer,
-        model: rule.model,
-        site_name: rule.site_name,
-        site_location: rule.site_location,
-        site_description: rule.site_description,
+        // ... 기타 JOIN 정보들
         
-        data_point_name: rule.data_point_name,
-        data_point_description: rule.data_point_description,
-        unit: rule.unit,
-        data_type: rule.data_type,
-        
-        virtual_point_name: rule.virtual_point_name,
-        virtual_point_description: rule.virtual_point_description,
-        calculation_formula: rule.calculation_formula,
-        
-        // 계산된 표시 필드들
-        condition_display: rule.condition_display,
-        target_display: rule.target_display,
-        
-        // 실제 스키마의 알람 타입 및 조건
+        // 알람 타입 및 조건
         alarm_type: rule.alarm_type,
         severity: rule.severity,
         priority: rule.priority,
         
-        // 개별 임계값들 (실제 스키마)
+        // 임계값들
         high_high_limit: rule.high_high_limit,
         high_limit: rule.high_limit,
         low_limit: rule.low_limit,
@@ -223,8 +208,8 @@ function formatAlarmRule(rule) {
         created_by_template: !!rule.created_by_template,
         last_template_update: rule.last_template_update,
         
-        // 고급 기능
-        escalation_rules: parseJSON(rule.escalation_rules),
+        // 고급 기능 - escalation_rules 제거
+        // escalation_rules: parseJSON(rule.escalation_rules), <- 이 줄 제거
         tags: parseJSON(rule.tags, []),
         
         // 감사 정보
