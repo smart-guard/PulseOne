@@ -41,7 +41,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(express.static(path.join(__dirname, '../frontend')));
+//app.use(express.static(path.join(__dirname, '../frontend')));
 
 // 요청 로깅 미들웨어 (새로 추가)
 app.use((req, res, next) => {
@@ -323,9 +323,9 @@ app.post('/api/init/manual', async (req, res) => {
 });
 
 // Frontend 서빙 (기존)
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
+//app.get('/', (req, res) => {
+//    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+//});
 
 // ============================================================================
 // 🌐 API Routes 등록 (기존 + 새로운 data.js 포함)

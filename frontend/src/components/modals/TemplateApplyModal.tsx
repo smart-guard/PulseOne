@@ -280,7 +280,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
             onSelectionChange={setSelectedDataPoints}
             compatibilityCheck={checkCompatibility}
             showSelectAll={true}
-            maxHeight="300px"
+            maxHeight="auto"
             compact={false}
           />
         </div>

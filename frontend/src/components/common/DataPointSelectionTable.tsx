@@ -100,8 +100,8 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
           style={{
             display: 'grid',
             gridTemplateColumns: compact 
-              ? '40px 2fr 1fr 1fr 100px' 
-              : '50px 2fr 150px 150px 120px',
+                ? '40px 2fr 1.5fr 1.5fr 100px'   // 컴팩트: 데이터포인트 살짝 줄임
+                : '50px 3fr 2fr 2fr 1.5fr',       // 일반: 더 균형잡힌 비율
             background: '#f8fafc',
             borderBottom: '1px solid #e5e7eb',
             fontWeight: '600',
@@ -122,16 +122,16 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
               />
             )}
           </div>
-          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
+          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             데이터포인트
           </div>
-          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
+          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             디바이스
           </div>
-          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
+          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             사이트
           </div>
-          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
+          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             현재값
           </div>
         </div>
@@ -148,8 +148,8 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
               style={{
                 display: 'grid',
                 gridTemplateColumns: compact 
-                  ? '40px 2fr 1fr 1fr 100px' 
-                  : '50px 2fr 150px 150px 120px',
+                    ? '40px 2fr 1.5fr 1.5fr 100px'   // 컴팩트: 데이터포인트 살짝 줄임
+                    : '50px 3fr 2fr 2fr 1.5fr',       // 일반: 더 균형잡힌 비율
                 borderBottom: '1px solid #f1f5f9',
                 transition: 'background-color 0.2s ease',
                 minHeight: compact ? '50px' : '60px',
@@ -208,7 +208,8 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
               <div style={{ 
                 padding: '12px 16px', 
                 display: 'flex', 
-                alignItems: 'center', 
+                alignItems: 'center',
+                justifyContent: 'center', 
                 fontSize: compact ? '12px' : '14px', 
                 color: '#374151',
                 overflow: 'hidden',
@@ -222,7 +223,8 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
               <div style={{ 
                 padding: '12px 16px', 
                 display: 'flex', 
-                alignItems: 'center', 
+                alignItems: 'center',
+                justifyContent: 'center', 
                 fontSize: compact ? '12px' : '14px', 
                 color: '#374151',
                 overflow: 'hidden',
@@ -237,6 +239,7 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
                 padding: '12px 16px', 
                 display: 'flex', 
                 alignItems: 'center',
+                justifyContent: 'center',
                 fontFamily: 'ui-monospace, "Courier New", monospace',
                 fontSize: compact ? '11px' : '12px',
                 color: '#111827',

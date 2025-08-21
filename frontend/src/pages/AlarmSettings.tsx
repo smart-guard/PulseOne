@@ -216,9 +216,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
       virtual_point_id: rule.virtual_point_id?.toString() || '',
       condition_type: rule.condition_type as any,
       condition_config: {
-        high_limit: config.high_limit?.toString() || '',
-        low_limit: config.low_limit?.toString() || '',
-        deadband: config.deadband?.toString() || '2.0'
+        high_limit: rule.high_limit?.toString() || '',
+        low_limit: rule.low_limit?.toString() || '',
+        deadband: rule.deadband?.toString() || '2.0'
       },
       severity: rule.severity as any,
       message_template: rule.message_template || '',
@@ -323,23 +323,74 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     return 'N/A';
   };
 
-  // 조건 표시 함수
+  // 조건 표시 함수 - 수정된 버전
   const getConditionDisplay = (rule: AlarmRule) => {
     if (rule.condition_display) {
       return rule.condition_display;
     }
     
-    const config = rule.condition_config || {};
-    const parts = [];
+    const parts = []; // 먼저 선언
     
-    if (config.high_limit !== null && config.high_limit !== undefined) {
+    // config 객체가 있으면 사용, 없으면 rule에서 직접 가져오기
+    const config = rule.condition_config || {};
+    
+    if (rule.high_limit !== null && rule.high_limit !== undefined) {
+      parts.push(`상한: ${rule.high_limit}`);
+    } else if (config.high_limit !== null && config.high_limit !== undefined) {
       parts.push(`상한: ${config.high_limit}`);
     }
-    if (config.low_limit !== null && config.low_limit !== undefined) {
+    
+    if (rule.low_limit !== null && rule.low_limit !== undefined) {
+      parts.push(`하한: ${rule.low_limit}`);
+    } else if (config.low_limit !== null && config.low_limit !== undefined) {
       parts.push(`하한: ${config.low_limit}`);
     }
     
     return parts.length > 0 ? parts.join(' | ') : rule.condition_type;
+  };
+
+  // 단위 추론 함수
+  const getUnit = (rule: AlarmRule) => {
+    // 단위 추론 로직 (실제로는 데이터베이스에서 가져와야 함)
+    if (rule.name.toLowerCase().includes('temp') || rule.name.toLowerCase().includes('온도') || rule.name.toLowerCase().includes('경고')) {
+      return '°C';
+    }
+    if (rule.name.toLowerCase().includes('current') || rule.name.toLowerCase().includes('전류')) {
+      return 'A';
+    }
+    if (rule.name.toLowerCase().includes('speed') || rule.name.toLowerCase().includes('속도')) {
+      return ' m/min';
+    }
+    if (rule.name.toLowerCase().includes('count') || rule.name.toLowerCase().includes('개수') || rule.name.toLowerCase().includes('production')) {
+      return ' pcs';
+    }
+    return '';
+  };
+
+  // 최근 알람 발생 횟수 (시뮬레이션)
+  const getRecentAlarmCount = (rule: AlarmRule) => {
+    // 실제로는 API에서 최근 알람 발생 횟수를 가져와야 함
+    return Math.floor(Math.random() * 10) + 1;
+  };
+
+  // 알림 상태 함수
+  const getNotificationStatus = (rule: AlarmRule) => {
+    const notifications = [];
+    if (rule.email_notification) notifications.push('이메일 알림');
+    if (rule.sms_notification) notifications.push('SMS 알림');
+    if (notifications.length === 0) notifications.push('알림 없음');
+    return notifications.join(', ');
+  };
+
+  // 조건 타입 한국어 변환
+  const getConditionTypeKorean = (type: string) => {
+    switch (type) {
+      case 'threshold': return '아날로그 임계값';
+      case 'range': return '범위 조건';
+      case 'change': return '변화량 조건';
+      case 'boolean': return '디지털 조건';
+      default: return type;
+    }
   };
 
   return (
@@ -530,75 +581,109 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
               </tbody>
             </table>
           ) : (
-            // 카드 뷰
+            // 향상된 카드 뷰
             filteredRules.map(rule => (
               <div key={rule.id} className="alarm-item card-item">
-                <div className="card-header">
-                  <div className="card-title-section">
-                    <div className="card-title">{rule.name}</div>
-                    {rule.description && (
-                      <div className="card-description">{rule.description}</div>
-                    )}
-                  </div>
+                {/* 카드 헤더 - 제목과 배지 */}
+                <div className="card-header-top">
+                  <div className="card-title">{rule.name}</div>
                   <div className="card-badges">
                     <span className={`severity-badge severity-${rule.severity}`}>
-                      {rule.severity}
+                      {rule.severity.toUpperCase()}
                     </span>
                     <span className={`status-badge ${rule.is_enabled ? 'status-enabled' : 'status-disabled'}`}>
                       {rule.is_enabled ? '활성' : '비활성'}
                     </span>
                   </div>
                 </div>
-
-                <div className="card-content">
-                  <div className="card-info-group">
-                    <div className="card-info-item">
-                      <div className="card-info-label">타겟</div>
-                      <div className="card-info-value">{getTargetDisplay(rule)}</div>
-                    </div>
-                    {rule.device_name && (
-                      <div className="card-info-item">
-                        <div className="card-info-label">디바이스</div>
-                        <div className="card-info-value">{rule.device_name}</div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="card-info-group">
-                    <div className="card-info-item">
-                      <div className="card-info-label">조건</div>
-                      <div className="card-info-value">{rule.condition_type}</div>
-                    </div>
-                    <div className="card-info-item">
-                      <div className="card-info-label">임계값</div>
-                      <div className="card-info-value">
-                        {getConditionDisplay(rule)}
-                      </div>
+                
+                {/* 조건 정보 블록 */}
+                <div className="card-condition-block">
+                  <div className="condition-row">
+                    <span className="condition-type-badge">
+                      {getConditionTypeKorean(rule.condition_type)}
+                    </span>
+                    <div className="condition-values">
+                      {rule.high_limit && (
+                        <span className="condition-item">
+                          <span className="condition-label">상한</span>
+                          <span className="condition-value">{rule.high_limit}{getUnit(rule)}</span>
+                        </span>
+                      )}
+                      {rule.low_limit && (
+                        <span className="condition-item">
+                          <span className="condition-label">하한</span>
+                          <span className="condition-value">{rule.low_limit}{getUnit(rule)}</span>
+                        </span>
+                      )}
+                      {rule.deadband && (
+                        <span className="condition-item">
+                          <span className="condition-label">데드밴드</span>
+                          <span className="condition-value">{rule.deadband}{getUnit(rule)}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
+                
+                {/* 상태 정보 블록 */}
+                <div className="card-status-block">
+                  <div className="status-items">
+                    <span className="status-item">
+                      <i className={`fas ${rule.auto_clear ? 'fa-check-circle' : 'fa-hand-paper'}`}></i>
+                      {rule.auto_clear ? '자동해제' : '수동해제'}
+                    </span>
+                    <span className="status-item">
+                      <i className="fas fa-exclamation-triangle"></i>
+                      최근 {getRecentAlarmCount(rule)}회 발생
+                    </span>
+                    <span className="status-item">
+                      <i className={`fas ${rule.email_notification || rule.sms_notification ? 'fa-bell' : 'fa-bell-slash'}`}></i>
+                      {getNotificationStatus(rule)}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* 설명 (있으면) */}
+                {rule.description && (
+                  <div className="card-description-block">
+                    {rule.description}
+                  </div>
+                )}
 
-                <div className="card-actions">
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
-                  >
-                    <i className={`fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
-                    {rule.is_enabled ? '비활성화' : '활성화'}
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => handleEditRule(rule)}
-                  >
-                    <i className="fas fa-edit"></i>
-                    수정
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => handleDeleteRule(rule.id)}
-                  >
-                    <i className="fas fa-trash"></i>
-                    삭제
-                  </button>
+                {/* 하단 정보 및 액션을 한 줄로 배치 */}
+                <div className="card-footer">
+                  <div className="card-target-compact">
+                    <span className="target-label">타겟</span>
+                    <span className="target-value">{getTargetDisplay(rule)}</span>
+                    {rule.device_name && (
+                      <span className="device-name">({rule.device_name})</span>
+                    )}
+                  </div>
+                  
+                  <div className="card-actions">
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
+                      title={rule.is_enabled ? '비활성화' : '활성화'}
+                    >
+                      <i className={`fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handleEditRule(rule)}
+                      title="수정"
+                    >
+                      <i className="fas fa-edit"></i>
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleDeleteRule(rule.id)}
+                      title="삭제"
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))

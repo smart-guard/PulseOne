@@ -9,46 +9,88 @@ export interface AlarmRule {
   name: string;
   description?: string;
   
-  // 타겟 정보 (백엔드 실제 컬럼명)
-  device_id?: number;
-  data_point_id?: number;
-  virtual_point_id?: number;
+  // 타겟 정보 (실제 스키마)
+  target_type: string;          // 'data_point', 'device', 'virtual_point'
+  target_id?: number;
+  target_group?: string;
   
   // JOIN으로 가져오는 정보들
   device_name?: string;
-  data_point_name?: string;
-  virtual_point_name?: string;
+  device_type?: string;
+  manufacturer?: string;
+  model?: string;
   site_name?: string;
   site_location?: string;
+  site_description?: string;
+  
+  data_point_name?: string;
+  data_point_description?: string;
+  unit?: string;
+  data_type?: string;
+  
+  virtual_point_name?: string;
+  virtual_point_description?: string;
+  calculation_formula?: string;
+  
   target_display?: string;      // 백엔드에서 계산된 필드
   condition_display?: string;   // 백엔드에서 계산된 필드
   
-  // 조건 설정 (백엔드 실제 컬럼명)
-  condition_type: string;
-  condition_config?: any;       // JSON 객체 (파싱됨)
+  // 알람 타입 및 조건 (실제 스키마)
+  alarm_type: string;           // 'analog', 'digital', 'script'
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  priority?: number;
   
-  // 알람 설정
-  severity: 'critical' | 'major' | 'minor' | 'warning' | 'info';
+  // 개별 임계값들 (실제 스키마)
+  high_high_limit?: number;
+  high_limit?: number;
+  low_limit?: number;
+  low_low_limit?: number;
+  deadband?: number;
+  rate_of_change?: number;
+  
+  // 디지털 알람 조건
+  trigger_condition?: string;
+  
+  // 스크립트 관련
+  condition_script?: string;
+  message_script?: string;
+  
+  // 메시지 관련
+  message_config?: any;
   message_template?: string;
   
-  // 동작 설정 (백엔드 실제 컬럼명)
+  // 동작 설정들
   auto_acknowledge?: boolean;
+  acknowledge_timeout_min?: number;
   auto_clear?: boolean;
-  acknowledgment_required?: boolean;
-  escalation_time_minutes?: number;
-  notification_enabled?: boolean;
-  email_notification?: boolean;
-  sms_notification?: boolean;
+  suppression_rules?: any;
   
-  // 상태
+  // 알림 설정들
+  notification_enabled?: boolean;
+  notification_delay_sec?: number;
+  notification_repeat_interval_min?: number;
+  notification_channels?: any;
+  notification_recipients?: any;
+  
+  // 상태 및 제어
   is_enabled: boolean;
+  is_latched?: boolean;
+  
+  // 템플릿 관련
+  template_id?: number;
+  rule_group?: string;
+  created_by_template?: boolean;
+  last_template_update?: string;
+  
+  // 고급 기능
+  escalation_rules?: any;
+  tags?: any[];
   
   // 메타데이터
   created_by?: number;
   created_at: string;
   updated_at: string;
 }
-
 export interface AlarmOccurrence {
   id: number;
   tenant_id: number;
@@ -153,21 +195,47 @@ export interface AlarmStatistics {
 export interface AlarmRuleCreateData {
   name: string;
   description?: string;
-  device_id?: number;
-  data_point_id?: number;
-  virtual_point_id?: number;
-  condition_type: string;
-  condition_config?: string;       // JSON 문자열
-  severity: 'critical' | 'major' | 'minor' | 'warning' | 'info';
+  target_type: string;
+  target_id?: number;
+  target_group?: string;
+  alarm_type: string;
+  
+  // 개별 임계값들
+  high_high_limit?: number;
+  high_limit?: number;
+  low_limit?: number;
+  low_low_limit?: number;
+  deadband?: number;
+  rate_of_change?: number;
+  
+  trigger_condition?: string;
+  condition_script?: string;
+  message_script?: string;
+  message_config?: any;
   message_template?: string;
+  
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  priority?: number;
+  
   auto_acknowledge?: boolean;
+  acknowledge_timeout_min?: number;
   auto_clear?: boolean;
-  acknowledgment_required?: boolean;
-  escalation_time_minutes?: number;
+  suppression_rules?: any;
+  
   notification_enabled?: boolean;
-  email_notification?: boolean;
-  sms_notification?: boolean;
+  notification_delay_sec?: number;
+  notification_repeat_interval_min?: number;
+  notification_channels?: any;
+  notification_recipients?: any;
+  
   is_enabled?: boolean;
+  is_latched?: boolean;
+  
+  template_id?: number;
+  rule_group?: string;
+  created_by_template?: boolean;
+  escalation_rules?: any;
+  tags?: any[];
 }
 
 export interface AlarmRuleUpdateData extends Partial<AlarmRuleCreateData> {}
@@ -436,12 +504,12 @@ export class AlarmApiService {
       );
       
       // condition_config JSON 파싱
-      if (response.success && response.data?.items) {
-        response.data.items = response.data.items.map(rule => ({
-          ...rule,
-          condition_config: this.parseConditionConfig(rule.condition_config)
-        }));
-      }
+      //if (response.success && response.data?.items) {
+      //  response.data.items = response.data.items.map(rule => ({
+      //    ...rule,
+      //    condition_config: this.parseConditionConfig(rule.condition_config)
+      //  }));
+      //}
       
       return response;
     } catch (error) {
