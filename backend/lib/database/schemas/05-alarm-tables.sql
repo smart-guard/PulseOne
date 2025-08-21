@@ -8,7 +8,7 @@
 -- 새로운 구조: alarm_rules + alarm_occurrences + 고급 기능 테이블들
 
 -- =============================================================================
--- 알람 규칙 테이블 - 현재 DB 구조와 완전 일치
+-- 알람 규칙 테이블 - 현재 DB 구조와 완전 일치 (category, tags 추가)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS alarm_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,6 +99,10 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     escalation_max_level INTEGER DEFAULT 3,
     escalation_rules TEXT DEFAULT NULL,             -- JSON 형태 에스컬레이션 규칙
     
+    -- 🆕 분류 및 태깅 시스템 (2025-08-21 추가)
+    category VARCHAR(50) DEFAULT NULL,              -- 'process', 'system', 'safety', 'custom', 'general'
+    tags TEXT DEFAULT NULL,                         -- JSON 배열 형태 ['tag1', 'tag2', 'tag3']
+    
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
@@ -150,6 +154,10 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     device_id TEXT,                                 -- 추가된 디바이스 ID (텍스트)
     point_id INTEGER,                               -- 추가된 포인트 ID
     
+    -- 🆕 분류 및 태깅 시스템 (2025-08-21 추가) - 규칙에서 복사
+    category VARCHAR(50) DEFAULT NULL,              -- 규칙의 category 복사
+    tags TEXT DEFAULT NULL,                         -- 규칙의 tags 복사
+    
     FOREIGN KEY (rule_id) REFERENCES alarm_rules(id) ON DELETE CASCADE,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL,
@@ -192,6 +200,9 @@ CREATE TABLE IF NOT EXISTS alarm_rule_templates (
     usage_count INTEGER DEFAULT 0,                  -- 사용된 횟수
     is_active INTEGER DEFAULT 1,
     is_system_template INTEGER DEFAULT 0,           -- 시스템 기본 템플릿 여부
+    
+    -- 🆕 분류 및 태깅 시스템 (2025-08-21 추가) - 템플릿 태깅
+    tags TEXT DEFAULT NULL,                         -- JSON 배열 형태 ['tag1', 'tag2', 'tag3']
     
     -- 감사 정보
     created_by INTEGER,
@@ -306,6 +317,10 @@ CREATE INDEX IF NOT EXISTS idx_alarm_rules_template_id ON alarm_rules(template_i
 CREATE INDEX IF NOT EXISTS idx_alarm_rules_rule_group ON alarm_rules(rule_group);
 CREATE INDEX IF NOT EXISTS idx_alarm_rules_created_by_template ON alarm_rules(created_by_template);
 
+-- 🆕 새로 추가된 컬럼들에 대한 인덱스
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_category ON alarm_rules(category);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_tags ON alarm_rules(tags);
+
 -- alarm_occurrences 테이블 인덱스
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_rule ON alarm_occurrences(rule_id);
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_state ON alarm_occurrences(state);
@@ -314,6 +329,10 @@ CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_device_id ON alarm_occurrences(
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_point_id ON alarm_occurrences(point_id);
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_rule_device ON alarm_occurrences(rule_id, device_id);
 
+-- 🆕 alarm_occurrences 분류 컬럼 인덱스
+CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_category ON alarm_occurrences(category);
+CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_tags ON alarm_occurrences(tags);
+
 -- alarm_rule_templates 테이블 인덱스
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_tenant ON alarm_rule_templates(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_category ON alarm_rule_templates(category);
@@ -321,6 +340,9 @@ CREATE INDEX IF NOT EXISTS idx_alarm_templates_active ON alarm_rule_templates(is
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_system ON alarm_rule_templates(is_system_template);
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_usage ON alarm_rule_templates(usage_count DESC);
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_name ON alarm_rule_templates(tenant_id, name);
+
+-- 🆕 alarm_rule_templates tags 컬럼 인덱스
+CREATE INDEX IF NOT EXISTS idx_alarm_templates_tags ON alarm_rule_templates(tags);
 
 -- javascript_functions 테이블 인덱스
 CREATE INDEX IF NOT EXISTS idx_js_functions_tenant ON javascript_functions(tenant_id);

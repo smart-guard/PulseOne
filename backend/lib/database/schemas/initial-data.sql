@@ -2,11 +2,12 @@
 -- backend/lib/database/schemas/08-initial-data.sql
 -- 초기 데이터 및 샘플 데이터 (SQLite 버전) - 2025-08-21 최신 업데이트
 -- PulseOne v2.1.0 완전 호환, 현재 DB 스키마와 100% 일치
+-- category, tags 컬럼 포함
 -- =============================================================================
 
 -- 스키마 버전 기록
 INSERT OR IGNORE INTO schema_versions (version, description) 
-VALUES ('2.1.0', 'Complete PulseOne v2.1.0 schema with updated alarm system');
+VALUES ('2.1.0', 'Complete PulseOne v2.1.0 schema with updated alarm system and category/tags support');
 
 -- =============================================================================
 -- 테넌트 생성
@@ -212,70 +213,70 @@ INSERT OR IGNORE INTO virtual_points (
  'float', '%', 3000, 'timer', 1);
 
 -- =============================================================================
--- 알람 규칙 생성 (현재 스키마 구조에 맞춤)
+-- 알람 규칙 생성 (현재 스키마 구조에 맞춤 + category, tags 포함)
 -- =============================================================================
 INSERT OR IGNORE INTO alarm_rules (
     tenant_id, name, description, target_type, target_id, alarm_type, severity,
     high_limit, low_limit, deadband, message_template, notification_enabled,
-    is_enabled, escalation_enabled, escalation_max_level
+    is_enabled, escalation_enabled, escalation_max_level, category, tags
 ) VALUES 
--- Smart Factory Korea 알람들
+-- Smart Factory Korea 알람들 (category, tags 포함)
 (1, 'TEST_PLC_Temperature_Alarm', 'PLC 온도 모니터링 알람 (테스트용)', 'data_point', 4, 'analog', 'high',
- 35.0, 15.0, 2.0, '온도 알람: {value}°C (임계값: {limit}°C)', 1, 1, 0, 3),
+ 35.0, 15.0, 2.0, '온도 알람: {value}°C (임계값: {limit}°C)', 1, 1, 0, 3, 'process', '["temperature", "plc", "production"]'),
 
 (1, 'TEST_Motor_Current_Alarm', '모터 전류 과부하 알람 (테스트용)', 'data_point', 3, 'analog', 'critical',
- 30.0, NULL, 1.0, '모터 과부하: {value}A (한계: {limit}A)', 1, 1, 0, 3),
+ 30.0, NULL, 1.0, '모터 과부하: {value}A (한계: {limit}A)', 1, 1, 0, 3, 'process', '["current", "motor", "safety"]'),
 
 (1, 'TEST_Emergency_Stop_Alarm', '비상정지 버튼 활성화 알람 (테스트용)', 'data_point', 5, 'digital', 'critical',
- NULL, NULL, 0.0, '🚨 비상정지 활성화됨!', 1, 1, 0, 3),
+ NULL, NULL, 0.0, '🚨 비상정지 활성화됨!', 1, 1, 0, 3, 'safety', '["emergency", "stop", "critical"]'),
 
 (1, 'TEST_Zone1_Temperature_Alarm', 'RTU 구역1 온도 알람 (테스트용)', 'data_point', 13, 'analog', 'medium',
- 28.0, 18.0, 1.5, 'Zone1 온도 이상: {value}°C', 1, 1, 0, 3),
+ 28.0, 18.0, 1.5, 'Zone1 온도 이상: {value}°C', 1, 1, 0, 3, 'hvac', '["temperature", "zone1", "hvac"]'),
 
--- 추가 테스트 알람들
+-- 추가 테스트 알람들 (category, tags 포함)
 (1, 'High Temperature Alert', 'Temperature exceeds 80 degrees', 'data_point', 1, 'analog', 'high',
- 80.0, NULL, 2.0, 'Temperature alarm: {{value}}°C > {{limit}}°C', 1, 1, 0, 3),
+ 80.0, NULL, 2.0, 'Temperature alarm: {{value}}°C > {{limit}}°C', 1, 1, 0, 3, 'process', '["temperature", "high", "production"]'),
 
 (1, 'Test Temperature Alarm FIXED', '', 'data_point', 999, 'analog', 'high',
- 85.0, NULL, 0.0, 'Test Temperature Alarm FIXED alarm triggered', 1, 1, 0, 3),
+ 85.0, NULL, 0.0, 'Test Temperature Alarm FIXED alarm triggered', 1, 1, 0, 3, 'general', '["test", "fixed"]'),
 
 (1, '고온 경고 표준_1', '온도 센서용 고온 임계값 경고 (자동 생성)', 'data_point', 1, 'analog', 'high',
- 85.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3),
+ 85.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3, 'process', '["temperature", "standard", "auto-generated"]'),
 
 (1, '고온 경고 표준_2', '온도 센서용 고온 임계값 경고 (자동 생성)', 'data_point', 2, 'analog', 'high',
- 80.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3),
+ 80.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3, 'process', '["temperature", "standard", "auto-generated"]'),
 
 (1, '고온 경고 표준_3', '온도 센서용 고온 임계값 경고 (자동 생성)', 'data_point', 3, 'analog', 'high',
- 90.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3),
+ 90.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3, 'process', '["temperature", "standard", "auto-generated"]'),
 
 (1, '테스트 온도 알람', '테스트용 온도 임계값 알람', 'data_point', 1, 'analog', 'medium',
- 85.0, 10.0, 2.5, '온도 알람: {value}°C', 1, 1, 0, 3);
+ 85.0, 10.0, 2.5, '온도 알람: {value}°C', 1, 1, 0, 3, 'general', '["test", "temperature"]');
 
 -- =============================================================================
--- 알람 규칙 템플릿 생성
+-- 알람 규칙 템플릿 생성 (tags 컬럼 포함)
 -- =============================================================================
 INSERT OR IGNORE INTO alarm_rule_templates (
     tenant_id, name, description, category, condition_type, condition_template,
     default_config, severity, message_template, applicable_data_types,
-    notification_enabled, is_active, is_system_template
+    notification_enabled, is_active, is_system_template, tags
 ) VALUES 
 (1, '온도 센서 고온 알람', '온도 센서용 고온 임계값 알람 템플릿', 'temperature',
  'threshold', '> {high_limit}°C', 
  '{"high_limit": 80, "deadband": 2}', 'high',
  '{device_name} 온도가 {value}°C로 임계값 {threshold}°C를 초과했습니다',
- '["temperature", "float", "analog"]', 1, 1, 0),
+ '["temperature", "float", "analog"]', 1, 1, 0, '["temperature", "sensor", "high-temp"]'),
 
 (1, '전류 과부하 알람', '전류 센서용 과부하 알람 템플릿', 'electrical',
  'threshold', '> {high_limit}A',
  '{"high_limit": 30, "deadband": 1}', 'critical',
  '{device_name} 전류가 {value}A로 과부하 상태입니다',
- '["current", "float", "analog"]', 1, 1, 0),
+ '["current", "float", "analog"]', 1, 1, 0, '["current", "overload", "electrical"]'),
 
 (1, '디지털 입력 알람', '디지털 입력 상태 변화 알람 템플릿', 'digital',
  'boolean', 'on_true',
  '{"trigger_condition": "on_true"}', 'high',
  '{device_name} {point_name} 활성화됨',
- '["bool", "digital", "binary"]', 1, 1, 0);
+ '["bool", "digital", "binary"]', 1, 1, 0, '["digital", "input", "state-change"]');
 
 -- =============================================================================
 -- JavaScript 함수 라이브러리
@@ -301,8 +302,8 @@ INSERT OR IGNORE INTO javascript_functions (
 INSERT OR IGNORE INTO system_logs (
     log_level, module, message, details, created_at
 ) VALUES 
-('INFO', 'database', 'Updated initial data loading completed successfully', 
- '{"tables_populated": 12, "devices": 11, "data_points": 14, "virtual_points": 5, "alarm_rules": 10, "templates": 3}',
+('INFO', 'database', 'Updated initial data loading completed successfully with category/tags support', 
+ '{"tables_populated": 12, "devices": 11, "data_points": 14, "virtual_points": 5, "alarm_rules": 10, "templates": 3, "features": ["category", "tags"]}',
  datetime('now'));
 
 -- =============================================================================
@@ -311,5 +312,7 @@ INSERT OR IGNORE INTO system_logs (
 -- 이 업데이트된 파일은 현재 데이터베이스 스키마와 완전히 일치합니다:
 -- ✅ target_type, target_id 구조 사용
 -- ✅ escalation_enabled, escalation_max_level 컬럼 포함
+-- ✅ category, tags 컬럼 포함 (분류 시스템 완전 지원)
 -- ✅ 실제 존재하는 테이블들만 사용
 -- ✅ 백엔드 API와 호환되는 데이터 구조
+-- ✅ 프론트엔드 필터링 기능 완전 지원

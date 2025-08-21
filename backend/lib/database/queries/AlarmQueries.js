@@ -1,17 +1,17 @@
 // =============================================================================
 // backend/lib/database/queries/AlarmQueries.js
 // 실제 데이터베이스 스키마와 100% 일치하는 완전한 알람 쿼리 모음
-// 수정일: 2025-08-20 - 실제 DB 검증 완료
+// 수정일: 2025-08-21 - category, tags 컬럼 추가된 스키마 반영
 // =============================================================================
 
 class AlarmQueries {
     
     // =========================================================================
-    // AlarmRule 쿼리들 - 실제 스키마 39개 컬럼 완전 호환
+    // AlarmRule 쿼리들 - 실제 스키마 45개 컬럼 완전 호환 (category, tags 추가)
     // =========================================================================
     static AlarmRule = {
         
-        // 기본 CRUD - 실제 스키마 기반 (target_type, target_id, alarm_type 사용)
+        // 기본 CRUD - 실제 스키마 기반 (target_type, target_id, alarm_type, category, tags 사용)
         FIND_ALL: `
             SELECT 
                 ar.*,
@@ -78,7 +78,7 @@ class AlarmQueries {
             ORDER BY ar.created_at DESC
         `,
         
-        // 검색 쿼리 - 실제 스키마에 맞춘 JOIN
+        // 검색 쿼리 - category, tags 검색 포함
         SEARCH: `
             SELECT 
                 ar.*,
@@ -121,6 +121,8 @@ class AlarmQueries {
                 ar.name LIKE ? OR 
                 ar.description LIKE ? OR
                 ar.alarm_type LIKE ? OR
+                ar.category LIKE ? OR
+                ar.tags LIKE ? OR
                 d.name LIKE ? OR
                 dp.name LIKE ? OR
                 vp.name LIKE ? OR
@@ -154,7 +156,7 @@ class AlarmQueries {
             WHERE ar.id = ? AND ar.tenant_id = ?
         `,
         
-        // CREATE - 실제 스키마 39개 컬럼에 맞춤 (AUTO_INCREMENT id 제외한 38개 값)
+        // CREATE - category, tags 컬럼 포함 (45개 컬럼에서 id 제외한 44개 값)
         CREATE: `
             INSERT INTO alarm_rules (
                 tenant_id, name, description, target_type, target_id, target_group,
@@ -165,11 +167,12 @@ class AlarmQueries {
                 notification_enabled, notification_delay_sec, notification_repeat_interval_min,
                 notification_channels, notification_recipients, is_enabled, is_latched,
                 created_by, template_id, rule_group, created_by_template,
-                last_template_update, escalation_rules, tags
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_template_update, escalation_enabled, escalation_max_level, escalation_rules,
+                category, tags
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // UPDATE - 실제 스키마에 맞춤
+        // UPDATE - category, tags 컬럼 포함
         UPDATE: `
             UPDATE alarm_rules SET
                 name = ?, description = ?, target_type = ?, target_id = ?, target_group = ?,
@@ -180,7 +183,8 @@ class AlarmQueries {
                 notification_enabled = ?, notification_delay_sec = ?, notification_repeat_interval_min = ?,
                 notification_channels = ?, notification_recipients = ?, is_enabled = ?, is_latched = ?,
                 template_id = ?, rule_group = ?, created_by_template = ?,
-                last_template_update = ?, escalation_rules = ?, tags = ?,
+                last_template_update = ?, escalation_enabled = ?, escalation_max_level = ?, escalation_rules = ?,
+                category = ?, tags = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
         `,
@@ -194,6 +198,38 @@ class AlarmQueries {
             SELECT 1 FROM alarm_rules 
             WHERE id = ? AND tenant_id = ? 
             LIMIT 1
+        `,
+        
+        // 카테고리별 조회
+        FIND_BY_CATEGORY: `
+            SELECT 
+                ar.*,
+                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
+                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
+                CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
+                CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
+            WHERE ar.category = ? AND ar.tenant_id = ?
+            ORDER BY ar.created_at DESC
+        `,
+        
+        // 태그별 조회
+        FIND_BY_TAG: `
+            SELECT 
+                ar.*,
+                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
+                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
+                CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
+                CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
+            FROM alarm_rules ar
+            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN sites s ON d.site_id = s.id
+            LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
+            WHERE ar.tags LIKE ? AND ar.tenant_id = ?
+            ORDER BY ar.created_at DESC
         `,
         
         // 특화 쿼리들
@@ -257,7 +293,7 @@ class AlarmQueries {
             ORDER BY ar.created_at DESC
         `,
         
-        // 통계 쿼리들
+        // 통계 쿼리들 - category 포함
         COUNT_TOTAL: `
             SELECT COUNT(*) as total_rules FROM alarm_rules 
             WHERE tenant_id = ?
@@ -297,24 +333,38 @@ class AlarmQueries {
             ORDER BY count DESC
         `,
         
+        // 카테고리별 통계
+        STATS_BY_CATEGORY: `
+            SELECT 
+                category, 
+                COUNT(*) as count,
+                SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count
+            FROM alarm_rules 
+            WHERE tenant_id = ? AND category IS NOT NULL
+            GROUP BY category
+            ORDER BY count DESC
+        `,
+        
         STATS_SUMMARY: `
             SELECT 
                 COUNT(*) as total_rules,
                 SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_rules,
                 COUNT(DISTINCT alarm_type) as alarm_types,
                 COUNT(DISTINCT severity) as severity_levels,
-                COUNT(DISTINCT target_type) as target_types
+                COUNT(DISTINCT target_type) as target_types,
+                COUNT(DISTINCT category) as categories,
+                COUNT(CASE WHEN tags IS NOT NULL AND tags != '[]' THEN 1 END) as rules_with_tags
             FROM alarm_rules 
             WHERE tenant_id = ?
         `
     };
     
     // =========================================================================
-    // AlarmOccurrence 쿼리들 - 실제 스키마 26개 컬럼 완전 호환
+    // AlarmOccurrence 쿼리들 - category, tags 컬럼 포함 (28개 컬럼)
     // =========================================================================
     static AlarmOccurrence = {
         
-        // 기본 CRUD - 실제 스키마 기반 (rule_id, occurrence_time 등)
+        // 기본 CRUD - category, tags 포함
         FIND_ALL: `
             SELECT 
                 ao.*,
@@ -359,7 +409,7 @@ class AlarmQueries {
             WHERE ao.id = ? AND ao.tenant_id = ?
         `,
         
-        // 실제 alarm_occurrences 스키마에 맞춘 CREATE (AUTO_INCREMENT id 제외한 25개 값)
+        // CREATE - category, tags 포함 (28개 컬럼에서 id 제외한 27개 값)
         CREATE: `
             INSERT INTO alarm_occurrences (
                 rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
@@ -367,11 +417,11 @@ class AlarmQueries {
                 acknowledge_comment, cleared_time, cleared_value, clear_comment,
                 notification_sent, notification_time, notification_count, notification_result,
                 context_data, source_name, location, created_at, updated_at,
-                device_id, point_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                device_id, point_id, category, tags
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // 실제 스키마에 맞춘 UPDATE 쿼리들
+        // UPDATE 쿼리들
         UPDATE_STATE: `
             UPDATE alarm_occurrences SET
                 state = ?, updated_at = CURRENT_TIMESTAMP
@@ -395,6 +445,30 @@ class AlarmQueries {
                 state = 'cleared',
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
+        `,
+        
+        // 카테고리별 알람 발생 조회
+        FIND_BY_CATEGORY: `
+            SELECT 
+                ao.*,
+                ar.name as rule_name,
+                ar.severity as rule_severity
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            WHERE ao.tenant_id = ? AND ao.category = ?
+            ORDER BY ao.occurrence_time DESC
+        `,
+        
+        // 태그별 알람 발생 조회
+        FIND_BY_TAG: `
+            SELECT 
+                ao.*,
+                ar.name as rule_name,
+                ar.severity as rule_severity
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            WHERE ao.tenant_id = ? AND ao.tags LIKE ?
+            ORDER BY ao.occurrence_time DESC
         `,
         
         // 활성/비활성 상태 조회
@@ -448,7 +522,7 @@ class AlarmQueries {
             ORDER BY ao.occurrence_time DESC
         `,
         
-        // 통계 쿼리들
+        // 통계 쿼리들 - category 포함
         STATS_SUMMARY: `
             SELECT 
                 COUNT(*) as total_occurrences,
@@ -476,6 +550,18 @@ class AlarmQueries {
                     WHEN 'low' THEN 4 
                     ELSE 5 
                 END
+        `,
+        
+        // 카테고리별 발생 통계
+        STATS_BY_CATEGORY: `
+            SELECT 
+                category,
+                COUNT(*) as count,
+                SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_count
+            FROM alarm_occurrences 
+            WHERE tenant_id = ? AND category IS NOT NULL
+            GROUP BY category
+            ORDER BY count DESC
         `,
         
         STATS_BY_TIME_RANGE: `
@@ -526,7 +612,7 @@ class AlarmQueries {
     };
     
     // =========================================================================
-    // AlarmTemplate 쿼리들 - 실제 테이블명 alarm_rule_templates 22개 컬럼
+    // AlarmTemplate 쿼리들 - tags 컬럼 포함 (23개 컬럼)
     // =========================================================================
     static AlarmTemplate = {
         
@@ -544,6 +630,12 @@ class AlarmQueries {
         FIND_BY_CATEGORY: `
             SELECT * FROM alarm_rule_templates 
             WHERE category = ? AND (tenant_id = ? OR is_system_template = 1) AND is_active = 1
+            ORDER BY is_system_template DESC, name ASC
+        `,
+        
+        FIND_BY_TAG: `
+            SELECT * FROM alarm_rule_templates 
+            WHERE tags LIKE ? AND (tenant_id = ? OR is_system_template = 1) AND is_active = 1
             ORDER BY is_system_template DESC, name ASC
         `,
         
@@ -565,7 +657,7 @@ class AlarmQueries {
             SELECT * FROM alarm_rule_templates 
             WHERE (tenant_id = ? OR is_system_template = 1) 
             AND is_active = 1 
-            AND (name LIKE ? OR description LIKE ? OR category LIKE ?)
+            AND (name LIKE ? OR description LIKE ? OR category LIKE ? OR tags LIKE ?)
             ORDER BY is_system_template DESC, name ASC
         `,
         
@@ -576,24 +668,25 @@ class AlarmQueries {
             LIMIT ?
         `,
         
-        // CREATE - 실제 스키마 22개 컬럼에 맞춤 (AUTO_INCREMENT id 제외한 21개 값)
+        // CREATE - tags 컬럼 포함 (23개 컬럼에서 id 제외한 22개 값)
         CREATE: `
             INSERT INTO alarm_rule_templates (
                 tenant_id, name, description, category, condition_type, condition_template,
                 default_config, severity, message_template, applicable_data_types,
                 applicable_device_types, notification_enabled, email_notification, sms_notification,
                 auto_acknowledge, auto_clear, usage_count, is_active, is_system_template, 
-                created_by, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_by, created_at, tags
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // UPDATE - 실제 스키마에 맞춤
+        // UPDATE - tags 컬럼 포함
         UPDATE: `
             UPDATE alarm_rule_templates SET 
                 name = ?, description = ?, category = ?, condition_type = ?, condition_template = ?,
                 default_config = ?, severity = ?, message_template = ?, applicable_data_types = ?,
                 applicable_device_types = ?, notification_enabled = ?, email_notification = ?, 
-                sms_notification = ?, auto_acknowledge = ?, auto_clear = ?, updated_at = CURRENT_TIMESTAMP
+                sms_notification = ?, auto_acknowledge = ?, auto_clear = ?, tags = ?, 
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND tenant_id = ?
         `,
         
@@ -621,7 +714,8 @@ class AlarmQueries {
                 SUM(CASE WHEN is_system_template = 1 THEN 1 ELSE 0 END) as system_templates,
                 SUM(CASE WHEN is_system_template = 0 THEN 1 ELSE 0 END) as custom_templates,
                 COUNT(DISTINCT category) as categories,
-                AVG(usage_count) as avg_usage
+                AVG(usage_count) as avg_usage,
+                COUNT(CASE WHEN tags IS NOT NULL AND tags != '[]' THEN 1 END) as templates_with_tags
             FROM alarm_rule_templates 
             WHERE (tenant_id = ? OR is_system_template = 1) AND is_active = 1
         `,
@@ -639,18 +733,17 @@ class AlarmQueries {
     };
     
     // =========================================================================
-    // 공통 유틸리티 메서드들
+    // 공통 유틸리티 메서드들 - category, tags 필터 지원
     // =========================================================================
     
     /**
-     * 동적 WHERE 절 생성 (AlarmRule용) - 실제 스키마 컬럼 사용
+     * 동적 WHERE 절 생성 (AlarmRule용) - category, tags 필터 포함
      */
     static buildAlarmRuleWhereClause(baseQuery, filters = {}) {
         let query = baseQuery;
         const params = [];
         
         // tenant_id는 baseQuery에 이미 WHERE 절에 포함되어 있음
-        // 첫 번째 파라미터는 항상 tenant_id
         if (filters.tenantId || filters.tenant_id) {
             params.push(filters.tenantId || filters.tenant_id);
         }
@@ -691,16 +784,27 @@ class AlarmQueries {
             params.push(filters.rule_group);
         }
         
+        // 새로 추가된 필터들
+        if (filters.category) {
+            query += ` AND ar.category = ?`;
+            params.push(filters.category);
+        }
+        
+        if (filters.tag) {
+            query += ` AND ar.tags LIKE ?`;
+            params.push(`%${filters.tag}%`);
+        }
+        
         if (filters.search) {
-            query += ` AND (ar.name LIKE ? OR ar.description LIKE ?)`;
-            params.push(`%${filters.search}%`, `%${filters.search}%`);
+            query += ` AND (ar.name LIKE ? OR ar.description LIKE ? OR ar.category LIKE ? OR ar.tags LIKE ?)`;
+            params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
         }
         
         return { query, params };
     }
     
     /**
-     * AlarmOccurrence 필터 조건 빌더
+     * AlarmOccurrence 필터 조건 빌더 - category, tags 지원
      */
     static buildAlarmOccurrenceFilters(baseQuery, filters = {}) {
         let query = baseQuery;
@@ -746,6 +850,17 @@ class AlarmQueries {
             query += ` AND ao.acknowledged_time IS NULL`;
         }
         
+        // 새로 추가된 필터들
+        if (filters.category) {
+            query += ` AND ao.category = ?`;
+            params.push(filters.category);
+        }
+        
+        if (filters.tag) {
+            query += ` AND ao.tags LIKE ?`;
+            params.push(`%${filters.tag}%`);
+        }
+        
         return { query, params };
     }
     
@@ -766,7 +881,7 @@ class AlarmQueries {
      * 정렬 절 추가
      */
     static addSorting(query, sortBy = 'created_at', order = 'DESC') {
-        const validSortFields = ['created_at', 'severity', 'name', 'occurrence_time'];
+        const validSortFields = ['created_at', 'severity', 'name', 'occurrence_time', 'category'];
         const validOrders = ['ASC', 'DESC'];
         
         if (validSortFields.includes(sortBy) && validOrders.includes(order.toUpperCase())) {
@@ -777,7 +892,7 @@ class AlarmQueries {
     }
 
     /**
-     * AlarmRule CREATE 파라미터 생성 (실제 스키마 38개 값)
+     * AlarmRule CREATE 파라미터 생성 (category, tags 포함 - 41개 값)
      */
     static buildCreateRuleParams(data) {
         return [
@@ -788,19 +903,19 @@ class AlarmQueries {
             data.target_id || null,                                 // 5
             data.target_group || null,                              // 6
             data.alarm_type,                                        // 7
-            data.severity || 'medium',                              // 8
-            data.priority || 100,                                   // 9
-            data.high_high_limit || null,                           // 10
-            data.high_limit || null,                                // 11
-            data.low_limit || null,                                 // 12
-            data.low_low_limit || null,                             // 13
-            data.deadband || 0,                                     // 14
-            data.rate_of_change || 0,                               // 15
-            data.trigger_condition || null,                         // 16
-            data.condition_script || null,                          // 17
-            data.message_script || null,                            // 18
-            data.message_config || null,                            // 19
-            data.message_template || null,                          // 20
+            data.high_high_limit || null,                           // 8
+            data.high_limit || null,                                // 9
+            data.low_limit || null,                                 // 10
+            data.low_low_limit || null,                             // 11
+            data.deadband || 0,                                     // 12
+            data.rate_of_change || 0,                               // 13
+            data.trigger_condition || null,                         // 14
+            data.condition_script || null,                          // 15
+            data.message_script || null,                            // 16
+            data.message_config || null,                            // 17
+            data.message_template || null,                          // 18
+            data.severity || 'medium',                              // 19
+            data.priority || 100,                                   // 20
             data.auto_acknowledge || 0,                             // 21
             data.acknowledge_timeout_min || 0,                      // 22
             data.auto_clear || 0,                                   // 23
@@ -815,15 +930,18 @@ class AlarmQueries {
             data.created_by || null,                                // 32
             data.template_id || null,                               // 33
             data.rule_group || null,                                // 34
-            data.created_by_template || 0,                         // 35
-            data.last_template_update || null,                     // 36
-            // data.escalation_rules || null,                      // 37 <- 이 줄 제거
-            data.tags || null                                       // 37 (이제 37번)
+            data.created_by_template || 0,                          // 35
+            data.last_template_update || null,                      // 36
+            data.escalation_enabled || 0,                           // 37
+            data.escalation_max_level || 3,                         // 38
+            data.escalation_rules || null,                          // 39
+            data.category || null,                                  // 40
+            data.tags || null                                       // 41
         ];
     }
 
     /**
-     * AlarmOccurrence CREATE 파라미터 생성 (실제 스키마 25개 값)
+     * AlarmOccurrence CREATE 파라미터 생성 (category, tags 포함 - 27개 값)
      */
     static buildCreateOccurrenceParams(data) {
         return [
@@ -851,12 +969,14 @@ class AlarmQueries {
             data.created_at || new Date().toISOString(),       // 22
             data.updated_at || new Date().toISOString(),       // 23
             data.device_id || null,                            // 24
-            data.point_id || null                              // 25
+            data.point_id || null,                             // 25
+            data.category || null,                             // 26
+            data.tags || null                                  // 27
         ];
     }
 
     /**
-     * AlarmRule UPDATE 파라미터 생성 (실제 스키마 39개 값)
+     * AlarmRule UPDATE 파라미터 생성 (category, tags 포함 - 41개 값)
      */
     static buildUpdateRuleParams(data, id, tenantId) {
         return [
@@ -872,37 +992,40 @@ class AlarmQueries {
             data.low_low_limit || null,                         // 10
             data.deadband || 0,                                 // 11
             data.rate_of_change || 0,                           // 12
-            data.trigger_condition || null,                    // 13
-            data.condition_script || null,                     // 14
-            data.message_script || null,                       // 15
-            data.message_config || null,                       // 16
+            data.trigger_condition || null,                     // 13
+            data.condition_script || null,                      // 14
+            data.message_script || null,                        // 15
+            data.message_config || null,                        // 16
             data.message_template || `${data.name} 알람이 발생했습니다`,  // 17
             data.severity || 'medium',                          // 18
             data.priority || 100,                               // 19
             data.auto_acknowledge || 0,                         // 20
             data.acknowledge_timeout_min || 0,                  // 21
             data.auto_clear || 1,                               // 22
-            data.suppression_rules || null,                    // 23
-            data.notification_enabled || 1,                    // 24
-            data.notification_delay_sec || 0,                  // 25
-            data.notification_repeat_interval_min || 0,        // 26
-            data.notification_channels || null,                // 27
-            data.notification_recipients || null,              // 28
+            data.suppression_rules || null,                     // 23
+            data.notification_enabled || 1,                     // 24
+            data.notification_delay_sec || 0,                   // 25
+            data.notification_repeat_interval_min || 0,         // 26
+            data.notification_channels || null,                 // 27
+            data.notification_recipients || null,               // 28
             data.is_enabled !== false ? 1 : 0,                 // 29
             data.is_latched || 0,                               // 30
             data.template_id || null,                           // 31
             data.rule_group || null,                            // 32
             data.created_by_template || 0,                     // 33
             data.last_template_update || null,                 // 34
-            data.escalation_rules || null,                     // 35
-            data.tags || null,                                  // 36
-            id,                                                 // 37 (WHERE 조건)
-            tenantId                                            // 38 (WHERE 조건)
+            data.escalation_enabled || 0,                      // 35
+            data.escalation_max_level || 3,                    // 36
+            data.escalation_rules || null,                     // 37
+            data.category || null,                             // 38
+            data.tags || null,                                 // 39
+            id,                                                // 40 (WHERE 조건)
+            tenantId                                           // 41 (WHERE 조건)
         ];
     }
 
     /**
-     * 템플릿 CREATE 파라미터 생성 (21개 값)
+     * 템플릿 CREATE 파라미터 생성 (tags 포함 - 22개 값)
      */
     static buildCreateTemplateParams(data) {
         return [
@@ -926,12 +1049,13 @@ class AlarmQueries {
             data.is_active !== false ? 1 : 0,                             // 18
             data.is_system_template || 0,                                  // 19
             data.created_by || null,                                       // 20
-            new Date().toISOString()                                       // 21 (created_at)
+            new Date().toISOString(),                                      // 21 (created_at)
+            data.tags || null                                              // 22
         ];
     }
 
     /**
-     * 템플릿 UPDATE 파라미터 생성 (17개 값)
+     * 템플릿 UPDATE 파라미터 생성 (tags 포함 - 18개 값)
      */
     static buildUpdateTemplateParams(data, id, tenantId) {
         return [
@@ -950,13 +1074,14 @@ class AlarmQueries {
             data.sms_notification || 0,                                    // 13
             data.auto_acknowledge || 0,                                    // 14
             data.auto_clear !== false ? 1 : 0,                            // 15
-            id,                                                             // 16 (WHERE 조건)
-            tenantId                                                        // 17 (WHERE 조건)
+            data.tags || null,                                             // 16
+            id,                                                             // 17 (WHERE 조건)
+            tenantId                                                        // 18 (WHERE 조건)
         ];
     }
 
     /**
-     * 필수 필드 검증 - AlarmRule (실제 스키마 기준)
+     * 필수 필드 검증 - AlarmRule (category, tags 추가)
      */
     static validateAlarmRule(data) {
         const requiredFields = ['name', 'target_type', 'alarm_type', 'severity'];
@@ -981,7 +1106,7 @@ class AlarmQueries {
     }
 
     /**
-     * 필수 필드 검증 - AlarmOccurrence (실제 스키마 기준)
+     * 필수 필드 검증 - AlarmOccurrence (category, tags 추가)
      */
     static validateAlarmOccurrence(data) {
         const requiredFields = ['rule_id', 'tenant_id', 'alarm_message', 'severity'];
@@ -1001,7 +1126,7 @@ class AlarmQueries {
     }
 
     /**
-     * 템플릿 필수 필드 검증
+     * 템플릿 필수 필드 검증 (tags 추가)
      */
     static validateTemplateRequiredFields(data) {
         const requiredFields = ['name', 'condition_type', 'condition_template', 'default_config'];
@@ -1021,7 +1146,7 @@ class AlarmQueries {
     }
 
     /**
-     * 알람 조건 유형별 검증 (실제 스키마 기준)
+     * 알람 조건 유형별 검증
      */
     static validateConditionTypeSpecificFields(data) {
         switch (data.alarm_type) {
@@ -1045,7 +1170,7 @@ class AlarmQueries {
     }
 
     /**
-     * 템플릿 설정 유효성 검증
+     * 템플릿 설정 유효성 검증 (tags 포함)
      */
     static validateTemplateConfig(data) {
         try {
@@ -1059,6 +1184,14 @@ class AlarmQueries {
                 const parsed = JSON.parse(data.applicable_data_types);
                 if (!Array.isArray(parsed)) {
                     throw new Error('applicable_data_types는 배열이어야 합니다');
+                }
+            }
+            
+            // tags가 유효한 JSON 배열인지 확인
+            if (data.tags && typeof data.tags === 'string') {
+                const parsed = JSON.parse(data.tags);
+                if (!Array.isArray(parsed)) {
+                    throw new Error('tags는 JSON 배열이어야 합니다');
                 }
             }
             
