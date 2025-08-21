@@ -337,10 +337,11 @@ const AlarmHistory: React.FC = () => {
 
   const tableContainerStyle = {
     ...sectionStyle,
-    padding: '24px',
+    padding: '0',
     overflow: 'hidden',
-    maxHeight: '600px',
-    overflowY: 'auto' as const
+    height: '600px',
+    display: 'flex',
+    flexDirection: 'column' as const
   };
 
   const tableStyle = {
@@ -348,6 +349,46 @@ const AlarmHistory: React.FC = () => {
     borderCollapse: 'collapse' as const,
     fontSize: '16px',
     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+  };
+
+  const tableWrapperStyle = {
+    flex: 1,
+    overflowY: 'auto' as const,
+    overflowX: 'auto' as const,
+    scrollbarWidth: 'thin' as const, // Firefox
+    msOverflowStyle: 'scrollbar' as const, // IE/Edge
+    // WebKit 스크롤바 스타일링
+    '&::-webkit-scrollbar': {
+      width: '8px',
+      height: '8px'
+    },
+    '&::-webkit-scrollbar-track': {
+      background: '#f1f5f9'
+    },
+    '&::-webkit-scrollbar-thumb': {
+      backgroundColor: '#cbd5e1',
+      borderRadius: '4px'
+    },
+    '&::-webkit-scrollbar-thumb:hover': {
+      backgroundColor: '#94a3b8'
+    }
+  };
+
+  // Grid 레이아웃을 위한 개선된 스타일
+  const gridContainerStyle = {
+    display: 'grid',
+    gridTemplateColumns: '80px 120px 1fr 1fr 120px 160px 120px 100px',
+    gap: '0',
+    minWidth: '1000px', // 최소 너비 설정으로 가로 스크롤 활성화
+    fontSize: '14px'
+  };
+
+  const gridItemStyle = {
+    padding: '16px 12px',
+    borderBottom: '1px solid #f1f5f9',
+    display: 'flex',
+    alignItems: 'center',
+    minHeight: '56px'
   };
 
   const thStyle = {
@@ -680,177 +721,201 @@ const AlarmHistory: React.FC = () => {
           </p>
         </div>
       ) : viewMode === 'list' ? (
-        /* 목록 뷰 - 개선된 CSS Grid */
-        <div style={tableContainerStyle}>
-          {/* 헤더 */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '60px 100px 1fr 1fr 100px 140px 100px 80px',
-            gap: '0',
-            background: '#f8fafc',
-            borderBottom: '2px solid #e2e8f0',
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-            minHeight: '50px',
-            alignItems: 'center'
-          }}>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>ID</div>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>심각도</div>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>디바이스/포인트</div>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>메시지</div>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>상태</div>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>발생시간</div>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>지속시간</div>
-            <div style={{ padding: '16px 12px', fontWeight: 600, color: '#334155', fontSize: '14px' }}>액션</div>
-          </div>
+  <div style={tableContainerStyle}>
+    {/* 고정 헤더 */}
+    <div style={{
+      ...gridContainerStyle,
+      background: '#f8fafc',
+      borderBottom: '2px solid #e2e8f0',
+      position: 'sticky',
+      top: 0,
+      zIndex: 10,
+      fontWeight: 600,
+      color: '#334155'
+    }}>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>ID</div>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>심각도</div>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>디바이스/포인트</div>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>메시지</div>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>상태</div>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>발생시간</div>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>지속시간</div>
+      <div style={{...gridItemStyle, borderBottom: 'none'}}>액션</div>
+    </div>
 
-          {/* 데이터 행들 */}
-          {alarmEvents.map((event, index) => {
-            const eventId = event?.id || index;
-            const severity = event?.severity || 'medium';
-            const deviceName = event?.device_name || 'N/A';
-            const dataPointName = event?.data_point_name || 'N/A';
-            const message = event?.alarm_message || '메시지 없음';
-            const state = event?.state || 'unknown';
-            const occurrenceTime = event?.occurrence_time || new Date().toISOString();
-            const triggeredValue = event?.trigger_value;
+    {/* 스크롤 가능한 데이터 영역 */}
+    <div style={tableWrapperStyle}>
+      {alarmEvents.map((event, index) => {
+        const eventId = event?.id || index;
+        const severity = event?.severity || 'medium';
+        const deviceName = event?.device_name || 'N/A';
+        const dataPointName = event?.data_point_name || 'N/A';
+        const message = event?.alarm_message || '메시지 없음';
+        const state = event?.state || 'unknown';
+        const occurrenceTime = event?.occurrence_time || new Date().toISOString();
+        const triggeredValue = event?.trigger_value;
+        
+        return (
+          <div
+            key={eventId}
+            style={{
+              ...gridContainerStyle,
+              borderLeft: `4px solid ${getPriorityColor(severity)}`,
+              opacity: isBackgroundRefreshing ? 0.7 : 1,
+              background: 'white',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f8fafc';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'white';
+            }}
+          >
+            {/* ID */}
+            <div style={gridItemStyle}>
+              <span style={{ 
+                fontFamily: 'monospace', 
+                fontWeight: 600, 
+                color: '#64748b', 
+                fontSize: '12px' 
+              }}>
+                #{eventId}
+              </span>
+            </div>
             
-            return (
-              <div
-                key={eventId}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '60px 100px 1fr 1fr 100px 140px 100px 80px',
-                  gap: '0',
-                  borderLeft: `4px solid ${getPriorityColor(severity)}`,
-                  borderBottom: '1px solid #f1f5f9',
-                  opacity: isBackgroundRefreshing ? 0.7 : 1,
-                  minHeight: '60px',
-                  alignItems: 'center',
-                  background: 'white'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#f8fafc';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'white';
-                }}
-              >
-                {/* ID */}
-                <div style={{ padding: '12px 8px' }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#64748b', fontSize: '12px' }}>
-                    #{eventId}
-                  </span>
-                </div>
-                
-                {/* 심각도 */}
-                <div style={{ padding: '12px 8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div 
-                      style={{ 
-                        width: '10px', 
-                        height: '10px', 
-                        borderRadius: '50%', 
-                        background: getPriorityColor(severity),
-                        flexShrink: 0
-                      }}
-                    ></div>
-                    <span style={{ fontSize: '12px', fontWeight: 600 }}>{severity.toUpperCase()}</span>
-                  </div>
-                </div>
-                
-                {/* 디바이스/포인트 */}
-                <div style={{ padding: '12px 8px' }}>
-                  <div>
-                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px', marginBottom: '2px' }}>
-                      {deviceName}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>
-                      {dataPointName}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* 메시지 */}
-                <div style={{ padding: '12px 8px' }}>
-                  <div>
-                    <div style={{ color: '#334155', fontSize: '14px', lineHeight: 1.4 }}>
-                      {message}
-                    </div>
-                    {triggeredValue !== null && triggeredValue !== undefined && (
-                      <div style={{
-                        fontSize: '11px',
-                        color: '#0284c7',
-                        fontFamily: 'monospace',
-                        background: '#f0f9ff',
-                        padding: '2px 6px',
-                        borderRadius: '3px',
-                        display: 'inline-block',
-                        marginTop: '2px'
-                      }}>
-                        값: {triggeredValue}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {/* 상태 */}
-                <div style={{ padding: '12px 8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ color: getStatusColor(state), fontSize: '14px' }}>
-                      <i className={getStatusIcon(state)}></i>
-                    </div>
-                    <span style={{ fontSize: '12px', fontWeight: 500 }}>{getStatusText(state)}</span>
-                  </div>
-                </div>
-                
-                {/* 발생시간 */}
-                <div style={{ padding: '12px 8px' }}>
-                  <div style={{ fontFamily: 'monospace' }}>
-                    <div style={{ color: '#1e293b', fontSize: '12px', marginBottom: '2px' }}>
-                      {new Date(occurrenceTime).toLocaleDateString('ko-KR')}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>
-                      {new Date(occurrenceTime).toLocaleTimeString('ko-KR')}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* 지속시간 */}
-                <div style={{ padding: '12px 8px' }}>
-                  <div style={{ fontFamily: 'monospace', color: '#64748b', fontSize: '12px' }}>
-                    {formatDuration(occurrenceTime, event?.cleared_time || event?.acknowledged_time)}
-                  </div>
-                </div>
-                
-                {/* 액션 */}
-                <div style={{ padding: '12px 8px', textAlign: 'center' }}>
-                  <button
-                    style={{
-                      padding: '4px 8px',
-                      fontSize: '11px',
-                      fontWeight: 500,
-                      borderRadius: '4px',
-                      border: '1px solid #d1d5db',
-                      background: '#f3f4f6',
-                      color: '#374151',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    onClick={() => handleViewDetails(event)}
-                  >
-                    <i className="fas fa-eye" style={{ fontSize: '10px' }}></i>
-                    상세
-                  </button>
-                </div>
+            {/* 심각도 */}
+            <div style={gridItemStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div 
+                  style={{ 
+                    width: '12px', 
+                    height: '12px', 
+                    borderRadius: '50%', 
+                    background: getPriorityColor(severity),
+                    flexShrink: 0
+                  }}
+                />
+                <span style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
+                  {severity}
+                </span>
               </div>
-            );
-          })}
-        </div>
-      ) : (
+            </div>
+            
+            {/* 디바이스/포인트 */}
+            <div style={{...gridItemStyle, flexDirection: 'column', alignItems: 'flex-start'}}>
+              <div style={{ 
+                fontWeight: 600, 
+                color: '#1e293b', 
+                fontSize: '14px', 
+                marginBottom: '4px',
+                wordBreak: 'break-word'
+              }}>
+                {deviceName}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', wordBreak: 'break-word' }}>
+                {dataPointName}
+              </div>
+            </div>
+            
+            {/* 메시지 */}
+            <div style={{...gridItemStyle, flexDirection: 'column', alignItems: 'flex-start'}}>
+              <div style={{ 
+                color: '#334155', 
+                fontSize: '14px', 
+                lineHeight: 1.4,
+                wordBreak: 'break-word',
+                marginBottom: triggeredValue ? '4px' : '0'
+              }}>
+                {message}
+              </div>
+              {triggeredValue !== null && triggeredValue !== undefined && (
+                <div style={{
+                  fontSize: '11px',
+                  color: '#0284c7',
+                  fontFamily: 'monospace',
+                  background: '#f0f9ff',
+                  padding: '2px 6px',
+                  borderRadius: '3px'
+                }}>
+                  값: {triggeredValue}
+                </div>
+              )}
+            </div>
+            
+            {/* 상태 */}
+            <div style={gridItemStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ color: getStatusColor(state), fontSize: '14px' }}>
+                  <i className={getStatusIcon(state)}></i>
+                </div>
+                <span style={{ fontSize: '12px', fontWeight: 500 }}>
+                  {getStatusText(state)}
+                </span>
+              </div>
+            </div>
+            
+            {/* 발생시간 */}
+            <div style={{...gridItemStyle, flexDirection: 'column', alignItems: 'flex-start'}}>
+              <div style={{ 
+                color: '#1e293b', 
+                fontSize: '12px', 
+                fontFamily: 'monospace',
+                marginBottom: '2px'
+              }}>
+                {new Date(occurrenceTime).toLocaleDateString('ko-KR')}
+              </div>
+              <div style={{ 
+                fontSize: '11px', 
+                color: '#64748b',
+                fontFamily: 'monospace'
+              }}>
+                {new Date(occurrenceTime).toLocaleTimeString('ko-KR')}
+              </div>
+            </div>
+            
+            {/* 지속시간 */}
+            <div style={gridItemStyle}>
+              <div style={{ 
+                fontFamily: 'monospace', 
+                color: '#64748b', 
+                fontSize: '12px',
+                textAlign: 'center',
+                width: '100%'
+              }}>
+                {formatDuration(occurrenceTime, event?.cleared_time || event?.acknowledged_time)}
+              </div>
+            </div>
+            
+            {/* 액션 */}
+            <div style={{...gridItemStyle, justifyContent: 'center'}}>
+              <button
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  whiteSpace: 'nowrap'
+                }}
+                onClick={() => handleViewDetails(event)}
+              >
+                <i className="fas fa-eye" style={{ fontSize: '10px' }}></i>
+                상세
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+) : (
         /* 타임라인 뷰 */
         <div style={{ ...sectionStyle, padding: '24px', maxHeight: '600px', overflowY: 'auto' }}>
           <div style={{ position: 'relative' }}>

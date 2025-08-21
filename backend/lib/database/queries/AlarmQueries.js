@@ -363,8 +363,8 @@ class AlarmQueries {
     // AlarmOccurrence 쿼리들 - category, tags 컬럼 포함 (28개 컬럼)
     // =========================================================================
     static AlarmOccurrence = {
-        
-        // 기본 CRUD - category, tags 포함
+    
+        // 기본 CRUD - ao.device_id, ao.point_id 기반 JOIN
         FIND_ALL: `
             SELECT 
                 ao.*,
@@ -372,19 +372,34 @@ class AlarmQueries {
                 ar.severity as rule_severity,
                 ar.target_type,
                 ar.target_id,
-                -- 디바이스 정보 (target_type = 'device'일 때)
-                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
-                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                -- 데이터포인트 정보 (target_type = 'data_point'일 때)
-                CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
-                -- 가상포인트 정보 (target_type = 'virtual_point'일 때)
-                CASE WHEN ar.target_type = 'virtual_point' THEN vp.name END as virtual_point_name
+                
+                -- ao.device_id 기반으로 디바이스 정보
+                d.name as device_name,
+                d.device_type,
+                d.manufacturer,
+                d.model,
+                d.protocol_type,
+                
+                -- ao.point_id 기반으로 데이터포인트 정보
+                dp.name as data_point_name,
+                dp.description as data_point_description,
+                dp.unit,
+                dp.data_type,
+                
+                -- 사이트 정보
+                s.name as site_name,
+                s.location as site_location,
+                
+                -- 가상포인트 정보
+                vp.name as virtual_point_name,
+                vp.description as virtual_point_description
+                
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
-            LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
-            LEFT JOIN virtual_points vp ON ar.target_type = 'virtual_point' AND ar.target_id = vp.id
+            LEFT JOIN virtual_points vp ON vp.id = ao.point_id
             WHERE ao.tenant_id = ?
             ORDER BY ao.occurrence_time DESC
         `,
@@ -396,20 +411,23 @@ class AlarmQueries {
                 ar.severity as rule_severity,
                 ar.target_type,
                 ar.target_id,
-                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
-                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
-                CASE WHEN ar.target_type = 'virtual_point' THEN vp.name END as virtual_point_name
+                d.name as device_name,
+                d.device_type,
+                dp.name as data_point_name,
+                dp.description as data_point_description,
+                s.name as site_name,
+                s.location as site_location,
+                vp.name as virtual_point_name
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
-            LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
-            LEFT JOIN virtual_points vp ON ar.target_type = 'virtual_point' AND ar.target_id = vp.id
+            LEFT JOIN virtual_points vp ON vp.id = ao.point_id
             WHERE ao.id = ? AND ao.tenant_id = ?
         `,
         
-        // CREATE - category, tags 포함 (28개 컬럼에서 id 제외한 27개 값)
+        // CREATE - 변경 없음
         CREATE: `
             INSERT INTO alarm_occurrences (
                 rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
@@ -421,7 +439,7 @@ class AlarmQueries {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // UPDATE 쿼리들
+        // UPDATE 쿼리들 - 변경 없음
         UPDATE_STATE: `
             UPDATE alarm_occurrences SET
                 state = ?, updated_at = CURRENT_TIMESTAMP
@@ -452,9 +470,13 @@ class AlarmQueries {
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                ar.severity as rule_severity
+                ar.severity as rule_severity,
+                d.name as device_name,
+                dp.name as data_point_name
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             WHERE ao.tenant_id = ? AND ao.category = ?
             ORDER BY ao.occurrence_time DESC
         `,
@@ -464,9 +486,13 @@ class AlarmQueries {
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                ar.severity as rule_severity
+                ar.severity as rule_severity,
+                d.name as device_name,
+                dp.name as data_point_name
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             WHERE ao.tenant_id = ? AND ao.tags LIKE ?
             ORDER BY ao.occurrence_time DESC
         `,
@@ -477,11 +503,13 @@ class AlarmQueries {
                 ao.*,
                 ar.name as rule_name,
                 ar.severity as rule_severity,
-                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
-                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location
+                d.name as device_name,
+                dp.name as data_point_name,
+                s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? AND ao.state = 'active'
             ORDER BY ao.occurrence_time DESC
@@ -491,11 +519,13 @@ class AlarmQueries {
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
-                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location
+                d.name as device_name,
+                dp.name as data_point_name,
+                s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? AND ao.acknowledged_time IS NULL
             ORDER BY ao.occurrence_time DESC
@@ -512,17 +542,19 @@ class AlarmQueries {
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
-                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location
+                d.name as device_name,
+                dp.name as data_point_name,
+                s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? AND ao.device_id = ?
             ORDER BY ao.occurrence_time DESC
         `,
         
-        // 통계 쿼리들 - category 포함
+        // 통계 쿼리들 - 변경 없음
         STATS_SUMMARY: `
             SELECT 
                 COUNT(*) as total_occurrences,
@@ -581,11 +613,13 @@ class AlarmQueries {
             SELECT 
                 ao.*,
                 ar.name as rule_name,
-                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
-                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location
+                d.name as device_name,
+                dp.name as data_point_name,
+                s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? 
             ORDER BY ao.occurrence_time DESC
@@ -598,11 +632,13 @@ class AlarmQueries {
                 ao.*,
                 ar.name as rule_name,
                 ar.severity as rule_severity,
-                CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
-                CASE WHEN ar.target_type = 'device' THEN s.location END as site_location
+                d.name as device_name,
+                dp.name as data_point_name,
+                s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? 
                 AND ao.occurrence_time >= ? 
