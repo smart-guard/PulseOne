@@ -1510,7 +1510,7 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  min-width: 70px;
+  min-width: 60px; /* 기존 70px에서 60px로 줄임 */
 }
 
 .condition-label {
@@ -1522,12 +1522,12 @@
   margin-bottom: 2px;
 }
 
-.condition-value {
-  font-size: 15px;
-  color: var(--neutral-800);
-  font-weight: 700;
-  font-family: var(--font-family-mono);
-  line-height: 1;
+.condition-values {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-4); /* 기존 --space-6에서 --space-4로 줄임 */
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 /* 상태 정보 블록 - 중앙 정렬 */
@@ -1589,7 +1589,11 @@
 /* 반응형 조정 */
 @media (max-width: 768px) {
   .condition-values {
-    gap: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .condition-item {
+    min-width: 45px; /* 모바일에서 더 컴팩트하게 */
   }
   
   .status-items {
@@ -1604,5 +1608,19 @@
   
   .status-item i {
     font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .condition-values {
+    gap: var(--space-2);
+  }
+  
+  .condition-item {
+    min-width: 40px;
+  }
+  
+  .condition-value {
+    font-size: 14px; /* 기존 15px에서 14px로 약간 줄임 */
   }
 }

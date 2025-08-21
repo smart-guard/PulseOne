@@ -1,14 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { AlarmApiService, AlarmRule, AlarmRuleCreateData } from '../api/services/alarmApi';
+import AlarmSettingsModal from './modals/AlarmSettingsModal';
 import '../styles/alarm-settings.css';
 
 interface AlarmSettingsProps {}
+
+// 데이터포인트 목록을 위한 타입
+interface DataPoint {
+  id: number;
+  name: string;
+  device_id: number;
+  device_name: string;
+  data_type: string;
+  unit?: string;
+  address?: string;
+}
+
+// 디바이스 목록을 위한 타입
+interface Device {
+  id: number;
+  name: string;
+  device_type: string;
+  site_name?: string;
+}
 
 const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   // 상태 관리
   const [alarmRules, setAlarmRules] = useState<AlarmRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 데이터포인트 및 디바이스 목록
+  const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loadingTargetData, setLoadingTargetData] = useState(false);
   
   // 모달 상태
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -18,7 +43,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   // 뷰 타입 상태
   const [viewType, setViewType] = useState<'card' | 'table'>('card');
   
-  // 필터 상태 - category 추가
+  // 필터 상태
   const [filters, setFilters] = useState({
     search: '',
     severity: 'all',
@@ -27,16 +52,17 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     tag: ''
   });
 
-  // 폼 상태 (업데이트된 백엔드 스키마에 맞춤)
+  // 폼 상태 
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     target_type: 'data_point' as const,
     target_id: '',
+    selected_device_id: '', // 디바이스 선택을 위한 추가 필드
     target_group: '',
     alarm_type: 'analog' as const,
     
-    // 임계값들 (개별 필드로 분리)
+    // 임계값들
     high_high_limit: '',
     high_limit: '',
     low_limit: '',
@@ -44,55 +70,260 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     deadband: '2.0',
     rate_of_change: '',
     
-    // 디지털/스크립트 조건
+    // 기타 필드들
     trigger_condition: '',
     condition_script: '',
     message_script: '',
-    
-    // 메시지 관련
     message_config: {},
     message_template: '',
-    
     severity: 'medium' as const,
     priority: 100,
-    
-    // 동작 설정
     auto_acknowledge: false,
     acknowledge_timeout_min: 0,
     auto_clear: true,
     suppression_rules: {},
-    
-    // 알림 설정
     notification_enabled: true,
     notification_delay_sec: 0,
     notification_repeat_interval_min: 0,
     notification_channels: {},
     notification_recipients: {},
-    
-    // 상태
     is_enabled: true,
     is_latched: false,
-    
-    // 템플릿 관련
     template_id: '',
     rule_group: '',
     created_by_template: false,
     last_template_update: '',
-    
-    // 에스컬레이션 관련 (새로 추가)
     escalation_enabled: false,
     escalation_max_level: 3,
     escalation_rules: {},
-    
-    // 카테고리 및 태그 (새로 추가)
     category: '',
     tags: [] as string[]
   });
 
+  const getDeviceOptions = () => {
+    if (!Array.isArray(devices)) {
+      return [];
+    }
+    
+    return devices
+      .sort((a, b) => a.id - b.id) // ID 순으로 정렬
+      .map(device => ({
+        value: device.id.toString(),
+        label: `[${device.id}] ${device.name} (${device.device_type || 'Unknown'})`,
+        extra: device.site_name ? ` - ${device.site_name}` : ''
+      }));
+  };
+
+  // 선택된 디바이스에 속한 데이터포인트만 필터링 및 정렬
+  const getFilteredDataPoints = () => {
+    if (!formData.selected_device_id || !Array.isArray(dataPoints)) {
+      return [];
+    }
+    
+    const deviceId = parseInt(formData.selected_device_id);
+    return dataPoints
+      .filter(dp => dp.device_id === deviceId)
+      .sort((a, b) => a.id - b.id); // ID 순으로 정렬
+  };
+
+  // 선택된 디바이스의 데이터포인트 옵션 생성
+  const getDataPointOptions = () => {
+    const filteredPoints = getFilteredDataPoints();
+    
+    return filteredPoints.map(dp => ({
+      value: dp.id.toString(),
+      label: `[${dp.id}] ${dp.name}`,
+      extra: dp.unit ? ` (${dp.unit})` : (dp.data_type ? ` (${dp.data_type})` : ''),
+      address: dp.address ? ` - ${dp.address}` : ''
+    }));
+  };
+
+  // 디바이스 선택 변경 시 데이터포인트 초기화
+  const handleDeviceChange = (deviceId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      selected_device_id: deviceId,
+      target_id: '' // 디바이스 변경 시 선택된 데이터포인트 초기화
+    }));
+  };
+
+  // 타겟 타입 변경 시 선택 초기화
+  const handleTargetTypeChange = (targetType: string) => {
+    setFormData(prev => ({
+      ...prev,
+      target_type: targetType as any,
+      selected_device_id: '',
+      target_id: ''
+    }));
+  };
+
+  // 선택된 디바이스 이름 가져오기
+  const getSelectedDeviceName = () => {
+    if (!formData.selected_device_id) return '';
+    const device = devices.find(d => d.id === parseInt(formData.selected_device_id));
+    return device ? device.name : '';
+  };
+
+
+  const TargetSelectionUI = () => {
+    return (
+      <div className="form-section">
+        <div className="section-title">타겟 설정</div>
+        
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">타겟 타입 *</label>
+            <select
+              className="form-select"
+              value={formData.target_type}
+              onChange={(e) => handleTargetTypeChange(e.target.value)}
+            >
+              <option value="data_point">데이터포인트</option>
+              <option value="device">디바이스</option>
+              <option value="virtual_point">가상포인트</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 데이터포인트 선택 시 계층적 선택 */}
+        {formData.target_type === 'data_point' && (
+          <>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">디바이스 선택 *</label>
+                {loadingTargetData ? (
+                  <div className="form-input loading-input">
+                    <i className="fas fa-spinner fa-spin"></i> 로딩 중...
+                  </div>
+                ) : (
+                  <select
+                    className="form-select"
+                    value={formData.selected_device_id}
+                    onChange={(e) => handleDeviceChange(e.target.value)}
+                  >
+                    <option value="">디바이스를 선택하세요</option>
+                    {getDeviceOptions().map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}{option.extra}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <small className="form-help">
+                  [ID] 디바이스명 (타입) 형식으로 표시됩니다
+                </small>
+              </div>
+            </div>
+
+            {formData.selected_device_id && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">데이터포인트 선택 *</label>
+                  <select
+                    className="form-select"
+                    value={formData.target_id}
+                    onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
+                  >
+                    <option value="">데이터포인트를 선택하세요</option>
+                    {getDataPointOptions().map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}{option.extra}{option.address}
+                      </option>
+                    ))}
+                  </select>
+                  <small className="form-help">
+                    {getSelectedDeviceName()}의 데이터포인트들 (ID 순 정렬)
+                  </small>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 디바이스 직접 선택 시 */}
+        {formData.target_type === 'device' && (
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">디바이스 선택 *</label>
+              {loadingTargetData ? (
+                <div className="form-input loading-input">
+                  <i className="fas fa-spinner fa-spin"></i> 로딩 중...
+                </div>
+              ) : (
+                <select
+                  className="form-select"
+                  value={formData.target_id}
+                  onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
+                >
+                  <option value="">디바이스를 선택하세요</option>
+                  {getDeviceOptions().map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}{option.extra}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <small className="form-help">
+                [ID] 디바이스명 (타입) 형식으로 표시됩니다
+              </small>
+            </div>
+          </div>
+        )}
+
+        {/* 가상포인트 선택 시 */}
+        {formData.target_type === 'virtual_point' && (
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">가상포인트 선택 *</label>
+              <div className="form-input disabled-input">
+                가상포인트 API 구현 필요
+              </div>
+              <small className="form-help">
+                가상포인트 관리 기능은 추후 구현 예정입니다
+              </small>
+            </div>
+          </div>
+        )}
+
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">타겟 그룹</label>
+            <input
+              type="text"
+              className="form-input"
+              value={formData.target_group}
+              onChange={(e) => setFormData(prev => ({ ...prev, target_group: e.target.value }))}
+              placeholder="타겟 그룹 (선택사항)"
+            />
+            <small className="form-help">
+              관련 타겟들을 그룹으로 묶어 관리할 수 있습니다
+            </small>
+          </div>
+        </div>
+      </div>
+    );
+  };
   // 초기 데이터 로딩
   useEffect(() => {
     loadAlarmRules();
+    loadTargetData();
   }, []);
+
+  // 타겟 타입 변경 시 타겟 ID 초기화
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, target_id: '' }));
+  }, [formData.target_type]);
+
+
+
+  // 디버깅을 위한 상태 로깅 개선
+  useEffect(() => {
+    console.log('Current dataPoints:', dataPoints, 'Length:', dataPoints.length);
+    console.log('Current devices:', devices, 'Length:', devices.length);
+    console.log('Loading target data:', loadingTargetData);
+    console.log('Target options for', formData.target_type, ':', getTargetOptions());
+  }, [dataPoints, devices, loadingTargetData, formData.target_type]);
+
 
   const loadAlarmRules = async () => {
     try {
@@ -120,12 +351,73 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }
   };
 
+  // 타겟 데이터 로딩 (데이터포인트, 디바이스 목록)
+  // API 응답 구조에 맞는 데이터 처리 수정
+
+  const loadTargetData = async () => {
+    try {
+      setLoadingTargetData(true);
+      
+      const [dataPointsResponse, devicesResponse] = await Promise.all([
+        fetch('/api/data/points'),
+        fetch('/api/devices')
+      ]);
+      
+      if (dataPointsResponse.ok) {
+        const dataPointsData = await dataPointsResponse.json();
+        console.log('로드된 데이터포인트:', dataPointsData);
+        
+        // API 응답 구조에 맞게 items 배열 추출
+        if (dataPointsData.success && dataPointsData.data && Array.isArray(dataPointsData.data.items)) {
+          setDataPoints(dataPointsData.data.items);
+        } else if (dataPointsData.items && Array.isArray(dataPointsData.items)) {
+          setDataPoints(dataPointsData.items);
+        } else {
+          console.warn('예상치 못한 데이터포인트 응답 구조:', dataPointsData);
+          setDataPoints([]);
+        }
+      } else {
+        console.error('데이터포인트 로딩 실패:', dataPointsResponse.status);
+        setDataPoints([]);
+      }
+      
+      if (devicesResponse.ok) {
+        const devicesData = await devicesResponse.json();
+        console.log('로드된 디바이스:', devicesData);
+        
+        // API 응답 구조에 맞게 items 배열 추출
+        if (devicesData.success && devicesData.data && Array.isArray(devicesData.data.items)) {
+          setDevices(devicesData.data.items);
+        } else if (devicesData.items && Array.isArray(devicesData.items)) {
+          setDevices(devicesData.items);
+        } else {
+          console.warn('예상치 못한 디바이스 응답 구조:', devicesData);
+          setDevices([]);
+        }
+      } else {
+        console.error('디바이스 로딩 실패:', devicesResponse.status);
+        setDevices([]);
+      }
+    } catch (error) {
+      console.error('타겟 데이터 로딩 실패:', error);
+      setDataPoints([]);
+      setDevices([]);
+    } finally {
+      setLoadingTargetData(false);
+    }
+  };
+
+  // 디바이스 이름을 매핑하는 함수 추가
+  const getDeviceName = (deviceId: number) => {
+    const device = devices.find(d => d.id === deviceId);
+    return device ? device.name : `Device #${deviceId}`;
+  };
+
   // 새 알람 규칙 생성
   const handleCreateRule = async () => {
     try {
       setLoading(true);
       
-      // 업데이트된 백엔드 스키마에 맞는 데이터 구성
       const createData: AlarmRuleCreateData = {
         name: formData.name,
         description: formData.description,
@@ -177,12 +469,12 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         created_by_template: formData.created_by_template,
         last_template_update: formData.last_template_update || undefined,
         
-        // 에스컬레이션 관련 (새로 추가)
+        // 에스컬레이션 관련
         escalation_enabled: formData.escalation_enabled,
         escalation_max_level: formData.escalation_max_level,
         escalation_rules: formData.escalation_rules,
         
-        // 카테고리 및 태그 (새로 추가)
+        // 카테고리 및 태그
         category: formData.category || undefined,
         tags: formData.tags.length > 0 ? formData.tags : undefined
       };
@@ -232,9 +524,11 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }
   };
 
-  // 알람 규칙 활성화/비활성화 토글
+  // 알람 규칙 활성화/비활성화 토글 (DB 업데이트 포함)
   const handleToggleRule = async (ruleId: number, currentStatus: boolean) => {
     try {
+      setLoading(true);
+      
       const response = await AlarmApiService.updateAlarmRule(ruleId, {
         is_enabled: !currentStatus
       });
@@ -247,6 +541,8 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     } catch (error) {
       console.error('상태 변경 실패:', error);
       alert(error instanceof Error ? error.message : '상태 변경에 실패했습니다.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -443,7 +739,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }
   };
 
-  // 필터링된 알람 규칙 (업데이트된 필드명 사용)
+  // 필터링된 알람 규칙
   const filteredRules = alarmRules.filter(rule => {
     if (filters.search && !rule.name.toLowerCase().includes(filters.search.toLowerCase())) {
       return false;
@@ -468,7 +764,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     return true;
   });
 
-  // 타겟 표시 함수 (업데이트된 버전)
+  // 타겟 표시 함수 (개선됨)
   const getTargetDisplay = (rule: AlarmRule) => {
     if (rule.target_display) {
       return rule.target_display;
@@ -486,7 +782,39 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }
   };
 
-  // 조건 표시 함수 (업데이트된 버전)
+  // 타겟 ID 표시를 위한 함수 (개선됨)
+  const getTargetIdDisplay = (targetType: string, targetId: string) => {
+    if (!targetId) return '';
+    
+    const id = parseInt(targetId);
+    
+    switch (targetType) {
+      case 'data_point':
+        const dataPoint = dataPoints.find(dp => dp.id === id);
+        if (dataPoint) {
+          const device = devices.find(d => d.id === dataPoint.device_id);
+          const deviceName = device ? device.name : `Device #${dataPoint.device_id}`;
+          return `[${id}] ${dataPoint.name} (${deviceName})`;
+        }
+        return `[${id}] 데이터포인트`;
+      
+      case 'device':
+        const device = devices.find(dev => dev.id === id);
+        if (device) {
+          return `[${id}] ${device.name} (${device.device_type || 'Unknown'})`;
+        }
+        return `[${id}] 디바이스`;
+      
+      case 'virtual_point':
+        return `[${id}] 가상포인트`;
+      
+      default:
+        return targetId;
+    }
+  };
+
+
+  // 조건 표시 함수 (기존 유지)
   const getConditionDisplay = (rule: AlarmRule) => {
     if (rule.condition_display) {
       return rule.condition_display;
@@ -510,11 +838,10 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     return parts.length > 0 ? parts.join(' | ') : rule.alarm_type;
   };
 
-  // 단위 추론 함수 (업데이트됨)
+  // 단위 추론 함수
   const getUnit = (rule: AlarmRule) => {
     if (rule.unit) return rule.unit;
     
-    // 단위 추론 로직
     if (rule.name.toLowerCase().includes('temp') || rule.name.toLowerCase().includes('온도')) {
       return '°C';
     }
@@ -553,6 +880,43 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }));
   };
 
+  // 타겟 옵션 생성
+  const getTargetOptions = () => {
+    switch (formData.target_type) {
+      case 'data_point':
+        if (!Array.isArray(dataPoints)) {
+          console.warn('dataPoints is not an array:', dataPoints);
+          return [];
+        }
+        return dataPoints.map(dp => ({
+          value: dp.id.toString(),
+          label: `${dp.id}: ${dp.name} (${getDeviceName(dp.device_id)})`,
+          extra: dp.unit ? ` - ${dp.unit}` : (dp.data_type ? ` - ${dp.data_type}` : '')
+        }));
+      
+      case 'device':
+        if (!Array.isArray(devices)) {
+          console.warn('devices is not an array:', devices);
+          return [];
+        }
+        return devices.map(dev => ({
+          value: dev.id.toString(),
+          label: `${dev.id}: ${dev.name} (${dev.device_type || 'Unknown Type'})`,
+          extra: dev.site_name ? ` - ${dev.site_name}` : ''
+        }));
+      
+      case 'virtual_point':
+        return [{
+          value: '',
+          label: '가상포인트 API 구현 필요',
+          extra: ''
+        }];
+      
+      default:
+        return [];
+    }
+  };
+
   return (
     <div className="alarm-settings-container">
       {/* 헤더 */}
@@ -570,7 +934,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         </button>
       </div>
 
-      {/* 필터 - category, tag 추가 */}
+      {/* 필터 */}
       <div className="filters">
         <div className="filter-group flex-1">
           <label className="filter-label">검색</label>
@@ -683,7 +1047,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
               </button>
             </div>
           ) : viewType === 'table' ? (
-            // 테이블 뷰 - 업데이트됨
+            // 테이블 뷰
             <table className="alarm-table">
               <thead>
                 <tr>
@@ -749,6 +1113,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                           className="btn btn-secondary"
                           onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
                           title={rule.is_enabled ? '비활성화' : '활성화'}
+                          disabled={loading}
                         >
                           <i className={`fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
                         </button>
@@ -773,7 +1138,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
               </tbody>
             </table>
           ) : (
-            // 카드 뷰 - 업데이트됨
+            // 카드 뷰
             filteredRules.map(rule => (
               <div key={rule.id} className="alarm-item card-item">
                 {/* 카드 헤더 */}
@@ -825,7 +1190,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                           <span className="condition-value">{rule.low_low_limit}{getUnit(rule)}</span>
                         </span>
                       )}
-                      {rule.deadband && (
+                      {rule.deadband !== undefined && rule.deadband !== null && (
                         <span className="condition-item">
                           <span className="condition-label">DB</span>
                           <span className="condition-value">{rule.deadband}{getUnit(rule)}</span>
@@ -866,6 +1231,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                       className="btn btn-secondary btn-sm"
                       onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
                       title={rule.is_enabled ? '비활성화' : '활성화'}
+                      disabled={loading}
                     >
                       <i className={`fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
                     </button>
@@ -891,7 +1257,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         </div>
       )}
 
-      {/* 새 알람 규칙 생성 모달 - 업데이트됨 */}
+      {/* 새 알람 규칙 생성 모달 - 개선된 타겟 선택 */}
       {showCreateModal && (
         <div className="modal-overlay">
           <div className="modal">
@@ -953,14 +1319,30 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                   </div>
                   
                   <div className="form-group">
-                    <label className="form-label">타겟 ID *</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={formData.target_id}
-                      onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
-                      placeholder="타겟 ID를 입력하세요"
-                    />
+                    <label className="form-label">타겟 선택 *</label>
+                    {loadingTargetData ? (
+                      <div className="form-input loading-input">
+                        <i className="fas fa-spinner fa-spin"></i> 로딩 중...
+                      </div>
+                    ) : (
+                      <select
+                        className="form-select"
+                        value={formData.target_id}
+                        onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
+                      >
+                        <option value="">타겟을 선택하세요</option>
+                        {getTargetOptions().map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}{option.extra}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <small className="form-help">
+                      {formData.target_type === 'data_point' && 'ID:데이터포인트명 (디바이스명) 형식으로 표시됩니다'}
+                      {formData.target_type === 'device' && 'ID:디바이스명 (타입) 형식으로 표시됩니다'}
+                      {formData.target_type === 'virtual_point' && '가상포인트를 선택하세요'}
+                    </small>
                   </div>
                 </div>
 
@@ -1109,8 +1491,10 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                           className="form-input"
                           value={formData.deadband}
                           onChange={(e) => setFormData(prev => ({ ...prev, deadband: e.target.value }))}
-                          placeholder="데드밴드 값"
+                          placeholder="데드밴드 값 (0은 비활성화)"
+                          min="0"
                         />
+                        <small className="form-help">알람 chattering 방지용 데드밴드 (0 = 비활성화)</small>
                       </div>
                       
                       <div className="form-group">
@@ -1265,9 +1649,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
               <button
                 className="btn btn-primary"
                 onClick={handleCreateRule}
-                disabled={!formData.name || !formData.target_id}
+                disabled={!formData.name || !formData.target_id || loading}
               >
-                <i className="fas fa-plus"></i>
+                {loading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-plus"></i>}
                 생성
               </button>
             </div>
@@ -1275,7 +1659,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         </div>
       )}
 
-      {/* 알람 규칙 수정 모달 - 업데이트됨 */}
+      {/* 알람 규칙 수정 모달 - 개선된 타겟 선택 */}
       {showEditModal && selectedRule && (
         <div className="modal-overlay">
           <div className="modal">
@@ -1303,12 +1687,8 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     <span>#{selectedRule.id}</span>
                   </div>
                   <div className="readonly-item">
-                    <label>타겟 타입</label>
-                    <span>{selectedRule.target_type}</span>
-                  </div>
-                  <div className="readonly-item">
-                    <label>타겟 ID</label>
-                    <span>#{selectedRule.target_id}</span>
+                    <label>현재 타겟</label>
+                    <span>{getTargetIdDisplay(selectedRule.target_type, selectedRule.target_id?.toString() || '')}</span>
                   </div>
                   <div className="readonly-item">
                     <label>알람 타입</label>
@@ -1371,14 +1751,25 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     </div>
                     
                     <div className="form-group">
-                      <label className="form-label">타겟 ID</label>
-                      <input
-                        type="number"
-                        className="form-input"
-                        value={formData.target_id}
-                        onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
-                        placeholder="타겟 ID를 입력하세요"
-                      />
+                      <label className="form-label">타겟 선택</label>
+                      {loadingTargetData ? (
+                        <div className="form-input loading-input">
+                          <i className="fas fa-spinner fa-spin"></i> 로딩 중...
+                        </div>
+                      ) : (
+                        <select
+                          className="form-select"
+                          value={formData.target_id}
+                          onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
+                        >
+                          <option value="">타겟을 선택하세요</option>
+                          {getTargetOptions().map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}{option.extra}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
 
@@ -1468,6 +1859,21 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                         />
                       </div>
                     </div>
+
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label className="form-label">데드밴드</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="form-input"
+                          value={formData.deadband}
+                          onChange={(e) => setFormData(prev => ({ ...prev, deadband: e.target.value }))}
+                          min="0"
+                        />
+                        <small className="form-help">0 = 데드밴드 비활성화</small>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1535,8 +1941,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
               <button
                 className="btn btn-primary"
                 onClick={handleUpdateRule}
+                disabled={loading}
               >
-                <i className="fas fa-save"></i>
+                {loading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-save"></i>}
                 수정
               </button>
             </div>
