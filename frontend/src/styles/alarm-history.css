@@ -1,5 +1,5 @@
 /* ============================================================================
-   alarm-history.css - PulseOne 디자인 시스템 기반 알람 이력 페이지 (2열 필터 완성본)
+   alarm-history.css - PulseOne 디자인 시스템 기반 알람 이력 페이지 (가로폭 정렬 수정본)
    ============================================================================ */
 
 /* 🔥 메인 컨테이너 - 다른 페이지와 동일한 구조 */
@@ -9,6 +9,12 @@
   background: var(--neutral-50);
   min-height: calc(100vh - var(--topbar-height));
   animation: fadeIn 0.3s ease-out;
+  padding: 0;
+}
+
+/* 🔥 공통 컨테이너 클래스 - 모든 섹션에 동일한 여백 적용 */
+.content-section {
+  margin: 0 var(--space-6) var(--space-6) var(--space-6);
 }
 
 /* 🔥 페이지 헤더 - 기존 PulseOne 스타일 완전 준수 */
@@ -51,9 +57,8 @@
 /* 🔥 통계 요약 패널 - 가로 1열 배치 */
 .summary-panel {
   display: grid;
-  grid-template-columns: repeat(5, 1fr); /* 5개 카드를 가로로 배치 */
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-4);
-  margin: 0 var(--space-6) var(--space-6) var(--space-6);
 }
 
 .summary-card {
@@ -138,7 +143,6 @@
   border: 1px solid var(--error-200);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-6);
-  margin: 0 var(--space-6) var(--space-6) var(--space-6);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -173,8 +177,7 @@
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--neutral-200);
   padding: var(--space-4);
-  margin: 0 var(--space-6) var(--space-6) var(--space-6);
-  display: flex; /* grid 대신 flex 사용 */
+  display: flex;
   gap: var(--space-3);
   align-items: end;
 }
@@ -221,7 +224,6 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--neutral-200);
-  margin: 0 var(--space-6) var(--space-6) var(--space-6);
 }
 
 .result-info-left {
@@ -249,25 +251,25 @@
 }
 
 .filter-group label {
-  font-size: var(--text-xs); /* 더 작게 */
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--neutral-700);
-  margin-bottom: var(--space-1); /* 간격 줄임 */
+  margin-bottom: var(--space-1);
 }
 
 .date-range {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  gap: var(--space-2); /* 간격 줄임 */
+  gap: var(--space-2);
   align-items: center;
 }
 
 .date-range input {
-  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-md);
   background: white;
-  font-size: var(--text-xs); /* 글씨 크기 줄임 */
+  font-size: var(--text-xs);
   transition: all 0.2s ease;
   font-family: var(--font-family-sans);
   min-width: 0;
@@ -276,16 +278,16 @@
 .date-range span {
   color: var(--neutral-500);
   font-weight: 500;
-  font-size: var(--text-xs); /* 글씨 크기 줄임 */
+  font-size: var(--text-xs);
 }
 
 .filter-group select,
 .filter-group input {
-  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-md);
   background: white;
-  font-size: var(--text-xs); /* 글씨 크기 줄임 */
+  font-size: var(--text-xs);
   transition: all 0.2s ease;
   font-family: var(--font-family-sans);
 }
@@ -295,22 +297,22 @@
 .date-range input:focus {
   outline: none;
   border-color: var(--primary-500);
-  box-shadow: 0 0 0 2px var(--primary-100); /* 포커스 링 줄임 */
+  box-shadow: 0 0 0 2px var(--primary-100);
 }
 
 /* 🔥 검색 및 뷰 컨트롤 영역 - 컴팩트하게 */
 .search-group {
   display: flex;
-  gap: var(--space-2); /* 간격 줄임 */
+  gap: var(--space-2);
   width: 100%;
 }
 
 .search-group input {
   flex: 1;
-  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-md);
-  font-size: var(--text-xs); /* 글씨 크기 줄임 */
+  font-size: var(--text-xs);
   transition: all 0.2s ease;
 }
 
@@ -324,9 +326,9 @@
   background: var(--primary-500);
   color: white;
   border: none;
-  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  font-size: var(--text-xs); /* 글씨 크기 줄임 */
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -351,14 +353,14 @@
 .view-btn {
   display: flex;
   align-items: center;
-  gap: var(--space-1); /* 간격 줄임 */
-  padding: var(--space-2) var(--space-3); /* 패딩 줄임 */
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   background: white;
   border: none;
   border-right: 1px solid var(--neutral-300);
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: var(--text-xs); /* 글씨 크기 줄임 */
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--neutral-600);
   white-space: nowrap;
@@ -387,7 +389,6 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--neutral-200);
-  margin: 0 var(--space-6) var(--space-6) var(--space-6);
 }
 
 .result-count {
@@ -419,7 +420,6 @@
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--neutral-200);
   text-align: center;
-  margin: 0 var(--space-6);
 }
 
 .loading-spinner {
@@ -450,7 +450,6 @@
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--neutral-200);
   text-align: center;
-  margin: 0 var(--space-6);
 }
 
 .empty-icon {
@@ -482,7 +481,6 @@
   overflow: hidden;
   max-height: 600px;
   overflow-y: auto;
-  margin: 0 var(--space-6);
 }
 
 .history-table {
@@ -645,7 +643,6 @@
   max-height: 600px;
   overflow-y: auto;
   padding: var(--space-6);
-  margin: 0 var(--space-6);
 }
 
 .timeline-container {
@@ -1034,16 +1031,18 @@
     padding: var(--space-4);
   }
   
+  .content-section {
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+  }
+  
   .summary-panel {
     grid-template-columns: repeat(2, 1fr);
-    margin: 0 var(--space-4) var(--space-6) var(--space-4);
   }
   
   .filter-panel {
     grid-template-columns: 1fr 1fr; /* 2행으로 변경 */
     grid-template-rows: auto auto auto;
-    margin-left: var(--space-4);
-    margin-right: var(--space-4);
   }
   
   .filter-group:first-child {
@@ -1062,18 +1061,6 @@
     flex-direction: column;
     gap: var(--space-2);
     text-align: center;
-    margin-left: var(--space-4);
-    margin-right: var(--space-4);
-  }
-  
-  .history-table-container,
-  .timeline-view,
-  .loading-state,
-  .empty-state,
-  .error-alert {
-    margin-left: var(--space-4);
-    margin-right: var(--space-4);
-    overflow-x: auto;
   }
   
   .timeline-header {
@@ -1150,14 +1137,7 @@
     padding: var(--space-3);
   }
   
-  .summary-panel,
-  .filter-panel,
-  .result-info,
-  .history-table-container,
-  .timeline-view,
-  .loading-state,
-  .empty-state,
-  .error-alert {
+  .content-section {
     margin-left: var(--space-3);
     margin-right: var(--space-3);
   }
