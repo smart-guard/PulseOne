@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/endpoints.ts
-// API 엔드포인트 상수 정의 - 완전한 알람 API 백엔드 호환 버전
+// API 엔드포인트 상수 정의 - 완전한 알람 API 백엔드 호환 버전 (category, tags 지원)
 // ============================================================================
 
 // React 환경에서 process.env 안전하게 접근
@@ -91,7 +91,7 @@ export const ENDPOINTS = {
   REALTIME_STATS: `${API_BASE}/api/realtime/stats`,
   
   // ==========================================================================
-  // 🚨 완전한 알람 관리 API - 백엔드 라우트와 정확히 일치
+  // 🚨 완전한 알람 관리 API - 백엔드 라우트와 정확히 일치 (category, tags 지원)
   // ==========================================================================
   
   // ---- 알람 발생 (Alarm Occurrences) ----
@@ -102,11 +102,19 @@ export const ENDPOINTS = {
   ALARMS_OCCURRENCE_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`,
   ALARMS_HISTORY: `${API_BASE}/api/alarms/history`,
   
+  // ---- 카테고리/태그별 알람 발생 (새로 추가) ----
+  ALARMS_OCCURRENCES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/occurrences/category/${category}`,
+  ALARMS_OCCURRENCES_TAG: (tag: string) => `${API_BASE}/api/alarms/occurrences/tag/${tag}`,
+  
   // ---- 알람 규칙 (Alarm Rules) ----
   ALARM_RULES: `${API_BASE}/api/alarms/rules`,
   ALARM_RULE_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}`,
   ALARM_RULES_STATISTICS: `${API_BASE}/api/alarms/rules/statistics`,
   ALARM_RULE_SETTINGS: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/settings`,
+  
+  // ---- 카테고리/태그별 알람 규칙 (새로 추가) ----
+  ALARM_RULES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/rules/category/${category}`,
+  ALARM_RULES_TAG: (tag: string) => `${API_BASE}/api/alarms/rules/tag/${tag}`,
   
   // ---- 알람 템플릿 (Alarm Templates) ----
   ALARM_TEMPLATES: `${API_BASE}/api/alarms/templates`,
@@ -119,6 +127,9 @@ export const ENDPOINTS = {
   ALARM_TEMPLATES_STATISTICS: `${API_BASE}/api/alarms/templates/statistics`,
   ALARM_TEMPLATES_SEARCH: `${API_BASE}/api/alarms/templates/search`,
   ALARM_TEMPLATES_MOST_USED: `${API_BASE}/api/alarms/templates/most-used`,
+  
+  // ---- 태그별 알람 템플릿 (새로 추가) ----
+  ALARM_TEMPLATES_TAG: (tag: string) => `${API_BASE}/api/alarms/templates/tag/${tag}`,
   
   // ---- 특화 알람 엔드포인트들 ----
   ALARM_STATISTICS: `${API_BASE}/api/alarms/statistics`,
@@ -302,7 +313,7 @@ export const API_GROUPS = {
     STATS: ENDPOINTS.REALTIME_STATS
   },
   
-  // 🚨 완전히 업데이트된 알람 API 그룹
+  // 🚨 완전히 업데이트된 알람 API 그룹 (category, tags 지원)
   ALARMS: {
     // 알람 발생 관련
     ACTIVE: ENDPOINTS.ALARMS_ACTIVE,
@@ -315,11 +326,19 @@ export const API_GROUPS = {
     RECENT: ENDPOINTS.ALARM_RECENT,
     DEVICE_ALARMS: ENDPOINTS.ALARM_DEVICE,
     
+    // 카테고리/태그별 알람 발생 (새로 추가)
+    OCCURRENCES_BY_CATEGORY: ENDPOINTS.ALARMS_OCCURRENCES_CATEGORY,
+    OCCURRENCES_BY_TAG: ENDPOINTS.ALARMS_OCCURRENCES_TAG,
+    
     // 알람 규칙 관련
     RULES: ENDPOINTS.ALARM_RULES,
     RULE_DETAIL: ENDPOINTS.ALARM_RULE_BY_ID,
     RULES_STATISTICS: ENDPOINTS.ALARM_RULES_STATISTICS,
     RULE_SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
+    
+    // 카테고리/태그별 알람 규칙 (새로 추가)
+    RULES_BY_CATEGORY: ENDPOINTS.ALARM_RULES_CATEGORY,
+    RULES_BY_TAG: ENDPOINTS.ALARM_RULES_TAG,
     
     // 알람 템플릿 관련
     TEMPLATES: ENDPOINTS.ALARM_TEMPLATES,
@@ -332,6 +351,9 @@ export const API_GROUPS = {
     TEMPLATES_STATISTICS: ENDPOINTS.ALARM_TEMPLATES_STATISTICS,
     TEMPLATES_SEARCH: ENDPOINTS.ALARM_TEMPLATES_SEARCH,
     TEMPLATES_MOST_USED: ENDPOINTS.ALARM_TEMPLATES_MOST_USED,
+    
+    // 태그별 알람 템플릿 (새로 추가)
+    TEMPLATES_BY_TAG: ENDPOINTS.ALARM_TEMPLATES_TAG,
     
     // 통계 및 기타
     STATISTICS: ENDPOINTS.ALARM_STATISTICS,
@@ -423,7 +445,7 @@ export function buildSortedUrl(endpoint: string, params: {
 }
 
 /**
- * 알람 관련 검색 URL 빌더
+ * 알람 관련 검색 URL 빌더 - category, tag 지원
  */
 export function buildAlarmSearchUrl(baseEndpoint: string, params: {
   search?: string;
@@ -434,19 +456,54 @@ export function buildAlarmSearchUrl(baseEndpoint: string, params: {
   date_to?: string;
   page?: number;
   limit?: number;
+  category?: string;  // 새로 추가
+  tag?: string;       // 새로 추가
 }): string {
   return buildUrlWithParams(baseEndpoint, params);
 }
 
 /**
- * 템플릿 적용 URL 빌더
+ * 템플릿 적용 URL 빌더 - target_type 지원
  */
 export function buildTemplateApplyUrl(templateId: number | string, params: {
-  data_point_ids: number[];
+  target_ids: number[];     // data_point_ids에서 변경
+  target_type?: string;     // 새로 추가
   custom_configs?: Record<string, any>;
   rule_group_name?: string;
 }): string {
   return ENDPOINTS.ALARM_TEMPLATE_APPLY(templateId);
+}
+
+/**
+ * 카테고리별 알람 URL 빌더 (새로 추가)
+ */
+export function buildAlarmCategoryUrl(category: string, type: 'rules' | 'occurrences' | 'templates'): string {
+  switch (type) {
+    case 'rules':
+      return ENDPOINTS.ALARM_RULES_CATEGORY(category);
+    case 'occurrences':
+      return ENDPOINTS.ALARMS_OCCURRENCES_CATEGORY(category);
+    case 'templates':
+      return ENDPOINTS.ALARM_TEMPLATES_CATEGORY(category);
+    default:
+      throw new Error(`Unknown alarm type: ${type}`);
+  }
+}
+
+/**
+ * 태그별 알람 URL 빌더 (새로 추가)
+ */
+export function buildAlarmTagUrl(tag: string, type: 'rules' | 'occurrences' | 'templates'): string {
+  switch (type) {
+    case 'rules':
+      return ENDPOINTS.ALARM_RULES_TAG(tag);
+    case 'occurrences':
+      return ENDPOINTS.ALARMS_OCCURRENCES_TAG(tag);
+    case 'templates':
+      return ENDPOINTS.ALARM_TEMPLATES_TAG(tag);
+    default:
+      throw new Error(`Unknown alarm type: ${type}`);
+  }
 }
 
 /**
@@ -491,6 +548,28 @@ export function getAllEndpoints(): string[] {
  */
 export function getAlarmEndpoints(): Record<string, string | Function> {
   return API_GROUPS.ALARMS;
+}
+
+/**
+ * 카테고리별 엔드포인트 목록 (새로 추가)
+ */
+export function getCategoryEndpoints(): Record<string, Function> {
+  return {
+    ALARM_RULES: ENDPOINTS.ALARM_RULES_CATEGORY,
+    ALARM_OCCURRENCES: ENDPOINTS.ALARMS_OCCURRENCES_CATEGORY,
+    ALARM_TEMPLATES: ENDPOINTS.ALARM_TEMPLATES_CATEGORY
+  };
+}
+
+/**
+ * 태그별 엔드포인트 목록 (새로 추가)
+ */
+export function getTagEndpoints(): Record<string, Function> {
+  return {
+    ALARM_RULES: ENDPOINTS.ALARM_RULES_TAG,
+    ALARM_OCCURRENCES: ENDPOINTS.ALARMS_OCCURRENCES_TAG,
+    ALARM_TEMPLATES: ENDPOINTS.ALARM_TEMPLATES_TAG
+  };
 }
 
 // 환경별 설정
@@ -572,6 +651,12 @@ export const ERROR_CODES = {
   SETTINGS_UPDATE_ERROR: 'SETTINGS_UPDATE_ERROR',
   ACTIVE_ALARMS_ERROR: 'ACTIVE_ALARMS_ERROR',
   ALARM_STATS_ERROR: 'ALARM_STATS_ERROR',
+  CATEGORY_ALARM_RULES_ERROR: 'CATEGORY_ALARM_RULES_ERROR',        // 새로 추가
+  TAG_ALARM_RULES_ERROR: 'TAG_ALARM_RULES_ERROR',                  // 새로 추가
+  CATEGORY_ALARM_OCCURRENCES_ERROR: 'CATEGORY_ALARM_OCCURRENCES_ERROR', // 새로 추가
+  TAG_ALARM_OCCURRENCES_ERROR: 'TAG_ALARM_OCCURRENCES_ERROR',      // 새로 추가
+  CATEGORY_TEMPLATES_ERROR: 'CATEGORY_TEMPLATES_ERROR',            // 새로 추가
+  TAG_TEMPLATES_ERROR: 'TAG_TEMPLATES_ERROR',                      // 새로 추가
   TEST_ERROR: 'TEST_ERROR',
   
   // 서버 관련
@@ -579,19 +664,46 @@ export const ERROR_CODES = {
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE'
 } as const;
 
-// 알람 관련 상수들
+// 알람 관련 상수들 (카테고리, 태그 추가)
 export const ALARM_CONSTANTS = {
-  SEVERITIES: ['critical', 'major', 'minor', 'warning', 'info'] as const,
+  SEVERITIES: ['critical', 'high', 'medium', 'low', 'info'] as const,
   STATES: ['active', 'acknowledged', 'cleared'] as const,
-  CONDITION_TYPES: ['analog', 'digital', 'script', 'time_based', 'calculation'] as const,
+  ALARM_TYPES: ['analog', 'digital', 'script'] as const,  // condition_types에서 변경
+  TARGET_TYPES: ['device', 'data_point', 'virtual_point'] as const,  // 새로 추가
   TEMPLATE_CATEGORIES: ['general', 'temperature', 'pressure', 'flow', 'level', 'vibration', 'electrical', 'safety'] as const,
-  DATA_TYPES: ['number', 'boolean', 'string', 'object'] as const
+  DATA_TYPES: ['number', 'boolean', 'string', 'object'] as const,
+  
+  // 새로 추가된 상수들
+  DEFAULT_CATEGORIES: [
+    'temperature',   // 온도
+    'pressure',      // 압력
+    'flow',          // 유량
+    'level',         // 레벨
+    'vibration',     // 진동
+    'electrical',    // 전기
+    'safety',        // 안전
+    'general'        // 일반
+  ] as const,
+  
+  COMMON_TAGS: [
+    'critical',      // 중요
+    'maintenance',   // 유지보수
+    'production',    // 생산
+    'quality',       // 품질
+    'energy',        // 에너지
+    'efficiency',    // 효율성
+    'compliance',    // 규정준수
+    'monitoring'     // 모니터링
+  ] as const
 } as const;
 
 export type AlarmSeverity = typeof ALARM_CONSTANTS.SEVERITIES[number];
 export type AlarmState = typeof ALARM_CONSTANTS.STATES[number];
-export type AlarmConditionType = typeof ALARM_CONSTANTS.CONDITION_TYPES[number];
+export type AlarmType = typeof ALARM_CONSTANTS.ALARM_TYPES[number];  // 타입명 변경
+export type AlarmTargetType = typeof ALARM_CONSTANTS.TARGET_TYPES[number];  // 새로 추가
 export type AlarmTemplateCategory = typeof ALARM_CONSTANTS.TEMPLATE_CATEGORIES[number];
 export type AlarmDataType = typeof ALARM_CONSTANTS.DATA_TYPES[number];
+export type AlarmDefaultCategory = typeof ALARM_CONSTANTS.DEFAULT_CATEGORIES[number];  // 새로 추가
+export type AlarmCommonTag = typeof ALARM_CONSTANTS.COMMON_TAGS[number];  // 새로 추가
 
 export default ENDPOINTS;
