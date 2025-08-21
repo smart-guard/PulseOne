@@ -6,14 +6,16 @@ import {
   CurrentValuesResponse,
   ApiResponse
 } from '../api/services/realtimeApi';
-import { 
-  DeviceApiService, 
-  Device 
+import {
+  DeviceApiService,
+  Device
 } from '../api/services/deviceApi';
+import { Pagination } from '../components/common/Pagination';
+import { useDataExplorerPagination } from '../hooks/usePagination';
 import '../styles/data-explorer.css';
 
 // ============================================================================
-// 🔥 완성된 PulseOne 실시간 데이터 탐색기 - 반응형 버전
+// 기존 인터페이스 그대로 유지
 // ============================================================================
 
 interface TreeNode {
@@ -49,9 +51,8 @@ interface FilterState {
 
 const DataExplorer: React.FC = () => {
   // ========================================================================
-  // 상태 관리 (기존과 동일)
+  // 기존 상태 관리 그대로 유지
   // ========================================================================
-  
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [selectedDataPoints, setSelectedDataPoints] = useState<RealtimeValue[]>([]);
@@ -71,14 +72,15 @@ const DataExplorer: React.FC = () => {
   const [refreshInterval, setRefreshInterval] = useState(3);
   const [showChart, setShowChart] = useState(false);
 
-  // ========================================================================
-  // 🔥 API 서비스 연동 (기존과 동일)
-  // ========================================================================
+  // 페이징 훅 추가
+  const pagination = useDataExplorerPagination(0);
 
+  // ========================================================================
+  // 기존 API 서비스 연동 함수들 그대로 유지
+  // ========================================================================
   const loadDevices = useCallback(async () => {
     try {
       console.log('🔄 데이터베이스에서 디바이스 목록 로드 시작...');
-      
       const response: ApiResponse<any> = await DeviceApiService.getDevices({
         page: 1,
         limit: 1000,
@@ -98,7 +100,6 @@ const DataExplorer: React.FC = () => {
         
         setDevices(deviceList);
         console.log(`✅ 데이터베이스에서 ${deviceList.length}개 디바이스 로드 완료:`, deviceList);
-        
         return deviceList;
       } else {
         console.warn('⚠️ 디바이스 API 응답 이상:', response);
@@ -113,12 +114,9 @@ const DataExplorer: React.FC = () => {
   const loadRealtimeData = useCallback(async (deviceList?: DeviceInfo[]) => {
     try {
       console.log('🔄 Redis에서 실시간 데이터 로드 시작...');
-      
       let response;
-      
       if (deviceList && deviceList.length > 0) {
         const deviceIds = deviceList.map(d => d.device_id);
-        
         response = await RealtimeApiService.getCurrentValues({
           device_ids: deviceIds,
           quality_filter: 'all',
@@ -150,9 +148,7 @@ const DataExplorer: React.FC = () => {
   const loadDeviceData = useCallback(async (deviceId: string) => {
     try {
       console.log(`🔄 디바이스 ${deviceId} Redis 데이터 확인...`);
-      
       const response = await RealtimeApiService.getDeviceValues(deviceId);
-      
       if (response.success && response.data?.data_points) {
         const dataPoints: RealtimeValue[] = response.data.data_points;
         console.log(`✅ 디바이스 ${deviceId}: Redis에서 ${dataPoints.length}개 포인트 발견`);
@@ -183,7 +179,7 @@ const DataExplorer: React.FC = () => {
     const deviceNodesPromises = devices.map(async (device) => {
       let connectionStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
       let realDataCount = 0;
-
+      
       try {
         const deviceValues = await loadDeviceData(device.device_id);
         if (deviceValues.length > 0) {
@@ -237,22 +233,19 @@ const DataExplorer: React.FC = () => {
     
     const deviceId = deviceNode.id.replace('device-', '');
     console.log(`🔄 디바이스 ${deviceId} 자식 노드 로드...`);
-    
+
     try {
       const dataPoints = await loadDeviceData(deviceId);
-      
       if (dataPoints.length === 0) {
         console.log(`⚠️ 디바이스 ${deviceId}: Redis에 데이터 없음 - 트리 확장 안함`);
-        
         setTreeData(prev => updateTreeNode(prev, deviceNode.id, {
           isLoaded: true,
           isExpanded: false,
           childCount: 0
         }));
-        
         return;
       }
-      
+
       const pointNodes: TreeNode[] = dataPoints.map((point: any, index: number) => ({
         id: `${deviceNode.id}-point-${point.point_id}`,
         label: point.point_name,
@@ -271,10 +264,8 @@ const DataExplorer: React.FC = () => {
       }));
 
       console.log(`✅ 디바이스 ${deviceId} 자식 노드 ${pointNodes.length}개 로드 완료`);
-
     } catch (error) {
       console.error(`❌ 디바이스 ${deviceId} 자식 노드 로드 실패:`, error);
-      
       setTreeData(prev => updateTreeNode(prev, deviceNode.id, {
         children: [],
         isLoaded: true,
@@ -289,7 +280,7 @@ const DataExplorer: React.FC = () => {
     
     const device = selectedNode.deviceInfo;
     const connectionStatus = selectedNode.connectionStatus;
-    
+
     return (
       <div className="empty-state">
         <div style={{fontSize: '48px', marginBottom: '16px'}}>
@@ -327,26 +318,20 @@ const DataExplorer: React.FC = () => {
   const initializeData = useCallback(async () => {
     setIsLoading(true);
     setConnectionStatus('connecting');
-    
     try {
       console.log('🚀 데이터 초기화 시작...');
-      
       const realtimeDataPoints = await loadRealtimeData();
       const deviceList = await loadDevices();
       const treeStructure = await generateTreeData(deviceList);
       setTreeData(treeStructure);
-      
       setConnectionStatus('connected');
       setError(null);
-      
       console.log('✅ 데이터 초기화 완료');
       console.log(`📊 DB 디바이스: ${deviceList.length}개, Redis 실시간 포인트: ${realtimeDataPoints.length}개`);
-      
     } catch (error: any) {
       console.error('❌ 데이터 초기화 실패:', error);
       setError(`데이터 로드 실패: ${error.message}`);
       setConnectionStatus('disconnected');
-      
       setTreeData([{
         id: 'tenant-1',
         label: 'PulseOne Factory (연결 실패)',
@@ -356,16 +341,14 @@ const DataExplorer: React.FC = () => {
         isLoaded: true,
         children: []
       }]);
-      
     } finally {
       setIsLoading(false);
     }
   }, [loadRealtimeData, loadDevices, generateTreeData]);
 
   // ========================================================================
-  // 유틸리티 함수들 (기존과 동일)
+  // 유틸리티 함수들 그대로 유지
   // ========================================================================
-
   const updateTreeNode = (nodes: TreeNode[], nodeId: string, updates: Partial<TreeNode>): TreeNode[] => {
     return nodes.map(node => {
       if (node.id === nodeId) {
@@ -380,7 +363,6 @@ const DataExplorer: React.FC = () => {
 
   const findAllDataPoints = (nodes: TreeNode[]): RealtimeValue[] => {
     const dataPoints: RealtimeValue[] = [];
-    
     const traverse = (nodeArray: TreeNode[]) => {
       nodeArray.forEach(node => {
         if (node.type === 'datapoint' && node.dataPoint) {
@@ -391,64 +373,72 @@ const DataExplorer: React.FC = () => {
         }
       });
     };
-    
     traverse(nodes);
     return dataPoints;
   };
 
   // ========================================================================
-  // 🔥 필터링된 데이터 (기존과 동일)
+  // 필터링된 데이터 (기존 로직 유지)
   // ========================================================================
-
   const filteredDataPoints = useMemo(() => {
-    if (selectedNode && selectedNode.type === 'device' && 
-        (selectedNode.connectionStatus === 'disconnected' || selectedNode.childCount === 0)) {
+    if (selectedNode && selectedNode.type === 'device' &&
+      (selectedNode.connectionStatus === 'disconnected' || selectedNode.childCount === 0)) {
       console.log('🔍 필터링: 연결 안된 디바이스 선택됨 - 빈 배열 반환');
       return [];
     }
 
     let points = selectedDataPoints.length > 0 ? selectedDataPoints : realtimeData;
-    
     console.log('🔍 필터링 시작:', {
       selectedDataPoints: selectedDataPoints.length,
       realtimeData: realtimeData.length,
       sourcePick: selectedDataPoints.length > 0 ? 'selected' : 'realtime',
       initialPoints: points.length
     });
-    
+
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase();
-      points = points.filter((dp: RealtimeValue) => 
+      points = points.filter((dp: RealtimeValue) =>
         (dp.point_name && dp.point_name.toLowerCase().includes(searchTerm)) ||
         (dp.device_name && dp.device_name.toLowerCase().includes(searchTerm)) ||
         (dp.key && dp.key.toLowerCase().includes(searchTerm))
       );
       console.log(`🔍 검색 필터 "${filters.search}" 적용 후: ${points.length}개`);
     }
-    
+
     if (filters.dataType !== 'all') {
       points = points.filter((dp: RealtimeValue) => dp.data_type === filters.dataType);
       console.log(`🔍 데이터타입 필터 "${filters.dataType}" 적용 후: ${points.length}개`);
     }
-    
+
     if (filters.quality !== 'all') {
       points = points.filter((dp: RealtimeValue) => dp.quality === filters.quality);
       console.log(`🔍 품질 필터 "${filters.quality}" 적용 후: ${points.length}개`);
     }
-    
+
     if (filters.device !== 'all') {
       points = points.filter((dp: RealtimeValue) => dp.device_id === filters.device);
       console.log(`🔍 디바이스 필터 "${filters.device}" 적용 후: ${points.length}개`);
     }
-    
+
     console.log('✅ 필터링 완료:', points.length + '개');
     return points;
-  }, [selectedDataPoints, realtimeData, filters, selectedNode]); 
+  }, [selectedDataPoints, realtimeData, filters, selectedNode]);
+
+  // 페이징된 데이터 추가
+  const paginatedDataPoints = useMemo(() => {
+    const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
+    const endIndex = startIndex + pagination.pageSize;
+    return filteredDataPoints.slice(startIndex, endIndex);
+  }, [filteredDataPoints, pagination.currentPage, pagination.pageSize]);
+
+  // 필터링된 데이터가 변경되면 페이징 총 개수 업데이트
+  useEffect(() => {
+    pagination.updateTotalCount(filteredDataPoints.length);
+  }, [filteredDataPoints.length, pagination.updateTotalCount]);
 
   // ========================================================================
-  // 이벤트 핸들러들 (기존과 동일하지만 간소화)
+  // 기존 이벤트 핸들러들 그대로 유지
   // ========================================================================
-
   const handleDataPointSelect = useCallback((dataPoint: RealtimeValue) => {
     setSelectedDataPoints(prev => {
       const exists = prev.find((dp: RealtimeValue) => dp.key === dataPoint.key);
@@ -463,7 +453,6 @@ const DataExplorer: React.FC = () => {
   const handleRefresh = useCallback(() => {
     console.log('🔄 수동 새로고침 시작...');
     setLastRefresh(new Date());
-    
     if (devices.length > 0) {
       loadRealtimeData(devices);
     } else {
@@ -473,16 +462,15 @@ const DataExplorer: React.FC = () => {
 
   const handleExportData = useCallback(() => {
     console.log('📥 CSV 데이터 내보내기 시작...');
-    
     if (filteredDataPoints.length === 0) {
       console.warn('⚠️ 내보낼 데이터가 없습니다.');
       alert('내보낼 데이터가 없습니다.');
       return;
     }
-    
+
     const csvHeaders = [
       'Device Name (디바이스명)',
-      'Point Name (포인트명)', 
+      'Point Name (포인트명)',
       'Point ID (포인트 ID)',
       'Current Value (현재값)',
       'Unit (단위)',
@@ -490,7 +478,7 @@ const DataExplorer: React.FC = () => {
       'Quality (품질)',
       'Timestamp (시간)'
     ];
-    
+
     const csvRows = filteredDataPoints.map((dp) => {
       return [
         `"${dp.device_name || 'Unknown'}"`,
@@ -503,24 +491,20 @@ const DataExplorer: React.FC = () => {
         `"${dp.timestamp ? new Date(dp.timestamp).toLocaleString('ko-KR') : ''}"`
       ].join(',');
     });
-    
+
     const csvContent = '\uFEFF' + [csvHeaders.join(','), ...csvRows].join('\n');
-    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement('a');
     link.href = url;
     link.download = `pulseone_realtime_data_${new Date().toISOString().split('T')[0]}.csv`;
     link.style.display = 'none';
-    
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
     console.log(`✅ ${filteredDataPoints.length}개 데이터 CSV 내보내기 완료`);
-    
   }, [filteredDataPoints]);
 
   const clearSelection = useCallback(() => {
@@ -531,53 +515,46 @@ const DataExplorer: React.FC = () => {
 
   const handleNodeClick = useCallback((node: TreeNode) => {
     setSelectedNode(node);
-    
     if (node.type === 'datapoint' && node.dataPoint) {
       setSelectedDataPoints([node.dataPoint]);
-      
     } else if (node.type === 'device') {
       const deviceId = node.id.replace('device-', '');
-      
       if (node.connectionStatus === 'disconnected' || node.childCount === 0) {
         console.log(`⚠️ 디바이스 ${deviceId}: Redis 데이터 없음 - 강제 초기화`);
-        
         setSelectedDataPoints([]);
         setRealtimeData([]);
-        
         return;
       }
-      
+
       const existingDataPoints = findAllDataPoints([node]);
       if (existingDataPoints.length > 0) {
         setSelectedDataPoints(existingDataPoints);
       }
-      
+
       loadDeviceData(deviceId).then(dataPoints => {
         if (dataPoints.length > 0) {
           setSelectedDataPoints(dataPoints);
           setRealtimeData(dataPoints);
         }
       });
-      
+
       if (!node.isLoaded && node.childCount && node.childCount > 0) {
         loadDeviceChildren(node);
       } else {
-        setTreeData(prev => updateTreeNode(prev, node.id, { 
-          isExpanded: !node.isExpanded 
+        setTreeData(prev => updateTreeNode(prev, node.id, {
+          isExpanded: !node.isExpanded
         }));
       }
-      
     } else {
-      setTreeData(prev => updateTreeNode(prev, node.id, { 
-        isExpanded: !node.isExpanded 
+      setTreeData(prev => updateTreeNode(prev, node.id, {
+        isExpanded: !node.isExpanded
       }));
     }
   }, [findAllDataPoints, loadDeviceChildren, loadDeviceData]);
 
   // ========================================================================
-  // 초기 로딩 및 자동 새로고침
+  // 기존 초기 로딩 및 자동 새로고침
   // ========================================================================
-
   useEffect(() => {
     initializeData();
   }, [initializeData]);
@@ -586,11 +563,9 @@ const DataExplorer: React.FC = () => {
     if (!autoRefresh || refreshInterval <= 0) return;
 
     console.log(`🔄 자동 새로고침 설정: ${refreshInterval}초 간격`);
-    
     const interval = setInterval(() => {
       console.log('🔄 자동 새로고침 실행...');
       setLastRefresh(new Date());
-      
       if (devices.length > 0) {
         loadRealtimeData(devices);
       }
@@ -603,16 +578,15 @@ const DataExplorer: React.FC = () => {
   }, [autoRefresh, refreshInterval, devices, loadRealtimeData]);
 
   // ========================================================================
-  // 렌더링 헬퍼 함수들
+  // 기존 렌더링 헬퍼 함수들 그대로 유지
   // ========================================================================
-
   const renderTreeNode = (node: TreeNode): React.ReactNode => {
     const hasChildren = (node.children && node.children.length > 0) || (node.childCount && node.childCount > 0);
     const isExpanded = node.isExpanded && node.children;
-    
+
     return (
       <div key={node.id} className="tree-node">
-        <div 
+        <div
           className={`tree-node-content ${selectedNode?.id === node.id ? 'selected' : ''}`}
           onClick={() => handleNodeClick(node)}
         >
@@ -621,18 +595,15 @@ const DataExplorer: React.FC = () => {
               {isExpanded ? '▼' : '▶'}
             </span>
           )}
-          
           <span className="tree-node-icon">
             {node.type === 'tenant' && '🏢'}
             {node.type === 'site' && '🏭'}
             {node.type === 'device' && '📱'}
             {node.type === 'datapoint' && '📊'}
           </span>
-          
           <span className="tree-node-label">
             {node.label}
           </span>
-          
           {node.type === 'datapoint' && node.dataPoint && (
             <div className="data-point-preview">
               <span className={`data-value ${node.dataPoint.quality || 'unknown'}`}>
@@ -641,7 +612,6 @@ const DataExplorer: React.FC = () => {
               </span>
             </div>
           )}
-          
           {node.type === 'device' && node.connectionStatus && (
             <span className={`connection-badge ${node.connectionStatus}`}>
               {node.connectionStatus === 'connected' && '🟢'}
@@ -649,14 +619,12 @@ const DataExplorer: React.FC = () => {
               {node.connectionStatus === 'error' && '❌'}
             </span>
           )}
-          
           {!hasChildren && node.childCount && (
             <span className="child-count">
               {node.childCount}
             </span>
           )}
         </div>
-        
         {isExpanded && node.children && (
           <div className="tree-children">
             {node.children.map(child => renderTreeNode(child))}
@@ -667,9 +635,8 @@ const DataExplorer: React.FC = () => {
   };
 
   // ========================================================================
-  // 🔥 메인 렌더링 - CSS 클래스 기반으로 완전 수정
+  // 메인 렌더링 - 페이징만 추가
   // ========================================================================
-
   return (
     <div className="data-explorer-container">
       {/* 페이지 헤더 */}
@@ -724,7 +691,7 @@ const DataExplorer: React.FC = () => {
             )}
           </div>
           
-          <button 
+          <button
             onClick={handleRefresh}
             disabled={isLoading}
             className="btn btn-outline"
@@ -733,7 +700,7 @@ const DataExplorer: React.FC = () => {
             새로고침
           </button>
           
-          <button 
+          <button
             onClick={handleExportData}
             disabled={filteredDataPoints.length === 0}
             className="btn btn-primary"
@@ -751,7 +718,7 @@ const DataExplorer: React.FC = () => {
               <span>⚠️</span>
               <span>{error}</span>
             </div>
-            <button 
+            <button
               onClick={() => setError(null)}
               className="error-retry"
             >
@@ -763,7 +730,6 @@ const DataExplorer: React.FC = () => {
 
       {/* 메인 레이아웃 */}
       <div className="explorer-layout">
-        
         {/* 왼쪽: 트리 패널 */}
         <div className="tree-panel">
           <div className="tree-header">
@@ -806,7 +772,7 @@ const DataExplorer: React.FC = () => {
         <div className="details-panel">
           <div className="details-header">
             <h3>
-              📊 실시간 데이터 
+              📊 실시간 데이터
               {selectedNode && ` - ${selectedNode.label}`}
             </h3>
             <div className="details-controls">
@@ -822,7 +788,7 @@ const DataExplorer: React.FC = () => {
                   <option value="string">문자열</option>
                   <option value="integer">정수</option>
                 </select>
-
+                
                 <select
                   value={filters.quality}
                   onChange={(e) => setFilters(prev => ({ ...prev, quality: e.target.value }))}
@@ -835,7 +801,7 @@ const DataExplorer: React.FC = () => {
                   <option value="comm_failure">Comm Failure</option>
                   <option value="last_known">Last Known</option>
                 </select>
-
+                
                 <select
                   value={filters.device}
                   onChange={(e) => setFilters(prev => ({ ...prev, device: e.target.value }))}
@@ -849,7 +815,7 @@ const DataExplorer: React.FC = () => {
                   ))}
                 </select>
               </div>
-
+              
               <div className="view-controls">
                 <button
                   onClick={() => setShowChart(!showChart)}
@@ -857,7 +823,6 @@ const DataExplorer: React.FC = () => {
                 >
                   📈 차트 {showChart ? '숨기기' : '보기'}
                 </button>
-                
                 {selectedDataPoints.length > 0 && (
                   <button
                     onClick={clearSelection}
@@ -899,16 +864,16 @@ const DataExplorer: React.FC = () => {
               </div>
             )}
 
-            {/* 🔥 완전히 CSS 클래스 기반으로 변경된 실시간 데이터 테이블 */}
+            {/* 실시간 데이터 테이블 */}
             <div className="realtime-data">
               <h4>
                 ⚡ 실시간 데이터 ({filteredDataPoints.length}개)
               </h4>
-              
+
               {filteredDataPoints.length === 0 ? (
-                selectedNode && selectedNode.type === 'device' && 
-                (selectedNode.connectionStatus === 'disconnected' || selectedNode.childCount === 0) ? 
-                  renderEmptyDeviceMessage(selectedNode) : (
+                selectedNode && selectedNode.type === 'device' &&
+                (selectedNode.connectionStatus === 'disconnected' || selectedNode.childCount === 0) ?
+                renderEmptyDeviceMessage(selectedNode) : (
                   <div className="empty-state">
                     <p style={{margin: '0 0 8px 0'}}>표시할 데이터가 없습니다</p>
                     <small>필터를 조정하거나 API 연결을 확인해보세요</small>
@@ -921,7 +886,7 @@ const DataExplorer: React.FC = () => {
                 )
               ) : (
                 <div className="data-table-container">
-                  {/* 🔥 CSS 클래스 기반 헤더 */}
+                  {/* 테이블 헤더 */}
                   <div className="data-table-header">
                     <div className="header-cell">✓</div>
                     <div className="header-cell">포인트명</div>
@@ -931,12 +896,11 @@ const DataExplorer: React.FC = () => {
                     <div className="header-cell">타입</div>
                     <div className="header-cell">시간</div>
                   </div>
-                  
-                  {/* 🔥 CSS 클래스 기반 바디 */}
+
+                  {/* 테이블 바디 - 페이징된 데이터만 렌더링 */}
                   <div className="data-table-body">
-                    {filteredDataPoints.map((dataPoint: RealtimeValue, index: number) => (
+                    {paginatedDataPoints.map((dataPoint: RealtimeValue, index: number) => (
                       <div key={dataPoint.key || `row-${index}`} className="data-table-row">
-                        
                         {/* 체크박스 */}
                         <div className="table-cell cell-checkbox" data-label="선택">
                           <input
@@ -979,10 +943,10 @@ const DataExplorer: React.FC = () => {
                         <div className="table-cell cell-quality" data-label="품질">
                           <span className={`quality-badge ${dataPoint.quality || 'unknown'}`}>
                             {dataPoint.quality === 'good' ? 'OK' :
-                             dataPoint.quality === 'comm_failure' ? 'ERR' : 
-                             dataPoint.quality === 'last_known' ? 'OLD' : 
-                             dataPoint.quality === 'uncertain' ? '?' : 
-                             dataPoint.quality || '—'}
+                            dataPoint.quality === 'comm_failure' ? 'ERR' :
+                            dataPoint.quality === 'last_known' ? 'OLD' :
+                            dataPoint.quality === 'uncertain' ? '?' :
+                            dataPoint.quality || '—'}
                           </span>
                         </div>
                         
@@ -990,16 +954,16 @@ const DataExplorer: React.FC = () => {
                         <div className="table-cell cell-type" data-label="타입">
                           <span className="data-type">
                             {dataPoint.data_type === 'number' ? 'NUM' :
-                             dataPoint.data_type === 'boolean' ? 'BOOL' :
-                             dataPoint.data_type === 'integer' ? 'INT' :
-                             dataPoint.data_type === 'string' ? 'STR' : 'UNK'}
+                            dataPoint.data_type === 'boolean' ? 'BOOL' :
+                            dataPoint.data_type === 'integer' ? 'INT' :
+                            dataPoint.data_type === 'string' ? 'STR' : 'UNK'}
                           </span>
                         </div>
                         
                         {/* 시간 - 밀리초 포함 */}
                         <div className="table-cell cell-time" data-label="업데이트">
                           <span className="timestamp">
-                            {dataPoint.timestamp ? 
+                            {dataPoint.timestamp ?
                               new Date(dataPoint.timestamp).toLocaleTimeString('ko-KR', {
                                 hour12: false,
                                 hour: '2-digit',
@@ -1011,6 +975,21 @@ const DataExplorer: React.FC = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* 페이징 컴포넌트 추가 */}
+                  {filteredDataPoints.length > 0 && (
+                    <Pagination
+                      current={pagination.currentPage}
+                      total={pagination.totalCount}
+                      pageSize={pagination.pageSize}
+                      pageSizeOptions={pagination.pageSizeOptions}
+                      showSizeChanger={true}
+                      showTotal={true}
+                      onChange={(page) => pagination.goToPage(page)}
+                      onShowSizeChange={(page, pageSize) => pagination.changePageSize(pageSize)}
+                      className="pagination-wrapper"
+                    />
+                  )}
                 </div>
               )}
             </div>

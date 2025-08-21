@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlarmApiService, AlarmRule, AlarmRuleCreateData } from '../../api/services/alarmApi';
-import '../styles/alarm-settings.css';
+import { ALARM_CONSTANTS } from '../../api/endpoints';
+import '../../styles/alarm-settings.css';
 
 interface DataPoint {
   id: number;
@@ -70,6 +71,53 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
     tags: [] as string[]
   });
 
+  // 타겟 타입별 허용 알람 타입 - 핵심 수정사항
+  const getAllowedAlarmTypes = (targetType: string) => {
+    switch (targetType) {
+      case 'data_point':
+        return [
+          { value: 'analog', label: '아날로그', description: '수치 임계값 기반 알람' },
+          { value: 'digital', label: '디지털', description: '상태 변화 기반 알람' },
+          { value: 'script', label: '스크립트', description: '사용자 정의 조건 알람' }
+        ];
+      case 'device':
+        return [
+          { value: 'digital', label: '디바이스 상태', description: '연결/통신 상태 알람' },
+          { value: 'script', label: '스크립트', description: '복합 조건 알람' }
+        ];
+      case 'virtual_point':
+        return [
+          { value: 'analog', label: '아날로그', description: '계산된 수치 임계값 알람' },
+          { value: 'digital', label: '디지털', description: '계산된 상태 알람' },
+          { value: 'script', label: '스크립트', description: '사용자 정의 조건 알람' }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  // 타겟 타입 변경 핸들러 - 핵심 수정사항
+  const handleTargetTypeChange = (targetType: string) => {
+    const allowedTypes = getAllowedAlarmTypes(targetType);
+    const defaultAlarmType = allowedTypes.length > 0 ? allowedTypes[0].value : 'digital';
+    
+    setFormData(prev => ({
+      ...prev,
+      target_type: targetType as any,
+      selected_device_id: '',
+      target_id: '',
+      alarm_type: defaultAlarmType as any,
+      // 임계값들 초기화
+      high_high_limit: '',
+      high_limit: '',
+      low_limit: '',
+      low_low_limit: '',
+      deadband: '2.0',
+      trigger_condition: '',
+      condition_script: ''
+    }));
+  };
+
   // 편집 모드일 때 기존 데이터로 폼 초기화
   useEffect(() => {
     if (mode === 'edit' && rule) {
@@ -114,7 +162,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
       target_id: '',
       selected_device_id: '',
       target_group: '',
-      alarm_type: 'analog',
+      alarm_type: 'analog', // data_point의 기본값
       high_high_limit: '',
       high_limit: '',
       low_limit: '',
@@ -135,53 +183,6 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
       category: '',
       tags: []
     });
-  };
-
-  // 타겟 타입별 허용 알람 타입
-  const getAllowedAlarmTypes = (targetType: string) => {
-    switch (targetType) {
-      case 'data_point':
-        return [
-          { value: 'analog', label: '아날로그', description: '수치 임계값 기반 알람' },
-          { value: 'digital', label: '디지털', description: '상태 변화 기반 알람' },
-          { value: 'script', label: '스크립트', description: '사용자 정의 조건 알람' }
-        ];
-      case 'device':
-        return [
-          { value: 'digital', label: '디바이스 상태', description: '연결/통신 상태 알람' },
-          { value: 'script', label: '스크립트', description: '복합 조건 알람' }
-        ];
-      case 'virtual_point':
-        return [
-          { value: 'analog', label: '아날로그', description: '계산된 수치 임계값 알람' },
-          { value: 'digital', label: '디지털', description: '계산된 상태 알람' },
-          { value: 'script', label: '스크립트', description: '사용자 정의 조건 알람' }
-        ];
-      default:
-        return [];
-    }
-  };
-
-  // 타겟 타입 변경 핸들러
-  const handleTargetTypeChange = (targetType: string) => {
-    const allowedTypes = getAllowedAlarmTypes(targetType);
-    const defaultAlarmType = allowedTypes.length > 0 ? allowedTypes[0].value : 'digital';
-    
-    setFormData(prev => ({
-      ...prev,
-      target_type: targetType as any,
-      selected_device_id: '',
-      target_id: '',
-      alarm_type: defaultAlarmType as any,
-      // 임계값들 초기화
-      high_high_limit: '',
-      high_limit: '',
-      low_limit: '',
-      low_low_limit: '',
-      deadband: '2.0',
-      trigger_condition: '',
-      condition_script: ''
-    }));
   };
 
   // 디바이스 선택 변경
@@ -401,14 +402,11 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                   onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
                 >
                   <option value="">선택하세요</option>
-                  <option value="temperature">온도</option>
-                  <option value="pressure">압력</option>
-                  <option value="flow">유량</option>
-                  <option value="level">레벨</option>
-                  <option value="vibration">진동</option>
-                  <option value="electrical">전기</option>
-                  <option value="safety">안전</option>
-                  <option value="general">일반</option>
+                  {ALARM_CONSTANTS.DEFAULT_CATEGORIES.map(category => (
+                    <option key={category} value={category}>
+                      {AlarmApiService.getCategoryDisplayName(category)}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -602,7 +600,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
               </div>
             </div>
 
-            {/* 아날로그 알람 임계값 (데이터포인트/가상포인트만) */}
+            {/* 아날로그 알람 임계값 - 조건부 렌더링 */}
             {formData.alarm_type === 'analog' && (
               <div className="form-subsection">
                 <div className="subsection-title">아날로그 임계값</div>

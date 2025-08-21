@@ -1,52 +1,17 @@
 // ============================================================================
 // frontend/src/pages/AlarmHistory.tsx
-// 📜 알람 이력 페이지 - 완전한 API 연결 + 부드러운 새로고침
+// 알람 이력 페이지 - alarmApi.ts와 완전 호환되도록 수정
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { AlarmApiService, AlarmOccurrence, AlarmListParams, AlarmStatistics } from '../api/services/alarmApi';
 import { Pagination } from '../components/common/Pagination';
 import { usePagination } from '../hooks/usePagination';
 import '../styles/base.css';
 import '../styles/alarm-history.css';
 import '../styles/pagination.css';
 
-// 📊 알람 이벤트 인터페이스
-interface AlarmEvent {
-  id: string;
-  rule_id: number;
-  rule_name: string;
-  device_id?: number;
-  device_name?: string;
-  data_point_id?: number;
-  data_point_name?: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  message: string;
-  description?: string;
-  triggered_value?: any;
-  state: 'active' | 'acknowledged' | 'cleared';
-  occurrence_time: string;
-  acknowledgment_time?: string;
-  acknowledged_by?: string;
-  acknowledgment_note?: string;
-  clear_time?: string;
-  cleared_by?: string;
-  resolution_note?: string;
-  escalation_level: number;
-  notification_sent: boolean;
-}
-
-// 📈 알람 통계 인터페이스
-interface AlarmStatistics {
-  totalEvents: number;
-  activeAlarms: number;
-  acknowledgedAlarms: number;
-  clearedAlarms: number;
-  criticalAlarms: number;
-  averageResponseTime: number;
-  topAlarmSources: Array<{ source: string; count: number }>;
-}
-
-// 🎯 필터 옵션 인터페이스
+// 필터 옵션 인터페이스
 interface FilterOptions {
   dateRange: {
     start: Date;
@@ -58,21 +23,21 @@ interface FilterOptions {
 }
 
 const AlarmHistory: React.FC = () => {
-  // 🔧 기본 상태들 - 안전한 초기값으로 설정
-  const [alarmEvents, setAlarmEvents] = useState<AlarmEvent[]>([]);
+  // 기본 상태들
+  const [alarmEvents, setAlarmEvents] = useState<AlarmOccurrence[]>([]);
   const [statistics, setStatistics] = useState<AlarmStatistics | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<AlarmEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<AlarmOccurrence | null>(null);
   
-  // 🔥 로딩 상태 분리: 초기 로딩 vs 백그라운드 새로고침
+  // 로딩 상태 분리
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // 🎨 UI 상태
+  // UI 상태
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   
-  // 🔍 필터 상태
+  // 필터 상태
   const [filters, setFilters] = useState<FilterOptions>({
     dateRange: {
       start: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24시간 전
@@ -83,22 +48,20 @@ const AlarmHistory: React.FC = () => {
     searchTerm: ''
   });
   
-  // 🔥 페이징 훅 사용
+  // 페이징 훅 사용
   const pagination = usePagination({
     initialPage: 1,
     initialPageSize: 50,
-    totalCount: 0 // API에서 받아온 totalCount로 업데이트
+    totalCount: 0
   });
   
-  // 🔥 스크롤 위치 저장용 ref
+  // 스크롤 위치 저장용
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollPosition, setScrollPosition] = useState(0);
-  
-  // 🔥 첫 로딩 완료 여부 추적
   const [hasInitialLoad, setHasInitialLoad] = useState(false);
 
   // =============================================================================
-  // 🔥 API 호출 함수들
+  // API 호출 함수들 - AlarmApiService 사용
   // =============================================================================
   
   const fetchAlarmHistory = useCallback(async (isBackground = false) => {
@@ -115,59 +78,37 @@ const AlarmHistory: React.FC = () => {
         setIsBackgroundRefreshing(true);
       }
 
-      // API 파라미터 구성
-      const params = new URLSearchParams({
-        page: pagination.currentPage.toString(),
-        limit: pagination.pageSize.toString(),
+      // API 파라미터 구성 - alarmApi.ts의 AlarmListParams 사용
+      const params: AlarmListParams = {
+        page: pagination.currentPage,
+        limit: pagination.pageSize,
         ...(filters.severity !== 'all' && { severity: filters.severity }),
         ...(filters.state !== 'all' && { state: filters.state }),
         ...(filters.searchTerm && { search: filters.searchTerm }),
         date_from: filters.dateRange.start.toISOString(),
         date_to: filters.dateRange.end.toISOString()
-      });
+      };
 
-      const response = await fetch(`/api/alarms/history?${params}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      console.log('알람 이력 조회 요청:', params);
 
-      const data = await response.json();
+      // AlarmApiService 사용
+      const response = await AlarmApiService.getAlarmHistory(params);
       
-      // 🔍 디버깅: API 응답 구조 확인
-      console.log('🔍 Alarm History API Response:', {
-        success: data.success,
-        dataType: typeof data.data,
-        isArray: Array.isArray(data.data),
-        dataKeys: data.data ? Object.keys(data.data) : 'null',
-        firstItem: Array.isArray(data.data) ? data.data[0] : data.data?.items?.[0] || 'none'
+      console.log('알람 이력 API 응답:', {
+        success: response.success,
+        dataType: typeof response.data,
+        hasItems: response.data?.items ? true : false,
+        itemsLength: response.data?.items?.length || 0
       });
       
-      if (data.success) {
-        // 안전하게 배열 처리
-        const events = Array.isArray(data.data) ? data.data : 
-                      Array.isArray(data.data?.items) ? data.data.items :
-                      [];
-        
-        console.log('✅ Processed events:', events.length, events.slice(0, 2));
+      if (response.success && response.data) {
+        const events = response.data.items || [];
+        console.log('처리된 알람 이벤트:', events.length, events.slice(0, 2));
         setAlarmEvents(events);
         
         // 페이징 정보 업데이트
-        if (data.pagination) {
-          const totalCount = data.pagination.totalCount || data.pagination.total || 0;
-          if (typeof pagination.setTotalCount === 'function') {
-            pagination.setTotalCount(totalCount);
-          }
-        } else if (data.data?.pagination) {
-          const totalCount = data.data.pagination.totalCount || data.data.pagination.total || 0;
-          if (typeof pagination.setTotalCount === 'function') {
-            pagination.setTotalCount(totalCount);
-          }
-        } else {
-          // 페이징 정보가 없으면 이벤트 개수로 설정
-          if (typeof pagination.setTotalCount === 'function') {
-            pagination.setTotalCount(events.length);
-          }
+        if (response.data.pagination && typeof pagination.setTotalCount === 'function') {
+          pagination.setTotalCount(response.data.pagination.total || 0);
         }
         
         // 첫 로딩 완료 표시
@@ -175,17 +116,10 @@ const AlarmHistory: React.FC = () => {
           setHasInitialLoad(true);
         }
       } else {
-        throw new Error(data.error || 'Failed to fetch alarm history');
+        throw new Error(response.message || 'Failed to fetch alarm history');
       }
     } catch (err) {
-      console.error('❌ Error fetching alarm history:', err);
-      console.error('📊 Current state:', {
-        hasInitialLoad,
-        isBackground,
-        alarmEventsType: typeof alarmEvents,
-        alarmEventsIsArray: Array.isArray(alarmEvents)
-      });
-      
+      console.error('알람 이력 조회 실패:', err);
       setError(err instanceof Error ? err.message : '알람 이력을 불러오는데 실패했습니다');
       
       // 에러 시 빈 배열로 초기화
@@ -207,41 +141,56 @@ const AlarmHistory: React.FC = () => {
 
   const fetchStatistics = useCallback(async () => {
     try {
-      const response = await fetch('/api/alarms/statistics');
+      const response = await AlarmApiService.getAlarmStatistics();
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          setStatistics({
-            totalEvents: data.data.totalActive || 0,
-            activeAlarms: data.data.byState?.active || 0,
-            acknowledgedAlarms: data.data.byState?.acknowledged || 0,
-            clearedAlarms: data.data.byState?.cleared || 0,
-            criticalAlarms: data.data.bySeverity?.critical || 0,
-            averageResponseTime: data.data.avgResponseTime || 0,
-            topAlarmSources: data.data.byDevice || []
-          });
-        }
+      if (response.success && response.data) {
+        // alarmApi.ts의 AlarmStatistics 인터페이스에 맞게 변환
+        setStatistics({
+          occurrences: {
+            total_occurrences: response.data.occurrences?.total_occurrences || 0,
+            active_alarms: response.data.occurrences?.active_alarms || 0,
+            unacknowledged_alarms: response.data.occurrences?.unacknowledged_alarms || 0,
+            acknowledged_alarms: response.data.occurrences?.acknowledged_alarms || 0,
+            cleared_alarms: response.data.occurrences?.cleared_alarms || 0
+          },
+          rules: {
+            total_rules: response.data.rules?.total_rules || 0,
+            enabled_rules: response.data.rules?.enabled_rules || 0,
+            alarm_types: response.data.rules?.alarm_types || 0,
+            severity_levels: response.data.rules?.severity_levels || 0,
+            target_types: response.data.rules?.target_types || 0,
+            categories: response.data.rules?.categories || 0,
+            rules_with_tags: response.data.rules?.rules_with_tags || 0
+          },
+          dashboard_summary: {
+            total_active: response.data.dashboard_summary?.total_active || 0,
+            total_rules: response.data.dashboard_summary?.total_rules || 0,
+            unacknowledged: response.data.dashboard_summary?.unacknowledged || 0,
+            enabled_rules: response.data.dashboard_summary?.enabled_rules || 0,
+            categories: response.data.dashboard_summary?.categories || 0,
+            rules_with_tags: response.data.dashboard_summary?.rules_with_tags || 0
+          }
+        });
       }
     } catch (err) {
-      console.error('Error fetching alarm statistics:', err);
+      console.error('알람 통계 조회 실패:', err);
       // 통계는 선택사항이므로 에러를 표시하지 않음
     }
   }, []);
 
   // =============================================================================
-  // 🔥 이벤트 핸들러들
+  // 이벤트 핸들러들
   // =============================================================================
   
   const handleRefresh = useCallback(() => {
-    fetchAlarmHistory(hasInitialLoad); // 첫 로딩 후에는 백그라운드 새로고침
+    fetchAlarmHistory(hasInitialLoad);
     fetchStatistics();
   }, [fetchAlarmHistory, fetchStatistics, hasInitialLoad]);
 
   const handleFilterChange = useCallback((newFilters: Partial<FilterOptions>) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
     if (typeof pagination.setCurrentPage === 'function') {
-      pagination.setCurrentPage(1); // 필터 변경시 첫 페이지로
+      pagination.setCurrentPage(1);
     }
   }, [pagination]);
 
@@ -252,13 +201,12 @@ const AlarmHistory: React.FC = () => {
     fetchAlarmHistory();
   }, [fetchAlarmHistory, pagination]);
 
-  const handleViewDetails = useCallback((event: AlarmEvent) => {
+  const handleViewDetails = useCallback((event: AlarmOccurrence) => {
     setSelectedEvent(event);
     setShowDetailsModal(true);
   }, []);
 
   const handleExportToCSV = useCallback(() => {
-    // 안전한 배열 확인
     if (!Array.isArray(alarmEvents) || alarmEvents.length === 0) {
       console.warn('No alarm events to export');
       return;
@@ -270,17 +218,17 @@ const AlarmHistory: React.FC = () => {
     ];
     
     const rows = alarmEvents.map(event => [
-      event.id || '',
+      event.id?.toString() || '',
       event.rule_name || '',
       event.device_name || '',
       event.data_point_name || '',
       event.severity || '',
       event.state || '',
       event.occurrence_time ? new Date(event.occurrence_time).toLocaleString('ko-KR') : '',
-      event.acknowledgment_time ? new Date(event.acknowledgment_time).toLocaleString('ko-KR') : '',
-      event.clear_time ? new Date(event.clear_time).toLocaleString('ko-KR') : '',
-      event.acknowledged_by || '',
-      event.acknowledgment_note || event.resolution_note || ''
+      event.acknowledged_time ? new Date(event.acknowledged_time).toLocaleString('ko-KR') : '',
+      event.cleared_time ? new Date(event.cleared_time).toLocaleString('ko-KR') : '',
+      event.acknowledged_by?.toString() || '',
+      event.acknowledge_comment || event.clear_comment || ''
     ]);
 
     const csvContent = [headers, ...rows]
@@ -295,45 +243,19 @@ const AlarmHistory: React.FC = () => {
   }, [alarmEvents]);
 
   // =============================================================================
-  // 🔥 유틸리티 함수들
+  // 유틸리티 함수들 - AlarmApiService 메서드 사용
   // =============================================================================
   
   const formatDuration = (startTime: string, endTime?: string): string => {
-    if (!endTime) return '-';
-    
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-    const ms = end.getTime() - start.getTime();
-    
-    const hours = Math.floor(ms / (1000 * 60 * 60));
-    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 0) {
-      return `${hours}시간 ${minutes}분`;
-    } else if (minutes > 0) {
-      return `${minutes}분`;
-    } else {
-      return '1분 미만';
-    }
+    return AlarmApiService.formatDuration(startTime, endTime);
   };
 
   const getPriorityColor = (severity: string): string => {
-    switch (severity) {
-      case 'critical': return '#dc2626';
-      case 'high': return '#ea580c';
-      case 'medium': return '#2563eb';
-      case 'low': return '#059669';
-      default: return '#6b7280';
-    }
+    return AlarmApiService.getSeverityColor(severity);
   };
 
   const getStatusColor = (state: string): string => {
-    switch (state) {
-      case 'active': return '#dc2626';
-      case 'acknowledged': return '#ea580c';
-      case 'cleared': return '#059669';
-      default: return '#6b7280';
-    }
+    return AlarmApiService.getStateColor(state);
   };
 
   const getStatusIcon = (state: string): string => {
@@ -346,16 +268,11 @@ const AlarmHistory: React.FC = () => {
   };
 
   const getStatusText = (state: string): string => {
-    switch (state) {
-      case 'active': return '활성';
-      case 'acknowledged': return '확인됨';
-      case 'cleared': return '해제됨';
-      default: return '알 수 없음';
-    }
+    return AlarmApiService.getStateDisplayText(state);
   };
 
   // =============================================================================
-  // 🔥 생명주기 및 부수 효과들
+  // 생명주기 및 부수 효과들
   // =============================================================================
   
   // 컴포넌트 마운트시 초기 데이터 로드
@@ -367,7 +284,7 @@ const AlarmHistory: React.FC = () => {
   // 페이지 변경시 데이터 다시 로드
   useEffect(() => {
     if (hasInitialLoad) {
-      fetchAlarmHistory(true); // 백그라운드 새로고침
+      fetchAlarmHistory(true);
     }
   }, [pagination.currentPage, pagination.pageSize]);
 
@@ -390,12 +307,12 @@ const AlarmHistory: React.FC = () => {
   }, [handleRefresh, hasInitialLoad]);
 
   // =============================================================================
-  // 🎨 렌더링
+  // 렌더링
   // =============================================================================
   
   return (
     <div className="alarm-history-container" ref={containerRef}>
-      {/* 🔥 페이지 헤더 */}
+      {/* 페이지 헤더 */}
       <div className="page-header">
         <div className="header-content">
           <h1>
@@ -424,7 +341,7 @@ const AlarmHistory: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 통계 요약 패널 */}
+      {/* 통계 요약 패널 */}
       {statistics && (
         <div className="summary-panel">
           <div className="summary-card">
@@ -432,7 +349,7 @@ const AlarmHistory: React.FC = () => {
               <i className="fas fa-list-alt"></i>
             </div>
             <div className="summary-content">
-              <div className="summary-value">{statistics.totalEvents}</div>
+              <div className="summary-value">{statistics.occurrences.total_occurrences}</div>
               <div className="summary-label">총 이벤트</div>
             </div>
           </div>
@@ -442,8 +359,8 @@ const AlarmHistory: React.FC = () => {
               <i className="fas fa-exclamation-triangle"></i>
             </div>
             <div className="summary-content">
-              <div className="summary-value">{statistics.criticalAlarms}</div>
-              <div className="summary-label">Critical 알람</div>
+              <div className="summary-value">{statistics.occurrences.active_alarms}</div>
+              <div className="summary-label">활성 알람</div>
             </div>
           </div>
 
@@ -452,7 +369,7 @@ const AlarmHistory: React.FC = () => {
               <i className="fas fa-check-circle"></i>
             </div>
             <div className="summary-content">
-              <div className="summary-value">{statistics.acknowledgedAlarms}</div>
+              <div className="summary-value">{statistics.occurrences.acknowledged_alarms}</div>
               <div className="summary-label">확인된 알람</div>
             </div>
           </div>
@@ -462,24 +379,24 @@ const AlarmHistory: React.FC = () => {
               <i className="fas fa-times-circle"></i>
             </div>
             <div className="summary-content">
-              <div className="summary-value">{statistics.clearedAlarms}</div>
+              <div className="summary-value">{statistics.occurrences.cleared_alarms}</div>
               <div className="summary-label">해제된 알람</div>
             </div>
           </div>
 
           <div className="summary-card">
             <div className="summary-icon">
-              <i className="fas fa-clock"></i>
+              <i className="fas fa-chart-bar"></i>
             </div>
             <div className="summary-content">
-              <div className="summary-value">{Math.round(statistics.averageResponseTime)}</div>
-              <div className="summary-label">평균 응답시간 (분)</div>
+              <div className="summary-value">{statistics.rules.total_rules}</div>
+              <div className="summary-label">총 규칙</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🔥 에러 메시지 */}
+      {/* 에러 메시지 */}
       {error && (
         <div className="error-alert">
           <i className="fas fa-exclamation-circle"></i>
@@ -490,7 +407,7 @@ const AlarmHistory: React.FC = () => {
         </div>
       )}
 
-      {/* 🔥 필터 패널 */}
+      {/* 필터 패널 */}
       <div className="filter-panel">
         <div className="filter-row">
           <div className="filter-group">
@@ -525,6 +442,7 @@ const AlarmHistory: React.FC = () => {
               <option value="high">High</option>
               <option value="medium">Medium</option>
               <option value="low">Low</option>
+              <option value="info">Info</option>
             </select>
           </div>
 
@@ -573,7 +491,7 @@ const AlarmHistory: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 결과 정보 */}
+      {/* 결과 정보 */}
       <div className="result-info">
         <div className="result-count">
           총 {pagination.totalCount}개의 알람 이력
@@ -586,7 +504,7 @@ const AlarmHistory: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 메인 컨텐츠 */}
+      {/* 메인 컨텐츠 */}
       {isInitialLoading ? (
         <div className="loading-state">
           <div className="loading-spinner"></div>
@@ -606,7 +524,7 @@ const AlarmHistory: React.FC = () => {
           </p>
         </div>
       ) : viewMode === 'list' ? (
-        /* 🔥 목록 뷰 */
+        /* 목록 뷰 */
         <div className="history-table-container">
           <table className="history-table">
             <thead>
@@ -622,16 +540,15 @@ const AlarmHistory: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {Array.isArray(alarmEvents) && alarmEvents.map((event, index) => {
-                // 안전한 값 추출
-                const eventId = event?.id || `unknown-${index}`;
+              {alarmEvents.map((event, index) => {
+                const eventId = event?.id || index;
                 const severity = event?.severity || 'medium';
                 const deviceName = event?.device_name || 'N/A';
                 const dataPointName = event?.data_point_name || 'N/A';
-                const message = event?.message || '메시지 없음';
+                const message = event?.alarm_message || '메시지 없음';
                 const state = event?.state || 'unknown';
                 const occurrenceTime = event?.occurrence_time || new Date().toISOString();
-                const triggeredValue = event?.triggered_value;
+                const triggeredValue = event?.trigger_value;
                 
                 return (
                   <tr
@@ -697,7 +614,7 @@ const AlarmHistory: React.FC = () => {
                     
                     <td>
                       <div className="duration-cell">
-                        {formatDuration(occurrenceTime, event?.clear_time || event?.acknowledgment_time)}
+                        {formatDuration(occurrenceTime, event?.cleared_time || event?.acknowledged_time)}
                       </div>
                     </td>
                     
@@ -719,17 +636,16 @@ const AlarmHistory: React.FC = () => {
           </table>
         </div>
       ) : (
-        /* 🔥 타임라인 뷰 */
+        /* 타임라인 뷰 */
         <div className="timeline-view">
           <div className="timeline-container">
-            {Array.isArray(alarmEvents) && alarmEvents.map((event, index) => {
-              // 안전한 값 추출
-              const eventId = event?.id || `unknown-${index}`;
+            {alarmEvents.map((event, index) => {
+              const eventId = event?.id || index;
               const severity = event?.severity || 'medium';
               const ruleName = event?.rule_name || '알 수 없는 규칙';
               const deviceName = event?.device_name || 'N/A';
               const dataPointName = event?.data_point_name || 'N/A';
-              const message = event?.message || '메시지 없음';
+              const message = event?.alarm_message || '메시지 없음';
               const state = event?.state || 'unknown';
               const occurrenceTime = event?.occurrence_time || new Date().toISOString();
               
@@ -770,7 +686,7 @@ const AlarmHistory: React.FC = () => {
                           {getStatusText(state)}
                         </div>
                         <div className="timeline-duration">
-                          지속시간: {formatDuration(occurrenceTime, event?.clear_time || event?.acknowledgment_time)}
+                          지속시간: {formatDuration(occurrenceTime, event?.cleared_time || event?.acknowledged_time)}
                         </div>
                       </div>
                     </div>
@@ -782,7 +698,7 @@ const AlarmHistory: React.FC = () => {
         </div>
       )}
 
-      {/* 🔥 페이지네이션 */}
+      {/* 페이지네이션 */}
       {Array.isArray(alarmEvents) && pagination.totalPages > 1 && (
         <Pagination
           currentPage={pagination.currentPage}
@@ -795,7 +711,7 @@ const AlarmHistory: React.FC = () => {
         />
       )}
 
-      {/* 🔥 상세 보기 모달 */}
+      {/* 상세 보기 모달 */}
       {showDetailsModal && selectedEvent && (
         <div className="modal-overlay">
           <div className="modal-container">
@@ -846,21 +762,21 @@ const AlarmHistory: React.FC = () => {
                     <label>발생시간</label>
                     <span>{new Date(selectedEvent.occurrence_time).toLocaleString('ko-KR')}</span>
                   </div>
-                  {selectedEvent.acknowledgment_time && (
+                  {selectedEvent.acknowledged_time && (
                     <div className="detail-item">
                       <label>확인시간</label>
-                      <span>{new Date(selectedEvent.acknowledgment_time).toLocaleString('ko-KR')}</span>
+                      <span>{new Date(selectedEvent.acknowledged_time).toLocaleString('ko-KR')}</span>
                     </div>
                   )}
-                  {selectedEvent.clear_time && (
+                  {selectedEvent.cleared_time && (
                     <div className="detail-item">
                       <label>해제시간</label>
-                      <span>{new Date(selectedEvent.clear_time).toLocaleString('ko-KR')}</span>
+                      <span>{new Date(selectedEvent.cleared_time).toLocaleString('ko-KR')}</span>
                     </div>
                   )}
                   <div className="detail-item">
                     <label>지속시간</label>
-                    <span>{formatDuration(selectedEvent.occurrence_time, selectedEvent.clear_time || selectedEvent.acknowledgment_time)}</span>
+                    <span>{formatDuration(selectedEvent.occurrence_time, selectedEvent.cleared_time || selectedEvent.acknowledged_time)}</span>
                   </div>
                 </div>
               </div>
@@ -868,17 +784,14 @@ const AlarmHistory: React.FC = () => {
               <div className="detail-section">
                 <h4>메시지 및 설명</h4>
                 <div className="message-content">
-                  <p><strong>메시지:</strong> {selectedEvent.message}</p>
-                  {selectedEvent.description && (
-                    <p><strong>설명:</strong> {selectedEvent.description}</p>
-                  )}
-                  {selectedEvent.triggered_value !== null && selectedEvent.triggered_value !== undefined && (
-                    <p><strong>발생값:</strong> {selectedEvent.triggered_value}</p>
+                  <p><strong>메시지:</strong> {selectedEvent.alarm_message}</p>
+                  {selectedEvent.trigger_value !== null && selectedEvent.trigger_value !== undefined && (
+                    <p><strong>발생값:</strong> {selectedEvent.trigger_value}</p>
                   )}
                 </div>
               </div>
 
-              {(selectedEvent.acknowledged_by || selectedEvent.acknowledgment_note) && (
+              {(selectedEvent.acknowledged_by || selectedEvent.acknowledge_comment) && (
                 <div className="detail-section">
                   <h4>확인 정보</h4>
                   <div className="detail-grid">
@@ -888,32 +801,24 @@ const AlarmHistory: React.FC = () => {
                         <span>{selectedEvent.acknowledged_by}</span>
                       </div>
                     )}
-                    {selectedEvent.acknowledgment_note && (
+                    {selectedEvent.acknowledge_comment && (
                       <div className="detail-item full-width">
                         <label>확인 메모</label>
-                        <span>{selectedEvent.acknowledgment_note}</span>
+                        <span>{selectedEvent.acknowledge_comment}</span>
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {(selectedEvent.cleared_by || selectedEvent.resolution_note) && (
+              {selectedEvent.clear_comment && (
                 <div className="detail-section">
                   <h4>해제 정보</h4>
                   <div className="detail-grid">
-                    {selectedEvent.cleared_by && (
-                      <div className="detail-item">
-                        <label>해제자</label>
-                        <span>{selectedEvent.cleared_by}</span>
-                      </div>
-                    )}
-                    {selectedEvent.resolution_note && (
-                      <div className="detail-item full-width">
-                        <label>해제 메모</label>
-                        <span>{selectedEvent.resolution_note}</span>
-                      </div>
-                    )}
+                    <div className="detail-item full-width">
+                      <label>해제 메모</label>
+                      <span>{selectedEvent.clear_comment}</span>
+                    </div>
                   </div>
                 </div>
               )}
