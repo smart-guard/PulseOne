@@ -781,44 +781,44 @@ class AlarmQueries {
      */
     static buildCreateRuleParams(data) {
         return [
-            data.tenant_id,                                     // 1
-            data.name,                                          // 2
-            data.description || '',                             // 3
-            data.target_type || 'data_point',                  // 4
-            data.target_id || null,                             // 5
-            data.target_group || null,                          // 6
-            data.alarm_type || 'analog',                        // 7
-            data.high_high_limit || null,                       // 8
-            data.high_limit || null,                            // 9
-            data.low_limit || null,                             // 10
-            data.low_low_limit || null,                         // 11
-            data.deadband || 0,                                 // 12
-            data.rate_of_change || 0,                           // 13
-            data.trigger_condition || null,                    // 14
-            data.condition_script || null,                     // 15
-            data.message_script || null,                       // 16
-            data.message_config || null,                       // 17
-            data.message_template || `${data.name} 알람이 발생했습니다`,  // 18
-            data.severity || 'medium',                          // 19
-            data.priority || 100,                               // 20
-            data.auto_acknowledge || 0,                         // 21
-            data.acknowledge_timeout_min || 0,                  // 22
-            data.auto_clear || 1,                               // 23
-            data.suppression_rules || null,                    // 24
-            data.notification_enabled || 1,                    // 25
-            data.notification_delay_sec || 0,                  // 26
-            data.notification_repeat_interval_min || 0,        // 27
-            data.notification_channels || null,                // 28
-            data.notification_recipients || null,              // 29
-            data.is_enabled !== false ? 1 : 0,                 // 30
-            data.is_latched || 0,                               // 31
-            data.created_by || null,                            // 32
-            data.template_id || null,                           // 33
-            data.rule_group || null,                            // 34
-            data.created_by_template || 0,                     // 35
-            data.last_template_update || null,                 // 36
-            data.escalation_rules || null,                     // 37
-            data.tags || null                                   // 38
+            data.tenant_id,                                         // 1
+            data.name,                                              // 2
+            data.description || null,                               // 3
+            data.target_type,                                       // 4
+            data.target_id || null,                                 // 5
+            data.target_group || null,                              // 6
+            data.alarm_type,                                        // 7
+            data.severity || 'medium',                              // 8
+            data.priority || 100,                                   // 9
+            data.high_high_limit || null,                           // 10
+            data.high_limit || null,                                // 11
+            data.low_limit || null,                                 // 12
+            data.low_low_limit || null,                             // 13
+            data.deadband || 0,                                     // 14
+            data.rate_of_change || 0,                               // 15
+            data.trigger_condition || null,                         // 16
+            data.condition_script || null,                          // 17
+            data.message_script || null,                            // 18
+            data.message_config || null,                            // 19
+            data.message_template || null,                          // 20
+            data.auto_acknowledge || 0,                             // 21
+            data.acknowledge_timeout_min || 0,                      // 22
+            data.auto_clear || 0,                                   // 23
+            data.suppression_rules || null,                         // 24
+            data.notification_enabled || 1,                         // 25
+            data.notification_delay_sec || 0,                       // 26
+            data.notification_repeat_interval_min || 0,             // 27
+            data.notification_channels || null,                     // 28
+            data.notification_recipients || null,                   // 29
+            data.is_enabled !== undefined ? data.is_enabled ? 1 : 0 : 1, // 30
+            data.is_latched || 0,                                   // 31
+            data.created_by || null,                                // 32
+            data.template_id || null,                               // 33
+            data.rule_group || null,                                // 34
+            data.created_by_template || 0,                         // 35
+            data.last_template_update || null,                     // 36
+            // data.escalation_rules || null,                      // 37 <- 이 줄 제거
+            data.tags || null                                       // 37 (이제 37번)
         ];
     }
 
