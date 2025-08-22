@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/endpoints.ts
-// API 엔드포인트 상수 정의 - 완전한 알람 API 백엔드 호환 버전 (category, tags 지원)
+// API 엔드포인트 상수 정의 - 완전한 알람 API 백엔드 호환 버전 (category, tags 지원 + 토글 기능)
 // ============================================================================
 
 // React 환경에서 process.env 안전하게 접근
@@ -91,7 +91,7 @@ export const ENDPOINTS = {
   REALTIME_STATS: `${API_BASE}/api/realtime/stats`,
   
   // ==========================================================================
-  // 🚨 완전한 알람 관리 API - 백엔드 라우트와 정확히 일치 (category, tags 지원)
+  // 🚨 완전한 알람 관리 API - 백엔드 라우트와 정확히 일치 (category, tags 지원 + 토글 기능)
   // ==========================================================================
   
   // ---- 알람 발생 (Alarm Occurrences) ----
@@ -111,6 +111,11 @@ export const ENDPOINTS = {
   ALARM_RULE_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}`,
   ALARM_RULES_STATISTICS: `${API_BASE}/api/alarms/rules/statistics`,
   ALARM_RULE_SETTINGS: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/settings`,
+  
+  // 🚀 새로 추가된 간단한 업데이트 엔드포인트들 (NEW!)
+  ALARM_RULE_TOGGLE: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/toggle`,
+  ALARM_RULE_NAME: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/name`,
+  ALARM_RULE_SEVERITY: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/severity`,
   
   // ---- 카테고리/태그별 알람 규칙 (새로 추가) ----
   ALARM_RULES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/rules/category/${category}`,
@@ -268,7 +273,7 @@ export const ENDPOINTS = {
 } as const;
 
 // ==========================================================================
-// 타입 안전성을 위한 엔드포인트 그룹화 (알람 API 업데이트됨)
+// 타입 안전성을 위한 엔드포인트 그룹화 (알람 API 업데이트됨 + 토글 기능)
 // ==========================================================================
 
 export const API_GROUPS = {
@@ -313,7 +318,7 @@ export const API_GROUPS = {
     STATS: ENDPOINTS.REALTIME_STATS
   },
   
-  // 🚨 완전히 업데이트된 알람 API 그룹 (category, tags 지원)
+  // 🚨 완전히 업데이트된 알람 API 그룹 (category, tags 지원 + 토글 기능)
   ALARMS: {
     // 알람 발생 관련
     ACTIVE: ENDPOINTS.ALARMS_ACTIVE,
@@ -335,6 +340,11 @@ export const API_GROUPS = {
     RULE_DETAIL: ENDPOINTS.ALARM_RULE_BY_ID,
     RULES_STATISTICS: ENDPOINTS.ALARM_RULES_STATISTICS,
     RULE_SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
+    
+    // 🚀 간단한 업데이트 엔드포인트들 (NEW!)
+    RULE_TOGGLE: ENDPOINTS.ALARM_RULE_TOGGLE,
+    RULE_NAME: ENDPOINTS.ALARM_RULE_NAME,
+    RULE_SEVERITY: ENDPOINTS.ALARM_RULE_SEVERITY,
     
     // 카테고리/태그별 알람 규칙 (새로 추가)
     RULES_BY_CATEGORY: ENDPOINTS.ALARM_RULES_CATEGORY,
@@ -507,6 +517,29 @@ export function buildAlarmTagUrl(tag: string, type: 'rules' | 'occurrences' | 't
 }
 
 /**
+ * 🚀 알람 규칙 토글 URL 빌더 (NEW!)
+ */
+export function buildAlarmToggleUrl(ruleId: number | string): string {
+  return ENDPOINTS.ALARM_RULE_TOGGLE(ruleId);
+}
+
+/**
+ * 🚀 알람 규칙 간단 업데이트 URL 빌더 (NEW!)
+ */
+export function buildAlarmSimpleUpdateUrl(ruleId: number | string, updateType: 'settings' | 'name' | 'severity'): string {
+  switch (updateType) {
+    case 'settings':
+      return ENDPOINTS.ALARM_RULE_SETTINGS(ruleId);
+    case 'name':
+      return ENDPOINTS.ALARM_RULE_NAME(ruleId);
+    case 'severity':
+      return ENDPOINTS.ALARM_RULE_SEVERITY(ruleId);
+    default:
+      throw new Error(`Unknown update type: ${updateType}`);
+  }
+}
+
+/**
  * WebSocket URL 생성 헬퍼 함수
  */
 export function buildWebSocketUrl(baseUrl: string, endpoint: string, params?: Record<string, any>): string {
@@ -572,6 +605,18 @@ export function getTagEndpoints(): Record<string, Function> {
   };
 }
 
+/**
+ * 🚀 간단한 업데이트 엔드포인트 목록 (NEW!)
+ */
+export function getSimpleUpdateEndpoints(): Record<string, Function> {
+  return {
+    TOGGLE: ENDPOINTS.ALARM_RULE_TOGGLE,
+    SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
+    NAME: ENDPOINTS.ALARM_RULE_NAME,
+    SEVERITY: ENDPOINTS.ALARM_RULE_SEVERITY
+  };
+}
+
 // 환경별 설정
 export const API_CONFIG = {
   development: {
@@ -628,7 +673,7 @@ export const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   DUPLICATE_ERROR: 'DUPLICATE_ERROR',
   
-  // 🚨 알람 관련 에러 코드들 (백엔드와 일치)
+  // 🚨 알람 관련 에러 코드들 (백엔드와 일치 + 토글 기능)
   ALARM_NOT_FOUND: 'ALARM_NOT_FOUND',
   ALARM_RULE_NOT_FOUND: 'ALARM_RULE_NOT_FOUND',
   ALARM_TEMPLATE_NOT_FOUND: 'ALARM_TEMPLATE_NOT_FOUND',
@@ -639,6 +684,8 @@ export const ERROR_CODES = {
   ALARM_RULE_UPDATE_ERROR: 'ALARM_RULE_UPDATE_ERROR',
   ALARM_RULE_DELETE_ERROR: 'ALARM_RULE_DELETE_ERROR',
   ALARM_RULE_DETAIL_ERROR: 'ALARM_RULE_DETAIL_ERROR',
+  ALARM_RULE_TOGGLE_ERROR: 'ALARM_RULE_TOGGLE_ERROR',        // 새로 추가
+  ALARM_RULE_SETTINGS_ERROR: 'ALARM_RULE_SETTINGS_ERROR',    // 새로 추가
   ALARM_OCCURRENCE_ERROR: 'ALARM_OCCURRENCE_ERROR',
   ALARM_ACKNOWLEDGE_ERROR: 'ALARM_ACKNOWLEDGE_ERROR',
   ALARM_CLEAR_ERROR: 'ALARM_CLEAR_ERROR',
@@ -694,6 +741,14 @@ export const ALARM_CONSTANTS = {
     'efficiency',    // 효율성
     'compliance',    // 규정준수
     'monitoring'     // 모니터링
+  ] as const,
+  
+  // 🚀 간단한 업데이트 타입들 (NEW!)
+  UPDATE_TYPES: [
+    'toggle',        // is_enabled 토글
+    'settings',      // 설정만 업데이트
+    'name',          // 이름만 업데이트
+    'severity'       // 심각도만 업데이트
   ] as const
 } as const;
 
@@ -705,5 +760,6 @@ export type AlarmTemplateCategory = typeof ALARM_CONSTANTS.TEMPLATE_CATEGORIES[n
 export type AlarmDataType = typeof ALARM_CONSTANTS.DATA_TYPES[number];
 export type AlarmDefaultCategory = typeof ALARM_CONSTANTS.DEFAULT_CATEGORIES[number];  // 새로 추가
 export type AlarmCommonTag = typeof ALARM_CONSTANTS.COMMON_TAGS[number];  // 새로 추가
+export type AlarmUpdateType = typeof ALARM_CONSTANTS.UPDATE_TYPES[number];  // 새로 추가
 
-export default ENDPOINTS;
+export default ENDPOINTS

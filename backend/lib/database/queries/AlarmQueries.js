@@ -644,6 +644,38 @@ class AlarmQueries {
                 AND ao.occurrence_time >= ? 
                 AND ao.occurrence_time <= ?
             ORDER BY ao.occurrence_time DESC
+        `,
+        // 🎯 단순 활성화/비활성화 전용 쿼리 (간단!)
+        UPDATE_ENABLED_STATUS: `
+            UPDATE alarm_rules 
+            SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
+        `,
+        
+        // 🎯 특정 필드만 업데이트하는 쿼리들
+        UPDATE_SETTINGS_ONLY: `
+            UPDATE alarm_rules 
+            SET 
+                is_enabled = ?,
+                notification_enabled = ?,
+                auto_acknowledge = ?,
+                auto_clear = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
+        `,
+        
+        // 🎯 알람 규칙 이름만 업데이트
+        UPDATE_NAME_ONLY: `
+            UPDATE alarm_rules 
+            SET name = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
+        `,
+        
+        // 🎯 심각도만 업데이트  
+        UPDATE_SEVERITY_ONLY: `
+            UPDATE alarm_rules 
+            SET severity = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
         `
     };
     

@@ -1819,6 +1819,74 @@ router.get('/occurrences/tag/:tag', async (req, res) => {
 });
 
 /**
+ * PATCH /api/alarms/rules/:id/toggle
+ * 알람 규칙 활성화/비활성화 토글 (간단!)
+ */
+router.patch('/:id/toggle', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const { is_enabled } = req.body;  // true 또는 false만 받음
+
+        console.log(`🔄 알람 규칙 ${id} 상태 변경: ${is_enabled}`);
+
+        // 간단한 쿼리 사용 - name 필드 건드리지 않음!
+        const params = AlarmQueries.buildEnabledStatusParams(is_enabled, id, tenantId);
+        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_ENABLED_STATUS, params);
+
+        if (result.changes > 0) {
+            console.log(`✅ 알람 규칙 ${id} 상태 변경 완료`);
+            res.json(createResponse(true, { 
+                id: parseInt(id), 
+                is_enabled: is_enabled 
+            }, `Alarm rule ${is_enabled ? 'enabled' : 'disabled'} successfully`));
+        } else {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
+            );
+        }
+
+    } catch (error) {
+        console.error(`❌ 알람 규칙 ${req.params.id} 상태 변경 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_TOGGLE_ERROR'));
+    }
+});
+
+/**
+ * PATCH /api/alarms/rules/:id/settings  
+ * 알람 규칙 설정만 업데이트 (name 건드리지 않음)
+ */
+router.patch('/:id/settings', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const settings = req.body;  // is_enabled, notification_enabled 등만
+
+        console.log(`⚙️ 알람 규칙 ${id} 설정 업데이트:`, settings);
+
+        // 설정만 업데이트하는 쿼리 사용
+        const params = AlarmQueries.buildSettingsParams(settings, id, tenantId);
+        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_SETTINGS_ONLY, params);
+
+        if (result.changes > 0) {
+            console.log(`✅ 알람 규칙 ${id} 설정 업데이트 완료`);
+            res.json(createResponse(true, { 
+                id: parseInt(id),
+                updated_settings: settings 
+            }, 'Alarm rule settings updated successfully'));
+        } else {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
+            );
+        }
+
+    } catch (error) {
+        console.error(`❌ 알람 규칙 ${req.params.id} 설정 업데이트 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_SETTINGS_ERROR'));
+    }
+});
+
+/**
  * GET /api/alarms/test
  * 알람 API 테스트 엔드포인트
  */
@@ -1829,14 +1897,15 @@ router.get('/test', async (req, res) => {
         const testResult = await factory.executeQuery('SELECT 1 as test', []);
         
         res.json(createResponse(true, { 
-            message: 'Complete Alarm API is working with DatabaseFactory.executeQuery!',
+            message: 'Complete Alarm API is working with simplified update queries!',
             database_test: testResult,
             architecture: [
                 'ConfigManager-based database configuration',
                 'DatabaseFactory.executeQuery for unified database access', 
                 'AlarmQueries for centralized SQL management',
                 'DB-type independent implementation',
-                'Complete feature coverage with category/tags support'
+                'Complete feature coverage with category/tags support',
+                '🆕 Simplified update queries for is_enabled field'
             ],
             available_endpoints: [
                 // 알람 발생 관련
@@ -1852,7 +1921,7 @@ router.get('/test', async (req, res) => {
                 'GET /api/alarms/recent',
                 'GET /api/alarms/device/:deviceId',
                 
-                // 알람 규칙 관련
+                // 알람 규칙 관리 (기존)
                 'GET /api/alarms/rules',
                 'GET /api/alarms/rules/:id',
                 'GET /api/alarms/rules/category/:category',
@@ -1861,7 +1930,12 @@ router.get('/test', async (req, res) => {
                 'PUT /api/alarms/rules/:id',
                 'DELETE /api/alarms/rules/:id',
                 'GET /api/alarms/rules/statistics',
-                'PATCH /api/alarms/rules/:id/settings',
+                
+                // 🆕 간단한 업데이트 엔드포인트들 (NEW!)
+                'PATCH /api/alarms/rules/:id/toggle',        // is_enabled만 토글
+                'PATCH /api/alarms/rules/:id/settings',      // 설정만 업데이트
+                'PATCH /api/alarms/rules/:id/name',          // 이름만 업데이트
+                'PATCH /api/alarms/rules/:id/severity',      // 심각도만 업데이트
                 
                 // 알람 템플릿 관련
                 'GET /api/alarms/templates',
@@ -1897,7 +1971,9 @@ router.get('/test', async (req, res) => {
                 '✅ 일괄 작업 지원',
                 '✅ 데이터 포맷팅',
                 '✅ 에러 처리',
-                '✅ 로깅'
+                '✅ 로깅',
+                '🆕 간단한 필드별 업데이트 쿼리',
+                '🆕 is_enabled 토글 전용 엔드포인트'
             ],
             new_features_added: [
                 '🆕 category 컬럼 지원',
@@ -1907,14 +1983,31 @@ router.get('/test', async (req, res) => {
                 '🆕 카테고리/태그 통계',
                 '🆕 검색에서 카테고리/태그 포함',
                 '🆕 템플릿에서 태그 지원',
-                '🆕 필터링에서 카테고리/태그 지원'
+                '🆕 필터링에서 카테고리/태그 지원',
+                '🚀 PATCH /api/alarms/rules/:id/toggle - is_enabled 토글',
+                '🚀 PATCH /api/alarms/rules/:id/settings - 설정만 업데이트',
+                '🚀 간단한 업데이트 쿼리로 NOT NULL 에러 방지'
+            ],
+            simple_update_queries: [
+                'UPDATE_ENABLED_STATUS - is_enabled만 업데이트',
+                'UPDATE_SETTINGS_ONLY - 설정 필드들만 업데이트',
+                'UPDATE_NAME_ONLY - name만 업데이트',
+                'UPDATE_SEVERITY_ONLY - severity만 업데이트'
+            ],
+            problem_solved: [
+                '❌ 기존 문제: 44개 모든 필드를 업데이트해야 함',
+                '❌ 기존 문제: is_enabled 토글 시 name 필드도 필수',
+                '✅ 해결: 특정 필드만 업데이트하는 전용 쿼리',
+                '✅ 해결: name 필드 건드리지 않는 토글 엔드포인트',
+                '✅ 해결: NOT NULL 제약조건 위반 방지'
             ]
-        }, 'Complete Alarm API test successful - category/tags schema fully supported'));
+        }, 'Complete Alarm API test successful - simplified updates implemented!'));
 
     } catch (error) {
         console.error('테스트 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'TEST_ERROR'));
     }
 });
+
 
 module.exports = router;

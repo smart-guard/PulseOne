@@ -30,6 +30,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // 개별 토글 로딩 상태 관리
+  const [toggleLoading, setToggleLoading] = useState<Set<number>>(new Set());
+  
   // 데이터포인트 및 디바이스 목록
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -169,25 +172,57 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }
   };
 
-  // 알람 규칙 활성화/비활성화 토글
+  // 🚀 수정된 알람 규칙 활성화/비활성화 토글 (새로운 간단 API 사용)
   const handleToggleRule = async (ruleId: number, currentStatus: boolean) => {
     try {
-      setLoading(true);
+      // 개별 토글 로딩 상태 설정
+      setToggleLoading(prev => new Set([...prev, ruleId]));
       
-      const response = await AlarmApiService.updateAlarmRule(ruleId, {
-        is_enabled: !currentStatus
-      });
+      const newStatus = !currentStatus;
+      console.log(`🔄 알람 규칙 ${ruleId} ${newStatus ? '활성화' : '비활성화'} 시작...`);
+      
+      // 🎯 새로운 간단한 토글 API 사용 (name 필드 건드리지 않음!)
+      const response = await AlarmApiService.toggleAlarmRule(ruleId, newStatus);
       
       if (response.success) {
-        await loadAlarmRules();
+        console.log(`✅ 알람 규칙 ${ruleId} 토글 성공`);
+        
+        // 로컬 상태 즉시 업데이트 (빠른 UI 반응)
+        setAlarmRules(prev => prev.map(rule => 
+          rule.id === ruleId 
+            ? { ...rule, is_enabled: newStatus }
+            : rule
+        ));
+        
+        // 선택적으로 전체 데이터 새로고침 (서버 동기화)
+        // await loadAlarmRules();
       } else {
         throw new Error(response.message || '상태 변경에 실패했습니다.');
       }
     } catch (error) {
-      console.error('상태 변경 실패:', error);
-      alert(error instanceof Error ? error.message : '상태 변경에 실패했습니다.');
+      console.error(`❌ 알람 규칙 ${ruleId} 토글 실패:`, error);
+      
+      // 사용자 친화적 에러 메시지
+      let errorMessage = '상태 변경에 실패했습니다.';
+      if (error instanceof Error) {
+        if (error.message.includes('NOT NULL constraint failed')) {
+          errorMessage = '알람 규칙 업데이트 중 데이터베이스 오류가 발생했습니다. 관리자에게 문의하세요.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      alert(errorMessage);
+      
+      // 에러 발생 시 전체 데이터 새로고침
+      await loadAlarmRules();
     } finally {
-      setLoading(false);
+      // 개별 토글 로딩 상태 해제
+      setToggleLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(ruleId);
+        return newSet;
+      });
     }
   };
 
@@ -319,6 +354,26 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     
     const classIndex = (hash >>> 0) % colorClasses.length;
     return colorClasses[classIndex];
+  };
+
+  // 🚀 개별 토글 버튼 컴포넌트
+  const ToggleButton: React.FC<{ rule: AlarmRule; size?: 'sm' | 'normal' }> = ({ rule, size = 'normal' }) => {
+    const isToggling = toggleLoading.has(rule.id);
+    
+    return (
+      <button
+        className={`btn btn-secondary ${size === 'sm' ? 'btn-sm' : ''}`}
+        onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
+        title={rule.is_enabled ? '비활성화' : '활성화'}
+        disabled={isToggling || loading}
+      >
+        {isToggling ? (
+          <i className="fas fa-spinner fa-spin"></i>
+        ) : (
+          <i className={`fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
+        )}
+      </button>
+    );
   };
 
   return (
@@ -515,14 +570,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     </td>
                     <td>
                       <div className="table-actions">
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
-                          title={rule.is_enabled ? '비활성화' : '활성화'}
-                          disabled={loading}
-                        >
-                          <i className={`fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
-                        </button>
+                        <ToggleButton rule={rule} />
                         <button
                           className="btn btn-secondary"
                           onClick={() => handleEditRule(rule)}
@@ -631,14 +679,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                   </div>
                   
                   <div className="card-actions">
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
-                      title={rule.is_enabled ? '비활성화' : '활성화'}
-                      disabled={loading}
-                    >
-                      <i className={`fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
-                    </button>
+                    <ToggleButton rule={rule} size="sm" />
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={() => handleEditRule(rule)}
