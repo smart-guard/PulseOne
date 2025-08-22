@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AlarmApiService, AlarmRule } from '../api/services/alarmApi';
+import { useConfirmContext } from '../components/common/ConfirmProvider';
 import AlarmCreateEditModal from '../components/modals/AlarmCreateEditModal';
 import '../styles/alarm-settings.css';
 
@@ -25,6 +26,19 @@ interface Device {
 }
 
 const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
+  // ConfirmProvider 사용
+  const { confirm } = useConfirmContext();
+  const testConfirm = async () => {
+    try {
+      const result = await confirm({
+        title: '테스트',
+        message: '테스트입니다'
+      });
+      console.log('테스트 결과:', result);
+    } catch (error) {
+      console.error('테스트 에러:', error);
+    }
+  };
   // 상태 관리
   const [alarmRules, setAlarmRules] = useState<AlarmRule[]>([]);
   const [loading, setLoading] = useState(false);
@@ -147,84 +161,117 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     return device ? device.name : `Device #${deviceId}`;
   };
 
-  // 알람 규칙 삭제
-  const handleDeleteRule = async (ruleId: number) => {
-    if (!confirm('정말로 이 알람 규칙을 삭제하시겠습니까?')) {
-      return;
-    }
-
+  // 알람 규칙 삭제 (새로운 confirm 다이얼로그 사용)
+  const handleDeleteRule = async (ruleId: number, ruleName: string) => {
     try {
+      const confirmed = await confirm({
+        title: '알람 규칙 삭제',
+        message: `"${ruleName}" 알람 규칙을 정말로 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`,
+        confirmText: '삭제',
+        cancelText: '취소',
+        confirmButtonType: 'danger'
+      });
+
+      if (!confirmed) {
+        console.log('사용자가 삭제 취소함');
+        return;
+      }
+
       setLoading(true);
       
       const response = await AlarmApiService.deleteAlarmRule(ruleId);
       
       if (response.success) {
         await loadAlarmRules();
-        alert('알람 규칙이 삭제되었습니다.');
+        
+        // 성공 알림
+        await confirm({
+          title: '삭제 완료',
+          message: `"${ruleName}" 알람 규칙이 성공적으로 삭제되었습니다.`,
+          confirmText: '확인',
+          confirmButtonType: 'primary',
+          showCancelButton: false
+        });
       } else {
         throw new Error(response.message || '알람 규칙 삭제에 실패했습니다.');
       }
     } catch (error) {
       console.error('알람 규칙 삭제 실패:', error);
-      alert(error instanceof Error ? error.message : '알람 규칙 삭제에 실패했습니다.');
+      
+      const errorMessage = error instanceof Error ? error.message : '알람 규칙 삭제에 실패했습니다.';
+      
+      // 에러 다이얼로그
+      await confirm({
+        title: '삭제 실패',
+        message: `삭제 중 오류가 발생했습니다:\n${errorMessage}`,
+        confirmText: '확인',
+        confirmButtonType: 'danger',
+        showCancelButton: false
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // 🚀 수정된 알람 규칙 활성화/비활성화 토글 (새로운 간단 API 사용)
-  const handleToggleRule = async (ruleId: number, currentStatus: boolean) => {
-    try {
-      // 개별 토글 로딩 상태 설정
-      setToggleLoading(prev => new Set([...prev, ruleId]));
-      
-      const newStatus = !currentStatus;
-      console.log(`🔄 알람 규칙 ${ruleId} ${newStatus ? '활성화' : '비활성화'} 시작...`);
-      
-      // 🎯 새로운 간단한 토글 API 사용 (name 필드 건드리지 않음!)
-      const response = await AlarmApiService.toggleAlarmRule(ruleId, newStatus);
-      
-      if (response.success) {
-        console.log(`✅ 알람 규칙 ${ruleId} 토글 성공`);
-        
-        // 로컬 상태 즉시 업데이트 (빠른 UI 반응)
-        setAlarmRules(prev => prev.map(rule => 
-          rule.id === ruleId 
-            ? { ...rule, is_enabled: newStatus }
-            : rule
-        ));
-        
-        // 선택적으로 전체 데이터 새로고침 (서버 동기화)
-        // await loadAlarmRules();
-      } else {
-        throw new Error(response.message || '상태 변경에 실패했습니다.');
-      }
-    } catch (error) {
-      console.error(`❌ 알람 규칙 ${ruleId} 토글 실패:`, error);
-      
-      // 사용자 친화적 에러 메시지
-      let errorMessage = '상태 변경에 실패했습니다.';
-      if (error instanceof Error) {
-        if (error.message.includes('NOT NULL constraint failed')) {
-          errorMessage = '알람 규칙 업데이트 중 데이터베이스 오류가 발생했습니다. 관리자에게 문의하세요.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      alert(errorMessage);
-      
-      // 에러 발생 시 전체 데이터 새로고침
-      await loadAlarmRules();
-    } finally {
-      // 개별 토글 로딩 상태 해제
-      setToggleLoading(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(ruleId);
-        return newSet;
-      });
+  // 🚀 수정된 알람 규칙 활성화/비활성화 토글 (새로운 confirm 다이얼로그 사용)
+const handleToggleRule = async (ruleId: number, currentStatus: boolean, ruleName: string) => {
+  const newStatus = !currentStatus;
+  const action = newStatus ? '활성화' : '비활성화';
+  
+  try {
+    const confirmed = await confirm({
+      title: '알람 규칙 상태 변경',
+      message: `"${ruleName}" 알람 규칙을 ${action}하시겠습니까?\n\n이 작업은 즉시 적용됩니다.`,
+      confirmText: action,
+      cancelText: '취소',
+      confirmButtonType: newStatus ? 'primary' : 'warning'
+    });
+
+    if (!confirmed) {
+      return;
     }
-  };
+
+    setToggleLoading(prev => new Set([...prev, ruleId]));
+    
+    const response = await AlarmApiService.toggleAlarmRule(ruleId, newStatus);
+    
+    if (response.success) {
+      setAlarmRules(prev => 
+        prev.map(rule =>
+          rule.id === ruleId ? { ...rule, is_enabled: newStatus } : rule
+        )
+      );
+      
+      await confirm({
+        title: '상태 변경 완료',
+        message: `"${ruleName}" 알람 규칙이 성공적으로 ${action}되었습니다.`,
+        confirmText: '확인',
+        confirmButtonType: 'primary',
+        showCancelButton: false
+      });
+    } else {
+      throw new Error(response.message || `${action}에 실패했습니다.`);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : `알람 규칙 ${action}에 실패했습니다.`;
+    
+    await confirm({
+      title: '상태 변경 실패',
+      message: `${action} 중 오류가 발생했습니다:\n${errorMessage}`,
+      confirmText: '확인',
+      confirmButtonType: 'danger',
+      showCancelButton: false
+    });
+    
+    await loadAlarmRules();
+  } finally {
+    setToggleLoading(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(ruleId);
+      return newSet;
+    });
+  }
+};
 
   // 모달 핸들러들
   const handleCreateRule = () => {
@@ -356,16 +403,21 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     return colorClasses[classIndex];
   };
 
-  // 🚀 개별 토글 버튼 컴포넌트
+  // 🚀 개별 토글 버튼 컴포넌트 (수정됨)
   const ToggleButton: React.FC<{ rule: AlarmRule; size?: 'sm' | 'normal' }> = ({ rule, size = 'normal' }) => {
     const isToggling = toggleLoading.has(rule.id);
     
+    const handleClick = () => {
+      handleToggleRule(rule.id, rule.is_enabled, rule.name);
+    };
+    
     return (
       <button
-        className={`btn btn-secondary ${size === 'sm' ? 'btn-sm' : ''}`}
-        onClick={() => handleToggleRule(rule.id, rule.is_enabled)}
+        className={`btn ${rule.is_enabled ? 'btn-warning' : 'btn-success'} ${size === 'sm' ? 'btn-sm' : ''}`}
+        onClick={handleClick}
         title={rule.is_enabled ? '비활성화' : '활성화'}
         disabled={isToggling || loading}
+        style={{ minWidth: '40px' }}  // 너비도 줄임
       >
         {isToggling ? (
           <i className="fas fa-spinner fa-spin"></i>
@@ -580,7 +632,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                         </button>
                         <button
                           className="btn btn-danger"
-                          onClick={() => handleDeleteRule(rule.id)}
+                          onClick={() => handleDeleteRule(rule.id, rule.name)}
                           title="삭제"
                         >
                           <i className="fas fa-trash"></i>
@@ -689,7 +741,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     </button>
                     <button
                       className="btn btn-danger btn-sm"
-                      onClick={() => handleDeleteRule(rule.id)}
+                      onClick={() => handleDeleteRule(rule.id, rule.name)}
                       title="삭제"
                     >
                       <i className="fas fa-trash"></i>

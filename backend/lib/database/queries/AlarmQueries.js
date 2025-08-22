@@ -356,6 +356,38 @@ class AlarmQueries {
                 COUNT(CASE WHEN tags IS NOT NULL AND tags != '[]' THEN 1 END) as rules_with_tags
             FROM alarm_rules 
             WHERE tenant_id = ?
+        `,
+        // 🎯 단순 활성화/비활성화 전용 쿼리 (간단!)
+        UPDATE_ENABLED_STATUS: `
+            UPDATE alarm_rules 
+            SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
+        `,
+        
+        // 🎯 특정 필드만 업데이트하는 쿼리들
+        UPDATE_SETTINGS_ONLY: `
+            UPDATE alarm_rules 
+            SET 
+                is_enabled = ?,
+                notification_enabled = ?,
+                auto_acknowledge = ?,
+                auto_clear = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
+        `,
+        
+        // 🎯 알람 규칙 이름만 업데이트
+        UPDATE_NAME_ONLY: `
+            UPDATE alarm_rules 
+            SET name = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
+        `,
+        
+        // 🎯 심각도만 업데이트  
+        UPDATE_SEVERITY_ONLY: `
+            UPDATE alarm_rules 
+            SET severity = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND tenant_id = ?
         `
     };
     
@@ -644,40 +676,55 @@ class AlarmQueries {
                 AND ao.occurrence_time >= ? 
                 AND ao.occurrence_time <= ?
             ORDER BY ao.occurrence_time DESC
-        `,
-        // 🎯 단순 활성화/비활성화 전용 쿼리 (간단!)
-        UPDATE_ENABLED_STATUS: `
-            UPDATE alarm_rules 
-            SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND tenant_id = ?
-        `,
-        
-        // 🎯 특정 필드만 업데이트하는 쿼리들
-        UPDATE_SETTINGS_ONLY: `
-            UPDATE alarm_rules 
-            SET 
-                is_enabled = ?,
-                notification_enabled = ?,
-                auto_acknowledge = ?,
-                auto_clear = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND tenant_id = ?
-        `,
-        
-        // 🎯 알람 규칙 이름만 업데이트
-        UPDATE_NAME_ONLY: `
-            UPDATE alarm_rules 
-            SET name = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND tenant_id = ?
-        `,
-        
-        // 🎯 심각도만 업데이트  
-        UPDATE_SEVERITY_ONLY: `
-            UPDATE alarm_rules 
-            SET severity = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND tenant_id = ?
         `
     };
+
+    /**
+     * 활성화/비활성화 상태만 업데이트하는 파라미터 생성
+     */
+    static buildEnabledStatusParams(isEnabled, id, tenantId) {
+        return [
+            isEnabled ? 1 : 0,  // is_enabled
+            parseInt(id),       // WHERE id = ?
+            tenantId           // WHERE tenant_id = ?
+        ];
+    }
+
+    /**
+     * 설정만 업데이트하는 파라미터 생성
+     */
+    static buildSettingsParams(settings, id, tenantId) {
+        return [
+            settings.is_enabled !== undefined ? (settings.is_enabled ? 1 : 0) : 1,
+            settings.notification_enabled !== undefined ? (settings.notification_enabled ? 1 : 0) : 1,
+            settings.auto_acknowledge !== undefined ? (settings.auto_acknowledge ? 1 : 0) : 0,
+            settings.auto_clear !== undefined ? (settings.auto_clear ? 1 : 0) : 1,
+            parseInt(id),       // WHERE id = ?
+            tenantId           // WHERE tenant_id = ?
+        ];
+    }
+
+    /**
+     * 이름만 업데이트하는 파라미터 생성
+     */
+    static buildNameParams(name, id, tenantId) {
+        return [
+            name,              // name = ?
+            parseInt(id),      // WHERE id = ?
+            tenantId          // WHERE tenant_id = ?
+        ];
+    }
+
+    /**
+     * 심각도만 업데이트하는 파라미터 생성
+     */
+    static buildSeverityParams(severity, id, tenantId) {
+        return [
+            severity,          // severity = ?
+            parseInt(id),      // WHERE id = ?
+            tenantId          // WHERE tenant_id = ?
+        ];
+    }
     
     // =========================================================================
     // AlarmTemplate 쿼리들 - tags 컬럼 포함 (23개 컬럼)

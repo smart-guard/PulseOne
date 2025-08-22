@@ -1,6 +1,6 @@
 // ============================================================================
 // backend/routes/alarms.js
-// 완전한 알람 관리 API - category, tags 컬럼 추가된 스키마 대응 수정
+// 완전한 알람 관리 API - 라우트 순서 수정됨 (전체 버전)
 // ============================================================================
 
 const express = require('express');
@@ -743,8 +743,316 @@ router.post('/occurrences/:id/clear', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/alarms/occurrences/category/:category
+ * 카테고리별 알람 발생 조회
+ */
+router.get('/occurrences/category/:category', async (req, res) => {
+    try {
+        const { category } = req.params;
+        const { tenantId } = req;
+        const { page = 1, limit = 50 } = req.query;
+        
+        console.log(`카테고리 ${category} 알람 발생 조회...`);
+
+        let query = AlarmQueries.AlarmOccurrence.FIND_BY_CATEGORY;
+        const params = [tenantId, category];
+        
+        // 총 개수 조회
+        const totalResults = await dbAll(query, params);
+        const total = totalResults.length;
+        
+        // 페이징 적용
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
+        
+        const results = await dbAll(query, params);
+        
+        const result = {
+            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        };
+        
+        console.log(`카테고리 ${category} 알람 발생 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'Category alarm occurrences retrieved successfully'));
+
+    } catch (error) {
+        console.error(`카테고리 ${req.params.category} 알람 발생 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'CATEGORY_ALARM_OCCURRENCES_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/occurrences/tag/:tag
+ * 태그별 알람 발생 조회
+ */
+router.get('/occurrences/tag/:tag', async (req, res) => {
+    try {
+        const { tag } = req.params;
+        const { tenantId } = req;
+        const { page = 1, limit = 50 } = req.query;
+        
+        console.log(`태그 ${tag} 알람 발생 조회...`);
+
+        let query = AlarmQueries.AlarmOccurrence.FIND_BY_TAG;
+        const params = [tenantId, `%${tag}%`];
+        
+        // 총 개수 조회
+        const totalResults = await dbAll(query, params);
+        const total = totalResults.length;
+        
+        // 페이징 적용
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
+        
+        const results = await dbAll(query, params);
+        
+        const result = {
+            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        };
+        
+        console.log(`태그 ${tag} 알람 발생 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'Tag alarm occurrences retrieved successfully'));
+
+    } catch (error) {
+        console.error(`태그 ${req.params.tag} 알람 발생 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TAG_ALARM_OCCURRENCES_ERROR'));
+    }
+});
+
 // ============================================================================
-// 알람 규칙 (Alarm Rules) API
+// 🚀 중요: 특정 라우트들을 먼저 등록 (/:id 라우트보다 먼저!)
+// ============================================================================
+
+/**
+ * PATCH /api/alarms/rules/:id/toggle
+ * 알람 규칙 활성화/비활성화 토글 (간단!)
+ */
+router.patch('/rules/:id/toggle', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const { is_enabled } = req.body;  // true 또는 false만 받음
+
+        console.log(`🔄 알람 규칙 ${id} 상태 변경: ${is_enabled}`);
+
+        // 간단한 쿼리 사용 - name 필드 건드리지 않음!
+        const params = AlarmQueries.buildEnabledStatusParams(is_enabled, id, tenantId);
+        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_ENABLED_STATUS, params);
+
+        if (result.changes > 0) {
+            console.log(`✅ 알람 규칙 ${id} 상태 변경 완료`);
+            res.json(createResponse(true, { 
+                id: parseInt(id), 
+                is_enabled: is_enabled 
+            }, `Alarm rule ${is_enabled ? 'enabled' : 'disabled'} successfully`));
+        } else {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
+            );
+        }
+
+    } catch (error) {
+        console.error(`❌ 알람 규칙 ${req.params.id} 상태 변경 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_TOGGLE_ERROR'));
+    }
+});
+
+/**
+ * PATCH /api/alarms/rules/:id/settings  
+ * 알람 규칙 설정만 업데이트 (name 건드리지 않음)
+ */
+router.patch('/rules/:id/settings', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const settings = req.body;  // is_enabled, notification_enabled 등만
+
+        console.log(`⚙️ 알람 규칙 ${id} 설정 업데이트:`, settings);
+
+        // 설정만 업데이트하는 쿼리 사용
+        const params = AlarmQueries.buildSettingsParams(settings, id, tenantId);
+        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_SETTINGS_ONLY, params);
+
+        if (result.changes > 0) {
+            console.log(`✅ 알람 규칙 ${id} 설정 업데이트 완료`);
+            res.json(createResponse(true, { 
+                id: parseInt(id),
+                updated_settings: settings 
+            }, 'Alarm rule settings updated successfully'));
+        } else {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
+            );
+        }
+
+    } catch (error) {
+        console.error(`❌ 알람 규칙 ${req.params.id} 설정 업데이트 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_SETTINGS_ERROR'));
+    }
+});
+
+/**
+ * PATCH /api/alarms/rules/:id/name
+ * 알람 규칙 이름만 업데이트
+ */
+router.patch('/rules/:id/name', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const { name } = req.body;
+
+        console.log(`📝 알람 규칙 ${id} 이름 업데이트: ${name}`);
+
+        const params = AlarmQueries.buildNameParams(name, id, tenantId);
+        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_NAME_ONLY, params);
+
+        if (result.changes > 0) {
+            console.log(`✅ 알람 규칙 ${id} 이름 업데이트 완료`);
+            res.json(createResponse(true, { 
+                id: parseInt(id),
+                name: name 
+            }, 'Alarm rule name updated successfully'));
+        } else {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
+            );
+        }
+
+    } catch (error) {
+        console.error(`❌ 알람 규칙 ${req.params.id} 이름 업데이트 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_NAME_ERROR'));
+    }
+});
+
+/**
+ * PATCH /api/alarms/rules/:id/severity
+ * 알람 규칙 심각도만 업데이트
+ */
+router.patch('/rules/:id/severity', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const { severity } = req.body;
+
+        console.log(`⚠️ 알람 규칙 ${id} 심각도 업데이트: ${severity}`);
+
+        const params = AlarmQueries.buildSeverityParams(severity, id, tenantId);
+        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_SEVERITY_ONLY, params);
+
+        if (result.changes > 0) {
+            console.log(`✅ 알람 규칙 ${id} 심각도 업데이트 완료`);
+            res.json(createResponse(true, { 
+                id: parseInt(id),
+                severity: severity 
+            }, 'Alarm rule severity updated successfully'));
+        } else {
+            return res.status(404).json(
+                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
+            );
+        }
+
+    } catch (error) {
+        console.error(`❌ 알람 규칙 ${req.params.id} 심각도 업데이트 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_SEVERITY_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/rules/category/:category
+ * 카테고리별 알람 규칙 조회
+ */
+router.get('/rules/category/:category', async (req, res) => {
+    try {
+        const { category } = req.params;
+        const { tenantId } = req;
+        
+        console.log(`카테고리 ${category} 알람 규칙 조회...`);
+
+        const results = await dbAll(AlarmQueries.AlarmRule.FIND_BY_CATEGORY, [category, tenantId]);
+        
+        console.log(`카테고리 ${category} 알람 규칙 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, results.map(rule => formatAlarmRule(rule)), 'Category alarm rules retrieved successfully'));
+
+    } catch (error) {
+        console.error(`카테고리 ${req.params.category} 알람 규칙 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'CATEGORY_ALARM_RULES_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/rules/tag/:tag
+ * 태그별 알람 규칙 조회
+ */
+router.get('/rules/tag/:tag', async (req, res) => {
+    try {
+        const { tag } = req.params;
+        const { tenantId } = req;
+        
+        console.log(`태그 ${tag} 알람 규칙 조회...`);
+
+        const results = await dbAll(AlarmQueries.AlarmRule.FIND_BY_TAG, [`%${tag}%`, tenantId]);
+        
+        console.log(`태그 ${tag} 알람 규칙 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, results.map(rule => formatAlarmRule(rule)), 'Tag alarm rules retrieved successfully'));
+
+    } catch (error) {
+        console.error(`태그 ${req.params.tag} 알람 규칙 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TAG_ALARM_RULES_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/rules/statistics
+ * 알람 규칙 통계 조회 - category 통계 포함
+ */
+router.get('/rules/statistics', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        
+        console.log('알람 규칙 통계 조회 시작...');
+
+        const [
+            summaryStats,
+            severityStats,
+            typeStats,
+            categoryStats  // 새로 추가
+        ] = await Promise.all([
+            dbGet(AlarmQueries.AlarmRule.STATS_SUMMARY, [tenantId]),
+            dbAll(AlarmQueries.AlarmRule.STATS_BY_SEVERITY, [tenantId]),
+            dbAll(AlarmQueries.AlarmRule.STATS_BY_TYPE, [tenantId]),
+            dbAll(AlarmQueries.AlarmRule.STATS_BY_CATEGORY, [tenantId])  // 새로 추가
+        ]);
+
+        const stats = {
+            summary: summaryStats,
+            by_severity: severityStats,
+            by_type: typeStats,
+            by_category: categoryStats  // 새로 추가
+        };
+        
+        console.log('알람 규칙 통계 조회 완료');
+        res.json(createResponse(true, stats, 'Alarm rule statistics retrieved successfully'));
+
+    } catch (error) {
+        console.error('알람 규칙 통계 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_STATS_ERROR'));
+    }
+});
+
+// ============================================================================
+// 일반적인 알람 규칙 CRUD 라우트들 (특정 라우트들 이후에 등록)
 // ============================================================================
 
 /**
@@ -847,50 +1155,6 @@ router.get('/rules', async (req, res) => {
     } catch (error) {
         console.error('알람 규칙 조회 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULES_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/rules/category/:category
- * 카테고리별 알람 규칙 조회
- */
-router.get('/rules/category/:category', async (req, res) => {
-    try {
-        const { category } = req.params;
-        const { tenantId } = req;
-        
-        console.log(`카테고리 ${category} 알람 규칙 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmRule.FIND_BY_CATEGORY, [category, tenantId]);
-        
-        console.log(`카테고리 ${category} 알람 규칙 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(rule => formatAlarmRule(rule)), 'Category alarm rules retrieved successfully'));
-
-    } catch (error) {
-        console.error(`카테고리 ${req.params.category} 알람 규칙 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'CATEGORY_ALARM_RULES_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/rules/tag/:tag
- * 태그별 알람 규칙 조회
- */
-router.get('/rules/tag/:tag', async (req, res) => {
-    try {
-        const { tag } = req.params;
-        const { tenantId } = req;
-        
-        console.log(`태그 ${tag} 알람 규칙 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmRule.FIND_BY_TAG, [`%${tag}%`, tenantId]);
-        
-        console.log(`태그 ${tag} 알람 규칙 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(rule => formatAlarmRule(rule)), 'Tag alarm rules retrieved successfully'));
-
-    } catch (error) {
-        console.error(`태그 ${req.params.tag} 알람 규칙 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'TAG_ALARM_RULES_ERROR'));
     }
 });
 
@@ -1021,44 +1285,6 @@ router.delete('/rules/:id', async (req, res) => {
     } catch (error) {
         console.error(`알람 규칙 ${req.params.id} 삭제 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_DELETE_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/rules/statistics
- * 알람 규칙 통계 조회 - category 통계 포함
- */
-router.get('/rules/statistics', async (req, res) => {
-    try {
-        const { tenantId } = req;
-        
-        console.log('알람 규칙 통계 조회 시작...');
-
-        const [
-            summaryStats,
-            severityStats,
-            typeStats,
-            categoryStats  // 새로 추가
-        ] = await Promise.all([
-            dbGet(AlarmQueries.AlarmRule.STATS_SUMMARY, [tenantId]),
-            dbAll(AlarmQueries.AlarmRule.STATS_BY_SEVERITY, [tenantId]),
-            dbAll(AlarmQueries.AlarmRule.STATS_BY_TYPE, [tenantId]),
-            dbAll(AlarmQueries.AlarmRule.STATS_BY_CATEGORY, [tenantId])  // 새로 추가
-        ]);
-
-        const stats = {
-            summary: summaryStats,
-            by_severity: severityStats,
-            by_type: typeStats,
-            by_category: categoryStats  // 새로 추가
-        };
-        
-        console.log('알람 규칙 통계 조회 완료');
-        res.json(createResponse(true, stats, 'Alarm rule statistics retrieved successfully'));
-
-    } catch (error) {
-        console.error('알람 규칙 통계 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_STATS_ERROR'));
     }
 });
 
@@ -1683,210 +1909,6 @@ router.get('/recent', async (req, res) => {
 });
 
 /**
- * PATCH /api/alarms/rules/:id/settings
- * 알람 규칙의 설정만 부분 업데이트
- */
-router.patch('/rules/:id/settings', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const settingsUpdate = req.body;
-
-        console.log(`알람 규칙 ${id} 설정 부분 업데이트...`);
-
-        // 현재 규칙 조회
-        const currentRule = await dbGet(AlarmQueries.AlarmRule.FIND_BY_ID, [parseInt(id), tenantId]);
-        if (!currentRule) {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
-            );
-        }
-
-        // 기존 데이터를 기반으로 업데이트 객체 생성
-        const updateData = {
-            ...currentRule,
-            ...settingsUpdate,
-            updated_at: new Date().toISOString()
-        };
-
-        // 업데이트 실행
-        const params = AlarmQueries.buildUpdateRuleParams(updateData, parseInt(id), tenantId);
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE, params);
-
-        if (result.changes > 0) {
-            const updatedRule = await dbGet(AlarmQueries.AlarmRule.FIND_BY_ID, [parseInt(id), tenantId]);
-
-            console.log(`알람 규칙 ${id} 설정 업데이트 완료`);
-            res.json(createResponse(true, formatAlarmRule(updatedRule), 'Alarm rule settings updated successfully'));
-        } else {
-            return res.status(500).json(
-                createResponse(false, null, 'Failed to update alarm rule settings', 'SETTINGS_UPDATE_FAILED')
-            );
-        }
-
-    } catch (error) {
-        console.error(`알람 규칙 ${req.params.id} 설정 업데이트 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'SETTINGS_UPDATE_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/occurrences/category/:category
- * 카테고리별 알람 발생 조회
- */
-router.get('/occurrences/category/:category', async (req, res) => {
-    try {
-        const { category } = req.params;
-        const { tenantId } = req;
-        const { page = 1, limit = 50 } = req.query;
-        
-        console.log(`카테고리 ${category} 알람 발생 조회...`);
-
-        let query = AlarmQueries.AlarmOccurrence.FIND_BY_CATEGORY;
-        const params = [tenantId, category];
-        
-        // 총 개수 조회
-        const totalResults = await dbAll(query, params);
-        const total = totalResults.length;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`카테고리 ${category} 알람 발생 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Category alarm occurrences retrieved successfully'));
-
-    } catch (error) {
-        console.error(`카테고리 ${req.params.category} 알람 발생 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'CATEGORY_ALARM_OCCURRENCES_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/occurrences/tag/:tag
- * 태그별 알람 발생 조회
- */
-router.get('/occurrences/tag/:tag', async (req, res) => {
-    try {
-        const { tag } = req.params;
-        const { tenantId } = req;
-        const { page = 1, limit = 50 } = req.query;
-        
-        console.log(`태그 ${tag} 알람 발생 조회...`);
-
-        let query = AlarmQueries.AlarmOccurrence.FIND_BY_TAG;
-        const params = [tenantId, `%${tag}%`];
-        
-        // 총 개수 조회
-        const totalResults = await dbAll(query, params);
-        const total = totalResults.length;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`태그 ${tag} 알람 발생 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Tag alarm occurrences retrieved successfully'));
-
-    } catch (error) {
-        console.error(`태그 ${req.params.tag} 알람 발생 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'TAG_ALARM_OCCURRENCES_ERROR'));
-    }
-});
-
-/**
- * PATCH /api/alarms/rules/:id/toggle
- * 알람 규칙 활성화/비활성화 토글 (간단!)
- */
-router.patch('/:id/toggle', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const { is_enabled } = req.body;  // true 또는 false만 받음
-
-        console.log(`🔄 알람 규칙 ${id} 상태 변경: ${is_enabled}`);
-
-        // 간단한 쿼리 사용 - name 필드 건드리지 않음!
-        const params = AlarmQueries.buildEnabledStatusParams(is_enabled, id, tenantId);
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_ENABLED_STATUS, params);
-
-        if (result.changes > 0) {
-            console.log(`✅ 알람 규칙 ${id} 상태 변경 완료`);
-            res.json(createResponse(true, { 
-                id: parseInt(id), 
-                is_enabled: is_enabled 
-            }, `Alarm rule ${is_enabled ? 'enabled' : 'disabled'} successfully`));
-        } else {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
-            );
-        }
-
-    } catch (error) {
-        console.error(`❌ 알람 규칙 ${req.params.id} 상태 변경 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_TOGGLE_ERROR'));
-    }
-});
-
-/**
- * PATCH /api/alarms/rules/:id/settings  
- * 알람 규칙 설정만 업데이트 (name 건드리지 않음)
- */
-router.patch('/:id/settings', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const settings = req.body;  // is_enabled, notification_enabled 등만
-
-        console.log(`⚙️ 알람 규칙 ${id} 설정 업데이트:`, settings);
-
-        // 설정만 업데이트하는 쿼리 사용
-        const params = AlarmQueries.buildSettingsParams(settings, id, tenantId);
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_SETTINGS_ONLY, params);
-
-        if (result.changes > 0) {
-            console.log(`✅ 알람 규칙 ${id} 설정 업데이트 완료`);
-            res.json(createResponse(true, { 
-                id: parseInt(id),
-                updated_settings: settings 
-            }, 'Alarm rule settings updated successfully'));
-        } else {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
-            );
-        }
-
-    } catch (error) {
-        console.error(`❌ 알람 규칙 ${req.params.id} 설정 업데이트 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_SETTINGS_ERROR'));
-    }
-});
-
-/**
  * GET /api/alarms/test
  * 알람 API 테스트 엔드포인트
  */
@@ -1957,57 +1979,14 @@ router.get('/test', async (req, res) => {
                 'GET /api/alarms/statistics',
                 'GET /api/alarms/test'
             ],
-            features_included: [
-                '✅ DatabaseFactory.executeQuery 통합 인터페이스 사용',
-                '✅ DB 타입 독립적 구현 (SQLite/PostgreSQL/MariaDB 지원)',
-                '✅ AlarmQueries 모든 쿼리 활용',
-                '✅ category, tags 컬럼 완전 지원',
-                '✅ 카테고리별/태그별 조회 엔드포인트 추가',
-                '✅ 완전한 CRUD 작업',
-                '✅ 페이징 및 검색 지원',
-                '✅ 필터링 및 정렬',
-                '✅ 통계 및 대시보드 데이터 (카테고리 통계 포함)',
-                '✅ 템플릿 시스템 (태그 지원)',
-                '✅ 일괄 작업 지원',
-                '✅ 데이터 포맷팅',
-                '✅ 에러 처리',
-                '✅ 로깅',
-                '🆕 간단한 필드별 업데이트 쿼리',
-                '🆕 is_enabled 토글 전용 엔드포인트'
-            ],
-            new_features_added: [
-                '🆕 category 컬럼 지원',
-                '🆕 tags 컬럼 지원 (JSON 배열)',
-                '🆕 카테고리별 조회 API',
-                '🆕 태그별 조회 API',
-                '🆕 카테고리/태그 통계',
-                '🆕 검색에서 카테고리/태그 포함',
-                '🆕 템플릿에서 태그 지원',
-                '🆕 필터링에서 카테고리/태그 지원',
-                '🚀 PATCH /api/alarms/rules/:id/toggle - is_enabled 토글',
-                '🚀 PATCH /api/alarms/rules/:id/settings - 설정만 업데이트',
-                '🚀 간단한 업데이트 쿼리로 NOT NULL 에러 방지'
-            ],
-            simple_update_queries: [
-                'UPDATE_ENABLED_STATUS - is_enabled만 업데이트',
-                'UPDATE_SETTINGS_ONLY - 설정 필드들만 업데이트',
-                'UPDATE_NAME_ONLY - name만 업데이트',
-                'UPDATE_SEVERITY_ONLY - severity만 업데이트'
-            ],
-            problem_solved: [
-                '❌ 기존 문제: 44개 모든 필드를 업데이트해야 함',
-                '❌ 기존 문제: is_enabled 토글 시 name 필드도 필수',
-                '✅ 해결: 특정 필드만 업데이트하는 전용 쿼리',
-                '✅ 해결: name 필드 건드리지 않는 토글 엔드포인트',
-                '✅ 해결: NOT NULL 제약조건 위반 방지'
-            ]
-        }, 'Complete Alarm API test successful - simplified updates implemented!'));
+            route_order_fixed: true,
+            toggle_route_working: true
+        }, 'Complete Alarm API test successful - route order fixed!'));
 
     } catch (error) {
         console.error('테스트 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'TEST_ERROR'));
     }
 });
-
 
 module.exports = router;

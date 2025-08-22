@@ -1,11 +1,12 @@
 // ============================================================================
 // frontend/src/App.tsx
-// 🔥 GitHub 구조 기반으로 라우트 수정 - 알람 규칙을 alarms/rules로 이동
+// GitHub 구조 기반 라우트 + ConfirmProvider 통합
 // ============================================================================
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
+import { ConfirmProvider } from './components/common/ConfirmProvider';
 
 // 페이지 컴포넌트들 import
 import Dashboard from './pages/Dashboard';
@@ -26,57 +27,59 @@ import BackupRestore from './pages/BackupRestore';
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <div className="app">
-        <Routes>
-          {/* 메인 레이아웃을 사용하는 모든 페이지들 */}
-          <Route path="/" element={<MainLayout />}>
-            {/* 기본 경로는 대시보드로 리다이렉트 */}
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            
-            {/* 대시보드 */}
-            <Route path="dashboard" element={<Dashboard />} />
-            
-            {/* 디바이스 관리 */}
-            <Route path="devices" element={<DeviceList />} />
-            
-            {/* 데이터 관리 */}
-            <Route path="data">
-              <Route path="explorer" element={<DataExplorer />} />
-              <Route path="realtime" element={<RealTimeMonitor />} />
-              <Route path="historical" element={<HistoricalData />} />
-              <Route path="virtual-points" element={<VirtualPoints />} />
-              <Route path="export" element={<DataExport />} />
-              {/* 데이터 하위 경로 기본값 */}
-              <Route index element={<Navigate to="explorer" replace />} />
+    <ConfirmProvider>
+      <Router>
+        <div className="app">
+          <Routes>
+            {/* 메인 레이아웃을 사용하는 모든 페이지들 */}
+            <Route path="/" element={<MainLayout />}>
+              {/* 기본 경로는 대시보드로 리다이렉트 */}
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              
+              {/* 대시보드 */}
+              <Route path="dashboard" element={<Dashboard />} />
+              
+              {/* 디바이스 관리 */}
+              <Route path="devices" element={<DeviceList />} />
+              
+              {/* 데이터 관리 */}
+              <Route path="data">
+                <Route path="explorer" element={<DataExplorer />} />
+                <Route path="realtime" element={<RealTimeMonitor />} />
+                <Route path="historical" element={<HistoricalData />} />
+                <Route path="virtual-points" element={<VirtualPoints />} />
+                <Route path="export" element={<DataExport />} />
+                {/* 데이터 하위 경로 기본값 */}
+                <Route index element={<Navigate to="explorer" replace />} />
+              </Route>
+              
+              {/* 알람 관리 - rules 경로 추가 */}
+              <Route path="alarms">
+                <Route path="active" element={<ActiveAlarms />} />
+                <Route path="history" element={<AlarmHistory />} />
+                <Route path="settings" element={<AlarmSettings />} />
+                <Route path="rules" element={<AlarmRuleTemplates />} />
+                {/* 알람 하위 경로 기본값 */}
+                <Route index element={<Navigate to="active" replace />} />
+              </Route>
+              
+              {/* 시스템 관리 */}
+              <Route path="system">
+                <Route path="status" element={<SystemStatus />} />
+                <Route path="users" element={<UserManagement />} />
+                <Route path="permissions" element={<PermissionManagement />} />
+                <Route path="backup" element={<BackupRestore />} />
+                {/* 시스템 하위 경로 기본값 */}
+                <Route index element={<Navigate to="status" replace />} />
+              </Route>
+              
+              {/* 404 페이지 */}
+              <Route path="*" element={<NotFound />} />
             </Route>
-            
-            {/* 🔥 알람 관리 - rules 경로 추가 */}
-            <Route path="alarms">
-              <Route path="active" element={<ActiveAlarms />} />
-              <Route path="history" element={<AlarmHistory />} />
-              <Route path="settings" element={<AlarmSettings />} />
-              <Route path="rules" element={<AlarmRuleTemplates />} />
-              {/* 알람 하위 경로 기본값 */}
-              <Route index element={<Navigate to="active" replace />} />
-            </Route>
-            
-            {/* 시스템 관리 */}
-            <Route path="system">
-              <Route path="status" element={<SystemStatus />} />
-              <Route path="users" element={<UserManagement />} />
-              <Route path="permissions" element={<PermissionManagement />} />
-              <Route path="backup" element={<BackupRestore />} />
-              {/* 시스템 하위 경로 기본값 */}
-              <Route index element={<Navigate to="status" replace />} />
-            </Route>
-            
-            {/* 404 페이지 */}
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
-      </div>
-    </Router>
+          </Routes>
+        </div>
+      </Router>
+    </ConfirmProvider>
   );
 };
 
