@@ -306,6 +306,21 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     return AlarmApiService.getCategoryDisplayName(category);
   };
 
+  const getTagColorClass = (tag: string): string => {
+    const colorClasses = [
+      'tag-color-1', 'tag-color-2', 'tag-color-3', 'tag-color-4', 'tag-color-5',
+      'tag-color-6', 'tag-color-7', 'tag-color-8', 'tag-color-9', 'tag-color-10'
+    ];
+    
+    let hash = 0;
+    for (let i = 0; i < tag.length; i++) {
+      hash = ((hash << 5) - hash + tag.charCodeAt(i)) & 0xffffffff;
+    }
+    
+    const classIndex = (hash >>> 0) % colorClasses.length;
+    return colorClasses[classIndex];
+  };
+
   return (
     <div className="alarm-settings-container">
       {/* 헤더 */}
@@ -460,7 +475,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                       {rule.tags && rule.tags.length > 0 && (
                         <div className="table-tags">
                           {AlarmApiService.formatTags(rule.tags).map(tag => (
-                            <span key={tag} className="tag-badge">{tag}</span>
+                            <span key={tag} className={`tag-badge ${getTagColorClass(tag)}`}>
+                              {tag}
+                            </span>
                           ))}
                         </div>
                       )}
@@ -593,9 +610,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                 {rule.tags && rule.tags.length > 0 && (
                   <div className="card-tags-block">
                     {AlarmApiService.formatTags(rule.tags).map(tag => (
-                      <span key={tag} className="tag-badge" style={{backgroundColor: AlarmApiService.getTagColor(tag)}}>
-                        {tag}
-                      </span>
+                      <span key={tag} className={`tag-badge ${getTagColorClass(tag)}`}>{tag}</span>
                     ))}
                   </div>
                 )}
