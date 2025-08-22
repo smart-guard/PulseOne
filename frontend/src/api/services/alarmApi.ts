@@ -275,6 +275,14 @@ export interface AlarmRuleCreateData {
 
 export interface AlarmRuleUpdateData extends Partial<AlarmRuleCreateData> {}
 
+// 간단한 설정 업데이트 인터페이스 (NEW!)
+export interface AlarmRuleSettingsUpdate {
+  is_enabled?: boolean;
+  notification_enabled?: boolean;
+  auto_acknowledge?: boolean;
+  auto_clear?: boolean;
+}
+
 // 백엔드 CREATE 스키마와 정확히 일치
 export interface AlarmTemplateCreateData {
   name: string;
@@ -470,6 +478,58 @@ class HttpClient {
 export class AlarmApiService {
   private static httpClient = new HttpClient();
 
+  // ========================================================================
+  // 🚀 간단한 알람 규칙 제어 (NEW!) - name 필드 건드리지 않음
+  // ========================================================================
+
+  /**
+   * 알람 규칙 활성화/비활성화 토글 (is_enabled만 업데이트)
+   */
+  static async toggleAlarmRule(id: number, isEnabled: boolean): Promise<ApiResponse<{
+    id: number;
+    is_enabled: boolean;
+  }>> {
+    console.log(`알람 규칙 ${id} 토글: ${isEnabled ? '활성화' : '비활성화'}`);
+    
+    const url = ENDPOINTS.ALARM_RULE_TOGGLE(id);
+    console.log('생성된 토글 URL:', url);
+    
+    return this.httpClient.patch(url, {
+      is_enabled: isEnabled
+    });
+  }
+
+  /**
+   * 알람 규칙 설정만 업데이트 (name 건드리지 않음)
+   */
+  static async updateAlarmSettings(id: number, settings: AlarmRuleSettingsUpdate): Promise<ApiResponse<{
+    id: number;
+    updated_settings: AlarmRuleSettingsUpdate;
+  }>> {
+    console.log(`알람 규칙 ${id} 설정 업데이트:`, settings);
+    return this.httpClient.patch(`/api/alarms/rules/${id}/settings`, settings);
+  }
+
+  /**
+   * 알람 규칙 이름만 업데이트
+   */
+  static async updateAlarmName(id: number, name: string): Promise<ApiResponse<AlarmRule>> {
+    console.log(`알람 규칙 ${id} 이름 업데이트:`, name);
+    return this.httpClient.patch(`/api/alarms/rules/${id}/name`, { name });
+  }
+
+  /**
+   * 알람 규칙 심각도만 업데이트
+   */
+  static async updateAlarmSeverity(id: number, severity: string): Promise<ApiResponse<AlarmRule>> {
+    console.log(`알람 규칙 ${id} 심각도 업데이트:`, severity);
+    return this.httpClient.patch(`/api/alarms/rules/${id}/severity`, { severity });
+  }
+
+  // ========================================================================
+  // 📋 기존 알람 규칙 관리 (유지)
+  // ========================================================================
+
   // 활성 알람 조회 - category, tag 필터 지원
   static async getActiveAlarms(params?: AlarmListParams): Promise<ApiResponse<PaginatedResponse<AlarmOccurrence>>> {
     try {
@@ -572,7 +632,7 @@ export class AlarmApiService {
     return this.httpClient.post<AlarmRule>(ENDPOINTS.ALARM_RULES, data);
   }
 
-  // 알람 규칙 수정 - category, tags 지원
+  // 알람 규칙 수정 (전체) - category, tags 지원
   static async updateAlarmRule(id: number, data: AlarmRuleUpdateData): Promise<ApiResponse<AlarmRule>> {
     console.log('알람 규칙 수정:', id, data);
     return this.httpClient.put<AlarmRule>(ENDPOINTS.ALARM_RULE_BY_ID(id), data);
@@ -731,7 +791,7 @@ export class AlarmApiService {
     return this.httpClient.get<AlarmTemplate[]>(ENDPOINTS.ALARM_TEMPLATES_MOST_USED, { limit });
   }
 
-  // 설정 관련 메서드들
+  // 설정 관련 메서드들 (기존 유지 + 새로 추가)
   static async updateAlarmRuleSettings(id: number, settings: any): Promise<ApiResponse<AlarmRule>> {
     console.log('알람 규칙 설정 업데이트:', id, settings);
     return this.httpClient.patch<AlarmRule>(ENDPOINTS.ALARM_RULE_SETTINGS(id), settings);
@@ -743,7 +803,10 @@ export class AlarmApiService {
     return this.httpClient.get<any>(ENDPOINTS.ALARM_TEST);
   }
 
-  // 유틸리티 메서드들
+  // ========================================================================
+  // 🔧 유틸리티 메서드들 (기존 유지)
+  // ========================================================================
+
   static getSeverityColor(severity: string): string {
     const colors = {
       critical: '#dc2626',   // 빨간색
