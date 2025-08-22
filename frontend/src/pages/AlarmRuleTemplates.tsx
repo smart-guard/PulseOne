@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/AlarmRuleTemplates.tsx
-// 리팩토링된 알람 템플릿 관리 페이지 - 컴포넌트 분리 적용
+// 수정된 알람 템플릿 관리 페이지 - 중복 선언 오류 해결
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -13,11 +13,14 @@ import alarmTemplatesApi, {
 } from '../api/services/alarmTemplatesApi';
 import TemplateApplyModal from '../components/modals/TemplateApplyModal';
 import TemplateCreateModal, { CreateTemplateRequest } from '../components/modals/TemplateCreateModal';
+import { useConfirmContext } from '../components/common/ConfirmProvider';
 
 const AlarmRuleTemplates: React.FC = () => {
   // ===================================================================
-  // 상태 관리
+  // ConfirmProvider 사용 및 상태 관리
   // ===================================================================
+  const { showConfirm } = useConfirmContext();
+  
   const [templates, setTemplates] = useState<AlarmTemplate[]>([]);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
   const [createdRules, setCreatedRules] = useState<CreatedAlarmRule[]>([]);
@@ -35,7 +38,7 @@ const AlarmRuleTemplates: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   // ===================================================================
-  // 안전한 값 처리 헬퍼 함수들
+  // 헬퍼 함수들
   // ===================================================================
   const safeToString = (value: any): string => {
     if (value === null || value === undefined) return 'N/A';
@@ -56,6 +59,41 @@ const AlarmRuleTemplates: React.FC = () => {
     if (!config || typeof config !== 'object') return fallback;
     const value = config[key];
     return value !== undefined ? safeToString(value) : fallback;
+  };
+
+  const getTemplateTypeIcon = (type: string) => {
+    switch(type) {
+      case 'simple': return '🔧';
+      case 'advanced': return '⚙️';
+      case 'script': return '📝';
+      default: return '❓';
+    }
+  };
+
+  const renderTemplateConfig = (template: AlarmTemplate) => {
+    const { condition_type, default_config } = template;
+    
+    switch (condition_type) {
+      case 'threshold':
+        return `임계값: ${getConfigValue(default_config, 'threshold')}, 데드밴드: ${getConfigValue(default_config, 'deadband') || getConfigValue(default_config, 'hysteresis')}`;
+      
+      case 'range':
+        if (default_config && (default_config.min_value !== undefined && default_config.max_value !== undefined)) {
+          return `범위: ${getConfigValue(default_config, 'min_value')} ~ ${getConfigValue(default_config, 'max_value')}`;
+        } else if (default_config && default_config.high_high_limit !== undefined) {
+          return `HH: ${getConfigValue(default_config, 'high_high_limit')}, H: ${getConfigValue(default_config, 'high_limit')}, L: ${getConfigValue(default_config, 'low_limit')}, LL: ${getConfigValue(default_config, 'low_low_limit')}`;
+        }
+        return '범위 설정';
+      
+      case 'digital':
+        return `디지털 조건: ${getConfigValue(default_config, 'trigger_state') || getConfigValue(default_config, 'condition_template')}`;
+      
+      case 'pattern':
+        return `패턴: ${getConfigValue(default_config, 'trigger_state', 'state_change')}, 시간: ${getConfigValue(default_config, 'hold_time', '1000')}ms`;
+      
+      default:
+        return '사용자 정의 설정';
+    }
   };
 
   // ===================================================================
@@ -228,38 +266,108 @@ const AlarmRuleTemplates: React.FC = () => {
   };
 
   // ===================================================================
-  // 이벤트 핸들러
+  // 이벤트 핸들러들
   // ===================================================================
-  const handleApplyTemplate = async (dataPointIds: number[]) => {
-    if (!selectedTemplate) return;
+  const executeTemplateApplication = async (dataPointIds: number[]) => {
+    console.log('🚀 템플릿 적용 시작:', {
+      templateId: selectedTemplate!.id,
+      templateName: selectedTemplate!.name,
+      dataPointCount: dataPointIds.length,
+      dataPointIds: dataPointIds
+    });
 
     setLoading(true);
     try {
-      const request: ApplyTemplateRequest = {
-        data_point_ids: dataPointIds,
+      // 백엔드 API와 일치하는 요청 형식
+      const request = {
+        target_ids: dataPointIds,        // data_point_ids → target_ids 변경
+        target_type: 'data_point',       // 새로 추가
         custom_configs: {},
-        rule_group_name: `${selectedTemplate.name}_${new Date().toISOString().split('T')[0]}`
+        rule_group_name: `${selectedTemplate!.name}_${new Date().toISOString().split('T')[0]}`
       };
 
-      const result = await alarmTemplatesApi.applyTemplate(selectedTemplate.id, request);
+      console.log('📤 API 요청 데이터:', request);
+
+      const result = await alarmTemplatesApi.applyTemplate(selectedTemplate!.id, request);
       
-      if (result.success) {
+      console.log('📥 API 응답:', result);
+
+      // 응답 구조 체크 강화
+      if (result && result.success) {
         await loadCreatedRules();
         setShowApplyModal(false);
         setSelectedTemplate(null);
-        alert(`${result.data.rules_created}개의 알람 규칙이 생성되었습니다.`);
+        
+        const rulesCreated = result.data?.rules_created || 0;
+        
+        // 성공 모달로 결과 표시
+        alert(`성공! ${rulesCreated}개의 알람 규칙이 생성되었습니다.\n\n규칙 그룹: ${result.data?.rule_group_id || 'Unknown'}\n"생성된 규칙" 탭에서 확인할 수 있습니다.`);
+        
+        // 성공 후 생성된 규칙 탭으로 이동
+        setActiveTab('created');
+        
+        console.log('✅ 템플릿 적용 성공:', {
+          rulesCreated,
+          ruleGroupId: result.data?.rule_group_id
+        });
       } else {
-        throw new Error(result.message || '템플릿 적용에 실패했습니다.');
+        // 더 구체적인 에러 메시지
+        const errorMessage = result?.message || result?.error || '알 수 없는 오류가 발생했습니다.';
+        throw new Error(`템플릿 적용 실패: ${errorMessage}`);
       }
     } catch (error) {
-      console.error('템플릿 적용 실패:', error);
-      alert(error instanceof Error ? error.message : '템플릿 적용에 실패했습니다.');
+      console.error('❌ 템플릿 적용 실패:', error);
+      
+      // 에러 타입별 처리
+      let errorMessage = '템플릿 적용에 실패했습니다.';
+      let errorDetails = '';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = JSON.stringify(error);
+      }
+      
+      // 사용자 친화적 에러 메시지
+      if (errorMessage.includes('404')) {
+        errorMessage = '템플릿을 찾을 수 없습니다.';
+        errorDetails = '페이지를 새로고침하고 다시 시도해주세요.';
+      } else if (errorMessage.includes('500')) {
+        errorMessage = '서버 오류가 발생했습니다.';
+        errorDetails = '잠시 후 다시 시도해주세요.\n문제가 지속되면 관리자에게 문의하세요.';
+      } else if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
+        errorMessage = '네트워크 연결 문제가 발생했습니다.';
+        errorDetails = '인터넷 연결을 확인하고 다시 시도해주세요.';
+      }
+      
+      // 에러 모달로 표시
+      alert(`템플릿 적용 실패: ${errorMessage}\n\n${errorDetails}`);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleApplyTemplate = async (dataPointIds: number[]) => {
+    if (!selectedTemplate) {
+      alert('템플릿이 선택되지 않았습니다.');
+      return;
+    }
+
+    if (dataPointIds.length === 0) {
+      alert('최소 하나의 데이터포인트를 선택해주세요.');
+      return;
+    }
+
+    // 적용 전 확인
+    const confirmed = confirm(`"${selectedTemplate.name}" 템플릿을\n${dataPointIds.length}개의 데이터포인트에 적용하시겠습니까?\n\n이 작업으로 ${dataPointIds.length}개의 새로운 알람 규칙이 생성됩니다.`);
+    
+    if (!confirmed) return;
+
+    await executeTemplateApplication(dataPointIds);
+  };
+
   const handleTemplateSelect = (template: AlarmTemplate) => {
+    console.log('🎯 템플릿 선택:', template);
     setSelectedTemplate(template);
     setShowApplyModal(true);
   };
@@ -272,59 +380,24 @@ const AlarmRuleTemplates: React.FC = () => {
   const handleCreateTemplate = async (templateData: CreateTemplateRequest) => {
     setLoading(true);
     try {
-      // TODO: API 호출 추가
       const response = await alarmTemplatesApi.createTemplate(templateData);
       
       if (response.success) {
         await loadTemplates();
         setShowCreateModal(false);
-        alert('템플릿이 성공적으로 생성되었습니다.');
+        
+        // ConfirmProvider로 성공 메시지
+        alert(`템플릿이 성공적으로 생성되었습니다: "${templateData.name}"\n\n템플릿 목록에서 확인할 수 있습니다.`);
       } else {
         throw new Error(response.message || '템플릿 생성에 실패했습니다.');
       }
     } catch (error) {
       console.error('템플릿 생성 실패:', error);
-      alert(error instanceof Error ? error.message : '템플릿 생성에 실패했습니다.');
+      
+      // ConfirmProvider로 에러 메시지
+      alert(`템플릿 생성 실패: ${error instanceof Error ? error.message : '템플릿 생성에 실패했습니다.'}`);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // ===================================================================
-  // UI 헬퍼 함수들
-  // ===================================================================
-  const getTemplateTypeIcon = (type: string) => {
-    switch(type) {
-      case 'simple': return '🔧';
-      case 'advanced': return '⚙️';
-      case 'script': return '📝';
-      default: return '❓';
-    }
-  };
-
-  const renderTemplateConfig = (template: AlarmTemplate) => {
-    const { condition_type, default_config } = template;
-    
-    switch (condition_type) {
-      case 'threshold':
-        return `임계값: ${getConfigValue(default_config, 'threshold')}, 데드밴드: ${getConfigValue(default_config, 'deadband') || getConfigValue(default_config, 'hysteresis')}`;
-      
-      case 'range':
-        if (default_config && (default_config.min_value !== undefined && default_config.max_value !== undefined)) {
-          return `범위: ${getConfigValue(default_config, 'min_value')} ~ ${getConfigValue(default_config, 'max_value')}`;
-        } else if (default_config && default_config.high_high_limit !== undefined) {
-          return `HH: ${getConfigValue(default_config, 'high_high_limit')}, H: ${getConfigValue(default_config, 'high_limit')}, L: ${getConfigValue(default_config, 'low_limit')}, LL: ${getConfigValue(default_config, 'low_low_limit')}`;
-        }
-        return '범위 설정';
-      
-      case 'digital':
-        return `디지털 조건: ${getConfigValue(default_config, 'trigger_state') || getConfigValue(default_config, 'condition_template')}`;
-      
-      case 'pattern':
-        return `패턴: ${getConfigValue(default_config, 'trigger_state', 'state_change')}, 시간: ${getConfigValue(default_config, 'hold_time', '1000')}ms`;
-      
-      default:
-        return '사용자 정의 설정';
     }
   };
 
@@ -624,7 +697,7 @@ const AlarmRuleTemplates: React.FC = () => {
           </div>
         )}
 
-        {/* 템플릿 적용 모달 */}
+        {/* 모달들 */}
         <TemplateApplyModal
           isOpen={showApplyModal}
           template={selectedTemplate}
@@ -634,7 +707,6 @@ const AlarmRuleTemplates: React.FC = () => {
           loading={loading}
         />
 
-        {/* 템플릿 생성 모달 */}
         <TemplateCreateModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
