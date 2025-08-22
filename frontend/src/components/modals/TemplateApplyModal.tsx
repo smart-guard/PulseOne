@@ -1,11 +1,12 @@
 // ============================================================================
 // frontend/src/components/modals/TemplateApplyModal.tsx
-// 템플릿 적용 모달 - 독립 컴포넌트 (변수 선언 순서 수정)
+// 정리된 템플릿 적용 모달 - 단위 기반 필터링 적용
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
 import DataPointSelectionTable from '../common/DataPointSelectionTable';
 import { DataPoint } from '../../api/services/alarmTemplatesApi';
+import { useConfirmContext } from '../common/ConfirmProvider';
 
 export interface AlarmTemplate {
   id: number;
@@ -14,6 +15,9 @@ export interface AlarmTemplate {
   template_type: 'simple' | 'advanced' | 'script';
   condition_type: string;
   supports_script: boolean;
+  applicable_data_types?: string[];
+  default_config?: any;
+  category?: string;
 }
 
 export interface TemplateApplyModalProps {
@@ -33,6 +37,8 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
   onApply,
   loading = false
 }) => {
+  const { showConfirm } = useConfirmContext();
+  
   const [selectedDataPoints, setSelectedDataPoints] = useState<number[]>([]);
   const [siteFilter, setSiteFilter] = useState('all');
   const [deviceFilter, setDeviceFilter] = useState('all');
@@ -51,17 +57,31 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
   // 모달이 닫혀있으면 렌더링하지 않음
   if (!isOpen || !template) return null;
 
-  // 호환성 체크 함수
+  // 호환성 체크 함수 - 단순하고 효과적인 버전
   const checkCompatibility = (point: DataPoint): boolean => {
-    if (template.template_type === 'script') return true;
-    if (template.condition_type === 'pattern' && !point.supports_digital) return false;
-    if (template.condition_type === 'threshold' && !point.supports_analog) return false;
-    if (template.condition_type === 'range' && !point.supports_analog) return false;
-    return true;
+    // 1. 기본 데이터 타입 체크
+    if (template.condition_type === 'range' || template.condition_type === 'threshold') {
+      const isNumeric = ['float', 'double', 'number', 'int', 'real'].includes(point.data_type.toLowerCase());
+      if (!isNumeric) return false;
+    }
+    
+    // 2. 단위 기반 필터링 (템플릿 카테고리별)
+    if (template.category === 'pressure') {
+      const pressureUnits = ['bar', 'psi', 'pa', 'mpa', 'kpa'];
+      return pressureUnits.some(unit => point.unit.toLowerCase().includes(unit));
+    }
+    
+    if (template.category === 'temperature') {
+      const tempUnits = ['°c', '°f', 'k', 'celsius', 'fahrenheit'];
+      return tempUnits.some(unit => point.unit.toLowerCase().includes(unit));
+    }
+    
+    return true; // 기타 템플릿은 숫자형이면 허용
   };
 
   // 필터링된 데이터포인트
-  const filteredDataPoints = dataPoints.filter(point => {
+  const compatiblePoints = dataPoints.filter(checkCompatibility);
+  const filteredDataPoints = compatiblePoints.filter(point => {
     const matchesSite = siteFilter === 'all' || point.site_name === siteFilter;
     const matchesDevice = deviceFilter === 'all' || point.device_name === deviceFilter;
     const matchesType = dataTypeFilter === 'all' || point.data_type === dataTypeFilter;
@@ -69,21 +89,63 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
   });
 
   // 고유 값들
-  const sites = ['all', ...new Set(dataPoints.map(d => d.site_name))];
-  const devices = ['all', ...new Set(dataPoints.filter(d => siteFilter === 'all' || d.site_name === siteFilter).map(d => d.device_name))];
-  const dataTypes = ['all', ...new Set(dataPoints.map(d => d.data_type))];
+  const sites = ['all', ...new Set(compatiblePoints.map(d => d.site_name))];
+  const devices = siteFilter === 'all' 
+    ? ['all', ...new Set(compatiblePoints.map(d => d.device_name))]
+    : ['all', ...new Set(compatiblePoints.filter(d => d.site_name === siteFilter).map(d => d.device_name))];
+  const dataTypes = ['all', ...new Set(compatiblePoints.map(d => d.data_type))];
+
+  // 호환성 정보 메시지
+  const getCompatibilityMessage = (): string => {
+    const conditionType = template.condition_type;
+    const templateType = template.template_type;
+
+    if (templateType === 'script' || conditionType === 'script') {
+      return '이 템플릿은 스크립트 기반으로, 모든 타입의 데이터포인트에 적용 가능합니다.';
+    }
+
+    switch (conditionType) {
+      case 'threshold':
+        return '이 템플릿은 임계값 타입으로, 숫자형 데이터포인트에만 적용 가능합니다.';
+      case 'range':
+        return '이 템플릿은 범위 타입으로, 숫자형 데이터포인트에만 적용 가능합니다.';
+      case 'digital':
+      case 'pattern':
+        return '이 템플릿은 디지털/패턴 타입으로, 불린형 데이터포인트에만 적용 가능합니다.';
+      default:
+        return `이 템플릿은 ${conditionType} 타입입니다.`;
+    }
+  };
 
   // 적용 처리
   const handleApply = async () => {
+    console.log('적용 버튼 클릭됨', {
+      selectedCount: selectedDataPoints.length,
+      templateId: template.id
+    });
+
     if (selectedDataPoints.length === 0) {
-      alert('적어도 하나의 데이터포인트를 선택해주세요.');
+      showConfirm({
+        title: '데이터포인트 선택 필요',
+        message: '적어도 하나의 데이터포인트를 선택해주세요.',
+        type: 'warning',
+        onConfirm: () => {}
+      });
       return;
     }
 
+    console.log('onApply 호출 시작');
     try {
       await onApply(selectedDataPoints);
+      console.log('onApply 완료');
     } catch (error) {
-      console.error('템플릿 적용 실패:', error);
+      console.error('onApply 에러:', error);
+      showConfirm({
+        title: '적용 실패',
+        message: error instanceof Error ? error.message : '템플릿 적용 중 오류가 발생했습니다.',
+        type: 'danger',
+        onConfirm: () => {}
+      });
     }
   };
 
@@ -144,27 +206,31 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
             </button>
           </div>
           
-          {template.template_type !== 'simple' && (
-            <div style={{ 
-              marginTop: '16px', 
-              padding: '12px', 
-              background: '#fef3c7', 
-              border: '1px solid #fbbf24', 
-              borderRadius: '8px' 
-            }}>
-              <div style={{ fontSize: '14px', color: '#92400e' }}>
-                ⚠️ 이 템플릿은 {template.template_type === 'advanced' ? '고급 설정' : '스크립트 기반'} 템플릿입니다. 
-                적용 후 세부 설정을 확인해주세요.
-              </div>
+          {/* 호환성 알림 */}
+          <div style={{ 
+            marginTop: '16px', 
+            padding: '12px', 
+            background: '#eff6ff', 
+            border: '1px solid #bfdbfe', 
+            borderRadius: '8px' 
+          }}>
+            <div style={{ fontSize: '14px', color: '#1e40af', lineHeight: '1.5' }}>
+              {getCompatibilityMessage()}
             </div>
-          )}
+          </div>
         </div>
 
         {/* 모달 컨텐츠 */}
         <div className="modal-content" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           {/* 디버깅 정보 */}
-          <div style={{ background: '#f0f9ff', padding: '12px', margin: '12px 0', borderRadius: '6px' }}>
-            디버깅: 전달받은 데이터포인트 {dataPoints.length}개, 필터링된 데이터포인트 {filteredDataPoints.length}개
+          <div style={{ background: '#f0f9ff', padding: '12px', margin: '12px 0', borderRadius: '6px', fontSize: '12px' }}>
+            <strong>디버깅 정보:</strong><br />
+            전체 데이터포인트: {dataPoints.length}개<br />
+            호환 가능한 포인트: {compatiblePoints.length}개<br />
+            필터링된 포인트: {filteredDataPoints.length}개<br />
+            선택된 포인트: {selectedDataPoints.length}개<br />
+            템플릿 타입: {template.condition_type}<br />
+            카테고리: {template.category || 'general'}
           </div>
 
           {/* 필터 섹션 */}
@@ -180,7 +246,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>
-                1️⃣ 사이트 선택
+                사이트 선택 ({sites.length - 1}개)
               </label>
               <select 
                 value={siteFilter} 
@@ -207,7 +273,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>
-                2️⃣ 디바이스 선택
+                디바이스 선택 ({devices.length - 1}개)
               </label>
               <select 
                 value={deviceFilter} 
@@ -231,7 +297,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>
-                3️⃣ 데이터 타입
+                데이터 타입 ({dataTypes.length - 1}개)
               </label>
               <select 
                 value={dataTypeFilter} 
@@ -254,35 +320,37 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
             </div>
           </div>
 
-          {/* 호환성 정보 */}
-          <div style={{ 
-            marginBottom: '24px', 
-            padding: '16px', 
-            background: '#eff6ff', 
-            border: '1px solid #bfdbfe', 
-            borderRadius: '12px' 
-          }}>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: '#1d4ed8', marginBottom: '8px' }}>
-              ℹ️ 템플릿 호환성 정보
+          {/* 호환성 경고 */}
+          {filteredDataPoints.length === 0 && (
+            <div style={{ 
+              marginBottom: '24px', 
+              padding: '16px', 
+              background: '#fef2f2', 
+              border: '1px solid #fecaca', 
+              borderRadius: '12px' 
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#dc2626', marginBottom: '8px' }}>
+                호환 가능한 데이터포인트가 없습니다
+              </div>
+              <div style={{ fontSize: '14px', color: '#b91c1c', lineHeight: 1.5 }}>
+                선택한 필터 조건에서 이 템플릿과 호환되는 데이터포인트를 찾을 수 없습니다.<br />
+                필터 조건을 변경하거나 다른 템플릿을 선택해주세요.
+              </div>
             </div>
-            <div style={{ fontSize: '14px', color: '#2563eb', lineHeight: 1.5 }}>
-              이 템플릿은 <strong>{template.condition_type}</strong> 타입으로, 
-              {template.condition_type === 'threshold' || template.condition_type === 'range' 
-                ? ' 아날로그 데이터포인트' : ' 디지털 데이터포인트'}에만 적용 가능합니다.
-              {template.supports_script && ' JavaScript 스크립트를 지원합니다.'}
-            </div>
-          </div>
+          )}
 
           {/* 데이터포인트 선택 테이블 */}
-          <DataPointSelectionTable
-            dataPoints={filteredDataPoints}
-            selectedIds={selectedDataPoints}
-            onSelectionChange={setSelectedDataPoints}
-            compatibilityCheck={checkCompatibility}
-            showSelectAll={true}
-            maxHeight="auto"
-            compact={false}
-          />
+          {filteredDataPoints.length > 0 && (
+            <DataPointSelectionTable
+              dataPoints={filteredDataPoints}
+              selectedIds={selectedDataPoints}
+              onSelectionChange={setSelectedDataPoints}
+              compatibilityCheck={checkCompatibility}
+              showSelectAll={true}
+              maxHeight="auto"
+              compact={false}
+            />
+          )}
         </div>
 
         {/* 모달 푸터 */}
@@ -298,6 +366,11 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
             {selectedDataPoints.length > 0 && (
               <span style={{ fontWeight: '600', color: '#1f2937', fontSize: '14px' }}>
                 {selectedDataPoints.length}개 포인트 선택됨
+              </span>
+            )}
+            {filteredDataPoints.length === 0 && (
+              <span style={{ fontSize: '14px', color: '#dc2626' }}>
+                호환 가능한 데이터포인트가 없습니다
               </span>
             )}
           </div>
@@ -321,17 +394,17 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
             </button>
             <button
               onClick={handleApply}
-              disabled={selectedDataPoints.length === 0 || loading}
+              disabled={selectedDataPoints.length === 0 || loading || filteredDataPoints.length === 0}
               style={{
                 padding: '12px 24px',
                 border: 'none',
                 borderRadius: '8px',
-                background: selectedDataPoints.length === 0 || loading ? '#d1d5db' : '#3b82f6',
+                background: selectedDataPoints.length === 0 || loading || filteredDataPoints.length === 0 ? '#d1d5db' : '#3b82f6',
                 color: 'white',
-                cursor: selectedDataPoints.length === 0 || loading ? 'not-allowed' : 'pointer',
+                cursor: selectedDataPoints.length === 0 || loading || filteredDataPoints.length === 0 ? 'not-allowed' : 'pointer',
                 fontSize: '14px',
                 fontWeight: '500',
-                opacity: selectedDataPoints.length === 0 || loading ? 0.6 : 1
+                opacity: selectedDataPoints.length === 0 || loading || filteredDataPoints.length === 0 ? 0.6 : 1
               }}
             >
               {loading ? '적용 중...' : `적용하기 (${selectedDataPoints.length}개)`}
