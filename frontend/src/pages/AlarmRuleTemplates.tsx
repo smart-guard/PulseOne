@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/AlarmRuleTemplates.tsx
-// 수정된 알람 템플릿 관리 페이지 - 중복 함수 제거
+// 수정된 알람 템플릿 관리 페이지 - 요청사항 반영 완료
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -14,6 +14,7 @@ import alarmTemplatesApi, {
 import TemplateApplyModal from '../components/modals/TemplateApplyModal';
 import TemplateCreateModal, { CreateTemplateRequest } from '../components/modals/TemplateCreateModal';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
+import { Pagination } from '../components/common/Pagination';
 
 const AlarmRuleTemplates: React.FC = () => {
   // ===================================================================
@@ -334,6 +335,17 @@ const AlarmRuleTemplates: React.FC = () => {
     }
   };
 
+  // 페이지 변경 시 처리
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // 페이지 사이즈 변경 시 처리
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1); // 첫 페이지로 리셋
+  };
+
   // ===================================================================
   // 초기 데이터 로딩
   // ===================================================================
@@ -395,36 +407,6 @@ const AlarmRuleTemplates: React.FC = () => {
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
   const filteredTemplates = allFilteredTemplates.slice(startIndex, endIndex);
-
-  // 페이지 번호 생성
-  const getPageNumbers = () => {
-    const pages = [];
-    const maxVisiblePages = 5;
-    
-    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-    
-    if (endPage - startPage + 1 < maxVisiblePages) {
-      startPage = Math.max(1, endPage - maxVisiblePages + 1);
-    }
-    
-    for (let i = startPage; i <= endPage; i++) {
-      pages.push(i);
-    }
-    
-    return pages;
-  };
-
-  // 페이지 변경 시 처리
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  // 페이지 사이즈 변경 시 처리
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setCurrentPage(1); // 첫 페이지로 리셋
-  };
 
   const filteredRules = createdRules.filter(rule => {
     const matchesSearch = searchTerm === '' ||
@@ -563,19 +545,6 @@ const AlarmRuleTemplates: React.FC = () => {
                   </select>
                 </div>
                 <div className="filter-group">
-                  <label>페이지당</label>
-                  <select 
-                    value={pageSize} 
-                    onChange={(e) => handlePageSizeChange(Number(e.target.value))} 
-                    className="filter-select"
-                  >
-                    <option value="5">5개</option>
-                    <option value="10">10개</option>
-                    <option value="20">20개</option>
-                    <option value="50">50개</option>
-                  </select>
-                </div>
-                <div className="filter-group">
                   <label>보기 방식</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -686,15 +655,15 @@ const AlarmRuleTemplates: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead style={{ background: '#f8fafc' }}>
                     <tr>
-                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>번호</th>
-                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>템플릿명</th>
-                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>설명</th>
-                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>유형</th>
-                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>카테고리</th>
-                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>심각도</th>
-                      <th style={{ padding: '16px', textAlign: 'center', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>사용횟수</th>
-                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>생성일</th>
-                      <th style={{ padding: '16px', textAlign: 'center', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>작업</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>번호</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>템플릿명</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>설명</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>유형</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>카테고리</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>심각도</th>
+                      <th style={{ padding: '16px', textAlign: 'center', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>사용횟수</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>생성일</th>
+                      <th style={{ padding: '16px', textAlign: 'center', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb', fontSize: '13px' }}>작업</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -792,7 +761,7 @@ const AlarmRuleTemplates: React.FC = () => {
                                 borderRadius: '6px',
                                 background: '#3b82f6',
                                 color: 'white',
-                                fontSize: '12px',
+                                fontSize: '11px',
                                 fontWeight: '500',
                                 cursor: loading ? 'not-allowed' : 'pointer',
                                 opacity: loading ? 0.6 : 1
@@ -809,77 +778,26 @@ const AlarmRuleTemplates: React.FC = () => {
               </div>
             )}
 
-            {/* 페이징 네비게이션 */}
+            {/* 페이징 네비게이션 - 공통 컴포넌트 사용 */}
             {totalTemplates > 0 && (
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginTop: '24px',
-                padding: '20px',
-                background: 'white',
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb'
-              }}>
-                <div style={{ fontSize: '14px', color: '#6b7280' }}>
-                  {startIndex + 1}-{Math.min(endIndex, totalTemplates)}개 / 총 {totalTemplates}개
-                </div>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {/* 이전 페이지 */}
-                  <button
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    style={{
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      background: currentPage === 1 ? '#f9fafb' : 'white',
-                      color: currentPage === 1 ? '#9ca3af' : '#374151',
-                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                      fontSize: '14px'
-                    }}
-                  >
-                    이전
-                  </button>
-
-                  {/* 페이지 번호들 */}
-                  {getPageNumbers().map(pageNum => (
-                    <button
-                      key={pageNum}
-                      onClick={() => handlePageChange(pageNum)}
-                      style={{
-                        padding: '8px 12px',
-                        border: `1px solid ${currentPage === pageNum ? '#3b82f6' : '#e5e7eb'}`,
-                        borderRadius: '6px',
-                        background: currentPage === pageNum ? '#3b82f6' : 'white',
-                        color: currentPage === pageNum ? 'white' : '#374151',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        fontWeight: currentPage === pageNum ? '600' : '400'
-                      }}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-
-                  {/* 다음 페이지 */}
-                  <button
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    style={{
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      background: currentPage === totalPages ? '#f9fafb' : 'white',
-                      color: currentPage === totalPages ? '#9ca3af' : '#374151',
-                      cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                      fontSize: '14px'
-                    }}
-                  >
-                    다음
-                  </button>
-                </div>
+              <div className="pagination-section">
+                <Pagination
+                  current={currentPage}
+                  total={totalTemplates}
+                  pageSize={pageSize}
+                  pageSizeOptions={[5, 10, 20, 50]}
+                  showSizeChanger={true}
+                  showTotal={true}
+                  onChange={(page, newPageSize) => {
+                    handlePageChange(page);
+                    if (newPageSize !== pageSize) {
+                      handlePageSizeChange(newPageSize);
+                    }
+                  }}
+                  onShowSizeChange={(page, newPageSize) => {
+                    handlePageSizeChange(newPageSize);
+                  }}
+                />
               </div>
             )}
           </div>
