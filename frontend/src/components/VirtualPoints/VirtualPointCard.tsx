@@ -69,7 +69,8 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
     return calculated.toLocaleDateString('ko-KR');
   };
 
-  const truncateFormula = (formula: string, maxLength: number = 100) => {
+  const truncateFormula = (formula: string | undefined, maxLength: number = 100) => {
+    if (!formula) return 'N/A';  // ← undefined/null 체크 추가!
     if (formula.length <= maxLength) return formula;
     return formula.substring(0, maxLength) + '...';
   };
@@ -159,7 +160,7 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
         </div>
         <div className="formula-content">
           <code>{truncateFormula(virtualPoint.expression)}</code>
-          {virtualPoint.expression.length > 100 && (
+          {virtualPoint.expression && virtualPoint.expression.length > 100 && (
             <button className="formula-expand" title="전체 수식 보기">
               <i className="fas fa-expand-alt"></i>
             </button>

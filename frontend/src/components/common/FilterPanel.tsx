@@ -1,9 +1,13 @@
 // ============================================================================
 // frontend/src/components/common/FilterPanel.tsx
-// 공통 필터 패널 컴포넌트 (가상포인트 + 알람 공용)
+// 공통 필터 패널 컴포넌트 (VirtualPoints + Alarm 공용)
 // ============================================================================
 
 import React from 'react';
+
+// ============================================================================
+// 타입 정의
+// ============================================================================
 
 export interface FilterOption {
   value: string;
@@ -14,121 +18,109 @@ export interface FilterOption {
 export interface FilterGroup {
   id: string;
   label: string;
-  type: 'select' | 'search' | 'toggle' | 'multiSelect' | 'dateRange';
+  type: 'search' | 'select' | 'multi-select' | 'date-range' | 'toggle' | 'toggle-group';
   value?: any;
-  options?: FilterOption[];
   placeholder?: string;
+  options?: FilterOption[];
   className?: string;
-  flex?: number;
-  onChange?: (value: any) => void;
+  multiple?: boolean;
+  disabled?: boolean;
 }
 
 export interface FilterPanelProps {
-  filters: FilterGroup[];
-  onFiltersChange?: (filters: Record<string, any>) => void;
-  className?: string;
+  filterGroups: FilterGroup[];
+  onFiltersChange: (filters: Record<string, any>) => void;
+  onClear?: () => void;
   layout?: 'horizontal' | 'vertical';
-  showClearAll?: boolean;
-  showApply?: boolean;
+  showActiveFilters?: boolean;
+  className?: string;
 }
 
+// ============================================================================
+// FilterPanel 메인 컴포넌트
+// ============================================================================
+
 export const FilterPanel: React.FC<FilterPanelProps> = ({
-  filters,
+  filterGroups,
   onFiltersChange,
-  className = '',
+  onClear,
   layout = 'horizontal',
-  showClearAll = true,
-  showApply = false
+  showActiveFilters = true,
+  className = ''
 }) => {
   // ========================================================================
-  // 이벤트 핸들러
+  // 필터 변경 핸들러
   // ========================================================================
   
   const handleFilterChange = (filterId: string, value: any) => {
-    const updatedFilters: Record<string, any> = {};
-    
-    filters.forEach(filter => {
-      if (filter.id === filterId) {
-        updatedFilters[filter.id] = value;
-      } else {
-        updatedFilters[filter.id] = filter.value;
-      }
-    });
-    
-    onFiltersChange?.(updatedFilters);
+    const currentFilters = filterGroups.reduce((acc, group) => {
+      acc[group.id] = group.value;
+      return acc;
+    }, {} as Record<string, any>);
+
+    const newFilters = {
+      ...currentFilters,
+      [filterId]: value
+    };
+
+    onFiltersChange(newFilters);
   };
 
-  const handleClearAll = () => {
-    const clearedFilters: Record<string, any> = {};
-    
-    filters.forEach(filter => {
-      switch (filter.type) {
-        case 'search':
-          clearedFilters[filter.id] = '';
-          break;
-        case 'select':
-          clearedFilters[filter.id] = 'all';
-          break;
-        case 'toggle':
-          clearedFilters[filter.id] = undefined;
-          break;
-        case 'multiSelect':
-          clearedFilters[filter.id] = [];
-          break;
-        case 'dateRange':
-          clearedFilters[filter.id] = { start: null, end: null };
-          break;
-        default:
-          clearedFilters[filter.id] = null;
-      }
-    });
-    
-    onFiltersChange?.(clearedFilters);
-  };
+  const handleClear = () => {
+    const clearedFilters = filterGroups.reduce((acc, group) => {
+      acc[group.id] = group.type === 'search' ? '' : 
+                     group.type === 'multi-select' ? [] :
+                     group.type === 'toggle' ? false :
+                     'all';
+      return acc;
+    }, {} as Record<string, any>);
 
-  const hasActiveFilters = filters.some(filter => {
-    const value = filter.value;
-    switch (filter.type) {
-      case 'search':
-        return value && value.trim() !== '';
-      case 'select':
-        return value && value !== 'all';
-      case 'toggle':
-        return value !== undefined;
-      case 'multiSelect':
-        return Array.isArray(value) && value.length > 0;
-      case 'dateRange':
-        return value && (value.start || value.end);
-      default:
-        return value != null;
-    }
-  });
+    onFiltersChange(clearedFilters);
+    onClear?.();
+  };
 
   // ========================================================================
-  // 렌더링 함수들
+  // 활성 필터 계산
   // ========================================================================
   
-  const renderSearchFilter = (filter: FilterGroup) => (
+  const getActiveFilters = () => {
+    return filterGroups.filter(group => {
+      if (group.type === 'search') return group.value && group.value.trim() !== '';
+      if (group.type === 'multi-select') return group.value && group.value.length > 0;
+      if (group.type === 'toggle') return group.value === true;
+      return group.value && group.value !== 'all' && group.value !== '';
+    });
+  };
+
+  const activeFilters = getActiveFilters();
+
+  // ========================================================================
+  // 필터 입력 렌더링 함수들
+  // ========================================================================
+  
+  const renderSearchFilter = (group: FilterGroup) => (
     <div className="search-container">
-      <span className="search-icon">🔍</span>
       <input
         type="text"
-        placeholder={filter.placeholder || `${filter.label} 검색...`}
-        value={filter.value || ''}
-        onChange={(e) => handleFilterChange(filter.id, e.target.value)}
+        placeholder={group.placeholder || '검색...'}
+        value={group.value || ''}
+        onChange={(e) => handleFilterChange(group.id, e.target.value)}
         className="search-input"
+        disabled={group.disabled}
       />
+      <i className="fas fa-search search-icon"></i>
     </div>
   );
 
-  const renderSelectFilter = (filter: FilterGroup) => (
+  const renderSelectFilter = (group: FilterGroup) => (
     <select
-      value={filter.value || 'all'}
-      onChange={(e) => handleFilterChange(filter.id, e.target.value)}
+      value={group.value || 'all'}
+      onChange={(e) => handleFilterChange(group.id, e.target.value)}
       className="filter-select"
+      disabled={group.disabled}
     >
-      <option value="all">전체 {filter.label}</option>
-      {filter.options?.map(option => (
+      <option key="all" value="all">전체</option>
+      {group.options?.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
           {option.count !== undefined && ` (${option.count})`}
@@ -137,52 +129,33 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     </select>
   );
 
-  const renderToggleFilter = (filter: FilterGroup) => (
-    <div className="toggle-group">
-      <button
-        className={`toggle-btn ${filter.value === true ? 'active' : ''}`}
-        onClick={() => handleFilterChange(filter.id, filter.value === true ? undefined : true)}
-      >
-        활성화
-      </button>
-      <button
-        className={`toggle-btn ${filter.value === false ? 'active' : ''}`}
-        onClick={() => handleFilterChange(filter.id, filter.value === false ? undefined : false)}
-      >
-        비활성화
-      </button>
-      <button
-        className={`toggle-btn ${filter.value === undefined ? 'active' : ''}`}
-        onClick={() => handleFilterChange(filter.id, undefined)}
-      >
-        전체
-      </button>
-    </div>
-  );
-
-  const renderMultiSelectFilter = (filter: FilterGroup) => {
-    const selectedValues = Array.isArray(filter.value) ? filter.value : [];
+  const renderMultiSelectFilter = (group: FilterGroup) => {
+    const selectedValues = group.value || [];
     
     return (
       <div className="multi-select-container">
-        <div className="multi-select-header">
-          <span>{filter.label}</span>
-          {selectedValues.length > 0 && (
-            <span className="selected-count">{selectedValues.length}개 선택</span>
-          )}
+        <div className="multi-select-trigger">
+          <span>
+            {selectedValues.length === 0 
+              ? '선택하세요' 
+              : `${selectedValues.length}개 선택됨`
+            }
+          </span>
+          <i className="fas fa-chevron-down"></i>
         </div>
         <div className="multi-select-options">
-          {filter.options?.map(option => (
+          {group.options?.map((option) => (
             <label key={option.value} className="multi-select-option">
               <input
                 type="checkbox"
                 checked={selectedValues.includes(option.value)}
                 onChange={(e) => {
-                  const newValues = e.target.checked
+                  const newSelected = e.target.checked
                     ? [...selectedValues, option.value]
-                    : selectedValues.filter(v => v !== option.value);
-                  handleFilterChange(filter.id, newValues);
+                    : selectedValues.filter((v: string) => v !== option.value);
+                  handleFilterChange(group.id, newSelected);
                 }}
+                disabled={group.disabled}
               />
               <span>{option.label}</span>
               {option.count !== undefined && (
@@ -195,144 +168,149 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     );
   };
 
-  const renderDateRangeFilter = (filter: FilterGroup) => {
-    const value = filter.value || { start: '', end: '' };
+  const renderToggleFilter = (group: FilterGroup) => (
+    <label className="toggle-container">
+      <input
+        type="checkbox"
+        checked={group.value || false}
+        onChange={(e) => handleFilterChange(group.id, e.target.checked)}
+        className="toggle-input"
+        disabled={group.disabled}
+      />
+      <span className="toggle-slider"></span>
+    </label>
+  );
+
+  const renderToggleGroupFilter = (group: FilterGroup) => (
+    <div className="toggle-group">
+      {group.options?.map((option) => (
+        <button
+          key={option.value}
+          className={`toggle-btn ${group.value === option.value ? 'active' : ''}`}
+          onClick={() => handleFilterChange(group.id, option.value)}
+          disabled={group.disabled}
+        >
+          {option.label}
+          {option.count !== undefined && (
+            <span className="toggle-count">({option.count})</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderDateRangeFilter = (group: FilterGroup) => {
+    const { startDate = '', endDate = '' } = group.value || {};
     
     return (
       <div className="date-range-container">
         <input
           type="datetime-local"
-          value={value.start || ''}
-          onChange={(e) => handleFilterChange(filter.id, { ...value, start: e.target.value })}
+          value={startDate}
+          onChange={(e) => handleFilterChange(group.id, { 
+            ...group.value, 
+            startDate: e.target.value 
+          })}
           className="date-input"
-          placeholder="시작 날짜"
+          disabled={group.disabled}
         />
         <span className="date-separator">~</span>
         <input
           type="datetime-local"
-          value={value.end || ''}
-          onChange={(e) => handleFilterChange(filter.id, { ...value, end: e.target.value })}
+          value={endDate}
+          onChange={(e) => handleFilterChange(group.id, { 
+            ...group.value, 
+            endDate: e.target.value 
+          })}
           className="date-input"
-          placeholder="종료 날짜"
+          disabled={group.disabled}
         />
       </div>
     );
   };
 
-  const renderFilter = (filter: FilterGroup) => {
-    let content;
-    
-    switch (filter.type) {
+  const renderFilterInput = (group: FilterGroup) => {
+    switch (group.type) {
       case 'search':
-        content = renderSearchFilter(filter);
-        break;
+        return renderSearchFilter(group);
       case 'select':
-        content = renderSelectFilter(filter);
-        break;
+        return renderSelectFilter(group);
+      case 'multi-select':
+        return renderMultiSelectFilter(group);
       case 'toggle':
-        content = renderToggleFilter(filter);
-        break;
-      case 'multiSelect':
-        content = renderMultiSelectFilter(filter);
-        break;
-      case 'dateRange':
-        content = renderDateRangeFilter(filter);
-        break;
+        return renderToggleFilter(group);
+      case 'toggle-group':
+        return renderToggleGroupFilter(group);
+      case 'date-range':
+        return renderDateRangeFilter(group);
       default:
-        content = <div>지원되지 않는 필터 타입</div>;
+        return null;
     }
-
-    return (
-      <div 
-        key={filter.id}
-        className={`filter-group ${filter.className || ''}`}
-        style={{ flex: filter.flex || 'none' }}
-      >
-        <label className="filter-label">{filter.label}</label>
-        {content}
-      </div>
-    );
   };
 
   // ========================================================================
-  // 메인 렌더링
+  // 렌더링
   // ========================================================================
   
   return (
     <div className={`filter-panel ${layout} ${className}`}>
       <div className="filter-row">
-        {filters.map(renderFilter)}
-        
-        {(showClearAll || showApply) && (
-          <div className="filter-actions">
-            {showClearAll && (
-              <button
-                className="btn btn-outline btn-sm"
-                onClick={handleClearAll}
-                disabled={!hasActiveFilters}
-              >
-                🔄 초기화
-              </button>
-            )}
-            
-            {showApply && (
-              <button className="btn btn-primary btn-sm">
-                ✅ 적용
-              </button>
-            )}
+        {filterGroups.map((group) => (
+          <div
+            key={group.id}
+            className={`filter-group ${group.className || ''}`}
+          >
+            <label className="filter-label">
+              {group.label}
+            </label>
+            {renderFilterInput(group)}
           </div>
-        )}
+        ))}
+        
+        {/* 액션 버튼들 */}
+        <div className="filter-actions">
+          <button
+            type="button"
+            onClick={handleClear}
+            className="btn btn-outline btn-sm"
+            disabled={activeFilters.length === 0}
+          >
+            <i className="fas fa-refresh"></i>
+            초기화
+          </button>
+        </div>
       </div>
-      
+
       {/* 활성 필터 표시 */}
-      {hasActiveFilters && (
+      {showActiveFilters && activeFilters.length > 0 && (
         <div className="active-filters">
           <span className="active-filters-label">활성 필터:</span>
-          {filters
-            .filter(filter => {
-              const value = filter.value;
-              switch (filter.type) {
-                case 'search':
-                  return value && value.trim() !== '';
-                case 'select':
-                  return value && value !== 'all';
-                case 'toggle':
-                  return value !== undefined;
-                case 'multiSelect':
-                  return Array.isArray(value) && value.length > 0;
-                case 'dateRange':
-                  return value && (value.start || value.end);
-                default:
-                  return value != null;
+          {activeFilters.map((filter) => (
+            <span
+              key={filter.id}
+              className="active-filter-tag"
+              onClick={() => {
+                const clearValue = filter.type === 'search' ? '' :
+                                 filter.type === 'multi-select' ? [] :
+                                 filter.type === 'toggle' ? false :
+                                 'all';
+                handleFilterChange(filter.id, clearValue);
+              }}
+            >
+              {filter.label}: {
+                filter.type === 'multi-select' 
+                  ? `${filter.value.length}개 선택됨`
+                  : filter.type === 'toggle'
+                    ? '활성'
+                    : Array.isArray(filter.value) 
+                      ? filter.value.join(', ')
+                      : filter.value
               }
-            })
-            .map(filter => (
-              <span 
-                key={filter.id} 
-                className="active-filter-tag"
-                onClick={() => handleFilterChange(filter.id, 
-                  filter.type === 'search' ? '' :
-                  filter.type === 'select' ? 'all' :
-                  filter.type === 'toggle' ? undefined :
-                  filter.type === 'multiSelect' ? [] :
-                  filter.type === 'dateRange' ? { start: null, end: null } :
-                  null
-                )}
-              >
-                {filter.label}: {
-                  filter.type === 'multiSelect' 
-                    ? `${filter.value.length}개 선택`
-                    : String(filter.value)
-                }
-                <span className="remove-filter">×</span>
-              </span>
-            ))
-          }
+              <span className="remove-filter">×</span>
+            </span>
+          ))}
         </div>
       )}
     </div>
   );
 };
-
-export { FilterPanel };
-export default FilterPanel;

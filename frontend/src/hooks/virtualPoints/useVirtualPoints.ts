@@ -446,18 +446,20 @@ export const useVirtualPoints = (options: UseVirtualPointsOptions = {}) => {
   // 초기 로딩
   // ========================================================================
   
-  useEffect(() => {
+useEffect(() => {
     if (autoLoad) {
-      refreshData();
+        loadVirtualPoints();
+        loadCategoryStats();
+        loadPerformanceStats();
     }
-  }, [autoLoad, refreshData]);
+}, [autoLoad]);  // ← 직접 호출로 변경
 
   // 필터 변경 시 데이터 다시 로드
-  useEffect(() => {
+useEffect(() => {
     if (autoLoad) {
-      loadVirtualPoints();
+        loadVirtualPoints();
     }
-  }, [state.filters, autoLoad, loadVirtualPoints]);
+}, [state.filters]);
 
   // ========================================================================
   // 반환값

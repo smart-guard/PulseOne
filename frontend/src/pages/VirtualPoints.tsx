@@ -292,20 +292,6 @@ const VirtualPoints: React.FC = () => {
         </div>
       </div>
 
-      {/* 필터 패널 */}
-      <FilterPanel
-        filterGroups={filterGroups}
-        onFiltersChange={handleFilterChange}
-        sortOptions={sortOptions}
-        currentSort={{
-          sortBy: paginatedData.sortBy,
-          sortOrder: paginatedData.sortOrder
-        }}
-        onSortChange={handleSortChange}
-        viewMode={viewMode}
-        onViewModeChange={handleViewModeChange}
-      />
-
       {/* 통계 정보 */}
       <div className="stats-panel">
         <div className="stat-card">
@@ -325,10 +311,26 @@ const VirtualPoints: React.FC = () => {
           <div className="stat-label">오류</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{paginatedData.items.length}</div>
+          <div className="stat-value">{paginatedData.points.length}</div>
           <div className="stat-label">필터 결과</div>
         </div>
       </div>
+      
+      {/* 필터 패널 */}
+      <FilterPanel
+        filterGroups={filterGroups}
+        onFiltersChange={handleFilterChange}
+        sortOptions={sortOptions}
+        currentSort={{
+          sortBy: paginatedData.sortBy,
+          sortOrder: paginatedData.sortOrder
+        }}
+        onSortChange={handleSortChange}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
+      />
+
+
 
       {/* 에러 메시지 */}
       {error && (
@@ -344,7 +346,7 @@ const VirtualPoints: React.FC = () => {
 
       {/* 가상포인트 목록 */}
       <div className="points-list">
-        {paginatedData.items.length === 0 ? (
+        {paginatedData.points.length === 0 ? (
           <div className="empty-state">
             <i className="fas fa-function"></i>
             <h3>가상포인트가 없습니다</h3>
@@ -356,7 +358,7 @@ const VirtualPoints: React.FC = () => {
           </div>
         ) : viewMode === 'card' ? (
           <div className="points-grid">
-            {paginatedData.items.map(point => (
+            {paginatedData.points.map(point => (
               <VirtualPointCard
                 key={point.id}
                 virtualPoint={point}
@@ -370,7 +372,7 @@ const VirtualPoints: React.FC = () => {
           </div>
         ) : (
           <VirtualPointTable
-            virtualPoints={paginatedData.items}
+            virtualPoints={paginatedData.points}
             onEdit={openEditModal}
             onDelete={openDeleteConfirm}
             onTest={openTestModal}
