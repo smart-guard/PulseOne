@@ -1,11 +1,11 @@
 // ============================================================================
 // frontend/src/components/modals/TemplateApplyModal.tsx
-// 정리된 템플릿 적용 모달 - 단위 기반 필터링 적용
+// 단순화된 템플릿 적용 모달 - 직접 API 호출
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
 import DataPointSelectionTable from '../common/DataPointSelectionTable';
-import { DataPoint } from '../../api/services/alarmTemplatesApi';
+import alarmTemplatesApi, { DataPoint } from '../../api/services/alarmTemplatesApi';
 import { useConfirmContext } from '../common/ConfirmProvider';
 
 export interface AlarmTemplate {
@@ -25,8 +25,7 @@ export interface TemplateApplyModalProps {
   template: AlarmTemplate | null;
   dataPoints: DataPoint[];
   onClose: () => void;
-  onApply: (dataPointIds: number[]) => Promise<void>;
-  loading?: boolean;
+  onSuccess?: () => void; // 성공 시 호출될 콜백 (데이터 새로고침 등)
 }
 
 const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
@@ -34,8 +33,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
   template,
   dataPoints,
   onClose,
-  onApply,
-  loading = false
+  onSuccess
 }) => {
   const { showConfirm } = useConfirmContext();
   
@@ -43,6 +41,8 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
   const [siteFilter, setSiteFilter] = useState('all');
   const [deviceFilter, setDeviceFilter] = useState('all');
   const [dataTypeFilter, setDataTypeFilter] = useState('all');
+  const [loading, setLoading] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   // 모달이 열릴 때마다 초기화
   useEffect(() => {
@@ -57,25 +57,47 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
   // 모달이 닫혀있으면 렌더링하지 않음
   if (!isOpen || !template) return null;
 
-  // 호환성 체크 함수 - 단순하고 효과적인 버전
+  // 호환성 체크 함수
   const checkCompatibility = (point: DataPoint): boolean => {
+    console.log(`호환성 체크: ${point.name}`, {
+      point: {
+        name: point.name,
+        data_type: point.data_type,
+        unit: point.unit,
+        device_name: point.device_name
+      },
+      template: {
+        condition_type: template.condition_type,
+        category: template.category
+      }
+    });
+
     // 1. 기본 데이터 타입 체크
     if (template.condition_type === 'range' || template.condition_type === 'threshold') {
-      const isNumeric = ['float', 'double', 'number', 'int', 'real'].includes(point.data_type.toLowerCase());
-      if (!isNumeric) return false;
+      const isNumeric = ['float', 'double', 'number', 'int', 'real', 'uint32', 'int32'].includes(point.data_type.toLowerCase());
+      console.log(`  숫자형 체크: ${isNumeric} (data_type: ${point.data_type})`);
+      if (!isNumeric) {
+        console.log(`  ❌ 비호환: 숫자형이 아님`);
+        return false;
+      }
     }
     
     // 2. 단위 기반 필터링 (템플릿 카테고리별)
     if (template.category === 'pressure') {
       const pressureUnits = ['bar', 'psi', 'pa', 'mpa', 'kpa'];
-      return pressureUnits.some(unit => point.unit.toLowerCase().includes(unit));
+      const isCompatible = pressureUnits.some(unit => point.unit.toLowerCase().includes(unit));
+      console.log(`  압력 단위 체크: ${isCompatible} (unit: ${point.unit})`);
+      return isCompatible;
     }
     
     if (template.category === 'temperature') {
-      const tempUnits = ['°c', '°f', 'k', 'celsius', 'fahrenheit'];
-      return tempUnits.some(unit => point.unit.toLowerCase().includes(unit));
+      const tempUnits = ['°c', '°f', 'k', 'celsius', 'fahrenheit', 'temp'];
+      const isCompatible = tempUnits.some(unit => point.unit.toLowerCase().includes(unit));
+      console.log(`  온도 단위 체크: ${isCompatible} (unit: ${point.unit})`);
+      return isCompatible;
     }
     
+    console.log(`  ✅ 호환: 기본 조건 통과`);
     return true; // 기타 템플릿은 숫자형이면 허용
   };
 
@@ -117,35 +139,144 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
     }
   };
 
-  // 적용 처리
+  // 템플릿 적용 처리
   const handleApply = async () => {
-    console.log('적용 버튼 클릭됨', {
+    console.log('적용하기 버튼 클릭됨', {
+      selectedDataPoints: selectedDataPoints,
       selectedCount: selectedDataPoints.length,
-      templateId: template.id
+      loading: loading,
+      filteredDataPointsLength: filteredDataPoints.length
     });
 
+    // 선택된 데이터포인트가 없을 때 처리
     if (selectedDataPoints.length === 0) {
-      showConfirm({
-        title: '데이터포인트 선택 필요',
-        message: '적어도 하나의 데이터포인트를 선택해주세요.',
-        type: 'warning',
-        onConfirm: () => {}
-      });
+      console.log('선택된 데이터포인트가 없음');
+      alert('아무것도 선택하지 않았습니다.\n적어도 하나의 데이터포인트를 선택해주세요.');
       return;
     }
 
-    console.log('onApply 호출 시작');
+    // 내장 확인 대화상자 표시
+    console.log('내장 확인 대화상자 표시');
+    setShowConfirmDialog(true);
+  };
+
+  // 확인 후 실제 실행
+  const handleConfirmApply = async () => {
+    setShowConfirmDialog(false);
+    console.log('사용자가 확인함, 템플릿 적용 시작');
+    await executeTemplateApplication();
+  };
+
+  // 취소 처리
+  const handleCancelApply = () => {
+    setShowConfirmDialog(false);
+    console.log('사용자가 취소함');
+  };
+
+  // 실제 템플릿 적용 실행
+  const executeTemplateApplication = async () => {
+    setLoading(true);
+    console.log('로딩 상태 시작');
+    
     try {
-      await onApply(selectedDataPoints);
-      console.log('onApply 완료');
-    } catch (error) {
-      console.error('onApply 에러:', error);
-      showConfirm({
-        title: '적용 실패',
-        message: error instanceof Error ? error.message : '템플릿 적용 중 오류가 발생했습니다.',
-        type: 'danger',
-        onConfirm: () => {}
+      console.log('템플릿 적용 시작:', {
+        templateId: template.id,
+        templateName: template.name,
+        dataPointIds: selectedDataPoints
       });
+
+      // API 요청
+      const request = {
+        target_ids: selectedDataPoints,
+        target_type: 'data_point',
+        custom_configs: {},
+        rule_group_name: `${template.name}_${new Date().toISOString().split('T')[0]}`
+      };
+
+      console.log('API 요청 보내는 중...', request);
+
+      const result = await alarmTemplatesApi.applyTemplate(template.id, request);
+
+      console.log('API 응답 받음:', result);
+
+      if (result && result.success) {
+        const rulesCreated = result.data?.rules_created || 0;
+        const ruleGroupId = result.data?.rule_group_id || 'Unknown';
+        
+        console.log('성공! 규칙 생성됨:', rulesCreated);
+        
+        // 성공 메시지 - ConfirmProvider 사용 또는 fallback
+        if (typeof showConfirm === 'function') {
+          showConfirm({
+            title: '템플릿 적용 성공',
+            message: `성공!\n\n${rulesCreated}개의 알람 규칙이 생성되었습니다.\n규칙 그룹: ${ruleGroupId}\n\n"생성된 규칙" 탭에서 확인할 수 있습니다.`,
+            type: 'success',
+            onConfirm: () => {
+              // 성공 콜백 호출 (부모에서 데이터 새로고침 등)
+              if (onSuccess) {
+                console.log('성공 콜백 호출 중...');
+                onSuccess();
+              }
+              
+              // 모달 닫기
+              console.log('모달 닫는 중...');
+              onClose();
+            }
+          });
+        } else {
+          // fallback: 기본 alert 사용
+          alert(`성공!\n\n${rulesCreated}개의 알람 규칙이 생성되었습니다.\n규칙 그룹: ${ruleGroupId}\n\n"생성된 규칙" 탭에서 확인할 수 있습니다.`);
+          
+          // 성공 콜백 호출 (부모에서 데이터 새로고침 등)
+          if (onSuccess) {
+            console.log('성공 콜백 호출 중...');
+            onSuccess();
+          }
+          
+          // 모달 닫기
+          console.log('모달 닫는 중...');
+          onClose();
+        }
+        
+      } else {
+        const errorMessage = result?.message || result?.error || '알 수 없는 오류가 발생했습니다.';
+        console.log('API 응답에서 실패 감지:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+    } catch (error) {
+      console.error('템플릿 적용 실패:', error);
+      
+      let errorMessage = '템플릿 적용에 실패했습니다.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      // 사용자 친화적 에러 메시지
+      if (errorMessage.includes('404')) {
+        errorMessage = '템플릿을 찾을 수 없습니다.\n페이지를 새로고침하고 다시 시도해주세요.';
+      } else if (errorMessage.includes('500')) {
+        errorMessage = '서버 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.';
+      } else if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
+        errorMessage = '네트워크 연결 문제가 발생했습니다.\n인터넷 연결을 확인하고 다시 시도해주세요.';
+      }
+      
+      // 실패 메시지 - ConfirmProvider 사용 또는 fallback
+      if (typeof showConfirm === 'function') {
+        showConfirm({
+          title: '템플릿 적용 실패',
+          message: errorMessage,
+          type: 'danger',
+          onConfirm: () => {}
+        });
+      } else {
+        alert(`템플릿 적용 실패\n\n${errorMessage}`);
+      }
+      
+    } finally {
+      console.log('로딩 상태 종료');
+      setLoading(false);
     }
   };
 
@@ -222,17 +353,6 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
 
         {/* 모달 컨텐츠 */}
         <div className="modal-content" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-          {/* 디버깅 정보 */}
-          <div style={{ background: '#f0f9ff', padding: '12px', margin: '12px 0', borderRadius: '6px', fontSize: '12px' }}>
-            <strong>디버깅 정보:</strong><br />
-            전체 데이터포인트: {dataPoints.length}개<br />
-            호환 가능한 포인트: {compatiblePoints.length}개<br />
-            필터링된 포인트: {filteredDataPoints.length}개<br />
-            선택된 포인트: {selectedDataPoints.length}개<br />
-            템플릿 타입: {template.condition_type}<br />
-            카테고리: {template.category || 'general'}
-          </div>
-
           {/* 필터 섹션 */}
           <div style={{ 
             display: 'grid', 
@@ -411,6 +531,85 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* 내장 확인 대화상자 */}
+        {showConfirmDialog && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '32px',
+              maxWidth: '500px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+            }}>
+              <h3 style={{
+                fontSize: '20px',
+                fontWeight: '600',
+                margin: '0 0 16px 0',
+                color: '#111827'
+              }}>
+                템플릿 적용 확인
+              </h3>
+              <p style={{
+                fontSize: '16px',
+                color: '#374151',
+                lineHeight: '1.6',
+                margin: '0 0 24px 0'
+              }}>
+                "{template.name}" 템플릿을<br/>
+                {selectedDataPoints.length}개의 데이터포인트에 적용하시겠습니까?<br/><br/>
+                이 작업으로 {selectedDataPoints.length}개의 새로운 알람 규칙이 생성됩니다.
+              </p>
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end'
+              }}>
+                <button
+                  onClick={handleCancelApply}
+                  style={{
+                    padding: '12px 24px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    color: '#374151',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleConfirmApply}
+                  style={{
+                    padding: '12px 24px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: '#3b82f6',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

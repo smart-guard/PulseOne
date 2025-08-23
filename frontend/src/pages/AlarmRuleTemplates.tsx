@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/AlarmRuleTemplates.tsx
-// 수정된 알람 템플릿 관리 페이지 - 중복 선언 오류 해결
+// 수정된 알람 템플릿 관리 페이지 - 중복 함수 제거
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -32,10 +32,16 @@ const AlarmRuleTemplates: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'browse' | 'created'>('browse');
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   
   // 필터 상태
   const [templateFilter, setTemplateFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name' | 'usage'>('newest');
+  
+  // 페이징 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // ===================================================================
   // 헬퍼 함수들
@@ -104,6 +110,11 @@ const AlarmRuleTemplates: React.FC = () => {
       setLoading(true);
       setError(null);
       
+      console.log('템플릿 로딩 시작...', {
+        templateFilter,
+        searchTerm
+      });
+      
       const params = {
         is_active: true,
         ...(templateFilter !== 'all' && { 
@@ -117,8 +128,12 @@ const AlarmRuleTemplates: React.FC = () => {
         ...(searchTerm && { search: searchTerm })
       };
 
+      console.log('API 요청 파라미터:', params);
+
       const response = await alarmTemplatesApi.getTemplates(params);
       
+      console.log('API 응답:', response);
+
       // 백엔드 API 응답 구조 처리
       let templatesData: any[] = [];
       if (response && response.success && response.data) {
@@ -131,6 +146,8 @@ const AlarmRuleTemplates: React.FC = () => {
         templatesData = response;
       }
       
+      console.log('변환 전 템플릿 데이터:', templatesData);
+
       // 데이터 변환 및 안전성 처리
       const transformedTemplates = templatesData.map((template: any) => {
         let frontendTemplateType = 'simple';
@@ -185,6 +202,9 @@ const AlarmRuleTemplates: React.FC = () => {
           updated_at: template.updated_at || new Date().toISOString()
         };
       });
+      
+      console.log('변환된 템플릿 데이터:', transformedTemplates);
+      console.log('최종 템플릿 개수:', transformedTemplates.length);
       
       setTemplates(transformedTemplates);
       
@@ -266,108 +286,10 @@ const AlarmRuleTemplates: React.FC = () => {
   };
 
   // ===================================================================
-  // 이벤트 핸들러들
+  // 이벤트 핸들러들 - 단순화된 버전
   // ===================================================================
-  const executeTemplateApplication = async (dataPointIds: number[]) => {
-    console.log('🚀 템플릿 적용 시작:', {
-      templateId: selectedTemplate!.id,
-      templateName: selectedTemplate!.name,
-      dataPointCount: dataPointIds.length,
-      dataPointIds: dataPointIds
-    });
-
-    setLoading(true);
-    try {
-      // 백엔드 API와 일치하는 요청 형식
-      const request = {
-        target_ids: dataPointIds,        // data_point_ids → target_ids 변경
-        target_type: 'data_point',       // 새로 추가
-        custom_configs: {},
-        rule_group_name: `${selectedTemplate!.name}_${new Date().toISOString().split('T')[0]}`
-      };
-
-      console.log('📤 API 요청 데이터:', request);
-
-      const result = await alarmTemplatesApi.applyTemplate(selectedTemplate!.id, request);
-      
-      console.log('📥 API 응답:', result);
-
-      // 응답 구조 체크 강화
-      if (result && result.success) {
-        await loadCreatedRules();
-        setShowApplyModal(false);
-        setSelectedTemplate(null);
-        
-        const rulesCreated = result.data?.rules_created || 0;
-        
-        // 성공 모달로 결과 표시
-        alert(`성공! ${rulesCreated}개의 알람 규칙이 생성되었습니다.\n\n규칙 그룹: ${result.data?.rule_group_id || 'Unknown'}\n"생성된 규칙" 탭에서 확인할 수 있습니다.`);
-        
-        // 성공 후 생성된 규칙 탭으로 이동
-        setActiveTab('created');
-        
-        console.log('✅ 템플릿 적용 성공:', {
-          rulesCreated,
-          ruleGroupId: result.data?.rule_group_id
-        });
-      } else {
-        // 더 구체적인 에러 메시지
-        const errorMessage = result?.message || result?.error || '알 수 없는 오류가 발생했습니다.';
-        throw new Error(`템플릿 적용 실패: ${errorMessage}`);
-      }
-    } catch (error) {
-      console.error('❌ 템플릿 적용 실패:', error);
-      
-      // 에러 타입별 처리
-      let errorMessage = '템플릿 적용에 실패했습니다.';
-      let errorDetails = '';
-      
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'object' && error !== null) {
-        errorMessage = JSON.stringify(error);
-      }
-      
-      // 사용자 친화적 에러 메시지
-      if (errorMessage.includes('404')) {
-        errorMessage = '템플릿을 찾을 수 없습니다.';
-        errorDetails = '페이지를 새로고침하고 다시 시도해주세요.';
-      } else if (errorMessage.includes('500')) {
-        errorMessage = '서버 오류가 발생했습니다.';
-        errorDetails = '잠시 후 다시 시도해주세요.\n문제가 지속되면 관리자에게 문의하세요.';
-      } else if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
-        errorMessage = '네트워크 연결 문제가 발생했습니다.';
-        errorDetails = '인터넷 연결을 확인하고 다시 시도해주세요.';
-      }
-      
-      // 에러 모달로 표시
-      alert(`템플릿 적용 실패: ${errorMessage}\n\n${errorDetails}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleApplyTemplate = async (dataPointIds: number[]) => {
-    if (!selectedTemplate) {
-      alert('템플릿이 선택되지 않았습니다.');
-      return;
-    }
-
-    if (dataPointIds.length === 0) {
-      alert('최소 하나의 데이터포인트를 선택해주세요.');
-      return;
-    }
-
-    // 적용 전 확인
-    const confirmed = confirm(`"${selectedTemplate.name}" 템플릿을\n${dataPointIds.length}개의 데이터포인트에 적용하시겠습니까?\n\n이 작업으로 ${dataPointIds.length}개의 새로운 알람 규칙이 생성됩니다.`);
-    
-    if (!confirmed) return;
-
-    await executeTemplateApplication(dataPointIds);
-  };
-
   const handleTemplateSelect = (template: AlarmTemplate) => {
-    console.log('🎯 템플릿 선택:', template);
+    console.log('템플릿 선택:', template);
     setSelectedTemplate(template);
     setShowApplyModal(true);
   };
@@ -377,16 +299,27 @@ const AlarmRuleTemplates: React.FC = () => {
     setSelectedTemplate(null);
   };
 
+  const handleTemplateApplySuccess = () => {
+    // 템플릿 적용 성공 시 데이터 새로고침 및 탭 전환
+    loadCreatedRules();
+    setActiveTab('created');
+  };
+
   const handleCreateTemplate = async (templateData: CreateTemplateRequest) => {
     setLoading(true);
     try {
+      console.log('템플릿 생성 시작:', templateData);
       const response = await alarmTemplatesApi.createTemplate(templateData);
       
       if (response.success) {
+        console.log('템플릿 생성 성공, 목록 새로고침 중...');
+        // 먼저 템플릿 목록 새로고침
         await loadTemplates();
+        console.log('템플릿 목록 새로고침 완료');
+        
         setShowCreateModal(false);
         
-        // ConfirmProvider로 성공 메시지
+        // 성공 메시지
         alert(`템플릿이 성공적으로 생성되었습니다: "${templateData.name}"\n\n템플릿 목록에서 확인할 수 있습니다.`);
       } else {
         throw new Error(response.message || '템플릿 생성에 실패했습니다.');
@@ -394,7 +327,7 @@ const AlarmRuleTemplates: React.FC = () => {
     } catch (error) {
       console.error('템플릿 생성 실패:', error);
       
-      // ConfirmProvider로 에러 메시지
+      // 에러 메시지
       alert(`템플릿 생성 실패: ${error instanceof Error ? error.message : '템플릿 생성에 실패했습니다.'}`);
     } finally {
       setLoading(false);
@@ -430,7 +363,8 @@ const AlarmRuleTemplates: React.FC = () => {
   const disabledRules = totalRules - enabledRules;
   const criticalRules = createdRules.filter(r => r.severity === 'CRITICAL').length;
 
-  const filteredTemplates = templates.filter(template => {
+  // 필터링 및 정렬된 템플릿
+  const allFilteredTemplates = templates.filter(template => {
     const matchesSearch = searchTerm === '' || 
       template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       template.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -440,7 +374,57 @@ const AlarmRuleTemplates: React.FC = () => {
       (templateFilter === 'script' && template.template_type === 'script') ||
       template.category.toLowerCase() === templateFilter.toLowerCase();
     return matchesSearch && matchesFilter && template.is_active;
+  }).sort((a, b) => {
+    switch (sortOrder) {
+      case 'newest':
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      case 'oldest':
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      case 'name':
+        return a.name.localeCompare(b.name);
+      case 'usage':
+        return (b.usage_count || 0) - (a.usage_count || 0);
+      default:
+        return 0;
+    }
   });
+
+  // 페이징 계산
+  const totalTemplates = allFilteredTemplates.length;
+  const totalPages = Math.ceil(totalTemplates / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const filteredTemplates = allFilteredTemplates.slice(startIndex, endIndex);
+
+  // 페이지 번호 생성
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+    
+    return pages;
+  };
+
+  // 페이지 변경 시 처리
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // 페이지 사이즈 변경 시 처리
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1); // 첫 페이지로 리셋
+  };
 
   const filteredRules = createdRules.filter(rule => {
     const matchesSearch = searchTerm === '' ||
@@ -565,54 +549,339 @@ const AlarmRuleTemplates: React.FC = () => {
                     <option value="custom">🔧 커스텀</option>
                   </select>
                 </div>
+                <div className="filter-group">
+                  <label>정렬</label>
+                  <select 
+                    value={sortOrder} 
+                    onChange={(e) => setSortOrder(e.target.value as any)} 
+                    className="filter-select"
+                  >
+                    <option value="newest">최신순</option>
+                    <option value="oldest">등록순</option>
+                    <option value="name">이름순</option>
+                    <option value="usage">사용빈도순</option>
+                  </select>
+                </div>
+                <div className="filter-group">
+                  <label>페이지당</label>
+                  <select 
+                    value={pageSize} 
+                    onChange={(e) => handlePageSizeChange(Number(e.target.value))} 
+                    className="filter-select"
+                  >
+                    <option value="5">5개</option>
+                    <option value="10">10개</option>
+                    <option value="20">20개</option>
+                    <option value="50">50개</option>
+                  </select>
+                </div>
+                <div className="filter-group">
+                  <label>보기 방식</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setViewMode('card')}
+                      className={`view-toggle-btn ${viewMode === 'card' ? 'active' : ''}`}
+                      style={{
+                        padding: '8px 12px',
+                        border: `2px solid ${viewMode === 'card' ? '#3b82f6' : '#e5e7eb'}`,
+                        borderRadius: '6px',
+                        background: viewMode === 'card' ? '#eff6ff' : 'white',
+                        color: viewMode === 'card' ? '#3b82f6' : '#6b7280',
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}
+                    >
+                      📋 카드
+                    </button>
+                    <button
+                      onClick={() => setViewMode('table')}
+                      className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                      style={{
+                        padding: '8px 12px',
+                        border: `2px solid ${viewMode === 'table' ? '#3b82f6' : '#e5e7eb'}`,
+                        borderRadius: '6px',
+                        background: viewMode === 'table' ? '#eff6ff' : 'white',
+                        color: viewMode === 'table' ? '#3b82f6' : '#6b7280',
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}
+                    >
+                      📊 테이블
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 총 개수 표시 */}
+              <div style={{ 
+                marginTop: '16px', 
+                padding: '12px 16px', 
+                background: '#f8fafc', 
+                borderRadius: '8px',
+                fontSize: '14px',
+                color: '#374151'
+              }}>
+                총 <strong>{totalTemplates}</strong>개의 템플릿 중 <strong>{startIndex + 1}-{Math.min(endIndex, totalTemplates)}</strong>개 표시
               </div>
             </div>
 
             {/* 템플릿 카드 목록 */}
-            <div className="templates-grid">
-              {filteredTemplates.map(template => (
-                <div key={template.id} className="template-card">
-                  <div className="template-header">
-                    <div className="template-title">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                        <span className="template-icon">{getTemplateTypeIcon(template.template_type)}</span>
-                        <h3 className="template-name">{template.name}</h3>
-                      </div>
-                      <p className="template-description">{template.description}</p>
-                      <div className="template-badges">
-                        <span className={`template-badge type-${template.template_type}`}>
-                          {template.template_type}
-                        </span>
-                        <span className={`template-badge severity-${template.severity}`}>
-                          {template.severity}
-                        </span>
-                        <span className="template-badge category">
-                          {template.category}
-                        </span>
+            {viewMode === 'card' ? (
+              <div className="templates-grid">
+                {filteredTemplates.map((template, index) => (
+                  <div key={template.id} className="template-card">
+                    <div className="template-header">
+                      <div className="template-title">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                          <span style={{ 
+                            background: '#f3f4f6', 
+                            color: '#374151', 
+                            padding: '2px 8px', 
+                            borderRadius: '12px', 
+                            fontSize: '12px', 
+                            fontWeight: '600' 
+                          }}>
+                            #{index + 1}
+                          </span>
+                          <span className="template-icon">{getTemplateTypeIcon(template.template_type)}</span>
+                          <h3 className="template-name">{template.name}</h3>
+                        </div>
+                        <p className="template-description">{template.description}</p>
+                        <div className="template-badges">
+                          <span className={`template-badge type-${template.template_type}`}>
+                            {template.template_type}
+                          </span>
+                          <span className={`template-badge severity-${template.severity}`}>
+                            {template.severity}
+                          </span>
+                          <span className="template-badge category">
+                            {template.category}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="template-config">
-                    <div className="config-label">기본 설정:</div>
-                    <div className="config-value">{renderTemplateConfig(template)}</div>
-                  </div>
-
-                  <div className="template-footer">
-                    <div className="usage-count">
-                      <span className="usage-number">{template.usage_count}</span>회 사용됨
+                    <div className="template-config">
+                      <div className="config-label">기본 설정:</div>
+                      <div className="config-value">{renderTemplateConfig(template)}</div>
                     </div>
-                    <button
-                      onClick={() => handleTemplateSelect(template)}
-                      className="apply-button"
-                      disabled={loading}
-                    >
-                      ⚙️ 적용하기
-                    </button>
+
+                    <div className="template-footer">
+                      <div className="usage-count">
+                        <span className="usage-number">{template.usage_count}</span>회 사용됨
+                      </div>
+                      <button
+                        onClick={() => handleTemplateSelect(template)}
+                        className="apply-button"
+                        disabled={loading}
+                      >
+                        적용하기
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>번호</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>템플릿명</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>설명</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>유형</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>카테고리</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>심각도</th>
+                      <th style={{ padding: '16px', textAlign: 'center', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>사용횟수</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>생성일</th>
+                      <th style={{ padding: '16px', textAlign: 'center', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' }}>작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTemplates.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
+                          조건에 맞는 템플릿이 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredTemplates.map((template, index) => (
+                        <tr key={template.id} style={{ 
+                          borderBottom: '1px solid #f1f5f9',
+                          ':hover': { background: '#f8fafc' }
+                        }}>
+                          <td style={{ padding: '16px', fontSize: '14px', color: '#374151' }}>
+                            <span style={{ 
+                              background: '#f3f4f6', 
+                              color: '#374151', 
+                              padding: '4px 8px', 
+                              borderRadius: '12px', 
+                              fontSize: '12px', 
+                              fontWeight: '600' 
+                            }}>
+                              #{index + 1}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px', fontSize: '14px', color: '#374151', fontWeight: '500' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '16px' }}>{getTemplateTypeIcon(template.template_type)}</span>
+                              {template.name}
+                            </div>
+                          </td>
+                          <td style={{ 
+                            padding: '16px', 
+                            fontSize: '14px', 
+                            color: '#6b7280',
+                            maxWidth: '300px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {template.description}
+                          </td>
+                          <td style={{ padding: '16px', fontSize: '12px' }}>
+                            <span className={`template-badge type-${template.template_type}`} style={{
+                              padding: '4px 8px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              fontWeight: '500'
+                            }}>
+                              {template.template_type}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px', fontSize: '12px' }}>
+                            <span className="template-badge category" style={{
+                              padding: '4px 8px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              fontWeight: '500',
+                              background: '#f0f9ff',
+                              color: '#1e40af'
+                            }}>
+                              {template.category}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px', fontSize: '12px' }}>
+                            <span className={`template-badge severity-${template.severity}`} style={{
+                              padding: '4px 8px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              fontWeight: '500'
+                            }}>
+                              {template.severity}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px', textAlign: 'center', fontSize: '14px', color: '#374151' }}>
+                            <span style={{ fontWeight: '600' }}>{template.usage_count}</span>
+                            <span style={{ fontSize: '12px', color: '#6b7280', display: 'block' }}>회</span>
+                          </td>
+                          <td style={{ padding: '16px', fontSize: '12px', color: '#6b7280' }}>
+                            {new Date(template.created_at).toLocaleDateString('ko-KR', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })}
+                          </td>
+                          <td style={{ padding: '16px', textAlign: 'center' }}>
+                            <button
+                              onClick={() => handleTemplateSelect(template)}
+                              disabled={loading}
+                              style={{
+                                padding: '6px 12px',
+                                border: 'none',
+                                borderRadius: '6px',
+                                background: '#3b82f6',
+                                color: 'white',
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                opacity: loading ? 0.6 : 1
+                              }}
+                            >
+                              적용하기
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 페이징 네비게이션 */}
+            {totalTemplates > 0 && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: '24px',
+                padding: '20px',
+                background: 'white',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb'
+              }}>
+                <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                  {startIndex + 1}-{Math.min(endIndex, totalTemplates)}개 / 총 {totalTemplates}개
                 </div>
-              ))}
-            </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* 이전 페이지 */}
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      background: currentPage === 1 ? '#f9fafb' : 'white',
+                      color: currentPage === 1 ? '#9ca3af' : '#374151',
+                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    이전
+                  </button>
+
+                  {/* 페이지 번호들 */}
+                  {getPageNumbers().map(pageNum => (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      style={{
+                        padding: '8px 12px',
+                        border: `1px solid ${currentPage === pageNum ? '#3b82f6' : '#e5e7eb'}`,
+                        borderRadius: '6px',
+                        background: currentPage === pageNum ? '#3b82f6' : 'white',
+                        color: currentPage === pageNum ? 'white' : '#374151',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: currentPage === pageNum ? '600' : '400'
+                      }}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+
+                  {/* 다음 페이지 */}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      background: currentPage === totalPages ? '#f9fafb' : 'white',
+                      color: currentPage === totalPages ? '#9ca3af' : '#374151',
+                      cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    다음
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -703,8 +972,7 @@ const AlarmRuleTemplates: React.FC = () => {
           template={selectedTemplate}
           dataPoints={dataPoints}
           onClose={handleModalClose}
-          onApply={handleApplyTemplate}
-          loading={loading}
+          onSuccess={handleTemplateApplySuccess}
         />
 
         <TemplateCreateModal
