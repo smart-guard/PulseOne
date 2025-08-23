@@ -716,3 +716,58 @@
     align-self: flex-end;
   }
 }
+
+.virtual-points-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); /* 400px → 320px로 줄임 */
+  gap: 24px;
+  padding: 20px 0; /* 위아래 여백 추가 */
+}
+
+.virtual-point-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px; /* 24px → 20px로 줄임 */
+  transition: all 0.2s;
+  background: white;
+  position: relative;
+  height: fit-content; /* 높이를 내용에 맞게 조절 */
+}
+
+/* 메타데이터 레이아웃도 추가로 수정 */
+.card-metadata .metadata-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.metadata-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.card-metadata .metadata-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+
+.metadata-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.metadata-label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.metadata-value {
+  color: #374151;
+  text-align: right;
+}
