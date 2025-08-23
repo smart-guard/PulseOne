@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/components/modals/TemplateCreateModal.tsx
-// 알람 템플릿 생성 모달 - 독립 컴포넌트
+// 알람 템플릿 생성 모달 - 팝업 및 condition_template 추가
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -11,6 +11,7 @@ export interface CreateTemplateRequest {
   category: string;
   template_type: 'simple' | 'advanced' | 'script';
   condition_type: 'threshold' | 'range' | 'pattern' | 'script';
+  condition_template: string; // 백엔드 필수 필드 추가
   default_config: any;
   severity: 'low' | 'medium' | 'high' | 'critical';
   message_template: string;
@@ -42,6 +43,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
     category: 'temperature',
     template_type: 'simple',
     condition_type: 'threshold',
+    condition_template: '', // 초기값 추가
     default_config: {},
     severity: 'medium',
     message_template: '',
@@ -55,6 +57,10 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
 
   const [activeStep, setActiveStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showResultDialog, setShowResultDialog] = useState(false);
+  const [resultType, setResultType] = useState<'success' | 'error'>('success');
+  const [resultMessage, setResultMessage] = useState('');
 
   // 모달이 열릴 때마다 초기화
   useEffect(() => {
@@ -65,6 +71,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
         category: 'temperature',
         template_type: 'simple',
         condition_type: 'threshold',
+        condition_template: '',
         default_config: {},
         severity: 'medium',
         message_template: '',
@@ -77,6 +84,8 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
       });
       setActiveStep(1);
       setErrors({});
+      setShowConfirmDialog(false);
+      setShowResultDialog(false);
     }
   }, [isOpen]);
 
@@ -112,11 +121,14 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
   const handleConditionTypeChange = (newType: string) => {
     updateField('condition_type', newType);
     
-    // 기본 설정 초기화
+    // 기본 설정 및 condition_template 초기화
     let defaultConfig = {};
+    let conditionTemplate = '';
+    
     switch (newType) {
       case 'threshold':
         defaultConfig = { threshold: 80, deadband: 2 };
+        conditionTemplate = 'value > {threshold}';
         break;
       case 'range':
         defaultConfig = { 
@@ -126,17 +138,74 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           low_low_limit: 0,
           deadband: 2 
         };
+        conditionTemplate = 'value < {low_limit} OR value > {high_limit}';
         break;
       case 'pattern':
         defaultConfig = { trigger_state: 'on_true', hold_time: 1000 };
+        conditionTemplate = 'state == {trigger_state} FOR {hold_time}ms';
         break;
       case 'script':
         defaultConfig = { script_condition: 'return value > 80;' };
+        conditionTemplate = '{script_condition}';
         break;
     }
     updateField('default_config', defaultConfig);
+    updateField('condition_template', conditionTemplate);
   };
 
+  // 메시지 템플릿 문법 검증
+  const validateMessageTemplate = (template: string): string[] => {
+    const errors: string[] = [];
+    
+    // 사용 가능한 변수 목록
+    const validVariables = ['device_name', 'point_name', 'value', 'threshold', 'unit'];
+    
+    // 중괄호 패턴 찾기
+    const variablePattern = /\{([^}]+)\}/g;
+    const matches = template.match(variablePattern);
+    
+    if (matches) {
+      matches.forEach(match => {
+        const variableName = match.slice(1, -1); // {} 제거
+        if (!validVariables.includes(variableName)) {
+          errors.push(`알 수 없는 변수: ${match}`);
+        }
+      });
+    }
+    
+    // 닫히지 않은 중괄호 체크
+    const openBraces = (template.match(/\{/g) || []).length;
+    const closeBraces = (template.match(/\}/g) || []).length;
+    
+    if (openBraces !== closeBraces) {
+      errors.push('중괄호가 올바르게 닫히지 않았습니다');
+    }
+    
+    return errors;
+  };
+
+  // 조건 템플릿 문법 검증
+  const validateConditionTemplate = (template: string, conditionType: string): string[] => {
+    const errors: string[] = [];
+    
+    // 조건 타입별 필수 변수
+    const requiredVariables: Record<string, string[]> = {
+      'threshold': ['threshold'],
+      'range': ['high_limit', 'low_limit'],
+      'pattern': ['trigger_state'],
+      'script': []
+    };
+    
+    const required = requiredVariables[conditionType] || [];
+    
+    required.forEach(variable => {
+      if (!template.includes(`{${variable}}`)) {
+        errors.push(`${conditionType} 타입에는 {${variable}} 변수가 필요합니다`);
+      }
+    });
+    
+    return errors;
+  };
   // 유효성 검사
   const validateStep = (step: number): boolean => {
     const newErrors: Record<string, string> = {};
@@ -144,10 +213,28 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
     if (step === 1) {
       if (!formData.name.trim()) newErrors.name = '템플릿 이름은 필수입니다';
       if (!formData.description.trim()) newErrors.description = '설명은 필수입니다';
-      if (!formData.message_template.trim()) newErrors.message_template = '메시지 템플릿은 필수입니다';
+      if (!formData.message_template.trim()) {
+        newErrors.message_template = '메시지 템플릿은 필수입니다';
+      } else {
+        // 메시지 템플릿 문법 검증
+        const messageErrors = validateMessageTemplate(formData.message_template);
+        if (messageErrors.length > 0) {
+          newErrors.message_template = messageErrors.join(', ');
+        }
+      }
     }
 
     if (step === 2) {
+      if (!formData.condition_template.trim()) {
+        newErrors.condition_template = '조건 템플릿은 필수입니다';
+      } else {
+        // 조건 템플릿 문법 검증
+        const conditionErrors = validateConditionTemplate(formData.condition_template, formData.condition_type);
+        if (conditionErrors.length > 0) {
+          newErrors.condition_template = conditionErrors.join(', ');
+        }
+      }
+      
       if (formData.condition_type === 'threshold') {
         if (!formData.default_config.threshold) newErrors.threshold = '임계값은 필수입니다';
       }
@@ -176,15 +263,50 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
     setActiveStep(prev => Math.max(prev - 1, 1));
   };
 
-  // 생성 처리
-  const handleCreate = async () => {
+  // 생성 버튼 클릭
+  const handleCreateClick = async () => {
     if (!validateStep(activeStep)) return;
+    setShowConfirmDialog(true);
+  };
 
+  // 생성 확인
+  const handleConfirmCreate = async () => {
+    setShowConfirmDialog(false);
+    
     try {
+      console.log('템플릿 생성 요청:', formData);
       await onCreate(formData);
+      
+      // 성공
+      setResultType('success');
+      setResultMessage(`템플릿 "${formData.name}"이 성공적으로 생성되었습니다.\n\n템플릿 목록에서 확인할 수 있습니다.`);
+      setShowResultDialog(true);
+      
     } catch (error) {
       console.error('템플릿 생성 실패:', error);
+      
+      // 실패
+      setResultType('error');
+      let errorMessage = '템플릿 생성에 실패했습니다.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      setResultMessage(errorMessage);
+      setShowResultDialog(true);
     }
+  };
+
+  // 결과 확인 후 처리
+  const handleResultConfirm = () => {
+    setShowResultDialog(false);
+    
+    if (resultType === 'success') {
+      // 성공 시 모달 닫기
+      onClose();
+    }
+    // 실패 시 모달은 열린 상태로 유지
   };
 
   // 렌더링 헬퍼
@@ -224,9 +346,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
       <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600' }}>기본 정보</h3>
       
       <div>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-          템플릿 이름 *
-        </label>
+        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>템플릿 이름 *</label>
         <input
           type="text"
           value={formData.name}
@@ -244,13 +364,11 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
       </div>
 
       <div>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-          설명 *
-        </label>
+        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>설명 *</label>
         <textarea
           value={formData.description}
           onChange={(e) => updateField('description', e.target.value)}
-          placeholder="이 템플릿의 용도와 특징을 설명해주세요"
+          placeholder="템플릿의 용도와 사용법을 설명해주세요"
           rows={3}
           style={{
             width: '100%',
@@ -283,7 +401,6 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
             <option value="pressure">압력</option>
             <option value="flow">유량</option>
             <option value="level">레벨</option>
-            <option value="vibration">진동</option>
             <option value="digital">디지털</option>
             <option value="custom">커스텀</option>
           </select>
@@ -303,23 +420,21 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
               background: 'white'
             }}
           >
-            <option value="low">낮음</option>
-            <option value="medium">보통</option>
-            <option value="high">높음</option>
-            <option value="critical">심각</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
           </select>
         </div>
       </div>
 
       <div>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-          메시지 템플릿 *
-        </label>
+        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>메시지 템플릿 *</label>
         <input
           type="text"
           value={formData.message_template}
           onChange={(e) => updateField('message_template', e.target.value)}
-          placeholder="{device_name} {point_name}이 {threshold}를 초과했습니다 (현재: {value})"
+          placeholder="예: {device_name}에서 온도가 {threshold}°C를 초과했습니다 (현재: {value}°C)"
           style={{
             width: '100%',
             padding: '12px',
@@ -330,7 +445,10 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
         />
         {errors.message_template && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>{errors.message_template}</div>}
         <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-          사용 가능한 변수: {'{device_name}, {point_name}, {value}, {threshold}, {unit}'}
+          사용 가능한 변수: {'{device_name}(디바이스명), {point_name}(포인트명), {value}(현재값), {threshold}(임계값), {unit}(단위)'}
+        </div>
+        <div style={{ fontSize: '12px', color: '#059669', marginTop: '4px', fontStyle: 'italic' }}>
+          템플릿 샘플: {'{device_name}'}에서 온도가 {'{threshold}'}°C를 초과했습니다 (현재: {'{value}'}°C)
         </div>
       </div>
     </div>
@@ -359,6 +477,27 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           <option value="pattern">패턴 (디지털 상태)</option>
           <option value="script">스크립트 (사용자 정의)</option>
         </select>
+      </div>
+
+      <div>
+        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>조건 템플릿 *</label>
+        <input
+          type="text"
+          value={formData.condition_template}
+          onChange={(e) => updateField('condition_template', e.target.value)}
+          placeholder="예: value > {threshold}"
+          style={{
+            width: '100%',
+            padding: '12px',
+            border: `1px solid ${errors.condition_template ? '#ef4444' : '#e5e7eb'}`,
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}
+        />
+        {errors.condition_template && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>{errors.condition_template}</div>}
+        <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+          조건 평가에 사용될 템플릿입니다. 변수는 중괄호로 표시하세요.
+        </div>
       </div>
 
       {/* 조건별 설정 UI */}
@@ -436,78 +575,6 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
             />
             {errors.low_limit && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>{errors.low_limit}</div>}
           </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>상상한값 (HH)</label>
-            <input
-              type="number"
-              value={formData.default_config.high_high_limit || ''}
-              onChange={(e) => updateConfig('high_high_limit', parseFloat(e.target.value))}
-              placeholder="100"
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '14px'
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>하하한값 (LL)</label>
-            <input
-              type="number"
-              value={formData.default_config.low_low_limit || ''}
-              onChange={(e) => updateConfig('low_low_limit', parseFloat(e.target.value))}
-              placeholder="0"
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '14px'
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {formData.condition_type === 'pattern' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>트리거 상태</label>
-            <select
-              value={formData.default_config.trigger_state || 'on_true'}
-              onChange={(e) => updateConfig('trigger_state', e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '14px',
-                background: 'white'
-              }}
-            >
-              <option value="on_true">True 상태에서</option>
-              <option value="on_false">False 상태에서</option>
-              <option value="state_change">상태 변화시</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>지연 시간 (ms)</label>
-            <input
-              type="number"
-              value={formData.default_config.hold_time || ''}
-              onChange={(e) => updateConfig('hold_time', parseInt(e.target.value))}
-              placeholder="1000"
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '14px'
-              }}
-            />
-          </div>
         </div>
       )}
 
@@ -525,14 +592,10 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
               border: `1px solid ${errors.script_condition ? '#ef4444' : '#e5e7eb'}`,
               borderRadius: '8px',
               fontSize: '14px',
-              fontFamily: 'monospace',
-              resize: 'vertical'
+              fontFamily: 'monospace'
             }}
           />
           {errors.script_condition && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>{errors.script_condition}</div>}
-          <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-            사용 가능한 변수: value, device_name, point_name, unit
-          </div>
         </div>
       )}
     </div>
@@ -540,13 +603,60 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
 
   const renderStep3 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600' }}>알림 및 기타 설정</h3>
+      <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600' }}>알림 설정</h3>
       
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={formData.notification_enabled}
+            onChange={(e) => updateField('notification_enabled', e.target.checked)}
+          />
+          <span>알림 활성화</span>
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={formData.email_notification}
+            onChange={(e) => updateField('email_notification', e.target.checked)}
+          />
+          <span>이메일 알림</span>
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={formData.sms_notification}
+            onChange={(e) => updateField('sms_notification', e.target.checked)}
+          />
+          <span>SMS 알림</span>
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={formData.auto_acknowledge}
+            onChange={(e) => updateField('auto_acknowledge', e.target.checked)}
+          />
+          <span>자동 확인</span>
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={formData.auto_clear}
+            onChange={(e) => updateField('auto_clear', e.target.checked)}
+          />
+          <span>자동 해제</span>
+        </label>
+      </div>
+
       <div>
-        <label style={{ display: 'block', marginBottom: '12px', fontWeight: '500' }}>적용 가능한 데이터 타입</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-          {['float', 'int', 'uint32', 'bool', 'string'].map(type => (
-            <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>적용 가능한 데이터 타입</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {['float', 'double', 'int', 'uint32', 'boolean'].map(type => (
+            <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={formData.applicable_data_types.includes(type)}
@@ -563,65 +673,12 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           ))}
         </div>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        <div>
-          <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '500' }}>알림 설정</h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={formData.notification_enabled}
-                onChange={(e) => updateField('notification_enabled', e.target.checked)}
-              />
-              <span style={{ fontSize: '14px' }}>알림 활성화</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={formData.email_notification}
-                onChange={(e) => updateField('email_notification', e.target.checked)}
-              />
-              <span style={{ fontSize: '14px' }}>이메일 알림</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={formData.sms_notification}
-                onChange={(e) => updateField('sms_notification', e.target.checked)}
-              />
-              <span style={{ fontSize: '14px' }}>SMS 알림</span>
-            </label>
-          </div>
-        </div>
-
-        <div>
-          <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '500' }}>동작 설정</h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={formData.auto_acknowledge}
-                onChange={(e) => updateField('auto_acknowledge', e.target.checked)}
-              />
-              <span style={{ fontSize: '14px' }}>자동 확인</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={formData.auto_clear}
-                onChange={(e) => updateField('auto_clear', e.target.checked)}
-              />
-              <span style={{ fontSize: '14px' }}>자동 해제</span>
-            </label>
-          </div>
-        </div>
-      </div>
     </div>
   );
 
   return (
-    <div
+    <div 
+      className="modal-overlay"
       style={{
         position: 'fixed',
         top: 0,
@@ -637,7 +694,8 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div
+      <div 
+        className="modal-container"
         style={{
           backgroundColor: 'white',
           borderRadius: '12px',
@@ -649,11 +707,11 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           flexDirection: 'column'
         }}
       >
-        {/* 헤더 */}
-        <div style={{ padding: '24px', borderBottom: '1px solid #e5e7eb' }}>
+        {/* 모달 헤더 */}
+        <div className="modal-header" style={{ padding: '24px', borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '24px', fontWeight: '700', margin: 0, color: '#111827' }}>
-              새 알람 템플릿 생성
+              새 템플릿 생성
             </h2>
             <button
               onClick={onClose}
@@ -671,8 +729,8 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           </div>
         </div>
 
-        {/* 컨텐츠 */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        {/* 모달 컨텐츠 */}
+        <div className="modal-content" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           {renderStepIndicator()}
           
           {activeStep === 1 && renderStep1()}
@@ -680,34 +738,34 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           {activeStep === 3 && renderStep3()}
         </div>
 
-        {/* 푸터 */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '24px',
-          borderTop: '1px solid #e5e7eb',
-          background: '#f8fafc'
+        {/* 모달 푸터 */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          padding: '24px', 
+          borderTop: '1px solid #e5e7eb', 
+          background: '#f8fafc' 
         }}>
           <div>
-            <button
-              onClick={handlePrev}
-              disabled={activeStep === 1}
-              style={{
-                padding: '12px 24px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                background: activeStep === 1 ? '#f3f4f6' : '#ffffff',
-                color: activeStep === 1 ? '#9ca3af' : '#374151',
-                cursor: activeStep === 1 ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
-            >
-              이전
-            </button>
+            {activeStep > 1 && (
+              <button
+                onClick={handlePrev}
+                style={{
+                  padding: '12px 24px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  background: '#ffffff',
+                  color: '#374151',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                이전
+              </button>
+            )}
           </div>
-
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
               onClick={onClose}
@@ -745,7 +803,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
               </button>
             ) : (
               <button
-                onClick={handleCreate}
+                onClick={handleCreateClick}
                 disabled={loading}
                 style={{
                   padding: '12px 24px',
@@ -763,6 +821,147 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
             )}
           </div>
         </div>
+
+        {/* 생성 확인 대화상자 */}
+        {showConfirmDialog && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '32px',
+              maxWidth: '500px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+            }}>
+              <h3 style={{
+                fontSize: '20px',
+                fontWeight: '600',
+                margin: '0 0 16px 0',
+                color: '#111827'
+              }}>
+                템플릿 생성 확인
+              </h3>
+              <p style={{
+                fontSize: '16px',
+                color: '#374151',
+                lineHeight: '1.6',
+                margin: '0 0 24px 0'
+              }}>
+                "{formData.name}" 템플릿을 생성하시겠습니까?<br/><br/>
+                생성된 템플릿은 알람 규칙 생성 시 사용할 수 있습니다.
+              </p>
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end'
+              }}>
+                <button
+                  onClick={() => setShowConfirmDialog(false)}
+                  style={{
+                    padding: '12px 24px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    color: '#374151',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleConfirmCreate}
+                  style={{
+                    padding: '12px 24px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: '#10b981',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  생성
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 결과 대화상자 */}
+        {showResultDialog && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '32px',
+              maxWidth: '500px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+            }}>
+              <h3 style={{
+                fontSize: '20px',
+                fontWeight: '600',
+                margin: '0 0 16px 0',
+                color: resultType === 'success' ? '#059669' : '#dc2626'
+              }}>
+                {resultType === 'success' ? '템플릿 생성 성공' : '템플릿 생성 실패'}
+              </h3>
+              <p style={{
+                fontSize: '16px',
+                color: '#374151',
+                lineHeight: '1.6',
+                margin: '0 0 24px 0',
+                whiteSpace: 'pre-line'
+              }}>
+                {resultMessage}
+              </p>
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end'
+              }}>
+                <button
+                  onClick={handleResultConfirm}
+                  style={{
+                    padding: '12px 24px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: resultType === 'success' ? '#10b981' : '#dc2626',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
