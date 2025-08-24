@@ -1,6 +1,6 @@
 // =============================================================================
-// backend/app.js - 메인 애플리케이션 (완전 통합 버전 + 초기화 시스템 복구)
-// 기존 구조 + data.js 라우트 추가 + 자동 초기화 시스템 + 서비스 제어 API
+// backend/app.js - 메인 애플리케이션 (완전 통합 버전 + 스크립트 엔진 추가)
+// 기존 구조 + data.js 라우트 + 자동 초기화 시스템 + 서비스 제어 API + 스크립트 엔진
 // =============================================================================
 
 const express = require('express');
@@ -41,7 +41,6 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-//app.use(express.static(path.join(__dirname, '../frontend')));
 
 // 요청 로깅 미들웨어 (새로 추가)
 app.use((req, res, next) => {
@@ -322,13 +321,8 @@ app.post('/api/init/manual', async (req, res) => {
     }
 });
 
-// Frontend 서빙 (기존)
-//app.get('/', (req, res) => {
-//    res.sendFile(path.join(__dirname, '../frontend/index.html'));
-//});
-
 // ============================================================================
-// 🌐 API Routes 등록 (기존 + 새로운 data.js 포함)
+// 🌐 API Routes 등록 (기존 + 스크립트 엔진 추가)
 // ============================================================================
 
 console.log('\n🚀 API 라우트 등록 중...\n');
@@ -362,11 +356,11 @@ try {
     console.warn('⚠️ Device 라우트 로드 실패:', error.message);
 }
 
-// 2. 🆕 데이터 익스플로러 API (새로 추가!)
+// 2. 데이터 익스플로러 API
 try {
     const dataRoutes = require('./routes/data');
     app.use('/api/data', dataRoutes);
-    console.log('✅ 🆕 Data Explorer API 라우트 등록 완료 (/api/data/points 사용 가능!)');
+    console.log('✅ Data Explorer API 라우트 등록 완료 (/api/data/points 사용 가능!)');
 } catch (error) {
     console.warn('⚠️ Data 라우트 로드 실패:', error.message);
     console.warn('   데이터 익스플로러 기능이 비활성화됩니다.');
@@ -410,6 +404,15 @@ try {
     console.log('✅ Virtual Points API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Virtual Points 라우트 로드 실패:', error.message);
+}
+
+// 🆕 스크립트 엔진 API (새로 추가)
+try {
+    const scriptEngineRoutes = require('./routes/script-engine');
+    app.use('/api/script-engine', scriptEngineRoutes);
+    console.log('✅ Script Engine API 라우트 등록 완료 (가상포인트 공통 사용)');
+} catch (error) {
+    console.warn('⚠️ Script Engine 라우트 로드 실패:', error.message);
 }
 
 // 시스템 모니터링 API
@@ -516,13 +519,13 @@ function gracefulShutdown(signal) {
 }
 
 // =============================================================================
-// Start Server (완전 통합 버전 - 모든 API 상태 표시)
+// Start Server (완전 통합 버전 - 스크립트 엔진 포함)
 // =============================================================================
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`
-🚀 PulseOne Backend Server Started! (완전 통합 + 초기화 복구 버전)
+🚀 PulseOne Backend Server Started! (완전 통합 + 스크립트 엔진 버전)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Dashboard:     http://localhost:${PORT}
 🔧 API Health:    http://localhost:${PORT}/api/health
@@ -594,6 +597,14 @@ const server = app.listen(PORT, () => {
    ├─ 카테고리 통계:     GET  /api/virtual-points/stats/category
    └─ 성능 통계:        GET  /api/virtual-points/stats/performance
 
+🔧 스크립트 엔진 API: http://localhost:${PORT}/api/script-engine
+   ├─ 함수 라이브러리:   GET  /api/script-engine/functions
+   ├─ 스크립트 검증:    POST /api/script-engine/validate
+   ├─ 스크립트 테스트:   POST /api/script-engine/test
+   ├─ 스크립트 파싱:    POST /api/script-engine/parse
+   ├─ 템플릿 목록:      GET  /api/script-engine/templates
+   └─ 엔진 테스트:      GET  /api/script-engine/test
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📊 확장 API (우선순위 2 - 선택적)
@@ -631,11 +642,12 @@ Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v2.1.0 - 초기화 시스템 복구)
+🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v2.2.0 - 스크립트 엔진 추가)
    - 알람 관리 ✅
    - 디바이스 관리 ✅  
    - 가상포인트 관리 ✅
    - 데이터 익스플로러 ✅
+   - 스크립트 엔진 ✅ (NEW!)
    - 자동 초기화 ${DatabaseInitializer ? '✅' : '⚠️'}
    - 서비스 제어 ✅
    - 멀티테넌트 지원 ✅
