@@ -226,7 +226,82 @@ class VirtualPointQueries {
       VALUES (?, datetime('now'), 0, 'success', '{"action": "updated", "status": "completed"}', 'manual', 1)
     `;
   }
+/**
+   * 가상포인트 활성화/비활성화만 업데이트 (토글용)
+   */
+  static updateEnabledOnly() {
+    return `
+      UPDATE virtual_points 
+      SET is_enabled = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `;
+  }
 
+  /**
+   * 가상포인트 설정만 업데이트 (이름/수식 제외)
+   */
+  static updateSettingsOnly() {
+    return `
+      UPDATE virtual_points 
+      SET calculation_interval = ?, calculation_trigger = ?, 
+          priority = ?, description = ?, unit = ?, data_type = ?, 
+          category = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `;
+  }
+
+  /**
+   * 가상포인트 현재값 업데이트
+   */
+  static updateCurrentValue() {
+    return `
+      UPDATE virtual_point_values 
+      SET value = ?, quality = ?, last_calculated = datetime('now'),
+          calculation_duration_ms = ?, is_stale = 0
+      WHERE virtual_point_id = ?
+    `;
+  }
+
+  /**
+   * 가상포인트 실행 통계 업데이트
+   */
+  static updateExecutionStats() {
+    return `
+      UPDATE virtual_points 
+      SET execution_count = execution_count + 1,
+          avg_execution_time_ms = (
+            CASE WHEN execution_count > 0 
+            THEN (avg_execution_time_ms * execution_count + ?) / (execution_count + 1)
+            ELSE ?
+            END
+          ),
+          last_execution_time = datetime('now'),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `;
+  }
+
+  /**
+   * 가상포인트 에러 정보 업데이트
+   */
+  static updateLastError() {
+    return `
+      UPDATE virtual_points 
+      SET last_error = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `;
+  }
+
+  /**
+   * 가상포인트 마지막 계산 시간만 업데이트
+   */
+  static updateLastCalculated() {
+    return `
+      UPDATE virtual_points 
+      SET last_execution_time = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?
+    `;
+  }
   // ==========================================================================
   // 🗑️ 삭제 쿼리들 (CASCADE DELETE 순서) - 컬럼명 수정
   // ==========================================================================
