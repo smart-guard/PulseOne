@@ -1,8 +1,8 @@
 // ============================================================================
-// VirtualPointTable.tsx - 완전 수정된 버전 (테이블 정렬, UI 개선)
+// VirtualPointTable.tsx - 완전 반응형 버전 (구조 수정)
 // ============================================================================
 
-import React from 'react';
+import React, { useEffect } from 'react';
 
 export interface VirtualPointTableProps {
   virtualPoints: any[];
@@ -29,6 +29,63 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
   onSort,
   loading = false
 }) => {
+
+  // 스크롤바 스타일을 동적으로 추가
+  useEffect(() => {
+    const styleId = 'virtual-point-table-scrollbar';
+    
+    // 기존 스타일 제거
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    // 새 스타일 추가
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      .virtual-point-table-scroll::-webkit-scrollbar {
+        height: 8px;
+        background-color: #f1f5f9;
+      }
+      .virtual-point-table-scroll::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 4px;
+      }
+      .virtual-point-table-scroll::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+        border: 1px solid #f1f5f9;
+      }
+      .virtual-point-table-scroll::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // 클린업
+    return () => {
+      const styleElement = document.getElementById(styleId);
+      if (styleElement) {
+        styleElement.remove();
+      }
+    };
+  }, []);
+
+  // 디버깅용: 헤더 개수 확인
+  const headerCount = 9; // 이름, 카테고리, 수식, 현재값, 상태, 범위, 실행방식, 마지막계산, 작업
+  
+  const gridColumns = `
+    clamp(150px, 20%, 250px)     
+    clamp(60px, 8%, 90px)        
+    clamp(200px, 25%, 350px)     
+    clamp(100px, 12%, 150px)     
+    clamp(80px, 10%, 120px)      
+    clamp(70px, 8%, 100px)       
+    clamp(90px, 10%, 130px)      
+    clamp(100px, 12%, 140px)     
+    clamp(120px, 15%, 160px)     
+  `;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -101,283 +158,366 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
       borderRadius: '12px',
       border: '1px solid #e5e7eb',
       overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+      width: '100%'
     }}>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ 
-          width: '100%', 
-          borderCollapse: 'collapse',
-          minWidth: '1000px' // 최소 너비 보장
+      <div 
+        style={{ 
+          overflowX: 'auto',
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#cbd5e1 #f1f5f9'
+        }} 
+        className="virtual-point-table-scroll"
+      >
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: '800px',
+          width: '100%'
         }}>
-          <thead>
-            <tr style={{ background: '#f9fafb' }}>
-              {[
-                { key: 'name', label: '이름', width: '200px' },
-                { key: 'category', label: '카테고리', width: '120px' },
-                { key: 'formula', label: '수식', width: '250px' },
-                { key: 'current_value', label: '현재값', width: '120px' },
-                { key: 'calculation_status', label: '상태', width: '100px' },
-                { key: 'scope_type', label: '범위', width: '80px' },
-                { key: 'calculation_trigger', label: '실행방식', width: '100px' },
-                { key: 'last_calculated', label: '마지막 계산', width: '120px' },
-                { key: 'actions', label: '작업', width: '120px', sortable: false }
-              ].map((header) => (
-                <th 
-                  key={header.key}
-                  onClick={header.sortable !== false ? () => handleSort(header.key) : undefined}
-                  style={{
-                    padding: '12px',
-                    textAlign: 'left',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: '#374151',
-                    borderBottom: '1px solid #e5e7eb',
-                    cursor: header.sortable !== false ? 'pointer' : 'default',
-                    width: header.width,
-                    minWidth: header.width,
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {header.label}
-                  {header.sortable !== false && <SortIcon column={header.key} />}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
+          
+          {/* 헤더 - 정확한 9개 컬럼 */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: gridColumns,
+            gap: 'clamp(4px, 0.5vw, 8px)',
+            background: '#f9fafb',
+            borderBottom: '2px solid #e5e7eb',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            padding: '0 clamp(4px, 0.5vw, 8px)',
+            // 🔥 Grid 컨테이너 전체가 회색 배경
+            width: '100%'
+          }}>
+            {[
+              { key: 'name', label: '이름' },
+              { key: 'category', label: '카테고리' },
+              { key: 'formula', label: '수식' },
+              { key: 'current_value', label: '현재값' },
+              { key: 'calculation_status', label: '상태' },
+              { key: 'scope_type', label: '범위' },
+              { key: 'calculation_trigger', label: '실행방식' },
+              { key: 'last_calculated', label: '마지막 계산' },
+              { key: 'actions', label: '작업', sortable: false }
+            ].map((header, index) => (
+              <div 
+                key={header.key}
+                onClick={header.sortable !== false ? () => handleSort(header.key) : undefined}
+                style={{
+                  padding: 'clamp(8px, 1vw, 12px)',
+                  fontSize: 'clamp(11px, 1.2vw, 13px)',
+                  fontWeight: 600,
+                  color: '#374151',
+                  cursor: header.sortable !== false ? 'pointer' : 'default',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: index < 2 ? 'flex-start' : 'center',
+                  textAlign: index < 2 ? 'left' : 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  background: '#f9fafb', // 🔥 각 헤더 셀에도 배경색 명시
+                  border: 'none' // 🔥 보더 제거
+                }}
+              >
+                {header.label}
+                {header.sortable !== false && <SortIcon column={header.key} />}
+              </div>
+            ))}
+          </div>
+
+          {/* 바디 - 헤더와 동일한 Grid 구조 */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: gridColumns, // 🔥 헤더와 동일한 컬럼 정의
+            gap: 'clamp(4px, 0.5vw, 8px)',
+            padding: '0 clamp(4px, 0.5vw, 8px)'
+          }}>
             {loading ? (
-              <tr>
-                <td colSpan={9} style={{ 
-                  textAlign: 'center', 
-                  padding: '40px',
-                  color: '#6b7280'
-                }}>
-                  <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
-                  로딩 중...
-                </td>
-              </tr>
+              <div style={{
+                gridColumn: '1 / -1',
+                textAlign: 'center',
+                padding: 'clamp(20px, 4vw, 40px)',
+                color: '#6b7280',
+                fontSize: 'clamp(12px, 1.4vw, 14px)'
+              }}>
+                <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                로딩 중...
+              </div>
             ) : virtualPoints.length === 0 ? (
-              <tr>
-                <td colSpan={9} style={{ 
-                  textAlign: 'center', 
-                  padding: '40px', 
-                  color: '#6b7280' 
-                }}>
-                  가상포인트가 없습니다
-                </td>
-              </tr>
+              <div style={{
+                gridColumn: '1 / -1',
+                textAlign: 'center',
+                padding: 'clamp(20px, 4vw, 40px)',
+                color: '#6b7280',
+                fontSize: 'clamp(12px, 1.4vw, 14px)'
+              }}>
+                가상포인트가 없습니다
+              </div>
             ) : (
               virtualPoints.map((point, index) => (
-                <tr key={point.id || index} 
-                    style={{ 
-                      borderBottom: index === virtualPoints.length - 1 ? 'none' : '1px solid #f3f4f6',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#f9fafb';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'white';
-                    }}
-                >
+                <React.Fragment key={point.id || index}>
                   {/* 이름 */}
-                  <td style={{ padding: '12px', width: '200px' }}>
-                    <div>
-                      <div style={{ 
-                        fontSize: '13px', 
-                        fontWeight: 500, 
-                        color: '#111827',
-                        marginBottom: '2px',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis'
-                      }}>
-                        {point.name}
-                      </div>
-                      {point.description && (
-                        <div style={{ 
-                          fontSize: '11px', 
-                          color: '#6b7280',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}>
-                          {point.description}
-                        </div>
-                      )}
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px',
+                    justifyContent: 'center'
+                  }}>
+                    <div style={{
+                      fontSize: 'clamp(12px, 1.3vw, 14px)',
+                      fontWeight: 500,
+                      color: '#111827',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {point.name}
                     </div>
-                  </td>
+                    {point.description && (
+                      <div style={{
+                        fontSize: 'clamp(10px, 1.1vw, 12px)',
+                        color: '#6b7280',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {point.description}
+                      </div>
+                    )}
+                  </div>
 
                   {/* 카테고리 */}
-                  <td style={{ padding: '12px', width: '120px' }}>
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      padding: '4px 8px',
+                      padding: 'clamp(2px, 0.3vw, 4px) clamp(4px, 0.6vw, 8px)',
                       background: getCategoryColor(point.category || 'Custom'),
                       color: 'white',
-                      borderRadius: '12px',
-                      fontSize: '10px',
+                      borderRadius: 'clamp(8px, 1vw, 12px)',
+                      fontSize: 'clamp(8px, 0.9vw, 10px)',
                       fontWeight: 500,
-                      height: '20px',
-                      minWidth: 'fit-content'
+                      maxWidth: '100%',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
                     }}>
                       {point.category || 'Custom'}
                     </span>
-                  </td>
+                  </div>
 
                   {/* 수식 */}
-                  <td style={{ padding: '12px', width: '250px' }}>
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
                     <code style={{
-                      fontSize: '11px',
+                      fontSize: 'clamp(10px, 1.1vw, 12px)',
                       color: '#374151',
                       background: '#f3f4f6',
-                      padding: '2px 4px',
+                      padding: 'clamp(2px, 0.3vw, 4px) clamp(3px, 0.5vw, 6px)',
                       borderRadius: '3px',
                       fontFamily: 'JetBrains Mono, Consolas, monospace',
                       display: 'block',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
-                      textOverflow: 'ellipsis'
+                      textOverflow: 'ellipsis',
+                      width: '100%'
                     }}>
                       {point.formula || point.expression || 'N/A'}
                     </code>
-                  </td>
+                  </div>
 
                   {/* 현재값 */}
-                  <td style={{ padding: '12px', width: '120px' }}>
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
                     <div style={{
                       fontFamily: 'JetBrains Mono, Consolas, monospace',
-                      fontSize: '12px',
+                      fontSize: 'clamp(11px, 1.2vw, 13px)',
                       fontWeight: 500,
                       color: point.calculation_status === 'success' || point.calculation_status === 'active' ? '#166534' : '#6b7280',
                       background: point.calculation_status === 'success' || point.calculation_status === 'active' ? '#f0fdf4' : '#f9fafb',
-                      padding: '4px 8px',
+                      padding: 'clamp(3px, 0.4vw, 6px) clamp(6px, 0.8vw, 10px)',
                       borderRadius: '4px',
                       border: '1px solid #e5e7eb',
-                      textAlign: 'center'
+                      textAlign: 'center',
+                      minWidth: '60px'
                     }}>
                       {formatValue(point.current_value, point.unit)}
                     </div>
-                  </td>
+                  </div>
 
                   {/* 상태 */}
-                  <td style={{ padding: '12px', width: '100px' }}>
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 8px',
+                      gap: 'clamp(2px, 0.3vw, 4px)',
+                      padding: 'clamp(3px, 0.4vw, 5px) clamp(6px, 0.8vw, 10px)',
                       background: getStatusColor(point.calculation_status || 'disabled'),
                       color: 'white',
-                      borderRadius: '12px',
-                      fontSize: '10px',
+                      borderRadius: 'clamp(8px, 1vw, 12px)',
+                      fontSize: 'clamp(8px, 0.9vw, 10px)',
                       fontWeight: 500,
-                      height: '20px',
                       minWidth: 'fit-content'
                     }}>
-                      <i className={getStatusIcon(point.calculation_status || 'disabled').replace('fa-spin', '')} 
-                         style={{ fontSize: '9px' }}></i>
-                      {point.calculation_status === 'success' || point.calculation_status === 'active' ? '활성' : 
+                      <i className={getStatusIcon(point.calculation_status || 'disabled').replace('fa-spin', '')}
+                         style={{ fontSize: 'clamp(7px, 0.8vw, 9px)' }}></i>
+                      {point.calculation_status === 'success' || point.calculation_status === 'active' ? '활성' :
                        point.calculation_status === 'error' ? '오류' :
                        point.calculation_status === 'calculating' ? '계산중' : '비활성'}
                     </span>
-                  </td>
+                  </div>
 
                   {/* 범위 */}
-                  <td style={{ padding: '12px', width: '80px', fontSize: '12px', color: '#6b7280' }}>
-                    {point.scope_type === 'global' || point.scope_type === 'tenant' ? '전역' : 
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    fontSize: 'clamp(10px, 1.1vw, 12px)',
+                    color: '#6b7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center'
+                  }}>
+                    {point.scope_type === 'global' || point.scope_type === 'tenant' ? '전역' :
                      point.scope_type === 'site' ? '사이트' : '디바이스'}
-                  </td>
+                  </div>
 
                   {/* 실행방식 */}
-                  <td style={{ padding: '12px', width: '100px', fontSize: '12px', color: '#6b7280' }}>
-                    {point.calculation_trigger === 'time_based' || point.calculation_trigger === 'timer' ? '시간기반' : 
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    fontSize: 'clamp(10px, 1.1vw, 12px)',
+                    color: '#6b7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center'
+                  }}>
+                    {point.calculation_trigger === 'time_based' || point.calculation_trigger === 'timer' ? '시간기반' :
                      point.calculation_trigger === 'event_driven' || point.calculation_trigger === 'onchange' ? '이벤트' : '수동'}
-                  </td>
+                  </div>
 
                   {/* 마지막 계산 */}
-                  <td style={{ padding: '12px', width: '120px', fontSize: '12px', color: '#6b7280' }}>
-                    {point.last_calculated 
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    fontSize: 'clamp(10px, 1.1vw, 12px)',
+                    color: '#6b7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center'
+                  }}>
+                    {point.last_calculated
                       ? new Date(point.last_calculated).toLocaleDateString('ko-KR')
                       : 'N/A'}
-                  </td>
+                  </div>
 
                   {/* 작업 */}
-                  <td style={{ padding: '12px', width: '120px' }}>
-                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                      <button
-                        onClick={() => onExecute(point.id)}
-                        disabled={!point.is_enabled}
-                        style={{
-                          padding: '4px 6px',
-                          background: 'none',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          color: point.is_enabled ? '#374151' : '#9ca3af',
-                          cursor: point.is_enabled ? 'pointer' : 'not-allowed',
-                          opacity: point.is_enabled ? 1 : 0.5,
-                          fontSize: '11px'
-                        }}
-                        title="실행"
-                      >
-                        <i className="fas fa-play"></i>
-                      </button>
-                      
-                      <button
-                        onClick={() => onTest(point)}
-                        style={{
-                          padding: '4px 6px',
-                          background: 'none',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          color: '#374151',
-                          cursor: 'pointer',
-                          fontSize: '11px'
-                        }}
-                        title="테스트"
-                      >
-                        <i className="fas fa-vial"></i>
-                      </button>
-                      
-                      <button
-                        onClick={() => onEdit(point)}
-                        style={{
-                          padding: '4px 6px',
-                          background: 'none',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          color: '#374151',
-                          cursor: 'pointer',
-                          fontSize: '11px'
-                        }}
-                        title="편집"
-                      >
-                        <i className="fas fa-edit"></i>
-                      </button>
-                      
-                      <button
-                        onClick={() => onDelete(point)}
-                        style={{
-                          padding: '4px 6px',
-                          background: 'none',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          color: '#dc2626',
-                          cursor: 'pointer',
-                          fontSize: '11px'
-                        }}
-                        title="삭제"
-                      >
-                        <i className="fas fa-trash"></i>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                  <div style={{
+                    padding: 'clamp(8px, 1vw, 12px)',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    gap: 'clamp(2px, 0.4vw, 4px)',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <button
+                      onClick={() => onExecute(point.id)}
+                      disabled={!point.is_enabled}
+                      style={{
+                        padding: 'clamp(3px, 0.4vw, 5px) clamp(4px, 0.6vw, 8px)',
+                        background: 'none',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        color: point.is_enabled ? '#374151' : '#9ca3af',
+                        cursor: point.is_enabled ? 'pointer' : 'not-allowed',
+                        opacity: point.is_enabled ? 1 : 0.5,
+                        fontSize: 'clamp(9px, 1vw, 11px)'
+                      }}
+                      title="실행"
+                    >
+                      <i className="fas fa-play"></i>
+                    </button>
+
+                    <button
+                      onClick={() => onTest(point)}
+                      style={{
+                        padding: 'clamp(3px, 0.4vw, 5px) clamp(4px, 0.6vw, 8px)',
+                        background: 'none',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        fontSize: 'clamp(9px, 1vw, 11px)'
+                      }}
+                      title="테스트"
+                    >
+                      <i className="fas fa-vial"></i>
+                    </button>
+
+                    <button
+                      onClick={() => onEdit(point)}
+                      style={{
+                        padding: 'clamp(3px, 0.4vw, 5px) clamp(4px, 0.6vw, 8px)',
+                        background: 'none',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        fontSize: 'clamp(9px, 1vw, 11px)'
+                      }}
+                      title="편집"
+                    >
+                      <i className="fas fa-edit"></i>
+                    </button>
+
+                    <button
+                      onClick={() => onDelete(point)}
+                      style={{
+                        padding: 'clamp(3px, 0.4vw, 5px) clamp(4px, 0.6vw, 8px)',
+                        background: 'none',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        fontSize: 'clamp(9px, 1vw, 11px)'
+                      }}
+                      title="삭제"
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </React.Fragment>
               ))
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
     </div>
   );
