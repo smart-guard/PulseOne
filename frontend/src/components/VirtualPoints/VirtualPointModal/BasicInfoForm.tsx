@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React from 'react';
+import { ScopeSelector } from './ScopeSelector';
 
 interface FormData {
   name: string;
@@ -325,13 +326,14 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({ data, onChange, errors })
           {data.scope_type !== 'global' && (
             <div className="form-group">
               <label>범위 ID</label>
-              <input
-                type="number"
-                value={data.scope_id || ''}
-                onChange={(e) => onChange('scope_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                className="form-input"
-                placeholder="해당 범위의 ID"
-              />
+              <ScopeSelector
+                scopeType={data.scope_type}
+                scopeId={data.scope_id}
+                onScopeChange={(type, id) => {
+                    onChange('scope_type', type);
+                    onChange('scope_id', id);
+                }}
+                />
             </div>
           )}
 
