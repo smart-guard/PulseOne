@@ -66,88 +66,127 @@ class DataPointsApiService {
     points: DataPoint[];
     totalCount: number;
     pagination: {
-      page: number;
-      limit: number;
-      hasNext: boolean;
-      hasPrev: boolean;
+        page: number;
+        limit: number;
+        hasNext: boolean;
+        hasPrev: boolean;
     };
-  }> {
+    }> {
     try {
-      console.log('데이터포인트 목록 조회:', filters);
+        console.log('🔄 데이터포인트 목록 조회 시작:', filters);
 
-      const params = new URLSearchParams();
-      
-      // 기본값 설정
-      params.append('limit', (filters?.limit || 1000).toString());
-      params.append('page', (filters?.page || 1).toString());
-      params.append('sort_by', filters?.sort_by || 'name');
-      params.append('sort_order', filters?.sort_order || 'ASC');
-      
-      // 선택적 필터들
-      if (filters?.search) params.append('search', filters.search);
-      if (filters?.device_id) params.append('device_id', filters.device_id.toString());
-      if (filters?.site_id) params.append('site_id', filters.site_id.toString());
-      if (filters?.data_type) params.append('data_type', filters.data_type);
-      if (filters?.enabled_only !== undefined) params.append('enabled_only', filters.enabled_only.toString());
-      if (filters?.include_current_value !== undefined) params.append('include_current_value', filters.include_current_value.toString());
+        const params = new URLSearchParams();
+        
+        // 기본값 설정
+        params.append('limit', (filters?.limit || 1000).toString());
+        params.append('page', (filters?.page || 1).toString());
+        params.append('sort_by', filters?.sort_by || 'name');
+        params.append('sort_order', filters?.sort_order || 'ASC');
+        
+        // 선택적 필터들
+        if (filters?.search) params.append('search', filters.search);
+        if (filters?.device_id) params.append('device_id', filters.device_id.toString());
+        if (filters?.site_id) params.append('site_id', filters.site_id.toString());
+        if (filters?.data_type) params.append('data_type', filters.data_type);
+        if (filters?.enabled_only !== undefined) params.append('enabled_only', filters.enabled_only.toString());
+        if (filters?.include_current_value !== undefined) params.append('include_current_value', filters.include_current_value.toString());
 
-      const response = await fetch(`${this.baseUrl}/points?${params.toString()}`);
-      
-      if (response.ok) {
-        const result: DataPointsResponse = await response.json();
-        if (result.success && result.data?.points) {
-          return {
-            points: result.data.points,
-            totalCount: result.data.total_items || result.data.points.length,
-            pagination: {
-              page: result.data.pagination?.page || 1,
-              limit: result.data.pagination?.limit || 1000,
-              hasNext: result.data.pagination?.has_next || false,
-              hasPrev: result.data.pagination?.has_prev || false
-            }
-          };
-        } else {
-          throw new Error(result.message || 'API 응답 오류');
-        }
-      } else {
+        const url = `${this.baseUrl}/points?${params.toString()}`;
+        console.log('🔗 API 요청 URL:', url);
+
+        const response = await fetch(url);
+        
+        if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+        }
+
+        const result: DataPointsResponse = await response.json();
+        console.log('📦 API 응답:', result);
+        
+        // 🔥 성공 응답 처리 개선
+        if (result.success) {
+        const points = result.data?.points || [];
+        console.log(`✅ 데이터포인트 ${points.length}개 조회 성공`);
+        
+        return {
+            points: points,
+            totalCount: result.data?.total_items || points.length,
+            pagination: {
+            page: result.data?.pagination?.page || 1,
+            limit: result.data?.pagination?.limit || 1000,
+            hasNext: result.data?.pagination?.has_next || false,
+            hasPrev: result.data?.pagination?.has_prev || false
+            }
+        };
+        } else {
+        // success: false인 경우만 실제 에러
+        throw new Error(result.message || 'API에서 에러를 반환했습니다');
+        }
+
     } catch (error) {
-      console.error('데이터포인트 조회 실패:', error);
-      
-      // 백엔드 API 실패 시 목 데이터 반환
-      return this.getMockDataPoints(filters);
+        console.warn('⚠️ 실제 API 호출 실패, 목 데이터 사용:', error);
+        
+        // 🔥 백엔드 API 실패 시에만 목 데이터 반환
+        const mockResult = this.getMockDataPoints(filters);
+        console.log('🎭 목 데이터 반환:', mockResult);
+        
+        return mockResult;
     }
-  }
+    }
 
   /**
    * 디바이스 목록 조회 (데이터포인트 선택용)
    */
   async getDevices(): Promise<Device[]> {
     try {
-      console.log('디바이스 목록 조회');
+        console.log('🔄 디바이스 목록 조회 시작');
 
-      const response = await fetch('/api/devices?limit=100&enabled_only=true');
-      
-      if (response.ok) {
+        const response = await fetch('/api/devices?limit=100&enabled_only=true');
+        
+        if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const result = await response.json();
-        if (result.success && result.data?.devices) {
-          return result.data.devices.map((d: any) => ({
+        console.log('📦 디바이스 API 응답:', result); // 디버깅용
+        
+        // 🔥 백엔드 응답 구조에 맞게 수정
+        if (result.success && result.data?.items) {
+        const devices = result.data.items.map((d: any) => ({
             id: d.id,
             name: d.name,
             protocol_type: d.protocol_type || 'unknown',
             connection_status: d.connection_status || 'unknown'
-          }));
+        }));
+        
+        console.log(`✅ 디바이스 ${devices.length}개 조회 성공`);
+        return devices;
+        } else if (result.success && Array.isArray(result.data)) {
+        // 만약 data가 직접 배열인 경우도 처리
+        const devices = result.data.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            protocol_type: d.protocol_type || 'unknown',
+            connection_status: d.connection_status || 'unknown'
+        }));
+        
+        console.log(`✅ 디바이스 ${devices.length}개 조회 성공 (직접 배열)`);
+        return devices;
+        } else {
+        console.warn('예상하지 못한 디바이스 API 응답 구조:', result);
+        throw new Error(result.message || '디바이스 API 응답 구조 오류');
         }
-      }
 
-      // 백엔드 실패 시 목 데이터
-      return this.getMockDevices();
     } catch (error) {
-      console.error('디바이스 조회 실패:', error);
-      return this.getMockDevices();
+        console.warn('⚠️ 실제 디바이스 API 호출 실패, 목 데이터 사용:', error);
+        
+        // 🔥 백엔드 API 실패 시에만 목 데이터 반환
+        const mockDevices = this.getMockDevices();
+        console.log('🎭 목 디바이스 데이터 반환:', mockDevices);
+        
+        return mockDevices;
     }
-  }
+    }
 
   // ========================================================================
   // 목 데이터 (백엔드 API가 없을 때)

@@ -1,5 +1,6 @@
 // ============================================================================
-// InputVariableEditor.tsx - API 연동 버전
+// InputVariableEditor.tsx - 최소 수정 버전 (기존 UI 유지)
+// 변경사항: 저장/삭제 확인팝업 + 저장후 모달유지 + onMoveToFormulaTab 추가
 // ============================================================================
 
 import React, { useState, useCallback } from 'react';
@@ -9,11 +10,13 @@ import InputVariableSourceSelector from './InputVariableSourceSelector';
 interface InputVariableEditorProps {
   variables: VirtualPointInput[];
   onChange: (variables: VirtualPointInput[]) => void;
+  onMoveToFormulaTab?: () => void; // 수식 탭 이동 콜백 추가
 }
 
 const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
   variables,
-  onChange
+  onChange,
+  onMoveToFormulaTab
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -49,13 +52,18 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
     setShowAddModal(true);
   }, [variables]);
 
+  // 삭제 확인 팝업 추가
   const handleDeleteVariable = useCallback((index: number) => {
-    if (window.confirm('이 입력 변수를 삭제하시겠습니까?')) {
+    const variable = variables[index];
+    const confirmMessage = `입력 변수를 삭제하시겠습니까?\n\n변수명: ${variable.variable_name}\n소스: ${variable.source_name || variable.source_id}`;
+    
+    if (window.confirm(confirmMessage)) {
       const newVariables = variables.filter((_, i) => i !== index);
       onChange(newVariables);
     }
   }, [variables, onChange]);
 
+  // 저장 확인 팝업 추가 + 저장 후 모달 유지
   const handleSaveVariable = useCallback(() => {
     if (!formData.variable_name?.trim()) {
       alert('변수명을 입력해주세요.');
@@ -81,9 +89,16 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
       data_type: formData.data_type!,
       description: formData.description || '',
       is_required: formData.is_required ?? true,
-      // API에서 가져온 소스 정보 추가
       source_name: formData.source_name
     };
+
+    // 저장 확인 팝업
+    const action = editingIndex !== null ? '수정' : '추가';
+    const confirmMessage = `입력 변수를 ${action}하시겠습니까?\n\n변수명: ${newVariable.variable_name}\n소스: ${newVariable.source_name || newVariable.source_id}\n타입: ${newVariable.data_type}`;
+    
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
 
     let newVariables: VirtualPointInput[];
     if (editingIndex !== null) {
@@ -95,18 +110,28 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
     }
 
     onChange(newVariables);
+    
+    // 저장 후 모달 닫기 (기존 동작 유지)
     setShowAddModal(false);
     setEditingIndex(null);
-  }, [formData, editingIndex, variables, onChange]);
 
-  // 소스 선택 핸들러
+    // 수식 탭 이동 여부 확인
+    if (onMoveToFormulaTab) {
+      const moveToFormula = window.confirm('수식 편집 탭으로 이동하시겠습니까?');
+      if (moveToFormula) {
+        onMoveToFormulaTab();
+      }
+    }
+  }, [formData, editingIndex, variables, onChange, onMoveToFormulaTab]);
+
+  // 소스 선택 핸들러 (변경 없음)
   const handleSourceSelect = useCallback((id: number, source: any) => {
     setFormData(prev => ({
       ...prev,
       source_id: id,
       source_name: source.name,
-      data_type: source.data_type, // 선택된 소스의 데이터 타입으로 자동 설정
-      description: prev.description || source.description // 설명이 비어있으면 소스 설명 사용
+      data_type: source.data_type,
+      description: prev.description || source.description
     }));
   }, []);
 
@@ -122,7 +147,7 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
   };
 
   // ========================================================================
-  // 렌더링
+  // 렌더링 (기존 UI 그대로 유지)
   // ========================================================================
   
   return (
@@ -173,7 +198,7 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
         </button>
       </div>
 
-      {/* 변수 목록 */}
+      {/* 변수 목록 (기존 UI 그대로) */}
       {variables.length === 0 ? (
         <div style={{
           textAlign: 'center',
@@ -213,7 +238,7 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 
-                {/* 변수 정보 */}
+                {/* 변수 정보 (기존 디자인 유지) */}
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                     <code style={{ 
@@ -237,8 +262,8 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
                       fontSize: '12px',
                       fontWeight: 'bold'
                     }}>
-                      {variable.source_type === 'data_point' ? '📊 데이터포인트' : 
-                       variable.source_type === 'virtual_point' ? '🔮 가상포인트' : '📝 상수'}
+                      {variable.source_type === 'data_point' ? '데이터포인트' : 
+                       variable.source_type === 'virtual_point' ? '가상포인트' : '상수'}
                     </span>
                     
                     <span style={{
@@ -330,7 +355,7 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
         </div>
       )}
 
-      {/* 추가/편집 모달 */}
+      {/* 추가/편집 모달 (기존 UI 그대로 유지) */}
       {showAddModal && (
         <div style={{
           position: 'fixed',
@@ -381,7 +406,7 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
               </button>
             </div>
             
-            {/* 모달 내용 */}
+            {/* 모달 내용 (기존 폼 그대로) */}
             <div style={{ padding: '20px' }}>
               
               {/* 변수명 입력 */}
@@ -435,9 +460,9 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
                     fontSize: '14px'
                   }}
                 >
-                  <option value="data_point">📊 데이터포인트 (센서, PLC 등)</option>
-                  <option value="virtual_point">🔮 가상포인트 (계산된 값)</option>
-                  <option value="constant">📝 상수값 (고정된 값)</option>
+                  <option value="data_point">데이터포인트 (센서, PLC 등)</option>
+                  <option value="virtual_point">가상포인트 (계산된 값)</option>
+                  <option value="constant">상수값 (고정된 값)</option>
                 </select>
               </div>
 
