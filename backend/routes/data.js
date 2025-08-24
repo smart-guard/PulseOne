@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 
 // Repository imports (수정됨 - DeviceRepository만 사용)
+const { transformDataPoints } = require('../lib/utils/dataTypeConverter');
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
 const SiteRepository = require('../lib/database/repositories/SiteRepository');
 // Connection modules
