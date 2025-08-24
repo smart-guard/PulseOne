@@ -3,7 +3,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { dataPointsApi } from '../../../api/services/dataPointsApi';
+import { DataApiService } from '../../../api/services/dataApi';
 
 interface DataPoint {
   id: number;
@@ -58,7 +58,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
     try {
       console.log('🔄 데이터포인트 로딩:', { deviceFilter, searchTerm, dataType });
       
-      const result = await dataPointsApi.getDataPoints({
+      const result = await DataApiService.getDataPoints({
         limit: 1000,
         enabled_only: true,
         include_current_value: true,
@@ -147,7 +147,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
     try {
       console.log('🔄 디바이스 목록 로딩');
       
-      const devices = await dataPointsApi.getDevices();
+      const devices = await DataApiService.getDevices();
       
       setDevices(devices.map(d => ({ id: d.id, name: d.name })));
       console.log(`✅ 디바이스 ${devices.length}개 로드됨`);

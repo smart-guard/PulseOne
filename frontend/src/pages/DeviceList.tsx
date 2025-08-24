@@ -1,6 +1,6 @@
 // ============================================================================
-// frontend/src/pages/DeviceList.tsx  
-// 🔥 인라인 스타일 제거하고 CSS 클래스만 사용하는 버전
+// frontend/src/pages/DeviceList.tsx 
+// 무한 API 호출 문제 해결 + 모든 기능 유지 버전
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,12 +13,12 @@ import '../styles/device-list.css';
 import '../styles/pagination.css';
 
 const DeviceList: React.FC = () => {
-  // 🔧 기본 상태들
+  // 기본 상태들
   const [devices, setDevices] = useState<Device[]>([]);
   const [deviceStats, setDeviceStats] = useState<DeviceStats | null>(null);
   const [selectedDevices, setSelectedDevices] = useState<number[]>([]);
   
-  // 🔥 로딩 상태 분리: 초기 로딩 vs 백그라운드 새로고침
+  // 로딩 상태 분리
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -35,29 +35,31 @@ const DeviceList: React.FC = () => {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // 🔥 모달 상태
+  // 모달 상태
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // 🔥 페이징 훅 사용
+  // 페이징 훅
   const pagination = usePagination({
     initialPage: 1,
     initialPageSize: 25,
-    totalCount: devices.length
+    totalCount: 0
   });
 
-  // 🔥 첫 로딩 완료 여부 추적
+  // 첫 로딩 완료 여부
   const [hasInitialLoad, setHasInitialLoad] = useState(false);
   
-  // 🔥 스크롤 위치 저장용 ref
+  // 스크롤 위치 저장용 ref
   const containerRef = useRef<HTMLDivElement>(null);
+  
+  // 자동새로고침 타이머 ref
+  const autoRefreshRef = useRef<NodeJS.Timeout | null>(null);
 
   // =============================================================================
-  // 🔥 실제 API 데이터 기반 통계 계산 함수
+  // 실제 API 데이터 기반 통계 계산 함수
   // =============================================================================
   const calculateRealTimeStats = useCallback((devices: Device[]): DeviceStats => {
-    // 연결 상태별 카운트
     const connectedDevices = devices.filter(d => 
       d.connection_status === 'connected' || 
       d.status === 'connected' ||
@@ -77,7 +79,6 @@ const DeviceList: React.FC = () => {
       (d.error_count && d.error_count > 0)
     ).length;
 
-    // 프로토콜별 분포 계산
     const protocolCounts = devices.reduce((acc, device) => {
       const protocol = device.protocol_type || 'UNKNOWN';
       acc[protocol] = (acc[protocol] || 0) + 1;
@@ -90,7 +91,6 @@ const DeviceList: React.FC = () => {
       percentage: devices.length > 0 ? Math.round((count / devices.length) * 100 * 10) / 10 : 0
     }));
 
-    // 사이트별 분포 계산
     const siteCounts = devices.reduce((acc, device) => {
       const siteId = device.site_id || 1;
       const siteName = device.site_name || 'Main Site';
@@ -103,30 +103,25 @@ const DeviceList: React.FC = () => {
       return acc;
     }, {} as Record<string, { site_id: number; site_name: string; device_count: number }>);
 
-    const siteDistribution = Object.values(siteCounts);
-
     return {
       total_devices: devices.length,
       connected_devices: connectedDevices,
       disconnected_devices: disconnectedDevices,
       error_devices: errorDevices,
       protocols_count: Object.keys(protocolCounts).length,
-      sites_count: siteDistribution.length,
+      sites_count: Object.values(siteCounts).length,
       protocol_distribution: protocolDistribution,
-      site_distribution: siteDistribution
+      site_distribution: Object.values(siteCounts)
     };
   }, []);
 
   // =============================================================================
-  // 🔄 데이터 로드 함수들 (실제 API만, 부드러운 업데이트)
+  // 데이터 로드 함수들 (실제 API만, 부드러운 업데이트)
   // =============================================================================
 
-  /**
-   * 🔥 실제 API만 사용하는 디바이스 목록 로드 (스크롤 위치 유지)
-   */
+  // 디바이스 목록 로드 - 의존성 제거하여 무한호출 방지
   const loadDevices = useCallback(async (isBackground = false) => {
     try {
-      // 🔥 초기 로딩이 아닌 경우 백그라운드 새로고침만 표시
       if (!hasInitialLoad) {
         setIsInitialLoading(true);
       } else if (isBackground) {
@@ -137,7 +132,6 @@ const DeviceList: React.FC = () => {
 
       console.log(`📱 디바이스 목록 ${isBackground ? '백그라운드 ' : ''}로드 시작...`);
 
-      // 🔥 실제 API 호출
       const response = await DeviceApiService.getDevices({
         page: pagination.currentPage,
         limit: pagination.pageSize,
@@ -164,8 +158,6 @@ const DeviceList: React.FC = () => {
     } catch (err) {
       console.error('❌ 디바이스 목록 로드 실패:', err);
       setError(err instanceof Error ? err.message : '디바이스 목록을 불러올 수 없습니다');
-      
-      // 에러 시 빈 배열로 설정
       setDevices([]);
       pagination.updateTotalCount(0);
     } finally {
@@ -173,19 +165,15 @@ const DeviceList: React.FC = () => {
       setIsBackgroundRefreshing(false);
       setLastUpdate(new Date());
     }
-  }, [pagination.currentPage, pagination.pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, hasInitialLoad]);
+  }, []); // 의존성 완전 제거
 
-  /**
-   * 🔥 실제 API 우선, 실패 시 실시간 계산하는 통계 로드
-   */
+  // 디바이스 통계 로드
   const loadDeviceStats = useCallback(async () => {
     try {
       console.log('📊 디바이스 통계 로드 시작...');
 
-      // 🔥 실제 API 시도
       try {
         const response = await DeviceApiService.getDeviceStatistics();
-
         if (response.success && response.data) {
           console.log('✅ API로 디바이스 통계 로드 완료:', response.data);
           setDeviceStats(response.data);
@@ -195,14 +183,12 @@ const DeviceList: React.FC = () => {
         console.warn('⚠️ 통계 API 호출 실패, 실시간 계산 사용:', apiError);
       }
 
-      // 🔥 API 실패 시 현재 디바이스 목록으로 실시간 계산
       if (devices.length > 0) {
         console.log('📊 현재 디바이스 목록으로 통계 실시간 계산...');
         const calculatedStats = calculateRealTimeStats(devices);
         setDeviceStats(calculatedStats);
         console.log('✅ 실시간 계산된 통계:', calculatedStats);
       } else {
-        // 디바이스가 없으면 0으로 초기화
         setDeviceStats({
           total_devices: 0,
           connected_devices: 0,
@@ -217,7 +203,6 @@ const DeviceList: React.FC = () => {
 
     } catch (err) {
       console.warn('⚠️ 디바이스 통계 로드 실패:', err);
-      // 에러 시에도 실시간 계산 시도
       if (devices.length > 0) {
         const calculatedStats = calculateRealTimeStats(devices);
         setDeviceStats(calculatedStats);
@@ -225,9 +210,7 @@ const DeviceList: React.FC = () => {
     }
   }, [devices, calculateRealTimeStats]);
 
-  /**
-   * 🔥 실제 API만 사용하는 지원 프로토콜 목록 로드
-   */
+  // 지원 프로토콜 목록 로드
   const loadAvailableProtocols = useCallback(async () => {
     try {
       console.log('📋 지원 프로토콜 로드 시작...');
@@ -244,7 +227,6 @@ const DeviceList: React.FC = () => {
 
     } catch (err) {
       console.warn('⚠️ 지원 프로토콜 로드 실패:', err);
-      // 에러 시 현재 디바이스에서 프로토콜 추출
       const currentProtocols = [...new Set(devices.map(d => d.protocol_type).filter(Boolean))];
       setAvailableProtocols(currentProtocols);
       console.log('📋 현재 디바이스에서 프로토콜 추출:', currentProtocols);
@@ -252,12 +234,10 @@ const DeviceList: React.FC = () => {
   }, [devices]);
 
   // =============================================================================
-  // 🔄 디바이스 제어 함수들 (실제 API 사용)
+  // 디바이스 제어 함수들 (실제 API 사용) - 복원
   // =============================================================================
 
-  /**
-   * 디바이스 연결 테스트
-   */
+  // 디바이스 연결 테스트
   const handleTestConnection = async (deviceId: number) => {
     try {
       setIsProcessing(true);
@@ -275,7 +255,7 @@ const DeviceList: React.FC = () => {
         console.log(`✅ 디바이스 ${deviceId} 연결 테스트 완료:`, result);
         
         if (result.test_successful) {
-          await loadDevices(true); // 백그라운드 새로고침
+          await loadDevices(true);
         }
       } else {
         throw new Error(response.error || '연결 테스트 실패');
@@ -288,9 +268,7 @@ const DeviceList: React.FC = () => {
     }
   };
 
-  /**
-   * 일괄 작업 처리
-   */
+  // 일괄 작업 처리
   const handleBulkAction = async (action: 'enable' | 'disable' | 'delete') => {
     if (selectedDevices.length === 0) {
       alert('작업할 디바이스를 선택해주세요.');
@@ -319,8 +297,8 @@ const DeviceList: React.FC = () => {
         
         console.log(`✅ 일괄 ${action} 완료:`, result);
         
-        setSelectedDevices([]); // 선택 해제
-        await loadDevices(true); // 백그라운드 새로고침
+        setSelectedDevices([]);
+        await loadDevices(true);
         await loadDeviceStats();
       } else {
         throw new Error(response.error || '일괄 작업 실패');
@@ -334,7 +312,7 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 🔄 모달 이벤트 핸들러들 - DeviceDetailModal과 연결
+  // 모달 이벤트 핸들러들 - 복원
   // =============================================================================
 
   const handleDeviceClick = (device: Device) => {
@@ -364,7 +342,7 @@ const DeviceList: React.FC = () => {
     setSelectedDevice(null);
   };
 
-  // 🔥 모달에서 디바이스 저장 처리
+  // 모달에서 디바이스 저장 처리
   const handleSaveDevice = async (deviceData: Device) => {
     try {
       setIsProcessing(true);
@@ -373,7 +351,6 @@ const DeviceList: React.FC = () => {
       let response;
       
       if (modalMode === 'create') {
-        // 새 디바이스 생성
         response = await DeviceApiService.createDevice({
           name: deviceData.name,
           protocol_type: deviceData.protocol_type,
@@ -386,7 +363,6 @@ const DeviceList: React.FC = () => {
           is_enabled: deviceData.is_enabled
         });
       } else if (modalMode === 'edit' && selectedDevice) {
-        // 기존 디바이스 수정
         response = await DeviceApiService.updateDevice(selectedDevice.id, {
           name: deviceData.name,
           endpoint: deviceData.endpoint,
@@ -401,8 +377,8 @@ const DeviceList: React.FC = () => {
 
       if (response?.success) {
         console.log('✅ 디바이스 저장 성공');
-        await loadDevices(true); // 백그라운드 새로고침
-        await loadDeviceStats(); // 통계 새로고침
+        await loadDevices(true);
+        await loadDeviceStats();
         handleCloseModal();
       } else {
         throw new Error(response?.error || '저장 실패');
@@ -416,7 +392,7 @@ const DeviceList: React.FC = () => {
     }
   };
 
-  // 🔥 모달에서 디바이스 삭제 처리
+  // 모달에서 디바이스 삭제 처리
   const handleDeleteDevice = async (deviceId: number) => {
     try {
       setIsProcessing(true);
@@ -426,7 +402,7 @@ const DeviceList: React.FC = () => {
 
       if (response.success) {
         console.log('✅ 디바이스 삭제 성공');
-        await loadDevices(true); // 백그라운드 새로고침
+        await loadDevices(true);
         await loadDeviceStats();
         handleCloseModal();
       } else {
@@ -442,7 +418,7 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 🔄 기타 이벤트 핸들러들
+  // 기타 이벤트 핸들러들 - 복원
   // =============================================================================
 
   const handleSearch = useCallback((term: string) => {
@@ -477,52 +453,79 @@ const DeviceList: React.FC = () => {
     setSelectedDevices(selected ? devices.map(d => d.id) : []);
   };
 
-  // 🔥 부드러운 새로고침 (사용자 트리거)
   const handleManualRefresh = useCallback(async () => {
     console.log('🔄 수동 새로고침 시작...');
     await Promise.all([
-      loadDevices(true),  // 백그라운드 새로고침
+      loadDevices(true),
       loadDeviceStats()
     ]);
   }, [loadDevices, loadDeviceStats]);
 
   // =============================================================================
-  // 🔄 라이프사이클 hooks
+  // 라이프사이클 hooks - 무한호출 방지
   // =============================================================================
 
+  // 초기 로딩 (한 번만)
   useEffect(() => {
+    console.log('🚀 DeviceList 초기 로딩');
     loadDevices();
     loadAvailableProtocols();
-  }, [loadDevices, loadAvailableProtocols]);
+  }, []); // 빈 배열로 한 번만 실행
 
   // 디바이스 목록이 변경될 때마다 통계 업데이트
   useEffect(() => {
     if (devices.length > 0) {
       loadDeviceStats();
     }
-  }, [devices, loadDeviceStats]);
+  }, [devices.length, loadDeviceStats]); // devices 전체가 아닌 length만 의존
 
   // 필터 변경 시 데이터 다시 로드
   useEffect(() => {
     if (hasInitialLoad) {
-      loadDevices(true); // 백그라운드 새로고침
+      console.log('🔄 필터 변경으로 인한 재로드');
+      loadDevices(true);
     }
-  }, [pagination.currentPage, pagination.pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm]);
+  }, [pagination.currentPage, pagination.pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, hasInitialLoad]);
 
-  // 자동 새로고침 (부드러운 백그라운드 업데이트)
+  // 자동 새로고침 (부드러운 백그라운드 업데이트) - cleanup 추가
   useEffect(() => {
-    if (!autoRefresh || !hasInitialLoad) return;
+    if (!autoRefresh || !hasInitialLoad) {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+        autoRefreshRef.current = null;
+      }
+      return;
+    }
 
-    const interval = setInterval(() => {
+    console.log('⏰ 자동 새로고침 타이머 시작 (30초)');
+    
+    autoRefreshRef.current = setInterval(() => {
       console.log('🔄 자동 새로고침 (백그라운드)');
-      loadDevices(true); // 백그라운드 새로고침
+      loadDevices(true);
       loadDeviceStats();
-    }, 10000); // 10초마다
+    }, 30000); // 30초로 늘림
 
-    return () => clearInterval(interval);
-  }, [autoRefresh, hasInitialLoad, loadDevices, loadDeviceStats]);
+    return () => {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+        autoRefreshRef.current = null;
+      }
+    };
+  }, [autoRefresh, hasInitialLoad]); // loadDevices, loadDeviceStats 제거
 
-  // 🎨 프로토콜별 색상 매핑 함수
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+      }
+    };
+  }, []);
+
+  // =============================================================================
+  // 스타일링 함수들 - 복원
+  // =============================================================================
+
   const getProtocolBadgeStyle = (protocolType: string) => {
     const protocol = protocolType?.toUpperCase() || 'UNKNOWN';
     
@@ -589,7 +592,6 @@ const DeviceList: React.FC = () => {
     }
   };
 
-  // 프로토콜 표시명 정리 함수
   const getProtocolDisplayName = (protocolType: string) => {
     const protocol = protocolType?.toUpperCase() || 'UNKNOWN';
     
@@ -654,7 +656,7 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 🎨 UI 렌더링 - 🔥 인라인 스타일 제거하고 CSS 클래스만 사용
+  // UI 렌더링 - 모든 UI 컴포넌트 복원
   // =============================================================================
 
   return (
@@ -691,7 +693,7 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 통계 카드들 - 인라인 스타일 제거 */}
+      {/* 통계 카드들 */}
       {deviceStats && (
         <div className="stats-grid">
           <div className="stat-card">
@@ -733,10 +735,9 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 필터 및 검색 - 인라인 스타일 제거 */}
+      {/* 필터 및 검색 */}
       <div className="filters-section">
         <div className="filters-row">
-          {/* 검색창 */}
           <div className="search-box">
             <i className="fas fa-search"></i>
             <input
@@ -747,7 +748,6 @@ const DeviceList: React.FC = () => {
             />
           </div>
           
-          {/* 필터들 */}
           <select
             value={statusFilter}
             onChange={(e) => handleFilterChange('status', e.target.value)}
@@ -780,7 +780,7 @@ const DeviceList: React.FC = () => {
           </select>
         </div>
 
-        {/* 일괄 작업 버튼들 */}
+        {/* 일괄 작업 버튼들 - 복원 */}
         {selectedDevices.length > 0 && (
           <div className="bulk-actions">
             <span className="selected-count">
@@ -841,7 +841,7 @@ const DeviceList: React.FC = () => {
           </div>
         ) : (
           <div className="device-table">
-            {/* 헤더 */}
+            {/* 헤더 - 체크박스 포함 */}
             <div className="device-table-header">
               <div>
                 <input
@@ -867,7 +867,7 @@ const DeviceList: React.FC = () => {
                   key={device.id}
                   className="device-table-row"
                 >
-                  {/* 체크박스 */}
+                  {/* 체크박스 - 복원 */}
                   <div className="device-table-cell">
                     <input
                       type="checkbox"
@@ -876,7 +876,7 @@ const DeviceList: React.FC = () => {
                     />
                   </div>
 
-                  {/* 디바이스 정보 - 클릭 시 모달 열기 */}
+                  {/* 디바이스 정보 */}
                   <div className="device-table-cell">
                     <div className="device-info">
                       <div className="device-icon">
@@ -897,7 +897,7 @@ const DeviceList: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 프로토콜 - 🎨 색깔별로 구분 */}
+                  {/* 프로토콜 */}
                   <div className="device-table-cell">
                     <span 
                       className="protocol-badge"
@@ -928,7 +928,7 @@ const DeviceList: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 🔥 데이터 정보 - 올바른 필드명 사용 */}
+                  {/* 데이터 정보 */}
                   <div className="device-table-cell">
                     <div className="data-info">
                       <div className="info-title">
@@ -997,7 +997,7 @@ const DeviceList: React.FC = () => {
         )}
       </div>
 
-      {/* 페이징 */}
+      {/* 페이징 - 복원 */}
       {devices.length > 0 && (
         <div className="pagination-section">
           <Pagination
@@ -1021,7 +1021,7 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 🔥 부드러운 새로고침 상태바 - 인라인 스타일을 CSS 클래스로 교체 */}
+      {/* 상태바 - 복원 */}
       <div className="status-bar">
         <div className="status-bar-left">
           <div className="last-update">
@@ -1039,11 +1039,10 @@ const DeviceList: React.FC = () => {
           <div className="auto-refresh-status">
             <span className={`refresh-indicator ${autoRefresh ? 'active' : 'inactive'}`}>
               <div className="refresh-dot"></div>
-              {autoRefresh ? '10초마다 자동 새로고침' : '자동새로고침 중지'}
+              {autoRefresh ? '30초마다 자동 새로고침' : '자동새로고침 중지'}
             </span>
           </div>
 
-          {/* 🔥 백그라운드 새로고침 상태 표시 */}
           {isBackgroundRefreshing && (
             <div className="background-refresh">
               <i className="fas fa-sync-alt fa-spin"></i>
@@ -1078,7 +1077,7 @@ const DeviceList: React.FC = () => {
         </div>
       </div>
 
-      {/* 🔥 DeviceDetailModal 연결 */}
+      {/* DeviceDetailModal 연결 */}
       <DeviceDetailModal
         device={selectedDevice}
         isOpen={isModalOpen}
