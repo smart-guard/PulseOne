@@ -1,11 +1,10 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceDetailModal.tsx
-// 🔥 분할된 디바이스 상세 모달 - 메인 컴포넌트 (완전 구현)
+// DeviceApiService 사용으로 수정 + URL/무한호출 문제 해결
 // ============================================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DeviceApiService } from '../../api/services/deviceApi';
-import { DataApiService, DataPoint } from '../../api/services/dataApi';
 
 // 분할된 컴포넌트들 import
 import DeviceBasicInfoTab from './DeviceModal/DeviceBasicInfoTab';
@@ -16,6 +15,22 @@ import DeviceLogsTab from './DeviceModal/DeviceLogsTab';
 
 // 타입 정의
 import { Device, DeviceModalProps } from './DeviceModal/types';
+
+// 간단한 DataPoint 인터페이스 (deviceApi 응답용)
+interface DataPoint {
+  id: number;
+  device_id: number;
+  device_name?: string;
+  name: string;
+  description: string;
+  data_type: string;
+  current_value: any;
+  unit?: string;
+  address: string;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   device,
@@ -38,82 +53,91 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   const [dataPointsError, setDataPointsError] = useState<string | null>(null);
 
   // ========================================================================
-  // 데이터포인트 관리 함수들 - 올바른 API 사용
+  // 데이터포인트 관리 함수들 - DeviceApiService 사용
   // ========================================================================
 
   /**
    * 디바이스의 데이터포인트 목록 로드
    */
-  const loadDataPoints = async (deviceId: number) => {
+  const loadDataPoints = useCallback(async (deviceId: number) => {
+    if (!deviceId || deviceId <= 0) {
+      console.warn('⚠️ 유효하지 않은 디바이스 ID:', deviceId);
+      return;
+    }
+
     try {
       setIsLoadingDataPoints(true);
       setDataPointsError(null);
       console.log(`📊 디바이스 ${deviceId} 데이터포인트 로드 시작...`);
 
-      // 🔥 올바른 API 호출 - DataApiService 사용
-      const response = await DataApiService.searchDataPoints({
-        device_id: deviceId,
+      // ✅ DeviceApiService 사용 (올바른 API)
+      const response = await DeviceApiService.getDeviceDataPoints(deviceId, {
         page: 1,
         limit: 100,
-        enabled_only: false,
-        include_current_value: true
+        enabled_only: false
       });
 
       if (response.success && response.data) {
-        setDataPoints(response.data.items);
-        console.log(`✅ 데이터포인트 ${response.data.items.length}개 로드 완료`);
+        const points = response.data.points || [];
+        setDataPoints(points);
+        console.log(`✅ 데이터포인트 ${points.length}개 로드 완료`);
       } else {
-        throw new Error(response.error || 'API 응답 오류');
+        throw new Error(response.error || '데이터포인트 조회 실패');
       }
 
     } catch (error) {
       console.error(`❌ 디바이스 ${deviceId} 데이터포인트 로드 실패:`, error);
       setDataPointsError(error instanceof Error ? error.message : 'Unknown error');
+      
+      // API 실패 시 빈 배열로 설정 (목 데이터 제거)
+      setDataPoints([]);
     } finally {
       setIsLoadingDataPoints(false);
     }
-  };
+  }, []); // 의존성 없음 - useCallback으로 안정화
 
   /**
    * 데이터포인트 생성
    */
-  const handleCreateDataPoint = (newDataPoint: DataPoint) => {
+  const handleCreateDataPoint = useCallback((newDataPoint: DataPoint) => {
     setDataPoints(prev => [...prev, newDataPoint]);
-  };
+  }, []);
 
   /**
    * 데이터포인트 업데이트
    */
-  const handleUpdateDataPoint = (updatedDataPoint: DataPoint) => {
+  const handleUpdateDataPoint = useCallback((updatedDataPoint: DataPoint) => {
     setDataPoints(prev => 
       prev.map(dp => dp.id === updatedDataPoint.id ? updatedDataPoint : dp)
     );
-  };
+  }, []);
 
   /**
    * 데이터포인트 삭제
    */
-  const handleDeleteDataPoint = (pointId: number) => {
+  const handleDeleteDataPoint = useCallback((pointId: number) => {
     setDataPoints(prev => prev.filter(dp => dp.id !== pointId));
-  };
+  }, []);
 
   /**
    * 데이터포인트 새로고침
    */
-  const handleRefreshDataPoints = async () => {
-    if (device?.id) {
-      await loadDataPoints(device.id);
+  const handleRefreshDataPoints = useCallback(async () => {
+    const deviceId = device?.id || editData?.id;
+    if (deviceId) {
+      await loadDataPoints(deviceId);
     }
-  };
+  }, [device?.id, editData?.id, loadDataPoints]);
 
   // ========================================================================
-  // 디바이스 관리 함수들 - DeviceApiService 사용
+  // 디바이스 관리 함수들
   // ========================================================================
 
   /**
    * 새 디바이스 초기화
    */
-  const initializeNewDevice = () => {
+  const initializeNewDevice = useCallback(() => {
+    console.log('🆕 새 디바이스 초기화');
     setEditData({
       id: 0,
       name: '',
@@ -131,7 +155,9 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       created_at: '',
       updated_at: ''
     });
-  };
+    setDataPoints([]);
+    setDataPointsError(null);
+  }, []);
 
   /**
    * 디바이스 저장
@@ -144,7 +170,6 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       let savedDevice: Device;
 
       if (mode === 'create') {
-        // 생성 요청 데이터 변환
         const createData = {
           name: editData.name,
           description: editData.description,
@@ -169,7 +194,6 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           throw new Error(response.error || '생성 실패');
         }
       } else if (mode === 'edit') {
-        // 수정 요청 데이터 변환
         const updateData = {
           name: editData.name,
           description: editData.description,
@@ -232,37 +256,76 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   /**
    * 필드 업데이트
    */
-  const updateField = (field: string, value: any) => {
+  const updateField = useCallback((field: string, value: any) => {
     setEditData(prev => prev ? { ...prev, [field]: value } : null);
-  };
+  }, []);
 
   /**
    * 설정 필드 업데이트
    */
-  const updateSettings = (field: string, value: any) => {
+  const updateSettings = useCallback((field: string, value: any) => {
     setEditData(prev => prev ? {
       ...prev,
       settings: { ...prev.settings, [field]: value }
     } : null);
-  };
+  }, []);
+
+  /**
+   * 탭 변경
+   */
+  const handleTabChange = useCallback((tabName: string) => {
+    setActiveTab(tabName);
+  }, []);
 
   // ========================================================================
-  // 라이프사이클
+  // 라이프사이클 - 무한 호출 방지
   // ========================================================================
 
   useEffect(() => {
-    if (isOpen && device && mode !== 'create') {
-      setEditData({ ...device });
-      setActiveTab('basic');
-      loadDataPoints(device.id);
-    } else if (mode === 'create') {
-      initializeNewDevice();
-      setActiveTab('basic');
-    } else if (!isOpen) {
+    console.log('🔄 DeviceDetailModal useEffect:', { 
+      isOpen, 
+      deviceId: device?.id, 
+      mode 
+    });
+
+    if (!isOpen) {
+      // 모달 닫힘 - 상태 초기화
       setDataPoints([]);
       setDataPointsError(null);
+      setEditData(null);
+      setActiveTab('basic');
+      return;
     }
-  }, [isOpen, device, mode]);
+
+    if (mode === 'create') {
+      // 생성 모드
+      initializeNewDevice();
+      setActiveTab('basic');
+      return;
+    }
+
+    if (device && mode !== 'create') {
+      // 편집/보기 모드
+      setEditData({ ...device });
+      setActiveTab('basic');
+      
+      // 데이터포인트 로드 (한 번만)
+      loadDataPoints(device.id);
+    }
+  }, [isOpen, device?.id, mode, initializeNewDevice, loadDataPoints]);
+
+  // 개발 환경 디버깅
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 DeviceDetailModal 상태:', {
+        isOpen,
+        mode,
+        deviceId: device?.id,
+        dataPointsCount: dataPoints.length,
+        isLoadingDataPoints
+      });
+    }
+  });
 
   // ========================================================================
   // 렌더링
@@ -307,21 +370,21 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         <div className="tab-navigation">
           <button 
             className={`tab-btn ${activeTab === 'basic' ? 'active' : ''}`}
-            onClick={() => setActiveTab('basic')}
+            onClick={() => handleTabChange('basic')}
           >
             <i className="fas fa-info-circle"></i>
             기본정보
           </button>
           <button 
             className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
+            onClick={() => handleTabChange('settings')}
           >
             <i className="fas fa-cog"></i>
             설정
           </button>
           <button 
             className={`tab-btn ${activeTab === 'datapoints' ? 'active' : ''}`}
-            onClick={() => setActiveTab('datapoints')}
+            onClick={() => handleTabChange('datapoints')}
           >
             <i className="fas fa-list"></i>
             데이터포인트 ({dataPoints.length})
@@ -329,7 +392,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           {mode !== 'create' && (
             <button 
               className={`tab-btn ${activeTab === 'status' ? 'active' : ''}`}
-              onClick={() => setActiveTab('status')}
+              onClick={() => handleTabChange('status')}
             >
               <i className="fas fa-chart-line"></i>
               상태
@@ -338,7 +401,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           {mode === 'view' && (
             <button 
               className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
-              onClick={() => setActiveTab('logs')}
+              onClick={() => handleTabChange('logs')}
             >
               <i className="fas fa-file-alt"></i>
               로그
