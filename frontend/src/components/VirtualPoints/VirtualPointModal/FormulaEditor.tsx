@@ -1,15 +1,15 @@
 // ============================================================================
 // frontend/src/components/VirtualPoints/VirtualPointModal/FormulaEditor.tsx
-// 수식 편집기 컴포넌트
+// 간단하고 직관적인 가상포인트 수식 편집기 (완전 수정 버전)
 // ============================================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { VirtualPointInput, ScriptFunction, ScriptValidationResult } from '../../../types/virtualPoints';
 
 interface FormulaEditorProps {
   expression: string;
   inputVariables: VirtualPointInput[];
-  functions: ScriptFunction[];
+  functions?: ScriptFunction[];
   onChange: (expression: string) => void;
   validationResult?: ScriptValidationResult | null;
   isValidating?: boolean;
@@ -17,319 +17,401 @@ interface FormulaEditorProps {
 
 const FormulaEditor: React.FC<FormulaEditorProps> = ({
   expression,
-  inputVariables,
-  functions,
+  inputVariables = [],
+  functions = [],
   onChange,
   validationResult,
   isValidating = false
 }) => {
-  const [showFunctionPanel, setShowFunctionPanel] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
 
-  // ========================================================================
-  // 필터링된 함수 목록
-  // ========================================================================
-  
-  const filteredFunctions = functions.filter(func => {
-    const matchesCategory = selectedCategory === 'all' || func.category === selectedCategory;
-    const matchesSearch = searchTerm === '' || 
-      func.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      func.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      func.description.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    return matchesCategory && matchesSearch;
-  });
-
-  // 함수 카테고리 목록
-  const functionCategories = [
-    { value: 'all', label: '모든 함수' },
-    { value: 'math', label: '수학' },
-    { value: 'logic', label: '논리' },
-    { value: 'time', label: '시간' },
-    { value: 'string', label: '문자열' },
-    { value: 'conversion', label: '변환' },
-    { value: 'custom', label: '사용자 정의' }
+  // 샘플 데이터
+  const sampleInputs = inputVariables.length > 0 ? inputVariables.map(input => ({
+    ...input,
+    current_value: input.current_value ?? (input.data_type === 'number' ? Math.floor(Math.random() * 100) : 'N/A')
+  })) : [
+    { id: 1, variable_name: 'temp1', source_name: '보일러온도센서', current_value: 85, data_type: 'number' },
+    { id: 2, variable_name: 'temp2', source_name: '외부온도센서', current_value: 25, data_type: 'number' },
+    { id: 3, variable_name: 'temp3', source_name: '실내온도센서', current_value: 22, data_type: 'number' }
   ];
 
-  // ========================================================================
-  // 이벤트 핸들러
-  // ========================================================================
-  
-  const handleInsertFunction = (func: ScriptFunction) => {
-    if (!textareaRef.current) return;
+  // 수식 템플릿
+  const commonFormulas = [
+    { name: '평균값', formula: '(temp1 + temp2 + temp3) / 3', desc: '여러 센서의 평균값', icon: '📊' },
+    { name: '최댓값', formula: 'Math.max(temp1, temp2, temp3)', desc: '가장 높은 값', icon: '📈' },
+    { name: '최솟값', formula: 'Math.min(temp1, temp2, temp3)', desc: '가장 낮은 값', icon: '📉' },
+    { name: '차이값', formula: 'Math.abs(temp1 - temp2)', desc: '두 값의 절대 차이', icon: '🔄' },
+    { name: '조건값', formula: 'temp1 > 30 ? "높음" : "정상"', desc: '조건에 따른 결과', icon: '❓' },
+    { name: '범위제한', formula: 'Math.max(0, Math.min(100, temp1))', desc: '0-100 사이로 제한', icon: '🎯' }
+  ];
 
+  // 수식 선택 핸들러
+  const handleFormulaSelect = useCallback((selectedFormula: string) => {
+    onChange(selectedFormula);
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    }, 100);
+  }, [onChange]);
+
+  // 변수 삽입 핸들러
+  const handleVariableInsert = useCallback((variableName: string) => {
     const textarea = textareaRef.current;
+    if (!textarea) return;
+
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const currentValue = expression;
-
-    // 함수 삽입 텍스트 생성
-    const parameters = func.parameters.map(param => {
-      if (param.defaultValue !== undefined) {
-        return `${param.name}=${param.defaultValue}`;
-      }
-      return param.name;
-    }).join(', ');
+    const newFormula = expression.substring(0, start) + variableName + expression.substring(end);
     
-    const insertText = `${func.name}(${parameters})`;
-
-    // 텍스트 삽입
-    const newValue = currentValue.substring(0, start) + insertText + currentValue.substring(end);
-    onChange(newValue);
-
-    // 커서 위치 조정
+    onChange(newFormula);
+    
     setTimeout(() => {
-      if (textareaRef.current) {
-        const newCursorPos = start + insertText.length;
-        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-        textareaRef.current.focus();
-      }
+      const newPosition = start + variableName.length;
+      textarea.setSelectionRange(newPosition, newPosition);
+      textarea.focus();
     }, 0);
-  };
+  }, [expression, onChange]);
 
-  const handleInsertVariable = (variable: VirtualPointInput) => {
-    if (!textareaRef.current) return;
-
-    const textarea = textareaRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const currentValue = expression;
-
-    const insertText = variable.variable_name;
-    const newValue = currentValue.substring(0, start) + insertText + currentValue.substring(end);
-    onChange(newValue);
-
-    // 커서 위치 조정
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const newCursorPos = start + insertText.length;
-        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-        textareaRef.current.focus();
-      }
-    }, 0);
-  };
-
-  // ========================================================================
-  // 공통 수식 예제
-  // ========================================================================
-  
-  const commonExamples = [
-    {
-      name: '평균값',
-      code: '(input1 + input2 + input3) / 3',
-      description: '여러 입력값의 평균'
-    },
-    {
-      name: '온도 변환',
-      code: '(fahrenheit - 32) * 5 / 9',
-      description: '화씨를 섭씨로 변환'
-    },
-    {
-      name: '조건부 값',
-      code: 'temperature > 30 ? "높음" : "정상"',
-      description: '조건에 따른 값 반환'
-    },
-    {
-      name: '범위 제한',
-      code: 'Math.max(0, Math.min(100, inputValue))',
-      description: '0-100 범위로 값 제한'
-    },
-    {
-      name: '델타 계산',
-      code: 'Math.abs(current - previous)',
-      description: '이전값과의 차이 계산'
+  // 테스트 실행
+  const handleTest = useCallback(async () => {
+    setTesting(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      let testFormula = expression;
+      sampleInputs.forEach(input => {
+        const regex = new RegExp(`\\b${input.variable_name}\\b`, 'g');
+        testFormula = testFormula.replace(regex, String(input.current_value));
+      });
+      
+      const result = eval(testFormula);
+      setTestResult(result);
+    } catch (error) {
+      setTestResult('계산 오류: ' + (error as Error).message);
+    } finally {
+      setTesting(false);
     }
-  ];
+  }, [expression, sampleInputs]);
+
+  // 결과 계산
+  const calculateResult = useCallback(() => {
+    try {
+      let testFormula = expression;
+      sampleInputs.forEach(input => {
+        const regex = new RegExp(`\\b${input.variable_name}\\b`, 'g');
+        testFormula = testFormula.replace(regex, String(input.current_value));
+      });
+      return eval(testFormula);
+    } catch (error) {
+      return '수식 오류';
+    }
+  }, [expression, sampleInputs]);
+
+  const simulatedResult = calculateResult();
 
   return (
-    <div className="formula-editor">
-      {/* 도구모음 */}
-      <div className="editor-toolbar">
-        <div className="toolbar-left">
-          <button
-            type="button"
-            className={`toolbar-btn ${showFunctionPanel ? 'active' : ''}`}
-            onClick={() => setShowFunctionPanel(!showFunctionPanel)}
-          >
-            <i className="fas fa-function"></i>
-            함수 라이브러리
-          </button>
-        </div>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      gap: '20px', 
+      height: 'auto',
+      fontFamily: 'Arial, sans-serif',
+      padding: '0'
+    }}>
+      
+      {/* 상단: 입력 데이터 */}
+      <div style={{
+        background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+        padding: '16px',
+        borderRadius: '8px',
+        border: '1px solid #dee2e6'
+      }}>
+        <h4 style={{ 
+          margin: '0 0 12px 0', 
+          color: '#495057',
+          fontSize: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          📊 사용 가능한 변수 (클릭해서 수식에 삽입)
+        </h4>
         
-        <div className="toolbar-right">
-          {isValidating && (
-            <div className="validation-indicator validating">
-              <i className="fas fa-spinner fa-spin"></i>
-              검증 중...
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {sampleInputs.map((input, index) => (
+            <div key={index} 
+              onClick={() => handleVariableInsert(input.variable_name)}
+              style={{
+                background: 'white',
+                padding: '8px 12px',
+                borderRadius: '20px',
+                border: '1px solid #e9ecef',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                fontSize: '14px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#e3f2fd';
+                e.currentTarget.style.borderColor = '#90caf9';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'white';
+                e.currentTarget.style.borderColor = '#e9ecef';
+              }}
+            >
+              <span style={{ fontWeight: 'bold', color: '#007bff' }}>
+                {input.variable_name}
+              </span>
+              <span style={{ color: '#28a745', fontWeight: 'bold' }}>
+                = {input.current_value}
+              </span>
             </div>
-          )}
-          {validationResult && (
-            <div className={`validation-indicator ${validationResult.isValid ? 'valid' : 'invalid'}`}>
-              <i className={`fas ${validationResult.isValid ? 'fa-check' : 'fa-exclamation-triangle'}`}></i>
-              {validationResult.isValid ? '유효함' : `${validationResult.errors.length}개 오류`}
-            </div>
-          )}
+          ))}
         </div>
       </div>
 
-      <div className="editor-layout">
-        {/* 함수 패널 */}
-        {showFunctionPanel && (
-          <div className="function-panel">
-            <div className="panel-header">
-              <div className="search-container">
-                <input
-                  type="text"
-                  placeholder="함수 검색..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="search-input"
-                />
-                <i className="fas fa-search search-icon"></i>
-              </div>
-              
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="category-select"
-              >
-                {functionCategories.map(cat => (
-                  <option key={cat.value} value={cat.value}>{cat.label}</option>
-                ))}
-              </select>
-            </div>
+      {/* 중앙: 수식 편집 (세로로 변경) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        
+        {/* 수식 입력 */}
+        <div>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '8px', 
+            fontWeight: 'bold',
+            color: '#495057',
+            fontSize: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            🧮 계산 수식
+          </label>
+          <textarea
+            ref={textareaRef}
+            value={expression}
+            onChange={(e) => onChange(e.target.value)}
+            style={{
+              width: '100%',
+              height: '100px',
+              padding: '16px',
+              border: validationResult && !validationResult.isValid ? '2px solid #dc3545' : '2px solid #007bff',
+              borderRadius: '8px',
+              fontFamily: 'Consolas, Monaco, monospace',
+              fontSize: '16px',
+              lineHeight: '1.5',
+              resize: 'none',
+              background: validationResult && !validationResult.isValid ? '#fff5f5' : '#fafbfc'
+            }}
+            placeholder="수식을 입력하세요... 예: (temp1 + temp2 + temp3) / 3"
+          />
 
-            <div className="function-list">
-              {filteredFunctions.length === 0 ? (
-                <div className="no-functions">
-                  <i className="fas fa-info-circle"></i>
-                  함수가 없습니다
-                </div>
-              ) : (
-                filteredFunctions.map(func => (
-                  <div
-                    key={func.id}
-                    className="function-item"
-                    onClick={() => handleInsertFunction(func)}
-                  >
-                    <div className="function-header">
-                      <span className="function-name">{func.displayName}</span>
-                      <span className={`function-category ${func.category}`}>
-                        {func.category}
-                      </span>
-                    </div>
-                    <div className="function-syntax">
-                      <code>{func.syntax}</code>
-                    </div>
-                    <div className="function-description">
-                      {func.description}
-                    </div>
-                    {func.examples && func.examples.length > 0 && (
-                      <div className="function-examples">
-                        {func.examples.slice(0, 1).map((example, idx) => (
-                          <div key={idx} className="function-example">
-                            <strong>예제:</strong> <code>{example.code}</code>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 메인 편집 영역 */}
-        <div className="editor-main">
-          {/* 입력 변수 패널 */}
-          {inputVariables.length > 0 && (
-            <div className="variables-panel">
-              <h4>
-                <i className="fas fa-plug"></i>
-                사용 가능한 변수
-              </h4>
-              <div className="variable-list">
-                {inputVariables.map(variable => (
-                  <div
-                    key={variable.id}
-                    className="variable-item"
-                    onClick={() => handleInsertVariable(variable)}
-                  >
-                    <span className="variable-name">{variable.variable_name}</span>
-                    <span className="variable-type">{variable.data_type}</span>
-                    {variable.description && (
-                      <span className="variable-description">{variable.description}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
+          {/* 유효성 검사 결과 */}
+          {validationResult && !validationResult.isValid && (
+            <div style={{
+              marginTop: '8px',
+              padding: '10px 12px',
+              background: '#f8d7da',
+              border: '1px solid #f5c6cb',
+              borderRadius: '6px',
+              color: '#721c24',
+              fontSize: '14px'
+            }}>
+              <strong>수식 오류:</strong> {validationResult.errors[0]?.message || '구문 오류가 있습니다'}
             </div>
           )}
+        </div>
 
-          {/* 수식 편집기 */}
-          <div className="code-editor">
-            <label>
-              <i className="fas fa-code"></i>
-              수식 작성
-            </label>
-            <textarea
-              ref={textareaRef}
-              value={expression}
-              onChange={(e) => onChange(e.target.value)}
-              className={`code-textarea ${validationResult && !validationResult.isValid ? 'error' : ''}`}
-              placeholder="수식을 작성하세요... 예: (input1 + input2) / 2"
-              rows={8}
-              spellCheck={false}
-            />
-            
-            {/* 검증 결과 */}
-            {validationResult && !validationResult.isValid && (
-              <div className="validation-errors">
-                <h5>
-                  <i className="fas fa-exclamation-triangle"></i>
-                  오류 목록
-                </h5>
-                {validationResult.errors.map((error, idx) => (
-                  <div key={idx} className="error-item">
-                    <span className="error-line">라인 {error.line}:</span>
-                    <span className="error-message">{error.message}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* 테스트 버튼과 결과를 한 줄에 */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+          
+          {/* 테스트 버튼 */}
+          <button
+            onClick={handleTest}
+            disabled={testing || !expression.trim()}
+            style={{
+              padding: '12px 24px',
+              background: testing ? '#6c757d' : '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: testing ? 'not-allowed' : 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              whiteSpace: 'nowrap',
+              minWidth: '140px'
+            }}
+          >
+            {testing ? '🔄 계산 중...' : '🔍 수식 테스트'}
+          </button>
+
+          {/* 결과 */}
+          <div style={{
+            flex: 1,
+            padding: '20px',
+            background: '#e8f5e8',
+            borderRadius: '8px',
+            border: '2px solid #28a745',
+            textAlign: 'center'
+          }}>
+            <div style={{ 
+              fontSize: '14px', 
+              color: '#155724', 
+              marginBottom: '6px',
+              fontWeight: 'bold'
+            }}>
+              📈 계산 결과
+            </div>
+            <div style={{ 
+              fontSize: '32px', 
+              fontWeight: 'bold', 
+              color: '#28a745',
+              fontFamily: 'monospace'
+            }}>
+              {testResult !== null ? testResult : simulatedResult}
+            </div>
           </div>
+        </div>
 
-          {/* 공통 예제 */}
-          <div className="examples-panel">
-            <h4>
-              <i className="fas fa-lightbulb"></i>
-              공통 수식 예제
-            </h4>
-            <div className="example-list">
-              {commonExamples.map((example, idx) => (
-                <div
-                  key={idx}
-                  className="example-item"
-                  onClick={() => onChange(example.code)}
-                >
-                  <div className="example-header">
-                    <span className="example-name">{example.name}</span>
-                  </div>
-                  <div className="example-code">
-                    <code>{example.code}</code>
-                  </div>
-                  <div className="example-description">
-                    {example.description}
-                  </div>
-                </div>
-              ))}
+        {/* 계산 과정 */}
+        <div style={{
+          background: '#f8f9fa',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #dee2e6'
+        }}>
+          <div style={{ 
+            fontSize: '14px', 
+            color: '#495057',
+            fontWeight: 'bold',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            🔢 계산 과정
+          </div>
+          <div style={{ 
+            fontFamily: 'Consolas, Monaco, monospace',
+            fontSize: '14px',
+            lineHeight: '1.6',
+            background: 'white',
+            padding: '16px',
+            borderRadius: '6px',
+            border: '1px solid #e9ecef'
+          }}>
+            {sampleInputs.map((input, idx) => (
+              <div key={idx} style={{ color: '#6c757d', marginBottom: '4px' }}>
+                {input.variable_name} = {input.current_value}
+              </div>
+            ))}
+            <div style={{ 
+              borderTop: '1px solid #dee2e6', 
+              marginTop: '12px', 
+              paddingTop: '12px',
+              color: '#495057'
+            }}>
+              <div style={{ marginBottom: '4px' }}>수식: {expression}</div>
+              <div style={{ 
+                color: '#28a745',
+                fontWeight: 'bold'
+              }}>
+                결과: {testResult !== null ? testResult : simulatedResult}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* 하단: 수식 템플릿 */}
+      <div style={{
+        background: '#f8f9fa',
+        padding: '16px',
+        borderRadius: '8px',
+        border: '1px solid #dee2e6'
+      }}>
+        <h4 style={{ 
+          margin: '0 0 12px 0', 
+          color: '#495057',
+          fontSize: '14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          💡 자주 사용하는 수식 (클릭해서 적용)
+        </h4>
+
+        <div style={{ 
+          display: 'flex', 
+          gap: '8px', 
+          overflowX: 'auto',
+          paddingBottom: '4px'
+        }}>
+          {commonFormulas.map((template, index) => (
+            <div
+              key={index}
+              onClick={() => handleFormulaSelect(template.formula)}
+              style={{
+                minWidth: '140px',
+                padding: '12px',
+                background: 'white',
+                border: '1px solid #dee2e6',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                textAlign: 'center'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#e3f2fd';
+                e.currentTarget.style.borderColor = '#90caf9';
+                e.currentTarget.style.transform = 'scale(1.02)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'white';
+                e.currentTarget.style.borderColor = '#dee2e6';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              <div style={{ fontSize: '16px', marginBottom: '4px' }}>
+                {template.icon}
+              </div>
+              <div style={{ 
+                fontWeight: 'bold', 
+                color: '#1976d2',
+                fontSize: '12px',
+                marginBottom: '4px'
+              }}>
+                {template.name}
+              </div>
+              <div style={{ 
+                fontSize: '9px', 
+                color: '#6c757d',
+                lineHeight: '1.2'
+              }}>
+                {template.desc}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CSS 스타일 */}
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };
