@@ -132,15 +132,19 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('Deleting virtual point with ID:', id);
 
-    // 존재 확인
     const existing = await virtualPointRepo.findById(parseInt(id));
     if (!existing) {
+      console.log('Virtual point not found:', id);
       return res.status(404).json(createResponse(false, null, 'Virtual point not found', 'NOT_FOUND'));
     }
 
+    console.log('Found existing virtual point:', existing);
+    console.log('Calling deleteById...');
+    
     const deleted = await virtualPointRepo.delete(parseInt(id));
-
+    console.log('Delete result:', deleted);
     if (deleted) {
       res.json(createResponse(true, null, 'Virtual point deleted successfully'));
     } else {

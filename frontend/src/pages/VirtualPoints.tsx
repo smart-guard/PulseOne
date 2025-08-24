@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/VirtualPoints.tsx
-// 가상포인트 메인 페이지 - 분리된 컴포넌트 사용 + API 필드 수정
+// 가상포인트 메인 페이지 - 편집 모드 데이터 로딩 수정 완료
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -46,6 +46,12 @@ interface VirtualPointDB {
   // 메타데이터
   tags?: string;
   priority?: number;
+
+  // 프론트엔드 호환을 위한 추가 필드
+  expression?: string;
+  execution_type?: 'periodic' | 'on_change' | 'manual';
+  execution_interval?: number;
+  input_variables?: any[];
 }
 
 const VirtualPoints: React.FC = () => {
@@ -100,17 +106,37 @@ const VirtualPoints: React.FC = () => {
     
     try {
       console.log('가상포인트 목록 로딩 시작');
-      const data = await virtualPointsApi.getVirtualPoints({});
+      const response = await virtualPointsApi.getVirtualPoints({});
+      
+      // API 응답 형식 처리 (배열 또는 객체)
+      let data: any[] = [];
+      if (Array.isArray(response)) {
+        data = response;
+      } else if (response && Array.isArray(response.data)) {
+        data = response.data;
+      } else if (response && Array.isArray(response.items)) {
+        data = response.items;
+      } else {
+        console.warn('예상과 다른 API 응답:', response);
+        data = [];
+      }
       
       // DB 응답 데이터 검증 및 변환
-      const processedData = data.map((point: any) => ({
+      const processedData: VirtualPointDB[] = data.map((point: any) => ({
         ...point,
-        // formula -> expression 필드 매핑 (하위 호환성)
-        expression: point.formula || point.expression,
+        // formula -> expression 필드 매핑 (프론트엔드 호환성)
+        expression: point.formula || point.expression || '',
+        // calculation_trigger -> execution_type 매핑
+        execution_type: mapTriggerToExecutionType(point.calculation_trigger || point.execution_type),
+        // calculation_interval -> execution_interval 매핑
+        execution_interval: point.calculation_interval || point.execution_interval || 5000,
         // 기본값 설정
         category: point.category || 'Custom',
-        calculation_status: point.calculation_status || 'disabled',
-        tags: typeof point.tags === 'string' ? JSON.parse(point.tags || '[]') : (point.tags || [])
+        calculation_status: point.calculation_status || (point.is_enabled ? 'active' : 'disabled'),
+        tags: typeof point.tags === 'string' ? JSON.parse(point.tags || '[]') : (point.tags || []),
+        input_variables: point.input_variables || [],
+        data_type: mapDataType(point.data_type),
+        scope_type: point.scope_type || 'device'
       }));
       
       setVirtualPoints(processedData);
@@ -120,6 +146,36 @@ const VirtualPoints: React.FC = () => {
       setError(err instanceof Error ? err.message : '데이터 로딩 실패');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // DB 필드 매핑 유틸리티 함수들
+  const mapTriggerToExecutionType = (trigger?: string): 'periodic' | 'on_change' | 'manual' => {
+    switch (trigger) {
+      case 'timer': return 'periodic';
+      case 'onchange': return 'on_change';
+      case 'manual': return 'manual';
+      default: return 'periodic';
+    }
+  };
+
+  const mapExecutionTypeToTrigger = (executionType?: string): string => {
+    switch (executionType) {
+      case 'periodic': return 'timer';
+      case 'on_change': return 'onchange';
+      case 'manual': return 'manual';
+      default: return 'timer';
+    }
+  };
+
+  const mapDataType = (dbType?: string): 'number' | 'boolean' | 'string' => {
+    switch (dbType) {
+      case 'bool': return 'boolean';
+      case 'int':
+      case 'float':
+      case 'double': return 'number';
+      case 'string': return 'string';
+      default: return 'number';
     }
   };
 
@@ -185,10 +241,14 @@ const VirtualPoints: React.FC = () => {
   const handleCreateVirtualPoint = async (data: any) => {
     setSaving(true);
     try {
-      // expression -> formula 매핑
+      console.log('가상포인트 생성 요청:', data);
+      
+      // 프론트엔드 -> DB 필드 매핑
       const dbData = {
         ...data,
-        formula: data.expression || data.formula
+        formula: data.expression || data.formula,
+        calculation_trigger: mapExecutionTypeToTrigger(data.execution_type),
+        calculation_interval: data.execution_interval || 5000
       };
       
       await virtualPointsApi.createVirtualPoint(dbData);
@@ -203,14 +263,25 @@ const VirtualPoints: React.FC = () => {
   };
 
   const handleUpdateVirtualPoint = async (data: any) => {
-    if (!selectedPoint) return;
+    if (!selectedPoint) {
+      console.error('선택된 가상포인트가 없습니다');
+      return;
+    }
     
     setSaving(true);
     try {
-      // expression -> formula 매핑
+      console.log('가상포인트 수정 요청:', { 
+        id: selectedPoint.id, 
+        originalData: selectedPoint,
+        updateData: data 
+      });
+      
+      // 프론트엔드 -> DB 필드 매핑
       const dbData = {
         ...data,
-        formula: data.expression || data.formula
+        formula: data.expression || data.formula,
+        calculation_trigger: mapExecutionTypeToTrigger(data.execution_type),
+        calculation_interval: data.execution_interval || 5000
       };
       
       await virtualPointsApi.updateVirtualPoint(selectedPoint.id, dbData);
@@ -269,7 +340,7 @@ const VirtualPoints: React.FC = () => {
 
   const handleTestScript = async (pointId: number, testData: any) => {
     try {
-      const result = await virtualPointsApi.testVirtualPoint(pointId, testData);
+      const result = await virtualPointsApi.testVirtualPointScript(pointId, testData);
       console.log('테스트 결과:', result);
       return result;
     } catch (err) {
@@ -278,28 +349,43 @@ const VirtualPoints: React.FC = () => {
     }
   };
 
-  // 모달 핸들러들
+  // ========================================================================
+  // 모달 핸들러들 - 디버깅 로그 추가
+  // ========================================================================
+  
   const openCreateModal = () => {
+    console.log('새 가상포인트 생성 모달 열기');
     setSelectedPoint(null);
     setShowCreateModal(true);
   };
 
   const openEditModal = (point: VirtualPointDB) => {
+    console.log('가상포인트 편집 모달 열기:', {
+      id: point.id,
+      name: point.name,
+      expression: point.expression,
+      formula: point.formula,
+      input_variables: point.input_variables,
+      fullData: point
+    });
     setSelectedPoint(point);
     setShowEditModal(true);
   };
 
   const openDeleteConfirm = (point: VirtualPointDB) => {
+    console.log('가상포인트 삭제 확인 열기:', point.name);
     setSelectedPoint(point);
     setShowDeleteConfirm(true);
   };
 
   const openTestModal = (point: VirtualPointDB) => {
+    console.log('가상포인트 테스트 모달 열기:', point.name);
     setSelectedPoint(point);
     setShowTestModal(true);
   };
 
   const closeModals = () => {
+    console.log('모든 모달 닫기');
     setShowCreateModal(false);
     setShowEditModal(false);
     setShowDeleteConfirm(false);
@@ -650,7 +736,7 @@ const VirtualPoints: React.FC = () => {
             {paginatedData.points.map(point => (
               <VirtualPointCard
                 key={point.id}
-                virtualPoint={point as any} // 임시 타입 변환
+                virtualPoint={point as any}
                 onEdit={openEditModal}
                 onDelete={openDeleteConfirm}
                 onTest={openTestModal}
@@ -661,7 +747,7 @@ const VirtualPoints: React.FC = () => {
           </div>
         ) : (
           <VirtualPointTable
-            virtualPoints={paginatedData.points as any} // 임시 타입 변환
+            virtualPoints={paginatedData.points as any}
             onEdit={openEditModal}
             onDelete={openDeleteConfirm}
             onTest={openTestModal}
@@ -705,7 +791,7 @@ const VirtualPoints: React.FC = () => {
         <VirtualPointModal
           isOpen={showEditModal}
           mode="edit"
-          virtualPoint={selectedPoint as any} // 임시 타입 변환
+          virtualPoint={selectedPoint as any} // 선택된 포인트 전달
           onSave={handleUpdateVirtualPoint}
           onClose={closeModals}
           loading={saving}
