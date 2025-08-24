@@ -3,7 +3,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-
+import { dataPointsApi } from '../../../api/services/dataPointsApi';
 interface DataPoint {
   id: number;
   device_id: number;
@@ -55,86 +55,21 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
     try {
       console.log('데이터포인트 목록 로딩');
       
-      const response = await fetch('/api/data/points?' + new URLSearchParams({
-        limit: '1000',
-        enabled_only: 'true',
-        include_current_value: 'true',
-        ...(dataType && { data_type: dataType }),
-        ...(searchTerm && { search: searchTerm }),
-        ...(deviceFilter && { device_id: deviceFilter.toString() })
-      }));
+      // dataPointsApi 사용
+      const result = await dataPointsApi.getDataPoints({
+        limit: 1000,
+        enabled_only: true,
+        include_current_value: true,
+        data_type: dataType,
+        search: searchTerm,
+        device_id: deviceFilter || undefined
+      });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.points) {
-          setDataPoints(result.data.points);
-          console.log(`${result.data.points.length}개 데이터포인트 로드됨`);
-        } else {
-          throw new Error(result.message || 'API 응답 오류');
-        }
-      } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      setDataPoints(result.points);
+      console.log(`${result.points.length}개 데이터포인트 로드됨`);
     } catch (error) {
       console.error('데이터포인트 로딩 실패:', error);
-      
-      // 백엔드 API가 없을 때 목 데이터
-      setDataPoints([
-        {
-          id: 101,
-          device_id: 1,
-          device_name: 'PLC-001',
-          name: 'Temperature_Sensor_01',
-          description: '보일러 온도 센서',
-          data_type: 'number',
-          current_value: 85.3,
-          unit: '°C',
-          address: '40001'
-        },
-        {
-          id: 102,
-          device_id: 1,
-          device_name: 'PLC-001',
-          name: 'Pressure_Sensor_01',
-          description: '보일러 압력 센서',
-          data_type: 'number',
-          current_value: 2.4,
-          unit: 'bar',
-          address: '40002'
-        },
-        {
-          id: 103,
-          device_id: 2,
-          device_name: 'WEATHER-001',
-          name: 'External_Temperature',
-          description: '외부 온도 센서',
-          data_type: 'number',
-          current_value: 24.5,
-          unit: '°C',
-          address: 'temp'
-        },
-        {
-          id: 104,
-          device_id: 2,
-          device_name: 'WEATHER-001',
-          name: 'Humidity_Sensor',
-          description: '습도 센서',
-          data_type: 'number',
-          current_value: 65.2,
-          unit: '%',
-          address: 'humidity'
-        },
-        {
-          id: 105,
-          device_id: 3,
-          device_name: 'HVAC-001',
-          name: 'Fan_Status',
-          description: '환풍기 동작 상태',
-          data_type: 'boolean',
-          current_value: true,
-          address: 'coil_001'
-        }
-      ]);
+      setDataPoints([]);
     } finally {
       setLoading(false);
     }
@@ -204,21 +139,11 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
     try {
       console.log('디바이스 목록 로딩');
       
-      const response = await fetch('/api/devices?limit=100&enabled_only=true');
+      // dataPointsApi 사용
+      const { dataPointsApi } = await import('../../api/services/dataPointsApi');
+      const devices = await dataPointsApi.getDevices();
       
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.devices) {
-          setDevices(result.data.devices.map((d: any) => ({ id: d.id, name: d.name })));
-        }
-      } else {
-        // 백엔드 API가 없을 때 목 데이터
-        setDevices([
-          { id: 1, name: 'PLC-001 (보일러)' },
-          { id: 2, name: 'WEATHER-001 (기상)' },
-          { id: 3, name: 'HVAC-001 (공조)' }
-        ]);
-      }
+      setDevices(devices.map(d => ({ id: d.id, name: d.name })));
     } catch (error) {
       console.error('디바이스 로딩 실패:', error);
       setDevices([
