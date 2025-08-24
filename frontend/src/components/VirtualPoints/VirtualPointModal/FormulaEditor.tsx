@@ -27,15 +27,15 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
 
-  // 샘플 데이터
-  const sampleInputs = inputVariables.length > 0 ? inputVariables.map(input => ({
+  // 실제 입력변수 사용 (목 데이터 제거)
+  const actualInputs = inputVariables.length > 0 ? inputVariables.map(input => ({
     ...input,
-    current_value: input.current_value ?? (input.data_type === 'number' ? Math.floor(Math.random() * 100) : 'N/A')
-  })) : [
-    { id: 1, variable_name: 'temp1', source_name: '보일러온도센서', current_value: 85, data_type: 'number' },
-    { id: 2, variable_name: 'temp2', source_name: '외부온도센서', current_value: 25, data_type: 'number' },
-    { id: 3, variable_name: 'temp3', source_name: '실내온도센서', current_value: 22, data_type: 'number' }
-  ];
+    // 실제 현재값이 없으면 샘플값 표시 (개발용)
+    current_value: input.current_value ?? (input.data_type === 'number' ? 0 : input.data_type === 'boolean' ? false : 'N/A')
+  })) : [];
+
+  // 입력변수가 없을 때 메시지
+  const hasVariables = actualInputs.length > 0;
 
   // 수식 템플릿
   const commonFormulas = [
@@ -75,16 +75,22 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
     }, 0);
   }, [expression, onChange]);
 
-  // 테스트 실행
+  // 테스트와 계산에서 실제 입력변수 사용
   const handleTest = useCallback(async () => {
+    if (!hasVariables) {
+      alert('먼저 입력 변수를 설정해주세요.');
+      return;
+    }
+    
     setTesting(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       let testFormula = expression;
-      sampleInputs.forEach(input => {
+      actualInputs.forEach(input => {
         const regex = new RegExp(`\\b${input.variable_name}\\b`, 'g');
-        testFormula = testFormula.replace(regex, String(input.current_value));
+        const value = input.current_value ?? (input.data_type === 'number' ? 0 : input.data_type === 'boolean' ? false : '""');
+        testFormula = testFormula.replace(regex, String(value));
       });
       
       const result = eval(testFormula);
@@ -94,21 +100,26 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
     } finally {
       setTesting(false);
     }
-  }, [expression, sampleInputs]);
+  }, [expression, actualInputs, hasVariables]);
 
-  // 결과 계산
+  // 결과 계산에서도 실제 입력변수 사용
   const calculateResult = useCallback(() => {
+    if (!hasVariables || !expression.trim()) {
+      return '입력 변수 필요';
+    }
+    
     try {
       let testFormula = expression;
-      sampleInputs.forEach(input => {
+      actualInputs.forEach(input => {
         const regex = new RegExp(`\\b${input.variable_name}\\b`, 'g');
-        testFormula = testFormula.replace(regex, String(input.current_value));
+        const value = input.current_value ?? (input.data_type === 'number' ? 0 : input.data_type === 'boolean' ? false : '""');
+        testFormula = testFormula.replace(regex, String(value));
       });
       return eval(testFormula);
     } catch (error) {
       return '수식 오류';
     }
-  }, [expression, sampleInputs]);
+  }, [expression, actualInputs, hasVariables]);
 
   const simulatedResult = calculateResult();
 
@@ -122,59 +133,81 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
       padding: '0'
     }}>
       
-      {/* 상단: 입력 데이터 */}
-      <div style={{
-        background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
-        padding: '16px',
-        borderRadius: '8px',
-        border: '1px solid #dee2e6'
-      }}>
-        <h4 style={{ 
-          margin: '0 0 12px 0', 
-          color: '#495057',
-          fontSize: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
+      {/* 상단: 입력 데이터 - 실제 데이터 사용 */}
+      {hasVariables ? (
+        <div style={{
+          background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #dee2e6'
         }}>
-          📊 사용 가능한 변수 (클릭해서 수식에 삽입)
-        </h4>
-        
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {sampleInputs.map((input, index) => (
-            <div key={index} 
-              onClick={() => handleVariableInsert(input.variable_name)}
-              style={{
-                background: 'white',
-                padding: '8px 12px',
-                borderRadius: '20px',
-                border: '1px solid #e9ecef',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.2s ease',
-                fontSize: '14px'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#e3f2fd';
-                e.currentTarget.style.borderColor = '#90caf9';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'white';
-                e.currentTarget.style.borderColor = '#e9ecef';
-              }}
-            >
-              <span style={{ fontWeight: 'bold', color: '#007bff' }}>
-                {input.variable_name}
-              </span>
-              <span style={{ color: '#28a745', fontWeight: 'bold' }}>
-                = {input.current_value}
-              </span>
-            </div>
-          ))}
+          <h4 style={{ 
+            margin: '0 0 12px 0', 
+            color: '#495057',
+            fontSize: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            📊 사용 가능한 변수 (클릭해서 수식에 삽입)
+          </h4>
+          
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {actualInputs.map((input, index) => (
+              <div key={input.id} 
+                onClick={() => handleVariableInsert(input.variable_name)}
+                style={{
+                  background: 'white',
+                  padding: '8px 12px',
+                  borderRadius: '20px',
+                  border: '1px solid #e9ecef',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                  fontSize: '14px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#e3f2fd';
+                  e.currentTarget.style.borderColor = '#90caf9';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'white';
+                  e.currentTarget.style.borderColor = '#e9ecef';
+                }}
+              >
+                <span style={{ fontWeight: 'bold', color: '#007bff' }}>
+                  {input.variable_name}
+                </span>
+                <span style={{ color: '#6c757d', fontSize: '12px' }}>
+                  ({input.data_type})
+                </span>
+                {input.current_value !== undefined && (
+                  <span style={{ color: '#28a745', fontWeight: 'bold' }}>
+                    = {input.current_value}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{
+          background: '#fff3cd',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #ffeaa7',
+          textAlign: 'center'
+        }}>
+          <div style={{ color: '#856404', marginBottom: '8px' }}>
+            ⚠️ <strong>입력 변수가 없습니다</strong>
+          </div>
+          <div style={{ fontSize: '14px', color: '#6c757d' }}>
+            먼저 "입력 변수" 탭에서 계산에 사용할 데이터포인트를 설정하세요.
+          </div>
+        </div>
+      )}
 
       {/* 중앙: 수식 편집 (세로로 변경) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -309,12 +342,18 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
             padding: '16px',
             borderRadius: '6px',
             border: '1px solid #e9ecef'
-          }}>
-            {sampleInputs.map((input, idx) => (
-              <div key={idx} style={{ color: '#6c757d', marginBottom: '4px' }}>
-                {input.variable_name} = {input.current_value}
-              </div>
-            ))}
+                      }}>
+              {hasVariables ? (
+                actualInputs.map((input, idx) => (
+                  <div key={input.id} style={{ color: '#6c757d', marginBottom: '4px' }}>
+                    {input.variable_name} = {input.current_value ?? 'N/A'} ({input.data_type})
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: '#856404', fontStyle: 'italic' }}>
+                  입력 변수를 먼저 설정하세요
+                </div>
+              )}
             <div style={{ 
               borderTop: '1px solid #dee2e6', 
               marginTop: '12px', 
