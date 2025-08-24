@@ -99,47 +99,104 @@ class DeviceRepository {
       throw new Error(`디바이스 이름 조회 실패: ${error.message}`);
     }
   }
-
   /**
-   * 디바이스의 데이터포인트들 조회 (누락된 메서드) - DeviceQueries 사용
+   * 디바이스의 데이터포인트 조회 (tenantId 매개변수 추가)
+   * @param {number} deviceId - 디바이스 ID
+   * @param {number|null} tenantId - 테넌트 ID (선택사항)
+   * @returns {Promise<Array>} - 데이터포인트 배열
    */
-  async getDeviceDataPoints(deviceId, tenantId = null) {
+  async getDataPointsByDevice(deviceId, tenantId = null, options = {}) {
     try {
-      console.log(`📊 DeviceRepository.getDeviceDataPoints 호출: deviceId=${deviceId}, tenantId=${tenantId}`);
+      console.log(`📊 DeviceRepository.getDataPointsByDevice 호출: deviceId=${deviceId}, tenantId=${tenantId}`, options);
       
-      // 먼저 디바이스가 존재하는지 확인
-      const device = await this.findById(deviceId, tenantId);
-      if (!device) {
-        throw new Error(`디바이스 ID ${deviceId}를 찾을 수 없습니다`);
-      }
-
-      // DeviceQueries에서 데이터포인트 쿼리 가져오기
+      // 기본 쿼리
       let query = DeviceQueries.getDataPointsByDevice();
       const params = [deviceId];
 
-      if (tenantId) {
-        // 테넌트 조건 추가
-        query += DeviceQueries.addTenantFilterForDataPoints();
-        params.push(tenantId);
+      // 선택적 필터들 (options로 전달)
+      if (options.data_type) {
+        query += ` AND data_type = ?`;
+        params.push(options.data_type);
+      }
+
+      if (options.enabled_only === true) {
+        query += ` AND is_enabled = 1`;
       }
 
       // 정렬
-      query += DeviceQueries.getDataPointsOrderBy();
+      const sortBy = options.sort_by || 'name';
+      const sortOrder = options.sort_order || 'ASC';
+      query += ` ORDER BY ${sortBy} ${sortOrder}`;
+
+      // 페이징 (옵션)
+      if (options.page && options.limit) {
+        const page = parseInt(options.page);
+        const limit = parseInt(options.limit);
+        const offset = (page - 1) * limit;
+        query += ` LIMIT ${limit} OFFSET ${offset}`;
+        params.push(limit, offset);
+      }
 
       console.log(`🔍 데이터포인트 쿼리: ${query.substring(0, 100)}...`);
       console.log(`🔍 파라미터:`, params);
 
+      // 쿼리 실행
       const result = await this.dbFactory.executeQuery(query, params);
       const dataPoints = Array.isArray(result) ? result : (result.rows || []);
       
       console.log(`✅ 디바이스 ${deviceId}의 데이터포인트 ${dataPoints.length}개 조회 성공`);
       
-      // 데이터포인트 파싱
-      return dataPoints.map(dp => this.parseDataPoint(dp));
+      // 페이징 정보 계산 (필요 시)
+      let pagination = null;
+      if (options.page && options.limit) {
+        const totalCount = await this.getDataPointCount(deviceId, tenantId, options);
+        pagination = {
+          page: parseInt(options.page),
+          limit: parseInt(options.limit),
+          total_items: totalCount,
+          has_next: (parseInt(options.page) * parseInt(options.limit)) < totalCount,
+          has_prev: parseInt(options.page) > 1
+        };
+      }
+      
+      // 데이터 파싱 후 반환
+      const parsedPoints = dataPoints.map(dp => this.parseDataPoint(dp));
+      
+      return pagination ? { items: parsedPoints, pagination } : parsedPoints;
       
     } catch (error) {
-      console.error('❌ DeviceRepository.getDeviceDataPoints 오류:', error);
+      console.error('DeviceRepository.getDataPointsByDevice 오류:', error);
       throw new Error(`디바이스 데이터포인트 조회 실패: ${error.message}`);
+    }
+  }
+
+  // 데이터포인트 개수 조회 (페이징용)
+  async getDataPointCount(deviceId, tenantId = null, options = {}) {
+    try {
+      let countQuery = `SELECT COUNT(*) as count FROM data_points WHERE device_id = ?`;
+      const params = [deviceId];
+
+      if (tenantId) {
+        countQuery += ` AND tenant_id = ?`;
+        params.push(tenantId);
+      }
+
+      if (options.data_type) {
+        countQuery += ` AND data_type = ?`;
+        params.push(options.data_type);
+      }
+
+      if (options.enabled_only === true) {
+        countQuery += ` AND is_enabled = 1`;
+      }
+
+      const result = await this.dbFactory.executeQuery(countQuery, params);
+      const countResult = Array.isArray(result) ? result[0] : (result.rows ? result.rows[0] : result);
+      
+      return countResult?.count || 0;
+    } catch (error) {
+      console.error('데이터포인트 개수 조회 실패:', error);
+      return 0;
     }
   }
   // 디바이스 목록 조회 (모든 관련 정보 포함)
@@ -790,16 +847,51 @@ class DeviceRepository {
   // =============================================================================
 
   // 디바이스의 데이터 포인트 조회
-  async getDataPointsByDevice(deviceId) {
+  async getDataPointsByDevice(deviceId, tenantId = null) {
     try {
-      const results = await this.dbFactory.executeQuery(DeviceQueries.getDataPointsByDevice(), [deviceId]);
-      return results.map(dp => this.parseDataPoint(dp));
+      console.log(`getDataPointsByDevice: deviceId=${deviceId}`);
+      
+      // 단순한 쿼리로 테스트
+      const query = `SELECT * FROM data_points WHERE device_id = ? ORDER BY name ASC`;
+      const result = await this.dbFactory.executeQuery(query, [deviceId]);
+      
+      console.log('Raw result:', result);
+      console.log('Result type:', typeof result);
+      console.log('Is array:', Array.isArray(result));
+      
+      if (!result) {
+        console.log('Result is null/undefined');
+        return [];
+      }
+      
+      const dataPoints = Array.isArray(result) ? result : (result.rows || []);
+      console.log('DataPoints array length:', dataPoints.length);
+      
+      if (dataPoints.length === 0) {
+        console.log('No data points found');
+        return [];
+      }
+      
+      console.log('First data point:', dataPoints[0]);
+      
+      // parseDataPoint 에러 방지
+      const parsed = dataPoints.map((dp, index) => {
+        try {
+          return this.parseDataPoint(dp);
+        } catch (parseError) {
+          console.error(`Parse error for item ${index}:`, parseError);
+          return null;
+        }
+      }).filter(Boolean);
+      
+      console.log('Parsed points count:', parsed.length);
+      return parsed;
+      
     } catch (error) {
-      console.error('Error getting data points by device:', error);
-      throw error;
+      console.error('getDataPointsByDevice error:', error);
+      return [];
     }
   }
-
   // 데이터 포인트 생성
   async createDataPoint(dataPointData) {
     try {

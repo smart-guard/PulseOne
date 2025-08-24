@@ -78,7 +78,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       });
 
       if (response.success && response.data) {
-        const points = response.data.points || [];
+        const points = response.data.items || [];
         setDataPoints(points);
         console.log(`✅ 데이터포인트 ${points.length}개 로드 완료`);
       } else {
