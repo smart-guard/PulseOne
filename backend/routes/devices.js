@@ -400,7 +400,7 @@ router.get('/:id', async (req, res) => {
         // 데이터포인트 포함 요청 시
         if (include_data_points === 'true') {
             try {
-                const dataPoints = await getDeviceRepo().getDeviceDataPoints(device.id, tenantId);
+                const dataPoints = await getDeviceRepo().getDataPointsByDevice(device.id, tenantId);
                 device.data_points = dataPoints;
                 device.data_points_count = dataPoints.length;
             } catch (dpError) {
@@ -520,7 +520,7 @@ router.delete('/:id', async (req, res) => {
 
         // 연관된 데이터포인트 확인
         try {
-            const dataPoints = await getDeviceRepo().getDeviceDataPoints(parseInt(id), tenantId);
+            const dataPoints = await getDeviceRepo().getDataPointsByDevice(parseInt(id), tenantId);
             if (dataPoints.length > 0) {
                 console.log(`⚠️ 디바이스에 ${dataPoints.length}개의 데이터포인트가 연결되어 있음`);
                 
@@ -714,74 +714,133 @@ router.post('/:id/test-connection', async (req, res) => {
  * 디바이스의 데이터포인트 목록 조회
  */
 router.get('/:id/data-points', async (req, res) => {
+    const startTime = Date.now();
+    console.log('\n='.repeat(80));
+    console.log('🚀 API 호출 시작: GET /api/devices/:id/data-points');
+    console.log('📅 시간:', new Date().toISOString());
+    console.log('🔍 요청 파라미터:', req.params);
+    console.log('🔍 요청 쿼리:', req.query);
+    console.log('🔍 tenantId:', req.tenantId);
+    
     try {
         const { id } = req.params;
         const { tenantId } = req;
         const {
             page = 1,
-            limit = 50,
+            limit = 100,
             data_type,
             enabled_only = false
         } = req.query;
 
-        console.log(`📊 디바이스 ID ${id} 데이터포인트 조회...`);
+        console.log('📊 처리 시작: 디바이스 ID', id, '데이터포인트 조회...');
 
-        const device = await getDeviceRepo().findById(parseInt(id), tenantId);
+        // 1. 디바이스 존재 확인
+        let device = null;
+        try {
+            console.log('🔍 1단계: 디바이스 존재 확인 중...');
+            device = await getDeviceRepo().findById(parseInt(id), tenantId);
+            console.log('✅ 1단계 완료: 디바이스 조회 결과:', device ? `${device.name} (ID: ${device.id})` : 'null');
+        } catch (deviceError) {
+            console.error('❌ 1단계 실패: 디바이스 조회 오류:', deviceError.message);
+            return res.status(500).json(createResponse(false, null, `디바이스 조회 실패: ${deviceError.message}`, 'DEVICE_QUERY_ERROR'));
+        }
+
         if (!device) {
+            console.warn('⚠️ 디바이스를 찾을 수 없음: ID', id, 'tenantId', tenantId);
             return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
         }
 
+        // 2. 데이터포인트 조회 시도
+        let dataPoints = [];
         try {
-            const dataPoints = await getDeviceRepo().getDeviceDataPoints(device.id, tenantId);
+            console.log('🔍 2단계: 데이터포인트 조회 중...');
+            console.log('📋 조회 조건: deviceId =', device.id, ', tenantId =', tenantId);
             
-            // 필터링
-            let filteredPoints = dataPoints;
-            if (data_type) {
-                filteredPoints = filteredPoints.filter(dp => dp.data_type === data_type);
-            }
-            if (enabled_only === 'true') {
-                filteredPoints = filteredPoints.filter(dp => dp.is_enabled);
-            }
-
-            // 페이징
-            const pageNum = parseInt(page);
-            const limitNum = parseInt(limit);
-            const offset = (pageNum - 1) * limitNum;
-            const paginatedPoints = filteredPoints.slice(offset, offset + limitNum);
-
-            const result = {
-                items: paginatedPoints,
-                pagination: {
-                    page: pageNum,
-                    limit: limitNum,
-                    total_items: filteredPoints.length,
-                    has_next: offset + limitNum < filteredPoints.length,
-                    has_prev: pageNum > 1
-                }
-            };
-
-            console.log(`✅ 디바이스 ID ${id} 데이터포인트 ${paginatedPoints.length}개 조회 완료`);
-            res.json(createPaginatedResponse(result.items, result.pagination, 'Device data points retrieved successfully'));
-
-        } catch (dpError) {
-            console.error('❌ 데이터포인트 조회 실패:', dpError.message);
-            // 빈 결과 반환
-            const result = {
-                items: [],
-                pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    total_items: 0,
-                    has_next: false,
-                    has_prev: false
-                }
-            };
-            res.json(createPaginatedResponse(result.items, result.pagination, 'No data points found for this device'));
+            dataPoints = await getDeviceRepo().getDataPointsByDevice(device.id, tenantId);
+            
+            console.log('✅ 2단계 완료: 조회된 데이터포인트 수 =', dataPoints ? dataPoints.length : 0);
+            console.log('📝 데이터포인트 목록 (처음 3개):', 
+                dataPoints && dataPoints.length > 0 
+                    ? dataPoints.slice(0, 3).map(dp => ({ id: dp.id, name: dp.name, address: dp.address }))
+                    : '없음'
+            );
+            
+        } catch (dataPointError) {
+            console.error('❌ 2단계 실패: 데이터포인트 조회 오류:', dataPointError.message);
+            console.error('❌ 스택 추적:', dataPointError.stack);
+            
+            // 에러가 발생해도 빈 배열로 응답
+            console.log('🔄 에러 발생으로 빈 배열로 대체');
+            dataPoints = [];
         }
 
+        // 3. 안전 검사
+        if (!Array.isArray(dataPoints)) {
+            console.warn('⚠️ dataPoints가 배열이 아님. 타입:', typeof dataPoints, '값:', dataPoints);
+            dataPoints = [];
+        }
+
+        // 4. 필터링 적용
+        let filteredPoints = dataPoints;
+        console.log('🔍 3단계: 필터링 적용 중...');
+        
+        if (data_type) {
+            const beforeFilter = filteredPoints.length;
+            filteredPoints = filteredPoints.filter(dp => dp.data_type === data_type);
+            console.log(`📋 데이터 타입 필터 (${data_type}): ${beforeFilter} → ${filteredPoints.length}`);
+        }
+        
+        if (enabled_only === 'true') {
+            const beforeFilter = filteredPoints.length;
+            filteredPoints = filteredPoints.filter(dp => dp.is_enabled);
+            console.log(`📋 활성화 필터: ${beforeFilter} → ${filteredPoints.length}`);
+        }
+
+        // 5. 페이징 적용
+        console.log('🔍 4단계: 페이징 적용 중...');
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const offset = (pageNum - 1) * limitNum;
+        const paginatedPoints = filteredPoints.slice(offset, offset + limitNum);
+
+        console.log(`📄 페이징: 페이지 ${pageNum}, 한계 ${limitNum}, 오프셋 ${offset}`);
+        console.log(`📄 페이징 결과: ${filteredPoints.length} → ${paginatedPoints.length}`);
+
+        // 6. 페이징 정보 생성
+        const pagination = {
+            page: pageNum,
+            limit: limitNum,
+            total_items: filteredPoints.length,
+            has_next: offset + limitNum < filteredPoints.length,
+            has_prev: pageNum > 1
+        };
+
+        // 7. 최종 응답 생성
+        const responseData = createPaginatedResponse(
+            paginatedPoints, 
+            pagination, 
+            `Device data points retrieved successfully`
+        );
+
+        const processingTime = Date.now() - startTime;
+        console.log('✅ API 완료: 총 처리시간', processingTime, 'ms');
+        console.log('📤 응답 데이터 구조:', {
+            success: responseData.success,
+            points_count: responseData.data.items.length,
+            pagination: responseData.data.pagination
+        });
+        console.log('='.repeat(80) + '\n');
+
+        res.json(responseData);
+
     } catch (error) {
-        console.error(`❌ 디바이스 ID ${req.params.id} 데이터포인트 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_DATA_POINTS_ERROR'));
+        const processingTime = Date.now() - startTime;
+        console.error('❌ API 전체 실패:', error.message);
+        console.error('❌ 스택 추적:', error.stack);
+        console.error('⏱️ 실패까지 소요시간:', processingTime, 'ms');
+        console.log('='.repeat(80) + '\n');
+        
+        res.status(500).json(createResponse(false, null, error.message, 'DATA_POINTS_API_ERROR'));
     }
 });
 

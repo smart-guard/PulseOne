@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/DeviceDataPointsTab.tsx
-// 📊 디바이스 데이터포인트 탭 컴포넌트 - 스크롤 문제 완전 해결
+// 🚨 목데이터 완전 제거 - 실제 API 데이터만 사용
 // ============================================================================
 
 import React, { useState } from 'react';
@@ -39,33 +39,16 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   });
 
   // ========================================================================
-  // 필터링된 데이터포인트 + 테스트 데이터
+  // ✅ 필터링된 데이터포인트 - 실제 API 데이터만 사용
   // ========================================================================
   const filteredDataPoints = React.useMemo(() => {
-    let points = [...dataPoints];
+    // 🔥 실제 API 데이터만 사용 - 목데이터 완전 제거
+    const points = dataPoints || [];
     
-    // 🔥 테스트용 더미 데이터 추가 (스크롤 확인용)
-    if (points.length < 20) {
-      const dummyPoints = Array.from({ length: 25 }, (_, i) => ({
-        id: 1000 + i,
-        device_id: deviceId,
-        name: `테스트포인트_${String(i + 1).padStart(2, '0')}`,
-        description: `테스트용 데이터포인트 ${i + 1}`,
-        address: `4000${i + 1}`,
-        data_type: ['number', 'boolean', 'string'][i % 3] as any,
-        unit: ['°C', 'bar', 'L/min', 'kW', '%'][i % 5],
-        is_enabled: i % 3 !== 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        current_value: i % 4 === 0 ? {
-          value: (Math.random() * 100).toFixed(1),
-          quality: ['good', 'bad', 'uncertain'][i % 3] as any,
-          timestamp: new Date().toISOString()
-        } : undefined
-      }));
-      points = [...points, ...dummyPoints];
-    }
+    console.log(`📊 실제 데이터포인트 수: ${points.length}`);
+    console.log('📊 실제 데이터포인트:', points);
 
+    // 목데이터 추가 로직 완전 제거
     return points.filter(dp => {
       const matchesSearch = !searchTerm || 
         dp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -80,7 +63,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
       return matchesSearch && matchesEnabled && matchesDataType;
     });
-  }, [dataPoints, deviceId, searchTerm, filterEnabled, filterDataType]);
+  }, [dataPoints, searchTerm, filterEnabled, filterDataType]);
 
   // ========================================================================
   // 이벤트 핸들러들
@@ -105,6 +88,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
     try {
       setIsProcessing(true);
       
+      // TODO: 실제 API 호출로 교체 필요
       const mockNewPoint: DataPoint = {
         id: Date.now(),
         device_id: deviceId,
@@ -120,7 +104,14 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
       onCreate(mockNewPoint);
       setShowCreateForm(false);
-      setNewPoint({ name: '', description: '', address: '', data_type: 'number', unit: '', is_enabled: true });
+      setNewPoint({ 
+        name: '', 
+        description: '', 
+        address: '', 
+        data_type: 'number', 
+        unit: '', 
+        is_enabled: true 
+      });
       alert('데이터포인트가 생성되었습니다.');
     } catch (error) {
       alert(`생성 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -165,16 +156,16 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         {/* 헤더 */}
         <div className="datapoints-header">
           <div className="header-left">
-            <h3>📊 데이터포인트 관리</h3>
+            <h3>데이터포인트 관리</h3>
             <span className="count-badge">{filteredDataPoints.length}개</span>
           </div>
           <div className="header-right">
             <button className="btn btn-secondary" onClick={onRefresh} disabled={isLoading}>
-              {isLoading ? '🔄' : '새로고침'}
+              {isLoading ? '새로고침 중...' : '새로고침'}
             </button>
             {mode !== 'view' && (
               <button className="btn btn-primary" onClick={() => setShowCreateForm(true)}>
-                ➕ 추가
+                추가
               </button>
             )}
           </div>
@@ -214,32 +205,13 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
         {/* 에러 메시지 */}
         {error && (
-          <div className="error-message">⚠️ {error}</div>
+          <div className="error-message">
+            <i className="fas fa-exclamation-triangle"></i>
+            {error}
+          </div>
         )}
 
-        {/* 🔥 통계 정보 추가 (페이지 높이 증가) */}
-        <div className="datapoints-stats">
-          <div className="stats-grid">
-            <div className="stat-item">
-              <div className="stat-label">총 포인트</div>
-              <div className="stat-value">{dataPoints.length}</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-label">활성화됨</div>
-              <div className="stat-value">{dataPoints.filter(dp => dp.is_enabled).length}</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-label">비활성화됨</div>
-              <div className="stat-value">{dataPoints.filter(dp => !dp.is_enabled).length}</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-label">연결됨</div>
-              <div className="stat-value">{dataPoints.filter(dp => dp.current_value).length}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 🔥 데이터포인트 테이블 */}
+        {/* 데이터포인트 테이블 */}
         <div className="datapoints-table-container">
           
           {/* 고정 헤더 */}
@@ -261,13 +233,23 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             <div className="header-col action-col">작업</div>
           </div>
 
-          {/* 🔥 스크롤 가능한 바디 */}
+          {/* 스크롤 가능한 바디 */}
           <div className="datapoints-table-body">
             {isLoading ? (
-              <div className="empty-state">🔄 로딩 중...</div>
+              <div className="empty-state">
+                <i className="fas fa-spinner fa-spin"></i>
+                <span>로딩 중...</span>
+              </div>
             ) : filteredDataPoints.length === 0 ? (
               <div className="empty-state">
-                {dataPoints.length === 0 ? '데이터포인트가 없습니다.' : '검색 결과가 없습니다.'}
+                <i className="fas fa-database"></i>
+                <h3>{dataPoints.length === 0 ? '등록된 데이터포인트가 없습니다' : '검색 결과가 없습니다'}</h3>
+                <p>{dataPoints.length === 0 ? '새 데이터포인트를 추가하여 시작하세요' : '검색 조건을 변경해보세요'}</p>
+                {mode !== 'view' && dataPoints.length === 0 && (
+                  <button className="btn btn-primary" onClick={() => setShowCreateForm(true)}>
+                    첫 번째 데이터포인트 추가
+                  </button>
+                )}
               </div>
             ) : (
               filteredDataPoints.map((dataPoint) => (
@@ -328,11 +310,13 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                         disabled={isProcessing}
                         title="읽기 테스트"
                       >
-                        ▶️
+                        <i className="fas fa-play"></i>
                       </button>
                       {mode !== 'view' && (
                         <>
-                          <button className="btn btn-secondary btn-xs" title="편집">✏️</button>
+                          <button className="btn btn-secondary btn-xs" title="편집">
+                            <i className="fas fa-edit"></i>
+                          </button>
                           <button
                             className="btn btn-error btn-xs"
                             onClick={() => {
@@ -342,7 +326,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                             }}
                             title="삭제"
                           >
-                            🗑️
+                            <i className="fas fa-trash"></i>
                           </button>
                         </>
                       )}
@@ -353,57 +337,6 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             )}
           </div>
         </div>
-
-        {/* 🔥 추가 정보 섹션 (페이지 높이 더 증가) */}
-        <div className="additional-info">
-          <div className="info-sections">
-            <div className="info-section">
-              <h4>📈 데이터 타입별 분포</h4>
-              <div className="type-distribution">
-                <div className="type-item">
-                  <span className="type-label">숫자형</span>
-                  <span className="type-count">{dataPoints.filter(dp => dp.data_type === 'number').length}개</span>
-                </div>
-                <div className="type-item">
-                  <span className="type-label">불린형</span>
-                  <span className="type-count">{dataPoints.filter(dp => dp.data_type === 'boolean').length}개</span>
-                </div>
-                <div className="type-item">
-                  <span className="type-label">문자형</span>
-                  <span className="type-count">{dataPoints.filter(dp => dp.data_type === 'string').length}개</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="info-section">
-              <h4>🔧 빠른 설정</h4>
-              <div className="quick-actions">
-                <button className="btn btn-outline">모든 포인트 활성화</button>
-                <button className="btn btn-outline">모든 포인트 비활성화</button>
-                <button className="btn btn-outline">연결 테스트</button>
-                <button className="btn btn-outline">설정 내보내기</button>
-              </div>
-            </div>
-
-            <div className="info-section">
-              <h4>📋 최근 활동</h4>
-              <div className="recent-activities">
-                <div className="activity-item">
-                  <span className="activity-time">2분 전</span>
-                  <span className="activity-desc">온도센서_01 포인트 추가됨</span>
-                </div>
-                <div className="activity-item">
-                  <span className="activity-time">5분 전</span>
-                  <span className="activity-desc">압력센서_02 설정 변경됨</span>
-                </div>
-                <div className="activity-item">
-                  <span className="activity-time">10분 전</span>
-                  <span className="activity-desc">유량계_03 연결 테스트 완료</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* 생성 폼 모달 */}
@@ -412,7 +345,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           <div className="create-modal-content">
             <div className="create-modal-header">
               <h3>새 데이터포인트 추가</h3>
-              <button onClick={() => setShowCreateForm(false)} className="close-btn">✕</button>
+              <button onClick={() => setShowCreateForm(false)} className="close-btn">
+                <i className="fas fa-times"></i>
+              </button>
             </div>
             
             <div className="create-modal-body">
@@ -496,34 +431,32 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         </div>
       )}
 
-      {/* 🔥 스타일 - 더 높은 우선순위로 설정 */}
+      {/* 스타일 */}
       <style jsx>{`
-        /* 🔥 최상위 래퍼 - 다른 탭과 동일한 구조 */
         .datapoints-tab-wrapper {
           height: 100%;
-          width: 100%;
-          overflow-y: auto; /* 🔥 전체 스크롤 활성화 */
+          overflow-y: auto;
           background: #f8fafc;
-          padding: 1rem;
+          padding: 1.5rem;
         }
 
         .datapoints-tab-container {
           display: flex;
           flex-direction: column;
-          gap: 1rem;
-          min-height: calc(100vh - 200px); /* 🔥 충분한 높이 확보 */
+          gap: 1.5rem;
+          max-width: 100%;
         }
 
-        /* 🔥 헤더 섹션 */
+        /* 헤더 */
         .datapoints-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           background: white;
-          padding: 1rem;
+          padding: 1.5rem;
           border-radius: 8px;
           border: 1px solid #e5e7eb;
-          flex-shrink: 0;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
         }
 
         .header-left {
@@ -534,8 +467,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
         .header-left h3 {
           margin: 0;
-          font-size: 1.125rem;
+          font-size: 1.25rem;
           font-weight: 600;
+          color: #111827;
         }
 
         .count-badge {
@@ -544,6 +478,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           padding: 0.25rem 0.75rem;
           border-radius: 9999px;
           font-size: 0.75rem;
+          font-weight: 500;
         }
 
         .header-right {
@@ -551,201 +486,98 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           gap: 0.75rem;
         }
 
-        /* 🔥 필터 섹션 */
+        /* 필터 */
         .datapoints-filters {
           display: flex;
           gap: 1rem;
           background: white;
-          padding: 1rem;
+          padding: 1.5rem;
           border-radius: 8px;
           border: 1px solid #e5e7eb;
-          flex-shrink: 0;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+          align-items: center;
         }
 
         .search-input {
           flex: 1;
-          padding: 0.5rem;
+          padding: 0.75rem 1rem;
           border: 1px solid #d1d5db;
           border-radius: 6px;
+          font-size: 0.875rem;
+        }
+
+        .search-input:focus {
+          outline: none;
+          border-color: #0ea5e9;
+          box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
         }
 
         .filter-select {
-          padding: 0.5rem;
+          padding: 0.75rem 1rem;
           border: 1px solid #d1d5db;
           border-radius: 6px;
           background: white;
+          font-size: 0.875rem;
+          min-width: 120px;
         }
 
-        /* 🔥 일괄 작업 */
+        .filter-select:focus {
+          outline: none;
+          border-color: #0ea5e9;
+          box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+        }
+
+        /* 일괄 작업 */
         .bulk-actions {
           display: flex;
           align-items: center;
           gap: 1rem;
           background: #fef3c7;
-          padding: 0.75rem 1rem;
+          padding: 1rem 1.5rem;
           border-radius: 8px;
           border: 1px solid #f59e0b;
-          flex-shrink: 0;
         }
 
-        /* 🔥 통계 정보 스타일 */
-        .datapoints-stats {
-          background: white;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          padding: 1.5rem;
-          flex-shrink: 0;
+        .bulk-actions span {
+          font-weight: 500;
+          color: #92400e;
         }
 
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-          gap: 1.5rem;
-        }
-
-        .stat-item {
-          text-align: center;
-        }
-
-        .stat-label {
-          font-size: 0.75rem;
-          color: #6b7280;
-          margin-bottom: 0.5rem;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-
-        .stat-value {
-          font-size: 1.5rem;
-          font-weight: 600;
-          color: #0ea5e9;
-        }
-
-        /* 🔥 추가 정보 섹션 스타일 */
-        .additional-info {
-          background: white;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          padding: 1.5rem;
-          flex-shrink: 0;
-        }
-
-        .info-sections {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 2rem;
-        }
-
-        .info-section h4 {
-          margin: 0 0 1rem 0;
-          font-size: 1rem;
-          font-weight: 600;
-          color: #374151;
-        }
-
-        .type-distribution {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .type-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 0.5rem;
-          background: #f8fafc;
-          border-radius: 6px;
-        }
-
-        .type-label {
-          font-size: 0.875rem;
-          color: #374151;
-        }
-
-        .type-count {
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: #0ea5e9;
-        }
-
-        .quick-actions {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .btn-outline {
-          background: transparent;
-          color: #0ea5e9;
-          border: 1px solid #0ea5e9;
-        }
-
-        .btn-outline:hover {
-          background: #0ea5e9;
-          color: white;
-        }
-
-        .recent-activities {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .activity-item {
-          display: flex;
-          gap: 1rem;
-          padding: 0.75rem;
-          background: #f8fafc;
-          border-radius: 6px;
-          border-left: 3px solid #0ea5e9;
-        }
-
-        .activity-time {
-          font-size: 0.75rem;
-          color: #6b7280;
-          min-width: 60px;
-          flex-shrink: 0;
-        }
-
-        .activity-desc {
-          font-size: 0.875rem;
-          color: #374151;
-        }
-
-        /* 🔥 에러 메시지 */
+        /* 에러 메시지 */
         .error-message {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
           background: #fef2f2;
           color: #dc2626;
-          padding: 1rem;
+          padding: 1rem 1.5rem;
           border-radius: 8px;
           border: 1px solid #fecaca;
-          flex-shrink: 0;
         }
 
-        /* 🔥 테이블 컨테이너 - 강제 스크롤 보장 */
+        /* 테이블 컨테이너 */
         .datapoints-table-container {
           background: white;
           border-radius: 8px;
           border: 1px solid #e5e7eb;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          height: 500px; /* 🔥 고정 높이로 강제 스크롤 */
+          height: 500px;
         }
 
-        /* 🔥 고정 헤더 */
+        /* 테이블 헤더 */
         .datapoints-table-header {
           display: grid;
-          grid-template-columns: 50px 2fr 1fr 80px 80px 120px 120px;
+          grid-template-columns: 50px 2fr 1.2fr 100px 100px 120px 120px;
           gap: 1rem;
-          padding: 1rem;
+          padding: 1rem 1.5rem;
           background: #f9fafb;
           border-bottom: 2px solid #e5e7eb;
           font-weight: 600;
           font-size: 0.875rem;
           color: #374151;
-          flex-shrink: 0;
           position: sticky;
           top: 0;
           z-index: 10;
@@ -761,55 +593,36 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           justify-content: center;
         }
 
-        /* 🔥 스크롤 가능한 바디 - 항상 스크롤 보이게 */
+        /* 테이블 바디 */
         .datapoints-table-body {
           flex: 1;
-          overflow-y: scroll !important; /* 🔥 scroll로 변경 (항상 보임) */
-          overflow-x: hidden !important;
-          scrollbar-width: thin;
-          scrollbar-color: #94a3b8 #f1f5f9;
-          border: 1px solid #f1f5f9; /* 🔥 스크롤 영역 시각적 구분 */
+          overflow-y: auto;
+          overflow-x: hidden;
         }
 
-        /* 🔥 강제 스크롤바 표시 - 더 강력하게 */
         .datapoints-table-body::-webkit-scrollbar {
-          width: 14px !important; /* 🔥 더 넓게 */
-          background: #f1f5f9 !important;
-          border-left: 1px solid #e5e7eb !important;
+          width: 8px;
         }
 
         .datapoints-table-body::-webkit-scrollbar-track {
-          background: #f8fafc !important;
-          border-radius: 0 !important;
+          background: #f1f5f9;
         }
 
         .datapoints-table-body::-webkit-scrollbar-thumb {
-          background: #94a3b8 !important;
-          border-radius: 7px !important;
-          border: 2px solid #f8fafc !important;
-          min-height: 40px !important; /* 🔥 최소 높이 보장 */
+          background: #94a3b8;
+          border-radius: 4px;
         }
 
         .datapoints-table-body::-webkit-scrollbar-thumb:hover {
-          background: #64748b !important;
+          background: #64748b;
         }
 
-        .datapoints-table-body::-webkit-scrollbar-thumb:active {
-          background: #475569 !important;
-        }
-
-        /* 🔥 Firefox 스크롤바 */
-        .datapoints-table-body {
-          scrollbar-width: auto !important;
-          scrollbar-color: #94a3b8 #f8fafc !important;
-        }
-
-        /* 🔥 테이블 행 */
+        /* 테이블 행 */
         .datapoints-table-row {
           display: grid;
-          grid-template-columns: 50px 2fr 1fr 80px 80px 120px 120px;
+          grid-template-columns: 50px 2fr 1.2fr 100px 100px 120px 120px;
           gap: 1rem;
-          padding: 1rem;
+          padding: 1rem 1.5rem;
           border-bottom: 1px solid #e5e7eb;
           font-size: 0.875rem;
           align-items: center;
@@ -824,11 +637,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           background: #eff6ff;
         }
 
-        .datapoints-table-row.selected:hover {
-          background: #dbeafe;
-        }
-
-        /* 🔥 테이블 셀 */
+        /* 테이블 셀 */
         .table-col {
           display: flex;
           align-items: center;
@@ -865,13 +674,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         .disabled-badge {
           background: #fee2e2;
           color: #991b1b;
-          padding: 0.125rem 0.5rem;
+          padding: 0.125rem 0.375rem;
           border-radius: 9999px;
           font-size: 0.625rem;
-          flex-shrink: 0;
         }
 
-        /* 🔥 타입 배지 */
+        /* 타입 배지 */
         .type-badge {
           padding: 0.25rem 0.5rem;
           border-radius: 0.25rem;
@@ -894,7 +702,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           color: #92400e;
         }
 
-        /* 🔥 현재값 */
+        /* 현재값 */
         .current-value {
           display: flex;
           flex-direction: column;
@@ -903,8 +711,6 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
         .value {
           font-weight: 500;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
 
         .quality {
@@ -929,27 +735,47 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           color: #92400e;
         }
 
-        /* 🔥 액션 버튼 */
+        /* 액션 버튼 */
         .action-buttons {
           display: flex;
           gap: 0.5rem;
         }
 
-        /* 🔥 빈 상태 */
+        /* 빈 상태 */
         .empty-state {
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
           padding: 4rem 2rem;
           color: #6b7280;
           text-align: center;
-          font-size: 1rem;
+          gap: 1rem;
         }
 
-        /* 🔥 버튼 스타일 */
+        .empty-state i {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+          color: #d1d5db;
+        }
+
+        .empty-state h3 {
+          margin: 0;
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .empty-state p {
+          margin: 0;
+          font-size: 0.875rem;
+        }
+
+        /* 버튼 스타일 */
         .btn {
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 0.5rem;
           padding: 0.5rem 1rem;
           border: none;
@@ -959,10 +785,11 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           cursor: pointer;
           transition: all 0.2s;
           white-space: nowrap;
+          text-decoration: none;
         }
 
         .btn-xs {
-          padding: 0.25rem 0.5rem;
+          padding: 0.375rem 0.5rem;
           font-size: 0.75rem;
         }
 
@@ -1014,7 +841,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           cursor: not-allowed;
         }
 
-        /* 🔥 생성 모달 스타일 - 고유한 클래스명으로 충돌 방지 */
+        /* 생성 모달 */
         .create-modal-overlay {
           position: fixed;
           top: 0;
@@ -1025,7 +852,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 2000; /* 🔥 더 높은 z-index */
+          z-index: 2000;
         }
 
         .create-modal-content {
@@ -1060,10 +887,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           cursor: pointer;
           padding: 0.5rem;
           border-radius: 4px;
+          color: #6b7280;
         }
 
         .close-btn:hover {
           background: #f3f4f6;
+          color: #374151;
         }
 
         .create-modal-body {
@@ -1080,7 +909,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           border-top: 1px solid #e5e7eb;
         }
 
-        /* 🔥 폼 스타일 */
+        /* 폼 스타일 */
         .form-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -1103,7 +932,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         .form-group input,
         .form-group select,
         .form-group textarea {
-          padding: 0.5rem;
+          padding: 0.75rem;
           border: 1px solid #d1d5db;
           border-radius: 6px;
           font-size: 0.875rem;
@@ -1129,8 +958,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           margin: 0;
         }
 
-        /* 🔥 반응형 */
+        /* 반응형 */
         @media (max-width: 768px) {
+          .datapoints-tab-wrapper {
+            padding: 1rem;
+          }
+          
           .datapoints-table-header,
           .datapoints-table-row {
             grid-template-columns: 40px 1fr 80px 60px;
