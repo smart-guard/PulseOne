@@ -87,30 +87,48 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
     }
   };
 
-  // 실제 버튼 핸들러들 - 기존 API 사용
+  // 성공 후 화면 갱신 강화된 함수
+  const ensureRefresh = async () => {
+    if (onRefresh) {
+      await onRefresh();
+    } else {
+      // onRefresh가 없을 경우 페이지 강제 새로고침
+      window.location.reload();
+    }
+  };
+
+  // 실행 버튼 - 성공 후 갱신 추가
   const handleExecute = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!virtualPoint.is_enabled || isExecuting) return;
     
     try {
       await onExecute(virtualPoint.id);
+      // 실행 성공 후 화면 갱신
+      await ensureRefresh();
     } catch (error) {
       console.error('가상포인트 실행 실패:', error);
+      alert('실행 실패: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
     }
   };
 
+  // 테스트 버튼 - 성공 후 갱신 추가  
   const handleTest = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       await onTest(virtualPoint);
+      // 테스트 성공 후 화면 갱신
+      await ensureRefresh();
     } catch (error) {
       console.error('가상포인트 테스트 실패:', error);
+      alert('테스트 실패: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
     }
   };
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     onEdit(virtualPoint);
+    // 편집 모달이 닫힌 후 화면 갱신은 상위 컴포넌트에서 처리
   };
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
@@ -122,14 +140,13 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
     if (confirmed) {
       setIsProcessing(true);
       try {
-        // 직접 API 호출 - onDelete 호출하지 않음
+        // 직접 API 호출
         await virtualPointsApi.deleteVirtualPoint(virtualPoint.id);
         console.log('가상포인트 삭제 완료:', virtualPoint.id);
         
-        // 상위 컴포넌트의 데이터 새로고침만 호출
-        if (onRefresh) {
-          onRefresh();
-        }
+        // 삭제 성공 후 무조건 화면 갱신
+        await ensureRefresh();
+        
       } catch (error) {
         console.error('가상포인트 삭제 실패:', error);
         alert('삭제 실패: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
@@ -139,15 +156,37 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
     }
   };
 
+  // 토글 버튼 - 확인 팝업 + 새로운 API 사용
   const handleToggleEnabled = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isToggling) return;
+    if (isToggling || isProcessing) return;
+    
+    const newStatus = !virtualPoint.is_enabled;
+    const actionText = newStatus ? '활성화' : '비활성화';
+    
+    // 확인 팝업 추가!
+    const confirmed = confirm(
+      `"${virtualPoint.name}" 가상포인트를 ${actionText}하시겠습니까?\n\n` +
+      `${newStatus ? 
+        '활성화하면 설정된 조건에 따라 자동으로 계산이 수행됩니다.' : 
+        '비활성화하면 더 이상 계산이 수행되지 않습니다.'
+      }`
+    );
+    
+    if (!confirmed) return;
     
     setIsToggling(true);
     try {
-      await onToggleEnabled(virtualPoint.id);
+      // 새로운 토글 전용 API 사용!
+      await virtualPointsApi.toggleVirtualPoint(virtualPoint.id, newStatus);
+      console.log(`가상포인트 ${virtualPoint.id} ${actionText} 완료`);
+      
+      // 토글 성공 후 화면 갱신
+      await ensureRefresh();
+      
     } catch (error) {
       console.error('가상포인트 활성화 토글 실패:', error);
+      alert(`${actionText} 실패: ` + (error instanceof Error ? error.message : '알 수 없는 오류'));
     } finally {
       setIsToggling(false);
     }
@@ -161,17 +200,47 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
       padding: '20px',
       transition: 'all 0.2s',
       cursor: 'pointer',
-      height: 'fit-content'
+      height: 'fit-content',
+      position: 'relative',
+      // 처리중일 때 시각적 표시
+      opacity: isProcessing ? 0.7 : 1,
+      pointerEvents: isProcessing ? 'none' : 'auto'
     }}
     onMouseEnter={(e) => {
-      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
-      e.currentTarget.style.transform = 'translateY(-2px)';
+      if (!isProcessing) {
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+      }
     }}
     onMouseLeave={(e) => {
-      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-      e.currentTarget.style.transform = 'translateY(0)';
+      if (!isProcessing) {
+        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+        e.currentTarget.style.transform = 'translateY(0)';
+      }
     }}
     >
+        {/* 처리중 오버레이 */}
+        {isProcessing && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(255, 255, 255, 0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '12px',
+            zIndex: 10
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <i className="fas fa-spinner fa-spin" style={{ color: '#3b82f6' }}></i>
+              <span style={{ color: '#3b82f6', fontWeight: 500 }}>처리 중...</span>
+            </div>
+          </div>
+        )}
+
         {/* 카드 헤더 */}
         <div style={{ 
           display: 'flex', 
@@ -245,31 +314,36 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
             {/* 실행 버튼 */}
             <button
               onClick={handleExecute}
-              disabled={!virtualPoint.is_enabled || isExecuting}
+              disabled={!virtualPoint.is_enabled || isExecuting || isProcessing}
               style={{
                 padding: '6px',
                 background: 'none',
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
-                color: virtualPoint.is_enabled ? '#374151' : '#9ca3af',
-                cursor: virtualPoint.is_enabled ? 'pointer' : 'not-allowed',
-                opacity: virtualPoint.is_enabled ? 1 : 0.5
+                color: (virtualPoint.is_enabled && !isProcessing) ? '#374151' : '#9ca3af',
+                cursor: (virtualPoint.is_enabled && !isProcessing) ? 'pointer' : 'not-allowed',
+                opacity: (virtualPoint.is_enabled && !isProcessing) ? 1 : 0.5
               }}
               title="실행"
             >
-              <i className="fas fa-play" style={{ fontSize: '12px' }}></i>
+              {isExecuting ? 
+                <i className="fas fa-spinner fa-spin" style={{ fontSize: '12px' }}></i> :
+                <i className="fas fa-play" style={{ fontSize: '12px' }}></i>
+              }
             </button>
             
             {/* 테스트 버튼 */}
             <button
               onClick={handleTest}
+              disabled={isProcessing}
               style={{
                 padding: '6px',
                 background: 'none',
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
-                color: '#374151',
-                cursor: 'pointer'
+                color: isProcessing ? '#9ca3af' : '#374151',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing ? 0.5 : 1
               }}
               title="테스트"
             >
@@ -279,13 +353,15 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
             {/* 편집 버튼 */}
             <button
               onClick={handleEdit}
+              disabled={isProcessing}
               style={{
                 padding: '6px',
                 background: 'none',
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
-                color: '#374151',
-                cursor: 'pointer'
+                color: isProcessing ? '#9ca3af' : '#374151',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing ? 0.5 : 1
               }}
               title="편집"
             >
@@ -295,17 +371,22 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
             {/* 삭제 버튼 */}
             <button
               onClick={handleDeleteClick}
+              disabled={isProcessing}
               style={{
                 padding: '6px',
                 background: 'none',
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
-                color: '#dc2626',
-                cursor: 'pointer'
+                color: isProcessing ? '#9ca3af' : '#dc2626',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing ? 0.5 : 1
               }}
               title="삭제"
             >
-              <i className="fas fa-trash" style={{ fontSize: '12px' }}></i>
+              {isProcessing ? 
+                <i className="fas fa-spinner fa-spin" style={{ fontSize: '12px' }}></i> :
+                <i className="fas fa-trash" style={{ fontSize: '12px' }}></i>
+              }
             </button>
           </div>
         </div>
@@ -413,31 +494,33 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
             생성: {new Date(virtualPoint.created_at).toLocaleDateString('ko-KR')}
           </span>
           
-          {/* 활성화/비활성화 토글 - Play 버튼과 다른 기능 */}
+          {/* 활성화/비활성화 토글 - 확인 팝업 + 새로운 API */}
           <button
             onClick={handleToggleEnabled}
-            disabled={isToggling}
+            disabled={isToggling || isProcessing}
             style={{
               padding: '4px 8px',
               background: 'none',
               border: 'none',
-              color: virtualPoint.is_enabled ? '#10b981' : '#6b7280',
-              cursor: isToggling ? 'not-allowed' : 'pointer',
+              color: (isToggling || isProcessing) ? '#9ca3af' : 
+                     virtualPoint.is_enabled ? '#10b981' : '#6b7280',
+              cursor: (isToggling || isProcessing) ? 'not-allowed' : 'pointer',
               fontSize: '12px',
               fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
               borderRadius: '4px',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              opacity: (isToggling || isProcessing) ? 0.5 : 1
             }}
             onMouseEnter={(e) => {
-              if (!isToggling) {
+              if (!isToggling && !isProcessing) {
                 e.currentTarget.style.background = virtualPoint.is_enabled ? '#f0fdf4' : '#f3f4f6';
               }
             }}
             onMouseLeave={(e) => {
-              if (!isToggling) {
+              if (!isToggling && !isProcessing) {
                 e.currentTarget.style.background = 'none';
               }
             }}
