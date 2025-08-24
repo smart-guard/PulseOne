@@ -4,10 +4,14 @@
  * ============================================================================ */
 
 .virtual-point-modal {
-  width: 95vw;
-  max-width: 1200px;
-  height: 90vh;
-  max-height: 800px;
+  width: 98vw;        /* 95vw → 98vw */
+  max-width: 1600px;  /* 1200px → 1600px */
+  height: 95vh;       /* 90vh → 95vh */
+  max-height: 900px;  /* 800px → 900px */
+  border-radius: 16px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
 }
 
 /* ================================================================
@@ -23,17 +27,19 @@
 .tab-button {
   background: none;
   border: none;
-  padding: 16px 24px;
-  font-size: 14px;
+  padding: 18px 32px;   /* 16px 24px → 18px 32px */
+  font-size: 15px;      /* 14px → 15px */
   font-weight: 500;
   color: #6b7280;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;           /* 8px → 10px */
   position: relative;
   border-bottom: 2px solid transparent;
+  flex: 1;             /* 탭들이 균등하게 분배 */
+  justify-content: center;
 }
 
 .tab-button:hover {
@@ -50,26 +56,25 @@
 .tab-badge {
   background: #3b82f6;
   color: white;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  min-width: 18px;
+  font-size: 12px;     /* 11px → 12px */
+  padding: 3px 8px;    /* 2px 6px → 3px 8px */
+  border-radius: 12px; /* 10px → 12px */
+  min-width: 20px;     /* 18px → 20px */
   text-align: center;
 }
-
 /* ================================================================
  * 기본 정보 폼 스타일
  * ================================================================ */
 
 .basic-info-form {
-  padding: 24px;
-  max-height: calc(90vh - 200px);
+  padding: 32px;       /* 24px → 32px */
+  max-height: calc(95vh - 220px);
   overflow-y: auto;
 }
 
 .form-section {
-  margin-bottom: 32px;
-  padding-bottom: 24px;
+  margin-bottom: 40px;  /* 32px → 40px */
+  padding-bottom: 32px; /* 24px → 32px */
   border-bottom: 1px solid #f3f4f6;
 }
 
@@ -81,27 +86,35 @@
 .section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 16px;
+  gap: 12px;           /* 8px → 12px */
+  font-size: 18px;     /* 16px → 18px */
   font-weight: 600;
   color: #374151;
-  margin: 0 0 16px 0;
+  margin: 0 0 20px 0;  /* 16px → 20px */
 }
 
 .section-title i {
   color: #3b82f6;
+  font-size: 20px;     /* 기본크기 → 20px */
 }
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 250px → 280px */
+  gap: 20px;           /* 16px → 20px */
+}
+
+/* 넓은 화면에서는 3컬럼 */
+@media (min-width: 1400px) {
+  .form-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;            /* 6px → 8px */
 }
 
 .form-group.full-width {
@@ -109,7 +122,7 @@
 }
 
 .form-group label {
-  font-size: 14px;
+  font-size: 15px;     /* 14px → 15px */
   font-weight: 500;
   color: #374151;
 }
@@ -122,10 +135,10 @@
 .form-input,
 .form-select,
 .form-textarea {
-  padding: 10px 12px;
+  padding: 12px 16px;  /* 10px 12px → 12px 16px */
   border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: 10px; /* 8px → 10px */
+  font-size: 15px;     /* 14px → 15px */
   color: #374151;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -146,7 +159,7 @@
 
 .form-textarea {
   resize: vertical;
-  min-height: 60px;
+  min-height: 80px;    /* 60px → 80px */
 }
 
 .form-hint {
@@ -198,7 +211,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 20px 32px;  /* 16px 24px → 20px 32px */
   border-bottom: 1px solid #e5e7eb;
   background: #f8fafc;
 }
@@ -206,14 +219,14 @@
 .toolbar-btn {
   background: white;
   border: 1px solid #d1d5db;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 14px;
+  padding: 10px 20px;  /* 8px 16px → 10px 20px */
+  border-radius: 8px;  /* 6px → 8px */
+  font-size: 15px;     /* 14px → 15px */
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;          /* 8px → 10px */
 }
 
 .toolbar-btn:hover {
@@ -252,12 +265,12 @@
 
 .editor-layout {
   display: flex;
-  height: calc(90vh - 280px);
+  height: calc(95vh - 320px); /* 높이 증가 */
 }
 
 /* 함수 패널 */
 .function-panel {
-  width: 300px;
+  width: 400px;       /* 300px → 400px */
   border-right: 1px solid #e5e7eb;
   background: #f8fafc;
   display: flex;
@@ -265,23 +278,24 @@
 }
 
 .panel-header {
-  padding: 16px;
+  padding: 20px;      /* 16px → 20px */
   border-bottom: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.search-container {
-  position: relative;
+  gap: 16px;          /* 12px → 16px */
 }
 
 .search-input {
   width: 100%;
-  padding: 8px 12px 8px 36px;
+  padding: 12px 16px; /* 패딩 증가 */
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
+  background: white;
+}
+
+.search-container {
+  position: relative;
 }
 
 .search-icon {
@@ -451,6 +465,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  padding: 20px;      /* 패딩 증가 */
 }
 
 .code-editor label {
@@ -465,16 +480,14 @@
 
 .code-textarea {
   flex: 1;
-  min-height: 200px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 14px;
-  line-height: 1.5;
-  padding: 16px;
+  padding: 20px;      /* 16px → 20px */
   border: 1px solid #d1d5db;
-  border-radius: 8px;
-  resize: vertical;
+  border-radius: 10px; /* 8px → 10px */
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 15px;    /* 14px → 15px */
+  line-height: 1.6;   /* 1.5 → 1.6 */
+  resize: none;
   background: #fafafa;
-  color: #374151;
 }
 
 .code-textarea:focus {
@@ -593,8 +606,8 @@
  * ================================================================ */
 
 .input-variable-editor {
-  padding: 24px;
-  height: calc(90vh - 200px);
+  padding: 32px;      /* 24px → 32px */
+  height: calc(95vh - 220px);
   overflow-y: auto;
 }
 
@@ -798,12 +811,12 @@
  * ================================================================ */
 
 .validation-panel {
-  padding: 24px;
-  height: calc(90vh - 200px);
+  padding: 32px;      /* 24px → 32px */
+  height: calc(95vh - 220px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 32px;          /* 24px → 32px */
 }
 
 .validation-section,
@@ -811,24 +824,24 @@
 .test-history-section {
   background: white;
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 16px; /* 12px → 16px */
+  padding: 24px;      /* 20px → 24px */
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px; /* 16px → 20px */
 }
 
 .section-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;    /* 16px → 18px */
   color: #374151;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;          /* 8px → 12px */
 }
 
 .test-actions {
@@ -912,8 +925,9 @@
 
 .input-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); /* 300px → 320px */
+  gap: 24px;          /* 20px → 24px */
+  margin-bottom: 32px; /* 24px → 32px */
 }
 
 .test-input-item {
@@ -1132,7 +1146,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 20px 32px; /* 16px 24px → 20px 32px */
   border-top: 1px solid #e5e7eb;
   background: #f8fafc;
 }
@@ -1165,21 +1179,23 @@
 
 .footer-actions {
   display: flex;
-  gap: 12px;
+  gap: 16px;          /* 12px → 16px */
 }
 
 .btn-primary,
 .btn-secondary {
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 12px 24px; /* 10px 20px → 12px 24px */
+  border-radius: 10px; /* 8px → 10px */
+  font-size: 15px;    /* 14px → 15px */
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;          /* 8px → 10px */
   border: none;
+  min-width: 120px;   /* 최소 버튼 너비 */
+  justify-content: center;
 }
 
 .btn-primary {
@@ -1219,6 +1235,27 @@
 /* ================================================================
  * 반응형 스타일
  * ================================================================ */
+@media (max-width: 1400px) {
+  .virtual-point-modal {
+    width: 95vw;
+    max-width: 1400px;
+  }
+  
+  .function-panel {
+    width: 350px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .virtual-point-modal {
+    width: 98vw;
+    max-width: none;
+  }
+  
+  .function-panel {
+    width: 300px;
+  }
+}
 
 @media (max-width: 1024px) {
   .virtual-point-modal {
@@ -1230,57 +1267,33 @@
   }
 
   .function-panel {
-    width: 250px;
+    width: 280px;
   }
 
   .form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   }
 }
 
 @media (max-width: 768px) {
-  .modal-tabs {
-    overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .modal-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tab-button {
-    flex-shrink: 0;
-    padding: 12px 16px;
-  }
-
   .editor-layout {
     flex-direction: column;
   }
 
   .function-panel {
     width: 100%;
-    max-height: 200px;
+    max-height: 300px; /* 200px → 300px */
     border-right: none;
     border-bottom: 1px solid #e5e7eb;
   }
 
-  .input-grid {
+  .form-grid {
     grid-template-columns: 1fr;
-  }
-
-  .variable-details {
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .variable-actions {
-    flex-direction: column;
   }
 
   .modal-footer {
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
     align-items: stretch;
   }
 
