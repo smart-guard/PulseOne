@@ -251,7 +251,7 @@ class DeviceRepository {
         requires_broker: !!protocol.requires_broker,
         supported_operations: this.parseJsonField(protocol.supported_operations),
         supported_data_types: this.parseJsonField(protocol.supported_data_types),
-        connection_params_schema: this.parseJsonField(protocol.connection_params_schema),
+        connection_params: this.parseJsonField(protocol.connection_params),
         default_polling_interval: protocol.default_polling_interval,
         default_timeout: protocol.default_timeout,
         category: protocol.category,

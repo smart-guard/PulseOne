@@ -79,8 +79,31 @@ function enhanceDeviceWithRtuInfo(device) {
     if (!device) return device;
 
     try {
-        // Config JSON 파싱
-        const config = device.config ? JSON.parse(device.config) : {};
+        // Config 파싱 개선 - 다양한 형태 처리
+        let config = {};
+        
+        if (device.config) {
+            if (typeof device.config === 'string') {
+                if (device.config === '[object Object]' || device.config.startsWith('[object')) {
+                    // 잘못 직렬화된 객체 - 빈 객체로 처리
+                    console.warn(`Device ${device.id}: Invalid config string detected, using empty config`);
+                    config = {};
+                } else {
+                    try {
+                        config = JSON.parse(device.config);
+                    } catch (parseError) {
+                        console.warn(`Device ${device.id}: Config JSON parse failed, using empty config:`, parseError.message);
+                        config = {};
+                    }
+                }
+            } else if (typeof device.config === 'object') {
+                // 이미 객체인 경우
+                config = device.config;
+            } else {
+                console.warn(`Device ${device.id}: Unexpected config type ${typeof device.config}, using empty config`);
+                config = {};
+            }
+        }
         
         // RTU 특화 정보 추가
         const enhanced = {
@@ -94,12 +117,12 @@ function enhanceDeviceWithRtuInfo(device) {
             enhanced.rtu_info = {
                 slave_id: config.slave_id || null,
                 master_device_id: config.master_device_id || null,
-                baud_rate: config.baud_rate || null,
+                baud_rate: config.baud_rate || 9600, // 기본값 추가
                 data_bits: config.data_bits || 8,
                 stop_bits: config.stop_bits || 1,
                 parity: config.parity || 'N',
                 frame_delay_ms: config.frame_delay_ms || null,
-                response_timeout_ms: config.response_timeout_ms || null,
+                response_timeout_ms: config.response_timeout_ms || 1000, // 기본값 추가
                 is_master: device.device_type === 'GATEWAY',
                 is_slave: device.device_type !== 'GATEWAY' && config.master_device_id,
                 serial_port: device.endpoint,
@@ -113,10 +136,10 @@ function enhanceDeviceWithRtuInfo(device) {
 
         return enhanced;
     } catch (error) {
-        console.warn(`Config 파싱 실패 (Device ${device.id}):`, error.message);
+        console.warn(`Device ${device.id}: Config processing failed:`, error.message);
         return {
             ...device,
-            config: device.config, // 원본 문자열 유지
+            config: {}, // 안전한 기본값
             rtu_info: null
         };
     }
@@ -227,7 +250,7 @@ router.use(devTenantMiddleware);
  * GET /api/devices/protocols
  * 지원하는 프로토콜 목록 조회 - protocols 테이블에서 ID 포함하여 조회
  */
-rrouter.get('/protocols', async (req, res) => {
+router.get('/protocols', async (req, res) => {
     try {
         const { tenantId } = req;
         console.log('지원 프로토콜 목록 조회...');
