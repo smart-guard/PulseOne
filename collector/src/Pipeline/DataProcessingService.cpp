@@ -284,7 +284,8 @@ void DataProcessingService::ProcessBatch(
                     SaveToRedisFullData(enriched_data);
                 }
                 redis_writes_.fetch_add(1);
-                
+                // 새 로직 추가: Backend 호환용
+                SaveToRedisDevicePattern(enriched_data);
                 // RDB 저장 (변화된 포인트만)
                 SaveChangedPointsToRDB(enriched_data);
                 
@@ -1069,13 +1070,13 @@ std::string DataProcessingService::ConvertToLightPointValue(
     json light_point;
     
     // =======================================================================
-    // 🔥 기본 식별 정보
+    // 기본 식별 정보
     // =======================================================================
     light_point["point_id"] = value.point_id;
     light_point["device_id"] = device_id;
     
-    // 🔥 간단한 네이밍 (DB 조회 없이)
-    std::string point_name = "point_" + std::to_string(value.point_id);
+    // 간단한 네이밍 (DB 조회 없이)
+    std::string point_name = getPointName(value.point_id);  // 실제 포인트명 사용
     std::string device_name = "device_" + device_id;
     light_point["key"] = "device:" + device_id + ":" + point_name;
     
@@ -1083,7 +1084,7 @@ std::string DataProcessingService::ConvertToLightPointValue(
     light_point["point_name"] = point_name;
     
     // =======================================================================
-    // 🔥 실제 값 처리
+    // 실제 값 처리
     // =======================================================================
     std::visit([&light_point](const auto& v) {
         using T = std::decay_t<decltype(v)>;
@@ -1114,7 +1115,7 @@ std::string DataProcessingService::ConvertToLightPointValue(
     }, value.value);
     
     // =======================================================================
-    // 🔥 타임스탬프 (ISO 8601 형식)
+    // 타임스탬프 (ISO 8601 형식)
     // =======================================================================
     auto time_t = std::chrono::system_clock::to_time_t(value.timestamp);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1126,79 +1127,14 @@ std::string DataProcessingService::ConvertToLightPointValue(
     light_point["timestamp"] = timestamp_stream.str();
     
     // =======================================================================
-    // 🔥 품질 상태 (사람이 읽기 쉬운 형태)
+    // 품질 상태 (Utils.h의 함수 사용)
     // =======================================================================
-    std::string quality_str = "unknown";
-    switch (value.quality) {
-        case DataQuality::GOOD:
-            quality_str = "good";
-            break;
-        case DataQuality::BAD:
-            quality_str = "bad";
-            break;
-        case DataQuality::UNCERTAIN:
-            quality_str = "uncertain";
-            break;
-        case DataQuality::COMM_FAILURE:
-            quality_str = "comm_failure";
-            break;
-        case DataQuality::CONFIG_ERROR:
-            quality_str = "config_error";
-            break;
-        case DataQuality::NOT_CONNECTED:
-            quality_str = "not_connected";
-            break;
-        case DataQuality::DEVICE_FAILURE:
-            quality_str = "device_failure";
-            break;
-        case DataQuality::SENSOR_FAILURE:
-            quality_str = "sensor_failure";
-            break;
-        case DataQuality::LAST_KNOWN_VALUE:
-            quality_str = "last_known";
-            break;
-        case DataQuality::COMM_STATE_ALARM:
-            quality_str = "comm_alarm";
-            break;
-        case DataQuality::LOCAL_OVERRIDE:
-            quality_str = "local_override";
-            break;
-        case DataQuality::SUBSTITUTE:
-            quality_str = "substitute";
-            break;
-        default:
-            quality_str = "unknown";
-            break;
-    }
-    light_point["quality"] = quality_str;
+    light_point["quality"] = PulseOne::Utils::DataQualityToString(value.quality, true);
     
     // =======================================================================
-    // 🔥 기본 단위 (간단히 처리)
+    // 단위 (getUnit 함수 사용)
     // =======================================================================
-    std::string unit = "";
-    
-    // 포인트 ID 패턴으로 간단한 단위 추정 (실제 환경에서는 설정에서 가져오기)
-    if (point_name.find("temp") != std::string::npos || 
-        point_name.find("temperature") != std::string::npos) {
-        unit = "°C";
-    } else if (point_name.find("pressure") != std::string::npos) {
-        unit = "bar";
-    } else if (point_name.find("flow") != std::string::npos) {
-        unit = "L/min";
-    } else if (point_name.find("voltage") != std::string::npos) {
-        unit = "V";
-    } else if (point_name.find("current") != std::string::npos) {
-        unit = "A";
-    } else if (point_name.find("power") != std::string::npos) {
-        unit = "W";
-    } else if (point_name.find("energy") != std::string::npos) {
-        unit = "kWh";
-    } else if (point_name.find("level") != std::string::npos || 
-               point_name.find("percent") != std::string::npos) {
-        unit = "%";
-    }
-    
-    light_point["unit"] = unit;
+    light_point["unit"] = getUnit(value.point_id);
     
     // 값 변경 여부
     if (value.value_changed) {
@@ -1624,6 +1560,105 @@ void DataProcessingService::SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEven
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
                                      "❌ 알람 DB 저장 예외: " + std::string(e.what()));
     }
+}
+
+void DataProcessingService::SaveToRedisDevicePattern(const Structs::DeviceDataMessage& message) {
+    if (!redis_client_ || !redis_client_->isConnected()) {
+        return;
+    }
+    
+    try {
+        for (const auto& point : message.points) {
+            // 실제 device_id 사용 (message에서)
+            std::string device_id = extractDeviceNumber(message.device_id); // "device_001" -> "1"
+            std::string point_name = getPointName(point.point_id);
+            
+            // device:1:temperature_sensor_01 형태의 키 생성
+            std::string device_key = "device:" + device_id + ":" + point_name;
+            
+            // Backend가 기대하는 JSON 구조로 직접 생성
+            json point_data;
+            point_data["point_id"] = point.point_id;
+            point_data["device_id"] = device_id;
+            point_data["device_name"] = "Device " + device_id;
+            point_data["point_name"] = point_name;
+            
+            // 값 처리
+            std::visit([&point_data](const auto& v) {
+                point_data["value"] = v;
+            }, point.value);
+            
+            point_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                point.timestamp.time_since_epoch()).count();
+            point_data["quality"] = PulseOne::Utils::DataQualityToString(point.quality, true);
+            point_data["data_type"] = getDataType(point.value);
+            point_data["unit"] = getUnit(point.point_id);
+            point_data["changed"] = point.value_changed;
+            
+            redis_client_->setex(device_key, point_data.dump(), 3600);
+        }
+        
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+            "Device pattern Redis 저장 완료: " + std::to_string(message.points.size()) + "개 포인트");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("processing", LogLevel::ERROR,
+            "Device pattern Redis 저장 실패: " + std::string(e.what()));
+    }
+}
+
+// 필요한 헬퍼 함수들
+std::string DataProcessingService::extractDeviceNumber(const std::string& device_id) {
+    // "device_001" -> "1", "device_002" -> "2"
+    size_t pos = device_id.find_last_of('_');
+    if (pos != std::string::npos) {
+        std::string number = device_id.substr(pos + 1);
+        return std::to_string(std::stoi(number)); // "001" -> "1"
+    }
+    return "1"; // 기본값
+}
+
+std::string DataProcessingService::getPointName(int point_id) {
+    static std::unordered_map<int, std::string> point_names = {
+        {1, "temperature_sensor_01"},
+        {2, "pressure_sensor_01"},
+        {3, "flow_rate"},
+        {4, "pump_status"},
+        {5, "room_temperature"},
+        {6, "humidity_level"},
+        {7, "fan_speed"},
+        {8, "cooling_mode"},
+        {9, "voltage_l1"},
+        {10, "current_l1"},
+        {11, "power_total"},
+        {12, "energy_consumed"}
+    };
+    
+    auto it = point_names.find(point_id);
+    return (it != point_names.end()) ? it->second : ("point_" + std::to_string(point_id));
+}
+
+
+std::string DataProcessingService::getDataType(const DataValue& value) {
+    return std::visit([](const auto& v) -> std::string {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, bool>) return "boolean";
+        else if constexpr (std::is_integral_v<T>) return "integer";
+        else if constexpr (std::is_floating_point_v<T>) return "number";
+        else if constexpr (std::is_same_v<T, std::string>) return "string";
+        else return "unknown";
+    }, value);
+}
+
+std::string DataProcessingService::getUnit(int point_id) {
+    static std::unordered_map<int, std::string> units = {
+        {1, "°C"}, {2, "bar"}, {3, "L/min"}, {4, ""}, {5, "°C"},
+        {6, "%"}, {7, "rpm"}, {8, ""}, {9, "V"}, {10, "A"},
+        {11, "W"}, {12, "kWh"}
+    };
+    
+    auto it = units.find(point_id);
+    return (it != units.end()) ? it->second : "";
 }
 
 } // namespace Pipeline

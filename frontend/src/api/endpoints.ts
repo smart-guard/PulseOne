@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/endpoints.ts
-// API 엔드포인트 상수 정의 - 완전한 알람 API 백엔드 호환 버전 (category, tags 지원 + 토글 기능)
+// API 엔드포인트 상수 정의 - protocol_id 직접 처리 지원
 // ============================================================================
 
 // React 환경에서 process.env 안전하게 접근
@@ -54,7 +54,7 @@ export const ENDPOINTS = {
   PROCESS_BY_ID: (id: number | string) => `${API_BASE}/api/processes/${id}`,
   
   // ==========================================================================
-  // 디바이스 관리 API
+  // 디바이스 관리 API (protocol_id 직접 처리 지원)
   // ==========================================================================
   DEVICES: `${API_BASE}/api/devices`,
   DEVICE_BY_ID: (id: number | string) => `${API_BASE}/api/devices/${id}`,
@@ -63,9 +63,21 @@ export const ENDPOINTS = {
   DEVICE_ENABLE: (id: number | string) => `${API_BASE}/api/devices/${id}/enable`,
   DEVICE_DISABLE: (id: number | string) => `${API_BASE}/api/devices/${id}/disable`,
   DEVICE_RESTART: (id: number | string) => `${API_BASE}/api/devices/${id}/restart`,
-  DEVICE_PROTOCOLS: `${API_BASE}/api/devices/protocols`,
+  DEVICE_PROTOCOLS: `${API_BASE}/api/devices/protocols`,  // ID 정보 포함하여 반환
   DEVICE_STATISTICS: `${API_BASE}/api/devices/statistics`,
   DEVICE_BULK_ACTION: `${API_BASE}/api/devices/bulk-action`,
+  
+  // RTU 전용 엔드포인트들
+  RTU_NETWORKS: `${API_BASE}/api/devices/rtu/networks`,
+  RTU_NETWORK_BY_ID: (id: number | string) => `${API_BASE}/api/devices/rtu/networks/${id}`,
+  RTU_MASTER_SLAVES: (masterId: number | string) => `${API_BASE}/api/devices/rtu/master/${masterId}/slaves`,
+  RTU_SLAVE_STATUS: (slaveId: number | string) => `${API_BASE}/api/devices/rtu/slave/${slaveId}/status`,
+  RTU_NETWORK_SCAN: `${API_BASE}/api/devices/rtu/scan`,
+  RTU_NETWORK_STATUS: (port: string) => `${API_BASE}/api/devices/rtu/port/${encodeURIComponent(port)}/status`,
+  
+  // 디버깅 API (개발용)
+  DEBUG_DEVICES_DIRECT: `${API_BASE}/api/devices/debug/direct`,
+  DEBUG_REPOSITORY: `${API_BASE}/api/devices/debug/repository`,
   
   // ==========================================================================
   // 데이터 탐색 API
@@ -91,7 +103,7 @@ export const ENDPOINTS = {
   REALTIME_STATS: `${API_BASE}/api/realtime/stats`,
   
   // ==========================================================================
-  // 🚨 완전한 알람 관리 API - 백엔드 라우트와 정확히 일치 (category, tags 지원 + 토글 기능)
+  // 완전한 알람 관리 API
   // ==========================================================================
   
   // ---- 알람 발생 (Alarm Occurrences) ----
@@ -102,7 +114,7 @@ export const ENDPOINTS = {
   ALARMS_OCCURRENCE_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`,
   ALARMS_HISTORY: `${API_BASE}/api/alarms/history`,
   
-  // ---- 카테고리/태그별 알람 발생 (새로 추가) ----
+  // ---- 카테고리/태그별 알람 발생 ----
   ALARMS_OCCURRENCES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/occurrences/category/${category}`,
   ALARMS_OCCURRENCES_TAG: (tag: string) => `${API_BASE}/api/alarms/occurrences/tag/${tag}`,
   
@@ -112,12 +124,12 @@ export const ENDPOINTS = {
   ALARM_RULES_STATISTICS: `${API_BASE}/api/alarms/rules/statistics`,
   ALARM_RULE_SETTINGS: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/settings`,
   
-  // 🚀 새로 추가된 간단한 업데이트 엔드포인트들 (NEW!)
+  // 간단한 업데이트 엔드포인트들
   ALARM_RULE_TOGGLE: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/toggle`,
   ALARM_RULE_NAME: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/name`,
   ALARM_RULE_SEVERITY: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/severity`,
   
-  // ---- 카테고리/태그별 알람 규칙 (새로 추가) ----
+  // ---- 카테고리/태그별 알람 규칙 ----
   ALARM_RULES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/rules/category/${category}`,
   ALARM_RULES_TAG: (tag: string) => `${API_BASE}/api/alarms/rules/tag/${tag}`,
   
@@ -133,7 +145,7 @@ export const ENDPOINTS = {
   ALARM_TEMPLATES_SEARCH: `${API_BASE}/api/alarms/templates/search`,
   ALARM_TEMPLATES_MOST_USED: `${API_BASE}/api/alarms/templates/most-used`,
   
-  // ---- 태그별 알람 템플릿 (새로 추가) ----
+  // ---- 태그별 알람 템플릿 ----
   ALARM_TEMPLATES_TAG: (tag: string) => `${API_BASE}/api/alarms/templates/tag/${tag}`,
   
   // ---- 특화 알람 엔드포인트들 ----
@@ -143,10 +155,10 @@ export const ENDPOINTS = {
   ALARM_DEVICE: (deviceId: number | string) => `${API_BASE}/api/alarms/device/${deviceId}`,
   ALARM_TEST: `${API_BASE}/api/alarms/test`,
   
-  // ---- 기존 호환성 엔드포인트들 (Deprecated but maintained) ----
-  ALARM_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}`, // 리다이렉트
-  ALARM_ACKNOWLEDGE: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/acknowledge`, // 리다이렉트
-  ALARM_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`, // 리다이렉트
+  // ---- 기존 호환성 엔드포인트들 ----
+  ALARM_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}`,
+  ALARM_ACKNOWLEDGE: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/acknowledge`,
+  ALARM_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`,
   
   // ==========================================================================
   // 대시보드 API
@@ -273,128 +285,124 @@ export const ENDPOINTS = {
 } as const;
 
 // ==========================================================================
-// 타입 안전성을 위한 엔드포인트 그룹화 (알람 API 업데이트됨 + 토글 기능)
+// URL 빌더 유틸리티 함수들 - protocol_id 지원 추가
 // ==========================================================================
 
-export const API_GROUPS = {
-  SYSTEM: {
-    STATUS: ENDPOINTS.SYSTEM_STATUS,
-    INFO: ENDPOINTS.SYSTEM_INFO,
-    DATABASES: ENDPOINTS.SYSTEM_DATABASES,
-    HEALTH: ENDPOINTS.SYSTEM_HEALTH
-  },
+/**
+ * 디바이스 목록 조회 URL - protocol_id 필터 지원
+ */
+export function buildDevicesListUrl(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  protocol_type?: string;    // 백워드 호환성
+  protocol_id?: number;      // 새로 추가 - ID로 필터링
+  device_type?: string;
+  connection_status?: string;
+  status?: string;
+  site_id?: number;
+  sort_by?: string;
+  sort_order?: 'ASC' | 'DESC';
+  include_rtu_relations?: boolean;
+}): string {
+  return buildUrlWithParams(ENDPOINTS.DEVICES, params);
+}
+
+/**
+ * 디바이스 생성/수정용 데이터 유효성 검사
+ */
+export function validateDeviceData(data: {
+  name?: string;
+  protocol_id?: number;      // protocol_type 대신 protocol_id 사용
+  endpoint?: string;
+  [key: string]: any;
+}): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
   
-  DEVICES: {
-    LIST: ENDPOINTS.DEVICES,
-    DETAIL: ENDPOINTS.DEVICE_BY_ID,
-    DATA_POINTS: ENDPOINTS.DEVICE_DATA_POINTS,
-    TEST_CONNECTION: ENDPOINTS.DEVICE_TEST_CONNECTION,
-    ENABLE: ENDPOINTS.DEVICE_ENABLE,
-    DISABLE: ENDPOINTS.DEVICE_DISABLE,
-    RESTART: ENDPOINTS.DEVICE_RESTART,
-    PROTOCOLS: ENDPOINTS.DEVICE_PROTOCOLS,
-    STATISTICS: ENDPOINTS.DEVICE_STATISTICS,
-    BULK_ACTION: ENDPOINTS.DEVICE_BULK_ACTION
-  },
-  
-  DATA: {
-    POINTS: ENDPOINTS.DATA_POINTS,
-    POINT_DETAIL: ENDPOINTS.DATA_POINT_BY_ID,
-    CURRENT_VALUES: ENDPOINTS.DATA_CURRENT_VALUES,
-    DEVICE_VALUES: ENDPOINTS.DATA_DEVICE_VALUES,
-    HISTORICAL: ENDPOINTS.DATA_HISTORICAL,
-    QUERY: ENDPOINTS.DATA_QUERY,
-    EXPORT: ENDPOINTS.DATA_EXPORT,
-    STATISTICS: ENDPOINTS.DATA_STATISTICS
-  },
-  
-  REALTIME: {
-    CURRENT_VALUES: ENDPOINTS.REALTIME_CURRENT_VALUES,
-    DEVICE_VALUES: ENDPOINTS.REALTIME_DEVICE_VALUES,
-    SUBSCRIBE: ENDPOINTS.REALTIME_SUBSCRIBE,
-    UNSUBSCRIBE: ENDPOINTS.REALTIME_UNSUBSCRIBE,
-    SUBSCRIPTIONS: ENDPOINTS.REALTIME_SUBSCRIPTIONS,
-    POLL: ENDPOINTS.REALTIME_POLL,
-    STATS: ENDPOINTS.REALTIME_STATS
-  },
-  
-  // 🚨 완전히 업데이트된 알람 API 그룹 (category, tags 지원 + 토글 기능)
-  ALARMS: {
-    // 알람 발생 관련
-    ACTIVE: ENDPOINTS.ALARMS_ACTIVE,
-    OCCURRENCES: ENDPOINTS.ALARMS_OCCURRENCES,
-    OCCURRENCE_DETAIL: ENDPOINTS.ALARMS_OCCURRENCE_BY_ID,
-    ACKNOWLEDGE: ENDPOINTS.ALARMS_OCCURRENCE_ACKNOWLEDGE,
-    CLEAR: ENDPOINTS.ALARMS_OCCURRENCE_CLEAR,
-    HISTORY: ENDPOINTS.ALARMS_HISTORY,
-    UNACKNOWLEDGED: ENDPOINTS.ALARM_UNACKNOWLEDGED,
-    RECENT: ENDPOINTS.ALARM_RECENT,
-    DEVICE_ALARMS: ENDPOINTS.ALARM_DEVICE,
-    
-    // 카테고리/태그별 알람 발생 (새로 추가)
-    OCCURRENCES_BY_CATEGORY: ENDPOINTS.ALARMS_OCCURRENCES_CATEGORY,
-    OCCURRENCES_BY_TAG: ENDPOINTS.ALARMS_OCCURRENCES_TAG,
-    
-    // 알람 규칙 관련
-    RULES: ENDPOINTS.ALARM_RULES,
-    RULE_DETAIL: ENDPOINTS.ALARM_RULE_BY_ID,
-    RULES_STATISTICS: ENDPOINTS.ALARM_RULES_STATISTICS,
-    RULE_SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
-    
-    // 🚀 간단한 업데이트 엔드포인트들 (NEW!)
-    RULE_TOGGLE: ENDPOINTS.ALARM_RULE_TOGGLE,
-    RULE_NAME: ENDPOINTS.ALARM_RULE_NAME,
-    RULE_SEVERITY: ENDPOINTS.ALARM_RULE_SEVERITY,
-    
-    // 카테고리/태그별 알람 규칙 (새로 추가)
-    RULES_BY_CATEGORY: ENDPOINTS.ALARM_RULES_CATEGORY,
-    RULES_BY_TAG: ENDPOINTS.ALARM_RULES_TAG,
-    
-    // 알람 템플릿 관련
-    TEMPLATES: ENDPOINTS.ALARM_TEMPLATES,
-    TEMPLATE_DETAIL: ENDPOINTS.ALARM_TEMPLATE_BY_ID,
-    TEMPLATES_CATEGORY: ENDPOINTS.ALARM_TEMPLATES_CATEGORY,
-    TEMPLATES_SYSTEM: ENDPOINTS.ALARM_TEMPLATES_SYSTEM,
-    TEMPLATES_DATA_TYPE: ENDPOINTS.ALARM_TEMPLATES_DATA_TYPE,
-    TEMPLATE_APPLY: ENDPOINTS.ALARM_TEMPLATE_APPLY,
-    TEMPLATE_APPLIED_RULES: ENDPOINTS.ALARM_TEMPLATE_APPLIED_RULES,
-    TEMPLATES_STATISTICS: ENDPOINTS.ALARM_TEMPLATES_STATISTICS,
-    TEMPLATES_SEARCH: ENDPOINTS.ALARM_TEMPLATES_SEARCH,
-    TEMPLATES_MOST_USED: ENDPOINTS.ALARM_TEMPLATES_MOST_USED,
-    
-    // 태그별 알람 템플릿 (새로 추가)
-    TEMPLATES_BY_TAG: ENDPOINTS.ALARM_TEMPLATES_TAG,
-    
-    // 통계 및 기타
-    STATISTICS: ENDPOINTS.ALARM_STATISTICS,
-    TEST: ENDPOINTS.ALARM_TEST
-  },
-  
-  VIRTUAL_POINTS: {
-    LIST: ENDPOINTS.VIRTUAL_POINTS,
-    DETAIL: ENDPOINTS.VIRTUAL_POINT_BY_ID,
-    TEST: ENDPOINTS.VIRTUAL_POINT_TEST,
-    EXECUTE: ENDPOINTS.VIRTUAL_POINT_EXECUTE,
-    DEPENDENCIES: ENDPOINTS.VIRTUAL_POINT_DEPENDENCIES,
-    HISTORY: ENDPOINTS.VIRTUAL_POINT_HISTORY,
-    VALUE: ENDPOINTS.VIRTUAL_POINT_VALUE,
-    STATS_CATEGORY: ENDPOINTS.VIRTUAL_POINTS_STATS_CATEGORY,
-    STATS_PERFORMANCE: ENDPOINTS.VIRTUAL_POINTS_STATS_PERFORMANCE
-  },
-  
-  DASHBOARD: {
-    OVERVIEW: ENDPOINTS.DASHBOARD_OVERVIEW,
-    TENANT_STATS: ENDPOINTS.DASHBOARD_TENANT_STATS,
-    RECENT_DEVICES: ENDPOINTS.DASHBOARD_RECENT_DEVICES,
-    SYSTEM_HEALTH: ENDPOINTS.DASHBOARD_SYSTEM_HEALTH,
-    SERVICE_CONTROL: ENDPOINTS.DASHBOARD_SERVICE_CONTROL,
-    SERVICES_STATUS: ENDPOINTS.DASHBOARD_SERVICES_STATUS
+  if (data.name !== undefined && (!data.name || data.name.trim().length === 0)) {
+    errors.push('Device name is required');
   }
-} as const;
+  
+  if (data.protocol_id !== undefined && (!data.protocol_id || typeof data.protocol_id !== 'number' || data.protocol_id < 1)) {
+    errors.push('Valid protocol_id is required');
+  }
+  
+  if (data.endpoint !== undefined && (!data.endpoint || data.endpoint.trim().length === 0)) {
+    errors.push('Endpoint is required');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
 
-// ==========================================================================
-// URL 빌더 유틸리티 함수들
-// ==========================================================================
+/**
+ * protocol_type을 protocol_id로 변환하는 헬퍼 (클라이언트 사이드)
+ * ProtocolManager에서 사용
+ */
+export function convertProtocolTypeToId(protocolType: string, protocolList: Array<{ id: number; protocol_type: string }>): number | null {
+  const protocol = protocolList.find(p => p.protocol_type === protocolType);
+  return protocol ? protocol.id : null;
+}
+
+/**
+ * protocol_id를 protocol_type으로 변환하는 헬퍼 (클라이언트 사이드)
+ */
+export function convertProtocolIdToType(protocolId: number, protocolList: Array<{ id: number; protocol_type: string }>): string | null {
+  const protocol = protocolList.find(p => p.id === protocolId);
+  return protocol ? protocol.protocol_type : null;
+}
+
+/**
+ * RTU 네트워크 상태 조회 URL 빌더
+ */
+export function buildRtuNetworkStatusUrl(serialPort: string): string {
+  return ENDPOINTS.RTU_NETWORK_STATUS(serialPort);
+}
+
+/**
+ * RTU 마스터의 슬래이브 목록 URL 빌더
+ */
+export function buildRtuMasterSlavesUrl(masterId: number | string, params?: {
+  include_status?: boolean;
+  include_data_points?: boolean;
+}): string {
+  return buildUrlWithParams(ENDPOINTS.RTU_MASTER_SLAVES(masterId), params);
+}
+
+/**
+ * RTU 슬래이브 상태 조회 URL 빌더
+ */
+export function buildRtuSlaveStatusUrl(slaveId: number | string, params?: {
+  include_master_info?: boolean;
+  include_communication_stats?: boolean;
+}): string {
+  return buildUrlWithParams(ENDPOINTS.RTU_SLAVE_STATUS(slaveId), params);
+}
+
+/**
+ * RTU 네트워크 스캔 URL 빌더
+ */
+export function buildRtuNetworkScanUrl(params: {
+  serial_port: string;
+  start_slave_id?: number;
+  end_slave_id?: number;
+  timeout_ms?: number;
+  baud_rate?: number;
+}): string {
+  return buildUrlWithParams(ENDPOINTS.RTU_NETWORK_SCAN, params);
+}
+
+/**
+ * 디바이스 상세 조회 URL (RTU 네트워크 정보 포함 옵션)
+ */
+export function buildDeviceDetailUrl(deviceId: number | string, params?: {
+  include_data_points?: boolean;
+  include_rtu_network?: boolean;
+}): string {
+  return buildUrlWithParams(ENDPOINTS.DEVICE_BY_ID(deviceId), params);
+}
 
 /**
  * 쿼리 파라미터를 URL에 추가하는 헬퍼 함수
@@ -455,7 +463,7 @@ export function buildSortedUrl(endpoint: string, params: {
 }
 
 /**
- * 알람 관련 검색 URL 빌더 - category, tag 지원
+ * 알람 관련 검색 URL 빌더
  */
 export function buildAlarmSearchUrl(baseEndpoint: string, params: {
   search?: string;
@@ -466,18 +474,18 @@ export function buildAlarmSearchUrl(baseEndpoint: string, params: {
   date_to?: string;
   page?: number;
   limit?: number;
-  category?: string;  // 새로 추가
-  tag?: string;       // 새로 추가
+  category?: string;
+  tag?: string;
 }): string {
   return buildUrlWithParams(baseEndpoint, params);
 }
 
 /**
- * 템플릿 적용 URL 빌더 - target_type 지원
+ * 템플릿 적용 URL 빌더
  */
 export function buildTemplateApplyUrl(templateId: number | string, params: {
-  target_ids: number[];     // data_point_ids에서 변경
-  target_type?: string;     // 새로 추가
+  target_ids: number[];
+  target_type?: string;
   custom_configs?: Record<string, any>;
   rule_group_name?: string;
 }): string {
@@ -485,7 +493,7 @@ export function buildTemplateApplyUrl(templateId: number | string, params: {
 }
 
 /**
- * 카테고리별 알람 URL 빌더 (새로 추가)
+ * 카테고리별 알람 URL 빌더
  */
 export function buildAlarmCategoryUrl(category: string, type: 'rules' | 'occurrences' | 'templates'): string {
   switch (type) {
@@ -501,7 +509,7 @@ export function buildAlarmCategoryUrl(category: string, type: 'rules' | 'occurre
 }
 
 /**
- * 태그별 알람 URL 빌더 (새로 추가)
+ * 태그별 알람 URL 빌더
  */
 export function buildAlarmTagUrl(tag: string, type: 'rules' | 'occurrences' | 'templates'): string {
   switch (type) {
@@ -517,14 +525,14 @@ export function buildAlarmTagUrl(tag: string, type: 'rules' | 'occurrences' | 't
 }
 
 /**
- * 🚀 알람 규칙 토글 URL 빌더 (NEW!)
+ * 알람 규칙 토글 URL 빌더
  */
 export function buildAlarmToggleUrl(ruleId: number | string): string {
   return ENDPOINTS.ALARM_RULE_TOGGLE(ruleId);
 }
 
 /**
- * 🚀 알람 규칙 간단 업데이트 URL 빌더 (NEW!)
+ * 알람 규칙 간단 업데이트 URL 빌더
  */
 export function buildAlarmSimpleUpdateUrl(ruleId: number | string, updateType: 'settings' | 'name' | 'severity'): string {
   switch (updateType) {
@@ -549,7 +557,140 @@ export function buildWebSocketUrl(baseUrl: string, endpoint: string, params?: Re
 }
 
 // ==========================================================================
-// 엔드포인트 검증 유틸리티
+// 타입 안전성을 위한 엔드포인트 그룹화
+// ==========================================================================
+
+export const API_GROUPS = {
+  SYSTEM: {
+    STATUS: ENDPOINTS.SYSTEM_STATUS,
+    INFO: ENDPOINTS.SYSTEM_INFO,
+    DATABASES: ENDPOINTS.SYSTEM_DATABASES,
+    HEALTH: ENDPOINTS.SYSTEM_HEALTH
+  },
+  
+  DEVICES: {
+    LIST: ENDPOINTS.DEVICES,
+    DETAIL: ENDPOINTS.DEVICE_BY_ID,
+    DATA_POINTS: ENDPOINTS.DEVICE_DATA_POINTS,
+    TEST_CONNECTION: ENDPOINTS.DEVICE_TEST_CONNECTION,
+    ENABLE: ENDPOINTS.DEVICE_ENABLE,
+    DISABLE: ENDPOINTS.DEVICE_DISABLE,
+    RESTART: ENDPOINTS.DEVICE_RESTART,
+    PROTOCOLS: ENDPOINTS.DEVICE_PROTOCOLS,  // ID 정보 포함
+    STATISTICS: ENDPOINTS.DEVICE_STATISTICS,
+    BULK_ACTION: ENDPOINTS.DEVICE_BULK_ACTION,
+    
+    // RTU 전용 엔드포인트 그룹
+    RTU: {
+      NETWORKS: ENDPOINTS.RTU_NETWORKS,
+      NETWORK_BY_ID: ENDPOINTS.RTU_NETWORK_BY_ID,
+      MASTER_SLAVES: ENDPOINTS.RTU_MASTER_SLAVES,
+      SLAVE_STATUS: ENDPOINTS.RTU_SLAVE_STATUS,
+      NETWORK_SCAN: ENDPOINTS.RTU_NETWORK_SCAN,
+      NETWORK_STATUS: ENDPOINTS.RTU_NETWORK_STATUS
+    },
+    
+    // 디버깅 API
+    DEBUG: {
+      DIRECT: ENDPOINTS.DEBUG_DEVICES_DIRECT,
+      REPOSITORY: ENDPOINTS.DEBUG_REPOSITORY
+    }
+  },
+  
+  DATA: {
+    POINTS: ENDPOINTS.DATA_POINTS,
+    POINT_DETAIL: ENDPOINTS.DATA_POINT_BY_ID,
+    CURRENT_VALUES: ENDPOINTS.DATA_CURRENT_VALUES,
+    DEVICE_VALUES: ENDPOINTS.DATA_DEVICE_VALUES,
+    HISTORICAL: ENDPOINTS.DATA_HISTORICAL,
+    QUERY: ENDPOINTS.DATA_QUERY,
+    EXPORT: ENDPOINTS.DATA_EXPORT,
+    STATISTICS: ENDPOINTS.DATA_STATISTICS
+  },
+  
+  REALTIME: {
+    CURRENT_VALUES: ENDPOINTS.REALTIME_CURRENT_VALUES,
+    DEVICE_VALUES: ENDPOINTS.REALTIME_DEVICE_VALUES,
+    SUBSCRIBE: ENDPOINTS.REALTIME_SUBSCRIBE,
+    UNSUBSCRIBE: ENDPOINTS.REALTIME_UNSUBSCRIBE,
+    SUBSCRIPTIONS: ENDPOINTS.REALTIME_SUBSCRIPTIONS,
+    POLL: ENDPOINTS.REALTIME_POLL,
+    STATS: ENDPOINTS.REALTIME_STATS
+  },
+  
+  ALARMS: {
+    // 알람 발생 관련
+    ACTIVE: ENDPOINTS.ALARMS_ACTIVE,
+    OCCURRENCES: ENDPOINTS.ALARMS_OCCURRENCES,
+    OCCURRENCE_DETAIL: ENDPOINTS.ALARMS_OCCURRENCE_BY_ID,
+    ACKNOWLEDGE: ENDPOINTS.ALARMS_OCCURRENCE_ACKNOWLEDGE,
+    CLEAR: ENDPOINTS.ALARMS_OCCURRENCE_CLEAR,
+    HISTORY: ENDPOINTS.ALARMS_HISTORY,
+    UNACKNOWLEDGED: ENDPOINTS.ALARM_UNACKNOWLEDGED,
+    RECENT: ENDPOINTS.ALARM_RECENT,
+    DEVICE_ALARMS: ENDPOINTS.ALARM_DEVICE,
+    
+    // 카테고리/태그별 알람 발생
+    OCCURRENCES_BY_CATEGORY: ENDPOINTS.ALARMS_OCCURRENCES_CATEGORY,
+    OCCURRENCES_BY_TAG: ENDPOINTS.ALARMS_OCCURRENCES_TAG,
+    
+    // 알람 규칙 관련
+    RULES: ENDPOINTS.ALARM_RULES,
+    RULE_DETAIL: ENDPOINTS.ALARM_RULE_BY_ID,
+    RULES_STATISTICS: ENDPOINTS.ALARM_RULES_STATISTICS,
+    RULE_SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
+    
+    // 간단한 업데이트 엔드포인트들
+    RULE_TOGGLE: ENDPOINTS.ALARM_RULE_TOGGLE,
+    RULE_NAME: ENDPOINTS.ALARM_RULE_NAME,
+    RULE_SEVERITY: ENDPOINTS.ALARM_RULE_SEVERITY,
+    
+    // 카테고리/태그별 알람 규칙
+    RULES_BY_CATEGORY: ENDPOINTS.ALARM_RULES_CATEGORY,
+    RULES_BY_TAG: ENDPOINTS.ALARM_RULES_TAG,
+    
+    // 알람 템플릿 관련
+    TEMPLATES: ENDPOINTS.ALARM_TEMPLATES,
+    TEMPLATE_DETAIL: ENDPOINTS.ALARM_TEMPLATE_BY_ID,
+    TEMPLATES_CATEGORY: ENDPOINTS.ALARM_TEMPLATES_CATEGORY,
+    TEMPLATES_SYSTEM: ENDPOINTS.ALARM_TEMPLATES_SYSTEM,
+    TEMPLATES_DATA_TYPE: ENDPOINTS.ALARM_TEMPLATES_DATA_TYPE,
+    TEMPLATE_APPLY: ENDPOINTS.ALARM_TEMPLATE_APPLY,
+    TEMPLATE_APPLIED_RULES: ENDPOINTS.ALARM_TEMPLATE_APPLIED_RULES,
+    TEMPLATES_STATISTICS: ENDPOINTS.ALARM_TEMPLATES_STATISTICS,
+    TEMPLATES_SEARCH: ENDPOINTS.ALARM_TEMPLATES_SEARCH,
+    TEMPLATES_MOST_USED: ENDPOINTS.ALARM_TEMPLATES_MOST_USED,
+    TEMPLATES_BY_TAG: ENDPOINTS.ALARM_TEMPLATES_TAG,
+    
+    // 통계 및 기타
+    STATISTICS: ENDPOINTS.ALARM_STATISTICS,
+    TEST: ENDPOINTS.ALARM_TEST
+  },
+  
+  VIRTUAL_POINTS: {
+    LIST: ENDPOINTS.VIRTUAL_POINTS,
+    DETAIL: ENDPOINTS.VIRTUAL_POINT_BY_ID,
+    TEST: ENDPOINTS.VIRTUAL_POINT_TEST,
+    EXECUTE: ENDPOINTS.VIRTUAL_POINT_EXECUTE,
+    DEPENDENCIES: ENDPOINTS.VIRTUAL_POINT_DEPENDENCIES,
+    HISTORY: ENDPOINTS.VIRTUAL_POINT_HISTORY,
+    VALUE: ENDPOINTS.VIRTUAL_POINT_VALUE,
+    STATS_CATEGORY: ENDPOINTS.VIRTUAL_POINTS_STATS_CATEGORY,
+    STATS_PERFORMANCE: ENDPOINTS.VIRTUAL_POINTS_STATS_PERFORMANCE
+  },
+  
+  DASHBOARD: {
+    OVERVIEW: ENDPOINTS.DASHBOARD_OVERVIEW,
+    TENANT_STATS: ENDPOINTS.DASHBOARD_TENANT_STATS,
+    RECENT_DEVICES: ENDPOINTS.DASHBOARD_RECENT_DEVICES,
+    SYSTEM_HEALTH: ENDPOINTS.DASHBOARD_SYSTEM_HEALTH,
+    SERVICE_CONTROL: ENDPOINTS.DASHBOARD_SERVICE_CONTROL,
+    SERVICES_STATUS: ENDPOINTS.DASHBOARD_SERVICES_STATUS
+  }
+} as const;
+
+// ==========================================================================
+// 엔드포인트 검증 및 유틸리티
 // ==========================================================================
 
 /**
@@ -560,6 +701,13 @@ export function isValidEndpoint(endpoint: string): boolean {
          Object.values(ENDPOINTS).some(value => 
            typeof value === 'function' || endpoint.startsWith('/api/')
          );
+}
+
+/**
+ * RTU 관련 엔드포인트만 가져오는 함수
+ */
+export function getRtuEndpoints(): Record<string, string | Function> {
+  return API_GROUPS.DEVICES.RTU;
 }
 
 /**
@@ -574,47 +722,6 @@ export function getEndpointsByGroup(group: keyof typeof API_GROUPS): Record<stri
  */
 export function getAllEndpoints(): string[] {
   return Object.values(ENDPOINTS).filter(value => typeof value === 'string');
-}
-
-/**
- * 알람 관련 엔드포인트만 가져오는 함수
- */
-export function getAlarmEndpoints(): Record<string, string | Function> {
-  return API_GROUPS.ALARMS;
-}
-
-/**
- * 카테고리별 엔드포인트 목록 (새로 추가)
- */
-export function getCategoryEndpoints(): Record<string, Function> {
-  return {
-    ALARM_RULES: ENDPOINTS.ALARM_RULES_CATEGORY,
-    ALARM_OCCURRENCES: ENDPOINTS.ALARMS_OCCURRENCES_CATEGORY,
-    ALARM_TEMPLATES: ENDPOINTS.ALARM_TEMPLATES_CATEGORY
-  };
-}
-
-/**
- * 태그별 엔드포인트 목록 (새로 추가)
- */
-export function getTagEndpoints(): Record<string, Function> {
-  return {
-    ALARM_RULES: ENDPOINTS.ALARM_RULES_TAG,
-    ALARM_OCCURRENCES: ENDPOINTS.ALARMS_OCCURRENCES_TAG,
-    ALARM_TEMPLATES: ENDPOINTS.ALARM_TEMPLATES_TAG
-  };
-}
-
-/**
- * 🚀 간단한 업데이트 엔드포인트 목록 (NEW!)
- */
-export function getSimpleUpdateEndpoints(): Record<string, Function> {
-  return {
-    TOGGLE: ENDPOINTS.ALARM_RULE_TOGGLE,
-    SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
-    NAME: ENDPOINTS.ALARM_RULE_NAME,
-    SEVERITY: ENDPOINTS.ALARM_RULE_SEVERITY
-  };
 }
 
 // 환경별 설정
@@ -658,7 +765,7 @@ export const HTTP_STATUS = {
   SERVICE_UNAVAILABLE: 503
 } as const;
 
-// 에러 코드 상수 (알람 관련 추가)
+// 에러 코드 상수 - protocol_id 관련 추가
 export const ERROR_CODES = {
   // 네트워크 관련
   NETWORK_ERROR: 'NETWORK_ERROR',
@@ -673,7 +780,29 @@ export const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   DUPLICATE_ERROR: 'DUPLICATE_ERROR',
   
-  // 🚨 알람 관련 에러 코드들 (백엔드와 일치 + 토글 기능)
+  // 디바이스 및 프로토콜 관련 에러 코드들
+  DEVICE_NOT_FOUND: 'DEVICE_NOT_FOUND',
+  DEVICE_NAME_CONFLICT: 'DEVICE_NAME_CONFLICT',
+  DEVICE_CREATE_ERROR: 'DEVICE_CREATE_ERROR',
+  DEVICE_UPDATE_ERROR: 'DEVICE_UPDATE_ERROR',
+  DEVICE_DELETE_ERROR: 'DEVICE_DELETE_ERROR',
+  PROTOCOL_ID_REQUIRED: 'PROTOCOL_ID_REQUIRED',          // 새로 추가
+  INVALID_PROTOCOL_ID: 'INVALID_PROTOCOL_ID',            // 새로 추가
+  PROTOCOL_ID_NOT_FOUND: 'PROTOCOL_ID_NOT_FOUND',        // 새로 추가
+  UNSUPPORTED_PROTOCOL: 'UNSUPPORTED_PROTOCOL',
+  
+  // RTU 관련 에러 코드들
+  RTU_NETWORK_ERROR: 'RTU_NETWORK_ERROR',
+  RTU_MASTER_NOT_FOUND: 'RTU_MASTER_NOT_FOUND',
+  RTU_SLAVE_NOT_FOUND: 'RTU_SLAVE_NOT_FOUND',
+  RTU_COMMUNICATION_ERROR: 'RTU_COMMUNICATION_ERROR',
+  RTU_SCAN_TIMEOUT: 'RTU_SCAN_TIMEOUT',
+  RTU_SERIAL_PORT_ERROR: 'RTU_SERIAL_PORT_ERROR',
+  RTU_BAUD_RATE_ERROR: 'RTU_BAUD_RATE_ERROR',
+  RTU_SLAVE_ID_CONFLICT: 'RTU_SLAVE_ID_CONFLICT',
+  RTU_NETWORK_STATUS_ERROR: 'RTU_NETWORK_STATUS_ERROR',
+  
+  // 알람 관련 에러 코드들
   ALARM_NOT_FOUND: 'ALARM_NOT_FOUND',
   ALARM_RULE_NOT_FOUND: 'ALARM_RULE_NOT_FOUND',
   ALARM_TEMPLATE_NOT_FOUND: 'ALARM_TEMPLATE_NOT_FOUND',
@@ -684,8 +813,8 @@ export const ERROR_CODES = {
   ALARM_RULE_UPDATE_ERROR: 'ALARM_RULE_UPDATE_ERROR',
   ALARM_RULE_DELETE_ERROR: 'ALARM_RULE_DELETE_ERROR',
   ALARM_RULE_DETAIL_ERROR: 'ALARM_RULE_DETAIL_ERROR',
-  ALARM_RULE_TOGGLE_ERROR: 'ALARM_RULE_TOGGLE_ERROR',        // 새로 추가
-  ALARM_RULE_SETTINGS_ERROR: 'ALARM_RULE_SETTINGS_ERROR',    // 새로 추가
+  ALARM_RULE_TOGGLE_ERROR: 'ALARM_RULE_TOGGLE_ERROR',
+  ALARM_RULE_SETTINGS_ERROR: 'ALARM_RULE_SETTINGS_ERROR',
   ALARM_OCCURRENCE_ERROR: 'ALARM_OCCURRENCE_ERROR',
   ALARM_ACKNOWLEDGE_ERROR: 'ALARM_ACKNOWLEDGE_ERROR',
   ALARM_CLEAR_ERROR: 'ALARM_CLEAR_ERROR',
@@ -698,12 +827,12 @@ export const ERROR_CODES = {
   SETTINGS_UPDATE_ERROR: 'SETTINGS_UPDATE_ERROR',
   ACTIVE_ALARMS_ERROR: 'ACTIVE_ALARMS_ERROR',
   ALARM_STATS_ERROR: 'ALARM_STATS_ERROR',
-  CATEGORY_ALARM_RULES_ERROR: 'CATEGORY_ALARM_RULES_ERROR',        // 새로 추가
-  TAG_ALARM_RULES_ERROR: 'TAG_ALARM_RULES_ERROR',                  // 새로 추가
-  CATEGORY_ALARM_OCCURRENCES_ERROR: 'CATEGORY_ALARM_OCCURRENCES_ERROR', // 새로 추가
-  TAG_ALARM_OCCURRENCES_ERROR: 'TAG_ALARM_OCCURRENCES_ERROR',      // 새로 추가
-  CATEGORY_TEMPLATES_ERROR: 'CATEGORY_TEMPLATES_ERROR',            // 새로 추가
-  TAG_TEMPLATES_ERROR: 'TAG_TEMPLATES_ERROR',                      // 새로 추가
+  CATEGORY_ALARM_RULES_ERROR: 'CATEGORY_ALARM_RULES_ERROR',
+  TAG_ALARM_RULES_ERROR: 'TAG_ALARM_RULES_ERROR',
+  CATEGORY_ALARM_OCCURRENCES_ERROR: 'CATEGORY_ALARM_OCCURRENCES_ERROR',
+  TAG_ALARM_OCCURRENCES_ERROR: 'TAG_ALARM_OCCURRENCES_ERROR',
+  CATEGORY_TEMPLATES_ERROR: 'CATEGORY_TEMPLATES_ERROR',
+  TAG_TEMPLATES_ERROR: 'TAG_TEMPLATES_ERROR',
   TEST_ERROR: 'TEST_ERROR',
   
   // 서버 관련
@@ -711,55 +840,63 @@ export const ERROR_CODES = {
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE'
 } as const;
 
-// 알람 관련 상수들 (카테고리, 태그 추가)
+// 알람 관련 상수들
 export const ALARM_CONSTANTS = {
   SEVERITIES: ['critical', 'high', 'medium', 'low', 'info'] as const,
   STATES: ['active', 'acknowledged', 'cleared'] as const,
-  ALARM_TYPES: ['analog', 'digital', 'script'] as const,  // condition_types에서 변경
-  TARGET_TYPES: ['device', 'data_point', 'virtual_point'] as const,  // 새로 추가
+  ALARM_TYPES: ['analog', 'digital', 'script'] as const,
+  TARGET_TYPES: ['device', 'data_point', 'virtual_point'] as const,
   TEMPLATE_CATEGORIES: ['general', 'temperature', 'pressure', 'flow', 'level', 'vibration', 'electrical', 'safety'] as const,
   DATA_TYPES: ['number', 'boolean', 'string', 'object'] as const,
   
-  // 새로 추가된 상수들
   DEFAULT_CATEGORIES: [
-    'temperature',   // 온도
-    'pressure',      // 압력
-    'flow',          // 유량
-    'level',         // 레벨
-    'vibration',     // 진동
-    'electrical',    // 전기
-    'safety',        // 안전
-    'general'        // 일반
+    'temperature',   'pressure',      'flow',          'level',
+    'vibration',     'electrical',    'safety',        'general'
   ] as const,
   
   COMMON_TAGS: [
-    'critical',      // 중요
-    'maintenance',   // 유지보수
-    'production',    // 생산
-    'quality',       // 품질
-    'energy',        // 에너지
-    'efficiency',    // 효율성
-    'compliance',    // 규정준수
-    'monitoring'     // 모니터링
+    'critical',      'maintenance',   'production',    'quality',
+    'energy',        'efficiency',    'compliance',    'monitoring'
   ] as const,
   
-  // 🚀 간단한 업데이트 타입들 (NEW!)
   UPDATE_TYPES: [
-    'toggle',        // is_enabled 토글
-    'settings',      // 설정만 업데이트
-    'name',          // 이름만 업데이트
-    'severity'       // 심각도만 업데이트
+    'toggle',        'settings',      'name',          'severity'
   ] as const
+} as const;
+
+// RTU 관련 상수들
+export const RTU_CONSTANTS = {
+  BAUD_RATES: [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200] as const,
+  PARITY_OPTIONS: ['N', 'E', 'O'] as const, // None, Even, Odd
+  DATA_BITS: [5, 6, 7, 8] as const,
+  STOP_BITS: [1, 2] as const,
+  SLAVE_ID_RANGE: { min: 1, max: 247 } as const,
+  DEFAULT_TIMEOUTS: {
+    response: 1000,    // ms
+    byte: 100,         // ms
+    frame_delay: 50    // ms
+  } as const,
+  SCAN_DEFAULTS: {
+    start_slave_id: 1,
+    end_slave_id: 247,
+    timeout_ms: 2000
+  } as const
 } as const;
 
 export type AlarmSeverity = typeof ALARM_CONSTANTS.SEVERITIES[number];
 export type AlarmState = typeof ALARM_CONSTANTS.STATES[number];
-export type AlarmType = typeof ALARM_CONSTANTS.ALARM_TYPES[number];  // 타입명 변경
-export type AlarmTargetType = typeof ALARM_CONSTANTS.TARGET_TYPES[number];  // 새로 추가
+export type AlarmType = typeof ALARM_CONSTANTS.ALARM_TYPES[number];
+export type AlarmTargetType = typeof ALARM_CONSTANTS.TARGET_TYPES[number];
 export type AlarmTemplateCategory = typeof ALARM_CONSTANTS.TEMPLATE_CATEGORIES[number];
 export type AlarmDataType = typeof ALARM_CONSTANTS.DATA_TYPES[number];
-export type AlarmDefaultCategory = typeof ALARM_CONSTANTS.DEFAULT_CATEGORIES[number];  // 새로 추가
-export type AlarmCommonTag = typeof ALARM_CONSTANTS.COMMON_TAGS[number];  // 새로 추가
-export type AlarmUpdateType = typeof ALARM_CONSTANTS.UPDATE_TYPES[number];  // 새로 추가
+export type AlarmDefaultCategory = typeof ALARM_CONSTANTS.DEFAULT_CATEGORIES[number];
+export type AlarmCommonTag = typeof ALARM_CONSTANTS.COMMON_TAGS[number];
+export type AlarmUpdateType = typeof ALARM_CONSTANTS.UPDATE_TYPES[number];
 
-export default ENDPOINTS
+// RTU 관련 타입들
+export type RtuBaudRate = typeof RTU_CONSTANTS.BAUD_RATES[number];
+export type RtuParity = typeof RTU_CONSTANTS.PARITY_OPTIONS[number];
+export type RtuDataBits = typeof RTU_CONSTANTS.DATA_BITS[number];
+export type RtuStopBits = typeof RTU_CONSTANTS.STOP_BITS[number];
+
+export default ENDPOINTS;
