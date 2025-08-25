@@ -675,7 +675,7 @@ class DeviceQueries {
         p.category,
         p.supported_operations,
         p.supported_data_types,
-        p.connection_params_schema,
+        p.connection_params,
         COUNT(d.id) as device_count,
         SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
@@ -686,7 +686,7 @@ class DeviceQueries {
       GROUP BY p.id, p.protocol_type, p.display_name, p.description, 
                p.default_port, p.uses_serial, p.requires_broker,
                p.default_polling_interval, p.default_timeout, p.category,
-               p.supported_operations, p.supported_data_types, p.connection_params_schema
+               p.supported_operations, p.supported_data_types, p.connection_params
       ORDER BY device_count DESC, p.display_name
     `;
   }
