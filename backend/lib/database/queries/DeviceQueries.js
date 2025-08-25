@@ -23,7 +23,7 @@ class DeviceQueries {
         d.manufacturer,
         d.model,
         d.serial_number,
-        d.protocol_type,
+        d.protocol_id,
         d.endpoint,
         d.config,
         d.polling_interval,
@@ -34,6 +34,10 @@ class DeviceQueries {
         d.last_maintenance,
         d.created_at,
         d.updated_at,
+        
+        -- 프로토콜 정보 (JOIN으로 가져옴)
+        p.protocol_type,
+        p.display_name as protocol_name,
         
         -- 디바이스 설정
         ds.polling_interval_ms,
@@ -69,6 +73,7 @@ class DeviceQueries {
         SUM(CASE WHEN dp.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_point_count
         
       FROM devices d
+      LEFT JOIN protocols p ON p.id = d.protocol_id
       LEFT JOIN device_settings ds ON d.id = ds.device_id
       LEFT JOIN device_status dst ON d.id = dst.device_id  
       LEFT JOIN sites s ON d.site_id = s.id
@@ -78,37 +83,34 @@ class DeviceQueries {
     `;
   }
 
-  // 테넌트 필터 추가
   static addTenantFilter() {
     return ` AND d.tenant_id = ?`;
   }
 
-  // 사이트 필터 추가
   static addSiteFilter() {
     return ` AND d.site_id = ?`;
   }
 
-  // 프로토콜 타입 필터 추가
   static addProtocolTypeFilter() {
-    return ` AND d.protocol_type = ?`;
+    return ` AND p.protocol_type = ?`;
   }
 
-  // 디바이스 타입 필터 추가
+  static addProtocolIdFilter() {
+    return ` AND d.protocol_id = ?`;
+  }
+
   static addDeviceTypeFilter() {
     return ` AND d.device_type = ?`;
   }
 
-  // 연결 상태 필터 추가
   static addConnectionStatusFilter() {
     return ` AND dst.connection_status = ?`;
   }
 
-  // 상태 필터 추가
   static addStatusFilter() {
     return ` AND d.is_enabled = ?`;
   }
 
-  // 검색 필터 추가
   static addSearchFilter() {
     return ` AND (d.name LIKE ? OR d.description LIKE ? OR d.manufacturer LIKE ? OR d.model LIKE ?)`;
   }
@@ -119,7 +121,8 @@ class DeviceQueries {
       GROUP BY 
         d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
         d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
-        d.protocol_type, d.endpoint, d.config, d.polling_interval, d.timeout, d.retry_count,
+        d.protocol_id, p.protocol_type, p.display_name,
+        d.endpoint, d.config, d.polling_interval, d.timeout, d.retry_count,
         d.is_enabled, d.installation_date, d.last_maintenance, d.created_at, d.updated_at,
         ds.polling_interval_ms, ds.connection_timeout_ms, ds.max_retry_count,
         ds.retry_interval_ms, ds.backoff_time_ms, ds.keep_alive_enabled, ds.keep_alive_interval_s,
@@ -129,6 +132,7 @@ class DeviceQueries {
       ORDER BY d.id
     `;
   }
+
 
   // 제한 추가
   static addLimit() {
@@ -161,7 +165,7 @@ class DeviceQueries {
       INSERT INTO devices (
         tenant_id, site_id, device_group_id, edge_server_id,
         name, description, device_type, manufacturer, model, serial_number,
-        protocol_type, endpoint, config, polling_interval, timeout, retry_count,
+        protocol_id, endpoint, config, polling_interval, timeout, retry_count,  -- 🔥 변경
         is_enabled, installation_date, created_by
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
@@ -172,7 +176,7 @@ class DeviceQueries {
     return `
       UPDATE devices SET
         name = ?, description = ?, device_type = ?, manufacturer = ?, model = ?,
-        serial_number = ?, protocol_type = ?, endpoint = ?, config = ?,
+        serial_number = ?, protocol_id = ?, endpoint = ?, config = ?,  -- 🔥 변경
         polling_interval = ?, timeout = ?, retry_count = ?, is_enabled = ?,
         installation_date = ?, last_maintenance = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
@@ -384,14 +388,16 @@ class DeviceQueries {
   static getDeviceCountByProtocol() {
     return `
       SELECT 
-        protocol_type,
+        p.protocol_type,
+        p.display_name,
         COUNT(*) as total_count,
-        SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
+        SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
       FROM devices d
+      JOIN protocols p ON p.id = d.protocol_id  -- 🔥 JOIN 추가
       LEFT JOIN device_status dst ON d.id = dst.device_id
       WHERE d.tenant_id = ?
-      GROUP BY protocol_type
+      GROUP BY p.id, p.protocol_type, p.display_name  -- 🔥 GROUP BY 수정
       ORDER BY total_count DESC
     `;
   }
@@ -440,11 +446,12 @@ class DeviceQueries {
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_devices,
         SUM(CASE WHEN dst.connection_status = 'disconnected' THEN 1 ELSE 0 END) as disconnected_devices,
         SUM(CASE WHEN dst.connection_status = 'error' THEN 1 ELSE 0 END) as error_devices,
-        COUNT(DISTINCT d.protocol_type) as protocol_types,
+        COUNT(DISTINCT p.protocol_type) as protocol_types,  -- 🔥 변경: JOIN 사용
         COUNT(DISTINCT d.site_id) as sites_with_devices,
         COUNT(dp.id) as total_data_points,
         SUM(CASE WHEN dp.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_data_points
       FROM devices d
+      JOIN protocols p ON p.id = d.protocol_id  -- 🔥 JOIN 추가
       LEFT JOIN device_status dst ON d.id = dst.device_id
       LEFT JOIN data_points dp ON d.id = dp.device_id
       WHERE d.tenant_id = ?
@@ -457,11 +464,13 @@ class DeviceQueries {
       SELECT 
         d.id,
         d.name,
-        d.protocol_type,
+        p.protocol_type,         -- 🔥 변경: JOIN으로 가져오기
+        p.display_name as protocol_name,
         dst.connection_status,
         dst.last_communication,
         dst.response_time
       FROM devices d
+      JOIN protocols p ON p.id = d.protocol_id  -- 🔥 JOIN 추가
       INNER JOIN device_status dst ON d.id = dst.device_id
       WHERE d.tenant_id = ? AND dst.last_communication IS NOT NULL
       ORDER BY dst.last_communication DESC
@@ -475,12 +484,14 @@ class DeviceQueries {
       SELECT 
         d.id,
         d.name,
-        d.protocol_type,
+        p.protocol_type,         -- 🔥 변경: JOIN으로 가져오기
+        p.display_name as protocol_name,
         dst.connection_status,
         dst.last_error,
         dst.error_count,
         dst.last_communication
       FROM devices d
+      JOIN protocols p ON p.id = d.protocol_id  -- 🔥 JOIN 추가
       INNER JOIN device_status dst ON d.id = dst.device_id
       WHERE d.tenant_id = ? AND (dst.connection_status = 'error' OR dst.last_error IS NOT NULL OR dst.error_count > 0)
       ORDER BY dst.updated_at DESC
@@ -558,7 +569,8 @@ class DeviceQueries {
       SELECT 
         d.id,
         d.name,
-        d.protocol_type,
+        p.protocol_type,         -- 🔥 변경: JOIN으로 가져오기
+        p.display_name as protocol_name,
         d.endpoint,
         dst.connection_status,
         dst.last_communication,
@@ -566,6 +578,7 @@ class DeviceQueries {
         dst.last_error,
         dst.response_time
       FROM devices d
+      JOIN protocols p ON p.id = d.protocol_id  -- 🔥 JOIN 추가
       INNER JOIN device_status dst ON d.id = dst.device_id
       WHERE d.tenant_id = ? AND dst.connection_status = ?
       ORDER BY dst.last_communication DESC
@@ -650,15 +663,31 @@ class DeviceQueries {
   static getAvailableProtocols() {
     return `
       SELECT 
-        d.protocol_type,
-        COUNT(*) as device_count,
+        p.id,
+        p.protocol_type,
+        p.display_name,
+        p.description,
+        p.default_port,
+        p.uses_serial,
+        p.requires_broker,
+        p.default_polling_interval,
+        p.default_timeout,
+        p.category,
+        p.supported_operations,
+        p.supported_data_types,
+        p.connection_params_schema,
+        COUNT(d.id) as device_count,
         SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
-      FROM devices d
-      LEFT JOIN device_status dst ON d.id = dst.device_id
-      WHERE d.tenant_id = ?
-      GROUP BY d.protocol_type
-      ORDER BY device_count DESC, d.protocol_type
+      FROM protocols p
+      LEFT JOIN devices d ON d.protocol_id = p.id AND d.tenant_id = ?
+      LEFT JOIN device_status dst ON dst.device_id = d.id
+      WHERE p.is_enabled = 1
+      GROUP BY p.id, p.protocol_type, p.display_name, p.description, 
+               p.default_port, p.uses_serial, p.requires_broker,
+               p.default_polling_interval, p.default_timeout, p.category,
+               p.supported_operations, p.supported_data_types, p.connection_params_schema
+      ORDER BY device_count DESC, p.display_name
     `;
   }
 
@@ -684,15 +713,17 @@ class DeviceQueries {
   static getDeviceCountByProtocol() {
     return `
       SELECT 
-        d.protocol_type,
-        COUNT(*) as total_count,
+        p.protocol_type,
+        p.display_name as protocol_name,
+        COUNT(d.id) as total_count,
         SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
-      FROM devices d
-      LEFT JOIN device_status dst ON d.id = dst.device_id
-      WHERE d.tenant_id = ?
-      GROUP BY d.protocol_type
-      ORDER BY total_count DESC
+      FROM protocols p
+      LEFT JOIN devices d ON d.protocol_id = p.id AND d.tenant_id = ?
+      LEFT JOIN device_status dst ON dst.device_id = d.id
+      WHERE p.is_enabled = 1
+      GROUP BY p.id, p.protocol_type, p.display_name
+      ORDER BY total_count DESC, p.display_name
     `;
   }
 
@@ -714,6 +745,7 @@ class DeviceQueries {
       ORDER BY device_count DESC
     `;
   }
+
 
     /**
    * 디바이스 상태 업데이트 (활성화/비활성화)
@@ -804,11 +836,9 @@ class DeviceQueries {
       INSERT INTO devices (
         tenant_id, site_id, device_group_id, edge_server_id,
         name, description, device_type, manufacturer, model, serial_number,
-        protocol_type, endpoint, config, polling_interval, timeout, retry_count,
-        is_enabled, installation_date, created_by, created_at, updated_at
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      )
+        protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+        is_enabled, installation_date, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
   }
   /**
@@ -868,8 +898,7 @@ class DeviceQueries {
   static updateDeviceEnabled() {
     return `
       UPDATE devices 
-      SET is_enabled = ?,
-          updated_at = CURRENT_TIMESTAMP
+      SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -882,7 +911,7 @@ class DeviceQueries {
         device_id, connection_status, last_communication, updated_at
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     `;
-  } 
+  }
   /**
    * 디바이스 재시작 상태 업데이트 (device_status 테이블)
    */

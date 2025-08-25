@@ -12,6 +12,7 @@
 #define PULSEONE_DATA_PROCESSING_SERVICE_H
 
 #include "Common/Structs.h"
+#include "Common/Utils.h"
 #include "Client/RedisClient.h"
 #include "Client/RedisClientImpl.h"
 #include "Client/InfluxClient.h"
@@ -45,6 +46,7 @@ namespace VirtualPoint {
 namespace PulseOne {
 namespace Pipeline {
 
+    using DataValue = PulseOne::Structs::DataValue;
 /**
  * @brief 데이터 처리 서비스 - 파이프라인의 핵심 처리 엔진
  */
@@ -276,7 +278,12 @@ private:
     
     void SaveChangedPointsToRDBBatch(const Structs::DeviceDataMessage& message, 
         const std::vector<Structs::TimestampedValue>& changed_points);
-    void SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event);    
+    void SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event); 
+    void SaveToRedisDevicePattern(const Structs::DeviceDataMessage& message);
+    std::string extractDeviceNumber(const std::string& device_id);
+    std::string getPointName(int point_id);
+    std::string getDataType(const DataValue& value);
+    std::string getUnit(int point_id);   
 };
 
 } // namespace Pipeline

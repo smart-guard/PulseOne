@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceDetailModal.tsx
-// DeviceApiService 사용으로 수정 + URL/무한호출 문제 해결
+// DeviceApiService 사용으로 수정 + RTU 탭 추가 완성본
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -12,6 +12,10 @@ import DeviceSettingsTab from './DeviceModal/DeviceSettingsTab';
 import DeviceDataPointsTab from './DeviceModal/DeviceDataPointsTab';
 import DeviceStatusTab from './DeviceModal/DeviceStatusTab';
 import DeviceLogsTab from './DeviceModal/DeviceLogsTab';
+
+// RTU 관련 컴포넌트들 import
+import DeviceRtuNetworkTab from './DeviceModal/DeviceRtuNetworkTab';
+import DeviceRtuMonitorTab from './DeviceModal/DeviceRtuMonitorTab';
 
 // 타입 정의
 import { Device, DeviceModalProps } from './DeviceModal/types';
@@ -53,6 +57,24 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   const [dataPointsError, setDataPointsError] = useState<string | null>(null);
 
   // ========================================================================
+  // RTU 디바이스 판별 함수
+  // ========================================================================
+  const isRtuDevice = (device: Device | null): boolean => {
+    return device?.protocol_type === 'MODBUS_RTU';
+  };
+
+  const isRtuMaster = (device: Device | null): boolean => {
+    return isRtuDevice(device) && 
+           (device?.config?.device_role === 'master' || 
+            device?.config?.is_master === true ||
+            !device?.config?.slave_id); // slave_id가 없으면 마스터로 간주
+  };
+
+  const isRtuSlave = (device: Device | null): boolean => {
+    return isRtuDevice(device) && !isRtuMaster(device);
+  };
+
+  // ========================================================================
   // 데이터포인트 관리 함수들 - DeviceApiService 사용
   // ========================================================================
 
@@ -61,16 +83,16 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
    */
   const loadDataPoints = useCallback(async (deviceId: number) => {
     if (!deviceId || deviceId <= 0) {
-      console.warn('⚠️ 유효하지 않은 디바이스 ID:', deviceId);
+      console.warn('유효하지 않은 디바이스 ID:', deviceId);
       return;
     }
 
     try {
       setIsLoadingDataPoints(true);
       setDataPointsError(null);
-      console.log(`📊 디바이스 ${deviceId} 데이터포인트 로드 시작...`);
+      console.log(`디바이스 ${deviceId} 데이터포인트 로드 시작...`);
 
-      // ✅ DeviceApiService 사용 (올바른 API)
+      // DeviceApiService 사용 (올바른 API)
       const response = await DeviceApiService.getDeviceDataPoints(deviceId, {
         page: 1,
         limit: 100,
@@ -80,13 +102,13 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       if (response.success && response.data) {
         const points = response.data.items || [];
         setDataPoints(points);
-        console.log(`✅ 데이터포인트 ${points.length}개 로드 완료`);
+        console.log(`데이터포인트 ${points.length}개 로드 완료`);
       } else {
         throw new Error(response.error || '데이터포인트 조회 실패');
       }
 
     } catch (error) {
-      console.error(`❌ 디바이스 ${deviceId} 데이터포인트 로드 실패:`, error);
+      console.error(`디바이스 ${deviceId} 데이터포인트 로드 실패:`, error);
       setDataPointsError(error instanceof Error ? error.message : 'Unknown error');
       
       // API 실패 시 빈 배열로 설정 (목 데이터 제거)
@@ -137,7 +159,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
    * 새 디바이스 초기화
    */
   const initializeNewDevice = useCallback(() => {
-    console.log('🆕 새 디바이스 초기화');
+    console.log('새 디바이스 초기화');
     setEditData({
       id: 0,
       name: '',
@@ -271,6 +293,17 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   }, []);
 
   /**
+   * RTU 디바이스 업데이트 (RTU 탭에서 사용)
+   */
+  const updateRtuDevice = useCallback((updatedDevice: Device) => {
+    if (mode === 'edit') {
+      setEditData(updatedDevice);
+    }
+    // onSave 콜백도 호출하여 상위 컴포넌트에 변경 사항 전달
+    onSave?.(updatedDevice);
+  }, [mode, onSave]);
+
+  /**
    * 탭 변경
    */
   const handleTabChange = useCallback((tabName: string) => {
@@ -282,7 +315,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   // ========================================================================
 
   useEffect(() => {
-    console.log('🔄 DeviceDetailModal useEffect:', { 
+    console.log('DeviceDetailModal useEffect:', { 
       isOpen, 
       deviceId: device?.id, 
       mode 
@@ -317,10 +350,13 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   // 개발 환경 디버깅
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔍 DeviceDetailModal 상태:', {
+      console.log('DeviceDetailModal 상태:', {
         isOpen,
         mode,
         deviceId: device?.id,
+        protocolType: device?.protocol_type,
+        isRtuDevice: isRtuDevice(device),
+        isRtuMaster: isRtuMaster(device),
         dataPointsCount: dataPoints.length,
         isLoadingDataPoints
       });
@@ -358,6 +394,11 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             {displayData && (
               <div className="device-subtitle">
                 {displayData.manufacturer} {displayData.model} • {displayData.protocol_type}
+                {isRtuDevice(displayData) && (
+                  <span className="rtu-badge">
+                    {isRtuMaster(displayData) ? 'RTU Master' : 'RTU Slave'}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -389,6 +430,28 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             <i className="fas fa-list"></i>
             데이터포인트 ({dataPoints.length})
           </button>
+          
+          {/* RTU 디바이스인 경우만 RTU 관련 탭들 추가 */}
+          {isRtuDevice(displayData) && mode !== 'create' && (
+            <>
+              <button 
+                className={`tab-btn ${activeTab === 'rtu-network' ? 'active' : ''}`}
+                onClick={() => handleTabChange('rtu-network')}
+              >
+                <i className="fas fa-sitemap"></i>
+                {isRtuMaster(displayData) ? 'RTU 네트워크' : 'RTU 연결'}
+              </button>
+              
+              <button 
+                className={`tab-btn ${activeTab === 'rtu-monitor' ? 'active' : ''}`}
+                onClick={() => handleTabChange('rtu-monitor')}
+              >
+                <i className="fas fa-chart-line"></i>
+                통신 모니터
+              </button>
+            </>
+          )}
+
           {mode !== 'create' && (
             <button 
               className={`tab-btn ${activeTab === 'status' ? 'active' : ''}`}
@@ -441,6 +504,23 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               onCreate={handleCreateDataPoint}
               onUpdate={handleUpdateDataPoint}
               onDelete={handleDeleteDataPoint}
+            />
+          )}
+
+          {/* RTU 네트워크 탭 */}
+          {activeTab === 'rtu-network' && isRtuDevice(displayData) && (
+            <DeviceRtuNetworkTab 
+              device={displayData}
+              mode={mode}
+              onUpdateDevice={updateRtuDevice}
+            />
+          )}
+
+          {/* RTU 모니터링 탭 */}
+          {activeTab === 'rtu-monitor' && isRtuDevice(displayData) && (
+            <DeviceRtuMonitorTab 
+              device={displayData}
+              mode={mode}
             />
           )}
 
@@ -552,6 +632,21 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           .device-subtitle {
             color: #6b7280;
             font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+          }
+
+          .rtu-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.125rem 0.5rem;
+            background: #f0f9ff;
+            color: #0369a1;
+            border: 1px solid #0ea5e9;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 500;
           }
 
           .status-indicator {
@@ -603,6 +698,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             border-bottom: 1px solid #e5e7eb;
             background: #f9fafb;
             flex-shrink: 0;
+            overflow-x: auto;
           }
 
           .tab-btn {
@@ -618,6 +714,8 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             cursor: pointer;
             transition: all 0.2s ease;
             border-bottom: 2px solid transparent;
+            white-space: nowrap;
+            flex-shrink: 0;
           }
 
           .tab-btn:hover {
