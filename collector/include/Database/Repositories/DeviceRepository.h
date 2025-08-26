@@ -3,15 +3,15 @@
 
 /**
  * @file DeviceRepository.h
- * @brief PulseOne DeviceRepository - DeviceSettingsRepository 패턴 100% 적용
+ * @brief PulseOne DeviceRepository - protocol_id 기반으로 완전 수정
  * @author PulseOne Development Team
- * @date 2025-07-31
+ * @date 2025-08-26
  * 
- * 🔥 DeviceSettingsRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer 사용
- * - executeQuery/executeNonQuery 패턴
- * - 컴파일 에러 완전 해결
- * - BaseEntity 상속 패턴 지원
+ * 🔥 protocol_id 기반 완전 변경:
+ * - findByProtocol(int protocol_id) 파라미터 타입 변경
+ * - groupByProtocolId() 메서드명 및 반환타입 변경
+ * - deprecated 메서드 관련 경고 완전 해결
+ * - 새로운 컬럼들 지원
  */
 
 #include "Database/Repositories/IRepository.h"
@@ -35,13 +35,14 @@ namespace Repositories {
 using DeviceEntity = PulseOne::Database::Entities::DeviceEntity;
 
 /**
- * @brief Device Repository 클래스 (DeviceSettingsRepository 패턴 적용)
+ * @brief Device Repository 클래스 (protocol_id 기반 완전 수정)
  * 
  * 기능:
  * - INTEGER ID 기반 CRUD 연산
- * - 프로토콜별 디바이스 조회
+ * - protocol_id 기반 디바이스 조회
  * - DatabaseAbstractionLayer 사용
  * - 캐싱 및 벌크 연산 지원 (IRepository에서 자동 제공)
+ * - 새로운 컬럼들 지원 (polling_interval, timeout, retry_count)
  */
 class DeviceRepository : public IRepository<DeviceEntity> {
 public:
@@ -53,7 +54,7 @@ public:
         initializeDependencies();
         
         if (logger_) {
-            logger_->Info("🏭 DeviceRepository initialized with BaseEntity pattern");
+            logger_->Info("🏭 DeviceRepository initialized with protocol_id support");
             logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
         }
     }
@@ -86,14 +87,25 @@ public:
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
 
     // =======================================================================
-    // Device 전용 메서드들
+    // Device 전용 메서드들 - protocol_id 기반으로 변경
     // =======================================================================
     
-    std::vector<DeviceEntity> findByProtocol(const std::string& protocol_type);
+    /**
+     * @brief protocol_id로 디바이스 조회 (파라미터 타입 변경)
+     * @param protocol_id 프로토콜 ID (정수)
+     * @return 해당 프로토콜의 디바이스 목록
+     */
+    std::vector<DeviceEntity> findByProtocol(int protocol_id);  // 🔥 파라미터 타입 변경
+    
     std::vector<DeviceEntity> findByTenant(int tenant_id);
     std::vector<DeviceEntity> findBySite(int site_id);
     std::vector<DeviceEntity> findEnabledDevices();
-    std::map<std::string, std::vector<DeviceEntity>> groupByProtocol();
+    
+    /**
+     * @brief protocol_id별로 디바이스 그룹핑 (메서드명 및 반환타입 변경)
+     * @return protocol_id를 키로 하는 디바이스 그룹 맵
+     */
+    std::map<int, std::vector<DeviceEntity>> groupByProtocolId();  // 🔥 메서드명+반환타입 변경
 
     // =======================================================================
     // 벌크 연산 (DeviceSettingsRepository 패턴)
@@ -114,12 +126,17 @@ public:
     bool updateConfig(int device_id, const std::string& config);
 
     // =======================================================================
-    // 통계 및 분석
+    // 통계 및 분석 - protocol_id 기반으로 변경
     // =======================================================================
     
     std::string getDeviceStatistics() const;
     std::vector<DeviceEntity> findInactiveDevices() const;
-    std::map<std::string, int> getProtocolDistribution() const;
+    
+    /**
+     * @brief 프로토콜별 디바이스 분포 (반환타입 변경)
+     * @return protocol_id를 키로 하는 디바이스 개수 맵
+     */
+    std::map<int, int> getProtocolDistribution() const;  // 🔥 반환타입 변경
 
     // =======================================================================
     // 캐시 관리
@@ -149,6 +166,76 @@ public:
     
     int getTotalCount();
 
+    // =======================================================================
+    // 이전 버전 호환성을 위한 메서드들 (deprecated 경고 포함)
+    // =======================================================================
+    
+    /**
+     * @deprecated Use findByProtocol(int protocol_id) instead
+     * @brief 이전 버전 호환성을 위한 메서드 (문자열 파라미터)
+     */
+    [[deprecated("Use findByProtocol(int protocol_id) instead")]]
+    std::vector<DeviceEntity> findByProtocol(const std::string& protocol_type) {
+        // 임시 구현: protocol_type을 protocol_id로 변환 후 호출
+        // 실제로는 protocols 테이블에서 조회해야 함
+        int protocol_id = 1; // 기본값
+        if (protocol_type.find("MQTT") != std::string::npos) protocol_id = 2;
+        else if (protocol_type.find("BACNET") != std::string::npos) protocol_id = 3;
+        else if (protocol_type.find("OPCUA") != std::string::npos) protocol_id = 4;
+        
+        return findByProtocol(protocol_id);
+    }
+    
+    /**
+     * @deprecated Use groupByProtocolId() instead
+     * @brief 이전 버전 호환성을 위한 메서드 (문자열 키)
+     */
+    [[deprecated("Use groupByProtocolId() instead")]]
+    std::map<std::string, std::vector<DeviceEntity>> groupByProtocol() {
+        auto protocol_id_groups = groupByProtocolId();
+        std::map<std::string, std::vector<DeviceEntity>> string_groups;
+        
+        // protocol_id를 문자열로 변환
+        for (const auto& pair : protocol_id_groups) {
+            std::string protocol_name;
+            switch (pair.first) {
+                case 1: protocol_name = "MODBUS_TCP"; break;
+                case 2: protocol_name = "MQTT"; break;
+                case 3: protocol_name = "BACNET"; break;
+                case 4: protocol_name = "OPCUA"; break;
+                default: protocol_name = "UNKNOWN_" + std::to_string(pair.first); break;
+            }
+            string_groups[protocol_name] = pair.second;
+        }
+        
+        return string_groups;
+    }
+    
+    /**
+     * @deprecated Use getProtocolDistribution() that returns std::map<int, int> instead
+     * @brief 이전 버전 호환성을 위한 메서드 (문자열 키)
+     */
+    [[deprecated("Use getProtocolDistribution() that returns std::map<int, int> instead")]]
+    std::map<std::string, int> getProtocolDistributionByName() const {
+        auto id_distribution = getProtocolDistribution();
+        std::map<std::string, int> string_distribution;
+        
+        // protocol_id를 문자열로 변환
+        for (const auto& pair : id_distribution) {
+            std::string protocol_name;
+            switch (pair.first) {
+                case 1: protocol_name = "MODBUS_TCP"; break;
+                case 2: protocol_name = "MQTT"; break;
+                case 3: protocol_name = "BACNET"; break;
+                case 4: protocol_name = "OPCUA"; break;
+                default: protocol_name = "UNKNOWN_" + std::to_string(pair.first); break;
+            }
+            string_distribution[protocol_name] = pair.second;
+        }
+        
+        return string_distribution;
+    }
+
 private:
     // =======================================================================
     // 의존성 관리
@@ -167,7 +254,7 @@ private:
     // =======================================================================
     
     /**
-     * @brief SQL 결과를 DeviceEntity로 변환
+     * @brief SQL 결과를 DeviceEntity로 변환 (새 컬럼 포함)
      * @param row SQL 결과 행
      * @return DeviceEntity
      */
@@ -181,7 +268,7 @@ private:
     std::vector<DeviceEntity> mapResultToEntities(const std::vector<std::map<std::string, std::string>>& result);
     
     /**
-     * @brief DeviceEntity를 SQL 파라미터 맵으로 변환
+     * @brief DeviceEntity를 SQL 파라미터 맵으로 변환 (새 컬럼 포함)
      * @param entity 엔티티
      * @return SQL 파라미터 맵
      */
@@ -194,7 +281,7 @@ private:
     bool ensureTableExists();
     
     /**
-     * @brief 디바이스 검증
+     * @brief 디바이스 검증 (protocol_id 기반)
      * @param entity 검증할 디바이스 엔티티
      * @return 유효하면 true
      */

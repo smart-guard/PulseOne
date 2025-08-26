@@ -472,69 +472,19 @@ public:
     // 비즈니스 로직 메서드들
     // =======================================================================
     
-    void applyDeviceTypeDefaults() {
-        std::string type_lower = device_type_;
-        std::transform(type_lower.begin(), type_lower.end(), type_lower.begin(), ::tolower);
-        
-        // 디바이스 타입별 기본 정보 설정
-        if (type_lower == "plc") {
-            if (manufacturer_.empty()) manufacturer_ = "Generic";
-            if (polling_interval_ == 1000) polling_interval_ = 500; // PLC는 빠른 폴링
-        } else if (type_lower == "sensor") {
-            if (manufacturer_.empty()) manufacturer_ = "Generic";
-            if (polling_interval_ == 1000) polling_interval_ = 2000; // 센서는 느린 폴링
-        } else if (type_lower == "gateway") {
-            if (manufacturer_.empty()) manufacturer_ = "Generic";
-            if (polling_interval_ == 1000) polling_interval_ = 1000; // 게이트웨이는 기본 폴링
-        }
-        markModified();
-    }
-    
-    void applyProtocolDefaults() {
-        json config = getConfigAsJson();
-        
-        // protocol_id 기반으로는 설정할 수 없으므로, 
-        // 실제 구현에서는 protocols 테이블에서 protocol_type을 조회해야 함
-        // 여기서는 기본적인 config만 설정
-        if (!config.contains("connection_retries")) {
-            config["connection_retries"] = retry_count_;
-        }
-        if (!config.contains("response_timeout")) {
-            config["response_timeout"] = timeout_;
-        }
-        
-        setConfigAsJson(config);
-    }
-    
-    // 🔥 새로운 수집 설정 관련 메서드들 (CPP에서 구현)
+    void applyDeviceTypeDefaults();
+    void applyProtocolDefaults();
     void setOptimalPollingForProtocol();
     void setOptimalTimeoutForEndpoint();
-    
-    bool isLocalEndpoint() const {
-        return endpoint_.find("127.0.0.1") != std::string::npos ||
-               endpoint_.find("localhost") != std::string::npos;
-    }
-    
-    bool isLANEndpoint() const {
-        return endpoint_.find("192.168.") != std::string::npos ||
-               endpoint_.find("10.") != std::string::npos ||
-               endpoint_.find("172.") != std::string::npos;
-    }
+    bool isLocalEndpoint() const;
+    bool isLANEndpoint() const;
     
     // 🔥 이전 버전 호환성을 위한 메서드들 (deprecated)
     [[deprecated("Use getProtocolId() instead")]]
-    std::string getProtocolType() const {
-        // 실제 구현에서는 protocol_id로 protocols 테이블에서 조회
-        return "unknown"; // placeholder
-    }
+    std::string getProtocolType() const;
     
     [[deprecated("Use setProtocolId() instead")]]
-    void setProtocolType(const std::string& protocol_type) {
-        // 실제 구현에서는 protocol_type으로 protocols 테이블에서 ID 조회
-        // 임시로 기본값 설정
-        protocol_id_ = 1; 
-        markModified();
-    }
+    void setProtocolType(const std::string& protocol_type);
 
     // =======================================================================
     // 헬퍼 메서드들

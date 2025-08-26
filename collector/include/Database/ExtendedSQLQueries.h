@@ -879,7 +879,8 @@ namespace Indexes {
     const std::string CREATE_VP_VALUES_INDEXES = R"(
         CREATE INDEX IF NOT EXISTS idx_vp_values_calculated ON virtual_point_values(last_calculated DESC);
     )";
-    
+}    
+
 } // namespace SQL
 } // namespace Database
 } // namespace PulseOne
