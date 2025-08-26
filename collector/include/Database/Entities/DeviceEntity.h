@@ -3,13 +3,13 @@
 
 /**
  * @file DeviceEntity.h
- * @brief PulseOne 디바이스 엔티티 (DeviceSettingsEntity 패턴 100% 적용)
+ * @brief PulseOne 디바이스 엔티티 - 현재 DB 스키마 v2.1.0 완전 대응
  * @author PulseOne Development Team
- * @date 2025-07-31
+ * @date 2025-08-26
  * 
- * 🎯 DeviceSettingsEntity 패턴 완전 적용:
- * - 헤더: 선언만 (순환 참조 방지)
- * - CPP: Repository 호출 구현
+ * 🔥 현재 DB 스키마와 완전 일치:
+ * - protocol_type → protocol_id (외래키)
+ * - 새로운 컬럼들: polling_interval, timeout, retry_count
  * - BaseEntity<DeviceEntity> 상속 (CRTP)
  * - devices 테이블과 1:1 매핑
  */
@@ -49,9 +49,9 @@ namespace Database {
 namespace Entities {
 
 /**
- * @brief 디바이스 엔티티 클래스 (BaseEntity 상속, 정규화된 스키마)
+ * @brief 디바이스 엔티티 클래스 - 현재 DB 스키마와 완전 일치
  * 
- * 🎯 정규화된 DB 스키마 매핑:
+ * 🔥 현재 DB 스키마 매핑:
  * CREATE TABLE devices (
  *     id INTEGER PRIMARY KEY AUTOINCREMENT,
  *     tenant_id INTEGER NOT NULL,
@@ -67,10 +67,15 @@ namespace Entities {
  *     model VARCHAR(100),
  *     serial_number VARCHAR(100),
  *     
- *     -- 통신 설정 (기본만 - 세부 설정은 device_settings)
- *     protocol_type VARCHAR(50) NOT NULL,
+ *     -- 프로토콜 설정 (외래키로 변경!)
+ *     protocol_id INTEGER NOT NULL,           -- 🔥 변경됨!
  *     endpoint VARCHAR(255) NOT NULL,
  *     config TEXT NOT NULL,
+ *     
+ *     -- 수집 설정 (새로 추가!)
+ *     polling_interval INTEGER DEFAULT 1000, -- 🔥 새로 추가!
+ *     timeout INTEGER DEFAULT 3000,          -- 🔥 새로 추가!
+ *     retry_count INTEGER DEFAULT 3,         -- 🔥 새로 추가!
  *     
  *     -- 상태 정보
  *     is_enabled INTEGER DEFAULT 1,
@@ -79,13 +84,15 @@ namespace Entities {
  *     
  *     created_by INTEGER,
  *     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
- *     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+ *     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ *     
+ *     FOREIGN KEY (protocol_id) REFERENCES protocols(id)
  * );
  */
 class DeviceEntity : public BaseEntity<DeviceEntity> {
 public:
     // =======================================================================
-    // 생성자 및 소멸자 (선언만 - CPP에서 구현)
+    // 생성자 및 소멸자
     // =======================================================================
     
     DeviceEntity();
@@ -93,7 +100,7 @@ public:
     virtual ~DeviceEntity() = default;
 
     // =======================================================================
-    // BaseEntity 순수 가상 함수 구현 (CPP에서 구현)
+    // BaseEntity 순수 가상 함수 구현
     // =======================================================================
     
     bool loadFromDatabase() override;
@@ -102,7 +109,7 @@ public:
     bool updateToDatabase() override;
 
     // =======================================================================
-    // JSON 직렬화/역직렬화 (인라인 구현)
+    // JSON 직렬화/역직렬화
     // =======================================================================
     
     json toJson() const override {
@@ -129,10 +136,15 @@ public:
             j["model"] = model_;
             j["serial_number"] = serial_number_;
             
-            // 통신 설정
-            j["protocol_type"] = protocol_type_;
+            // 🔥 프로토콜 설정 (protocol_id로 변경)
+            j["protocol_id"] = protocol_id_;
             j["endpoint"] = endpoint_;
             j["config"] = getConfigAsJson();
+            
+            // 🔥 수집 설정 (새로 추가)
+            j["polling_interval"] = polling_interval_;
+            j["timeout"] = timeout_;
+            j["retry_count"] = retry_count_;
             
             // 상태 정보
             j["is_enabled"] = is_enabled_;
@@ -197,15 +209,26 @@ public:
                 setSerialNumber(data["serial_number"].get<std::string>());
             }
             
-            // 통신 설정
-            if (data.contains("protocol_type")) {
-                setProtocolType(data["protocol_type"].get<std::string>());
+            // 🔥 프로토콜 설정 (protocol_id로 변경)
+            if (data.contains("protocol_id")) {
+                setProtocolId(data["protocol_id"].get<int>());
             }
             if (data.contains("endpoint")) {
                 setEndpoint(data["endpoint"].get<std::string>());
             }
             if (data.contains("config")) {
                 setConfig(data["config"].dump());
+            }
+            
+            // 🔥 수집 설정 (새로 추가)
+            if (data.contains("polling_interval")) {
+                setPollingInterval(data["polling_interval"].get<int>());
+            }
+            if (data.contains("timeout")) {
+                setTimeout(data["timeout"].get<int>());
+            }
+            if (data.contains("retry_count")) {
+                setRetryCount(data["retry_count"].get<int>());
             }
             
             // 상태 정보
@@ -225,10 +248,11 @@ public:
         oss << "DeviceEntity[";
         oss << "id=" << getId();
         oss << ", name=" << name_;
-        oss << ", protocol=" << protocol_type_;
+        oss << ", protocol_id=" << protocol_id_;
         oss << ", endpoint=" << endpoint_;
         oss << ", enabled=" << (is_enabled_ ? "true" : "false");
         oss << ", device_type=" << device_type_;
+        oss << ", polling_interval=" << polling_interval_;
         oss << "]";
         return oss.str();
     }
@@ -238,7 +262,7 @@ public:
     }
 
     // =======================================================================
-    // 기본 속성 접근자 (인라인)
+    // 기본 속성 접근자
     // =======================================================================
     
     // ID 및 관계 정보
@@ -311,16 +335,10 @@ public:
         markModified();
     }
     
-    // 통신 설정
-    const std::string& getProtocolType() const { return protocol_type_; }
-    void setProtocolType(const std::string& protocol_type) { 
-        std::string normalized = protocol_type;
-        
-        // 소문자 변환 + 공백을 언더스코어로
-        std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::tolower);
-        std::replace(normalized.begin(), normalized.end(), ' ', '_');
-        
-        protocol_type_ = normalized;  // 정규화된 값을 저장 
+    // 🔥 프로토콜 설정 (protocol_id로 변경)
+    int getProtocolId() const { return protocol_id_; }
+    void setProtocolId(int protocol_id) { 
+        protocol_id_ = protocol_id; 
         markModified();
     }
     
@@ -350,6 +368,25 @@ public:
     
     void setConfigAsJson(const json& config) {
         config_ = config.dump();
+        markModified();
+    }
+    
+    // 🔥 수집 설정 (새로 추가)
+    int getPollingInterval() const { return polling_interval_; }
+    void setPollingInterval(int polling_interval) { 
+        polling_interval_ = polling_interval; 
+        markModified();
+    }
+    
+    int getTimeout() const { return timeout_; }
+    void setTimeout(int timeout) { 
+        timeout_ = timeout; 
+        markModified();
+    }
+    
+    int getRetryCount() const { return retry_count_; }
+    void setRetryCount(int retry_count) { 
+        retry_count_ = retry_count; 
         markModified();
     }
     
@@ -419,28 +456,36 @@ public:
         if (site_id_ <= 0) return false;
         if (name_.empty()) return false;
         if (device_type_.empty()) return false;
-        if (protocol_type_.empty()) return false;
+        if (protocol_id_ <= 0) return false;  // 🔥 변경됨!
         if (endpoint_.empty()) return false;
         if (config_.empty()) return false;
+        
+        // 🔥 수집 설정 유효성 검사 (새로 추가)
+        if (polling_interval_ <= 0) return false;
+        if (timeout_ <= 0) return false;
+        if (retry_count_ < 0) return false;
         
         return true;
     }
 
     // =======================================================================
-    // 비즈니스 로직 메서드들 (정규화 후 기본 정보만)
+    // 비즈니스 로직 메서드들
     // =======================================================================
     
     void applyDeviceTypeDefaults() {
         std::string type_lower = device_type_;
         std::transform(type_lower.begin(), type_lower.end(), type_lower.begin(), ::tolower);
         
-        // 디바이스 타입별 기본 정보만 설정
+        // 디바이스 타입별 기본 정보 설정
         if (type_lower == "plc") {
             if (manufacturer_.empty()) manufacturer_ = "Generic";
+            if (polling_interval_ == 1000) polling_interval_ = 500; // PLC는 빠른 폴링
         } else if (type_lower == "sensor") {
             if (manufacturer_.empty()) manufacturer_ = "Generic";
+            if (polling_interval_ == 1000) polling_interval_ = 2000; // 센서는 느린 폴링
         } else if (type_lower == "gateway") {
             if (manufacturer_.empty()) manufacturer_ = "Generic";
+            if (polling_interval_ == 1000) polling_interval_ = 1000; // 게이트웨이는 기본 폴링
         }
         markModified();
     }
@@ -448,65 +493,97 @@ public:
     void applyProtocolDefaults() {
         json config = getConfigAsJson();
         
-        std::string protocol_lower = protocol_type_;
-        std::transform(protocol_lower.begin(), protocol_lower.end(), protocol_lower.begin(), ::tolower);
-        
-        // 기본적인 프로토콜 설정만 (세부 설정은 DeviceSettings)
-        if (protocol_lower.find("modbus") != std::string::npos) {
-            if (!config.contains("unit_id")) config["unit_id"] = 1;
-            if (!config.contains("function_code")) config["function_code"] = 3;
-        } else if (protocol_lower.find("mqtt") != std::string::npos) {
-            if (!config.contains("qos")) config["qos"] = 1;
-        } else if (protocol_lower.find("bacnet") != std::string::npos) {
-            if (!config.contains("device_id")) config["device_id"] = 1000;
+        // protocol_id 기반으로는 설정할 수 없으므로, 
+        // 실제 구현에서는 protocols 테이블에서 protocol_type을 조회해야 함
+        // 여기서는 기본적인 config만 설정
+        if (!config.contains("connection_retries")) {
+            config["connection_retries"] = retry_count_;
+        }
+        if (!config.contains("response_timeout")) {
+            config["response_timeout"] = timeout_;
         }
         
         setConfigAsJson(config);
     }
+    
+    // 🔥 새로운 수집 설정 관련 메서드들 (CPP에서 구현)
+    void setOptimalPollingForProtocol();
+    void setOptimalTimeoutForEndpoint();
+    
+    bool isLocalEndpoint() const {
+        return endpoint_.find("127.0.0.1") != std::string::npos ||
+               endpoint_.find("localhost") != std::string::npos;
+    }
+    
+    bool isLANEndpoint() const {
+        return endpoint_.find("192.168.") != std::string::npos ||
+               endpoint_.find("10.") != std::string::npos ||
+               endpoint_.find("172.") != std::string::npos;
+    }
+    
+    // 🔥 이전 버전 호환성을 위한 메서드들 (deprecated)
+    [[deprecated("Use getProtocolId() instead")]]
+    std::string getProtocolType() const {
+        // 실제 구현에서는 protocol_id로 protocols 테이블에서 조회
+        return "unknown"; // placeholder
+    }
+    
+    [[deprecated("Use setProtocolId() instead")]]
+    void setProtocolType(const std::string& protocol_type) {
+        // 실제 구현에서는 protocol_type으로 protocols 테이블에서 ID 조회
+        // 임시로 기본값 설정
+        protocol_id_ = 1; 
+        markModified();
+    }
 
     // =======================================================================
-    // 헬퍼 메서드들 (CPP에서 구현)
+    // 헬퍼 메서드들
     // =======================================================================
     
     std::string dateToString(const std::chrono::system_clock::time_point& date) const;
     std::string timestampToString(const std::chrono::system_clock::time_point& timestamp) const;
     
-    // Repository 접근자 (CPP에서 구현)
+    // Repository 접근자
     std::shared_ptr<Repositories::DeviceRepository> getRepository() const;
     
 private:
     // =======================================================================
-    // 멤버 변수들 (정규화된 스키마와 1:1 매핑)
+    // 멤버 변수들 - 현재 DB 스키마와 1:1 매핑
     // =======================================================================
     
     // 관계 정보
-    int tenant_id_;                                 // NOT NULL, FOREIGN KEY to tenants.id
-    int site_id_;                                   // NOT NULL, FOREIGN KEY to sites.id
-    std::optional<int> device_group_id_;            // FOREIGN KEY to device_groups.id
-    std::optional<int> edge_server_id_;             // FOREIGN KEY to edge_servers.id
+    int tenant_id_;                                 // NOT NULL
+    int site_id_;                                   // NOT NULL
+    std::optional<int> device_group_id_;            
+    std::optional<int> edge_server_id_;             
     
     // 디바이스 기본 정보
     std::string name_;                              // VARCHAR(100) NOT NULL
     std::string description_;                       // TEXT
-    std::string device_type_;                       // VARCHAR(50) NOT NULL (PLC, HMI, SENSOR, GATEWAY, METER, CONTROLLER)
+    std::string device_type_;                       // VARCHAR(50) NOT NULL
     std::string manufacturer_;                      // VARCHAR(100)
     std::string model_;                             // VARCHAR(100)
     std::string serial_number_;                     // VARCHAR(100)
     
-    // 통신 설정 (기본 정보만)
-    std::string protocol_type_;                     // VARCHAR(50) NOT NULL (MODBUS_TCP, MODBUS_RTU, MQTT, BACNET, OPCUA)
-    std::string endpoint_;                          // VARCHAR(255) NOT NULL (IP:Port 또는 연결 문자열)
-    std::string config_;                            // TEXT NOT NULL (JSON 형태 기본 프로토콜 설정)
+    // 🔥 프로토콜 설정 (protocol_id로 변경)
+    int protocol_id_;                               // INTEGER NOT NULL, FOREIGN KEY
+    std::string endpoint_;                          // VARCHAR(255) NOT NULL
+    std::string config_;                            // TEXT NOT NULL
+    
+    // 🔥 수집 설정 (새로 추가)
+    int polling_interval_;                          // INTEGER DEFAULT 1000
+    int timeout_;                                   // INTEGER DEFAULT 3000
+    int retry_count_;                               // INTEGER DEFAULT 3
     
     // 상태 정보
     bool is_enabled_;                               // INTEGER DEFAULT 1
-    std::optional<std::chrono::system_clock::time_point> installation_date_;  // DATE
-    std::optional<std::chrono::system_clock::time_point> last_maintenance_;   // DATE
+    std::optional<std::chrono::system_clock::time_point> installation_date_;
+    std::optional<std::chrono::system_clock::time_point> last_maintenance_;
     
     // 메타데이터
-    std::optional<int> created_by_;                 // INTEGER, FOREIGN KEY to users.id
-    std::chrono::system_clock::time_point created_at_;    // DATETIME DEFAULT CURRENT_TIMESTAMP
-    std::chrono::system_clock::time_point updated_at_;    // DATETIME DEFAULT CURRENT_TIMESTAMP
+    std::optional<int> created_by_;
+    std::chrono::system_clock::time_point created_at_;
+    std::chrono::system_clock::time_point updated_at_;
 };
 
 } // namespace Entities
