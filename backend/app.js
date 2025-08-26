@@ -1,6 +1,6 @@
 // =============================================================================
-// backend/app.js - 메인 애플리케이션 (완전 통합 버전 + WebSocket 라우트 완성)
-// 기존 구조 + data.js 라우트 + 자동 초기화 시스템 + 서비스 제어 API + 스크립트 엔진 + 실시간 알람 + WebSocket 관리
+// backend/app.js - 메인 애플리케이션 (WebSocket 서비스 분리 완성 버전)
+// 기존 구조 + WebSocket 서비스 분리 + 모든 API 라우트 + 자동 초기화 시스템
 // =============================================================================
 
 const express = require('express');
@@ -9,25 +9,23 @@ const path = require('path');
 const http = require('http');
 const { initializeConnections } = require('./lib/connection/db');
 
-// WebSocket 설정 (안전하게 로드)
-let socketIo = null;
-let io = null;
+// WebSocket 서비스 로드 (안전하게)
+let WebSocketService = null;
+let webSocketService = null;
 try {
-    socketIo = require('socket.io');
-    console.log('✅ Socket.IO 모듈 로드 성공');
+    WebSocketService = require('./lib/services/WebSocketService');
+    console.log('✅ WebSocketService 로드 성공');
 } catch (error) {
-    console.warn('⚠️ Socket.IO 모듈이 없습니다. 설치하려면: npm install socket.io');
+    console.warn('⚠️ WebSocketService 로드 실패:', error.message);
 }
 
-// 자동 초기화 시스템 (안전 로드 + 복구 패치)
+// 자동 초기화 시스템 (안전 로드)
 let DatabaseInitializer = null;
 try {
-    // 우선순위 1: 새로 생성된 DatabaseInitializer
     DatabaseInitializer = require('./lib/database/DatabaseInitializer');
     console.log('✅ DatabaseInitializer 로드 성공 (lib/database/DatabaseInitializer.js)');
 } catch (error1) {
     try {
-        // 우선순위 2: 기존 위치
         DatabaseInitializer = require('./scripts/database-initializer');
         console.log('✅ DatabaseInitializer 로드 성공 (scripts/database-initializer.js)');
     } catch (error2) {
@@ -49,265 +47,22 @@ try {
 const app = express();
 const server = http.createServer(app);
 
-// WebSocket 서버 설정 (Socket.IO가 있을 때만)
-if (socketIo) {
-    console.log('🔌 Socket.IO 서버 초기화 중...');
-    
-    // CORS 설정 확인
-    const corsOrigins = process.env.CORS_ORIGINS?.split(',') || [
-        "http://localhost:3000", 
-        "http://localhost:5173",
-        "http://localhost:8080",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000"
-    ];
-    
-    console.log('📋 Socket.IO CORS 설정:', corsOrigins);
-    
-    // Socket.IO 서버 생성 (최적화된 설정)
-    io = socketIo(server, {
-        cors: {
-            origin: corsOrigins,
-            methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            credentials: false, // 단순화
-            allowedHeaders: ["Content-Type", "Authorization", "Accept"]
-        },
-        
-        // 🎯 핵심 수정: 연결 설정 최적화
-        allowEIO3: true,
-        transports: ['polling', 'websocket'], // polling 우선
-        
-        // 🎯 타임아웃 설정 관대하게
-        pingTimeout: 120000,      // 2분
-        pingInterval: 30000,      // 30초
-        connectTimeout: 90000,    // 1.5분
-        
-        // 성능 설정
-        httpCompression: false,
-        perMessageDeflate: false,
-        maxHttpBufferSize: 1e6,
-        
-        // 경로 설정
-        path: '/socket.io/',
-        serveClient: false
-    });
-
-    console.log('📋 Socket.IO 서버 설정 완료:');
-    console.log('   Path:', '/socket.io/');
-    console.log('   CORS Origins:', corsOrigins);
-    console.log('   Transports:', ['polling', 'websocket']);
-    console.log('   Ping Timeout:', '120초');
-    console.log('   Connect Timeout:', '90초');
-
-    // 🎯 Socket.IO 엔진 레벨 디버깅 (상세)
-    io.engine.on('initial_headers', (headers, req) => {
-        console.log('📋 Socket.IO Initial Headers:');
-        console.log('   URL:', req.url);
-        console.log('   Method:', req.method);
-        console.log('   Origin:', req.headers.origin || 'none');
-        console.log('   User-Agent:', req.headers['user-agent']?.substring(0, 80) || 'none');
-        console.log('   Referer:', req.headers.referer || 'none');
-        
-        // 🎯 CORS 헤더 강제 추가 (문제 해결을 위해)
-        headers['Access-Control-Allow-Origin'] = req.headers.origin || '*';
-        headers['Access-Control-Allow-Methods'] = 'GET,HEAD,PUT,PATCH,POST,DELETE';
-        headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept';
-        headers['Access-Control-Allow-Credentials'] = 'false';
-    });
-
-    io.engine.on('connection_error', (err) => {
-        console.error('❌ Socket.IO Engine 연결 에러:');
-        console.error('   요청:', err.req ? `${err.req.method} ${err.req.url}` : 'unknown');
-        console.error('   코드:', err.code);
-        console.error('   메시지:', err.message);
-        console.error('   타입:', err.type);
-        console.error('   컨텍스트:', err.context);
-        
-        // 🎯 일반적인 에러 패턴 분석
-        if (err.code === 'TRANSPORT_MISMATCH') {
-            console.error('   💡 해결책: 클라이언트 transport 설정 확인');
-        } else if (err.code === 'CORS_ERROR') {
-            console.error('   💡 해결책: CORS 설정 또는 Origin 헤더 확인');
-        } else if (err.code === 'BAD_REQUEST') {
-            console.error('   💡 해결책: 클라이언트 요청 형식 확인');
-        }
-    });
-
-    // 🎯 핸드셰이크 디버깅 강화
-    io.engine.on('headers', (headers, req) => {
-        console.log('📋 Socket.IO Handshake Headers:', {
-            url: req.url,
-            method: req.method,
-            origin: req.headers.origin,
-            upgrade: req.headers.upgrade,
-            connection: req.headers.connection,
-            'socket.io-version': req.headers['socket.io-version'] || 'unknown'
-        });
-    });
-
-    // 🎯 클라이언트 연결 이벤트 핸들러 (완전히 새로 작성)
-io.on('connection', (socket) => {
-    const connectionTime = Date.now();
-    
-    console.log('🎉 새로운 클라이언트 연결됨!');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('   Socket ID:', socket.id);
-    console.log('   Client IP:', socket.handshake.address);
-    console.log('   Transport:', socket.conn.transport.name);
-    console.log('   연결 시간:', new Date().toISOString());
-    console.log('   Query Params:', JSON.stringify(socket.handshake.query, null, 2));
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    const connectedCount = io.engine.clientsCount;
-    console.log(`📊 현재 연결된 클라이언트: ${connectedCount}명`);
-
-    // 즉시 연결 확인 메시지 전송
-    socket.emit('connection_status', {
-        status: 'connected',
-        socket_id: socket.id,
-        server_time: new Date().toISOString(),
-        transport: socket.conn.transport.name,
-        client_count: connectedCount
-    });
-
-    // 테스트 메시지 핸들러
-    socket.on('test-message', (data) => {
-        console.log('📨 테스트 메시지 수신:', data);
-        
-        socket.emit('test-response', { 
-            message: '서버에서 테스트 응답', 
-            received_data: data,
-            server_time: new Date().toISOString(),
-            socket_id: socket.id,
-            transport: socket.conn.transport.name
-        });
-    });
-
-    // 룸 관리
-    socket.on('join_tenant', (tenantId) => {
-        const roomName = `tenant:${tenantId}`;
-        socket.join(roomName);
-        console.log(`👥 Socket ${socket.id} joined room: ${roomName}`);
-        
-        socket.emit('room_joined', {
-            room: roomName,
-            tenant_id: tenantId,
-            timestamp: new Date().toISOString(),
-            success: true
-        });
-    });
-
-    socket.on('join_admin', () => {
-        socket.join('admins');
-        console.log(`👑 Socket ${socket.id} joined admin room`);
-        
-        socket.emit('room_joined', {
-            room: 'admins',
-            timestamp: new Date().toISOString(),
-            success: true
-        });
-    });
-
-    // 알람 확인 핸들러
-    socket.on('acknowledge_alarm', (data) => {
-        console.log('📝 알람 확인 요청:', data);
-        
-        socket.emit('alarm_acknowledged', {
-            occurrence_id: data.occurrence_id,
-            acknowledged_by: data.user_id,
-            timestamp: new Date().toISOString(),
-            success: true
-        });
-    });
-
-    // 연결 해제
-    socket.on('disconnect', (reason) => {
-        const connectionDuration = Date.now() - connectionTime;
-        const remainingCount = io.engine.clientsCount - 1;
-        
-        console.log('👋 클라이언트 연결 해제:');
-        console.log('   Socket ID:', socket.id);
-        console.log('   해제 사유:', reason);
-        console.log('   연결 지속 시간:', Math.round(connectionDuration / 1000) + '초');
-        console.log(`   남은 클라이언트: ${remainingCount}명`);
-    });
-
-    // 에러 핸들러
-    socket.on('error', (error) => {
-        console.error('❌ Socket 에러 (ID: ' + socket.id + '):', error);
-    });
-
-    // 🎯 Ping/Pong 모니터링 (선택적 - 개발 모드에서만)
-    if (process.env.NODE_ENV === 'development') {
-        socket.on('ping', () => {
-            console.log(`🏓 Ping from ${socket.id}`);
-        });
-
-        socket.on('pong', (latency) => {
-            console.log(`🏓 Pong from ${socket.id}, latency: ${latency}ms`);
-        });
-    }
-
-    // 🎯 추가 디버깅 이벤트들
-    socket.onAny((eventName, ...args) => {
-        if (process.env.NODE_ENV === 'development' && 
-            !['ping', 'pong'].includes(eventName)) {
-            console.log(`📡 Socket ${socket.id} 이벤트 수신: ${eventName}`, 
-                       args.length > 0 ? args : '(no args)');
-        }
-    });
-});
-
-    // 🎯 주기적 상태 보고 (개발 모드에서만, 더 자주)
-setInterval(() => {
-    if (io && process.env.NODE_ENV === 'development') {
-        const engineClients = io.engine.clientsCount;
-        const socketClients = io.sockets.sockets.size;
-        const rooms = io.sockets.adapter.rooms.size;
-        
-        if (engineClients > 0 || socketClients > 0) {
-            console.log('📊 상세 Socket.IO 상태:');
-            console.log('   Engine 클라이언트:', engineClients);
-            console.log('   Socket 클라이언트:', socketClients);
-            console.log('   전체 룸 수:', rooms);
-            console.log('   타임스탬프:', new Date().toISOString());
-            
-            // 불일치가 있을 경우 경고
-            if (engineClients !== socketClients) {
-                console.warn('⚠️ Engine과 Socket 클라이언트 수가 일치하지 않습니다!');
-            }
-        }
-    }
-}, 30000);
-
-if (io) {
-    // 엔진 레벨에서 연결 성공 확인
-    io.engine.on('connection', (socket) => {
-        console.log('🔧 Engine 레벨 연결 성공:', socket.id);
-    });
-    
-    // 엔진 레벨에서 연결 종료 확인
-    io.engine.on('disconnect', (socket) => {
-        console.log('🔧 Engine 레벨 연결 해제:', socket.id);
-    });
-}
-
-    // 🎯 서버 전역 변수에 저장
-    app.locals.serverStartTime = new Date().toISOString();
-    app.locals.io = io;
-    
-    console.log('✅ Socket.IO 서버 초기화 완료');
-    console.log('   서버 시작 시간:', app.locals.serverStartTime);
-    console.log('   엔드포인트: http://localhost:' + (process.env.BACKEND_PORT || 3000) + '/socket.io/');
-    
+// ============================================================================
+// WebSocket 서비스 초기화
+// ============================================================================
+if (WebSocketService) {
+    webSocketService = new WebSocketService(server);
+    app.locals.webSocketService = webSocketService;
+    app.locals.io = webSocketService.io; // 기존 코드 호환성
+    console.log('✅ WebSocket 서비스 초기화 완료');
 } else {
-    console.warn('⚠️ Socket.IO 모듈이 로드되지 않았습니다');
-    console.warn('   설치 명령: npm install socket.io');
+    app.locals.webSocketService = null;
     app.locals.io = null;
+    console.warn('⚠️ WebSocket 서비스가 비활성화됩니다.');
 }
 
 // ============================================================================
-// 미들웨어 설정 (기존 코드 + 확장)
+// 미들웨어 설정
 // ============================================================================
 
 // CORS 설정 (프런트엔드 연동 강화)
@@ -381,26 +136,24 @@ app.use('/api/*', tenantIsolation);
 // 데이터베이스 연결 및 자동 초기화
 // ============================================================================
 
-// Database connections 초기화 + 자동 초기화
 let connections = {};
 
 async function initializeSystem() {
     try {
         console.log('🚀 PulseOne 시스템 초기화 시작...\n');
         
-        // 1. 기존 데이터베이스 연결 (기존 코드 유지)
+        // 1. 기존 데이터베이스 연결
         connections = await initializeConnections();
         app.locals.getDB = () => connections;
         console.log('✅ Database connections initialized');
         
-        // 2. 자동 초기화 시스템 (기존 코드)
+        // 2. 자동 초기화 시스템
         if (process.env.AUTO_INITIALIZE_ON_START === 'true' && DatabaseInitializer) {
             console.log('🔄 자동 초기화 확인 중...');
             
             const initializer = new DatabaseInitializer();
             await initializer.checkDatabaseStatus();
             
-            // 완전히 초기화되어 있고 스킵 옵션이 활성화된 경우
             if (initializer.isFullyInitialized() && process.env.SKIP_IF_INITIALIZED !== 'false') {
                 console.log('✅ 데이터베이스가 이미 초기화되어 있습니다.\n');
             } else if (!initializer.isFullyInitialized()) {
@@ -415,7 +168,6 @@ async function initializeSystem() {
     } catch (error) {
         console.error('❌ System initialization failed:', error.message);
         
-        // 초기화 실패 시 처리 방식
         if (process.env.FAIL_ON_INIT_ERROR === 'true') {
             process.exit(1);
         } else {
@@ -431,18 +183,16 @@ async function initializeSystem() {
 let alarmSubscriber = null;
 
 async function startAlarmSubscriber() {
-    if (!AlarmEventSubscriber || !io) {
+    if (!AlarmEventSubscriber || !webSocketService?.io) {
         console.warn('⚠️ AlarmEventSubscriber 또는 WebSocket이 비활성화되어 실시간 알람 기능을 사용할 수 없습니다.');
         return;
     }
     
     try {
-        alarmSubscriber = new AlarmEventSubscriber(io);
+        alarmSubscriber = new AlarmEventSubscriber(webSocketService.io);
         await alarmSubscriber.start();
         
-        // app.locals에 저장하여 라우트에서 접근 가능하게 함
         app.locals.alarmSubscriber = alarmSubscriber;
-        
         console.log('✅ 실시간 알람 구독자 시작 완료');
         
     } catch (error) {
@@ -454,8 +204,7 @@ async function startAlarmSubscriber() {
 // 시스템 초기화 실행
 initializeSystem();
 
-// WebSocket 객체들을 app.locals에 저장 (라우트에서 접근 가능하게 함)
-app.locals.io = io;
+// 전역 변수에 저장
 app.locals.alarmSubscriber = null; // startAlarmSubscriber에서 설정됨
 app.locals.serverStartTime = new Date().toISOString();
 
@@ -463,10 +212,9 @@ app.locals.serverStartTime = new Date().toISOString();
 // 헬스체크 및 초기화 관리 엔드포인트
 // ============================================================================
 
-// Health check (기존 + 실시간 상태 추가)
+// Health check
 app.get('/api/health', async (req, res) => {
     try {
-        // 기본 헬스체크 정보 (기존)
         const healthInfo = { 
             status: 'ok', 
             timestamp: new Date().toISOString(),
@@ -474,11 +222,11 @@ app.get('/api/health', async (req, res) => {
             pid: process.pid
         };
         
-        // 실시간 기능 상태 추가
+        // 실시간 기능 상태
         healthInfo.realtime = {
             websocket: {
-                enabled: !!io,
-                connected_clients: io ? io.engine.clientsCount : 0
+                enabled: !!webSocketService,
+                connected_clients: webSocketService ? webSocketService.getStatus()?.stats?.socket_clients || 0 : 0
             },
             alarm_subscriber: {
                 enabled: !!alarmSubscriber,
@@ -486,7 +234,7 @@ app.get('/api/health', async (req, res) => {
             }
         };
         
-        // 초기화 시스템 상태 확인
+        // 초기화 시스템 상태
         healthInfo.initialization = {
             databaseInitializer: {
                 available: !!DatabaseInitializer,
@@ -494,7 +242,6 @@ app.get('/api/health', async (req, res) => {
             }
         };
         
-        // DatabaseInitializer가 있으면 상세 상태 추가
         if (DatabaseInitializer) {
             try {
                 const initializer = new DatabaseInitializer();
@@ -525,10 +272,10 @@ app.get('/api/health', async (req, res) => {
 
 // 실시간 알람 테스트 엔드포인트
 app.post('/api/test/alarm', (req, res) => {
-    if (!io) {
+    if (!webSocketService) {
         return res.status(503).json({
             success: false,
-            error: 'WebSocket이 비활성화되어 있습니다. Socket.IO를 설치하고 서버를 재시작하세요.',
+            error: 'WebSocket 서비스가 비활성화되어 있습니다.',
             suggestion: 'npm install socket.io'
         });
     }
@@ -543,7 +290,7 @@ app.post('/api/test/alarm', (req, res) => {
             message: '🚨 테스트 알람 - 온도 센서 이상 감지',
             severity: 'HIGH',
             severity_level: 3,
-            state: 1, // ACTIVE
+            state: 1,
             timestamp: Date.now(),
             source_name: '테스트 온도 센서',
             location: '1층 서버실',
@@ -551,30 +298,17 @@ app.post('/api/test/alarm', (req, res) => {
             formatted_time: new Date().toLocaleString('ko-KR')
         };
         
-        // 전체 클라이언트에게 새 알람 전송
-        io.emit('alarm:new', {
-            type: 'alarm_triggered',
-            data: testAlarm,
-            timestamp: new Date().toISOString()
-        });
+        // WebSocket 서비스를 통해 알람 전송
+        const sent = webSocketService.sendAlarm(testAlarm);
         
-        // 긴급 알람은 관리자에게 별도 전송
-        if (testAlarm.severity_level >= 3) {
-            io.to('admins').emit('alarm:critical', {
-                type: 'critical_alarm',
-                data: testAlarm,
-                timestamp: new Date().toISOString(),
-                requires_action: true
-            });
-        }
-        
-        console.log('🚨 테스트 알람 전송 완료:', testAlarm.message);
+        console.log('🚨 테스트 알람 전송:', sent ? '성공' : '실패');
         
         res.json({ 
             success: true,
-            message: '테스트 알람이 모든 연결된 클라이언트에게 전송되었습니다.',
+            message: '테스트 알람이 전송되었습니다.',
             alarm: testAlarm,
-            connected_clients: io.engine.clientsCount
+            sent_via_websocket: sent,
+            connected_clients: webSocketService.getStatus().stats?.socket_clients || 0
         });
         
     } catch (error) {
@@ -586,7 +320,7 @@ app.post('/api/test/alarm', (req, res) => {
     }
 });
 
-// 초기화 상태 조회 (복구 패치 적용)
+// 초기화 상태 조회
 app.get('/api/init/status', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
@@ -622,7 +356,7 @@ app.get('/api/init/status', async (req, res) => {
     }
 });
 
-// 초기화 수동 트리거 (복구 패치 적용)
+// 초기화 수동 트리거
 app.post('/api/init/trigger', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
@@ -638,21 +372,17 @@ app.post('/api/init/trigger', async (req, res) => {
         }
         
         const { backup = true } = req.body;
-        
         const initializer = new DatabaseInitializer();
         
-        // 백업 생성 (요청된 경우)
         if (backup) {
             try {
                 await initializer.createBackup(true);
                 console.log('✅ 백업 생성 완료');
             } catch (backupError) {
                 console.warn('⚠️ 백업 생성 실패:', backupError.message);
-                // 백업 실패해도 초기화는 계속 진행
             }
         }
         
-        // 초기화 수행
         await initializer.performInitialization();
         
         res.json({
@@ -670,12 +400,11 @@ app.post('/api/init/trigger', async (req, res) => {
     }
 });
 
-// 임시 초기화 대안 엔드포인트 추가 (DatabaseInitializer 없어도 동작)
+// 임시 초기화 대안 엔드포인트
 app.post('/api/init/manual', async (req, res) => {
     try {
         console.log('🔧 수동 초기화 시도...');
         
-        // 기본 SQLite 데이터베이스 연결 확인
         const connections = app.locals.getDB ? app.locals.getDB() : null;
         
         if (!connections || !connections.db) {
@@ -686,7 +415,6 @@ app.post('/api/init/manual', async (req, res) => {
             });
         }
         
-        // 간단한 테이블 존재 확인
         const db = connections.db;
         const tables = await new Promise((resolve, reject) => {
             db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, rows) => {
@@ -715,15 +443,12 @@ app.post('/api/init/manual', async (req, res) => {
 });
 
 // ============================================================================
-// API Routes 등록 (완성된 통합 버전)
+// API Routes 등록
 // ============================================================================
 
 console.log('\n🚀 API 라우트 등록 중...\n');
 
-// ============================================================================
-// 기존 API Routes (유지)
-// ============================================================================
-
+// 기존 시스템 API Routes
 const systemRoutes = require('./routes/system');
 const processRoutes = require('./routes/processes');
 const serviceRoutes = require('./routes/services');
@@ -736,11 +461,7 @@ app.use('/api/users', userRoutes);
 
 console.log('✅ 기존 시스템 API 라우트들 등록 완료');
 
-// ============================================================================
 // 핵심 비즈니스 API
-// ============================================================================
-
-// 1. 디바이스 관리 API
 try {
     const deviceRoutes = require('./routes/devices');
     app.use('/api/devices', deviceRoutes);
@@ -749,17 +470,14 @@ try {
     console.warn('⚠️ Device 라우트 로드 실패:', error.message);
 }
 
-// 2. 데이터 익스플로러 API
 try {
     const dataRoutes = require('./routes/data');
     app.use('/api/data', dataRoutes);
-    console.log('✅ Data Explorer API 라우트 등록 완료 (/api/data/points 사용 가능!)');
+    console.log('✅ Data Explorer API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Data 라우트 로드 실패:', error.message);
-    console.warn('   데이터 익스플로러 기능이 비활성화됩니다.');
 }
 
-// 3. 알람 관리 API
 try {
     const alarmRoutes = require('./routes/alarms');
     app.use('/api/alarms', alarmRoutes);
@@ -768,20 +486,15 @@ try {
     console.warn('⚠️ Alarm 라우트 로드 실패:', error.message);
 }
 
-// ============================================================================
 // 확장 API - 선택적 등록
-// ============================================================================
-
-// 대시보드 API (서비스 제어 기능 포함)
 try {
     const dashboardRoutes = require('./routes/dashboard');
     app.use('/api/dashboard', dashboardRoutes);
-    console.log('✅ Dashboard API 라우트 등록 완료 (서비스 제어 포함)');
+    console.log('✅ Dashboard API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Dashboard 라우트 로드 실패:', error.message);
 }
 
-// 실시간 데이터 API
 try {
     const realtimeRoutes = require('./routes/realtime');
     app.use('/api/realtime', realtimeRoutes);
@@ -790,7 +503,6 @@ try {
     console.warn('⚠️ Realtime 라우트 로드 실패:', error.message);
 }
 
-// 가상포인트 관리 API
 try {
     const virtualPointRoutes = require('./routes/virtual-points');
     app.use('/api/virtual-points', virtualPointRoutes);
@@ -799,16 +511,14 @@ try {
     console.warn('⚠️ Virtual Points 라우트 로드 실패:', error.message);
 }
 
-// 스크립트 엔진 API
 try {
     const scriptEngineRoutes = require('./routes/script-engine');
     app.use('/api/script-engine', scriptEngineRoutes);
-    console.log('✅ Script Engine API 라우트 등록 완료 (가상포인트 공통 사용)');
+    console.log('✅ Script Engine API 라우트 등록 완료');
 } catch (error) {
     console.warn('⚠️ Script Engine 라우트 로드 실패:', error.message);
 }
 
-// 시스템 모니터링 API
 try {
     const monitoringRoutes = require('./routes/monitoring');
     app.use('/api/monitoring', monitoringRoutes);
@@ -817,7 +527,6 @@ try {
     console.warn('⚠️ Monitoring 라우트 로드 실패:', error.message);
 }
 
-// 백업/복원 API
 try {
     const backupRoutes = require('./routes/backup');
     app.use('/api/backup', backupRoutes);
@@ -826,7 +535,6 @@ try {
     console.warn('⚠️ Backup 라우트 로드 실패:', error.message);
 }
 
-// WebSocket 관리 API (새로 추가)
 try {
     const websocketRoutes = require('./routes/websocket');
     app.use('/api/websocket', websocketRoutes);
@@ -835,7 +543,6 @@ try {
     console.warn('⚠️ WebSocket 라우트 로드 실패:', error.message);
 }
 
-// 기본 API 정보
 try {
     const apiRoutes = require('./routes/api');
     app.use('/api', apiRoutes);
@@ -864,7 +571,6 @@ app.use('/api/*', (req, res) => {
 app.use((error, req, res, next) => {
     console.error('🚨 Unhandled error:', error);
     
-    // 에러 타입별 처리
     let statusCode = 500;
     let message = 'Internal server error';
     
@@ -931,14 +637,18 @@ function gracefulShutdown(signal) {
 }
 
 // =============================================================================
-// Start Server (완전 통합 버전)
+// Start Server
 // =============================================================================
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
 
 server.listen(PORT, async () => {
+    const wsStatus = webSocketService ? 
+        `✅ 활성화 (${webSocketService.getStatus().stats?.socket_clients || 0}명 연결)` : 
+        '❌ 비활성화';
+        
     console.log(`
-🚀 PulseOne Backend Server Started! (완전 통합 + WebSocket 라우트 완성)
+🚀 PulseOne Backend Server Started! (WebSocket 서비스 분리 완성)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Dashboard:     http://localhost:${PORT}
 🔧 API Health:    http://localhost:${PORT}/api/health
@@ -950,14 +660,12 @@ server.listen(PORT, async () => {
 
 🆕 WebSocket 관리 API:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔌 WebSocket:     ${io ? '✅ 활성화' : '❌ 비활성화'}
-📡 연결된 클라이언트: ${io ? io.engine.clientsCount : 0}명
+🔌 WebSocket:     ${wsStatus}
 🚨 알람 구독자:    ${alarmSubscriber ? '✅ 준비됨' : '⚠️ 비활성화'}
 🧪 알람 테스트:    POST http://localhost:${PORT}/api/test/alarm
 🔍 WebSocket 상태: GET  http://localhost:${PORT}/api/websocket/status
 👥 클라이언트 목록: GET  http://localhost:${PORT}/api/websocket/clients
 🏠 룸 정보:        GET  http://localhost:${PORT}/api/websocket/rooms
-📡 알람 구독 상태:  GET  http://localhost:${PORT}/api/websocket/alarm-subscriber
 
 🔥 핵심 비즈니스 API (우선순위 1 - 필수)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -985,18 +693,19 @@ server.listen(PORT, async () => {
 Environment: ${process.env.NODE_ENV || 'development'}
 Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enabled' : '❌ Disabled'}
 DatabaseInitializer: ${DatabaseInitializer ? '✅ Available' : '❌ Not Found'}
+WebSocket Service: ${webSocketService ? '✅ Enabled' : '❌ Disabled'}
 Authentication: 🔓 Development Mode (Basic Auth)
 Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v2.4.0 - WebSocket 라우트 완성)
+🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v3.0.0 - WebSocket 서비스 분리)
    - 알람 관리 ✅
    - 디바이스 관리 ✅  
    - 가상포인트 관리 ✅
    - 데이터 익스플로러 ✅
    - 스크립트 엔진 ✅
-   - 실시간 알람 처리 ${io && alarmSubscriber ? '✅' : '⚠️'}
+   - 실시간 알람 처리 ${webSocketService && alarmSubscriber ? '✅' : '⚠️'}
    - WebSocket 상태 관리 ✅
    - 자동 초기화 ${DatabaseInitializer ? '✅' : '⚠️'}
    - 서비스 제어 ✅
