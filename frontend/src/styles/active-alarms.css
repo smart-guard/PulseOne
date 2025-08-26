@@ -1,171 +1,169 @@
 /* ============================================================================
  * frontend/src/styles/active-alarms.css
- * 활성 알람 페이지 - 시각적 접근성 완전 개선 버전
- * 기존 강한 배경색을 부드러운 보더 + 뱃지로 변경
+ * 활성 알람 페이지 - 완전한 기능 유지 + 스코프 제한으로 간섭 방지
  * ============================================================================ */
 
-/* 한글 폰트 및 기본 변수 */
+/* 한글 폰트만 전역으로 유지 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
 
-:root {
-  /* 공통 간격 변수 */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  
-  /* 개선된 색상 팔레트 - 부드러운 색조 */
-  --critical-color: #dc2626;
-  --critical-bg: #fef2f2;
-  --critical-border: #fecaca;
-  
-  --high-color: #ea580c;
-  --high-bg: #fff7ed;
-  --high-border: #fed7aa;
-  
-  --medium-color: #2563eb;
-  --medium-bg: #eff6ff;
-  --medium-border: #bfdbfe;
-  
-  --low-color: #059669;
-  --low-bg: #ecfdf5;
-  --low-border: #a7f3d0;
-  
-  --acknowledged-color: #6b7280;
-  --acknowledged-bg: #f9fafb;
-  
-  /* 기본 폰트 */
-  --font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-}
-
 /* ============================================================================
- * 메인 컨테이너
+ * ActiveAlarms 전용 컨테이너 - 모든 변수를 여기서 관리
  * ============================================================================ */
 
 .active-alarms-container {
+  /* 색상 변수들을 컨테이너 내부로 스코프 제한 */
+  --active-critical-color: #dc2626;
+  --active-critical-bg: #fef2f2;
+  --active-critical-border: #fecaca;
+  
+  --active-high-color: #ea580c;
+  --active-high-bg: #fff7ed;
+  --active-high-border: #fed7aa;
+  
+  --active-medium-color: #2563eb;  /* ActiveAlarms는 파란색 사용 */
+  --active-medium-bg: #eff6ff;
+  --active-medium-border: #bfdbfe;
+  
+  --active-low-color: #059669;
+  --active-low-bg: #ecfdf5;
+  --active-low-border: #a7f3d0;
+  
+  --active-acknowledged-color: #6b7280;
+  --active-acknowledged-bg: #f9fafb;
+  
+  /* 공통 간격 변수도 컨테이너 내부로 제한 */
+  --active-space-1: 4px;
+  --active-space-2: 8px;
+  --active-space-3: 12px;
+  --active-space-4: 16px;
+  --active-space-5: 20px;
+  --active-space-6: 24px;
+  
+  /* 폰트 */
+  --active-font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  
+  /* 기본 컨테이너 스타일 */
   width: 100%;
   max-width: none;
-  padding: var(--space-6);
+  padding: var(--active-space-6);
   background: #f8fafc;
   min-height: 100vh;
-  animation: fadeIn 0.3s ease-out;
-  font-family: var(--font-family);
+  animation: activeAlarmsFadeIn 0.3s ease-out;
+  font-family: var(--active-font-family);
 }
 
 /* ============================================================================
  * 페이지 헤더
  * ============================================================================ */
 
-.page-header {
+.active-alarms-container .page-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--active-space-6);
   background: white;
-  padding: var(--space-6);
+  padding: var(--active-space-6);
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
 }
 
-.header-left .page-title {
+.active-alarms-container .header-left .page-title {
   font-size: 2rem;
   font-weight: 700;
   color: #111827;
-  margin: 0 0 var(--space-2) 0;
-  font-family: var(--font-family);
+  margin: 0 0 var(--active-space-2) 0;
+  font-family: var(--active-font-family);
 }
 
-.header-left .page-subtitle {
+.active-alarms-container .header-left .page-subtitle {
   font-size: 1rem;
   color: #6b7280;
   margin: 0;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--active-space-3);
 }
 
-.header-right {
+.active-alarms-container .header-right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
 }
 
-.header-actions {
+.active-alarms-container .header-actions {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
   align-items: center;
   flex-wrap: wrap;
 }
 
 /* ============================================================================
- * 긴급 알람 배너 (기존 유지)
+ * 긴급 알람 배너
  * ============================================================================ */
 
-.emergency-banner {
+.active-alarms-container .emergency-banner {
   background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--active-space-4) var(--active-space-6);
   border-radius: 12px;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--active-space-6);
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--active-space-4);
   box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
-  animation: pulse-error 2s infinite;
+  animation: activeAlarmsPulseError 2s infinite;
 }
 
-.emergency-banner.hidden {
+.active-alarms-container .emergency-banner.hidden {
   display: none;
 }
 
-.emergency-icon {
+.active-alarms-container .emergency-icon {
   font-size: 2rem;
-  animation: shake 0.5s infinite;
+  animation: activeAlarmsShake 0.5s infinite;
 }
 
-.emergency-content h2 {
-  margin: 0 0 var(--space-1) 0;
+.active-alarms-container .emergency-content h2 {
+  margin: 0 0 var(--active-space-1) 0;
   font-size: 1.25rem;
   font-weight: 700;
 }
 
-.emergency-content p {
+.active-alarms-container .emergency-content p {
   margin: 0;
   opacity: 0.9;
 }
 
-.emergency-actions {
+.active-alarms-container .emergency-actions {
   margin-left: auto;
   display: flex;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
 }
 
 /* ============================================================================
  * 알람 통계 패널 - 5열 그리드
  * ============================================================================ */
 
-.alarm-stats-panel {
+.active-alarms-container .alarm-stats-panel {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
-  padding: var(--space-4);
-  margin-bottom: var(--space-6);
+  padding: var(--active-space-4);
+  margin-bottom: var(--active-space-6);
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-4);
+  gap: var(--active-space-4);
 }
 
-.alarm-stat-card {
+.active-alarms-container .alarm-stat-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4);
+  padding: var(--active-space-4);
   border-radius: 12px;
   border: 1px solid #e5e7eb;
   position: relative;
@@ -173,58 +171,58 @@
   min-height: 80px;
 }
 
-.alarm-stat-card.critical {
-  background: linear-gradient(135deg, var(--critical-bg), white);
-  border-color: var(--critical-color);
+.active-alarms-container .alarm-stat-card.critical {
+  background: linear-gradient(135deg, var(--active-critical-bg), white);
+  border-color: var(--active-critical-color);
 }
 
-.alarm-stat-card.high {
-  background: linear-gradient(135deg, var(--high-bg), white);
-  border-color: var(--high-color);
+.active-alarms-container .alarm-stat-card.high {
+  background: linear-gradient(135deg, var(--active-high-bg), white);
+  border-color: var(--active-high-color);
 }
 
-.alarm-stat-card.medium {
-  background: linear-gradient(135deg, var(--medium-bg), white);
-  border-color: var(--medium-color);
+.active-alarms-container .alarm-stat-card.medium {
+  background: linear-gradient(135deg, var(--active-medium-bg), white);
+  border-color: var(--active-medium-color);
 }
 
-.alarm-stat-card.low {
-  background: linear-gradient(135deg, var(--low-bg), white);
-  border-color: var(--low-color);
+.active-alarms-container .alarm-stat-card.low {
+  background: linear-gradient(135deg, var(--active-low-bg), white);
+  border-color: var(--active-low-color);
 }
 
-.alarm-stat-card.unack {
+.active-alarms-container .alarm-stat-card.unack {
   background: linear-gradient(135deg, #f3f4f6, white);
   border-color: #8b5cf6;
 }
 
-.alarm-stat-card.has-alarms {
+.active-alarms-container .alarm-stat-card.has-alarms {
   transform: scale(1.02);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.alarm-stat-left {
+.active-alarms-container .alarm-stat-left {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
-.alarm-stat-label {
+.active-alarms-container .alarm-stat-label {
   font-size: 0.875rem;
   color: #6b7280;
   font-weight: 500;
-  margin-bottom: var(--space-1);
-  font-family: var(--font-family);
+  margin-bottom: var(--active-space-1);
+  font-family: var(--active-font-family);
 }
 
-.alarm-stat-value {
+.active-alarms-container .alarm-stat-value {
   font-size: 2rem;
   font-weight: 700;
   color: #111827;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.alarm-stat-icon {
+.active-alarms-container .alarm-stat-icon {
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -236,13 +234,13 @@
   flex-shrink: 0;
 }
 
-.alarm-stat-icon.critical { background: var(--critical-color); }
-.alarm-stat-icon.high { background: var(--high-color); }
-.alarm-stat-icon.medium { background: var(--medium-color); }
-.alarm-stat-icon.low { background: var(--low-color); }
-.alarm-stat-icon.unack { background: #8b5cf6; }
+.active-alarms-container .alarm-stat-icon.critical { background: var(--active-critical-color); }
+.active-alarms-container .alarm-stat-icon.high { background: var(--active-high-color); }
+.active-alarms-container .alarm-stat-icon.medium { background: var(--active-medium-color); }
+.active-alarms-container .alarm-stat-icon.low { background: var(--active-low-color); }
+.active-alarms-container .alarm-stat-icon.unack { background: #8b5cf6; }
 
-.alarm-stat-badge {
+.active-alarms-container .alarm-stat-badge {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -251,113 +249,113 @@
   font-size: 0.75rem;
   padding: 2px 6px;
   border-radius: 12px;
-  animation: pulse-error 2s infinite;
+  animation: activeAlarmsPulseError 2s infinite;
 }
 
 /* ============================================================================
  * 실시간 제어 패널 - 텍스트 겹침 수정
  * ============================================================================ */
 
-.realtime-controls {
+.active-alarms-container .realtime-controls {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
-  padding: var(--space-4) var(--space-6);
-  margin-bottom: var(--space-6);
+  padding: var(--active-space-4) var(--active-space-6);
+  margin-bottom: var(--active-space-6);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--active-space-4);
   min-height: 60px;
 }
 
-.realtime-status {
+.active-alarms-container .realtime-status {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--active-space-4);
   flex: 1;
   min-width: 280px;
 }
 
-.live-indicator {
+.active-alarms-container .live-indicator {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
   font-weight: 600;
   color: #6b7280;
   white-space: nowrap;
   min-width: 140px;
 }
 
-.live-indicator.active {
+.active-alarms-container .live-indicator.active {
   color: #10b981;
 }
 
-.live-dot {
+.active-alarms-container .live-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: #6b7280;
-  animation: pulse 2s infinite;
+  animation: activeAlarmsPulse 2s infinite;
   flex-shrink: 0;
 }
 
-.live-indicator.active .live-dot {
+.active-alarms-container .live-indicator.active .live-dot {
   background: #10b981;
-  animation: pulse-success 2s infinite;
+  animation: activeAlarmsPulseSuccess 2s infinite;
 }
 
-.live-text {
+.active-alarms-container .live-text {
   font-size: 0.875rem;
   font-weight: 600;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.last-update {
+.active-alarms-container .last-update {
   font-size: 0.75rem;
   color: #9ca3af;
   white-space: nowrap;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
   min-width: 120px;
   text-align: left;
 }
 
-.sound-controls {
+.active-alarms-container .sound-controls {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
 }
 
-.sound-toggle {
+.active-alarms-container .sound-toggle {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--active-space-2);
+  padding: var(--active-space-2) var(--active-space-3);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
   font-size: 0.875rem;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.sound-toggle.enabled {
+.active-alarms-container .sound-toggle.enabled {
   background: #ecfdf5;
   color: #10b981;
 }
 
-.sound-toggle.disabled {
+.active-alarms-container .sound-toggle.disabled {
   background: #fef2f2;
   color: #ef4444;
 }
 
-.control-actions {
+.active-alarms-container .control-actions {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
   align-items: center;
 }
 
@@ -365,44 +363,44 @@
  * 개선된 알람 테이블 - 핵심 개선사항
  * ============================================================================ */
 
-.alarms-table-container {
+.active-alarms-container .alarms-table-container {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
   overflow: hidden;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--active-space-6);
 }
 
-.alarms-table {
+.active-alarms-container .alarms-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.alarms-table thead {
+.active-alarms-container .alarms-table thead {
   background: #f9fafb;
   border-bottom: 2px solid #e5e7eb;
 }
 
-.alarms-table th {
-  padding: var(--space-4) var(--space-6);
+.active-alarms-container .alarms-table th {
+  padding: var(--active-space-4) var(--active-space-6);
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
   color: #374151;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
   white-space: nowrap;
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
-.alarms-table td {
-  padding: var(--space-4) var(--space-6);
+.active-alarms-container .alarms-table td {
+  padding: var(--active-space-4) var(--active-space-6);
   border-bottom: 1px solid #f1f5f9;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
   vertical-align: middle;
 }
 
@@ -410,122 +408,117 @@
  * 핵심 개선: 부드러운 테이블 행 스타일
  * ============================================================================ */
 
-.alarms-table tbody tr {
+.active-alarms-container .alarms-table tbody tr {
   background: white;
   border-left: 4px solid transparent;
   transition: all 0.2s ease;
 }
 
-.alarms-table tbody tr:hover {
+.active-alarms-container .alarms-table tbody tr:hover {
   background: #f8fafc;
 }
 
 /* 심각도별 좌측 보더만 사용 - 배경색 제거 */
-.alarms-table tbody tr.severity-critical {
-  border-left-color: var(--critical-color);
+.active-alarms-container .alarms-table tbody tr.severity-critical {
+  border-left-color: var(--active-critical-color);
 }
 
-.alarms-table tbody tr.severity-high {
-  border-left-color: var(--high-color);
+.active-alarms-container .alarms-table tbody tr.severity-high {
+  border-left-color: var(--active-high-color);
 }
 
-.alarms-table tbody tr.severity-medium {
-  border-left-color: var(--medium-color);
+.active-alarms-container .alarms-table tbody tr.severity-medium {
+  border-left-color: var(--active-medium-color);
 }
 
-.alarms-table tbody tr.severity-low {
-  border-left-color: var(--low-color);
+.active-alarms-container .alarms-table tbody tr.severity-low {
+  border-left-color: var(--active-low-color);
 }
 
 /* 새 알람 강조 - 부드러운 효과 */
-.alarms-table tbody tr.new-alarm-row {
+.active-alarms-container .alarms-table tbody tr.new-alarm-row {
   background: linear-gradient(90deg, #fefce8, transparent);
   border-left-color: #f59e0b;
-  animation: newAlarmPulse 2s ease-in-out;
-}
-
-@keyframes newAlarmPulse {
-  0%, 100% { box-shadow: none; }
-  50% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
+  animation: activeAlarmsNewAlarmPulse 2s ease-in-out;
 }
 
 /* ============================================================================
  * 부드러운 심각도 뱃지
  * ============================================================================ */
 
-.severity-badge {
+.active-alarms-container .severity-badge {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--active-space-2);
+  padding: var(--active-space-2) var(--active-space-3);
   border-radius: 16px;
   font-size: 0.75rem;
   font-weight: 600;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
   min-width: 90px;
   justify-content: center;
 }
 
-.severity-badge.severity-critical {
-  background: var(--critical-bg);
-  color: var(--critical-color);
-  border: 1px solid var(--critical-border);
+.active-alarms-container .severity-badge.severity-critical {
+  background: var(--active-critical-bg);
+  color: var(--active-critical-color);
+  border: 1px solid var(--active-critical-border);
 }
 
-.severity-badge.severity-high {
-  background: var(--high-bg);
-  color: var(--high-color);
-  border: 1px solid var(--high-border);
+.active-alarms-container .severity-badge.severity-high {
+  background: var(--active-high-bg);
+  color: var(--active-high-color);
+  border: 1px solid var(--active-high-border);
 }
 
-.severity-badge.severity-medium {
-  background: var(--medium-bg);
-  color: var(--medium-color);
-  border: 1px solid var(--medium-border);
+.active-alarms-container .severity-badge.severity-medium {
+  background: var(--active-medium-bg);
+  color: var(--active-medium-color);
+  border: 1px solid var(--active-medium-border);
 }
 
-.severity-badge.severity-low {
-  background: var(--low-bg);
-  color: var(--low-color);
-  border: 1px solid var(--low-border);
+.active-alarms-container .severity-badge.severity-low {
+  background: var(--active-low-bg);
+  color: var(--active-low-color);
+  border: 1px solid var(--active-low-border);
 }
 
-.severity-badge .new-badge {
+.active-alarms-container .severity-badge .new-badge {
   background: #f59e0b;
   color: white;
   padding: 2px 6px;
   border-radius: 10px;
   font-size: 0.625rem;
   font-weight: 700;
-  margin-left: var(--space-1);
-  animation: pulse 2s infinite;
+  margin-left: var(--active-space-1);
+  animation: activeAlarmsPulse 2s infinite;
 }
 
 /* ============================================================================
  * 상태 뱃지
  * ============================================================================ */
 
-.state-badge {
+.active-alarms-container .state-badge {
   display: inline-flex;
   align-items: center;
-  padding: var(--space-1) var(--space-3);
+  padding: var(--active-space-1) var(--active-space-3);
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.state-badge.state-active {
-  background: var(--critical-bg);
-  color: var(--critical-color);
+.active-alarms-container .state-badge.state-active {
+  background: var(--active-critical-bg);
+  color: var(--active-critical-color);
 }
 
-.state-badge.state-acknowledged {
-  background: var(--acknowledged-bg);
-  color: var(--acknowledged-color);
+.active-alarms-container .state-badge.state-acknowledged {
+  background: var(--active-acknowledged-bg);
+  color: var(--active-acknowledged-color);
 }
 
-.state-badge.state-cleared {
+.active-alarms-container .state-badge.state-cleared {
   background: #f3f4f6;
   color: #6b7280;
 }
@@ -534,195 +527,195 @@
  * 테이블 내용 스타일
  * ============================================================================ */
 
-.alarm-message .message-text {
+.active-alarms-container .alarm-message .message-text {
   font-size: 0.875rem;
   font-weight: 500;
   color: #111827;
-  margin-bottom: var(--space-1);
-  font-family: var(--font-family);
+  margin-bottom: var(--active-space-1);
+  font-family: var(--active-font-family);
 }
 
-.alarm-message .message-description {
+.active-alarms-container .alarm-message .message-description {
   font-size: 0.75rem;
   color: #6b7280;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.device-info .device-name {
+.active-alarms-container .device-info .device-name {
   font-size: 0.875rem;
   font-weight: 500;
   color: #111827;
-  margin-bottom: var(--space-1);
-  font-family: var(--font-family);
+  margin-bottom: var(--active-space-1);
+  font-family: var(--active-font-family);
 }
 
-.device-info .data-point-name {
+.active-alarms-container .device-info .data-point-name {
   font-size: 0.75rem;
   color: #6b7280;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.triggered-value {
+.active-alarms-container .triggered-value {
   font-size: 0.875rem;
   font-family: 'Courier New', monospace;
 }
 
-.timestamp {
+.active-alarms-container .timestamp {
   font-size: 0.875rem;
   color: #374151;
   font-family: 'Courier New', monospace;
 }
 
-.duration {
+.active-alarms-container .duration {
   font-size: 0.75rem;
   color: #6b7280;
   font-weight: 500;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.ack-info {
-  margin-top: var(--space-1);
+.active-alarms-container .ack-info {
+  margin-top: var(--active-space-1);
   font-size: 0.75rem;
   color: #6b7280;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
 /* ============================================================================
  * 실시간 상태 표시
  * ============================================================================ */
 
-.realtime-status {
+.active-alarms-container .realtime-status {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
+  gap: var(--active-space-2);
+  padding: var(--active-space-1) var(--active-space-2);
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.realtime-status.connected {
+.active-alarms-container .realtime-status.connected {
   background: #f0fdf4;
   color: #16a34a;
 }
 
-.realtime-status.connecting {
+.active-alarms-container .realtime-status.connecting {
   background: #fefce8;
   color: #ca8a04;
 }
 
-.realtime-status.error {
+.active-alarms-container .realtime-status.error {
   background: #fef2f2;
   color: #dc2626;
 }
 
-.realtime-status.disconnected {
+.active-alarms-container .realtime-status.disconnected {
   background: #f3f4f6;
   color: #6b7280;
 }
 
-.new-alarms-indicator {
-  margin-left: var(--space-2);
+.active-alarms-container .new-alarms-indicator {
+  margin-left: var(--active-space-2);
   background: #f59e0b;
   color: white;
   padding: 2px 6px;
   border-radius: 8px;
   font-size: 0.625rem;
   font-weight: 600;
-  animation: pulse 2s infinite;
+  animation: activeAlarmsPulse 2s infinite;
 }
 
 /* ============================================================================
  * 버튼 스타일
  * ============================================================================ */
 
-.btn {
+.active-alarms-container .btn {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  gap: var(--active-space-2);
+  padding: var(--active-space-2) var(--active-space-4);
   border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.btn:disabled {
+.active-alarms-container .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.btn.btn-sm {
-  padding: var(--space-1) var(--space-2);
+.active-alarms-container .btn.btn-sm {
+  padding: var(--active-space-1) var(--active-space-2);
   font-size: 0.75rem;
   border-radius: 6px;
 }
 
-.btn.btn-success {
+.active-alarms-container .btn.btn-success {
   background: #10b981;
   color: white;
   border: none;
 }
 
-.btn.btn-success:hover:not(:disabled) {
+.active-alarms-container .btn.btn-success:hover:not(:disabled) {
   background: #059669;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
-.btn.btn-warning {
+.active-alarms-container .btn.btn-warning {
   background: #f59e0b;
   color: white;
   border: none;
 }
 
-.btn.btn-warning:hover:not(:disabled) {
+.active-alarms-container .btn.btn-warning:hover:not(:disabled) {
   background: #d97706;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
 }
 
-.btn.btn-secondary {
+.active-alarms-container .btn.btn-secondary {
   background: #f3f4f6;
   color: #374151;
   border: 1px solid #d1d5db;
 }
 
-.btn.btn-secondary:hover:not(:disabled) {
+.active-alarms-container .btn.btn-secondary:hover:not(:disabled) {
   background: #e5e7eb;
 }
 
-.btn.btn-primary {
+.active-alarms-container .btn.btn-primary {
   background: #3b82f6;
   color: white;
   border: none;
 }
 
-.btn.btn-primary:hover:not(:disabled) {
+.active-alarms-container .btn.btn-primary:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.btn-critical {
+.active-alarms-container .btn-critical {
   background: rgba(255, 255, 255, 0.2);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--active-space-2) var(--active-space-4);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-critical:hover {
+.active-alarms-container .btn-critical:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.alarm-actions {
+.active-alarms-container .alarm-actions {
   display: flex;
-  gap: var(--space-1);
+  gap: var(--active-space-1);
   align-items: center;
 }
 
@@ -730,7 +723,7 @@
  * 모달 스타일
  * ============================================================================ */
 
-.modal-overlay {
+.active-alarms-container .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -744,92 +737,92 @@
   backdrop-filter: blur(4px);
 }
 
-.modal-content {
+.active-alarms-container .modal-content {
   background: white;
   border-radius: 12px;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   width: 100%;
   max-width: 500px;
-  margin: var(--space-4);
+  margin: var(--active-space-4);
 }
 
-.modal-header {
+.active-alarms-container .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-6);
+  padding: var(--active-space-6);
   border-bottom: 1px solid #e5e7eb;
 }
 
-.modal-header h3 {
+.active-alarms-container .modal-header h3 {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
   color: #111827;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.modal-header button {
+.active-alarms-container .modal-header button {
   background: none;
   border: none;
   color: #6b7280;
   cursor: pointer;
-  padding: var(--space-1);
+  padding: var(--active-space-1);
   border-radius: 4px;
   transition: all 0.2s ease;
 }
 
-.modal-header button:hover {
+.active-alarms-container .modal-header button:hover {
   background: #f3f4f6;
   color: #374151;
 }
 
-.modal-body {
-  padding: var(--space-6);
+.active-alarms-container .modal-body {
+  padding: var(--active-space-6);
 }
 
-.alarm-summary {
-  margin-bottom: var(--space-4);
-  padding: var(--space-4);
+.active-alarms-container .alarm-summary {
+  margin-bottom: var(--active-space-4);
+  padding: var(--active-space-4);
   background: #f8fafc;
   border-radius: 8px;
 }
 
-.form-group {
+.active-alarms-container .form-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
 }
 
-.form-group label {
+.active-alarms-container .form-group label {
   font-size: 0.875rem;
   font-weight: 500;
   color: #374151;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.form-group textarea {
-  padding: var(--space-3);
+.active-alarms-container .form-group textarea {
+  padding: var(--active-space-3);
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font-size: 0.875rem;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
   resize: vertical;
   min-height: 80px;
   transition: border-color 0.2s ease;
 }
 
-.form-group textarea:focus {
+.active-alarms-container .form-group textarea:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.modal-footer {
+.active-alarms-container .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-3);
-  padding: var(--space-6);
+  gap: var(--active-space-3);
+  padding: var(--active-space-6);
   border-top: 1px solid #e5e7eb;
 }
 
@@ -837,83 +830,83 @@
  * 알람 목록 (카드뷰가 있는 경우)
  * ============================================================================ */
 
-.alarms-list {
+.active-alarms-container .alarms-list {
   max-height: 600px;
   overflow-y: auto;
 }
 
-.alarm-item {
+.active-alarms-container .alarm-item {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
-  padding: var(--space-4);
-  margin-bottom: var(--space-4);
+  padding: var(--active-space-4);
+  margin-bottom: var(--active-space-4);
   position: relative;
   transition: all 0.3s ease-out;
 }
 
-.alarm-item:last-child {
+.active-alarms-container .alarm-item:last-child {
   border-bottom: none;
 }
 
-.alarm-item:hover {
+.active-alarms-container .alarm-item:hover {
   background: #f9fafb;
 }
 
-.alarm-item.new {
+.active-alarms-container .alarm-item.new {
   background: linear-gradient(90deg, #fef3c7, transparent);
   border-left: 4px solid #f59e0b;
 }
 
-.alarm-item.acknowledged {
+.active-alarms-container .alarm-item.acknowledged {
   opacity: 0.7;
   background: #f3f4f6;
 }
 
-.alarm-item.critical {
-  border-left: 4px solid var(--critical-color);
+.active-alarms-container .alarm-item.critical {
+  border-left: 4px solid var(--active-critical-color);
 }
 
-.alarm-item.high {
-  border-left: 4px solid var(--high-color);
+.active-alarms-container .alarm-item.high {
+  border-left: 4px solid var(--active-high-color);
 }
 
-.alarm-item.medium {
-  border-left: 4px solid var(--medium-color);
+.active-alarms-container .alarm-item.medium {
+  border-left: 4px solid var(--active-medium-color);
 }
 
-.alarm-item.low {
-  border-left: 4px solid var(--low-color);
+.active-alarms-container .alarm-item.low {
+  border-left: 4px solid var(--active-low-color);
 }
 
-.alarm-checkbox {
+.active-alarms-container .alarm-checkbox {
   position: absolute;
-  top: var(--space-4);
-  left: var(--space-4);
+  top: var(--active-space-4);
+  left: var(--active-space-4);
 }
 
-.alarm-checkbox input {
+.active-alarms-container .alarm-checkbox input {
   width: 16px;
   height: 16px;
 }
 
-.alarm-header {
+.active-alarms-container .alarm-header {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-6);
-  margin-bottom: var(--space-4);
+  gap: var(--active-space-6);
+  margin-bottom: var(--active-space-4);
   margin-left: 2rem;
 }
 
-.alarm-priority {
+.active-alarms-container .alarm-priority {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--active-space-2);
   min-width: 100px;
 }
 
-.priority-indicator {
+.active-alarms-container .priority-indicator {
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -924,116 +917,116 @@
   font-size: 0.75rem;
 }
 
-.priority-text {
+.active-alarms-container .priority-text {
   font-size: 0.75rem;
   font-weight: 600;
   color: #374151;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.alarm-source {
+.active-alarms-container .alarm-source {
   flex: 1;
   min-width: 0;
 }
 
-.source-name {
+.active-alarms-container .source-name {
   font-size: 1rem;
   font-weight: 600;
   color: #111827;
-  margin-bottom: var(--space-1);
-  font-family: var(--font-family);
+  margin-bottom: var(--active-space-1);
+  font-family: var(--active-font-family);
   word-break: break-word;
 }
 
-.source-location {
+.active-alarms-container .source-location {
   font-size: 0.875rem;
   color: #6b7280;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.alarm-time {
+.active-alarms-container .alarm-time {
   text-align: right;
   min-width: 150px;
 }
 
-.triggered-time {
+.active-alarms-container .triggered-time {
   font-size: 0.875rem;
   color: #374151;
-  margin-bottom: var(--space-1);
-  font-family: var(--font-family);
+  margin-bottom: var(--active-space-1);
+  font-family: var(--active-font-family);
 }
 
-.alarm-status {
+.active-alarms-container .alarm-status {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--space-1);
+  gap: var(--active-space-1);
 }
 
-.status-badge.active {
-  background: var(--critical-bg);
-  color: var(--critical-color);
+.active-alarms-container .status-badge.active {
+  background: var(--active-critical-bg);
+  color: var(--active-critical-color);
 }
 
-.status-badge.acknowledged {
+.active-alarms-container .status-badge.acknowledged {
   background: #f0fdf4;
   color: #16a34a;
 }
 
-.new-badge {
+.active-alarms-container .new-badge {
   background: #fbbf24;
   color: white;
   padding: 2px 6px;
   border-radius: 8px;
   font-size: 0.625rem;
   font-weight: 600;
-  animation: pulse 2s infinite;
+  animation: activeAlarmsPulse 2s infinite;
 }
 
 /* ============================================================================
  * 상태바 및 기타
  * ============================================================================ */
 
-.status-bar {
+.active-alarms-container .status-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: var(--space-6);
-  padding: var(--space-4);
+  margin-top: var(--active-space-6);
+  padding: var(--active-space-4);
   background: white;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
   font-size: 0.875rem;
   color: #6b7280;
-  font-family: var(--font-family);
+  font-family: var(--active-font-family);
 }
 
-.status-info {
+.active-alarms-container .status-info {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--active-space-4);
 }
 
-.processing-indicator {
+.active-alarms-container .processing-indicator {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--active-space-1);
   color: #3b82f6;
 }
 
-.error-alert {
+.active-alarms-container .error-alert {
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #991b1b;
-  padding: var(--space-4);
+  padding: var(--active-space-4);
   border-radius: 8px;
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--active-space-4);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--active-space-3);
 }
 
-.error-alert button {
+.active-alarms-container .error-alert button {
   background: none;
   border: none;
   color: #991b1b;
@@ -1045,30 +1038,35 @@
  * 애니메이션
  * ============================================================================ */
 
-@keyframes pulse {
+@keyframes activeAlarmsPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
 
-@keyframes pulse-error {
+@keyframes activeAlarmsPulseError {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.8; }
 }
 
-@keyframes pulse-success {
+@keyframes activeAlarmsPulseSuccess {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
 
-@keyframes fadeIn {
+@keyframes activeAlarmsFadeIn {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes shake {
+@keyframes activeAlarmsShake {
   0%, 100% { transform: translateX(0); }
   10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
   20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+@keyframes activeAlarmsNewAlarmPulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
 }
 
 /* ============================================================================
@@ -1076,82 +1074,82 @@
  * ============================================================================ */
 
 @media (max-width: 1400px) {
-  .alarm-stats-panel {
+  .active-alarms-container .alarm-stats-panel {
     grid-template-columns: repeat(4, 1fr);
   }
 }
 
 @media (max-width: 1200px) {
-  .alarm-stats-panel {
+  .active-alarms-container .alarm-stats-panel {
     grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (max-width: 768px) {
   .active-alarms-container {
-    padding: var(--space-4);
+    padding: var(--active-space-4);
   }
   
-  .alarm-stats-panel {
+  .active-alarms-container .alarm-stats-panel {
     grid-template-columns: repeat(2, 1fr);
   }
   
-  .page-header {
+  .active-alarms-container .page-header {
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--active-space-4);
   }
   
-  .header-actions {
+  .active-alarms-container .header-actions {
     align-self: stretch;
     justify-content: space-between;
   }
   
-  .alarms-table th,
-  .alarms-table td {
-    padding: var(--space-2) var(--space-3);
+  .active-alarms-container .alarms-table th,
+  .active-alarms-container .alarms-table td {
+    padding: var(--active-space-2) var(--active-space-3);
   }
   
-  .alarm-stat-value {
+  .active-alarms-container .alarm-stat-value {
     font-size: 1.5rem;
   }
   
-  .realtime-controls {
+  .active-alarms-container .realtime-controls {
     flex-direction: column;
     align-items: stretch;
-    gap: var(--space-3);
+    gap: var(--active-space-3);
   }
   
-  .realtime-status {
+  .active-alarms-container .realtime-status {
     min-width: unset;
     justify-content: space-between;
   }
 }
 
 @media (max-width: 480px) {
-  .alarm-stats-panel {
+  .active-alarms-container .alarm-stats-panel {
     grid-template-columns: 1fr;
   }
   
-  .header-actions {
+  .active-alarms-container .header-actions {
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--active-space-2);
   }
   
-  .alarms-table {
+  .active-alarms-container .alarms-table {
     font-size: 0.75rem;
   }
   
-  .severity-badge {
+  .active-alarms-container .severity-badge {
     min-width: 70px;
     font-size: 0.625rem;
   }
   
-  .live-indicator {
+  .active-alarms-container .live-indicator {
     min-width: unset;
     flex-wrap: wrap;
   }
   
-  .last-update {
+  .active-alarms-container .last-update {
     min-width: unset;
     text-align: center;
   }
