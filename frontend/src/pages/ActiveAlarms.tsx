@@ -1,16 +1,26 @@
 // ============================================================================
 // frontend/src/pages/ActiveAlarms.tsx
-// 📝 활성 알람 페이지 - 새로운 AlarmApiService 완전 연결
+// AlarmWebSocketService + 첨부파일 디자인 적용 완전한 버전
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { AlarmApiService } from '../api/services/alarmApi';
+import { 
+  alarmWebSocketService, 
+  AlarmEvent, 
+  WebSocketAlarmEvent, 
+  AlarmAcknowledgment,
+  ConnectionStatus 
+} from '../services/AlarmWebSocketService';
 import { Pagination } from '../components/common/Pagination';
 import { usePagination } from '../hooks/usePagination';
+
+// CSS 파일들 import
 import '../styles/base.css';
 import '../styles/active-alarms.css';
 import '../styles/pagination.css';
 
-// 🚨 알람 관련 인터페이스들
+// 알람 인터페이스
 interface ActiveAlarm {
   id: number;
   rule_id: number;
@@ -34,6 +44,8 @@ interface ActiveAlarm {
   quality: string;
   tags?: string[];
   metadata?: any;
+  is_new?: boolean;
+  ws_updated_at?: string;
 }
 
 interface AlarmStats {
@@ -56,317 +68,368 @@ interface AlarmStats {
 }
 
 const ActiveAlarms: React.FC = () => {
-  // 🔧 기본 상태들
+  // 페이징 상태
+  const pagination = usePagination({
+    initialPage: 1,
+    initialPageSize: 25,
+    totalCount: 0
+  });
+
+  // 기본 상태
   const [alarms, setAlarms] = useState<ActiveAlarm[]>([]);
-  const [alarmStats, setAlarmStats] = useState<AlarmStats | null>(null);
-  const [selectedAlarms, setSelectedAlarms] = useState<number[]>([]);
+  const [alarmStats, setAlarmStats] = useState<AlarmStats>({
+    total_active: 0,
+    critical_count: 0,
+    high_count: 0,
+    medium_count: 0,
+    low_count: 0,
+    unacknowledged_count: 0,
+    acknowledged_count: 0,
+    by_device: [],
+    by_severity: []
+  });
+
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // 필터 상태
-  const [severityFilter, setSeverityFilter] = useState<string>('all');
-  const [deviceFilter, setDeviceFilter] = useState<string>('all');
-  const [acknowledgedFilter, setAcknowledgedFilter] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // 실시간 업데이트
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(5000);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // 알람 확인 모달
+  // 필터 상태 
+  const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [stateFilter, setStateFilter] = useState<string>('active');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // WebSocket 상태
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
+    status: 'connected',
+    timestamp: new Date().toISOString()
+  });
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [realTimeEnabled, setRealTimeEnabled] = useState(true);
+  const [newAlarmsCount, setNewAlarmsCount] = useState(0);
+  const [pendingNewAlarms, setPendingNewAlarms] = useState<ActiveAlarm[]>([]);
+  
+  // 모달 상태
   const [showAckModal, setShowAckModal] = useState(false);
   const [ackComment, setAckComment] = useState('');
   const [selectedAlarmForAck, setSelectedAlarmForAck] = useState<ActiveAlarm | null>(null);
 
-  // 페이징
-  const pagination = usePagination({
-    initialPage: 1,
-    initialPageSize: 50,
-    totalCount: 0
-  });
-
   // =============================================================================
-  // 🔄 데이터 로드 함수들 (새로운 알람 API 사용)
+  // API 호출 함수들
   // =============================================================================
 
-  /**
-   * 활성 알람 목록 로드
-   */
-  const loadActiveAlarms = useCallback(async () => {
+  const fetchActiveAlarms = useCallback(async (): Promise<void> => {
     try {
-      setIsLoading(true);
       setError(null);
-
-      console.log('🚨 활성 알람 목록 로드 시작...');
-
-      // 새로운 알람 API 호출
-      const response = await fetch('/api/alarms/active?' + new URLSearchParams({
-        page: pagination.currentPage.toString(),
-        limit: pagination.pageSize.toString(),
-        severity: severityFilter !== 'all' ? severityFilter : '',
-        device_id: deviceFilter !== 'all' ? deviceFilter : '',
-        acknowledged: acknowledgedFilter !== 'all' ? acknowledgedFilter : '',
-        search: searchTerm || ''
-      }).toString());
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setAlarms(data.data.items);
-        pagination.updateTotalCount(data.data.pagination.total);
-        
-        console.log(`✅ 활성 알람 ${data.data.items.length}개 로드 완료`);
-      } else {
-        throw new Error(data.message || '활성 알람 로드 실패');
-      }
-
-    } catch (err) {
-      console.error('❌ 활성 알람 로드 실패:', err);
-      setError(err instanceof Error ? err.message : '알 수 없는 오류');
-    } finally {
-      setIsLoading(false);
-      setLastUpdate(new Date());
-    }
-  }, [pagination.currentPage, pagination.pageSize, severityFilter, deviceFilter, acknowledgedFilter, searchTerm]);
-
-  /**
-   * 알람 통계 로드
-   */
-  const loadAlarmStats = useCallback(async () => {
-    try {
-      console.log('📊 알람 통계 로드 시작...');
-
-      const response = await fetch('/api/alarms/statistics');
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setAlarmStats(data.data);
-        console.log('✅ 알람 통계 로드 완료');
-      } else {
-        console.warn('⚠️ 알람 통계 로드 실패:', data.message);
-      }
-    } catch (err) {
-      console.warn('⚠️ 알람 통계 로드 실패:', err);
-    }
-  }, []);
-
-  // =============================================================================
-  // 🔄 알람 액션 함수들
-  // =============================================================================
-
-  /**
-   * 알람 확인 처리
-   */
-  const handleAcknowledgeAlarm = async (alarmId: number, comment: string = '') => {
-    try {
-      setIsProcessing(true);
-      console.log(`✅ 알람 ${alarmId} 확인 처리 시작...`);
-
-      const response = await fetch(`/api/alarms/occurrences/${alarmId}/acknowledge`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ comment })
+      const response = await AlarmApiService.getActiveAlarms({
+        page: pagination.currentPage,
+        limit: pagination.pageSize,
+        severity: severityFilter !== 'all' ? severityFilter : undefined,
+        state: stateFilter !== 'all' ? stateFilter : undefined,
+        search: searchTerm || undefined
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      if (response.success && response.data?.items) {
+        const formattedAlarms = response.data.items.map((alarm: any) => ({
+          id: alarm.id,
+          rule_id: alarm.rule_id,
+          rule_name: alarm.rule_name,
+          device_id: alarm.device_id,
+          device_name: alarm.device_name,
+          data_point_id: alarm.data_point_id,
+          data_point_name: alarm.data_point_name,
+          severity: mapSeverity(alarm.severity),
+          priority: getSeverityLevel(alarm.severity),
+          message: alarm.alarm_message || alarm.message,
+          description: alarm.description,
+          triggered_value: alarm.trigger_value || alarm.triggered_value,
+          threshold_value: alarm.threshold_value,
+          condition_type: alarm.condition_type,
+          triggered_at: alarm.occurrence_time || alarm.triggered_at,
+          acknowledged_at: alarm.acknowledged_at,
+          acknowledged_by: alarm.acknowledged_by,
+          acknowledgment_comment: alarm.acknowledgment_comment,
+          state: alarm.state,
+          quality: alarm.quality || 'good',
+          tags: alarm.tags,
+          metadata: alarm.metadata,
+          is_new: false
+        }));
 
-      const data = await response.json();
-
-      if (data.success) {
-        console.log(`✅ 알람 ${alarmId} 확인 처리 완료`);
-        await loadActiveAlarms(); // 목록 새로고침
-        await loadAlarmStats(); // 통계 새로고침
-        setShowAckModal(false);
-        setAckComment('');
-        setSelectedAlarmForAck(null);
+        setAlarms(formattedAlarms);
+        
+        if (response.data.pagination) {
+          pagination.updateTotalCount(response.data.pagination.total);
+        }
+        
+        updateAlarmStats(formattedAlarms);
       } else {
-        throw new Error(data.message || '알람 확인 처리 실패');
+        setError(response.message || '알람 데이터 조회에 실패했습니다');
       }
     } catch (err) {
-      console.error(`❌ 알람 ${alarmId} 확인 처리 실패:`, err);
+      console.error('활성 알람 조회 실패:', err);
+      setError(err instanceof Error ? err.message : '알람 데이터 조회에 실패했습니다');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pagination.currentPage, pagination.pageSize, severityFilter, stateFilter, searchTerm]);
+
+  const handleAcknowledgeAlarm = useCallback(async (alarmId: number, comment: string = ''): Promise<void> => {
+    try {
+      setIsProcessing(true);
+      
+      const response = await AlarmApiService.acknowledgeAlarm(alarmId, {
+        comment: comment
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || '확인 처리 실패');
+      }
+
+      setAlarms(prev => prev.map(alarm => 
+        alarm.id === alarmId 
+          ? { 
+              ...alarm, 
+              state: 'acknowledged' as const,
+              acknowledged_at: new Date().toISOString(),
+              acknowledged_by: '관리자',
+              acknowledgment_comment: comment,
+              is_new: false
+            }
+          : alarm
+      ));
+
+      updateAlarmStats();
+      setShowAckModal(false);
+      setAckComment('');
+      setSelectedAlarmForAck(null);
+
+    } catch (err) {
       setError(err instanceof Error ? err.message : '알람 확인 처리 실패');
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, []);
 
-  /**
-   * 알람 해제 처리
-   */
-  const handleClearAlarm = async (alarmId: number, comment: string = '') => {
+  const handleClearAlarm = useCallback(async (alarmId: number): Promise<void> => {
     try {
       setIsProcessing(true);
-      console.log(`🗑️ 알람 ${alarmId} 해제 처리 시작...`);
-
-      const response = await fetch(`/api/alarms/occurrences/${alarmId}/clear`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ comment })
+      
+      const response = await AlarmApiService.clearAlarm(alarmId, {
+        comment: '사용자에 의해 해제됨'
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (!response.success) {
+        throw new Error(response.message || '해제 처리 실패');
       }
 
-      const data = await response.json();
+      setAlarms(prev => prev.filter(alarm => alarm.id !== alarmId));
+      updateAlarmStats();
 
-      if (data.success) {
-        console.log(`✅ 알람 ${alarmId} 해제 처리 완료`);
-        await loadActiveAlarms();
-        await loadAlarmStats();
-      } else {
-        throw new Error(data.message || '알람 해제 처리 실패');
-      }
     } catch (err) {
-      console.error(`❌ 알람 ${alarmId} 해제 처리 실패:`, err);
       setError(err instanceof Error ? err.message : '알람 해제 처리 실패');
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, []);
 
-  /**
-   * 일괄 확인 처리
-   */
-  const handleBulkAcknowledge = async () => {
-    if (selectedAlarms.length === 0) {
-      alert('확인할 알람을 선택해주세요.');
-      return;
-    }
+  // =============================================================================
+  // WebSocket 이벤트 처리
+  // =============================================================================
 
-    if (!window.confirm(`선택된 ${selectedAlarms.length}개 알람을 확인 처리하시겠습니까?`)) {
-      return;
-    }
+  const handleAlarmEvent = useCallback((event: WebSocketAlarmEvent) => {
+    console.log('새 알람 이벤트 수신:', event);
+    
+    const newAlarm: ActiveAlarm = {
+      id: event.data.occurrence_id,
+      rule_id: event.data.rule_id,
+      rule_name: event.data.source_name || `규칙 ${event.data.rule_id}`,
+      device_id: parseInt(event.data.device_id || '0'),
+      device_name: event.data.location || `Device ${event.data.device_id}`,
+      data_point_id: event.data.point_id,
+      data_point_name: `Point ${event.data.point_id}`,
+      severity: mapSeverity(event.data.severity),
+      priority: event.data.severity_level,
+      message: event.data.message,
+      description: event.data.message,
+      triggered_value: event.data.trigger_value,
+      threshold_value: undefined,
+      triggered_at: new Date(event.data.timestamp).toISOString(),
+      state: event.data.state === 1 ? 'active' : 'acknowledged',
+      quality: 'good',
+      is_new: true
+    };
 
-    try {
-      setIsProcessing(true);
-      console.log('🔄 일괄 확인 처리 시작:', selectedAlarms);
-
-      const results = await Promise.allSettled(
-        selectedAlarms.map(alarmId => 
-          fetch(`/api/alarms/occurrences/${alarmId}/acknowledge`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ comment: '일괄 확인 처리' })
-          })
-        )
-      );
-
-      const successful = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.filter(r => r.status === 'rejected').length;
-
-      alert(`일괄 처리 완료: 성공 ${successful}개, 실패 ${failed}개`);
+    if (pagination.currentPage !== 1) {
+      setPendingNewAlarms(prev => [newAlarm, ...prev.slice(0, 9)]);
+      setNewAlarmsCount(prev => prev + 1);
+    } else {
+      const matchesFilters = checkAlarmMatchesFilters(newAlarm);
+      if (matchesFilters) {
+        setAlarms(prev => {
+          const exists = prev.find(alarm => alarm.id === newAlarm.id);
+          if (exists) {
+            return prev.map(alarm => 
+              alarm.id === newAlarm.id ? { ...alarm, ...newAlarm } : alarm
+            );
+          } else {
+            const newList = [newAlarm, ...prev];
+            return newList.slice(0, pagination.pageSize);
+          }
+        });
+        
+        pagination.updateTotalCount(pagination.totalCount + 1);
+      }
       
-      setSelectedAlarms([]);
-      await loadActiveAlarms();
-      await loadAlarmStats();
+      setNewAlarmsCount(prev => prev + 1);
+    }
 
-    } catch (err) {
-      console.error('❌ 일괄 확인 처리 실패:', err);
-      setError(err instanceof Error ? err.message : '일괄 확인 처리 실패');
-    } finally {
-      setIsProcessing(false);
+    setLastUpdate(new Date());
+
+    if (soundEnabled && event.data.severity_level >= 2) {
+      playAlarmSound(event.data.severity_level);
+    }
+
+    if (Notification.permission === 'granted') {
+      showBrowserNotification(newAlarm);
+    }
+
+    setTimeout(() => {
+      setAlarms(prev => prev.map(alarm => 
+        alarm.id === newAlarm.id ? { ...alarm, is_new: false } : alarm
+      ));
+    }, 5000);
+
+  }, [pagination.currentPage, pagination.pageSize, pagination.totalCount, soundEnabled, severityFilter, stateFilter, searchTerm]);
+
+  const handleAcknowledgment = useCallback((ack: AlarmAcknowledgment) => {
+    console.log('알람 확인 알림 수신:', ack);
+    
+    setAlarms(prev => prev.map(alarm => 
+      alarm.id === ack.occurrence_id 
+        ? { 
+            ...alarm, 
+            state: 'acknowledged',
+            acknowledged_at: ack.timestamp,
+            acknowledgment_comment: ack.comment
+          }
+        : alarm
+    ));
+  }, []);
+
+  const handleConnectionChange = useCallback((status: ConnectionStatus) => {
+    console.log('연결 상태 변경:', status);
+    setConnectionStatus(status);
+  }, []);
+
+  const handleWebSocketError = useCallback((error: string) => {
+    console.error('WebSocket 에러:', error);
+    setError(`실시간 연결 오류: ${error}`);
+  }, []);
+
+  // =============================================================================
+  // 유틸리티 함수들
+  // =============================================================================
+
+  const mapSeverity = (severity: string): 'low' | 'medium' | 'high' | 'critical' => {
+    const severityMap: { [key: string]: 'low' | 'medium' | 'high' | 'critical' } = {
+      'info': 'low',
+      'low': 'low',
+      'medium': 'medium',
+      'high': 'high',
+      'critical': 'critical'
+    };
+    return severityMap[severity?.toLowerCase()] || 'low';
+  };
+
+  const getSeverityLevel = (severity: string): number => {
+    const levelMap: { [key: string]: number } = {
+      'low': 1,
+      'medium': 2,
+      'high': 3,
+      'critical': 4
+    };
+    return levelMap[severity?.toLowerCase()] || 1;
+  };
+
+  const checkAlarmMatchesFilters = useCallback((alarm: ActiveAlarm): boolean => {
+    if (severityFilter !== 'all' && alarm.severity !== severityFilter) {
+      return false;
+    }
+    
+    if (stateFilter !== 'all' && alarm.state !== stateFilter) {
+      return false;
+    }
+    
+    if (searchTerm && !alarm.message.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
+    }
+    
+    return true;
+  }, [severityFilter, stateFilter, searchTerm]);
+
+  const goToFirstPageWithNewAlarms = useCallback(() => {
+    if (pagination.currentPage !== 1) {
+      pagination.goToPage(1);
+    }
+    
+    setPendingNewAlarms([]);
+    setNewAlarmsCount(0);
+    fetchActiveAlarms();
+  }, [pagination, fetchActiveAlarms]);
+
+  const updateAlarmStats = useCallback((alarmList?: ActiveAlarm[]) => {
+    const currentAlarms = alarmList || alarms;
+    const activeAlarms = currentAlarms.filter(a => a.state === 'active');
+    
+    const stats: AlarmStats = {
+      total_active: activeAlarms.length,
+      critical_count: activeAlarms.filter(a => a.severity === 'critical').length,
+      high_count: activeAlarms.filter(a => a.severity === 'high').length,
+      medium_count: activeAlarms.filter(a => a.severity === 'medium').length,
+      low_count: activeAlarms.filter(a => a.severity === 'low').length,
+      unacknowledged_count: activeAlarms.filter(a => !a.acknowledged_at).length,
+      acknowledged_count: currentAlarms.filter(a => a.state === 'acknowledged').length,
+      by_device: [],
+      by_severity: []
+    };
+    
+    setAlarmStats(stats);
+  }, [alarms]);
+
+  const playAlarmSound = (severityLevel: number) => {
+    if (!soundEnabled) return;
+    
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      const frequency = severityLevel >= 3 ? 800 : 400;
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.warn('사운드 재생 실패:', error);
     }
   };
 
-  // =============================================================================
-  // 🔄 이벤트 핸들러들
-  // =============================================================================
-
-  const handleSearch = useCallback((term: string) => {
-    setSearchTerm(term);
-    pagination.goToFirst();
-  }, [pagination]);
-
-  const handleFilterChange = useCallback((filterType: string, value: string) => {
-    switch (filterType) {
-      case 'severity':
-        setSeverityFilter(value);
-        break;
-      case 'device':
-        setDeviceFilter(value);
-        break;
-      case 'acknowledged':
-        setAcknowledgedFilter(value);
-        break;
-    }
-    pagination.goToFirst();
-  }, [pagination]);
-
-  const handleAlarmSelect = (alarmId: number, selected: boolean) => {
-    setSelectedAlarms(prev => 
-      selected 
-        ? [...prev, alarmId]
-        : prev.filter(id => id !== alarmId)
-    );
-  };
-
-  const handleSelectAll = (selected: boolean) => {
-    setSelectedAlarms(selected ? alarms.map(a => a.id) : []);
-  };
-
-  const handleAckModalOpen = (alarm: ActiveAlarm) => {
-    setSelectedAlarmForAck(alarm);
-    setAckComment('');
-    setShowAckModal(true);
-  };
-
-  const handleAckModalSubmit = async () => {
-    if (selectedAlarmForAck) {
-      await handleAcknowledgeAlarm(selectedAlarmForAck.id, ackComment);
-    }
-  };
-
-  // =============================================================================
-  // 🔄 라이프사이클 hooks
-  // =============================================================================
-
-  useEffect(() => {
-    loadActiveAlarms();
-    loadAlarmStats();
-  }, [loadActiveAlarms, loadAlarmStats]);
-
-  // 자동 새로고침
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      loadActiveAlarms();
-      loadAlarmStats();
-    }, refreshInterval);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, loadActiveAlarms, loadAlarmStats]);
-
-  // =============================================================================
-  // 🎨 렌더링 헬퍼 함수들
-  // =============================================================================
-
-  const getSeverityBadgeClass = (severity: string) => {
-    switch (severity.toLowerCase()) {
-      case 'critical': return 'severity-badge severity-critical';
-      case 'high': return 'severity-badge severity-high';
-      case 'medium': return 'severity-badge severity-medium';
-      case 'low': return 'severity-badge severity-low';
-      default: return 'severity-badge severity-unknown';
-    }
+  const showBrowserNotification = (alarmData: ActiveAlarm) => {
+    new Notification(`PulseOne 알람: ${alarmData.severity.toUpperCase()}`, {
+      body: alarmData.message,
+      icon: '/favicon.ico',
+      tag: `alarm-${alarmData.id}`,
+      requireInteraction: alarmData.priority >= 3
+    });
   };
 
   const getSeverityIcon = (severity: string) => {
@@ -379,18 +442,8 @@ const ActiveAlarms: React.FC = () => {
     }
   };
 
-  const getStateBadgeClass = (state: string) => {
-    switch (state) {
-      case 'active': return 'state-badge state-active';
-      case 'acknowledged': return 'state-badge state-acknowledged';
-      case 'cleared': return 'state-badge state-cleared';
-      default: return 'state-badge state-unknown';
-    }
-  };
-
   const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return date.toLocaleString();
+    return new Date(timestamp).toLocaleString('ko-KR');
   };
 
   const formatDuration = (triggeredAt: string) => {
@@ -401,287 +454,620 @@ const ActiveAlarms: React.FC = () => {
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     
-    if (hours > 0) {
-      return `${hours}시간 ${minutes}분`;
+    return hours > 0 ? `${hours}시간 ${minutes}분` : `${minutes}분`;
+  };
+
+  const toggleRealTime = () => {
+    setRealTimeEnabled(!realTimeEnabled);
+    if (!realTimeEnabled) {
+      alarmWebSocketService.connect().catch(err => {
+        console.error('WebSocket 연결 실패:', err);
+        setError('실시간 연결에 실패했습니다');
+      });
     } else {
-      return `${minutes}분`;
+      alarmWebSocketService.disconnect();
     }
   };
 
   // =============================================================================
-  // 🎨 UI 렌더링
+  // 라이프사이클
   // =============================================================================
 
+  useEffect(() => {
+    fetchActiveAlarms();
+
+    const unsubscribeAlarm = alarmWebSocketService.onAlarmEvent(handleAlarmEvent);
+    const unsubscribeAck = alarmWebSocketService.onAcknowledgment(handleAcknowledgment);
+    const unsubscribeConnection = alarmWebSocketService.onConnectionChange(handleConnectionChange);
+    const unsubscribeError = alarmWebSocketService.onError(handleWebSocketError);
+
+    if (realTimeEnabled) {
+      alarmWebSocketService.connect().catch(err => {
+        console.error('WebSocket 연결 실패:', err);
+        setError('실시간 연결에 실패했습니다');
+      });
+    }
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    return () => {
+      unsubscribeAlarm();
+      unsubscribeAck();
+      unsubscribeConnection();
+      unsubscribeError();
+      if (realTimeEnabled) {
+        alarmWebSocketService.disconnect();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      fetchActiveAlarms();
+    }
+  }, [pagination.currentPage, pagination.pageSize, severityFilter, stateFilter, searchTerm, fetchActiveAlarms]);
+
+  useEffect(() => {
+    updateAlarmStats();
+  }, [alarms, updateAlarmStats]);
+
+  useEffect(() => {
+    if (newAlarmsCount > 0) {
+      const timer = setTimeout(() => {
+        setNewAlarmsCount(0);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [newAlarmsCount]);
+
+  // 로딩 상태 표시
+  if (isLoading) {
+    return (
+      <div style={{
+        width: '100%',
+        padding: '24px',
+        background: '#f8fafc',
+        minHeight: '100vh',
+        fontFamily: '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '16px',
+          fontSize: '1.2rem',
+          color: '#6b7280'
+        }}>
+          <i className="fas fa-spinner fa-spin" style={{ fontSize: '2rem', color: '#3b82f6' }}></i>
+          활성 알람 로드 중...
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="active-alarms-container">
+    <div style={{
+      width: '100%',
+      padding: '24px',
+      background: '#f8fafc',
+      minHeight: '100vh',
+      fontFamily: '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif'
+    }}>
       {/* 페이지 헤더 */}
-      <div className="page-header">
-        <div className="header-left">
-          <h1 className="page-title">활성 알람</h1>
-          <div className="page-subtitle">
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: '24px',
+        background: 'white',
+        padding: '24px',
+        borderRadius: '12px',
+        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+        border: '1px solid #e5e7eb'
+      }}>
+        <div>
+          <h1 style={{ 
+            fontSize: '2rem', 
+            fontWeight: 700, 
+            color: '#111827', 
+            margin: '0 0 8px 0' 
+          }}>
+            활성 알람
+          </h1>
+          <div style={{ 
+            fontSize: '1rem', 
+            color: '#6b7280', 
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
             현재 발생 중인 알람을 실시간으로 모니터링하고 관리합니다
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '4px 8px',
+              borderRadius: '12px',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              background: connectionStatus.status === 'connected' ? '#f0fdf4' : '#fef2f2',
+              color: connectionStatus.status === 'connected' ? '#16a34a' : '#dc2626'
+            }}>
+              {connectionStatus.status === 'connected' ? '🟢 실시간 연결됨' : '🔴 연결 끊김'}
+              {newAlarmsCount > 0 && (
+                <span style={{
+                  marginLeft: '8px',
+                  background: '#f59e0b',
+                  color: 'white',
+                  padding: '2px 6px',
+                  borderRadius: '8px',
+                  fontSize: '0.625rem',
+                  fontWeight: 600
+                }}>
+                  새 알람 {newAlarmsCount}개
+                </span>
+              )}
+            </span>
           </div>
         </div>
-        <div className="header-right">
-          <div className="header-actions">
-            <button 
-              className="btn btn-secondary"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-            >
-              <i className={`fas fa-${autoRefresh ? 'pause' : 'play'}`}></i>
-              {autoRefresh ? '자동새로고침 중지' : '자동새로고침 시작'}
-            </button>
-            <button 
-              className="btn btn-warning"
-              onClick={handleBulkAcknowledge}
-              disabled={selectedAlarms.length === 0 || isProcessing}
-            >
-              <i className="fas fa-check"></i>
-              일괄 확인
-            </button>
-          </div>
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center'
+        }}>
+          <button 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              border: 'none',
+              background: realTimeEnabled ? '#10b981' : '#f3f4f6',
+              color: realTimeEnabled ? 'white' : '#374151'
+            }}
+            onClick={toggleRealTime}
+          >
+            <i className={`fas fa-${realTimeEnabled ? 'wifi' : 'wifi-slash'}`}></i>
+            실시간 {realTimeEnabled ? '켜짐' : '꺼짐'}
+          </button>
+          
+          <button 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              border: 'none',
+              background: soundEnabled ? '#3b82f6' : '#f3f4f6',
+              color: soundEnabled ? 'white' : '#374151'
+            }}
+            onClick={() => setSoundEnabled(!soundEnabled)}
+          >
+            <i className={`fas fa-volume-${soundEnabled ? 'up' : 'mute'}`}></i>
+            사운드
+          </button>
+          
+          <button 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              border: 'none',
+              background: '#f59e0b',
+              color: 'white'
+            }}
+            onClick={() => alarmWebSocketService.sendTestAlarm()}
+          >
+            <i className="fas fa-flask"></i>
+            테스트 알람
+          </button>
         </div>
       </div>
 
-      {/* 알람 통계 대시보드 */}
-      {alarmStats && (
-        <div className="alarm-stats-grid">
-          <div className="stat-card critical">
-            <div className="stat-icon">
-              <i className="fas fa-exclamation-triangle"></i>
-            </div>
-            <div className="stat-content">
-              <div className="stat-label">심각</div>
-              <div className="stat-value">{alarmStats.critical_count}</div>
-            </div>
+      {/* 새 알람 알림 배너 */}
+      {pagination.currentPage !== 1 && newAlarmsCount > 0 && (
+        <div style={{
+          background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+          color: 'white',
+          padding: '12px 24px',
+          borderRadius: '8px',
+          marginBottom: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <i className="fas fa-bell"></i>
+            <span>새로운 알람 {newAlarmsCount}개가 있습니다.</span>
           </div>
-          <div className="stat-card high">
-            <div className="stat-icon">
-              <i className="fas fa-exclamation-circle"></i>
-            </div>
-            <div className="stat-content">
-              <div className="stat-label">높음</div>
-              <div className="stat-value">{alarmStats.high_count}</div>
-            </div>
-          </div>
-          <div className="stat-card medium">
-            <div className="stat-icon">
-              <i className="fas fa-exclamation"></i>
-            </div>
-            <div className="stat-content">
-              <div className="stat-label">보통</div>
-              <div className="stat-value">{alarmStats.medium_count}</div>
-            </div>
-          </div>
-          <div className="stat-card low">
-            <div className="stat-icon">
-              <i className="fas fa-info-circle"></i>
-            </div>
-            <div className="stat-content">
-              <div className="stat-label">낮음</div>
-              <div className="stat-value">{alarmStats.low_count}</div>
-            </div>
-          </div>
-          <div className="stat-card unack">
-            <div className="stat-icon">
-              <i className="fas fa-bell"></i>
-            </div>
-            <div className="stat-content">
-              <div className="stat-label">미확인</div>
-              <div className="stat-value">{alarmStats.unacknowledged_count}</div>
-            </div>
-          </div>
+          <button 
+            onClick={goToFirstPageWithNewAlarms}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              color: 'white',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            첫 페이지로 보기
+          </button>
         </div>
       )}
 
-      {/* 필터 및 검색 */}
-      <div className="filters-section">
-        <div className="search-box">
-          <i className="fas fa-search"></i>
-          <input
-            type="text"
-            placeholder="알람 메시지 또는 디바이스 이름 검색..."
-            value={searchTerm}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-        </div>
-        
-        <div className="filter-group">
-          <select
-            value={severityFilter}
-            onChange={(e) => handleFilterChange('severity', e.target.value)}
-          >
-            <option value="all">모든 심각도</option>
-            <option value="critical">심각</option>
-            <option value="high">높음</option>
-            <option value="medium">보통</option>
-            <option value="low">낮음</option>
-          </select>
-
-          <select
-            value={acknowledgedFilter}
-            onChange={(e) => handleFilterChange('acknowledged', e.target.value)}
-          >
-            <option value="all">모든 상태</option>
-            <option value="false">미확인</option>
-            <option value="true">확인됨</option>
-          </select>
-
-          <select
-            value={deviceFilter}
-            onChange={(e) => handleFilterChange('device', e.target.value)}
-          >
-            <option value="all">모든 디바이스</option>
-            {/* TODO: 디바이스 목록을 실제 API에서 가져와서 렌더링 */}
-          </select>
-        </div>
-
-        {selectedAlarms.length > 0 && (
-          <div className="bulk-actions">
-            <span className="selected-count">
-              {selectedAlarms.length}개 선택됨
-            </span>
-            <button 
-              onClick={handleBulkAcknowledge}
-              disabled={isProcessing}
-              className="btn btn-sm btn-warning"
-            >
-              일괄 확인
-            </button>
-            <button 
-              onClick={() => setSelectedAlarms([])}
-              className="btn btn-sm btn-secondary"
-            >
-              선택 해제
-            </button>
+      {/* 알람 통계 패널 */}
+      <div style={{
+        background: 'white',
+        borderRadius: '12px',
+        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+        border: '1px solid #e5e7eb',
+        padding: '16px',
+        marginBottom: '24px',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: '16px'
+      }}>
+        {[
+          { type: 'critical', label: '심각', count: alarmStats.critical_count, color: '#dc2626', bg: 'linear-gradient(135deg, #fef2f2, white)' },
+          { type: 'high', label: '높음', count: alarmStats.high_count, color: '#ea580c', bg: 'linear-gradient(135deg, #fff7ed, white)' },
+          { type: 'medium', label: '보통', count: alarmStats.medium_count, color: '#2563eb', bg: 'linear-gradient(135deg, #eff6ff, white)' },
+          { type: 'low', label: '낮음', count: alarmStats.low_count, color: '#059669', bg: 'linear-gradient(135deg, #ecfdf5, white)' },
+          { type: 'unack', label: '미확인', count: alarmStats.unacknowledged_count, color: '#8b5cf6', bg: 'linear-gradient(135deg, #f3f4f6, white)' }
+        ].map(stat => (
+          <div key={stat.type} style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px',
+            borderRadius: '12px',
+            border: `1px solid ${stat.color}`,
+            background: stat.bg,
+            minHeight: '80px'
+          }}>
+            <div>
+              <div style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500, marginBottom: '4px' }}>
+                {stat.label}
+              </div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, color: '#111827' }}>
+                {stat.count}
+              </div>
+            </div>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.25rem',
+              color: 'white',
+              background: stat.color
+            }}>
+              <i className={
+                stat.type === 'critical' ? 'fas fa-exclamation-triangle' :
+                stat.type === 'high' ? 'fas fa-exclamation-circle' :
+                stat.type === 'medium' ? 'fas fa-exclamation' :
+                stat.type === 'low' ? 'fas fa-info-circle' : 'fas fa-bell'
+              }></i>
+            </div>
           </div>
-        )}
+        ))}
       </div>
 
       {/* 에러 표시 */}
       {error && (
-        <div className="error-message">
+        <div style={{
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
+          color: '#991b1b',
+          padding: '16px',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
           <i className="fas fa-exclamation-circle"></i>
           {error}
-          <button onClick={() => setError(null)}>
+          <button 
+            onClick={() => setError(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#991b1b',
+              cursor: 'pointer',
+              marginLeft: 'auto'
+            }}
+          >
             <i className="fas fa-times"></i>
           </button>
         </div>
       )}
 
-      {/* 알람 목록 */}
-      <div className="alarms-content">
-        {isLoading ? (
-          <div className="loading-spinner">
-            <i className="fas fa-spinner fa-spin"></i>
-            <span>활성 알람을 불러오는 중...</span>
-          </div>
-        ) : alarms.length === 0 ? (
-          <div className="empty-state">
-            <i className="fas fa-check-circle text-success"></i>
-            <h3>활성 알람이 없습니다</h3>
-            <p>현재 발생 중인 알람이 없습니다. 시스템이 정상적으로 동작 중입니다.</p>
+      {/* 알람 목록 테이블 */}
+      <div style={{
+        background: 'white',
+        borderRadius: '12px',
+        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+        border: '1px solid #e5e7eb',
+        overflow: 'hidden',
+        marginBottom: '24px'
+      }}>
+        {alarms.length === 0 ? (
+          <div style={{
+            padding: '60px 20px',
+            textAlign: 'center',
+            color: '#6b7280',
+            fontSize: '1.1rem'
+          }}>
+            <i className="fas fa-check-circle" style={{ fontSize: '3rem', marginBottom: '16px', color: '#10b981' }}></i>
+            <div>현재 활성 알람이 없습니다.</div>
+            <div style={{ fontSize: '0.9rem', marginTop: '8px' }}>
+              마지막 업데이트: {lastUpdate.toLocaleString()}
+            </div>
           </div>
         ) : (
-          <div className="alarms-table-container">
-            <table className="alarms-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      checked={selectedAlarms.length === alarms.length}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                    />
-                  </th>
-                  <th>심각도</th>
-                  <th>메시지</th>
-                  <th>디바이스</th>
-                  <th>발생 시간</th>
-                  <th>지속 시간</th>
-                  <th>상태</th>
-                  <th>작업</th>
-                </tr>
-              </thead>
-              <tbody>
-                {alarms.map((alarm) => (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+              <tr>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>심각도</th>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>메시지</th>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>디바이스</th>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>현재값/임계값</th>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>발생시간</th>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>지속시간</th>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>상태</th>
+                <th style={{ 
+                  padding: '16px 24px', 
+                  textAlign: 'left', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#374151', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em' 
+                }}>작업</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alarms.map((alarm) => {
+                const severityColors = {
+                  critical: { color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+                  high: { color: '#ea580c', bg: '#fff7ed', border: '#fed7aa' },
+                  medium: { color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+                  low: { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' }
+                };
+                
+                const severityStyle = severityColors[alarm.severity];
+                
+                return (
                   <tr 
                     key={alarm.id}
-                    className={`${selectedAlarms.includes(alarm.id) ? 'selected' : ''} severity-${alarm.severity}`}
+                    style={{
+                      background: alarm.is_new ? 'linear-gradient(90deg, #fefce8, transparent)' : 'white',
+                      borderLeft: `4px solid ${severityStyle.color}`,
+                      transition: 'all 0.2s ease'
+                    }}
                   >
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selectedAlarms.includes(alarm.id)}
-                        onChange={(e) => handleAlarmSelect(alarm.id, e.target.checked)}
-                      />
-                    </td>
-                    <td>
-                      <span className={getSeverityBadgeClass(alarm.severity)}>
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        borderRadius: '16px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        minWidth: '90px',
+                        justifyContent: 'center',
+                        background: severityStyle.bg,
+                        color: severityStyle.color,
+                        border: `1px solid ${severityStyle.border}`
+                      }}>
                         <i className={getSeverityIcon(alarm.severity)}></i>
                         {alarm.severity.toUpperCase()}
+                        {alarm.is_new && (
+                          <span style={{
+                            background: '#f59e0b',
+                            color: 'white',
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontSize: '0.625rem',
+                            fontWeight: 700,
+                            marginLeft: '4px'
+                          }}>NEW</span>
+                        )}
                       </span>
                     </td>
-                    <td>
-                      <div className="alarm-message">
-                        <div className="message-text">{alarm.message}</div>
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      <div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#111827', marginBottom: '4px' }}>
+                          {alarm.message}
+                        </div>
                         {alarm.description && (
-                          <div className="message-description">{alarm.description}</div>
-                        )}
-                        {alarm.triggered_value !== undefined && (
-                          <div className="triggered-value">
-                            현재값: {alarm.triggered_value}
-                            {alarm.threshold_value !== undefined && ` (임계값: ${alarm.threshold_value})`}
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                            {alarm.description}
                           </div>
                         )}
                       </div>
                     </td>
-                    <td>
-                      <div className="device-info">
-                        <div className="device-name">{alarm.device_name || `Device ${alarm.device_id}`}</div>
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      <div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#111827', marginBottom: '4px' }}>
+                          {alarm.device_name || `Device ${alarm.device_id}`}
+                        </div>
                         {alarm.data_point_name && (
-                          <div className="data-point-name">{alarm.data_point_name}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                            {alarm.data_point_name}
+                          </div>
                         )}
                       </div>
                     </td>
-                    <td>
-                      <span className="timestamp">
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      {alarm.triggered_value && (
+                        <div style={{ fontSize: '0.875rem', fontFamily: 'Courier New, monospace' }}>
+                          <span style={{ color: '#ef4444', fontWeight: 600 }}>{alarm.triggered_value}</span>
+                          {alarm.threshold_value && (
+                            <>
+                              <span style={{ color: '#6b7280', margin: '0 4px' }}>/</span>
+                              <span style={{ color: '#6b7280' }}>{alarm.threshold_value}</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      <span style={{ fontSize: '0.875rem', color: '#374151', fontFamily: 'Courier New, monospace' }}>
                         {formatTimestamp(alarm.triggered_at)}
                       </span>
                     </td>
-                    <td>
-                      <span className="duration">
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>
                         {formatDuration(alarm.triggered_at)}
                       </span>
                     </td>
-                    <td>
-                      <span className={getStateBadgeClass(alarm.state)}>
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '4px 12px',
+                        borderRadius: '12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        background: alarm.state === 'active' ? '#fef2f2' : alarm.state === 'acknowledged' ? '#f9fafb' : '#f3f4f6',
+                        color: alarm.state === 'active' ? '#dc2626' : alarm.state === 'acknowledged' ? '#6b7280' : '#6b7280'
+                      }}>
                         {alarm.state === 'active' ? '활성' : 
                          alarm.state === 'acknowledged' ? '확인됨' : 
                          alarm.state === 'cleared' ? '해제됨' : alarm.state}
                       </span>
                       {alarm.acknowledged_at && (
-                        <div className="ack-info">
+                        <div style={{ marginTop: '4px', fontSize: '0.75rem', color: '#6b7280' }}>
                           <small>확인: {alarm.acknowledged_by}</small>
                         </div>
                       )}
                     </td>
-                    <td>
-                      <div className="alarm-actions">
+                    <td style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                         {alarm.state === 'active' && (
                           <button 
-                            onClick={() => handleAckModalOpen(alarm)}
+                            onClick={() => {
+                              setSelectedAlarmForAck(alarm);
+                              setShowAckModal(true);
+                            }}
                             disabled={isProcessing}
-                            className="btn btn-sm btn-warning"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '4px 8px',
+                              fontSize: '0.75rem',
+                              borderRadius: '6px',
+                              border: 'none',
+                              background: '#f59e0b',
+                              color: 'white',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
                             title="확인"
                           >
                             <i className="fas fa-check"></i>
                           </button>
                         )}
                         <button 
-                          onClick={() => handleClearAlarm(alarm.id, '수동 해제')}
+                          onClick={() => handleClearAlarm(alarm.id)}
                           disabled={isProcessing}
-                          className="btn btn-sm btn-success"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '4px 8px',
+                            fontSize: '0.75rem',
+                            borderRadius: '6px',
+                            border: 'none',
+                            background: '#10b981',
+                            color: 'white',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
                           title="해제"
                         >
                           <i className="fas fa-times"></i>
@@ -689,31 +1075,37 @@ const ActiveAlarms: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
       {/* 페이징 */}
       {alarms.length > 0 && (
-        <div className="pagination-section">
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginBottom: '24px'
+        }}>
           <Pagination
             current={pagination.currentPage}
             total={pagination.totalCount}
             pageSize={pagination.pageSize}
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             showSizeChanger={true}
             showTotal={true}
             onChange={(page, pageSize) => {
-              pagination.goToPage(page);
               if (pageSize !== pagination.pageSize) {
                 pagination.changePageSize(pageSize);
+                pagination.goToPage(1);
+              } else {
+                pagination.goToPage(page);
               }
             }}
-            onShowSizeChange={(page, pageSize) => {
-              pagination.changePageSize(pageSize);
+            onShowSizeChange={(current, size) => {
+              pagination.changePageSize(size);
               pagination.goToPage(1);
             }}
           />
@@ -721,19 +1113,46 @@ const ActiveAlarms: React.FC = () => {
       )}
 
       {/* 상태 정보 */}
-      <div className="status-bar">
-        <div className="status-info">
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: '24px',
+        padding: '16px',
+        background: 'white',
+        borderRadius: '8px',
+        border: '1px solid #e5e7eb',
+        fontSize: '0.875rem',
+        color: '#6b7280'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span>마지막 업데이트: {lastUpdate.toLocaleTimeString()}</span>
-          {isProcessing && (
-            <span className="processing-indicator">
-              <i className="fas fa-spinner fa-spin"></i>
-              처리 중...
+          {pagination.totalCount > 0 && (
+            <span>
+              {((pagination.currentPage - 1) * pagination.pageSize) + 1}-
+              {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)} / 
+              총 {pagination.totalCount}개 알람
             </span>
           )}
-          {autoRefresh && (
-            <span className="auto-refresh-indicator">
-              <i className="fas fa-sync-alt"></i>
-              {refreshInterval / 1000}초마다 자동 새로고침
+          {realTimeEnabled && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '4px 8px',
+              borderRadius: '12px',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              background: '#f0fdf4',
+              color: '#16a34a'
+            }}>
+              실시간: 연결됨
+            </span>
+          )}
+          {isProcessing && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#3b82f6' }}>
+              <i className="fas fa-spinner fa-spin"></i>
+              처리 중...
             </span>
           )}
         </div>
@@ -741,53 +1160,163 @@ const ActiveAlarms: React.FC = () => {
 
       {/* 알람 확인 모달 */}
       {showAckModal && selectedAlarmForAck && (
-        <div className="modal-overlay" onClick={() => setShowAckModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>알람 확인</h3>
-              <button onClick={() => setShowAckModal(false)}>
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            backdropFilter: 'blur(4px)'
+          }}
+          onClick={() => setShowAckModal(false)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              width: '100%',
+              maxWidth: '500px',
+              margin: '16px'
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '24px',
+              borderBottom: '1px solid #e5e7eb'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#111827' }}>
+                알람 확인
+              </h3>
+              <button 
+                onClick={() => setShowAckModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#6b7280',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
                 <i className="fas fa-times"></i>
               </button>
             </div>
-            <div className="modal-body">
-              <div className="alarm-summary">
-                <div className="alarm-info">
-                  <span className={getSeverityBadgeClass(selectedAlarmForAck.severity)}>
+            <div style={{ padding: '24px' }}>
+              <div style={{
+                marginBottom: '16px',
+                padding: '16px',
+                background: '#f8fafc',
+                borderRadius: '8px'
+              }}>
+                <div>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '16px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    background: selectedAlarmForAck.severity === 'critical' ? '#fef2f2' : 
+                               selectedAlarmForAck.severity === 'high' ? '#fff7ed' :
+                               selectedAlarmForAck.severity === 'medium' ? '#eff6ff' : '#ecfdf5',
+                    color: selectedAlarmForAck.severity === 'critical' ? '#dc2626' : 
+                           selectedAlarmForAck.severity === 'high' ? '#ea580c' :
+                           selectedAlarmForAck.severity === 'medium' ? '#2563eb' : '#059669'
+                  }}>
                     <i className={getSeverityIcon(selectedAlarmForAck.severity)}></i>
                     {selectedAlarmForAck.severity.toUpperCase()}
                   </span>
-                  <div className="alarm-message">{selectedAlarmForAck.message}</div>
-                  <div className="alarm-device">
+                  <div style={{ fontSize: '0.875rem', fontWeight: 500, margin: '8px 0' }}>
+                    {selectedAlarmForAck.message}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
                     {selectedAlarmForAck.device_name || `Device ${selectedAlarmForAck.device_id}`}
                   </div>
                 </div>
               </div>
-              <div className="form-group">
-                <label>확인 코멘트:</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+                  확인 코멘트:
+                </label>
                 <textarea
                   value={ackComment}
                   onChange={(e) => setAckComment(e.target.value)}
                   placeholder="알람 확인에 대한 설명을 입력하세요 (선택사항)"
                   rows={3}
+                  style={{
+                    padding: '12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                    minHeight: '80px',
+                    transition: 'border-color 0.2s ease'
+                  }}
                 />
               </div>
             </div>
-            <div className="modal-footer">
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px',
+              padding: '24px',
+              borderTop: '1px solid #e5e7eb'
+            }}>
               <button 
-                className="btn btn-secondary"
                 onClick={() => setShowAckModal(false)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  border: '1px solid #d1d5db',
+                  background: '#f3f4f6',
+                  color: '#374151'
+                }}
               >
                 취소
               </button>
               <button 
-                className="btn btn-warning"
-                onClick={handleAckModalSubmit}
+                onClick={() => selectedAlarmForAck && handleAcknowledgeAlarm(selectedAlarmForAck.id, ackComment)}
                 disabled={isProcessing}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: '#f59e0b',
+                  color: 'white'
+                }}
               >
                 {isProcessing ? (
-                  <><i className="fas fa-spinner fa-spin"></i> 처리 중...</>
+                  <>
+                    <i className="fas fa-spinner fa-spin"></i> 처리 중...
+                  </>
                 ) : (
-                  <><i className="fas fa-check"></i> 확인</>
+                  <>
+                    <i className="fas fa-check"></i> 확인
+                  </>
                 )}
               </button>
             </div>

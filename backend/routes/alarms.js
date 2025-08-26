@@ -344,85 +344,132 @@ function parseJSON(jsonString, defaultValue = {}) {
 // ============================================================================
 
 /**
- * GET /api/alarms/active
- * 활성 알람 목록 조회
- */
+* GET /api/alarms/active
+* 활성 알람 목록 조회 - ORDER BY 중복 제거
+*/
 router.get('/active', async (req, res) => {
-    try {
-        const { tenantId } = req;
-        const { 
-            page = 1, 
-            limit = 50,
-            severity,
-            device_id,
-            acknowledged = false,
-            category,  // 새로 추가
-            tag        // 새로 추가
-        } = req.query;
-        
-        console.log('활성 알람 조회 시작...');
+   try {
+       const { tenantId } = req;
+       const { 
+           page = 1, 
+           limit = 50,
+           severity,
+           device_id,
+           acknowledged = false,
+           category,
+           tag
+       } = req.query;
+       
+       console.log('활성 알람 조회 시작...');
 
-        // 기본 쿼리 사용하고 수동으로 필터 적용
-        query = AlarmQueries.AlarmOccurrence.FIND_ACTIVE;
-        params = [tenantId];
-        
-        // 추가 필터들을 수동으로 WHERE 절에 추가
-        if (severity && severity !== 'all') {
-            query += ` AND ao.severity = ?`;
-            params.push(severity);
-        }
-        
-        if (device_id) {
-            query += ` AND ao.device_id = ?`;
-            params.push(parseInt(device_id));
-        }
-        
-        if (acknowledged === 'true') {
-            query += ` AND ao.acknowledged_time IS NOT NULL`;
-        } else if (acknowledged === 'false') {
-            query += ` AND ao.acknowledged_time IS NULL`;
-        }
-        
-        if (category && category !== 'all') {
-            query += ` AND ao.category = ?`;
-            params.push(category);
-        }
-        
-        if (tag && tag.trim()) {
-            query += ` AND ao.tags LIKE ?`;
-            params.push(`%${tag}%`);
-        }
-        
-        query = AlarmQueries.addSorting(query, 'occurrence_time', 'DESC');
-        
-        // 페이징
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
+       // 기본 쿼리 사용하고 수동으로 필터 적용
+       let query = AlarmQueries.AlarmOccurrence.FIND_ACTIVE;
+       let params = [tenantId];
+       
+       // ORDER BY 제거 (마지막에 다시 추가할 예정)
+       const orderByIndex = query.lastIndexOf('ORDER BY');
+       if (orderByIndex !== -1) {
+           query = query.substring(0, orderByIndex).trim();
+       }
+       
+       // 추가 필터들을 수동으로 WHERE 절에 추가
+       if (severity && severity !== 'all') {
+           query += ` AND ao.severity = ?`;
+           params.push(severity);
+       }
+       
+       if (device_id) {
+           query += ` AND ao.device_id = ?`;
+           params.push(parseInt(device_id));
+       }
+       
+       if (acknowledged === 'true') {
+           query += ` AND ao.acknowledged_time IS NOT NULL`;
+       } else if (acknowledged === 'false') {
+           query += ` AND ao.acknowledged_time IS NULL`;
+       }
+       
+       if (category && category !== 'all') {
+           query += ` AND ao.category = ?`;
+           params.push(category);
+       }
+       
+       if (tag && tag.trim()) {
+           query += ` AND ao.tags LIKE ?`;
+           params.push(`%${tag}%`);
+       }
+       
+       // ORDER BY 한 번만 추가
+       query += ` ORDER BY ao.occurrence_time DESC`;
+       
+       // 페이징
+       const offset = (parseInt(page) - 1) * parseInt(limit);
+       query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
 
-        const results = await dbAll(query, params);
-        
-        // 총 개수 조회
-        const countQuery = AlarmQueries.AlarmOccurrence.STATS_SUMMARY;
-        const countResult = await dbGet(countQuery, [tenantId]);
-        const total = countResult?.active_alarms || 0;
-        
-        const result = {
-            items: results.map(alarm => formatAlarmOccurrence(alarm)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`활성 알람 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Active alarms retrieved successfully'));
+       console.log('실행할 쿼리:', query);
+       console.log('파라미터:', params);
 
-    } catch (error) {
-        console.error('활성 알람 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'ACTIVE_ALARMS_ERROR'));
-    }
+       const results = await dbAll(query, params);
+       
+       // 총 개수 조회
+       let countQuery = `
+           SELECT COUNT(*) as total
+           FROM alarm_occurrences ao
+           LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+           LEFT JOIN devices d ON d.id = ao.device_id
+           LEFT JOIN data_points dp ON dp.id = ao.point_id
+           LEFT JOIN sites s ON d.site_id = s.id
+           WHERE ao.tenant_id = ? AND ao.state = 'active'
+       `;
+       let countParams = [tenantId];
+       
+       // 카운트 쿼리에도 같은 필터 적용
+       if (severity && severity !== 'all') {
+           countQuery += ` AND ao.severity = ?`;
+           countParams.push(severity);
+       }
+       
+       if (device_id) {
+           countQuery += ` AND ao.device_id = ?`;
+           countParams.push(parseInt(device_id));
+       }
+       
+       if (acknowledged === 'true') {
+           countQuery += ` AND ao.acknowledged_time IS NOT NULL`;
+       } else if (acknowledged === 'false') {
+           countQuery += ` AND ao.acknowledged_time IS NULL`;
+       }
+       
+       if (category && category !== 'all') {
+           countQuery += ` AND ao.category = ?`;
+           countParams.push(category);
+       }
+       
+       if (tag && tag.trim()) {
+           countQuery += ` AND ao.tags LIKE ?`;
+           countParams.push(`%${tag}%`);
+       }
+       
+       const countResult = await dbGet(countQuery, countParams);
+       const total = countResult ? countResult.total : 0;
+       
+       const result = {
+           items: results.map(alarm => formatAlarmOccurrence(alarm)),
+           pagination: {
+               page: parseInt(page),
+               limit: parseInt(limit),
+               total: total,
+               totalPages: Math.ceil(total / parseInt(limit))
+           }
+       };
+       
+       console.log(`활성 알람 ${results.length}개 조회 완료 (총 ${total}개)`);
+       res.json(createResponse(true, result, 'Active alarms retrieved successfully'));
+
+   } catch (error) {
+       console.error('활성 알람 조회 실패:', error.message);
+       res.status(500).json(createResponse(false, null, error.message, 'ACTIVE_ALARMS_ERROR'));
+   }
 });
 
 /**
