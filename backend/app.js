@@ -1,14 +1,25 @@
 // =============================================================================
-// backend/app.js - 메인 애플리케이션 (완전 통합 버전 + 스크립트 엔진 추가)
-// 기존 구조 + data.js 라우트 + 자동 초기화 시스템 + 서비스 제어 API + 스크립트 엔진
+// backend/app.js - 메인 애플리케이션 (완전 통합 버전 + WebSocket 라우트 완성)
+// 기존 구조 + data.js 라우트 + 자동 초기화 시스템 + 서비스 제어 API + 스크립트 엔진 + 실시간 알람 + WebSocket 관리
 // =============================================================================
 
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
 const { initializeConnections } = require('./lib/connection/db');
 
-// 🚀 자동 초기화 시스템 (안전 로드 + 복구 패치)
+// WebSocket 설정 (안전하게 로드)
+let socketIo = null;
+let io = null;
+try {
+    socketIo = require('socket.io');
+    console.log('✅ Socket.IO 모듈 로드 성공');
+} catch (error) {
+    console.warn('⚠️ Socket.IO 모듈이 없습니다. 설치하려면: npm install socket.io');
+}
+
+// 자동 초기화 시스템 (안전 로드 + 복구 패치)
 let DatabaseInitializer = null;
 try {
     // 우선순위 1: 새로 생성된 DatabaseInitializer
@@ -25,15 +36,47 @@ try {
     }
 }
 
+// 실시간 알람 구독자 (안전하게 로드)
+let AlarmEventSubscriber = null;
+try {
+    AlarmEventSubscriber = require('./lib/services/AlarmEventSubscriber');
+    console.log('✅ AlarmEventSubscriber 로드 성공');
+} catch (error) {
+    console.warn('⚠️ AlarmEventSubscriber 로드 실패:', error.message);
+    console.warn('   실시간 알람 기능이 비활성화됩니다.');
+}
+
 const app = express();
+const server = http.createServer(app);
+
+// WebSocket 서버 설정 (Socket.IO가 있을 때만)
+if (socketIo) {
+    io = socketIo(server, {
+        cors: {
+            origin: [
+                'http://localhost:3000',
+                'http://localhost:5173',  // 추가
+                'http://localhost:5174',
+                'http://localhost:8080'
+            ],
+            methods: ["GET", "POST"],
+            credentials: true
+        }
+    });
+}
 
 // ============================================================================
-// 🔧 미들웨어 설정 (기존 코드 + 확장)
+// 미들웨어 설정 (기존 코드 + 확장)
 // ============================================================================
 
 // CORS 설정 (프런트엔드 연동 강화)
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:8080'],
+    origin: [
+        'http://localhost:3000', 
+        'http://localhost:5173',  // Vite 개발 서버
+        'http://localhost:5174', 
+        'http://localhost:8080'
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID']
@@ -42,7 +85,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 요청 로깅 미들웨어 (새로 추가)
+// 요청 로깅 미들웨어
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] ${req.method} ${req.path}`);
@@ -50,7 +93,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================================================
-// 🔐 글로벌 인증 및 테넌트 미들웨어 (개발용)
+// 글로벌 인증 및 테넌트 미들웨어 (개발용)
 // ============================================================================
 
 /**
@@ -60,7 +103,9 @@ const authenticateToken = (req, res, next) => {
     // API 경로가 아니거나 특정 경로는 인증 스킵
     if (!req.originalUrl.startsWith('/api/') || 
         req.originalUrl.startsWith('/api/health') ||
-        req.originalUrl.startsWith('/api/init/')) {
+        req.originalUrl.startsWith('/api/init/') ||
+        req.originalUrl.startsWith('/api/test/') ||
+        req.originalUrl.startsWith('/api/websocket/')) {
         return next();
     }
 
@@ -92,7 +137,82 @@ app.use('/api/*', authenticateToken);
 app.use('/api/*', tenantIsolation);
 
 // ============================================================================
-// 🏗️ 데이터베이스 연결 및 자동 초기화 (기존 코드)
+// WebSocket 연결 관리
+// ============================================================================
+
+if (io) {
+    io.on('connection', (socket) => {
+        console.log(`🔌 WebSocket 클라이언트 연결: ${socket.id}`);
+        
+        // 테넌트별 룸 조인
+        socket.on('join_tenant', (tenantId) => {
+            socket.join(`tenant:${tenantId}`);
+            console.log(`📡 Socket ${socket.id} joined tenant:${tenantId}`);
+            
+            // 연결 성공 응답
+            socket.emit('connection_status', {
+                status: 'connected',
+                tenant_id: tenantId,
+                socket_id: socket.id,
+                timestamp: new Date().toISOString()
+            });
+        });
+        
+        // 디바이스 모니터링 시작
+        socket.on('monitor_device', (deviceId) => {
+            socket.join(`device:${deviceId}`);
+            console.log(`📱 Socket ${socket.id} monitoring device:${deviceId}`);
+        });
+        
+        // 관리자 룸 조인
+        socket.on('join_admin', () => {
+            socket.join('admins');
+            console.log(`👤 Socket ${socket.id} joined admins room`);
+        });
+        
+        // 알람 확인 처리
+        socket.on('acknowledge_alarm', async (data) => {
+            try {
+                const { occurrence_id, user_id, comment } = data;
+                console.log(`✅ 알람 확인 요청: ${occurrence_id} by user ${user_id}`);
+                
+                // TODO: 실제 DB 업데이트 로직 추가
+                // const db = app.locals.getDB();
+                // await updateAlarmAcknowledgment(occurrence_id, user_id, comment);
+                
+                // 다른 클라이언트들에게 알림
+                socket.broadcast.emit('alarm:acknowledged', {
+                    occurrence_id,
+                    acknowledged_by: user_id,
+                    comment: comment,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // 확인 성공 응답
+                socket.emit('acknowledgment_success', { 
+                    occurrence_id,
+                    message: '알람이 확인되었습니다.'
+                });
+                
+            } catch (error) {
+                console.error('❌ 알람 확인 처리 실패:', error);
+                socket.emit('error', { 
+                    type: 'acknowledgment_failed',
+                    message: '알람 확인 처리에 실패했습니다.',
+                    occurrence_id: data.occurrence_id
+                });
+            }
+        });
+        
+        // 연결 해제
+        socket.on('disconnect', (reason) => {
+            console.log(`🔌 WebSocket 클라이언트 연결 해제: ${socket.id}, 이유: ${reason}`);
+        });
+    });
+}
+
+// ============================================================================
+// 데이터베이스 연결 및 자동 초기화
 // ============================================================================
 
 // Database connections 초기화 + 자동 초기화
@@ -138,14 +258,46 @@ async function initializeSystem() {
     }
 }
 
+// ============================================================================
+// 실시간 알람 구독자 초기화
+// ============================================================================
+
+let alarmSubscriber = null;
+
+async function startAlarmSubscriber() {
+    if (!AlarmEventSubscriber || !io) {
+        console.warn('⚠️ AlarmEventSubscriber 또는 WebSocket이 비활성화되어 실시간 알람 기능을 사용할 수 없습니다.');
+        return;
+    }
+    
+    try {
+        alarmSubscriber = new AlarmEventSubscriber(io);
+        await alarmSubscriber.start();
+        
+        // app.locals에 저장하여 라우트에서 접근 가능하게 함
+        app.locals.alarmSubscriber = alarmSubscriber;
+        
+        console.log('✅ 실시간 알람 구독자 시작 완료');
+        
+    } catch (error) {
+        console.error('❌ 실시간 알람 구독자 시작 실패:', error.message);
+        console.warn('⚠️ 알람 실시간 기능 없이 서버를 계속 실행합니다.');
+    }
+}
+
 // 시스템 초기화 실행
 initializeSystem();
 
+// WebSocket 객체들을 app.locals에 저장 (라우트에서 접근 가능하게 함)
+app.locals.io = io;
+app.locals.alarmSubscriber = null; // startAlarmSubscriber에서 설정됨
+app.locals.serverStartTime = new Date().toISOString();
+
 // ============================================================================
-// 🏥 헬스체크 및 초기화 관리 엔드포인트 (복구 패치 적용)
+// 헬스체크 및 초기화 관리 엔드포인트
 // ============================================================================
 
-// Health check (기존 + 초기화 상태 추가)
+// Health check (기존 + 실시간 상태 추가)
 app.get('/api/health', async (req, res) => {
     try {
         // 기본 헬스체크 정보 (기존)
@@ -154,6 +306,18 @@ app.get('/api/health', async (req, res) => {
             timestamp: new Date().toISOString(),
             uptime: process.uptime(),
             pid: process.pid
+        };
+        
+        // 실시간 기능 상태 추가
+        healthInfo.realtime = {
+            websocket: {
+                enabled: !!io,
+                connected_clients: io ? io.engine.clientsCount : 0
+            },
+            alarm_subscriber: {
+                enabled: !!alarmSubscriber,
+                status: alarmSubscriber ? alarmSubscriber.getStatus() : null
+            }
         };
         
         // 초기화 시스템 상태 확인
@@ -189,6 +353,69 @@ app.get('/api/health', async (req, res) => {
             status: 'error',
             error: error.message,
             timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// 실시간 알람 테스트 엔드포인트
+app.post('/api/test/alarm', (req, res) => {
+    if (!io) {
+        return res.status(503).json({
+            success: false,
+            error: 'WebSocket이 비활성화되어 있습니다. Socket.IO를 설치하고 서버를 재시작하세요.',
+            suggestion: 'npm install socket.io'
+        });
+    }
+    
+    try {
+        const testAlarm = {
+            occurrence_id: Date.now(),
+            rule_id: 999,
+            tenant_id: 1,
+            device_id: 'test_device_001',
+            point_id: 1,
+            message: '🚨 테스트 알람 - 온도 센서 이상 감지',
+            severity: 'HIGH',
+            severity_level: 3,
+            state: 1, // ACTIVE
+            timestamp: Date.now(),
+            source_name: '테스트 온도 센서',
+            location: '1층 서버실',
+            trigger_value: 85.5,
+            formatted_time: new Date().toLocaleString('ko-KR')
+        };
+        
+        // 전체 클라이언트에게 새 알람 전송
+        io.emit('alarm:new', {
+            type: 'alarm_triggered',
+            data: testAlarm,
+            timestamp: new Date().toISOString()
+        });
+        
+        // 긴급 알람은 관리자에게 별도 전송
+        if (testAlarm.severity_level >= 3) {
+            io.to('admins').emit('alarm:critical', {
+                type: 'critical_alarm',
+                data: testAlarm,
+                timestamp: new Date().toISOString(),
+                requires_action: true
+            });
+        }
+        
+        console.log('🚨 테스트 알람 전송 완료:', testAlarm.message);
+        
+        res.json({ 
+            success: true,
+            message: '테스트 알람이 모든 연결된 클라이언트에게 전송되었습니다.',
+            alarm: testAlarm,
+            connected_clients: io.engine.clientsCount
+        });
+        
+    } catch (error) {
+        console.error('❌ 테스트 알람 전송 실패:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
         });
     }
 });
@@ -322,13 +549,13 @@ app.post('/api/init/manual', async (req, res) => {
 });
 
 // ============================================================================
-// 🌐 API Routes 등록 (기존 + 스크립트 엔진 추가)
+// API Routes 등록 (완성된 통합 버전)
 // ============================================================================
 
 console.log('\n🚀 API 라우트 등록 중...\n');
 
 // ============================================================================
-// 📋 기존 API Routes (유지)
+// 기존 API Routes (유지)
 // ============================================================================
 
 const systemRoutes = require('./routes/system');
@@ -344,7 +571,7 @@ app.use('/api/users', userRoutes);
 console.log('✅ 기존 시스템 API 라우트들 등록 완료');
 
 // ============================================================================
-// 🔥 핵심 비즈니스 API - 새로 추가된 부분
+// 핵심 비즈니스 API
 // ============================================================================
 
 // 1. 디바이스 관리 API
@@ -376,7 +603,7 @@ try {
 }
 
 // ============================================================================
-// 📊 확장 API - 선택적 등록 (서비스 제어 포함)
+// 확장 API - 선택적 등록
 // ============================================================================
 
 // 대시보드 API (서비스 제어 기능 포함)
@@ -406,7 +633,7 @@ try {
     console.warn('⚠️ Virtual Points 라우트 로드 실패:', error.message);
 }
 
-// 🆕 스크립트 엔진 API (새로 추가)
+// 스크립트 엔진 API
 try {
     const scriptEngineRoutes = require('./routes/script-engine');
     app.use('/api/script-engine', scriptEngineRoutes);
@@ -433,7 +660,16 @@ try {
     console.warn('⚠️ Backup 라우트 로드 실패:', error.message);
 }
 
-// 기본 API 정보 (기존 api.js)
+// WebSocket 관리 API (새로 추가)
+try {
+    const websocketRoutes = require('./routes/websocket');
+    app.use('/api/websocket', websocketRoutes);
+    console.log('✅ WebSocket Management API 라우트 등록 완료');
+} catch (error) {
+    console.warn('⚠️ WebSocket 라우트 로드 실패:', error.message);
+}
+
+// 기본 API 정보
 try {
     const apiRoutes = require('./routes/api');
     app.use('/api', apiRoutes);
@@ -445,7 +681,7 @@ try {
 console.log('\n🎉 모든 API 라우트 등록 완료!\n');
 
 // =============================================================================
-// Error Handling (기존 + 확장)
+// Error Handling
 // =============================================================================
 
 // 404 handler (API 전용)
@@ -458,7 +694,7 @@ app.use('/api/*', (req, res) => {
     });
 });
 
-// Global error handler (개선됨)
+// Global error handler
 app.use((error, req, res, next) => {
     console.error('🚨 Unhandled error:', error);
     
@@ -487,7 +723,7 @@ app.use((error, req, res, next) => {
 });
 
 // =============================================================================
-// Graceful Shutdown (기존 코드 유지)
+// Graceful Shutdown
 // =============================================================================
 
 process.on('SIGTERM', gracefulShutdown);
@@ -496,13 +732,23 @@ process.on('SIGINT', gracefulShutdown);
 function gracefulShutdown(signal) {
     console.log(`\n🔄 Received ${signal}. Starting graceful shutdown...`);
     
-    server.close((err) => {
+    server.close(async (err) => {
         if (err) {
             console.error('❌ Error during server shutdown:', err);
             process.exit(1);
         }
         
         console.log('✅ HTTP server closed');
+        
+        // 알람 구독자 정리
+        if (alarmSubscriber) {
+            try {
+                await alarmSubscriber.stop();
+                console.log('✅ Alarm subscriber stopped');
+            } catch (error) {
+                console.error('❌ Error stopping alarm subscriber:', error);
+            }
+        }
         
         // Close database connections
         if (connections.postgres) connections.postgres.end();
@@ -519,13 +765,14 @@ function gracefulShutdown(signal) {
 }
 
 // =============================================================================
-// Start Server (완전 통합 버전 - 스크립트 엔진 포함)
+// Start Server (완전 통합 버전)
 // =============================================================================
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
-const server = app.listen(PORT, () => {
+
+server.listen(PORT, async () => {
     console.log(`
-🚀 PulseOne Backend Server Started! (완전 통합 + 스크립트 엔진 버전)
+🚀 PulseOne Backend Server Started! (완전 통합 + WebSocket 라우트 완성)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Dashboard:     http://localhost:${PORT}
 🔧 API Health:    http://localhost:${PORT}/api/health
@@ -534,78 +781,25 @@ const server = app.listen(PORT, () => {
 🔧 Processes:     http://localhost:${PORT}/api/processes
 ⚙️  Services:      http://localhost:${PORT}/api/services
 👤 Users:         http://localhost:${PORT}/api/users
+
+🆕 WebSocket 관리 API:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔌 WebSocket:     ${io ? '✅ 활성화' : '❌ 비활성화'}
+📡 연결된 클라이언트: ${io ? io.engine.clientsCount : 0}명
+🚨 알람 구독자:    ${alarmSubscriber ? '✅ 준비됨' : '⚠️ 비활성화'}
+🧪 알람 테스트:    POST http://localhost:${PORT}/api/test/alarm
+🔍 WebSocket 상태: GET  http://localhost:${PORT}/api/websocket/status
+👥 클라이언트 목록: GET  http://localhost:${PORT}/api/websocket/clients
+🏠 룸 정보:        GET  http://localhost:${PORT}/api/websocket/rooms
+📡 알람 구독 상태:  GET  http://localhost:${PORT}/api/websocket/alarm-subscriber
 
 🔥 핵심 비즈니스 API (우선순위 1 - 필수)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚨 알람 관리 API: http://localhost:${PORT}/api/alarms
-   ├─ 활성 알람:  GET  /api/alarms/active
-   ├─ 알람 이력:  GET  /api/alarms/history  
-   ├─ 알람 확인:  POST /api/alarms/:id/acknowledge
-   ├─ 알람 해제:  POST /api/alarms/:id/clear
-   ├─ 알람 규칙:  GET  /api/alarms/rules
-   ├─ 규칙 생성:  POST /api/alarms/rules
-   ├─ 규칙 수정:  PUT  /api/alarms/rules/:id
-   ├─ 규칙 삭제:  DEL  /api/alarms/rules/:id
-   └─ 알람 통계:  GET  /api/alarms/statistics
-
 📱 디바이스 관리 API: http://localhost:${PORT}/api/devices
-   ├─ 디바이스 목록:     GET  /api/devices
-   ├─ 디바이스 생성:     POST /api/devices
-   ├─ 디바이스 상세:     GET  /api/devices/:id
-   ├─ 디바이스 수정:     PUT  /api/devices/:id
-   ├─ 디바이스 삭제:     DEL  /api/devices/:id
-   ├─ 설정 관리:        GET  /api/devices/:id/settings
-   ├─ 설정 업데이트:     PUT  /api/devices/:id/settings
-   ├─ 데이터포인트:      GET  /api/devices/:id/data-points
-   ├─ 포인트 생성:      POST /api/devices/:id/data-points
-   ├─ 현재값 조회:      GET  /api/devices/:id/current-values
-   ├─ 값 업데이트:      PUT  /api/devices/:deviceId/data-points/:pointId/value
-   ├─ 연결 테스트:      POST /api/devices/:id/test-connection
-   ├─ 디바이스 제어:     POST /api/devices/:id/enable|disable|restart
-   ├─ 일괄 작업:        POST /api/devices/batch/enable|disable
-   ├─ 통계 (프로토콜):   GET  /api/devices/stats/protocol
-   ├─ 통계 (사이트):     GET  /api/devices/stats/site
-   ├─ 시스템 요약:      GET  /api/devices/stats/summary
-   ├─ 최근 활동:        GET  /api/devices/stats/recent-active
-   ├─ 오류 목록:        GET  /api/devices/stats/errors
-   ├─ 응답시간 통계:     GET  /api/devices/stats/response-time
-   ├─ 포인트 검색:      GET  /api/devices/search/data-points
-   └─ 헬스체크:         GET  /api/devices/health
-
 📊 데이터 익스플로러 API: http://localhost:${PORT}/api/data
-   ├─ 데이터포인트 검색: GET  /api/data/points
-   ├─ 포인트 상세:      GET  /api/data/points/:id
-   ├─ 현재값 일괄조회:   GET  /api/data/current-values
-   ├─ 디바이스 현재값:   GET  /api/data/device/:id/current-values
-   ├─ 이력 데이터:      GET  /api/data/historical
-   ├─ 데이터 통계:      GET  /api/data/statistics
-   ├─ 고급 쿼리:        POST /api/data/query
-   └─ 데이터 내보내기:   POST /api/data/export
-
 🔮 가상포인트 API: http://localhost:${PORT}/api/virtual-points
-   ├─ 가상포인트 목록:   GET  /api/virtual-points
-   ├─ 가상포인트 생성:   POST /api/virtual-points
-   ├─ 가상포인트 상세:   GET  /api/virtual-points/:id
-   ├─ 가상포인트 수정:   PUT  /api/virtual-points/:id
-   ├─ 가상포인트 삭제:   DEL  /api/virtual-points/:id
-   ├─ 의존성 조회:      GET  /api/virtual-points/:id/dependencies
-   ├─ 실행 이력:        GET  /api/virtual-points/:id/history
-   ├─ 계산 테스트:      POST /api/virtual-points/:id/test
-   ├─ 수동 실행:        POST /api/virtual-points/:id/execute
-   ├─ 값 업데이트:      PUT  /api/virtual-points/:id/value
-   ├─ 카테고리 통계:     GET  /api/virtual-points/stats/category
-   └─ 성능 통계:        GET  /api/virtual-points/stats/performance
-
 🔧 스크립트 엔진 API: http://localhost:${PORT}/api/script-engine
-   ├─ 함수 라이브러리:   GET  /api/script-engine/functions
-   ├─ 스크립트 검증:    POST /api/script-engine/validate
-   ├─ 스크립트 테스트:   POST /api/script-engine/test
-   ├─ 스크립트 파싱:    POST /api/script-engine/parse
-   ├─ 템플릿 목록:      GET  /api/script-engine/templates
-   └─ 엔진 테스트:      GET  /api/script-engine/test
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📊 확장 API (우선순위 2 - 선택적)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -614,18 +808,7 @@ const server = app.listen(PORT, () => {
 📈 모니터링:     GET  /api/monitoring/system-metrics
 💾 백업 관리:    GET  /api/backup/list
 
-🔧 서비스 제어 API (새로 복구됨!)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚙️  서비스 상태:    GET  /api/dashboard/services/status
-🔧 Collector 시작: POST /api/dashboard/service/collector/control {"action":"start"}
-⏹️  Collector 중지: POST /api/dashboard/service/collector/control {"action":"stop"}
-🔄 Collector 재시작: POST /api/dashboard/service/collector/control {"action":"restart"}
-🗄️  Redis 제어:    POST /api/dashboard/service/redis/control {"action":"start|stop|restart"}
-💾 Database 제어:  POST /api/dashboard/service/database/control {"action":"start|stop|restart"}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚀 시스템 초기화 (완전 복구됨!)
+🚀 시스템 초기화
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔧 초기화 상태:   GET  /api/init/status (${DatabaseInitializer ? '✅ 활성' : '❌ 비활성'})
 🔄 초기화 트리거: POST /api/init/trigger (${DatabaseInitializer ? '✅ 활성' : '❌ 비활성'})
@@ -634,7 +817,6 @@ const server = app.listen(PORT, () => {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Environment: ${process.env.NODE_ENV || 'development'}
-Stage: ${process.env.ENV_STAGE || 'dev'}
 Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enabled' : '❌ Disabled'}
 DatabaseInitializer: ${DatabaseInitializer ? '✅ Available' : '❌ Not Found'}
 Authentication: 🔓 Development Mode (Basic Auth)
@@ -642,17 +824,22 @@ Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v2.2.0 - 스크립트 엔진 추가)
+🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v2.4.0 - WebSocket 라우트 완성)
    - 알람 관리 ✅
    - 디바이스 관리 ✅  
    - 가상포인트 관리 ✅
    - 데이터 익스플로러 ✅
-   - 스크립트 엔진 ✅ (NEW!)
+   - 스크립트 엔진 ✅
+   - 실시간 알람 처리 ${io && alarmSubscriber ? '✅' : '⚠️'}
+   - WebSocket 상태 관리 ✅
    - 자동 초기화 ${DatabaseInitializer ? '✅' : '⚠️'}
    - 서비스 제어 ✅
    - 멀티테넌트 지원 ✅
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
+    
+    // 3초 후 실시간 알람 구독자 시작
+    setTimeout(startAlarmSubscriber, 3000);
 });
 
 module.exports = app;

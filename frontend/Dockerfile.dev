@@ -1,10 +1,8 @@
-# 개발용 Dockerfile - React Router 포함
+# 개발용 Dockerfile - 환경변수 처리 개선
 FROM node:18-alpine
 
 # 작업 디렉토리 설정
 WORKDIR /app
-
-# 패키지 관리자 최적화
 
 # 개발에 필요한 도구들 설치
 RUN apk add --no-cache \
@@ -17,18 +15,28 @@ RUN apk add --no-cache \
 COPY package*.json ./
 COPY pnpm-lock.yaml* ./
 
-# 의존성 설치 (개발 의존성 포함)
+# 의존성 설치
 RUN npm install --frozen-lockfile=false
 
-# 소스 코드 복사
+# 소스 코드 복사 (.env 파일 포함)
 COPY . .
+
+# 빌드 시점 ARG 정의
+ARG VITE_API_URL=http://backend:3000
+ARG VITE_WEBSOCKET_URL=ws://backend:3000
+
+# 런타임 ENV로 전환
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WEBSOCKET_URL=$VITE_WEBSOCKET_URL
+ENV NODE_ENV=development
+ENV VITE_MODE=development
 
 # 개발 서버 포트
 EXPOSE 5173
 
-# Hot Reload를 위한 환경변수
+# Hot Reload 환경변수
 ENV CHOKIDAR_USEPOLLING=true
 ENV VITE_HMR_HOST=0.0.0.0
 
 # 개발 서버 실행
-CMD ["pnpm", "run", "dev", "--host", "0.0.0.0"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
