@@ -64,44 +64,42 @@ if (socketIo) {
     
     console.log('📋 Socket.IO CORS 설정:', corsOrigins);
     
-    // Socket.IO 서버 생성
+    // Socket.IO 서버 생성 (최적화된 설정)
     io = socketIo(server, {
         cors: {
             origin: corsOrigins,
             methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            credentials: false, // CORS 문제 방지
-            allowedHeaders: ["Content-Type", "Authorization", "x-tenant-id"]
+            credentials: false, // 단순화
+            allowedHeaders: ["Content-Type", "Authorization", "Accept"]
         },
         
-        // 연결 설정
+        // 🎯 핵심 수정: 연결 설정 최적화
         allowEIO3: true,
-        transports: ['polling', 'websocket'], // polling을 우선으로
+        transports: ['polling', 'websocket'], // polling 우선
         
-        // 타임아웃 설정
-        pingTimeout: 60000,
-        pingInterval: 25000,
-        connectTimeout: 45000,
+        // 🎯 타임아웃 설정 관대하게
+        pingTimeout: 120000,      // 2분
+        pingInterval: 30000,      // 30초
+        connectTimeout: 90000,    // 1.5분
         
-        // 압축 설정 (디버깅을 위해 비활성화)
+        // 성능 설정
         httpCompression: false,
         perMessageDeflate: false,
+        maxHttpBufferSize: 1e6,
         
         // 경로 설정
         path: '/socket.io/',
-        serveClient: false,
-        
-        // 디버깅 설정
-        maxHttpBufferSize: 1e6 // 1MB
+        serveClient: false
     });
 
     console.log('📋 Socket.IO 서버 설정 완료:');
     console.log('   Path:', '/socket.io/');
     console.log('   CORS Origins:', corsOrigins);
     console.log('   Transports:', ['polling', 'websocket']);
-    console.log('   Ping Timeout:', '60초');
-    console.log('   Connect Timeout:', '45초');
+    console.log('   Ping Timeout:', '120초');
+    console.log('   Connect Timeout:', '90초');
 
-    // Socket.IO 엔진 레벨 이벤트 (가장 저수준)
+    // 🎯 Socket.IO 엔진 레벨 디버깅 (상세)
     io.engine.on('initial_headers', (headers, req) => {
         console.log('📋 Socket.IO Initial Headers:');
         console.log('   URL:', req.url);
@@ -109,6 +107,12 @@ if (socketIo) {
         console.log('   Origin:', req.headers.origin || 'none');
         console.log('   User-Agent:', req.headers['user-agent']?.substring(0, 80) || 'none');
         console.log('   Referer:', req.headers.referer || 'none');
+        
+        // 🎯 CORS 헤더 강제 추가 (문제 해결을 위해)
+        headers['Access-Control-Allow-Origin'] = req.headers.origin || '*';
+        headers['Access-Control-Allow-Methods'] = 'GET,HEAD,PUT,PATCH,POST,DELETE';
+        headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept';
+        headers['Access-Control-Allow-Credentials'] = 'false';
     });
 
     io.engine.on('connection_error', (err) => {
@@ -118,116 +122,123 @@ if (socketIo) {
         console.error('   메시지:', err.message);
         console.error('   타입:', err.type);
         console.error('   컨텍스트:', err.context);
-        console.error('   전체 에러:', err);
+        
+        // 🎯 일반적인 에러 패턴 분석
+        if (err.code === 'TRANSPORT_MISMATCH') {
+            console.error('   💡 해결책: 클라이언트 transport 설정 확인');
+        } else if (err.code === 'CORS_ERROR') {
+            console.error('   💡 해결책: CORS 설정 또는 Origin 헤더 확인');
+        } else if (err.code === 'BAD_REQUEST') {
+            console.error('   💡 해결책: 클라이언트 요청 형식 확인');
+        }
     });
 
-    // 핸드셰이크 디버깅
+    // 🎯 핸드셰이크 디버깅 강화
     io.engine.on('headers', (headers, req) => {
         console.log('📋 Socket.IO Handshake Headers:', {
             url: req.url,
             method: req.method,
             origin: req.headers.origin,
             upgrade: req.headers.upgrade,
-            connection: req.headers.connection
+            connection: req.headers.connection,
+            'socket.io-version': req.headers['socket.io-version'] || 'unknown'
         });
     });
 
-    // 클라이언트 연결 이벤트 (통합된 단일 핸들러)
-    io.on('connection', (socket) => {
-        console.log('🎉 새로운 클라이언트 연결됨!');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('   Socket ID:', socket.id);
-        console.log('   Client IP:', socket.handshake.address);
-        console.log('   Transport:', socket.conn.transport.name);
-        console.log('   Secure:', socket.conn.transport.secure);
-        console.log('   Query Params:', JSON.stringify(socket.handshake.query, null, 2));
-        console.log('   Headers:');
-        console.log('     Origin:', socket.handshake.headers.origin || 'none');
-        console.log('     Referer:', socket.handshake.headers.referer || 'none');
-        console.log('     User-Agent:', socket.handshake.headers['user-agent']?.substring(0, 100) || 'none');
-        console.log('     Host:', socket.handshake.headers.host || 'none');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // 🎯 클라이언트 연결 이벤트 핸들러 (완전히 새로 작성)
+io.on('connection', (socket) => {
+    const connectionTime = Date.now();
+    
+    console.log('🎉 새로운 클라이언트 연결됨!');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('   Socket ID:', socket.id);
+    console.log('   Client IP:', socket.handshake.address);
+    console.log('   Transport:', socket.conn.transport.name);
+    console.log('   연결 시간:', new Date().toISOString());
+    console.log('   Query Params:', JSON.stringify(socket.handshake.query, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-        // 연결 통계
-        const connectedCount = io.engine.clientsCount;
-        console.log(`📊 현재 연결된 클라이언트: ${connectedCount}명`);
+    const connectedCount = io.engine.clientsCount;
+    console.log(`📊 현재 연결된 클라이언트: ${connectedCount}명`);
 
-        // Transport 업그레이드 모니터링
-        socket.conn.on('upgrade', () => {
-            console.log(`🔄 Socket ${socket.id} transport 업그레이드:`, socket.conn.transport.name);
-        });
+    // 즉시 연결 확인 메시지 전송
+    socket.emit('connection_status', {
+        status: 'connected',
+        socket_id: socket.id,
+        server_time: new Date().toISOString(),
+        transport: socket.conn.transport.name,
+        client_count: connectedCount
+    });
 
-        socket.conn.on('upgradeError', (error) => {
-            console.error(`❌ Socket ${socket.id} 업그레이드 에러:`, error);
-        });
-
-        // 즉시 연결 확인 메시지 전송
-        socket.emit('connection_status', {
-            status: 'connected',
-            socket_id: socket.id,
+    // 테스트 메시지 핸들러
+    socket.on('test-message', (data) => {
+        console.log('📨 테스트 메시지 수신:', data);
+        
+        socket.emit('test-response', { 
+            message: '서버에서 테스트 응답', 
+            received_data: data,
             server_time: new Date().toISOString(),
+            socket_id: socket.id,
             transport: socket.conn.transport.name
         });
+    });
 
-        // 테스트 핸들러들
-        socket.on('test-message', (data) => {
-            console.log('📨 테스트 메시지 수신:', data);
-            socket.emit('test-response', { 
-                message: '서버에서 테스트 응답', 
-                received_data: data,
-                server_time: new Date().toISOString(),
-                socket_id: socket.id
-            });
+    // 룸 관리
+    socket.on('join_tenant', (tenantId) => {
+        const roomName = `tenant:${tenantId}`;
+        socket.join(roomName);
+        console.log(`👥 Socket ${socket.id} joined room: ${roomName}`);
+        
+        socket.emit('room_joined', {
+            room: roomName,
+            tenant_id: tenantId,
+            timestamp: new Date().toISOString(),
+            success: true
         });
+    });
 
-        // 룸 관리
-        socket.on('join_tenant', (tenantId) => {
-            const roomName = `tenant:${tenantId}`;
-            socket.join(roomName);
-            console.log(`👥 Socket ${socket.id} joined room: ${roomName}`);
-            
-            socket.emit('room_joined', {
-                room: roomName,
-                tenant_id: tenantId,
-                timestamp: new Date().toISOString()
-            });
+    socket.on('join_admin', () => {
+        socket.join('admins');
+        console.log(`👑 Socket ${socket.id} joined admin room`);
+        
+        socket.emit('room_joined', {
+            room: 'admins',
+            timestamp: new Date().toISOString(),
+            success: true
         });
+    });
 
-        socket.on('join_admin', () => {
-            socket.join('admins');
-            console.log(`👑 Socket ${socket.id} joined admin room`);
-            
-            socket.emit('room_joined', {
-                room: 'admins',
-                timestamp: new Date().toISOString()
-            });
+    // 알람 확인 핸들러
+    socket.on('acknowledge_alarm', (data) => {
+        console.log('📝 알람 확인 요청:', data);
+        
+        socket.emit('alarm_acknowledged', {
+            occurrence_id: data.occurrence_id,
+            acknowledged_by: data.user_id,
+            timestamp: new Date().toISOString(),
+            success: true
         });
+    });
 
-        // 알람 관련 핸들러
-        socket.on('acknowledge_alarm', (data) => {
-            console.log('📝 알람 확인 요청:', data);
-            socket.emit('alarm_acknowledged', {
-                occurrence_id: data.occurrence_id,
-                acknowledged_by: data.user_id,
-                timestamp: new Date().toISOString()
-            });
-        });
+    // 연결 해제
+    socket.on('disconnect', (reason) => {
+        const connectionDuration = Date.now() - connectionTime;
+        const remainingCount = io.engine.clientsCount - 1;
+        
+        console.log('👋 클라이언트 연결 해제:');
+        console.log('   Socket ID:', socket.id);
+        console.log('   해제 사유:', reason);
+        console.log('   연결 지속 시간:', Math.round(connectionDuration / 1000) + '초');
+        console.log(`   남은 클라이언트: ${remainingCount}명`);
+    });
 
-        // 연결 해제 이벤트
-        socket.on('disconnect', (reason) => {
-            const remainingCount = io.engine.clientsCount - 1;
-            console.log('👋 클라이언트 연결 해제:');
-            console.log('   Socket ID:', socket.id);
-            console.log('   해제 사유:', reason);
-            console.log(`   남은 클라이언트: ${remainingCount}명`);
-        });
+    // 에러 핸들러
+    socket.on('error', (error) => {
+        console.error('❌ Socket 에러 (ID: ' + socket.id + '):', error);
+    });
 
-        // 에러 이벤트
-        socket.on('error', (error) => {
-            console.error('❌ Socket 에러 (Socket ID: ' + socket.id + '):', error);
-        });
-
-        // Ping/Pong 모니터링
+    // 🎯 Ping/Pong 모니터링 (선택적 - 개발 모드에서만)
+    if (process.env.NODE_ENV === 'development') {
         socket.on('ping', () => {
             console.log(`🏓 Ping from ${socket.id}`);
         });
@@ -235,24 +246,53 @@ if (socketIo) {
         socket.on('pong', (latency) => {
             console.log(`🏓 Pong from ${socket.id}, latency: ${latency}ms`);
         });
-    });
-
-    // 주기적 상태 보고 (개발 모드에서만)
-    if (process.env.NODE_ENV === 'development') {
-        setInterval(() => {
-            const stats = {
-                connected_clients: io.engine.clientsCount,
-                total_rooms: io.sockets.adapter.rooms.size,
-                timestamp: new Date().toISOString()
-            };
-            
-            if (stats.connected_clients > 0) {
-                console.log('📊 Socket.IO 상태 보고:', stats);
-            }
-        }, 30000); // 30초마다
     }
 
-    // 서버 전역 변수에 저장
+    // 🎯 추가 디버깅 이벤트들
+    socket.onAny((eventName, ...args) => {
+        if (process.env.NODE_ENV === 'development' && 
+            !['ping', 'pong'].includes(eventName)) {
+            console.log(`📡 Socket ${socket.id} 이벤트 수신: ${eventName}`, 
+                       args.length > 0 ? args : '(no args)');
+        }
+    });
+});
+
+    // 🎯 주기적 상태 보고 (개발 모드에서만, 더 자주)
+setInterval(() => {
+    if (io && process.env.NODE_ENV === 'development') {
+        const engineClients = io.engine.clientsCount;
+        const socketClients = io.sockets.sockets.size;
+        const rooms = io.sockets.adapter.rooms.size;
+        
+        if (engineClients > 0 || socketClients > 0) {
+            console.log('📊 상세 Socket.IO 상태:');
+            console.log('   Engine 클라이언트:', engineClients);
+            console.log('   Socket 클라이언트:', socketClients);
+            console.log('   전체 룸 수:', rooms);
+            console.log('   타임스탬프:', new Date().toISOString());
+            
+            // 불일치가 있을 경우 경고
+            if (engineClients !== socketClients) {
+                console.warn('⚠️ Engine과 Socket 클라이언트 수가 일치하지 않습니다!');
+            }
+        }
+    }
+}, 30000);
+
+if (io) {
+    // 엔진 레벨에서 연결 성공 확인
+    io.engine.on('connection', (socket) => {
+        console.log('🔧 Engine 레벨 연결 성공:', socket.id);
+    });
+    
+    // 엔진 레벨에서 연결 종료 확인
+    io.engine.on('disconnect', (socket) => {
+        console.log('🔧 Engine 레벨 연결 해제:', socket.id);
+    });
+}
+
+    // 🎯 서버 전역 변수에 저장
     app.locals.serverStartTime = new Date().toISOString();
     app.locals.io = io;
     

@@ -80,55 +80,28 @@ export class AlarmWebSocketService {
   // =========================================================================
   // 백엔드 URL 결정 로직 (완전 디버깅 버전)
   // =========================================================================
-  private getBackendUrl(): string {
-    const currentLocation = {
-      hostname: window.location.hostname,
-      port: window.location.port,
-      protocol: window.location.protocol,
-      origin: window.location.origin
-    };
+    private getBackendUrl(): string {
+        // 1단계: 환경변수 직접 확인
+        const apiUrl = import.meta.env?.VITE_API_URL;
+        if (apiUrl) {
+        console.log('✅ VITE_API_URL 사용:', apiUrl);
+        return apiUrl;
+        }
 
-    console.log('🌐 현재 브라우저 위치:', currentLocation);
+        // 2단계: 개발 환경 자동 감지
+        const currentHost = window.location.hostname;
+        const currentPort = window.location.port;
+        
+        if (currentPort === '5173' && (currentHost === 'localhost' || currentHost === '127.0.0.1')) {
+        const backendUrl = 'http://localhost:3000';
+        console.log('✅ Vite 개발서버 감지 -> Backend URL:', backendUrl);
+        return backendUrl;
+        }
 
-    // 환경변수 확인
-    const envVars = {
-      VITE_API_URL: import.meta.env?.VITE_API_URL,
-      VITE_WEBSOCKET_URL: import.meta.env?.VITE_WEBSOCKET_URL,
-      VITE_BACKEND_URL: import.meta.env?.VITE_BACKEND_URL
-    };
-    console.log('🔧 환경변수:', envVars);
-
-    // 개발 환경 감지
-    const isViteDevServer = window.location.port === '5173';
-    const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-    console.log('🔍 환경 분석:', {
-      isViteDevServer,
-      isLocalhost,
-      port: window.location.port,
-      hostname: window.location.hostname
-    });
-
-    // Backend URL 결정 로직
-    let backendUrl: string;
-
-    if (envVars.VITE_BACKEND_URL) {
-      backendUrl = envVars.VITE_BACKEND_URL;
-      console.log('✅ 환경변수에서 Backend URL 사용:', backendUrl);
-    } else if (envVars.VITE_API_URL) {
-      backendUrl = envVars.VITE_API_URL;
-      console.log('✅ 환경변수에서 API URL 사용:', backendUrl);
-    } else if (isViteDevServer && isLocalhost) {
-      // Vite 개발 서버에서는 프록시 사용 시도
-      backendUrl = window.location.origin;
-      console.log('🔧 Vite 프록시 사용 시도:', backendUrl);
-    } else {
-      // 기본값: 직접 Backend 연결
-      backendUrl = 'http://localhost:3000';
-      console.log('🔧 기본 Backend URL 사용:', backendUrl);
-    }
-
-    return backendUrl;
+        // 3단계: 기본값
+        const defaultUrl = 'http://localhost:3000';
+        console.log('✅ 기본 Backend URL 사용:', defaultUrl);
+        return defaultUrl;
   }
 
   // =========================================================================
@@ -136,7 +109,7 @@ export class AlarmWebSocketService {
   // =========================================================================
   connect(): Promise<void> {
     if (this.socket && this.socket.connected) {
-      console.log('✅ 이미 WebSocket에 연결되어 있음');
+      console.log('✅ 이미 연결됨 - Socket ID:', this.socket.id);
       return Promise.resolve();
     }
 
@@ -156,69 +129,87 @@ export class AlarmWebSocketService {
         const backendUrl = this.getBackendUrl();
         console.log('🎯 최종 Backend URL:', backendUrl);
 
-        // Socket.IO 클라이언트 옵션 (완전 디버깅 설정)
+        // 🔧 최적화된 Socket.IO 옵션
         const socketOptions = {
-          // 기본 연결 설정
+          // 기본 설정
           path: '/socket.io/',
           autoConnect: true,
           forceNew: true,
           
-          // Transport 설정 (polling을 우선으로 하여 안정성 확보)
+          // 🎯 Transport 설정 - polling 우선으로 안정성 확보
           transports: ['polling', 'websocket'],
           upgrade: true,
           rememberUpgrade: false,
           
-          // 타임아웃 설정
-          timeout: 20000,
-          connectTimeout: 45000,
+          // 🎯 타임아웃 설정 - 더 관대하게
+          timeout: 30000,           // 30초
+          connectTimeout: 60000,    // 60초
           
           // 재연결 설정
           reconnection: true,
           reconnectionDelay: this.reconnectDelay,
           reconnectionAttempts: this.maxReconnectAttempts,
-          reconnectionDelayMax: 5000,
+          reconnectionDelayMax: 10000,
           randomizationFactor: 0.5,
           
-          // CORS 설정
+          // 🎯 CORS 및 보안 설정 최적화
           withCredentials: false,
+          secure: false,
+          rejectUnauthorized: false,
           
-          // 추가 헤더
+          // 🎯 추가 헤더 최소화
           extraHeaders: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
+            'Accept': 'application/json'
           },
           
-          // 쿼리 파라미터
+          // 🎯 쿼리 파라미터
           query: {
             client: 'AlarmWebSocketService',
             version: '2.0.0',
-            tenant_id: this.tenantId
+            tenant_id: this.tenantId,
+            // 타임스탬프 추가로 캐시 방지
+            t: Date.now()
           },
           
           // 성능 설정
-          secure: false,
-          rejectUnauthorized: false
+          httpCompression: false,
+          perMessageDeflate: false,
+          maxHttpBufferSize: 1e6
         };
 
-        console.log('📋 Socket.IO 클라이언트 옵션:');
+        console.log('📋 Socket.IO 연결 설정:');
         console.log('   URL:', backendUrl);
         console.log('   Path:', socketOptions.path);
         console.log('   Transports:', socketOptions.transports);
         console.log('   Timeout:', socketOptions.timeout + 'ms');
-        console.log('   Connect Timeout:', socketOptions.connectTimeout + 'ms');
-        console.log('   Reconnection:', socketOptions.reconnection);
         console.log('   Query:', JSON.stringify(socketOptions.query, null, 2));
 
-        // Socket.IO 클라이언트 생성
+        // Socket 생성
         this.socket = io(backendUrl, socketOptions);
-
         console.log('🔌 Socket.IO 클라이언트 생성 완료');
 
-        // 이벤트 핸들러 설정
+        // 🎯 이벤트 핸들러 설정 (connect 전에)
         this.setupEventHandlers();
 
-        // 연결 성공 이벤트
+        // 🎯 타임아웃 설정 (Promise 레벨에서)
+        const connectionTimeout = setTimeout(() => {
+          if (this.isConnecting) {
+            console.error('❌ 연결 타임아웃 (60초)');
+            this.isConnecting = false;
+            
+            this.notifyConnectionChange({
+              status: 'error',
+              timestamp: new Date().toISOString(),
+              error: '연결 타임아웃'
+            });
+            
+            reject(new Error('연결 타임아웃'));
+          }
+        }, 60000);
+
+        // ✅ 연결 성공 이벤트
         this.socket.once('connect', () => {
+          clearTimeout(connectionTimeout);
           const connectionTime = Date.now() - this.connectionStartTime;
           
           console.log('🎉 WebSocket 연결 성공!');
@@ -226,14 +217,13 @@ export class AlarmWebSocketService {
           console.log('   Socket ID:', this.socket?.id);
           console.log('   Transport:', this.socket?.io.engine.transport.name);
           console.log('   연결 시간:', connectionTime + 'ms');
-          console.log('   서버 URL:', backendUrl);
           console.log('   재시도 횟수:', this.reconnectAttempts);
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           
-          // 즉시 연결 테스트 메시지 전송
+          // 🎯 즉시 연결 테스트
           this.sendConnectionTest();
           
           // 룸 조인
@@ -251,15 +241,15 @@ export class AlarmWebSocketService {
           resolve();
         });
 
-        // 연결 실패 이벤트
+        // ❌ 연결 실패 이벤트
         this.socket.once('connect_error', (error) => {
+          clearTimeout(connectionTimeout);
           const connectionTime = Date.now() - this.connectionStartTime;
           
           console.error('❌ WebSocket 연결 실패!');
           console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           console.error('   에러 타입:', error.type || 'unknown');
           console.error('   에러 메시지:', error.message || 'unknown');
-          console.error('   설명:', error.description || 'none');
           console.error('   시도 시간:', connectionTime + 'ms');
           console.error('   시도 횟수:', this.reconnectAttempts + 1);
           console.error('   Target URL:', backendUrl);
@@ -269,37 +259,33 @@ export class AlarmWebSocketService {
           this.isConnecting = false;
           this.reconnectAttempts++;
           
-          // 에러 분석 및 사용자 친화적 메시지
-          let userFriendlyMessage = '연결 실패';
-          
-          if (error.message.includes('ECONNREFUSED')) {
-            userFriendlyMessage = 'Backend 서버에 연결할 수 없습니다 (서버가 실행 중인지 확인하세요)';
-          } else if (error.message.includes('timeout')) {
-            userFriendlyMessage = '연결 타임아웃 (네트워크 상태를 확인하세요)';
-          } else if (error.message.includes('CORS')) {
-            userFriendlyMessage = 'CORS 정책 위반 (서버 설정을 확인하세요)';
-          } else if (error.type === 'TransportError') {
-            userFriendlyMessage = '전송 프로토콜 에러 (방화벽 설정을 확인하세요)';
+          // 🎯 사용자 친화적 에러 메시지
+          let userMessage = '연결 실패';
+          if (error.message?.includes('ECONNREFUSED')) {
+            userMessage = 'Backend 서버가 실행되지 않음 (localhost:3000)';
+          } else if (error.message?.includes('timeout')) {
+            userMessage = '연결 타임아웃 - 네트워크 확인 필요';
+          } else if (error.message?.includes('CORS')) {
+            userMessage = 'CORS 정책 위반 - 서버 설정 확인 필요';
           } else {
-            userFriendlyMessage = `연결 실패: ${error.message}`;
+            userMessage = `연결 실패: ${error.message}`;
           }
           
-          // 상태 알림
           this.notifyConnectionChange({
             status: 'error',
             timestamp: new Date().toISOString(),
-            error: userFriendlyMessage
+            error: userMessage
           });
           
-          this.notifyError(userFriendlyMessage);
+          this.notifyError(userMessage);
           reject(error);
         });
 
-        console.log('⏳ 연결 대기 중... (최대 ' + socketOptions.timeout + 'ms)');
+        console.log('⏳ 연결 대기 중... (최대 60초)');
 
       } catch (error) {
         this.isConnecting = false;
-        console.error('❌ WebSocket 초기화 중 예외 발생:', error);
+        console.error('❌ Socket 초기화 중 예외:', error);
         reject(error);
       }
     });
@@ -308,23 +294,84 @@ export class AlarmWebSocketService {
   // =========================================================================
   // 연결 테스트 메시지 전송
   // =========================================================================
-  private sendConnectionTest(): void {
-    if (this.socket?.connected) {
-      const testMessage = {
-        type: 'connection-test',
-        client: 'AlarmWebSocketService',
-        timestamp: new Date().toISOString(),
-        tenant_id: this.tenantId,
-        browser: {
-          userAgent: navigator.userAgent,
-          language: navigator.language,
-          platform: navigator.platform
-        }
-      };
+  async diagnoseConnection(): Promise<void> {
+    console.log('🔍 WebSocket 연결 진단 시작...');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      console.log('📨 연결 테스트 메시지 전송:', testMessage);
-      this.socket.emit('test-message', testMessage);
+    // 1. 기본 정보
+    const backendUrl = this.getBackendUrl();
+    console.log('📊 진단 정보:');
+    console.log('   Backend URL:', backendUrl);
+    console.log('   현재 Socket 상태:', this.socket?.connected ? 'connected' : 'disconnected');
+    console.log('   Socket ID:', this.socket?.id || 'none');
+    console.log('   Transport:', this.socket?.io?.engine?.transport?.name || 'none');
+
+    // 2. Backend 서버 상태 확인
+    try {
+      console.log('🔍 Backend 서버 응답 확인 중...');
+      const response = await fetch(`${backendUrl}/api/health`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (response.ok) {
+        const health = await response.json();
+        console.log('✅ Backend 서버 응답 정상:', health.status);
+        console.log('   서버 가동 시간:', health.uptime + '초');
+      } else {
+        console.error('❌ Backend 서버 응답 비정상:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Backend 서버 접근 실패:', error);
+      console.log('💡 해결 방법:');
+      console.log('   1. Backend 서버가 실행 중인지 확인 (localhost:3000)');
+      console.log('   2. 방화벽 설정 확인');
+      console.log('   3. CORS 설정 확인');
     }
+
+    // 3. WebSocket 엔드포인트 확인
+    try {
+      console.log('🔍 Socket.IO 엔드포인트 확인 중...');
+      const socketResponse = await fetch(`${backendUrl}/socket.io/?EIO=4&transport=polling&t=${Date.now()}`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (socketResponse.ok) {
+        console.log('✅ Socket.IO 엔드포인트 응답 정상');
+      } else {
+        console.error('❌ Socket.IO 엔드포인트 응답 비정상:', socketResponse.status);
+      }
+    } catch (error) {
+      console.error('❌ Socket.IO 엔드포인트 접근 실패:', error);
+    }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 진단 완료');
+  }
+
+  // =========================================================================
+  // 🎯 강제 재연결 (디버깅용)
+  // =========================================================================
+  async forceReconnect(): Promise<void> {
+    console.log('🔄 강제 재연결 시작...');
+    
+    // 기존 연결 정리
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    
+    this.isConnecting = false;
+    this.reconnectAttempts = 0;
+    
+    // 잠시 대기
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // 연결 진단 후 재연결
+    await this.diagnoseConnection();
+    return this.connect();
   }
 
   // =========================================================================
