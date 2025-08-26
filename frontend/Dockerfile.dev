@@ -22,8 +22,8 @@ RUN npm install --frozen-lockfile=false
 COPY . .
 
 # 빌드 시점 ARG 정의
-ARG VITE_API_URL=http://backend:3000
-ARG VITE_WEBSOCKET_URL=ws://backend:3000
+ARG VITE_API_URL=http://localhost:3000
+ARG VITE_WEBSOCKET_URL=ws://localhost:3000
 
 # 런타임 ENV로 전환
 ENV VITE_API_URL=$VITE_API_URL
