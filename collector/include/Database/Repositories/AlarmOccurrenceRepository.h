@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Repositories/AlarmOccurrenceRepository.h
-// PulseOne AlarmOccurrenceRepository - ScriptLibraryRepository 패턴 100% 적용
+// PulseOne AlarmOccurrenceRepository - 현재 스키마 완전 호환
 // =============================================================================
 
 #ifndef ALARM_OCCURRENCE_REPOSITORY_H
@@ -8,16 +8,14 @@
 
 /**
  * @file AlarmOccurrenceRepository.h
- * @brief PulseOne AlarmOccurrenceRepository - ScriptLibraryRepository 패턴 완전 적용
+ * @brief PulseOne AlarmOccurrenceRepository - 현재 스키마 완전 적용
  * @author PulseOne Development Team
- * @date 2025-08-12
+ * @date 2025-08-26
  * 
- * 🎯 ScriptLibraryRepository 패턴 100% 적용:
- * - ExtendedSQLQueries.h 사용
- * - 표준 LogManager 사용법
- * - IRepository 상속 관계 정확히 준수
- * - 불필요한 의존성 제거
- * - 모든 구현 메서드 헤더 선언
+ * 🎯 수정 사항:
+ * - 구현 파일과 완전 일치하도록 함수 시그니처 수정
+ * - 누락된 함수들 모두 추가
+ * - ScriptLibraryRepository 패턴 100% 적용
  */
 
 #include "Database/Repositories/IRepository.h"
@@ -142,6 +140,15 @@ public:
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
     
     /**
+     * @brief 조건에 맞는 첫 번째 알람 발생 조회
+     * @param conditions 쿼리 조건들
+     * @return AlarmOccurrenceEntity (optional)
+     */
+    std::optional<AlarmOccurrenceEntity> findFirstByConditions(
+        const std::vector<QueryCondition>& conditions
+    );
+    
+    /**
      * @brief 여러 알람 발생 일괄 저장
      * @param entities 저장할 알람 발생들 (참조로 전달하여 ID 업데이트)
      * @return 저장된 개수
@@ -167,15 +174,6 @@ public:
     // =======================================================================
     
     /**
-     * @brief 조건에 맞는 첫 번째 알람 발생 조회
-     * @param conditions 쿼리 조건들
-     * @return AlarmOccurrenceEntity (optional)
-     */
-    std::optional<AlarmOccurrenceEntity> findFirstByConditions(
-        const std::vector<QueryCondition>& conditions
-    );
-    
-    /**
      * @brief 활성 알람 발생들 조회
      * @param tenant_id 테넌트 ID (optional)
      * @return AlarmOccurrenceEntity 목록
@@ -191,20 +189,19 @@ public:
     std::vector<AlarmOccurrenceEntity> findByRuleId(int rule_id, bool active_only = false);
     
     /**
+     * @brief 규칙 ID로 활성 알람만 조회 (추가 메서드)
+     * @param rule_id 알람 규칙 ID
+     * @return AlarmOccurrenceEntity 목록
+     */
+    std::vector<AlarmOccurrenceEntity> findActiveByRuleId(int rule_id);
+    
+    /**
      * @brief 테넌트별 알람 발생 조회
      * @param tenant_id 테넌트 ID
      * @param state_filter 상태 필터 (빈 문자열이면 모든 상태)
      * @return AlarmOccurrenceEntity 목록
      */
     std::vector<AlarmOccurrenceEntity> findByTenant(int tenant_id, const std::string& state_filter = "");
-    
-    /**
-     * @brief 심각도별 알람 발생 조회
-     * @param severity 심각도 문자열
-     * @param active_only 활성 알람만 조회할지 여부
-     * @return AlarmOccurrenceEntity 목록
-     */
-    std::vector<AlarmOccurrenceEntity> findBySeverity(const std::string& severity, bool active_only = false);
     
     /**
      * @brief 시간 범위별 알람 발생 조회
@@ -218,14 +215,6 @@ public:
         const std::chrono::system_clock::time_point& end_time,
         std::optional<int> tenant_id = std::nullopt
     );
-    
-    /**
-     * @brief 최근 알람 발생 조회
-     * @param limit 조회할 개수 (기본값: 100)
-     * @param tenant_id 테넌트 ID (optional)
-     * @return AlarmOccurrenceEntity 목록
-     */
-    std::vector<AlarmOccurrenceEntity> findRecent(int limit = 100, std::optional<int> tenant_id = std::nullopt);
 
     // =======================================================================
     // 알람 상태 관리 메서드들
@@ -248,31 +237,6 @@ public:
      * @return 성공 시 true
      */
     bool clear(int64_t occurrence_id, const std::string& cleared_value, const std::string& comment = "");
-    
-    /**
-     * @brief 알람 억제
-     * @param occurrence_id 알람 발생 ID
-     * @param comment 억제 코멘트
-     * @return 성공 시 true
-     */
-    bool suppress(int64_t occurrence_id, const std::string& comment = "");
-    
-    /**
-     * @brief 벌크 알람 승인
-     * @param occurrence_ids 알람 발생 ID 목록
-     * @param acknowledged_by 승인자 ID
-     * @param comment 승인 코멘트
-     * @return 승인된 개수
-     */
-    int acknowledgeBulk(const std::vector<int64_t>& occurrence_ids, int acknowledged_by, const std::string& comment = "");
-    
-    /**
-     * @brief 벌크 알람 해제
-     * @param occurrence_ids 알람 발생 ID 목록
-     * @param comment 해제 코멘트
-     * @return 해제된 개수
-     */
-    int clearBulk(const std::vector<int64_t>& occurrence_ids, const std::string& comment = "");
 
     // =======================================================================
     // 통계 및 분석 메서드들
@@ -280,24 +244,10 @@ public:
     
     /**
      * @brief 알람 통계 조회
-     * @param tenant_id 테넌트 ID (0이면 전체)
+     * @param tenant_id 테넌트 ID
      * @return 통계 맵 (total, active, acknowledged, cleared)
      */
-    std::map<std::string, int> getAlarmStatistics(int tenant_id = 0);
-    
-    /**
-     * @brief 심각도별 활성 알람 개수 조회
-     * @param tenant_id 테넌트 ID (0이면 전체)
-     * @return 심각도별 개수 맵
-     */
-    std::map<std::string, int> getActiveAlarmsBySeverity(int tenant_id = 0);
-    
-    /**
-     * @brief 오래된 해제된 알람 정리
-     * @param older_than_days 보관 일수 (기본값: 30일)
-     * @return 정리된 개수
-     */
-    int cleanupOldClearedAlarms(int older_than_days = 30);
+    std::map<std::string, int> getAlarmStatistics(int tenant_id);
 
     // =======================================================================
     // 유틸리티 메서드들 (ScriptLibraryRepository 패턴)
@@ -319,10 +269,10 @@ public:
     
     /**
      * @brief 최대 ID 조회 (테스트용)
-     * @return 최대 ID (optional)
+     * @return 최대 ID
      */
-    int findMaxId();;
-    std::vector<AlarmOccurrenceEntity> findActiveByRuleId(int rule_id);
+    int findMaxId();
+
 private:
     // =======================================================================
     // 내부 헬퍼 메서드들 (ScriptLibraryRepository 패턴)

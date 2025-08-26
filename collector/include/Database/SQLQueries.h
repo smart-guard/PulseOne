@@ -1163,7 +1163,7 @@ namespace CurrentValue {
 // 🎯 ProtocolRepository 쿼리들 - 새로 추가된 protocols 테이블
 // =============================================================================
 namespace Protocol {
-    
+    // 기본 CRUD 쿼리들 (기존)
     const std::string FIND_ALL = R"(
         SELECT 
             id, protocol_type, display_name, description,
@@ -1174,8 +1174,7 @@ namespace Protocol {
             category, vendor, standard_reference,
             created_at, updated_at
         FROM protocols 
-        WHERE is_enabled = 1
-        ORDER BY category, display_name
+        ORDER BY display_name
     )";
     
     const std::string FIND_BY_ID = R"(
@@ -1191,7 +1190,8 @@ namespace Protocol {
         WHERE id = ?
     )";
     
-    const std::string FIND_BY_PROTOCOL_TYPE = R"(
+    // 🔥 누락된 상수들 추가
+    const std::string FIND_BY_TYPE = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1204,6 +1204,97 @@ namespace Protocol {
         WHERE protocol_type = ?
     )";
     
+    const std::string FIND_ACTIVE = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE is_enabled = 1
+        ORDER BY category, display_name
+    )";
+    
+    const std::string FIND_SERIAL = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE uses_serial = 1 AND is_enabled = 1
+        ORDER BY display_name
+    )";
+    
+    const std::string FIND_BROKER_REQUIRED = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE requires_broker = 1 AND is_enabled = 1
+        ORDER BY display_name
+    )";
+    
+    const std::string FIND_BY_PORT = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE default_port = ? AND is_enabled = 1
+        ORDER BY display_name
+    )";
+    
+    const std::string GET_CATEGORY_DISTRIBUTION = R"(
+        SELECT 
+            category,
+            COUNT(*) as count
+        FROM protocols 
+        WHERE is_enabled = 1
+        GROUP BY category
+        ORDER BY count DESC, category
+    )";
+    
+    const std::string FIND_DEPRECATED = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE is_deprecated = 1
+        ORDER BY display_name
+    )";
+    
+    const std::string GET_API_LIST = R"(
+        SELECT 
+            protocol_type,
+            display_name,
+            description
+        FROM protocols 
+        WHERE is_enabled = 1 AND is_deprecated = 0
+        ORDER BY display_name
+    )";
+    
+    // 기존 쿼리들 (이미 있던 것들)
     const std::string FIND_ENABLED = R"(
         SELECT 
             id, protocol_type, display_name, description,
@@ -1232,6 +1323,49 @@ namespace Protocol {
         ORDER BY display_name
     )";
     
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS protocols (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            
+            -- 기본 정보
+            protocol_type VARCHAR(50) NOT NULL UNIQUE,
+            display_name VARCHAR(100) NOT NULL,
+            description TEXT,
+            
+            -- 네트워크 정보
+            default_port INTEGER,
+            uses_serial INTEGER DEFAULT 0,
+            requires_broker INTEGER DEFAULT 0,
+            
+            -- 기능 지원 정보 (JSON)
+            supported_operations TEXT,
+            supported_data_types TEXT,
+            connection_params TEXT,
+            
+            -- 설정 정보
+            default_polling_interval INTEGER DEFAULT 1000,
+            default_timeout INTEGER DEFAULT 5000,
+            max_concurrent_connections INTEGER DEFAULT 1,
+            
+            -- 상태 정보
+            is_enabled INTEGER DEFAULT 1,
+            is_deprecated INTEGER DEFAULT 0,
+            min_firmware_version VARCHAR(20),
+            
+            -- 분류 정보
+            category VARCHAR(50),
+            vendor VARCHAR(100),
+            standard_reference VARCHAR(100),
+            
+            -- 메타데이터
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            -- 제약조건
+            CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
+        )
+    )";
+
     const std::string INSERT = R"(
         INSERT INTO protocols (
             protocol_type, display_name, description,
@@ -1274,49 +1408,6 @@ namespace Protocol {
     )";
     
     const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
-    
-    const std::string CREATE_TABLE = R"(
-        CREATE TABLE IF NOT EXISTS protocols (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            
-            -- 기본 정보
-            protocol_type VARCHAR(50) NOT NULL UNIQUE,      -- MODBUS_TCP, MODBUS_RTU, MQTT, etc.
-            display_name VARCHAR(100) NOT NULL,             -- "Modbus TCP", "MQTT", etc.
-            description TEXT,                               -- 상세 설명
-            
-            -- 네트워크 정보
-            default_port INTEGER,                           -- 기본 포트 (502, 1883, etc.)
-            uses_serial INTEGER DEFAULT 0,                 -- 시리얼 통신 사용 여부
-            requires_broker INTEGER DEFAULT 0,             -- 브로커 필요 여부 (MQTT 등)
-            
-            -- 기능 지원 정보 (JSON)
-            supported_operations TEXT,                      -- ["read", "write", "subscribe", etc.]
-            supported_data_types TEXT,                      -- ["boolean", "int16", "float32", etc.]
-            connection_params TEXT,                         -- 연결에 필요한 파라미터 스키마
-            
-            -- 설정 정보
-            default_polling_interval INTEGER DEFAULT 1000, -- 기본 폴링 간격 (ms)
-            default_timeout INTEGER DEFAULT 5000,          -- 기본 타임아웃 (ms)
-            max_concurrent_connections INTEGER DEFAULT 1,   -- 최대 동시 연결 수
-            
-            -- 상태 정보
-            is_enabled INTEGER DEFAULT 1,                  -- 프로토콜 활성화 여부
-            is_deprecated INTEGER DEFAULT 0,               -- 사용 중단 예정
-            min_firmware_version VARCHAR(20),              -- 최소 펌웨어 버전
-            
-            -- 분류 정보
-            category VARCHAR(50),                           -- industrial, iot, building_automation, etc.
-            vendor VARCHAR(100),                            -- 제조사/개발사
-            standard_reference VARCHAR(100),               -- 표준 문서 참조
-            
-            -- 메타데이터
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            
-            -- 제약조건
-            CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
-        )
-    )";
     
 } // namespace Protocol
 

@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Entities/VirtualPointEntity.h
-// PulseOne VirtualPointEntity - BaseEntity 패턴 적용
+// PulseOne VirtualPointEntity - DB 스키마와 완전 동기화
 // =============================================================================
 
 #ifndef VIRTUAL_POINT_ENTITY_H
@@ -10,56 +10,54 @@
 #include <string>
 #include <optional>
 #include <vector>
+#include <chrono>
+
+#ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
+using json = nlohmann::json;
+#else
+struct json {
+    template<typename T> T get() const { return T{}; }
+    bool contains(const std::string&) const { return false; }
+    std::string dump() const { return "{}"; }
+    static json parse(const std::string&) { return json{}; }
+    static json object() { return json{}; }
+    static json array() { return json{}; }
+};
+#endif
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
 
-using json = nlohmann::json;
-
 /**
- * @brief VirtualPointEntity - 가상포인트 엔티티
- * 
- * 🎯 BaseEntity 패턴 적용:
- * - 단순한 데이터 구조체 역할
- * - DB 작업은 VirtualPointRepository에서 처리
- * - BaseEntity<VirtualPointEntity> 상속으로 기본 기능 자동 획득
+ * @brief VirtualPointEntity - DB 스키마와 완전 동기화된 가상포인트 엔티티
  */
 class VirtualPointEntity : public BaseEntity<VirtualPointEntity> {
 public:
-    // =======================================================================
-    // Enum 정의 (DB 스키마와 일치)
-    // =======================================================================
-    
-    enum class ExecutionType {
-        JAVASCRIPT,
-        FORMULA,
-        AGGREGATE,
-        REFERENCE
-    };
-    
-    enum class ErrorHandling {
-        RETURN_NULL,
-        RETURN_LAST,
-        RETURN_ZERO,
-        RETURN_DEFAULT
-    };
-
     // =======================================================================
     // 생성자 및 소멸자
     // =======================================================================
     
     VirtualPointEntity() = default;
     explicit VirtualPointEntity(int id) : BaseEntity(id) {}
-    VirtualPointEntity(int tenant_id, const std::string& name, const std::string& formula);
     virtual ~VirtualPointEntity() = default;
 
     // =======================================================================
-    // Getter/Setter - DB 스키마 필드들
+    // BaseEntity 순수 가상 함수 구현
     // =======================================================================
     
-    // 필수 필드
+    bool loadFromDatabase() override;
+    bool saveToDatabase() override;
+    bool updateToDatabase() override;
+    bool deleteFromDatabase() override;
+    std::string getTableName() const override { return "virtual_points"; }
+
+    // =======================================================================
+    // Getter/Setter - DB 스키마와 완전 일치
+    // =======================================================================
+    
+    // 기본 필드
     int getTenantId() const { return tenant_id_; }
     void setTenantId(int id) { tenant_id_ = id; markModified(); }
     
@@ -87,26 +85,12 @@ public:
     const std::string& getUnit() const { return unit_; }
     void setUnit(const std::string& unit) { unit_ = unit; markModified(); }
     
+    // 계산 설정
     int getCalculationInterval() const { return calculation_interval_; }
     void setCalculationInterval(int interval) { calculation_interval_ = interval; markModified(); }
     
     const std::string& getCalculationTrigger() const { return calculation_trigger_; }
     void setCalculationTrigger(const std::string& trigger) { calculation_trigger_ = trigger; markModified(); }
-    
-    ExecutionType getExecutionType() const { return execution_type_; }
-    void setExecutionType(ExecutionType type) { execution_type_ = type; markModified(); }
-    
-    ErrorHandling getErrorHandling() const { return error_handling_; }
-    void setErrorHandling(ErrorHandling handling) { error_handling_ = handling; markModified(); }
-    
-    const std::string& getInputMappings() const { return input_mappings_; }
-    void setInputMappings(const std::string& mappings) { input_mappings_ = mappings; markModified(); }
-    
-    const std::string& getDependencies() const { return dependencies_; }
-    void setDependencies(const std::string& deps) { dependencies_ = deps; markModified(); }
-    
-    int getCacheDurationMs() const { return cache_duration_ms_; }
-    void setCacheDurationMs(int duration) { cache_duration_ms_ = duration; markModified(); }
     
     bool getIsEnabled() const { return is_enabled_; }
     void setIsEnabled(bool enabled) { is_enabled_ = enabled; markModified(); }
@@ -117,115 +101,146 @@ public:
     const std::string& getTags() const { return tags_; }
     void setTags(const std::string& tags) { tags_ = tags; markModified(); }
     
-    // 실행 통계
-    int getExecutionCount() const { return execution_count_; }
-    void setExecutionCount(int count) { execution_count_ = count; markModified(); }
+    // v3.0.0 확장 필드들 - DB 스키마와 일치
+    const std::string& getExecutionType() const { return execution_type_; }
+    void setExecutionType(const std::string& type) { execution_type_ = type; markModified(); }
     
-    double getLastValue() const { return last_value_; }
-    void setLastValue(double value) { last_value_ = value; markModified(); }
+    const std::string& getDependencies() const { return dependencies_; }
+    void setDependencies(const std::string& deps) { dependencies_ = deps; markModified(); }
+    
+    int getCacheDurationMs() const { return cache_duration_ms_; }
+    void setCacheDurationMs(int duration) { cache_duration_ms_ = duration; markModified(); }
+    
+    const std::string& getErrorHandling() const { return error_handling_; }
+    void setErrorHandling(const std::string& handling) { error_handling_ = handling; markModified(); }
     
     const std::string& getLastError() const { return last_error_; }
     void setLastError(const std::string& error) { last_error_ = error; markModified(); }
     
+    int getExecutionCount() const { return execution_count_; }
+    void setExecutionCount(int count) { execution_count_ = count; markModified(); }
+    
     double getAvgExecutionTimeMs() const { return avg_execution_time_ms_; }
     void setAvgExecutionTimeMs(double time) { avg_execution_time_ms_ = time; markModified(); }
     
-    const std::string& getCreatedBy() const { return created_by_; }
-    void setCreatedBy(const std::string& user) { created_by_ = user; markModified(); }
-    /**
-     * @brief DB에서 엔티티 로드
-     * @return 성공 시 true
-     */
-    bool loadFromDatabase() override;
+    // 실행 시간 관련 - DB 스키마에 실제 존재
+    const std::optional<std::chrono::system_clock::time_point>& getLastExecutionTime() const { 
+        return last_execution_time_; 
+    }
+    void setLastExecutionTime(const std::optional<std::chrono::system_clock::time_point>& time) { 
+        last_execution_time_ = time; markModified(); 
+    }
     
-    /**
-     * @brief DB에 엔티티 저장
-     * @return 성공 시 true
-     */
-    bool saveToDatabase() override;
+    // 스크립트 라이브러리 연동 - DB 스키마에 실제 존재
+    const std::optional<int>& getScriptLibraryId() const { return script_library_id_; }
+    void setScriptLibraryId(const std::optional<int>& id) { script_library_id_ = id; markModified(); }
     
-    /**
-     * @brief DB에 엔티티 업데이트
-     * @return 성공 시 true
-     */
-    bool updateToDatabase() override;
+    // 성능 추적 설정 - DB 스키마에 실제 존재
+    bool getPerformanceTrackingEnabled() const { return performance_tracking_enabled_; }
+    void setPerformanceTrackingEnabled(bool enabled) { performance_tracking_enabled_ = enabled; markModified(); }
     
-    /**
-     * @brief DB에서 엔티티 삭제
-     * @return 성공 시 true
-     */
-    bool deleteFromDatabase() override;
+    bool getLogCalculations() const { return log_calculations_; }
+    void setLogCalculations(bool log) { log_calculations_ = log; markModified(); }
     
-    /**
-     * @brief 테이블명 반환
-     * @return 테이블명
-     */
-    std::string getTableName() const override { return "virtual_points"; }
+    bool getLogErrors() const { return log_errors_; }
+    void setLogErrors(bool log) { log_errors_ = log; markModified(); }
+    
+    // 알람 연동 - DB 스키마에 실제 존재
+    bool getAlarmEnabled() const { return alarm_enabled_; }
+    void setAlarmEnabled(bool enabled) { alarm_enabled_ = enabled; markModified(); }
+    
+    const std::optional<double>& getHighLimit() const { return high_limit_; }
+    void setHighLimit(const std::optional<double>& limit) { high_limit_ = limit; markModified(); }
+    
+    const std::optional<double>& getLowLimit() const { return low_limit_; }
+    void setLowLimit(const std::optional<double>& limit) { low_limit_ = limit; markModified(); }
+    
+    double getDeadband() const { return deadband_; }
+    void setDeadband(double deadband) { deadband_ = deadband; markModified(); }
+    
+    // 감사 필드 - DB 스키마와 일치
+    const std::optional<int>& getCreatedBy() const { return created_by_; }
+    void setCreatedBy(const std::optional<int>& user_id) { created_by_ = user_id; markModified(); }
+    
+    const std::chrono::system_clock::time_point& getCreatedAt() const { return created_at_; }
+    const std::chrono::system_clock::time_point& getUpdatedAt() const { return updated_at_; }
+
     // =======================================================================
-    // JSON 변환
+    // JSON 변환 및 유틸리티 메서드
     // =======================================================================
     
-    bool fromJson(const json& j);
-    json toJson() const;
-    
-    // =======================================================================
-    // 헬퍼 메서드
-    // =======================================================================
+    json toJson() const override;
+    bool fromJson(const json& j) override;
+    std::string toString() const override;
     
     std::vector<std::string> getTagList() const;
     bool hasTag(const std::string& tag) const;
     bool validate() const;
-    std::string toString() const;
 
 private:
     // =======================================================================
-    // 멤버 변수 - DB 스키마와 일치
+    // 멤버 변수 - DB 스키마와 완전 일치
     // =======================================================================
     
+    // 기본 필드 (DB 스키마 순서대로)
     int tenant_id_ = 0;
-    std::string scope_type_ = "tenant";
-    std::optional<int> site_id_;
-    std::optional<int> device_id_;
+    std::string scope_type_ = "tenant";              // scope_type VARCHAR(20) NOT NULL DEFAULT 'tenant'
+    std::optional<int> site_id_;                     // site_id INTEGER
+    std::optional<int> device_id_;                   // device_id INTEGER
     
-    std::string name_;
-    std::string description_;
-    std::string formula_;
-    std::string data_type_ = "float";
-    std::string unit_;
+    std::string name_;                               // name VARCHAR(100) NOT NULL
+    std::string description_;                        // description TEXT
+    std::string formula_;                            // formula TEXT NOT NULL
+    std::string data_type_ = "float";                // data_type VARCHAR(20) NOT NULL DEFAULT 'float'
+    std::string unit_;                               // unit VARCHAR(20)
     
-    int calculation_interval_ = 1000;
-    std::string calculation_trigger_ = "timer";
-    ExecutionType execution_type_ = ExecutionType::JAVASCRIPT;
-    ErrorHandling error_handling_ = ErrorHandling::RETURN_NULL;
+    // 계산 설정
+    int calculation_interval_ = 1000;                // calculation_interval INTEGER DEFAULT 1000
+    std::string calculation_trigger_ = "timer";     // calculation_trigger VARCHAR(20) DEFAULT 'timer'
+    bool is_enabled_ = true;                         // is_enabled INTEGER DEFAULT 1
     
-    std::string input_mappings_ = "[]";  // JSON string
-    std::string dependencies_ = "[]";     // JSON string
-    int cache_duration_ms_ = 0;
-    bool is_enabled_ = true;
+    std::string category_;                           // category VARCHAR(50)
+    std::string tags_ = "[]";                        // tags TEXT (JSON)
     
-    std::string category_;
-    std::string tags_ = "[]";  // JSON string
+    // v3.0.0 확장 필드들 - DB 스키마와 일치
+    std::string execution_type_ = "javascript";     // execution_type VARCHAR(20) DEFAULT 'javascript'
+    std::string dependencies_ = "[]";                // dependencies TEXT (JSON)
+    int cache_duration_ms_ = 0;                      // cache_duration_ms INTEGER DEFAULT 0
+    std::string error_handling_ = "return_null";    // error_handling VARCHAR(20) DEFAULT 'return_null'
+    std::string last_error_;                         // last_error TEXT
+    int execution_count_ = 0;                        // execution_count INTEGER DEFAULT 0
+    double avg_execution_time_ms_ = 0.0;             // avg_execution_time_ms REAL DEFAULT 0.0
+    std::optional<std::chrono::system_clock::time_point> last_execution_time_; // last_execution_time DATETIME
     
-    // 실행 통계
-    int execution_count_ = 0;
-    double last_value_ = 0.0;
-    std::string last_error_;
-    double avg_execution_time_ms_ = 0.0;
+    // 스크립트 라이브러리 연동
+    std::optional<int> script_library_id_;           // script_library_id INTEGER
     
-    std::string created_by_;
+    // 성능 추적 설정
+    bool performance_tracking_enabled_ = true;      // performance_tracking_enabled INTEGER DEFAULT 1
+    bool log_calculations_ = false;                  // log_calculations INTEGER DEFAULT 0
+    bool log_errors_ = true;                         // log_errors INTEGER DEFAULT 1
+    
+    // 알람 연동
+    bool alarm_enabled_ = false;                     // alarm_enabled INTEGER DEFAULT 0
+    std::optional<double> high_limit_;               // high_limit REAL
+    std::optional<double> low_limit_;                // low_limit REAL
+    double deadband_ = 0.0;                          // deadband REAL DEFAULT 0.0
+    
+    // 감사 필드
+    std::optional<int> created_by_;                  // created_by INTEGER
+    std::chrono::system_clock::time_point created_at_; // created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    std::chrono::system_clock::time_point updated_at_; // updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     
     // =======================================================================
     // 헬퍼 메서드
     // =======================================================================
     
-    std::string executionTypeToString(ExecutionType type) const;
-    std::string errorHandlingToString(ErrorHandling handling) const;
-    ExecutionType stringToExecutionType(const std::string& str) const;
-    ErrorHandling stringToErrorHandling(const std::string& str) const;
+    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
+    std::chrono::system_clock::time_point stringToTimestamp(const std::string& str) const;
 };
 
 } // namespace Entities
-} // namespace Database
+} // namespace Database  
 } // namespace PulseOne
 
 #endif // VIRTUAL_POINT_ENTITY_H

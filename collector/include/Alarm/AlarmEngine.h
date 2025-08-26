@@ -17,7 +17,7 @@
 #include <optional>
 #include <variant>
 
-// 🔥 프로젝트 헤더들 (순서 중요!)
+// 프로젝트 헤더들 (순서 중요)
 #include "Common/Structs.h"
 #include "Alarm/AlarmTypes.h"
 #include "Database/DatabaseManager.h"
@@ -28,10 +28,7 @@
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 
-// ❌ 제거: Redis 의존성 완전 제거
-// #include "Client/RedisClientImpl.h"
-
-// 🔥 JSON include
+// JSON include
 #include <nlohmann/json.hpp>
 
 namespace PulseOne {
@@ -98,7 +95,7 @@ private:
     AlarmEngine& operator=(const AlarmEngine&) = delete;
 
     // =======================================================================
-    // 초기화 메서드들 (간소화)
+    // 초기화 메서드들
     // =======================================================================
     void initializeRepositories();
     void loadInitialData();
@@ -139,7 +136,7 @@ private:
     size_t getActiveAlarmsCount() const;
 
     // =======================================================================
-    // 멤버 변수들 (간소화)
+    // 멤버 변수들
     // =======================================================================
     
     // 상태 관리
@@ -148,10 +145,6 @@ private:
     // Repository들
     std::shared_ptr<AlarmRuleRepository> alarm_rule_repo_;
     std::shared_ptr<AlarmOccurrenceRepository> alarm_occurrence_repo_;
-    
-    // ❌ 제거: Redis 클라이언트
-    // std::shared_ptr<RedisClientImpl> redis_client_;
-    // bool redis_available_{false};
     
     // JavaScript 엔진
     void* js_runtime_{nullptr};  // JSRuntime*

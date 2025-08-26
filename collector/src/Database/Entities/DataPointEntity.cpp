@@ -1,19 +1,18 @@
 /**
  * @file DataPointEntity.cpp
- * @brief PulseOne DataPointEntity 구현 (새 스키마 완전 반영 + DeviceSettingsEntity 패턴 100% 적용)
+ * @brief PulseOne DataPointEntity 구현 (현재 스키마 완전 호환 + 품질/알람 필드 추가)
  * @author PulseOne Development Team
- * @date 2025-08-07
+ * @date 2025-08-26
  * 
- * 🎯 새 DB 스키마 완전 반영:
- * - address_string, is_writable, polling_interval_ms 추가
- * - group_name, protocol_params 추가
- * - scaling_offset 추가
+ * 🎯 현재 DB 스키마 완전 반영:
+ * - 품질 관리: quality_check_enabled, range_check_enabled, rate_of_change_limit
+ * - 알람 관리: alarm_enabled, alarm_priority
+ * - 기존 모든 필드 유지 및 확장
  * 
  * 🎯 DeviceSettingsEntity 패턴 완전 적용:
- * - 헤더에서는 선언만, CPP에서 Repository 호출
- * - Repository include는 CPP에서만 (순환 참조 방지)
- * - BaseEntity 순수 가상 함수 구현만 포함
- * - DB 작업은 모두 Repository로 위임
+ * - Repository 패턴으로 DB 작업 위임
+ * - 순환 참조 방지 설계
+ * - BaseEntity 인터페이스 완전 구현
  */
 
 #include "Database/Entities/DataPointEntity.h"
@@ -25,7 +24,7 @@ namespace Database {
 namespace Entities {
 
 // =============================================================================
-// 생성자 구현 (새 필드들 포함)
+// 생성자 구현 (모든 필드 초기화)
 // =============================================================================
 
 DataPointEntity::DataPointEntity() 
@@ -34,26 +33,36 @@ DataPointEntity::DataPointEntity()
     , name_("")
     , description_("")
     , address_(0)
-    , address_string_("")                                    // 🔥 새 필드
+    , address_string_("")
     , data_type_("UNKNOWN")
     , access_mode_("read")
     , is_enabled_(true)
-    , is_writable_(false)                                    // 🔥 새 필드
+    , is_writable_(false)
     , unit_("")
     , scaling_factor_(1.0)
-    , scaling_offset_(0.0)                                   // 🔥 새 필드
+    , scaling_offset_(0.0)
     , min_value_(std::numeric_limits<double>::lowest())
     , max_value_(std::numeric_limits<double>::max())
     , log_enabled_(true)
     , log_interval_ms_(0)
     , log_deadband_(0.0)
-    , polling_interval_ms_(1000)                             // 🔥 새 필드 (기본값 1초)
-    , group_name_("")                                        // 🔥 새 필드
+    , polling_interval_ms_(1000)
+    // 품질 관리 필드 초기화 (새로 추가)
+    , quality_check_enabled_(true)
+    , range_check_enabled_(true)
+    , rate_of_change_limit_(0.0)
+    // 알람 관련 필드 초기화 (새로 추가)
+    , alarm_enabled_(false)
+    , alarm_priority_("medium")
+    // 메타데이터
+    , group_name_("")
     , tags_()
     , metadata_()
-    , protocol_params_()                                     // 🔥 새 필드
+    , protocol_params_()
+    // 시간 정보
     , created_at_(std::chrono::system_clock::now())
     , updated_at_(std::chrono::system_clock::now())
+    // 통계 정보 (런타임)
     , last_read_time_(std::chrono::system_clock::now())
     , last_write_time_(std::chrono::system_clock::now())
     , read_count_(0)
@@ -136,7 +145,7 @@ bool DataPointEntity::saveToDatabase() {
             return false;
         }
         
-        // Repository의 save 메서드 호출 (Entity를 참조로 전달)
+        // Repository의 save 메서드 호출
         DataPointEntity mutable_copy = *this;
         bool success = repo->save(mutable_copy);
         
@@ -146,7 +155,7 @@ bool DataPointEntity::saveToDatabase() {
                 setId(mutable_copy.getId());
             }
             markSaved();
-            updated_at_ = std::chrono::system_clock::now();
+            updateTimestamps();
             
             if (logger_) {
                 logger_->Info("DataPointEntity::saveToDatabase - Saved data point: " + name_);
@@ -228,7 +237,7 @@ bool DataPointEntity::updateToDatabase() {
         }
         
         // 업데이트 시간 갱신
-        updated_at_ = std::chrono::system_clock::now();
+        updateTimestamps();
         
         bool success = repo->update(*this);
         
@@ -250,18 +259,39 @@ bool DataPointEntity::updateToDatabase() {
 }
 
 // =============================================================================
-// 새로운 Worker 관련 메서드 구현 (헤더에서 인라인 선언된 것을 여기서 재구현하지 않음)
+// 품질 관리 메서드 구현
 // =============================================================================
 
-// getWorkerContext()는 헤더에서 인라인으로 이미 구현됨
+bool DataPointEntity::validateValue(double value) const {
+    if (!quality_check_enabled_) return true;
+    
+    bool valid = true;
+    
+    // 범위 체크
+    if (range_check_enabled_) {
+        valid = valid && (value >= min_value_) && (value <= max_value_);
+    }
+    
+    // NaN이나 무한대 체크
+    valid = valid && std::isfinite(value);
+    
+    return valid;
+}
+
+bool DataPointEntity::isRateOfChangeViolation(double previous_value, double current_value, 
+                                            double time_diff_seconds) const {
+    if (rate_of_change_limit_ <= 0.0 || time_diff_seconds <= 0.0) {
+        return false;
+    }
+    
+    double rate = std::abs(current_value - previous_value) / time_diff_seconds;
+    return rate > rate_of_change_limit_;
+}
 
 // =============================================================================
-// 추가된 유틸리티 메서드들 구현 (새 필드들 활용)
+// 프로토콜 및 유틸리티 메서드 구현
 // =============================================================================
 
-/**
- * @brief 프로토콜별 특화 검증 로직
- */
 bool DataPointEntity::validateProtocolSpecific() const {
     std::string protocol = getProtocol();
     
@@ -275,13 +305,42 @@ bool DataPointEntity::validateProtocolSpecific() const {
         if (data_type_ != "HOLDING_REGISTER" && 
             data_type_ != "INPUT_REGISTER" && 
             data_type_ != "COIL" && 
-            data_type_ != "DISCRETE_INPUT") {
+            data_type_ != "DISCRETE_INPUT" &&
+            data_type_ != "INT16" &&
+            data_type_ != "UINT16" &&
+            data_type_ != "INT32" &&
+            data_type_ != "UINT32" &&
+            data_type_ != "FLOAT32" &&
+            data_type_ != "BOOLEAN") {
+            return false;
+        }
+        
+        // Modbus 스테이션 ID 확인
+        std::string station_id = getProtocolParam("station_id", "1");
+        try {
+            int id = std::stoi(station_id);
+            if (id < 1 || id > 247) {
+                return false;
+            }
+        } catch (const std::exception&) {
             return false;
         }
         
     } else if (protocol == "MQTT") {
         // MQTT 토픽 유효성 확인
         if (address_string_.empty() || address_string_.find('#') == 0) {
+            return false;
+        }
+        
+        // 와일드카드 사용 시 쓰기 불가
+        if (is_writable_ && (address_string_.find('+') != std::string::npos || 
+                            address_string_.find('#') != std::string::npos)) {
+            return false;
+        }
+        
+        // QoS 레벨 확인
+        std::string qos = getProtocolParam("qos", "0");
+        if (qos != "0" && qos != "1" && qos != "2") {
             return false;
         }
         
@@ -296,31 +355,73 @@ bool DataPointEntity::validateProtocolSpecific() const {
         if (object_type.empty()) {
             return false;
         }
+        
+        // 유효한 BACnet 객체 타입인지 확인
+        if (object_type != "ANALOG_INPUT" && 
+            object_type != "ANALOG_OUTPUT" && 
+            object_type != "ANALOG_VALUE" &&
+            object_type != "BINARY_INPUT" && 
+            object_type != "BINARY_OUTPUT" && 
+            object_type != "BINARY_VALUE" &&
+            object_type != "MULTI_STATE_INPUT" && 
+            object_type != "MULTI_STATE_OUTPUT" && 
+            object_type != "MULTI_STATE_VALUE") {
+            return false;
+        }
+        
+        // Device ID 확인
+        std::string device_id = getProtocolParam("device_id");
+        if (device_id.empty()) {
+            return false;
+        }
+        
+    } else if (protocol == "OPC_UA") {
+        // OPC UA NodeId 확인
+        if (address_string_.empty()) {
+            return false;
+        }
+        
+        // NodeId 형식 확인 (ns=숫자;형식)
+        if (address_string_.find("ns=") != 0) {
+            return false;
+        }
+        
+    } else if (protocol == "SNMP") {
+        // SNMP OID 확인
+        if (address_string_.empty()) {
+            return false;
+        }
+        
+        // OID 형식 확인 (숫자.숫자.숫자...)
+        std::string oid = address_string_;
+        if (oid.front() != '1' && oid.front() != '2') {
+            return false;
+        }
+        
+        // Community string 확인
+        std::string community = getProtocolParam("community", "public");
+        if (community.empty()) {
+            return false;
+        }
     }
     
     return true;
 }
 
-/**
- * @brief 스케일링 값 적용
- */
 double DataPointEntity::applyScaling(double raw_value) const {
     return (raw_value * scaling_factor_) + scaling_offset_;
 }
 
-/**
- * @brief 역스케일링 값 적용 (쓰기 시 사용)
- */
 double DataPointEntity::removeScaling(double scaled_value) const {
     if (scaling_factor_ == 0.0) {
-        return scaled_value;  // 0으로 나누기 방지
+        if (logger_) {
+            logger_->Warn("DataPointEntity::removeScaling - Zero scaling factor, returning original value");
+        }
+        return scaled_value;
     }
     return (scaled_value - scaling_offset_) / scaling_factor_;
 }
 
-/**
- * @brief 값이 데드밴드 범위 내인지 확인
- */
 bool DataPointEntity::isWithinDeadband(double previous_value, double new_value) const {
     if (log_deadband_ <= 0.0) {
         return false;  // 데드밴드가 설정되지 않음
@@ -330,100 +431,140 @@ bool DataPointEntity::isWithinDeadband(double previous_value, double new_value) 
     return diff <= log_deadband_;
 }
 
-/**
- * @brief 값이 유효 범위 내인지 확인
- */
 bool DataPointEntity::isValueInRange(double value) const {
     return value >= min_value_ && value <= max_value_;
 }
 
-/**
- * @brief 폴링 주기 조정 (네트워크 상태에 따라)
- */
 void DataPointEntity::adjustPollingInterval(bool connection_healthy) {
     if (!connection_healthy) {
-        // 연결 불안정 시 폴링 주기 증가
-        polling_interval_ms_ = std::min(polling_interval_ms_ * 2, static_cast<uint32_t>(60000)); // 최대 60초
+        // 연결 불안정 시 폴링 주기 증가 (지수 백오프)
+        uint32_t new_interval = polling_interval_ms_ * 2;
+        uint32_t max_interval = 60000; // 최대 60초
+        
+        // 원래 폴링 간격 저장 (처음 한 번만)
+        if (metadata_.find("original_polling_interval") == metadata_.end()) {
+            setMetadata("original_polling_interval", std::to_string(polling_interval_ms_));
+        }
+        
+        polling_interval_ms_ = std::min(new_interval, max_interval);
+        markModified();
+        
+        if (logger_) {
+            logger_->Info("DataPointEntity::adjustPollingInterval - Increased polling interval to " + 
+                         std::to_string(polling_interval_ms_) + "ms for point " + name_);
+        }
+        
     } else {
-        // 연결 안정 시 원래 주기로 복원 (metadata에서 original_polling_interval 조회)
+        // 연결 안정 시 원래 주기로 복원
         auto it = metadata_.find("original_polling_interval");
         if (it != metadata_.end()) {
             try {
                 uint32_t original = static_cast<uint32_t>(std::stoul(it->second));
-                polling_interval_ms_ = original;
-            } catch (const std::exception&) {
-                // 파싱 실패 시 기본값 유지
+                if (polling_interval_ms_ != original) {
+                    polling_interval_ms_ = original;
+                    markModified();
+                    
+                    if (logger_) {
+                        logger_->Info("DataPointEntity::adjustPollingInterval - Restored polling interval to " + 
+                                     std::to_string(polling_interval_ms_) + "ms for point " + name_);
+                    }
+                }
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Error("DataPointEntity::adjustPollingInterval - Failed to parse original interval: " + 
+                                  std::string(e.what()));
+                }
             }
         }
     }
-    markModified();
 }
 
-/**
- * @brief 태그 추가
- */
+// =============================================================================
+// 태그 관리 메서드 구현
+// =============================================================================
+
 void DataPointEntity::addTag(const std::string& tag) {
+    if (tag.empty()) return;
+    
     auto it = std::find(tags_.begin(), tags_.end(), tag);
     if (it == tags_.end()) {
         tags_.push_back(tag);
         markModified();
+        
+        if (logger_) {
+            logger_->Debug("DataPointEntity::addTag - Added tag '" + tag + "' to point " + name_);
+        }
     }
 }
 
-/**
- * @brief 태그 제거
- */
 void DataPointEntity::removeTag(const std::string& tag) {
     auto it = std::find(tags_.begin(), tags_.end(), tag);
     if (it != tags_.end()) {
         tags_.erase(it);
         markModified();
+        
+        if (logger_) {
+            logger_->Debug("DataPointEntity::removeTag - Removed tag '" + tag + "' from point " + name_);
+        }
     }
 }
 
-/**
- * @brief 태그 존재 여부 확인
- */
 bool DataPointEntity::hasTag(const std::string& tag) const {
     return std::find(tags_.begin(), tags_.end(), tag) != tags_.end();
 }
 
-/**
- * @brief 메타데이터 추가/업데이트
- */
+// =============================================================================
+// 메타데이터 관리 메서드 구현
+// =============================================================================
+
 void DataPointEntity::setMetadata(const std::string& key, const std::string& value) {
+    if (key.empty()) return;
+    
     metadata_[key] = value;
     markModified();
+    
+    if (logger_) {
+        logger_->Debug("DataPointEntity::setMetadata - Set metadata['" + key + "'] = '" + value + 
+                      "' for point " + name_);
+    }
 }
 
-/**
- * @brief 메타데이터 조회
- */
 std::string DataPointEntity::getMetadata(const std::string& key, const std::string& default_value) const {
     auto it = metadata_.find(key);
     return (it != metadata_.end()) ? it->second : default_value;
 }
 
-/**
- * @brief 그룹별 데이터포인트인지 확인
- */
 bool DataPointEntity::belongsToGroup(const std::string& group_name) const {
     return group_name_ == group_name;
 }
 
-/**
- * @brief 알람/이벤트 생성을 위한 컨텍스트 정보
- */
+// =============================================================================
+// 컨텍스트 및 메트릭 정보 생성 메서드
+// =============================================================================
+
 json DataPointEntity::getAlarmContext() const {
     json context;
     context["point_id"] = getId();
     context["device_id"] = device_id_;
     context["name"] = name_;
+    context["description"] = description_;
     context["group"] = group_name_;
     context["unit"] = unit_;
+    context["data_type"] = data_type_;
     context["min_value"] = min_value_;
     context["max_value"] = max_value_;
     context["protocol"] = getProtocol();
+    context["address"] = address_;
+    context["address_string"] = address_string_;
+    
+    // 알람 관련 정보
+    context["alarm_enabled"] = alarm_enabled_;
+    context["alarm_priority"] = alarm_priority_;
+    
+    // 품질 관리 정보
+    context["quality_check_enabled"] = quality_check_enabled_;
+    context["range_check_enabled"] = range_check_enabled_;
+    context["rate_of_change_limit"] = rate_of_change_limit_;
     
     // 통계 정보
     context["stats"] = {
@@ -434,32 +575,71 @@ json DataPointEntity::getAlarmContext() const {
         {"last_write", timestampToString(last_write_time_)}
     };
     
+    // 태그 정보
+    context["tags"] = tags_;
+    
+    // 메타데이터 선택적 포함
+    if (!metadata_.empty()) {
+        context["metadata"] = metadata_;
+    }
+    
     return context;
 }
 
-/**
- * @brief 성능 모니터링 정보 생성
- */
 json DataPointEntity::getPerformanceMetrics() const {
     json metrics;
     
     auto now = std::chrono::system_clock::now();
-    auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - created_at_).count();
+    auto uptime = std::chrono::duration_cast<std::chrono::milliseconds>(now - created_at_).count();
     
     metrics["point_id"] = getId();
-    metrics["uptime_ms"] = time_diff;
+    metrics["device_id"] = device_id_;
+    metrics["name"] = name_;
+    metrics["uptime_ms"] = uptime;
+    
+    // 활동 통계
     metrics["total_reads"] = read_count_;
     metrics["total_writes"] = write_count_;
     metrics["total_errors"] = error_count_;
-    metrics["error_rate"] = (read_count_ + write_count_ > 0) ? 
-                           static_cast<double>(error_count_) / (read_count_ + write_count_) : 0.0;
+    
+    // 성공률 계산
+    uint64_t total_operations = read_count_ + write_count_;
+    metrics["success_rate"] = (total_operations > 0) ? 
+                             static_cast<double>(total_operations - error_count_) / total_operations : 1.0;
+    
+    metrics["error_rate"] = (total_operations > 0) ? 
+                           static_cast<double>(error_count_) / total_operations : 0.0;
+    
+    // 폴링 정보
     metrics["polling_interval_ms"] = polling_interval_ms_;
+    metrics["log_enabled"] = log_enabled_;
+    metrics["log_interval_ms"] = log_interval_ms_;
     
     // 최근 활동 시간
-    metrics["last_read_ago_ms"] = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_read_time_).count();
-    metrics["last_write_ago_ms"] = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_write_time_).count();
+    auto last_read_ago = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_read_time_).count();
+    auto last_write_ago = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_write_time_).count();
+    
+    metrics["last_read_ago_ms"] = last_read_ago;
+    metrics["last_write_ago_ms"] = last_write_ago;
+    
+    // 활성 상태 판단 (최근 5분 내 읽기 활동 있으면 활성)
+    metrics["is_active"] = (last_read_ago < 300000); // 5분 = 300,000ms
+    
+    // 품질 및 알람 상태
+    metrics["quality_enabled"] = quality_check_enabled_;
+    metrics["range_check_enabled"] = range_check_enabled_;
+    metrics["alarm_enabled"] = alarm_enabled_;
     
     return metrics;
+}
+
+// =============================================================================
+// 내부 유틸리티 메서드 구현
+// =============================================================================
+
+void DataPointEntity::updateTimestamps() {
+    updated_at_ = std::chrono::system_clock::now();
+    markModified();
 }
 
 } // namespace Entities
