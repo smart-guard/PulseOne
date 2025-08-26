@@ -3,7 +3,7 @@
 
 /**
  * @file DeviceEntity.h
- * @brief PulseOne 디바이스 엔티티 - 현재 DB 스키마 v2.1.0 완전 대응
+ * @brief PulseOne 디바이스 엔티티 - ProtocolRepository 동적 조회 완성본
  * @author PulseOne Development Team
  * @date 2025-08-26
  * 
@@ -12,6 +12,7 @@
  * - 새로운 컬럼들: polling_interval, timeout, retry_count
  * - BaseEntity<DeviceEntity> 상속 (CRTP)
  * - devices 테이블과 1:1 매핑
+ * - ProtocolRepository를 통한 동적 프로토콜 조회
  */
 
 #include "Database/Entities/BaseEntity.h"
@@ -479,12 +480,23 @@ public:
     bool isLocalEndpoint() const;
     bool isLANEndpoint() const;
     
-    // 🔥 이전 버전 호환성을 위한 메서드들 (deprecated)
+    // =======================================================================
+    // 🔥 프로토콜 정보 조회 및 설정 (ProtocolRepository 활용)
+    // =======================================================================
+    
+    // 기본 프로토콜 정보 (deprecated 선언 + 새 구현)
     [[deprecated("Use getProtocolId() instead")]]
     std::string getProtocolType() const;
     
     [[deprecated("Use setProtocolId() instead")]]
     void setProtocolType(const std::string& protocol_type);
+    
+    // 추가 프로토콜 정보 헬퍼 메서드들
+    std::string getProtocolDisplayName() const;
+    int getProtocolDefaultPort() const;
+    bool isProtocolSerial() const;
+    bool requiresBroker() const;
+    std::string getProtocolCategory() const;
 
     // =======================================================================
     // 헬퍼 메서드들

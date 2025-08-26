@@ -1,19 +1,20 @@
 /**
  * @file DeviceEntity.cpp
- * @brief PulseOne DeviceEntity 구현 - 현재 DB 스키마 v2.1.0 완전 대응
+ * @brief PulseOne DeviceEntity 구현 - ProtocolRepository 동적 조회 완성본
  * @author PulseOne Development Team
  * @date 2025-08-26
  * 
- * 🔥 현재 DB 스키마 완전 적용:
- * - protocol_type → protocol_id (외래키)
- * - 새로운 컬럼들: polling_interval, timeout, retry_count
- * - Repository 패턴 유지 (순환 참조 방지)
- * - BaseEntity 순수 가상 함수 구현
+ * 🔥 ProtocolRepository 동적 조회 기능:
+ * - getProtocolType(): protocol_id → protocol_type 조회
+ * - setProtocolType(): protocol_type → protocol_id 조회
+ * - 추가 프로토콜 관련 헬퍼 메서드들
+ * - Repository 생성 순서 고려 (Protocol → Device)
  */
 
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/DeviceRepository.h"
+#include "Database/Repositories/ProtocolRepository.h"
 
 namespace PulseOne {
 namespace Database {
@@ -208,56 +209,270 @@ bool DeviceEntity::updateToDatabase() {
 }
 
 // =============================================================================
-// 헬퍼 메서드 구현
+// 🔥 ProtocolRepository를 사용한 동적 프로토콜 조회 (핵심 기능!)
 // =============================================================================
 
-std::string DeviceEntity::dateToString(const std::chrono::system_clock::time_point& date) const {
-    auto time_t = std::chrono::system_clock::to_time_t(date);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d");
-    return ss.str();
-}
-
-std::string DeviceEntity::timestampToString(const std::chrono::system_clock::time_point& timestamp) const {
-    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    return ss.str();
-}
-
-std::shared_ptr<Repositories::DeviceRepository> DeviceEntity::getRepository() const {
-    auto& factory = RepositoryFactory::getInstance();
-    return factory.getDeviceRepository();
-}
-
-// =============================================================================
-// 새로운 비즈니스 로직 메서드 구현
-// =============================================================================
-
-void DeviceEntity::setOptimalPollingForProtocol() {
+std::string DeviceEntity::getProtocolType() const {
     try {
-        // 현재 RepositoryFactory에 ProtocolRepository가 없으므로 임시 구현
-        // 실제로는 protocol_id로 프로토콜 정보를 조회해야 함
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
         
-        // 임시로 protocol_id 기반 기본값 설정
-        if (protocol_id_ == 1) { // Modbus 계열
-            polling_interval_ = 500;  
-        } else if (protocol_id_ == 2) { // MQTT 계열
-            polling_interval_ = 2000; 
-        } else if (protocol_id_ == 3) { // BACnet 계열
-            polling_interval_ = 1000; 
-        } else if (protocol_id_ == 4) { // OPC-UA 계열
-            polling_interval_ = 1000; 
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                return protocol_opt->getProtocolType();
+            }
+        }
+        
+        // 기본값 또는 에러 시 반환
+        if (logger_) {
+            logger_->Warn("DeviceEntity::getProtocolType - Could not find protocol for ID: " + 
+                        std::to_string(protocol_id_));
+        }
+        return "UNKNOWN";
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::getProtocolType failed: " + std::string(e.what()));
+        }
+        return "UNKNOWN";
+    }
+}
+
+void DeviceEntity::setProtocolType(const std::string& protocol_type) {
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo) {
+            auto protocol_opt = protocol_repo->findByType(protocol_type);
+            if (protocol_opt.has_value()) {
+                protocol_id_ = protocol_opt->getId();
+                markModified();
+                
+                if (logger_) {
+                    logger_->Info("DeviceEntity - Set protocol: " + protocol_type + 
+                                " -> protocol_id: " + std::to_string(protocol_id_));
+                }
+                return;
+            }
+        }
+        
+        // 프로토콜을 찾지 못한 경우 로그 및 폴백
+        if (logger_) {
+            logger_->Warn("DeviceEntity - Protocol type not found: " + protocol_type + 
+                        ", falling back to hardcoded mapping");
+        }
+        
+        // 🔥 폴백: 하드코딩된 매핑 (프로토콜 테이블에 데이터가 없을 경우)
+        std::string type_upper = protocol_type;
+        std::transform(type_upper.begin(), type_upper.end(), type_upper.begin(), ::toupper);
+        
+        if (type_upper.find("MODBUS") != std::string::npos) {
+            protocol_id_ = 1;
+        } else if (type_upper.find("MQTT") != std::string::npos) {
+            protocol_id_ = 2;
+        } else if (type_upper.find("BACNET") != std::string::npos) {
+            protocol_id_ = 3;
+        } else if (type_upper.find("OPCUA") != std::string::npos || type_upper.find("OPC") != std::string::npos) {
+            protocol_id_ = 4;
         } else {
-            polling_interval_ = 1000; // 기본값
+            protocol_id_ = 1; // 기본값: Modbus
         }
         
         markModified();
         
         if (logger_) {
-            logger_->Info("DeviceEntity - Set optimal polling for protocol_id " + 
+            logger_->Info("DeviceEntity - Set protocol (fallback): " + protocol_type + 
+                        " -> protocol_id: " + std::to_string(protocol_id_));
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::setProtocolType failed: " + std::string(e.what()));
+        }
+        // 에러 시에도 폴백 적용
+        protocol_id_ = 1; // 기본값
+        markModified();
+    }
+}
+
+// =============================================================================
+// 🔥 추가 프로토콜 관련 헬퍼 메서드들 (ProtocolRepository 활용)
+// =============================================================================
+
+std::string DeviceEntity::getProtocolDisplayName() const {
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                return protocol_opt->getDisplayName();
+            }
+        }
+        
+        // 폴백: 기본 이름 제공
+        std::string protocol_type = getProtocolType();
+        if (protocol_type != "UNKNOWN") {
+            return protocol_type;
+        }
+        
+        return "Unknown Protocol";
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::getProtocolDisplayName failed: " + std::string(e.what()));
+        }
+        return "Unknown Protocol";
+    }
+}
+
+int DeviceEntity::getProtocolDefaultPort() const {
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value() && protocol_opt->getDefaultPort().has_value()) {
+                return protocol_opt->getDefaultPort().value();
+            }
+        }
+        
+        // 폴백: 하드코딩된 기본 포트
+        switch (protocol_id_) {
+            case 1: return 502;   // Modbus TCP
+            case 2: return 1883;  // MQTT
+            case 3: return 47808; // BACnet
+            case 4: return 4840;  // OPC-UA
+            default: return 0;    // 포트 없음
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::getProtocolDefaultPort failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
+}
+
+bool DeviceEntity::isProtocolSerial() const {
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                return protocol_opt->usesSerial();
+            }
+        }
+        
+        // 폴백: 프로토콜 타입으로 판단
+        std::string protocol_type = getProtocolType();
+        return protocol_type.find("RTU") != std::string::npos || 
+               protocol_type.find("SERIAL") != std::string::npos;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::isProtocolSerial failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+bool DeviceEntity::requiresBroker() const {
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                return protocol_opt->requiresBroker();
+            }
+        }
+        
+        // 폴백: 프로토콜 타입으로 판단
+        std::string protocol_type = getProtocolType();
+        return protocol_type.find("MQTT") != std::string::npos;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::requiresBroker failed: " + std::string(e.what()));
+        }
+        return false;
+    }
+}
+
+std::string DeviceEntity::getProtocolCategory() const {
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                return protocol_opt->getCategory();
+            }
+        }
+        
+        // 폴백: 하드코딩된 카테고리
+        switch (protocol_id_) {
+            case 1: case 3: case 4: return "industrial";       // Modbus, BACnet, OPC-UA
+            case 2: return "iot";                               // MQTT
+            default: return "unknown";
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::getProtocolCategory failed: " + std::string(e.what()));
+        }
+        return "unknown";
+    }
+}
+
+// =============================================================================
+// 🔥 프로토콜 기반 설정 최적화 메서드 (개선됨)
+// =============================================================================
+
+void DeviceEntity::setOptimalPollingForProtocol() {
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                polling_interval_ = protocol_opt->getDefaultPollingInterval();
+                markModified();
+                
+                if (logger_) {
+                    logger_->Info("DeviceEntity - Set optimal polling from protocol DB: " + 
+                                std::to_string(polling_interval_) + "ms");
+                }
+                return;
+            }
+        }
+        
+        // 폴백: 하드코딩된 최적화
+        switch (protocol_id_) {
+            case 1: polling_interval_ = 500;  break; // Modbus - 빠른 폴링
+            case 2: polling_interval_ = 2000; break; // MQTT - 느린 폴링 (pub/sub이라)
+            case 3: polling_interval_ = 1000; break; // BACnet - 표준 폴링
+            case 4: polling_interval_ = 1000; break; // OPC-UA - 표준 폴링
+            default: polling_interval_ = 1000; break; // 기본값
+        }
+        
+        markModified();
+        
+        if (logger_) {
+            logger_->Info("DeviceEntity - Set optimal polling (fallback) for protocol_id " + 
                         std::to_string(protocol_id_) + ": " + std::to_string(polling_interval_) + "ms");
         }
+        
     } catch (const std::exception& e) {
         if (logger_) {
             logger_->Error("DeviceEntity::setOptimalPollingForProtocol failed: " + std::string(e.what()));
@@ -284,12 +499,28 @@ void DeviceEntity::setOptimalTimeoutForEndpoint() {
             timeout_ = 5000; // 외부 네트워크는 5초
         }
         
+        // 프로토콜별 추가 최적화
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                int protocol_timeout = protocol_opt->getDefaultTimeout();
+                if (protocol_timeout > 0) {
+                    // 네트워크 지연과 프로토콜 특성을 모두 고려
+                    timeout_ = std::max(timeout_, protocol_timeout);
+                }
+            }
+        }
+        
         markModified();
         
         if (logger_) {
             logger_->Info("DeviceEntity - Set optimal timeout for endpoint " + endpoint_ + 
                         ": " + std::to_string(timeout_) + "ms");
         }
+        
     } catch (const std::exception& e) {
         if (logger_) {
             logger_->Error("DeviceEntity::setOptimalTimeoutForEndpoint failed: " + std::string(e.what()));
@@ -299,6 +530,98 @@ void DeviceEntity::setOptimalTimeoutForEndpoint() {
         markModified();
     }
 }
+
+// =============================================================================
+// 🔥 프로토콜 기반 설정 적용 (개선됨)
+// =============================================================================
+
+void DeviceEntity::applyProtocolDefaults() {
+    json config = getConfigAsJson();
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto protocol_repo = factory.getProtocolRepository();
+        
+        if (protocol_repo && protocol_id_ > 0) {
+            auto protocol_opt = protocol_repo->findById(protocol_id_);
+            if (protocol_opt.has_value()) {
+                // 프로토콜별 연결 파라미터 적용
+                auto protocol_params = protocol_opt->getConnectionParamsAsJson();
+                
+                // 기본 연결 설정을 프로토콜 파라미터와 병합
+                for (auto& [key, value] : protocol_params.items()) {
+                    if (!config.contains(key)) {
+                        config[key] = value;
+                    }
+                }
+                
+                // 프로토콜 지원 작업들 추가
+                if (!config.contains("supported_operations")) {
+                    config["supported_operations"] = protocol_opt->getSupportedOperationsAsJson();
+                }
+                
+                if (!config.contains("supported_data_types")) {
+                    config["supported_data_types"] = protocol_opt->getSupportedDataTypesAsJson();
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("DeviceEntity::applyProtocolDefaults - ProtocolRepository error: " + std::string(e.what()));
+        }
+    }
+    
+    // 공통 기본 설정 추가
+    if (!config.contains("connection_retries")) {
+        config["connection_retries"] = retry_count_;
+    }
+    if (!config.contains("response_timeout")) {
+        config["response_timeout"] = timeout_;
+    }
+    if (!config.contains("polling_interval")) {
+        config["polling_interval"] = polling_interval_;
+    }
+    if (!config.contains("auto_reconnect")) {
+        config["auto_reconnect"] = true;
+    }
+    if (!config.contains("keep_alive")) {
+        config["keep_alive"] = true;
+    }
+    
+    setConfigAsJson(config);
+    
+    if (logger_) {
+        logger_->Info("DeviceEntity - Applied protocol defaults for protocol_id: " + 
+                    std::to_string(protocol_id_) + " (" + getProtocolDisplayName() + ")");
+    }
+}
+
+// =============================================================================
+// 기존 헬퍼 메서드 구현 유지
+// =============================================================================
+
+std::string DeviceEntity::dateToString(const std::chrono::system_clock::time_point& date) const {
+    auto time_t = std::chrono::system_clock::to_time_t(date);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d");
+    return ss.str();
+}
+
+std::string DeviceEntity::timestampToString(const std::chrono::system_clock::time_point& timestamp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
+std::shared_ptr<Repositories::DeviceRepository> DeviceEntity::getRepository() const {
+    auto& factory = RepositoryFactory::getInstance();
+    return factory.getDeviceRepository();
+}
+
+// =============================================================================
+// 나머지 기존 비즈니스 로직 메서드들 유지
+// =============================================================================
 
 void DeviceEntity::applyDeviceTypeDefaults() {
     std::string type_lower = device_type_;
@@ -337,77 +660,6 @@ void DeviceEntity::applyDeviceTypeDefaults() {
     }
 }
 
-void DeviceEntity::applyProtocolDefaults() {
-    json config = getConfigAsJson();
-    
-    // 기본 연결 설정 추가
-    if (!config.contains("connection_retries")) {
-        config["connection_retries"] = retry_count_;
-    }
-    if (!config.contains("response_timeout")) {
-        config["response_timeout"] = timeout_;
-    }
-    if (!config.contains("polling_interval")) {
-        config["polling_interval"] = polling_interval_;
-    }
-    
-    // 공통 설정
-    if (!config.contains("auto_reconnect")) {
-        config["auto_reconnect"] = true;
-    }
-    if (!config.contains("keep_alive")) {
-        config["keep_alive"] = true;
-    }
-    
-    setConfigAsJson(config);
-    
-    if (logger_) {
-        logger_->Info("DeviceEntity - Applied protocol defaults for protocol_id: " + 
-                    std::to_string(protocol_id_));
-    }
-}
-
-// =============================================================================
-// 이전 버전 호환성 메서드 구현 (deprecated)
-// =============================================================================
-
-std::string DeviceEntity::getProtocolType() const {
-    // 임시 구현 - 실제로는 protocol_id로 protocols 테이블에서 조회해야 함
-    switch (protocol_id_) {
-        case 1: return "MODBUS_TCP";
-        case 2: return "MQTT";
-        case 3: return "BACNET";
-        case 4: return "OPCUA";
-        default: return "UNKNOWN";
-    }
-}
-
-void DeviceEntity::setProtocolType(const std::string& protocol_type) {
-    // 임시 구현 - 실제로는 protocol_type으로 protocols 테이블에서 ID 조회해야 함
-    std::string type_upper = protocol_type;
-    std::transform(type_upper.begin(), type_upper.end(), type_upper.begin(), ::toupper);
-    
-    if (type_upper.find("MODBUS") != std::string::npos) {
-        protocol_id_ = 1;
-    } else if (type_upper.find("MQTT") != std::string::npos) {
-        protocol_id_ = 2;
-    } else if (type_upper.find("BACNET") != std::string::npos) {
-        protocol_id_ = 3;
-    } else if (type_upper.find("OPCUA") != std::string::npos || type_upper.find("OPC") != std::string::npos) {
-        protocol_id_ = 4;
-    } else {
-        protocol_id_ = 1; // 기본값: Modbus
-    }
-    
-    markModified();
-    
-    if (logger_) {
-        logger_->Info("DeviceEntity - Set protocol type: " + protocol_type + 
-                    " -> protocol_id: " + std::to_string(protocol_id_));
-    }
-}
-
-// 헬퍼 메서드 구현
 bool DeviceEntity::isLocalEndpoint() const {
     return endpoint_.find("127.0.0.1") != std::string::npos ||
            endpoint_.find("localhost") != std::string::npos;

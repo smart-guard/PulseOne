@@ -24,6 +24,7 @@
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Database/Repositories/ScriptLibraryRepository.h"
+#include "Database/Repositories/ProtocolRepository.h"
 
 // ✅ 필수 STL 헤더들
 #include <map>
