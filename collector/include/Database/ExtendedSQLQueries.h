@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/ExtendedSQLQueries.h
-// 🔧 완전 SQLite 호환 버전 - FOREIGN KEY 모두 제거
+// 🔧 완전 SQLite 호환 버전 - 실제 스키마에 맞춰 수정
 // =============================================================================
 
 #ifndef EXTENDED_SQL_QUERIES_H
@@ -13,11 +13,11 @@ namespace Database {
 namespace SQL {
 
 // =============================================================================
-// AlarmOccurrence 관련 쿼리들 (FOREIGN KEY 제거됨)
+// AlarmOccurrence 관련 쿼리들 (실제 스키마에 맞춤)
 // =============================================================================
 namespace AlarmOccurrence {
     
-    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
+    // 테이블 생성 - 실제 스키마와 동일
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS alarm_occurrences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,18 +43,23 @@ namespace AlarmOccurrence {
             source_name VARCHAR(100),
             location VARCHAR(200),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            device_id INTEGER,
+            point_id INTEGER,
+            category VARCHAR(50) DEFAULT NULL,
+            tags TEXT DEFAULT NULL
         )
     )";
     
-    // 기본 CRUD 쿼리들
+    // 기본 CRUD 쿼리들 - 모든 컬럼 포함
     const std::string FIND_ALL = R"(
         SELECT 
             id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
             alarm_message, severity, state, acknowledged_time, acknowledged_by,
             acknowledge_comment, cleared_time, cleared_value, clear_comment,
             notification_sent, notification_time, notification_count, notification_result,
-            context_data, source_name, location, created_at, updated_at
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
         FROM alarm_occurrences 
         ORDER BY occurrence_time DESC
     )";
@@ -65,7 +70,8 @@ namespace AlarmOccurrence {
             alarm_message, severity, state, acknowledged_time, acknowledged_by,
             acknowledge_comment, cleared_time, cleared_value, clear_comment,
             notification_sent, notification_time, notification_count, notification_result,
-            context_data, source_name, location, created_at, updated_at
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
         FROM alarm_occurrences 
         WHERE id = ?
     )";
@@ -73,14 +79,16 @@ namespace AlarmOccurrence {
     const std::string INSERT = R"(
         INSERT INTO alarm_occurrences (
             rule_id, tenant_id, trigger_value, trigger_condition,
-            alarm_message, severity, context_data, source_name
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            alarm_message, severity, context_data, source_name, location,
+            device_id, point_id, category, tags
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE = R"(
         UPDATE alarm_occurrences SET
             trigger_value = ?, trigger_condition = ?, alarm_message = ?,
             severity = ?, state = ?, context_data = ?, source_name = ?,
+            location = ?, device_id = ?, point_id = ?, category = ?, tags = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -97,7 +105,8 @@ namespace AlarmOccurrence {
             alarm_message, severity, state, acknowledged_time, acknowledged_by,
             acknowledge_comment, cleared_time, cleared_value, clear_comment,
             notification_sent, notification_time, notification_count, notification_result,
-            context_data, source_name, location, created_at, updated_at
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
         FROM alarm_occurrences 
         WHERE state = 'active'
         ORDER BY occurrence_time DESC
@@ -109,7 +118,8 @@ namespace AlarmOccurrence {
             alarm_message, severity, state, acknowledged_time, acknowledged_by,
             acknowledge_comment, cleared_time, cleared_value, clear_comment,
             notification_sent, notification_time, notification_count, notification_result,
-            context_data, source_name, location, created_at, updated_at
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
         FROM alarm_occurrences 
         WHERE rule_id = ?
         ORDER BY occurrence_time DESC
@@ -136,17 +146,16 @@ namespace AlarmOccurrence {
         WHERE id = ?
     )";
     
-    // CLEAR_ALARM는 CLEAR의 별칭
     const std::string CLEAR_ALARM = CLEAR;
     
 } // namespace AlarmOccurrence
 
 // =============================================================================
-// AlarmRule 관련 쿼리들 (FOREIGN KEY 제거됨)
+// AlarmRule 관련 쿼리들 (실제 스키마에 맞춤)
 // =============================================================================
 namespace AlarmRule {
     
-    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
+    // 테이블 생성 - 실제 스키마와 동일
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS alarm_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,11 +193,21 @@ namespace AlarmRule {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             created_by INTEGER,
+            template_id INTEGER,
+            rule_group VARCHAR(36),
+            created_by_template INTEGER DEFAULT 0,
+            last_template_update DATETIME,
+            escalation_enabled INTEGER DEFAULT 0,
+            escalation_max_level INTEGER DEFAULT 3,
+            escalation_rules TEXT DEFAULT NULL,
+            category VARCHAR(50) DEFAULT NULL,
+            tags TEXT DEFAULT NULL,
             FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id)
         )
     )";
-    // 기본 CRUD 쿼리들
+    
+    // 기본 CRUD 쿼리들 - 모든 컬럼 포함
     const std::string FIND_ALL = R"(
         SELECT 
             id, tenant_id, name, description, target_type, target_id, target_group,
@@ -198,7 +217,9 @@ namespace AlarmRule {
             auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
             notification_enabled, notification_delay_sec, notification_repeat_interval_min,
             notification_channels, notification_recipients, is_enabled, is_latched,
-            created_at, updated_at, created_by
+            created_at, updated_at, created_by, template_id, rule_group,
+            created_by_template, last_template_update, escalation_enabled,
+            escalation_max_level, escalation_rules, category, tags
         FROM alarm_rules 
         ORDER BY priority DESC, created_at DESC
     )";
@@ -212,7 +233,9 @@ namespace AlarmRule {
             auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
             notification_enabled, notification_delay_sec, notification_repeat_interval_min,
             notification_channels, notification_recipients, is_enabled, is_latched,
-            created_at, updated_at, created_by
+            created_at, updated_at, created_by, template_id, rule_group,
+            created_by_template, last_template_update, escalation_enabled,
+            escalation_max_level, escalation_rules, category, tags
         FROM alarm_rules 
         WHERE id = ?
     )";
@@ -226,7 +249,9 @@ namespace AlarmRule {
             auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
             notification_enabled, notification_delay_sec, notification_repeat_interval_min,
             notification_channels, notification_recipients, is_enabled, is_latched,
-            created_at, updated_at, created_by
+            created_at, updated_at, created_by, template_id, rule_group,
+            created_by_template, last_template_update, escalation_enabled,
+            escalation_max_level, escalation_rules, category, tags
         FROM alarm_rules 
         WHERE target_type = ? AND target_id = ? AND is_enabled = 1
         ORDER BY priority DESC
@@ -241,7 +266,9 @@ namespace AlarmRule {
             auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
             notification_enabled, notification_delay_sec, notification_repeat_interval_min,
             notification_channels, notification_recipients, is_enabled, is_latched,
-            created_at, updated_at, created_by
+            created_at, updated_at, created_by, template_id, rule_group,
+            created_by_template, last_template_update, escalation_enabled,
+            escalation_max_level, escalation_rules, category, tags
         FROM alarm_rules 
         WHERE is_enabled = 1
         ORDER BY priority DESC, created_at DESC
@@ -255,8 +282,10 @@ namespace AlarmRule {
             message_script, message_config, message_template, severity, priority,
             auto_acknowledge, acknowledge_timeout_min, auto_clear, suppression_rules,
             notification_enabled, notification_delay_sec, notification_repeat_interval_min,
-            notification_channels, notification_recipients, is_enabled, is_latched, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            notification_channels, notification_recipients, is_enabled, is_latched,
+            created_by, template_id, rule_group, created_by_template,
+            escalation_enabled, escalation_max_level, escalation_rules, category, tags
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE = R"(
@@ -270,6 +299,9 @@ namespace AlarmRule {
             suppression_rules = ?, notification_enabled = ?, notification_delay_sec = ?,
             notification_repeat_interval_min = ?, notification_channels = ?,
             notification_recipients = ?, is_enabled = ?, is_latched = ?,
+            template_id = ?, rule_group = ?, created_by_template = ?,
+            last_template_update = ?, escalation_enabled = ?, escalation_max_level = ?,
+            escalation_rules = ?, category = ?, tags = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -282,85 +314,76 @@ namespace AlarmRule {
 } // namespace AlarmRule
 
 // =============================================================================
-// ScriptLibrary 관련 쿼리들 (FOREIGN KEY 제거됨)
+// ScriptLibrary 관련 쿼리들 (실제 스키마에 맞춤)
 // =============================================================================
 namespace ScriptLibrary {
     
-    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
+    // 테이블 생성 - 실제 스키마와 동일
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS script_library (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tenant_id INTEGER DEFAULT 0,
+            tenant_id INTEGER NOT NULL DEFAULT 0,
+            category VARCHAR(50) NOT NULL,
             name VARCHAR(100) NOT NULL,
-            display_name VARCHAR(255),
+            display_name VARCHAR(100),
             description TEXT,
-            category VARCHAR(50) DEFAULT 'CUSTOM',
             script_code TEXT NOT NULL,
-            parameters TEXT DEFAULT '{}',
-            return_type VARCHAR(20) DEFAULT 'REAL',
-            tags TEXT DEFAULT '[]',
+            parameters TEXT,
+            return_type VARCHAR(20) DEFAULT 'number',
+            tags TEXT,
             example_usage TEXT,
             is_system INTEGER DEFAULT 0,
-            is_template INTEGER DEFAULT 0,
             usage_count INTEGER DEFAULT 0,
             rating REAL DEFAULT 0.0,
-            version VARCHAR(20) DEFAULT '1.0.0',
-            author VARCHAR(100),
-            license VARCHAR(50),
-            dependencies TEXT DEFAULT '[]',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(tenant_id, name)
         )
     )";
     
-    // 기본 CRUD 쿼리들
+    // 기본 CRUD 쿼리들 - 실제 컬럼에 맞춤
     const std::string FIND_ALL = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
         ORDER BY usage_count DESC, name ASC
     )";
     
     const std::string FIND_BY_ID = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
         WHERE id = ?
     )";
     
     const std::string FIND_BY_CATEGORY = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
-        WHERE category = ? AND is_enabled = 1
+        WHERE category = ?
         ORDER BY usage_count DESC, name ASC
     )";
     
     const std::string INSERT = R"(
         INSERT INTO script_library (
-            tenant_id, name, display_name, description, category,
+            tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_system, usage_count, rating
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE = R"(
         UPDATE script_library SET
-            tenant_id = ?, name = ?, display_name = ?, description = ?,
-            category = ?, script_code = ?, parameters = ?, return_type = ?,
-            tags = ?, example_usage = ?, is_system = ?, is_template = ?,
-            usage_count = ?, rating = ?, version = ?, author = ?,
-            license = ?, dependencies = ?, updated_at = CURRENT_TIMESTAMP
+            tenant_id = ?, category = ?, name = ?, display_name = ?, description = ?,
+            script_code = ?, parameters = ?, return_type = ?,
+            tags = ?, example_usage = ?, is_system = ?,
+            usage_count = ?, rating = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
     
@@ -374,10 +397,9 @@ namespace ScriptLibrary {
     // 특화 조회 쿼리들
     const std::string FIND_BY_IDS = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
         WHERE id IN (%IN_CLAUSE%)
         ORDER BY usage_count DESC, name ASC
@@ -387,10 +409,9 @@ namespace ScriptLibrary {
     
     const std::string FIND_BY_TENANT_ID = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
         WHERE tenant_id = ?
         ORDER BY usage_count DESC, name ASC
@@ -398,36 +419,31 @@ namespace ScriptLibrary {
     
     const std::string FIND_SYSTEM_SCRIPTS = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
-        WHERE is_system = 1 AND is_enabled = 1
+        WHERE is_system = 1
         ORDER BY usage_count DESC, name ASC
     )";
     
     const std::string FIND_TOP_USED = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
-        WHERE is_enabled = 1
         ORDER BY usage_count DESC, name ASC
         LIMIT ?
     )";
     
     const std::string FIND_BY_NAME = R"(
         SELECT 
-            id, tenant_id, name, display_name, description, category,
+            id, tenant_id, category, name, display_name, description,
             script_code, parameters, return_type, tags, example_usage,
-            is_system, is_template, usage_count, rating, version,
-            author, license, dependencies, created_at, updated_at
+            is_system, usage_count, rating, created_at, updated_at
         FROM script_library 
         WHERE tenant_id = ? AND name = ?
-        ORDER BY version DESC
         LIMIT 1
     )";
     
@@ -500,51 +516,60 @@ namespace ScriptLibrary {
 } // namespace ScriptLibrary
 
 // =============================================================================
-// VirtualPoint 관련 쿼리들 (FOREIGN KEY 제거됨)
+// VirtualPoint 관련 쿼리들 (실제 스키마에 맞춤)
 // =============================================================================
 namespace VirtualPoint {
     
-    // 테이블 생성 (SQLite 호환 - FOREIGN KEY 없음)
+    // 테이블 생성 - 실제 스키마와 동일
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS virtual_points (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tenant_id INTEGER NOT NULL DEFAULT 0,
+            tenant_id INTEGER NOT NULL,
+            scope_type VARCHAR(20) NOT NULL DEFAULT 'tenant',
             site_id INTEGER,
             device_id INTEGER,
             name VARCHAR(100) NOT NULL,
             description TEXT,
             formula TEXT NOT NULL,
-            data_type VARCHAR(20) NOT NULL DEFAULT 'REAL',
+            data_type VARCHAR(20) NOT NULL DEFAULT 'float',
             unit VARCHAR(20),
             calculation_interval INTEGER DEFAULT 1000,
             calculation_trigger VARCHAR(20) DEFAULT 'timer',
-            execution_type VARCHAR(20) DEFAULT 'JAVASCRIPT',
-            cache_duration_ms INTEGER DEFAULT 5000,
             is_enabled INTEGER DEFAULT 1,
             category VARCHAR(50),
-            tags TEXT DEFAULT '',
-            scope_type VARCHAR(20) NOT NULL DEFAULT 'tenant',
-            execution_count INTEGER DEFAULT 0,
-            last_error TEXT DEFAULT '',
-            avg_execution_time_ms REAL DEFAULT 0.0,
+            tags TEXT,
+            execution_type VARCHAR(20) DEFAULT 'javascript',
             dependencies TEXT,
+            cache_duration_ms INTEGER DEFAULT 0,
             error_handling VARCHAR(20) DEFAULT 'return_null',
+            last_error TEXT,
+            execution_count INTEGER DEFAULT 0,
+            avg_execution_time_ms REAL DEFAULT 0.0,
             last_execution_time DATETIME,
-            created_by VARCHAR(100) DEFAULT 'system',
+            created_by INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+            FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
+            CONSTRAINT chk_scope_consistency CHECK (
+                (scope_type = 'tenant' AND site_id IS NULL AND device_id IS NULL) OR
+                (scope_type = 'site' AND site_id IS NOT NULL AND device_id IS NULL) OR
+                (scope_type = 'device' AND site_id IS NOT NULL AND device_id IS NOT NULL)
+            ),
+            CONSTRAINT chk_scope_type CHECK (scope_type IN ('tenant', 'site', 'device'))
         )
     )";
     
-    // 🔥 수정된 기본 CRUD 쿼리들 (last_value 제거, 실제 컬럼들 추가)
+    // 기본 CRUD 쿼리들 - 실제 컬럼에 맞춤
     const std::string FIND_ALL = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         ORDER BY tenant_id, name
@@ -552,12 +577,12 @@ namespace VirtualPoint {
     
     const std::string FIND_BY_ID = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE id = ?
@@ -565,19 +590,20 @@ namespace VirtualPoint {
     
     const std::string INSERT = R"(
         INSERT INTO virtual_points (
-            tenant_id, site_id, device_id, name, description, formula,
-            data_type, unit, calculation_interval, calculation_trigger, execution_type, cache_duration_ms,
-            is_enabled, category, tags, scope_type, dependencies, error_handling, created_by
+            tenant_id, scope_type, site_id, device_id, name, description, formula,
+            data_type, unit, calculation_interval, calculation_trigger,
+            is_enabled, category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, created_by
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE = R"(
         UPDATE virtual_points SET 
-            tenant_id = ?, site_id = ?, device_id = ?, name = ?, 
-            description = ?, formula = ?, data_type = ?, unit = ?,
-            calculation_interval = ?, calculation_trigger = ?, execution_type = ?, cache_duration_ms = ?,
-            is_enabled = ?, category = ?, tags = ?, scope_type = ?,
-            dependencies = ?, error_handling = ?,
+            tenant_id = ?, scope_type = ?, site_id = ?, device_id = ?,
+            name = ?, description = ?, formula = ?, data_type = ?, unit = ?,
+            calculation_interval = ?, calculation_trigger = ?,
+            is_enabled = ?, category = ?, tags = ?, execution_type = ?,
+            dependencies = ?, cache_duration_ms = ?, error_handling = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -588,15 +614,15 @@ namespace VirtualPoint {
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM virtual_points WHERE id = ?";
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM virtual_points";
     
-    // 🔥 수정된 특화 조회 쿼리들 (모두 last_value 제거)
+    // 특화 조회 쿼리들
     const std::string FIND_BY_TENANT = R"(
         SELECT
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points
         WHERE tenant_id = ?
@@ -605,12 +631,12 @@ namespace VirtualPoint {
     
     const std::string FIND_BY_SITE = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE site_id = ?
@@ -619,12 +645,12 @@ namespace VirtualPoint {
     
     const std::string FIND_BY_DEVICE = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE device_id = ?
@@ -633,12 +659,12 @@ namespace VirtualPoint {
     
     const std::string FIND_ENABLED = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE is_enabled = 1
@@ -647,12 +673,12 @@ namespace VirtualPoint {
     
     const std::string FIND_BY_CATEGORY = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE category = ?
@@ -661,12 +687,12 @@ namespace VirtualPoint {
     
     const std::string FIND_BY_EXECUTION_TYPE = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE calculation_trigger = ?
@@ -675,12 +701,12 @@ namespace VirtualPoint {
     
     const std::string FIND_BY_IDS = R"(
         SELECT 
-            id, tenant_id, site_id, device_id,
+            id, tenant_id, scope_type, site_id, device_id,
             name, description, formula, data_type, unit,
-            calculation_interval, calculation_trigger, execution_type, cache_duration_ms, is_enabled,
-            category, tags, scope_type,
-            execution_count, last_error, avg_execution_time_ms,
-            dependencies, error_handling, last_execution_time,
+            calculation_interval, calculation_trigger, is_enabled,
+            category, tags, execution_type, dependencies,
+            cache_duration_ms, error_handling, last_error,
+            execution_count, avg_execution_time_ms, last_execution_time,
             created_by, created_at, updated_at
         FROM virtual_points 
         WHERE id IN (%IN_CLAUSE%)
@@ -689,7 +715,7 @@ namespace VirtualPoint {
     
     const std::string DELETE_BY_IDS = "DELETE FROM virtual_points WHERE id IN (%IN_CLAUSE%)";
     
-    // 🔥 수정된 실행 통계 업데이트 쿼리들 (last_value 관련 쿼리들 수정)
+    // 실행 통계 업데이트 쿼리들
     const std::string UPDATE_EXECUTION_STATS = R"(
         UPDATE virtual_points SET 
             execution_count = execution_count + 1,
@@ -706,7 +732,6 @@ namespace VirtualPoint {
         WHERE id = ?
     )";
     
-    // 🔥 last_value 관련 쿼리 제거 또는 수정
     const std::string UPDATE_EXECUTION_TIME = R"(
         UPDATE virtual_points SET 
             last_execution_time = CURRENT_TIMESTAMP,
@@ -714,7 +739,7 @@ namespace VirtualPoint {
         WHERE id = ?
     )";
     
-    // 가상포인트 입력 매핑 테이블 (FOREIGN KEY 없음)
+    // 가상포인트 입력 매핑 테이블 - 실제 스키마와 동일
     const std::string CREATE_INPUTS_TABLE = R"(
         CREATE TABLE IF NOT EXISTS virtual_point_inputs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -722,14 +747,20 @@ namespace VirtualPoint {
             variable_name VARCHAR(50) NOT NULL,
             source_type VARCHAR(20) NOT NULL,
             source_id INTEGER,
-            is_required INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            constant_value REAL,
+            source_formula TEXT,
+            data_processing VARCHAR(20) DEFAULT 'current',
+            time_window_seconds INTEGER,
+            FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
+            UNIQUE(virtual_point_id, variable_name),
+            CONSTRAINT chk_source_type CHECK (source_type IN ('data_point', 'virtual_point', 'constant', 'formula'))
         )
     )";
     
     const std::string FIND_INPUTS_BY_VP_ID = R"(
         SELECT 
-            id, variable_name, source_type, source_id, is_required
+            id, virtual_point_id, variable_name, source_type, source_id,
+            constant_value, source_formula, data_processing, time_window_seconds
         FROM virtual_point_inputs 
         WHERE virtual_point_id = ?
         ORDER BY variable_name
@@ -737,16 +768,118 @@ namespace VirtualPoint {
     
     const std::string INSERT_INPUT = R"(
         INSERT INTO virtual_point_inputs (
-            virtual_point_id, variable_name, source_type, source_id, is_required
-        ) VALUES (?, ?, ?, ?, ?)
+            virtual_point_id, variable_name, source_type, source_id,
+            constant_value, source_formula, data_processing, time_window_seconds
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string DELETE_INPUTS_BY_VP_ID = R"(
         DELETE FROM virtual_point_inputs WHERE virtual_point_id = ?
     )";
     
+    // 가상포인트 값 관련 쿼리들
+    const std::string CREATE_VALUES_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS virtual_point_values (
+            virtual_point_id INTEGER PRIMARY KEY,
+            value REAL,
+            string_value TEXT,
+            quality VARCHAR(20) DEFAULT 'good',
+            last_calculated DATETIME DEFAULT CURRENT_TIMESTAMP,
+            calculation_error TEXT,
+            input_values TEXT,
+            FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
+        )
+    )";
+    
+    const std::string FIND_VALUE_BY_VP_ID = R"(
+        SELECT 
+            virtual_point_id, value, string_value, quality,
+            last_calculated, calculation_error, input_values
+        FROM virtual_point_values 
+        WHERE virtual_point_id = ?
+    )";
+    
+    const std::string INSERT_OR_UPDATE_VALUE = R"(
+        INSERT OR REPLACE INTO virtual_point_values (
+            virtual_point_id, value, string_value, quality,
+            last_calculated, calculation_error, input_values
+        ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+    )";
+    
+    const std::string UPDATE_VALUE = R"(
+        UPDATE virtual_point_values SET 
+            value = ?, string_value = ?, quality = ?,
+            last_calculated = CURRENT_TIMESTAMP,
+            calculation_error = ?, input_values = ?
+        WHERE virtual_point_id = ?
+    )";
+    
+    const std::string DELETE_VALUE_BY_VP_ID = R"(
+        DELETE FROM virtual_point_values WHERE virtual_point_id = ?
+    )";
+    
 } // namespace VirtualPoint
 
+// =============================================================================
+// 추가 인덱스 생성 쿼리들
+// =============================================================================
+namespace Indexes {
+    
+    // AlarmOccurrence 인덱스들
+    const std::string CREATE_ALARM_OCC_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_rule_id ON alarm_occurrences(rule_id);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_tenant_id ON alarm_occurrences(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_state ON alarm_occurrences(state);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_severity ON alarm_occurrences(severity);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_occurrence_time ON alarm_occurrences(occurrence_time DESC);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_device_id ON alarm_occurrences(device_id);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_point_id ON alarm_occurrences(point_id);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_category ON alarm_occurrences(category);
+    )";
+    
+    // AlarmRule 인덱스들
+    const std::string CREATE_ALARM_RULE_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_tenant ON alarm_rules(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_target ON alarm_rules(target_type, target_id);
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_enabled ON alarm_rules(is_enabled);
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_template_id ON alarm_rules(template_id);
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_rule_group ON alarm_rules(rule_group);
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_created_by_template ON alarm_rules(created_by_template);
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_category ON alarm_rules(category);
+        CREATE INDEX IF NOT EXISTS idx_alarm_rules_tags ON alarm_rules(tags);
+    )";
+    
+    // ScriptLibrary 인덱스들
+    const std::string CREATE_SCRIPT_LIB_INDEXES = R"(
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_script_library_tenant_name ON script_library(tenant_id, name);
+        CREATE INDEX IF NOT EXISTS idx_script_library_category ON script_library(category);
+        CREATE INDEX IF NOT EXISTS idx_script_library_tenant ON script_library(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_script_library_is_system ON script_library(is_system);
+        CREATE INDEX IF NOT EXISTS idx_script_library_usage_count ON script_library(usage_count DESC);
+    )";
+    
+    // VirtualPoint 인덱스들
+    const std::string CREATE_VP_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_virtual_points_tenant ON virtual_points(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_virtual_points_scope ON virtual_points(scope_type);
+        CREATE INDEX IF NOT EXISTS idx_virtual_points_site ON virtual_points(site_id);
+        CREATE INDEX IF NOT EXISTS idx_virtual_points_device ON virtual_points(device_id);
+        CREATE INDEX IF NOT EXISTS idx_virtual_points_enabled ON virtual_points(is_enabled);
+        CREATE INDEX IF NOT EXISTS idx_virtual_points_category ON virtual_points(category);
+        CREATE INDEX IF NOT EXISTS idx_virtual_points_trigger ON virtual_points(calculation_trigger);
+    )";
+    
+    // VirtualPointInputs 인덱스들
+    const std::string CREATE_VP_INPUTS_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_vp_inputs_virtual_point ON virtual_point_inputs(virtual_point_id);
+        CREATE INDEX IF NOT EXISTS idx_vp_inputs_source ON virtual_point_inputs(source_type, source_id);
+    )";
+    
+    // VirtualPointValues 인덱스들
+    const std::string CREATE_VP_VALUES_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_vp_values_calculated ON virtual_point_values(last_calculated DESC);
+    )";
+    
 } // namespace SQL
 } // namespace Database
 } // namespace PulseOne

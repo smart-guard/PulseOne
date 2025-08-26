@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/SQLQueries.h
-// 🎯 SQL 쿼리 상수 중앙 관리 - 모든 쿼리를 한 곳에서 관리 (완전판)
+// 🎯 SQL 쿼리 상수 중앙 관리 - 현재 스키마에 완전 일치 (2025년 8월 업데이트)
 // =============================================================================
 
 #ifndef SQL_QUERIES_H
@@ -12,8 +12,7 @@ namespace PulseOne {
 namespace Database {
 namespace SQL {
 
-
-    // =============================================================================
+// =============================================================================
 // 🎯 기타 공통 쿼리들
 // =============================================================================
 namespace Common {
@@ -62,18 +61,19 @@ namespace Common {
     
 } // namespace Common
 
-
 // =============================================================================
-// 🎯 DeviceRepository 쿼리들 (완전판)
+// 🎯 DeviceRepository 쿼리들 - 현재 스키마 완전 반영
 // =============================================================================
 namespace Device {
     
+    // 🔥🔥🔥 중요: protocol_id 사용, protocol_type 제거
     const std::string FIND_ALL = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
         FROM devices 
         ORDER BY id
     )";
@@ -82,29 +82,47 @@ namespace Device {
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
         FROM devices 
         WHERE id = ?
     )";
     
-    const std::string FIND_BY_PROTOCOL = R"(
+    // 🔥🔥🔥 프로토콜 조회 - protocol_id 사용
+    const std::string FIND_BY_PROTOCOL_ID = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
         FROM devices 
-        WHERE protocol_type = ? AND is_enabled = 1
+        WHERE protocol_id = ? AND is_enabled = 1
         ORDER BY name
+    )";
+    
+    // 🔥 프로토콜 타입별 조회 (JOIN 필요)
+    const std::string FIND_BY_PROTOCOL_TYPE = R"(
+        SELECT 
+            d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
+            d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
+            d.protocol_id, d.endpoint, d.config, d.polling_interval, d.timeout, d.retry_count,
+            d.is_enabled, d.installation_date, d.last_maintenance, 
+            d.created_by, d.created_at, d.updated_at
+        FROM devices d
+        JOIN protocols p ON d.protocol_id = p.id
+        WHERE p.protocol_type = ? AND d.is_enabled = 1
+        ORDER BY d.name
     )";
     
     const std::string FIND_BY_TENANT = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
         FROM devices 
         WHERE tenant_id = ?
         ORDER BY name
@@ -114,8 +132,9 @@ namespace Device {
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
         FROM devices 
         WHERE site_id = ?
         ORDER BY name
@@ -123,40 +142,47 @@ namespace Device {
     
     const std::string FIND_ENABLED = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
-            name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
-        FROM devices 
-        WHERE is_enabled = 1
-        ORDER BY protocol_type, name
+            d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
+            d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
+            d.protocol_id, d.endpoint, d.config, d.polling_interval, d.timeout, d.retry_count,
+            d.is_enabled, d.installation_date, d.last_maintenance, 
+            d.created_by, d.created_at, d.updated_at
+        FROM devices d
+        LEFT JOIN protocols p ON d.protocol_id = p.id
+        WHERE d.is_enabled = 1
+        ORDER BY p.protocol_type, d.name
     )";
     
     const std::string FIND_DISABLED = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
         FROM devices 
         WHERE is_enabled = 0
         ORDER BY updated_at DESC
     )";
     
+    // 🔥🔥🔥 INSERT - 현재 스키마 필드들
     const std::string INSERT = R"(
         INSERT INTO devices (
             tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
-            protocol_type, endpoint, config, is_enabled, installation_date, 
-            last_maintenance, created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
+    // 🔥🔥🔥 UPDATE - 현재 스키마 필드들
     const std::string UPDATE = R"(
         UPDATE devices SET 
             tenant_id = ?, site_id = ?, device_group_id = ?, edge_server_id = ?,
             name = ?, description = ?, device_type = ?, manufacturer = ?, model = ?, 
-            serial_number = ?, protocol_type = ?, endpoint = ?, config = ?, 
+            serial_number = ?, protocol_id = ?, endpoint = ?, config = ?, 
+            polling_interval = ?, timeout = ?, retry_count = ?,
             is_enabled = ?, installation_date = ?, last_maintenance = ?, 
             updated_at = ?
         WHERE id = ?
@@ -180,6 +206,12 @@ namespace Device {
         WHERE id = ?
     )";
     
+    const std::string UPDATE_PROTOCOL = R"(
+        UPDATE devices 
+        SET protocol_id = ?, updated_at = ?
+        WHERE id = ?
+    )";
+    
     const std::string DELETE_BY_ID = "DELETE FROM devices WHERE id = ?";
     
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM devices WHERE id = ?";
@@ -188,18 +220,20 @@ namespace Device {
     
     const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM devices WHERE is_enabled = 1";
     
-    const std::string COUNT_BY_PROTOCOL = "SELECT COUNT(*) as count FROM devices WHERE protocol_type = ?";
+    const std::string COUNT_BY_PROTOCOL_ID = "SELECT COUNT(*) as count FROM devices WHERE protocol_id = ?";
     
+    // 🔥 프로토콜 분포 - JOIN 사용
     const std::string GET_PROTOCOL_DISTRIBUTION = R"(
-        SELECT protocol_type, COUNT(*) as count 
-        FROM devices 
-        GROUP BY protocol_type
+        SELECT p.protocol_type, p.display_name, COUNT(d.id) as count 
+        FROM protocols p
+        LEFT JOIN devices d ON p.id = d.protocol_id
+        GROUP BY p.id, p.protocol_type, p.display_name
         ORDER BY count DESC
     )";
     
     const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
     
-    // 테이블 생성
+    // 🔥🔥🔥 테이블 생성 - 현재 스키마 완전 반영
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS devices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -216,10 +250,15 @@ namespace Device {
             model VARCHAR(100),
             serial_number VARCHAR(100),
             
-            -- 통신 설정
-            protocol_type VARCHAR(50) NOT NULL,
+            -- 프로토콜 설정 (외래키로 변경!)
+            protocol_id INTEGER NOT NULL,
             endpoint VARCHAR(255) NOT NULL,
             config TEXT NOT NULL,
+            
+            -- 수집 설정
+            polling_interval INTEGER DEFAULT 1000,
+            timeout INTEGER DEFAULT 3000,
+            retry_count INTEGER DEFAULT 3,
             
             -- 상태 정보
             is_enabled INTEGER DEFAULT 1,
@@ -228,18 +267,50 @@ namespace Device {
             
             created_by INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            -- 외래키 제약조건
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+            FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+            FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
+            FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
+            FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
         )
+    )";
+    
+    // 🔥 device_details 뷰 조회
+    const std::string FIND_WITH_PROTOCOL_INFO = R"(
+        SELECT 
+            id, tenant_id, site_id, device_group_id, edge_server_id,
+            name, description, device_type, manufacturer, model, serial_number,
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at,
+            protocol_type, protocol_display_name, protocol_category
+        FROM device_details 
+        ORDER BY name
+    )";
+    
+    const std::string FIND_BY_ID_WITH_PROTOCOL_INFO = R"(
+        SELECT 
+            id, tenant_id, site_id, device_group_id, edge_server_id,
+            name, description, device_type, manufacturer, model, serial_number,
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at,
+            protocol_type, protocol_display_name, protocol_category
+        FROM device_details 
+        WHERE id = ?
     )";
     
 } // namespace Device
 
 // =============================================================================
-// 🎯 DataPointRepository 쿼리들
+// 🎯 DataPointRepository 쿼리들 - 현재 스키마 완전 일치
 // =============================================================================
 namespace DataPoint {
     
-    // 🔥🔥🔥 FIND_ALL - 모든 필드 포함 (Struct DataPoint 완전 일치)
+    // 🔥🔥🔥 FIND_ALL - 현재 스키마의 모든 필드 포함
     const std::string FIND_ALL = R"(
         SELECT 
             -- 기본 식별 정보
@@ -254,10 +325,10 @@ namespace DataPoint {
             -- 엔지니어링 단위 및 스케일링
             unit, scaling_factor, scaling_offset, min_value, max_value,
             
-            -- 🔥 로깅 및 수집 설정 (SQLQueries.h가 찾던 컬럼들!)
+            -- 🔥 로깅 및 수집 설정
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
             
-            -- 🔥 메타데이터 (SQLQueries.h가 찾던 컬럼들!)
+            -- 🔥 메타데이터
             group_name, tags, metadata, protocol_params,
             
             -- 시간 정보
@@ -280,7 +351,6 @@ namespace DataPoint {
         WHERE id = ?
     )";
     
-    // 🔥 FIND_BY_DEVICE_ID - 디바이스별 조회
     const std::string FIND_BY_DEVICE_ID = R"(
         SELECT 
             id, device_id, name, description, 
@@ -295,7 +365,6 @@ namespace DataPoint {
         ORDER BY address
     )";
     
-    // 🔥 FIND_BY_DEVICE_ID_ENABLED - 활성화된 포인트만
     const std::string FIND_BY_DEVICE_ID_ENABLED = R"(
         SELECT 
             id, device_id, name, description, 
@@ -310,7 +379,6 @@ namespace DataPoint {
         ORDER BY address
     )";
     
-    // 🔥 FIND_BY_DEVICE_AND_ADDRESS - 유니크 검색
     const std::string FIND_BY_DEVICE_AND_ADDRESS = R"(
         SELECT 
             id, device_id, name, description, 
@@ -326,7 +394,7 @@ namespace DataPoint {
         LIMIT 1
     )";
     
-    // 🔥🔥🔥 INSERT - 모든 필드 삽입
+    // 🔥🔥🔥 INSERT - 현재 스키마의 모든 필드
     const std::string INSERT = R"(
         INSERT INTO data_points (
             device_id, name, description, 
@@ -339,7 +407,7 @@ namespace DataPoint {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
-    // 🔥🔥🔥 UPDATE - 모든 필드 업데이트  
+    // 🔥🔥🔥 UPDATE - 현재 스키마의 모든 필드
     const std::string UPDATE = R"(
         UPDATE data_points SET 
             device_id = ?, name = ?, description = ?, 
@@ -376,44 +444,44 @@ namespace DataPoint {
     
     const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
     
-    // 🔥🔥🔥 CREATE_TABLE - Struct DataPoint 완전 반영
+    // 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS data_points (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id INTEGER NOT NULL,
             
-            -- 🔥 기본 식별 정보 (Struct DataPoint와 일치)
+            -- 🔥 기본 식별 정보
             name VARCHAR(100) NOT NULL,
             description TEXT,
             
-            -- 🔥 주소 정보 (Struct DataPoint와 일치)
-            address INTEGER NOT NULL,                    -- uint32_t address
-            address_string VARCHAR(255),                 -- std::string address_string
+            -- 🔥 주소 정보
+            address INTEGER NOT NULL,
+            address_string VARCHAR(255),
             
-            -- 🔥 데이터 타입 및 접근성 (Struct DataPoint와 일치)
-            data_type VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',  -- std::string data_type
-            access_mode VARCHAR(10) DEFAULT 'read',             -- std::string access_mode
-            is_enabled INTEGER DEFAULT 1,                       -- bool is_enabled
-            is_writable INTEGER DEFAULT 0,                      -- bool is_writable
+            -- 🔥 데이터 타입 및 접근성
+            data_type VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',
+            access_mode VARCHAR(10) DEFAULT 'read',
+            is_enabled INTEGER DEFAULT 1,
+            is_writable INTEGER DEFAULT 0,
             
-            -- 🔥 엔지니어링 단위 및 스케일링 (Struct DataPoint와 일치)
-            unit VARCHAR(50),                            -- std::string unit
-            scaling_factor REAL DEFAULT 1.0,            -- double scaling_factor
-            scaling_offset REAL DEFAULT 0.0,            -- double scaling_offset
-            min_value REAL DEFAULT 0.0,                 -- double min_value
-            max_value REAL DEFAULT 0.0,                 -- double max_value
+            -- 🔥 엔지니어링 단위 및 스케일링
+            unit VARCHAR(50),
+            scaling_factor REAL DEFAULT 1.0,
+            scaling_offset REAL DEFAULT 0.0,
+            min_value REAL DEFAULT 0.0,
+            max_value REAL DEFAULT 0.0,
             
-            -- 🔥🔥🔥 로깅 및 수집 설정 (중요! 이전에 없던 컬럼들)
-            log_enabled INTEGER DEFAULT 1,              -- bool log_enabled ✅
-            log_interval_ms INTEGER DEFAULT 0,          -- uint32_t log_interval_ms ✅
-            log_deadband REAL DEFAULT 0.0,              -- double log_deadband ✅
-            polling_interval_ms INTEGER DEFAULT 0,      -- uint32_t polling_interval_ms
+            -- 🔥🔥🔥 로깅 및 수집 설정
+            log_enabled INTEGER DEFAULT 1,
+            log_interval_ms INTEGER DEFAULT 0,
+            log_deadband REAL DEFAULT 0.0,
+            polling_interval_ms INTEGER DEFAULT 0,
             
-            -- 🔥🔥🔥 메타데이터 (중요! 이전에 없던 컬럼들)
-            group_name VARCHAR(50),                      -- std::string group
-            tags TEXT,                                   -- std::string tags (JSON 배열) ✅
-            metadata TEXT,                               -- std::string metadata (JSON 객체) ✅
-            protocol_params TEXT,                        -- map<string,string> protocol_params (JSON)
+            -- 🔥🔥🔥 메타데이터
+            group_name VARCHAR(50),
+            tags TEXT,
+            metadata TEXT,
+            protocol_params TEXT,
             
             -- 🔥 시간 정보
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -437,10 +505,7 @@ namespace DataPoint {
             dp.created_at, dp.updated_at,
             
             -- current_values 테이블의 실시간 데이터
-            cv.current_value_bool, cv.current_value_int16, cv.current_value_uint16,
-            cv.current_value_int32, cv.current_value_uint32, cv.current_value_float,
-            cv.current_value_double, cv.current_value_string, cv.active_value_type,
-            cv.raw_value_float, cv.active_raw_type,
+            cv.current_value, cv.raw_value, cv.value_type,
             cv.quality_code, cv.quality,
             cv.value_timestamp, cv.quality_timestamp, cv.last_log_time,
             cv.last_read_time, cv.last_write_time,
@@ -462,7 +527,7 @@ namespace DataPoint {
         ORDER BY device_id, address
     )";
 
-    // 🔥🔥🔥 누락된 쿼리 1: FIND_BY_TAG (findByTag 메서드 사용)
+    // 추가 쿼리들
     const std::string FIND_BY_TAG = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
@@ -474,7 +539,6 @@ namespace DataPoint {
         ORDER BY device_id, address
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 2: FIND_DISABLED (findDisabledPoints 메서드 사용)
     const std::string FIND_DISABLED = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
@@ -486,33 +550,22 @@ namespace DataPoint {
         ORDER BY device_id, address
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 3: DELETE_BY_DEVICE_IDS (deleteByDeviceIds 메서드 사용)
     const std::string DELETE_BY_DEVICE_IDS = R"(
         DELETE FROM data_points 
         WHERE device_id IN (%s)
-    )"; // %s는 런타임에 IN 절로 대체됨
-    
-    // 🔥🔥🔥 누락된 쿼리 4: BULK_INSERT (saveBulk 메서드 사용)
-    const std::string BULK_INSERT = R"(
-        INSERT INTO data_points (
-            device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
-            created_at, updated_at
-        ) VALUES %s
-    )"; // %s는 런타임에 VALUES 절들로 대체됨
-    
-    // 🔥🔥🔥 누락된 쿼리 5: UPSERT (upsert 메서드 사용)
-    const std::string UPSERT = R"(
-        INSERT OR REPLACE INTO data_points (
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
-            created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 7: UPDATE_BASIC_INFO (updateBasicInfo 메서드 사용)
+    const std::string UPSERT = R"(
+        INSERT OR REPLACE INTO data_points (
+            id, device_id, name, description, address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+    
     const std::string UPDATE_BASIC_INFO = R"(
         UPDATE data_points SET 
             name = ?, description = ?, unit = ?, 
@@ -522,14 +575,12 @@ namespace DataPoint {
         WHERE id = ?
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 8: UPDATE_STATUS (updateStatus 메서드 사용)  
     const std::string UPDATE_STATUS = R"(
         UPDATE data_points SET 
             is_enabled = ?, updated_at = ?
         WHERE id = ?
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 9: UPDATE_LOG_CONFIG (updateLogConfig 메서드 사용)
     const std::string UPDATE_LOG_CONFIG = R"(
         UPDATE data_points SET 
             log_enabled = ?, log_interval_ms = ?, log_deadband = ?,
@@ -537,33 +588,30 @@ namespace DataPoint {
         WHERE id = ?
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 10: BULK_UPDATE_STATUS (bulkUpdateStatus 메서드 사용)
     const std::string BULK_UPDATE_STATUS = R"(
         UPDATE data_points SET 
             is_enabled = ?, updated_at = ?
         WHERE id IN (%s)
-    )"; // %s는 런타임에 ID 목록으로 대체됨
+    )";
     
-    // 🔥🔥🔥 누락된 쿼리 11: COUNT_BY_CONDITIONS (countByConditions에서 확장 사용)
+    // 통계 관련
     const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 1";
     const std::string COUNT_DISABLED = "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 0";
-    const std::string COUNT_WRITABLE = "SELECT COUNT(*) as count FROM data_points WHERE access_mode IN ('write', 'readwrite')";
+    const std::string COUNT_WRITABLE = "SELECT COUNT(*) as count FROM data_points WHERE is_writable = 1";
     const std::string COUNT_LOG_ENABLED = "SELECT COUNT(*) as count FROM data_points WHERE log_enabled = 1";
     
-    // 🔥🔥🔥 누락된 쿼리 12: 통계 관련 쿼리들
     const std::string GET_STATS_BY_DEVICE = R"(
         SELECT 
             device_id,
             COUNT(*) as total_count,
             COUNT(CASE WHEN is_enabled = 1 THEN 1 END) as enabled_count,
-            COUNT(CASE WHEN access_mode IN ('write', 'readwrite') THEN 1 END) as writable_count,
+            COUNT(CASE WHEN is_writable = 1 THEN 1 END) as writable_count,
             COUNT(CASE WHEN log_enabled = 1 THEN 1 END) as log_enabled_count
         FROM data_points 
         GROUP BY device_id
         ORDER BY device_id
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 13: 최근 생성/수정 조회
     const std::string FIND_RECENTLY_CREATED = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
@@ -586,7 +634,6 @@ namespace DataPoint {
         ORDER BY updated_at DESC
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 14: 검증 및 중복 체크
     const std::string CHECK_DUPLICATE_ADDRESS = R"(
         SELECT COUNT(*) as count 
         FROM data_points 
@@ -601,20 +648,6 @@ namespace DataPoint {
         HAVING COUNT(*) > 1
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 15: 페이징 및 정렬
-    const std::string FIND_WITH_PAGINATION = R"(
-        SELECT 
-            id, device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
-            created_at, updated_at
-        FROM data_points 
-        %s  -- WHERE 절 (조건부)
-        ORDER BY %s %s  -- ORDER BY 컬럼, ASC/DESC
-        LIMIT ? OFFSET ?
-    )";
-    
-    // 🔥🔥🔥 누락된 쿼리 16: 고급 필터링
     const std::string FIND_BY_NAME_PATTERN = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
@@ -637,29 +670,33 @@ namespace DataPoint {
         ORDER BY address
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 17: 백업 및 복구 관련
     const std::string EXPORT_FOR_BACKUP = R"(
         SELECT 
-            device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata
+            device_id, name, description, address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params
         FROM data_points 
         WHERE device_id IN (%s)
         ORDER BY device_id, address
     )";
     
-    // 🔥🔥🔥 누락된 쿼리 18: 디바이스 이전/복사
     const std::string COPY_TO_DEVICE = R"(
         INSERT INTO data_points (
-            device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            device_id, name, description, address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
             created_at, updated_at
         )
         SELECT 
-            ? as device_id, name, description, address, data_type, access_mode,
-            is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
-            log_enabled, log_interval_ms, log_deadband, tags, metadata,
+            ? as device_id, name, description, address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
             datetime('now') as created_at, datetime('now') as updated_at
         FROM data_points 
         WHERE device_id = ?
@@ -672,81 +709,111 @@ namespace DataPoint {
     )";
     
     const std::string FIND_WRITABLE_POINTS = R"(
-        SELECT * FROM data_points 
+        SELECT 
+            id, device_id, name, description, address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
+            created_at, updated_at
+        FROM data_points 
         WHERE is_writable = 1 AND is_enabled = 1
         ORDER BY device_id, address
     )";
     
     const std::string FIND_BY_DATA_TYPE = R"(
-        SELECT * FROM data_points 
+        SELECT 
+            id, device_id, name, description, address, address_string,
+            data_type, access_mode, is_enabled, is_writable,
+            unit, scaling_factor, scaling_offset, min_value, max_value,
+            log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            group_name, tags, metadata, protocol_params,
+            created_at, updated_at
+        FROM data_points 
         WHERE data_type = ? AND is_enabled = 1
         ORDER BY device_id, address
     )";        
     
 } // namespace DataPoint
 
-
 // =============================================================================
-// 🎯 DeviceSettingsRepository 쿼리들 (완전판)
+// 🎯 DeviceSettingsRepository 쿼리들 - 현재 스키마 완전 반영
 // =============================================================================
 namespace DeviceSettings {
     
     const std::string FIND_ALL = R"(
         SELECT 
-            device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
-            retry_interval_ms, backoff_time_ms, keep_alive_enabled, keep_alive_interval_s,
-            scan_rate_override, read_timeout_ms, write_timeout_ms, backoff_multiplier,
-            max_backoff_time_ms, keep_alive_timeout_s, data_validation_enabled,
-            performance_monitoring_enabled, diagnostic_mode_enabled, updated_at
+            device_id, polling_interval_ms, scan_rate_override, 
+            connection_timeout_ms, read_timeout_ms, write_timeout_ms,
+            max_retry_count, retry_interval_ms, backoff_multiplier,
+            backoff_time_ms, max_backoff_time_ms,
+            keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
+            data_validation_enabled, outlier_detection_enabled, deadband_enabled,
+            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
+            created_at, updated_at, updated_by
         FROM device_settings 
         ORDER BY device_id
     )";
     
     const std::string FIND_BY_ID = R"(
         SELECT 
-            device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
-            retry_interval_ms, backoff_time_ms, keep_alive_enabled, keep_alive_interval_s,
-            scan_rate_override, read_timeout_ms, write_timeout_ms, backoff_multiplier,
-            max_backoff_time_ms, keep_alive_timeout_s, data_validation_enabled,
-            performance_monitoring_enabled, diagnostic_mode_enabled, updated_at
+            device_id, polling_interval_ms, scan_rate_override, 
+            connection_timeout_ms, read_timeout_ms, write_timeout_ms,
+            max_retry_count, retry_interval_ms, backoff_multiplier,
+            backoff_time_ms, max_backoff_time_ms,
+            keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
+            data_validation_enabled, outlier_detection_enabled, deadband_enabled,
+            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
+            created_at, updated_at, updated_by
         FROM device_settings 
         WHERE device_id = ?
     )";
     
     const std::string FIND_BY_PROTOCOL = R"(
         SELECT 
-            ds.device_id, ds.polling_interval_ms, ds.connection_timeout_ms, ds.max_retry_count,
-            ds.retry_interval_ms, ds.backoff_time_ms, ds.keep_alive_enabled, ds.keep_alive_interval_s,
-            ds.scan_rate_override, ds.read_timeout_ms, ds.write_timeout_ms, ds.backoff_multiplier,
-            ds.max_backoff_time_ms, ds.keep_alive_timeout_s, ds.data_validation_enabled,
-            ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled, ds.updated_at
+            ds.device_id, ds.polling_interval_ms, ds.scan_rate_override, 
+            ds.connection_timeout_ms, ds.read_timeout_ms, ds.write_timeout_ms,
+            ds.max_retry_count, ds.retry_interval_ms, ds.backoff_multiplier,
+            ds.backoff_time_ms, ds.max_backoff_time_ms,
+            ds.keep_alive_enabled, ds.keep_alive_interval_s, ds.keep_alive_timeout_s,
+            ds.data_validation_enabled, ds.outlier_detection_enabled, ds.deadband_enabled,
+            ds.detailed_logging_enabled, ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled,
+            ds.created_at, ds.updated_at, ds.updated_by
         FROM device_settings ds
         INNER JOIN devices d ON ds.device_id = d.id
-        WHERE d.protocol_type = ?
+        INNER JOIN protocols p ON d.protocol_id = p.id
+        WHERE p.protocol_type = ?
         ORDER BY ds.device_id
     )";
     
     const std::string FIND_ACTIVE_DEVICES = R"(
         SELECT 
-            ds.device_id, ds.polling_interval_ms, ds.connection_timeout_ms, ds.max_retry_count,
-            ds.retry_interval_ms, ds.backoff_time_ms, ds.keep_alive_enabled, ds.keep_alive_interval_s,
-            ds.scan_rate_override, ds.read_timeout_ms, ds.write_timeout_ms, ds.backoff_multiplier,
-            ds.max_backoff_time_ms, ds.keep_alive_timeout_s, ds.data_validation_enabled,
-            ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled, ds.updated_at
+            ds.device_id, ds.polling_interval_ms, ds.scan_rate_override, 
+            ds.connection_timeout_ms, ds.read_timeout_ms, ds.write_timeout_ms,
+            ds.max_retry_count, ds.retry_interval_ms, ds.backoff_multiplier,
+            ds.backoff_time_ms, ds.max_backoff_time_ms,
+            ds.keep_alive_enabled, ds.keep_alive_interval_s, ds.keep_alive_timeout_s,
+            ds.data_validation_enabled, ds.outlier_detection_enabled, ds.deadband_enabled,
+            ds.detailed_logging_enabled, ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled,
+            ds.created_at, ds.updated_at, ds.updated_by
         FROM device_settings ds
         INNER JOIN devices d ON ds.device_id = d.id
         WHERE d.is_enabled = 1
         ORDER BY ds.polling_interval_ms, ds.device_id
     )";
     
+    // 🔥🔥🔥 UPSERT - 현재 스키마의 모든 필드
     const std::string UPSERT = R"(
         INSERT OR REPLACE INTO device_settings (
-            device_id, polling_interval_ms, connection_timeout_ms, max_retry_count,
-            retry_interval_ms, backoff_time_ms, keep_alive_enabled, keep_alive_interval_s,
-            scan_rate_override, read_timeout_ms, write_timeout_ms, backoff_multiplier,
-            max_backoff_time_ms, keep_alive_timeout_s, data_validation_enabled,
-            performance_monitoring_enabled, diagnostic_mode_enabled, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            device_id, polling_interval_ms, scan_rate_override, 
+            connection_timeout_ms, read_timeout_ms, write_timeout_ms,
+            max_retry_count, retry_interval_ms, backoff_multiplier,
+            backoff_time_ms, max_backoff_time_ms,
+            keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
+            data_validation_enabled, outlier_detection_enabled, deadband_enabled,
+            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
+            created_at, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE_POLLING_INTERVAL = R"(
@@ -780,63 +847,86 @@ namespace DeviceSettings {
         ORDER BY polling_interval_ms
     )";
     
-    // 테이블 생성
+    // 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS device_settings (
             device_id INTEGER PRIMARY KEY,
             
-            -- 기본 통신 설정
+            -- 폴링 및 타이밍 설정
             polling_interval_ms INTEGER DEFAULT 1000,
-            connection_timeout_ms INTEGER DEFAULT 10000,
-            max_retry_count INTEGER DEFAULT 3,
-            retry_interval_ms INTEGER DEFAULT 5000,
-            backoff_time_ms INTEGER DEFAULT 60000,
-            keep_alive_enabled INTEGER DEFAULT 1,
-            keep_alive_interval_s INTEGER DEFAULT 30,
+            scan_rate_override INTEGER, -- 개별 디바이스 스캔 주기 오버라이드
             
-            -- 고급 설정
-            scan_rate_override INTEGER,
+            -- 연결 및 통신 설정
+            connection_timeout_ms INTEGER DEFAULT 10000,
             read_timeout_ms INTEGER DEFAULT 5000,
             write_timeout_ms INTEGER DEFAULT 5000,
-            backoff_multiplier DECIMAL(3,2) DEFAULT 1.5,
-            max_backoff_time_ms INTEGER DEFAULT 300000,
+            
+            -- 재시도 정책
+            max_retry_count INTEGER DEFAULT 3,
+            retry_interval_ms INTEGER DEFAULT 5000,
+            backoff_multiplier DECIMAL(3,2) DEFAULT 1.5, -- 지수 백오프
+            backoff_time_ms INTEGER DEFAULT 60000,
+            max_backoff_time_ms INTEGER DEFAULT 300000, -- 최대 5분
+            
+            -- Keep-alive 설정
+            keep_alive_enabled INTEGER DEFAULT 1,
+            keep_alive_interval_s INTEGER DEFAULT 30,
             keep_alive_timeout_s INTEGER DEFAULT 10,
+            
+            -- 데이터 품질 관리
             data_validation_enabled INTEGER DEFAULT 1,
+            outlier_detection_enabled INTEGER DEFAULT 0,
+            deadband_enabled INTEGER DEFAULT 1,
+            
+            -- 로깅 및 진단
+            detailed_logging_enabled INTEGER DEFAULT 0,
             performance_monitoring_enabled INTEGER DEFAULT 1,
             diagnostic_mode_enabled INTEGER DEFAULT 0,
             
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            -- 메타데이터
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER,
+            
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
         )
     )";
     
 } // namespace DeviceSettings
 
 // =============================================================================
-// 🎯 CurrentValueRepository 쿼리들  
+// 🎯 CurrentValueRepository 쿼리들 - 현재 스키마 완전 반영
 // =============================================================================
 namespace CurrentValue {
 
+    // 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS current_values (
             point_id INTEGER PRIMARY KEY,
-            -- 🔥 실제 값 (타입별로 분리하지 않고 통합)
-            current_value TEXT, -- JSON으로 DataVariant 저장
-            raw_value TEXT, -- JSON으로 DataVariant 저장
-            value_type VARCHAR(10) DEFAULT 'double', -- bool, int16, uint16, int32, uint32, float, double, string
+            
+            -- 🔥 실제 값 (JSON으로 DataVariant 저장)
+            current_value TEXT,                          -- JSON: {"value": 123.45}
+            raw_value TEXT,                              -- JSON: {"value": 12345} (스케일링 전)
+            value_type VARCHAR(10) DEFAULT 'double',     -- bool, int16, uint16, int32, uint32, float, double, string
+            
             -- 🔥 데이터 품질 및 타임스탬프
-            quality_code INTEGER DEFAULT 0, -- DataQuality enum 값
+            quality_code INTEGER DEFAULT 0,             -- DataQuality enum 값
             quality VARCHAR(20) DEFAULT 'not_connected', -- 텍스트 표현
+            
             -- 🔥 타임스탬프들
-            value_timestamp DATETIME, -- 값 변경 시간
-            quality_timestamp DATETIME, -- 품질 변경 시간
-            last_log_time DATETIME, -- 마지막 로깅 시간
-            last_read_time DATETIME, -- 마지막 읽기 시간
-            last_write_time DATETIME, -- 마지막 쓰기 시간
+            value_timestamp DATETIME,                   -- 값 변경 시간
+            quality_timestamp DATETIME,                 -- 품질 변경 시간  
+            last_log_time DATETIME,                     -- 마지막 로깅 시간
+            last_read_time DATETIME,                    -- 마지막 읽기 시간
+            last_write_time DATETIME,                   -- 마지막 쓰기 시간
+            
             -- 🔥 통계 카운터들
-            read_count INTEGER DEFAULT 0, -- 읽기 횟수
-            write_count INTEGER DEFAULT 0, -- 쓰기 횟수
-            error_count INTEGER DEFAULT 0, -- 에러 횟수
+            read_count INTEGER DEFAULT 0,               -- 읽기 횟수
+            write_count INTEGER DEFAULT 0,              -- 쓰기 횟수
+            error_count INTEGER DEFAULT 0,              -- 에러 횟수
+            
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
             FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE
         )
     )";
@@ -1028,10 +1118,11 @@ namespace CurrentValue {
     const std::string GET_LATEST_VALUES = R"(
         SELECT 
             cv.point_id, dp.name as point_name, cv.current_value, cv.quality, cv.value_timestamp,
-            d.name as device_name, d.protocol_type
+            d.name as device_name, p.protocol_type
         FROM current_values cv
         JOIN data_points dp ON cv.point_id = dp.id
         JOIN devices d ON dp.device_id = d.id
+        JOIN protocols p ON d.protocol_id = p.id
         WHERE cv.value_timestamp >= ?
         ORDER BY cv.value_timestamp DESC
     )";
@@ -1068,7 +1159,166 @@ namespace CurrentValue {
     
 } // namespace CurrentValue
 
-
+// =============================================================================
+// 🎯 ProtocolRepository 쿼리들 - 새로 추가된 protocols 테이블
+// =============================================================================
+namespace Protocol {
+    
+    const std::string FIND_ALL = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE is_enabled = 1
+        ORDER BY category, display_name
+    )";
+    
+    const std::string FIND_BY_ID = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE id = ?
+    )";
+    
+    const std::string FIND_BY_PROTOCOL_TYPE = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE protocol_type = ?
+    )";
+    
+    const std::string FIND_ENABLED = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE is_enabled = 1 AND is_deprecated = 0
+        ORDER BY category, display_name
+    )";
+    
+    const std::string FIND_BY_CATEGORY = R"(
+        SELECT 
+            id, protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        FROM protocols 
+        WHERE category = ? AND is_enabled = 1
+        ORDER BY display_name
+    )";
+    
+    const std::string INSERT = R"(
+        INSERT INTO protocols (
+            protocol_type, display_name, description,
+            default_port, uses_serial, requires_broker,
+            supported_operations, supported_data_types, connection_params,
+            default_polling_interval, default_timeout, max_concurrent_connections,
+            is_enabled, is_deprecated, min_firmware_version,
+            category, vendor, standard_reference,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+    
+    const std::string UPDATE = R"(
+        UPDATE protocols SET 
+            protocol_type = ?, display_name = ?, description = ?,
+            default_port = ?, uses_serial = ?, requires_broker = ?,
+            supported_operations = ?, supported_data_types = ?, connection_params = ?,
+            default_polling_interval = ?, default_timeout = ?, max_concurrent_connections = ?,
+            is_enabled = ?, is_deprecated = ?, min_firmware_version = ?,
+            category = ?, vendor = ?, standard_reference = ?,
+            updated_at = ?
+        WHERE id = ?
+    )";
+    
+    const std::string DELETE_BY_ID = "DELETE FROM protocols WHERE id = ?";
+    
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM protocols WHERE id = ?";
+    
+    const std::string EXISTS_BY_TYPE = "SELECT COUNT(*) as count FROM protocols WHERE protocol_type = ?";
+    
+    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM protocols";
+    
+    const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM protocols WHERE is_enabled = 1";
+    
+    const std::string GET_CATEGORIES = R"(
+        SELECT DISTINCT category 
+        FROM protocols 
+        WHERE category IS NOT NULL AND is_enabled = 1
+        ORDER BY category
+    )";
+    
+    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+    
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS protocols (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            
+            -- 기본 정보
+            protocol_type VARCHAR(50) NOT NULL UNIQUE,      -- MODBUS_TCP, MODBUS_RTU, MQTT, etc.
+            display_name VARCHAR(100) NOT NULL,             -- "Modbus TCP", "MQTT", etc.
+            description TEXT,                               -- 상세 설명
+            
+            -- 네트워크 정보
+            default_port INTEGER,                           -- 기본 포트 (502, 1883, etc.)
+            uses_serial INTEGER DEFAULT 0,                 -- 시리얼 통신 사용 여부
+            requires_broker INTEGER DEFAULT 0,             -- 브로커 필요 여부 (MQTT 등)
+            
+            -- 기능 지원 정보 (JSON)
+            supported_operations TEXT,                      -- ["read", "write", "subscribe", etc.]
+            supported_data_types TEXT,                      -- ["boolean", "int16", "float32", etc.]
+            connection_params TEXT,                         -- 연결에 필요한 파라미터 스키마
+            
+            -- 설정 정보
+            default_polling_interval INTEGER DEFAULT 1000, -- 기본 폴링 간격 (ms)
+            default_timeout INTEGER DEFAULT 5000,          -- 기본 타임아웃 (ms)
+            max_concurrent_connections INTEGER DEFAULT 1,   -- 최대 동시 연결 수
+            
+            -- 상태 정보
+            is_enabled INTEGER DEFAULT 1,                  -- 프로토콜 활성화 여부
+            is_deprecated INTEGER DEFAULT 0,               -- 사용 중단 예정
+            min_firmware_version VARCHAR(20),              -- 최소 펌웨어 버전
+            
+            -- 분류 정보
+            category VARCHAR(50),                           -- industrial, iot, building_automation, etc.
+            vendor VARCHAR(100),                            -- 제조사/개발사
+            standard_reference VARCHAR(100),               -- 표준 문서 참조
+            
+            -- 메타데이터
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            -- 제약조건
+            CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
+        )
+    )";
+    
+} // namespace Protocol
 
 // =============================================================================
 // 🎯 동적 쿼리 빌더 헬퍼들
@@ -1113,6 +1363,21 @@ namespace QueryBuilder {
         } else {
             return " LIMIT " + std::to_string(limit);
         }
+    }
+    
+    /**
+     * @brief IN 절용 플레이스홀더 생성
+     * @param count 항목 개수
+     * @return IN 절 플레이스홀더 문자열 (?,?,?)
+     */
+    inline std::string buildInPlaceholders(int count) {
+        if (count <= 0) return "";
+        
+        std::string placeholders = "?";
+        for (int i = 1; i < count; ++i) {
+            placeholders += ",?";
+        }
+        return placeholders;
     }
     
 } // namespace QueryBuilder
