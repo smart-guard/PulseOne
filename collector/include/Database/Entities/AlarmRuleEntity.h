@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Database/Entities/AlarmRuleEntity.h
-// PulseOne AlarmRuleEntity - AlarmTypes.h 통합 적용 완료
+// PulseOne AlarmRuleEntity - 스키마 완전 동기화 버전
 // =============================================================================
 
 #ifndef ALARM_RULE_ENTITY_H
@@ -8,18 +8,21 @@
 
 /**
  * @file AlarmRuleEntity.h
- * @brief PulseOne AlarmRuleEntity - AlarmTypes.h 공통 타입 시스템 완전 적용
+ * @brief PulseOne AlarmRuleEntity - DB 스키마와 완전 동기화
  * @author PulseOne Development Team
- * @date 2025-08-11
+ * @date 2025-08-26
  * 
- * 🎯 AlarmTypes.h 통합 완료:
- * - 자체 enum 제거, AlarmTypes.h 타입 사용
- * - 일관된 네임스페이스 구조
- * - 공통 헬퍼 함수 활용
+ * 스키마 동기화 완료:
+ * - category VARCHAR(50) 추가
+ * - tags TEXT (JSON) 추가
+ * - escalation_enabled INTEGER 추가
+ * - escalation_max_level INTEGER 추가
+ * - escalation_rules TEXT (JSON) 추가
+ * - 템플릿 관련 필드들 추가
  */
 
 #include "Database/Entities/BaseEntity.h"
-#include "Alarm/AlarmTypes.h"  // 🔥 AlarmTypes.h 포함!
+#include "Alarm/AlarmTypes.h"
 #include <string>
 #include <vector>
 #include <optional>
@@ -38,12 +41,12 @@ struct json {
     std::string dump() const { return "{}"; }
     static json parse(const std::string&) { return json{}; }
     static json object() { return json{}; }
+    static json array() { return json{}; }
 };
 #endif
 
 namespace PulseOne {
 
-// Forward declarations (순환 참조 방지)
 namespace Database {
 namespace Repositories {
     class AlarmRuleRepository;
@@ -54,39 +57,28 @@ namespace Database {
 namespace Entities {
 
 /**
- * @brief 알람 규칙 엔티티 클래스 - AlarmTypes.h 타입 시스템 사용
+ * @brief 알람 규칙 엔티티 클래스 - DB 스키마 완전 동기화
  */
 class AlarmRuleEntity : public BaseEntity<AlarmRuleEntity> {
 public:
-    // =======================================================================
-    // 🔥 AlarmTypes.h 타입 별칭 (자체 enum 제거!)
-    // =======================================================================
+    // AlarmTypes.h 타입 별칭
     using AlarmType = PulseOne::Alarm::AlarmType;
     using AlarmSeverity = PulseOne::Alarm::AlarmSeverity;
     using TargetType = PulseOne::Alarm::TargetType;
     using DigitalTrigger = PulseOne::Alarm::DigitalTrigger;
 
-    // =======================================================================
-    // 생성자 및 소멸자 (선언만 - CPP에서 구현)
-    // =======================================================================
-    
+    // 생성자 및 소멸자
     AlarmRuleEntity();
     explicit AlarmRuleEntity(int alarm_id);
     virtual ~AlarmRuleEntity() = default;
 
-    // =======================================================================
-    // BaseEntity 순수 가상 함수 구현 (CPP에서 구현)
-    // =======================================================================
-    
+    // BaseEntity 순수 가상 함수 구현
     bool loadFromDatabase() override;
     bool saveToDatabase() override;
     bool deleteFromDatabase() override;
     bool updateToDatabase() override;
 
-    // =======================================================================
-    // JSON 직렬화/역직렬화 - AlarmTypes.h 함수 사용
-    // =======================================================================
-    
+    // JSON 직렬화/역직렬화
     json toJson() const override {
         json j;
         
@@ -97,14 +89,14 @@ public:
             j["name"] = name_;
             j["description"] = description_;
             
-            // 대상 정보 - 🔥 AlarmTypes.h 함수 사용
+            // 대상 정보
             j["target_type"] = PulseOne::Alarm::targetTypeToString(target_type_);
             if (target_id_.has_value()) {
                 j["target_id"] = target_id_.value();
             }
             j["target_group"] = target_group_;
             
-            // 알람 타입 - 🔥 AlarmTypes.h 함수 사용
+            // 알람 타입
             j["alarm_type"] = PulseOne::Alarm::alarmTypeToString(alarm_type_);
             
             // 아날로그 설정
@@ -115,7 +107,7 @@ public:
             j["deadband"] = deadband_;
             j["rate_of_change"] = rate_of_change_;
             
-            // 디지털 설정 - 🔥 AlarmTypes.h 함수 사용
+            // 디지털 설정
             j["trigger_condition"] = PulseOne::Alarm::digitalTriggerToString(trigger_condition_);
             
             // 스크립트 설정
@@ -132,7 +124,7 @@ public:
             }
             j["message_template"] = message_template_;
             
-            // 우선순위 - 🔥 AlarmTypes.h 함수 사용
+            // 우선순위
             j["severity"] = PulseOne::Alarm::severityToString(severity_);
             j["priority"] = priority_;
             
@@ -175,6 +167,35 @@ public:
             j["is_enabled"] = is_enabled_;
             j["is_latched"] = is_latched_;
             
+            // 템플릿 관련 필드들 추가
+            if (template_id_.has_value()) j["template_id"] = template_id_.value();
+            j["rule_group"] = rule_group_;
+            j["created_by_template"] = created_by_template_;
+            if (last_template_update_.has_value()) {
+                j["last_template_update"] = timestampToString(last_template_update_.value());
+            }
+            
+            // 에스컬레이션 설정 추가
+            j["escalation_enabled"] = escalation_enabled_;
+            j["escalation_max_level"] = escalation_max_level_;
+            if (!escalation_rules_.empty()) {
+                try {
+                    j["escalation_rules"] = json::parse(escalation_rules_);
+                } catch (...) {
+                    j["escalation_rules"] = json::object();
+                }
+            }
+            
+            // 분류 및 태깅 시스템 추가
+            j["category"] = category_;
+            if (!tags_.empty()) {
+                try {
+                    j["tags"] = json::parse(tags_);
+                } catch (...) {
+                    j["tags"] = json::array();
+                }
+            }
+            
             // 타임스탬프
             j["created_at"] = timestampToString(created_at_);
             j["updated_at"] = timestampToString(updated_at_);
@@ -195,7 +216,7 @@ public:
             if (j.contains("name")) name_ = j["name"].get<std::string>();
             if (j.contains("description")) description_ = j["description"].get<std::string>();
             
-            // 대상 정보 - 🔥 AlarmTypes.h 함수 사용
+            // 대상 정보
             if (j.contains("target_type")) {
                 target_type_ = PulseOne::Alarm::stringToTargetType(j["target_type"].get<std::string>());
             }
@@ -204,7 +225,7 @@ public:
             }
             if (j.contains("target_group")) target_group_ = j["target_group"].get<std::string>();
             
-            // 알람 타입 - 🔥 AlarmTypes.h 함수 사용
+            // 알람 타입
             if (j.contains("alarm_type")) {
                 alarm_type_ = PulseOne::Alarm::stringToAlarmType(j["alarm_type"].get<std::string>());
             }
@@ -225,7 +246,7 @@ public:
             if (j.contains("deadband")) deadband_ = j["deadband"].get<double>();
             if (j.contains("rate_of_change")) rate_of_change_ = j["rate_of_change"].get<double>();
             
-            // 디지털 설정 - 🔥 AlarmTypes.h 함수 사용
+            // 디지털 설정
             if (j.contains("trigger_condition")) {
                 trigger_condition_ = PulseOne::Alarm::stringToDigitalTrigger(j["trigger_condition"].get<std::string>());
             }
@@ -238,7 +259,7 @@ public:
             if (j.contains("message_config")) message_config_ = j["message_config"].dump();
             if (j.contains("message_template")) message_template_ = j["message_template"].get<std::string>();
             
-            // 우선순위 - 🔥 AlarmTypes.h 함수 사용
+            // 우선순위
             if (j.contains("severity")) {
                 severity_ = PulseOne::Alarm::stringToSeverity(j["severity"].get<std::string>());
             }
@@ -263,6 +284,22 @@ public:
             if (j.contains("is_enabled")) is_enabled_ = j["is_enabled"].get<bool>();
             if (j.contains("is_latched")) is_latched_ = j["is_latched"].get<bool>();
             
+            // 템플릿 관련 필드들
+            if (j.contains("template_id") && !j["template_id"].is_null()) {
+                template_id_ = j["template_id"].get<int>();
+            }
+            if (j.contains("rule_group")) rule_group_ = j["rule_group"].get<std::string>();
+            if (j.contains("created_by_template")) created_by_template_ = j["created_by_template"].get<bool>();
+            
+            // 에스컬레이션 설정
+            if (j.contains("escalation_enabled")) escalation_enabled_ = j["escalation_enabled"].get<bool>();
+            if (j.contains("escalation_max_level")) escalation_max_level_ = j["escalation_max_level"].get<int>();
+            if (j.contains("escalation_rules")) escalation_rules_ = j["escalation_rules"].dump();
+            
+            // 분류 및 태깅 시스템
+            if (j.contains("category")) category_ = j["category"].get<std::string>();
+            if (j.contains("tags")) tags_ = j["tags"].dump();
+            
             // 타임스탬프
             if (j.contains("created_by")) created_by_ = j["created_by"].get<int>();
             
@@ -280,8 +317,9 @@ public:
         oss << "id=" << getId();
         oss << ", tenant_id=" << tenant_id_;
         oss << ", name=" << name_;
-        oss << ", alarm_type=" << PulseOne::Alarm::alarmTypeToString(alarm_type_);  // 🔥 AlarmTypes.h 함수 사용
-        oss << ", severity=" << PulseOne::Alarm::severityToString(severity_);       // 🔥 AlarmTypes.h 함수 사용
+        oss << ", alarm_type=" << PulseOne::Alarm::alarmTypeToString(alarm_type_);
+        oss << ", severity=" << PulseOne::Alarm::severityToString(severity_);
+        oss << ", category=" << category_;
         oss << ", enabled=" << (is_enabled_ ? "true" : "false");
         oss << "]";
         return oss.str();
@@ -292,7 +330,7 @@ public:
     }
 
     // =======================================================================
-    // 기본 속성 접근자 (인라인)
+    // 기존 접근자들 (유지)
     // =======================================================================
     
     // 기본 정보
@@ -513,6 +551,72 @@ public:
         markModified();
     }
 
+    // =======================================================================
+    // 새로 추가된 필드들의 접근자
+    // =======================================================================
+    
+    // 템플릿 관련
+    std::optional<int> getTemplateId() const { return template_id_; }
+    void setTemplateId(const std::optional<int>& template_id) { 
+        template_id_ = template_id; 
+        markModified();
+    }
+    void setTemplateId(int template_id) { 
+        template_id_ = template_id; 
+        markModified();
+    }
+    
+    const std::string& getRuleGroup() const { return rule_group_; }
+    void setRuleGroup(const std::string& rule_group) { 
+        rule_group_ = rule_group; 
+        markModified();
+    }
+    
+    bool isCreatedByTemplate() const { return created_by_template_; }
+    void setCreatedByTemplate(bool created_by_template) { 
+        created_by_template_ = created_by_template; 
+        markModified();
+    }
+    
+    std::optional<std::chrono::system_clock::time_point> getLastTemplateUpdate() const { 
+        return last_template_update_; 
+    }
+    void setLastTemplateUpdate(const std::optional<std::chrono::system_clock::time_point>& update_time) { 
+        last_template_update_ = update_time; 
+        markModified();
+    }
+    
+    // 에스컬레이션 설정
+    bool isEscalationEnabled() const { return escalation_enabled_; }
+    void setEscalationEnabled(bool enabled) { 
+        escalation_enabled_ = enabled; 
+        markModified();
+    }
+    
+    int getEscalationMaxLevel() const { return escalation_max_level_; }
+    void setEscalationMaxLevel(int max_level) { 
+        escalation_max_level_ = max_level; 
+        markModified();
+    }
+    
+    const std::string& getEscalationRules() const { return escalation_rules_; }
+    void setEscalationRules(const std::string& rules) { 
+        escalation_rules_ = rules; 
+        markModified();
+    }
+    
+    // 분류 및 태깅 시스템
+    const std::string& getCategory() const { return category_; }
+    void setCategory(const std::string& category) { 
+        category_ = category; 
+        markModified();
+    }
+    
+    const std::string& getTags() const { return tags_; }
+    void setTags(const std::string& tags) { 
+        tags_ = tags; 
+        markModified();
+    }
     
     // 타임스탬프
     const std::chrono::system_clock::time_point& getCreatedAt() const { return created_at_; }
@@ -532,10 +636,18 @@ public:
     bool isInAlarmState(double value) const;
     bool checkSuppressionRules(const std::string& context_json) const;
     int getSeverityLevel() const;
+    
+    // 새로 추가된 비즈니스 로직 메서드들
+    bool hasEscalationRules() const;
+    std::vector<std::string> getTagsList() const;
+    void addTag(const std::string& tag);
+    void removeTag(const std::string& tag);
+    bool hasTag(const std::string& tag) const;
+    std::string getCategoryDisplayName() const;
 
 private:
     // =======================================================================
-    // 멤버 변수들 - AlarmTypes.h 타입 사용
+    // 기존 멤버 변수들 (유지)
     // =======================================================================
     
     // 기본 정보
@@ -544,12 +656,12 @@ private:
     std::string description_;
     
     // 대상 정보
-    TargetType target_type_ = TargetType::DATA_POINT;  // 🔥 AlarmTypes.h 타입
+    TargetType target_type_ = TargetType::DATA_POINT;
     std::optional<int> target_id_;
     std::string target_group_;
     
     // 알람 타입
-    AlarmType alarm_type_ = AlarmType::ANALOG;         // 🔥 AlarmTypes.h 타입
+    AlarmType alarm_type_ = AlarmType::ANALOG;
     
     // 아날로그 설정
     std::optional<double> high_high_limit_;
@@ -560,7 +672,7 @@ private:
     double rate_of_change_ = 0.0;
     
     // 디지털 설정
-    DigitalTrigger trigger_condition_ = DigitalTrigger::ON_CHANGE;  // 🔥 AlarmTypes.h 타입
+    DigitalTrigger trigger_condition_ = DigitalTrigger::ON_CHANGE;
     
     // 스크립트 설정
     std::string condition_script_;
@@ -571,7 +683,7 @@ private:
     std::string message_template_;
     
     // 우선순위
-    AlarmSeverity severity_ = AlarmSeverity::MEDIUM;   // 🔥 AlarmTypes.h 타입
+    AlarmSeverity severity_ = AlarmSeverity::MEDIUM;
     int priority_ = 100;
     
     // 자동 처리
@@ -599,26 +711,31 @@ private:
     int created_by_ = 0;
 
     // =======================================================================
-    // 내부 헬퍼 메서드들 (CPP에서 구현)
+    // 새로 추가된 멤버 변수들
     // =======================================================================
     
-    /**
-     * @brief 내부 헬퍼 메서드: 타임스탬프를 문자열로 변환 (CPP에서 구현)
-     * @param tp 타임스탬프
-     * @return 문자열 형태의 타임스탬프
-     */
-    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
+    // 템플릿 관련 필드들
+    std::optional<int> template_id_;                                    // template_id INTEGER
+    std::string rule_group_;                                           // rule_group VARCHAR(36)
+    bool created_by_template_ = false;                                 // created_by_template INTEGER DEFAULT 0
+    std::optional<std::chrono::system_clock::time_point> last_template_update_; // last_template_update DATETIME
     
-    /**
-     * @brief 내부 헬퍼 메서드: 메시지 템플릿 보간 (CPP에서 구현)
-     * @param tmpl 템플릿 문자열
-     * @param value 값
-     * @param unit 단위
-     * @return 보간된 문자열
-     */
+    // 에스컬레이션 설정
+    bool escalation_enabled_ = false;                                  // escalation_enabled INTEGER DEFAULT 0
+    int escalation_max_level_ = 3;                                    // escalation_max_level INTEGER DEFAULT 3
+    std::string escalation_rules_ = "{}";                             // escalation_rules TEXT (JSON)
+    
+    // 분류 및 태깅 시스템
+    std::string category_;                                             // category VARCHAR(50) DEFAULT NULL
+    std::string tags_ = "[]";                                         // tags TEXT (JSON 배열)
+
+    // =======================================================================
+    // 내부 헬퍼 메서드들
+    // =======================================================================
+    
+    std::string timestampToString(const std::chrono::system_clock::time_point& tp) const;
     std::string interpolateTemplate(const std::string& tmpl, double value, const std::string& unit) const;
 
-    // Forward declarations (순환 참조 방지)
     friend class PulseOne::Database::Repositories::AlarmRuleRepository;
 };
 
