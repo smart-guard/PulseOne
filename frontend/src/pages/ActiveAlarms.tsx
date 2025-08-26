@@ -1,9 +1,9 @@
 // ============================================================================
 // frontend/src/pages/ActiveAlarms.tsx
-// AlarmWebSocketService + 첨부파일 디자인 적용 완전한 버전
+// 커스텀 알람 팝업 시스템 적용 - 최종 완성 버전
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AlarmApiService } from '../api/services/alarmApi';
 import { 
   alarmWebSocketService, 
@@ -14,6 +14,8 @@ import {
 } from '../services/AlarmWebSocketService';
 import { Pagination } from '../components/common/Pagination';
 import { usePagination } from '../hooks/usePagination';
+import { AlarmNotificationManager, showAlarmNotification } from '../components/AlarmPopup/AlarmNotificationManager';
+import { useAlarmContext } from '../contexts/AlarmContext';
 
 // CSS 파일들 import
 import '../styles/base.css';
@@ -68,14 +70,17 @@ interface AlarmStats {
 }
 
 const ActiveAlarms: React.FC = () => {
-  // 페이징 상태
+  // Context에서 알람 개수 관리 함수 가져오기
+  const { updateAlarmCount, decrementAlarmCount } = useAlarmContext();
+  
+  // 기존 pagination, state 관리는 동일
   const pagination = usePagination({
     initialPage: 1,
     initialPageSize: 25,
     totalCount: 0
   });
 
-  // 기본 상태
+  // 상태 관리
   const [alarms, setAlarms] = useState<ActiveAlarm[]>([]);
   const [alarmStats, setAlarmStats] = useState<AlarmStats>({
     total_active: 0,
@@ -94,18 +99,20 @@ const ActiveAlarms: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // 필터 상태 
+  // 필터링 상태
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [stateFilter, setStateFilter] = useState<string>('active');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // WebSocket 상태
+  // WebSocket 및 알림 상태
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
-    status: 'connected',
+    status: 'connecting',
     timestamp: new Date().toISOString()
   });
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [realTimeEnabled, setRealTimeEnabled] = useState(true);
+  const [popupNotificationsEnabled, setPopupNotificationsEnabled] = useState(true);
+  
   const [newAlarmsCount, setNewAlarmsCount] = useState(0);
   const [pendingNewAlarms, setPendingNewAlarms] = useState<ActiveAlarm[]>([]);
   
@@ -113,6 +120,153 @@ const ActiveAlarms: React.FC = () => {
   const [showAckModal, setShowAckModal] = useState(false);
   const [ackComment, setAckComment] = useState('');
   const [selectedAlarmForAck, setSelectedAlarmForAck] = useState<ActiveAlarm | null>(null);
+
+  // Refs
+  const isInitializedRef = useRef(false);
+  const isWebSocketConnectedRef = useRef(false);
+
+  // =============================================================================
+  // 유틸리티 함수들
+  // =============================================================================
+
+  const mapSeverity = (severity: string): 'low' | 'medium' | 'high' | 'critical' => {
+    const severityMap: { [key: string]: 'low' | 'medium' | 'high' | 'critical' } = {
+      'info': 'low',
+      'low': 'low',
+      'medium': 'medium',
+      'high': 'high',
+      'critical': 'critical'
+    };
+    return severityMap[severity?.toLowerCase()] || 'low';
+  };
+
+  const getSeverityLevel = (severity: string): number => {
+    const levelMap: { [key: string]: number } = {
+      'low': 1,
+      'medium': 2,
+      'high': 3,
+      'critical': 4
+    };
+    return levelMap[severity?.toLowerCase()] || 1;
+  };
+
+  const getSeverityIcon = (severity: string) => {
+    switch (severity.toLowerCase()) {
+      case 'critical': return 'fas fa-exclamation-triangle';
+      case 'high': return 'fas fa-exclamation-circle';
+      case 'medium': return 'fas fa-exclamation';
+      case 'low': return 'fas fa-info-circle';
+      default: return 'fas fa-question-circle';
+    }
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString('ko-KR');
+  };
+
+  const formatDuration = (triggeredAt: string) => {
+    const now = new Date();
+    const triggered = new Date(triggeredAt);
+    const diffMs = now.getTime() - triggered.getTime();
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    return hours > 0 ? `${hours}시간 ${minutes}분` : `${minutes}분`;
+  };
+
+  const playAlarmSound = (severityLevel: number) => {
+    if (!soundEnabled) return;
+    
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      const frequency = severityLevel >= 3 ? 800 : 400;
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.warn('사운드 재생 실패:', error);
+    }
+  };
+
+  // 커스텀 팝업 알림 표시 함수
+  const showCustomNotification = useCallback((alarmData: ActiveAlarm) => {
+    if (!popupNotificationsEnabled) {
+      console.log('팝업 알림이 비활성화됨');
+      return;
+    }
+
+    console.log('커스텀 팝업 알림 표시:', alarmData);
+    showAlarmNotification({
+      severity: alarmData.severity,
+      message: alarmData.message,
+      device_name: alarmData.device_name,
+      triggered_value: alarmData.triggered_value,
+      rule_name: alarmData.rule_name
+    });
+  }, [popupNotificationsEnabled]);
+
+  // =============================================================================
+  // 필터링 및 유틸리티 콜백들
+  // =============================================================================
+
+  const checkAlarmMatchesFilters = useCallback((alarm: ActiveAlarm): boolean => {
+    if (severityFilter !== 'all' && alarm.severity !== severityFilter) {
+      return false;
+    }
+    
+    if (stateFilter !== 'all' && alarm.state !== stateFilter) {
+      return false;
+    }
+    
+    if (searchTerm && !alarm.message.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
+    }
+    
+    return true;
+  }, [severityFilter, stateFilter, searchTerm]);
+
+  const updateAlarmStats = useCallback((alarmList?: ActiveAlarm[]) => {
+    const currentAlarms = alarmList || alarms;
+    const activeAlarms = currentAlarms.filter(a => a.state === 'active');
+    
+    const stats: AlarmStats = {
+      total_active: activeAlarms.length,
+      critical_count: activeAlarms.filter(a => a.severity === 'critical').length,
+      high_count: activeAlarms.filter(a => a.severity === 'high').length,
+      medium_count: activeAlarms.filter(a => a.severity === 'medium').length,
+      low_count: activeAlarms.filter(a => a.severity === 'low').length,
+      unacknowledged_count: activeAlarms.filter(a => !a.acknowledged_at).length,
+      acknowledged_count: currentAlarms.filter(a => a.state === 'acknowledged').length,
+      by_device: [],
+      by_severity: []
+    };
+    
+    setAlarmStats(stats);
+    
+    // Context의 알람 개수도 업데이트
+    updateAlarmCount(stats.total_active);
+  }, [alarms, updateAlarmCount]);
+
+  const goToFirstPageWithNewAlarms = useCallback(() => {
+    if (pagination.currentPage !== 1) {
+      pagination.goToPage(1);
+    }
+    
+    setPendingNewAlarms([]);
+    setNewAlarmsCount(0);
+  }, [pagination]);
 
   // =============================================================================
   // API 호출 함수들
@@ -173,7 +327,7 @@ const ActiveAlarms: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.currentPage, pagination.pageSize, severityFilter, stateFilter, searchTerm]);
+  }, [pagination.currentPage, pagination.pageSize, severityFilter, stateFilter, searchTerm, pagination, updateAlarmStats]);
 
   const handleAcknowledgeAlarm = useCallback(async (alarmId: number, comment: string = ''): Promise<void> => {
     try {
@@ -210,7 +364,7 @@ const ActiveAlarms: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, []);
+  }, [updateAlarmStats]);
 
   const handleClearAlarm = useCallback(async (alarmId: number): Promise<void> => {
     try {
@@ -225,6 +379,10 @@ const ActiveAlarms: React.FC = () => {
       }
 
       setAlarms(prev => prev.filter(alarm => alarm.id !== alarmId));
+      
+      // Context의 알람 개수 감소
+      decrementAlarmCount();
+      
       updateAlarmStats();
 
     } catch (err) {
@@ -232,7 +390,65 @@ const ActiveAlarms: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
+  }, [updateAlarmStats, decrementAlarmCount]);
+
+  // =============================================================================
+  // WebSocket 관련 함수들
+  // =============================================================================
+
+  const initializeWebSocket = useCallback(async () => {
+    if (isWebSocketConnectedRef.current || !realTimeEnabled) {
+      console.log('WebSocket 이미 연결되어 있거나 비활성화됨');
+      return;
+    }
+
+    try {
+      console.log('WebSocket 초기화 시작...');
+      
+      setConnectionStatus({
+        status: 'connecting',
+        timestamp: new Date().toISOString()
+      });
+
+      await alarmWebSocketService.connect();
+      isWebSocketConnectedRef.current = true;
+      
+      console.log('WebSocket 연결 성공');
+      
+    } catch (err) {
+      console.error('WebSocket 연결 실패:', err);
+      isWebSocketConnectedRef.current = false;
+      setError(`실시간 연결에 실패했습니다: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      setConnectionStatus({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        error: err instanceof Error ? err.message : '알 수 없는 오류'
+      });
+    }
+  }, [realTimeEnabled]);
+
+  const cleanupWebSocket = useCallback(() => {
+    if (isWebSocketConnectedRef.current) {
+      console.log('WebSocket 정리 중...');
+      alarmWebSocketService.disconnect();
+      isWebSocketConnectedRef.current = false;
+    }
   }, []);
+
+  const toggleRealTime = useCallback(() => {
+    setRealTimeEnabled(prev => {
+      const newValue = !prev;
+      console.log('실시간 모드 토글:', newValue);
+      
+      if (newValue && !isWebSocketConnectedRef.current) {
+        initializeWebSocket();
+      } else if (!newValue && isWebSocketConnectedRef.current) {
+        cleanupWebSocket();
+      }
+      
+      return newValue;
+    });
+  }, [initializeWebSocket, cleanupWebSocket]);
 
   // =============================================================================
   // WebSocket 이벤트 처리
@@ -261,6 +477,7 @@ const ActiveAlarms: React.FC = () => {
       is_new: true
     };
 
+    // 알람 목록 업데이트
     if (pagination.currentPage !== 1) {
       setPendingNewAlarms(prev => [newAlarm, ...prev.slice(0, 9)]);
       setNewAlarmsCount(prev => prev + 1);
@@ -287,21 +504,22 @@ const ActiveAlarms: React.FC = () => {
 
     setLastUpdate(new Date());
 
+    // 사운드 재생
     if (soundEnabled && event.data.severity_level >= 2) {
       playAlarmSound(event.data.severity_level);
     }
 
-    if (Notification.permission === 'granted') {
-      showBrowserNotification(newAlarm);
-    }
+    // 커스텀 팝업 알림 표시
+    showCustomNotification(newAlarm);
 
+    // NEW 태그 자동 제거
     setTimeout(() => {
       setAlarms(prev => prev.map(alarm => 
         alarm.id === newAlarm.id ? { ...alarm, is_new: false } : alarm
       ));
     }, 5000);
 
-  }, [pagination.currentPage, pagination.pageSize, pagination.totalCount, soundEnabled, severityFilter, stateFilter, searchTerm]);
+  }, [pagination.currentPage, pagination.pageSize, pagination.totalCount, pagination, soundEnabled, checkAlarmMatchesFilters, showCustomNotification]);
 
   const handleAcknowledgment = useCallback((ack: AlarmAcknowledgment) => {
     console.log('알람 확인 알림 수신:', ack);
@@ -329,185 +547,56 @@ const ActiveAlarms: React.FC = () => {
   }, []);
 
   // =============================================================================
-  // 유틸리티 함수들
-  // =============================================================================
-
-  const mapSeverity = (severity: string): 'low' | 'medium' | 'high' | 'critical' => {
-    const severityMap: { [key: string]: 'low' | 'medium' | 'high' | 'critical' } = {
-      'info': 'low',
-      'low': 'low',
-      'medium': 'medium',
-      'high': 'high',
-      'critical': 'critical'
-    };
-    return severityMap[severity?.toLowerCase()] || 'low';
-  };
-
-  const getSeverityLevel = (severity: string): number => {
-    const levelMap: { [key: string]: number } = {
-      'low': 1,
-      'medium': 2,
-      'high': 3,
-      'critical': 4
-    };
-    return levelMap[severity?.toLowerCase()] || 1;
-  };
-
-  const checkAlarmMatchesFilters = useCallback((alarm: ActiveAlarm): boolean => {
-    if (severityFilter !== 'all' && alarm.severity !== severityFilter) {
-      return false;
-    }
-    
-    if (stateFilter !== 'all' && alarm.state !== stateFilter) {
-      return false;
-    }
-    
-    if (searchTerm && !alarm.message.toLowerCase().includes(searchTerm.toLowerCase())) {
-      return false;
-    }
-    
-    return true;
-  }, [severityFilter, stateFilter, searchTerm]);
-
-  const goToFirstPageWithNewAlarms = useCallback(() => {
-    if (pagination.currentPage !== 1) {
-      pagination.goToPage(1);
-    }
-    
-    setPendingNewAlarms([]);
-    setNewAlarmsCount(0);
-    fetchActiveAlarms();
-  }, [pagination, fetchActiveAlarms]);
-
-  const updateAlarmStats = useCallback((alarmList?: ActiveAlarm[]) => {
-    const currentAlarms = alarmList || alarms;
-    const activeAlarms = currentAlarms.filter(a => a.state === 'active');
-    
-    const stats: AlarmStats = {
-      total_active: activeAlarms.length,
-      critical_count: activeAlarms.filter(a => a.severity === 'critical').length,
-      high_count: activeAlarms.filter(a => a.severity === 'high').length,
-      medium_count: activeAlarms.filter(a => a.severity === 'medium').length,
-      low_count: activeAlarms.filter(a => a.severity === 'low').length,
-      unacknowledged_count: activeAlarms.filter(a => !a.acknowledged_at).length,
-      acknowledged_count: currentAlarms.filter(a => a.state === 'acknowledged').length,
-      by_device: [],
-      by_severity: []
-    };
-    
-    setAlarmStats(stats);
-  }, [alarms]);
-
-  const playAlarmSound = (severityLevel: number) => {
-    if (!soundEnabled) return;
-    
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      const frequency = severityLevel >= 3 ? 800 : 400;
-      oscillator.frequency.value = frequency;
-      oscillator.type = 'sine';
-      
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
-    } catch (error) {
-      console.warn('사운드 재생 실패:', error);
-    }
-  };
-
-  const showBrowserNotification = (alarmData: ActiveAlarm) => {
-    new Notification(`PulseOne 알람: ${alarmData.severity.toUpperCase()}`, {
-      body: alarmData.message,
-      icon: '/favicon.ico',
-      tag: `alarm-${alarmData.id}`,
-      requireInteraction: alarmData.priority >= 3
-    });
-  };
-
-  const getSeverityIcon = (severity: string) => {
-    switch (severity.toLowerCase()) {
-      case 'critical': return 'fas fa-exclamation-triangle';
-      case 'high': return 'fas fa-exclamation-circle';
-      case 'medium': return 'fas fa-exclamation';
-      case 'low': return 'fas fa-info-circle';
-      default: return 'fas fa-question-circle';
-    }
-  };
-
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('ko-KR');
-  };
-
-  const formatDuration = (triggeredAt: string) => {
-    const now = new Date();
-    const triggered = new Date(triggeredAt);
-    const diffMs = now.getTime() - triggered.getTime();
-    
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    return hours > 0 ? `${hours}시간 ${minutes}분` : `${minutes}분`;
-  };
-
-  const toggleRealTime = () => {
-    setRealTimeEnabled(!realTimeEnabled);
-    if (!realTimeEnabled) {
-      alarmWebSocketService.connect().catch(err => {
-        console.error('WebSocket 연결 실패:', err);
-        setError('실시간 연결에 실패했습니다');
-      });
-    } else {
-      alarmWebSocketService.disconnect();
-    }
-  };
-
-  // =============================================================================
-  // 라이프사이클
+  // useEffect들
   // =============================================================================
 
   useEffect(() => {
-    fetchActiveAlarms();
-
+    if (isInitializedRef.current) {
+      return;
+    }
+    
+    console.log('ActiveAlarms 컴포넌트 초기화 시작...');
+    
     const unsubscribeAlarm = alarmWebSocketService.onAlarmEvent(handleAlarmEvent);
     const unsubscribeAck = alarmWebSocketService.onAcknowledgment(handleAcknowledgment);
     const unsubscribeConnection = alarmWebSocketService.onConnectionChange(handleConnectionChange);
     const unsubscribeError = alarmWebSocketService.onError(handleWebSocketError);
 
     if (realTimeEnabled) {
-      alarmWebSocketService.connect().catch(err => {
-        console.error('WebSocket 연결 실패:', err);
-        setError('실시간 연결에 실패했습니다');
-      });
+      initializeWebSocket();
     }
 
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    fetchActiveAlarms();
+    
+    isInitializedRef.current = true;
+    console.log('ActiveAlarms 컴포넌트 초기화 완료');
 
     return () => {
+      console.log('ActiveAlarms 컴포넌트 언마운트');
       unsubscribeAlarm();
       unsubscribeAck();
       unsubscribeConnection();
       unsubscribeError();
-      if (realTimeEnabled) {
-        alarmWebSocketService.disconnect();
-      }
+      cleanupWebSocket();
+      isInitializedRef.current = false;
+      isWebSocketConnectedRef.current = false;
     };
   }, []);
 
   useEffect(() => {
-    if (!isLoading) {
-      fetchActiveAlarms();
+    if (!isInitializedRef.current) {
+      return;
     }
-  }, [pagination.currentPage, pagination.pageSize, severityFilter, stateFilter, searchTerm, fetchActiveAlarms]);
+    
+    console.log('필터/페이징 변경으로 인한 데이터 재로드');
+    fetchActiveAlarms();
+  }, [
+    pagination.currentPage, 
+    pagination.pageSize, 
+    severityFilter, 
+    stateFilter, 
+    searchTerm
+  ]);
 
   useEffect(() => {
     updateAlarmStats();
@@ -522,7 +611,10 @@ const ActiveAlarms: React.FC = () => {
     }
   }, [newAlarmsCount]);
 
-  // 로딩 상태 표시
+  // =============================================================================
+  // 렌더링
+  // =============================================================================
+
   if (isLoading) {
     return (
       <div style={{
@@ -558,6 +650,9 @@ const ActiveAlarms: React.FC = () => {
       minHeight: '100vh',
       fontFamily: '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif'
     }}>
+      {/* 알람 팝업 관리자 컴포넌트 */}
+      <AlarmNotificationManager />
+
       {/* 페이지 헤더 */}
       <div style={{
         display: 'flex',
@@ -616,6 +711,8 @@ const ActiveAlarms: React.FC = () => {
             </span>
           </div>
         </div>
+        
+        {/* 컨트롤 버튼들 */}
         <div style={{
           display: 'flex',
           gap: '8px',
@@ -625,63 +722,183 @@ const ActiveAlarms: React.FC = () => {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
+              gap: '6px',
+              padding: '8px 12px',
               borderRadius: '8px',
-              fontSize: '0.875rem',
+              fontSize: '0.75rem',
               fontWeight: 500,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               border: 'none',
               background: realTimeEnabled ? '#10b981' : '#f3f4f6',
-              color: realTimeEnabled ? 'white' : '#374151'
+              color: realTimeEnabled ? 'white' : '#374151',
+              whiteSpace: 'nowrap'
             }}
             onClick={toggleRealTime}
           >
             <i className={`fas fa-${realTimeEnabled ? 'wifi' : 'wifi-slash'}`}></i>
-            실시간 {realTimeEnabled ? '켜짐' : '꺼짐'}
+            <span style={{ whiteSpace: 'nowrap' }}>실시간 {realTimeEnabled ? '켜짐' : '꺼짐'}</span>
+          </button>
+
+          <button 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              border: 'none',
+              background: popupNotificationsEnabled ? '#8b5cf6' : '#f3f4f6',
+              color: popupNotificationsEnabled ? 'white' : '#374151',
+              whiteSpace: 'nowrap'
+            }}
+            onClick={() => setPopupNotificationsEnabled(!popupNotificationsEnabled)}
+          >
+            <i className={`fas fa-${popupNotificationsEnabled ? 'bell' : 'bell-slash'}`}></i>
+            <span style={{ whiteSpace: 'nowrap' }}>팝업 알림</span>
           </button>
           
           <button 
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
+              gap: '6px',
+              padding: '8px 12px',
               borderRadius: '8px',
-              fontSize: '0.875rem',
+              fontSize: '0.75rem',
               fontWeight: 500,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               border: 'none',
               background: soundEnabled ? '#3b82f6' : '#f3f4f6',
-              color: soundEnabled ? 'white' : '#374151'
+              color: soundEnabled ? 'white' : '#374151',
+              whiteSpace: 'nowrap'
             }}
             onClick={() => setSoundEnabled(!soundEnabled)}
           >
             <i className={`fas fa-volume-${soundEnabled ? 'up' : 'mute'}`}></i>
-            사운드
+            <span style={{ whiteSpace: 'nowrap' }}>사운드</span>
           </button>
           
           <button 
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
+              gap: '6px',
+              padding: '8px 12px',
               borderRadius: '8px',
-              fontSize: '0.875rem',
+              fontSize: '0.75rem',
               fontWeight: 500,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               border: 'none',
               background: '#f59e0b',
-              color: 'white'
+              color: 'white',
+              whiteSpace: 'nowrap'
             }}
-            onClick={() => alarmWebSocketService.sendTestAlarm()}
+            onClick={() => {
+              console.log('테스트 알람 버튼 클릭됨');
+              
+              // 강제로 새로운 알람 생성 및 표시
+              const testAlarm: ActiveAlarm = {
+                id: Date.now(), // 고유 ID 생성
+                rule_id: 999,
+                rule_name: '테스트 압력 센서 알람',
+                device_id: 1,
+                device_name: 'RTU Device 001',
+                data_point_id: 101,
+                data_point_name: 'Pressure Point 1',
+                severity: 'critical',
+                priority: 4,
+                message: 'RTU pressure sensor critical low: 75.2bar below low limit 80.0bar',
+                description: '압력 센서 임계값 초과로 인한 긴급 알람',
+                triggered_value: '75.2 bar',
+                threshold_value: '80.0 bar',
+                condition_type: 'low_limit',
+                triggered_at: new Date().toISOString(),
+                state: 'active',
+                quality: 'good',
+                is_new: true
+              };
+
+              // 1. 팝업 알림 표시
+              if (popupNotificationsEnabled) {
+                showAlarmNotification({
+                  severity: testAlarm.severity,
+                  message: testAlarm.message,
+                  device_name: testAlarm.device_name,
+                  triggered_value: testAlarm.triggered_value,
+                  rule_name: testAlarm.rule_name
+                });
+              }
+
+              // 2. 사운드 재생
+              if (soundEnabled) {
+                playAlarmSound(testAlarm.priority);
+              }
+
+              // 3. 알람 리스트에 추가 (첫 페이지에서만)
+              if (pagination.currentPage === 1) {
+                setAlarms(prev => {
+                  const newList = [testAlarm, ...prev];
+                  return newList.slice(0, pagination.pageSize);
+                });
+                pagination.updateTotalCount(pagination.totalCount + 1);
+              } else {
+                setNewAlarmsCount(prev => prev + 1);
+              }
+
+              // 4. 통계 업데이트
+              updateAlarmStats();
+              setLastUpdate(new Date());
+
+              // 5. NEW 태그 자동 제거
+              setTimeout(() => {
+                setAlarms(prev => prev.map(alarm => 
+                  alarm.id === testAlarm.id ? { ...alarm, is_new: false } : alarm
+                ));
+              }, 5000);
+
+              // 6. WebSocket을 통한 테스트 알람도 시도 (백그라운드에서)
+              try {
+                alarmWebSocketService.sendTestAlarm();
+              } catch (error) {
+                console.warn('WebSocket 테스트 알람 전송 실패:', error);
+              }
+            }}
           >
             <i className="fas fa-flask"></i>
-            테스트 알람
+            <span style={{ whiteSpace: 'nowrap' }}>테스트 알람</span>
+          </button>
+
+          <button 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              border: 'none',
+              background: '#ef4444',
+              color: 'white',
+              whiteSpace: 'nowrap'
+            }}
+            onClick={() => {
+              if (window.alarmNotificationManager) {
+                window.alarmNotificationManager.clearAllNotifications();
+              }
+            }}
+          >
+            <i className="fas fa-times-circle"></i>
+            <span style={{ whiteSpace: 'nowrap' }}>팝업 모두 닫기</span>
           </button>
         </div>
       </div>
@@ -777,6 +994,81 @@ const ActiveAlarms: React.FC = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* 필터 컨트롤 */}
+      <div style={{
+        background: 'white',
+        borderRadius: '12px',
+        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+        border: '1px solid #e5e7eb',
+        padding: '20px',
+        marginBottom: '24px',
+        display: 'flex',
+        gap: '16px',
+        alignItems: 'center',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            심각도:
+          </label>
+          <select
+            value={severityFilter}
+            onChange={(e) => setSeverityFilter(e.target.value)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid #d1d5db',
+              fontSize: '0.875rem'
+            }}
+          >
+            <option value="all">전체</option>
+            <option value="critical">심각</option>
+            <option value="high">높음</option>
+            <option value="medium">보통</option>
+            <option value="low">낮음</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            상태:
+          </label>
+          <select
+            value={stateFilter}
+            onChange={(e) => setStateFilter(e.target.value)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid #d1d5db',
+              fontSize: '0.875rem'
+            }}
+          >
+            <option value="all">전체</option>
+            <option value="active">활성</option>
+            <option value="acknowledged">확인됨</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '300px' }}>
+          <label style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            검색:
+          </label>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="알람 메시지 검색..."
+            style={{
+              flex: 1,
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid #d1d5db',
+              fontSize: '0.875rem'
+            }}
+          />
+        </div>
       </div>
 
       {/* 에러 표시 */}
@@ -1287,7 +1579,8 @@ const ActiveAlarms: React.FC = () => {
                   cursor: 'pointer',
                   border: '1px solid #d1d5db',
                   background: '#f3f4f6',
-                  color: '#374151'
+                  color: '#374151',
+                  transition: 'all 0.2s ease'
                 }}
               >
                 취소
@@ -1303,10 +1596,12 @@ const ActiveAlarms: React.FC = () => {
                   borderRadius: '8px',
                   fontSize: '0.875rem',
                   fontWeight: 500,
-                  cursor: 'pointer',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
                   border: 'none',
-                  background: '#f59e0b',
-                  color: 'white'
+                  background: isProcessing ? '#d97706' : '#f59e0b',
+                  color: 'white',
+                  transition: 'all 0.2s ease',
+                  opacity: isProcessing ? 0.7 : 1
                 }}
               >
                 {isProcessing ? (

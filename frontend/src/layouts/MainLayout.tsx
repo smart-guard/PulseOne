@@ -1,15 +1,17 @@
 // ============================================================================
 // frontend/src/layouts/MainLayout.tsx
-// 🔥 기존 2depth 메뉴 구조 100% 복원 - 섹션별 서브메뉴
+// 실시간 알람 개수 연동 버전
 // ============================================================================
 
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useAlarmContext } from '../contexts/AlarmContext';
 import '../styles/base.css';
 
 export const MainLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
+  const { activeAlarmCount, criticalAlarmCount } = useAlarmContext();
 
   // 현재 활성 메뉴 확인 함수
   const isActiveMenu = (path: string) => {
@@ -30,7 +32,7 @@ export const MainLayout: React.FC = () => {
 
   return (
     <div className="app-layout">
-      {/* 사이드바 - 기존 base.css 클래스 100% 활용 */}
+      {/* 사이드바 */}
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <div className="logo">
@@ -48,7 +50,7 @@ export const MainLayout: React.FC = () => {
         
         <nav className="sidebar-nav">
           <ul className="menu">
-            {/* 대시보드 - 1depth */}
+            {/* 대시보드 */}
             <li className="menu-item">
               <Link 
                 to="/dashboard" 
@@ -61,7 +63,7 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
 
-            {/* 디바이스 관리 - 2depth 구조 */}
+            {/* 디바이스 관리 */}
             <li className="menu-item">
               {!sidebarCollapsed && (
                 <div style={{
@@ -90,7 +92,7 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
 
-            {/* 데이터 관리 - 2depth 구조 */}
+            {/* 데이터 관리 */}
             <li className="menu-item">
               {!sidebarCollapsed && (
                 <div style={{
@@ -163,7 +165,7 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
 
-            {/* 알람 관리 - 2depth 구조 */}
+            {/* 알람 관리 */}
             <li className="menu-item">
               {!sidebarCollapsed && (
                 <div style={{
@@ -188,14 +190,23 @@ export const MainLayout: React.FC = () => {
                 <div className="menu-icon">
                   <i className="fas fa-exclamation-triangle"></i>
                 </div>
-                <span className="menu-title">활성 알람</span>
-                {!sidebarCollapsed && (
-                  <span className="status status-error" style={{ 
-                    marginLeft: 'auto',
-                    padding: '2px 6px',
-                    fontSize: '10px',
-                    borderRadius: '10px'
-                  }}>5</span>
+                <span className="menu-title">실시간 알람</span>
+                {!sidebarCollapsed && activeAlarmCount > 0 && (
+                  <span 
+                    className="status status-error" 
+                    style={{ 
+                      marginLeft: 'auto',
+                      padding: '2px 6px',
+                      fontSize: '10px',
+                      borderRadius: '10px',
+                      background: criticalAlarmCount > 0 ? '#ef4444' : '#f59e0b',
+                      color: 'white',
+                      minWidth: '18px',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {activeAlarmCount}
+                  </span>
                 )}
               </Link>
             </li>
@@ -233,7 +244,7 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
 
-            {/* 시스템 관리 - 2depth 구조 */}
+            {/* 시스템 관리 */}
             <li className="menu-item">
               {!sidebarCollapsed && (
                 <div style={{
@@ -298,7 +309,7 @@ export const MainLayout: React.FC = () => {
         </nav>
       </div>
 
-      {/* 메인 콘텐츠 - 기존 base.css 클래스 100% 활용 */}
+      {/* 메인 콘텐츠 */}
       <div className={`main-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         {/* 상단바 */}
         <div className="topbar">
@@ -325,18 +336,22 @@ export const MainLayout: React.FC = () => {
               padding: '8px'
             }}>
               <i className="fas fa-bell"></i>
-              <span style={{
-                position: 'absolute',
-                top: '-2px',
-                right: '-2px',
-                background: '#ef4444',
-                color: 'white',
-                borderRadius: '50%',
-                fontSize: '10px',
-                padding: '2px 4px',
-                minWidth: '16px',
-                textAlign: 'center'
-              }}>3</span>
+              {activeAlarmCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-2px',
+                  right: '-2px',
+                  background: criticalAlarmCount > 0 ? '#ef4444' : '#f59e0b',
+                  color: 'white',
+                  borderRadius: '50%',
+                  fontSize: '10px',
+                  padding: '2px 4px',
+                  minWidth: '16px',
+                  textAlign: 'center'
+                }}>
+                  {activeAlarmCount > 99 ? '99+' : activeAlarmCount}
+                </span>
+              )}
             </button>
             
             <button className="btn btn-outline btn-sm" title="설정">
