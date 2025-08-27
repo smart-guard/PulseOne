@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/src/Network/RestApiServer.cpp
-// REST API 서버 완전한 구현 - 컴파일 에러 수정 완료
+// REST API 서버 완전한 구현 - 기존 코드 유지 + 디바이스 그룹 기능 추가
 // =============================================================================
 
 #include "Network/RestApiServer.h"
@@ -8,6 +8,10 @@
 #include <thread>
 #include <chrono>
 #include <regex>
+
+// nlohmann::json 직접 사용
+#include <nlohmann/json.hpp>
+using nlohmann::json;
 
 #ifdef HAVE_HTTPLIB
 #include <httplib.h>
@@ -85,7 +89,7 @@ bool RestApiServer::IsRunning() const {
 }
 
 // =============================================================================
-// 라우트 설정
+// 라우트 설정 - 기존 라우트 유지 + 그룹 라우트 추가
 // =============================================================================
 
 void RestApiServer::SetupRoutes() {
@@ -106,11 +110,12 @@ void RestApiServer::SetupRoutes() {
     server_->Get("/", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_content(R"(
             <h1>PulseOne Collector REST API</h1>
-            <p>Version: 2.0.0</p>
+            <p>Version: 2.1.0</p>
             <ul>
                 <li><a href="/api/docs">API Documentation</a></li>
                 <li><a href="/api/health">Health Check</a></li>
                 <li><a href="/api/system/stats">System Statistics</a></li>
+                <li><a href="/api/groups">Device Groups</a></li>
             </ul>
         )", "text/html");
     });
@@ -120,17 +125,16 @@ void RestApiServer::SetupRoutes() {
         res.set_content(CreateSuccessResponse(health).dump(), "application/json");
     });
     
-    // 디바이스 목록 조회
+    // 디바이스 목록 및 상태
     server_->Get("/api/devices", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetDevices(req, res);
     });
     
-    // 특정 디바이스 상태 조회
     server_->Get(R"(/api/devices/([^/]+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetDeviceStatus(req, res);
     });
     
-    // 진단 기능 제어
+    // 개별 디바이스 제어 - 진단
     server_->Post(R"(/api/devices/([^/]+)/diagnostics)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDiagnostics(req, res);
     });
@@ -156,13 +160,73 @@ void RestApiServer::SetupRoutes() {
         HandlePostDeviceRestart(req, res);
     });
     
-    // 하드웨어 제어
+    // 일반 제어
     server_->Post(R"(/api/devices/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceControl(req, res);
     });
 
     server_->Post(R"(/api/devices/([^/]+)/points/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostPointControl(req, res);
+    });
+    
+    // 하드웨어 제어 - 기존 펌프/밸브 콜백 이름 유지
+    server_->Post(R"(/api/devices/([^/]+)/pump/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostPumpControl(req, res);
+    });
+    
+    server_->Post(R"(/api/devices/([^/]+)/valve/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostValveControl(req, res);
+    });
+    
+    server_->Post(R"(/api/devices/([^/]+)/setpoint/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostSetpointChange(req, res);
+    });
+
+    // 새로운 하드웨어 제어 - 범용
+    server_->Post(R"(/api/devices/([^/]+)/digital/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDigitalOutput(req, res);
+    });
+    
+    server_->Post(R"(/api/devices/([^/]+)/analog/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostAnalogOutput(req, res);
+    });
+    
+    server_->Post(R"(/api/devices/([^/]+)/parameters/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostParameterChange(req, res);
+    });
+    
+    // ==========================================================================
+    // 디바이스 그룹 제어 라우트 - 새로 추가
+    // ==========================================================================
+    
+    // 그룹 목록 및 상태
+    server_->Get("/api/groups", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetDeviceGroups(req, res);
+    });
+    
+    server_->Get(R"(/api/groups/([^/]+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetDeviceGroupStatus(req, res);
+    });
+    
+    // 그룹 제어
+    server_->Post(R"(/api/groups/([^/]+)/start)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceGroupStart(req, res);
+    });
+    
+    server_->Post(R"(/api/groups/([^/]+)/stop)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceGroupStop(req, res);
+    });
+    
+    server_->Post(R"(/api/groups/([^/]+)/pause)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceGroupPause(req, res);
+    });
+    
+    server_->Post(R"(/api/groups/([^/]+)/resume)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceGroupResume(req, res);
+    });
+    
+    server_->Post(R"(/api/groups/([^/]+)/restart)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceGroupRestart(req, res);
     });
     
     // 시스템 제어
@@ -178,12 +242,113 @@ void RestApiServer::SetupRoutes() {
         HandleGetSystemStats(req, res);
     });
     
-    std::cout << "REST API 라우트 설정 완료" << std::endl;
+    // 설정 관리 라우트들 (기존 유지)
+    server_->Get("/api/config/devices", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetDeviceConfig(req, res);
+    });
+    
+    server_->Post("/api/config/devices", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceConfig(req, res);
+    });
+    
+    server_->Put(R"(/api/config/devices/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePutDeviceConfig(req, res);
+    });
+    
+    server_->Delete(R"(/api/config/devices/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleDeleteDeviceConfig(req, res);
+    });
+    
+    server_->Get(R"(/api/config/devices/([^/]+)/datapoints)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetDataPoints(req, res);
+    });
+    
+    server_->Post(R"(/api/config/devices/([^/]+)/datapoints)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDataPoint(req, res);
+    });
+    
+    server_->Put(R"(/api/config/devices/([^/]+)/datapoints/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePutDataPoint(req, res);
+    });
+    
+    server_->Delete(R"(/api/config/devices/([^/]+)/datapoints/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleDeleteDataPoint(req, res);
+    });
+    
+    server_->Get("/api/config/alarms", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetAlarmRules(req, res);
+    });
+    
+    server_->Post("/api/config/alarms", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostAlarmRule(req, res);
+    });
+    
+    server_->Put(R"(/api/config/alarms/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePutAlarmRule(req, res);
+    });
+    
+    server_->Delete(R"(/api/config/alarms/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleDeleteAlarmRule(req, res);
+    });
+    
+    server_->Get("/api/config/virtualpoints", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetVirtualPoints(req, res);
+    });
+    
+    server_->Post("/api/config/virtualpoints", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostVirtualPoint(req, res);
+    });
+    
+    server_->Put(R"(/api/config/virtualpoints/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePutVirtualPoint(req, res);
+    });
+    
+    server_->Delete(R"(/api/config/virtualpoints/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleDeleteVirtualPoint(req, res);
+    });
+    
+    server_->Get("/api/admin/users", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetUsers(req, res);
+    });
+    
+    server_->Post("/api/admin/users", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostUser(req, res);
+    });
+    
+    server_->Put(R"(/api/admin/users/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePutUser(req, res);
+    });
+    
+    server_->Delete(R"(/api/admin/users/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleDeleteUser(req, res);
+    });
+    
+    server_->Post(R"(/api/admin/users/([^/]+)/permissions)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostUserPermissions(req, res);
+    });
+    
+    server_->Post("/api/admin/backup", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostSystemBackup(req, res);
+    });
+    
+    server_->Get("/api/admin/logs", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetSystemLogs(req, res);
+    });
+    
+    server_->Get("/api/admin/config", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetSystemConfig(req, res);
+    });
+    
+    server_->Put("/api/admin/config", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePutSystemConfig(req, res);
+    });
+    
+    std::cout << "REST API 라우트 설정 완료 (기존 기능 + 디바이스 그룹 제어)" << std::endl;
 #endif
 }
 
 // =============================================================================
-// API 핸들러들 - 수정된 버전
+// 기존 API 핸들러들 - 모두 유지
 // =============================================================================
 
 void RestApiServer::HandleGetDevices(const httplib::Request& req, httplib::Response& res) {
@@ -222,7 +387,6 @@ void RestApiServer::HandlePostDiagnostics(const httplib::Request& req, httplib::
     try {
         std::string device_id = ExtractDeviceId(req);
         
-        // JSON 파싱 (안전한 방법)
         bool enabled = false;
         try {
             json request_body = json::parse(req.body);
@@ -251,64 +415,7 @@ void RestApiServer::HandlePostDiagnostics(const httplib::Request& req, httplib::
     }
 }
 
-void RestApiServer::HandlePostReloadConfig(const httplib::Request& req, httplib::Response& res) {
-    try {
-        if (reload_config_callback_) {
-            bool success = reload_config_callback_();
-            if (success) {
-                json message_data = CreateMessageResponse("Configuration reload started");
-                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
-            } else {
-                res.set_content(CreateErrorResponse("Failed to reload configuration").dump(), "application/json");
-                res.status = 500;
-            }
-        } else {
-            res.set_content(CreateErrorResponse("Reload config callback not set").dump(), "application/json");
-            res.status = 500;
-        }
-    } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
-    }
-}
-
-void RestApiServer::HandlePostReinitialize(const httplib::Request& req, httplib::Response& res) {
-    try {
-        if (reinitialize_callback_) {
-            bool success = reinitialize_callback_();
-            if (success) {
-                json message_data = CreateMessageResponse("Driver reinitialization started");
-                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
-            } else {
-                res.set_content(CreateErrorResponse("Failed to reinitialize drivers").dump(), "application/json");
-                res.status = 500;
-            }
-        } else {
-            res.set_content(CreateErrorResponse("Reinitialize callback not set").dump(), "application/json");
-            res.status = 500;
-        }
-    } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
-    }
-}
-
-void RestApiServer::HandleGetSystemStats(const httplib::Request& req, httplib::Response& res) {
-    try {
-        if (system_stats_callback_) {
-            json stats = system_stats_callback_();
-            res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
-        } else {
-            res.set_content(CreateErrorResponse("System stats callback not set").dump(), "application/json");
-            res.status = 500;
-        }
-    } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
-    }
-}
-
-// DeviceWorker 스레드 제어 핸들러들
+// DeviceWorker 제어 핸들러들
 void RestApiServer::HandlePostDeviceStart(const httplib::Request& req, httplib::Response& res) {
     try {
         std::string device_id = ExtractDeviceId(req);
@@ -424,12 +531,11 @@ void RestApiServer::HandlePostDeviceRestart(const httplib::Request& req, httplib
     }
 }
 
-// 누락된 핸들러들 추가
+// 일반 제어 핸들러들
 void RestApiServer::HandlePostDeviceControl(const httplib::Request& req, httplib::Response& res) {
     try {
         std::string device_id = ExtractDeviceId(req);
         
-        // 일반적인 디바이스 제어 로직
         json message_data = CreateMessageResponse("Device control executed for " + device_id);
         res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
     } catch (const std::exception& e) {
@@ -443,7 +549,6 @@ void RestApiServer::HandlePostPointControl(const httplib::Request& req, httplib:
         std::string device_id = ExtractDeviceId(req, 1);
         std::string point_id = ExtractDeviceId(req, 2);
         
-        // 특정 포인트 제어 로직
         json message_data = CreateMessageResponse("Point control executed for " + device_id + ":" + point_id);
         res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
     } catch (const std::exception& e) {
@@ -452,7 +557,7 @@ void RestApiServer::HandlePostPointControl(const httplib::Request& req, httplib:
     }
 }
 
-// 하드웨어 제어 핸들러들 (기존 코드 수정)
+// 기존 하드웨어 제어 핸들러들 (펌프/밸브/세트포인트)
 void RestApiServer::HandlePostPumpControl(const httplib::Request& req, httplib::Response& res) {
     try {
         std::string device_id = ExtractDeviceId(req, 1);
@@ -470,7 +575,7 @@ void RestApiServer::HandlePostPumpControl(const httplib::Request& req, httplib::
             bool success = pump_control_callback_(device_id, pump_id, enable);
             if (success) {
                 std::string action = enable ? "started" : "stopped";
-                json message_data = CreateMessageResponse("Pump " + action);
+                json message_data = CreateMessageResponse("Pump " + pump_id + " " + action);
                 res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
             } else {
                 res.set_content(CreateErrorResponse("Failed to control pump").dump(), "application/json");
@@ -491,21 +596,19 @@ void RestApiServer::HandlePostValveControl(const httplib::Request& req, httplib:
         std::string device_id = ExtractDeviceId(req, 1);
         std::string valve_id = ExtractDeviceId(req, 2);
         
-        double position = 0.0;
+        bool open = false;
         try {
             json request_body = json::parse(req.body);
-            position = request_body.value("position", 0.0);
+            open = request_body.value("open", false);
         } catch (...) {
-            position = 0.0;
+            open = false;
         }
         
-        // 위치를 0-100 범위로 제한
-        position = std::max(0.0, std::min(100.0, position));
-        
         if (valve_control_callback_) {
-            bool success = valve_control_callback_(device_id, valve_id, position);
+            bool success = valve_control_callback_(device_id, valve_id, open);
             if (success) {
-                json message_data = CreateValveResponse(position);
+                std::string action = open ? "opened" : "closed";
+                json message_data = CreateMessageResponse("Valve " + valve_id + " " + action);
                 res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
             } else {
                 res.set_content(CreateErrorResponse("Failed to control valve").dump(), "application/json");
@@ -537,7 +640,7 @@ void RestApiServer::HandlePostSetpointChange(const httplib::Request& req, httpli
         if (setpoint_change_callback_) {
             bool success = setpoint_change_callback_(device_id, setpoint_id, value);
             if (success) {
-                json message_data = CreateSetpointResponse(value);
+                json message_data = CreateOutputResponse(value, "setpoint");
                 res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
             } else {
                 res.set_content(CreateErrorResponse("Failed to change setpoint").dump(), "application/json");
@@ -553,8 +656,323 @@ void RestApiServer::HandlePostSetpointChange(const httplib::Request& req, httpli
     }
 }
 
+// 새로운 하드웨어 제어 핸들러들 (디지털/아날로그/파라미터)
+void RestApiServer::HandlePostDigitalOutput(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string device_id = ExtractDeviceId(req, 1);
+        std::string output_id = ExtractDeviceId(req, 2);
+        
+        bool enable = false;
+        try {
+            json request_body = json::parse(req.body);
+            enable = request_body.value("enable", false);
+        } catch (...) {
+            enable = false;
+        }
+        
+        if (digital_output_callback_) {
+            bool success = digital_output_callback_(device_id, output_id, enable);
+            if (success) {
+                std::string action = enable ? "enabled" : "disabled";
+                json message_data = CreateMessageResponse("Digital output " + output_id + " " + action);
+                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to control digital output").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Digital output callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostAnalogOutput(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string device_id = ExtractDeviceId(req, 1);
+        std::string output_id = ExtractDeviceId(req, 2);
+        
+        double value = 0.0;
+        try {
+            json request_body = json::parse(req.body);
+            value = request_body.value("value", 0.0);
+        } catch (...) {
+            value = 0.0;
+        }
+        
+        if (analog_output_callback_) {
+            bool success = analog_output_callback_(device_id, output_id, value);
+            if (success) {
+                json message_data = CreateOutputResponse(value, "analog");
+                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to control analog output").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Analog output callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostParameterChange(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string device_id = ExtractDeviceId(req, 1);
+        std::string parameter_id = ExtractDeviceId(req, 2);
+        
+        double value = 0.0;
+        try {
+            json request_body = json::parse(req.body);
+            value = request_body.value("value", 0.0);
+        } catch (...) {
+            value = 0.0;
+        }
+        
+        if (parameter_change_callback_) {
+            bool success = parameter_change_callback_(device_id, parameter_id, value);
+            if (success) {
+                json message_data = CreateOutputResponse(value, "parameter");
+                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to change parameter").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Parameter change callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
 // =============================================================================
-// 콜백 설정 메소드들
+// 디바이스 그룹 핸들러들 - 새로운 구현
+// =============================================================================
+
+void RestApiServer::HandleGetDeviceGroups(const httplib::Request& req, httplib::Response& res) {
+    try {
+        if (device_group_list_callback_) {
+            json group_list = device_group_list_callback_();
+            res.set_content(CreateSuccessResponse(group_list).dump(), "application/json");
+        } else {
+            res.set_content(CreateErrorResponse("Device group list callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandleGetDeviceGroupStatus(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_status_callback_) {
+            json status = device_group_status_callback_(group_id);
+            res.set_content(CreateSuccessResponse(status).dump(), "application/json");
+        } else {
+            res.set_content(CreateErrorResponse("Device group status callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostDeviceGroupStart(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_control_callback_) {
+            bool success = device_group_control_callback_(group_id, "start");
+            json response_data = CreateGroupActionResponse(group_id, "start", success);
+            
+            if (success) {
+                res.set_content(CreateSuccessResponse(response_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to start device group").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Device group control callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostDeviceGroupStop(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_control_callback_) {
+            bool success = device_group_control_callback_(group_id, "stop");
+            json response_data = CreateGroupActionResponse(group_id, "stop", success);
+            
+            if (success) {
+                res.set_content(CreateSuccessResponse(response_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to stop device group").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Device group control callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostDeviceGroupPause(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_control_callback_) {
+            bool success = device_group_control_callback_(group_id, "pause");
+            json response_data = CreateGroupActionResponse(group_id, "pause", success);
+            
+            if (success) {
+                res.set_content(CreateSuccessResponse(response_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to pause device group").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Device group control callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostDeviceGroupResume(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_control_callback_) {
+            bool success = device_group_control_callback_(group_id, "resume");
+            json response_data = CreateGroupActionResponse(group_id, "resume", success);
+            
+            if (success) {
+                res.set_content(CreateSuccessResponse(response_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to resume device group").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Device group control callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostDeviceGroupRestart(const httplib::Request& req, httplib::Response& res) {
+    try {
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_control_callback_) {
+            bool success = device_group_control_callback_(group_id, "restart");
+            json response_data = CreateGroupActionResponse(group_id, "restart", success);
+            
+            if (success) {
+                res.set_content(CreateSuccessResponse(response_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to restart device group").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Device group control callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+// =============================================================================
+// 시스템 제어 핸들러들
+// =============================================================================
+
+void RestApiServer::HandlePostReloadConfig(const httplib::Request& req, httplib::Response& res) {
+    try {
+        if (reload_config_callback_) {
+            bool success = reload_config_callback_();
+            if (success) {
+                json message_data = CreateMessageResponse("Configuration reload started");
+                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to reload configuration").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Reload config callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandlePostReinitialize(const httplib::Request& req, httplib::Response& res) {
+    try {
+        if (reinitialize_callback_) {
+            bool success = reinitialize_callback_();
+            if (success) {
+                json message_data = CreateMessageResponse("Driver reinitialization started");
+                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+            } else {
+                res.set_content(CreateErrorResponse("Failed to reinitialize drivers").dump(), "application/json");
+                res.status = 500;
+            }
+        } else {
+            res.set_content(CreateErrorResponse("Reinitialize callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+void RestApiServer::HandleGetSystemStats(const httplib::Request& req, httplib::Response& res) {
+    try {
+        if (system_stats_callback_) {
+            json stats = system_stats_callback_();
+            res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
+        } else {
+            res.set_content(CreateErrorResponse("System stats callback not set").dump(), "application/json");
+            res.status = 500;
+        }
+    } catch (const std::exception& e) {
+        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        res.status = 500;
+    }
+}
+
+// =============================================================================
+// 콜백 설정 메소드들 - 기존 콜백 + 그룹 콜백 추가
 // =============================================================================
 
 void RestApiServer::SetReloadConfigCallback(ReloadConfigCallback callback) {
@@ -601,6 +1019,7 @@ void RestApiServer::SetDeviceRestartCallback(DeviceRestartCallback callback) {
     device_restart_callback_ = callback;
 }
 
+// 기존 하드웨어 제어 콜백들 유지
 void RestApiServer::SetPumpControlCallback(PumpControlCallback callback) {
     pump_control_callback_ = callback;
 }
@@ -613,6 +1032,33 @@ void RestApiServer::SetSetpointChangeCallback(SetpointChangeCallback callback) {
     setpoint_change_callback_ = callback;
 }
 
+// 새로운 하드웨어 제어 콜백들
+void RestApiServer::SetDigitalOutputCallback(DigitalOutputCallback callback) {
+    digital_output_callback_ = callback;
+}
+
+void RestApiServer::SetAnalogOutputCallback(AnalogOutputCallback callback) {
+    analog_output_callback_ = callback;
+}
+
+void RestApiServer::SetParameterChangeCallback(ParameterChangeCallback callback) {
+    parameter_change_callback_ = callback;
+}
+
+// 디바이스 그룹 콜백 설정 - 새로 추가
+void RestApiServer::SetDeviceGroupListCallback(DeviceGroupListCallback callback) {
+    device_group_list_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceGroupStatusCallback(DeviceGroupStatusCallback callback) {
+    device_group_status_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceGroupControlCallback(DeviceGroupControlCallback callback) {
+    device_group_control_callback_ = callback;
+}
+
+// 설정 관리 콜백들
 void RestApiServer::SetDeviceConfigCallback(DeviceConfigCallback callback) {
     device_config_callback_ = callback;
 }
@@ -642,7 +1088,7 @@ void RestApiServer::SetLogDownloadCallback(LogDownloadCallback callback) {
 }
 
 // =============================================================================
-// 유틸리티 메소드들 - 수정된 버전
+// 유틸리티 메소드들
 // =============================================================================
 
 void RestApiServer::SetCorsHeaders(httplib::Response& res) {
@@ -675,7 +1121,6 @@ json RestApiServer::CreateSuccessResponse(const json& data) {
     return response;
 }
 
-// 새로운 유틸리티 메서드들 (브레이스 초기화 문제 해결용)
 json RestApiServer::CreateMessageResponse(const std::string& message) {
     json response = json::object();
     response["message"] = message;
@@ -686,25 +1131,40 @@ json RestApiServer::CreateHealthResponse() {
     json response = json::object();
     response["status"] = "ok";
     response["uptime_seconds"] = "calculated_by_system";
-    response["version"] = "2.0.0";
+    response["version"] = "2.1.0";
+    response["features"] = json::array({"device_control", "hardware_control", "device_groups", "system_management"});
     return response;
 }
 
-json RestApiServer::CreateValveResponse(double position) {
+json RestApiServer::CreateOutputResponse(double value, const std::string& type) {
     json response = json::object();
-    response["message"] = "Valve position set";
-    response["position"] = position;
-    return response;
-}
-
-json RestApiServer::CreateSetpointResponse(double value) {
-    json response = json::object();
-    response["message"] = "Setpoint changed";
+    response["message"] = type + " output set";
     response["value"] = value;
+    response["type"] = type;
+    return response;
+}
+
+// 그룹 액션 응답 생성 - 새로 추가
+json RestApiServer::CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success) {
+    json response = json::object();
+    response["group_id"] = group_id;
+    response["action"] = action;
+    response["result"] = success ? "success" : "failed";
+    response["message"] = "Group " + group_id + " " + action + " " + (success ? "completed successfully" : "failed");
     return response;
 }
 
 std::string RestApiServer::ExtractDeviceId(const httplib::Request& req, int match_index) {
+#ifdef HAVE_HTTPLIB
+    if (match_index < static_cast<int>(req.matches.size())) {
+        return req.matches[match_index];
+    }
+#endif
+    return "";
+}
+
+// 그룹 ID 추출 - 새로 추가
+std::string RestApiServer::ExtractGroupId(const httplib::Request& req, int match_index) {
 #ifdef HAVE_HTTPLIB
     if (match_index < static_cast<int>(req.matches.size())) {
         return req.matches[match_index];
@@ -725,6 +1185,8 @@ bool RestApiServer::ValidateJsonSchema(const json& data, const std::string& sche
             return data.contains("name") && data.contains("formula") && data.contains("input_points");
         } else if (schema_type == "user") {
             return data.contains("username") && data.contains("email") && data.contains("role");
+        } else if (schema_type == "group") { // 새로 추가
+            return data.contains("name") && data.contains("devices") && data["devices"].is_array();
         }
         return false;
     } catch (const std::exception&) {
@@ -733,7 +1195,7 @@ bool RestApiServer::ValidateJsonSchema(const json& data, const std::string& sche
 }
 
 // =============================================================================
-// 나머지 핸들러들 구현 (간략히)
+// 설정 관리 핸들러들 (기존 유지)
 // =============================================================================
 
 void RestApiServer::HandleGetDeviceConfig(const httplib::Request& req, httplib::Response& res) {

@@ -708,24 +708,31 @@ PulseOne::BasicTypes::DataVariant WorkerFactory::ParseJSONValue(
 
 void WorkerFactory::LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const {
     try {
-        if (!current_value_repo_) {
-            logger_->Warn("⚠️ CurrentValueRepository not injected, using default values");
+        if (!repo_factory_) {
+            logger_->Warn("⚠️ RepositoryFactory not injected, using default values");
             data_point.quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;
             data_point.quality_timestamp = std::chrono::system_clock::now();
             return;
         }
         
-        auto current_value_opt = current_value_repo_->findById(std::stoi(data_point.id));
+        auto current_value_repo = repo_factory_->getCurrentValueRepository();
+        if (!current_value_repo) {
+            logger_->Warn("⚠️ CurrentValueRepository not available from RepositoryFactory, using default values");
+            data_point.quality_code = PulseOne::Enums::DataQuality::NOT_CONNECTED;
+            data_point.quality_timestamp = std::chrono::system_clock::now();
+            return;
+        }
+        
+        auto current_value_opt = current_value_repo->findById(std::stoi(data_point.id));
         
         if (current_value_opt.has_value()) {
             const auto& cv = current_value_opt.value();
-            // 🔥 JSON 값 파싱
+            // JSON 값 파싱
             data_point.current_value = ParseJSONValue(cv.getCurrentValue(), data_point.data_type);
             data_point.raw_value = ParseJSONValueAsRaw(cv.getRawValue());
             
-            // 품질 및 타임스탬프 - 🔧 존재하지 않는 필드 제거
+            // 품질 및 타임스탬프
             data_point.quality_code = static_cast<PulseOne::Enums::DataQuality>(cv.getQualityCode());
-            // data_point.quality = cv.getQuality(); // 이 필드가 존재하지 않을 수 있음
             data_point.value_timestamp = cv.getValueTimestamp();
             data_point.quality_timestamp = cv.getQualityTimestamp();
             data_point.last_log_time = cv.getLastLogTime();
@@ -740,9 +747,8 @@ void WorkerFactory::LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& d
         } else {
             logger_->Debug("⚠️ CurrentValue not found for DataPoint: " + std::to_string(std::stoi(data_point.id)));
             
-            // 기본값 설정 - 🔧 존재하지 않는 필드 제거
+            // 기본값 설정
             data_point.quality_code = PulseOne::Enums::DataQuality::UNCERTAIN;
-            // data_point.quality = "uncertain"; // 이 필드가 존재하지 않을 수 있음
             data_point.value_timestamp = std::chrono::system_clock::now();
             data_point.quality_timestamp = std::chrono::system_clock::now();
             data_point.read_count = 0;
@@ -763,15 +769,21 @@ std::vector<PulseOne::Structs::DataPoint> WorkerFactory::LoadDataPointsForDevice
     std::vector<PulseOne::Structs::DataPoint> data_points;
     
     try {
-        if (!datapoint_repo_) {
-            logger_->Error("❌ DataPointRepository not injected");
+        if (!repo_factory_) {
+            logger_->Error("❌ RepositoryFactory not injected");
+            return data_points;
+        }
+        
+        auto datapoint_repo = repo_factory_->getDataPointRepository();
+        if (!datapoint_repo) {
+            logger_->Error("❌ DataPointRepository not available from RepositoryFactory");
             return data_points;
         }
         
         logger_->Debug("🔄 Loading complete DataPoints for device: " + std::to_string(device_id));
         
         // DataPointEntity들 로드
-        auto datapoint_entities = datapoint_repo_->findByDeviceId(device_id);
+        auto datapoint_entities = datapoint_repo->findByDeviceId(device_id);
         
         logger_->Debug("📊 Found " + std::to_string(datapoint_entities.size()) + " DataPoints");
         
@@ -965,13 +977,19 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
 }
 
 std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorkerById(int device_id) {
-    if (!device_repo_) {
-        logger_->Error("❌ DeviceRepository not injected");
+    if (!repo_factory_) {
+        logger_->Error("❌ RepositoryFactory not injected");
+        return nullptr;
+    }
+    
+    auto device_repo = repo_factory_->getDeviceRepository();
+    if (!device_repo) {
+        logger_->Error("❌ DeviceRepository not available from RepositoryFactory");
         return nullptr;
     }
     
     try {
-        auto device = device_repo_->findById(device_id);
+        auto device = device_repo->findById(device_id);
         if (!device.has_value()) {
             logger_->Error("❌ Device not found with ID: " + std::to_string(device_id));
             return nullptr;
@@ -993,17 +1011,34 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWor
 std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWorkers(int max_workers) {
     std::vector<std::unique_ptr<BaseDeviceWorker>> workers;
     
-    if (!device_repo_) {
-        logger_->Error("❌ DeviceRepository not injected");
+    // repo_factory_를 통해 Repository 가져오기
+    if (!repo_factory_) {
+        logger_->Error("❌ RepositoryFactory not injected");
+        return workers;
+    }
+    
+    auto device_repo = repo_factory_->getDeviceRepository();
+    if (!device_repo) {
+        logger_->Error("❌ DeviceRepository not available from RepositoryFactory");
         return workers;
     }
     
     try {
-        auto devices = device_repo_->findAll();
+        auto devices = device_repo->findAll();
+        logger_->Info("📊 Found " + std::to_string(devices.size()) + " total devices in database");
         
         int created_count = 0;
+        int enabled_count = 0;
+        
         for (const auto& device : devices) {
-            if (!device.isEnabled()) continue;
+            if (!device.isEnabled()) {
+                logger_->Debug("⏭️ Skipping disabled device: " + device.getName());
+                continue;
+            }
+            
+            enabled_count++;
+            logger_->Info("🔄 Creating worker for enabled device: " + device.getName() + 
+                         " (Protocol: " + device.getProtocolType() + ")");
             
             auto worker = CreateWorker(device);
             if (worker) {
@@ -1014,10 +1049,17 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWor
                     logger_->Info("🚫 Worker creation limit reached: " + std::to_string(max_workers));
                     break;
                 }
+            } else {
+                logger_->Warn("⚠️ Failed to create worker for device: " + device.getName());
             }
         }
         
-        logger_->Info("✅ Created " + std::to_string(created_count) + " active workers");
+        logger_->Info("✅ Worker creation summary:");
+        logger_->Info("   📊 Total devices in DB: " + std::to_string(devices.size()));
+        logger_->Info("   🟢 Enabled devices: " + std::to_string(enabled_count));
+        logger_->Info("   🏭 Workers created: " + std::to_string(created_count));
+        logger_->Info("   ❌ Creation failures: " + std::to_string(enabled_count - created_count));
+        
         return workers;
         
     } catch (const std::exception& e) {
@@ -1029,17 +1071,32 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWor
 std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByProtocol(const std::string& protocol_type, int max_workers) {
     std::vector<std::unique_ptr<BaseDeviceWorker>> workers;
     
-    if (!device_repo_) {
-        logger_->Error("❌ DeviceRepository not injected");
+    if (!repo_factory_) {
+        logger_->Error("❌ RepositoryFactory not injected");
+        return workers;
+    }
+    
+    auto device_repo = repo_factory_->getDeviceRepository();
+    if (!device_repo) {
+        logger_->Error("❌ DeviceRepository not available from RepositoryFactory");
         return workers;
     }
     
     try {
-        auto devices = device_repo_->findAll();
+        auto devices = device_repo->findAll();
         
         int created_count = 0;
+        int matching_count = 0;
+        
         for (const auto& device : devices) {
-            if (!device.isEnabled() || device.getProtocolType() != protocol_type) continue;
+            if (!device.isEnabled()) continue;
+            
+            if (device.getProtocolType() != protocol_type) {
+                continue;
+            }
+            
+            matching_count++;
+            logger_->Debug("🔄 Creating " + protocol_type + " worker for: " + device.getName());
             
             auto worker = CreateWorker(device);
             if (worker) {
@@ -1053,7 +1110,8 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByPro
             }
         }
         
-        logger_->Info("✅ Created " + std::to_string(created_count) + " " + protocol_type + " workers");
+        logger_->Info("✅ Created " + std::to_string(created_count) + "/" + 
+                     std::to_string(matching_count) + " " + protocol_type + " workers");
         return workers;
         
     } catch (const std::exception& e) {
