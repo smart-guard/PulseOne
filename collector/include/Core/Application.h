@@ -14,6 +14,9 @@
 #include <string>
 #include <chrono>
 #include "Common/Structs.h"
+#ifdef HAVE_HTTPLIB
+#include "Network/RestApiServer.h"
+#endif
 
 // 🔧 간단한 전방 선언
 class LogManager;
@@ -54,6 +57,9 @@ private:
     void Cleanup();
 
 private:
+#ifdef HAVE_HTTPLIB
+    std::unique_ptr<Network::RestApiServer> api_server_;
+#endif
     // 실행 상태
     std::atomic<bool> is_running_{false};
     
@@ -63,6 +69,10 @@ private:
     DatabaseManager* db_manager_;
     Database::RepositoryFactory* repository_factory_;
     Workers::WorkerFactory* worker_factory_;
+
+
+    bool InitializeRestApiServer();
+    void SetupApiCallbacks();
 };
 
 } // namespace Core

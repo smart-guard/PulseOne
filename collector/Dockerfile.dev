@@ -1,7 +1,7 @@
-# collector/Dockerfile.dev - BACnet 라이브러리 + Redis 설정 완전 수정 버전
+# collector/Dockerfile.dev - BACnet + Redis + HTTP 라이브러리 완전 설정
 FROM gcc:12
 
-# 기본 패키지 설치
+# 기본 패키지 설치 (httplib 헤더 포함)
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libpqxx-dev libpq-dev libsqlite3-dev \
@@ -11,42 +11,49 @@ RUN apt-get update && apt-get install -y \
     libssl-dev uuid-dev \
     autotools-dev autoconf automake libtool \
     tree htop procps \
+    libhttplib-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# httplib 직접 다운로드 (패키지 매니저에 없는 경우 대비)
+RUN echo "Installing httplib header..." && \
+    mkdir -p /usr/local/include && \
+    wget -O /usr/local/include/httplib.h https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.14.1/httplib.h && \
+    echo "httplib header installed successfully"
+
 # SQLite 설치 확인
-RUN echo "🔍 SQLite 설치 확인:" && \
+RUN echo "SQLite 설치 확인:" && \
     sqlite3 --version && \
-    echo "✅ SQLite3 설치 완료"
+    echo "SQLite3 설치 완료"
 
 # =============================================================================
-# 필수 라이브러리들 설치 (안정적인 버전)
+# 필수 라이브러리들 설치 (기존 그대로)
 # =============================================================================
 
 # 1. libmodbus 설치
-RUN echo "🔧 Installing libmodbus..." && \
+RUN echo "Installing libmodbus..." && \
     cd /tmp && git clone --depth 1 --branch v3.1.10 https://github.com/stephane/libmodbus.git && \
     cd libmodbus && ./autogen.sh && ./configure --prefix=/usr/local && \
     make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/libmodbus && echo "✅ libmodbus installed"
+    cd / && rm -rf /tmp/libmodbus && echo "libmodbus installed"
 
 # 2. hiredis 설치
-RUN echo "🔧 Installing hiredis..." && \
+RUN echo "Installing hiredis..." && \
     cd /tmp && git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
     cd hiredis && mkdir -p build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SSL=ON && \
     make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/hiredis && echo "✅ hiredis installed"
+    cd / && rm -rf /tmp/hiredis && echo "hiredis installed"
 
 # 3. Paho MQTT C 설치
-RUN echo "🔧 Installing Paho MQTT C..." && \
+RUN echo "Installing Paho MQTT C..." && \
     cd /tmp && git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
     cd paho.mqtt.c && mkdir -p build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_DOCUMENTATION=FALSE && \
     make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/paho.mqtt.c && echo "✅ Paho MQTT C installed"
+    cd / && rm -rf /tmp/paho.mqtt.c && echo "Paho MQTT C installed"
 
 # 3-1. Paho MQTT C++ 설치
-RUN echo "🔧 Installing Paho MQTT C++..." && \
+RUN echo "Installing Paho MQTT C++..." && \
     cd /tmp && git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
     cd paho.mqtt.cpp && mkdir -p build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -55,69 +62,47 @@ RUN echo "🔧 Installing Paho MQTT C++..." && \
              -DPAHO_BUILD_SAMPLES=FALSE \
              -DPAHO_BUILD_TESTS=FALSE && \
     make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/paho.mqtt.cpp && echo "✅ Paho MQTT C++ installed"
+    cd / && rm -rf /tmp/paho.mqtt.cpp && echo "Paho MQTT C++ installed"
 
-# 4. nlohmann/json 설치 (소스에서 빌드)
-RUN echo "🔧 Installing nlohmann/json..." && \
+# 4. nlohmann/json 설치
+RUN echo "Installing nlohmann/json..." && \
     cd /tmp && git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git && \
     cd json && mkdir -p build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DJSON_BuildTests=OFF && \
     make -j$(nproc) && make install && \
-    cd / && rm -rf /tmp/json && echo "✅ nlohmann/json installed"
+    cd / && rm -rf /tmp/json && echo "nlohmann/json installed"
+
 # 5. QuickJS JavaScript 엔진 설치
-RUN echo "🔧 Installing QuickJS..." && \
+RUN echo "Installing QuickJS..." && \
     cd /tmp && git clone --depth 1 --branch 2024-01-13 https://github.com/bellard/quickjs.git && \
     cd quickjs && \
     make && \
     make install PREFIX=/usr/local && \
     ldconfig && \
-    cd / && rm -rf /tmp/quickjs && echo "✅ QuickJS installed"
-# 5. spdlog 설치 (로깅 라이브러리)
-RUN echo "🔧 Installing spdlog..." && \
+    cd / && rm -rf /tmp/quickjs && echo "QuickJS installed"
+
+# 6. spdlog 설치
+RUN echo "Installing spdlog..." && \
     cd /tmp && git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
     cd spdlog && mkdir -p build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DSPDLOG_BUILD_SHARED=ON && \
     make -j$(nproc) && make install && ldconfig && \
-    cd / && rm -rf /tmp/spdlog && echo "✅ spdlog installed"
+    cd / && rm -rf /tmp/spdlog && echo "spdlog installed"
 
-# 🔥 6. BACnet Stack 정적 라이브러리 빌드 및 설치 (정확한 경로 적용)
-# 실제로 성공한 방법과 정확히 동일하게 설치
-RUN echo "🔧 Installing BACnet Stack with correct build method..." && \
+# 7. BACnet Stack 설치 (기존과 동일)
+RUN echo "Installing BACnet Stack..." && \
     cd /tmp && \
     git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     cd bacnet-stack && \
-    \
-    echo "🔨 Building BACnet library with correct parameters..." && \
     make BACNET_PORT=linux BACDL_DEFINE=-DBACDL_BIP=1 library && \
-    \
-    echo "📦 Installing BACnet library..." && \
-    # 🔥 정확한 경로: apps/lib/libbacnet.a
-    echo "🔍 라이브러리 위치 확인:" && \
-    find . -name "libbacnet.a" -type f && \
-    echo "✅ Found apps/lib/libbacnet.a - copying to /usr/local/lib/" && \
     cp apps/lib/libbacnet.a /usr/local/lib/ && \
-    \
-    echo "📂 Installing BACnet headers..." && \
-    # 🔥 정확한 방법: src/bacnet 디렉토리 전체 복사
     cp -r src/bacnet /usr/local/include/ && \
-    \
-    echo "🔄 Updating library cache..." && \
     ldconfig && \
-    \
-    echo "🔍 설치 확인..." && \
-    ls -la /usr/local/lib/libbacnet.a && \
-    echo "📂 BACnet headers installed:" && \
-    ls -la /usr/local/include/bacnet/ | head -10 && \
-    echo "📊 라이브러리 크기:" && \
-    du -h /usr/local/lib/libbacnet.a && \
-    \
-    echo "🧹 임시 파일 정리..." && \
     cd / && rm -rf /tmp/bacnet-stack && \
-    echo "✅ BACnet Stack library and headers installed successfully"
+    echo "BACnet Stack installed"
 
-# 7. BACnet pkg-config 파일 생성 (수정됨)
-RUN echo "📝 Creating BACnet pkg-config file..." && \
-    mkdir -p /usr/local/lib/pkgconfig && \
+# pkg-config 파일들 생성 (기존과 동일)
+RUN mkdir -p /usr/local/lib/pkgconfig && \
     cat > /usr/local/lib/pkgconfig/bacnet.pc << 'EOF'
 prefix=/usr/local
 exec_prefix=${prefix}
@@ -131,9 +116,7 @@ Libs: -L${libdir} -lbacnet -lm
 Cflags: -I${includedir} -DPRINT_ENABLED=1 -DBACAPP_ALL -DINTRINSIC_REPORTING
 EOF
 
-# 8. libmodbus pkg-config 파일 생성
-RUN echo "📝 Creating other pkg-config files..." && \
-    cat > /usr/local/lib/pkgconfig/libmodbus.pc << 'EOF'
+RUN cat > /usr/local/lib/pkgconfig/libmodbus.pc << 'EOF'
 prefix=/usr/local
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
@@ -146,9 +129,7 @@ Libs: -L${libdir} -lmodbus
 Cflags: -I${includedir}
 EOF
 
-# 9. Paho MQTT C++ pkg-config 파일 생성
-RUN echo "📝 Creating Paho MQTT C++ pkg-config file..." && \
-    cat > /usr/local/lib/pkgconfig/paho-mqttpp3.pc << 'EOF'
+RUN cat > /usr/local/lib/pkgconfig/paho-mqttpp3.pc << 'EOF'
 prefix=/usr/local
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
@@ -162,10 +143,7 @@ Libs: -L${libdir} -lpaho-mqttpp3
 Cflags: -I${includedir}
 EOF
 
-# 10. QuickJS pkg-config 파일 생성 (기존 섹션에 추가)
-RUN echo "📝 Creating QuickJS pkg-config file..." && \
-    mkdir -p /usr/local/lib/pkgconfig && \
-    cat > /usr/local/lib/pkgconfig/quickjs.pc << 'EOF'
+RUN cat > /usr/local/lib/pkgconfig/quickjs.pc << 'EOF'
 prefix=/usr/local
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
@@ -178,20 +156,23 @@ Libs: -L${libdir} -lquickjs
 Cflags: -I${includedir}
 EOF
 
-RUN echo "🔍 QuickJS 설치 확인:" && \
-    pkg-config --exists quickjs && echo "✅ pkg-config OK" || echo "❌ pkg-config 실패" && \
-    ls -la /usr/local/lib/libquickjs* 2>/dev/null && echo "✅ QuickJS 라이브러리 확인" || echo "❌ 라이브러리 없음" && \
-    ls -la /usr/local/include/quickjs*.h 2>/dev/null && echo "✅ QuickJS 헤더 확인" || echo "❌ 헤더 없음"
+# httplib pkg-config 파일 생성 (새로 추가)
+RUN cat > /usr/local/lib/pkgconfig/httplib.pc << 'EOF'
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 
-# =============================================================================
-# 🔥 Redis 설정 파일 및 환경 변수 미리 설정
-# =============================================================================
+Name: cpp-httplib
+Description: A C++ header-only HTTP/HTTPS server and client library
+Version: 0.14.1
+Libs: -lpthread
+Cflags: -I${includedir}
+EOF
 
-# Docker 개발 환경용 Redis 설정 파일 생성
-RUN echo "📝 Creating Docker-specific Redis configuration..." && \
-    mkdir -p /app/collector/config && \
+# Redis 설정 파일들 (기존과 동일)
+RUN mkdir -p /app/collector/config && \
     cat > /app/collector/config/redis_docker.env << 'EOF'
-# Docker 개발 환경용 Redis 설정
 REDIS_HOST=host.docker.internal
 REDIS_PORT=6379
 REDIS_DB=0
@@ -203,206 +184,81 @@ REDIS_MAX_CONNECTIONS=20
 REDIS_MIN_CONNECTIONS=5
 REDIS_RETRY_ATTEMPTS=3
 REDIS_RETRY_DELAY_MS=1000
-
-# 개발 모드 설정
 REDIS_TEST_MODE=true
 REDIS_FLUSH_ON_START=false
 REDIS_AUTO_PING=true
 REDIS_PING_INTERVAL_S=30
-
-# Docker Compose 연결 (선택적)
 REDIS_HOST_COMPOSE=redis
 REDIS_HOST_EXTERNAL=host.docker.internal
 EOF
 
-# Docker 환경 감지 및 자동 Redis 설정 스크립트
-RUN echo '#!/bin/bash' > /usr/local/bin/setup-docker-redis.sh && \
-    echo 'echo "🔧 Docker Redis 설정 스크립트"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'REDIS_CONFIG_FILE="/app/collector/config/redis.env"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'DOCKER_REDIS_CONFIG="/app/collector/config/redis_docker.env"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '# Docker 환경 감지' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'if [ -f /.dockerenv ]; then' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    echo "✅ Docker 환경 감지됨"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    ' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    # Docker용 Redis 설정 복사' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    if [ -f "$DOCKER_REDIS_CONFIG" ]; then' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '        echo "📋 Docker 전용 Redis 설정 적용..."' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '        cp "$DOCKER_REDIS_CONFIG" "$REDIS_CONFIG_FILE"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '        echo "✅ Redis 설정 업데이트 완료: host.docker.internal:6379"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    else' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '        echo "⚠️  Docker Redis 설정 파일이 없습니다"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    fi' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    ' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    # 환경 변수 설정' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    export REDIS_HOST=host.docker.internal' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    export REDIS_PORT=6379' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    echo "🌍 환경 변수 설정: REDIS_HOST=$REDIS_HOST"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'else' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '    echo "ℹ️  Docker 환경이 아닙니다. 기본 설정 유지"' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'fi' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo '# Redis 연결 테스트' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'echo "🔍 Redis 연결 테스트..."' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'redis_host=${REDIS_HOST:-localhost}' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'redis_port=${REDIS_PORT:-6379}' >> /usr/local/bin/setup-docker-redis.sh && \
-    echo 'timeout 3 bash -c "</dev/tcp/$redis_host/$redis_port" 2>/dev/null && echo "✅ Redis 연결 성공: $redis_host:$redis_port" || echo "❌ Redis 연결 실패: $redis_host:$redis_port"' >> /usr/local/bin/setup-docker-redis.sh && \
-    chmod +x /usr/local/bin/setup-docker-redis.sh
+# 개발 도구 스크립트들 생성 (httplib 확인 추가)
+RUN echo '#!/bin/bash' > /usr/local/bin/check-deps.sh && \
+    echo 'echo "Library dependency check:"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  libmodbus: $(pkg-config --exists libmodbus && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  hiredis: $(ls -la /usr/local/lib/libhiredis* 2>/dev/null && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  BACnet: $(ls -la /usr/local/lib/libbacnet.a 2>/dev/null && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  Paho MQTT C: $(ls -la /usr/local/lib/libpaho-mqtt3c.so* 2>/dev/null && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  Paho MQTT C++: $(ls -la /usr/local/lib/libpaho-mqttpp*.so* 2>/dev/null && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  QuickJS: $(pkg-config --exists quickjs && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  httplib: $(ls -la /usr/local/include/httplib.h 2>/dev/null && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    echo 'echo "  nlohmann/json: $(find /usr/local/include -name json.hpp 2>/dev/null && echo "available" || echo "unavailable")"' >> /usr/local/bin/check-deps.sh && \
+    chmod +x /usr/local/bin/check-deps.sh
+
+# httplib 테스트 스크립트 추가
+RUN echo '#!/bin/bash' > /usr/local/bin/test-httplib.sh && \
+    echo 'echo "httplib 테스트"' >> /usr/local/bin/test-httplib.sh && \
+    echo '===============' >> /usr/local/bin/test-httplib.sh && \
+    echo '' >> /usr/local/bin/test-httplib.sh && \
+    echo 'echo "Header file check:"' >> /usr/local/bin/test-httplib.sh && \
+    echo 'ls -la /usr/local/include/httplib.h 2>/dev/null || echo "httplib.h not found"' >> /usr/local/bin/test-httplib.sh && \
+    echo '' >> /usr/local/bin/test-httplib.sh && \
+    echo 'echo "Compile test:"' >> /usr/local/bin/test-httplib.sh && \
+    echo 'cat > /tmp/test_httplib.cpp << "TESTEOF"' >> /usr/local/bin/test-httplib.sh && \
+    echo '#include <httplib.h>' >> /usr/local/bin/test-httplib.sh && \
+    echo '#include <iostream>' >> /usr/local/bin/test-httplib.sh && \
+    echo 'int main() {' >> /usr/local/bin/test-httplib.sh && \
+    echo '    httplib::Server server;' >> /usr/local/bin/test-httplib.sh && \
+    echo '    std::cout << "httplib compilation test passed" << std::endl;' >> /usr/local/bin/test-httplib.sh && \
+    echo '    return 0;' >> /usr/local/bin/test-httplib.sh && \
+    echo '}' >> /usr/local/bin/test-httplib.sh && \
+    echo 'TESTEOF' >> /usr/local/bin/test-httplib.sh && \
+    echo 'if g++ -std=c++17 -o /tmp/test_httplib /tmp/test_httplib.cpp -lpthread 2>/dev/null; then' >> /usr/local/bin/test-httplib.sh && \
+    echo '    echo "httplib compilation successful"' >> /usr/local/bin/test-httplib.sh && \
+    echo '    /tmp/test_httplib && echo "httplib execution test successful"' >> /usr/local/bin/test-httplib.sh && \
+    echo 'else' >> /usr/local/bin/test-httplib.sh && \
+    echo '    echo "httplib compilation failed"' >> /usr/local/bin/test-httplib.sh && \
+    echo 'fi' >> /usr/local/bin/test-httplib.sh && \
+    echo 'rm -f /tmp/test_httplib /tmp/test_httplib.cpp 2>/dev/null' >> /usr/local/bin/test-httplib.sh && \
+    chmod +x /usr/local/bin/test-httplib.sh
 
 # 환경 변수 설정
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 ENV BACNET_PORT=linux
 ENV BACDL_DEFINE="-DBACDL_BIP=1"
-
-# 🔥 Redis 관련 환경 변수 기본값 설정
 ENV REDIS_HOST=host.docker.internal
 ENV REDIS_PORT=6379
 ENV REDIS_DB=0
 ENV REDIS_TEST_MODE=true
 
-# 개발용 스크립트 생성 (BACnet + Redis 확인 개선)
-RUN echo '#!/bin/bash' > /usr/local/bin/dev-build.sh && \
-    echo 'echo "🔧 PulseOne Collector 개발 빌드"' >> /usr/local/bin/dev-build.sh && \
-    echo 'cd /app/collector' >> /usr/local/bin/dev-build.sh && \
-    echo '' >> /usr/local/bin/dev-build.sh && \
-    echo '# Docker Redis 설정 자동 적용' >> /usr/local/bin/dev-build.sh && \
-    echo 'setup-docker-redis.sh' >> /usr/local/bin/dev-build.sh && \
-    echo '' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "📋 설치된 라이브러리 확인:"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  libmodbus: $(pkg-config --exists libmodbus && echo "✅ OK" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  hiredis: $(ls -la /usr/local/lib/libhiredis* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  BACnet lib: $(ls -la /usr/local/lib/libbacnet.a 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  BACnet headers: $(ls -d /usr/local/include/bacnet 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  Paho MQTT C: $(ls -la /usr/local/lib/libpaho-mqtt3c.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  Paho MQTT C++: $(ls -la /usr/local/lib/libpaho-mqttpp*.so* 2>/dev/null && echo "✅ Found" || echo "❌ Missing")"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "  Redis 설정: $REDIS_HOST:$REDIS_PORT"' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo ""' >> /usr/local/bin/dev-build.sh && \
-    echo 'echo "🔨 빌드 시작:"' >> /usr/local/bin/dev-build.sh && \
-    echo 'make clean && make debug' >> /usr/local/bin/dev-build.sh && \
-    chmod +x /usr/local/bin/dev-build.sh
-
-# BACnet 설치 확인 스크립트 (향상된 버전)
-RUN echo '#!/bin/bash' > /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "🔍 BACnet 설치 확인:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "📚 라이브러리 파일:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'ls -la /usr/local/lib/libbacnet.a 2>/dev/null || echo "❌ libbacnet.a 없음"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "📂 헤더 디렉토리:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'ls -la /usr/local/include/bacnet/ 2>/dev/null | head -10 || echo "❌ 헤더 디렉토리 없음"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "🔍 중요한 헤더 파일들:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'for header in "bip.h" "datalink.h" "address.h" "bacdcode.h" "npdu.h" "apdu.h"; do' >> /usr/local/bin/check-bacnet.sh && \
-    echo '  find /usr/local/include/bacnet -name "$header" 2>/dev/null && echo "✅ $header found" || echo "❌ $header missing"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'done' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "🧪 pkg-config 테스트:"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'pkg-config --cflags bacnet 2>/dev/null || echo "❌ pkg-config 설정 없음"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'pkg-config --libs bacnet 2>/dev/null || echo "❌ pkg-config 라이브러리 없음"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo ""' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'echo "🔍 라이브러리 심볼 확인 (nm 명령어):"' >> /usr/local/bin/check-bacnet.sh && \
-    echo 'nm /usr/local/lib/libbacnet.a | grep -E "(bip_init|bvlc_send_pdu|address_init)" | head -5 || echo "❌ 주요 심볼들 없음"' >> /usr/local/bin/check-bacnet.sh && \
-    chmod +x /usr/local/bin/check-bacnet.sh
-
-# BACnet 라이브러리 심볼 확인 스크립트 (실제 경험 반영)
-RUN echo '#!/bin/bash' > /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo "🔍 BACnet 라이브러리 심볼 테스트:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo "📊 라이브러리 정보:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'ls -la /usr/local/lib/libbacnet.a 2>/dev/null || echo "❌ libbacnet.a 없음"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'du -h /usr/local/lib/libbacnet.a 2>/dev/null || echo "❌ 파일 크기 확인 불가"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo "📋 핵심 BACnet 함수들 확인:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'SYMBOLS=("bip_init" "bvlc_send_pdu" "bip_send_pdu" "address_init" "address_own_device_id_set" "bip_send_mpdu")' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'for symbol in "${SYMBOLS[@]}"; do' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '  if nm /usr/local/lib/libbacnet.a 2>/dev/null | grep -q "T $symbol"; then' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '    echo "✅ $symbol - Found"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '  else' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '    echo "❌ $symbol - Missing"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '  fi' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'done' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo "🔍 전체 심볼 개수:"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'nm /usr/local/lib/libbacnet.a 2>/dev/null | grep "T " | wc -l || echo "❌ 심볼 읽기 실패"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo ""' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'echo "🧪 실제 라이브러리 테스트 (간단한 컴파일):"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'cat > /tmp/test_bacnet.c << "TESTEOF"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '#include <stdio.h>' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'extern int bip_init(char *ifname);' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'int main() {' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '    printf("BACnet library linkage test passed\n");' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '    return 0;' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '}' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'TESTEOF' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'if gcc -o /tmp/test_bacnet /tmp/test_bacnet.c -lbacnet -lm 2>/dev/null; then' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '  echo "✅ BACnet 라이브러리 링킹 성공"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '  /tmp/test_bacnet 2>/dev/null && echo "✅ 실행 테스트 성공"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'else' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo '  echo "❌ BACnet 라이브러리 링킹 실패"' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'fi' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    echo 'rm -f /tmp/test_bacnet /tmp/test_bacnet.c 2>/dev/null' >> /usr/local/bin/test-bacnet-symbols.sh && \
-    chmod +x /usr/local/bin/test-bacnet-symbols.sh
-
-# Redis 연결 테스트 스크립트 추가
-RUN echo '#!/bin/bash' > /usr/local/bin/test-redis-connection.sh && \
-    echo 'echo "🔍 Redis 연결 테스트"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'echo "=================="' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '# 환경 변수 확인' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'REDIS_HOST=${REDIS_HOST:-host.docker.internal}' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'REDIS_PORT=${REDIS_PORT:-6379}' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'echo "🌐 설정: $REDIS_HOST:$REDIS_PORT"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '# 네트워크 연결 테스트' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'echo "📡 네트워크 연결 테스트..."' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'timeout 3 bash -c "</dev/tcp/$REDIS_HOST/$REDIS_PORT" 2>/dev/null && {' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    echo "✅ 네트워크 연결 성공"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '} || {' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    echo "❌ 네트워크 연결 실패"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    echo "   - Redis 서버가 실행 중인지 확인하세요"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    echo "   - 호스트 주소가 올바른지 확인하세요"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    exit 1' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '}' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '# hiredis 라이브러리 테스트' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'echo "🧪 hiredis 라이브러리 테스트..."' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'cat > /tmp/test_redis.c << "TESTEOF"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '#include <stdio.h>' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '#include <hiredis/hiredis.h>' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'int main() {' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    printf("hiredis library linkage test passed\n");' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    return 0;' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '}' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'TESTEOF' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'if gcc -o /tmp/test_redis /tmp/test_redis.c -lhiredis 2>/dev/null; then' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    echo "✅ hiredis 라이브러리 링킹 성공"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    /tmp/test_redis && echo "✅ hiredis 실행 테스트 성공"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'else' >> /usr/local/bin/test-redis-connection.sh && \
-    echo '    echo "❌ hiredis 라이브러리 링킹 실패"' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'fi' >> /usr/local/bin/test-redis-connection.sh && \
-    echo 'rm -f /tmp/test_redis /tmp/test_redis.c 2>/dev/null' >> /usr/local/bin/test-redis-connection.sh && \
-    chmod +x /usr/local/bin/test-redis-connection.sh
-
-# Bash 프롬프트 개선 및 개발 환경 메시지 (Redis 정보 추가)
+# Bash 프롬프트 설정 (httplib 정보 추가)
 RUN echo 'export PS1="\[\033[01;32m\]\u@collector-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
-    echo 'echo "🚀 PulseOne Collector Development Environment Ready!"' >> /root/.bashrc && \
-    echo 'echo "📋 설치된 라이브러리들:"' >> /root/.bashrc && \
-    echo 'echo "  - libmodbus (Modbus 통신)"' >> /root/.bashrc && \
-    echo 'echo "  - Paho MQTT C (MQTT 통신 - C)"' >> /root/.bashrc && \
-    echo 'echo "  - Paho MQTT C++ (MQTT 통신 - C++)"' >> /root/.bashrc && \
-    echo 'echo "  - BACnet Stack (BACnet 통신)"' >> /root/.bashrc && \
-    echo 'echo "  - hiredis (Redis 클라이언트) - ${REDIS_HOST:-host.docker.internal}:${REDIS_PORT:-6379}"' >> /root/.bashrc && \
-    echo 'echo "  - nlohmann/json (JSON 파싱)"' >> /root/.bashrc && \
-    echo 'echo "  - spdlog (로깅)"' >> /root/.bashrc && \
+    echo 'echo "PulseOne Collector Development Environment Ready!"' >> /root/.bashrc && \
+    echo 'echo "Installed libraries:"' >> /root/.bashrc && \
+    echo 'echo "  - libmodbus (Modbus communication)"' >> /root/.bashrc && \
+    echo 'echo "  - Paho MQTT C/C++ (MQTT communication)"' >> /root/.bashrc && \
+    echo 'echo "  - BACnet Stack (BACnet communication)"' >> /root/.bashrc && \
+    echo 'echo "  - hiredis (Redis client) - ${REDIS_HOST:-host.docker.internal}:${REDIS_PORT:-6379}"' >> /root/.bashrc && \
+    echo 'echo "  - httplib (HTTP server/client)"' >> /root/.bashrc && \
+    echo 'echo "  - nlohmann/json (JSON parsing)"' >> /root/.bashrc && \
+    echo 'echo "  - QuickJS (JavaScript engine)"' >> /root/.bashrc && \
+    echo 'echo "  - spdlog (logging)"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc && \
-    echo 'echo "🔧 유용한 명령어들:"' >> /root/.bashrc && \
-    echo 'echo "  dev-build.sh              - 개발 빌드 (Redis 설정 자동 적용)"' >> /root/.bashrc && \
-    echo 'echo "  setup-docker-redis.sh     - Redis 설정 자동 구성"' >> /root/.bashrc && \
-    echo 'echo "  test-redis-connection.sh  - Redis 연결 테스트"' >> /root/.bashrc && \
-    echo 'echo "  check-bacnet.sh           - BACnet 설치 확인"' >> /root/.bashrc && \
-    echo 'echo "  test-bacnet-symbols.sh    - BACnet 심볼 테스트"' >> /root/.bashrc && \
-    echo 'echo "  make help                 - Makefile 도움말"' >> /root/.bashrc && \
+    echo 'echo "Useful commands:"' >> /root/.bashrc && \
+    echo 'echo "  check-deps.sh          - Check all library dependencies"' >> /root/.bashrc && \
+    echo 'echo "  test-httplib.sh        - Test httplib compilation"' >> /root/.bashrc && \
+    echo 'echo "  make help              - Makefile help"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc
 
 # 환경 변수 설정
@@ -410,38 +266,19 @@ ENV CC=gcc CXX=g++
 ENV CFLAGS="-std=c11 -Wall -Wextra"
 ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
 
-# 작업 디렉토리 설정
 WORKDIR /app
 
-# 컨테이너 시작 시 자동으로 Redis 설정 적용
-RUN echo '#!/bin/bash' > /docker-entrypoint.sh && \
-    echo 'echo "🚀 PulseOne Collector 컨테이너 시작"' >> /docker-entrypoint.sh && \
-    echo 'echo "================================="' >> /docker-entrypoint.sh && \
-    echo '' >> /docker-entrypoint.sh && \
-    echo '# Docker Redis 설정 자동 적용' >> /docker-entrypoint.sh && \
-    echo 'if [ -f /usr/local/bin/setup-docker-redis.sh ]; then' >> /docker-entrypoint.sh && \
-    echo '    /usr/local/bin/setup-docker-redis.sh' >> /docker-entrypoint.sh && \
-    echo 'fi' >> /docker-entrypoint.sh && \
-    echo '' >> /docker-entrypoint.sh && \
-    echo '# 전달된 명령어 실행' >> /docker-entrypoint.sh && \
-    echo 'exec "$@"' >> /docker-entrypoint.sh && \
-    chmod +x /docker-entrypoint.sh
-
-# 기본 명령어
-ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["/bin/bash"]
-
-# 빌드 완료 후 최종 확인
-RUN echo "🎉 Docker 이미지 빌드 완료!" && \
-    echo "📋 최종 확인:" && \
+# 최종 확인 (httplib 포함)
+RUN echo "Docker 이미지 빌드 완료!" && \
+    echo "최종 확인:" && \
+    echo "  httplib 헤더:" && \
+    ls -la /usr/local/include/httplib.h 2>/dev/null && \
     echo "  BACnet 라이브러리:" && \
     ls -la /usr/local/lib/libbacnet.a 2>/dev/null && \
-    echo "  BACnet 헤더 파일 개수:" && \
-    find /usr/local/include/bacnet -name "*.h" 2>/dev/null | wc -l && \
     echo "  hiredis 라이브러리:" && \
-    ls -la /usr/local/lib/libhiredis* 2>/dev/null | head -3 && \
-    echo "  MQTT C++ 헤더 확인:" && \
-    find /usr/local/include -name "async_client.h" 2>/dev/null | wc -l && \
-    echo "  Redis 설정:" && \
-    ls -la /app/collector/config/redis_docker.env 2>/dev/null && \
-    echo "✅ 모든 라이브러리 및 Redis 설정 완료!"
+    ls -la /usr/local/lib/libhiredis* 2>/dev/null | head -1 && \
+    echo "  QuickJS 라이브러리:" && \
+    ls -la /usr/local/lib/libquickjs* 2>/dev/null && \
+    echo "모든 라이브러리 설치 완료!"
+
+CMD ["/bin/bash"]
