@@ -255,6 +255,8 @@ services:
         condition: service_healthy
     networks:
       - pulseone_network
+    ports:
+      - "8080:8080"  
     command: >
       bash -c '
         echo "🔧 PulseOne Collector Development Environment"
