@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/VirtualPoint/VirtualPointEngine.h
-// PulseOne 가상포인트 엔진 - 모든 문제 수정된 최종 버전
+// PulseOne 가상포인트 엔진 - 컴파일 에러 완전 수정 버전
 // =============================================================================
 
 #ifndef VIRTUAL_POINT_ENGINE_H
@@ -18,11 +18,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-// ✅ PulseOne 공통 헤더들
+// PulseOne 공통 헤더들
 #include "Common/BasicTypes.h"
 #include "Common/Structs.h"
 #include "VirtualPoint/VirtualPointTypes.h"
-#include "Database/Entities/VirtualPointEntity.h"  // 🔥 추가 필수!
+#include "Database/Entities/VirtualPointEntity.h"
 
 // QuickJS 헤더
 extern "C" {
@@ -48,7 +48,7 @@ using DataQuality = PulseOne::Enums::DataQuality;
 class ScriptLibraryManager;
 
 // =============================================================================
-// ✅ 가상포인트 정의 (VirtualPointTypes.h의 enum 사용)
+// 가상포인트 정의
 // =============================================================================
 
 /**
@@ -61,7 +61,7 @@ struct VirtualPointDef {
     std::string description;
     std::string formula;
     
-    // ✅ VirtualPointTypes의 올바른 enum 사용
+    // VirtualPointTypes의 enum 사용
     VirtualPointState state = VirtualPointState::INACTIVE;
     ExecutionType execution_type = ExecutionType::JAVASCRIPT;
     ErrorHandling error_handling = ErrorHandling::RETURN_NULL;
@@ -80,7 +80,7 @@ struct VirtualPointDef {
     std::chrono::system_clock::time_point last_calculation;
     DataValue last_value;
     
-    // ✅ VirtualPointTypes의 변환 함수 활용
+    // VirtualPointTypes의 변환 함수 활용
     std::string getStateString() const {
         return virtualPointStateToString(state);
     }
@@ -100,7 +100,7 @@ struct VirtualPointDef {
 class VirtualPointEngine {
 public:
     // =======================================================================
-    // ✅ 싱글톤 패턴
+    // 싱글톤 패턴
     // =======================================================================
     static VirtualPointEngine& getInstance();
     
@@ -137,11 +137,11 @@ public:
     // =======================================================================
     std::vector<TimestampedValue> calculateForMessage(const DeviceDataMessage& msg);
     
-    // ✅ VirtualPointTypes의 CalculationResult 사용
+    // VirtualPointTypes의 CalculationResult 사용
     CalculationResult calculate(int vp_id, const json& input_values);
     CalculationResult calculateWithFormula(const std::string& formula, const json& input_values);
     
-    // ✅ VirtualPointTypes의 ExecutionResult 사용
+    // VirtualPointTypes의 ExecutionResult 사용
     ExecutionResult executeScript(const CalculationContext& context);
     
     // =======================================================================
@@ -157,7 +157,7 @@ public:
     bool registerCustomFunction(const std::string& name, const std::string& script);
     bool unregisterCustomFunction(const std::string& name);
     
-    // ✅ VirtualPointTypes의 ScriptMetadata 활용
+    // VirtualPointTypes의 ScriptMetadata 활용
     std::vector<ScriptMetadata> getAvailableScripts(int tenant_id = 0) const;
     
     // =======================================================================
@@ -168,7 +168,7 @@ public:
 
 private:
     // =======================================================================
-    // ✅ 싱글톤 생성자/소멸자
+    // 싱글톤 생성자/소멸자
     // =======================================================================
     VirtualPointEngine();
     ~VirtualPointEngine();
@@ -182,16 +182,13 @@ private:
     static std::atomic<bool> initialization_success_;
 
     // =======================================================================
-    // ✅ Entity → VirtualPoint 타입 변환 헬퍼들 (선언만)
+    // ✅ 수정된 Entity → VirtualPoint 타입 변환 헬퍼들
     // =======================================================================
-    ExecutionType convertEntityExecutionType(
-        const PulseOne::Database::Entities::VirtualPointEntity::ExecutionType& entity_type);
-    
-    ErrorHandling convertEntityErrorHandling(
-        const PulseOne::Database::Entities::VirtualPointEntity::ErrorHandling& entity_handling);
+    ExecutionType convertEntityExecutionType(const std::string& entity_type_str);
+    ErrorHandling convertEntityErrorHandling(const std::string& entity_handling_str);
 
     // =======================================================================
-    // ✅ JSON ↔ DataValue 변환 헬퍼들
+    // JSON ↔ DataValue 변환 헬퍼들
     // =======================================================================
     DataValue jsonToDataValue(const nlohmann::json& j) {
         try {
@@ -252,7 +249,7 @@ private:
     std::unordered_map<int, std::unordered_set<int>> vp_dependencies_;
     mutable std::shared_mutex dep_mutex_;
 
-    // ✅ VirtualPointTypes의 통계 구조체 활용
+    // VirtualPointTypes의 통계 구조체 활용
     VirtualPointStatistics statistics_;
     mutable std::mutex stats_mutex_;
     

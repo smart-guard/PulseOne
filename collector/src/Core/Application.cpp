@@ -103,6 +103,11 @@ bool CollectorApplication::Initialize() {
         }
         std::cout << "  ✅ WorkerFactory 초기화 완료" << std::endl;
         
+        if (!InitializeRestApiServer()) {
+            std::cout << "❌ RestApiServer 초기화 실패" << std::endl;
+            return false;
+        }
+
         return true;
         
     } catch (const std::exception& e) {
@@ -222,6 +227,29 @@ void CollectorApplication::Cleanup() {
         std::cout << "⚠️ 정리 중 오류: " << e.what() << std::endl;
         logger_->Error("Exception in Cleanup: " + std::string(e.what()));
     }
+}
+
+bool CollectorApplication::InitializeRestApiServer() {
+#ifdef HAVE_HTTPLIB
+    api_server_ = std::make_unique<Network::RestApiServer>(8080);
+    SetupApiCallbacks();
+    return api_server_->Start();
+#else
+    std::cout << "⚠️ HTTP 라이브러리 없음 - REST API 비활성화됨" << std::endl;
+    return true;
+#endif
+}
+
+void CollectorApplication::SetupApiCallbacks() {
+    // DeviceManager를 통한 디바이스 제어
+    api_server_->SetDeviceStartCallback([this](const std::string& device_id) {
+        return DeviceManager::getInstance().startDevice(device_id);
+    });
+    
+    // SystemManager를 통한 시스템 정보
+    api_server_->SetSystemStatsCallback([this]() {
+        return SystemManager::getInstance().getStats();
+    });
 }
 
 } // namespace Core

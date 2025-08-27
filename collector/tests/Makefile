@@ -1,20 +1,38 @@
 # =============================================================================
-# collector/tests/Makefile - 🚀 고속 증분 컴파일 + 알람 시스템 통합
+# collector/tests/Makefile - PlatformCompat.h 통합 + 크로스 플랫폼 지원
+# 🛡️ Windows/Linux 완전 호환 + Network API 통합
 # =============================================================================
 
-# 🚀 성능 최적화 설정
+# 성능 최적화 설정
 NPROC := $(shell nproc 2>/dev/null || echo 4)
 MAKEFLAGS += -j$(NPROC) --output-sync=target
 
-# 🔧 라이브러리 체크 (캐시된 결과 사용)
+# 🔧 플랫폼 감지
+UNAME := $(shell uname -s)
+ifeq ($(UNAME),Linux)
+    PLATFORM := Linux
+    IS_WINDOWS := 0
+    IS_LINUX := 1
+else ifeq ($(OS),Windows_NT)
+    PLATFORM := Windows
+    IS_WINDOWS := 1
+    IS_LINUX := 0
+else
+    PLATFORM := $(UNAME)
+    IS_WINDOWS := 0
+    IS_LINUX := 0
+endif
+
+# 라이브러리 체크 (캐시된 결과 사용)
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
 HAS_QUICKJS := $(shell pkg-config --exists quickjs && echo "1" || echo "0")
+HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
-# 컴파일러 설정 (🚀 최적화됨)
+# 컴파일러 설정 (플랫폼별)
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE \
            -O1 -fno-omit-frame-pointer \
@@ -22,7 +40,17 @@ CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE \
            -Wno-unused-parameter \
            -fdiagnostics-color=always
 
-# 🚀 증분 컴파일용 디렉토리
+# 🔧 플랫폼별 컴파일 플래그 추가
+ifeq ($(IS_WINDOWS),1)
+    CXXFLAGS += -DPULSEONE_WINDOWS=1 -DPULSEONE_LINUX=0 \
+                -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
+    PLATFORM_LIBS = -lws2_32 -liphlpapi -lkernel32 -luser32
+else
+    CXXFLAGS += -DPULSEONE_WINDOWS=0 -DPULSEONE_LINUX=1
+    PLATFORM_LIBS = 
+endif
+
+# 증분 컴파일용 디렉토리
 OBJ_DIR = ./obj
 BIN_DIR = ./bin
 DATA_DIR = ./data
@@ -32,12 +60,29 @@ PARENT_DIR = ..
 INCLUDE_DIR = $(PARENT_DIR)/include
 SRC_DIR = $(PARENT_DIR)/src
 
-# Include 경로 (🔥 알람 시스템 헤더 추가)
+# 🔥 Include 경로 (Platform 디렉토리 추가)
 INCLUDES = -I$(INCLUDE_DIR) \
+           -I$(INCLUDE_DIR)/Platform \
+		   -I$(INCLUDE_DIR)/Api \
            -I$(INCLUDE_DIR)/Alarm \
-           -I$(INCLUDE_DIR)/VirtualPoint
+           -I$(INCLUDE_DIR)/VirtualPoint \
+           -I$(INCLUDE_DIR)/Network \
+           -I$(INCLUDE_DIR)/Workers \
+           -I$(INCLUDE_DIR)/Workers/Base \
+           -I$(INCLUDE_DIR)/Workers/Protocol \
+           -I$(INCLUDE_DIR)/Workers/Components \
+           -I$(INCLUDE_DIR)/Database \
+           -I$(INCLUDE_DIR)/Database/Entities \
+           -I$(INCLUDE_DIR)/Database/Repositories \
+           -I$(INCLUDE_DIR)/Common \
+           -I$(INCLUDE_DIR)/Utils \
+           -I$(INCLUDE_DIR)/Config \
+           -I$(INCLUDE_DIR)/Drivers \
+           -I$(INCLUDE_DIR)/Drivers/Common \
+           -I$(INCLUDE_DIR)/Pipeline \
+           -I$(INCLUDE_DIR)/Client
 
-# 🔧 라이브러리 설정 (기존과 동일)
+# 라이브러리 설정 (기존과 동일)
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)
     MODBUS_LIBS = 
     MODBUS_INCLUDES = 
@@ -97,7 +142,7 @@ ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON
 endif
 
-# 🔥 QuickJS 라이브러리 설정 (수정됨)
+# QuickJS 라이브러리 설정
 ifeq ($(HAS_QUICKJS),1)
     QUICKJS_LIBS = $(shell pkg-config --libs quickjs 2>/dev/null || echo "-lquickjs")
     QUICKJS_INCLUDES = $(shell pkg-config --cflags quickjs 2>/dev/null || echo "-I/usr/local/include")
@@ -106,20 +151,36 @@ ifeq ($(HAS_QUICKJS),1)
 else
     QUICKJS_LIBS = 
     CXXFLAGS += -DHAS_QUICKJS=0
-    $(warning ⚠️  QuickJS not found - Script alarms will be disabled)
+    $(warning QuickJS not found - Script alarms will be disabled)
 endif
 
-# 전체 라이브러리 설정 (🔥 QuickJS 추가)
-BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) -lm -ldl
+# HTTP 라이브러리 설정
+ifeq ($(HAS_HTTPLIB),1)
+    HTTP_LIBS = 
+    CXXFLAGS += -DHAVE_HTTPLIB=1
+	API_SOURCES := $(wildcard $(SRC_DIR)/Api/*.cpp)
+    $(info ✅ Including API sources: $(words $(API_SOURCES)) files)
+else
+    HTTP_LIBS = 
+    CXXFLAGS += -DHAVE_HTTPLIB=0
+    API_SOURCES :=
+    $(warning ⚠️  API sources excluded - httplib not available)
+endif
+
+# 🔥 전체 라이브러리 설정 (플랫폼 라이브러리 포함)
+BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) $(HTTP_LIBS) -lm -ldl $(PLATFORM_LIBS)
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
 TEST_LIBS = -lgtest -lgtest_main -pthread
 
 # =============================================================================
-# 🚀 소스 파일 및 오브젝트 파일 정의 (🔥 알람 및 VirtualPoint 추가)
+# 소스 파일 및 오브젝트 파일 정의 (Platform 소스 추가)
 # =============================================================================
 
-# 모든 소스 파일 수집 (기존과 동일)
+# 🔥 Platform 소스 추가 (헤더 온리이지만 향후 확장 대비)
+PLATFORM_SOURCES := $(wildcard $(SRC_DIR)/Platform/*.cpp)
+
+# 모든 소스 파일 수집 (기존 + Platform)
 UTILS_SOURCES := $(wildcard $(SRC_DIR)/Utils/*.cpp)
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
 DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp) \
@@ -130,6 +191,13 @@ WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Components/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp)
+
+# Network 소스 추가 (조건부 포함)
+ifeq ($(HAS_HTTPLIB),1)
+    NETWORK_SOURCES := $(wildcard $(SRC_DIR)/Network/*.cpp)
+else
+    NETWORK_SOURCES :=
+endif
 
 # Drivers 소스들 (조건부 포함)
 DRIVERS_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
@@ -145,23 +213,26 @@ endif
 
 PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
 
-# 🔥 알람 및 가상포인트 소스 추가
+# 알람 및 가상포인트 소스
 ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
 
-# 🚀 전체 소스 파일 (🔥 알람 및 VirtualPoint 포함)
+# 🔥 전체 소스 파일 (Platform 포함)
 ALL_SOURCES = $(UTILS_SOURCES) $(CONFIG_SOURCES) $(DATABASE_SOURCES) \
               $(CLIENT_SOURCES) $(WORKERS_SOURCES) $(DRIVERS_SOURCES) \
-              $(PIPELINE_SOURCES) $(ALARM_SOURCES) $(VIRTUALPOINT_SOURCES)
+              $(PIPELINE_SOURCES) $(ALARM_SOURCES) $(VIRTUALPOINT_SOURCES) \
+              $(NETWORK_SOURCES) $(PLATFORM_SOURCES)
 
-# 🚀 오브젝트 파일 생성 (증분 컴파일용)
+# 오브젝트 파일 생성
 ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
 
-# 🔥 테스트 파일들 정의 (🚀 step6을 enhanced로 변경)
+# 테스트 파일들 정의
 TEST_OBJECTS = $(OBJ_DIR)/test_step3_workers.o \
                $(OBJ_DIR)/test_step4_driver_data_validation.o \
                $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
-               $(OBJ_DIR)/test_step6_enhanced_pipeline.o
+               $(OBJ_DIR)/test_step6_enhanced_pipeline.o \
+               $(OBJ_DIR)/test_network_api.o \
+               $(OBJ_DIR)/test_platform_compat.o
 
 # 색상 정의
 GREEN = \033[0;32m
@@ -170,249 +241,298 @@ YELLOW = \033[1;33m
 RED = \033[0;31m
 PURPLE = \033[0;35m
 CYAN = \033[0;36m
+MAGENTA = \033[0;95m
 NC = \033[0m
 
 # =============================================================================
-# 🚀 증분 컴파일 타겟들
+# 증분 컴파일 타겟들 (Platform 디렉토리 추가)
 # =============================================================================
 
 .DEFAULT_GOAL := help
 
-# 🔥 디렉토리 생성 (알람 및 VirtualPoint 디렉토리 추가)
+# 🔥 디렉토리 생성 (Platform 디렉토리 추가)
 $(OBJ_DIR):
-	@echo -e "$(BLUE)📁 Creating object directories...$(NC)"
+	@echo -e "$(BLUE)🏗️ Creating object directories for $(PLATFORM)...$(NC)"
 	@mkdir -p $(OBJ_DIR)
 	@mkdir -p $(OBJ_DIR)/Utils $(OBJ_DIR)/Config $(OBJ_DIR)/Database/Entities $(OBJ_DIR)/Database/Repositories
 	@mkdir -p $(OBJ_DIR)/Client $(OBJ_DIR)/Workers/Base $(OBJ_DIR)/Workers/Protocol $(OBJ_DIR)/Workers/Components
 	@mkdir -p $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
-	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Plugin $(OBJ_DIR)/Core
+	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Plugin $(OBJ_DIR)/Core 
+	@mkdir -p $(OBJ_DIR)/Network $(OBJ_DIR)/Platform
+	@echo -e "$(GREEN)✅ Directories created for $(PLATFORM) platform$(NC)"
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
-# 🚀 개별 오브젝트 파일 컴파일 (증분 컴파일 + 의존성 생성)
+# 개별 오브젝트 파일 컴파일
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔗 Generating dependencies for $<$(NC)"
+	@echo -e "$(YELLOW)🔨 Generating dependencies for $<$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🔨 Compiling $<$(NC)"
+	@echo -e "$(YELLOW)⚙️  Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# 🚀 테스트 파일들 컴파일 (의존성 생성 포함)
-$(OBJ_DIR)/test_step3_workers.o: test_step3_workers.cpp | $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step3_workers.cpp$(NC)"
+# 🔥 플랫폼 호환성 테스트 추가
+$(OBJ_DIR)/test_platform_compat.o: test_platform_compat.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔨 Generating dependencies for test_platform_compat.cpp$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🔨 Compiling test_step3_workers...$(NC)"
+	@echo -e "$(MAGENTA)🛡️  Compiling Platform Compatibility Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 테스트 파일들 컴파일 (기존)
+$(OBJ_DIR)/test_step3_workers.o: test_step3_workers.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step3_workers.cpp$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
+	@echo -e "$(YELLOW)👷 Compiling test_step3_workers [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step4_driver_data_validation.o: test_step4_driver_data_validation.cpp | $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step4_driver_data_validation.cpp$(NC)"
+	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step4_driver_data_validation.cpp$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🔨 Compiling test_step4_driver_data_validation...$(NC)"
+	@echo -e "$(YELLOW)🔌 Compiling test_step4_driver_data_validation [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_db_integration_validation.cpp | $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step5_complete_db_integration_validation.cpp$(NC)"
+	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step5_complete_db_integration_validation.cpp$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🔨 Compiling test_step5_complete_db_integration_validation...$(NC)"
+	@echo -e "$(YELLOW)🗄️  Compiling test_step5_complete_db_integration_validation [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# 🔥 새로운 enhanced 테스트 파일 컴파일
 $(OBJ_DIR)/test_step6_enhanced_pipeline.o: test_step6_enhanced_pipeline.cpp | $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔗 Generating dependencies for test_step6_enhanced_pipeline.cpp$(NC)"
+	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step6_enhanced_pipeline.cpp$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🔨 Compiling test_step6_enhanced_pipeline...$(NC)"
+	@echo -e "$(YELLOW)⚡ Compiling test_step6_enhanced_pipeline [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Network API 테스트
+$(OBJ_DIR)/test_network_api.o: test_network_api.cpp | $(OBJ_DIR)
+	@echo -e "$(YELLOW)🔨 Generating dependencies for test_network_api.cpp$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
+	@echo -e "$(YELLOW)🌐 Compiling test_network_api [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
-# 🚀 테스트 실행 파일들 (개별)
+# 테스트 실행 파일들 (플랫폼 호환성 테스트 추가)
 # =============================================================================
 
-# Step 3: Workers 테스트
+# 🔥 플랫폼 호환성 테스트
+$(BIN_DIR)/test_platform: $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o | $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Platform Compatibility Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Platform Compatibility Test build completed for $(PLATFORM)!$(NC)"
+
 $(BIN_DIR)/test_step3: $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_workers.o | $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step3...$(NC)"
+	@echo -e "$(PURPLE)🔗 Linking test_step3 [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_workers.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step3 build completed!$(NC)"
+	@echo -e "$(GREEN)✅ test_step3 build completed for $(PLATFORM)!$(NC)"
 
-# Step 4: Driver 데이터 검증 테스트
 $(BIN_DIR)/test_step4: $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o | $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step4 (Driver Data Validation)...$(NC)"
+	@echo -e "$(PURPLE)🔗 Linking test_step4 (Driver Data Validation) [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step4 (Driver Data Validation) build completed!$(NC)"
+	@echo -e "$(GREEN)✅ test_step4 (Driver Data Validation) build completed for $(PLATFORM)!$(NC)"
 
-# Step 5: DB 통합 검증 테스트
 $(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o | $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step5...$(NC)"
+	@echo -e "$(PURPLE)🔗 Linking test_step5 [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step5 build completed!$(NC)"
+	@echo -e "$(GREEN)✅ test_step5 build completed for $(PLATFORM)!$(NC)"
 
-# 🔥 Step 6: 향상된 알람+가상포인트 파이프라인 테스트
 $(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o | $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step6 (Enhanced Alarm+VirtualPoint Pipeline)...$(NC)"
+	@echo -e "$(PURPLE)🔗 Linking test_step6 (Enhanced Alarm+VirtualPoint Pipeline) [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step6 (Enhanced Alarm+VirtualPoint Pipeline) build completed!$(NC)"
+	@echo -e "$(GREEN)✅ test_step6 (Enhanced Alarm+VirtualPoint Pipeline) build completed for $(PLATFORM)!$(NC)"
+
+# Network API 테스트
+$(BIN_DIR)/test_network: $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o | $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking test_network (REST API Server) [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ test_network (REST API Server) build completed for $(PLATFORM)!$(NC)"
 
 # =============================================================================
-# 🚀 메인 타겟들
+# 메인 타겟들 (플랫폼 호환성 테스트 추가)
 # =============================================================================
+
+# 🔥 플랫폼 호환성 테스트 빌드/실행
+platform-build: $(BIN_DIR)/test_platform
+
+platform-test: platform-build
+	@echo -e "$(MAGENTA)🛡️  Running Platform Compatibility Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Testing cross-platform functionality$(NC)"
+	@./$(BIN_DIR)/test_platform
 
 # 개별 테스트 빌드
 step3-build: $(BIN_DIR)/test_step3
-	@echo -e "$(GREEN)🚀 Step 3 (Workers) build completed!$(NC)"
 
 step4-build: $(BIN_DIR)/test_step4
-	@echo -e "$(GREEN)🚀 Step 4 (Driver Data Validation) build completed!$(NC)"
 
 step5-build: $(BIN_DIR)/test_step5
-	@echo -e "$(GREEN)🚀 Step 5 (Complete DB Integration) build completed!$(NC)"
 
 step6-build: $(BIN_DIR)/test_step6
-	@echo -e "$(GREEN)🚀 Step 6 (Enhanced Alarm+VirtualPoint Pipeline) build completed!$(NC)"
+
+network-build: $(BIN_DIR)/test_network
 
 # 개별 테스트 실행
 step3-test: step3-build
-	@echo -e "$(PURPLE)🧪 Running Step 3 (Workers) tests...$(NC)"
+	@echo -e "$(PURPLE)🚀 Running Step 3 (Workers) tests [$(PLATFORM)]...$(NC)"
 	@./$(BIN_DIR)/test_step3
 
 step4-test: step4-build
-	@echo -e "$(PURPLE)🧪 Running Step 4 (Driver Data Validation) tests...$(NC)"
+	@echo -e "$(PURPLE)🚀 Running Step 4 (Driver Data Validation) tests [$(PLATFORM)]...$(NC)"
 	@./$(BIN_DIR)/test_step4
 
 step5-test: step5-build
-	@echo -e "$(PURPLE)🧪 Running Step 5 (Complete DB Integration) tests...$(NC)"
+	@echo -e "$(PURPLE)🚀 Running Step 5 (Complete DB Integration) tests [$(PLATFORM)]...$(NC)"
 	@./$(BIN_DIR)/test_step5
 
 step6-test: step6-build
-	@echo -e "$(PURPLE)🧪 Running Step 6 (Enhanced Alarm+VirtualPoint Pipeline) tests...$(NC)"
-	@echo -e "$(CYAN)📊 이 테스트는 Redis 서버가 실행 중이어야 합니다$(NC)"
-	@echo -e "$(CYAN)🔥 알람 규칙 및 가상포인트 테스트 데이터가 DB에 있어야 합니다$(NC)"
+	@echo -e "$(PURPLE)🚀 Running Step 6 (Enhanced Alarm+VirtualPoint Pipeline) tests [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)This test requires Redis server running$(NC)"
+	@echo -e "$(CYAN)Test data should be present in DB$(NC)"
 	@./$(BIN_DIR)/test_step6
 
-# 🔥 모든 테스트 빌드
-all-tests-build: $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6
-	@echo -e "$(GREEN)🎉 All tests build completed (Step 3-6)!$(NC)"
+network-test: network-build
+	@echo -e "$(PURPLE)🚀 Running Network API tests [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)This test starts REST API server on port 8080$(NC)"
+	@./$(BIN_DIR)/test_network
 
-# 🔥 모든 테스트 실행 (순서대로)
+# 🔥 모든 테스트 빌드 (플랫폼 테스트 포함)
+all-tests-build: $(BIN_DIR)/test_platform $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_network
+	@echo -e "$(GREEN)✅ All tests build completed for $(PLATFORM) (Platform + Step 3-6 + Network)!$(NC)"
+
+# 🔥 모든 테스트 실행 (플랫폼 테스트 포함)
 all-tests-run: all-tests-build
-	@echo -e "$(BLUE)🚀 Running all tests in sequence (Step 3-6)...$(NC)"
-	@echo -e "$(YELLOW)======================================$(NC)"
-	@echo -e "$(PURPLE)🧪 Step 3: Workers Test$(NC)"
+	@echo -e "$(BLUE)🚀 Running all tests in sequence on $(PLATFORM)...$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(MAGENTA)Platform: Cross-Platform Compatibility Test$(NC)"
+	@./$(BIN_DIR)/test_platform
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(PURPLE)Step 3: Workers Test$(NC)"
 	@./$(BIN_DIR)/test_step3
-	@echo -e "$(YELLOW)======================================$(NC)"
-	@echo -e "$(PURPLE)🧪 Step 4: Driver Data Validation Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(PURPLE)Step 4: Driver Data Validation Test$(NC)"
 	@./$(BIN_DIR)/test_step4
-	@echo -e "$(YELLOW)======================================$(NC)"
-	@echo -e "$(PURPLE)🧪 Step 5: Complete DB Integration Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(PURPLE)Step 5: Complete DB Integration Test$(NC)"
 	@./$(BIN_DIR)/test_step5
-	@echo -e "$(YELLOW)======================================$(NC)"
-	@echo -e "$(PURPLE)🧪 Step 6: Enhanced Alarm+VirtualPoint Pipeline Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(PURPLE)Step 6: Enhanced Alarm+VirtualPoint Pipeline Test$(NC)"
 	@./$(BIN_DIR)/test_step6
-	@echo -e "$(GREEN)🎉 All tests completed (Step 3-6)!$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(PURPLE)Network: REST API Server Test$(NC)"
+	@./$(BIN_DIR)/test_network
+	@echo -e "$(GREEN)🎉 All tests completed successfully on $(PLATFORM)!$(NC)"
 
 # 전체 클린 빌드
 full-build: clean all-tests-build
-	@echo -e "$(GREEN)🏗️  Full build completed!$(NC)"
+	@echo -e "$(GREEN)✅ Full build completed for $(PLATFORM)!$(NC)"
 
-# 🚀 빠른 테스트 실행 (기존 호환)
-test: step3-test
+# 빠른 테스트 실행 (기존 호환 + 플랫폼 테스트)
+test: platform-test step3-test
 
 # 클린
 clean:
-	@echo -e "$(YELLOW)🧹 Cleaning...$(NC)"
+	@echo -e "$(YELLOW)🧹 Cleaning $(PLATFORM) build files...$(NC)"
 	@rm -rf $(OBJ_DIR) $(BIN_DIR)
-	@echo -e "$(GREEN)✅ Clean completed$(NC)"
+	@echo -e "$(GREEN)✅ Clean completed for $(PLATFORM)$(NC)"
 
-# 🔍 빌드 상태 확인 (🔥 QuickJS 상태 추가)
+# 🔥 빌드 상태 확인 (플랫폼 정보 포함)
 status:
-	@echo -e "$(BLUE)📊 Build Status$(NC)"
-	@echo -e "$(YELLOW)===============$(NC)"
+	@echo -e "$(BLUE)🏗️ Build Status for $(PLATFORM)$(NC)"
+	@echo -e "$(YELLOW)==============================$(NC)"
+	@echo "Platform: $(PLATFORM)"
+	@echo "Windows: $(IS_WINDOWS), Linux: $(IS_LINUX)"
 	@echo "Object files: $(words $(wildcard $(OBJ_DIR)/**/*.o)) / $(words $(ALL_OBJECTS))"
 	@echo "Source files: $(words $(ALL_SOURCES))"
+	@echo "Platform sources: $(words $(PLATFORM_SOURCES))"
+	@echo "Platform binary: $(if $(wildcard $(BIN_DIR)/test_platform),✅ exists,❌ missing)"
 	@echo "Step 3 binary: $(if $(wildcard $(BIN_DIR)/test_step3),✅ exists,❌ missing)"
 	@echo "Step 4 binary: $(if $(wildcard $(BIN_DIR)/test_step4),✅ exists,❌ missing)"
 	@echo "Step 5 binary: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
 	@echo "Step 6 binary: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing)"
+	@echo "Network binary: $(if $(wildcard $(BIN_DIR)/test_network),✅ exists,❌ missing)"
 	@echo ""
-	@echo -e "$(BLUE)🔧 Libraries:$(NC)"
-	@echo "  Modbus: $(if $(MODBUS_LIBS),✅,❌)"
-	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅,❌)"
-	@echo "  BACnet: $(if $(BACNET_LIBS),✅,❌)"
-	@echo "  Redis: $(if $(REDIS_LIBS),✅,❌)"
-	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ $(QUICKJS_LIBS),❌)"
+	@echo -e "$(BLUE)📚 Libraries:$(NC)"
+	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ available,❌ unavailable)"
+	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅ available,❌ unavailable)"
+	@echo "  BACnet: $(if $(BACNET_LIBS),✅ available,❌ unavailable)"
+	@echo "  Redis: $(if $(REDIS_LIBS),✅ available,❌ unavailable)"
+	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ available $(QUICKJS_LIBS),❌ unavailable)"
+	@echo "  HTTP: $(if $(filter -DHAVE_HTTPLIB=1,$(CXXFLAGS)),✅ available,❌ unavailable)"
+	@echo "  Platform libs: $(PLATFORM_LIBS)"
 
-# 🚀 개발용 워크플로우들
-dev-step3: step3-build step3-test
-dev-step4: step4-build step4-test
-dev-step5: step5-build step5-test
-dev-step6: step6-build step6-test
-dev-all: all-tests-run
-
-# 종속성 확인 (🔥 QuickJS 추가)
+# 🔥 종속성 확인 (플랫폼 정보 포함)
 check-deps:
-	@echo -e "$(BLUE)🔍 라이브러리 의존성 체크$(NC)"
-	@echo "  Total sources: $(words $(ALL_SOURCES))"
-	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅ $(MQTT_CPP_LIBS),❌ not found)"
-	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ $(MODBUS_LIBS),❌ not found)"
-	@echo "  BACnet: $(if $(BACNET_LIBS),✅ $(BACNET_LIBS),❌ not found)"
-	@echo "  Redis: $(if $(REDIS_LIBS),✅ $(REDIS_LIBS),❌ not found)"
-	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ $(QUICKJS_LIBS),❌ not found)"
+	@echo -e "$(BLUE)🔍 Library dependency check for $(PLATFORM)$(NC)"
+	@echo -e "$(YELLOW)=====================================$(NC)"
+	@echo "Platform: $(PLATFORM) (Windows: $(IS_WINDOWS), Linux: $(IS_LINUX))"
+	@echo "Total sources: $(words $(ALL_SOURCES))"
+	@echo "Network sources: $(words $(NETWORK_SOURCES))"
+	@echo "Platform sources: $(words $(PLATFORM_SOURCES))"
+	@echo "Platform libraries: $(PLATFORM_LIBS)"
 	@echo ""
-	@echo -e "$(BLUE)🔧 QuickJS 상세 체크:$(NC)"
-	@pkg-config --exists quickjs && echo "  ✅ pkg-config: OK" || echo "  ❌ pkg-config: 실패"
-	@ls -la /usr/local/lib/libquickjs* 2>/dev/null || echo "  ❌ 라이브러리 파일 없음"
-	@ls -la /usr/local/include/quickjs*.h 2>/dev/null || echo "  ❌ 헤더 파일 없음"
+	@echo -e "$(CYAN)Optional Libraries:$(NC)"
+	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅ available $(MQTT_CPP_LIBS),❌ unavailable)"
+	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ available $(MODBUS_LIBS),❌ unavailable)"
+	@echo "  BACnet: $(if $(BACNET_LIBS),✅ available $(BACNET_LIBS),❌ unavailable)"
+	@echo "  Redis: $(if $(REDIS_LIBS),✅ available $(REDIS_LIBS),❌ unavailable)"
+	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ available $(QUICKJS_LIBS),❌ unavailable)"
+	@echo "  HTTP: $(if $(filter -DHAVE_HTTPLIB=1,$(CXXFLAGS)),✅ available,❌ unavailable)"
 
-# 도움말
+# 🔥 Windows 준비 확인
+check-windows-ready:
+	@echo -e "$(MAGENTA)🪟 Windows Compatibility Check$(NC)"
+	@echo -e "$(YELLOW)==============================$(NC)"
+	@echo "Platform detection: $(if $(filter Windows,$(PLATFORM)),✅ Windows detected,ℹ️  Running on $(PLATFORM))"
+	@echo "PlatformCompat.h: $(if $(wildcard $(INCLUDE_DIR)/Platform/PlatformCompat.h),✅ exists,❌ missing - run 'mkdir -p ../include/Platform' and create file)"
+	@echo "Platform includes: $(if $(findstring -I$(INCLUDE_DIR)/Platform,$(INCLUDES)),✅ included,❌ missing)"
+	@echo "Windows flags: $(if $(filter -DPULSEONE_WINDOWS=1,$(CXXFLAGS)),✅ Windows build ready,ℹ️  Linux build)"
+	@echo "Windows libs: $(if $(PLATFORM_LIBS),✅ $(PLATFORM_LIBS),ℹ️  Linux - no Windows libs needed)"
+	@echo ""
+	@echo -e "$(GREEN)Status: $(if $(wildcard $(INCLUDE_DIR)/Platform/PlatformCompat.h),🎯 Ready for cross-platform compilation,⚠️  Need to create PlatformCompat.h)$(NC)"
+
+# 도움말 (플랫폼 테스트 추가)
 help:
-	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System (with Alarm+VirtualPoint)$(NC)"
-	@echo -e "$(YELLOW)========================================================$(NC)"
+	@echo -e "$(BLUE)🚀 PulseOne Build System with Cross-Platform Support$(NC)"
+	@echo -e "$(YELLOW)===============================================$(NC)"
 	@echo ""
-	@echo -e "$(GREEN)🔥 개별 테스트 명령어:$(NC)"
-	@echo "  make step3-test   - 🧪 Step 3: Workers 테스트"
-	@echo "  make step4-test   - 🧪 Step 4: Driver 데이터 검증 테스트"
-	@echo "  make step5-test   - 🧪 Step 5: 완전한 DB 통합 테스트"
-	@echo "  make step6-test   - 🧪 Step 6: 🔥 향상된 알람+가상포인트 파이프라인 테스트"
+	@echo -e "$(MAGENTA)🛡️ Platform Support:$(NC)"
+	@echo "  Current platform: $(PLATFORM)"
+	@echo "  make platform-test    - Test cross-platform compatibility"
+	@echo "  make platform-build   - Build platform compatibility test"
+	@echo "  make check-windows-ready - Check Windows compilation readiness"
 	@echo ""
-	@echo -e "$(GREEN)🚀 빠른 빌드 명령어:$(NC)"
-	@echo "  make step3-build  - 🚀 Step 3 빌드만"
-	@echo "  make step4-build  - 🚀 Step 4 빌드만"
-	@echo "  make step5-build  - 🚀 Step 5 빌드만"
-	@echo "  make step6-build  - 🚀 Step 6 빌드만 (🔥 알람+가상포인트 시스템 포함)"
-	@echo "  make all-tests-build - 🚀 모든 테스트 빌드 (Step 3-6)"
+	@echo -e "$(GREEN)Individual test commands:$(NC)"
+	@echo "  make step3-test   - Step 3: Workers test"
+	@echo "  make step4-test   - Step 4: Driver data validation test"
+	@echo "  make step5-test   - Step 5: Complete DB integration test"
+	@echo "  make step6-test   - Step 6: Enhanced alarm+virtualpoint pipeline test"
+	@echo "  make network-test - Network: REST API server test"
 	@echo ""
-	@echo -e "$(GREEN)🎯 통합 실행:$(NC)"
-	@echo "  make all-tests-run - 🎉 모든 테스트 순서대로 실행 (Step 3-6)"
-	@echo "  make dev-all      - 🔄 개발 워크플로우 (빌드 + 전체 테스트)"
+	@echo -e "$(GREEN)Quick build commands:$(NC)"
+	@echo "  make step3-build  - Build Step 3 only"
+	@echo "  make step4-build  - Build Step 4 only"
+	@echo "  make step5-build  - Build Step 5 only"
+	@echo "  make step6-build  - Build Step 6 only"
+	@echo "  make network-build - Build Network test only"
+	@echo "  make all-tests-build - Build all tests"
 	@echo ""
-	@echo -e "$(GREEN)🏗️  전체 빌드:$(NC)"
-	@echo "  make full-build   - 🏗️  전체 클린 빌드"
-	@echo "  make clean        - 🧹 모든 빌드 파일 삭제"
+	@echo -e "$(GREEN)Integrated execution:$(NC)"
+	@echo "  make all-tests-run - Run all tests in sequence (includes platform test)"
+	@echo "  make full-build   - Complete clean build"
+	@echo "  make test         - Quick test (platform + step3)"
+	@echo "  make clean        - Delete all build files"
 	@echo ""
-	@echo -e "$(GREEN)📊 상태 확인:$(NC)"
-	@echo "  make status       - 📊 빌드 상태 확인"
-	@echo "  make check-deps   - 🔍 라이브러리 확인 (QuickJS 포함)"
+	@echo -e "$(GREEN)Status check:$(NC)"
+	@echo "  make status       - Check build status"
+	@echo "  make check-deps   - Check library availability"
 	@echo ""
-	@echo -e "$(PURPLE)💡 권장 사용법:$(NC)"
-	@echo "  1️⃣  첫 빌드: make full-build"
-	@echo "  2️⃣  개별 테스트: make step6-test (🔥 알람+가상포인트)"
-	@echo "  3️⃣  전체 검증: make all-tests-run"
-	@echo "  4️⃣  개발 중: make dev-step6 (빠른 개발)"
-	@echo ""
-	@echo -e "$(RED)🔥 Step 6 Enhanced 기능:$(NC)"
-	@echo "  - 🚨 알람 시스템 완전 통합 (아날로그/디지털/스크립트 알람)"
-	@echo "  - 🧮 가상포인트 계산 엔진 통합"
-	@echo "  - 📊 Redis 알람 이벤트 및 가상포인트 결과 저장"
-	@echo "  - 🔍 완전한 검증 로직 (알람 발생 + 가상포인트 계산 확인)"
-	@echo "  - 🎯 DB → Worker스캔 → 파이프라인 → 알람평가 → 가상포인트 → Redis"
-	@echo ""
-	@echo -e "$(CYAN)📋 Step 6 테스트 전 준비사항:$(NC)"
-	@echo "  1. Redis 서버 실행: docker run -d -p 6379:6379 redis"
-	@echo "  2. 테스트 데이터 삽입: sqlite3 db/pulseone_test.db < insert_test_alarm_virtual_data.sql"
-	@echo "  3. 알람 규칙 확인: sqlite3 db/pulseone_test.db \"SELECT COUNT(*) FROM alarm_rules WHERE name LIKE 'TEST_%';\""
+	@echo -e "$(CYAN)💡 Next steps for Windows:$(NC)"
+	@echo "  1. Create PlatformCompat.h in ../include/Platform/"
+	@echo "  2. Run 'make platform-test' to verify cross-platform code"
+	@echo "  3. Run 'make check-windows-ready' before Windows compilation"
 
-# 🚀 자동 종속성 생성 (고급 기능)
+# 자동 종속성 생성
 -include $(ALL_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d)
 
-.PHONY: fast-build full-build test clean status check-deps help \
+.PHONY: full-build test clean status check-deps help \
         step3-build step3-test step4-build step4-test step5-build step5-test \
-        step6-build step6-test all-tests-build all-tests-run \
-        dev-step3 dev-step4 dev-step5 dev-step6 dev-all
+        step6-build step6-test network-build network-test all-tests-build all-tests-run \
+        platform-build platform-test check-windows-ready
