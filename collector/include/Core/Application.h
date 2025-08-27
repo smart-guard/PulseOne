@@ -16,7 +16,12 @@
 #include "Common/Structs.h"
 #ifdef HAVE_HTTPLIB
 #include "Network/RestApiServer.h"
+#include "Api/ConfigApiCallbacks.h"
+#include "Api/DeviceApiCallbacks.h"
+// #include "Api/SystemApiCallbacks.h"  // 나중에 추가
+// #include "Api/HardwareApiCallbacks.h" // 나중에 추가
 #endif
+
 
 // 🔧 간단한 전방 선언
 class LogManager;

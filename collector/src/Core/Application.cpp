@@ -103,6 +103,7 @@ bool CollectorApplication::Initialize() {
         }
         std::cout << "  ✅ WorkerFactory 초기화 완료" << std::endl;
         
+        // REST API 서버 초기화 추가
         if (!InitializeRestApiServer()) {
             std::cout << "❌ RestApiServer 초기화 실패" << std::endl;
             return false;
@@ -220,6 +221,15 @@ void CollectorApplication::Cleanup() {
         is_running_.store(false);
         
         // 필요한 경우 추가 정리 작업
+                // REST API 서버 정리
+#ifdef HAVE_HTTPLIB
+        if (api_server_) {
+            std::cout << "  🌐 REST API 서버 중지 중..." << std::endl;
+            api_server_->Stop();
+            api_server_.reset();
+            std::cout << "  ✅ REST API 서버 중지 완료" << std::endl;
+        }
+#endif
         
         std::cout << "✅ 시스템 정리 완료" << std::endl;
         
@@ -231,12 +241,45 @@ void CollectorApplication::Cleanup() {
 
 bool CollectorApplication::InitializeRestApiServer() {
 #ifdef HAVE_HTTPLIB
-    api_server_ = std::make_unique<Network::RestApiServer>(8080);
-    SetupApiCallbacks();
-    return api_server_->Start();
+    try {
+        // REST API 서버 생성
+        api_server_ = std::make_unique<Network::RestApiServer>(8080);
+        
+        // 각 영역별 콜백 설정 - 깔끔하고 분산된 방식
+        PulseOne::Api::ConfigApiCallbacks::Setup(
+            api_server_.get(), 
+            config_manager_, 
+            logger_
+        );
+        
+        PulseOne::Api::DeviceApiCallbacks::Setup(
+            api_server_.get(),
+            worker_factory_,
+            logger_
+        );
+        
+        // 향후 추가할 콜백들
+        // PulseOne::Api::SystemApiCallbacks::Setup(api_server_.get(), db_manager_, logger_);
+        // PulseOne::Api::HardwareApiCallbacks::Setup(api_server_.get(), hardware_manager_, logger_);
+        
+        // 서버 시작
+        if (api_server_->Start()) {
+            logger_->Info("REST API Server started on port 8080");
+            std::cout << "🌐 REST API 서버 시작됨: http://localhost:8080" << std::endl;
+            return true;
+        } else {
+            logger_->Error("Failed to start REST API Server");
+            return false;
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("Exception in InitializeRestApiServer: " + std::string(e.what()));
+        return false;
+    }
 #else
-    std::cout << "⚠️ HTTP 라이브러리 없음 - REST API 비활성화됨" << std::endl;
-    return true;
+    std::cout << "⚠️ HTTP 라이브러리 없음 - REST API 서버 비활성화됨" << std::endl;
+    logger_->Info("REST API Server disabled - HTTP library not available");
+    return true; // 에러가 아님, 단순히 비활성화
 #endif
 }
 
