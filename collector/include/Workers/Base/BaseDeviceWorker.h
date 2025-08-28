@@ -192,7 +192,7 @@ public:
      * @param enable true=시작, false=정지
      * @return 성공 시 true
      */
-    virtual bool ControlPump(const std::string& pump_id, bool enable) {
+    virtual bool ControlDigitalDevice(const std::string& pump_id, bool enable) {
         return WriteDigitalOutput(pump_id, enable);
     }
     
@@ -202,7 +202,7 @@ public:
      * @param position 밸브 위치 (0.0~100.0 %)
      * @return 성공 시 true
      */
-    virtual bool ControlValve(const std::string& valve_id, double position) {
+    virtual bool ControlAnalogDevice(const std::string& valve_id, double position) {
         return WriteAnalogOutput(valve_id, position);
     }
     

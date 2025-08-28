@@ -127,7 +127,7 @@ public:
      * @param enable true=시작, false=정지
      * @return 성공 시 true
      */
-    bool ControlPump(const std::string& pump_id, bool enable) override;
+    bool ControlDigitalDevice(const std::string& pump_id, bool enable) override;
     
     /**
      * @brief 밸브 제어 (BaseDeviceWorker 인터페이스 구현)
@@ -135,7 +135,7 @@ public:
      * @param position 밸브 위치 (0.0~100.0 %)
      * @return 성공 시 true
      */
-    bool ControlValve(const std::string& valve_id, double position) override;
+    bool ControlAnalogDevice(const std::string& valve_id, double position) override;
 
     // =============================================================================
     // TcpBasedWorker 인터페이스 구현 (Driver 위임)

@@ -943,6 +943,248 @@ bool BACnetWorker::WriteBACnetDataPoint(const std::string& point_id, const DataV
     }
 }
 
+// BaseDeviceWorker Write 인터페이스 구현
+bool BACnetWorker::WriteDataPoint(const std::string& point_id, const DataValue& value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteDataPoint 호출: " + point_id);
+        return WriteDataPointValue(point_id, value);
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetWorker::WriteAnalogOutput(const std::string& output_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteAnalogOutput 호출: " + output_id + " = " + std::to_string(value));
+        
+        // 먼저 DataPoint로 찾아보기
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        // DataPoint가 없으면 BACnet 객체 ID로 직접 파싱
+        uint32_t device_id;
+        BACNET_OBJECT_TYPE object_type;
+        uint32_t object_instance;
+        
+        if (ParseBACnetObjectId(output_id, device_id, object_type, object_instance)) {
+            // BACnet Present_Value 속성에 쓰기
+            return WriteProperty(device_id, object_type, object_instance, 
+                               PROP_PRESENT_VALUE, data_value);
+        }
+        
+        LogMessage(LogLevel::ERROR, "WriteAnalogOutput: Invalid output_id: " + output_id);
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetWorker::WriteDigitalOutput(const std::string& output_id, bool value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteDigitalOutput 호출: " + output_id + " = " + (value ? "ON" : "OFF"));
+        
+        // 먼저 DataPoint로 찾아보기
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        // DataPoint가 없으면 BACnet 객체 ID로 직접 파싱
+        uint32_t device_id;
+        BACNET_OBJECT_TYPE object_type;
+        uint32_t object_instance;
+        
+        if (ParseBACnetObjectId(output_id, device_id, object_type, object_instance)) {
+            // BACnet Present_Value 속성에 쓰기
+            return WriteProperty(device_id, object_type, object_instance, 
+                               PROP_PRESENT_VALUE, data_value);
+        }
+        
+        LogMessage(LogLevel::ERROR, "WriteDigitalOutput: Invalid output_id: " + output_id);
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetWorker::WriteSetpoint(const std::string& setpoint_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteSetpoint 호출: " + setpoint_id + " = " + std::to_string(value));
+        return WriteAnalogOutput(setpoint_id, value);
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetWorker::ControlDigitalDevice(const std::string& device_id, bool enable) {
+    try {
+        LogMessage(LogLevel::INFO, "ControlDigitalDevice 호출: " + device_id + " = " + (enable ? "ENABLE" : "DISABLE"));
+        
+        // WriteDigitalOutput을 통해 실제 제어 수행
+        bool success = WriteDigitalOutput(device_id, enable);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "BACnet 디지털 장비 제어 성공: " + device_id + " " + (enable ? "활성화" : "비활성화"));
+        } else {
+            LogMessage(LogLevel::ERROR, "BACnet 디지털 장비 제어 실패: " + device_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ControlDigitalDevice 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetWorker::ControlAnalogDevice(const std::string& device_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "ControlAnalogDevice 호출: " + device_id + " = " + std::to_string(value));
+        
+        // 일반적인 범위 검증 (0-100%)
+        if (value < 0.0 || value > 100.0) {
+            LogMessage(LogLevel::WARN, "ControlAnalogDevice: 값이 일반적 범위를 벗어남: " + std::to_string(value) + 
+                       "% (0-100 권장, 하지만 계속 진행)");
+        }
+        
+        // WriteAnalogOutput을 통해 실제 제어 수행
+        bool success = WriteAnalogOutput(device_id, value);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "BACnet 아날로그 장비 제어 성공: " + device_id + " = " + std::to_string(value));
+        } else {
+            LogMessage(LogLevel::ERROR, "BACnet 아날로그 장비 제어 실패: " + device_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ControlAnalogDevice 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 헬퍼 메서드들 구현
+// =============================================================================
+
+bool BACnetWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
+    auto data_point_opt = FindDataPointById(point_id);
+    if (!data_point_opt.has_value()) {
+        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        return false;
+    }
+    
+    const auto& data_point = data_point_opt.value();
+    
+    try {
+        // BACnet 객체 ID 파싱
+        uint32_t device_id;
+        BACNET_OBJECT_TYPE object_type;
+        uint32_t object_instance;
+        
+        if (!ParseBACnetObjectId(data_point.name, device_id, object_type, object_instance)) {
+            // address 필드에서 시도
+            std::string object_id = std::to_string(data_point.address);
+            if (!ParseBACnetObjectId(object_id, device_id, object_type, object_instance)) {
+                LogMessage(LogLevel::ERROR, "Invalid BACnet object ID for DataPoint: " + point_id);
+                return false;
+            }
+        }
+        
+        // Present_Value 속성에 쓰기 (기본)
+        bool success = WriteProperty(device_id, object_type, object_instance, 
+                                   PROP_PRESENT_VALUE, value);
+        
+        // 제어 이력 로깅
+        LogWriteOperation(data_point.name, value, "Present_Value", success);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "BACnet DataPoint 쓰기 성공: " + point_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool BACnetWorker::ParseBACnetObjectId(const std::string& object_id, uint32_t& device_id, 
+                                      BACNET_OBJECT_TYPE& object_type, uint32_t& object_instance) {
+    try {
+        // BACnet 객체 ID 형식: "device_id.object_type:object_instance"
+        // 예: "1001.ANALOG_OUTPUT:1" 또는 "1001.3:1"
+        
+        size_t dot_pos = object_id.find('.');
+        size_t colon_pos = object_id.find(':');
+        
+        if (dot_pos == std::string::npos || colon_pos == std::string::npos) {
+            return false;
+        }
+        
+        device_id = static_cast<uint32_t>(std::stoi(object_id.substr(0, dot_pos)));
+        object_instance = static_cast<uint32_t>(std::stoi(object_id.substr(colon_pos + 1)));
+        
+        std::string type_str = object_id.substr(dot_pos + 1, colon_pos - dot_pos - 1);
+        
+        // 숫자 형태인지 문자열 형태인지 확인
+        if (std::all_of(type_str.begin(), type_str.end(), ::isdigit)) {
+            object_type = static_cast<BACNET_OBJECT_TYPE>(std::stoi(type_str));
+        } else {
+            // 문자열을 숫자로 변환 (간단한 매핑)
+            if (type_str == "ANALOG_INPUT") object_type = OBJECT_ANALOG_INPUT;
+            else if (type_str == "ANALOG_OUTPUT") object_type = OBJECT_ANALOG_OUTPUT;
+            else if (type_str == "ANALOG_VALUE") object_type = OBJECT_ANALOG_VALUE;
+            else if (type_str == "BINARY_INPUT") object_type = OBJECT_BINARY_INPUT;
+            else if (type_str == "BINARY_OUTPUT") object_type = OBJECT_BINARY_OUTPUT;
+            else if (type_str == "BINARY_VALUE") object_type = OBJECT_BINARY_VALUE;
+            else return false;
+        }
+        
+        return true;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Failed to parse BACnet object ID: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::optional<DataPoint> BACnetWorker::FindDataPointById(const std::string& point_id) {
+    std::lock_guard<std::mutex> lock(data_points_mutex_);
+    
+    for (const auto& point : configured_data_points_) {
+        if (point.id == point_id) {
+            return point;
+        }
+    }
+    
+    return std::nullopt;  // 찾지 못함
+}
+
+void BACnetWorker::LogWriteOperation(const std::string& object_id, const DataValue& value,
+                                    const std::string& property_name, bool success) {
+    try {
+        // 제어 이력을 파이프라인으로 전송
+        TimestampedValue control_log;
+        control_log.value = value;
+        control_log.timestamp = std::chrono::system_clock::now();
+        control_log.quality = success ? DataQuality::GOOD : DataQuality::BAD;
+        control_log.source = "control_bacnet_" + property_name + "_" + object_id;
+        
+        // 제어 이력은 높은 우선순위로 기록
+        SendValuesToPipelineWithLogging({control_log}, "BACnet 제어 이력", 1);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
+    }
+}
+
 } // namespace Workers
 } // namespace PulseOne
 

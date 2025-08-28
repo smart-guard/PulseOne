@@ -165,7 +165,121 @@ public:
                             uint8_t priority = BACNET_NO_PRIORITY);
     
     bool WriteBACnetDataPoint(const std::string& point_id, const DataValue& value);    
+    /**
+     * @brief 데이터 포인트에 값 쓰기 (통합 인터페이스)
+     * @param point_id 데이터 포인트 ID
+     * @param value 쓸 값 (DataValue variant)
+     * @return 성공 시 true
+     */
+    virtual bool WriteDataPoint(const std::string& point_id, const DataValue& value) override;
     
+    /**
+     * @brief 아날로그 출력 제어 (범용 제어 인터페이스)
+     * @param output_id 출력 ID (point_id 또는 BACnet 객체 ID)
+     * @param value 출력 값 (0.0-100.0% 또는 원시값)
+     * @return 성공 시 true
+     */
+    virtual bool WriteAnalogOutput(const std::string& output_id, double value) override;
+    
+    /**
+     * @brief 디지털 출력 제어 (범용 제어 인터페이스)
+     * @param output_id 출력 ID (point_id 또는 BACnet 객체 ID)
+     * @param value 출력 값 (true/false)
+     * @return 성공 시 true
+     */
+    virtual bool WriteDigitalOutput(const std::string& output_id, bool value) override;
+    
+    /**
+     * @brief 세트포인트 설정 (아날로그 출력의 별칭)
+     * @param setpoint_id 세트포인트 ID
+     * @param value 설정값
+     * @return 성공 시 true
+     */
+    virtual bool WriteSetpoint(const std::string& setpoint_id, double value) override;
+    
+    // =============================================================================
+    // 범용 장비 제어 인터페이스 (BACnet 특화)
+    // =============================================================================
+    
+    /**
+     * @brief 디지털 장비 제어 (팬, 펌프, 댐퍼, 밸브 등)
+     * @param device_id BACnet 장비 ID
+     * @param enable 장비 활성화/비활성화
+     * @return 성공 시 true
+     */
+    virtual bool ControlDigitalDevice(const std::string& device_id, bool enable) override;
+    
+    /**
+     * @brief 아날로그 장비 제어 (VAV, VFD, 아날로그 밸브 등)
+     * @param device_id BACnet 장비 ID
+     * @param value 제어값 (일반적으로 0.0-100.0%)
+     * @return 성공 시 true
+     */
+    virtual bool ControlAnalogDevice(const std::string& device_id, double value) override;
+    
+    // =============================================================================
+    // BACnet 특화 편의 래퍼 함수들 (인라인 구현)
+    // =============================================================================
+    
+    /**
+     * @brief VAV (Variable Air Volume) 댐퍼 제어
+     * @param vav_id VAV 유닛 ID
+     * @param position 댐퍼 위치 (0.0-100.0%)
+     * @return 성공 시 true
+     */
+    inline bool ControlVAV(const std::string& vav_id, double position) {
+        return ControlAnalogDevice(vav_id, position);
+    }
+    
+    /**
+     * @brief AHU (Air Handling Unit) 팬 제어
+     * @param ahu_id AHU 유닛 ID
+     * @param enable 팬 시작/정지
+     * @return 성공 시 true
+     */
+    inline bool ControlAHU(const std::string& ahu_id, bool enable) {
+        return ControlDigitalDevice(ahu_id, enable);
+    }
+    
+    /**
+     * @brief 냉각밸브 제어
+     * @param valve_id 냉각밸브 ID
+     * @param position 밸브 위치 (0.0-100.0%)
+     * @return 성공 시 true
+     */
+    inline bool ControlChilledWaterValve(const std::string& valve_id, double position) {
+        return ControlAnalogDevice(valve_id, position);
+    }
+    
+    /**
+     * @brief 가열밸브 제어
+     * @param valve_id 가열밸브 ID
+     * @param position 밸브 위치 (0.0-100.0%)
+     * @return 성공 시 true
+     */
+    inline bool ControlHeatingValve(const std::string& valve_id, double position) {
+        return ControlAnalogDevice(valve_id, position);
+    }
+    
+    /**
+     * @brief 온도 설정점 변경
+     * @param zone_id 존 ID (또는 컨트롤러 ID)
+     * @param temperature 설정 온도 (°C)
+     * @return 성공 시 true
+     */
+    inline bool SetTemperatureSetpoint(const std::string& zone_id, double temperature) {
+        return WriteSetpoint(zone_id, temperature);
+    }
+    
+    /**
+     * @brief 습도 설정점 변경
+     * @param zone_id 존 ID (또는 컨트롤러 ID)
+     * @param humidity 설정 습도 (%RH)
+     * @return 성공 시 true
+     */
+    inline bool SetHumiditySetpoint(const std::string& zone_id, double humidity) {
+        return WriteSetpoint(zone_id, humidity);
+    }    
 private:
     // =============================================================================
     // 내부 구현 메서드들
@@ -191,7 +305,12 @@ private:
     void ProcessValueChangeForCOV(const std::string& object_id, 
                                  const TimestampedValue& new_value);
     bool IsValueChanged(const DataValue& previous, const DataValue& current);
-    
+    bool WriteDataPointValue(const std::string& point_id, const DataValue& value);
+    bool ParseBACnetObjectId(const std::string& object_id, uint32_t& device_id, 
+                            BACNET_OBJECT_TYPE& object_type, uint32_t& object_instance);
+    std::optional<DataPoint> FindDataPointById(const std::string& point_id);
+    void LogWriteOperation(const std::string& object_id, const DataValue& value,
+                          const std::string& property_name, bool success);    
     // =============================================================================
     // 멤버 변수들
     // =============================================================================
