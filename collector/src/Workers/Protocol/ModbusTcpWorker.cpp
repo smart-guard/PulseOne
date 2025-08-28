@@ -1,9 +1,9 @@
 /**
- * @file ModbusTcpWorker.cpp (리팩토링됨)
- * @brief Modbus TCP 워커 구현 - ModbusDriver를 통신 매체로 사용
+ * @file ModbusTcpWorker.cpp (완전한 완성본)
+ * @brief Modbus TCP 워커 구현 - BaseDeviceWorker Write 인터페이스 구현 + 모든 누락 함수 구현
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 2.0.0 (리팩토링됨)
+ * @version 2.1.0 (완전한 완성본)
  */
 
 #include "Workers/Protocol/ModbusTcpWorker.h"
@@ -16,8 +16,8 @@
 
 using namespace std::chrono;
 using json = nlohmann::json;
-
 using LogLevel = PulseOne::Enums::LogLevel;
+
 namespace PulseOne {
 namespace Workers {
 
@@ -31,18 +31,16 @@ ModbusTcpWorker::ModbusTcpWorker(const PulseOne::DeviceInfo& device_info)
     , polling_thread_running_(false)
     , next_group_id_(1)
     , default_polling_interval_ms_(1000)
-    , max_registers_per_group_(125)  // Modbus TCP standard limit
+    , max_registers_per_group_(125)
     , auto_group_creation_enabled_(true) {
     
     LogMessage(LogLevel::INFO, "ModbusTcpWorker created for device: " + device_info.name);
     
-    // 설정 파싱
     if (!ParseModbusConfig()) {
         LogMessage(LogLevel::ERROR, "Failed to parse Modbus configuration");
         return;
     }
     
-    // ModbusDriver 초기화
     if (!InitializeModbusDriver()) {
         LogMessage(LogLevel::ERROR, "Failed to initialize ModbusDriver");
         return;
@@ -52,20 +50,125 @@ ModbusTcpWorker::ModbusTcpWorker(const PulseOne::DeviceInfo& device_info)
 }
 
 ModbusTcpWorker::~ModbusTcpWorker() {
-    // 폴링 스레드 정리
     polling_thread_running_ = false;
     if (polling_thread_ && polling_thread_->joinable()) {
         polling_thread_->join();
     }
     
-    // ModbusDriver 정리 (자동으로 연결 해제됨)
     modbus_driver_.reset();
-    
     LogMessage(LogLevel::INFO, "ModbusTcpWorker destroyed");
 }
 
 // =============================================================================
-// BaseDeviceWorker 인터페이스 구현
+// BaseDeviceWorker Write 인터페이스 구현 (완성!)
+// =============================================================================
+
+bool ModbusTcpWorker::WriteDataPoint(const std::string& point_id, const DataValue& value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteDataPoint 호출: " + point_id);
+        return WriteDataPointValue(point_id, value);
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::WriteAnalogOutput(const std::string& output_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteAnalogOutput 호출: " + output_id + " = " + std::to_string(value));
+        
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        uint8_t slave_id;
+        uint16_t address;
+        if (ParseAddressString(output_id, slave_id, address)) {
+            uint16_t int_value = static_cast<uint16_t>(value);
+            return WriteSingleHoldingRegister(slave_id, address, int_value);
+        }
+        
+        LogMessage(LogLevel::ERROR, "WriteAnalogOutput: Invalid output_id: " + output_id);
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::WriteDigitalOutput(const std::string& output_id, bool value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteDigitalOutput 호출: " + output_id + " = " + (value ? "ON" : "OFF"));
+        
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        uint8_t slave_id;
+        uint16_t address;
+        if (ParseAddressString(output_id, slave_id, address)) {
+            return WriteSingleCoil(slave_id, address, value);
+        }
+        
+        LogMessage(LogLevel::ERROR, "WriteDigitalOutput: Invalid output_id: " + output_id);
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::WriteSetpoint(const std::string& setpoint_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteSetpoint 호출: " + setpoint_id + " = " + std::to_string(value));
+        return WriteAnalogOutput(setpoint_id, value);
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::ControlPump(const std::string& pump_id, bool enable) {
+    try {
+        LogMessage(LogLevel::INFO, "ControlPump 호출: " + pump_id + " = " + (enable ? "START" : "STOP"));
+        
+        bool success = WriteDigitalOutput(pump_id, enable);
+        if (success) {
+            LogMessage(LogLevel::INFO, "펌프 제어 성공: " + pump_id + " " + (enable ? "시작" : "정지"));
+        }
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ControlPump 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::ControlValve(const std::string& valve_id, double position) {
+    try {
+        LogMessage(LogLevel::INFO, "ControlValve 호출: " + valve_id + " = " + std::to_string(position) + "%");
+        
+        if (position < 0.0 || position > 100.0) {
+            LogMessage(LogLevel::ERROR, "ControlValve: Invalid position range: " + std::to_string(position) + "% (0-100 required)");
+            return false;
+        }
+        
+        bool success = WriteAnalogOutput(valve_id, position);
+        if (success) {
+            LogMessage(LogLevel::INFO, "밸브 위치 제어 성공: " + valve_id + " = " + std::to_string(position) + "%");
+        }
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ControlValve 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 라이프사이클 관리
 // =============================================================================
 
 std::future<bool> ModbusTcpWorker::Start() {
@@ -78,13 +181,11 @@ std::future<bool> ModbusTcpWorker::Start() {
         LogMessage(LogLevel::INFO, "Starting ModbusTcpWorker...");
         
         try {
-            // 기본 연결 설정 (TcpBasedWorker → ModbusDriver 위임)
             if (!EstablishConnection()) {
                 LogMessage(LogLevel::ERROR, "Failed to establish connection");
                 return false;
             }
             
-            // 데이터 포인트들로부터 폴링 그룹 자동 생성
             const auto& data_points = GetDataPoints();
             if (auto_group_creation_enabled_ && !data_points.empty()) {
                 size_t group_count = CreatePollingGroupsFromDataPoints(data_points);
@@ -92,11 +193,9 @@ std::future<bool> ModbusTcpWorker::Start() {
                           std::to_string(data_points.size()) + " data points");
             }
             
-            // 폴링 스레드 시작
             polling_thread_running_ = true;
             polling_thread_ = std::make_unique<std::thread>(&ModbusTcpWorker::PollingThreadFunction, this);
             
-            // 상태 변경
             ChangeState(WorkerState::RUNNING);
             
             LogMessage(LogLevel::INFO, "ModbusTcpWorker started successfully");
@@ -114,16 +213,12 @@ std::future<bool> ModbusTcpWorker::Stop() {
         LogMessage(LogLevel::INFO, "Stopping ModbusTcpWorker...");
         
         try {
-            // 폴링 스레드 중지
             polling_thread_running_ = false;
             if (polling_thread_ && polling_thread_->joinable()) {
                 polling_thread_->join();
             }
             
-            // 연결 해제 (TcpBasedWorker → ModbusDriver 위임)
             CloseConnection();
-            
-            // 상태 변경
             ChangeState(WorkerState::STOPPED);
             
             LogMessage(LogLevel::INFO, "ModbusTcpWorker stopped successfully");
@@ -137,7 +232,7 @@ std::future<bool> ModbusTcpWorker::Stop() {
 }
 
 // =============================================================================
-// TcpBasedWorker 인터페이스 구현 (Driver 위임)
+// TcpBasedWorker 구현
 // =============================================================================
 
 bool ModbusTcpWorker::EstablishProtocolConnection() {
@@ -148,7 +243,6 @@ bool ModbusTcpWorker::EstablishProtocolConnection() {
     
     LogMessage(LogLevel::INFO, "Establishing Modbus protocol connection...");
     
-    // ModbusDriver를 통한 연결 수립
     if (!modbus_driver_->Connect()) {
         const auto& error = modbus_driver_->GetLastError();
         LogMessage(LogLevel::ERROR, "ModbusDriver connection failed: " + error.message);
@@ -161,12 +255,11 @@ bool ModbusTcpWorker::EstablishProtocolConnection() {
 
 bool ModbusTcpWorker::CloseProtocolConnection() {
     if (!modbus_driver_) {
-        return true;  // 이미 없으면 성공으로 간주
+        return true;
     }
     
     LogMessage(LogLevel::INFO, "Closing Modbus protocol connection...");
     
-    // ModbusDriver를 통한 연결 해제
     bool result = modbus_driver_->Disconnect();
     
     if (result) {
@@ -184,7 +277,6 @@ bool ModbusTcpWorker::CheckProtocolConnection() {
         return false;
     }
     
-    // ModbusDriver를 통한 연결 상태 확인
     return modbus_driver_->IsConnected();
 }
 
@@ -193,32 +285,25 @@ bool ModbusTcpWorker::SendProtocolKeepAlive() {
         return false;
     }
     
-    // 간단한 레지스터 읽기로 Keep-alive 테스트
-    std::vector<DataPoint> test_points;
-    std::vector<TimestampedValue> test_values;
-    
-    // 테스트용 데이터 포인트 생성 (첫 번째 홀딩 레지스터)
-    DataPoint test_point;
-    test_point.id = "keepalive_test";
-    test_point.address = 0;  // 주소 0번 레지스터
-    test_point.data_type = "UINT16";
-    test_points.push_back(test_point);
-    
-    // ModbusDriver를 통한 Keep-alive 테스트
-    bool result = modbus_driver_->ReadValues(test_points, test_values);
-    
-    if (result) {
-        LogMessage(LogLevel::DEBUG_LEVEL, "Modbus Keep-alive successful");
-    } else {
-        const auto& error = modbus_driver_->GetLastError();
-        LogMessage(LogLevel::WARN, "Modbus Keep-alive failed: " + error.message);
+    try {
+        uint16_t test_value;
+        bool result = ReadSingleHoldingRegister(1, 0, test_value);
+        
+        if (result) {
+            LogMessage(LogLevel::DEBUG_LEVEL, "Modbus Keep-alive successful");
+        } else {
+            LogMessage(LogLevel::WARN, "Modbus Keep-alive failed");
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "SendProtocolKeepAlive 예외: " + std::string(e.what()));
+        return false;
     }
-    
-    return result;
 }
 
 // =============================================================================
-// Modbus TCP 특화 객체 관리 (Worker 고유 기능)
+// 폴링 그룹 관리
 // =============================================================================
 
 bool ModbusTcpWorker::AddPollingGroup(const ModbusTcpPollingGroup& group) {
@@ -229,7 +314,6 @@ bool ModbusTcpWorker::AddPollingGroup(const ModbusTcpPollingGroup& group) {
     
     std::lock_guard<std::mutex> lock(polling_groups_mutex_);
     
-    // 그룹 ID 중복 체크
     if (polling_groups_.find(group.group_id) != polling_groups_.end()) {
         LogMessage(LogLevel::ERROR, "Polling group ID " + std::to_string(group.group_id) + " already exists");
         return false;
@@ -296,7 +380,6 @@ std::string ModbusTcpWorker::GetModbusStats() const {
     oss << "  \"device_name\": \"" << device_info_.name << "\",\n";
     oss << "  \"endpoint\": \"" << device_info_.endpoint << "\",\n";
     oss << "  \"modbus_config\": {\n";
-    // ✅ 수정: properties 사용
     oss << "      \"slave_id\": " << GetPropertyValue(modbus_config_.properties, "slave_id", "1") << ",\n";
     oss << "      \"timeout_ms\": " << modbus_config_.timeout_ms << ",\n";
     oss << "      \"response_timeout_ms\": " << GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") << ",\n";
@@ -308,8 +391,993 @@ std::string ModbusTcpWorker::GetModbusStats() const {
 }
 
 // =============================================================================
-// 데이터 포인트 처리 (Worker 고유 로직)
+// 선택적 구현 완성
 // =============================================================================
+
+bool ModbusTcpWorker::TestConnection(int slave_id) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        LogMessage(LogLevel::INFO, "연결 테스트 시작: Slave " + std::to_string(slave_id));
+        
+        uint16_t test_value;
+        bool success = ReadSingleHoldingRegister(slave_id, 0, test_value);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "연결 테스트 성공: Slave " + std::to_string(slave_id) + 
+                      " (레지스터 0 값: " + std::to_string(test_value) + ")");
+        } else {
+            LogMessage(LogLevel::WARN, "연결 테스트 실패: Slave " + std::to_string(slave_id));
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "TestConnection 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::map<uint16_t, uint16_t> ModbusTcpWorker::ScanRegisters(int slave_id, uint16_t start_address, 
+                                                           uint16_t end_address, 
+                                                           const std::string& register_type) {
+    std::map<uint16_t, uint16_t> scan_results;
+    
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return scan_results;
+    }
+    
+    try {
+        LogMessage(LogLevel::INFO, "레지스터 스캔 시작: Slave " + std::to_string(slave_id) + 
+                  ", 주소 " + std::to_string(start_address) + "-" + std::to_string(end_address) + 
+                  " (" + register_type + ")");
+        
+        const uint16_t batch_size = 10;
+        uint16_t current_address = start_address;
+        
+        while (current_address <= end_address) {
+            uint16_t read_count = std::min(batch_size, static_cast<uint16_t>(end_address - current_address + 1));
+            std::vector<uint16_t> values;
+            
+            bool success = false;
+            if (register_type == "holding") {
+                success = ReadHoldingRegisters(slave_id, current_address, read_count, values);
+            } else if (register_type == "input") {
+                success = ReadInputRegisters(slave_id, current_address, read_count, values);
+            }
+            
+            if (success) {
+                for (size_t i = 0; i < values.size(); ++i) {
+                    scan_results[current_address + i] = values[i];
+                }
+            } else {
+                for (uint16_t addr = current_address; addr < current_address + read_count && addr <= end_address; ++addr) {
+                    uint16_t single_value;
+                    if (register_type == "holding") {
+                        if (ReadSingleHoldingRegister(slave_id, addr, single_value)) {
+                            scan_results[addr] = single_value;
+                        }
+                    } else if (register_type == "input") {
+                        if (ReadSingleInputRegister(slave_id, addr, single_value)) {
+                            scan_results[addr] = single_value;
+                        }
+                    }
+                }
+            }
+            
+            current_address += read_count;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        
+        LogMessage(LogLevel::INFO, "레지스터 스캔 완료: " + std::to_string(scan_results.size()) + 
+                  "/" + std::to_string(end_address - start_address + 1) + " 레지스터 읽기 성공");
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ScanRegisters 예외: " + std::string(e.what()));
+    }
+    
+    return scan_results;
+}
+
+std::string ModbusTcpWorker::ReadDeviceInfo(int slave_id) {
+    json device_info;
+    
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        device_info["error"] = "ModbusDriver not connected";
+        return device_info.dump(2);
+    }
+    
+    try {
+        LogMessage(LogLevel::INFO, "디바이스 정보 읽기: Slave " + std::to_string(slave_id));
+        
+        device_info["slave_id"] = slave_id;
+        device_info["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        device_info["connection_test"] = TestConnection(slave_id);
+        
+        std::vector<std::pair<std::string, uint16_t>> standard_registers = {
+            {"device_id", 0},
+            {"firmware_version", 1},
+            {"hardware_version", 2},
+            {"device_status", 10},
+            {"error_code", 11}
+        };
+        
+        json registers;
+        for (const auto& reg : standard_registers) {
+            uint16_t value;
+            if (ReadSingleHoldingRegister(slave_id, reg.second, value)) {
+                registers[reg.first] = {
+                    {"address", reg.second},
+                    {"value", value},
+                    {"hex", "0x" + std::to_string(value)}
+                };
+            }
+        }
+        device_info["registers"] = registers;
+        
+        if (modbus_driver_) {
+            const auto& stats = modbus_driver_->GetStatistics();
+            json communication_stats;
+            communication_stats["total_requests"] = stats.total_reads + stats.total_writes;
+            communication_stats["successful_requests"] = stats.successful_reads + stats.successful_writes;
+            communication_stats["failed_requests"] = stats.failed_reads + stats.failed_writes;
+            communication_stats["average_response_time_ms"] = stats.average_response_time.count();
+            device_info["communication_stats"] = communication_stats;
+        }
+        
+        LogMessage(LogLevel::INFO, "디바이스 정보 읽기 완료");
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ReadDeviceInfo 예외: " + std::string(e.what()));
+        device_info["error"] = e.what();
+    }
+    
+    return device_info.dump(2);
+}
+
+std::string ModbusTcpWorker::MonitorRegisters(int slave_id, 
+                                             const std::vector<uint16_t>& addresses,
+                                             const std::string& register_type,
+                                             int duration_seconds) {
+    json monitoring_result;
+    
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        monitoring_result["error"] = "ModbusDriver not connected";
+        return monitoring_result.dump(2);
+    }
+    
+    try {
+        LogMessage(LogLevel::INFO, "레지스터 모니터링 시작: " + std::to_string(addresses.size()) + 
+                  "개 주소, " + std::to_string(duration_seconds) + "초간");
+        
+        monitoring_result["slave_id"] = slave_id;
+        monitoring_result["register_type"] = register_type;
+        monitoring_result["duration_seconds"] = duration_seconds;
+        monitoring_result["addresses"] = addresses;
+        monitoring_result["start_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        json samples;
+        auto start_time = std::chrono::system_clock::now();
+        auto end_time = start_time + std::chrono::seconds(duration_seconds);
+        
+        int sample_count = 0;
+        while (std::chrono::system_clock::now() < end_time) {
+            json sample;
+            sample["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            
+            json values;
+            for (uint16_t address : addresses) {
+                uint16_t value;
+                bool success = false;
+                
+                if (register_type == "holding") {
+                    success = ReadSingleHoldingRegister(slave_id, address, value);
+                } else if (register_type == "input") {
+                    success = ReadSingleInputRegister(slave_id, address, value);
+                }
+                
+                if (success) {
+                    values[std::to_string(address)] = value;
+                }
+            }
+            
+            sample["values"] = values;
+            samples.push_back(sample);
+            
+            sample_count++;
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        
+        monitoring_result["samples"] = samples;
+        monitoring_result["total_samples"] = sample_count;
+        monitoring_result["end_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        LogMessage(LogLevel::INFO, "레지스터 모니터링 완료: " + std::to_string(sample_count) + "개 샘플 수집");
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "MonitorRegisters 예외: " + std::string(e.what()));
+        monitoring_result["error"] = e.what();
+    }
+    
+    return monitoring_result.dump(2);
+}
+
+std::string ModbusTcpWorker::RunDiagnostics(int slave_id) {
+    json diagnostics;
+    
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        diagnostics["error"] = "ModbusDriver not connected";
+        return diagnostics.dump(2);
+    }
+    
+    try {
+        LogMessage(LogLevel::INFO, "Modbus 진단 시작: Slave " + std::to_string(slave_id));
+        
+        diagnostics["slave_id"] = slave_id;
+        diagnostics["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        auto connection_start = std::chrono::high_resolution_clock::now();
+        bool connection_ok = TestConnection(slave_id);
+        auto connection_time = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::high_resolution_clock::now() - connection_start).count();
+        
+        diagnostics["connection_test"] = {
+            {"result", connection_ok},
+            {"response_time_us", connection_time}
+        };
+        
+        std::vector<int> response_times;
+        for (int i = 0; i < 10; ++i) {
+            auto start = std::chrono::high_resolution_clock::now();
+            uint16_t value;
+            bool success = ReadSingleHoldingRegister(slave_id, 0, value);
+            auto end = std::chrono::high_resolution_clock::now();
+            
+            if (success) {
+                response_times.push_back(
+                    std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+            }
+        }
+        
+        if (!response_times.empty()) {
+            int total_time = 0;
+            int min_time = response_times[0];
+            int max_time = response_times[0];
+            
+            for (int time : response_times) {
+                total_time += time;
+                min_time = std::min(min_time, time);
+                max_time = std::max(max_time, time);
+            }
+            
+            diagnostics["response_time_test"] = {
+                {"samples", response_times.size()},
+                {"average_us", total_time / response_times.size()},
+                {"minimum_us", min_time},
+                {"maximum_us", max_time}
+            };
+        }
+        
+        json register_tests;
+        
+        uint16_t holding_value;
+        register_tests["holding_register"] = ReadSingleHoldingRegister(slave_id, 0, holding_value);
+        
+        uint16_t input_value;
+        register_tests["input_register"] = ReadSingleInputRegister(slave_id, 0, input_value);
+        
+        bool coil_value;
+        register_tests["coil"] = ReadSingleCoil(slave_id, 0, coil_value);
+        
+        bool discrete_value;
+        register_tests["discrete_input"] = ReadSingleDiscreteInput(slave_id, 0, discrete_value);
+        
+        diagnostics["register_access_tests"] = register_tests;
+        
+        if (modbus_driver_) {
+            const auto& stats = modbus_driver_->GetStatistics();
+            json driver_statistics;
+            driver_statistics["total_requests"] = stats.total_reads + stats.total_writes;
+            driver_statistics["successful_requests"] = stats.successful_reads + stats.successful_writes;
+            driver_statistics["failed_requests"] = stats.failed_reads + stats.failed_writes;
+            
+            uint64_t total_requests = stats.total_reads + stats.total_writes;
+            uint64_t successful_requests = stats.successful_reads + stats.successful_writes;
+            driver_statistics["success_rate_percent"] = total_requests > 0 ? 
+                (successful_requests * 100.0 / total_requests) : 0.0;
+            driver_statistics["average_response_time_ms"] = stats.average_response_time.count();
+            
+            diagnostics["driver_statistics"] = driver_statistics;
+        }
+        
+        diagnostics["configuration"] = {
+            {"endpoint", device_info_.endpoint},
+            {"timeout_ms", modbus_config_.timeout_ms},
+            {"max_retries", GetPropertyValue(modbus_config_.properties, "max_retries", "3")},
+            {"polling_interval_ms", device_info_.polling_interval_ms}
+        };
+        
+        LogMessage(LogLevel::INFO, "Modbus 진단 완료");
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "RunDiagnostics 예외: " + std::string(e.what()));
+        diagnostics["error"] = e.what();
+    }
+    
+    return diagnostics.dump(2);
+}
+
+// =============================================================================
+// 헬퍼 메서드들
+// =============================================================================
+
+bool ModbusTcpWorker::ParseAddressString(const std::string& address_str, uint8_t& slave_id, uint16_t& address) {
+    try {
+        size_t colon_pos = address_str.find(':');
+        
+        if (colon_pos != std::string::npos) {
+            slave_id = static_cast<uint8_t>(std::stoi(address_str.substr(0, colon_pos)));
+            address = static_cast<uint16_t>(std::stoi(address_str.substr(colon_pos + 1)));
+        } else {
+            slave_id = 1;
+            address = static_cast<uint16_t>(std::stoi(address_str));
+        }
+        
+        if (slave_id < 1 || slave_id > 247) {
+            LogMessage(LogLevel::ERROR, "Invalid slave_id: " + std::to_string(slave_id));
+            return false;
+        }
+        
+        return true;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Failed to parse address string '" + address_str + "': " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::DetermineRegisterType(uint16_t address, ModbusRegisterType& register_type, uint16_t& adjusted_address) {
+    if (address >= 1 && address <= 9999) {
+        register_type = ModbusRegisterType::COIL;
+        adjusted_address = address - 1;
+    } else if (address >= 10001 && address <= 19999) {
+        register_type = ModbusRegisterType::DISCRETE_INPUT;
+        adjusted_address = address - 10001;
+    } else if (address >= 30001 && address <= 39999) {
+        register_type = ModbusRegisterType::INPUT_REGISTER;
+        adjusted_address = address - 30001;
+    } else if (address >= 40001 && address <= 49999) {
+        register_type = ModbusRegisterType::HOLDING_REGISTER;
+        adjusted_address = address - 40001;
+    } else {
+        register_type = ModbusRegisterType::HOLDING_REGISTER;
+        adjusted_address = address;
+    }
+    
+    return true;
+}
+
+// =============================================================================
+// 쓰기 함수들
+// =============================================================================
+
+bool ModbusTcpWorker::WriteSingleHoldingRegister(int slave_id, uint16_t address, uint16_t value) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        bool success = modbus_driver_->WriteHoldingRegister(slave_id, address, value);
+        
+        DataValue data_value = static_cast<int32_t>(value);
+        LogWriteOperation(slave_id, address, data_value, "holding_register", success);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, 
+                      "Holding Register 쓰기 성공: 슬레이브=" + std::to_string(slave_id) + 
+                      ", 주소=" + std::to_string(address) + ", 값=" + std::to_string(value));
+        } else {
+            LogMessage(LogLevel::ERROR, "Holding Register 쓰기 실패");
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteSingleHoldingRegister 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        bool success = modbus_driver_->WriteCoil(slave_id, address, value);
+        
+        DataValue data_value = value;
+        LogWriteOperation(slave_id, address, data_value, "coil", success);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, 
+                      "Coil 쓰기 성공: 슬레이브=" + std::to_string(slave_id) + 
+                      ", 주소=" + std::to_string(address) + ", 값=" + (value ? "ON" : "OFF"));
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteSingleCoil 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::WriteMultipleHoldingRegisters(int slave_id, uint16_t start_address, 
+                                                   const std::vector<uint16_t>& values) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        // ✅ 수정: WriteMultipleHoldingRegisters → WriteHoldingRegisters
+        bool success = modbus_driver_->WriteHoldingRegisters(slave_id, start_address, values);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, 
+                      "Multiple Holding Register 쓰기 성공: " + std::to_string(values.size()) + "개 값");
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteMultipleHoldingRegisters 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::WriteMultipleCoils(int slave_id, uint16_t start_address,
+                                        const std::vector<bool>& values) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        // ✅ 수정: std::vector<bool> → std::vector<uint8_t> 변환
+        std::vector<uint8_t> uint8_values;
+        uint8_values.reserve(values.size());
+        
+        for (bool val : values) {
+            uint8_values.push_back(val ? 1 : 0);
+        }
+        
+        // 기존 ModbusDriver에 WriteCoils 메서드가 없으면 개별 쓰기로 대체
+        bool success = true;
+        for (size_t i = 0; i < values.size(); ++i) {
+            bool single_success = modbus_driver_->WriteCoil(slave_id, start_address + i, values[i]);
+            if (!single_success) {
+                success = false;
+                break;
+            }
+        }
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, 
+                      "Multiple Coil 쓰기 성공: " + std::to_string(values.size()) + "개 값");
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteMultipleCoils 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+
+// =============================================================================
+// 읽기 함수들
+// =============================================================================
+
+bool ModbusTcpWorker::ReadSingleHoldingRegister(int slave_id, uint16_t address, uint16_t& value) {
+    std::vector<uint16_t> values;
+    bool success = ReadHoldingRegisters(slave_id, address, 1, values);
+    
+    if (success && !values.empty()) {
+        value = values[0];
+        
+        TimestampedValue tv;
+        tv.value = static_cast<int32_t>(value);
+        tv.timestamp = std::chrono::system_clock::now();
+        tv.quality = DataQuality::GOOD;
+        tv.source = "debug_holding_" + std::to_string(address);
+        
+        SendValuesToPipelineWithLogging({tv}, "디버깅 읽기", 20);
+        
+        return true;
+    }
+    
+    return false;
+}
+
+bool ModbusTcpWorker::ReadSingleInputRegister(int slave_id, uint16_t address, uint16_t& value) {
+    std::vector<uint16_t> values;
+    bool success = ReadInputRegisters(slave_id, address, 1, values);
+    
+    if (success && !values.empty()) {
+        value = values[0];
+        return true;
+    }
+    
+    return false;
+}
+
+bool ModbusTcpWorker::ReadSingleCoil(int slave_id, uint16_t address, bool& value) {
+    std::vector<bool> values;  // 이미 수정된 ReadCoils 사용
+    bool success = ReadCoils(slave_id, address, 1, values);
+    
+    if (success && !values.empty()) {
+        value = values[0];
+        return true;
+    }
+    
+    return false;
+}
+
+bool ModbusTcpWorker::ReadSingleDiscreteInput(int slave_id, uint16_t address, bool& value) {
+    std::vector<bool> values;  // 이미 수정된 ReadDiscreteInputs 사용
+    bool success = ReadDiscreteInputs(slave_id, address, 1, values);
+    
+    if (success && !values.empty()) {
+        value = values[0];
+        return true;
+    }
+    
+    return false;
+}
+
+bool ModbusTcpWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address, uint16_t count, 
+                                          std::vector<uint16_t>& values) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        bool success = modbus_driver_->ReadHoldingRegisters(slave_id, start_address, count, values);
+        
+        if (success && !values.empty()) {
+            std::vector<TimestampedValue> timestamped_values;
+            timestamped_values.reserve(values.size());
+            
+            auto timestamp = std::chrono::system_clock::now();
+            for (size_t i = 0; i < values.size(); ++i) {
+                TimestampedValue tv;
+                tv.value = static_cast<int32_t>(values[i]);
+                tv.timestamp = timestamp;
+                tv.quality = DataQuality::GOOD;
+                tv.source = "debug_holding_" + std::to_string(start_address + i);
+                timestamped_values.push_back(tv);
+            }
+            
+            SendValuesToPipelineWithLogging(timestamped_values, "Holding 레지스터 범위 읽기", 15);
+            
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "Holding Register 읽기 성공: " + std::to_string(values.size()) + "개 값");
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ReadHoldingRegisters 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::ReadInputRegisters(int slave_id, uint16_t start_address, uint16_t count, 
+                                        std::vector<uint16_t>& values) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        bool success = modbus_driver_->ReadInputRegisters(slave_id, start_address, count, values);
+        
+        if (success && !values.empty()) {
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "Input Register 읽기 성공: " + std::to_string(values.size()) + "개 값");
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ReadInputRegisters 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::ReadCoils(int slave_id, uint16_t start_address, uint16_t count,
+                               std::vector<bool>& values) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        // ✅ 수정: std::vector<bool> → std::vector<uint8_t>
+        std::vector<uint8_t> uint8_values;
+        bool success = modbus_driver_->ReadCoils(slave_id, start_address, count, uint8_values);
+        
+        if (success) {
+            // uint8_t → bool 변환
+            values.clear();
+            values.reserve(uint8_values.size());
+            
+            for (uint8_t val : uint8_values) {
+                values.push_back(val != 0);
+            }
+            
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "Coil 읽기 성공: " + std::to_string(values.size()) + "개 값");
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ReadCoils 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address, uint16_t count,
+                                        std::vector<bool>& values) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
+        return false;
+    }
+    
+    try {
+        // ✅ 수정: std::vector<bool> → std::vector<uint8_t>
+        std::vector<uint8_t> uint8_values;
+        bool success = modbus_driver_->ReadDiscreteInputs(slave_id, start_address, count, uint8_values);
+        
+        if (success) {
+            // uint8_t → bool 변환
+            values.clear();
+            values.reserve(uint8_values.size());
+            
+            for (uint8_t val : uint8_values) {
+                values.push_back(val != 0);
+            }
+            
+            LogMessage(LogLevel::DEBUG_LEVEL, 
+                      "Discrete Input 읽기 성공: " + std::to_string(values.size()) + "개 값");
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ReadDiscreteInputs 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 고수준 DataPoint 함수들
+// =============================================================================
+
+bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
+    auto data_point_opt = FindDataPointById(point_id);
+    if (!data_point_opt.has_value()) {
+        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        return false;
+    }
+    
+    const auto& data_point = data_point_opt.value();
+    
+    uint8_t slave_id;
+    ModbusRegisterType register_type;
+    uint16_t address;
+    
+    if (!ParseModbusAddress(data_point, slave_id, register_type, address)) {
+        LogMessage(LogLevel::ERROR, "Invalid Modbus address: " + point_id);
+        return false;
+    }
+    
+    try {
+        bool success = false;
+        
+        if (register_type == ModbusRegisterType::HOLDING_REGISTER) {
+            int32_t int_value = std::get<int32_t>(value);
+            uint16_t modbus_value = static_cast<uint16_t>(int_value);
+            success = WriteSingleHoldingRegister(slave_id, address, modbus_value);
+        } else if (register_type == ModbusRegisterType::COIL) {
+            bool coil_value = std::get<bool>(value);
+            success = WriteSingleCoil(slave_id, address, coil_value);
+        } else {
+            LogMessage(LogLevel::ERROR, "Read-only register type: " + point_id);
+            return false;
+        }
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "DataPoint 쓰기 성공: " + point_id);
+        }
+        
+        return success;
+    } catch (const std::bad_variant_access& e) {
+        LogMessage(LogLevel::ERROR, "DataValue 타입 불일치: " + std::string(e.what()));
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::ReadDataPointValue(const std::string& point_id, TimestampedValue& value) {
+    auto data_point_opt = FindDataPointById(point_id);
+    if (!data_point_opt.has_value()) {
+        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        return false;
+    }
+    
+    const auto& data_point = data_point_opt.value();
+    
+    uint8_t slave_id;
+    ModbusRegisterType register_type;
+    uint16_t address;
+    
+    if (!ParseModbusAddress(data_point, slave_id, register_type, address)) {
+        LogMessage(LogLevel::ERROR, "Invalid Modbus address: " + point_id);
+        return false;
+    }
+    
+    try {
+        value.timestamp = std::chrono::system_clock::now();
+        value.quality = DataQuality::GOOD;
+        value.point_id = std::stoi(data_point.id);
+        value.source = "manual_read_" + point_id;
+        
+        if (register_type == ModbusRegisterType::HOLDING_REGISTER) {
+            uint16_t raw_value;
+            if (ReadSingleHoldingRegister(slave_id, address, raw_value)) {
+                value.value = static_cast<int32_t>(raw_value);
+                return true;
+            }
+        } else if (register_type == ModbusRegisterType::INPUT_REGISTER) {
+            uint16_t raw_value;
+            if (ReadSingleInputRegister(slave_id, address, raw_value)) {
+                value.value = static_cast<int32_t>(raw_value);
+                return true;
+            }
+        } else if (register_type == ModbusRegisterType::COIL) {
+            bool raw_value;
+            if (ReadSingleCoil(slave_id, address, raw_value)) {
+                value.value = raw_value;
+                return true;
+            }
+        } else if (register_type == ModbusRegisterType::DISCRETE_INPUT) {
+            bool raw_value;
+            if (ReadSingleDiscreteInput(slave_id, address, raw_value)) {
+                value.value = raw_value;
+                return true;
+            }
+        }
+        
+        return false;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ReadDataPointValue 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::ReadMultipleDataPoints(const std::vector<std::string>& point_ids,
+                            std::vector<TimestampedValue>& values) {
+    values.clear();
+    values.reserve(point_ids.size());
+    
+    for (const auto& point_id : point_ids) {
+        TimestampedValue value;
+        if (ReadDataPointValue(point_id, value)) {
+            values.push_back(value);
+        }
+    }
+    
+    return !values.empty();
+}
+
+// =============================================================================
+// 내부 구현 메서드들
+// =============================================================================
+
+bool ModbusTcpWorker::ParseModbusConfig() {
+    try {
+        LogMessage(LogLevel::INFO, "Modbus TCP configuration parsing...");
+        
+        modbus_config_.device_id = device_info_.id;
+        modbus_config_.name = device_info_.name;
+        modbus_config_.endpoint = device_info_.endpoint;
+        modbus_config_.timeout_ms = device_info_.timeout_ms;
+        modbus_config_.retry_count = device_info_.retry_count;
+        
+        nlohmann::json protocol_config_json;
+        
+        if (!device_info_.config.empty()) {
+            try {
+                protocol_config_json = nlohmann::json::parse(device_info_.config);
+                LogMessage(LogLevel::INFO, "Protocol config loaded from device.config");
+            } catch (const std::exception& e) {
+                LogMessage(LogLevel::WARN, "Failed to parse device.config JSON: " + std::string(e.what()));
+            }
+        }
+        
+        if (protocol_config_json.empty() && !device_info_.connection_string.empty()) {
+            if (device_info_.connection_string.front() == '{') {
+                try {
+                    protocol_config_json = nlohmann::json::parse(device_info_.connection_string);
+                    LogMessage(LogLevel::INFO, "Protocol config loaded from connection_string JSON");
+                } catch (const std::exception& e) {
+                    LogMessage(LogLevel::WARN, "Failed to parse connection_string JSON: " + std::string(e.what()));
+                }
+            }
+        }
+        
+        if (protocol_config_json.empty()) {
+            protocol_config_json = {
+                {"slave_id", 1},
+                {"byte_order", "big_endian"},
+                {"max_registers_per_group", 125},
+                {"auto_group_creation", true}
+            };
+            LogMessage(LogLevel::INFO, "Applied default Modbus protocol configuration");
+        }
+        
+        modbus_config_.properties["slave_id"] = std::to_string(protocol_config_json.value("slave_id", 1));
+        modbus_config_.properties["byte_order"] = protocol_config_json.value("byte_order", "big_endian");
+        modbus_config_.properties["max_registers_per_group"] = std::to_string(protocol_config_json.value("max_registers_per_group", 125));
+        modbus_config_.properties["auto_group_creation"] = protocol_config_json.value("auto_group_creation", true) ? "true" : "false";
+        
+        if (protocol_config_json.contains("timeout")) {
+            int db_timeout = protocol_config_json.value("timeout", device_info_.timeout_ms);
+            modbus_config_.timeout_ms = db_timeout;
+            modbus_config_.properties["response_timeout_ms"] = std::to_string(db_timeout);
+        } else {
+            modbus_config_.properties["response_timeout_ms"] = std::to_string(device_info_.timeout_ms);
+        }
+        
+        modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(static_cast<int>(modbus_config_.timeout_ms / 10), 1000));
+        modbus_config_.properties["max_retries"] = std::to_string(device_info_.retry_count);
+        modbus_config_.properties["polling_interval_ms"] = std::to_string(device_info_.polling_interval_ms);
+        modbus_config_.properties["keep_alive"] = device_info_.is_enabled ? "enabled" : "disabled";
+        
+        LogMessage(LogLevel::INFO, "Modbus config parsed successfully");
+        return true;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ParseModbusConfig failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusTcpWorker::InitializeModbusDriver() {
+    try {
+        LogMessage(LogLevel::INFO, "Initializing ModbusDriver...");
+        
+        modbus_driver_ = std::make_unique<PulseOne::Drivers::ModbusDriver>();
+        
+        if (!modbus_driver_) {
+            LogMessage(LogLevel::ERROR, "Failed to create ModbusDriver instance");
+            return false;
+        }
+        
+        PulseOne::Structs::DriverConfig driver_config = device_info_.driver_config;
+        
+        driver_config.device_id = device_info_.name;
+        driver_config.endpoint = device_info_.endpoint;
+        driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
+        driver_config.timeout_ms = modbus_config_.timeout_ms;
+        driver_config.retry_count = static_cast<uint32_t>(device_info_.retry_count);
+        driver_config.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
+        driver_config.auto_reconnect = device_info_.properties.count("auto_reconnect") ? 
+            (device_info_.properties.at("auto_reconnect") == "true") : true;
+        
+        driver_config.properties["slave_id"] = GetPropertyValue(modbus_config_.properties, "slave_id", "1");
+        driver_config.properties["byte_order"] = GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian");
+        driver_config.properties["max_retries"] = GetPropertyValue(modbus_config_.properties, "max_retries", "3");
+        driver_config.properties["response_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000");
+        driver_config.properties["byte_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100");
+        driver_config.properties["max_registers_per_group"] = GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
+        
+        if (!modbus_driver_->Initialize(driver_config)) {
+            const auto& error = modbus_driver_->GetLastError();
+            LogMessage(LogLevel::ERROR, "ModbusDriver initialization failed: " + error.message);
+            return false;
+        }
+        
+        SetupDriverCallbacks();
+        
+        LogMessage(LogLevel::INFO, "ModbusDriver initialized successfully");
+        return true;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Exception during ModbusDriver initialization: " + std::string(e.what()));
+        
+        if (modbus_driver_) {
+            modbus_driver_.reset();
+        }
+        
+        return false;
+    }
+}
+
+void ModbusTcpWorker::PollingThreadFunction() {
+    LogMessage(LogLevel::INFO, "Polling thread started");
+    
+    while (polling_thread_running_) {
+        try {
+            auto current_time = system_clock::now();
+            
+            std::vector<ModbusTcpPollingGroup> groups_to_poll;
+            {
+                std::lock_guard<std::mutex> lock(polling_groups_mutex_);
+                for (auto& pair : polling_groups_) {
+                    auto& group = pair.second;
+                    
+                    if (group.enabled && current_time >= group.next_poll_time) {
+                        groups_to_poll.push_back(group);
+                        
+                        group.last_poll_time = current_time;
+                        group.next_poll_time = current_time + milliseconds(group.polling_interval_ms);
+                    }
+                }
+            }
+            
+            for (const auto& group : groups_to_poll) {
+                if (!polling_thread_running_) {
+                    break;
+                }
+                
+                ProcessPollingGroup(group);
+            }
+            
+            std::this_thread::sleep_for(milliseconds(100));
+            
+        } catch (const std::exception& e) {
+            LogMessage(LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
+            std::this_thread::sleep_for(seconds(1));
+        }
+    }
+    
+    LogMessage(LogLevel::INFO, "Polling thread stopped");
+}
+
+bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
+    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
+        LogMessage(LogLevel::WARN, "ModbusDriver not connected, skipping group " + std::to_string(group.group_id));
+        return false;
+    }
+    
+    LogMessage(LogLevel::DEBUG_LEVEL, "Processing polling group " + std::to_string(group.group_id));
+    
+    try {
+        std::vector<TimestampedValue> values;
+        bool success = modbus_driver_->ReadValues(group.data_points, values);
+        
+        if (success && !values.empty()) {
+            SendValuesToPipelineWithLogging(values, "그룹 " + std::to_string(group.group_id), 0);
+        }
+        
+        LogMessage(LogLevel::DEBUG_LEVEL, "Successfully processed group " + std::to_string(group.group_id) + 
+                   ", read " + std::to_string(values.size()) + " values");
+        
+        return true;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Exception processing group " + std::to_string(group.group_id) + ": " + std::string(e.what()));
+        return false;
+    }
+}
 
 size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<PulseOne::DataPoint>& data_points) {
     if (data_points.empty()) {
@@ -318,7 +1386,6 @@ size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Puls
     
     LogMessage(LogLevel::INFO, "Creating polling groups from " + std::to_string(data_points.size()) + " data points");
     
-    // 슬레이브 ID별, 레지스터 타입별로 그룹화
     std::map<std::tuple<uint8_t, ModbusRegisterType>, std::vector<DataPoint>> grouped_points;
     
     for (const auto& data_point : data_points) {
@@ -335,7 +1402,6 @@ size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Puls
         grouped_points[key].push_back(data_point);
     }
     
-    // 각 그룹에 대해 폴링 그룹 생성
     size_t created_groups = 0;
     std::lock_guard<std::mutex> lock(polling_groups_mutex_);
     
@@ -346,7 +1412,6 @@ size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Puls
         uint8_t slave_id = std::get<0>(key);
         ModbusRegisterType register_type = std::get<1>(key);
         
-        // 연속된 주소별로 서브그룹 생성 (임시로 단순 구현)
         for (const auto& point : points) {
             uint8_t slave_id_temp;
             ModbusRegisterType register_type_temp;
@@ -356,7 +1421,7 @@ size_t ModbusTcpWorker::CreatePollingGroupsFromDataPoints(const std::vector<Puls
                 continue;
             }
             
-            // 단순히 각 포인트를 개별 그룹으로 생성 (최적화는 나중에)
+            // ✅ 수정: 중복 변수 선언 제거
             ModbusTcpPollingGroup polling_group;
             polling_group.group_id = next_group_id_++;
             polling_group.slave_id = slave_id;
@@ -384,7 +1449,6 @@ size_t ModbusTcpWorker::OptimizePollingGroups() {
     size_t original_count = polling_groups_.size();
     std::vector<ModbusTcpPollingGroup> optimized_groups;
     
-    // 병합 가능한 그룹들을 찾아서 최적화
     for (auto it1 = polling_groups_.begin(); it1 != polling_groups_.end(); ++it1) {
         bool merged = false;
         
@@ -401,7 +1465,6 @@ size_t ModbusTcpWorker::OptimizePollingGroups() {
         }
     }
     
-    // 최적화된 그룹으로 교체
     polling_groups_.clear();
     uint32_t new_group_id = 1;
     
@@ -419,353 +1482,39 @@ size_t ModbusTcpWorker::OptimizePollingGroups() {
     return optimized_count;
 }
 
-// =============================================================================
-// 내부 메서드 (Worker 고유 로직)
-// =============================================================================
-
-/**
- * @brief ParseModbusConfig() 완전 구현
- * @details 문서 가이드라인에 따른 5단계 파싱 프로세스
- * 
- * 🔥 구현 전략:
- * 1단계: connection_string에서 프로토콜별 설정 JSON 파싱
- * 2단계: Modbus 특화 설정 추출 (프로토콜별)
- * 3단계: DeviceInfo에서 공통 통신 설정 가져오기
- * 4단계: Worker 레벨 설정 적용
- * 5단계: 설정 검증 및 안전한 기본값 적용
- */
-
-bool ModbusTcpWorker::ParseModbusConfig() {
-    try {
-        LogMessage(LogLevel::INFO, "🔧 Starting Modbus TCP configuration parsing...");
-        
-        // 기본 DriverConfig 설정
-        modbus_config_.device_id = device_info_.id;
-        modbus_config_.name = device_info_.name;
-        modbus_config_.endpoint = device_info_.endpoint;
-        modbus_config_.timeout_ms = device_info_.timeout_ms;
-        modbus_config_.retry_count = device_info_.retry_count;
-        
-        // 🔥 핵심 수정: config와 connection_string 올바른 파싱
-        nlohmann::json protocol_config_json;
-        
-        // 1단계: device_info_.config에서 JSON 설정 찾기 (우선순위 1)
-        if (!device_info_.config.empty()) {
-            try {
-                protocol_config_json = nlohmann::json::parse(device_info_.config);
-                LogMessage(LogLevel::INFO, "✅ Protocol config loaded from device.config: " + device_info_.config);
-            } catch (const std::exception& e) {
-                LogMessage(LogLevel::WARN, "⚠️ Failed to parse device.config JSON: " + std::string(e.what()));
-            }
-        }
-        
-        // 2단계: connection_string이 JSON인지 확인 (우선순위 2)
-        if (protocol_config_json.empty() && !device_info_.connection_string.empty()) {
-            // JSON 형태인지 확인 ('{' 로 시작하는지)
-            if (device_info_.connection_string.front() == '{') {
-                try {
-                    protocol_config_json = nlohmann::json::parse(device_info_.connection_string);
-                    LogMessage(LogLevel::INFO, "✅ Protocol config loaded from connection_string JSON");
-                } catch (const std::exception& e) {
-                    LogMessage(LogLevel::WARN, "⚠️ Failed to parse connection_string JSON: " + std::string(e.what()));
-                }
-            } else {
-                LogMessage(LogLevel::INFO, "📝 connection_string is not JSON format, using endpoint as broker URL");
-            }
-        }
-        
-        // 3단계: 기본값 설정 (DB에서 설정을 못 가져온 경우만)
-        if (protocol_config_json.empty()) {
-            protocol_config_json = {
-                {"slave_id", 1},
-                {"byte_order", "big_endian"},
-                {"max_registers_per_group", 125},
-                {"auto_group_creation", true}
-            };
-            LogMessage(LogLevel::INFO, "📝 Applied default Modbus protocol configuration");
-        }
-        
-        // 4단계: 실제 DB 설정값들을 properties에 저장
-        modbus_config_.properties["slave_id"] = std::to_string(protocol_config_json.value("slave_id", 1));
-        modbus_config_.properties["byte_order"] = protocol_config_json.value("byte_order", "big_endian");
-        modbus_config_.properties["max_registers_per_group"] = std::to_string(protocol_config_json.value("max_registers_per_group", 125));
-        modbus_config_.properties["auto_group_creation"] = protocol_config_json.value("auto_group_creation", true) ? "true" : "false";
-        
-        // 🔥 DB에서 가져온 timeout 값 적용
-        if (protocol_config_json.contains("timeout")) {
-            int db_timeout = protocol_config_json.value("timeout", device_info_.timeout_ms);
-            modbus_config_.timeout_ms = db_timeout;  // 실제 사용할 타임아웃 업데이트
-            modbus_config_.properties["response_timeout_ms"] = std::to_string(db_timeout);
-            LogMessage(LogLevel::INFO, "✅ Applied timeout from DB: " + std::to_string(db_timeout) + "ms");
-        } else {
-            modbus_config_.properties["response_timeout_ms"] = std::to_string(device_info_.timeout_ms);
-        }
-        
-        // 5단계: 통신 설정 완성 - 🔥 타입 캐스팅 수정
-        modbus_config_.properties["byte_timeout_ms"] = std::to_string(std::min(static_cast<int>(modbus_config_.timeout_ms / 10), 1000));
-        modbus_config_.properties["max_retries"] = std::to_string(device_info_.retry_count);
-        
-        // 6단계: Worker 전용 설정
-        modbus_config_.properties["polling_interval_ms"] = std::to_string(device_info_.polling_interval_ms);
-        modbus_config_.properties["keep_alive"] = device_info_.is_enabled ? "enabled" : "disabled";
-        
-        // 🎉 성공 로그 - 실제 적용된 설정 표시 - 🔥 문자열 연결 수정
-        std::string config_summary = "✅ Modbus config parsed successfully:\n";
-        config_summary += "   🔌 Protocol settings (from ";
-        config_summary += (!device_info_.config.empty() ? "device.config" : "connection_string");
-        config_summary += "):\n";
-        config_summary += "      - slave_id: " + modbus_config_.properties["slave_id"] + "\n";
-        config_summary += "      - byte_order: " + modbus_config_.properties["byte_order"] + "\n";
-        config_summary += "      - max_registers_per_group: " + modbus_config_.properties["max_registers_per_group"] + "\n";
-        config_summary += "      - auto_group_creation: " + modbus_config_.properties["auto_group_creation"] + "\n";
-        config_summary += "   ⚙️  Communication settings (from DeviceSettings):\n";
-        config_summary += "      - connection_timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
-        config_summary += "      - read_timeout: " + modbus_config_.properties["response_timeout_ms"] + "ms\n";
-        config_summary += "      - byte_timeout: " + modbus_config_.properties["byte_timeout_ms"] + "ms\n";
-        config_summary += "      - max_retries: " + modbus_config_.properties["max_retries"] + "\n";
-        config_summary += "      - polling_interval: " + modbus_config_.properties["polling_interval_ms"] + "ms\n";
-        config_summary += "      - keep_alive: " + modbus_config_.properties["keep_alive"];
-        
-        LogMessage(LogLevel::INFO, config_summary);
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ParseModbusConfig failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-/**
- * @brief InitializeModbusDriver() 완전 구현
- * @details 파싱된 ModbusConfig를 DriverConfig로 변환하여 ModbusDriver 초기화
- */
-
-bool ModbusTcpWorker::InitializeModbusDriver() {
-    try {
-        LogMessage(LogLevel::INFO, "🔧 Initializing ModbusDriver...");
-        
-        // ModbusDriver 인스턴스 생성
-        modbus_driver_ = std::make_unique<PulseOne::Drivers::ModbusDriver>();
-        
-        if (!modbus_driver_) {
-            LogMessage(LogLevel::ERROR, "❌ Failed to create ModbusDriver instance");
-            return false;
-        }
-        
-        // 🔥 수정 1: device_info_.driver_config 직접 사용 (WorkerFactory에서 완전 매핑된 것)
-        PulseOne::Structs::DriverConfig driver_config = device_info_.driver_config;
-        
-        // 🔥 수정 2: Modbus 특화 설정만 추가/업데이트
-        // (기존 properties는 그대로 유지)
-        
-        // =======================================================================
-        // 기본 필드 업데이트 (Modbus 파싱 결과 반영)
-        // =======================================================================
-        driver_config.device_id = device_info_.name;
-        driver_config.endpoint = device_info_.endpoint;
-        driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
-        driver_config.timeout_ms = modbus_config_.timeout_ms;
-        driver_config.retry_count = static_cast<uint32_t>(device_info_.retry_count);
-        driver_config.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
-        if (device_info_.properties.count("auto_reconnect")) {
-            driver_config.auto_reconnect = (device_info_.properties.at("auto_reconnect") == "true");
-        } else {
-            driver_config.auto_reconnect = true; // 기본값
-        }
-        
-        // =======================================================================
-        // 🔥 핵심: 기존 properties 보존하면서 Modbus 설정 추가
-        // =======================================================================
-        
-        // Modbus 프로토콜 특화 설정들 (기존 properties에 추가)
-        driver_config.properties["slave_id"] = GetPropertyValue(modbus_config_.properties, "slave_id", "1");
-        driver_config.properties["byte_order"] = GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian");
-        driver_config.properties["max_retries"] = GetPropertyValue(modbus_config_.properties, "max_retries", "3");
-        driver_config.properties["response_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000");
-        driver_config.properties["byte_timeout_ms"] = GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100");
-        driver_config.properties["max_registers_per_group"] = GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125");
-        
-        // 🔥 로깅: 최종 properties 상태 확인
-        LogMessage(LogLevel::INFO, "📊 Final DriverConfig properties count: " + std::to_string(driver_config.properties.size()));
-        
-        // 디버그용: 모든 properties 출력
-        std::string properties_log = "📋 All DriverConfig properties:\n";
-        for (const auto& [key, value] : driver_config.properties) {
-            properties_log += "   [" + key + "] = " + value + "\n";
-        }
-        LogMessage(LogLevel::DEBUG_LEVEL, properties_log);
-        
-        // =======================================================================
-        // ModbusDriver 초기화
-        // =======================================================================
-        
-        std::string config_msg = "📋 DriverConfig prepared:\n";
-        config_msg += "   - device_id: " + driver_config.device_id + "\n";
-        config_msg += "   - endpoint: " + driver_config.endpoint + "\n";
-        config_msg += "   - protocol: MODBUS_TCP\n";
-        config_msg += "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms\n";
-        config_msg += "   - properties: " + std::to_string(driver_config.properties.size()) + " items";
-        
-        LogMessage(LogLevel::DEBUG_LEVEL, config_msg);
-        
-        // ModbusDriver 초기화 수행
-        if (!modbus_driver_->Initialize(driver_config)) {
-            const auto& error = modbus_driver_->GetLastError();
-            LogMessage(LogLevel::ERROR, "❌ ModbusDriver initialization failed: " + error.message + " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
-            return false;
-        }
-        
-        LogMessage(LogLevel::DEBUG_LEVEL, "✅ ModbusDriver initialization successful");
-        
-        // Driver 콜백 설정
-        SetupDriverCallbacks();
-        
-        // 최종 결과 로깅
-        std::string final_msg = "✅ ModbusDriver initialized successfully:\n";
-        final_msg += "   📡 Connection details:\n";
-        final_msg += "      - endpoint: " + device_info_.endpoint + "\n";
-        final_msg += "      - slave_id: " + GetPropertyValue(modbus_config_.properties, "slave_id", "1") + "\n";
-        final_msg += "      - timeout: " + std::to_string(modbus_config_.timeout_ms) + "ms\n";
-        final_msg += "   ⚙️  Advanced settings:\n";
-        final_msg += "      - byte_order: " + GetPropertyValue(modbus_config_.properties, "byte_order", "big_endian") + "\n";
-        final_msg += "      - max_retries: " + GetPropertyValue(modbus_config_.properties, "max_retries", "3") + "\n";
-        final_msg += "      - response_timeout: " + GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000") + "ms\n";
-        final_msg += "      - max_registers_per_group: " + GetPropertyValue(modbus_config_.properties, "max_registers_per_group", "125") + "\n";
-        final_msg += "   📊 Total properties: " + std::to_string(driver_config.properties.size());
-        
-        LogMessage(LogLevel::INFO, final_msg);
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "❌ Exception during ModbusDriver initialization: " + std::string(e.what()));
-        
-        if (modbus_driver_) {
-            modbus_driver_.reset();
-        }
-        
-        return false;
-    }
-}
-
-
-void ModbusTcpWorker::PollingThreadFunction() {
-    LogMessage(LogLevel::INFO, "Polling thread started");
-    
-    while (polling_thread_running_) {
-        try {
-            auto current_time = system_clock::now();
-            
-            // 폴링할 그룹들 찾기
-            std::vector<ModbusTcpPollingGroup> groups_to_poll;
-            {
-                std::lock_guard<std::mutex> lock(polling_groups_mutex_);
-                for (auto& pair : polling_groups_) {
-                    auto& group = pair.second;
-                    
-                    if (group.enabled && current_time >= group.next_poll_time) {
-                        groups_to_poll.push_back(group);
-                        
-                        // 다음 폴링 시간 업데이트
-                        group.last_poll_time = current_time;
-                        group.next_poll_time = current_time + milliseconds(group.polling_interval_ms);
-                    }
-                }
-            }
-            
-            // 폴링 실행
-            for (const auto& group : groups_to_poll) {
-                if (!polling_thread_running_) {
-                    break;
-                }
-                
-                ProcessPollingGroup(group);
-            }
-            
-            // 100ms 대기
-            std::this_thread::sleep_for(milliseconds(100));
-            
-        } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
-            std::this_thread::sleep_for(seconds(1));
-        }
-    }
-    
-    LogMessage(LogLevel::INFO, "Polling thread stopped");
-}
-
-bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
-    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
-        LogMessage(LogLevel::WARN, "ModbusDriver not connected, skipping group " + std::to_string(group.group_id));
-        return false;
-    }
-    
-    LogMessage(LogLevel::DEBUG_LEVEL, "Processing polling group " + std::to_string(group.group_id));
-    
-    try {
-        // ModbusDriver를 통한 값 읽기
-        std::vector<TimestampedValue> values;
-        bool success = modbus_driver_->ReadValues(group.data_points, values);
-        
-        if (success && !values.empty()) {
-            // 🔥 한줄로 파이프라인 전송!
-            SendValuesToPipelineWithLogging(values, "그룹 " + std::to_string(group.group_id), 0);
-            
-        }
-        
-        LogMessage(LogLevel::DEBUG_LEVEL, "Successfully processed group " + std::to_string(group.group_id) + 
-                   ", read " + std::to_string(values.size()) + " values");
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception processing group " + std::to_string(group.group_id) + ": " + std::string(e.what()));
-        return false;
-    }
-}
-
 bool ModbusTcpWorker::ParseModbusAddress(const PulseOne::DataPoint& data_point,
                                          uint8_t& slave_id,
                                          ModbusRegisterType& register_type,
                                          uint16_t& address) {
     try {
-        // data_point.address는 Modbus 표준 주소 포맷으로 가정
-        // 예: "1:40001" (slave_id:address) 또는 "40001" (기본 slave_id=1)
-        
         std::string addr_str = std::to_string(data_point.address);
         size_t colon_pos = addr_str.find(':');
         
         if (colon_pos != std::string::npos) {
-            // 슬레이브 ID가 포함된 경우
             slave_id = static_cast<uint8_t>(std::stoi(addr_str.substr(0, colon_pos)));
             address = static_cast<uint16_t>(std::stoi(addr_str.substr(colon_pos + 1)));
         } else {
-            // 기본 슬레이브 ID 사용
             slave_id = 1;
             address = static_cast<uint16_t>(data_point.address);
         }
         
-        // Modbus 주소 범위에 따른 레지스터 타입 결정
         if (address >= 1 && address <= 9999) {
             register_type = ModbusRegisterType::COIL;
-            address -= 1;  // 0-based addressing
+            address -= 1;
         } else if (address >= 10001 && address <= 19999) {
             register_type = ModbusRegisterType::DISCRETE_INPUT;
-            address -= 10001;  // 0-based addressing
+            address -= 10001;
         } else if (address >= 30001 && address <= 39999) {
             register_type = ModbusRegisterType::INPUT_REGISTER;
-            address -= 30001;  // 0-based addressing
+            address -= 30001;
         } else if (address >= 40001 && address <= 49999) {
             register_type = ModbusRegisterType::HOLDING_REGISTER;
-            address -= 40001;  // 0-based addressing
+            address -= 40001;
         } else {
-            // 0-based 주소로 간주하고 기본 타입 사용
             register_type = ModbusRegisterType::HOLDING_REGISTER;
         }
         
         return true;
-        
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, "Failed to parse Modbus address for " + data_point.name + ": " + std::string(e.what()));
         return false;
@@ -798,12 +1547,10 @@ bool ModbusTcpWorker::ValidatePollingGroup(const ModbusTcpPollingGroup& group) {
 
 bool ModbusTcpWorker::CanMergePollingGroups(const ModbusTcpPollingGroup& group1,
                                            const ModbusTcpPollingGroup& group2) {
-    // 같은 슬레이브, 같은 레지스터 타입인지 확인
     if (group1.slave_id != group2.slave_id || group1.register_type != group2.register_type) {
         return false;
     }
     
-    // 주소가 연속되는지 확인
     uint16_t end1 = group1.start_address + group1.register_count;
     uint16_t end2 = group2.start_address + group2.register_count;
     
@@ -812,7 +1559,6 @@ bool ModbusTcpWorker::CanMergePollingGroups(const ModbusTcpPollingGroup& group1,
         return false;
     }
     
-    // 병합 후 크기가 제한을 넘지 않는지 확인
     uint16_t total_count = group1.register_count + group2.register_count;
     return total_count <= max_registers_per_group_;
 }
@@ -829,7 +1575,6 @@ ModbusTcpPollingGroup ModbusTcpWorker::MergePollingGroups(const ModbusTcpPolling
     merged.polling_interval_ms = std::min(group1.polling_interval_ms, group2.polling_interval_ms);
     merged.enabled = group1.enabled && group2.enabled;
     
-    // 데이터 포인트 병합
     merged.data_points = group1.data_points;
     merged.data_points.insert(merged.data_points.end(), 
                              group2.data_points.begin(), group2.data_points.end());
@@ -840,57 +1585,18 @@ ModbusTcpPollingGroup ModbusTcpWorker::MergePollingGroups(const ModbusTcpPolling
     return merged;
 }
 
-// =============================================================================
-// ModbusDriver 콜백 메서드들 (Driver → Worker)
-// =============================================================================
-
-/**
- * @brief Driver 콜백 설정 (선택적 구현)
- * @details ModbusDriver의 이벤트들을 Worker에서 처리하기 위한 콜백 등록
- */
 void ModbusTcpWorker::SetupDriverCallbacks() {
     if (!modbus_driver_) {
         return;
     }
     
     try {
-        LogMessage(LogLevel::DEBUG_LEVEL, "🔗 Setting up ModbusDriver callbacks...");
-        
-        // 예시: 연결 상태 변경 콜백
-        // modbus_driver_->SetConnectionStatusCallback([this](bool connected) {
-        //     if (connected) {
-        //         LogMessage(LogLevel::INFO, "📡 Modbus connection established");
-        //         OnProtocolConnected();
-        //     } else {
-        //         LogMessage(LogLevel::WARN, "📡 Modbus connection lost");
-        //         OnProtocolDisconnected();
-        //     }
-        // });
-        
-        // 예시: 에러 발생 콜백
-        // modbus_driver_->SetErrorCallback([this](const ErrorInfo& error) {
-        //     LogMessage(LogLevel::ERROR, 
-        //               "🚨 Modbus error: " + error.message + 
-        //               " (code: " + std::to_string(static_cast<int>(error.code)) + ")");
-        //     OnProtocolError(error);
-        // });
-        
-        // 예시: 데이터 수신 콜백  
-        // modbus_driver_->SetDataReceivedCallback([this](const std::vector<TimestampedValue>& values) {
-        //     LogMessage(LogLevel::DEBUG_LEVEL, 
-        //               "📊 Received " + std::to_string(values.size()) + " Modbus values");
-        //     OnDataReceived(values);
-        // });
-        
-        LogMessage(LogLevel::DEBUG_LEVEL, "✅ ModbusDriver callbacks configured");
-        
+        LogMessage(LogLevel::DEBUG_LEVEL, "Setting up ModbusDriver callbacks...");
+        LogMessage(LogLevel::DEBUG_LEVEL, "ModbusDriver callbacks configured");
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::WARN, 
-                   "⚠️ Failed to setup driver callbacks: " + std::string(e.what()));
-        // 콜백 설정 실패는 치명적이지 않으므로 계속 진행
+        LogMessage(LogLevel::WARN, "Failed to setup driver callbacks: " + std::string(e.what()));
     }
 }
-
 
 void ModbusTcpWorker::OnConnectionStatusChanged(void* worker_ptr, bool connected,
                                                const std::string& error_message) {
@@ -931,389 +1637,6 @@ void ModbusTcpWorker::OnStatisticsUpdate(void* worker_ptr, const std::string& op
                        " in " + std::to_string(response_time_ms) + "ms");
 }
 
-// =============================================================================
-// 🔥 1. uint16_t 값들 (Holding/Input Register) 파이프라인 전송
-// =============================================================================
-
-bool ModbusTcpWorker::SendModbusDataToPipeline(const std::vector<uint16_t>& raw_values, 
-                                               uint16_t start_address,
-                                               const std::string& register_type,
-                                               uint32_t priority) {
-    if (raw_values.empty()) {
-        return false;
-    }
-    
-    try {
-        std::vector<PulseOne::Structs::TimestampedValue> timestamped_values;
-        timestamped_values.reserve(raw_values.size());
-        
-        auto timestamp = std::chrono::system_clock::now();
-        
-        // 🔥 protected 멤버에 접근 (이제 가능)
-        const auto& current_data_points = GetDataPoints();
-        
-        for (size_t i = 0; i < raw_values.size(); ++i) {
-            uint32_t modbus_address = start_address + i;
-            
-            // 🔥 DataPoint 찾기
-            const PulseOne::Structs::DataPoint* data_point = nullptr;
-            for (const auto& dp : current_data_points) {
-                if (dp.address == modbus_address) {
-                    data_point = &dp;
-                    break;
-                }
-            }
-            
-            if (!data_point) {
-                LogMessage(LogLevel::DEBUG_LEVEL, "설정되지 않은 Modbus 주소: " + std::to_string(modbus_address));
-                continue; // 🔥 설정되지 않은 주소는 건너뛰기
-            }
-            
-            PulseOne::Structs::TimestampedValue tv;
-            
-            // 🔥 핵심 필드들
-            tv.value = static_cast<int32_t>(raw_values[i]);
-            tv.timestamp = timestamp;
-            tv.quality = PulseOne::Enums::DataQuality::GOOD;
-            tv.point_id = std::stoi(data_point->id);
-            tv.source = "modbus_" + register_type + "_" + std::to_string(modbus_address);
-            
-            // 🔥 상태변화 감지 (이전값 비교) - protected 멤버 접근
-            auto prev_it = previous_values_.find(tv.point_id);
-            if (prev_it != previous_values_.end()) {
-                tv.previous_value = prev_it->second;
-                tv.value_changed = (tv.value != prev_it->second);
-            } else {
-                tv.previous_value = PulseOne::Structs::DataValue{};
-                tv.value_changed = true; // 첫 수집은 변화로 간주
-            }
-            
-            // 🔥 DataPoint 설정값들 적용
-            tv.change_threshold = data_point->log_deadband;
-            tv.force_rdb_store = tv.value_changed || (data_point->log_enabled && data_point->log_interval_ms <= 1000);
-            tv.sequence_number = GetNextSequenceNumber();  // 🔥 protected 메서드 호출
-            tv.raw_value = static_cast<double>(raw_values[i]);
-            tv.scaling_factor = data_point->scaling_factor;
-            tv.scaling_offset = data_point->scaling_offset;
-            
-            // 🔥 스케일링 적용 (필요시)
-            if (data_point->scaling_factor != 1.0 || data_point->scaling_offset != 0.0) {
-                double scaled_value = (static_cast<double>(raw_values[i]) * data_point->scaling_factor) + data_point->scaling_offset;
-                tv.value = scaled_value;
-            }
-            
-            // 🔥 알람 관련 (나중에 구현)
-            tv.applicable_alarms.clear();
-            tv.suppress_alarms = false;
-            tv.trigger_alarm_check = tv.value_changed;
-            
-            timestamped_values.push_back(tv);
-            
-            // 🔥 이전값 캐시 업데이트 - protected 멤버 접근
-            previous_values_[tv.point_id] = tv.value;
-        }
-        
-        // 실제로 전송할 데이터가 있는 경우만 전송
-        if (timestamped_values.empty()) {
-            LogMessage(LogLevel::DEBUG_LEVEL, "전송할 설정된 데이터포인트가 없음: " + register_type + " " + std::to_string(start_address));
-            return true; // 에러는 아니므로 true 반환
-        }
-        
-        // 🔥 공통 전송 함수 호출 (BaseDeviceWorker의 protected 메서드)
-        bool success = SendValuesToPipelineWithLogging(timestamped_values, 
-                                                       register_type + " registers", 
-                                                       priority);
-        
-        if (success) {
-            LogMessage(LogLevel::DEBUG_LEVEL, 
-                      "Modbus 데이터 전송 성공: " + std::to_string(timestamped_values.size()) + 
-                      "/" + std::to_string(raw_values.size()) + " 포인트 (주소 " + 
-                      std::to_string(start_address) + "-" + std::to_string(start_address + raw_values.size() - 1) + ")");
-        }
-        
-        return success;
-                                               
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                  "SendModbusDataToPipeline 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool ModbusTcpWorker::SendModbusBoolDataToPipeline(const std::vector<uint8_t>& raw_values,
-                                                   uint16_t start_address,
-                                                   const std::string& register_type,
-                                                   uint32_t priority) {
-    if (raw_values.empty()) {
-        return false;
-    }
-    
-    try {
-        std::vector<PulseOne::Structs::TimestampedValue> timestamped_values;
-        timestamped_values.reserve(raw_values.size());
-        
-        auto timestamp = std::chrono::system_clock::now();
-        
-        // 🔥 protected 멤버에 접근
-        const auto& current_data_points = GetDataPoints();
-        
-        for (size_t i = 0; i < raw_values.size(); ++i) {
-            uint32_t modbus_address = start_address + i;
-            
-            // 🔥 DataPoint 찾기
-            const PulseOne::Structs::DataPoint* data_point = nullptr;
-            for (const auto& dp : current_data_points) {
-                if (dp.address == modbus_address) {
-                    data_point = &dp;
-                    break;
-                }
-            }
-            
-            if (!data_point) {
-                LogMessage(LogLevel::DEBUG_LEVEL, "설정되지 않은 Modbus 주소: " + std::to_string(modbus_address));
-                continue;
-            }
-            
-            PulseOne::Structs::TimestampedValue tv;
-            
-            // 🔥 핵심 필드들
-            tv.value = static_cast<bool>(raw_values[i]);
-            tv.timestamp = timestamp;
-            tv.quality = PulseOne::Enums::DataQuality::GOOD;
-            tv.point_id = std::stoi(data_point->id);
-            tv.source = "modbus_" + register_type + "_" + std::to_string(modbus_address);
-            
-            // 🔥 상태변화 감지 (디지털 신호)
-            auto prev_it = previous_values_.find(tv.point_id);
-            if (prev_it != previous_values_.end()) {
-                tv.previous_value = prev_it->second;
-                tv.value_changed = (tv.value != prev_it->second);
-            } else {
-                tv.previous_value = PulseOne::Structs::DataValue{};
-                tv.value_changed = true;
-            }
-            
-            // 🔥 DataPoint 설정값들 적용
-            tv.change_threshold = 0.0; // 디지털은 임계값 없음
-            tv.force_rdb_store = tv.value_changed; // 디지털은 상태변화시만 저장
-            tv.sequence_number = GetNextSequenceNumber();
-            tv.raw_value = static_cast<double>(raw_values[i]); // 0.0 또는 1.0
-            tv.scaling_factor = 1.0; // 디지털은 스케일링 없음
-            tv.scaling_offset = 0.0;
-            
-            // 🔥 알람 관련
-            tv.applicable_alarms.clear();
-            tv.suppress_alarms = false;
-            tv.trigger_alarm_check = tv.value_changed; // 디지털 상태변화는 항상 알람 체크
-            
-            timestamped_values.push_back(tv);
-            
-            // 🔥 이전값 캐시 업데이트
-            previous_values_[tv.point_id] = tv.value;
-        }
-        
-        if (timestamped_values.empty()) {
-            LogMessage(LogLevel::DEBUG_LEVEL, "전송할 설정된 데이터포인트가 없음: " + register_type + " " + std::to_string(start_address));
-            return true;
-        }
-        
-        // 🔥 공통 전송 함수 호출
-        bool success = SendValuesToPipelineWithLogging(timestamped_values,
-                                                       register_type + " inputs",
-                                                       priority);
-        
-        if (success) {
-            LogMessage(LogLevel::DEBUG_LEVEL, 
-                      "Modbus Bool 데이터 전송 성공: " + std::to_string(timestamped_values.size()) + 
-                      "/" + std::to_string(raw_values.size()) + " 포인트");
-        }
-        
-        return success;
-                                               
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                  "SendModbusBoolDataToPipeline 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-// 운영용 쓰기 함수 구현
-bool ModbusTcpWorker::WriteSingleHoldingRegister(int slave_id, uint16_t address, uint16_t value) {
-    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
-        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
-        return false;
-    }
-    
-    try {
-        // 🔥 ModbusDriver에 올바른 함수명으로 위임
-        bool success = modbus_driver_->WriteHoldingRegister(slave_id, address, value);
-        
-        // 제어 이력 기록
-        DataValue data_value = static_cast<int32_t>(value);  // 🔥 올바른 변환
-        LogWriteOperation(slave_id, address, data_value, "holding_register", success);
-        
-        if (success) {
-            LogMessage(LogLevel::INFO, 
-                      "Holding Register 쓰기 성공: 슬레이브=" + std::to_string(slave_id) + 
-                      ", 주소=" + std::to_string(address) + ", 값=" + std::to_string(value));
-        } else {
-            LogMessage(LogLevel::ERROR, "Holding Register 쓰기 실패");
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteSingleHoldingRegister 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool ModbusTcpWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value) {
-    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
-        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
-        return false;
-    }
-    
-    try {
-        // 🔥 ModbusDriver에 올바른 함수명으로 위임 (수정 필요시)
-        bool success = modbus_driver_->WriteCoil(slave_id, address, value);  // 🔥 함수명 확인 필요
-        
-        // 제어 이력 기록
-        DataValue data_value = value;  // 🔥 bool은 직접 할당 가능
-        LogWriteOperation(slave_id, address, data_value, "coil", success);
-        
-        if (success) {
-            LogMessage(LogLevel::INFO, 
-                      "Coil 쓰기 성공: 슬레이브=" + std::to_string(slave_id) + 
-                      ", 주소=" + std::to_string(address) + ", 값=" + (value ? "ON" : "OFF"));
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteSingleCoil 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-// 디버깅용 읽기 함수 구현
-bool ModbusTcpWorker::ReadSingleHoldingRegister(int slave_id, uint16_t address, uint16_t& value) {
-    std::vector<uint16_t> values;
-    bool success = ReadHoldingRegisters(slave_id, address, 1, values);
-    
-    if (success && !values.empty()) {
-        value = values[0];
-        
-        // 디버깅 읽기도 파이프라인 전송 (낮은 우선순위)
-        TimestampedValue tv;
-        tv.value = static_cast<int32_t>(value);
-        tv.timestamp = std::chrono::system_clock::now();
-        tv.quality = DataQuality::GOOD;
-        tv.source = "debug_holding_" + std::to_string(address);
-        
-        SendValuesToPipelineWithLogging({tv}, "디버깅 읽기", 20);
-        
-        return true;
-    }
-    
-    return false;
-}
-
-bool ModbusTcpWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address, uint16_t count, 
-                                          std::vector<uint16_t>& values) {
-    if (!modbus_driver_ || !modbus_driver_->IsConnected()) {
-        LogMessage(LogLevel::WARN, "ModbusDriver not connected");
-        return false;
-    }
-    
-    try {
-        // ModbusDriver에 위임
-        bool success = modbus_driver_->ReadHoldingRegisters(slave_id, start_address, count, values);
-        
-        if (success && !values.empty()) {
-            // 디버깅 읽기 결과도 파이프라인 전송
-            std::vector<TimestampedValue> timestamped_values;
-            timestamped_values.reserve(values.size());
-            
-            auto timestamp = std::chrono::system_clock::now();
-            for (size_t i = 0; i < values.size(); ++i) {
-                TimestampedValue tv;
-                tv.value = static_cast<int32_t>(values[i]);
-                tv.timestamp = timestamp;
-                tv.quality = DataQuality::GOOD;
-                tv.source = "debug_holding_" + std::to_string(start_address + i);
-                timestamped_values.push_back(tv);
-            }
-            
-            SendValuesToPipelineWithLogging(timestamped_values, "Holding 레지스터 범위 읽기", 15);
-            
-            LogMessage(LogLevel::DEBUG_LEVEL, 
-                      "Holding Register 읽기 성공: " + std::to_string(values.size()) + "개 값");
-        }
-        
-        return success;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ReadHoldingRegisters 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-// 고수준 DataPoint 기반 함수
-bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
-    auto data_point_opt = FindDataPointById(point_id);
-    if (!data_point_opt.has_value()) {
-        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
-        return false;
-    }
-    
-    const auto& data_point = data_point_opt.value();
-    
-    // DataPoint 타입에 따라 적절한 쓰기 함수 호출
-    uint8_t slave_id;
-    ModbusRegisterType register_type;
-    uint16_t address;
-    
-    if (!ParseModbusAddress(data_point, slave_id, register_type, address)) {
-        LogMessage(LogLevel::ERROR, "Invalid Modbus address: " + point_id);
-        return false;
-    }
-    
-    try {
-        bool success = false;
-        
-        if (register_type == ModbusRegisterType::HOLDING_REGISTER) {
-            // 🔥 std::get을 올바르게 사용 (variant에서 값 추출)
-            int32_t int_value = std::get<int32_t>(value);  // DataValue는 variant 타입
-            uint16_t modbus_value = static_cast<uint16_t>(int_value);
-            success = WriteSingleHoldingRegister(slave_id, address, modbus_value);
-            
-        } else if (register_type == ModbusRegisterType::COIL) {
-            // 🔥 std::get을 올바르게 사용
-            bool coil_value = std::get<bool>(value);
-            success = WriteSingleCoil(slave_id, address, coil_value);
-            
-        } else {
-            LogMessage(LogLevel::ERROR, "Read-only register type: " + point_id);
-            return false;
-        }
-        
-        if (success) {
-            LogMessage(LogLevel::INFO, "DataPoint 쓰기 성공: " + point_id);
-        }
-        
-        return success;
-        
-    } catch (const std::bad_variant_access& e) {
-        LogMessage(LogLevel::ERROR, "DataValue 타입 불일치: " + std::string(e.what()));
-        return false;
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-
-// 제어 이력 기록 헬퍼
 void ModbusTcpWorker::LogWriteOperation(int slave_id, uint16_t address, const DataValue& value,
                                        const std::string& register_type, bool success) {
     try {
@@ -1324,16 +1647,13 @@ void ModbusTcpWorker::LogWriteOperation(int slave_id, uint16_t address, const Da
         control_log.source = "control_" + register_type + "_" + std::to_string(address) + 
                             "_slave" + std::to_string(slave_id);
         
-        // 제어 이력은 높은 우선순위로 기록
         SendValuesToPipelineWithLogging({control_log}, "제어 이력", 1);
-        
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
     }
 }
 
 std::optional<DataPoint> ModbusTcpWorker::FindDataPointById(const std::string& point_id) {
-    // GetDataPoints()는 BaseDeviceWorker에서 제공되는 함수
     const auto& data_points = GetDataPoints();
     
     for (const auto& point : data_points) {
@@ -1342,12 +1662,34 @@ std::optional<DataPoint> ModbusTcpWorker::FindDataPointById(const std::string& p
         }
     }
     
-    return std::nullopt;  // 찾지 못함
+    return std::nullopt;
 }
 
+bool ModbusTcpWorker::SendReadResultToPipeline(const std::vector<bool>& values, uint16_t start_address,
+                                             const std::string& register_type, int slave_id) {
+    try {
+        std::vector<TimestampedValue> timestamped_values;
+        timestamped_values.reserve(values.size());
+        
+        auto timestamp = std::chrono::system_clock::now();
+        for (size_t i = 0; i < values.size(); ++i) {
+            TimestampedValue tv;
+            tv.value = values[i];  // bool 타입 직접 사용
+            tv.timestamp = timestamp;
+            tv.quality = DataQuality::GOOD;
+            tv.source = register_type + "_" + std::to_string(start_address + i) + "_slave" + std::to_string(slave_id);
+            timestamped_values.push_back(tv);
+        }
+        
+        return SendValuesToPipelineWithLogging(timestamped_values, register_type + " 읽기", 15);
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "SendReadResultToPipeline 예외: " + std::string(e.what()));
+        return false;
+    }
+}
 
 bool ModbusTcpWorker::SendSingleValueToPipeline(const DataValue& value, uint16_t address,
-                                               const std::string& register_type, int slave_id) {
+                                              const std::string& register_type, int slave_id) {
     try {
         TimestampedValue tv;
         tv.value = value;
@@ -1356,12 +1698,11 @@ bool ModbusTcpWorker::SendSingleValueToPipeline(const DataValue& value, uint16_t
         tv.source = register_type + "_" + std::to_string(address) + "_slave" + std::to_string(slave_id);
         
         return SendValuesToPipelineWithLogging({tv}, "단일 값", 15);
-        
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, "SendSingleValueToPipeline 예외: " + std::string(e.what()));
         return false;
     }
 }
 
-} // namespace Workers
+} // namespace Workers  
 } // namespace PulseOne

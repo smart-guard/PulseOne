@@ -1,21 +1,18 @@
 /**
- * @file ModbusTcpWorker.h (수정됨)
- * @brief Modbus TCP 디바이스 워커 클래스 - ModbusDriver를 통신 매체로 사용
+ * @file ModbusTcpWorker.h (완성본)
+ * @brief Modbus TCP 디바이스 워커 클래스 - BaseDeviceWorker Write 인터페이스 구현
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 2.0.0 (수정됨)
- * 
- * @details
- * 올바른 아키텍처: ModbusDriver가 순수 통신 담당, Worker가 객체 관리 담당
+ * @version 2.1.0 (완성본)
  */
 
 #ifndef MODBUS_TCP_WORKER_H
 #define MODBUS_TCP_WORKER_H
 
 #include "Workers/Base/TcpBasedWorker.h"
-#include "Common/BasicTypes.h"           // PulseOne::BasicTypes::DataVariant
-#include "Common/Enums.h"                // PulseOne::Enums 타입들
-#include "Common/Structs.h"              // PulseOne::Structs::DataValue
+#include "Common/BasicTypes.h"           
+#include "Common/Enums.h"                
+#include "Common/Structs.h"              
 #include "Drivers/Modbus/ModbusDriver.h"
 #include <memory>
 #include <vector>
@@ -27,8 +24,8 @@
 namespace PulseOne {
 namespace Workers {
 
-    // 🔥 타입 별칭 명시적 선언 (충돌 방지의 핵심!)
-    using DataValue = PulseOne::Structs::DataValue;          // ✅ 메인 타입
+    // 타입 별칭 명시적 선언
+    using DataValue = PulseOne::Structs::DataValue;          
     using TimestampedValue = PulseOne::Structs::TimestampedValue;
     using DataPoint = PulseOne::Structs::DataPoint;
     using DeviceInfo = PulseOne::Structs::DeviceInfo;
@@ -47,20 +44,19 @@ namespace Workers {
     using ModbusDriver = PulseOne::Drivers::ModbusDriver;
     using ModbusRegisterType = PulseOne::Enums::ModbusRegisterType;
 
-
 /**
- * @brief Modbus TCP 폴링 그룹 (Worker가 관리)
+ * @brief Modbus TCP 폴링 그룹
  */
 struct ModbusTcpPollingGroup {
-    uint32_t group_id;                               ///< 그룹 ID
-    uint8_t slave_id;                                ///< 슬레이브 ID
-    ModbusRegisterType register_type;                ///< 레지스터 타입
-    uint16_t start_address;                          ///< 시작 주소
-    uint16_t register_count;                         ///< 레지스터 개수
-    uint32_t polling_interval_ms;                    ///< 폴링 주기 (밀리초)
-    bool enabled;                                    ///< 활성화 여부
+    uint32_t group_id;                               
+    uint8_t slave_id;                                
+    ModbusRegisterType register_type;                
+    uint16_t start_address;                          
+    uint16_t register_count;                         
+    uint32_t polling_interval_ms;                    
+    bool enabled;                                    
     
-    std::vector<PulseOne::DataPoint> data_points;     ///< 이 그룹에 속한 데이터 포인트들
+    std::vector<PulseOne::DataPoint> data_points;     
     
     // 실행 시간 추적
     std::chrono::system_clock::time_point last_poll_time;
@@ -75,12 +71,7 @@ struct ModbusTcpPollingGroup {
 };
 
 /**
- * @brief Modbus TCP 워커 클래스 (수정됨)
- * @details TcpBasedWorker를 상속받아 ModbusDriver를 통신 매체로 사용
- * 
- * 책임 분리:
- * - ModbusDriver: 순수 Modbus 통신 (연결, 읽기/쓰기, 에러 처리)
- * - ModbusTcpWorker: 객체 관리 (폴링 그룹, 스케줄링, 데이터 변환, DB 저장)
+ * @brief Modbus TCP 워커 클래스 (완성본)
  */
 class ModbusTcpWorker : public TcpBasedWorker {
 public:
@@ -93,6 +84,58 @@ public:
     
     std::future<bool> Start() override;
     std::future<bool> Stop() override;
+    
+    // =============================================================================
+    // BaseDeviceWorker Write 인터페이스 구현 (완성!)
+    // =============================================================================
+    
+    /**
+     * @brief DataPoint를 통한 값 쓰기 (BaseDeviceWorker 인터페이스 구현)
+     * @param point_id DataPoint ID
+     * @param value 쓸 값
+     * @return 성공 시 true
+     */
+    bool WriteDataPoint(const std::string& point_id, const DataValue& value) override;
+    
+    /**
+     * @brief 아날로그 출력 제어 (BaseDeviceWorker 인터페이스 구현)
+     * @param output_id 출력 ID (Modbus에서는 DataPoint ID 또는 "slave:address" 형식)
+     * @param value 아날로그 값
+     * @return 성공 시 true
+     */
+    bool WriteAnalogOutput(const std::string& output_id, double value) override;
+    
+    /**
+     * @brief 디지털 출력 제어 (BaseDeviceWorker 인터페이스 구현)
+     * @param output_id 출력 ID (Modbus에서는 DataPoint ID 또는 "slave:address" 형식)
+     * @param value 디지털 값 (true/false)
+     * @return 성공 시 true
+     */
+    bool WriteDigitalOutput(const std::string& output_id, bool value) override;
+    
+    /**
+     * @brief 설정값 변경 (BaseDeviceWorker 인터페이스 구현)
+     * @param setpoint_id 설정값 ID
+     * @param value 새로운 설정값
+     * @return 성공 시 true
+     */
+    bool WriteSetpoint(const std::string& setpoint_id, double value) override;
+    
+    /**
+     * @brief 펌프 제어 (BaseDeviceWorker 인터페이스 구현)
+     * @param pump_id 펌프 ID (Modbus Coil 주소)
+     * @param enable true=시작, false=정지
+     * @return 성공 시 true
+     */
+    bool ControlPump(const std::string& pump_id, bool enable) override;
+    
+    /**
+     * @brief 밸브 제어 (BaseDeviceWorker 인터페이스 구현)
+     * @param valve_id 밸브 ID (Modbus Holding Register 주소)
+     * @param position 밸브 위치 (0.0~100.0 %)
+     * @return 성공 시 true
+     */
+    bool ControlValve(const std::string& valve_id, double position) override;
 
     // =============================================================================
     // TcpBasedWorker 인터페이스 구현 (Driver 위임)
@@ -101,55 +144,24 @@ public:
     bool EstablishProtocolConnection() override;
     bool CloseProtocolConnection() override;
     bool CheckProtocolConnection() override;
-    /**
-     * @brief TcpBasedWorker 인터페이스 구현 (Driver 위임)
-     * @details SendProtocolKeepAlive는 TcpBasedWorker에서 virtual이므로 override 제거
-     * @return 성공 시 true
-     */
     bool SendProtocolKeepAlive();
     PulseOne::Drivers::ModbusDriver* GetModbusDriver() const {
         return modbus_driver_.get();
     }
+    
     // =============================================================================
-    // Modbus TCP 특화 객체 관리 (Worker 고유 기능)
+    // Modbus TCP 특화 객체 관리
     // =============================================================================
     
-    /**
-     * @brief 폴링 그룹 추가
-     * @param group 폴링 그룹
-     * @return 성공 시 true
-     */
     bool AddPollingGroup(const ModbusTcpPollingGroup& group);
-    
-    /**
-     * @brief 폴링 그룹 제거
-     * @param group_id 그룹 ID
-     * @return 성공 시 true
-     */
     bool RemovePollingGroup(uint32_t group_id);
-    
-    /**
-     * @brief 모든 폴링 그룹 조회
-     * @return 폴링 그룹 목록
-     */
     std::vector<ModbusTcpPollingGroup> GetPollingGroups() const;
-    
-    /**
-     * @brief 폴링 그룹 활성화/비활성화
-     * @param group_id 그룹 ID
-     * @param enabled 활성화 여부
-     * @return 성공 시 true
-     */
     bool SetPollingGroupEnabled(uint32_t group_id, bool enabled);
-    
-    /**
-     * @brief Modbus 통계 정보 조회 (Driver에서 가져옴)
-     * @return JSON 형태의 통계 정보
-     */
     std::string GetModbusStats() const;
-    // ==========================================================================
-    // 🔥 운영용 쓰기/제어 함수들 (필수!)
-    // ==========================================================================
+    
+    // =============================================================================
+    // 운영용 쓰기/제어 함수들 (기존 구현 유지)
+    // =============================================================================
     
     bool WriteSingleHoldingRegister(int slave_id, uint16_t address, uint16_t value);
     bool WriteSingleCoil(int slave_id, uint16_t address, bool value);
@@ -158,9 +170,9 @@ public:
     bool WriteMultipleCoils(int slave_id, uint16_t start_address,
                            const std::vector<bool>& values);
 
-    // ==========================================================================
-    // 🔥 디버깅용 개별 읽기 함수들
-    // ==========================================================================
+    // =============================================================================
+    // 디버깅용 개별 읽기 함수들 (기존 구현 유지)
+    // =============================================================================
     
      bool ReadSingleHoldingRegister(int slave_id, uint16_t address, uint16_t& value);
     bool ReadSingleInputRegister(int slave_id, uint16_t address, uint16_t& value);
@@ -176,26 +188,18 @@ public:
     bool ReadDiscreteInputs(int slave_id, uint16_t start_address, uint16_t count,
                            std::vector<bool>& values);
 
-    // ==========================================================================
-    // 🔥 고수준 제어 함수들 (DataPoint 기반)
-    // ==========================================================================
+    // =============================================================================
+    // 고수준 제어 함수들 (DataPoint 기반)
+    // =============================================================================
     
     bool WriteDataPointValue(const std::string& point_id, const DataValue& value);
     bool ReadDataPointValue(const std::string& point_id, TimestampedValue& value);
-
-    
-    /**
-     * @brief 여러 DataPoint 한번에 읽기 (배치 읽기)
-     * @param point_ids 데이터 포인트 ID 목록
-     * @param values 읽은 값들 (출력)
-     * @return 성공 시 true
-     */
     bool ReadMultipleDataPoints(const std::vector<std::string>& point_ids,
                                std::vector<TimestampedValue>& values);
 
-    // ==========================================================================
-    // 🔥 실시간 테스트/디버깅 함수들
-    // ==========================================================================
+    // =============================================================================
+    // 실시간 테스트/디버깅 함수들 (선택적 구현 완성)
+    // =============================================================================
     
     /**
      * @brief 연결 테스트 (ping)
@@ -222,6 +226,27 @@ public:
      * @return 디바이스 정보 JSON
      */
     std::string ReadDeviceInfo(int slave_id = 1);
+    
+    /**
+     * @brief 레지스터 값들을 실시간으로 모니터링
+     * @param slave_id 슬레이브 ID
+     * @param addresses 모니터링할 주소 목록
+     * @param register_type 레지스터 타입 ("holding", "input", "coil", "discrete")
+     * @param duration_seconds 모니터링 지속 시간 (초)
+     * @return 모니터링 결과 JSON
+     */
+    std::string MonitorRegisters(int slave_id, 
+                                const std::vector<uint16_t>& addresses,
+                                const std::string& register_type = "holding",
+                                int duration_seconds = 10);
+    
+    /**
+     * @brief Modbus 진단 정보 수집
+     * @param slave_id 슬레이브 ID
+     * @return 진단 결과 JSON
+     */
+    std::string RunDiagnostics(int slave_id = 1);
+    
     std::string GetPropertyValue(const std::map<std::string, std::string>& properties, 
                             const std::string& key, 
                             const std::string& default_value) const {
@@ -231,20 +256,10 @@ public:
 
 protected:
     // =============================================================================
-    // 데이터 포인트 처리 (Worker 고유 로직)
+    // 데이터 포인트 처리
     // =============================================================================
     
-    /**
-     * @brief 데이터 포인트들을 폴링 그룹으로 자동 구성
-     * @param data_points 데이터 포인트 목록
-     * @return 생성된 폴링 그룹 수
-     */
     size_t CreatePollingGroupsFromDataPoints(const std::vector<PulseOne::DataPoint>& data_points);
-    
-    /**
-     * @brief 폴링 그룹 최적화 (연속된 주소 병합)
-     * @return 최적화된 그룹 수
-     */
     size_t OptimizePollingGroups();
 
 private:
@@ -252,25 +267,13 @@ private:
     // Modbus TCP 전용 멤버 변수
     // =============================================================================
     
-    /// Modbus 드라이버 (순수 통신 담당)
     std::unique_ptr<Drivers::ModbusDriver> modbus_driver_;
-    
-    /// 폴링 그룹 맵 (Group ID → 폴링 그룹)
     std::map<uint32_t, ModbusTcpPollingGroup> polling_groups_;
-    
-    /// 폴링 그룹 뮤텍스
     mutable std::mutex polling_groups_mutex_;
-    
-    /// 폴링 스레드
     std::unique_ptr<std::thread> polling_thread_;
-    
-    /// 폴링 스레드 실행 플래그
     std::atomic<bool> polling_thread_running_;
-    
-    /// 다음 그룹 ID (자동 증가)
     std::atomic<uint32_t> next_group_id_;
     
-    /// 기본 설정
     uint32_t default_polling_interval_ms_;
     uint16_t max_registers_per_group_;
     bool auto_group_creation_enabled_;
@@ -278,181 +281,84 @@ private:
     PulseOne::Drivers::DriverConfig modbus_config_;
 
     // =============================================================================
-    // 내부 메서드 (Worker 고유 로직)
+    // 내부 메서드
     // =============================================================================
     
-    /**
-     * @brief Modbus 설정 파싱
-     * @details device_info의 protocol_config에서 Modbus 설정 추출
-     * @return 성공 시 true
-     */
     bool ParseModbusConfig();
-    
-    /**
-     * @brief ModbusDriver 초기화 및 설정
-     * @return 성공 시 true
-     */
     bool InitializeModbusDriver();
-    
-    /**
-     * @brief 폴링 스레드 함수 (Worker 고유)
-     */
     void PollingThreadFunction();
-    
-    /**
-     * @brief 단일 폴링 그룹 처리 (Driver 위임)
-     * @param group 폴링 그룹
-     * @return 성공 시 true
-     */
     bool ProcessPollingGroup(const ModbusTcpPollingGroup& group);
     
-    /**
-     * @brief Modbus 값들을 TimestampedValue로 변환
-     * @param group 폴링 그룹
-     * @param values Modbus에서 읽은 원시 값들
-     * @return 변환된 TimestampedValue 목록
-     */
-    std::vector<PulseOne::TimestampedValue> ConvertModbusValues(
-        const ModbusTcpPollingGroup& group,
-        const std::vector<uint16_t>& values);
-      
-    /**
-     * @brief 데이터 포인트에서 Modbus 주소 파싱
-     * @param data_point 데이터 포인트
-     * @param slave_id 슬레이브 ID (출력)
-     * @param register_type 레지스터 타입 (출력)
-     * @param address 주소 (출력)
-     * @return 성공 시 true
-     */
     bool ParseModbusAddress(const PulseOne::DataPoint& data_point,
                            uint8_t& slave_id,
                            ModbusRegisterType& register_type,
                            uint16_t& address);
     
-    /**
-     * @brief 폴링 그룹 유효성 검사
-     * @param group 폴링 그룹
-     * @return 유효하면 true
-     */
     bool ValidatePollingGroup(const ModbusTcpPollingGroup& group);
-    
-    /**
-     * @brief 폴링 그룹 병합 가능성 체크
-     * @param group1 첫 번째 그룹
-     * @param group2 두 번째 그룹
-     * @return 병합 가능하면 true
-     */
     bool CanMergePollingGroups(const ModbusTcpPollingGroup& group1,
                               const ModbusTcpPollingGroup& group2);
-    
-    /**
-     * @brief 두 폴링 그룹 병합
-     * @param group1 첫 번째 그룹
-     * @param group2 두 번째 그룹
-     * @return 병합된 그룹
-     */
     ModbusTcpPollingGroup MergePollingGroups(const ModbusTcpPollingGroup& group1,
                                             const ModbusTcpPollingGroup& group2);
 
     // =============================================================================
-    // ModbusDriver 콜백 메서드들 (Driver → Worker)
+    // ModbusDriver 콜백 메서드들
     // =============================================================================
     
-    /**
-     * @brief ModbusDriver 콜백 설정
-     * @details Driver에서 Worker로의 콜백 함수들 등록
-     */
     void SetupDriverCallbacks();
-    
-    /**
-     * @brief 연결 상태 변경 콜백 (Driver → Worker)
-     * @param worker_ptr Worker 포인터
-     * @param connected 연결 상태
-     * @param error_message 에러 메시지 (연결 실패 시)
-     */
     static void OnConnectionStatusChanged(void* worker_ptr, bool connected,
                                          const std::string& error_message);
-    
-    /**
-     * @brief Modbus 에러 콜백 (Driver → Worker)
-     * @param worker_ptr Worker 포인터
-     * @param slave_id 슬레이브 ID
-     * @param function_code 함수 코드
-     * @param error_code 에러 코드
-     * @param error_message 에러 메시지
-     */
     static void OnModbusError(void* worker_ptr, uint8_t slave_id, uint8_t function_code,
                              int error_code, const std::string& error_message);
-    
-    /**
-     * @brief 통계 업데이트 콜백 (Driver → Worker)
-     * @param worker_ptr Worker 포인터
-     * @param operation 작업 유형 ("read", "write")
-     * @param success 성공 여부
-     * @param response_time_ms 응답 시간 (밀리초)
-     */
     static void OnStatisticsUpdate(void* worker_ptr, const std::string& operation,
                                   bool success, uint32_t response_time_ms);
 
-    /**
-     * @brief Modbus 원시 데이터를 TimestampedValue로 변환 후 파이프라인 전송
-     * @param raw_values 원시 uint16_t 값들 (Holding/Input Register)
-     * @param start_address 시작 주소
-     * @param register_type 레지스터 타입 ("holding", "input", "coil", "discrete")
-     * @param priority 파이프라인 우선순위 (기본: 0)
-     * @return 전송 성공 시 true
-     */
+    // =============================================================================
+    // 파이프라인 전송 헬퍼들
+    // =============================================================================
+    
     bool SendModbusDataToPipeline(const std::vector<uint16_t>& raw_values, 
                                   uint16_t start_address,
                                   const std::string& register_type,
                                   uint32_t priority = 0);
     
-    /**
-     * @brief Modbus 원시 bool 데이터를 TimestampedValue로 변환 후 파이프라인 전송
-     * @param raw_values 원시 uint8_t 값들 (Coil/Discrete Input)
-     * @param start_address 시작 주소
-     * @param register_type 레지스터 타입 ("coil", "discrete")
-     * @param priority 파이프라인 우선순위 (기본: 0)
-     * @return 전송 성공 시 true
-     */
     bool SendModbusBoolDataToPipeline(const std::vector<uint8_t>& raw_values,
                                       uint16_t start_address,
                                       const std::string& register_type,
                                       uint32_t priority = 0);
     
-    // ==========================================================================
-    // 🔥 공통 헬퍼 함수들
-    // ==========================================================================
-    
-    /**
-     * @brief 쓰기 결과를 파이프라인에 전송 (제어 이력 기록)
-     * @param slave_id 슬레이브 ID
-     * @param address 주소
-     * @param value 쓴 값
-     * @param register_type 레지스터 타입
-     * @param success 쓰기 성공 여부
-     */
     void LogWriteOperation(int slave_id, uint16_t address, const DataValue& value,
                           const std::string& register_type, bool success);
     
-    /**
-     * @brief DataPoint ID로 실제 DataPoint 찾기
-     * @param point_id 포인트 ID
-     * @return DataPoint (없으면 빈 optional)
-     */
     std::optional<DataPoint> FindDataPointById(const std::string& point_id);
     
-    /**
-     * @brief 타입별 파이프라인 전송 헬퍼
-     */
     bool SendReadResultToPipeline(const std::vector<uint16_t>& values, uint16_t start_address,
                                  const std::string& register_type, int slave_id);
     bool SendReadResultToPipeline(const std::vector<bool>& values, uint16_t start_address,
                                  const std::string& register_type, int slave_id);
     bool SendSingleValueToPipeline(const DataValue& value, uint16_t address,
                                   const std::string& register_type, int slave_id);
-
-
+    
+    // =============================================================================
+    // Write 인터페이스 구현을 위한 헬퍼 메서드들
+    // =============================================================================
+    
+    /**
+     * @brief 주소 문자열 파싱 ("slave:address" 또는 "address")
+     * @param address_str 주소 문자열
+     * @param slave_id 파싱된 슬레이브 ID (출력)
+     * @param address 파싱된 주소 (출력)
+     * @return 성공 시 true
+     */
+    bool ParseAddressString(const std::string& address_str, uint8_t& slave_id, uint16_t& address);
+    
+    /**
+     * @brief Modbus 주소를 레지스터 타입으로 변환
+     * @param address Modbus 주소 (1-based 또는 0-based)
+     * @param register_type 출력 레지스터 타입
+     * @param adjusted_address 조정된 주소 (0-based)
+     * @return 성공 시 true
+     */
+    bool DetermineRegisterType(uint16_t address, ModbusRegisterType& register_type, uint16_t& adjusted_address);
 };
 
 } // namespace Workers

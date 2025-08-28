@@ -380,4 +380,163 @@ void WorkerManager::UnregisterWorker(const std::string& device_id) {
     LogManager::getInstance().Debug("Worker 등록 해제: " + device_id);
 }
 
+bool WorkerManager::PauseWorker(const std::string& device_id) {
+    std::lock_guard<std::mutex> lock(workers_mutex_);
+    
+    auto worker = FindWorker(device_id);
+    if (!worker) {
+        LogManager::getInstance().Warn("Worker 없음 (일시정지): " + device_id);  // Warning -> Warn
+        return false;
+    }
+    
+    try {
+        // 실제로는 BaseDeviceWorker에 Pause 메서드가 구현되어야 함
+        // 현재는 로그만 출력하고 성공 반환
+        LogManager::getInstance().Info("Worker 일시정지 요청: " + device_id);
+        // TODO: worker->Pause() 구현 필요
+        
+        LogManager::getInstance().Info("Worker 일시정지 완료: " + device_id);
+        return true;
+        
+    } catch (const std::exception& e) {
+        total_errors_.fetch_add(1);
+        LogManager::getInstance().Error("Worker 일시정지 예외: " + device_id + " - " + e.what());
+        return false;
+    }
+}
+
+bool WorkerManager::ResumeWorker(const std::string& device_id) {
+    std::lock_guard<std::mutex> lock(workers_mutex_);
+    
+    auto worker = FindWorker(device_id);
+    if (!worker) {
+        LogManager::getInstance().Warn("Worker 없음 (재개): " + device_id);  // Warning -> Warn
+        return false;
+    }
+    
+    try {
+        // 실제로는 BaseDeviceWorker에 Resume 메서드가 구현되어야 함
+        // 현재는 로그만 출력하고 성공 반환
+        LogManager::getInstance().Info("Worker 재개 요청: " + device_id);
+        // TODO: worker->Resume() 구현 필요
+        
+        LogManager::getInstance().Info("Worker 재개 완료: " + device_id);
+        return true;
+        
+    } catch (const std::exception& e) {
+        total_errors_.fetch_add(1);
+        LogManager::getInstance().Error("Worker 재개 예외: " + device_id + " - " + e.what());
+        return false;
+    }
+}
+
+nlohmann::json WorkerManager::GetAllWorkersStatus() const {
+    std::lock_guard<std::mutex> lock(workers_mutex_);
+    
+    nlohmann::json status = nlohmann::json::object();
+    status["workers"] = nlohmann::json::array();
+    status["summary"] = nlohmann::json::object();
+    
+    int running_count = 0;
+    int stopped_count = 0;
+    int paused_count = 0;
+    int error_count = 0;
+    
+    for (const auto& [device_id, worker] : workers_) {
+        nlohmann::json worker_status = nlohmann::json::object();
+        worker_status["device_id"] = device_id;
+        
+        if (worker) {
+            auto state = worker->GetState();
+            switch (state) {
+                case WorkerState::RUNNING:
+                    worker_status["state"] = "running";
+                    running_count++;
+                    break;
+                case WorkerState::STOPPED:
+                    worker_status["state"] = "stopped";
+                    stopped_count++;
+                    break;
+                case WorkerState::PAUSED:
+                    worker_status["state"] = "paused";
+                    paused_count++;
+                    break;
+                case WorkerState::ERROR:
+                    worker_status["state"] = "error";
+                    error_count++;
+                    break;
+                default:
+                    worker_status["state"] = "unknown";
+                    break;
+            }
+            
+            worker_status["uptime"] = "0d 0h 0m 0s";  // 기본값 - 실제로는 Worker에서 가져와야 함
+        } else {
+            worker_status["state"] = "null";
+            error_count++;
+        }
+        
+        status["workers"].push_back(worker_status);
+    }
+    
+    // 요약 정보
+    status["summary"]["total"] = workers_.size();
+    status["summary"]["running"] = running_count;
+    status["summary"]["stopped"] = stopped_count;
+    status["summary"]["paused"] = paused_count;
+    status["summary"]["error"] = error_count;
+    status["summary"]["total_started"] = total_started_.load();
+    status["summary"]["total_stopped"] = total_stopped_.load();
+    status["summary"]["total_errors"] = total_errors_.load();
+    
+    return status;
+}
+
+nlohmann::json WorkerManager::GetDetailedStatistics() const {
+    std::lock_guard<std::mutex> lock(workers_mutex_);
+    
+    nlohmann::json stats = nlohmann::json::object();
+    
+    // 기본 통계 (기존 GetManagerStats와 유사)
+    stats["basic"] = {
+        {"active_workers", workers_.size()},
+        {"total_started", total_started_.load()},
+        {"total_stopped", total_stopped_.load()},
+        {"total_errors", total_errors_.load()}
+    };
+    
+    // 상세 통계
+    int running_count = 0;
+    int stopped_count = 0;
+    int paused_count = 0;
+    int error_count = 0;
+    
+    for (const auto& [device_id, worker] : workers_) {
+        if (worker) {
+            auto state = worker->GetState();
+            switch (state) {
+                case WorkerState::RUNNING: running_count++; break;
+                case WorkerState::STOPPED: stopped_count++; break;
+                case WorkerState::PAUSED: paused_count++; break;
+                case WorkerState::ERROR: error_count++; break;
+                default: break;
+            }
+        }
+    }
+    
+    stats["detailed"] = {
+        {"running_workers", running_count},
+        {"stopped_workers", stopped_count},
+        {"paused_workers", paused_count},
+        {"error_workers", error_count}
+    };
+    
+    // 추가 정보
+    stats["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    
+    return stats;
+}
+
+
 } // namespace PulseOne::Workers

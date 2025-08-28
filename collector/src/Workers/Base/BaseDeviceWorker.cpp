@@ -1,6 +1,6 @@
 /**
  * @file BaseDeviceWorker.cpp
- * @brief BaseDeviceWorker 클래스 구현 (GitHub 구조 맞춤)
+ * @brief BaseDeviceWorker 클래스 구현 (GitHub 구조 맞춤 + Write 가상함수 지원)
  * @author PulseOne Development Team
  * @date 2025-01-20
  * @version 2.0.0
@@ -128,10 +128,10 @@ bool ReconnectionSettings::FromJson(const std::string& json_str) {
 // BaseDeviceWorker 생성자 및 소멸자
 // =============================================================================
 
-BaseDeviceWorker::BaseDeviceWorker(const PulseOne::DeviceInfo& device_info)
+BaseDeviceWorker::BaseDeviceWorker(const PulseOne::Structs::DeviceInfo& device_info)
     : device_info_(device_info) {
     
-    // 🔥 Worker ID 생성 (기존 방식 사용)
+    // Worker ID 생성 (기존 방식 사용)
     std::stringstream ss;
     ss << device_info_.protocol_type << "_" << device_info_.id;
     worker_id_ = ss.str();
@@ -164,7 +164,7 @@ BaseDeviceWorker::~BaseDeviceWorker() {
 // 공통 인터페이스 구현
 // =============================================================================
 
-bool BaseDeviceWorker::AddDataPoint(const PulseOne::DataPoint& point) {
+bool BaseDeviceWorker::AddDataPoint(const PulseOne::Structs::DataPoint& point) {
     std::lock_guard<std::mutex> lock(data_points_mutex_);
     
     // 중복 확인 (GitHub 구조: point_id -> id)
@@ -180,7 +180,7 @@ bool BaseDeviceWorker::AddDataPoint(const PulseOne::DataPoint& point) {
     return true;
 }
 
-std::vector<PulseOne::DataPoint> BaseDeviceWorker::GetDataPoints() const {
+std::vector<PulseOne::Structs::DataPoint> BaseDeviceWorker::GetDataPoints() const {
     std::lock_guard<std::mutex> lock(data_points_mutex_);
     return data_points_;
 }
@@ -279,7 +279,9 @@ std::string BaseDeviceWorker::GetStatusJson() const {
     ss << "  \"endpoint\": \"" << device_info_.endpoint << "\",\n";
     ss << "  \"state\": \"" << WorkerStateToString(current_state_.load()) << "\",\n";
     ss << "  \"connected\": " << (is_connected_.load() ? "true" : "false") << ",\n";
-    ss << "  \"data_points_count\": " << data_points_.size() << "\n";
+    ss << "  \"data_points_count\": " << data_points_.size() << ",\n";
+    ss << "  \"write_supported\": " << (GetProtocolType() == "MODBUS_TCP" || GetProtocolType() == "MODBUS_RTU" || 
+                                      GetProtocolType() == "BACNET" || GetProtocolType() == "MQTT" ? "true" : "false") << "\n";
     ss << "}";
     return ss.str();
 }
@@ -295,8 +297,8 @@ void BaseDeviceWorker::ChangeState(WorkerState new_state) {
         LogMessage(LogLevel::INFO, 
                   "상태 변경: " + WorkerStateToString(old_state) + " → " + WorkerStateToString(new_state));
         
-        // 🔥 파이프라인 사용하지 않고 로깅만 수행
-        LogMessage(LogLevel::DEBUG_LEVEL, "Worker state changed to " + WorkerStateToString(new_state));
+        // 상태 변경 콜백
+        OnStateChanged(old_state, new_state);
     }
 }
 
@@ -305,9 +307,6 @@ void BaseDeviceWorker::SetConnectionState(bool connected) {
     
     if (old_connected != connected) {
         LogMessage(LogLevel::INFO, connected ? "디바이스 연결됨" : "디바이스 연결 해제됨");
-        
-        // 🔥 파이프라인 사용하지 않고 로깅만 수행
-        LogMessage(LogLevel::DEBUG_LEVEL, connected ? "Connected" : "Disconnected");
         
         // 상태 변경 로직
         if (connected && current_state_.load() == WorkerState::RECONNECTING) {
@@ -322,9 +321,6 @@ void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
     LogMessage(LogLevel::ERROR, "연결 에러: " + error_message);
     
     SetConnectionState(false);
-    
-    // 🔥 파이프라인 사용하지 않고 로깅만 수행
-    LogMessage(LogLevel::ERROR, "Connection error: " + error_message);
     
     // 재연결 상태로 변경
     if (current_state_.load() == WorkerState::RUNNING) {
@@ -459,8 +455,6 @@ void BaseDeviceWorker::UpdateReconnectionStats(bool connection_successful) {
 
 /**
  * @brief 활성 상태인지 확인
- * @param state 워커 상태
- * @return 활성 상태이면 true
  */
 bool BaseDeviceWorker::IsActiveState(WorkerState state) {
     return state == WorkerState::RUNNING ||
@@ -473,8 +467,6 @@ bool BaseDeviceWorker::IsActiveState(WorkerState state) {
 
 /**
  * @brief 에러 상태인지 확인
- * @param state 워커 상태
- * @return 에러 상태이면 true
  */
 bool BaseDeviceWorker::IsErrorState(WorkerState state) {
     return state == WorkerState::ERROR ||
@@ -487,7 +479,7 @@ bool BaseDeviceWorker::IsErrorState(WorkerState state) {
 }
 
 // =============================================================================
-// 🔥 파이프라인 전송 메서드 (임시로 비활성화)
+// 파이프라인 전송 메서드
 // =============================================================================
 bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::TimestampedValue>& values, 
                                          uint32_t priority) {
@@ -504,9 +496,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
             return false;
         }
 
-        // =================================================================
-        // 🔥 Step 1: DeviceDataMessage 구조체 생성 (기본 필드들)
-        // =================================================================
+        // DeviceDataMessage 구조체 생성 후 전송
         PulseOne::Structs::DeviceDataMessage message;
         
         // 기본 정보
@@ -521,25 +511,21 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         message.tenant_id = device_info_.tenant_id;
         message.site_id = device_info_.site_id;
         
-        // =================================================================
-        // 🔥 Step 2: 처리 제어 (😎 현실적 하드코딩!)
-        // =================================================================
+        // 처리 제어 (프로토콜별 최적화)
+        message.trigger_alarms = true;
+        message.trigger_virtual_points = false;
         
-        message.trigger_alarms = true;           // 99% 디바이스가 알람 필요
-        message.trigger_virtual_points = false;  // 성능상 기본 OFF
-        
-        // 프로토콜별 약간의 최적화
         if (device_info_.GetProtocolName() == "MODBUS_TCP") {
-            message.trigger_virtual_points = true;   // 고속 통신은 가상포인트도 OK
-            message.high_priority = (priority > 3);  // 산업용은 엄격하게
+            message.trigger_virtual_points = true;
+            message.high_priority = (priority > 3);
         } else if (device_info_.GetProtocolName() == "MQTT") {
-            message.trigger_virtual_points = false;  // IoT는 배터리 고려
-            message.high_priority = (priority > 7);  // IoT는 관대하게
+            message.trigger_virtual_points = false;
+            message.high_priority = (priority > 7);
         } else if (device_info_.GetProtocolName() == "BACNET") {
-            message.trigger_virtual_points = false;  // 빌딩 자동화는 안정성 중시
-            message.high_priority = (priority > 5);  // 중간값
+            message.trigger_virtual_points = false;
+            message.high_priority = (priority > 5);
         } else {
-            message.high_priority = (priority > 5);  // 기본값
+            message.high_priority = (priority > 5);
         }
         
         // 추적 정보
@@ -547,50 +533,35 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         message.source_worker = GetWorkerIdString();
         message.batch_sequence = ++batch_sequence_counter_;
         
-        // =================================================================
-        // 🔥 Step 3: 디바이스 상태 정보 (Worker 상태 기반)
-        // =================================================================
-        
-        // 현재 워커 상태를 디바이스 상태로 변환
+        // 디바이스 상태 정보
         message.device_status = ConvertWorkerStateToDeviceStatus(current_state_.load());
         message.previous_status = ConvertWorkerStateToDeviceStatus(previous_state_);
         message.status_changed = (message.device_status != message.previous_status);
         
-        // 상태 관리 정보 (하드코딩)
-        message.manual_status = false;  // Worker는 자동 상태 관리
+        // 상태 관리 정보
+        message.manual_status = false;
         message.status_message = GetStatusMessage();
         message.status_changed_time = state_change_time_;
         message.status_changed_by = "system";
         
-        // =================================================================
-        // 🔥 Step 4: 통신 상태 정보 (Worker 통계 기반)
-        // =================================================================
-        
-        // 연결 상태
+        // 통신 상태 정보
         message.is_connected = IsConnected();
         message.consecutive_failures = consecutive_failures_;
         message.total_failures = total_failures_;
         message.total_attempts = total_attempts_;
         
-        // 응답 시간 및 통신 시간
         message.response_time = last_response_time_;
         message.last_success_time = last_success_time_;
         message.last_attempt_time = message.timestamp;
         
-        // 에러 정보
         message.last_error_message = last_error_message_;
         message.last_error_code = last_error_code_;
         
-        // =================================================================
-        // 🔥 Step 5: 포인트 상태 정보 (데이터 품질 통계)
-        // =================================================================
-        
-        // 포인트 통계 계산
+        // 포인트 상태 정보
         message.total_points_configured = GetDataPoints().size();
         message.successful_points = 0;
         message.failed_points = 0;
         
-        // 성공/실패 포인트 카운트
         for (const auto& point : values) {
             if (point.quality == PulseOne::Structs::DataQuality::GOOD) {
                 message.successful_points++;
@@ -599,48 +570,29 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
             }
         }
         
-        // =================================================================
-        // 🔥 Step 6: 디바이스 상태 자동 판단 (실제 StatusThresholds 필드명 사용!)
-        // =================================================================
-        
+        // 디바이스 상태 자동 판단을 위한 임계값 설정
         PulseOne::Structs::StatusThresholds thresholds;
         
-        // 🔥 실제 StatusThresholds 구조체 필드명에 맞춤
-        // (기존 코드에서 확인한 실제 필드명들 사용)
-        
-        // 🔥 실제 StatusThresholds 필드명 사용!
-        // struct StatusThresholds {
-        //     uint32_t offline_failure_count = 3;
-        //     std::chrono::seconds timeout_threshold{5};
-        //     double partial_failure_ratio = 0.3;
-        //     double error_failure_ratio = 0.7;
-        //     std::chrono::seconds offline_timeout{30};
-        // }
-        
-        // 프로토콜별 최적화된 임계값
         if (device_info_.GetProtocolName() == "MODBUS_TCP" || "MODBUS_RTU") {
-            thresholds.offline_failure_count = 3;                              // 3회 연속 실패 → OFFLINE
-            thresholds.timeout_threshold = std::chrono::seconds(3);            // 3초 초과 → WARNING/ERROR
-            thresholds.partial_failure_ratio = 0.2;                           // 20% 포인트 실패 → WARNING
-            thresholds.error_failure_ratio = 0.5;                             // 50% 포인트 실패 → ERROR  
-            thresholds.offline_timeout = std::chrono::seconds(10);             // 10초간 응답 없음 → OFFLINE
-            
+            thresholds.offline_failure_count = 3;
+            thresholds.timeout_threshold = std::chrono::seconds(3);
+            thresholds.partial_failure_ratio = 0.2;
+            thresholds.error_failure_ratio = 0.5;
+            thresholds.offline_timeout = std::chrono::seconds(10);
         } else if (device_info_.GetProtocolName() == "MQTT") {
-            thresholds.offline_failure_count = 10;                            // IoT는 관대하게
-            thresholds.timeout_threshold = std::chrono::seconds(10);          // 10초 초과 → WARNING
-            thresholds.partial_failure_ratio = 0.5;                           // 50% 실패 → WARNING
-            thresholds.error_failure_ratio = 0.8;                             // 80% 실패 → ERROR
-            thresholds.offline_timeout = std::chrono::seconds(60);             // 60초간 응답 없음 → OFFLINE
-            
+            thresholds.offline_failure_count = 10;
+            thresholds.timeout_threshold = std::chrono::seconds(10);
+            thresholds.partial_failure_ratio = 0.5;
+            thresholds.error_failure_ratio = 0.8;
+            thresholds.offline_timeout = std::chrono::seconds(60);
         } else if (device_info_.GetProtocolName() == "BACNET") {
-            thresholds.offline_failure_count = 5;                             // 중간값
-            thresholds.timeout_threshold = std::chrono::seconds(5);           // 5초 초과 → WARNING
-            thresholds.partial_failure_ratio = 0.3;                           // 30% 실패 → WARNING
-            thresholds.error_failure_ratio = 0.7;                             // 70% 실패 → ERROR
-            thresholds.offline_timeout = std::chrono::seconds(30);             // 30초간 응답 없음 → OFFLINE
-            
+            thresholds.offline_failure_count = 5;
+            thresholds.timeout_threshold = std::chrono::seconds(5);
+            thresholds.partial_failure_ratio = 0.3;
+            thresholds.error_failure_ratio = 0.7;
+            thresholds.offline_timeout = std::chrono::seconds(30);
         } else {
-            // 기본값 (구조체 기본값 사용)
+            // 기본값
             thresholds.offline_failure_count = 3;
             thresholds.timeout_threshold = std::chrono::seconds(5);
             thresholds.partial_failure_ratio = 0.3;
@@ -650,10 +602,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         
         message.UpdateDeviceStatus(thresholds);
         
-        // =================================================================
-        // 🔥 Step 7: PipelineManager로 전송
-        // =================================================================
-        
+        // PipelineManager로 전송
         bool success = pipeline_manager.SendDeviceData(message);
 
         if (success) {
@@ -663,30 +612,23 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
                       "알람=" + (message.trigger_alarms ? "ON" : "OFF") + ", " +
                       "가상포인트=" + (message.trigger_virtual_points ? "ON" : "OFF") + ")");
             
-            // 성공 통계 업데이트
             last_success_time_ = message.timestamp;
             consecutive_failures_ = 0;
-            
         } else {
             LogMessage(LogLevel::WARN, "파이프라인 전송 실패 (큐 오버플로우?)");
-            
-            // 실패 통계 업데이트
             consecutive_failures_++;
             total_failures_++;
             last_error_message_ = "Pipeline queue overflow";
             last_error_code_ = -1;
         }
         
-        // 총 시도 횟수 업데이트
         total_attempts_++;
-
         return success;
         
     } catch (const std::exception& e) {
         LogMessage(LogLevel::ERROR, 
                   "파이프라인 전송 중 예외: " + std::string(e.what()));
         
-        // 예외 통계 업데이트
         consecutive_failures_++;
         total_failures_++;
         total_attempts_++;
@@ -696,7 +638,6 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         return false;
     }
 }
-
 
 bool BaseDeviceWorker::SendValuesToPipelineWithLogging(
     const std::vector<PulseOne::Structs::TimestampedValue>& values,
@@ -731,57 +672,8 @@ bool BaseDeviceWorker::SendValuesToPipelineWithLogging(
     }
 }
 
-
-/*
-bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::TimestampedValue>& values, 
-                                         uint32_t priority) {
-    if (values.empty()) {
-        LogMessage(LogLevel::DEBUG_LEVEL, "전송할 데이터가 없음");
-        return false;
-    }
-
-    try {
-        // 🔥 기존 PipelineManager 싱글톤 사용 (코드 변경 최소화!)
-        auto& pipeline_manager = Pipeline::PipelineManager::GetInstance();
-        
-        if (!pipeline_manager.IsRunning()) {
-            LogMessage(LogLevel::WARN, "파이프라인이 실행되지 않음");
-            return false;
-        }
-
-        // 🔥 DeviceDataMessage 구조체 생성 후 전송!
-        Structs::DeviceDataMessage message;
-        message.device_id = device_info_.id;
-        message.protocol = device_info_.GetProtocolName();  // 실제 프로토콜명
-        message.points = values;                            // 🔥 points 필드에 값 저장
-        message.priority = priority;
-        message.timestamp = std::chrono::system_clock::now();
-        
-        // Worker ID를 별도 필드에 저장 (message 구조체에 worker_id 필드가 있다면)
-        // message.worker_id = GetWorkerIdString();
-        
-        // 🔥 수정된 PipelineManager::SendDeviceData() 호출
-        bool success = pipeline_manager.SendDeviceData(message);
-
-        if (success) {
-            LogMessage(LogLevel::DEBUG_LEVEL, 
-                      "파이프라인 전송 성공: " + std::to_string(values.size()) + "개 포인트");
-        } else {
-            LogMessage(LogLevel::WARN, "파이프라인 전송 실패 (큐 오버플로우?)");
-        }
-
-        return success;
-        
-    } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
-                  "파이프라인 전송 중 예외: " + std::string(e.what()));
-        return false;
-    }
-}
-*/
-
 // =============================================================================
-// 🔥 라이프사이클 관리
+// 라이프사이클 관리
 // =============================================================================
 
 std::future<bool> BaseDeviceWorker::Pause() {
@@ -816,12 +708,10 @@ void BaseDeviceWorker::LogMessage(LogLevel level, const std::string& message) co
 }
 
 std::string BaseDeviceWorker::GetWorkerIdString() const {
-    // 기존 코드에서 사용하던 패턴 활용
     std::stringstream ss;
     ss << device_info_.GetProtocolName() << "_" << device_info_.name << "_" << device_info_.id;
     return ss.str();
 }
-
 
 void BaseDeviceWorker::UpdateCommunicationResult(bool success, 
                              const std::string& error_msg,
@@ -879,7 +769,7 @@ PulseOne::Enums::DeviceStatus BaseDeviceWorker::ConvertWorkerStateToDeviceStatus
 std::string BaseDeviceWorker::GetStatusMessage() const {
     switch (current_state_.load()) {
         case WorkerState::RUNNING:
-            return "정상 동작 중 (하드코딩 설정)";
+            return "정상 동작 중";
         case WorkerState::ERROR:
             return "오류 발생: " + last_error_message_;
         case WorkerState::DEVICE_OFFLINE:
