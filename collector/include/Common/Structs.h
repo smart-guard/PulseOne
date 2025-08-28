@@ -1152,6 +1152,7 @@ namespace Structs {
         std::string firmware_version = "";            // 펌웨어 버전
         
         // 통신 설정 (Entity 호환)
+        int protocol_id = 0;                               // 프로토콜 ID
         std::string protocol_type = "";                // 프로토콜 타입 (문자열)
         std::string endpoint = "";                     // 엔드포인트
         std::string connection_string = "";            // 연결 문자열 (endpoint 별칭)

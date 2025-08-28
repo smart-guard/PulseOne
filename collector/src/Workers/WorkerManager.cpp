@@ -7,6 +7,8 @@
 #include "Workers/WorkerFactory.h"
 #include "Workers/Base/BaseDeviceWorker.h"
 #include "Utils/LogManager.h"
+#include "Database/RepositoryFactory.h" 
+#include "Database/DatabaseManager.h" 
 
 #include <chrono>
 #include <thread>
@@ -59,15 +61,15 @@ bool WorkerManager::doInitialize() {
             return false;
         }
         
-        // Repository 의존성 주입
-        auto& repository_factory = Database::RepositoryFactory::getInstance();
-        auto repo_factory_shared = std::shared_ptr<Database::RepositoryFactory>(
-            &repository_factory, [](Database::RepositoryFactory*){}
+        // Repository 의존성 주입 - 🔧 네임스페이스 명시
+        auto& repository_factory = PulseOne::Database::RepositoryFactory::getInstance();
+        auto repo_factory_shared = std::shared_ptr<PulseOne::Database::RepositoryFactory>(
+            &repository_factory, [](PulseOne::Database::RepositoryFactory*){}
         );
         worker_factory.SetRepositoryFactory(repo_factory_shared);
         
-        // Database Client 의존성 주입  
-        auto& db_manager = DatabaseManager::getInstance();
+        // Database Client 의존성 주입 - 🔧 네임스페이스 명시
+        auto& db_manager = PulseOne::DatabaseManager::getInstance();
         auto redis_shared = std::shared_ptr<RedisClient>(
             db_manager.getRedisClient(), [](RedisClient*){}
         );
@@ -356,7 +358,8 @@ bool WorkerManager::ControlDigitalOutput(const std::string& device_id,
     total_control_commands_.fetch_add(1);
     
     try {
-        bool result = worker->WriteDataPoint(output_id, enable ? "1" : "0");
+        // 🔧 수정: 실제 존재하는 메서드 사용
+        bool result = worker->ControlPump(output_id, enable);
         
         if (result) {
             LogManager::getInstance().Info("디지털 출력 제어 성공: " + device_id + "/" + output_id + " -> " + (enable ? "ON" : "OFF"));
@@ -422,7 +425,7 @@ bool WorkerManager::ChangeParameter(const std::string& device_id,
     total_control_commands_.fetch_add(1);
     
     try {
-        bool result = worker->WriteDataPoint(parameter_id, std::to_string(value));
+        bool result = worker->SetParameterValue(parameter_id, value);
         
         if (result) {
             LogManager::getInstance().Info("파라미터 변경 성공: " + device_id + "/" + parameter_id + " -> " + std::to_string(value));
@@ -455,7 +458,9 @@ bool WorkerManager::WriteDataPoint(const std::string& device_id,
     total_control_commands_.fetch_add(1);
     
     try {
-        bool result = worker->WriteDataPoint(point_id, value);
+        // 문자열 값을 double로 변환해서 설정
+        double numeric_value = std::stod(value);
+        bool result = worker->SetOutputValue(point_id, numeric_value);
         
         if (result) {
             LogManager::getInstance().Debug("데이터포인트 쓰기 성공: " + device_id + "/" + point_id + " -> " + value);

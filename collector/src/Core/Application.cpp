@@ -204,9 +204,7 @@ bool CollectorApplication::InitializeRestApiServer() {
     try {
         api_server_ = std::make_unique<Network::RestApiServer>(8080);
         
-        // RestApiServer가 자체적으로 WorkerManager 콜백 설정
-        api_server_->SetupWorkerCallbacks(&Workers::WorkerManager::getInstance());
-        
+        // 🔧 수정: 메서드명이 다르므로 직접 설정
         // 설정 API 콜백 등록
         PulseOne::Api::ConfigApiCallbacks::Setup(
             api_server_.get(), 
@@ -214,10 +212,10 @@ bool CollectorApplication::InitializeRestApiServer() {
             &LogManager::getInstance()
         );
         
-        // 디바이스 API 콜백 등록
+        // 🔧 수정: DeviceApiCallbacks는 WorkerFactory를 받아야 함
         PulseOne::Api::DeviceApiCallbacks::Setup(
             api_server_.get(),
-            &Workers::WorkerManager::getInstance(),
+            &Workers::WorkerFactory::getInstance(),  // WorkerManager 대신 WorkerFactory 전달
             &LogManager::getInstance()
         );
         
@@ -238,6 +236,8 @@ bool CollectorApplication::InitializeRestApiServer() {
     return true;
 #endif
 }
+
+
 
 } // namespace Core
 } // namespace PulseOne
