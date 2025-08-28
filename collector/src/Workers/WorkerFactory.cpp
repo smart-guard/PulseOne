@@ -56,6 +56,7 @@
 #include "Common/Enums.h"
 #include "Common/Utils.h"
 #include "Common/ProtocolConfigRegistry.h"
+#include "Workers/WorkerManager.h"
 
 // Workers includes
 #include "Workers/Protocol/ModbusTcpWorker.h"
@@ -840,122 +841,85 @@ std::vector<PulseOne::Structs::DataPoint> WorkerFactory::LoadDataPointsForDevice
 // =============================================================================
 
 std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::Entities::DeviceEntity& device_entity) {
-    //std::lock_guard<std::mutex> lock(factory_mutex_);
-    
     if (!IsInitialized()) {
-        logger_->Error("❌ WorkerFactory not initialized");
+        logger_->Error("WorkerFactory not initialized");
         return nullptr;
     }
     
     auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
-        logger_->Info("🏭 Creating Worker with complete DB integration for device: " + device_entity.getName());
+        logger_->Info("Creating worker for device: " + device_entity.getName());
         
-        // 1. 🔥 완전한 DeviceInfo 생성 (DeviceSettings 포함)
+        // 1. 완전한 DeviceInfo 생성 (DeviceSettings 포함)
         auto device_info = ConvertToDeviceInfo(device_entity);
         
-        logger_->Debug("✅ DeviceInfo conversion completed:");
-        logger_->Debug("   - Name: " + device_info.name);
-        logger_->Debug("   - Protocol: " + device_info.protocol_type);
-        logger_->Debug("   - Endpoint: " + device_info.endpoint);
-        logger_->Debug("   - IP:Port: " + device_info.ip_address + ":" + std::to_string(device_info.port));
-        logger_->Debug("   - Properties: " + std::to_string(device_info.properties.size()));
-        std::string enabled_str = device_info.is_enabled ? "yes" : "no";
-        logger_->Debug("   - Enabled: " + enabled_str);
+        logger_->Debug("DeviceInfo conversion completed:");
+        logger_->Debug("   Name: " + device_info.name);
+        logger_->Debug("   Protocol: " + device_info.protocol_type);
+        logger_->Debug("   Endpoint: " + device_info.endpoint);
+        logger_->Debug("   Properties: " + std::to_string(device_info.properties.size()));
         
-        // 2. 🔥 완전한 DataPoint들 로드 (CurrentValue 포함)
-        logger_->Debug("🔄 Loading DataPoints for Device ID: " + std::to_string(device_entity.getId()));
+        // 2. DataPoint들 로드 (CurrentValue 포함)
+        logger_->Debug("Loading DataPoints for Device ID: " + std::to_string(device_entity.getId()));
         auto data_points = LoadDataPointsForDevice(device_entity.getId());
         
         if (data_points.empty()) {
-            logger_->Warn("⚠️ No DataPoints found for Device ID: " + std::to_string(device_entity.getId()));
-            logger_->Info("   Worker will be created without DataPoints (allowed)");
+            logger_->Warn("No DataPoints found for Device ID: " + std::to_string(device_entity.getId()));
         } else {
-            logger_->Debug("✅ Loaded " + std::to_string(data_points.size()) + " complete DataPoints");
+            logger_->Debug("Loaded " + std::to_string(data_points.size()) + " DataPoints");
         }
         
         // 3. 프로토콜 타입 확인 및 정규화
         std::string protocol_type = device_entity.getProtocolType();
-        logger_->Debug("🔍 Original protocol: '" + protocol_type + "'");
-        
-        // 프로토콜 이름 정규화 시도 (대소문자 변환)
         std::string normalized_protocol = protocol_type;
         std::transform(normalized_protocol.begin(), normalized_protocol.end(), 
                       normalized_protocol.begin(), ::tolower);
-        logger_->Debug("🔍 Normalized protocol: '" + normalized_protocol + "'");
         
         // 4. Creator 찾기
         auto creator_it = worker_creators_.find(protocol_type);
         std::string used_protocol = protocol_type;
         
         if (creator_it == worker_creators_.end()) {
-            logger_->Debug("🔄 Original protocol not found, trying normalized: '" + normalized_protocol + "'");
             creator_it = worker_creators_.find(normalized_protocol);
             used_protocol = normalized_protocol;
         }
         
         if (creator_it == worker_creators_.end()) {
-            logger_->Error("❌ No worker creator found for protocol: '" + protocol_type + "'");
-            logger_->Error("   (Also tried normalized: '" + normalized_protocol + "')");
+            logger_->Error("No worker creator found for protocol: " + protocol_type);
             
-            // 사용 가능한 프로토콜 목록 출력
-            logger_->Error("📋 Available protocols (" + std::to_string(worker_creators_.size()) + "):");
-            int count = 0;
+            logger_->Debug("Available protocols:");
             for (const auto& [proto, creator] : worker_creators_) {
-                if (count++ < 15) {
-                    logger_->Error("   - '" + proto + "'");
-                }
-            }
-            if (worker_creators_.size() > 15) {
-                logger_->Error("   ... (+" + std::to_string(worker_creators_.size() - 15) + " more)");
+                logger_->Debug("   " + proto);
             }
             
             creation_failures_.fetch_add(1);
             return nullptr;
         }
         
-        logger_->Debug("✅ Found worker creator for: '" + used_protocol + "'");
-        
         // 5. Worker 생성 실행
-        logger_->Info("🏭 Creating " + used_protocol + " Worker for '" + device_entity.getName() + "'");
-        logger_->Debug("📊 Using DeviceInfo with " + std::to_string(data_points.size()) + " DataPoints");
+        logger_->Info("Creating " + used_protocol + " worker for " + device_entity.getName());
         
         auto worker = creator_it->second(device_info);
         
-        // 6. 생성 결과 검증 및 로깅
+        // 6. 생성 결과 처리 (WorkerManager 등록 제거)
         auto end_time = std::chrono::high_resolution_clock::now();
         auto creation_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         if (worker) {
+            // *** 삭제된 부분: WorkerManager 자동 등록 ***
+            // WorkerManager에서 필요할 때 직접 가져가도록 변경
+            
             workers_created_.fetch_add(1);
             
-            // 성공 통계
-            int writable_count = 0;
-            int good_quality_count = 0;
-            for (const auto& data_point : data_points) {
-                if (data_point.is_writable) writable_count++;
-                if (data_point.quality_code == PulseOne::Enums::DataQuality::GOOD) {
-                    good_quality_count++;
-                }
-            }
-            
-            logger_->Info("🎉 ✅ Worker created successfully!");
-            logger_->Info("   📝 Device: " + device_entity.getName() + " (" + used_protocol + ")");
-            logger_->Info("   📊 DataPoints: " + std::to_string(data_points.size()) + 
-                         " (Writable: " + std::to_string(writable_count) + 
-                         ", Good: " + std::to_string(good_quality_count) + ")");
-            logger_->Info("   ⏱️ Creation Time: " + std::to_string(creation_time.count()) + "ms");
-            logger_->Info("   🎯 Worker Type: " + std::string(typeid(*worker).name()));
-
-            logger_->Debug("🔧 Protocol Configuration Details:");
-            logger_->Debug(GetProtocolConfigInfo(device_entity.getProtocolType()));
+            logger_->Info("Worker created successfully for " + device_entity.getName());
+            logger_->Debug("   DataPoints: " + std::to_string(data_points.size()));
+            logger_->Debug("   Creation time: " + std::to_string(creation_time.count()) + "ms");
+            logger_->Debug("   Worker ready for WorkerManager registration");
             
         } else {
             creation_failures_.fetch_add(1);
-            logger_->Error("❌ Worker creation returned nullptr for: " + device_entity.getName());
-            logger_->Error("   🔧 Protocol: " + used_protocol);
-            logger_->Error("   ⏱️ Failed after: " + std::to_string(creation_time.count()) + "ms");
+            logger_->Error("Worker creation failed for " + device_entity.getName());
         }
         
         return worker;
@@ -963,14 +927,7 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
     } catch (const std::exception& e) {
         creation_failures_.fetch_add(1);
         
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto creation_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        logger_->Error("❌ Worker creation EXCEPTION for Device ID " + std::to_string(device_entity.getId()));
-        logger_->Error("   💥 Exception: " + std::string(e.what()));
-        logger_->Error("   📝 Device: " + device_entity.getName());
-        logger_->Error("   🔧 Protocol: " + device_entity.getProtocolType());
-        logger_->Error("   ⏱️ Failed after: " + std::to_string(creation_time.count()) + "ms");
+        logger_->Error("Worker creation exception for " + device_entity.getName() + ": " + e.what());
         
         return nullptr;
     }
@@ -1068,55 +1025,107 @@ std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateAllActiveWor
     }
 }
 
-std::vector<std::unique_ptr<BaseDeviceWorker>> WorkerFactory::CreateWorkersByProtocol(const std::string& protocol_type, int max_workers) {
-    std::vector<std::unique_ptr<BaseDeviceWorker>> workers;
-    
-    if (!repo_factory_) {
-        logger_->Error("❌ RepositoryFactory not injected");
-        return workers;
+std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::Entities::DeviceEntity& device_entity) {
+    if (!IsInitialized()) {
+        logger_->Error("WorkerFactory not initialized");
+        return nullptr;
     }
     
-    auto device_repo = repo_factory_->getDeviceRepository();
-    if (!device_repo) {
-        logger_->Error("❌ DeviceRepository not available from RepositoryFactory");
-        return workers;
-    }
+    auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
-        auto devices = device_repo->findAll();
+        logger_->Info("Creating worker for device: " + device_entity.getName());
         
-        int created_count = 0;
-        int matching_count = 0;
+        // 1. DeviceInfo 생성 (DeviceSettings 포함)
+        auto device_info = ConvertToDeviceInfo(device_entity);
         
-        for (const auto& device : devices) {
-            if (!device.isEnabled()) continue;
-            
-            if (device.getProtocolType() != protocol_type) {
-                continue;
-            }
-            
-            matching_count++;
-            logger_->Debug("🔄 Creating " + protocol_type + " worker for: " + device.getName());
-            
-            auto worker = CreateWorker(device);
-            if (worker) {
-                workers.push_back(std::move(worker));
-                created_count++;
-                
-                if (max_workers > 0 && created_count >= max_workers) {
-                    logger_->Info("🚫 Protocol worker creation limit reached: " + std::to_string(max_workers));
-                    break;
-                }
-            }
+        logger_->Debug("DeviceInfo conversion completed:");
+        logger_->Debug("   Name: " + device_info.name);
+        logger_->Debug("   Protocol: " + device_info.protocol_type);
+        logger_->Debug("   Endpoint: " + device_info.endpoint);
+        logger_->Debug("   Properties: " + std::to_string(device_info.properties.size()));
+        
+        // 2. DataPoint들 로드 (CurrentValue 포함)
+        logger_->Debug("Loading DataPoints for Device ID: " + std::to_string(device_entity.getId()));
+        auto data_points = LoadDataPointsForDevice(device_entity.getId());
+        
+        if (data_points.empty()) {
+            logger_->Warn("No DataPoints found for Device ID: " + std::to_string(device_entity.getId()));
+        } else {
+            logger_->Debug("Loaded " + std::to_string(data_points.size()) + " DataPoints");
         }
         
-        logger_->Info("✅ Created " + std::to_string(created_count) + "/" + 
-                     std::to_string(matching_count) + " " + protocol_type + " workers");
-        return workers;
+        // 3. 프로토콜 타입 확인 및 정규화
+        std::string protocol_type = device_entity.getProtocolType();
+        std::string normalized_protocol = protocol_type;
+        std::transform(normalized_protocol.begin(), normalized_protocol.end(), 
+                      normalized_protocol.begin(), ::tolower);
+        
+        // 4. Creator 찾기
+        auto creator_it = worker_creators_.find(protocol_type);
+        std::string used_protocol = protocol_type;
+        
+        if (creator_it == worker_creators_.end()) {
+            creator_it = worker_creators_.find(normalized_protocol);
+            used_protocol = normalized_protocol;
+        }
+        
+        if (creator_it == worker_creators_.end()) {
+            logger_->Error("No worker creator found for protocol: " + protocol_type);
+            
+            logger_->Debug("Available protocols:");
+            for (const auto& [proto, creator] : worker_creators_) {
+                logger_->Debug("   " + proto);
+            }
+            
+            creation_failures_.fetch_add(1);
+            return nullptr;
+        }
+        
+        // 5. Worker 생성 실행
+        logger_->Info("Creating " + used_protocol + " worker for " + device_entity.getName());
+        
+        auto worker = creator_it->second(device_info);
+        
+        // 6. 생성 결과 처리
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto creation_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (worker) {
+            // WorkerManager에 자동 등록
+            std::string device_id = std::to_string(device_entity.getId());
+            
+            try {
+                auto shared_worker = std::shared_ptr<BaseDeviceWorker>(worker.get(), [](BaseDeviceWorker*){
+                    // 빈 deleter - 실제 삭제는 unique_ptr이 담당
+                });
+                
+                WorkerManager::getInstance().RegisterWorker(device_id, shared_worker);
+                logger_->Debug("Worker registered to WorkerManager: " + device_id);
+                
+            } catch (const std::exception& e) {
+                logger_->Error("Failed to register worker in WorkerManager: " + std::string(e.what()));
+            }
+            
+            workers_created_.fetch_add(1);
+            
+            logger_->Info("Worker created successfully for " + device_entity.getName());
+            logger_->Debug("   DataPoints: " + std::to_string(data_points.size()));
+            logger_->Debug("   Creation time: " + std::to_string(creation_time.count()) + "ms");
+            
+        } else {
+            creation_failures_.fetch_add(1);
+            logger_->Error("Worker creation failed for " + device_entity.getName());
+        }
+        
+        return worker;
         
     } catch (const std::exception& e) {
-        logger_->Error("❌ Failed to create " + protocol_type + " workers: " + std::string(e.what()));
-        return workers;
+        creation_failures_.fetch_add(1);
+        
+        logger_->Error("Worker creation exception for " + device_entity.getName() + ": " + e.what());
+        
+        return nullptr;
     }
 }
 

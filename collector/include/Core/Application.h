@@ -1,15 +1,14 @@
 /**
  * @file Application.h
- * @brief PulseOne Collector v2.0 - 프로덕션용 완성본
+ * @brief PulseOne Collector v2.0 - WorkerManager 통합 버전
  * @author PulseOne Development Team
- * @date 2025-08-27
+ * @date 2025-08-28
  */
 
 #ifndef PULSEONE_APPLICATION_H
 #define PULSEONE_APPLICATION_H
 
 #include <memory>
-#include <vector>
 #include <atomic>
 #include <string>
 #include <chrono>
@@ -20,9 +19,6 @@
 #include "Network/RestApiServer.h"
 #include "Api/ConfigApiCallbacks.h"
 #include "Api/DeviceApiCallbacks.h"
-// 향후 추가 예정
-// #include "Api/SystemApiCallbacks.h"
-// #include "Api/HardwareApiCallbacks.h"
 #endif
 
 // Forward declarations
@@ -35,8 +31,8 @@ namespace Database {
     class RepositoryFactory;
 }
 namespace Workers {
-    class BaseDeviceWorker;
     class WorkerFactory;
+    class WorkerManager;  // 추가
 }
 }
 
@@ -50,7 +46,8 @@ namespace Core {
  * - 설정 관리 (ConfigManager)
  * - 데이터베이스 연결 (DatabaseManager) 
  * - 데이터 저장소 (RepositoryFactory)
- * - 워커 관리 (WorkerFactory)
+ * - 워커 팩토리 (WorkerFactory) - 생성 전담
+ * - 워커 관리자 (WorkerManager) - 관리 전담
  * - REST API 서버 (RestApiServer)
  */
 class CollectorApplication {
@@ -101,8 +98,8 @@ private:
     bool InitializeWorkerFactory();
     
     /**
-     * @brief REST API 서버 초기화
-     * @return true 성공, false 실패 (HTTP 라이브러리 없으면 true 반환)
+     * @brief REST API 서버 초기화 (WorkerManager 콜백 등록)
+     * @return true 성공, false 실패
      */
     bool InitializeRestApiServer();
 
@@ -111,24 +108,17 @@ private:
     // ==========================================================================
     
     /**
-     * @brief 메인 실행 루프 (프로덕션 모드)
+     * @brief 메인 실행 루프
      * @details 
-     * - 5분마다 워커 헬스체크 및 자동 재시작
+     * - 5분마다 워커 헬스체크 (WorkerManager 통계 사용)
      * - 1시간마다 통계 리포트 출력
      * - 30초 간격으로 루프 실행
      */
     void MainLoop();
     
     /**
-     * @brief 런타임 통계 출력 (레거시 호환용)
-     * @param loop_count 루프 횟수
-     * @param start_time 시작 시간
-     */
-    void PrintRuntimeStatistics(int loop_count, const std::chrono::steady_clock::time_point& start_time);
-    
-    /**
      * @brief 시스템 정리 및 리소스 해제
-     * @details 워커 중지, API 서버 중지, 메모리 정리
+     * @details WorkerManager 종료, API 서버 중지
      */
     void Cleanup();
 
@@ -145,19 +135,6 @@ private:
     // ==========================================================================
     std::atomic<bool> is_running_{false};
 
-    // ==========================================================================
-    // 시스템 구성요소들 (전역 싱글톤 참조)
-    // ==========================================================================
-    LogManager* logger_;
-    ConfigManager* config_manager_;
-    DatabaseManager* db_manager_;
-    Database::RepositoryFactory* repository_factory_;
-    Workers::WorkerFactory* worker_factory_;
-
-    // ==========================================================================
-    // 워커 관리
-    // ==========================================================================
-    std::vector<std::shared_ptr<Workers::BaseDeviceWorker>> active_workers_;
 };
 
 } // namespace Core
