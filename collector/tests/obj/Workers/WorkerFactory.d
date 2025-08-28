@@ -8,6 +8,7 @@ obj/Workers/WorkerFactory.o: ../src/Workers/WorkerFactory.cpp \
  ../include/Common/ProtocolConfigs.h ../include/Alarm/AlarmTypes.h \
  ../include/Database/RepositoryFactory.h \
  ../include/Common/ProtocolConfigRegistry.h \
+ ../include/Workers/WorkerManager.h \
  ../include/Workers/Protocol/ModbusTcpWorker.h \
  ../include/Workers/Base/TcpBasedWorker.h \
  ../include/Workers/Base/BaseDeviceWorker.h \

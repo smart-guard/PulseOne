@@ -1,6 +1,6 @@
 /**
  * @file Application.cpp
- * @brief PulseOne Collector v2.0 - 기존 구조 유지하며 프로덕션용 수정
+ * @brief PulseOne Collector v2.0 - 극도로 단순화된 버전
  */
 
 #include "Core/Application.h"
@@ -9,167 +9,112 @@
 #include "Utils/ConfigManager.h"
 #include "Database/DatabaseManager.h"
 #include "Database/RepositoryFactory.h"
-#include "Workers/Base/BaseDeviceWorker.h"
 #include "Workers/WorkerFactory.h"
+#include "Workers/WorkerManager.h"
 #include "Common/Structs.h"
 
 #include <iostream>
 #include <thread>
 #include <chrono>
-#include <map>
-#include <sstream>
 
 namespace PulseOne {
 namespace Core {
 
 CollectorApplication::CollectorApplication() 
-    : is_running_(false)
-    , logger_(&::LogManager::getInstance())
-    , config_manager_(&::ConfigManager::getInstance())
-    , db_manager_(&::DatabaseManager::getInstance())
-    , repository_factory_(&Database::RepositoryFactory::getInstance())
-    , worker_factory_(&PulseOne::Workers::WorkerFactory::getInstance()) {
-    
-    logger_->Info("CollectorApplication initialized");
+    : is_running_(false) {
+    LogManager::getInstance().Info("CollectorApplication initialized");
 }
 
 CollectorApplication::~CollectorApplication() {
     Cleanup();
-    logger_->Info("CollectorApplication destroyed");
+    LogManager::getInstance().Info("CollectorApplication destroyed");
 }
 
 void CollectorApplication::Run() {
-    logger_->Info("PulseOne Collector v2.0 starting...");
+    LogManager::getInstance().Info("PulseOne Collector v2.0 starting...");
     
     try {
         if (!Initialize()) {
-            logger_->Error("Initialization failed");
+            LogManager::getInstance().Error("Initialization failed");
             return;
         }
         
         is_running_.store(true);
-        logger_->Info("PulseOne Collector started successfully");
+        LogManager::getInstance().Info("PulseOne Collector started successfully");
         
         MainLoop();
         
     } catch (const std::exception& e) {
-        logger_->Error("Runtime error: " + std::string(e.what()));
+        LogManager::getInstance().Error("Runtime error: " + std::string(e.what()));
     }
     
-    logger_->Info("PulseOne Collector shutdown complete");
+    LogManager::getInstance().Info("PulseOne Collector shutdown complete");
 }
 
 void CollectorApplication::Stop() {
-    logger_->Info("Shutdown requested");
+    LogManager::getInstance().Info("Shutdown requested");
     is_running_.store(false);
 }
 
 bool CollectorApplication::Initialize() {
     try {
-        logger_->Info("System initialization starting...");
+        LogManager::getInstance().Info("System initialization starting...");
         
-        // 1. 설정 관리자 초기화
+        // 1. 설정 관리자 초기화 (자동 초기화되지만 명시적 호출)
         try {
-            config_manager_->initialize();
-            logger_->Info("ConfigManager initialized");
+            ConfigManager::getInstance().initialize();
+            LogManager::getInstance().Info("ConfigManager initialized");
         } catch (const std::exception& e) {
-            logger_->Error("ConfigManager initialization failed: " + std::string(e.what()));
+            LogManager::getInstance().Error("ConfigManager initialization failed: " + std::string(e.what()));
             return false;
         }
         
         // 2. 데이터베이스 관리자 초기화
-        if (!db_manager_->initialize()) {
-            logger_->Error("DatabaseManager initialization failed");
+        if (!DatabaseManager::getInstance().initialize()) {
+            LogManager::getInstance().Error("DatabaseManager initialization failed");
             return false;
         }
-        logger_->Info("DatabaseManager initialized");
+        LogManager::getInstance().Info("DatabaseManager initialized");
         
         // 3. Repository 팩토리 초기화
-        if (!repository_factory_->initialize()) {
-            logger_->Error("RepositoryFactory initialization failed");
+        if (!Database::RepositoryFactory::getInstance().initialize()) {
+            LogManager::getInstance().Error("RepositoryFactory initialization failed");
             return false;
         }
-        logger_->Info("RepositoryFactory initialized");
+        LogManager::getInstance().Info("RepositoryFactory initialized");
         
-        // 4. WorkerFactory 초기화
-        if (!InitializeWorkerFactory()) {
-            logger_->Error("WorkerFactory initialization failed");
-            return false;
-        }
-        logger_->Info("WorkerFactory initialized");
-        
-        // 5. Workers 생성 및 시작
         try {
-            auto workers = worker_factory_->CreateAllActiveWorkers();
-            logger_->Info("Created " + std::to_string(workers.size()) + " workers");
+            LogManager::getInstance().Info("Starting all active workers...");
+            int started_count = Workers::WorkerManager::getInstance().StartAllActiveWorkers();
             
-            // 워커 타입 변환
-            for (auto& worker : workers) {
-                if (worker) {
-                    // unique_ptr을 shared_ptr로 변환
-                    active_workers_.push_back(std::shared_ptr<Workers::BaseDeviceWorker>(worker.release()));
-                }
-            }
-            
-            // 워커 시작 (Start 메서드 호출하지 않음 - 워커가 자체적으로 시작)
-            logger_->Info("Workers initialized - they will start automatically");
-            
-            if (active_workers_.empty()) {
-                logger_->Warn("No workers created - check device configuration");
+            if (started_count > 0) {
+                LogManager::getInstance().Info("Started " + std::to_string(started_count) + " active workers");
             } else {
-                logger_->Info("All " + std::to_string(active_workers_.size()) + " workers initialized");
+                LogManager::getInstance().Warn("No active workers started - check device configuration");
             }
+            
         } catch (const std::exception& e) {
-            logger_->Error("Worker creation/start failed: " + std::string(e.what()));
+            LogManager::getInstance().Error("Worker startup failed: " + std::string(e.what()));
             return false;
         }
         
-        // REST API 서버 초기화
         if (!InitializeRestApiServer()) {
-            logger_->Error("RestApiServer initialization failed");
+            LogManager::getInstance().Error("RestApiServer initialization failed");
             return false;
         }
 
-        logger_->Info("System initialization completed successfully");
+        LogManager::getInstance().Info("System initialization completed successfully");
         return true;
         
     } catch (const std::exception& e) {
-        logger_->Error("Initialization failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("Initialization failed: " + std::string(e.what()));
         return false;
     }
 }
 
-bool CollectorApplication::InitializeWorkerFactory() {
-    try {
-        if (!worker_factory_->Initialize()) {
-            logger_->Error("Failed to initialize WorkerFactory");
-            return false;
-        }
-
-        auto repo_factory_shared = std::shared_ptr<Database::RepositoryFactory>(
-            repository_factory_, [](Database::RepositoryFactory*){}
-        );
-        worker_factory_->SetRepositoryFactory(repo_factory_shared);
-
-        auto redis_client_raw = db_manager_->getRedisClient();
-        auto influx_client_raw = db_manager_->getInfluxClient();
-        
-        std::shared_ptr<::RedisClient> redis_shared(redis_client_raw, [](::RedisClient*){});
-        std::shared_ptr<::InfluxClient> influx_shared(influx_client_raw, [](::InfluxClient*){});
-        
-        worker_factory_->SetDatabaseClients(redis_shared, influx_shared);
-
-        logger_->Info("WorkerFactory dependencies injected successfully");
-        return true;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("Exception in InitializeWorkerFactory: " + std::string(e.what()));
-        return false;
-    }
-}
 
 void CollectorApplication::MainLoop() {
-    logger_->Info("Main loop started - production mode");
+    LogManager::getInstance().Info("Main loop started - production mode");
     
     auto last_health_check = std::chrono::steady_clock::now();
     auto last_stats_report = std::chrono::steady_clock::now();
@@ -180,50 +125,38 @@ void CollectorApplication::MainLoop() {
     while (is_running_.load()) {
         try {
             auto now = std::chrono::steady_clock::now();
+            auto& worker_manager = Workers::WorkerManager::getInstance();
             
             // 주기적 헬스체크 (5분마다)
             if (now - last_health_check >= health_check_interval) {
-                // 워커 상태 확인 및 재시작
-                int running_workers = 0;
-                int total_workers = 0;
+                size_t active_count = worker_manager.GetActiveWorkerCount();
+                auto manager_stats = worker_manager.GetManagerStats();
                 
-                for (auto& worker : active_workers_) {
-                    if (worker) {
-                        total_workers++;
-                        // 워커 상태만 확인하고 자동 재시작은 하지 않음
-                        running_workers++;
-                        // 실제로는 워커 상태를 체크하는 로직 필요하지만
-                        // IsRunning() 메서드가 없으므로 존재하면 실행중으로 간주
-                    }
-                }
-                
-                if (running_workers != total_workers) {
-                    logger_->Warn("Health check: " + std::to_string(running_workers) + 
-                                    "/" + std::to_string(total_workers) + " workers running");
-                } else {
-                    logger_->Debug("Health check: All " + std::to_string(total_workers) + " workers running");
-                }
+                LogManager::getInstance().Info("Health check: " + std::to_string(active_count) + " active workers");
+                LogManager::getInstance().Debug("Manager Stats: " + manager_stats.dump());
                 
                 last_health_check = now;
             }
             
             // 주기적 통계 리포트 (1시간마다)
             if (now - last_stats_report >= stats_report_interval) {
-                int active_count = 0;
-                for (auto& worker : active_workers_) {
-                    if (worker) {
-                        // BaseDeviceWorker에 IsRunning이 없으므로 단순 체크
-                        active_count++;
-                    }
-                }
+                LogManager::getInstance().Info("=== Hourly Statistics Report ===");
                 
-                logger_->Info("Statistics Report:");
-                logger_->Info("  Active Workers: " + std::to_string(active_count) + 
-                              "/" + std::to_string(active_workers_.size()));
+                // WorkerManager 통계
+                auto manager_stats = worker_manager.GetManagerStats();
+                LogManager::getInstance().Info("WorkerManager Stats:");
+                LogManager::getInstance().Info("  Active Workers: " + std::to_string(manager_stats["active_workers"]));
+                LogManager::getInstance().Info("  Total Started: " + std::to_string(manager_stats["total_started"]));
+                LogManager::getInstance().Info("  Total Stopped: " + std::to_string(manager_stats["total_stopped"]));
+                LogManager::getInstance().Info("  Control Commands: " + std::to_string(manager_stats["total_control_commands"]));
+                LogManager::getInstance().Info("  Total Errors: " + std::to_string(manager_stats["total_errors"]));
                 
-                if (worker_factory_) {
-                    logger_->Info("  " + worker_factory_->GetFactoryStatsString());
-                }
+                // WorkerFactory 통계
+                auto& worker_factory = Workers::WorkerFactory::getInstance();
+                LogManager::getInstance().Info("WorkerFactory Stats:");
+                LogManager::getInstance().Info("  " + worker_factory.GetFactoryStatsString());
+                
+                LogManager::getInstance().Info("=== End Statistics Report ===");
                 
                 last_stats_report = now;
             }
@@ -232,33 +165,16 @@ void CollectorApplication::MainLoop() {
             std::this_thread::sleep_for(std::chrono::seconds(30));
             
         } catch (const std::exception& e) {
-            logger_->Error("Exception in MainLoop: " + std::string(e.what()));
+            LogManager::getInstance().Error("Exception in MainLoop: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(10));
         }
     }
     
-    logger_->Info("Main loop ended");
-}
-
-void CollectorApplication::PrintRuntimeStatistics(int loop_count, const std::chrono::steady_clock::time_point& start_time) {
-    // 이 메서드는 더 이상 사용하지 않지만 호환성을 위해 유지
-    auto now = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
-    
-    std::ostringstream stats;
-    stats << "Runtime Statistics:\n"
-          << "  Uptime: " << duration.count() << "s\n"
-          << "  Loop Count: " << loop_count << "\n";
-    
-    if (worker_factory_) {
-        stats << "  " << worker_factory_->GetFactoryStatsString();
-    }
-    
-    logger_->Info(stats.str());
+    LogManager::getInstance().Info("Main loop ended");
 }
 
 void CollectorApplication::Cleanup() {
-    logger_->Info("System cleanup starting...");
+    LogManager::getInstance().Info("System cleanup starting...");
     
     try {
         is_running_.store(false);
@@ -266,25 +182,20 @@ void CollectorApplication::Cleanup() {
         // REST API 서버 정리
 #ifdef HAVE_HTTPLIB
         if (api_server_) {
-            logger_->Info("Stopping REST API server...");
+            LogManager::getInstance().Info("Stopping REST API server...");
             api_server_->Stop();
             api_server_.reset();
         }
 #endif
         
-        // 모든 워커 중지
-        logger_->Info("Stopping workers...");
-        for (auto& worker : active_workers_) {
-            if (worker) {
-                worker->Stop();
-            }
-        }
-        active_workers_.clear();
+        // WorkerManager를 통한 모든 워커 중지
+        LogManager::getInstance().Info("Stopping all workers...");
+        Workers::WorkerManager::getInstance().StopAllWorkers();
         
-        logger_->Info("System cleanup completed");
+        LogManager::getInstance().Info("System cleanup completed");
         
     } catch (const std::exception& e) {
-        logger_->Error("Exception in Cleanup: " + std::string(e.what()));
+        LogManager::getInstance().Error("Exception in Cleanup: " + std::string(e.what()));
     }
 }
 
@@ -293,32 +204,37 @@ bool CollectorApplication::InitializeRestApiServer() {
     try {
         api_server_ = std::make_unique<Network::RestApiServer>(8080);
         
+        // RestApiServer가 자체적으로 WorkerManager 콜백 설정
+        api_server_->SetupWorkerCallbacks(&Workers::WorkerManager::getInstance());
+        
+        // 설정 API 콜백 등록
         PulseOne::Api::ConfigApiCallbacks::Setup(
             api_server_.get(), 
-            config_manager_, 
-            logger_
+            &ConfigManager::getInstance(), 
+            &LogManager::getInstance()
         );
         
+        // 디바이스 API 콜백 등록
         PulseOne::Api::DeviceApiCallbacks::Setup(
             api_server_.get(),
-            worker_factory_,
-            logger_
+            &Workers::WorkerManager::getInstance(),
+            &LogManager::getInstance()
         );
         
         if (api_server_->Start()) {
-            logger_->Info("REST API Server started on port 8080");
+            LogManager::getInstance().Info("REST API Server started on port 8080");
             return true;
         } else {
-            logger_->Error("Failed to start REST API Server");
+            LogManager::getInstance().Error("Failed to start REST API Server");
             return false;
         }
         
     } catch (const std::exception& e) {
-        logger_->Error("Exception in InitializeRestApiServer: " + std::string(e.what()));
+        LogManager::getInstance().Error("Exception in InitializeRestApiServer: " + std::string(e.what()));
         return false;
     }
 #else
-    logger_->Info("REST API Server disabled - HTTP library not available");
+    LogManager::getInstance().Info("REST API Server disabled - HTTP library not available");
     return true;
 #endif
 }
