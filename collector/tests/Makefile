@@ -346,6 +346,19 @@ $(OBJ_DIR)/test_network_api.o: test_network_api.cpp | $(OBJ_DIR)
 	@echo -e "$(YELLOW)🌐 Compiling test_network_api [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+# Api 파일들 컴파일 룰 수정
+$(BUILD_DIR)/Api/%.o: $(SRC_DIR)/Api/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)/Api
+	@echo -e "$(GREEN)🔗 Compiling Api: $<$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 의존성 파일 생성 룰도 수정
+$(BUILD_DIR)/Api/%.d: $(SRC_DIR)/Api/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)/Api
+	@echo -e "🔨 Generating dependencies for $<"
+	@$(CXX) -MM $(CXXFLAGS) $(INCLUDES) $< > $@.tmp
+	@sed 's,\($*\)\.o[ :]*,$(BUILD_DIR)/Api/\1.o $@ : ,g' < $@.tmp > $@
+	@rm -f $@.tmp
 # =============================================================================
 # 테스트 실행 파일들 (WorkerManager 테스트 추가)
 # =============================================================================
