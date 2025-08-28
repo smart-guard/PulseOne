@@ -163,6 +163,16 @@ private:
      */
     void UnregisterWorker(const std::string& device_id);
 
+    /**
+     * @brief 모든 워커 상태를 JSON으로 반환 (새로 추가)
+     */
+    nlohmann::json GetAllWorkersStatus() const;
+
+    /**
+     * @brief Worker 통계 정보 반환 (새로 추가)
+     */
+    nlohmann::json GetDetailedStatistics() const;
+
 private:
     // ==========================================================================
     // 멤버 변수들
