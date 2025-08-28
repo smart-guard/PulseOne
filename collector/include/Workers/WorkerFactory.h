@@ -1,9 +1,7 @@
-/**
- * @file WorkerFactory.h
- * @brief PulseOne WorkerFactory - 완전한 DB 통합 버전 헤더 (컴파일 에러 수정)
- * @author PulseOne Development Team
- * @date 2025-08-08
- */
+// =============================================================================
+// collector/include/Workers/WorkerFactory.h - 간단한 객체 생성 팩토리
+// =============================================================================
+#pragma once
 
 #ifndef WORKER_FACTORY_H
 #define WORKER_FACTORY_H
@@ -11,199 +9,119 @@
 #include <memory>
 #include <functional>
 #include <map>
-#include <vector>
 #include <string>
-#include <mutex>
-#include <atomic>
-#include <chrono>
-#include <future>
 
-// ✅ 필수 헤더들
-#include "Common/Enums.h"
-#include "Common/BasicTypes.h"
-#include "Utils/LogManager.h"
-
-// 🔧 전역 네임스페이스 전방선언
-class LogManager;
-class ConfigManager;
-class RedisClient;
-class InfluxClient;
+// ✅ 기존 프로젝트 구조체들
+#include "Common/Structs.h"
+#include "Database/Entities/DeviceEntity.h"
+#include "Database/Repositories/DeviceRepository.h"
+#include "Database/Repositories/DeviceSettingsRepository.h"
 
 namespace PulseOne {
-
-// ✅ PulseOne 네임스페이스 전방선언들
-namespace Structs {
-    struct DeviceInfo;
-    struct DataPoint;
-}
-
-namespace Database {
-    class RepositoryFactory;
-    namespace Entities {
-        class DeviceEntity;
-        class DataPointEntity;
-    }
-    namespace Repositories {
-        class DeviceRepository;
-        class DataPointRepository;
-        class CurrentValueRepository;
-        class DeviceSettingsRepository;
-    }   
-}
-
 namespace Workers {
 
 class BaseDeviceWorker;
 
-// ✅ WorkerCreator 타입 정의
-using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(
-    const PulseOne::Structs::DeviceInfo& device_info)>;
+// ✅ 단순한 WorkerCreator 타입
+using WorkerCreator = std::function<std::unique_ptr<BaseDeviceWorker>(const PulseOne::Structs::DeviceInfo&)>;
 
-struct FactoryStats {
-    uint64_t workers_created = 0;
-    uint64_t creation_failures = 0;
-    uint32_t registered_protocols = 0;
-    std::chrono::system_clock::time_point factory_start_time;
-    std::chrono::milliseconds total_creation_time{0};
-    
-    std::string ToString() const;
-    void Reset();
-};
-
+/**
+ * @brief 단순한 Worker 생성 팩토리 (싱글톤 아님)
+ * 
+ * 핵심 기능:
+ * - DeviceEntity에서 Worker 생성
+ * - 프로토콜별 Creator 등록/조회
+ * - 설정 변경시 리로드
+ */
 class WorkerFactory {
 public:
-    // ==========================================================================
-    // 싱글톤 및 초기화
-    // ==========================================================================
-    static WorkerFactory& getInstance();
-    
-    WorkerFactory(const WorkerFactory&) = delete;
-    WorkerFactory& operator=(const WorkerFactory&) = delete;
-
-    bool Initialize();
-    bool Initialize(::LogManager* logger, ::ConfigManager* config_manager);
-    
-    // ==========================================================================
-    // 의존성 주입
-    // ==========================================================================
-    void SetRepositoryFactory(std::shared_ptr<Database::RepositoryFactory> repo_factory);
-    void SetDeviceRepository(std::shared_ptr<Database::Repositories::DeviceRepository> device_repo);
-    void SetDataPointRepository(std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo);
-    void SetCurrentValueRepository(std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo);
-    void SetDeviceSettingsRepository(std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo);
-    void SetDatabaseClients(std::shared_ptr<RedisClient> redis_client, 
-                           std::shared_ptr<InfluxClient> influx_client);
-
-    // ==========================================================================
-    // Worker 생성
-    // ==========================================================================
-    std::unique_ptr<BaseDeviceWorker> CreateWorker(const Database::Entities::DeviceEntity& device_entity);
-    std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers();
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateAllActiveWorkers(int max_workers);
-    std::vector<std::unique_ptr<BaseDeviceWorker>> CreateWorkersByProtocol(const std::string& protocol_type, int max_workers = 0);
-
-    // ==========================================================================
-    // 팩토리 정보
-    // ==========================================================================
-    std::vector<std::string> GetSupportedProtocols() const;
-    bool IsProtocolSupported(const std::string& protocol_type) const;
-    FactoryStats GetFactoryStats() const;
-    std::string GetFactoryStatsString() const;
-    void RegisterWorkerCreator(const std::string& protocol_type, WorkerCreator creator);
-    
-    // ==========================================================================
-    // 데이터 헬퍼 함수들
-    // ==========================================================================
-    void UpdateDataPointValue(PulseOne::Structs::DataPoint& data_point, 
-                             const PulseOne::BasicTypes::DataVariant& new_value,
-                             PulseOne::Enums::DataQuality new_quality = PulseOne::Enums::DataQuality::GOOD) const;
-    
-    bool ShouldLogDataPoint(const PulseOne::Structs::DataPoint& data_point,
-                           const PulseOne::BasicTypes::DataVariant& new_value) const;
-    
-    std::string ValidateWorkerConfig(const Database::Entities::DeviceEntity& device_entity) const;
-    std::string GetProtocolConfigInfo(const std::string& protocol_type) const;
-    
-    // ==========================================================================
-    // 설정 및 검증 헬퍼들
-    // ==========================================================================
-    void ApplyDefaultSettings(PulseOne::Structs::DeviceInfo& device_info, 
-                             const std::string& protocol_type) const;
-    void ValidateAndCorrectSettings(PulseOne::Structs::DeviceInfo& device_info) const;
-    
-    // ==========================================================================
-    // 품질 및 통계 헬퍼들
-    // ==========================================================================
-    std::string GetCurrentValueAsString(const PulseOne::Structs::DataPoint& data_point) const;
-    std::string GetQualityString(const PulseOne::Structs::DataPoint& data_point) const;
-    
-    bool IsInitialized() const { return initialized_.load(); }
-
-private:
-    // ==========================================================================
-    // 생성자 (싱글톤)
-    // ==========================================================================
     WorkerFactory() = default;
+    ~WorkerFactory() = default;
     
     // ==========================================================================
-    // 🔧 수정: private 메서드들 - extra qualification 제거
+    // 핵심 Worker 생성 기능
     // ==========================================================================
-    void RegisterWorkerCreators();
     
-    // DB 변환 메서드들
-    PulseOne::Structs::DeviceInfo ConvertToDeviceInfo(const Database::Entities::DeviceEntity& device_entity) const;
-    PulseOne::Structs::DataPoint ConvertToDataPoint(const Database::Entities::DataPointEntity& datapoint_entity,
-                                                    const std::string& device_id_string = "") const;
+    /**
+     * @brief 디바이스에서 Worker 생성
+     */
+    std::unique_ptr<BaseDeviceWorker> CreateWorker(const Database::Entities::DeviceEntity& device);
     
-    // JSON 및 설정 파싱
-    void ParseDeviceConfigToProperties(PulseOne::Structs::DeviceInfo& device_info) const;
-    void ParseEndpoint(PulseOne::Structs::DeviceInfo& device_info) const;
-    PulseOne::BasicTypes::DataVariant ParseJSONValue(const std::string& json_value, const std::string& data_type) const;
-    PulseOne::BasicTypes::DataVariant ParseJSONValueAsRaw(const std::string& json_value) const;
-    // DataPoint 및 CurrentValue 로딩
-    void LoadCurrentValueForDataPoint(PulseOne::Structs::DataPoint& data_point) const;
-    std::vector<PulseOne::Structs::DataPoint> LoadDataPointsForDevice(int device_id) const;
+    /**
+     * @brief 디바이스 ID로 Worker 생성 (DB에서 DeviceEntity 로드)
+     */
+    std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
     
-    // 🔧 수정: ApplyProtocolSpecificDefaults 메서드 선언 추가
-    void ApplyProtocolSpecificDefaults(PulseOne::Structs::DeviceInfo& device_info, 
-                                      const std::string& protocol_type) const;
+    // ==========================================================================
+    // 프로토콜 관리
+    // ==========================================================================
     
-    // 🔧 수정: LogSupportedProtocols 메서드 - extra qualification 제거
-    void LogSupportedProtocols() const;
+    /**
+     * @brief 지원하는 프로토콜 목록
+     */
+    std::vector<std::string> GetSupportedProtocols() const;
     
+    /**
+     * @brief 프로토콜 지원 여부 확인
+     */
+    bool IsProtocolSupported(const std::string& protocol_type) const;
+    
+    /**
+     * @brief 프로토콜 설정 리로드 (DB 변경시)
+     */
+    void ReloadProtocols();
 
 private:
     // ==========================================================================
-    // 멤버 변수들
+    // 내부 변환 함수들 (안전 버전들)
     // ==========================================================================
-    std::atomic<bool> initialized_{false};
-    mutable std::mutex factory_mutex_;
     
-    // 🔧 전역 클래스 포인터들
-    ::LogManager* logger_ = nullptr;
-    ::ConfigManager* config_manager_ = nullptr;
+    /**
+     * @brief protocol_id로 실제 프로토콜 타입 조회
+     */
+    std::string GetProtocolTypeById(int protocol_id);
     
-    // Repository들
-    std::shared_ptr<Database::RepositoryFactory> repo_factory_;
-    std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
-    std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo_;
-    std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo_;
-    std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo_;
+    /**
+     * @brief DeviceEntity를 DeviceInfo로 안전하게 변환
+     */
+    bool ConvertToDeviceInfoSafe(const Database::Entities::DeviceEntity& device, 
+                                PulseOne::Structs::DeviceInfo& info);
     
-    // 데이터베이스 클라이언트들
-    std::shared_ptr<::RedisClient> redis_client_;
-    std::shared_ptr<::InfluxClient> influx_client_;
+    /**
+     * @brief endpoint 파싱 (IP:Port 추출) - 안전 버전
+     */
+    bool ParseEndpointSafe(PulseOne::Structs::DeviceInfo& info);
     
-    // Worker Creator 맵
-    std::map<std::string, WorkerCreator> worker_creators_;
+    /**
+     * @brief JSON config를 properties로 변환 - 안전 버전
+     */
+    bool ParseConfigToPropertiesSafe(PulseOne::Structs::DeviceInfo& info);
     
-    // 통계
-    mutable std::atomic<uint64_t> workers_created_{0};
-    mutable std::atomic<uint64_t> creation_failures_{0};
-    std::chrono::system_clock::time_point factory_start_time_;
+    /**
+     * @brief DeviceSettings 로드 및 적용 - 안전 버전
+     */
+    bool LoadDeviceSettingsSafe(PulseOne::Structs::DeviceInfo& info, int device_id);
+    
+    /**
+     * @brief 프로토콜별 기본값 적용 - 안전 버전
+     */
+    bool ApplyProtocolDefaultsSafe(PulseOne::Structs::DeviceInfo& info);
+    
+    /**
+     * @brief 기본 설정값 적용
+     */
+    void ApplyDefaultSettings(PulseOne::Structs::DeviceInfo& info);
+    
+    /**
+     * @brief 프로토콜별 기본 포트 반환
+     */
+    int GetDefaultPort(const std::string& protocol_type);
+    
+    /**
+     * @brief 프로토콜 Creator들 로드 (스레드 안전, 캐시됨)
+     */
+    std::map<std::string, WorkerCreator> LoadProtocolCreators();
 
-    
 };
 
 } // namespace Workers

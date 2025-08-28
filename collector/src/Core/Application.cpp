@@ -1,6 +1,6 @@
 /**
  * @file Application.cpp
- * @brief PulseOne Collector v2.0 - 극도로 단순화된 버전
+ * @brief PulseOne Collector v2.0 - WorkerManager 사용으로 수정
  */
 
 #include "Core/Application.h"
@@ -9,8 +9,7 @@
 #include "Utils/ConfigManager.h"
 #include "Database/DatabaseManager.h"
 #include "Database/RepositoryFactory.h"
-#include "Workers/WorkerFactory.h"
-#include "Workers/WorkerManager.h"
+#include "Workers/WorkerManager.h"  // Factory 대신 Manager 사용
 #include "Common/Structs.h"
 
 #include <iostream>
@@ -60,7 +59,7 @@ bool CollectorApplication::Initialize() {
     try {
         LogManager::getInstance().Info("System initialization starting...");
         
-        // 1. 설정 관리자 초기화 (자동 초기화되지만 명시적 호출)
+        // 1. 설정 관리자 초기화
         try {
             ConfigManager::getInstance().initialize();
             LogManager::getInstance().Info("ConfigManager initialized");
@@ -83,6 +82,7 @@ bool CollectorApplication::Initialize() {
         }
         LogManager::getInstance().Info("RepositoryFactory initialized");
         
+        // 4. WorkerManager를 통한 Worker 시작
         try {
             LogManager::getInstance().Info("Starting all active workers...");
             int started_count = Workers::WorkerManager::getInstance().StartAllActiveWorkers();
@@ -98,6 +98,7 @@ bool CollectorApplication::Initialize() {
             return false;
         }
         
+        // 5. REST API 서버 초기화
         if (!InitializeRestApiServer()) {
             LogManager::getInstance().Error("RestApiServer initialization failed");
             return false;
@@ -111,7 +112,6 @@ bool CollectorApplication::Initialize() {
         return false;
     }
 }
-
 
 void CollectorApplication::MainLoop() {
     LogManager::getInstance().Info("Main loop started - production mode");
@@ -145,16 +145,26 @@ void CollectorApplication::MainLoop() {
                 // WorkerManager 통계
                 auto manager_stats = worker_manager.GetManagerStats();
                 LogManager::getInstance().Info("WorkerManager Stats:");
-                LogManager::getInstance().Info("  Active Workers: " + std::to_string(manager_stats["active_workers"]));
-                LogManager::getInstance().Info("  Total Started: " + std::to_string(manager_stats["total_started"]));
-                LogManager::getInstance().Info("  Total Stopped: " + std::to_string(manager_stats["total_stopped"]));
-                LogManager::getInstance().Info("  Control Commands: " + std::to_string(manager_stats["total_control_commands"]));
-                LogManager::getInstance().Info("  Total Errors: " + std::to_string(manager_stats["total_errors"]));
                 
-                // WorkerFactory 통계
-                auto& worker_factory = Workers::WorkerFactory::getInstance();
-                LogManager::getInstance().Info("WorkerFactory Stats:");
-                LogManager::getInstance().Info("  " + worker_factory.GetFactoryStatsString());
+                if (manager_stats.contains("active_workers")) {
+                    int active_workers = manager_stats["active_workers"].get<int>();
+                    LogManager::getInstance().Info("  Active Workers: " + std::to_string(active_workers));
+                }
+                
+                if (manager_stats.contains("total_started")) {
+                    int total_started = manager_stats["total_started"].get<int>();
+                    LogManager::getInstance().Info("  Total Started: " + std::to_string(total_started));
+                }
+                
+                if (manager_stats.contains("total_stopped")) {
+                    int total_stopped = manager_stats["total_stopped"].get<int>();
+                    LogManager::getInstance().Info("  Total Stopped: " + std::to_string(total_stopped));
+                }
+                
+                if (manager_stats.contains("total_errors")) {
+                    int total_errors = manager_stats["total_errors"].get<int>();
+                    LogManager::getInstance().Info("  Total Errors: " + std::to_string(total_errors));
+                }
                 
                 LogManager::getInstance().Info("=== End Statistics Report ===");
                 
@@ -204,7 +214,6 @@ bool CollectorApplication::InitializeRestApiServer() {
     try {
         api_server_ = std::make_unique<Network::RestApiServer>(8080);
         
-        // 🔧 수정: 메서드명이 다르므로 직접 설정
         // 설정 API 콜백 등록
         PulseOne::Api::ConfigApiCallbacks::Setup(
             api_server_.get(), 
@@ -212,10 +221,10 @@ bool CollectorApplication::InitializeRestApiServer() {
             &LogManager::getInstance()
         );
         
-        // 🔧 수정: DeviceApiCallbacks는 WorkerFactory를 받아야 함
+        // Device API 콜백 등록 - WorkerManager 사용
         PulseOne::Api::DeviceApiCallbacks::Setup(
             api_server_.get(),
-            &Workers::WorkerFactory::getInstance(),  // WorkerManager 대신 WorkerFactory 전달
+            &Workers::WorkerManager::getInstance(),  // WorkerManager 전달
             &LogManager::getInstance()
         );
         
@@ -236,8 +245,6 @@ bool CollectorApplication::InitializeRestApiServer() {
     return true;
 #endif
 }
-
-
 
 } // namespace Core
 } // namespace PulseOne
