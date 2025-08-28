@@ -1889,5 +1889,343 @@ void MQTTWorker::SetupMQTTDriverCallbacks() {
     LogMessage(LogLevel::DEBUG_LEVEL, "✅ MQTT driver callbacks configured");
 }
 
+bool MQTTWorker::WriteDataPoint(const std::string& point_id, const DataValue& value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteDataPoint 호출: " + point_id);
+        return WriteDataPointValue(point_id, value);
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::WriteAnalogOutput(const std::string& output_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteAnalogOutput 호출: " + output_id + " = " + std::to_string(value));
+        
+        // 먼저 DataPoint로 찾아보기
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        // DataPoint가 없으면 직접 토픽으로 발행
+        std::string control_topic = BuildControlTopic(output_id, "analog");
+        return PublishControlMessage(control_topic, data_value);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::WriteDigitalOutput(const std::string& output_id, bool value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteDigitalOutput 호출: " + output_id + " = " + (value ? "ON" : "OFF"));
+        
+        // 먼저 DataPoint로 찾아보기
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        // DataPoint가 없으면 직접 토픽으로 발행
+        std::string control_topic = BuildControlTopic(output_id, "digital");
+        return PublishControlMessage(control_topic, data_value);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::WriteSetpoint(const std::string& setpoint_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "WriteSetpoint 호출: " + setpoint_id + " = " + std::to_string(value));
+        
+        // 세트포인트는 아날로그 출력으로 처리
+        return WriteAnalogOutput(setpoint_id, value);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::ControlDigitalDevice(const std::string& device_id, bool enable) {
+    try {
+        LogMessage(LogLevel::INFO, "ControlDigitalDevice 호출: " + device_id + " = " + (enable ? "ENABLE" : "DISABLE"));
+        
+        // WriteDigitalOutput을 통해 실제 제어 수행
+        bool success = WriteDigitalOutput(device_id, enable);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "MQTT 디지털 장비 제어 성공: " + device_id + " " + (enable ? "활성화" : "비활성화"));
+        } else {
+            LogMessage(LogLevel::ERROR, "MQTT 디지털 장비 제어 실패: " + device_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ControlDigitalDevice 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::ControlAnalogDevice(const std::string& device_id, double value) {
+    try {
+        LogMessage(LogLevel::INFO, "ControlAnalogDevice 호출: " + device_id + " = " + std::to_string(value));
+        
+        // 일반적인 범위 검증 (0-100%)
+        if (value < 0.0 || value > 100.0) {
+            LogMessage(LogLevel::WARN, "ControlAnalogDevice: 값이 일반적 범위를 벗어남: " + std::to_string(value) + 
+                       "% (0-100 권장, 하지만 계속 진행)");
+        }
+        
+        // WriteAnalogOutput을 통해 실제 제어 수행
+        bool success = WriteAnalogOutput(device_id, value);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "MQTT 아날로그 장비 제어 성공: " + device_id + " = " + std::to_string(value));
+        } else {
+            LogMessage(LogLevel::ERROR, "MQTT 아날로그 장비 제어 실패: " + device_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "ControlAnalogDevice 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 헬퍼 메서드들 구현
+// =============================================================================
+
+bool MQTTWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
+    auto data_point_opt = FindDataPointById(point_id);
+    if (!data_point_opt.has_value()) {
+        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        return false;
+    }
+    
+    const auto& data_point = data_point_opt.value();
+    
+    try {
+        // DataPoint에서 MQTT 토픽 정보 추출
+        std::string topic;
+        std::string json_path;
+        int qos;
+        
+        if (!ParseMQTTTopic(data_point, topic, json_path, qos)) {
+            LogMessage(LogLevel::ERROR, "Invalid MQTT topic for DataPoint: " + point_id);
+            return false;
+        }
+        
+        // 제어용 토픽으로 변환 (일반적으로 /set 또는 /cmd 추가)
+        std::string control_topic = topic + "/set";
+        if (topic.find("/status") != std::string::npos) {
+            control_topic = topic.replace(topic.find("/status"), 7, "/set");
+        }
+        
+        // MQTT 메시지 발행
+        bool success = PublishControlMessage(control_topic, value, qos);
+        
+        // 제어 이력 로깅
+        LogWriteOperation(control_topic, value, success);
+        
+        if (success) {
+            LogMessage(LogLevel::INFO, "MQTT DataPoint 쓰기 성공: " + point_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MQTTWorker::PublishControlMessage(const std::string& topic, const DataValue& value, int qos) {
+    try {
+        // DataValue를 JSON 페이로드로 변환
+        std::string payload = CreateJsonPayload(value);
+        
+        // MQTT 메시지 발행
+        bool success = PublishMessage(topic, payload, qos, false);
+        
+        if (success) {
+            // 통계 업데이트
+            worker_stats_.messages_published++;
+            if (IsProductionMode()) {
+                performance_metrics_.messages_sent++;
+                performance_metrics_.bytes_sent += payload.length();
+            }
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "PublishControlMessage 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::string MQTTWorker::BuildControlTopic(const std::string& device_id, const std::string& control_type) {
+    // device_id가 이미 완전한 토픽인지 확인
+    if (device_id.find('/') != std::string::npos) {
+        // 이미 토픽 형태이면 /set 추가
+        return device_id + "/set";
+    }
+    
+    // 디바이스 ID만 있으면 표준 토픽 구조 생성
+    std::string base_topic = "devices/" + device_id + "/control";
+    
+    if (control_type == "digital") {
+        return base_topic + "/switch";
+    } else if (control_type == "analog") {
+        return base_topic + "/value";
+    }
+    
+    return base_topic;
+}
+
+std::string MQTTWorker::CreateJsonPayload(const DataValue& value) {
+    try {
+#ifdef HAS_NLOHMANN_JSON
+        nlohmann::json payload_json;
+        
+        if (std::holds_alternative<bool>(value)) {
+            payload_json["value"] = std::get<bool>(value);
+            payload_json["type"] = "boolean";
+        } else if (std::holds_alternative<int32_t>(value)) {
+            payload_json["value"] = std::get<int32_t>(value);
+            payload_json["type"] = "integer";
+        } else if (std::holds_alternative<double>(value)) {
+            payload_json["value"] = std::get<double>(value);
+            payload_json["type"] = "number";
+        } else if (std::holds_alternative<std::string>(value)) {
+            payload_json["value"] = std::get<std::string>(value);
+            payload_json["type"] = "string";
+        }
+        
+        // 메타데이터 추가
+        payload_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        payload_json["source"] = "PulseOne_MQTT_Control";
+        
+        return payload_json.dump();
+#else
+        // JSON 라이브러리가 없으면 간단한 문자열 형태
+        std::stringstream ss;
+        ss << "{\"value\":";
+        
+        if (std::holds_alternative<bool>(value)) {
+            ss << (std::get<bool>(value) ? "true" : "false");
+        } else if (std::holds_alternative<int32_t>(value)) {
+            ss << std::get<int32_t>(value);
+        } else if (std::holds_alternative<double>(value)) {
+            ss << std::get<double>(value);
+        } else if (std::holds_alternative<std::string>(value)) {
+            ss << "\"" << std::get<std::string>(value) << "\"";
+        }
+        
+        ss << ",\"timestamp\":" << std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        ss << "}";
+        
+        return ss.str();
+#endif
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "CreateJsonPayload 예외: " + std::string(e.what()));
+        // 폴백: 단순 문자열
+        if (std::holds_alternative<std::string>(value)) {
+            return std::get<std::string>(value);
+        } else if (std::holds_alternative<bool>(value)) {
+            return std::get<bool>(value) ? "true" : "false";
+        } else if (std::holds_alternative<int32_t>(value)) {
+            return std::to_string(std::get<int32_t>(value));
+        } else if (std::holds_alternative<double>(value)) {
+            return std::to_string(std::get<double>(value));
+        }
+        return "{}";
+    }
+}
+
+void MQTTWorker::LogWriteOperation(const std::string& topic, const DataValue& value, bool success) {
+    try {
+        // 제어 이력을 파이프라인으로 전송
+        TimestampedValue control_log;
+        control_log.value = value;
+        control_log.timestamp = std::chrono::system_clock::now();
+        control_log.quality = success ? DataQuality::GOOD : DataQuality::BAD;
+        control_log.source = "control_mqtt_" + topic;
+        
+        // 제어 이력은 높은 우선순위로 기록
+        SendValuesToPipelineWithLogging({control_log}, "MQTT 제어 이력", 1);
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
+    }
+}
+
+bool MQTTWorker::ParseMQTTTopic(const PulseOne::DataPoint& data_point,
+                                std::string& topic, std::string& json_path, int& qos) {
+    try {
+        // DataPoint에서 MQTT 토픽 정보 추출
+        
+        // 1. 토픽 추출 (name 필드에서 또는 protocol_params에서)
+        if (!data_point.name.empty() && data_point.name.find('/') != std::string::npos) {
+            // name 필드가 토픽 형태인 경우
+            topic = data_point.name;
+        } else if (data_point.protocol_params.count("topic")) {
+            // protocol_params에 명시적으로 지정된 경우
+            topic = data_point.protocol_params.at("topic");
+        } else if (data_point.address > 0) {
+            // address 필드를 토픽으로 변환 (fallback)
+            topic = "data/" + std::to_string(data_point.address);
+        } else {
+            // 기본 토픽 생성
+            topic = "devices/" + data_point.id + "/status";
+        }
+        
+        // 2. JSON 경로 추출
+        if (data_point.protocol_params.count("json_path")) {
+            json_path = data_point.protocol_params.at("json_path");
+        } else if (data_point.protocol_params.count("property")) {
+            json_path = data_point.protocol_params.at("property");
+        } else {
+            // 기본값: value 필드 사용
+            json_path = "value";
+        }
+        
+        // 3. QoS 레벨 추출
+        if (data_point.protocol_params.count("qos")) {
+            qos = std::stoi(data_point.protocol_params.at("qos"));
+        } else {
+            // 기본값: QoS 1
+            qos = QosToInt(mqtt_config_.default_qos);
+        }
+        
+        // QoS 범위 검증
+        if (qos < 0 || qos > 2) {
+            LogMessage(LogLevel::WARN, "Invalid QoS " + std::to_string(qos) + " for DataPoint " + 
+                      data_point.id + ", using default QoS 1");
+            qos = 1;
+        }
+        
+        LogMessage(LogLevel::DEBUG_LEVEL, "Parsed MQTT topic for DataPoint " + data_point.id + 
+                  ": topic=" + topic + ", json_path=" + json_path + ", qos=" + std::to_string(qos));
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::ERROR, "Failed to parse MQTT topic for DataPoint " + 
+                  data_point.id + ": " + std::string(e.what()));
+        return false;
+    }
+}
+
+
 } // namespace Workers
 } // namespace PulseOne

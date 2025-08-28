@@ -484,6 +484,111 @@ public:
     PulseOne::Drivers::MqttDriver* GetMqttDriver() const {
         return mqtt_driver_.get();
     }
+    /**
+     * @brief 데이터 포인트에 값 쓰기 (통합 인터페이스)
+     * @param point_id 데이터 포인트 ID
+     * @param value 쓸 값 (DataValue variant)
+     * @return 성공 시 true
+     */
+    virtual bool WriteDataPoint(const std::string& point_id, const DataValue& value) override;
+    
+    /**
+     * @brief 아날로그 출력 제어 (MQTT 토픽 발행)
+     * @param output_id 출력 ID (토픽 또는 point_id)
+     * @param value 출력 값
+     * @return 성공 시 true
+     */
+    virtual bool WriteAnalogOutput(const std::string& output_id, double value) override;
+    
+    /**
+     * @brief 디지털 출력 제어 (MQTT 토픽 발행)
+     * @param output_id 출력 ID (토픽 또는 point_id)
+     * @param value 출력 값 (true/false)
+     * @return 성공 시 true
+     */
+    virtual bool WriteDigitalOutput(const std::string& output_id, bool value) override;
+    
+    /**
+     * @brief 세트포인트 설정 (MQTT 토픽 발행)
+     * @param setpoint_id 세트포인트 ID
+     * @param value 설정값
+     * @return 성공 시 true
+     */
+    virtual bool WriteSetpoint(const std::string& setpoint_id, double value) override;
+    
+    // =============================================================================
+    // 범용 장비 제어 인터페이스 (MQTT 특화)
+    // =============================================================================
+    
+    /**
+     * @brief 디지털 장비 제어 (IoT 디바이스, 스마트 센서 등)
+     * @param device_id MQTT 디바이스 ID (토픽)
+     * @param enable 장비 활성화/비활성화
+     * @return 성공 시 true
+     */
+    virtual bool ControlDigitalDevice(const std::string& device_id, bool enable) override;
+    
+    /**
+     * @brief 아날로그 장비 제어 (IoT 액추에이터, 조광기 등)
+     * @param device_id MQTT 디바이스 ID (토픽)
+     * @param value 제어값 (일반적으로 0.0-100.0%)
+     * @return 성공 시 true
+     */
+    virtual bool ControlAnalogDevice(const std::string& device_id, double value) override;
+    
+    // =============================================================================
+    // MQTT/IoT 특화 편의 래퍼 함수들
+    // =============================================================================
+    
+    /**
+     * @brief IoT 센서 설정값 변경
+     * @param sensor_id 센서 토픽 ID
+     * @param config_value 설정값
+     * @return 성공 시 true
+     */
+    inline bool ConfigureIoTSensor(const std::string& sensor_id, double config_value) {
+        return ControlAnalogDevice(sensor_id + "/config", config_value);
+    }
+    
+    /**
+     * @brief 스마트 라이트 제어
+     * @param light_id 라이트 토픽 ID
+     * @param brightness 밝기 (0.0-100.0%)
+     * @return 성공 시 true
+     */
+    inline bool ControlSmartLight(const std::string& light_id, double brightness) {
+        return ControlAnalogDevice(light_id + "/brightness", brightness);
+    }
+    
+    /**
+     * @brief 스마트 스위치 제어
+     * @param switch_id 스위치 토픽 ID
+     * @param on 스위치 ON/OFF
+     * @return 성공 시 true
+     */
+    inline bool ControlSmartSwitch(const std::string& switch_id, bool on) {
+        return ControlDigitalDevice(switch_id + "/switch", on);
+    }
+    
+    /**
+     * @brief IoT 게이트웨이 명령 전송
+     * @param gateway_id 게이트웨이 토픽 ID
+     * @param command 명령 문자열
+     * @return 성공 시 true
+     */
+    inline bool SendGatewayCommand(const std::string& gateway_id, const std::string& command) {
+        return PublishMessage(gateway_id + "/cmd", command, QosToInt(MqttQoS::AT_LEAST_ONCE));
+    }
+    
+    /**
+     * @brief 온도 조절기 설정점 변경
+     * @param thermostat_id 온도조절기 토픽 ID
+     * @param temperature 설정 온도 (°C)
+     * @return 성공 시 true
+     */
+    inline bool SetThermostatSetpoint(const std::string& thermostat_id, double temperature) {
+        return WriteSetpoint(thermostat_id + "/setpoint/temperature", temperature);
+    }
 
 private:
     // =============================================================================
@@ -620,9 +725,13 @@ private:
     static void MessageCallback(MQTTWorker* worker, 
                                const std::string& topic, 
                                const std::string& payload);
-    void SetupMQTTDriverCallbacks();                          
-
-#ifdef HAS_NLOHMANN_JSON
+    void SetupMQTTDriverCallbacks(); 
+    bool WriteDataPointValue(const std::string& point_id, const DataValue& value);
+    bool PublishControlMessage(const std::string& topic, const DataValue& value, int qos = 1);
+    std::string BuildControlTopic(const std::string& device_id, const std::string& control_type);
+    std::string CreateJsonPayload(const DataValue& value);
+    void LogWriteOperation(const std::string& topic, const DataValue& value, bool success);                         
+ #ifdef HAS_NLOHMANN_JSON
     bool ConvertJsonToDataValue(const nlohmann::json& json_val,
                                PulseOne::Structs::DataValue& data_value);
 #endif

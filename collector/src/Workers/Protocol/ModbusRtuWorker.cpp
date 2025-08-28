@@ -1212,5 +1212,300 @@ bool ModbusRtuWorker::SendModbusRtuBoolDataToPipeline(const std::vector<bool>& r
     }
 }
 
+// =============================================================================
+// 범용 장비 제어 인터페이스 구현 (메인)
+// =============================================================================
+
+bool ModbusRtuWorker::ControlDigitalDevice(const std::string& device_id, bool enable) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("ControlDigitalDevice 호출: " + device_id + " = " + (enable ? "ENABLE" : "DISABLE"));
+        
+        // WriteDigitalOutput을 통해 실제 제어 수행
+        bool success = WriteDigitalOutput(device_id, enable);
+        
+        if (success) {
+            logger.Info("디지털 장비 제어 성공: " + device_id + " " + (enable ? "활성화" : "비활성화"));
+        } else {
+            logger.Error("디지털 장비 제어 실패: " + device_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        logger.Error("ControlDigitalDevice 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::ControlAnalogDevice(const std::string& device_id, double value) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("ControlAnalogDevice 호출: " + device_id + " = " + std::to_string(value));
+        
+        // 일반적인 범위 검증 (0-100%)
+        if (value < 0.0 || value > 100.0) {
+            logger.Warn("ControlAnalogDevice: 값이 일반적 범위를 벗어남: " + std::to_string(value) + 
+                       "% (0-100 권장, 하지만 계속 진행)");
+        }
+        
+        // WriteAnalogOutput을 통해 실제 제어 수행
+        bool success = WriteAnalogOutput(device_id, value);
+        
+        if (success) {
+            logger.Info("아날로그 장비 제어 성공: " + device_id + " = " + std::to_string(value));
+        } else {
+            logger.Error("아날로그 장비 제어 실패: " + device_id);
+        }
+        
+        return success;
+    } catch (const std::exception& e) {
+        logger.Error("ControlAnalogDevice 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 기존 WriteDataPoint, WriteAnalogOutput, WriteDigitalOutput 구현 유지
+// (이전에 구현한 코드와 동일)
+// =============================================================================
+
+bool ModbusRtuWorker::WriteDataPoint(const std::string& point_id, const DataValue& value) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("WriteDataPoint 호출: " + point_id);
+        return WriteDataPointValue(point_id, value);
+    } catch (const std::exception& e) {
+        logger.Error("WriteDataPoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::WriteAnalogOutput(const std::string& output_id, double value) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("WriteAnalogOutput 호출: " + output_id + " = " + std::to_string(value));
+        
+        // 먼저 DataPoint로 찾아보기
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        // DataPoint가 없으면 직접 주소 파싱
+        uint8_t slave_id;
+        uint16_t address;
+        if (ParseModbusAddress(output_id, slave_id, address)) {
+            uint16_t int_value = static_cast<uint16_t>(value);
+            return WriteSingleRegister(slave_id, address, int_value);
+        }
+        
+        logger.Error("WriteAnalogOutput: Invalid output_id: " + output_id);
+        return false;
+    } catch (const std::exception& e) {
+        logger.Error("WriteAnalogOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::WriteDigitalOutput(const std::string& output_id, bool value) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("WriteDigitalOutput 호출: " + output_id + " = " + (value ? "ON" : "OFF"));
+        
+        // 먼저 DataPoint로 찾아보기
+        DataValue data_value = value;
+        auto data_point_opt = FindDataPointById(output_id);
+        if (data_point_opt.has_value()) {
+            return WriteDataPoint(output_id, data_value);
+        }
+        
+        // DataPoint가 없으면 직접 주소 파싱
+        uint8_t slave_id;
+        uint16_t address;
+        if (ParseModbusAddress(output_id, slave_id, address)) {
+            return WriteSingleCoil(slave_id, address, value);
+        }
+        
+        logger.Error("WriteDigitalOutput: Invalid output_id: " + output_id);
+        return false;
+    } catch (const std::exception& e) {
+        logger.Error("WriteDigitalOutput 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::WriteSetpoint(const std::string& setpoint_id, double value) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        logger.Info("WriteSetpoint 호출: " + setpoint_id + " = " + std::to_string(value));
+        return WriteAnalogOutput(setpoint_id, value);
+    } catch (const std::exception& e) {
+        logger.Error("WriteSetpoint 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// 헬퍼 메서드들 구현
+// =============================================================================
+
+bool ModbusRtuWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
+    auto& logger = LogManager::getInstance();
+    
+    auto data_point_opt = FindDataPointById(point_id);
+    if (!data_point_opt.has_value()) {
+        logger.Error("DataPoint not found: " + point_id);
+        return false;
+    }
+    
+    const auto& data_point = data_point_opt.value();
+    
+    uint8_t slave_id;
+    uint16_t address;
+    
+    // Modbus 주소 파싱 (DataPoint에서)
+    if (!ParseModbusAddressFromDataPoint(data_point, slave_id, address)) {
+        logger.Error("Invalid Modbus address for DataPoint: " + point_id);
+        return false;
+    }
+    
+    try {
+        bool success = false;
+        
+        // data_type에 따라 레지스터 타입 결정
+        if (data_point.data_type == "UINT16" || data_point.data_type == "INT16" || 
+            data_point.data_type == "FLOAT32") {
+            // Holding Register 쓰기
+            int32_t int_value = std::get<int32_t>(value);
+            uint16_t modbus_value = static_cast<uint16_t>(int_value);
+            success = WriteSingleRegister(slave_id, address, modbus_value);
+            LogWriteOperation(slave_id, address, value, "holding_register", success);
+        } else if (data_point.data_type == "BOOL") {
+            // Coil 쓰기
+            bool coil_value = std::get<bool>(value);
+            success = WriteSingleCoil(slave_id, address, coil_value);
+            LogWriteOperation(slave_id, address, value, "coil", success);
+        } else {
+            logger.Error("Unsupported data type for writing: " + data_point.data_type);
+            return false;
+        }
+        
+        if (success) {
+            logger.Info("DataPoint 쓰기 성공: " + point_id);
+        }
+        
+        return success;
+    } catch (const std::bad_variant_access& e) {
+        logger.Error("DataValue 타입 불일치: " + std::string(e.what()));
+        return false;
+    } catch (const std::exception& e) {
+        logger.Error("WriteDataPointValue 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::ParseModbusAddress(const std::string& address_str, uint8_t& slave_id, uint16_t& address) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        // "slave_id:address" 또는 "address" 형식 파싱
+        size_t colon_pos = address_str.find(':');
+        
+        if (colon_pos != std::string::npos) {
+            // slave_id가 포함된 경우
+            slave_id = static_cast<uint8_t>(std::stoi(address_str.substr(0, colon_pos)));
+            address = static_cast<uint16_t>(std::stoi(address_str.substr(colon_pos + 1)));
+        } else {
+            // 기본 slave_id 사용
+            slave_id = static_cast<uint8_t>(GetSlaveId());  // 설정에서 기본 슬레이브 ID
+            address = static_cast<uint16_t>(std::stoi(address_str));
+        }
+        
+        if (slave_id < 1 || slave_id > 247) {
+            logger.Error("Invalid slave_id: " + std::to_string(slave_id));
+            return false;
+        }
+        
+        return true;
+    } catch (const std::exception& e) {
+        logger.Error("Failed to parse address string '" + address_str + "': " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ModbusRtuWorker::ParseModbusAddressFromDataPoint(const DataPoint& data_point, 
+                                                     uint8_t& slave_id, uint16_t& address) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        // protocol_params에서 slave_id 확인
+        if (data_point.protocol_params.count("slave_id")) {
+            slave_id = static_cast<uint8_t>(std::stoi(data_point.protocol_params.at("slave_id")));
+        } else {
+            slave_id = static_cast<uint8_t>(GetSlaveId());  // 기본값
+        }
+        
+        address = static_cast<uint16_t>(data_point.address);
+        
+        // Modbus 표준 주소 범위 조정
+        if (address >= 40001 && address <= 49999) {
+            address -= 40001;  // Holding Register (0-based)
+        } else if (address >= 1 && address <= 9999) {
+            address -= 1;      // Coil (0-based)
+        } else if (address >= 10001 && address <= 19999) {
+            address -= 10001;  // Discrete Input (0-based)
+        } else if (address >= 30001 && address <= 39999) {
+            address -= 30001;  // Input Register (0-based)
+        }
+        // 그 외는 그대로 사용 (이미 0-based인 경우)
+        
+        return true;
+    } catch (const std::exception& e) {
+        logger.Error("Failed to parse DataPoint address: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::optional<DataPoint> ModbusRtuWorker::FindDataPointById(const std::string& point_id) {
+    // BaseDeviceWorker::GetDataPoints() 사용
+    const auto& data_points = GetDataPoints();
+    
+    for (const auto& point : data_points) {
+        if (point.id == point_id) {
+            return point;
+        }
+    }
+    
+    return std::nullopt;  // 찾지 못함
+}
+
+void ModbusRtuWorker::LogWriteOperation(int slave_id, uint16_t address, const DataValue& value,
+                                       const std::string& register_type, bool success) {
+    auto& logger = LogManager::getInstance();
+    
+    try {
+        // 제어 이력을 파이프라인으로 전송
+        TimestampedValue control_log;
+        control_log.value = value;
+        control_log.timestamp = std::chrono::system_clock::now();
+        control_log.quality = success ? DataQuality::GOOD : DataQuality::BAD;
+        control_log.source = "control_rtu_" + register_type + "_" + std::to_string(address) + 
+                            "_slave" + std::to_string(slave_id);
+        
+        // 제어 이력은 높은 우선순위로 기록
+        SendValuesToPipelineWithLogging({control_log}, "RTU 제어 이력", 1);
+        
+    } catch (const std::exception& e) {
+        logger.Error("LogWriteOperation 예외: " + std::string(e.what()));
+    }
+}
+
 } // namespace Workers
 } // namespace PulseOne

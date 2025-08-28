@@ -132,7 +132,7 @@ bool ModbusTcpWorker::WriteSetpoint(const std::string& setpoint_id, double value
     }
 }
 
-bool ModbusTcpWorker::ControlPump(const std::string& pump_id, bool enable) {
+bool ModbusTcpWorker::ControlDigitalDevice(const std::string& pump_id, bool enable) {
     try {
         LogMessage(LogLevel::INFO, "ControlPump 호출: " + pump_id + " = " + (enable ? "START" : "STOP"));
         
@@ -147,7 +147,7 @@ bool ModbusTcpWorker::ControlPump(const std::string& pump_id, bool enable) {
     }
 }
 
-bool ModbusTcpWorker::ControlValve(const std::string& valve_id, double position) {
+bool ModbusTcpWorker::ControlAnalogDevice(const std::string& valve_id, double position) {
     try {
         LogMessage(LogLevel::INFO, "ControlValve 호출: " + valve_id + " = " + std::to_string(position) + "%");
         
