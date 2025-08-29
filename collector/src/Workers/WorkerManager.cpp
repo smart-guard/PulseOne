@@ -295,7 +295,12 @@ std::vector<Structs::TimestampedValue> WorkerManager::LoadCurrentValuesFromDB(co
             
             value.point_id = entity.getPointId();
             value.timestamp = entity.getValueTimestamp();
-            value.quality = entity.getQuality();
+            try {
+                value.quality = static_cast<PulseOne::Enums::DataQuality>(std::stoi(entity.getQuality()));
+            } catch (const std::exception& e) {
+                value.quality = PulseOne::Enums::DataQuality::NOT_CONNECTED;
+                LogManager::getInstance().Warn("Invalid quality value for point_id=" + std::to_string(value.point_id));
+            }
             value.value_changed = false; // 초기값은 변경 아님
             
             // JSON 문자열에서 DataValue로 변환
