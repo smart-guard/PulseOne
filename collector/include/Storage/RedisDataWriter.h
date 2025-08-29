@@ -154,10 +154,17 @@ namespace BackendFormat {
  */
 class RedisDataWriter {
 public:
+
+    enum class StorageMode {
+        LIGHTWEIGHT,
+        FULL_DATA,
+        HYBRID
+    };
     // ==========================================================================
     // 생성자 및 초기화
     // ==========================================================================
-    
+
+
     explicit RedisDataWriter(std::shared_ptr<RedisClient> redis_client = nullptr);
     ~RedisDataWriter() = default;
     
@@ -167,7 +174,11 @@ public:
     // ==========================================================================
     // Backend 완전 호환 저장 메서드들 (메인 API)
     // ==========================================================================
-    
+    // 설정 메서드들
+    void SetStorageMode(StorageMode mode);
+    void EnableDevicePatternStorage(bool enable);
+    void EnablePointLatestStorage(bool enable);
+    void EnableFullDataStorage(bool enable);    
     /**
      * @brief DeviceDataMessage를 Backend 호환 형식으로 저장
      * device:{device_id}:{point_name} + point:{point_id}:latest 동시 저장
@@ -225,10 +236,21 @@ public:
         std::atomic<uint64_t> total_writes{0};
         std::atomic<uint64_t> successful_writes{0};
         std::atomic<uint64_t> failed_writes{0};
-        std::atomic<uint64_t> device_point_writes{0};     // device:{id}:{name} 저장
-        std::atomic<uint64_t> point_latest_writes{0};     // point:{id}:latest 저장
-        std::atomic<uint64_t> alarm_publishes{0};         // 알람 발행
-        std::atomic<uint64_t> worker_init_writes{0};      // Worker 초기화 저장
+        std::atomic<uint64_t> device_point_writes{0};
+        std::atomic<uint64_t> point_latest_writes{0};
+        std::atomic<uint64_t> alarm_publishes{0};
+        std::atomic<uint64_t> worker_init_writes{0};
+        
+        WriteStats() = default;
+        WriteStats(const WriteStats& other) {
+            total_writes.store(other.total_writes.load());
+            successful_writes.store(other.successful_writes.load());
+            failed_writes.store(other.failed_writes.load());
+            device_point_writes.store(other.device_point_writes.load());
+            point_latest_writes.store(other.point_latest_writes.load());
+            alarm_publishes.store(other.alarm_publishes.load());
+            worker_init_writes.store(other.worker_init_writes.load());
+        }
         
         nlohmann::json toJson() const {
             nlohmann::json j;
@@ -239,8 +261,6 @@ public:
             j["point_latest_writes"] = point_latest_writes.load();
             j["alarm_publishes"] = alarm_publishes.load();
             j["worker_init_writes"] = worker_init_writes.load();
-            j["success_rate"] = total_writes.load() > 0 ? 
-                (double)successful_writes.load() / total_writes.load() * 100.0 : 0.0;
             return j;
         }
     };
@@ -332,6 +352,18 @@ private:
     mutable std::unordered_map<int, std::string> point_name_cache_;
     mutable std::unordered_map<int, std::string> unit_cache_;
     mutable std::mutex cache_mutex_;
+
+        // 내부 저장 메서드들 - 선언만
+    size_t SaveLightweightFormat(const Structs::DeviceDataMessage& message);
+    size_t SaveFullDataFormat(const Structs::DeviceDataMessage& message);
+    size_t SaveDevicePatternFormat(const Structs::DeviceDataMessage& message);
+    size_t SavePointLatestFormat(const Structs::DeviceDataMessage& message);
+
+    // 멤버 변수들
+    StorageMode storage_mode_ = StorageMode::HYBRID;
+    bool store_device_pattern_ = true;
+    bool store_point_latest_ = true;
+    bool store_full_data_ = true;
 };
 
 } // namespace Storage

@@ -1,10 +1,5 @@
 //=============================================================================
-// collector/include/Pipeline/DataProcessingService.h - RedisDataWriter 통합 버전
-// 
-// 주요 변경사항:
-//   - Redis 관련 멤버 변수 및 메서드들을 RedisDataWriter로 대체
-//   - SaveToRedisFullData, SaveToRedisLightweight 등 Redis 저장 메서드 제거
-//   - RedisDataWriter 멤버 변수 추가
+// collector/include/Pipeline/DataProcessingService.h - 완성본
 //=============================================================================
 
 #ifndef PULSEONE_DATA_PROCESSING_SERVICE_H
@@ -36,51 +31,59 @@ namespace VirtualPoint {
     class VirtualPointEngine;
 }
 namespace Storage {
-    class RedisDataWriter;  // RedisDataWriter 전방 선언 추가
+    class RedisDataWriter;
+    namespace BackendFormat {
+        struct AlarmEventData;
+    }
 }
 }
 
 namespace PulseOne {
 namespace Pipeline {
 
-    using DataValue = PulseOne::Structs::DataValue;
+using DataValue = PulseOne::Structs::DataValue;
 
-/**
- * @brief 데이터 처리 서비스 - RedisDataWriter 통합 버전
- */
 class DataProcessingService {
 public:
-    // ==========================================================================
-    // 내부 구조체들
-    // ==========================================================================
-    
+    // 기본 구조체들
     struct ProcessingStats {
-        size_t total_batches_processed{0};
-        size_t total_messages_processed{0};
-        size_t redis_writes{0};
-        size_t influx_writes{0};
-        size_t processing_errors{0};
-        double avg_processing_time_ms{0.0};
+        std::atomic<size_t> total_batches_processed{0};
+        std::atomic<size_t> total_messages_processed{0};
+        std::atomic<size_t> redis_writes{0};
+        std::atomic<size_t> influx_writes{0};
+        std::atomic<size_t> processing_errors{0};
+        double avg_processing_time_ms = 0.0;
+        
+        // 복사 생성자 명시적 구현
+        ProcessingStats() = default;
+        ProcessingStats(const ProcessingStats& other) {
+            total_batches_processed.store(other.total_batches_processed.load());
+            total_messages_processed.store(other.total_messages_processed.load());
+            redis_writes.store(other.redis_writes.load());
+            influx_writes.store(other.influx_writes.load());
+            processing_errors.store(other.processing_errors.load());
+            avg_processing_time_ms = other.avg_processing_time_ms;
+        }
         
         nlohmann::json toJson() const {
             nlohmann::json j;
-            j["total_batches"] = total_batches_processed;
-            j["total_messages"] = total_messages_processed;
-            j["redis_writes"] = redis_writes;
-            j["influx_writes"] = influx_writes;
-            j["errors"] = processing_errors;
+            j["total_batches_processed"] = total_batches_processed.load();
+            j["total_messages_processed"] = total_messages_processed.load();
+            j["redis_writes"] = redis_writes.load();
+            j["influx_writes"] = influx_writes.load();
+            j["processing_errors"] = processing_errors.load();
             j["avg_time_ms"] = avg_processing_time_ms;
             return j;
         }
     };
-    
+
     struct ExtendedProcessingStats {
         ProcessingStats processing;
         PulseOne::Alarm::AlarmProcessingStats alarms;
         
         nlohmann::json toJson() const;
     };
-    
+
     struct ServiceConfig {
         size_t thread_count;
         size_t batch_size;
@@ -89,29 +92,18 @@ public:
         bool external_notification_enabled;
     };
 
-    // ==========================================================================
-    // 생성자/소멸자
-    // ==========================================================================
-    
-    DataProcessingService(std::shared_ptr<RedisClient> redis_client = nullptr,
-                         std::shared_ptr<InfluxClient> influx_client = nullptr);
+    // 생성자 - 매개변수 제거
+    DataProcessingService();
     ~DataProcessingService();
 
-    // ==========================================================================
     // 서비스 제어
-    // ==========================================================================
-    
     bool Start();
     void Stop();
     bool IsRunning() const { return is_running_.load(); }
-    
     void SetThreadCount(size_t thread_count);
     ServiceConfig GetConfig() const;
 
-    // ==========================================================================
-    // 메인 처리 메서드들
-    // ==========================================================================
-    
+    // 메인 처리
     void ProcessBatch(const std::vector<Structs::DeviceDataMessage>& batch, size_t thread_index);
     
     // 가상포인트 처리
@@ -121,39 +113,48 @@ public:
     // 알람 처리
     void EvaluateAlarms(const std::vector<Structs::DeviceDataMessage>& batch, size_t thread_index);
     void ProcessAlarmEvents(const std::vector<PulseOne::Alarm::AlarmEvent>& alarm_events, size_t thread_index);
-
-    // ==========================================================================
-    // 저장 메서드들 - Redis 관련 메서드들 제거됨
-    // ==========================================================================
     
+    // 알람 변환 (구현부에 있는 함수)
+    Storage::BackendFormat::AlarmEventData ConvertAlarmEventToBackendFormat(
+        const PulseOne::Alarm::AlarmEvent& alarm_event) const;
+
     // RDB 저장
     void SaveChangedPointsToRDB(const Structs::DeviceDataMessage& message);
     void SaveChangedPointsToRDB(const Structs::DeviceDataMessage& message, 
-                               const std::vector<Structs::TimestampedValue>& changed_points);
-    
+                                const std::vector<Structs::TimestampedValue>& changed_points);
+    void SaveChangedPointsToRDBBatch(const Structs::DeviceDataMessage& message, 
+                                    const std::vector<Structs::TimestampedValue>& changed_points);
+
     // InfluxDB 저장
     void SaveToInfluxDB(const std::vector<Structs::TimestampedValue>& batch);
     void BufferForInfluxDB(const Structs::DeviceDataMessage& message);
 
-    // ==========================================================================
-    // 외부 시스템 연동 - 일부 Redis 관련 제거됨
-    // ==========================================================================
+    // 헬퍼 메서드들 (구현부에 있는 함수들)
+    std::vector<Structs::TimestampedValue> ConvertToTimestampedValues(const Structs::DeviceDataMessage& device_msg);
+    std::vector<Structs::TimestampedValue> GetChangedPoints(const Structs::DeviceDataMessage& message);
     
+    // JSON 변환 함수들 (구현부에 있는 것들)
+    std::string TimestampedValueToJson(const Structs::TimestampedValue& value);
+    std::string DeviceDataMessageToJson(const Structs::DeviceDataMessage& message);
+    std::string ConvertToLightDeviceStatus(const Structs::DeviceDataMessage& message);
+    std::string ConvertToLightPointValue(const Structs::TimestampedValue& value, const std::string& device_id);
+    std::string ConvertToBatchPointData(const Structs::DeviceDataMessage& message);
+    std::string getDeviceIdForPoint(int point_id);
+    
+    // 가상포인트 저장 (구현부에 있는 함수)
+    void StoreVirtualPointToRedis(const Structs::TimestampedValue& vp_result);
+    
+    // 외부 알림
     void SendExternalNotifications(const PulseOne::Alarm::AlarmEvent& event);
     void NotifyWebClients(const PulseOne::Alarm::AlarmEvent& event);
 
-    // ==========================================================================
-    // 헬퍼 메서드들
-    // ==========================================================================
-    
-    std::vector<Structs::DeviceDataMessage> CollectBatchFromPipelineManager();
-    std::vector<Structs::TimestampedValue> ConvertToTimestampedValues(const Structs::DeviceDataMessage& device_msg);
-    std::vector<Structs::TimestampedValue> GetChangedPoints(const Structs::DeviceDataMessage& message);
+    // DB 관련
+    PulseOne::Database::Entities::CurrentValueEntity ConvertToCurrentValueEntity(
+        const Structs::TimestampedValue& point, 
+        const Structs::Structs::DeviceDataMessage& message);
+    void SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event);
 
-    // ==========================================================================
-    // 통계 및 상태
-    // ==========================================================================
-    
+    // 통계 (구현부에 있는 모든 함수들)
     ProcessingStats GetStatistics() const;
     PulseOne::Alarm::AlarmProcessingStats GetAlarmStatistics() const;
     ExtendedProcessingStats GetExtendedStatistics() const;
@@ -163,7 +164,7 @@ public:
     void UpdateStatistics(size_t point_count);
     void ResetStatistics();
     
-    // VirtualPoint 관련
+    // VirtualPoint 관련 (구현부에 있는 함수들)
     void FlushVirtualPointBatch();
     void LogPerformanceComparison();
     
@@ -171,58 +172,22 @@ public:
     bool IsHealthy() const;
     nlohmann::json GetDetailedStatus() const;
 
-    // ==========================================================================
-    // 에러 처리
-    // ==========================================================================
-    
-    void HandleError(const std::string& error_message, const std::string& context = "");
-
-    // ==========================================================================
-    // 설정 관리
-    // ==========================================================================
-    
-    void SetInfluxClient(std::shared_ptr<InfluxClient> client) { influx_client_ = client; }
-    
-    // Redis 설정은 RedisDataWriter를 통해 처리
-    std::shared_ptr<Storage::RedisDataWriter> GetRedisDataWriter() const { return redis_data_writer_; }
-    
     // 기능 토글
     void EnableAlarmEvaluation(bool enable) { alarm_evaluation_enabled_.store(enable); }
     void EnableVirtualPointCalculation(bool enable) { virtual_point_calculation_enabled_.store(enable); }
     void EnableExternalNotifications(bool enable) { external_notification_enabled_.store(enable); }
-    
-    // 상태 조회
-    bool IsAlarmEvaluationEnabled() const { return alarm_evaluation_enabled_.load(); }
-    bool IsVirtualPointCalculationEnabled() const { return virtual_point_calculation_enabled_.load(); }
-    bool IsExternalNotificationsEnabled() const { return external_notification_enabled_.load(); }
 
 private:
-    // ==========================================================================
-    // 내부 메서드들
-    // ==========================================================================
-    
+    // 스레드 처리
     void ProcessingThreadLoop(size_t thread_index);
-    
-    // Entity 변환
-    PulseOne::Database::Entities::CurrentValueEntity ConvertToCurrentValueEntity(
-        const Structs::TimestampedValue& point, 
-        const Structs::DeviceDataMessage& message);
-     
-    Storage::BackendFormat::AlarmEventData ConvertAlarmEventToBackendFormat(
-        const PulseOne::Alarm::AlarmEvent& alarm_event) const;    
-    
-    // 알람 DB 저장
-    void SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event);
+    std::vector<Structs::DeviceDataMessage> CollectBatchFromPipelineManager();
+    void HandleError(const std::string& error_message, const std::string& context = "");
 
-    // ==========================================================================
-    // 멤버 변수들
-    // ==========================================================================
-    
-    // 클라이언트들 - Redis 관련 제거, RedisDataWriter 추가
-    std::shared_ptr<Storage::RedisDataWriter> redis_data_writer_;  // RedisDataWriter 사용
+    // 클라이언트들
+    std::unique_ptr<Storage::RedisDataWriter> redis_data_writer_;
     std::shared_ptr<InfluxClient> influx_client_;
     std::unique_ptr<VirtualPoint::VirtualPointBatchWriter> vp_batch_writer_;
-    
+
     // 서비스 상태
     std::atomic<bool> should_stop_{false};
     std::atomic<bool> is_running_{false};
@@ -232,12 +197,12 @@ private:
     size_t batch_size_;
     std::vector<std::thread> processing_threads_;
     
-    // 기능 플래그들 - lightweight_redis 관련 제거
+    // 기능 플래그들
     std::atomic<bool> alarm_evaluation_enabled_{true};
     std::atomic<bool> virtual_point_calculation_enabled_{true};
     std::atomic<bool> external_notification_enabled_{false};
     
-    // 통계 카운터들
+    // 통계
     std::atomic<size_t> total_batches_processed_{0};
     std::atomic<size_t> total_messages_processed_{0};
     std::atomic<size_t> points_processed_{0};
@@ -248,14 +213,11 @@ private:
     std::atomic<size_t> virtual_points_calculated_{0};
     std::atomic<size_t> total_operations_{0};
     std::atomic<uint64_t> total_processing_time_ms_{0};
-    
-    // 알람 통계
     std::atomic<size_t> total_alarms_evaluated_{0};
     std::atomic<size_t> total_alarms_triggered_{0};
     std::atomic<size_t> critical_alarms_count_{0};
     std::atomic<size_t> high_alarms_count_{0};
     
-    // 동기화
     mutable std::mutex processing_mutex_;
     std::chrono::steady_clock::time_point start_time_;
 };
