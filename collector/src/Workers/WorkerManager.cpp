@@ -205,16 +205,29 @@ bool WorkerManager::WriteDataPoint(const std::string& device_id, const std::stri
     }
     
     try {
-        // BaseDeviceWorker에는 WriteDataPoint가 없고 AddDataPoint만 있음
-        // 임시로 구현하거나 실제 메서드 확인 필요
-        LogManager::getInstance().Info("데이터 포인트 쓰기 요청: " + device_id + "/" + point_id + " = " + value);
-        // TODO: 실제 Worker에 write 기능 구현 필요
-        return true; // 임시
+        // string → DataValue 변환
+        DataValue data_value;
+        if (!ConvertStringToDataValue(value, data_value)) {
+            LogManager::getInstance().Error("Invalid value format: " + value);
+            return false;
+        }
+        
+        // 실제 Worker의 WriteDataPoint 호출
+        return worker->WriteDataPoint(point_id, data_value);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("데이터 쓰기 예외: " + device_id + "/" + point_id + " - " + e.what());
+        LogManager::getInstance().Error("데이터 쓰기 예외: " + std::string(e.what()));
         return false;
     }
+}
+
+bool WorkerManager::ControlDigitalDevice(const std::string& device_id, const std::string& device_id_target, bool enable) {
+    std::lock_guard<std::mutex> lock(workers_mutex_);
+    
+    auto worker = FindWorker(device_id);
+    if (!worker) return false;
+    
+    return worker->ControlDigitalDevice(device_id_target, enable);
 }
 
 bool WorkerManager::ControlOutput(const std::string& device_id, const std::string& output_id, bool enable) {
@@ -536,6 +549,53 @@ nlohmann::json WorkerManager::GetDetailedStatistics() const {
         std::chrono::system_clock::now().time_since_epoch()).count();
     
     return stats;
+}
+
+bool WorkerManager::ConvertStringToDataValue(const std::string& str, DataValue& value) {
+    // JSON 파싱 시도
+    if (str.front() == '{' || str.front() == '"') {
+        try {
+            nlohmann::json j = nlohmann::json::parse(str);
+            if (j.is_boolean()) {
+                value = j.get<bool>();
+                return true;
+            } else if (j.is_number_integer()) {
+                value = j.get<int32_t>();
+                return true;
+            } else if (j.is_number_float()) {
+                value = j.get<double>();
+                return true;
+            } else if (j.is_string()) {
+                value = j.get<std::string>();
+                return true;
+            }
+        } catch (...) {
+            // JSON 파싱 실패 시 계속
+        }
+    }
+    
+    // 일반 문자열 파싱
+    if (str == "true" || str == "1") {
+        value = true;
+        return true;
+    } else if (str == "false" || str == "0") {
+        value = false;
+        return true;
+    }
+    
+    // 숫자 파싱 시도
+    try {
+        if (str.find('.') != std::string::npos) {
+            value = std::stod(str);
+        } else {
+            value = std::stoi(str);
+        }
+        return true;
+    } catch (...) {
+        // 문자열로 처리
+        value = str;
+        return true;
+    }
 }
 
 

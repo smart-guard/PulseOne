@@ -17,7 +17,7 @@ namespace SQL {
 // =============================================================================
 namespace AlarmOccurrence {
     
-    // 테이블 생성 - 실제 스키마와 동일
+    // 테이블 생성 - cleared_by 필드 포함
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS alarm_occurrences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,6 +35,7 @@ namespace AlarmOccurrence {
             cleared_time DATETIME,
             cleared_value TEXT,
             clear_comment TEXT,
+            cleared_by INTEGER,
             notification_sent INTEGER DEFAULT 0,
             notification_time DATETIME,
             notification_count INTEGER DEFAULT 0,
@@ -51,12 +52,12 @@ namespace AlarmOccurrence {
         )
     )";
     
-    // 기본 CRUD 쿼리들 - 모든 컬럼 포함
+    // 기본 CRUD 쿼리들 - cleared_by 포함
     const std::string FIND_ALL = R"(
         SELECT 
             id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
             alarm_message, severity, state, acknowledged_time, acknowledged_by,
-            acknowledge_comment, cleared_time, cleared_value, clear_comment,
+            acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
             notification_sent, notification_time, notification_count, notification_result,
             context_data, source_name, location, created_at, updated_at,
             device_id, point_id, category, tags
@@ -68,7 +69,7 @@ namespace AlarmOccurrence {
         SELECT 
             id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
             alarm_message, severity, state, acknowledged_time, acknowledged_by,
-            acknowledge_comment, cleared_time, cleared_value, clear_comment,
+            acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
             notification_sent, notification_time, notification_count, notification_result,
             context_data, source_name, location, created_at, updated_at,
             device_id, point_id, category, tags
@@ -76,6 +77,35 @@ namespace AlarmOccurrence {
         WHERE id = ?
     )";
     
+    // ⭐ 중복 제거: FIND_ACTIVE는 하나만 유지
+    const std::string FIND_ACTIVE = R"(
+        SELECT 
+            id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+            alarm_message, severity, state, acknowledged_time, acknowledged_by,
+            acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
+            notification_sent, notification_time, notification_count, notification_result,
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
+        FROM alarm_occurrences 
+        WHERE state = 'active'
+        ORDER BY occurrence_time DESC
+    )";
+    
+    // ⭐ 중복 제거: FIND_BY_RULE_ID는 하나만 유지
+    const std::string FIND_BY_RULE_ID = R"(
+        SELECT 
+            id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+            alarm_message, severity, state, acknowledged_time, acknowledged_by,
+            acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
+            notification_sent, notification_time, notification_count, notification_result,
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
+        FROM alarm_occurrences 
+        WHERE rule_id = ?
+        ORDER BY occurrence_time DESC
+    )";
+    
+    // ⭐ 누락된 INSERT 쿼리 추가
     const std::string INSERT = R"(
         INSERT INTO alarm_occurrences (
             rule_id, tenant_id, trigger_value, trigger_condition,
@@ -84,6 +114,7 @@ namespace AlarmOccurrence {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
+    // ⭐ 누락된 UPDATE 쿼리 추가
     const std::string UPDATE = R"(
         UPDATE alarm_occurrences SET
             trigger_value = ?, trigger_condition = ?, alarm_message = ?,
@@ -93,39 +124,7 @@ namespace AlarmOccurrence {
         WHERE id = ?
     )";
     
-    const std::string DELETE_BY_ID = "DELETE FROM alarm_occurrences WHERE id = ?";
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE id = ?";
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM alarm_occurrences";
-    const std::string FIND_MAX_ID = "SELECT COALESCE(MAX(id), 0) as max_id FROM alarm_occurrences";
-    
-    // 특화 조회 쿼리들
-    const std::string FIND_ACTIVE = R"(
-        SELECT 
-            id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
-            alarm_message, severity, state, acknowledged_time, acknowledged_by,
-            acknowledge_comment, cleared_time, cleared_value, clear_comment,
-            notification_sent, notification_time, notification_count, notification_result,
-            context_data, source_name, location, created_at, updated_at,
-            device_id, point_id, category, tags
-        FROM alarm_occurrences 
-        WHERE state = 'active'
-        ORDER BY occurrence_time DESC
-    )";
-    
-    const std::string FIND_BY_RULE_ID = R"(
-        SELECT 
-            id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
-            alarm_message, severity, state, acknowledged_time, acknowledged_by,
-            acknowledge_comment, cleared_time, cleared_value, clear_comment,
-            notification_sent, notification_time, notification_count, notification_result,
-            context_data, source_name, location, created_at, updated_at,
-            device_id, point_id, category, tags
-        FROM alarm_occurrences 
-        WHERE rule_id = ?
-        ORDER BY occurrence_time DESC
-    )";
-    
-    // 알람 상태 관리 쿼리들
+    // 상태 관리 쿼리들
     const std::string ACKNOWLEDGE = R"(
         UPDATE alarm_occurrences SET
             state = 'acknowledged',
@@ -142,13 +141,48 @@ namespace AlarmOccurrence {
             cleared_time = CURRENT_TIMESTAMP,
             cleared_value = ?,
             clear_comment = ?,
+            cleared_by = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
     
     const std::string CLEAR_ALARM = CLEAR;
     
+    // 기타 유틸리티 쿼리들
+    const std::string DELETE_BY_ID = "DELETE FROM alarm_occurrences WHERE id = ?";
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM alarm_occurrences WHERE id = ?";
+    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM alarm_occurrences";
+    const std::string FIND_MAX_ID = "SELECT COALESCE(MAX(id), 0) as max_id FROM alarm_occurrences";
+    
+    // 감사 추적용 쿼리들
+    const std::string FIND_CLEARED_BY_USER = R"(
+        SELECT 
+            id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+            alarm_message, severity, state, acknowledged_time, acknowledged_by,
+            acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
+            notification_sent, notification_time, notification_count, notification_result,
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
+        FROM alarm_occurrences 
+        WHERE cleared_by = ?
+        ORDER BY cleared_time DESC
+    )";
+    
+    const std::string FIND_ACKNOWLEDGED_BY_USER = R"(
+        SELECT 
+            id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+            alarm_message, severity, state, acknowledged_time, acknowledged_by,
+            acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
+            notification_sent, notification_time, notification_count, notification_result,
+            context_data, source_name, location, created_at, updated_at,
+            device_id, point_id, category, tags
+        FROM alarm_occurrences 
+        WHERE acknowledged_by = ?
+        ORDER BY acknowledged_time DESC
+    )";
+    
 } // namespace AlarmOccurrence
+
 
 // =============================================================================
 // AlarmRule 관련 쿼리들 (실제 스키마에 맞춤)
@@ -835,6 +869,9 @@ namespace Indexes {
         CREATE INDEX IF NOT EXISTS idx_alarm_occ_device_id ON alarm_occurrences(device_id);
         CREATE INDEX IF NOT EXISTS idx_alarm_occ_point_id ON alarm_occurrences(point_id);
         CREATE INDEX IF NOT EXISTS idx_alarm_occ_category ON alarm_occurrences(category);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_acknowledged_by ON alarm_occurrences(acknowledged_by);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_cleared_by ON alarm_occurrences(cleared_by);
+        CREATE INDEX IF NOT EXISTS idx_alarm_occ_cleared_time ON alarm_occurrences(cleared_time DESC);
     )";
     
     // AlarmRule 인덱스들

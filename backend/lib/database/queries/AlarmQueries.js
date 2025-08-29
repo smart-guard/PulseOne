@@ -1,13 +1,13 @@
 // =============================================================================
 // backend/lib/database/queries/AlarmQueries.js
-// 프로토콜 테이블 분리에 따른 스키마 수정 버전
-// 수정일: 2025-08-26 - protocols 테이블 JOIN으로 변경
+// 프로토콜 테이블 분리 + device_id INTEGER 타입 완전 수정 버전
+// 수정일: 2025-08-29 - device_id INTEGER 처리 추가
 // =============================================================================
 
 class AlarmQueries {
     
     // =========================================================================
-    // AlarmRule 쿼리들 - protocols 테이블 JOIN 추가
+    // AlarmRule 쿼리들 - protocols 테이블 JOIN 추가 (기존과 동일)
     // =========================================================================
     static AlarmRule = {
         
@@ -74,11 +74,11 @@ class AlarmQueries {
                 
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             LEFT JOIN devices d2 ON dp.device_id = d2.id
-            LEFT JOIN protocols p2 ON d2.protocol_id = p2.id  -- 🔥 데이터포인트의 디바이스 프로토콜
+            LEFT JOIN protocols p2 ON d2.protocol_id = p2.id
             LEFT JOIN virtual_points vp ON ar.target_type = 'virtual_point' AND ar.target_id = vp.id
             WHERE ar.tenant_id = ?
             ORDER BY ar.created_at DESC
@@ -90,7 +90,7 @@ class AlarmQueries {
                 ar.*,
                 CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit,
                 CASE WHEN ar.target_type = 'virtual_point' THEN vp.name END as virtual_point_name,
@@ -121,7 +121,7 @@ class AlarmQueries {
                 END as condition_display
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             LEFT JOIN virtual_points vp ON ar.target_type = 'virtual_point' AND ar.target_id = vp.id
@@ -132,7 +132,7 @@ class AlarmQueries {
                 ar.category LIKE ? OR
                 ar.tags LIKE ? OR
                 d.name LIKE ? OR
-                p.protocol_type LIKE ? OR  -- 🔥 수정: d.protocol_type → p.protocol_type
+                p.protocol_type LIKE ? OR
                 dp.name LIKE ? OR
                 vp.name LIKE ? OR
                 s.location LIKE ?
@@ -147,7 +147,7 @@ class AlarmQueries {
                 CASE WHEN ar.target_type = 'device' THEN d.device_type END as device_type,
                 CASE WHEN ar.target_type = 'device' THEN d.manufacturer END as manufacturer,
                 CASE WHEN ar.target_type = 'device' THEN d.model END as model,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'device' THEN s.name END as site_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
@@ -159,16 +159,16 @@ class AlarmQueries {
                 CASE WHEN ar.target_type = 'virtual_point' THEN vp.formula END as calculation_formula
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             LEFT JOIN devices d2 ON dp.device_id = d2.id
-            LEFT JOIN protocols p2 ON d2.protocol_id = p2.id  -- 🔥 데이터포인트의 디바이스 프로토콜
+            LEFT JOIN protocols p2 ON d2.protocol_id = p2.id
             LEFT JOIN virtual_points vp ON ar.target_type = 'virtual_point' AND ar.target_id = vp.id
             WHERE ar.id = ? AND ar.tenant_id = ?
         `,
         
-        // 나머지 CRUD 쿼리들은 동일 (protocols 테이블과 직접 관련 없음)
+        // 나머지 CRUD 쿼리들 (기존과 동일)
         CREATE: `
             INSERT INTO alarm_rules (
                 tenant_id, name, description, target_type, target_id, target_group,
@@ -211,54 +211,52 @@ class AlarmQueries {
             LIMIT 1
         `,
         
-        // 카테고리별 조회 - protocols 테이블 JOIN 추가
+        // 특화 쿼리들 (protocols 테이블 JOIN 포함, 기존과 동일)
         FIND_BY_CATEGORY: `
             SELECT 
                 ar.*,
                 CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             WHERE ar.category = ? AND ar.tenant_id = ?
             ORDER BY ar.created_at DESC
         `,
         
-        // 태그별 조회 - protocols 테이블 JOIN 추가
         FIND_BY_TAG: `
             SELECT 
                 ar.*,
                 CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             WHERE ar.tags LIKE ? AND ar.tenant_id = ?
             ORDER BY ar.created_at DESC
         `,
         
-        // 특화 쿼리들 - protocols 테이블 JOIN 추가
         FIND_BY_TARGET: `
             SELECT 
                 ar.*,
                 CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             WHERE ar.target_type = ? AND ar.target_id = ? AND ar.tenant_id = ? AND ar.is_enabled = 1
@@ -270,12 +268,12 @@ class AlarmQueries {
                 ar.*,
                 CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             WHERE ar.is_enabled = 1 AND ar.tenant_id = ?
@@ -287,12 +285,12 @@ class AlarmQueries {
                 ar.*,
                 CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             WHERE ar.alarm_type = ? AND ar.tenant_id = ?
@@ -304,19 +302,19 @@ class AlarmQueries {
                 ar.*,
                 CASE WHEN ar.target_type = 'device' THEN d.name END as device_name,
                 CASE WHEN ar.target_type = 'device' THEN s.location END as site_location,
-                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,  -- 🔥 수정
+                CASE WHEN ar.target_type = 'device' THEN p.protocol_type END as protocol_type,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.name END as data_point_name,
                 CASE WHEN ar.target_type = 'data_point' THEN dp.unit END as unit
             FROM alarm_rules ar
             LEFT JOIN devices d ON ar.target_type = 'device' AND ar.target_id = d.id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
+            LEFT JOIN protocols p ON d.protocol_id = p.id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN data_points dp ON ar.target_type = 'data_point' AND ar.target_id = dp.id
             WHERE ar.severity = ? AND ar.tenant_id = ?
             ORDER BY ar.created_at DESC
         `,
         
-        // 통계 쿼리들 - 기존 유지 (protocols 테이블과 직접 관련 없음)
+        // 통계 쿼리들 (기존과 동일)
         COUNT_TOTAL: `
             SELECT COUNT(*) as total_rules FROM alarm_rules 
             WHERE tenant_id = ?
@@ -380,7 +378,7 @@ class AlarmQueries {
             WHERE tenant_id = ?
         `,
         
-        // 간단한 업데이트 쿼리들 (기존 유지)
+        // 간단한 업데이트 쿼리들 (기존과 동일)
         UPDATE_ENABLED_STATUS: `
             UPDATE alarm_rules 
             SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
@@ -412,11 +410,11 @@ class AlarmQueries {
     };
     
     // =========================================================================
-    // AlarmOccurrence 쿼리들 - protocols 테이블 JOIN 추가
+    // AlarmOccurrence 쿼리들 - protocols 테이블 JOIN + device_id INTEGER 처리
     // =========================================================================
     static AlarmOccurrence = {
     
-        // 기본 CRUD - protocols 테이블 JOIN 추가
+        // 🔧 수정: device_id INTEGER 처리 포함한 FIND_ALL
         FIND_ALL: `
             SELECT 
                 ao.*,
@@ -425,15 +423,15 @@ class AlarmQueries {
                 ar.target_type,
                 ar.target_id,
                 
-                -- ao.device_id 기반으로 디바이스 정보
+                -- ao.device_id 기반으로 디바이스 정보 (INTEGER 처리)
                 d.name as device_name,
                 d.device_type,
                 d.manufacturer,
                 d.model,
-                p.protocol_type,  -- 🔥 수정: protocols 테이블에서 가져오기
-                p.display_name as protocol_name,  -- 🔥 추가
+                p.protocol_type,
+                p.display_name as protocol_name,
                 
-                -- ao.point_id 기반으로 데이터포인트 정보
+                -- ao.point_id 기반으로 데이터포인트 정보 (INTEGER 처리)
                 dp.name as data_point_name,
                 dp.description as data_point_description,
                 dp.unit,
@@ -449,9 +447,9 @@ class AlarmQueries {
                 
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN virtual_points vp ON vp.id = ao.point_id
             WHERE ao.tenant_id = ?
@@ -467,8 +465,8 @@ class AlarmQueries {
                 ar.target_id,
                 d.name as device_name,
                 d.device_type,
-                p.protocol_type,  -- 🔥 수정: protocols 테이블에서 가져오기
-                p.display_name as protocol_name,  -- 🔥 추가
+                p.protocol_type,
+                p.display_name as protocol_name,
                 dp.name as data_point_name,
                 dp.description as data_point_description,
                 s.name as site_name,
@@ -476,15 +474,15 @@ class AlarmQueries {
                 vp.name as virtual_point_name
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN virtual_points vp ON vp.id = ao.point_id
             WHERE ao.id = ? AND ao.tenant_id = ?
         `,
         
-        // CREATE 쿼리는 변경 없음 (protocols 테이블과 직접 관련 없음)
+        // 🔧 수정: CREATE 쿼리 - device_id, point_id INTEGER 처리
         CREATE: `
             INSERT INTO alarm_occurrences (
                 rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
@@ -496,7 +494,7 @@ class AlarmQueries {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         
-        // UPDATE 쿼리들 - 변경 없음
+        // UPDATE 쿼리들 (기존과 동일)
         UPDATE_STATE: `
             UPDATE alarm_occurrences SET
                 state = ?, updated_at = CURRENT_TIMESTAMP
@@ -522,57 +520,94 @@ class AlarmQueries {
             WHERE id = ? AND tenant_id = ?
         `,
         
-        // 카테고리별 알람 발생 조회 - protocols 테이블 JOIN 추가
+        // 🔧 수정: 디바이스별 조회 - device_id INTEGER 처리
+        FIND_BY_DEVICE: `
+            SELECT 
+                ao.*,
+                ar.name as rule_name,
+                d.name as device_name,
+                p.protocol_type,
+                dp.name as data_point_name,
+                s.location as site_location
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
+            LEFT JOIN sites s ON d.site_id = s.id
+            WHERE ao.tenant_id = ? AND ao.device_id = ?  -- INTEGER 비교
+            ORDER BY ao.occurrence_time DESC
+        `,
+        
+        // 🔧 수정: 디바이스별 활성 알람 조회 - device_id INTEGER 처리
+        FIND_ACTIVE_BY_DEVICE: `
+            SELECT 
+                ao.id, ao.rule_id, ao.tenant_id, ao.occurrence_time, ao.trigger_value, ao.trigger_condition,
+                ao.alarm_message, ao.severity, ao.state, ao.acknowledged_time, ao.acknowledged_by,
+                ao.acknowledge_comment, ao.cleared_time, ao.cleared_value, ao.clear_comment,
+                ao.notification_sent, ao.notification_time, ao.notification_count, ao.notification_result,
+                ao.context_data, ao.source_name, ao.location, ao.created_at, ao.updated_at,
+                ao.device_id, ao.point_id, ao.category, ao.tags,
+                ar.name as rule_name, ar.description as rule_description
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            WHERE ao.tenant_id = ? 
+              AND ao.device_id = ?  -- INTEGER 비교
+              AND ao.state = 'active'
+            ORDER BY ao.occurrence_time DESC
+        `,
+        
+        // 카테고리별 알람 발생 조회
         FIND_BY_CATEGORY: `
             SELECT 
                 ao.*,
                 ar.name as rule_name,
                 ar.severity as rule_severity,
                 d.name as device_name,
-                p.protocol_type,  -- 🔥 수정
+                p.protocol_type,
                 dp.name as data_point_name
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             WHERE ao.tenant_id = ? AND ao.category = ?
             ORDER BY ao.occurrence_time DESC
         `,
         
-        // 태그별 알람 발생 조회 - protocols 테이블 JOIN 추가
+        // 태그별 알람 발생 조회
         FIND_BY_TAG: `
             SELECT 
                 ao.*,
                 ar.name as rule_name,
                 ar.severity as rule_severity,
                 d.name as device_name,
-                p.protocol_type,  -- 🔥 수정
+                p.protocol_type,
                 dp.name as data_point_name
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             WHERE ao.tenant_id = ? AND ao.tags LIKE ?
             ORDER BY ao.occurrence_time DESC
         `,
         
-        // 활성/비활성 상태 조회 - protocols 테이블 JOIN 추가
+        // 활성 알람 조회
         FIND_ACTIVE: `
             SELECT 
                 ao.*,
                 ar.name as rule_name,
                 ar.severity as rule_severity,
                 d.name as device_name,
-                p.protocol_type,  -- 🔥 수정
+                p.protocol_type,
                 dp.name as data_point_name,
                 s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? AND ao.state = 'active'
             ORDER BY ao.occurrence_time DESC
@@ -583,45 +618,27 @@ class AlarmQueries {
                 ao.*,
                 ar.name as rule_name,
                 d.name as device_name,
-                p.protocol_type,  -- 🔥 수정
+                p.protocol_type,
                 dp.name as data_point_name,
                 s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? AND ao.acknowledged_time IS NULL
             ORDER BY ao.occurrence_time DESC
         `,
         
-        // 특정 룰/디바이스의 알람 이력 - 변경 없음
+        // 특정 룰의 알람 이력
         FIND_BY_RULE: `
             SELECT * FROM alarm_occurrences 
             WHERE rule_id = ? AND tenant_id = ?
             ORDER BY occurrence_time DESC
         `,
         
-        FIND_BY_DEVICE: `
-            SELECT 
-                ao.*,
-                ar.name as rule_name,
-                d.name as device_name,
-                p.protocol_type,  -- 🔥 수정
-                dp.name as data_point_name,
-                s.location as site_location
-            FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
-            LEFT JOIN sites s ON d.site_id = s.id
-            WHERE ao.tenant_id = ? AND ao.device_id = ?
-            ORDER BY ao.occurrence_time DESC
-        `,
-        
-        // 통계 쿼리들 - 변경 없음 (protocols 테이블과 직접 관련 없음)
+        // 통계 쿼리들 (기존과 동일)
         STATS_SUMMARY: `
             SELECT 
                 COUNT(*) as total_occurrences,
@@ -680,95 +697,76 @@ class AlarmQueries {
                 ao.*,
                 ar.name as rule_name,
                 d.name as device_name,
-                p.protocol_type,  -- 🔥 수정
+                p.protocol_type,
                 dp.name as data_point_name,
                 s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? 
             ORDER BY ao.occurrence_time DESC
             LIMIT ?
         `,
         
-        // 특정 기간 내 알람 - protocols 테이블 JOIN 추가
+        // 특정 기간 내 알람
         FIND_BY_DATE_RANGE: `
             SELECT 
                 ao.*,
                 ar.name as rule_name,
                 ar.severity as rule_severity,
                 d.name as device_name,
-                p.protocol_type,  -- 🔥 수정
+                p.protocol_type,
                 dp.name as data_point_name,
                 s.location as site_location
             FROM alarm_occurrences ao
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id  -- 🔥 protocols 테이블 JOIN 추가
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id  -- INTEGER JOIN
             LEFT JOIN sites s ON d.site_id = s.id
             WHERE ao.tenant_id = ? 
                 AND ao.occurrence_time >= ? 
                 AND ao.occurrence_time <= ?
             ORDER BY ao.occurrence_time DESC
-        `
+        `,
+
+        // 🔧 추가: device_id INTEGER 검증을 위한 개수 조회
+        COUNT_ALL: `
+            SELECT COUNT(*) as count 
+            FROM alarm_occurrences 
+            WHERE tenant_id = ?
+        `,
+
+        COUNT_ACTIVE: `
+            SELECT COUNT(*) as count 
+            FROM alarm_occurrences 
+            WHERE tenant_id = ? AND state = 'active'
+        `,
+
+        // 🔧 추가: 디바이스별 통계 (device_id INTEGER 처리)
+        STATS_BY_DEVICE: `
+            SELECT 
+                ao.device_id,
+                d.name as device_name,
+                COUNT(*) as total_alarms,
+                SUM(CASE WHEN ao.state = 'active' THEN 1 ELSE 0 END) as active_alarms
+            FROM alarm_occurrences ao
+            LEFT JOIN devices d ON d.id = ao.device_id  -- INTEGER JOIN
+            WHERE ao.tenant_id = ? AND ao.device_id IS NOT NULL
+            GROUP BY ao.device_id, d.name
+            ORDER BY total_alarms DESC
+        `,
+
+        // 삭제 관련
+        DELETE: `DELETE FROM alarm_occurrences WHERE id = ?`,
+        DELETE_BY_IDS: `DELETE FROM alarm_occurrences WHERE id IN `
     };
 
-    // 나머지 헬퍼 메서드들과 AlarmTemplate 쿼리들은 기존과 동일 (protocols 테이블과 직접 관련 없음)
-    // ... [기존 코드들 - 변경 없음]
-
-    /**
-     * 활성화/비활성화 상태만 업데이트하는 파라미터 생성
-     */
-    static buildEnabledStatusParams(isEnabled, id, tenantId) {
-        return [
-            isEnabled ? 1 : 0,  // is_enabled
-            parseInt(id),       // WHERE id = ?
-            tenantId           // WHERE tenant_id = ?
-        ];
-    }
-
-    /**
-     * 설정만 업데이트하는 파라미터 생성
-     */
-    static buildSettingsParams(settings, id, tenantId) {
-        return [
-            settings.is_enabled !== undefined ? (settings.is_enabled ? 1 : 0) : 1,
-            settings.notification_enabled !== undefined ? (settings.notification_enabled ? 1 : 0) : 1,
-            settings.auto_acknowledge !== undefined ? (settings.auto_acknowledge ? 1 : 0) : 0,
-            settings.auto_clear !== undefined ? (settings.auto_clear ? 1 : 0) : 1,
-            parseInt(id),       // WHERE id = ?
-            tenantId           // WHERE tenant_id = ?
-        ];
-    }
-
-    /**
-     * 이름만 업데이트하는 파라미터 생성
-     */
-    static buildNameParams(name, id, tenantId) {
-        return [
-            name,              // name = ?
-            parseInt(id),      // WHERE id = ?
-            tenantId          // WHERE tenant_id = ?
-        ];
-    }
-
-    /**
-     * 심각도만 업데이트하는 파라미터 생성
-     */
-    static buildSeverityParams(severity, id, tenantId) {
-        return [
-            severity,          // severity = ?
-            parseInt(id),      // WHERE id = ?
-            tenantId          // WHERE tenant_id = ?
-        ];
-    }
-    
     // =========================================================================
-    // AlarmTemplate 쿼리들 (기존과 동일 - protocols 테이블과 직접 관련 없음)
+    // AlarmTemplate 쿼리들 (기존과 동일)
     // =========================================================================
     static AlarmTemplate = {
         
@@ -887,11 +885,144 @@ class AlarmQueries {
     };
     
     // =========================================================================
-    // 공통 유틸리티 메서드들 (기존과 동일)
+    // 공통 유틸리티 메서드들 - device_id INTEGER 처리 추가
     // =========================================================================
     
     /**
-     * 동적 WHERE 절 생성 (AlarmRule용) - 검색 쿼리에서 protocol_type 검색을 p.protocol_type으로 변경
+     * 🔧 수정: AlarmOccurrence 필터 조건 빌더 - device_id INTEGER 처리
+     */
+    static buildAlarmOccurrenceFilters(baseQuery, filters = {}) {
+        let query = baseQuery;
+        const params = [];
+        
+        if (filters.tenant_id) {
+            params.push(filters.tenant_id);
+        }
+        
+        if (filters.state) {
+            query += ` AND ao.state = ?`;
+            params.push(filters.state);
+        }
+        
+        if (filters.severity) {
+            query += ` AND ao.severity = ?`;
+            params.push(filters.severity);
+        }
+        
+        if (filters.rule_id) {
+            query += ` AND ao.rule_id = ?`;
+            params.push(parseInt(filters.rule_id));
+        }
+        
+        // 🔧 수정: device_id INTEGER 검증 및 처리
+        if (filters.device_id) {
+            const deviceId = parseInt(filters.device_id);
+            if (!isNaN(deviceId)) {
+                query += ` AND ao.device_id = ?`;
+                params.push(deviceId);
+            }
+        }
+        
+        if (filters.date_from) {
+            query += ` AND ao.occurrence_time >= ?`;
+            params.push(filters.date_from);
+        }
+        
+        if (filters.date_to) {
+            query += ` AND ao.occurrence_time <= ?`;
+            params.push(filters.date_to);
+        }
+        
+        if (filters.acknowledged === true) {
+            query += ` AND ao.acknowledged_time IS NOT NULL`;
+        } else if (filters.acknowledged === false) {
+            query += ` AND ao.acknowledged_time IS NULL`;
+        }
+        
+        if (filters.category) {
+            query += ` AND ao.category = ?`;
+            params.push(filters.category);
+        }
+        
+        if (filters.tag) {
+            query += ` AND ao.tags LIKE ?`;
+            params.push(`%${filters.tag}%`);
+        }
+        
+        return { query, params };
+    }
+    
+    /**
+     * 🔧 수정: AlarmOccurrence CREATE 파라미터 생성 - device_id INTEGER 처리
+     */
+    static buildCreateOccurrenceParams(data) {
+        return [
+            data.rule_id,
+            data.tenant_id,
+            data.occurrence_time || new Date().toISOString(),
+            data.trigger_value || null,
+            data.trigger_condition || null,
+            data.alarm_message,
+            data.severity,
+            data.state || 'active',
+            data.acknowledged_time || null,
+            data.acknowledged_by || null,
+            data.acknowledge_comment || null,
+            data.cleared_time || null,
+            data.cleared_value || null,
+            data.clear_comment || null,
+            data.notification_sent || 0,
+            data.notification_time || null,
+            data.notification_count || 0,
+            data.notification_result || null,
+            data.context_data || null,
+            data.source_name || null,
+            data.location || null,
+            data.created_at || new Date().toISOString(),
+            data.updated_at || new Date().toISOString(),
+            // 🔧 수정: device_id INTEGER 처리
+            data.device_id ? parseInt(data.device_id) : null,
+            // 🔧 수정: point_id INTEGER 처리
+            data.point_id ? parseInt(data.point_id) : null,
+            data.category || null,
+            data.tags || null
+        ];
+    }
+
+    /**
+     * 🔧 추가: device_id INTEGER 검증 함수
+     */
+    static validateDeviceId(deviceId) {
+        if (deviceId === null || deviceId === undefined) {
+            return null;
+        }
+        
+        const parsed = parseInt(deviceId);
+        if (isNaN(parsed)) {
+            throw new Error('device_id must be a valid integer');
+        }
+        
+        return parsed;
+    }
+
+    /**
+     * 🔧 추가: point_id INTEGER 검증 함수
+     */
+    static validatePointId(pointId) {
+        if (pointId === null || pointId === undefined) {
+            return null;
+        }
+        
+        const parsed = parseInt(pointId);
+        if (isNaN(parsed)) {
+            throw new Error('point_id must be a valid integer');
+        }
+        
+        return parsed;
+    }
+
+    /**
+     * 동적 WHERE 절 생성 (AlarmRule용) - 검색 쿼리에서 protocol_type 검색
      */
     static buildAlarmRuleWhereClause(baseQuery, filters = {}) {
         let query = baseQuery;
@@ -946,7 +1077,6 @@ class AlarmQueries {
             params.push(`%${filters.tag}%`);
         }
         
-        // 🔥 수정: protocol_type 검색 시 p.protocol_type 사용
         if (filters.protocol_type) {
             query += ` AND p.protocol_type = ?`;
             params.push(filters.protocol_type);
@@ -955,68 +1085,6 @@ class AlarmQueries {
         if (filters.search) {
             query += ` AND (ar.name LIKE ? OR ar.description LIKE ? OR ar.category LIKE ? OR ar.tags LIKE ? OR p.protocol_type LIKE ?)`;
             params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
-        }
-        
-        return { query, params };
-    }
-    
-    // 나머지 헬퍼 메서드들은 기존과 동일...
-    
-    /**
-     * AlarmOccurrence 필터 조건 빌더
-     */
-    static buildAlarmOccurrenceFilters(baseQuery, filters = {}) {
-        let query = baseQuery;
-        const params = [];
-        
-        if (filters.tenant_id) {
-            params.push(filters.tenant_id);
-        }
-        
-        if (filters.state) {
-            query += ` AND ao.state = ?`;
-            params.push(filters.state);
-        }
-        
-        if (filters.severity) {
-            query += ` AND ao.severity = ?`;
-            params.push(filters.severity);
-        }
-        
-        if (filters.rule_id) {
-            query += ` AND ao.rule_id = ?`;
-            params.push(parseInt(filters.rule_id));
-        }
-        
-        if (filters.device_id) {
-            query += ` AND ao.device_id = ?`;
-            params.push(filters.device_id);
-        }
-        
-        if (filters.date_from) {
-            query += ` AND ao.occurrence_time >= ?`;
-            params.push(filters.date_from);
-        }
-        
-        if (filters.date_to) {
-            query += ` AND ao.occurrence_time <= ?`;
-            params.push(filters.date_to);
-        }
-        
-        if (filters.acknowledged === true) {
-            query += ` AND ao.acknowledged_time IS NOT NULL`;
-        } else if (filters.acknowledged === false) {
-            query += ` AND ao.acknowledged_time IS NULL`;
-        }
-        
-        if (filters.category) {
-            query += ` AND ao.category = ?`;
-            params.push(filters.category);
-        }
-        
-        if (filters.tag) {
-            query += ` AND ao.tags LIKE ?`;
-            params.push(`%${filters.tag}%`);
         }
         
         return { query, params };
@@ -1099,41 +1167,6 @@ class AlarmQueries {
     }
 
     /**
-     * AlarmOccurrence CREATE 파라미터 생성 (기존과 동일)
-     */
-    static buildCreateOccurrenceParams(data) {
-        return [
-            data.rule_id,
-            data.tenant_id,
-            data.occurrence_time || new Date().toISOString(),
-            data.trigger_value || null,
-            data.trigger_condition || null,
-            data.alarm_message,
-            data.severity,
-            data.state || 'active',
-            data.acknowledged_time || null,
-            data.acknowledged_by || null,
-            data.acknowledge_comment || null,
-            data.cleared_time || null,
-            data.cleared_value || null,
-            data.clear_comment || null,
-            data.notification_sent || 0,
-            data.notification_time || null,
-            data.notification_count || 0,
-            data.notification_result || null,
-            data.context_data || null,
-            data.source_name || null,
-            data.location || null,
-            data.created_at || new Date().toISOString(),
-            data.updated_at || new Date().toISOString(),
-            data.device_id || null,
-            data.point_id || null,
-            data.category || null,
-            data.tags || null
-        ];
-    }
-
-    /**
      * AlarmRule UPDATE 파라미터 생성 (기존과 동일)
      */
     static buildUpdateRuleParams(data, id, tenantId) {
@@ -1178,6 +1211,53 @@ class AlarmQueries {
             data.category || null,
             data.tags || null,
             id,
+            tenantId
+        ];
+    }
+
+    /**
+     * 활성화/비활성화 상태만 업데이트하는 파라미터 생성
+     */
+    static buildEnabledStatusParams(isEnabled, id, tenantId) {
+        return [
+            isEnabled ? 1 : 0,
+            parseInt(id),
+            tenantId
+        ];
+    }
+
+    /**
+     * 설정만 업데이트하는 파라미터 생성
+     */
+    static buildSettingsParams(settings, id, tenantId) {
+        return [
+            settings.is_enabled !== undefined ? (settings.is_enabled ? 1 : 0) : 1,
+            settings.notification_enabled !== undefined ? (settings.notification_enabled ? 1 : 0) : 1,
+            settings.auto_acknowledge !== undefined ? (settings.auto_acknowledge ? 1 : 0) : 0,
+            settings.auto_clear !== undefined ? (settings.auto_clear ? 1 : 0) : 1,
+            parseInt(id),
+            tenantId
+        ];
+    }
+
+    /**
+     * 이름만 업데이트하는 파라미터 생성
+     */
+    static buildNameParams(name, id, tenantId) {
+        return [
+            name,
+            parseInt(id),
+            tenantId
+        ];
+    }
+
+    /**
+     * 심각도만 업데이트하는 파라미터 생성
+     */
+    static buildSeverityParams(severity, id, tenantId) {
+        return [
+            severity,
+            parseInt(id),
             tenantId
         ];
     }
@@ -1264,7 +1344,7 @@ class AlarmQueries {
     }
 
     /**
-     * 필수 필드 검증 - AlarmOccurrence (기존과 동일)
+     * 🔧 수정: 필수 필드 검증 - AlarmOccurrence (device_id INTEGER 검증 포함)
      */
     static validateAlarmOccurrence(data) {
         const requiredFields = ['rule_id', 'tenant_id', 'alarm_message', 'severity'];
@@ -1273,6 +1353,22 @@ class AlarmQueries {
         for (const field of requiredFields) {
             if (!data[field]) {
                 missingFields.push(field);
+            }
+        }
+        
+        // 🔧 추가: device_id INTEGER 검증
+        if (data.device_id !== null && data.device_id !== undefined) {
+            const deviceId = parseInt(data.device_id);
+            if (isNaN(deviceId)) {
+                throw new Error('device_id는 유효한 정수여야 합니다');
+            }
+        }
+        
+        // 🔧 추가: point_id INTEGER 검증
+        if (data.point_id !== null && data.point_id !== undefined) {
+            const pointId = parseInt(data.point_id);
+            if (isNaN(pointId)) {
+                throw new Error('point_id는 유효한 정수여야 합니다');
             }
         }
         
