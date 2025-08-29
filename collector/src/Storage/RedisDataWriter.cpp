@@ -65,122 +65,130 @@ bool RedisDataWriter::IsConnected() const {
     return redis_client_ && redis_client_->isConnected();
 }
 
+
+void RedisDataWriter::SetStorageMode(StorageMode mode) {
+    storage_mode_ = mode;
+    LogManager::getInstance().log("redis_writer", LogLevel::INFO,
+        "저장 모드 변경: " + std::to_string(static_cast<int>(mode)));
+}
+
+void RedisDataWriter::EnableDevicePatternStorage(bool enable) {
+    store_device_pattern_ = enable;
+}
+
+void RedisDataWriter::EnablePointLatestStorage(bool enable) {
+    store_point_latest_ = enable;
+}
+
+void RedisDataWriter::EnableFullDataStorage(bool enable) {
+    store_full_data_ = enable;
+}
+
 // =============================================================================
 // Backend 완전 호환 저장 메서드들 (메인 API)
 // =============================================================================
 
 size_t RedisDataWriter::SaveDeviceMessage(const Structs::DeviceDataMessage& message) {
-    if (!IsConnected()) {
-        LogManager::getInstance().log("redis_writer", LogLevel::WARN, "Redis 미연결 - 저장 건너뜀");
-        return 0;
-    }
+    if (!IsConnected()) return 0;
     
-    if (message.points.empty()) {
-        LogManager::getInstance().log("redis_writer", LogLevel::DEBUG_LEVEL, "저장할 포인트 없음");
-        return 0;
-    }
+    size_t total_saved = 0;
     
     try {
         std::lock_guard<std::mutex> lock(redis_mutex_);
         
-        size_t success_count = 0;
-        std::string device_num = ExtractDeviceNumber(message.device_id);
-        
-        LogManager::getInstance().log("redis_writer", LogLevel::DEBUG_LEVEL,
-                   "디바이스 메시지 저장 시작 (모든 Redis 패턴): " + message.device_id + " -> device:" + 
-                   device_num + " (" + std::to_string(message.points.size()) + "개 포인트)");
-        
-        // =================================================================
-        // 🔥 모든 기존 Redis 저장 패턴 통합 구현
-        // =================================================================
-        
-        for (const auto& point : message.points) {
-            try {
-                // Backend 호환 DevicePointData 생성
-                auto device_point = ConvertToDevicePointData(point, device_num);
-                
-                // 1️⃣ device:{id}:{point_name} 키 저장 (Backend 메인 키)
-                std::string device_key = "device:" + device_num + ":" + device_point.point_name;
-                std::string device_json = device_point.toJson().dump();
-                redis_client_->setex(device_key, device_json, 3600);
-                
-                // 2️⃣ point:{point_id}:latest 키 저장 (Legacy 호환)
-                json point_latest;
-                point_latest["device_id"] = device_num;
-                point_latest["point_id"] = point.point_id;
-                point_latest["value"] = device_point.value;
-                point_latest["timestamp"] = device_point.timestamp;
-                point_latest["quality"] = static_cast<int>(point.quality);
-                point_latest["changed"] = point.value_changed;
-                
-                std::string point_key = "point:" + std::to_string(point.point_id) + ":latest";
-                redis_client_->setex(point_key, point_latest.dump(), 3600);
-                
-                success_count++;
-                stats_.device_point_writes.fetch_add(2); // device + point 키 모두
-                
-                LogManager::getInstance().log("redis_writer", LogLevel::DEBUG_LEVEL,
-                           "포인트 저장 성공: " + device_key + " = " + device_point.value + 
-                           " " + device_point.unit + " (" + device_point.quality + ")");
-                
-            } catch (const std::exception& e) {
-                HandleError("개별 포인트 저장", e.what());
-            }
+        // 1. 경량 모드 저장
+        if (storage_mode_ == StorageMode::LIGHTWEIGHT || storage_mode_ == StorageMode::HYBRID) {
+            total_saved += SaveLightweightFormat(message);
         }
         
-        // 3️⃣ device:full:{device_id} 저장 (기존 SaveToRedisFullData 대체)
-        try {
-            json device_full;
-            device_full["device_id"] = message.device_id;
-            device_full["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-            device_full["points"] = json::array();
-            
-            for (const auto& point : message.points) {
-                json point_data;
-                point_data["device_id"] = message.device_id;
-                point_data["point_id"] = point.point_id;
-                point_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    point.timestamp.time_since_epoch()).count();
-                
-                std::visit([&point_data](const auto& v) {
-                    point_data["value"] = v;
-                }, point.value);
-                
-                point_data["quality"] = static_cast<int>(point.quality);
-                device_full["points"].push_back(point_data);
-            }
-            
-            std::string full_key = "device:full:" + device_num;
-            redis_client_->setex(full_key, device_full.dump(), 3600);
-            
-            LogManager::getInstance().log("redis_writer", LogLevel::DEBUG_LEVEL,
-                       "Device full data 저장 성공: " + full_key);
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("redis_writer", LogLevel::WARN,
-                       "Device full data 저장 실패: " + std::string(e.what()));
+        // 2. 완전 데이터 저장
+        if (storage_mode_ == StorageMode::FULL_DATA || storage_mode_ == StorageMode::HYBRID) {
+            total_saved += SaveFullDataFormat(message);
         }
         
-        stats_.total_writes.fetch_add(1);
-        if (success_count == message.points.size()) {
-            stats_.successful_writes.fetch_add(1);
-        } else {
-            stats_.failed_writes.fetch_add(1);
+        // 3. Backend 호환 device:{id}:{name} 패턴
+        if (store_device_pattern_) {
+            total_saved += SaveDevicePatternFormat(message);
         }
         
-        LogManager::getInstance().log("redis_writer", LogLevel::INFO,
-                   "디바이스 메시지 저장 완료 (모든 Redis 패턴): " + message.device_id + " - " + 
-                   std::to_string(success_count) + "/" + std::to_string(message.points.size()) + "개 성공");
-        LogManager::getInstance().log("redis_writer", LogLevel::DEBUG_LEVEL,
-                   "저장된 키 패턴: device:{id}:{name}, point:{id}:latest, device:full:{id}");
+        // 4. point:{id}:latest 패턴
+        if (store_point_latest_) {
+            total_saved += SavePointLatestFormat(message);
+        }
         
-        return success_count;
+        return total_saved;
         
     } catch (const std::exception& e) {
         HandleError("SaveDeviceMessage", e.what());
         return 0;
     }
+}
+
+size_t RedisDataWriter::SaveLightweightFormat(const Structs::DeviceDataMessage& message) {
+    size_t saved = 0;
+    for (const auto& point : message.points) {
+        json light_data;
+        light_data["id"] = point.point_id;
+        light_data["val"] = ConvertValueToString(point.value);
+        light_data["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            point.timestamp.time_since_epoch()).count();
+        light_data["q"] = static_cast<int>(point.quality);
+        
+        std::string key = "point:" + std::to_string(point.point_id) + ":light";
+        redis_client_->setex(key, light_data.dump(), 1800);
+        saved++;
+    }
+    return saved;
+}
+
+size_t RedisDataWriter::SaveFullDataFormat(const Structs::DeviceDataMessage& message) {
+    json full_data;
+    full_data["device_id"] = message.device_id;
+    full_data["protocol"] = message.protocol;
+    full_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+        message.timestamp.time_since_epoch()).count();
+    full_data["points"] = json::array();
+    
+    for (const auto& point : message.points) {
+        json point_data;
+        point_data["point_id"] = point.point_id;
+        point_data["value"] = ConvertValueToString(point.value);
+        point_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            point.timestamp.time_since_epoch()).count();
+        point_data["quality"] = static_cast<int>(point.quality);
+        point_data["changed"] = point.value_changed;
+        full_data["points"].push_back(point_data);
+    }
+    
+    std::string key = "device:full:" + ExtractDeviceNumber(message.device_id);
+    redis_client_->setex(key, full_data.dump(), 3600);
+    return 1;
+}
+
+size_t RedisDataWriter::SaveDevicePatternFormat(const Structs::DeviceDataMessage& message) {
+    size_t saved = 0;
+    std::string device_num = ExtractDeviceNumber(message.device_id);
+    
+    for (const auto& point : message.points) {
+        auto device_point = ConvertToDevicePointData(point, device_num);
+        std::string device_key = "device:" + device_num + ":" + device_point.point_name;
+        redis_client_->setex(device_key, device_point.toJson().dump(), 3600);
+        saved++;
+    }
+    return saved;
+}
+
+size_t RedisDataWriter::SavePointLatestFormat(const Structs::DeviceDataMessage& message) {
+    size_t saved = 0;
+    std::string device_num = ExtractDeviceNumber(message.device_id);
+    
+    for (const auto& point : message.points) {
+        auto point_latest = ConvertToPointLatestData(point, device_num);
+        std::string point_key = "point:" + std::to_string(point.point_id) + ":latest";
+        redis_client_->setex(point_key, point_latest.toJson().dump(), 3600);
+        saved++;
+    }
+    return saved;
 }
 
 bool RedisDataWriter::SaveSinglePoint(const Structs::TimestampedValue& point, const std::string& device_id) {
@@ -604,6 +612,7 @@ void RedisDataWriter::HandleError(const std::string& context, const std::string&
 
 RedisDataWriter::WriteStats RedisDataWriter::GetStatistics() const {
     WriteStats result;
+    // atomic 값들을 개별적으로 복사 (이미 구현된 코드)
     result.total_writes.store(stats_.total_writes.load());
     result.successful_writes.store(stats_.successful_writes.load());
     result.failed_writes.store(stats_.failed_writes.load());
@@ -611,7 +620,7 @@ RedisDataWriter::WriteStats RedisDataWriter::GetStatistics() const {
     result.point_latest_writes.store(stats_.point_latest_writes.load());
     result.alarm_publishes.store(stats_.alarm_publishes.load());
     result.worker_init_writes.store(stats_.worker_init_writes.load());
-    return result;
+    return result;  // 이건 작동함 - 개별 atomic들은 복사됨
 }
 
 void RedisDataWriter::ResetStatistics() {

@@ -34,11 +34,8 @@ namespace Pipeline {
 // 생성자 및 소멸자
 // =============================================================================
 
-DataProcessingService::DataProcessingService(
-    std::shared_ptr<RedisClient> redis_client,
-    std::shared_ptr<InfluxClient> influx_client)
-    : influx_client_(influx_client)
-    , should_stop_(false)
+DataProcessingService::DataProcessingService()
+    : should_stop_(false)
     , is_running_(false)
     , thread_count_(std::thread::hardware_concurrency())
     , batch_size_(100)
@@ -48,40 +45,18 @@ DataProcessingService::DataProcessingService(
         if (thread_count_ == 0) thread_count_ = 1;
         else if (thread_count_ > 16) thread_count_ = 16;
         
-        // RedisDataWriter 생성 (기존 Redis 저장 로직 대체)
-        redis_data_writer_ = std::make_unique<Storage::RedisDataWriter>(redis_client);
+        // RedisDataWriter가 자체적으로 Redis 연결 생성
+        redis_data_writer_ = std::make_unique<Storage::RedisDataWriter>();
         
-        if (redis_data_writer_->IsConnected()) {
-            LogManager::getInstance().log("processing", LogLevel::INFO,
-                "✅ RedisDataWriter 연결 성공");
-        } else {
-            LogManager::getInstance().log("processing", LogLevel::WARN,
-                "⚠️ RedisDataWriter 연결 실패, Redis 없이 계속 진행");
-        }
-        
-        if (influx_client_) {
-            LogManager::getInstance().log("processing", LogLevel::INFO,
-                "✅ InfluxDB 클라이언트 연결됨");
-        }
-        
-        if (vp_batch_writer_) {
-            LogManager::getInstance().log("processing", LogLevel::INFO,
-                "✅ VirtualPointBatchWriter 생성 완료");
-        }
+        // InfluxClient는 나중에 필요할 때 추가
+        // influx_client_ = nullptr;
         
         LogManager::getInstance().log("processing", LogLevel::INFO,
-            "✅ DataProcessingService 생성 완료 (RedisDataWriter 통합) - 스레드 수: " +
-            std::to_string(thread_count_) + ", 배치 크기: " + std::to_string(batch_size_));
+            "DataProcessingService 생성 완료");
             
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::ERROR,
-            "❌ DataProcessingService 생성 중 예외: " + std::string(e.what()));
-        
-        redis_data_writer_.reset();
-        influx_client_.reset();
-        vp_batch_writer_.reset();
-        thread_count_ = 1;
-        batch_size_ = 50;
+            "DataProcessingService 생성 중 예외: " + std::string(e.what()));
     }
 }
 
@@ -97,39 +72,42 @@ DataProcessingService::~DataProcessingService() {
 
 bool DataProcessingService::Start() {
     if (is_running_.load()) {
-        LogManager::getInstance().log("processing", LogLevel::WARN, 
-                                     "⚠️ DataProcessingService가 이미 실행 중입니다");
+        LogManager::getInstance().log("processing", LogLevel::WARN,
+            "DataProcessingService가 이미 실행 중입니다");
         return false;
     }
     
+    // PipelineManager 의존성 확인 (필수)
     auto& pipeline_manager = PipelineManager::GetInstance();
     if (!pipeline_manager.IsRunning()) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
-                                     "❌ PipelineManager가 실행되지 않았습니다!");
+        LogManager::getInstance().log("processing", LogLevel::ERROR,
+            "PipelineManager가 실행되지 않았습니다!");
         return false;
     }
     
-    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                 "🚀 DataProcessingService 시작 중...");
+    LogManager::getInstance().log("processing", LogLevel::INFO,
+        "DataProcessingService 시작 중...");
     
+    // VirtualPointBatchWriter 시작 (선택적)
     if (vp_batch_writer_ && !vp_batch_writer_->Start()) {
         LogManager::getInstance().log("processing", LogLevel::ERROR,
-            "❌ VirtualPointBatchWriter 시작 실패");
+            "VirtualPointBatchWriter 시작 실패");
         return false;
     }
 
     should_stop_ = false;
     is_running_ = true;
     
+    // 스레드 풀 시작
     processing_threads_.reserve(thread_count_);
     for (size_t i = 0; i < thread_count_; ++i) {
         processing_threads_.emplace_back(
             &DataProcessingService::ProcessingThreadLoop, this, i);
     }
     
-    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                 "✅ DataProcessingService 시작 완료 (스레드 " + 
-                                 std::to_string(thread_count_) + "개)");
+    LogManager::getInstance().log("processing", LogLevel::INFO,
+        "DataProcessingService 시작 완료 (스레드 " +
+        std::to_string(thread_count_) + "개)");
     return true;
 }
 
@@ -138,15 +116,21 @@ void DataProcessingService::Stop() {
         return;
     }
     
-    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                 "🛑 DataProcessingService 중지 중...");
-
+    LogManager::getInstance().log("processing", LogLevel::INFO,
+        "DataProcessingService 중지 중...");
+    
+    // 1. 중지 플래그 설정
+    should_stop_ = true;
+    
+    // 2. VirtualPointBatchWriter 먼저 중지
     if (vp_batch_writer_) {
         vp_batch_writer_->Stop();
     }
-
-    should_stop_ = true;
     
+    // 3. 스레드들이 루프를 빠져나올 시간 확보
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    // 4. 스레드 종료 대기
     for (auto& thread : processing_threads_) {
         if (thread.joinable()) {
             thread.join();
@@ -156,8 +140,8 @@ void DataProcessingService::Stop() {
     
     is_running_ = false;
     
-    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                 "✅ DataProcessingService 중지 완료");
+    LogManager::getInstance().log("processing", LogLevel::INFO,
+        "DataProcessingService 중지 완료");
 }
 
 void DataProcessingService::SetThreadCount(size_t thread_count) {
@@ -179,7 +163,7 @@ DataProcessingService::ServiceConfig DataProcessingService::GetConfig() const {
     ServiceConfig config;
     config.thread_count = thread_count_;
     config.batch_size = batch_size_;
-    config.lightweight_mode = use_lightweight_redis_.load();
+    // config.lightweight_mode = use_lightweight_redis_.load();  // 이 라인만 제거
     config.alarm_evaluation_enabled = alarm_evaluation_enabled_.load();
     config.virtual_point_calculation_enabled = virtual_point_calculation_enabled_.load();
     config.external_notification_enabled = external_notification_enabled_.load();
@@ -560,6 +544,7 @@ void DataProcessingService::ProcessAlarmEvents(
                 
                 // Redis 발행 - RedisDataWriter 사용
                 if (redis_data_writer_) {
+                    auto backend_alarm = ConvertAlarmEventToBackendFormat(alarm_event);
                     redis_data_writer_->PublishAlarmEvent(alarm_event);
                     LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                                  "✅ RedisDataWriter 알람 발행 완료: rule_id=" + 
@@ -1364,6 +1349,13 @@ void DataProcessingService::SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEven
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
                                      "❌ 알람 DB 저장 예외: " + std::string(e.what()));
+    }
+}
+
+
+void DataProcessingService::StoreVirtualPointToRedis(const Structs::TimestampedValue& vp_result) {
+    if (redis_data_writer_) {
+        redis_data_writer_->StoreVirtualPointToRedis(vp_result);
     }
 }
 
