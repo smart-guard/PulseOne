@@ -1,5 +1,5 @@
 //=============================================================================
-// collector/include/Pipeline/DataProcessingService.h - 완성본
+// collector/include/Pipeline/DataProcessingService.h - 완성본 (컴파일 에러 수정)
 //=============================================================================
 
 #ifndef PULSEONE_DATA_PROCESSING_SERVICE_H
@@ -63,6 +63,19 @@ public:
             influx_writes.store(other.influx_writes.load());
             processing_errors.store(other.processing_errors.load());
             avg_processing_time_ms = other.avg_processing_time_ms;
+        }
+        
+        // 복사 대입 연산자 수정
+        ProcessingStats& operator=(const ProcessingStats& other) {
+            if (this != &other) {
+                total_batches_processed.store(other.total_batches_processed.load());
+                total_messages_processed.store(other.total_messages_processed.load());
+                redis_writes.store(other.redis_writes.load());
+                influx_writes.store(other.influx_writes.load());
+                processing_errors.store(other.processing_errors.load());
+                avg_processing_time_ms = other.avg_processing_time_ms;
+            }
+            return *this;
         }
         
         nlohmann::json toJson() const {
@@ -148,10 +161,10 @@ public:
     void SendExternalNotifications(const PulseOne::Alarm::AlarmEvent& event);
     void NotifyWebClients(const PulseOne::Alarm::AlarmEvent& event);
 
-    // DB 관련
+    // DB 관련 - ✅ 컴파일 에러 수정: 중복 Structs:: 제거
     PulseOne::Database::Entities::CurrentValueEntity ConvertToCurrentValueEntity(
         const Structs::TimestampedValue& point, 
-        const Structs::Structs::DeviceDataMessage& message);
+        const Structs::DeviceDataMessage& message);
     void SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event);
 
     // 통계 (구현부에 있는 모든 함수들)
@@ -182,6 +195,10 @@ private:
     void ProcessingThreadLoop(size_t thread_index);
     std::vector<Structs::DeviceDataMessage> CollectBatchFromPipelineManager();
     void HandleError(const std::string& error_message, const std::string& context = "");
+
+    // ✅ 헬퍼 함수 선언 추가 - 컴파일 에러 수정
+    std::string getPointName(int point_id) const;
+    std::string getUnit(int point_id) const;
 
     // 클라이언트들
     std::unique_ptr<Storage::RedisDataWriter> redis_data_writer_;

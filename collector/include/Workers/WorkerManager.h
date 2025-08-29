@@ -13,6 +13,8 @@
 #include <atomic>
 #include <nlohmann/json.hpp>
 #include "Common/Structs.h"
+#include "Storage/RedisDataWriter.h"
+#include "Database/Repositories/CurrentValueRepository.h"
 
 namespace PulseOne::Workers {
     
@@ -138,7 +140,7 @@ private:
     // ==========================================================================
     // 생성자/소멸자 (싱글톤)
     // ==========================================================================
-    WorkerManager() = default;
+    WorkerManager();
     ~WorkerManager();
 
     // ==========================================================================
@@ -192,8 +194,12 @@ private:
     std::atomic<int> total_stopped_{0};
     std::atomic<int> total_errors_{0};
 
-    bool ConvertStringToDataValue(const std::string& str, DataValue& value);
+    std::unique_ptr<Storage::RedisDataWriter> redis_data_writer_;
 
+    bool ConvertStringToDataValue(const std::string& str, DataValue& value);
+    void InitializeWorkerRedisData(const std::string& device_id);
+    int BatchInitializeRedisData(const std::vector<std::string>& device_ids);
+    std::vector<Structs::TimestampedValue> LoadCurrentValuesFromDB(const std::string& device_id);
 };
 
 } // namespace PulseOne::Workers
