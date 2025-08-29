@@ -236,8 +236,9 @@ public:
      * @param comment 해제 코멘트
      * @return 성공 시 true
      */
-    bool clear(int64_t occurrence_id, const std::string& cleared_value, const std::string& comment = "");
-
+    bool clear(int64_t occurrence_id, int cleared_by, const std::string& cleared_value, const std::string& comment);
+    std::vector<AlarmOccurrenceEntity> findClearedByUser(int user_id);
+    std::vector<AlarmOccurrenceEntity> findAcknowledgedByUser(int user_id);
     // =======================================================================
     // 통계 및 분석 메서드들
     // =======================================================================

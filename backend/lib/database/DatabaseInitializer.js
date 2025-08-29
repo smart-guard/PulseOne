@@ -1,6 +1,6 @@
 // =============================================================================
 // backend/lib/database/DatabaseInitializer.js
-// 🚀 PulseOne 데이터베이스 자동 초기화 시스템 (스키마 파일 분리 버전)
+// PulseOne 데이터베이스 자동 초기화 시스템 - device_id INTEGER + cleared_by 완성본
 // =============================================================================
 
 const path = require('path');
@@ -25,10 +25,10 @@ class DatabaseInitializer {
         this.schemasDir = path.join(__dirname, 'schemas');
         this.dataFilesDir = path.join(__dirname, 'data');
         
-        console.log(`🔧 DatabaseInitializer 초기화`);
-        console.log(`📁 프로젝트 루트: ${this.projectRoot}`);
-        console.log(`🗄️ 데이터베이스 경로: ${this.dbPath}`);
-        console.log(`📄 스키마 파일 경로: ${this.schemasDir}`);
+        console.log('DatabaseInitializer 초기화');
+        console.log('프로젝트 루트:', this.projectRoot);
+        console.log('데이터베이스 경로:', this.dbPath);
+        console.log('스키마 파일 경로:', this.schemasDir);
     }
 
     /**
@@ -36,11 +36,11 @@ class DatabaseInitializer {
      */
     async checkDatabaseStatus() {
         try {
-            console.log('🔍 데이터베이스 상태 확인 중...');
+            console.log('데이터베이스 상태 확인 중...');
 
             // 데이터베이스 파일 존재 확인
             if (!existsSync(this.dbPath)) {
-                console.log('📂 데이터베이스 파일이 없습니다. 새로 생성이 필요합니다.');
+                console.log('데이터베이스 파일이 없습니다. 새로 생성이 필요합니다.');
                 return this.initStatus;
             }
 
@@ -60,11 +60,11 @@ class DatabaseInitializer {
 
             await this.closeDatabase(db);
 
-            console.log('✅ 데이터베이스 상태 확인 완료:', this.initStatus);
+            console.log('데이터베이스 상태 확인 완료:', this.initStatus);
             return this.initStatus;
 
         } catch (error) {
-            console.error('❌ 데이터베이스 상태 확인 실패:', error.message);
+            console.error('데이터베이스 상태 확인 실패:', error.message);
             throw error;
         }
     }
@@ -74,7 +74,7 @@ class DatabaseInitializer {
      */
     async performInitialization() {
         try {
-            console.log('🚀 데이터베이스 초기화 시작...');
+            console.log('데이터베이스 초기화 시작...');
 
             // 데이터 디렉토리 생성
             await this.ensureDataDirectory();
@@ -89,21 +89,21 @@ class DatabaseInitializer {
             if (!this.initStatus.systemTables) {
                 await this.createSystemTablesFromFiles(db);
                 this.initStatus.systemTables = true;
-                console.log('✅ 시스템 테이블 생성 완료');
+                console.log('시스템 테이블 생성 완료');
             }
 
             // 2. 인덱스 생성 (스키마 파일에서)
             if (!this.initStatus.indexes) {
                 await this.createIndexesFromFile(db);
                 this.initStatus.indexes = true;
-                console.log('✅ 인덱스 생성 완료');
+                console.log('인덱스 생성 완료');
             }
 
             // 3. 초기 데이터 삽입 (데이터 파일에서)
             if (!this.initStatus.sampleData) {
                 await this.insertSampleDataFromFile(db);
                 this.initStatus.sampleData = true;
-                console.log('✅ 샘플 데이터 삽입 완료');
+                console.log('샘플 데이터 삽입 완료');
             }
 
             // 4. 테넌트 스키마 완료 표시
@@ -111,11 +111,11 @@ class DatabaseInitializer {
 
             await this.closeDatabase(db);
 
-            console.log('🎉 데이터베이스 초기화 완료!');
+            console.log('데이터베이스 초기화 완료!');
             return this.initStatus;
 
         } catch (error) {
-            console.error('❌ 데이터베이스 초기화 실패:', error.message);
+            console.error('데이터베이스 초기화 실패:', error.message);
             throw error;
         }
     }
@@ -126,7 +126,7 @@ class DatabaseInitializer {
     async createBackup(force = false) {
         try {
             if (!existsSync(this.dbPath)) {
-                console.log('💡 백업할 데이터베이스가 없습니다.');
+                console.log('백업할 데이터베이스가 없습니다.');
                 return null;
             }
 
@@ -134,12 +134,12 @@ class DatabaseInitializer {
             const backupPath = path.join(this.dataDir, `pulseone_backup_${timestamp}.db`);
 
             await fs.copyFile(this.dbPath, backupPath);
-            console.log(`✅ 백업 생성 완료: ${backupPath}`);
+            console.log(`백업 생성 완료: ${backupPath}`);
             
             return backupPath;
 
         } catch (error) {
-            console.error('❌ 백업 생성 실패:', error.message);
+            console.error('백업 생성 실패:', error.message);
             if (!force) throw error;
             return null;
         }
@@ -167,26 +167,26 @@ class DatabaseInitializer {
             '04-indexes.sql'
         ];
 
-        console.log('📄 스키마 파일 확인 중...');
+        console.log('스키마 파일 확인 중...');
 
         for (const file of requiredFiles) {
             const filePath = path.join(this.schemasDir, file);
             if (!existsSync(filePath)) {
-                console.warn(`⚠️ 스키마 파일 없음: ${file}`);
+                console.warn(`스키마 파일 없음: ${file}`);
                 // 파일이 없으면 생성
                 await this.createMissingSchemaFile(file);
             } else {
-                console.log(`✅ ${file} 존재 확인`);
+                console.log(`${file} 존재 확인`);
             }
         }
 
         // 데이터 파일 확인
         const dataFile = path.join(this.dataFilesDir, 'initial-data.sql');
         if (!existsSync(dataFile)) {
-            console.warn(`⚠️ 데이터 파일 없음: initial-data.sql`);
+            console.warn('데이터 파일 없음: initial-data.sql');
             await this.createInitialDataFile();
         } else {
-            console.log(`✅ initial-data.sql 존재 확인`);
+            console.log('initial-data.sql 존재 확인');
         }
     }
 
@@ -194,7 +194,7 @@ class DatabaseInitializer {
      * 스키마 파일에서 시스템 테이블 생성
      */
     async createSystemTablesFromFiles(db) {
-        console.log('🔧 스키마 파일에서 시스템 테이블 생성 중...');
+        console.log('스키마 파일에서 시스템 테이블 생성 중...');
 
         const schemaFiles = [
             '01-core-tables.sql',
@@ -206,25 +206,25 @@ class DatabaseInitializer {
             await this.executeSchemaFile(db, filename);
         }
 
-        console.log('✅ 시스템 테이블 생성 완료');
+        console.log('시스템 테이블 생성 완료');
     }
 
     /**
      * 스키마 파일에서 인덱스 생성
      */
     async createIndexesFromFile(db) {
-        console.log('🔧 스키마 파일에서 인덱스 생성 중...');
+        console.log('스키마 파일에서 인덱스 생성 중...');
         await this.executeSchemaFile(db, '04-indexes.sql');
-        console.log('✅ 인덱스 생성 완료');
+        console.log('인덱스 생성 완료');
     }
 
     /**
      * 데이터 파일에서 샘플 데이터 삽입
      */
     async insertSampleDataFromFile(db) {
-        console.log('🔧 데이터 파일에서 샘플 데이터 삽입 중...');
+        console.log('데이터 파일에서 샘플 데이터 삽입 중...');
         await this.executeDataFile(db, 'initial-data.sql');
-        console.log('✅ 샘플 데이터 삽입 완료');
+        console.log('샘플 데이터 삽입 완료');
     }
 
     /**
@@ -234,12 +234,12 @@ class DatabaseInitializer {
         const filePath = path.join(this.schemasDir, filename);
         
         try {
-            console.log(`📄 스키마 파일 실행: ${filename}`);
+            console.log(`스키마 파일 실행: ${filename}`);
             const sqlContent = await fs.readFile(filePath, 'utf8');
             await this.executeSQLScript(db, sqlContent);
-            console.log(`✅ ${filename} 실행 완료`);
+            console.log(`${filename} 실행 완료`);
         } catch (error) {
-            console.error(`❌ ${filename} 실행 실패:`, error.message);
+            console.error(`${filename} 실행 실패:`, error.message);
             throw error;
         }
     }
@@ -251,12 +251,12 @@ class DatabaseInitializer {
         const filePath = path.join(this.dataFilesDir, filename);
         
         try {
-            console.log(`📊 데이터 파일 실행: ${filename}`);
+            console.log(`데이터 파일 실행: ${filename}`);
             const sqlContent = await fs.readFile(filePath, 'utf8');
             await this.executeSQLScript(db, sqlContent);
-            console.log(`✅ ${filename} 실행 완료`);
+            console.log(`${filename} 실행 완료`);
         } catch (error) {
-            console.error(`❌ ${filename} 실행 실패:`, error.message);
+            console.error(`${filename} 실행 실패:`, error.message);
             throw error;
         }
     }
@@ -284,7 +284,7 @@ class DatabaseInitializer {
     }
 
     // =============================================================================
-    // 스키마 파일 자동 생성 메소드들
+    // 스키마 파일 자동 생성 메소드들 - device_id INTEGER + cleared_by 추가
     // =============================================================================
 
     /**
@@ -316,7 +316,7 @@ class DatabaseInitializer {
         }
 
         await fs.writeFile(filePath, content, 'utf8');
-        console.log(`✅ 스키마 파일 생성: ${filename}`);
+        console.log(`스키마 파일 생성: ${filename}`);
     }
 
     /**
@@ -332,11 +332,11 @@ class DatabaseInitializer {
 
         const content = this.getInitialDataSQL();
         await fs.writeFile(filePath, content, 'utf8');
-        console.log(`✅ 데이터 파일 생성: initial-data.sql`);
+        console.log('데이터 파일 생성: initial-data.sql');
     }
 
     // =============================================================================
-    // SQL 내용 생성 메소드들 (간소화된 버전)
+    // SQL 내용 생성 메소드들 - device_id INTEGER + cleared_by 완전 반영
     // =============================================================================
 
     getCoreTablesSQL() {
@@ -623,78 +623,150 @@ CREATE TABLE IF NOT EXISTS virtual_point_inputs (
 
     getAlarmTablesSQL() {
         return `-- =============================================================================
--- 03-alarm-tables.sql - 알람 관련 테이블
+-- 03-alarm-tables.sql - 알람 관련 테이블 (device_id INTEGER + cleared_by 완전 반영)
 -- =============================================================================
 
--- 알람 룰 테이블
+-- 알람 규칙 테이블 - 실제 스키마와 완전 일치
 CREATE TABLE IF NOT EXISTS alarm_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    device_id INTEGER,
-    data_point_id INTEGER,
-    virtual_point_id INTEGER,
-    condition_type VARCHAR(50) NOT NULL,
-    condition_config TEXT NOT NULL,
-    severity VARCHAR(20) DEFAULT 'warning',
+    target_type VARCHAR(20) NOT NULL,
+    target_id INTEGER,
+    target_group VARCHAR(100),
+    alarm_type VARCHAR(20) NOT NULL,
+    high_high_limit REAL,
+    high_limit REAL,
+    low_limit REAL,
+    low_low_limit REAL,
+    deadband REAL DEFAULT 0,
+    rate_of_change REAL DEFAULT 0,
+    trigger_condition VARCHAR(20),
+    condition_script TEXT,
+    message_script TEXT,
+    message_config TEXT,
     message_template TEXT,
+    severity VARCHAR(20) DEFAULT 'medium',
+    priority INTEGER DEFAULT 100,
     auto_acknowledge INTEGER DEFAULT 0,
-    auto_clear INTEGER DEFAULT 0,
-    acknowledgment_required INTEGER DEFAULT 1,
-    escalation_time_minutes INTEGER DEFAULT 0,
+    acknowledge_timeout_min INTEGER DEFAULT 0,
+    auto_clear INTEGER DEFAULT 1,
+    suppression_rules TEXT,
     notification_enabled INTEGER DEFAULT 1,
-    email_notification INTEGER DEFAULT 0,
-    sms_notification INTEGER DEFAULT 0,
+    notification_delay_sec INTEGER DEFAULT 0,
+    notification_repeat_interval_min INTEGER DEFAULT 0,
+    notification_channels TEXT,
+    notification_recipients TEXT,
     is_enabled INTEGER DEFAULT 1,
-    created_by INTEGER,
+    is_latched INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER, 
+    template_id INTEGER, 
+    rule_group VARCHAR(36), 
+    created_by_template INTEGER DEFAULT 0, 
+    last_template_update DATETIME, 
+    escalation_enabled INTEGER DEFAULT 0,
+    escalation_max_level INTEGER DEFAULT 3,
+    escalation_rules TEXT DEFAULT NULL,
+    category VARCHAR(50) DEFAULT NULL,
+    tags TEXT DEFAULT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-    FOREIGN KEY (data_point_id) REFERENCES data_points(id) ON DELETE CASCADE,
-    FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- 알람 발생 테이블 - device_id INTEGER + cleared_by 추가 완성
+CREATE TABLE IF NOT EXISTS alarm_occurrences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id INTEGER NOT NULL,
+    tenant_id INTEGER NOT NULL,
+    occurrence_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    trigger_value TEXT,
+    trigger_condition TEXT,
+    alarm_message TEXT,
+    severity VARCHAR(20),
+    state VARCHAR(20) DEFAULT 'active',
+    acknowledged_time DATETIME,
+    acknowledged_by INTEGER,
+    acknowledge_comment TEXT,
+    cleared_time DATETIME,
+    cleared_value TEXT,
+    clear_comment TEXT,
+    cleared_by INTEGER,                        -- 추가: 알람 해제한 사용자 ID
+    notification_sent INTEGER DEFAULT 0,
+    notification_time DATETIME,
+    notification_count INTEGER DEFAULT 0,
+    notification_result TEXT,
+    context_data TEXT,
+    source_name VARCHAR(100),
+    location VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    device_id INTEGER,                         -- INTEGER로 수정!
+    point_id INTEGER,
+    category VARCHAR(50) DEFAULT NULL,
+    tags TEXT DEFAULT NULL,
+    FOREIGN KEY (rule_id) REFERENCES alarm_rules(id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (cleared_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- 알람 규칙 템플릿 테이블
+CREATE TABLE IF NOT EXISTS alarm_rule_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    category VARCHAR(50),
+    condition_type VARCHAR(50) NOT NULL,
+    condition_template TEXT NOT NULL,
+    default_config TEXT NOT NULL,
+    severity VARCHAR(20) DEFAULT 'warning',
+    message_template TEXT,
+    applicable_data_types TEXT,
+    applicable_device_types TEXT,
+    applicable_units TEXT,
+    industry VARCHAR(50),
+    equipment_type VARCHAR(50),
+    usage_count INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    is_system_template INTEGER DEFAULT 0,
+    tags TEXT DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, name)
 );
 
--- 알람 발생 테이블
-CREATE TABLE IF NOT EXISTS alarm_occurrences (
+-- 스크립트 라이브러리 테이블
+CREATE TABLE IF NOT EXISTS script_library (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    alarm_rule_id INTEGER NOT NULL,
-    device_id INTEGER,
-    data_point_id INTEGER,
-    virtual_point_id INTEGER,
-    severity VARCHAR(20) NOT NULL,
-    message TEXT NOT NULL,
-    trigger_value TEXT,
-    condition_details TEXT,
-    state VARCHAR(20) DEFAULT 'active',
-    occurrence_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    acknowledgment_time DATETIME,
-    acknowledged_by INTEGER,
-    acknowledgment_note TEXT,
-    clear_time DATETIME,
-    cleared_by INTEGER,
-    resolution_note TEXT,
-    escalation_level INTEGER DEFAULT 0,
-    notification_sent INTEGER DEFAULT 0,
+    tenant_id INTEGER NOT NULL DEFAULT 0,
+    category VARCHAR(50) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    display_name VARCHAR(100),
+    description TEXT,
+    script_code TEXT NOT NULL,
+    parameters TEXT,
+    return_type VARCHAR(20) DEFAULT 'number',
+    tags TEXT,
+    example_usage TEXT,
+    is_system INTEGER DEFAULT 0,
+    usage_count INTEGER DEFAULT 0,
+    rating REAL DEFAULT 0.0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (alarm_rule_id) REFERENCES alarm_rules(id) ON DELETE CASCADE,
-    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE SET NULL,
-    FOREIGN KEY (data_point_id) REFERENCES data_points(id) ON DELETE SET NULL,
-    FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE SET NULL,
-    FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (cleared_by) REFERENCES users(id) ON DELETE SET NULL
+    UNIQUE(tenant_id, name)
 );`;
     }
 
     getIndexesSQL() {
         return `-- =============================================================================
--- 04-indexes.sql - 인덱스 생성
+-- 04-indexes.sql - 인덱스 생성 (device_id INTEGER + cleared_by 반영)
 -- =============================================================================
 
 -- 디바이스 관련 인덱스
@@ -713,15 +785,42 @@ CREATE INDEX IF NOT EXISTS idx_data_points_is_enabled ON data_points(is_enabled)
 CREATE INDEX IF NOT EXISTS idx_virtual_points_tenant_id ON virtual_points(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_virtual_points_is_enabled ON virtual_points(is_enabled);
 
--- 알람 관련 인덱스
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_tenant_id ON alarm_rules(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_device_id ON alarm_rules(device_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_is_enabled ON alarm_rules(is_enabled);
+-- 알람 규칙 관련 인덱스
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_tenant ON alarm_rules(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_target ON alarm_rules(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_enabled ON alarm_rules(is_enabled);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_template_id ON alarm_rules(template_id);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_rule_group ON alarm_rules(rule_group);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_created_by_template ON alarm_rules(created_by_template);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_category ON alarm_rules(category);
+CREATE INDEX IF NOT EXISTS idx_alarm_rules_tags ON alarm_rules(tags);
 
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_tenant_id ON alarm_occurrences(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_state ON alarm_occurrences(state);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_severity ON alarm_occurrences(severity);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_occurrence_time ON alarm_occurrences(occurrence_time);
+-- 알람 발생 관련 인덱스 - device_id INTEGER + cleared_by 반영
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_rule_id ON alarm_occurrences(rule_id);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_tenant_id ON alarm_occurrences(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_state ON alarm_occurrences(state);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_severity ON alarm_occurrences(severity);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_occurrence_time ON alarm_occurrences(occurrence_time DESC);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_device_id ON alarm_occurrences(device_id);  -- INTEGER 인덱스
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_point_id ON alarm_occurrences(point_id);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_category ON alarm_occurrences(category);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_acknowledged_by ON alarm_occurrences(acknowledged_by);
+CREATE INDEX IF NOT EXISTS idx_alarm_occ_cleared_by ON alarm_occurrences(cleared_by);  -- cleared_by 인덱스 추가
+
+-- 알람 템플릿 관련 인덱스
+CREATE INDEX IF NOT EXISTS idx_alarm_templates_tenant ON alarm_rule_templates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_alarm_templates_category ON alarm_rule_templates(category);
+CREATE INDEX IF NOT EXISTS idx_alarm_templates_active ON alarm_rule_templates(is_active);
+CREATE INDEX IF NOT EXISTS idx_alarm_templates_system ON alarm_rule_templates(is_system_template);
+CREATE INDEX IF NOT EXISTS idx_alarm_templates_usage ON alarm_rule_templates(usage_count DESC);
+CREATE INDEX IF NOT EXISTS idx_alarm_templates_name ON alarm_rule_templates(tenant_id, name);
+
+-- 스크립트 라이브러리 인덱스
+CREATE UNIQUE INDEX IF NOT EXISTS idx_script_library_tenant_name ON script_library(tenant_id, name);
+CREATE INDEX IF NOT EXISTS idx_script_library_category ON script_library(category);
+CREATE INDEX IF NOT EXISTS idx_script_library_tenant ON script_library(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_script_library_is_system ON script_library(is_system);
+CREATE INDEX IF NOT EXISTS idx_script_library_usage_count ON script_library(usage_count DESC);
 
 -- 사용자 관련 인덱스
 CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
@@ -746,7 +845,7 @@ CREATE INDEX IF NOT EXISTS idx_sites_is_active ON sites(is_active);`;
 
     getInitialDataSQL() {
         return `-- =============================================================================
--- initial-data.sql - 초기 샘플 데이터
+-- initial-data.sql - 초기 샘플 데이터 (device_id INTEGER 반영)
 -- =============================================================================
 
 -- 기본 테넌트 생성
@@ -807,7 +906,7 @@ INSERT OR REPLACE INTO devices (
 INSERT OR REPLACE INTO device_status (device_id, connection_status) VALUES
 (1, 'disconnected'), (2, 'connected'), (3, 'connected');
 
--- 디바이스 설정 초기화
+-- 디바이스 설정 초기화  
 INSERT OR REPLACE INTO device_settings (device_id) VALUES (1), (2), (3);
 
 -- 샘플 데이터포인트 생성
@@ -832,33 +931,42 @@ INSERT OR REPLACE INTO virtual_points (
     id, tenant_id, name, description, formula, data_type, unit,
     calculation_interval, calculation_trigger, is_enabled, category
 ) VALUES (
-    14, 1, 'Test VP Fixed', 'Fixed value test virtual point', '1 + 1', 'float', null,
+    1, 1, 'Test VP Fixed', 'Fixed value test virtual point', '1 + 1', 'float', null,
     1000, 'timer', 1, 'calculation'
 );
 
--- 샘플 알람 룰 생성
+-- 샘플 알람 규칙 생성
 INSERT OR REPLACE INTO alarm_rules (
-    id, tenant_id, name, description, device_id, data_point_id,
-    condition_type, condition_config, severity, message_template, is_enabled
+    id, tenant_id, name, description, target_type, target_id,
+    alarm_type, high_limit, severity, message_template, is_enabled
 ) VALUES (
-    1, 1, 'High Temperature Alert', 'Temperature exceeds safe threshold', 1, 1,
-    'threshold', '{"operator":">","value":80}', 'major', 
+    1, 1, 'High Temperature Alert', 'Temperature exceeds safe threshold', 'data_point', 1,
+    'threshold', 80.0, 'major', 
     'High temperature detected: {{value}}°C', 1
+);
+
+-- 샘플 알람 발생 테스트 데이터 (device_id INTEGER + cleared_by 확인용)
+INSERT OR REPLACE INTO alarm_occurrences (
+    id, rule_id, tenant_id, device_id, point_id, 
+    trigger_value, alarm_message, severity, state, cleared_by
+) VALUES (
+    1, 1, 1, 1, 1,  -- device_id는 INTEGER 1
+    '85.5', 'High temperature detected: 85.5°C', 'major', 'cleared', 1
 );`;
     }
 
     // =============================================================================
-    // 기존 내부 메소드들 (변경 없음)
+    // 기존 내부 메소드들
     // =============================================================================
 
     async ensureDataDirectory() {
         try {
             if (!existsSync(this.dataDir)) {
                 await fs.mkdir(this.dataDir, { recursive: true });
-                console.log(`📁 데이터 디렉토리 생성: ${this.dataDir}`);
+                console.log(`데이터 디렉토리 생성: ${this.dataDir}`);
             }
         } catch (error) {
-            console.error('❌ 데이터 디렉토리 생성 실패:', error.message);
+            console.error('데이터 디렉토리 생성 실패:', error.message);
             throw error;
         }
     }
@@ -885,7 +993,7 @@ INSERT OR REPLACE INTO alarm_rules (
         return new Promise((resolve) => {
             db.close((err) => {
                 if (err) {
-                    console.warn('⚠️ 데이터베이스 닫기 오류:', err.message);
+                    console.warn('데이터베이스 닫기 오류:', err.message);
                 }
                 resolve();
             });
@@ -902,12 +1010,12 @@ INSERT OR REPLACE INTO alarm_rules (
         for (const table of requiredTables) {
             const exists = await this.tableExists(db, table);
             if (!exists) {
-                console.log(`❌ 필수 테이블 없음: ${table}`);
+                console.log(`필수 테이블 없음: ${table}`);
                 return false;
             }
         }
 
-        console.log('✅ 모든 시스템 테이블 존재 확인');
+        console.log('모든 시스템 테이블 존재 확인');
         return true;
     }
 
@@ -973,7 +1081,7 @@ INSERT OR REPLACE INTO alarm_rules (
         return new Promise((resolve, reject) => {
             db.run(sql, (err) => {
                 if (err) {
-                    console.error(`❌ SQL 실행 실패: ${err.message}`);
+                    console.error(`SQL 실행 실패: ${err.message}`);
                     console.error(`SQL: ${sql.substring(0, 100)}...`);
                     reject(err);
                 } else {

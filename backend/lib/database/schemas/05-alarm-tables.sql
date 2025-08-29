@@ -1,11 +1,8 @@
 -- =============================================================================
 -- backend/lib/database/schemas/05-alarm-tables.sql
--- 알람 시스템 테이블 (SQLite 버전) - 2025-08-21 최신 업데이트
+-- 알람 시스템 테이블 (SQLite 버전) - device_id INTEGER 수정
 -- PulseOne v2.1.0 완전 호환, 현재 DB와 100% 동기화
 -- =============================================================================
-
--- 주의: 기존 alarm_definitions, active_alarms, alarm_events는 더 이상 사용하지 않음
--- 새로운 구조: alarm_rules + alarm_occurrences + 고급 기능 테이블들
 
 -- =============================================================================
 -- 알람 규칙 테이블 - 현재 DB 구조와 완전 일치 (category, tags 추가)
@@ -43,13 +40,6 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     
     -- 메시지 커스터마이징
     message_config TEXT,                            -- JSON 형태
-    /* 예시:
-    {
-        "0": {"text": "이상 발생", "severity": "critical"},
-        "1": {"text": "정상 복구", "severity": "info"},
-        "high_high": {"text": "매우 높음: {value}{unit}", "severity": "critical"}
-    }
-    */
     message_template TEXT,                          -- 기본 메시지 템플릿
     
     -- 우선순위
@@ -63,16 +53,6 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     
     -- 억제 규칙
     suppression_rules TEXT,                         -- JSON 형태
-    /* 예시:
-    {
-        "time_based": [
-            {"start": "22:00", "end": "06:00", "days": ["SAT", "SUN"]}
-        ],
-        "condition_based": [
-            {"point_id": 123, "condition": "value == 0"}
-        ]
-    }
-    */
     
     -- 알림 설정
     notification_enabled INTEGER DEFAULT 1,
@@ -99,7 +79,7 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     escalation_max_level INTEGER DEFAULT 3,
     escalation_rules TEXT DEFAULT NULL,             -- JSON 형태 에스컬레이션 규칙
     
-    -- 🆕 분류 및 태깅 시스템 (2025-08-21 추가)
+    -- 분류 및 태깅 시스템
     category VARCHAR(50) DEFAULT NULL,              -- 'process', 'system', 'safety', 'custom', 'general'
     tags TEXT DEFAULT NULL,                         -- JSON 배열 형태 ['tag1', 'tag2', 'tag3']
     
@@ -108,7 +88,7 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
 );
 
 -- =============================================================================
--- 알람 발생 이력 - 현재 DB 구조와 완전 일치
+-- 알람 발생 이력 - device_id INTEGER로 수정
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS alarm_occurrences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,10 +110,11 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     acknowledged_by INTEGER,
     acknowledge_comment TEXT,
     
-    -- Clear 정보
+    -- Clear 정보 (cleared_by 필드 추가!)
     cleared_time DATETIME,
     cleared_value TEXT,
     clear_comment TEXT,
+    cleared_by INTEGER,                             -- ⭐ 누락된 필드 추가!
     
     -- 알림 정보
     notification_sent INTEGER DEFAULT 0,
@@ -150,18 +131,18 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    -- 현재 DB에 추가된 컬럼들
-    device_id TEXT,                                 -- 추가된 디바이스 ID (텍스트)
-    point_id INTEGER,                               -- 추가된 포인트 ID
+    -- 디바이스/포인트 정보
+    device_id INTEGER,                              -- 정수형
+    point_id INTEGER,
     
-    -- 🆕 분류 및 태깅 시스템 (2025-08-21 추가) - 규칙에서 복사
-    category VARCHAR(50) DEFAULT NULL,              -- 규칙의 category 복사
-    tags TEXT DEFAULT NULL,                         -- 규칙의 tags 복사
+    -- 분류 및 태깅 시스템
+    category VARCHAR(50) DEFAULT NULL,
+    tags TEXT DEFAULT NULL,
     
     FOREIGN KEY (rule_id) REFERENCES alarm_rules(id) ON DELETE CASCADE,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (cleared_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (cleared_by) REFERENCES users(id) ON DELETE SET NULL      -- ⭐ 추가!
 );
 
 -- =============================================================================
@@ -187,126 +168,151 @@ CREATE TABLE IF NOT EXISTS alarm_rule_templates (
     
     -- 적용 대상 제한
     applicable_data_types TEXT,                     -- JSON 배열: ["temperature", "analog"]
-    applicable_device_types TEXT,                   -- JSON 배열: ["sensor", "plc"]
+    applicable_device_types TEXT,                   -- JSON 배열: ["modbus_rtu", "mqtt"]
+    applicable_units TEXT,                          -- JSON 배열: ["°C", "bar", "rpm"]
     
-    -- 알림 기본 설정
-    notification_enabled INTEGER DEFAULT 1,
-    email_notification INTEGER DEFAULT 0,
-    sms_notification INTEGER DEFAULT 0,
-    auto_acknowledge INTEGER DEFAULT 0,
-    auto_clear INTEGER DEFAULT 0,
-    
-    -- 메타데이터
-    usage_count INTEGER DEFAULT 0,                  -- 사용된 횟수
+    -- 템플릿 메타데이터
+    industry VARCHAR(50),                           -- 'manufacturing', 'hvac', 'water_treatment'
+    equipment_type VARCHAR(50),                     -- 'pump', 'motor', 'sensor'
+    usage_count INTEGER DEFAULT 0,                 -- 사용 횟수 (인기도 측정)
     is_active INTEGER DEFAULT 1,
     is_system_template INTEGER DEFAULT 0,           -- 시스템 기본 템플릿 여부
     
-    -- 🆕 분류 및 태깅 시스템 (2025-08-21 추가) - 템플릿 태깅
-    tags TEXT DEFAULT NULL,                         -- JSON 배열 형태 ['tag1', 'tag2', 'tag3']
+    -- 태깅 시스템
+    tags TEXT DEFAULT NULL,                         -- JSON 배열 형태
     
-    -- 감사 정보
-    created_by INTEGER,
+    -- 타임스탬프
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
     
-    -- 제약조건
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, name)
 );
 
 -- =============================================================================
--- 현재 DB에 존재하는 관련 테이블들
+-- JavaScript 함수 라이브러리 (알람 조건용)
 -- =============================================================================
-
--- JavaScript 함수 라이브러리 (알람 스크립트용)
 CREATE TABLE IF NOT EXISTS javascript_functions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
+    
+    -- 함수 정보
     name VARCHAR(100) NOT NULL,
+    display_name VARCHAR(100),
     description TEXT,
-    category VARCHAR(50),                           -- 'math', 'logic', 'engineering', 'custom'
     function_code TEXT NOT NULL,
-    parameters TEXT,                                -- JSON 배열 파라미터 정의
-    return_type VARCHAR(20),
-    is_system INTEGER DEFAULT 0,                   -- 시스템 제공 함수
-    is_enabled INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_by INTEGER,
     
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id),
-    UNIQUE(tenant_id, name)
-);
-
--- 레시피 관리 (설비 제어 프로필)
-CREATE TABLE IF NOT EXISTS recipes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    category VARCHAR(50),
+    -- 함수 메타데이터
+    category VARCHAR(50),                           -- 'math', 'logic', 'time', 'conversion'
+    parameters TEXT,                                -- JSON 배열 형태 파라미터 정의
+    return_type VARCHAR(20) DEFAULT 'number',       -- 'number', 'boolean', 'string'
     
-    -- 레시피 데이터
-    setpoints TEXT NOT NULL,                        -- JSON 형태
-    /* 예시:
-    {
-        "points": [
-            {"point_id": 1, "value": 100, "unit": "℃"},
-            {"point_id": 2, "value": 50, "unit": "bar"}
-        ]
-    }
-    */
+    -- 사용 통계
+    usage_count INTEGER DEFAULT 0,
+    last_used DATETIME,
     
-    validation_rules TEXT,                          -- JSON 형태
-    
-    -- 메타데이터
-    version INTEGER DEFAULT 1,
-    is_active INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_by INTEGER,
-    
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-);
-
--- 스케줄러 (시간 기반 작업 관리)
-CREATE TABLE IF NOT EXISTS schedules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    
-    -- 스케줄 타입
-    schedule_type VARCHAR(20) NOT NULL,             -- 'time_based', 'event_based', 'condition_based'
-    
-    -- 실행 대상
-    action_type VARCHAR(50) NOT NULL,               -- 'write_value', 'execute_recipe', 'run_script', 'generate_report'
-    action_config TEXT NOT NULL,                    -- JSON 형태
-    
-    -- 스케줄 설정
-    cron_expression VARCHAR(100),                   -- time_based인 경우
-    trigger_condition TEXT,                         -- condition_based인 경우
-    
-    -- 실행 옵션
-    retry_on_failure INTEGER DEFAULT 1,
-    max_retries INTEGER DEFAULT 3,
-    timeout_seconds INTEGER DEFAULT 300,
+    -- 예제 및 문서
+    example_usage TEXT,
+    test_cases TEXT,                                -- JSON 형태 테스트 케이스들
     
     -- 상태
     is_enabled INTEGER DEFAULT 1,
-    last_execution_time DATETIME,
-    next_execution_time DATETIME,
+    is_system_function INTEGER DEFAULT 0,
     
+    -- 타임스탬프
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
     
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, name)
 );
 
 -- =============================================================================
--- 인덱스 생성 (성능 최적화)
+-- 레시피 시스템 (복잡한 알람 로직용)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS recipes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    
+    -- 레시피 기본 정보
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    recipe_type VARCHAR(50) DEFAULT 'alarm_condition', -- 'alarm_condition', 'data_processing'
+    
+    -- 레시피 구조
+    steps TEXT NOT NULL,                            -- JSON 배열 형태의 단계들
+    variables TEXT,                                 -- JSON 객체 형태의 변수 정의
+    
+    -- 실행 환경
+    execution_context VARCHAR(20) DEFAULT 'sync',   -- 'sync', 'async', 'scheduled'
+    timeout_ms INTEGER DEFAULT 5000,
+    
+    -- 상태 및 통계
+    is_active INTEGER DEFAULT 1,
+    execution_count INTEGER DEFAULT 0,
+    success_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    avg_execution_time_ms REAL DEFAULT 0,
+    last_executed DATETIME,
+    last_error TEXT,
+    
+    -- 타임스탬프
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, name)
+);
+
+-- =============================================================================
+-- 스케줄 시스템 (시간 기반 알람용)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    
+    -- 스케줄 기본 정보
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    
+    -- 스케줄 타입 및 설정
+    schedule_type VARCHAR(20) NOT NULL,             -- 'cron', 'interval', 'once'
+    cron_expression VARCHAR(100),                   -- "0 */5 * * * *" (5분마다)
+    interval_seconds INTEGER,                       -- interval 타입용
+    start_time DATETIME,                            -- 시작 시간
+    end_time DATETIME,                              -- 종료 시간 (선택사항)
+    
+    -- 실행 대상
+    target_type VARCHAR(20) NOT NULL,               -- 'alarm_rule', 'function', 'recipe'
+    target_id INTEGER NOT NULL,
+    
+    -- 실행 통계
+    is_enabled INTEGER DEFAULT 1,
+    execution_count INTEGER DEFAULT 0,
+    success_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    last_executed DATETIME,
+    next_execution DATETIME,
+    last_error TEXT,
+    
+    -- 타임스탬프
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, name)
+);
+
+-- =============================================================================
+-- 인덱스 생성
 -- =============================================================================
 
 -- alarm_rules 테이블 인덱스
@@ -316,8 +322,6 @@ CREATE INDEX IF NOT EXISTS idx_alarm_rules_enabled ON alarm_rules(is_enabled);
 CREATE INDEX IF NOT EXISTS idx_alarm_rules_template_id ON alarm_rules(template_id);
 CREATE INDEX IF NOT EXISTS idx_alarm_rules_rule_group ON alarm_rules(rule_group);
 CREATE INDEX IF NOT EXISTS idx_alarm_rules_created_by_template ON alarm_rules(created_by_template);
-
--- 🆕 새로 추가된 컬럼들에 대한 인덱스
 CREATE INDEX IF NOT EXISTS idx_alarm_rules_category ON alarm_rules(category);
 CREATE INDEX IF NOT EXISTS idx_alarm_rules_tags ON alarm_rules(tags);
 
@@ -328,10 +332,11 @@ CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_time ON alarm_occurrences(occur
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_device_id ON alarm_occurrences(device_id);
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_point_id ON alarm_occurrences(point_id);
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_rule_device ON alarm_occurrences(rule_id, device_id);
-
--- 🆕 alarm_occurrences 분류 컬럼 인덱스
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_category ON alarm_occurrences(category);
 CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_tags ON alarm_occurrences(tags);
+CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_acknowledged_by ON alarm_occurrences(acknowledged_by);
+CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_cleared_by ON alarm_occurrences(cleared_by);    -- ⭐ 추가!
+CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_cleared_time ON alarm_occurrences(cleared_time DESC);
 
 -- alarm_rule_templates 테이블 인덱스
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_tenant ON alarm_rule_templates(tenant_id);
@@ -340,8 +345,6 @@ CREATE INDEX IF NOT EXISTS idx_alarm_templates_active ON alarm_rule_templates(is
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_system ON alarm_rule_templates(is_system_template);
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_usage ON alarm_rule_templates(usage_count DESC);
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_name ON alarm_rule_templates(tenant_id, name);
-
--- 🆕 alarm_rule_templates tags 컬럼 인덱스
 CREATE INDEX IF NOT EXISTS idx_alarm_templates_tags ON alarm_rule_templates(tags);
 
 -- javascript_functions 테이블 인덱스

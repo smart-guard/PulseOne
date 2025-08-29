@@ -763,7 +763,7 @@ bool AlarmOccurrenceRepository::acknowledge(int64_t occurrence_id, int acknowled
     }
 }
 
-bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, const std::string& cleared_value, const std::string& comment) {
+bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, int cleared_by, const std::string& cleared_value, const std::string& comment) {
     try {
         if (!ensureTableExists()) {
             return false;
@@ -771,9 +771,13 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, const std::string& 
         
         DatabaseAbstractionLayer db_layer;
         
+        // SQL::AlarmOccurrence::CLEAR 쿼리 사용
+        // UPDATE alarm_occurrences SET state = 'cleared', cleared_time = CURRENT_TIMESTAMP, 
+        // cleared_value = ?, clear_comment = ?, cleared_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
         std::string query = SQL::AlarmOccurrence::CLEAR;
         query = RepositoryHelpers::replaceParameter(query, escapeString(cleared_value));
         query = RepositoryHelpers::replaceParameter(query, escapeString(comment));
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(cleared_by));
         query = RepositoryHelpers::replaceParameter(query, std::to_string(occurrence_id));
         
         bool success = db_layer.executeNonQuery(query);
@@ -784,7 +788,8 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, const std::string& 
             }
             
             LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
-                                        "clear - Cleared alarm occurrence ID: " + std::to_string(occurrence_id));
+                                        "clear - Cleared alarm occurrence ID: " + std::to_string(occurrence_id) + 
+                                        " by user: " + std::to_string(cleared_by));
         }
         
         return success;
@@ -793,6 +798,102 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, const std::string& 
         LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
                                     "clear failed: " + std::string(e.what()));
         return false;
+    }
+}
+
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findClearedByUser(int user_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        std::string query = R"(
+            SELECT 
+                id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+                alarm_message, severity, state, acknowledged_time, acknowledged_by,
+                acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
+                notification_sent, notification_time, notification_count, notification_result,
+                context_data, source_name, location, created_at, updated_at,
+                device_id, point_id, category, tags
+            FROM alarm_occurrences 
+            WHERE cleared_by = ?
+            ORDER BY cleared_time DESC
+        )";
+        
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(user_id));
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmOccurrenceEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findClearedByUser - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "findClearedByUser - Found " + std::to_string(entities.size()) + 
+                                   " alarms cleared by user: " + std::to_string(user_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findClearedByUser failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
+std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAcknowledgedByUser(int user_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        std::string query = R"(
+            SELECT 
+                id, rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+                alarm_message, severity, state, acknowledged_time, acknowledged_by,
+                acknowledge_comment, cleared_time, cleared_value, clear_comment, cleared_by,
+                notification_sent, notification_time, notification_count, notification_result,
+                context_data, source_name, location, created_at, updated_at,
+                device_id, point_id, category, tags
+            FROM alarm_occurrences 
+            WHERE acknowledged_by = ?
+            ORDER BY acknowledged_time DESC
+        )";
+        
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(user_id));
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<AlarmOccurrenceEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::WARN,
+                                            "findAcknowledgedByUser - Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                    "findAcknowledgedByUser - Found " + std::to_string(entities.size()) + 
+                                   " alarms acknowledged by user: " + std::to_string(user_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+                                    "findAcknowledgedByUser failed: " + std::string(e.what()));
+        return {};
     }
 }
 

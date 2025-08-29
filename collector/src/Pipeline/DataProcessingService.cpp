@@ -737,21 +737,43 @@ void DataProcessingService::SaveToRedisLightweight(const std::vector<Structs::Ti
     
     try {
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "🔄 Redis 저장 (경량화): " + std::to_string(batch.size()) + "개");
+                                     "🔄 Redis 저장 (Backend 호환): " + std::to_string(batch.size()) + "개");
         
         for (const auto& value : batch) {
-            std::string light_json = ConvertToLightPointValue(value, getDeviceIdForPoint(value.point_id));
-            std::string point_key = "point:light:" + std::to_string(value.point_id);
+            // 🔥 Backend 호환 패턴으로 완전 변경
+            std::string device_id = extractDeviceNumber(getDeviceIdForPoint(value.point_id));
+            std::string point_name = getPointName(value.point_id);
+            std::string device_key = "device:" + device_id + ":" + point_name;
             
-            redis_client_->setex(point_key, light_json, 1800);
+            // 🔥 Backend가 기대하는 JSON 구조로 생성
+            nlohmann::json point_data;
+            point_data["point_id"] = value.point_id;
+            point_data["device_id"] = device_id;                    // 문자열로 저장
+            point_data["device_name"] = "Device " + device_id;
+            point_data["point_name"] = point_name;
+            
+            // 값 처리 (variant → JSON)
+            std::visit([&point_data](const auto& v) {
+                point_data["value"] = v;
+            }, value.value);
+            
+            point_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                value.timestamp.time_since_epoch()).count();
+            point_data["quality"] = PulseOne::Utils::DataQualityToString(value.quality, true);
+            point_data["data_type"] = getDataType(value.value);
+            point_data["unit"] = getUnit(value.point_id);
+            point_data["changed"] = value.value_changed;
+            
+            // Backend 호환 키로 저장
+            redis_client_->setex(device_key, point_data.dump(), 1800);
             redis_writes_.fetch_add(1);
         }
         
         LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "✅ Redis 저장 완료 (경량화): " + std::to_string(batch.size()) + "개");
+                                     "✅ Redis 저장 완료 (Backend 호환): " + std::to_string(batch.size()) + "개");
         
     } catch (const std::exception& e) {
-        HandleError("Redis 저장 실패 (경량화)", e.what());
+        HandleError("Redis 저장 실패 (Backend 호환)", e.what());
     }
 }
 

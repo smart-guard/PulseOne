@@ -268,10 +268,11 @@ function formatAlarmOccurrence(occurrence) {
         acknowledged_by: occurrence.acknowledged_by,
         acknowledge_comment: occurrence.acknowledge_comment,
         
-        // 해제 정보
+        // 해제 정보 - cleared_by 필드 추가!
         cleared_time: occurrence.cleared_time,
         cleared_value: occurrence.cleared_value,
         clear_comment: occurrence.clear_comment,
+        cleared_by: occurrence.cleared_by,                    // 누락된 필드 추가!
         
         // 알림 정보
         notification_sent: !!occurrence.notification_sent,
@@ -288,7 +289,7 @@ function formatAlarmOccurrence(occurrence) {
         device_id: occurrence.device_id,
         point_id: occurrence.point_id,
         
-        // 카테고리 및 태그 (새로 추가됨)
+        // 카테고리 및 태그
         category: occurrence.category,
         tags: parseJSON(occurrence.tags, []),
         
@@ -767,16 +768,26 @@ router.post('/occurrences/:id/clear', async (req, res) => {
     try {
         const { id } = req.params;
         const { comment = '', clearedValue = '' } = req.body;
-        const { tenantId } = req;
+        const { user, tenantId } = req;
         
-        console.log(`알람 발생 ${id} 해제 처리 시작...`);
+        console.log(`알람 발생 ${id} 해제 처리 시작... (사용자: ${user.id})`);
 
-        const result = await dbRun(AlarmQueries.AlarmOccurrence.CLEAR, [clearedValue, comment, parseInt(id), tenantId]);
+        // 수정: cleared_by 파라미터 추가 (4개 → 5개 파라미터)
+        // AlarmQueries.AlarmOccurrence.CLEAR 쿼리 구조:
+        // UPDATE alarm_occurrences SET state = 'cleared', cleared_time = CURRENT_TIMESTAMP, 
+        // cleared_value = ?, clear_comment = ?, cleared_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        const result = await dbRun(AlarmQueries.AlarmOccurrence.CLEAR, [
+            clearedValue, 
+            comment, 
+            user.id,        // cleared_by 파라미터 추가!
+            parseInt(id), 
+            tenantId
+        ]);
 
         if (result.changes > 0) {
             const updatedAlarm = await dbGet(AlarmQueries.AlarmOccurrence.FIND_BY_ID, [parseInt(id), tenantId]);
 
-            console.log(`알람 발생 ${id} 해제 처리 완료`);
+            console.log(`알람 발생 ${id} 해제 처리 완료 (사용자: ${user.id})`);
             res.json(createResponse(true, formatAlarmOccurrence(updatedAlarm), 'Alarm occurrence cleared successfully'));
         } else {
             return res.status(404).json(
@@ -790,6 +801,193 @@ router.post('/occurrences/:id/clear', async (req, res) => {
     }
 });
 
+
+/**
+ * GET /api/alarms/user/:userId/cleared
+ * 특정 사용자가 해제한 알람들 조회
+ */
+router.get('/user/:userId/cleared', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { tenantId } = req;
+        const { page = 1, limit = 50 } = req.query;
+        
+        console.log(`사용자 ${userId}가 해제한 알람 조회...`);
+
+        let query = `
+            SELECT ao.*, ar.name as rule_name, d.name as device_name
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            WHERE ao.cleared_by = ? AND ao.tenant_id = ?
+            ORDER BY ao.cleared_time DESC
+        `;
+        const params = [parseInt(userId), tenantId];
+        
+        // 총 개수 조회
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM alarm_occurrences ao
+            WHERE ao.cleared_by = ? AND ao.tenant_id = ?
+        `;
+        const countResult = await dbGet(countQuery, params);
+        const total = countResult?.total || 0;
+        
+        // 페이징 적용
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+        
+        const results = await dbAll(query, params);
+        
+        const result = {
+            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        };
+        
+        console.log(`사용자 ${userId}가 해제한 알람 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'User cleared alarms retrieved successfully'));
+
+    } catch (error) {
+        console.error(`사용자 ${req.params.userId} 해제 알람 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'USER_CLEARED_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/user/:userId/acknowledged
+ * 특정 사용자가 확인한 알람들 조회
+ */
+router.get('/user/:userId/acknowledged', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { tenantId } = req;
+        const { page = 1, limit = 50 } = req.query;
+        
+        console.log(`사용자 ${userId}가 확인한 알람 조회...`);
+
+        let query = `
+            SELECT ao.*, ar.name as rule_name, d.name as device_name
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            WHERE ao.acknowledged_by = ? AND ao.tenant_id = ?
+            ORDER BY ao.acknowledged_time DESC
+        `;
+        const params = [parseInt(userId), tenantId];
+        
+        // 총 개수 조회
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM alarm_occurrences ao
+            WHERE ao.acknowledged_by = ? AND ao.tenant_id = ?
+        `;
+        const countResult = await dbGet(countQuery, params);
+        const total = countResult?.total || 0;
+        
+        // 페이징 적용
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+        
+        const results = await dbAll(query, params);
+        
+        const result = {
+            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        };
+        
+        console.log(`사용자 ${userId}가 확인한 알람 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'User acknowledged alarms retrieved successfully'));
+
+    } catch (error) {
+        console.error(`사용자 ${req.params.userId} 확인 알람 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'USER_ACKNOWLEDGED_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/audit-trail
+ * 알람 감사 추적 조회 - cleared_by 및 acknowledged_by 활용
+ */
+router.get('/audit-trail', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const { page = 1, limit = 100, user_id, action } = req.query;
+        
+        console.log('알람 감사 추적 조회...');
+
+        let query = `
+            SELECT 
+                ao.*,
+                ar.name as rule_name,
+                d.name as device_name,
+                u1.username as acknowledged_by_name,
+                u2.username as cleared_by_name
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN devices d ON ao.device_id = d.id
+            LEFT JOIN users u1 ON ao.acknowledged_by = u1.id
+            LEFT JOIN users u2 ON ao.cleared_by = u2.id
+            WHERE ao.tenant_id = ?
+        `;
+        let params = [tenantId];
+        
+        // 사용자 필터링
+        if (user_id) {
+            query += ` AND (ao.acknowledged_by = ? OR ao.cleared_by = ?)`;
+            params.push(parseInt(user_id), parseInt(user_id));
+        }
+        
+        // 액션 필터링
+        if (action === 'acknowledged') {
+            query += ` AND ao.acknowledged_time IS NOT NULL`;
+        } else if (action === 'cleared') {
+            query += ` AND ao.cleared_time IS NOT NULL`;
+        }
+        
+        query += ` ORDER BY ao.updated_at DESC`;
+        
+        // 총 개수 조회
+        const totalResults = await dbAll(query, params);
+        const total = totalResults.length;
+        
+        // 페이징 적용
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+        
+        const results = await dbAll(query, params);
+        
+        const result = {
+            items: results.map(occurrence => ({
+                ...formatAlarmOccurrence(occurrence),
+                acknowledged_by_name: occurrence.acknowledged_by_name,
+                cleared_by_name: occurrence.cleared_by_name
+            })),
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        };
+        
+        console.log(`감사 추적 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'Alarm audit trail retrieved successfully'));
+
+    } catch (error) {
+        console.error('감사 추적 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'AUDIT_TRAIL_ERROR'));
+    }
+});
 /**
  * GET /api/alarms/occurrences/category/:category
  * 카테고리별 알람 발생 조회

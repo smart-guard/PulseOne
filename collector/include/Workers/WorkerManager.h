@@ -12,9 +12,10 @@
 #include <mutex>
 #include <atomic>
 #include <nlohmann/json.hpp>
+#include "Common/Structs.h"
 
 namespace PulseOne::Workers {
-
+    
 class BaseDeviceWorker;
 class WorkerFactory;
 
@@ -26,7 +27,8 @@ class WorkerFactory;
  * - REST API에서 호출되는 메서드들
  * - Worker 상태 조회 및 제어
  */
-class WorkerManager {
+using DataValue = PulseOne::Structs::DataValue;
+ class WorkerManager {
 public:
     // ==========================================================================
     // 싱글톤 패턴
@@ -97,7 +99,7 @@ public:
      * @brief 출력 제어 (펌프/밸브)
      */
     bool ControlOutput(const std::string& device_id, const std::string& output_id, bool enable);
-    
+    bool ControlDigitalDevice(const std::string& device_id, const std::string& device_id_target, bool enable);
     // ==========================================================================
     // 상태 조회 (REST API에서 호출)
     // ==========================================================================
@@ -189,6 +191,9 @@ private:
     std::atomic<int> total_started_{0};
     std::atomic<int> total_stopped_{0};
     std::atomic<int> total_errors_{0};
+
+    bool ConvertStringToDataValue(const std::string& str, DataValue& value);
+
 };
 
 } // namespace PulseOne::Workers
