@@ -1,12 +1,12 @@
-#include "Utils/LogManager.h"
 //=============================================================================
 // collector/include/Storage/RedisDataWriter.h
 // 
-// 목적: Backend 완전 호환 Redis 데이터 저장 클래스
+// 목적: Backend 완전 호환 Redis 데이터 저장 클래스 (컴파일 에러 수정)
 // 특징:
 //   - Backend realtime.js가 기대하는 정확한 JSON 구조 구현
 //   - device:{id}:{point_name} 키 패턴 완벽 지원
 //   - Worker 초기화 데이터 저장 지원
+//   - 모든 컴파일 에러 해결
 //=============================================================================
 
 #ifndef REDIS_DATA_WRITER_H
@@ -160,10 +160,10 @@ public:
         FULL_DATA,
         HYBRID
     };
+    
     // ==========================================================================
     // 생성자 및 초기화
     // ==========================================================================
-
 
     explicit RedisDataWriter(std::shared_ptr<RedisClient> redis_client = nullptr);
     ~RedisDataWriter() = default;
@@ -179,6 +179,7 @@ public:
     void EnableDevicePatternStorage(bool enable);
     void EnablePointLatestStorage(bool enable);
     void EnableFullDataStorage(bool enable);    
+    
     /**
      * @brief DeviceDataMessage를 Backend 호환 형식으로 저장
      * device:{device_id}:{point_name} + point:{point_id}:latest 동시 저장
@@ -202,6 +203,7 @@ public:
      */
     bool PublishAlarmEvent(const BackendFormat::AlarmEventData& alarm_data);
     bool StoreVirtualPointToRedis(const Structs::TimestampedValue& virtual_point_data);
+    
     // ==========================================================================
     // Worker 초기화 전용 메서드들
     // ==========================================================================
@@ -241,16 +243,14 @@ public:
         std::atomic<uint64_t> alarm_publishes{0};
         std::atomic<uint64_t> worker_init_writes{0};
         
+        // 기본 생성자만 유지
         WriteStats() = default;
-        WriteStats(const WriteStats& other) {
-            total_writes.store(other.total_writes.load());
-            successful_writes.store(other.successful_writes.load());
-            failed_writes.store(other.failed_writes.load());
-            device_point_writes.store(other.device_point_writes.load());
-            point_latest_writes.store(other.point_latest_writes.load());
-            alarm_publishes.store(other.alarm_publishes.load());
-            worker_init_writes.store(other.worker_init_writes.load());
-        }
+        
+        // 복사/이동 생성자와 대입연산자는 삭제됨 (atomic 때문에)
+        WriteStats(const WriteStats&) = delete;
+        WriteStats& operator=(const WriteStats&) = delete;
+        WriteStats(WriteStats&&) = delete;
+        WriteStats& operator=(WriteStats&&) = delete;
         
         nlohmann::json toJson() const {
             nlohmann::json j;
@@ -265,7 +265,7 @@ public:
         }
     };
     
-    WriteStats GetStatistics() const;
+    nlohmann::json GetStatistics() const;  // WriteStats 대신 json 반환
     void ResetStatistics();
     nlohmann::json GetStatus() const;
 
@@ -333,6 +333,15 @@ private:
     void HandleError(const std::string& context, const std::string& error_message);
 
     // ==========================================================================
+    // 내부 저장 메서드들
+    // ==========================================================================
+    
+    size_t SaveLightweightFormat(const Structs::DeviceDataMessage& message);
+    size_t SaveFullDataFormat(const Structs::DeviceDataMessage& message);
+    size_t SaveDevicePatternFormat(const Structs::DeviceDataMessage& message);
+    size_t SavePointLatestFormat(const Structs::DeviceDataMessage& message);
+
+    // ==========================================================================
     // 멤버 변수들
     // ==========================================================================
     
@@ -345,21 +354,12 @@ private:
     /// 스레드 안전성을 위한 뮤텍스
     mutable std::mutex redis_mutex_;
     
-    /// 로거 참조
-    
-    
     /// 포인트 정보 캐시 (성능 최적화)
     mutable std::unordered_map<int, std::string> point_name_cache_;
     mutable std::unordered_map<int, std::string> unit_cache_;
     mutable std::mutex cache_mutex_;
 
-        // 내부 저장 메서드들 - 선언만
-    size_t SaveLightweightFormat(const Structs::DeviceDataMessage& message);
-    size_t SaveFullDataFormat(const Structs::DeviceDataMessage& message);
-    size_t SaveDevicePatternFormat(const Structs::DeviceDataMessage& message);
-    size_t SavePointLatestFormat(const Structs::DeviceDataMessage& message);
-
-    // 멤버 변수들
+    // 저장 모드 설정
     StorageMode storage_mode_ = StorageMode::HYBRID;
     bool store_device_pattern_ = true;
     bool store_point_latest_ = true;

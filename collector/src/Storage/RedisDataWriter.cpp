@@ -1,11 +1,12 @@
 //=============================================================================
-// collector/src/Storage/RedisDataWriter.cpp
+// collector/src/Storage/RedisDataWriter.cpp - WriteStats 복사 에러 수정
 // 
-// 목적: Backend 완전 호환 Redis 데이터 저장 구현
+// 목적: Backend 완전 호환 Redis 데이터 저장 구현 (컴파일 에러 수정)
 // 특징:
 //   - realtime.js가 읽는 정확한 JSON 구조 생성
 //   - device:{id}:{point_name} 키 패턴 완벽 구현
 //   - Worker 초기화 데이터 저장 지원
+//   - atomic 복사 문제 해결
 //=============================================================================
 
 #include "Storage/RedisDataWriter.h"
@@ -27,8 +28,7 @@ namespace Storage {
 // =============================================================================
 
 RedisDataWriter::RedisDataWriter(std::shared_ptr<RedisClient> redis_client)
-    : redis_client_(redis_client)
-     {
+    : redis_client_(redis_client) {
     
     // Redis 클라이언트 자동 생성
     if (!redis_client_) {
@@ -64,7 +64,6 @@ bool RedisDataWriter::IsConnected() const {
     std::lock_guard<std::mutex> lock(redis_mutex_);
     return redis_client_ && redis_client_->isConnected();
 }
-
 
 void RedisDataWriter::SetStorageMode(StorageMode mode) {
     storage_mode_ = mode;
@@ -607,20 +606,20 @@ void RedisDataWriter::HandleError(const std::string& context, const std::string&
 }
 
 // =============================================================================
-// 통계 및 상태
+// 통계 및 상태 - ✅ 컴파일 에러 수정: nlohmann::json으로 반환
 // =============================================================================
 
-RedisDataWriter::WriteStats RedisDataWriter::GetStatistics() const {
-    WriteStats result;
-    // atomic 값들을 개별적으로 복사 (이미 구현된 코드)
-    result.total_writes.store(stats_.total_writes.load());
-    result.successful_writes.store(stats_.successful_writes.load());
-    result.failed_writes.store(stats_.failed_writes.load());
-    result.device_point_writes.store(stats_.device_point_writes.load());
-    result.point_latest_writes.store(stats_.point_latest_writes.load());
-    result.alarm_publishes.store(stats_.alarm_publishes.load());
-    result.worker_init_writes.store(stats_.worker_init_writes.load());
-    return result;  // 이건 작동함 - 개별 atomic들은 복사됨
+nlohmann::json RedisDataWriter::GetStatistics() const {
+    json stats_json;
+    stats_json["total_writes"] = stats_.total_writes.load();
+    stats_json["successful_writes"] = stats_.successful_writes.load();
+    stats_json["failed_writes"] = stats_.failed_writes.load();
+    stats_json["device_point_writes"] = stats_.device_point_writes.load();
+    stats_json["point_latest_writes"] = stats_.point_latest_writes.load();
+    stats_json["alarm_publishes"] = stats_.alarm_publishes.load();
+    stats_json["worker_init_writes"] = stats_.worker_init_writes.load();
+    
+    return stats_json;
 }
 
 void RedisDataWriter::ResetStatistics() {
@@ -638,7 +637,7 @@ void RedisDataWriter::ResetStatistics() {
 json RedisDataWriter::GetStatus() const {
     json status;
     status["connected"] = IsConnected();
-    status["statistics"] = GetStatistics().toJson();
+    status["statistics"] = GetStatistics();  // 이제 json 반환
     status["redis_client_available"] = (redis_client_ != nullptr);
     status["cache_size"] = {
         {"point_names", point_name_cache_.size()},
@@ -647,7 +646,6 @@ json RedisDataWriter::GetStatus() const {
     
     return status;
 }
-
 
 bool RedisDataWriter::StoreVirtualPointToRedis(const Structs::TimestampedValue& virtual_point_data) {
     if (!IsConnected()) {

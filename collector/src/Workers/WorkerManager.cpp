@@ -24,6 +24,16 @@ WorkerManager& WorkerManager::getInstance() {
     return instance;
 }
 
+WorkerManager::WorkerManager() {
+    // RedisDataWriter 초기화
+    try {
+        redis_data_writer_ = std::make_unique<Storage::RedisDataWriter>();
+        LogManager::getInstance().Info("WorkerManager - RedisDataWriter 초기화 완료");
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("WorkerManager - RedisDataWriter 초기화 실패: " + std::string(e.what()));
+    }
+}
+
 WorkerManager::~WorkerManager() {
     StopAllWorkers();
 }
@@ -60,6 +70,10 @@ bool WorkerManager::StartWorker(const std::string& device_id) {
         
         if (result) {
             total_started_.fetch_add(1);
+            
+            // Worker 시작 성공 시 Redis 초기화 데이터 저장
+            InitializeWorkerRedisData(device_id);
+            
             LogManager::getInstance().Info("Worker 시작 완료: " + device_id);
         } else {
             total_errors_.fetch_add(1);
@@ -76,6 +90,32 @@ bool WorkerManager::StartWorker(const std::string& device_id) {
         return false;
     }
 }
+
+void WorkerManager::InitializeWorkerRedisData(const std::string& device_id) {
+    if (!redis_data_writer_) {
+        LogManager::getInstance().Warn("RedisDataWriter 없음 - 초기화 건너뜀");
+        return;
+    }
+    
+    try {
+        auto current_values = LoadCurrentValuesFromDB(device_id);
+        
+        if (current_values.empty()) {
+            LogManager::getInstance().Debug("디바이스 " + device_id + "에 초기화할 데이터 없음");
+            return;
+        }
+        
+        size_t saved = redis_data_writer_->SaveWorkerInitialData(device_id, current_values);
+        
+        LogManager::getInstance().Info("Worker Redis 초기화 완료: " + device_id + 
+                                     " (" + std::to_string(saved) + "개 포인트)");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Worker Redis 초기화 실패: " + device_id + 
+                                      " - " + std::string(e.what()));
+    }
+}
+
 
 bool WorkerManager::StopWorker(const std::string& device_id) {
     std::lock_guard<std::mutex> lock(workers_mutex_);
@@ -134,7 +174,7 @@ bool WorkerManager::ReloadWorker(const std::string& device_id) {
 // =============================================================================
 
 int WorkerManager::StartAllActiveWorkers() {
-    LogManager::getInstance().Info("모든 활성 Worker 시작...");
+    LogManager::getInstance().Info("모든 활성 Worker 시작 및 Redis 초기화...");
     
     try {
         auto& repo_factory = Database::RepositoryFactory::getInstance();
@@ -145,31 +185,157 @@ int WorkerManager::StartAllActiveWorkers() {
             return 0;
         }
         
-        // findEnabled 메서드가 없으므로 findAll로 대체하고 필터링
         auto all_devices = device_repo->findAll();
+        std::vector<std::pair<std::string, int>> active_devices;
         
-        int success_count = 0;
-        
+        // 1단계: 활성화된 디바이스 필터링
         for (const auto& device : all_devices) {
-            if (!device.isEnabled()) continue;  // 활성화된 디바이스만
-            
-            std::string device_id = std::to_string(device.getId());
-            
+            if (device.isEnabled()) {
+                active_devices.emplace_back(std::to_string(device.getId()), device.getId());
+            }
+        }
+        
+        if (active_devices.empty()) {
+            LogManager::getInstance().Info("활성화된 디바이스가 없음");
+            return 0;
+        }
+        
+        LogManager::getInstance().Info("활성 디바이스 " + std::to_string(active_devices.size()) + "개 발견");
+        
+        // 2단계: Worker들 생성 및 시작
+        int success_count = 0;
+        std::vector<std::string> successful_devices;
+        
+        for (const auto& [device_id, device_int_id] : active_devices) {
             if (StartWorker(device_id)) {
                 success_count++;
+                successful_devices.push_back(device_id);
+                LogManager::getInstance().Debug("Worker 시작 성공: " + device_id);
+            } else {
+                LogManager::getInstance().Error("Worker 시작 실패: " + device_id);
             }
             
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         
+        // 3단계: Redis 초기화 데이터 일괄 저장
+        if (!successful_devices.empty() && redis_data_writer_) {
+            int redis_saved = BatchInitializeRedisData(successful_devices);
+            LogManager::getInstance().Info("Redis 초기화 완료: " + std::to_string(redis_saved) + "개 포인트 저장");
+        }
+        
         LogManager::getInstance().Info("Worker 시작 완료: " + std::to_string(success_count) + "/" + 
-                                     std::to_string(all_devices.size()));
+                                     std::to_string(active_devices.size()));
         return success_count;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("활성 Worker 시작 실패: " + std::string(e.what()));
         return 0;
     }
+}
+
+int WorkerManager::BatchInitializeRedisData(const std::vector<std::string>& device_ids) {
+    if (!redis_data_writer_) {
+        LogManager::getInstance().Error("RedisDataWriter가 초기화되지 않음");
+        return 0;
+    }
+    
+    int total_saved = 0;
+    
+    LogManager::getInstance().Info("Redis 초기화 데이터 배치 저장 시작: " + 
+                                 std::to_string(device_ids.size()) + "개 디바이스");
+    
+    for (const auto& device_id : device_ids) {
+        try {
+            // DB에서 현재값들 로드
+            auto current_values = LoadCurrentValuesFromDB(device_id);
+            
+            if (current_values.empty()) {
+                LogManager::getInstance().Warn("디바이스 " + device_id + "에 현재값이 없음");
+                continue;
+            }
+            
+            // Redis에 초기화 데이터 저장
+            size_t saved = redis_data_writer_->SaveWorkerInitialData(device_id, current_values);
+            total_saved += saved;
+            
+            LogManager::getInstance().Debug("디바이스 " + device_id + ": " + 
+                                          std::to_string(saved) + "개 포인트 Redis 저장");
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("디바이스 " + device_id + " Redis 초기화 실패: " + 
+                                         std::string(e.what()));
+        }
+    }
+    
+    return total_saved;
+}
+
+std::vector<Structs::TimestampedValue> WorkerManager::LoadCurrentValuesFromDB(const std::string& device_id) {
+    std::vector<Structs::TimestampedValue> values;
+    
+    try {
+        auto& repo_factory = Database::RepositoryFactory::getInstance();
+        auto current_value_repo = repo_factory.getCurrentValueRepository();
+        
+        if (!current_value_repo) {
+            LogManager::getInstance().Error("CurrentValueRepository 없음");
+            return values;
+        }
+        
+        // 디바이스 ID를 int로 변환
+        int device_int_id = std::stoi(device_id);
+        
+        // 해당 디바이스의 모든 현재값 조회
+        auto current_value_entities = current_value_repo->findByDeviceId(device_int_id);
+        
+        // Entity → TimestampedValue 변환
+        for (const auto& entity : current_value_entities) {
+            Structs::TimestampedValue value;
+            
+            value.point_id = entity.getPointId();
+            value.timestamp = entity.getValueTimestamp();
+            value.quality = entity.getQuality();
+            value.value_changed = false; // 초기값은 변경 아님
+            
+            // JSON 문자열에서 DataValue로 변환
+            try {
+                nlohmann::json value_json = nlohmann::json::parse(entity.getCurrentValue());
+                if (value_json.contains("value")) {
+                    auto json_value = value_json["value"];
+                    
+                    if (json_value.is_boolean()) {
+                        value.value = json_value.get<bool>();
+                    } else if (json_value.is_number_integer()) {
+                        value.value = json_value.get<int32_t>();
+                    } else if (json_value.is_number_float()) {
+                        value.value = json_value.get<double>();
+                    } else if (json_value.is_string()) {
+                        value.value = json_value.get<std::string>();
+                    } else {
+                        LogManager::getInstance().Warn("알 수 없는 값 타입: point_id=" + 
+                                                     std::to_string(value.point_id));
+                        continue;
+                    }
+                    
+                    values.push_back(value);
+                }
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Error("JSON 파싱 실패 (point_id=" + 
+                                              std::to_string(entity.getPointId()) + "): " + 
+                                              std::string(e.what()));
+            }
+        }
+        
+        LogManager::getInstance().Debug("디바이스 " + device_id + "에서 " + 
+                                      std::to_string(values.size()) + "개 현재값 로드");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("현재값 로드 실패 (device_id=" + device_id + "): " + 
+                                      std::string(e.what()));
+    }
+    
+    return values;
 }
 
 void WorkerManager::StopAllWorkers() {
