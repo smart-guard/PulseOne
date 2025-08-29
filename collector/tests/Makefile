@@ -80,6 +80,7 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Drivers \
            -I$(INCLUDE_DIR)/Drivers/Common \
            -I$(INCLUDE_DIR)/Pipeline \
+		   -I$(INCLUDE_DIR)/Storage \
            -I$(INCLUDE_DIR)/Client
 
 # 라이브러리 설정
@@ -199,6 +200,9 @@ WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/WorkerManager.cpp)
 
+# Storage 소스들 추가 필요  
+STORAGE_SOURCES := $(wildcard $(SRC_DIR)/Storage/*.cpp)
+
 # Network 소스들 (조건부 포함)
 ifeq ($(HAS_HTTPLIB),1)
     NETWORK_SOURCES := $(wildcard $(SRC_DIR)/Network/*.cpp)
@@ -248,7 +252,7 @@ ALL_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES) \
               $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(WORKERS_SOURCES) \
               $(DRIVERS_SOURCES) $(PIPELINE_SOURCES) $(ALARM_SOURCES) \
               $(VIRTUALPOINT_SOURCES) $(NETWORK_SOURCES) $(API_SOURCES) \
-              $(PLATFORM_SOURCES) $(PLUGIN_SOURCES)
+              $(PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES) 
 
 # 오브젝트 파일 생성
 ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
@@ -289,6 +293,7 @@ create-dirs:
 	@mkdir -p $(OBJ_DIR)/Drivers $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
 	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Plugin
 	@mkdir -p $(OBJ_DIR)/Network $(OBJ_DIR)/Api $(OBJ_DIR)/Platform
+	@mkdir -p $(OBJ_DIR)/Storage
 	@echo -e "$(GREEN)✅ All directories created successfully$(NC)"
 
 # 개별 오브젝트 파일 컴파일 - 디렉토리 자동 생성

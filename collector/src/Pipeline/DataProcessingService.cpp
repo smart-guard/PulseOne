@@ -14,6 +14,7 @@
 #include "VirtualPoint/VirtualPointEngine.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
+#include "Storage/RedisDataWriter.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Database/Repositories/CurrentValueRepository.h"
@@ -44,19 +45,18 @@ DataProcessingService::DataProcessingService(
     , vp_batch_writer_(std::make_unique<VirtualPoint::VirtualPointBatchWriter>(100, 30)) {
     
     try {
-        // 스레드 수 설정
         if (thread_count_ == 0) thread_count_ = 1;
         else if (thread_count_ > 16) thread_count_ = 16;
         
-        // Redis 클라이언트 자동 생성
-        redis_client_ = std::make_shared<RedisClientImpl>();
+        // RedisDataWriter 생성 (기존 Redis 저장 로직 대체)
+        redis_data_writer_ = std::make_unique<Storage::RedisDataWriter>(redis_client);
         
-        if (redis_client_ && redis_client_->isConnected()) {
+        if (redis_data_writer_->IsConnected()) {
             LogManager::getInstance().log("processing", LogLevel::INFO,
-                "✅ Redis 클라이언트 자동 연결 성공");
+                "✅ RedisDataWriter 연결 성공");
         } else {
             LogManager::getInstance().log("processing", LogLevel::WARN,
-                "⚠️ Redis 클라이언트 연결 실패, Redis 없이 계속 진행");
+                "⚠️ RedisDataWriter 연결 실패, Redis 없이 계속 진행");
         }
         
         if (influx_client_) {
@@ -70,15 +70,14 @@ DataProcessingService::DataProcessingService(
         }
         
         LogManager::getInstance().log("processing", LogLevel::INFO,
-            "✅ DataProcessingService 생성 완료 - 스레드 수: " +
+            "✅ DataProcessingService 생성 완료 (RedisDataWriter 통합) - 스레드 수: " +
             std::to_string(thread_count_) + ", 배치 크기: " + std::to_string(batch_size_));
             
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::ERROR,
             "❌ DataProcessingService 생성 중 예외: " + std::string(e.what()));
         
-        // 안전한 상태로 초기화
-        redis_client_.reset();
+        redis_data_writer_.reset();
         influx_client_.reset();
         vp_batch_writer_.reset();
         thread_count_ = 1;
@@ -143,8 +142,6 @@ void DataProcessingService::Stop() {
                                  "🛑 DataProcessingService 중지 중...");
 
     if (vp_batch_writer_) {
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "🛑 VirtualPointBatchWriter 중지 중...");
         vp_batch_writer_->Stop();
     }
 
@@ -203,17 +200,11 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
             
             if (!batch.empty()) {
                 auto start_time = std::chrono::high_resolution_clock::now();
-                
                 ProcessBatch(batch, thread_index);
-                
                 auto end_time = std::chrono::high_resolution_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
                 
                 UpdateStatistics(batch.size(), static_cast<double>(duration.count()));
-                
-                LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                             "🧵 스레드 " + std::to_string(thread_index) + 
-                                             " 배치 처리 완료: " + std::to_string(batch.size()) + "개");
             } else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
@@ -231,7 +222,7 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
 
 std::vector<Structs::DeviceDataMessage> DataProcessingService::CollectBatchFromPipelineManager() {
     auto& pipeline_manager = PipelineManager::GetInstance();
-    return pipeline_manager.GetBatch(batch_size_, 100); // 100ms 타임아웃
+    return pipeline_manager.GetBatch(batch_size_, 100);
 }
 
 // =============================================================================
@@ -253,43 +244,34 @@ void DataProcessingService::ProcessBatch(
         
         for (const auto& message : batch) {
             try {
-                // ===============================================================
-                // 🔥 효율적인 처리 순서 (원본 → 가상포인트 → 알람 → 저장)
-                // ===============================================================
-                
                 // 1️⃣ 가상포인트 계산 및 메시지 확장
                 auto enriched_data = CalculateVirtualPointsAndEnrich(message);
                 
-                // 가상포인트 계산 통계 업데이트
                 size_t vp_count = enriched_data.points.size() - message.points.size();
                 if (vp_count > 0) {
                     virtual_points_calculated_.fetch_add(vp_count);
-                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                        "✅ 가상포인트 " + std::to_string(vp_count) + "개 계산됨");
                 }
                 
-                // 2️⃣ 알람 평가 (가상포인트 포함된 완전한 데이터로 평가)
+                // 2️⃣ 알람 평가
                 if (alarm_evaluation_enabled_.load()) {
                     std::vector<Structs::DeviceDataMessage> single_message_batch = {enriched_data};
                     EvaluateAlarms(single_message_batch, thread_index);
                     alarms_evaluated_.fetch_add(1);
                 }
                 
-                // 3️⃣ 데이터 저장
-                // Redis 저장 (실시간 데이터)
-                if (use_lightweight_redis_.load()) {
-                    auto converted_data = ConvertToTimestampedValues(enriched_data);
-                    SaveToRedisLightweight(converted_data);
-                } else {
-                    SaveToRedisFullData(enriched_data);
+                // 3️⃣ Redis 저장 - RedisDataWriter 사용 (기존 Redis 저장 로직 대체)
+                if (redis_data_writer_) {
+                    size_t saved_count = redis_data_writer_->SaveDeviceMessage(enriched_data);
+                    redis_writes_.fetch_add(saved_count);
+                    
+                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                        "✅ RedisDataWriter 저장 완료: " + std::to_string(saved_count) + "개 포인트");
                 }
-                redis_writes_.fetch_add(1);
-                // 새 로직 추가: Backend 호환용
-                SaveToRedisDevicePattern(enriched_data);
-                // RDB 저장 (변화된 포인트만)
+                
+                // 4️⃣ RDB 저장 (변화된 포인트만)
                 SaveChangedPointsToRDB(enriched_data);
                 
-                // InfluxDB 버퍼링 (시계열 데이터)
+                // 5️⃣ InfluxDB 버퍼링
                 BufferForInfluxDB(enriched_data);
                 influx_writes_.fetch_add(1);
                 
@@ -318,10 +300,10 @@ void DataProcessingService::ProcessBatch(
     }
 }
 
-
 // =============================================================================
 // 가상포인트 처리
 // =============================================================================
+
 Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnrich(
     const Structs::DeviceDataMessage& original_message) {
     
@@ -329,18 +311,10 @@ Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnric
         auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
         
         if (!vp_engine.isInitialized()) {
-            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                "⚠️ VirtualPointEngine이 초기화되지 않음 - 원본 메시지 반환");
             return original_message;
         }
         
-        // 🔥 간소화: 계산만 수행하고 메시지는 그대로 반환
         vp_engine.calculateForMessage(original_message);
-        
-        // 원본 메시지 그대로 반환 (가상포인트는 VirtualPointEngine이 별도 처리)
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "🧮 가상포인트 계산 완료");
-        
         return original_message;
         
     } catch (const std::exception& e) {
@@ -349,7 +323,6 @@ Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnric
         return original_message;
     }
 }
-
 
 std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPoints(
     const std::vector<Structs::DeviceDataMessage>& batch) {
@@ -436,7 +409,7 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
                     enriched_data.push_back(virtual_point_data);
                     
                     // Redis 저장
-                    if (redis_client_ && redis_client_->isConnected()) {
+                    if (redis_data_writer_ && redis_data_writer_->IsConnected()) {
                         StoreVirtualPointToRedis(virtual_point_data);
                     }
                     
@@ -542,6 +515,30 @@ void DataProcessingService::EvaluateAlarms(
     }
 }
 
+
+Storage::BackendFormat::AlarmEventData DataProcessingService::ConvertAlarmEventToBackendFormat(
+    const PulseOne::Alarm::AlarmEvent& alarm_event) const {
+    
+    Storage::BackendFormat::AlarmEventData data;
+    data.rule_id = alarm_event.rule_id;
+    data.tenant_id = alarm_event.tenant_id;
+    data.point_id = alarm_event.point_id;
+    data.device_id = std::to_string(alarm_event.tenant_id);
+    data.message = alarm_event.message;
+    data.severity = static_cast<int>(alarm_event.severity);
+    data.state = static_cast<int>(alarm_event.state);
+    data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        alarm_event.occurrence_time.time_since_epoch()).count();
+    data.source_name = alarm_event.source_name;
+    data.location = alarm_event.location;
+    
+    std::visit([&data](const auto& v) {
+        data.trigger_value = std::to_string(v);
+    }, alarm_event.trigger_value);
+    
+    return data;
+}
+
 void DataProcessingService::ProcessAlarmEvents(
     const std::vector<PulseOne::Alarm::AlarmEvent>& alarm_events,
     size_t thread_index) {
@@ -556,11 +553,18 @@ void DataProcessingService::ProcessAlarmEvents(
         
         for (const auto& alarm_event : alarm_events) {
             try {
-
+                // DB 저장
                 if (alarm_event.state == PulseOne::Alarm::AlarmState::ACTIVE) {
                     SaveAlarmToDatabase(alarm_event);
                 }
-                PublishAlarmToRedis(alarm_event);
+                
+                // Redis 발행 - RedisDataWriter 사용
+                if (redis_data_writer_) {
+                    redis_data_writer_->PublishAlarmEvent(alarm_event);
+                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                                 "✅ RedisDataWriter 알람 발행 완료: rule_id=" + 
+                                                 std::to_string(alarm_event.rule_id));
+                }
                 
                 if (external_notification_enabled_.load()) {
                     SendExternalNotifications(alarm_event);
@@ -573,10 +577,6 @@ void DataProcessingService::ProcessAlarmEvents(
                 } else if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::HIGH) {
                     high_alarms_count_.fetch_add(1);
                 }
-                
-                LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                             "✅ 알람 이벤트 처리 완료: rule_id=" + 
-                                             std::to_string(alarm_event.rule_id));
                 
             } catch (const std::exception& e) {
                 HandleError("개별 알람 이벤트 처리 실패", e.what());
@@ -591,51 +591,6 @@ void DataProcessingService::ProcessAlarmEvents(
 // =============================================================================
 // 외부 시스템 연동
 // =============================================================================
-
-void DataProcessingService::PublishAlarmToRedis(const PulseOne::Alarm::AlarmEvent& event) {
-    if (!redis_client_ || !redis_client_->isConnected()) {
-        return;
-    }
-    
-    try {
-        json alarm_json;
-        alarm_json["type"] = "alarm_event";
-        alarm_json["occurrence_id"] = event.occurrence_id;
-        alarm_json["rule_id"] = event.rule_id;
-        alarm_json["tenant_id"] = event.tenant_id;
-        alarm_json["point_id"] = event.point_id;
-        alarm_json["device_id"] = event.device_id;
-        alarm_json["message"] = event.message;
-        alarm_json["severity"] = static_cast<int>(event.severity);
-        alarm_json["state"] = static_cast<int>(event.state);
-        alarm_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            event.timestamp.time_since_epoch()).count();
-        alarm_json["source_name"] = event.source_name;
-        alarm_json["location"] = event.location;
-        
-        std::visit([&alarm_json](auto&& v) {
-            alarm_json["trigger_value"] = v;
-        }, event.trigger_value);
-        
-        std::string general_channel = "alarms:all";
-        std::string tenant_channel = "tenant:" + std::to_string(event.tenant_id) + ":alarms";
-        std::string device_channel = "device:" + event.device_id + ":alarms";
-        
-        redis_client_->publish(general_channel, alarm_json.dump());
-        redis_client_->publish(tenant_channel, alarm_json.dump());
-        redis_client_->publish(device_channel, alarm_json.dump());
-        
-        std::string active_key = "alarm:active:" + std::to_string(event.rule_id);
-        redis_client_->setex(active_key, alarm_json.dump(), 86400);
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "📝 Redis 알람 발송 완료: " + std::to_string(event.occurrence_id));
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::WARN, 
-                                     "⚠️ Redis 알람 발송 실패: " + std::string(e.what()));
-    }
-}
 
 void DataProcessingService::SendExternalNotifications(const PulseOne::Alarm::AlarmEvent& event) {
     try {
@@ -665,181 +620,6 @@ void DataProcessingService::NotifyWebClients(const PulseOne::Alarm::AlarmEvent& 
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::WARN, 
                                      "⚠️ 웹클라이언트 알림 실패: " + std::string(e.what()));
-    }
-}
-
-// =============================================================================
-// Redis 저장 메서드들
-// =============================================================================
-
-void DataProcessingService::SaveToRedisFullData(
-    const Structs::DeviceDataMessage& enriched_message) {
-    
-    if (!redis_client_) {
-        LogManager::getInstance().log("processing", LogLevel::WARN,
-            "⚠️ Redis 클라이언트가 없음 - Redis 저장 건너뜀");
-        return;
-    }
-    
-    try {
-        std::string device_key = "device:full:" + enriched_message.device_id;
-        nlohmann::json device_data;
-        device_data["device_id"] = enriched_message.device_id;
-        device_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        device_data["points"] = nlohmann::json::array();
-        
-        for (const auto& point : enriched_message.points) {
-            std::string point_key = "point:" + std::to_string(point.point_id) + ":latest";
-            
-            nlohmann::json point_data;
-            point_data["device_id"] = enriched_message.device_id;
-            point_data["point_id"] = point.point_id;
-            point_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                point.timestamp.time_since_epoch()).count();
-            
-            std::visit([&point_data](const auto& v) {
-                point_data["value"] = v;
-            }, point.value);
-            
-            // 🔥 수정: is_virtual_point 필드 확인 후 사용
-            if (point.is_virtual_point) {
-                point_data["is_virtual"] = true;
-                
-                std::string vp_result_key = "virtual_point:" + std::to_string(point.point_id) + ":result";
-                redis_client_->setex(vp_result_key, point_data.dump(), 3600);
-            }
-            
-            point_data["quality"] = static_cast<int>(point.quality);
-            
-            redis_client_->setex(point_key, point_data.dump(), 3600);
-            device_data["points"].push_back(point_data);
-        }
-        
-        redis_client_->setex(device_key, device_data.dump(), 3600);
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "✅ Redis 풀 데이터 저장 완료: " + std::to_string(enriched_message.points.size()) + "개 키");
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
-            "💥 Redis 풀 데이터 저장 실패: " + std::string(e.what()));
-        processing_errors_.fetch_add(1);
-    }
-}
-
-void DataProcessingService::SaveToRedisLightweight(const std::vector<Structs::TimestampedValue>& batch) {
-    if (!redis_client_ || !redis_client_->isConnected()) {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "⚠️ Redis 연결 없음 - 저장 건너뜀");
-        return;
-    }
-    
-    try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "🔄 Redis 저장 (Backend 호환): " + std::to_string(batch.size()) + "개");
-        
-        for (const auto& value : batch) {
-            // 🔥 Backend 호환 패턴으로 완전 변경
-            std::string device_id = extractDeviceNumber(getDeviceIdForPoint(value.point_id));
-            std::string point_name = getPointName(value.point_id);
-            std::string device_key = "device:" + device_id + ":" + point_name;
-            
-            // 🔥 Backend가 기대하는 JSON 구조로 생성
-            nlohmann::json point_data;
-            point_data["point_id"] = value.point_id;
-            point_data["device_id"] = device_id;                    // 문자열로 저장
-            point_data["device_name"] = "Device " + device_id;
-            point_data["point_name"] = point_name;
-            
-            // 값 처리 (variant → JSON)
-            std::visit([&point_data](const auto& v) {
-                point_data["value"] = v;
-            }, value.value);
-            
-            point_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                value.timestamp.time_since_epoch()).count();
-            point_data["quality"] = PulseOne::Utils::DataQualityToString(value.quality, true);
-            point_data["data_type"] = getDataType(value.value);
-            point_data["unit"] = getUnit(value.point_id);
-            point_data["changed"] = value.value_changed;
-            
-            // Backend 호환 키로 저장
-            redis_client_->setex(device_key, point_data.dump(), 1800);
-            redis_writes_.fetch_add(1);
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "✅ Redis 저장 완료 (Backend 호환): " + std::to_string(batch.size()) + "개");
-        
-    } catch (const std::exception& e) {
-        HandleError("Redis 저장 실패 (Backend 호환)", e.what());
-    }
-}
-
-void DataProcessingService::SavePointDataToRedis(const Structs::DeviceDataMessage& message) {
-    if (!redis_client_ || !redis_client_->isConnected()) {
-        return;
-    }
-    
-    try {
-        for (const auto& point : message.points) {
-            WriteTimestampedValueToRedis(point);
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "✅ 포인트 데이터 Redis 저장 완료: " + std::to_string(message.points.size()) + "개");
-            
-    } catch (const std::exception& e) {
-        HandleError("포인트 데이터 Redis 저장 실패", e.what());
-    }
-}
-
-void DataProcessingService::StoreVirtualPointToRedis(const Structs::TimestampedValue& vp_result) {
-    if (!redis_client_ || !redis_client_->isConnected()) {
-        throw std::runtime_error("Redis 클라이언트가 연결되지 않음");
-    }
-    
-    try {
-        std::string result_key = "virtual_point:" + std::to_string(vp_result.point_id) + ":result";
-        std::string latest_key = "virtual_point:" + std::to_string(vp_result.point_id) + ":latest";
-        
-        nlohmann::json vp_data;
-        vp_data["virtual_point_id"] = vp_result.point_id;
-        vp_data["calculated_value"] = std::visit([](const auto& v) -> nlohmann::json { return v; }, vp_result.value);
-        vp_data["quality"] = static_cast<int>(vp_result.quality);
-        vp_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            vp_result.timestamp.time_since_epoch()).count();
-        vp_data["value_changed"] = vp_result.value_changed;
-        
-        std::string json_str = vp_data.dump();
-        
-        redis_client_->setex(result_key, json_str, 3600);
-        redis_client_->setex(latest_key, json_str, 3600);
-        
-        redis_writes_.fetch_add(2);
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
-                                     "가상포인트 " + std::to_string(vp_result.point_id) + 
-                                     " Redis 저장 중 예외: " + std::string(e.what()));
-        throw;
-    }
-}
-
-void DataProcessingService::WriteTimestampedValueToRedis(const Structs::TimestampedValue& value) {
-    if (!redis_client_ || !redis_client_->isConnected()) {
-        return;
-    }
-    
-    try {
-        std::string json_str = TimestampedValueToJson(value);
-        std::string point_key = "point:" + std::to_string(value.point_id) + ":latest";
-        
-        redis_client_->setex(point_key, json_str, 3600);
-        
-    } catch (const std::exception& e) {
-        HandleError("개별 포인트 Redis 저장 실패", e.what());
     }
 }
 
@@ -1327,7 +1107,7 @@ void DataProcessingService::LogPerformanceComparison() {
 // =============================================================================
 
 bool DataProcessingService::IsHealthy() const {
-    return (redis_client_ && redis_client_->isConnected()) || influx_client_;
+    return (redis_data_writer_ && redis_data_writer_->IsConnected()) || influx_client_;
 }
 
 nlohmann::json DataProcessingService::GetDetailedStatus() const {
@@ -1338,21 +1118,24 @@ nlohmann::json DataProcessingService::GetDetailedStatus() const {
     status["processing_errors"] = processing_errors_.load();
     status["alarms_evaluated"] = alarms_evaluated_.load();
     status["virtual_points_calculated"] = virtual_points_calculated_.load();
-    status["redis_connected"] = redis_client_ && redis_client_->isConnected();
-    status["influx_connected"] = influx_client_ != nullptr;
     status["is_running"] = is_running_.load();
     status["thread_count"] = thread_count_;
     status["batch_size"] = batch_size_;
     
+    // RedisDataWriter 상태 포함
+    if (redis_data_writer_) {
+        status["redis_data_writer"] = redis_data_writer_->GetStatus();
+    } else {
+        status["redis_data_writer"] = {{"available", false}};
+    }
+    
     // 설정 상태
     status["alarm_evaluation_enabled"] = alarm_evaluation_enabled_.load();
     status["virtual_point_calculation_enabled"] = virtual_point_calculation_enabled_.load();
-    status["use_lightweight_redis"] = use_lightweight_redis_.load();
     status["external_notification_enabled"] = external_notification_enabled_.load();
     
     return status;
 }
-
 // =============================================================================
 // 에러 처리
 // =============================================================================
@@ -1582,105 +1365,6 @@ void DataProcessingService::SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEven
         LogManager::getInstance().log("processing", LogLevel::ERROR, 
                                      "❌ 알람 DB 저장 예외: " + std::string(e.what()));
     }
-}
-
-void DataProcessingService::SaveToRedisDevicePattern(const Structs::DeviceDataMessage& message) {
-    if (!redis_client_ || !redis_client_->isConnected()) {
-        return;
-    }
-    
-    try {
-        for (const auto& point : message.points) {
-            // 실제 device_id 사용 (message에서)
-            std::string device_id = extractDeviceNumber(message.device_id); // "device_001" -> "1"
-            std::string point_name = getPointName(point.point_id);
-            
-            // device:1:temperature_sensor_01 형태의 키 생성
-            std::string device_key = "device:" + device_id + ":" + point_name;
-            
-            // Backend가 기대하는 JSON 구조로 직접 생성
-            json point_data;
-            point_data["point_id"] = point.point_id;
-            point_data["device_id"] = device_id;
-            point_data["device_name"] = "Device " + device_id;
-            point_data["point_name"] = point_name;
-            
-            // 값 처리
-            std::visit([&point_data](const auto& v) {
-                point_data["value"] = v;
-            }, point.value);
-            
-            point_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                point.timestamp.time_since_epoch()).count();
-            point_data["quality"] = PulseOne::Utils::DataQualityToString(point.quality, true);
-            point_data["data_type"] = getDataType(point.value);
-            point_data["unit"] = getUnit(point.point_id);
-            point_data["changed"] = point.value_changed;
-            
-            redis_client_->setex(device_key, point_data.dump(), 3600);
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "Device pattern Redis 저장 완료: " + std::to_string(message.points.size()) + "개 포인트");
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
-            "Device pattern Redis 저장 실패: " + std::string(e.what()));
-    }
-}
-
-// 필요한 헬퍼 함수들
-std::string DataProcessingService::extractDeviceNumber(const std::string& device_id) {
-    // "device_001" -> "1", "device_002" -> "2"
-    size_t pos = device_id.find_last_of('_');
-    if (pos != std::string::npos) {
-        std::string number = device_id.substr(pos + 1);
-        return std::to_string(std::stoi(number)); // "001" -> "1"
-    }
-    return "1"; // 기본값
-}
-
-std::string DataProcessingService::getPointName(int point_id) {
-    static std::unordered_map<int, std::string> point_names = {
-        {1, "temperature_sensor_01"},
-        {2, "pressure_sensor_01"},
-        {3, "flow_rate"},
-        {4, "pump_status"},
-        {5, "room_temperature"},
-        {6, "humidity_level"},
-        {7, "fan_speed"},
-        {8, "cooling_mode"},
-        {9, "voltage_l1"},
-        {10, "current_l1"},
-        {11, "power_total"},
-        {12, "energy_consumed"}
-    };
-    
-    auto it = point_names.find(point_id);
-    return (it != point_names.end()) ? it->second : ("point_" + std::to_string(point_id));
-}
-
-
-std::string DataProcessingService::getDataType(const DataValue& value) {
-    return std::visit([](const auto& v) -> std::string {
-        using T = std::decay_t<decltype(v)>;
-        if constexpr (std::is_same_v<T, bool>) return "boolean";
-        else if constexpr (std::is_integral_v<T>) return "integer";
-        else if constexpr (std::is_floating_point_v<T>) return "number";
-        else if constexpr (std::is_same_v<T, std::string>) return "string";
-        else return "unknown";
-    }, value);
-}
-
-std::string DataProcessingService::getUnit(int point_id) {
-    static std::unordered_map<int, std::string> units = {
-        {1, "°C"}, {2, "bar"}, {3, "L/min"}, {4, ""}, {5, "°C"},
-        {6, "%"}, {7, "rpm"}, {8, ""}, {9, "V"}, {10, "A"},
-        {11, "W"}, {12, "kWh"}
-    };
-    
-    auto it = units.find(point_id);
-    return (it != units.end()) ? it->second : "";
 }
 
 } // namespace Pipeline

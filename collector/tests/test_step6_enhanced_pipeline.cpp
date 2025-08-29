@@ -398,7 +398,7 @@ protected:
         data_processing_service_->SetThreadCount(2);
         data_processing_service_->EnableAlarmEvaluation(true);
         data_processing_service_->EnableVirtualPointCalculation(false);
-        data_processing_service_->EnableLightweightRedis(false);
+        //data_processing_service_->EnableLightweightRedis(false);
         data_processing_service_->EnableExternalNotifications(true);
         
         ASSERT_TRUE(data_processing_service_->Start()) << "DataProcessingService 시작 실패";
