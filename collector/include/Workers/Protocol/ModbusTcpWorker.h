@@ -103,7 +103,6 @@ public:
     bool CheckProtocolConnection() override;
     bool SendProtocolKeepAlive();
     // SendProtocolKeepAlive()는 TcpBasedWorker에서 기본 구현 제공 (override 불필요)
-
     // =============================================================================
     // 🔥 BaseDeviceWorker Write 인터페이스 구현 (구현부와 완전 일치)
     // =============================================================================

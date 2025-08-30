@@ -171,7 +171,7 @@ std::string WorkerFactory::GetProtocolTypeById(int protocol_id) {
         case 2: return "MODBUS_RTU"; 
         case 3: return "MQTT";
         case 4: return "BACNET";
-        case 8: return "MODBUS_TCP";
+        case 8: return "HTTP_REST";
         default: 
             throw std::runtime_error("Unsupported protocol_id: " + std::to_string(protocol_id));
     }
@@ -233,7 +233,7 @@ bool WorkerFactory::ConvertToDeviceInfoSafe(const Database::Entities::DeviceEnti
         if (!ParseConfigToPropertiesSafe(info)) return false;
         if (!LoadDeviceSettingsSafe(info, device.getId())) return false;
         if (!ApplyProtocolDefaultsSafe(info)) return false;
-        
+        info.SyncToDriverConfig();
         return true;
         
     } catch (const std::exception& e) {
