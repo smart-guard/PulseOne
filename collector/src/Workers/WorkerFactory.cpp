@@ -31,10 +31,8 @@ namespace Workers {
 
 std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::Entities::DeviceEntity& device) {
     try {
-        // 프로토콜 Creator 로드 (캐시된 버전 사용)
         auto creators = LoadProtocolCreators();
         
-        // protocol_id로 실제 프로토콜 타입 조회
         std::string protocol_type;
         try {
             protocol_type = GetProtocolTypeById(device.getProtocolId());
@@ -49,7 +47,6 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
             return nullptr;
         }
         
-        // DeviceEntity → DeviceInfo 변환
         PulseOne::Structs::DeviceInfo device_info;
         if (!ConvertToDeviceInfoSafe(device, device_info)) {
             LogManager::getInstance().Error("DeviceInfo 변환 실패: " + device.getName());
@@ -58,7 +55,7 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
         
         device_info.protocol_type = protocol_type;
         
-        // Worker 생성
+        // Worker 생성 (모든 디버깅 로그 제거)
         std::unique_ptr<BaseDeviceWorker> worker;
         try {
             worker = it->second(device_info);
@@ -174,6 +171,7 @@ std::string WorkerFactory::GetProtocolTypeById(int protocol_id) {
         case 2: return "MODBUS_RTU"; 
         case 3: return "MQTT";
         case 4: return "BACNET";
+        case 8: return "MODBUS_TCP";
         default: 
             throw std::runtime_error("Unsupported protocol_id: " + std::to_string(protocol_id));
     }
@@ -182,7 +180,7 @@ std::string WorkerFactory::GetProtocolTypeById(int protocol_id) {
 bool WorkerFactory::ConvertToDeviceInfoSafe(const Database::Entities::DeviceEntity& device, 
                                           PulseOne::Structs::DeviceInfo& info) {
     try {
-        // 기본 정보
+        // 기본 정보 설정
         info.id = std::to_string(device.getId());
         info.tenant_id = device.getTenantId();
         info.site_id = device.getSiteId();
@@ -202,6 +200,33 @@ bool WorkerFactory::ConvertToDeviceInfoSafe(const Database::Entities::DeviceEnti
         info.endpoint = device.getEndpoint();
         info.config = device.getConfig();
         info.is_enabled = device.isEnabled();
+        
+        // 프로토콜 타입 설정
+        info.protocol_type = GetProtocolTypeById(device.getProtocolId());
+        
+        // 🔥 핵심 수정: 테스트에서 검증하는 속성들을 properties 맵에 추가
+        info.properties["device_id"] = info.id;
+        info.properties["device_name"] = info.name;
+        info.properties["enabled"] = info.is_enabled ? "true" : "false";
+        info.properties["endpoint"] = info.endpoint;
+        info.properties["protocol_type"] = info.protocol_type;
+        
+        // 추가 기본 속성들도 properties 맵에 포함
+        if (!info.description.empty()) {
+            info.properties["description"] = info.description;
+        }
+        if (!info.device_type.empty()) {
+            info.properties["device_type"] = info.device_type;
+        }
+        if (!info.manufacturer.empty()) {
+            info.properties["manufacturer"] = info.manufacturer;
+        }
+        if (!info.model.empty()) {
+            info.properties["model"] = info.model;
+        }
+        if (!info.serial_number.empty()) {
+            info.properties["serial_number"] = info.serial_number;
+        }
         
         // 안전한 변환 호출
         if (!ParseEndpointSafe(info)) return false;

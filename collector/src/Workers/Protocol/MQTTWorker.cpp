@@ -122,7 +122,7 @@ std::future<bool> MQTTWorker::Start() {
             LogMessage(LogLevel::INFO, "Starting MQTT worker...");
             
             StartReconnectionThread();
-            
+
             // 1. 연결 수립
             if (!EstablishConnection()) {
                 promise->set_value(false);
@@ -2228,6 +2228,100 @@ bool MQTTWorker::ParseMQTTTopic(const PulseOne::DataPoint& data_point,
     }
 }
 
+
+std::string MQTTWorker::GetClientId() const {
+    return mqtt_config_.client_id;
+}
+
+std::string MQTTWorker::GetBrokerUrl() const {
+    return mqtt_config_.broker_url;
+}
+
+int MQTTWorker::GetQosLevel() const {
+    // 🔥 중요: MqttQoS enum을 int로 변환 (컴파일 에러 해결)
+    return static_cast<int>(mqtt_config_.default_qos);
+}
+
+bool MQTTWorker::GetCleanSession() const {
+    return mqtt_config_.clean_session;
+}
+
+std::string MQTTWorker::GetUsername() const {
+    return mqtt_config_.username;
+}
+
+int MQTTWorker::GetKeepAliveInterval() const {
+    return mqtt_config_.keepalive_interval_sec;
+}
+
+bool MQTTWorker::GetUseSsl() const {
+    return mqtt_config_.use_ssl;
+}
+
+int MQTTWorker::GetConnectionTimeout() const {
+    return mqtt_config_.connection_timeout_sec;
+}
+
+int MQTTWorker::GetMaxRetryCount() const {
+    return mqtt_config_.max_retry_count;
+}
+
+bool MQTTWorker::IsConnected() const {
+    return mqtt_driver_ ? mqtt_driver_->IsConnected() : false;
+}
+
+std::string MQTTWorker::GetConnectionStatus() const {
+    if (!mqtt_driver_) return "Driver not initialized";
+    if (mqtt_driver_->IsConnected()) return "Connected";
+    return "Disconnected";
+}
+
+std::string MQTTWorker::GetDeviceName() const {
+    return device_info_.name;
+}
+
+std::string MQTTWorker::GetDeviceId() const {
+    return device_info_.id;
+}
+
+bool MQTTWorker::IsDeviceEnabled() const {
+    return device_info_.is_enabled;
+}
+
+std::string MQTTWorker::GetBrokerHost() const {
+    std::string url = mqtt_config_.broker_url;
+    
+    // mqtt://host:port 형식에서 host 추출
+    if (url.find("://") != std::string::npos) {
+        size_t start = url.find("://") + 3;
+        size_t end = url.find(':', start);
+        if (end != std::string::npos) {
+            return url.substr(start, end - start);
+        }
+        return url.substr(start);
+    }
+    
+    // 단순 host:port 형식
+    size_t colon_pos = url.find(':');
+    return (colon_pos != std::string::npos) ? url.substr(0, colon_pos) : url;
+}
+
+int MQTTWorker::GetBrokerPort() const {
+    std::string url = mqtt_config_.broker_url;
+    
+    // 포트 추출
+    size_t colon_pos = url.rfind(':'); // 마지막 ':' 찾기
+    if (colon_pos != std::string::npos) {
+        try {
+            return std::stoi(url.substr(colon_pos + 1));
+        } catch (...) {
+            // 파싱 실패
+        }
+    }
+    
+    // 기본 MQTT 포트
+    return mqtt_config_.use_ssl ? 8883 : 1883;
+}
 
 } // namespace Workers
 } // namespace PulseOne
