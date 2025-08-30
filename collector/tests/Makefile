@@ -1,5 +1,5 @@
 # =============================================================================
-# collector/tests/Makefile - Enhanced with Step-by-Step Logging
+# collector/tests/Makefile - Complete Enhanced Version with Step5 Redis Test
 # 모든 단계별 테스트 로그 파일 자동 생성 지원
 # =============================================================================
 
@@ -84,7 +84,7 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Storage \
            -I$(INCLUDE_DIR)/Client
 
-# 라이브러리 설정 (생략 - 기존과 동일)
+# Modbus 라이브러리 설정
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)
     MODBUS_LIBS = 
     MODBUS_INCLUDES = 
@@ -94,6 +94,7 @@ else
     INCLUDES += $(MODBUS_INCLUDES)
 endif
 
+# MySQL 라이브러리 설정
 MYSQL_CONFIG := $(shell which mysql_config 2>/dev/null)
 ifneq ($(MYSQL_CONFIG),)
     MYSQL_LIBS = $(shell mysql_config --libs)
@@ -104,6 +105,7 @@ else
     CXXFLAGS += -DDISABLE_MYSQL_FEATURES
 endif
 
+# MQTT 라이브러리 설정
 ifeq ($(HAS_MQTT_C),1)
     MQTT_C_LIBS = -lpaho-mqtt3c
 else
@@ -117,12 +119,14 @@ else
     MQTT_CPP_LIBS = 
 endif
 
+# PostgreSQL 라이브러리 설정
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpqxx >/dev/null 2>&1; echo $$?),0)
     PGSQL_LIBS = 
 else
     PGSQL_LIBS = -lpqxx -lpq
 endif
 
+# BACnet 라이브러리 설정
 ifeq ($(HAS_BACNET_STACK), 1)
     BACNET_LIBS = -lbacnet -lm
     BACNET_INCLUDES = -I/usr/local/include/bacnet
@@ -133,6 +137,7 @@ else
     BACNET_LIBS = 
 endif
 
+# Redis 라이브러리 설정
 ifeq ($(HAS_HIREDIS),1)
     REDIS_LIBS = -lhiredis -lhiredis_ssl
     CXXFLAGS += -DHAS_HIREDIS
@@ -140,6 +145,7 @@ else
     REDIS_LIBS = 
 endif
 
+# JSON 라이브러리 설정
 ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON
 endif
@@ -173,7 +179,7 @@ OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
 TEST_LIBS = -lgtest -lgtest_main -pthread
 
-# 소스 파일 수집 (기존과 동일하므로 생략)
+# 소스 파일 수집
 CORE_SOURCES := $(wildcard $(SRC_DIR)/Core/*.cpp)
 UTILS_SOURCES := $(wildcard $(SRC_DIR)/Utils/*.cpp)
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
@@ -221,7 +227,9 @@ ALL_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES) \
 
 ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
 
-TEST_OBJECTS = $(OBJ_DIR)/test_step3_protocol_worker.o \
+TEST_OBJECTS = $(OBJ_DIR)/test_step1_config_connection.o \
+               $(OBJ_DIR)/test_step2_database_entity.o \
+               $(OBJ_DIR)/test_step3_protocol_worker.o \
                $(OBJ_DIR)/test_step4_driver_data_validation.o \
                $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
                $(OBJ_DIR)/test_step6_enhanced_pipeline.o \
@@ -302,7 +310,7 @@ create-dirs: create-log-dir
 	@echo -e "$(GREEN)✅ All directories created (including logs)$(NC)"
 
 # =============================================================================
-# 컴파일 규칙 (기존과 동일)
+# 컴파일 규칙
 # =============================================================================
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
@@ -312,7 +320,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@echo -e "$(YELLOW)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# 테스트 파일 컴파일
+# 테스트 파일 컴파일 규칙
 $(OBJ_DIR)/test_step1_config_connection.o: test_step1_config_connection.cpp
 	@mkdir -p $(OBJ_DIR)
 	@echo -e "$(CYAN)📋 Compiling Step 1 Test [$(PLATFORM)]...$(NC)"
@@ -328,11 +336,6 @@ $(OBJ_DIR)/test_step3_protocol_worker.o: test_step3_protocol_worker.cpp
 	@echo -e "$(CYAN)👷 Compiling Step 3 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-$(OBJ_DIR)/test_step3_protocol_worker.o: test_step3_protocol_worker.cpp
-	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(CYAN)👷 Compiling Step 3 Protocol Worker Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
 $(OBJ_DIR)/test_step4_driver_data_validation.o: test_step4_driver_data_validation.cpp
 	@mkdir -p $(OBJ_DIR)
 	@echo -e "$(CYAN)🔌 Compiling Step 4 Test [$(PLATFORM)]...$(NC)"
@@ -340,7 +343,7 @@ $(OBJ_DIR)/test_step4_driver_data_validation.o: test_step4_driver_data_validatio
 
 $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_db_integration_validation.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(CYAN)🗄️ Compiling Step 5 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)🔄 Compiling Step 5 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step6_enhanced_pipeline.o: test_step6_enhanced_pipeline.cpp
@@ -364,7 +367,7 @@ $(OBJ_DIR)/test_workermanager.o: test_workermanager.cpp
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
-# 테스트 실행 파일 빌드 (기존과 동일)
+# 테스트 실행 파일 빌드
 # =============================================================================
 
 $(BIN_DIR)/test_step1: $(ALL_OBJECTS) $(OBJ_DIR)/test_step1_config_connection.o
@@ -425,7 +428,7 @@ $(BIN_DIR)/test_workermanager: $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o
 # 향상된 단계별 테스트 실행 (로그 포함)
 # =============================================================================
 
-# Step 1 테스트 (로그 포함)
+# Step 1 테스트
 step1-build: create-dirs $(BIN_DIR)/test_step1
 
 step1-test: step1-build create-log-dir
@@ -439,24 +442,23 @@ step1-test: step1-build create-log-dir
 	$(call analyze_log,$(LOG_FILE),Step 1)
 	@echo -e "$(GREEN)Step 1 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 2 테스트 (기존 방식 유지 + 향상)
+# Step 2 테스트
 step2-build: create-dirs $(BIN_DIR)/test_step2
 
 step2-test: step2-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step2))
 	@echo -e "$(MAGENTA)🚀 Running Step 2 Test [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)Database Entity Validation Test - Enhanced Logging$(NC)"
+	@echo -e "$(CYAN)Database Entity Validation Test$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	@echo -e "$(BLUE)Testing Database-Entity mapping and CRUD operations$(NC)"
-	@echo -e "$(BLUE)All test output will be displayed and logged$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call create_log_summary,$(LOG_FILE),Step 2)
 	@./$(BIN_DIR)/test_step2 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 2)
-	@echo -e "$(GREEN)Step 2 Test completed. Enhanced log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(GREEN)Step 2 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 3 테스트 (로그 포함)
+# Step 3 테스트
 step3-build: create-dirs $(BIN_DIR)/test_step3
 
 step3-test: step3-build create-log-dir
@@ -466,17 +468,14 @@ step3-test: step3-build create-log-dir
 	@echo -e "$(YELLOW)============================================$(NC)"
 	@echo -e "$(BLUE)Testing Worker creation and property mapping$(NC)"
 	@echo -e "$(BLUE)Entity -> DeviceInfo -> Worker property validation$(NC)"
-	@echo -e "$(BLUE)Modbus RTU Master/Slave configuration verification$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call create_log_summary,$(LOG_FILE),Step 3)
 	@./$(BIN_DIR)/test_step3 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 3)
-	@echo -e "$(GREEN)Step 3 Test completed. Full log saved: $(LOG_FILE)$(NC)"
-	@echo -e "$(CYAN)Quick summary of Step 3 results:$(NC)"
-	@tail -n 15 $(LOG_FILE) | grep -E "(성공률|Worker|속성|정확도|PASSED|FAILED|Step 3)" || echo "Check full log for details"
+	@echo -e "$(GREEN)Step 3 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 4 테스트 (로그 포함)
+# Step 4 테스트
 step4-build: create-dirs $(BIN_DIR)/test_step4
 
 step4-test: step4-build create-log-dir
@@ -491,26 +490,27 @@ step4-test: step4-build create-log-dir
 	@./$(BIN_DIR)/test_step4 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 4)
-	@echo -e "$(GREEN)Step 4 Test completed. Full log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(GREEN)Step 4 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 5 테스트 (로그 포함)
+# Step 5 테스트 (업데이트됨)
 step5-build: create-dirs $(BIN_DIR)/test_step5
 
 step5-test: step5-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step5))
 	@echo -e "$(MAGENTA)🚀 Running Step 5 Test [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)Complete Database Integration Validation Test$(NC)"
+	@echo -e "$(CYAN)WorkerManager-Redis Initial Data Validation Test$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(BLUE)Testing complete database integration$(NC)"
-	@echo -e "$(BLUE)End-to-end data flow validation$(NC)"
+	@echo -e "$(BLUE)Testing WorkerManager → Redis initial data storage$(NC)"
+	@echo -e "$(BLUE)DB initial values → Worker initialization → Redis verification$(NC)"
+	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call create_log_summary,$(LOG_FILE),Step 5)
 	@./$(BIN_DIR)/test_step5 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 5)
-	@echo -e "$(GREEN)Step 5 Test completed. Full log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(GREEN)Step 5 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 6 테스트 (로그 포함)
+# Step 6 테스트
 step6-build: create-dirs $(BIN_DIR)/test_step6
 
 step6-test: step6-build create-log-dir
@@ -520,15 +520,14 @@ step6-test: step6-build create-log-dir
 	@echo -e "$(YELLOW)============================================$(NC)"
 	@echo -e "$(BLUE)Testing alarm and virtual point pipeline$(NC)"
 	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
-	@echo -e "$(BLUE)Test data should be present in DB$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call create_log_summary,$(LOG_FILE),Step 6)
 	@./$(BIN_DIR)/test_step6 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 6)
-	@echo -e "$(GREEN)Step 6 Test completed. Full log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(GREEN)Step 6 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Network 테스트 (로그 포함)
+# Network 테스트
 network-build: create-dirs $(BIN_DIR)/test_network
 
 network-test: network-build create-log-dir
@@ -543,9 +542,9 @@ network-test: network-build create-log-dir
 	@./$(BIN_DIR)/test_network 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Network)
-	@echo -e "$(GREEN)Network Test completed. Full log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(GREEN)Network Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Platform 테스트 (로그 포함)
+# Platform 테스트
 platform-build: create-dirs $(BIN_DIR)/test_platform
 
 platform-test: platform-build create-log-dir
@@ -557,9 +556,9 @@ platform-test: platform-build create-log-dir
 	@./$(BIN_DIR)/test_platform 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Platform)
-	@echo -e "$(GREEN)Platform Test completed. Full log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(GREEN)Platform Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# WorkerManager 테스트 (로그 포함)
+# WorkerManager 테스트
 workermanager-build: create-dirs $(BIN_DIR)/test_workermanager
 
 workermanager-test: workermanager-build create-log-dir
@@ -571,13 +570,12 @@ workermanager-test: workermanager-build create-log-dir
 	@./$(BIN_DIR)/test_workermanager 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),WorkerManager)
-	@echo -e "$(GREEN)WorkerManager Test completed. Full log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(GREEN)WorkerManager Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # =============================================================================
 # 로그 관리 유틸리티
 # =============================================================================
 
-# 로그 디렉토리 확인
 check-logs: create-log-dir
 	@echo -e "$(BLUE)📁 Log Directory Status$(NC)"
 	@echo -e "$(YELLOW)========================$(NC)"
@@ -587,7 +585,6 @@ check-logs: create-log-dir
 	@echo -e "$(CYAN)Recent log files:$(NC)"
 	@ls -lt $(LOG_DIR)/*.log 2>/dev/null | head -10 || echo "No log files found"
 
-# 최신 로그들의 요약 보기
 logs-summary: create-log-dir
 	@echo -e "$(BLUE)📊 Latest Test Logs Summary$(NC)"
 	@echo -e "$(YELLOW)=============================$(NC)"
@@ -603,27 +600,23 @@ logs-summary: create-log-dir
 		fi; \
 	done
 
-# 로그 정리 (7일 이상 된 로그 삭제)
 clean-old-logs: create-log-dir
 	@echo -e "$(YELLOW)🧹 Cleaning old log files (>7 days)...$(NC)"
 	@find $(LOG_DIR) -name '*.log' -mtime +7 -delete 2>/dev/null || true
 	@echo -e "$(GREEN)Old log files cleaned$(NC)"
 
-# 모든 로그 삭제
 clean-all-logs: create-log-dir
 	@echo -e "$(RED)🗑️ Removing all log files...$(NC)"
 	@rm -f $(LOG_DIR)/*.log 2>/dev/null || true
 	@echo -e "$(GREEN)All log files removed$(NC)"
 
 # =============================================================================
-# 통합 실행 (로그 포함)
+# 통합 실행
 # =============================================================================
 
-# 모든 테스트 빌드
-all-tests-build: create-dirs $(BIN_DIR)/test_workermanager $(BIN_DIR)/test_platform $(BIN_DIR)/test_step1 $(BIN_DIR)/test_step2 $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_network
+all-tests-build: create-dirs $(BIN_DIR)/test_step1 $(BIN_DIR)/test_step2 $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_network $(BIN_DIR)/test_platform $(BIN_DIR)/test_workermanager
 	@echo -e "$(GREEN)✅ All tests build completed for $(PLATFORM)!$(NC)"
 
-# 모든 테스트 실행 (각각 로그 생성)
 all-tests-run: all-tests-build create-log-dir
 	$(eval MASTER_LOG := $(LOG_DIR)/all_tests_$(TIMESTAMP).log)
 	@echo -e "$(BLUE)🚀 Running all tests with logging on $(PLATFORM)...$(NC)"
@@ -646,7 +639,6 @@ all-tests-run: all-tests-build create-log-dir
 	@echo -e "$(CYAN)Master log: $(MASTER_LOG)$(NC)"
 	@$(MAKE) logs-summary
 
-# 빠른 테스트 (핵심 테스트만, 로그 포함)
 quick-test: workermanager-test platform-test step3-test
 	@echo -e "$(GREEN)✅ Quick test completed with logging$(NC)"
 
@@ -654,18 +646,15 @@ quick-test: workermanager-test platform-test step3-test
 # 기존 유틸리티들
 # =============================================================================
 
-# 클린
 clean:
 	@echo -e "$(YELLOW)🧹 Cleaning $(PLATFORM) build files...$(NC)"
 	@rm -rf $(OBJ_DIR) $(BIN_DIR)
 	@echo -e "$(CYAN)Note: Log files preserved in $(LOG_DIR)/$(NC)"
 	@echo -e "$(GREEN)✅ Clean completed for $(PLATFORM)$(NC)"
 
-# 전체 클린 (로그 포함)
 clean-all: clean clean-all-logs
 	@echo -e "$(GREEN)✅ Complete clean (including logs) for $(PLATFORM)$(NC)"
 
-# 빌드 상태 확인
 status:
 	@echo -e "$(BLUE)🏗️ Build Status for $(PLATFORM) (Enhanced Logging)$(NC)"
 	@echo -e "$(YELLOW)================================================$(NC)"
@@ -687,7 +676,6 @@ status:
 	@echo "Platform: $(if $(wildcard $(BIN_DIR)/test_platform),✅ exists,❌ missing)"
 	@echo "WorkerManager: $(if $(wildcard $(BIN_DIR)/test_workermanager),✅ exists,❌ missing)"
 
-# 도움말 (업데이트됨)
 help:
 	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Comprehensive Logging$(NC)"
 	@echo -e "$(YELLOW)============================================================$(NC)"
@@ -702,7 +690,7 @@ help:
 	@echo "  make step2-test   - Step 2: Database entity validation test"
 	@echo "  make step3-test   - Step 3: Protocol worker property validation test"
 	@echo "  make step4-test   - Step 4: Driver data validation test"
-	@echo "  make step5-test   - Step 5: Complete DB integration test"
+	@echo "  make step5-test   - Step 5: WorkerManager-Redis initial data test"
 	@echo "  make step6-test   - Step 6: Enhanced alarm+virtualpoint pipeline test"
 	@echo "  make network-test - Network: REST API server test"
 	@echo "  make platform-test - Platform: Cross-platform compatibility test"

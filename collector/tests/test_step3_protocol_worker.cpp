@@ -237,15 +237,18 @@ public:
             else if (auto* mqtt = dynamic_cast<MQTTWorker*>(worker)) {
                 basic_info["worker_type"] = "MQTTWorker";
                 
-                // ✅ MQTT Worker 속성들 추출 (MQTT Worker에 getter 메서드가 있다면)
                 try {
-                    // 만약 MQTTWorker에 GetClientId() 같은 메서드가 있다면
-                    // protocol_props["client_id"] = mqtt->GetClientId();
-                    // protocol_props["qos_level"] = std::to_string(mqtt->GetQosLevel());
+                    // 🔥 실제 메서드 호출 (주석 해제)
+                    protocol_props["client_id"] = mqtt->GetClientId();
+                    protocol_props["broker_host"] = mqtt->GetBrokerHost();
+                    protocol_props["broker_port"] = std::to_string(mqtt->GetBrokerPort());
+                    protocol_props["qos_level"] = std::to_string(mqtt->GetQosLevel());
                     
-                    protocol_props["worker_created"] = "true";
-                    
-                    std::cout << "      🔍 MQTT Worker 생성됨 (상세 속성 추출은 구현 필요)" << std::endl;
+                    std::cout << "      🔍 추출된 MQTT 속성들:" << std::endl;
+                    std::cout << "        - client_id: " << protocol_props["client_id"] << std::endl;
+                    std::cout << "        - broker_host: " << protocol_props["broker_host"] << std::endl;
+                    std::cout << "        - broker_port: " << protocol_props["broker_port"] << std::endl;
+                    std::cout << "        - qos_level: " << protocol_props["qos_level"] << std::endl;
                     
                 } catch (const std::exception& e) {
                     std::cout << "      ❌ MQTT 속성 추출 실패: " << e.what() << std::endl;

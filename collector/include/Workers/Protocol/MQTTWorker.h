@@ -272,7 +272,14 @@ public:
     bool CloseConnection() override;
     bool CheckConnection() override;
     bool SendKeepAlive() override;
-
+    std::map<std::string, std::string> GetProtocolProperties() const {
+        std::map<std::string, std::string> props;
+        props["client_id"] = GetProperty("client_id", "pulseone_" + GetWorkerId());
+        props["broker_host"] = GetProperty("broker_host", "localhost");
+        props["broker_port"] = GetProperty("broker_port", "1883");
+        props["topic"] = GetProperty("topic", "/sensors/data");
+        return props;
+    }
     // =============================================================================
     // 🔥 파이프라인 연동 메서드들 (ModbusTcpWorker 패턴 완전 적용)
     // =============================================================================
