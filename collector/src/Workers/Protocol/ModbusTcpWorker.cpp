@@ -47,6 +47,9 @@ ModbusTcpWorker::ModbusTcpWorker(const PulseOne::DeviceInfo& device_info)
     }
     
     LogMessage(LogLevel::INFO, "ModbusTcpWorker initialization completed");
+    LogManager::getInstance().Info("=== ModbusTcpWorker 생성자 ===");
+    LogManager::getInstance().Info("받은 device_info properties: " + std::to_string(device_info.properties.size()));
+    LogManager::getInstance().Info("BaseWorker device_info_ properties: " + std::to_string(GetPropertyCount()));
 }
 
 ModbusTcpWorker::~ModbusTcpWorker() {
@@ -179,7 +182,7 @@ std::future<bool> ModbusTcpWorker::Start() {
         }
         
         StartReconnectionThread();
-        
+
         LogMessage(LogLevel::INFO, "Starting ModbusTcpWorker...");
         
         try {
@@ -1705,6 +1708,95 @@ bool ModbusTcpWorker::SendSingleValueToPipeline(const DataValue& value, uint16_t
         return false;
     }
 }
+
+int ModbusTcpWorker::GetSlaveId() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "slave_id", "1"));
+}
+
+std::string ModbusTcpWorker::GetIpAddress() const {
+    std::string endpoint = device_info_.endpoint;
+    size_t colon_pos = endpoint.find(':');
+    return (colon_pos != std::string::npos) ? endpoint.substr(0, colon_pos) : endpoint;
+}
+
+int ModbusTcpWorker::GetPort() const {
+    std::string endpoint = device_info_.endpoint;
+    size_t colon_pos = endpoint.find(':');
+    if (colon_pos != std::string::npos) {
+        try {
+            return std::stoi(endpoint.substr(colon_pos + 1));
+        } catch (...) {
+            return 502;
+        }
+    }
+    return 502;
+}
+
+int ModbusTcpWorker::GetConnectionTimeout() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "connection_timeout_ms", "5000"));
+}
+
+bool ModbusTcpWorker::GetKeepAlive() const {
+    return GetPropertyValue(modbus_config_.properties, "keep_alive", "false") == "true";
+}
+
+int ModbusTcpWorker::GetResponseTimeout() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "response_timeout_ms", "1000"));
+}
+
+int ModbusTcpWorker::GetByteTimeout() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "byte_timeout_ms", "100"));
+}
+
+int ModbusTcpWorker::GetMaxRetries() const {
+    return std::stoi(GetPropertyValue(modbus_config_.properties, "max_retries", "3"));
+}
+
+bool ModbusTcpWorker::IsConnected() const {
+    return modbus_driver_ ? modbus_driver_->IsConnected() : false;
+}
+
+std::string ModbusTcpWorker::GetConnectionStatus() const {
+    if (!modbus_driver_) return "Driver not initialized";
+    if (modbus_driver_->IsConnected()) return "Connected";
+    return "Disconnected";
+}
+
+std::string ModbusTcpWorker::GetEndpoint() const {
+    return device_info_.endpoint;
+}
+
+std::string ModbusTcpWorker::GetDeviceName() const {
+    return device_info_.name;
+}
+
+std::string ModbusTcpWorker::GetDeviceId() const {
+    return device_info_.id;
+}
+
+bool ModbusTcpWorker::IsDeviceEnabled() const {
+    return device_info_.is_enabled;
+}
+
+std::string ModbusTcpWorker::GetTcpConnectionStatus() const {
+    nlohmann::json status;
+    status["endpoint"] = GetEndpoint();
+    status["ip_address"] = GetIpAddress();
+    status["port"] = GetPort();
+    status["connection_timeout_ms"] = GetConnectionTimeout();
+    status["keep_alive"] = GetKeepAlive();
+    status["is_connected"] = IsConnected();
+    status["connection_status"] = GetConnectionStatus();
+    
+    return status.dump(2);
+}
+std::string ModbusTcpWorker::GetPropertyValue(const std::map<std::string, std::string>& properties, 
+                                            const std::string& key, 
+                                            const std::string& default_value) const {
+    auto it = properties.find(key);
+    return (it != properties.end()) ? it->second : default_value;
+}
+
 
 } // namespace Workers  
 } // namespace PulseOne

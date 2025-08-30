@@ -288,12 +288,22 @@ bool RepositoryFactory::createRepositoryInstances() {
             logger_->Error("Failed to create AlarmOccurrenceRepository");
             return false;
         }
+
+        protocol_repository_ = std::make_shared<Repositories::ProtocolRepository>();
+        if (!protocol_repository_) {
+            logger_->Error("Failed to create ProtocolRepository");
+            return false;
+        }
+
+        
+
+
         // script_library_repo_ = std::make_shared<Repositories::ScriptLibraryRepository>();
         //if (!script_library_repo_) {
         //    logger_->Error("Failed to create ScriptLibraryRepository");
         //    return false;
         //}
-        logger_->Info("⚠️ ScriptLibraryRepository not created (implementation pending)");
+        //logger_->Info("⚠️ ScriptLibraryRepository not created (implementation pending)");
 
                 
         logger_->Info("All repository instances created successfully");

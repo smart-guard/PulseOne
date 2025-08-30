@@ -1,6 +1,6 @@
 // ==========================================================================
 // 📁 파일: collector/include/Workers/Base/BaseDeviceWorker.h  
-// 🔥 GitHub 구조 준수 + Write 가상함수 추가 + 메모리 누수 수정 (실제 요구사항 반영)
+// 🔥 GitHub 구조 준수 + Write 가상함수 추가 + 메모리 누수 수정 + 테스트 지원
 // ==========================================================================
 
 #ifndef WORKERS_BASE_DEVICE_WORKER_H
@@ -21,6 +21,7 @@
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <sstream>
 
 namespace PulseOne {
 namespace Workers {
@@ -131,7 +132,7 @@ public:
     virtual bool SendKeepAlive() { return true; }
     
     // =============================================================================
-    // 🔥 메모리 누수 방지를 위한 스레드 생명주기 관리 (새로 추가)
+    // 메모리 누수 방지를 위한 스레드 생명주기 관리
     // =============================================================================
     
     /**
@@ -156,7 +157,7 @@ public:
     virtual std::vector<PulseOne::Structs::DataPoint> GetDataPoints() const;
     
     // =============================================================================
-    // 🔥 공통 WRITE 인터페이스 (가상 함수로 추가)
+    // 공통 WRITE 인터페이스 (가상 함수로 추가)
     // 각 프로토콜별 구현체에서 오버라이드
     // =============================================================================
     
@@ -178,7 +179,6 @@ public:
      * @return 성공 시 true
      */
     virtual bool WriteAnalogOutput(const std::string& output_id, double value) {
-        // DataValue로 변환 후 WriteDataPoint 호출
         return WriteDataPoint(output_id, DataValue(value));
     }
     
@@ -189,7 +189,6 @@ public:
      * @return 성공 시 true
      */
     virtual bool WriteDigitalOutput(const std::string& output_id, bool value) {
-        // DataValue로 변환 후 WriteDataPoint 호출
         return WriteDataPoint(output_id, DataValue(value));
     }
     
@@ -246,6 +245,58 @@ public:
                            uint32_t priority = 0);
     
     const std::string& GetWorkerId() const { return worker_id_; }
+    
+    // =============================================================================
+    // 테스트 및 디버깅 지원 메서드들 (public)
+    // =============================================================================
+    
+    /**
+     * @brief 속성 존재 여부 확인
+     */
+    bool HasProperty(const std::string& key) const {
+        return device_info_.properties.find(key) != device_info_.properties.end();
+    }
+    
+    /**
+     * @brief 속성 값 가져오기
+     */
+    std::string GetProperty(const std::string& key, const std::string& default_value = "") const {
+        auto it = device_info_.properties.find(key);
+        return (it != device_info_.properties.end()) ? it->second : default_value;
+    }
+    
+    /**
+     * @brief 속성 값 설정
+     */
+    void SetProperty(const std::string& key, const std::string& value) {
+        device_info_.properties[key] = value;
+    }
+
+    /**
+     * @brief 모든 속성 반환
+     */
+    std::map<std::string, std::string> GetAllProperties() const {
+        return device_info_.properties;
+    }
+
+    /**
+     * @brief 속성 개수 반환
+     */
+    size_t GetPropertyCount() const {
+        return device_info_.properties.size();
+    }
+
+    /**
+     * @brief 디버깅용 속성 문자열 생성
+     */
+    std::string GetPropertiesDebugString() const {
+        std::stringstream ss;
+        ss << "Properties count: " << device_info_.properties.size() << "\n";
+        for (const auto& [key, value] : device_info_.properties) {
+            ss << "  " << key << " = " << value << "\n";
+        }
+        return ss.str();
+    }
 
 protected:
     // =============================================================================
@@ -283,22 +334,15 @@ protected:
     std::unordered_map<int, DataValue> previous_values_;
     std::vector<PulseOne::Structs::DataPoint> data_points_;
     
+    // =============================================================================
     // DeviceInfo 접근자들
+    // =============================================================================
     std::string GetProtocolType() const { 
         return device_info_.protocol_type;
     }
     
     void SetProtocolType(const std::string& protocol_type) { 
         device_info_.protocol_type = protocol_type;
-    }
-    
-    std::string GetProperty(const std::string& key, const std::string& default_value = "") const {
-        auto it = device_info_.properties.find(key);
-        return (it != device_info_.properties.end()) ? it->second : default_value;
-    }
-    
-    void SetProperty(const std::string& key, const std::string& value) {
-        device_info_.properties[key] = value;
     }
     
     const std::string& GetDeviceName() const { return device_info_.name; }
@@ -369,7 +413,7 @@ private:
     std::chrono::system_clock::time_point last_keep_alive_time_;
     
     // =============================================================================
-    // 🔥 메모리 누수 방지를 위한 백그라운드 스레드 관리 (수정됨)
+    // 메모리 누수 방지를 위한 백그라운드 스레드 관리
     // =============================================================================
     std::unique_ptr<std::thread> reconnection_thread_;
     std::atomic<bool> thread_running_{false};

@@ -25,6 +25,7 @@
 #include <chrono>
 #include <future>
 #include <set>
+#include <optional>
 
 #ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
@@ -61,7 +62,7 @@ struct MQTTSubscription {
     uint32_t subscription_id;                           ///< 구독 ID (고유)
     std::string topic;                                  ///< MQTT 토픽
     MqttQoS qos;                                       ///< QoS 레벨
-    std::vector<PulseOne::DataPoint> data_points;      ///< 연결된 데이터 포인트들
+    std::vector<PulseOne::Structs::DataPoint> data_points;  ///< 연결된 데이터 포인트들
     std::string json_path;                             ///< JSON 경로 (예: "sensors.temperature")
     bool is_active;                                    ///< 구독 활성화 상태
     
@@ -286,9 +287,10 @@ public:
      */
     bool SendMQTTDataToPipeline(const std::string& topic, 
                                const std::string& payload,
-                               const DataPoint* data_point = nullptr,
+                               const PulseOne::Structs::DataPoint* data_point = nullptr,
                                uint32_t priority = 0);
 
+#ifdef HAS_NLOHMANN_JSON
     /**
      * @brief JSON 데이터를 직접 TimestampedValue로 변환 후 파이프라인 전송  
      * @param json_data 파싱된 JSON 데이터
@@ -299,6 +301,11 @@ public:
     bool SendJsonValuesToPipeline(const nlohmann::json& json_data,
                                  const std::string& topic_context,
                                  uint32_t priority = 0);
+#else
+    bool SendJsonValuesToPipeline(const nlohmann::json& json_data,
+                                 const std::string& topic_context,
+                                 uint32_t priority = 0);
+#endif
 
     /**
      * @brief 단일 MQTT 토픽 값을 파이프라인 전송
@@ -310,6 +317,10 @@ public:
     bool SendSingleTopicValueToPipeline(const std::string& topic,
                                        const PulseOne::Structs::DataValue& value,
                                        uint32_t priority = 0);
+
+    /**
+     * @brief 복수 MQTT 토픽 값을 파이프라인 일괄 전송
+     */
     bool SendMultipleTopicValuesToPipeline(const std::map<std::string, PulseOne::Structs::DataValue>& topic_values,
                                           const std::string& batch_context,
                                           uint32_t priority = 0);                                       
@@ -466,31 +477,16 @@ public:
     void EnableAutoFailover(const std::vector<std::string>& backup_brokers, int max_failures = 5);
     
     // =============================================================================
-    // 유틸리티 정적 메서드
+    // 데이터 포인트 쓰기 인터페이스 (BaseDeviceWorker 오버라이드)
     // =============================================================================
     
-    static int QosToInt(MqttQoS qos) {
-        return static_cast<int>(qos);
-    }
-    
-    static MqttQoS IntToQos(int qos_int) {
-        switch (qos_int) {
-            case 0: return MqttQoS::AT_MOST_ONCE;
-            case 2: return MqttQoS::EXACTLY_ONCE;
-            default: return MqttQoS::AT_LEAST_ONCE;
-        }
-    }
-    
-    PulseOne::Drivers::MqttDriver* GetMqttDriver() const {
-        return mqtt_driver_.get();
-    }
     /**
      * @brief 데이터 포인트에 값 쓰기 (통합 인터페이스)
      * @param point_id 데이터 포인트 ID
      * @param value 쓸 값 (DataValue variant)
      * @return 성공 시 true
      */
-    virtual bool WriteDataPoint(const std::string& point_id, const DataValue& value) override;
+    virtual bool WriteDataPoint(const std::string& point_id, const PulseOne::Structs::DataValue& value) override;
     
     /**
      * @brief 아날로그 출력 제어 (MQTT 토픽 발행)
@@ -590,6 +586,124 @@ public:
         return WriteSetpoint(thermostat_id + "/setpoint/temperature", temperature);
     }
 
+    // =============================================================================
+    // 🔥 테스트용 Getter 메서드들 (구현부와 완전 동기화)
+    // =============================================================================
+    
+    /**
+     * @brief 클라이언트 ID 조회
+     */
+    std::string GetClientId() const;
+    
+    /**
+     * @brief 브로커 URL 조회
+     */
+    std::string GetBrokerUrl() const;
+    
+    /**
+     * @brief QoS 레벨 조회 (구현부와 타입 매칭)
+     */
+    int GetQosLevel() const;
+    
+    /**
+     * @brief Clean Session 설정 조회
+     */
+    bool GetCleanSession() const;
+    
+    /**
+     * @brief 사용자명 조회
+     */
+    std::string GetUsername() const;
+    
+    /**
+     * @brief Keep Alive 간격 조회
+     */
+    int GetKeepAliveInterval() const;
+    
+    /**
+     * @brief SSL 사용 여부 조회
+     */
+    bool GetUseSsl() const;
+    
+    /**
+     * @brief 연결 타임아웃 조회
+     */
+    int GetConnectionTimeout() const;
+    
+    /**
+     * @brief 최대 재시도 횟수 조회
+     */
+    int GetMaxRetryCount() const;
+    
+    /**
+     * @brief 연결 상태 확인
+     */
+    bool IsConnected() const;
+    
+    /**
+     * @brief 연결 상태 문자열
+     */
+    std::string GetConnectionStatus() const;
+    
+    /**
+     * @brief 디바이스 이름 조회
+     */
+    std::string GetDeviceName() const;
+    
+    /**
+     * @brief 디바이스 ID 조회
+     */
+    std::string GetDeviceId() const;
+    
+    /**
+     * @brief 디바이스 활성화 상태 조회
+     */
+    bool IsDeviceEnabled() const;
+    
+    /**
+     * @brief 브로커 호스트 조회 (URL에서 파싱)
+     */
+    std::string GetBrokerHost() const;
+    
+    /**
+     * @brief 브로커 포트 조회 (URL에서 파싱)
+     */
+    int GetBrokerPort() const;
+    
+    // =============================================================================
+    // 유틸리티 정적 메서드들
+    // =============================================================================
+    
+    static int QosToInt(MqttQoS qos) {
+        return static_cast<int>(qos);
+    }
+    
+    static MqttQoS IntToQos(int qos_int) {
+        switch (qos_int) {
+            case 0: return MqttQoS::AT_MOST_ONCE;
+            case 2: return MqttQoS::EXACTLY_ONCE;
+            default: return MqttQoS::AT_LEAST_ONCE;
+        }
+    }
+    
+    /**
+     * @brief MqttDriver 인스턴스 접근
+     */
+    PulseOne::Drivers::MqttDriver* GetMqttDriver() const {
+        return mqtt_driver_.get();
+    }
+
+    // =============================================================================
+    // 재연결 관리 (BaseDeviceWorker에서 사용)
+    // =============================================================================
+    
+    void StartReconnectionThread() {
+        // BaseDeviceWorker의 재연결 기능 활용
+        if (auto_reconnect_enabled_) {
+            BaseDeviceWorker::StartReconnectionThread();
+        }
+    }
+
 private:
     // =============================================================================
     // 내부 멤버 변수들
@@ -620,7 +734,7 @@ private:
     // 기본 통계
     mutable MQTTWorkerStatistics worker_stats_;
     
-    // MQTT 설정
+    // MQTT 설정 구조체
     struct {
         std::string broker_url = "mqtt://localhost:1883";
         std::string client_id = "";
@@ -681,7 +795,7 @@ private:
     std::chrono::steady_clock::time_point last_throughput_calculation_;
     
     // =============================================================================
-    // 내부 메서드들
+    // 내부 메서드들 (구현부와 완전 동기화)
     // =============================================================================
     
     // 기본 기능 메서드들
@@ -690,18 +804,11 @@ private:
     void MessageProcessorThreadFunction();
     void PublishProcessorThreadFunction();
     bool ProcessReceivedMessage(const std::string& topic, const std::string& payload);
-    bool ExtractValueFromJSON(const std::string& payload, 
-                             const std::string& json_path,
-                             PulseOne::Structs::DataValue& extracted_value);
-    bool ParseMQTTTopic(const PulseOne::DataPoint& data_point,
-                       std::string& topic, std::string& json_path, int& qos);
-    bool SaveDataPointValue(const PulseOne::DataPoint& data_point,
-                           const PulseOne::TimestampedValue& value);
     bool ValidateSubscription(const MQTTSubscription& subscription);
     
     // 🔥 파이프라인 연동 헬퍼 메서드들 (ModbusTcpWorker 패턴)
-    DataPoint* FindDataPointByTopic(const std::string& topic);
-    std::optional<DataPoint> FindDataPointById(const std::string& point_id);
+    PulseOne::Structs::DataPoint* FindDataPointByTopic(const std::string& topic);
+    std::optional<PulseOne::Structs::DataPoint> FindDataPointById(const std::string& point_id);
     
     // 프로덕션 모드 전용 메서드들
     void StartProductionThreads();
@@ -722,16 +829,22 @@ private:
     bool IsDuplicateMessage(const std::string& message_id);
     double CalculateMessagePriority(const std::string& topic, const std::string& payload);
     
+    // 콜백 및 드라이버 설정
     static void MessageCallback(MQTTWorker* worker, 
                                const std::string& topic, 
                                const std::string& payload);
-    void SetupMQTTDriverCallbacks(); 
-    bool WriteDataPointValue(const std::string& point_id, const DataValue& value);
-    bool PublishControlMessage(const std::string& topic, const DataValue& value, int qos = 1);
+    void SetupMQTTDriverCallbacks();
+    
+    // 제어 인터페이스 내부 구현
+    bool WriteDataPointValue(const std::string& point_id, const PulseOne::Structs::DataValue& value);
+    bool PublishControlMessage(const std::string& topic, const PulseOne::Structs::DataValue& value, int qos = 1);
     std::string BuildControlTopic(const std::string& device_id, const std::string& control_type);
-    std::string CreateJsonPayload(const DataValue& value);
-    void LogWriteOperation(const std::string& topic, const DataValue& value, bool success);                         
- #ifdef HAS_NLOHMANN_JSON
+    std::string CreateJsonPayload(const PulseOne::Structs::DataValue& value);
+    void LogWriteOperation(const std::string& topic, const PulseOne::Structs::DataValue& value, bool success);
+    bool ParseMQTTTopic(const PulseOne::Structs::DataPoint& data_point,
+                       std::string& topic, std::string& json_path, int& qos);
+    
+#ifdef HAS_NLOHMANN_JSON
     bool ConvertJsonToDataValue(const nlohmann::json& json_val,
                                PulseOne::Structs::DataValue& data_value);
 #endif
