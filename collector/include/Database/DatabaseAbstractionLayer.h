@@ -227,7 +227,11 @@ private:
     
     std::string escapeString(const std::string& str);
     std::string getCurrentDbType();
-
+    std::string preprocessQuery(const std::string& query);
+    std::vector<std::string> parseColumnList(const std::string& columns_section);
+    std::string trimColumn(const std::string& column);
+    std::string extractTableNameFromQuery(const std::string& query);
+    std::vector<std::string> getTableColumnsFromSchema(const std::string& table_name);
 private:
     // =======================================================================
     // 멤버 변수들

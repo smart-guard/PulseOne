@@ -24,14 +24,25 @@ std::vector<std::map<std::string, std::string>> DatabaseAbstractionLayer::execut
         
         // 1. 표준 SQL을 DB 방언으로 변환
         std::string adapted_query = adaptQuery(query);
-        LogManager::getInstance().Debug("Original: " + query.substr(0, 50) + "...");
-        LogManager::getInstance().Debug("Adapted: " + adapted_query.substr(0, 50) + "...");
+        LogManager::getInstance().Debug("Original: " + query.substr(0, 100) + "...");
+        LogManager::getInstance().Debug("Adapted: " + adapted_query.substr(0, 100) + "...");
         
-        // 2. 컬럼명 추출 (원본 쿼리에서)
+        // 2. 컬럼명 추출 (개선된 파싱 사용)
         std::vector<std::string> column_names = extractColumnsFromQuery(query);
+        
         if (column_names.empty()) {
-            LogManager::getInstance().Error("DatabaseAbstractionLayer::executeQuery - Failed to extract column names");
-            return {};
+            LogManager::getInstance().Error("Failed to extract column names from query");
+            // 폴백 시도: 쿼리에서 테이블명 추출해서 스키마 조회
+            std::string table_name = extractTableNameFromQuery(query);
+            if (!table_name.empty()) {
+                LogManager::getInstance().Warn("Attempting fallback: getting columns from table schema");
+                column_names = getTableColumnsFromSchema(table_name);
+            }
+            
+            if (column_names.empty()) {
+                LogManager::getInstance().Error("All column extraction methods failed");
+                return {};
+            }
         }
         
         // 3. DatabaseManager를 통해 실제 실행
@@ -39,7 +50,12 @@ std::vector<std::map<std::string, std::string>> DatabaseAbstractionLayer::execut
         bool success = db_manager_->executeQuery(adapted_query, raw_results);
         
         if (!success) {
-            LogManager::getInstance().Error("DatabaseAbstractionLayer::executeQuery - Query execution failed");
+            LogManager::getInstance().Error("Query execution failed");
+            return {};
+        }
+        
+        if (raw_results.empty()) {
+            LogManager::getInstance().Debug("Query executed successfully but returned no rows");
             return {};
         }
         
@@ -358,46 +374,42 @@ bool DatabaseAbstractionLayer::executeNonQuery(const std::string& query) {
 // =============================================================================
 
 std::vector<std::string> DatabaseAbstractionLayer::extractColumnsFromQuery(const std::string& query) {
-    // SQL 파싱 로직 (이전과 동일)
     try {
-        std::string lower_query = query;
-        std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(), ::tolower);
+        LogManager::getInstance().Debug("DatabaseAbstractionLayer::extractColumnsFromQuery - Processing query");
         
-        size_t select_pos = lower_query.find("select");
-        size_t from_pos = lower_query.find("from");
+        // 1. 전처리: 주석 제거 및 공백 정리
+        std::string cleaned_query = preprocessQuery(query);
+        LogManager::getInstance().Debug("Cleaned query: " + cleaned_query.substr(0, 200) + "...");
         
-        if (select_pos == std::string::npos || from_pos == std::string::npos || from_pos <= select_pos) {
+        // 2. SELECT와 FROM 구간 찾기 (dotall 제거)
+        std::regex select_from_pattern(R"(SELECT\s+(.*?)\s+FROM)", std::regex_constants::icase);
+        std::smatch matches;
+        
+        if (!std::regex_search(cleaned_query, matches, select_from_pattern)) {
+            LogManager::getInstance().Error("No SELECT...FROM pattern found");
             return {};
         }
         
-        size_t start = select_pos + 6;
-        std::string columns_section = query.substr(start, from_pos - start);
+        std::string columns_section = matches[1].str();
+        LogManager::getInstance().Debug("Columns section: " + columns_section);
         
-        // 간단한 콤마 분리 (실제로는 더 정교한 파싱 필요)
-        std::vector<std::string> columns;
-        std::stringstream ss(columns_section);
-        std::string column;
+        // 3. 컬럼들을 파싱
+        std::vector<std::string> columns = parseColumnList(columns_section);
         
-        while (std::getline(ss, column, ',')) {
-            // 공백 제거
-            column.erase(0, column.find_first_not_of(" \t\n\r"));
-            column.erase(column.find_last_not_of(" \t\n\r") + 1);
-            
-            // 테이블 프리픽스 제거
-            size_t dot_pos = column.find_last_of('.');
-            if (dot_pos != std::string::npos) {
-                column = column.substr(dot_pos + 1);
-            }
-            
-            if (!column.empty()) {
-                columns.push_back(column);
-            }
+        if (columns.empty()) {
+            LogManager::getInstance().Warn("No columns extracted from query");
+            return {};
+        }
+        
+        LogManager::getInstance().Debug("Successfully extracted " + std::to_string(columns.size()) + " columns");
+        for (const auto& col : columns) {
+            LogManager::getInstance().Debug("  Column: " + col);
         }
         
         return columns;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("DatabaseAbstractionLayer::extractColumnsFromQuery failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("extractColumnsFromQuery failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -618,6 +630,183 @@ std::string DatabaseAbstractionLayer::getCurrentDbType() {
         return "REDIS";
     } else {
         return "SQLITE";  // 기본값
+    }
+}
+
+std::string DatabaseAbstractionLayer::preprocessQuery(const std::string& query) {
+    std::string result = query;
+    
+    // 1. SQL 주석 제거 (-- 형태)
+    result = std::regex_replace(result, std::regex(R"(--[^\r\n]*)"), "");
+    
+    // 2. C 스타일 주석 제거 (/* */ 형태) - dotall 제거하고 다른 방식 사용
+    // 여러 줄 주석을 한 줄씩 처리
+    std::string temp;
+    std::istringstream stream(result);
+    std::string line;
+    bool in_multiline_comment = false;
+    
+    while (std::getline(stream, line)) {
+        size_t comment_start = 0;
+        while ((comment_start = line.find("/*", comment_start)) != std::string::npos) {
+            size_t comment_end = line.find("*/", comment_start + 2);
+            if (comment_end != std::string::npos) {
+                // 같은 줄에서 주석이 끝남
+                line.erase(comment_start, comment_end - comment_start + 2);
+            } else {
+                // 여러 줄 주석 시작
+                line.erase(comment_start);
+                in_multiline_comment = true;
+                break;
+            }
+        }
+        
+        if (in_multiline_comment) {
+            size_t comment_end = line.find("*/");
+            if (comment_end != std::string::npos) {
+                line = line.substr(comment_end + 2);
+                in_multiline_comment = false;
+            } else {
+                continue; // 주석 안의 줄이므로 건너뜀
+            }
+        }
+        
+        temp += line + " ";
+    }
+    result = temp;
+    
+    // 3. 연속된 공백을 하나로 변경
+    result = std::regex_replace(result, std::regex(R"(\s+)"), " ");
+    
+    // 4. 앞뒤 공백 제거
+    result = std::regex_replace(result, std::regex(R"(^\s+|\s+$)"), "");
+    
+    return result;
+}
+
+std::vector<std::string> DatabaseAbstractionLayer::parseColumnList(const std::string& columns_section) {
+    std::vector<std::string> columns;
+    
+    // 1. 기본적인 콤마 분리 (괄호 안의 콤마는 무시)
+    std::string current_column;
+    int paren_depth = 0;
+    bool in_quotes = false;
+    char quote_char = 0;
+    
+    for (size_t i = 0; i < columns_section.size(); ++i) {
+        char c = columns_section[i];
+        
+        // 따옴표 처리
+        if ((c == '\'' || c == '"') && !in_quotes) {
+            in_quotes = true;
+            quote_char = c;
+            current_column += c;
+        } else if (c == quote_char && in_quotes) {
+            in_quotes = false;
+            quote_char = 0;
+            current_column += c;
+        } else if (in_quotes) {
+            current_column += c;
+        } else if (c == '(') {
+            paren_depth++;
+            current_column += c;
+        } else if (c == ')') {
+            paren_depth--;
+            current_column += c;
+        } else if (c == ',' && paren_depth == 0) {
+            // 컬럼 구분자 발견
+            std::string trimmed = trimColumn(current_column);
+            if (!trimmed.empty()) {
+                columns.push_back(trimmed);
+            }
+            current_column.clear();
+        } else {
+            current_column += c;
+        }
+    }
+    
+    // 마지막 컬럼 처리
+    std::string trimmed = trimColumn(current_column);
+    if (!trimmed.empty()) {
+        columns.push_back(trimmed);
+    }
+    
+    return columns;
+}
+
+std::string DatabaseAbstractionLayer::trimColumn(const std::string& column) {
+    if (column.empty()) return "";
+    
+    std::string result = column;
+    
+    // 1. 앞뒤 공백 제거
+    result = std::regex_replace(result, std::regex(R"(^\s+|\s+$)"), "");
+    
+    if (result.empty()) return "";
+    
+    // 2. AS 별칭 처리 (예: "device.name AS device_name" -> "device_name")
+    std::regex as_pattern(R"(\s+AS\s+(\w+))", std::regex_constants::icase);
+    std::smatch as_match;
+    if (std::regex_search(result, as_match, as_pattern)) {
+        return as_match[1].str();
+    }
+    
+    // 3. 테이블 접두사 제거 (예: "devices.name" -> "name")
+    size_t dot_pos = result.find_last_of('.');
+    if (dot_pos != std::string::npos && dot_pos < result.size() - 1) {
+        result = result.substr(dot_pos + 1);
+    }
+    
+    return result;
+}
+
+std::string DatabaseAbstractionLayer::extractTableNameFromQuery(const std::string& query) {
+    try {
+        // FROM 절에서 테이블명 추출
+        std::string cleaned = preprocessQuery(query);
+        std::regex from_pattern(R"(FROM\s+(\w+))", std::regex_constants::icase);
+        std::smatch matches;
+        
+        if (std::regex_search(cleaned, matches, from_pattern)) {
+            return matches[1].str();
+        }
+        
+        return "";
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("extractTableNameFromQuery failed: " + std::string(e.what()));
+        return "";
+    }
+}
+
+std::vector<std::string> DatabaseAbstractionLayer::getTableColumnsFromSchema(const std::string& table_name) {
+    try {
+        // SQLite PRAGMA 사용해서 컬럼 정보 조회
+        std::string pragma_query = "PRAGMA table_info(" + table_name + ")";
+        std::vector<std::vector<std::string>> pragma_results;
+        
+        bool success = db_manager_->executeQuery(pragma_query, pragma_results);
+        if (!success || pragma_results.empty()) {
+            LogManager::getInstance().Warn("Failed to get table schema for: " + table_name);
+            return {};
+        }
+        
+        std::vector<std::string> columns;
+        for (const auto& row : pragma_results) {
+            // PRAGMA table_info 결과: cid, name, type, notnull, dflt_value, pk
+            // name은 인덱스 1에 위치
+            if (row.size() > 1) {
+                columns.push_back(row[1]); // column name
+            }
+        }
+        
+        LogManager::getInstance().Debug("Retrieved " + std::to_string(columns.size()) + 
+                                       " columns from table schema: " + table_name);
+        
+        return columns;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("getTableColumnsFromSchema failed: " + std::string(e.what()));
+        return {};
     }
 }
 

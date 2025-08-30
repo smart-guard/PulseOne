@@ -1,9 +1,9 @@
 /**
  * @file BaseDeviceWorker.cpp
- * @brief BaseDeviceWorker 클래스 구현 (GitHub 구조 맞춤 + Write 가상함수 지원)
+ * @brief BaseDeviceWorker 클래스 구현 (GitHub 구조 맞춤 + Write 가상함수 지원 + 메모리 누수 수정)
  * @author PulseOne Development Team
  * @date 2025-01-20
- * @version 2.0.0
+ * @version 2.1.0 - 메모리 누수 수정
  */
 
 #include "Workers/Base/BaseDeviceWorker.h"
@@ -125,7 +125,7 @@ bool ReconnectionSettings::FromJson(const std::string& json_str) {
 }
 
 // =============================================================================
-// BaseDeviceWorker 생성자 및 소멸자
+// 🔥 BaseDeviceWorker 생성자 및 소멸자 (메모리 누수 수정됨)
 // =============================================================================
 
 BaseDeviceWorker::BaseDeviceWorker(const PulseOne::Structs::DeviceInfo& device_info)
@@ -145,19 +145,52 @@ BaseDeviceWorker::BaseDeviceWorker(const PulseOne::Structs::DeviceInfo& device_i
     
     LogMessage(LogLevel::INFO, "BaseDeviceWorker created for device: " + device_info_.name);
     
-    // 재연결 관리 스레드 시작
-    thread_running_ = true;
-    reconnection_thread_ = std::make_unique<std::thread>(&BaseDeviceWorker::ReconnectionThreadMain, this);
+    // 🔥 메모리 누수 수정: 생성자에서는 스레드 시작하지 않음
+    thread_running_ = false;
+    // reconnection_thread_는 nullptr 상태로 유지 (Start() 호출시에 시작)
 }
 
 BaseDeviceWorker::~BaseDeviceWorker() {
-    // 재연결 스레드 정리
-    thread_running_ = false;
-    if (reconnection_thread_ && reconnection_thread_->joinable()) {
-        reconnection_thread_->join();
-    }
-    
+    // 🔥 메모리 누수 수정: 소멸자에서 명시적으로 모든 스레드 정리
+    StopAllThreads();
     LogMessage(LogLevel::INFO, "BaseDeviceWorker destroyed for device: " + device_info_.name);
+}
+
+// =============================================================================
+// 🔥 메모리 누수 방지를 위한 스레드 생명주기 관리 (새로 추가)
+// =============================================================================
+
+void BaseDeviceWorker::StartReconnectionThread() {
+    // 🔥 이미 스레드가 실행 중인지 체크 (중복 시작 방지)
+    if (!thread_running_.exchange(true)) {
+        try {
+            reconnection_thread_ = std::make_unique<std::thread>(
+                &BaseDeviceWorker::ReconnectionThreadMain, this);
+            LogMessage(LogLevel::DEBUG_LEVEL, "Reconnection thread started successfully");
+        } catch (const std::exception& e) {
+            thread_running_ = false;
+            LogMessage(LogLevel::ERROR, "Failed to start reconnection thread: " + std::string(e.what()));
+        }
+    }
+}
+
+void BaseDeviceWorker::StopAllThreads() {
+    // 🔥 스레드 정지 신호 설정
+    thread_running_ = false;
+    
+    // 🔥 재연결 스레드가 존재하고 joinable하면 안전하게 정리
+    if (reconnection_thread_) {
+        if (reconnection_thread_->joinable()) {
+            try {
+                reconnection_thread_->join();
+                LogMessage(LogLevel::DEBUG_LEVEL, "Reconnection thread joined successfully");
+            } catch (const std::exception& e) {
+                LogMessage(LogLevel::ERROR, "Error joining reconnection thread: " + std::string(e.what()));
+            }
+        }
+        // 🔥 명시적으로 unique_ptr 해제 (메모리 누수 방지)
+        reconnection_thread_.reset();
+    }
 }
 
 // =============================================================================
@@ -329,7 +362,7 @@ void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
 }
 
 // =============================================================================
-// 내부 메서드들
+// 내부 메서드들 (스레드 함수는 기존과 동일하나 안전성 강화)
 // =============================================================================
 
 void BaseDeviceWorker::ReconnectionThreadMain() {
@@ -355,12 +388,17 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
                 }
             }
             
-            // 5초마다 재연결 시도
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            // 5초마다 재연결 시도 (스레드 종료 체크를 더 세밀하게)
+            for (int i = 0; i < 50 && thread_running_.load(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
             
         } catch (const std::exception& e) {
             LogMessage(LogLevel::ERROR, "재연결 스레드 예외: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::seconds(10));
+            // 예외 발생시 더 긴 대기 후 재시도
+            for (int i = 0; i < 100 && thread_running_.load(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
         }
     }
     
@@ -479,7 +517,7 @@ bool BaseDeviceWorker::IsErrorState(WorkerState state) {
 }
 
 // =============================================================================
-// 파이프라인 전송 메서드
+// 파이프라인 전송 메서드 (기존 코드 유지)
 // =============================================================================
 bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::TimestampedValue>& values, 
                                          uint32_t priority) {

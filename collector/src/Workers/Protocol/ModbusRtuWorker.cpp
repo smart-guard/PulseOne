@@ -80,6 +80,8 @@ std::future<bool> ModbusRtuWorker::Start() {
             return true;
         }
         
+        StartReconnectionThread();
+
         logger.Info("Starting Modbus RTU Worker...");
         
         try {
