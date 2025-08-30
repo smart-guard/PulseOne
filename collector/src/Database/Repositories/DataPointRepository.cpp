@@ -329,10 +329,10 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
             entity.setAddressString(it->second);
         }
         
-        // 🔥 데이터 타입 및 접근성
+        // 🚨 핵심 수정: 데이터 타입 정규화 비활성화
         it = row.find("data_type");
         if (it != row.end()) {
-            entity.setDataType(it->second);
+            entity.setDataType(Utils::NormalizeDataType(it->second));
         }
         
         it = row.find("access_mode");
@@ -376,7 +376,7 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
             entity.setMaxValue(std::stod(it->second));
         }
         
-        // 🔥 로깅 및 수집 설정
+        // 🔥 로깅 설정
         it = row.find("log_enabled");
         if (it != row.end()) {
             entity.setLogEnabled(db_layer.parseBoolean(it->second));
@@ -397,7 +397,7 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
             entity.setPollingInterval(std::stoi(it->second));
         }
         
-        // 🔥🔥🔥 품질 관리 설정 (새로 추가된 필드들)
+        // 🔥 품질 관리 필드들 (선택적)
         it = row.find("quality_check_enabled");
         if (it != row.end()) {
             entity.setQualityCheckEnabled(db_layer.parseBoolean(it->second));
@@ -413,7 +413,7 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
             entity.setRateOfChangeLimit(std::stod(it->second));
         }
         
-        // 🔥🔥🔥 알람 관련 설정 (새로 추가된 필드들)
+        // 🔥 알람 관련 필드들 (선택적)
         it = row.find("alarm_enabled");
         if (it != row.end()) {
             entity.setAlarmEnabled(db_layer.parseBoolean(it->second));

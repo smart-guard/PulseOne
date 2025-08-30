@@ -1,6 +1,6 @@
 # =============================================================================
-# collector/tests/Makefile - WorkerManager + API 통합 완성본 (수정됨)
-# WorkerManager, DeviceApiCallbacks 포함한 완전한 컴파일 지원
+# collector/tests/Makefile - Enhanced with Step-by-Step Logging
+# 모든 단계별 테스트 로그 파일 자동 생성 지원
 # =============================================================================
 
 # 성능 최적화 설정
@@ -54,13 +54,14 @@ endif
 OBJ_DIR = ./obj
 BIN_DIR = ./bin
 DATA_DIR = ./data
+LOG_DIR = ./logs
 
 # 경로 설정
 PARENT_DIR = ..
 INCLUDE_DIR = $(PARENT_DIR)/include
 SRC_DIR = $(PARENT_DIR)/src
 
-# Include 경로 (WorkerManager 추가)
+# Include 경로
 INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Platform \
            -I$(INCLUDE_DIR)/Api \
@@ -80,10 +81,10 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Drivers \
            -I$(INCLUDE_DIR)/Drivers/Common \
            -I$(INCLUDE_DIR)/Pipeline \
-		   -I$(INCLUDE_DIR)/Storage \
+           -I$(INCLUDE_DIR)/Storage \
            -I$(INCLUDE_DIR)/Client
 
-# 라이브러리 설정
+# 라이브러리 설정 (생략 - 기존과 동일)
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)
     MODBUS_LIBS = 
     MODBUS_INCLUDES = 
@@ -166,63 +167,35 @@ else
     $(warning ⚠️ httplib not available - REST API disabled)
 endif
 
-# 전체 라이브러리 설정 (플랫폼 라이브러리 포함)
+# 전체 라이브러리 설정
 BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) $(HTTP_LIBS) -lm -ldl $(PLATFORM_LIBS)
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
 TEST_LIBS = -lgtest -lgtest_main -pthread
 
-# =============================================================================
-# 소스 파일 수집 - WorkerManager와 API 완전 포함
-# =============================================================================
-
-# Core 소스들
+# 소스 파일 수집 (기존과 동일하므로 생략)
 CORE_SOURCES := $(wildcard $(SRC_DIR)/Core/*.cpp)
-
-# Utils 소스들
 UTILS_SOURCES := $(wildcard $(SRC_DIR)/Utils/*.cpp)
-
-# Config 소스들
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
-
-# Database 소스들
 DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Entities/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Repositories/*.cpp)
-
-# Client 소스들
 CLIENT_SOURCES := $(wildcard $(SRC_DIR)/Client/*.cpp)
-
-# Workers 소스들 - WorkerManager 포함!
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Components/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/WorkerManager.cpp)
-
-# Storage 소스들 추가 필요  
 STORAGE_SOURCES := $(wildcard $(SRC_DIR)/Storage/*.cpp)
 
-# Network 소스들 (조건부 포함)
 ifeq ($(HAS_HTTPLIB),1)
     NETWORK_SOURCES := $(wildcard $(SRC_DIR)/Network/*.cpp)
-    $(info ✅ Including Network sources: $(words $(NETWORK_SOURCES)) files)
+    API_SOURCES := $(wildcard $(SRC_DIR)/Api/*.cpp)
 else
     NETWORK_SOURCES :=
-    $(warning ⚠️ Network sources excluded - httplib not available)
-endif
-
-# API 소스들 - DeviceApiCallbacks 포함! (조건부 포함)
-ifeq ($(HAS_HTTPLIB),1)
-    API_SOURCES := $(wildcard $(SRC_DIR)/Api/*.cpp)
-    $(info ✅ Including API sources: $(words $(API_SOURCES)) files)
-    $(info    - DeviceApiCallbacks.cpp included for REST API device control)
-else
     API_SOURCES :=
-    $(warning ⚠️ API sources excluded - httplib not available)
 endif
 
-# Drivers 소스들 (조건부 포함)
 DRIVERS_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
 ifneq ($(MODBUS_LIBS),)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
@@ -234,31 +207,21 @@ ifeq ($(HAS_BACNET_STACK),1)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 endif
 
-# Pipeline 소스들
 PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
-
-# 알람 및 가상포인트 소스들
 ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
-
-# Platform 소스들
 PLATFORM_SOURCES := $(wildcard $(SRC_DIR)/Platform/*.cpp)
-
-# Plugin 소스들
 PLUGIN_SOURCES := $(wildcard $(SRC_DIR)/Plugin/*.cpp)
 
-# 전체 소스 파일 (WorkerManager, API 포함)
 ALL_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES) \
               $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(WORKERS_SOURCES) \
               $(DRIVERS_SOURCES) $(PIPELINE_SOURCES) $(ALARM_SOURCES) \
               $(VIRTUALPOINT_SOURCES) $(NETWORK_SOURCES) $(API_SOURCES) \
               $(PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES) 
 
-# 오브젝트 파일 생성
 ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
 
-# 테스트 파일들 정의
-TEST_OBJECTS = $(OBJ_DIR)/test_step3_workers.o \
+TEST_OBJECTS = $(OBJ_DIR)/test_step3_protocol_worker.o \
                $(OBJ_DIR)/test_step4_driver_data_validation.o \
                $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
                $(OBJ_DIR)/test_step6_enhanced_pipeline.o \
@@ -277,26 +240,71 @@ MAGENTA = \033[0;95m
 NC = \033[0m
 
 # =============================================================================
-# 디렉토리 자동 생성 규칙 - 수정됨
+# 로그 유틸리티 함수들
+# =============================================================================
+
+# 현재 시간 스탬프 생성
+TIMESTAMP := $(shell date '+%Y%m%d_%H%M%S')
+
+# 로그 디렉토리 생성
+create-log-dir:
+	@mkdir -p $(LOG_DIR)
+
+# 로그 파일명 정의 (타임스탬프 포함)
+define get_log_filename
+$(LOG_DIR)/$(1)_test_$(TIMESTAMP).log
+endef
+
+# 로그 요약 생성 함수
+define create_log_summary
+	@echo "========================================" >> $(1)
+	@echo "Test Summary for $(2)" >> $(1)
+	@echo "Platform: $(PLATFORM)" >> $(1)
+	@echo "Timestamp: $(shell date)" >> $(1)
+	@echo "Log file: $(1)" >> $(1)
+	@echo "========================================" >> $(1)
+endef
+
+# 로그 분석 함수
+define analyze_log
+	@echo -e "$(CYAN)📊 $(2) Test Analysis:$(NC)"
+	@if [ -f "$(1)" ]; then \
+		echo "성공한 테스트:"; \
+		grep -c "PASSED\|✅\|성공" $(1) || echo "0"; \
+		echo "실패한 테스트:"; \
+		grep -c "FAILED\|❌\|실패" $(1) || echo "0"; \
+		echo "주요 오류:"; \
+		grep -E "ERROR\|Exception\|오류" $(1) | head -3 || echo "오류 없음"; \
+		echo "전체 검증률:"; \
+		grep -o "[0-9]\+\.[0-9]\+%" $(1) | tail -1 || echo "N/A"; \
+	else \
+		echo "로그 파일을 찾을 수 없습니다: $(1)"; \
+	fi
+endef
+
+# =============================================================================
+# 디렉토리 자동 생성 규칙
 # =============================================================================
 
 .DEFAULT_GOAL := help
 
-# 강제 디렉토리 생성 - 모든 필요한 디렉토리
+# 강제 디렉토리 생성
 .PHONY: create-dirs
-create-dirs:
-	@echo -e "$(BLUE)🏗️ Creating object directories for $(PLATFORM)...$(NC)"
-	@mkdir -p $(OBJ_DIR) $(BIN_DIR) $(DATA_DIR)
+create-dirs: create-log-dir
+	@echo -e "$(BLUE)🏗️ Creating directories for $(PLATFORM)...$(NC)"
+	@mkdir -p $(OBJ_DIR) $(BIN_DIR) $(DATA_DIR) $(LOG_DIR)
 	@mkdir -p $(OBJ_DIR)/Core $(OBJ_DIR)/Utils $(OBJ_DIR)/Config 
 	@mkdir -p $(OBJ_DIR)/Database $(OBJ_DIR)/Database/Entities $(OBJ_DIR)/Database/Repositories
 	@mkdir -p $(OBJ_DIR)/Client $(OBJ_DIR)/Workers $(OBJ_DIR)/Workers/Base $(OBJ_DIR)/Workers/Protocol $(OBJ_DIR)/Workers/Components
 	@mkdir -p $(OBJ_DIR)/Drivers $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
 	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Plugin
-	@mkdir -p $(OBJ_DIR)/Network $(OBJ_DIR)/Api $(OBJ_DIR)/Platform
-	@mkdir -p $(OBJ_DIR)/Storage
-	@echo -e "$(GREEN)✅ All directories created successfully$(NC)"
+	@mkdir -p $(OBJ_DIR)/Network $(OBJ_DIR)/Api $(OBJ_DIR)/Platform $(OBJ_DIR)/Storage
+	@echo -e "$(GREEN)✅ All directories created (including logs)$(NC)"
 
-# 개별 오브젝트 파일 컴파일 - 디렉토리 자동 생성
+# =============================================================================
+# 컴파일 규칙 (기존과 동일)
+# =============================================================================
+
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)🔨 Generating dependencies for $<$(NC)"
@@ -304,325 +312,433 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@echo -e "$(YELLOW)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# WorkerManager 테스트 컴파일
-$(OBJ_DIR)/test_workermanager.o: test_workermanager.cpp
+# 테스트 파일 컴파일
+$(OBJ_DIR)/test_step1_config_connection.o: test_step1_config_connection.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔨 Generating dependencies for test_workermanager.cpp$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(MAGENTA)👷 Compiling WorkerManager Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)📋 Compiling Step 1 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# 플랫폼 호환성 테스트
-$(OBJ_DIR)/test_platform_compat.o: test_platform_compat.cpp
+$(OBJ_DIR)/test_step2_database_entity.o: test_step2_database_entity.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔨 Generating dependencies for test_platform_compat.cpp$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(MAGENTA)🛡️ Compiling Platform Compatibility Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)🗄️ Compiling Step 2 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# 기존 테스트 파일들 컴파일 - 디렉토리 자동 생성 적용
-$(OBJ_DIR)/test_step3_workers.o: test_step3_workers.cpp
+$(OBJ_DIR)/test_step3_protocol_worker.o: test_step3_protocol_worker.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step3_workers.cpp$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)👷 Compiling test_step3_workers [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)👷 Compiling Step 3 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_step3_protocol_worker.o: test_step3_protocol_worker.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)👷 Compiling Step 3 Protocol Worker Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step4_driver_data_validation.o: test_step4_driver_data_validation.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step4_driver_data_validation.cpp$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🔌 Compiling test_step4_driver_data_validation [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)🔌 Compiling Step 4 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_db_integration_validation.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step5_complete_db_integration_validation.cpp$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🗄️ Compiling test_step5_complete_db_integration_validation [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)🗄️ Compiling Step 5 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step6_enhanced_pipeline.o: test_step6_enhanced_pipeline.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔨 Generating dependencies for test_step6_enhanced_pipeline.cpp$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)⚡ Compiling test_step6_enhanced_pipeline [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)⚡ Compiling Step 6 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# Network API 테스트
 $(OBJ_DIR)/test_network_api.o: test_network_api.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(YELLOW)🔨 Generating dependencies for test_network_api.cpp$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
-	@echo -e "$(YELLOW)🌐 Compiling test_network_api [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)🌐 Compiling Network Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_platform_compat.o: test_platform_compat.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🛡️ Compiling Platform Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_workermanager.o: test_workermanager.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)👷 Compiling WorkerManager Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
-# 테스트 실행 파일들 - 디렉토리 의존성 제거
+# 테스트 실행 파일 빌드 (기존과 동일)
 # =============================================================================
 
-# WorkerManager 테스트
+$(BIN_DIR)/test_step1: $(ALL_OBJECTS) $(OBJ_DIR)/test_step1_config_connection.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 1 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step1_config_connection.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 1 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step2: $(ALL_OBJECTS) $(OBJ_DIR)/test_step2_database_entity.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 2 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step2_database_entity.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 2 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step3: $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 3 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 3 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step4: $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 4 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 4 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 5 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 5 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 6 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 6 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_network: $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Network Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Network Test build completed!$(NC)"
+
+$(BIN_DIR)/test_platform: $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Platform Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Platform Test build completed!$(NC)"
+
 $(BIN_DIR)/test_workermanager: $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking WorkerManager Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ WorkerManager Test build completed for $(PLATFORM)!$(NC)"
-
-# 플랫폼 호환성 테스트
-$(BIN_DIR)/test_platform: $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking Platform Compatibility Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ Platform Compatibility Test build completed for $(PLATFORM)!$(NC)"
-
-$(BIN_DIR)/test_step3: $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_workers.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step3 [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_workers.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step3 build completed for $(PLATFORM)!$(NC)"
-
-$(BIN_DIR)/test_step4: $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step4 (Driver Data Validation) [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step4 (Driver Data Validation) build completed for $(PLATFORM)!$(NC)"
-
-$(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step5 [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step5 build completed for $(PLATFORM)!$(NC)"
-
-$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_step6 (Enhanced Alarm+VirtualPoint Pipeline) [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_step6 (Enhanced Alarm+VirtualPoint Pipeline) build completed for $(PLATFORM)!$(NC)"
-
-# Network API 테스트
-$(BIN_DIR)/test_network: $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking test_network (REST API Server) [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ test_network (REST API Server) build completed for $(PLATFORM)!$(NC)"
+	@echo -e "$(GREEN)✅ WorkerManager Test build completed!$(NC)"
 
 # =============================================================================
-# 메인 타겟들 - 디렉토리 생성 추가
+# 향상된 단계별 테스트 실행 (로그 포함)
 # =============================================================================
 
-# WorkerManager 테스트 빌드/실행
-workermanager-build: create-dirs $(BIN_DIR)/test_workermanager
+# Step 1 테스트 (로그 포함)
+step1-build: create-dirs $(BIN_DIR)/test_step1
 
-workermanager-test: workermanager-build
-	@echo -e "$(MAGENTA)👷 Running WorkerManager Test [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)Testing WorkerManager singleton and worker lifecycle management$(NC)"
-	@./$(BIN_DIR)/test_workermanager
+step1-test: step1-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step1))
+	@echo -e "$(MAGENTA)🚀 Running Step 1 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Configuration and Connection Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 1)
+	@./$(BIN_DIR)/test_step1 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 1)
+	@echo -e "$(GREEN)Step 1 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# 플랫폼 호환성 테스트
-platform-build: create-dirs $(BIN_DIR)/test_platform
+# Step 2 테스트 (기존 방식 유지 + 향상)
+step2-build: create-dirs $(BIN_DIR)/test_step2
 
-platform-test: platform-build
-	@echo -e "$(MAGENTA)🛡️ Running Platform Compatibility Test [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)Testing cross-platform functionality$(NC)"
-	@./$(BIN_DIR)/test_platform
+step2-test: step2-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step2))
+	@echo -e "$(MAGENTA)🚀 Running Step 2 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Database Entity Validation Test - Enhanced Logging$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing Database-Entity mapping and CRUD operations$(NC)"
+	@echo -e "$(BLUE)All test output will be displayed and logged$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 2)
+	@./$(BIN_DIR)/test_step2 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 2)
+	@echo -e "$(GREEN)Step 2 Test completed. Enhanced log saved: $(LOG_FILE)$(NC)"
 
-# 개별 테스트 빌드 - 디렉토리 생성 추가
+# Step 3 테스트 (로그 포함)
 step3-build: create-dirs $(BIN_DIR)/test_step3
 
+step3-test: step3-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step3))
+	@echo -e "$(MAGENTA)🚀 Running Step 3 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Protocol Worker Property Validation Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing Worker creation and property mapping$(NC)"
+	@echo -e "$(BLUE)Entity -> DeviceInfo -> Worker property validation$(NC)"
+	@echo -e "$(BLUE)Modbus RTU Master/Slave configuration verification$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 3)
+	@./$(BIN_DIR)/test_step3 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 3)
+	@echo -e "$(GREEN)Step 3 Test completed. Full log saved: $(LOG_FILE)$(NC)"
+	@echo -e "$(CYAN)Quick summary of Step 3 results:$(NC)"
+	@tail -n 15 $(LOG_FILE) | grep -E "(성공률|Worker|속성|정확도|PASSED|FAILED|Step 3)" || echo "Check full log for details"
+
+# Step 4 테스트 (로그 포함)
 step4-build: create-dirs $(BIN_DIR)/test_step4
 
+step4-test: step4-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step4))
+	@echo -e "$(MAGENTA)🚀 Running Step 4 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Driver Data Validation Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing protocol drivers and data flow$(NC)"
+	@echo -e "$(BLUE)Driver initialization and data validation$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 4)
+	@./$(BIN_DIR)/test_step4 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 4)
+	@echo -e "$(GREEN)Step 4 Test completed. Full log saved: $(LOG_FILE)$(NC)"
+
+# Step 5 테스트 (로그 포함)
 step5-build: create-dirs $(BIN_DIR)/test_step5
 
+step5-test: step5-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step5))
+	@echo -e "$(MAGENTA)🚀 Running Step 5 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Complete Database Integration Validation Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing complete database integration$(NC)"
+	@echo -e "$(BLUE)End-to-end data flow validation$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 5)
+	@./$(BIN_DIR)/test_step5 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 5)
+	@echo -e "$(GREEN)Step 5 Test completed. Full log saved: $(LOG_FILE)$(NC)"
+
+# Step 6 테스트 (로그 포함)
 step6-build: create-dirs $(BIN_DIR)/test_step6
 
+step6-test: step6-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step6))
+	@echo -e "$(MAGENTA)🚀 Running Step 6 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Enhanced Pipeline Test (Alarm + VirtualPoint)$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing alarm and virtual point pipeline$(NC)"
+	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
+	@echo -e "$(BLUE)Test data should be present in DB$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 6)
+	@./$(BIN_DIR)/test_step6 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 6)
+	@echo -e "$(GREEN)Step 6 Test completed. Full log saved: $(LOG_FILE)$(NC)"
+
+# Network 테스트 (로그 포함)
 network-build: create-dirs $(BIN_DIR)/test_network
 
-# 개별 테스트 실행
-step3-test: step3-build
-	@echo -e "$(PURPLE)🚀 Running Step 3 (Workers) tests [$(PLATFORM)]...$(NC)"
-	@./$(BIN_DIR)/test_step3
+network-test: network-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,network))
+	@echo -e "$(MAGENTA)🚀 Running Network Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)REST API Server Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing REST API server functionality$(NC)"
+	@echo -e "$(BLUE)This test starts REST API server on port 8080$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Network)
+	@./$(BIN_DIR)/test_network 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Network)
+	@echo -e "$(GREEN)Network Test completed. Full log saved: $(LOG_FILE)$(NC)"
 
-step4-test: step4-build
-	@echo -e "$(PURPLE)🚀 Running Step 4 (Driver Data Validation) tests [$(PLATFORM)]...$(NC)"
-	@./$(BIN_DIR)/test_step4
+# Platform 테스트 (로그 포함)
+platform-build: create-dirs $(BIN_DIR)/test_platform
 
-step5-test: step5-build
-	@echo -e "$(PURPLE)🚀 Running Step 5 (Complete DB Integration) tests [$(PLATFORM)]...$(NC)"
-	@./$(BIN_DIR)/test_step5
+platform-test: platform-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,platform))
+	@echo -e "$(MAGENTA)🚀 Running Platform Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Cross-Platform Compatibility Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Platform)
+	@./$(BIN_DIR)/test_platform 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Platform)
+	@echo -e "$(GREEN)Platform Test completed. Full log saved: $(LOG_FILE)$(NC)"
 
-step6-test: step6-build
-	@echo -e "$(PURPLE)🚀 Running Step 6 (Enhanced Alarm+VirtualPoint Pipeline) tests [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)This test requires Redis server running$(NC)"
-	@echo -e "$(CYAN)Test data should be present in DB$(NC)"
-	@./$(BIN_DIR)/test_step6
+# WorkerManager 테스트 (로그 포함)
+workermanager-build: create-dirs $(BIN_DIR)/test_workermanager
 
-network-test: network-build
-	@echo -e "$(PURPLE)🚀 Running Network API tests [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)This test starts REST API server on port 8080$(NC)"
-	@./$(BIN_DIR)/test_network
+workermanager-test: workermanager-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,workermanager))
+	@echo -e "$(MAGENTA)🚀 Running WorkerManager Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)WorkerManager Singleton and Lifecycle Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),WorkerManager)
+	@./$(BIN_DIR)/test_workermanager 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),WorkerManager)
+	@echo -e "$(GREEN)WorkerManager Test completed. Full log saved: $(LOG_FILE)$(NC)"
+
+# =============================================================================
+# 로그 관리 유틸리티
+# =============================================================================
+
+# 로그 디렉토리 확인
+check-logs: create-log-dir
+	@echo -e "$(BLUE)📁 Log Directory Status$(NC)"
+	@echo -e "$(YELLOW)========================$(NC)"
+	@echo "Log directory: $(LOG_DIR)"
+	@echo "Total log files: $(shell find $(LOG_DIR) -name '*.log' 2>/dev/null | wc -l)"
+	@echo ""
+	@echo -e "$(CYAN)Recent log files:$(NC)"
+	@ls -lt $(LOG_DIR)/*.log 2>/dev/null | head -10 || echo "No log files found"
+
+# 최신 로그들의 요약 보기
+logs-summary: create-log-dir
+	@echo -e "$(BLUE)📊 Latest Test Logs Summary$(NC)"
+	@echo -e "$(YELLOW)=============================$(NC)"
+	@for step in step1 step2 step3 step4 step5 step6 network platform workermanager; do \
+		latest_log=$$(ls -t $(LOG_DIR)/$${step}_test_*.log 2>/dev/null | head -1); \
+		if [ -n "$$latest_log" ]; then \
+			echo -e "$(MAGENTA)$$step Test:$(NC)"; \
+			echo "  File: $$latest_log"; \
+			echo "  Size: $$(du -h $$latest_log | cut -f1)"; \
+			echo "  Passed tests: $$(grep -c 'PASSED\|✅' $$latest_log 2>/dev/null || echo '0')"; \
+			echo "  Failed tests: $$(grep -c 'FAILED\|❌' $$latest_log 2>/dev/null || echo '0')"; \
+			echo ""; \
+		fi; \
+	done
+
+# 로그 정리 (7일 이상 된 로그 삭제)
+clean-old-logs: create-log-dir
+	@echo -e "$(YELLOW)🧹 Cleaning old log files (>7 days)...$(NC)"
+	@find $(LOG_DIR) -name '*.log' -mtime +7 -delete 2>/dev/null || true
+	@echo -e "$(GREEN)Old log files cleaned$(NC)"
+
+# 모든 로그 삭제
+clean-all-logs: create-log-dir
+	@echo -e "$(RED)🗑️ Removing all log files...$(NC)"
+	@rm -f $(LOG_DIR)/*.log 2>/dev/null || true
+	@echo -e "$(GREEN)All log files removed$(NC)"
+
+# =============================================================================
+# 통합 실행 (로그 포함)
+# =============================================================================
 
 # 모든 테스트 빌드
-all-tests-build: create-dirs $(BIN_DIR)/test_workermanager $(BIN_DIR)/test_platform $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_network
+all-tests-build: create-dirs $(BIN_DIR)/test_workermanager $(BIN_DIR)/test_platform $(BIN_DIR)/test_step1 $(BIN_DIR)/test_step2 $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_network
 	@echo -e "$(GREEN)✅ All tests build completed for $(PLATFORM)!$(NC)"
 
-# 모든 테스트 실행
-all-tests-run: all-tests-build
-	@echo -e "$(BLUE)🚀 Running all tests in sequence on $(PLATFORM)...$(NC)"
-	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(MAGENTA)WorkerManager: Singleton and Lifecycle Test$(NC)"
-	@./$(BIN_DIR)/test_workermanager
-	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(MAGENTA)Platform: Cross-Platform Compatibility Test$(NC)"
-	@./$(BIN_DIR)/test_platform
-	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(PURPLE)Step 3: Workers Test$(NC)"
-	@./$(BIN_DIR)/test_step3
-	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(PURPLE)Step 4: Driver Data Validation Test$(NC)"
-	@./$(BIN_DIR)/test_step4
-	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(PURPLE)Step 5: Complete DB Integration Test$(NC)"
-	@./$(BIN_DIR)/test_step5
-	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(PURPLE)Step 6: Enhanced Alarm+VirtualPoint Pipeline Test$(NC)"
-	@./$(BIN_DIR)/test_step6
-	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(PURPLE)Network: REST API Server Test$(NC)"
-	@./$(BIN_DIR)/test_network
-	@echo -e "$(GREEN)🎉 All tests completed successfully on $(PLATFORM)!$(NC)"
+# 모든 테스트 실행 (각각 로그 생성)
+all-tests-run: all-tests-build create-log-dir
+	$(eval MASTER_LOG := $(LOG_DIR)/all_tests_$(TIMESTAMP).log)
+	@echo -e "$(BLUE)🚀 Running all tests with logging on $(PLATFORM)...$(NC)"
+	@echo "Master log file: $(MASTER_LOG)"
+	@echo "Individual test logs will be created in $(LOG_DIR)/"
+	@echo ""
+	@echo "========================================" > $(MASTER_LOG)
+	@echo "All Tests Execution - $(PLATFORM)" >> $(MASTER_LOG)
+	@echo "Started: $(shell date)" >> $(MASTER_LOG)
+	@echo "Master Log: $(MASTER_LOG)" >> $(MASTER_LOG)
+	@echo "========================================" >> $(MASTER_LOG)
+	@echo ""
+	@echo -e "$(YELLOW)Running tests in sequence...$(NC)"
+	@$(MAKE) step1-test step2-test step3-test step4-test step5-test step6-test network-test platform-test workermanager-test
+	@echo ""
+	@echo "========================================" >> $(MASTER_LOG)
+	@echo "All Tests Completed: $(shell date)" >> $(MASTER_LOG)
+	@echo "========================================" >> $(MASTER_LOG)
+	@echo -e "$(GREEN)🎉 All tests completed with logging!$(NC)"
+	@echo -e "$(CYAN)Master log: $(MASTER_LOG)$(NC)"
+	@$(MAKE) logs-summary
 
-# 전체 클린 빌드
-full-build: clean create-dirs all-tests-build
-	@echo -e "$(GREEN)✅ Full build completed for $(PLATFORM)!$(NC)"
+# 빠른 테스트 (핵심 테스트만, 로그 포함)
+quick-test: workermanager-test platform-test step3-test
+	@echo -e "$(GREEN)✅ Quick test completed with logging$(NC)"
 
-# 빠른 테스트 실행
-test: workermanager-test platform-test step3-test
+# =============================================================================
+# 기존 유틸리티들
+# =============================================================================
 
 # 클린
 clean:
 	@echo -e "$(YELLOW)🧹 Cleaning $(PLATFORM) build files...$(NC)"
 	@rm -rf $(OBJ_DIR) $(BIN_DIR)
+	@echo -e "$(CYAN)Note: Log files preserved in $(LOG_DIR)/$(NC)"
 	@echo -e "$(GREEN)✅ Clean completed for $(PLATFORM)$(NC)"
+
+# 전체 클린 (로그 포함)
+clean-all: clean clean-all-logs
+	@echo -e "$(GREEN)✅ Complete clean (including logs) for $(PLATFORM)$(NC)"
 
 # 빌드 상태 확인
 status:
-	@echo -e "$(BLUE)🏗️ Build Status for $(PLATFORM) (with WorkerManager + API)$(NC)"
-	@echo -e "$(YELLOW)===============================================$(NC)"
+	@echo -e "$(BLUE)🏗️ Build Status for $(PLATFORM) (Enhanced Logging)$(NC)"
+	@echo -e "$(YELLOW)================================================$(NC)"
 	@echo "Platform: $(PLATFORM)"
 	@echo "Windows: $(IS_WINDOWS), Linux: $(IS_LINUX)"
 	@echo "Object files: $(words $(wildcard $(OBJ_DIR)/**/*.o)) / $(words $(ALL_OBJECTS))"
 	@echo "Source files: $(words $(ALL_SOURCES))"
-	@echo "Workers sources: $(words $(WORKERS_SOURCES)) (includes WorkerManager)"
-	@echo "API sources: $(words $(API_SOURCES)) (includes DeviceApiCallbacks)"
-	@echo "Network sources: $(words $(NETWORK_SOURCES))"
-	@echo "Platform sources: $(words $(PLATFORM_SOURCES))"
+	@echo "Log directory: $(LOG_DIR)"
+	@echo "Total log files: $(shell find $(LOG_DIR) -name '*.log' 2>/dev/null | wc -l)"
 	@echo ""
-	@echo "WorkerManager binary: $(if $(wildcard $(BIN_DIR)/test_workermanager),✅ exists,❌ missing)"
-	@echo "Platform binary: $(if $(wildcard $(BIN_DIR)/test_platform),✅ exists,❌ missing)"
-	@echo "Step 3 binary: $(if $(wildcard $(BIN_DIR)/test_step3),✅ exists,❌ missing)"
-	@echo "Step 4 binary: $(if $(wildcard $(BIN_DIR)/test_step4),✅ exists,❌ missing)"
-	@echo "Step 5 binary: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
-	@echo "Step 6 binary: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing)"
-	@echo "Network binary: $(if $(wildcard $(BIN_DIR)/test_network),✅ exists,❌ missing)"
-	@echo ""
-	@echo -e "$(BLUE)📚 Libraries:$(NC)"
-	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ available,❌ unavailable)"
-	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅ available,❌ unavailable)"
-	@echo "  BACnet: $(if $(BACNET_LIBS),✅ available,❌ unavailable)"
-	@echo "  Redis: $(if $(REDIS_LIBS),✅ available,❌ unavailable)"
-	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ available $(QUICKJS_LIBS),❌ unavailable)"
-	@echo "  HTTP: $(if $(filter -DHAVE_HTTPLIB=1,$(CXXFLAGS)),✅ available,❌ unavailable)"
-	@echo "  Platform libs: $(PLATFORM_LIBS)"
+	@echo "Binary Status:"
+	@echo "Step 1: $(if $(wildcard $(BIN_DIR)/test_step1),✅ exists,❌ missing)"
+	@echo "Step 2: $(if $(wildcard $(BIN_DIR)/test_step2),✅ exists,❌ missing)"
+	@echo "Step 3: $(if $(wildcard $(BIN_DIR)/test_step3),✅ exists,❌ missing)"
+	@echo "Step 4: $(if $(wildcard $(BIN_DIR)/test_step4),✅ exists,❌ missing)"
+	@echo "Step 5: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
+	@echo "Step 6: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing)"
+	@echo "Network: $(if $(wildcard $(BIN_DIR)/test_network),✅ exists,❌ missing)"
+	@echo "Platform: $(if $(wildcard $(BIN_DIR)/test_platform),✅ exists,❌ missing)"
+	@echo "WorkerManager: $(if $(wildcard $(BIN_DIR)/test_workermanager),✅ exists,❌ missing)"
 
-# 종속성 확인
-check-deps:
-	@echo -e "$(BLUE)🔍 Library dependency check for $(PLATFORM)$(NC)"
-	@echo -e "$(YELLOW)===============================================$(NC)"
-	@echo "Platform: $(PLATFORM) (Windows: $(IS_WINDOWS), Linux: $(IS_LINUX))"
-	@echo "Total sources: $(words $(ALL_SOURCES))"
-	@echo "Workers sources: $(words $(WORKERS_SOURCES)) (includes WorkerManager.cpp)"
-	@echo "API sources: $(words $(API_SOURCES)) (includes DeviceApiCallbacks.cpp)"
-	@echo "Network sources: $(words $(NETWORK_SOURCES))"
-	@echo "Platform sources: $(words $(PLATFORM_SOURCES))"
-	@echo "Platform libraries: $(PLATFORM_LIBS)"
-	@echo ""
-	@echo -e "$(CYAN)Critical for WorkerManager + API:$(NC)"
-	@echo "  HTTP support: $(if $(filter -DHAVE_HTTPLIB=1,$(CXXFLAGS)),✅ available - REST API enabled,❌ unavailable - REST API disabled)"
-	@echo "  JSON support: $(if $(filter -DHAS_NLOHMANN_JSON,$(CXXFLAGS)),✅ available,❌ unavailable)"
-	@echo "  Threading: ✅ available (pthread)"
-	@echo ""
-	@echo -e "$(CYAN)Optional Libraries:$(NC)"
-	@echo "  MQTT: $(if $(MQTT_CPP_LIBS),✅ available $(MQTT_CPP_LIBS),❌ unavailable)"
-	@echo "  Modbus: $(if $(MODBUS_LIBS),✅ available $(MODBUS_LIBS),❌ unavailable)"
-	@echo "  BACnet: $(if $(BACNET_LIBS),✅ available $(BACNET_LIBS),❌ unavailable)"
-	@echo "  Redis: $(if $(REDIS_LIBS),✅ available $(REDIS_LIBS),❌ unavailable)"
-	@echo "  QuickJS: $(if $(QUICKJS_LIBS),✅ available $(QUICKJS_LIBS),❌ unavailable)"
-
-# Windows 준비 확인
-check-windows-ready:
-	@echo -e "$(MAGENTA)🪟 Windows Compatibility Check$(NC)"
-	@echo -e "$(YELLOW)==============================$(NC)"
-	@echo "Platform detection: $(if $(filter Windows,$(PLATFORM)),✅ Windows detected,ℹ️ Running on $(PLATFORM))"
-	@echo "PlatformCompat.h: $(if $(wildcard $(INCLUDE_DIR)/Platform/PlatformCompat.h),✅ exists,❌ missing - run 'mkdir -p ../include/Platform' and create file)"
-	@echo "Platform includes: $(if $(findstring -I$(INCLUDE_DIR)/Platform,$(INCLUDES)),✅ included,❌ missing)"
-	@echo "Windows flags: $(if $(filter -DPULSEONE_WINDOWS=1,$(CXXFLAGS)),✅ Windows build ready,ℹ️ Linux build)"
-	@echo "Windows libs: $(if $(PLATFORM_LIBS),✅ $(PLATFORM_LIBS),ℹ️ Linux - no Windows libs needed)"
-	@echo "WorkerManager ready: $(if $(wildcard $(SRC_DIR)/Workers/WorkerManager.cpp),✅ WorkerManager.cpp exists,❌ WorkerManager.cpp missing)"
-	@echo "API ready: $(if $(wildcard $(SRC_DIR)/Api/DeviceApiCallbacks.cpp),✅ DeviceApiCallbacks.cpp exists,❌ DeviceApiCallbacks.cpp missing)"
-	@echo ""
-	@echo -e "$(GREEN)Status: $(if $(wildcard $(INCLUDE_DIR)/Platform/PlatformCompat.h),🎯 Ready for cross-platform compilation,⚠️ Need to create PlatformCompat.h)$(NC)"
-
-# 도움말
+# 도움말 (업데이트됨)
 help:
-	@echo -e "$(BLUE)🚀 PulseOne Build System with WorkerManager + API Support$(NC)"
-	@echo -e "$(YELLOW)======================================================$(NC)"
+	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Comprehensive Logging$(NC)"
+	@echo -e "$(YELLOW)============================================================$(NC)"
 	@echo ""
-	@echo -e "$(MAGENTA)🎯 New Features:$(NC)"
+	@echo -e "$(MAGENTA)🎯 Enhanced Features:$(NC)"
 	@echo "  Current platform: $(PLATFORM)"
-	@echo "  make workermanager-test  - Test WorkerManager singleton and lifecycle"
-	@echo "  make workermanager-build - Build WorkerManager test only"
+	@echo "  Auto-logging: All tests create timestamped log files"
+	@echo "  Log directory: $(LOG_DIR)"
 	@echo ""
-	@echo -e "$(MAGENTA)🛡️ Platform Support:$(NC)"
-	@echo "  make platform-test    - Test cross-platform compatibility"
-	@echo "  make platform-build   - Build platform compatibility test"
-	@echo "  make check-windows-ready - Check Windows compilation readiness"
-	@echo ""
-	@echo -e "$(GREEN)Individual test commands:$(NC)"
-	@echo "  make step3-test   - Step 3: Workers test"
+	@echo -e "$(GREEN)Step-by-Step Test Commands (with logging):$(NC)"
+	@echo "  make step1-test   - Step 1: Configuration and connection test"
+	@echo "  make step2-test   - Step 2: Database entity validation test"
+	@echo "  make step3-test   - Step 3: Protocol worker property validation test"
 	@echo "  make step4-test   - Step 4: Driver data validation test"
 	@echo "  make step5-test   - Step 5: Complete DB integration test"
 	@echo "  make step6-test   - Step 6: Enhanced alarm+virtualpoint pipeline test"
 	@echo "  make network-test - Network: REST API server test"
+	@echo "  make platform-test - Platform: Cross-platform compatibility test"
+	@echo "  make workermanager-test - WorkerManager: Singleton and lifecycle test"
 	@echo ""
-	@echo -e "$(GREEN)Quick build commands:$(NC)"
-	@echo "  make step3-build  - Build Step 3 only"
-	@echo "  make step4-build  - Build Step 4 only"
-	@echo "  make step5-build  - Build Step 5 only"
-	@echo "  make step6-build  - Build Step 6 only"
-	@echo "  make network-build - Build Network test only"
-	@echo "  make all-tests-build - Build all tests (includes WorkerManager)"
+	@echo -e "$(GREEN)Quick Build Commands:$(NC)"
+	@echo "  make step1-build, step2-build, step3-build, ..."
+	@echo "  make all-tests-build - Build all tests"
 	@echo ""
-	@echo -e "$(GREEN)Integrated execution:$(NC)"
-	@echo "  make all-tests-run - Run all tests in sequence (includes WorkerManager + platform)"
-	@echo "  make full-build   - Complete clean build"
-	@echo "  make test         - Quick test (WorkerManager + platform + step3)"
-	@echo "  make clean        - Delete all build files"
+	@echo -e "$(GREEN)Integrated Execution:$(NC)"
+	@echo "  make all-tests-run - Run all tests with comprehensive logging"
+	@echo "  make quick-test    - Run core tests (WorkerManager + Platform + Step3)"
+	@echo ""
+	@echo -e "$(CYAN)🗂️ Log Management:$(NC)"
+	@echo "  make check-logs      - Check log directory status"
+	@echo "  make logs-summary    - View summary of latest test logs"
+	@echo "  make clean-old-logs  - Remove logs older than 7 days"
+	@echo "  make clean-all-logs  - Remove all log files"
+	@echo ""
+	@echo -e "$(GREEN)Utility Commands:$(NC)"
+	@echo "  make status       - Check build and log status"
+	@echo "  make clean        - Clean build files (preserve logs)"
+	@echo "  make clean-all    - Clean everything (including logs)"
 	@echo "  make create-dirs  - Create all required directories"
 	@echo ""
-	@echo -e "$(GREEN)Status check:$(NC)"
-	@echo "  make status       - Check build status (shows WorkerManager + API info)"
-	@echo "  make check-deps   - Check library availability"
-	@echo ""
-	@echo -e "$(CYAN)💡 Next steps for full functionality:$(NC)"
-	@echo "  1. Run 'make create-dirs' to create all build directories"
-	@echo "  2. Ensure httplib is available for REST API support"
-	@echo "  3. Run 'make workermanager-test' to verify WorkerManager functionality"
-	@echo "  4. Run 'make network-test' to test REST API with WorkerManager integration"
+	@echo -e "$(CYAN)💡 Logging Features:$(NC)"
+	@echo "  - All tests create timestamped log files"
+	@echo "  - Automatic log analysis and summary"
+	@echo "  - Individual and master log files"
+	@echo "  - Log file preservation during clean"
+	@echo "  - Easy log management commands"
+
+.PHONY: create-log-dir logs-summary check-logs clean-old-logs clean-all-logs \
+        step1-test step2-test step3-test step4-test step5-test step6-test \
+        network-test platform-test workermanager-test quick-test all-tests-run \
+        clean clean-all help status
 
 # 자동 종속성 생성
 -include $(ALL_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d)
-
-.PHONY: full-build test clean status check-deps help create-dirs \
-        step3-build step3-test step4-build step4-test step5-build step5-test \
-        step6-build step6-test network-build network-test all-tests-build all-tests-run \
-        platform-build platform-test check-windows-ready workermanager-build workermanager-test

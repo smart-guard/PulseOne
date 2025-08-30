@@ -178,6 +178,8 @@ std::future<bool> ModbusTcpWorker::Start() {
             return true;
         }
         
+        StartReconnectionThread();
+        
         LogMessage(LogLevel::INFO, "Starting ModbusTcpWorker...");
         
         try {

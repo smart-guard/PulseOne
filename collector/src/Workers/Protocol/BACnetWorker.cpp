@@ -79,7 +79,7 @@ std::future<bool> BACnetWorker::Start() {
         
         // 1. 통계 초기화
         worker_stats_.Reset();
-        
+        StartReconnectionThread();
         // 2. UDP 연결 수립
         if (!EstablishConnection()) {
             LogMessage(LogLevel::ERROR, "Failed to establish UDP connection");

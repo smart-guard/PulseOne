@@ -121,6 +121,8 @@ std::future<bool> MQTTWorker::Start() {
         try {
             LogMessage(LogLevel::INFO, "Starting MQTT worker...");
             
+            StartReconnectionThread();
+            
             // 1. 연결 수립
             if (!EstablishConnection()) {
                 promise->set_value(false);
