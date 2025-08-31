@@ -195,6 +195,8 @@ private:
     bool ValidateJsonSchema(const nlohmann::json& data, const std::string& schema_type);
     std::string ExtractDeviceId(const httplib::Request& req, int match_index = 1);
     std::string ExtractGroupId(const httplib::Request& req, int match_index = 1); // 새로 추가
+    void HandleAlarmRecoveryStatus(const httplib::Request& req, httplib::Response& res);
+    void HandleAlarmRecoveryTrigger(const httplib::Request& req, httplib::Response& res);
 
 private:
     int port_;

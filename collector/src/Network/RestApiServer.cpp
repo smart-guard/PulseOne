@@ -4,6 +4,8 @@
 // =============================================================================
 
 #include "Network/RestApiServer.h"
+#include "Utils/LogManager.h"
+#include "Alarm/AlarmStartupRecovery.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -1318,9 +1320,94 @@ void RestApiServer::HandleGetSystemConfig(const httplib::Request& req, httplib::
     res.set_content(CreateSuccessResponse(config).dump(), "application/json");
 }
 
+
 void RestApiServer::HandlePutSystemConfig(const httplib::Request& req, httplib::Response& res) {
     json message_data = CreateMessageResponse("System config updated");
     res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+}
+
+
+// GET /api/alarm/recovery/status - 복구 상태 조회
+void RestApiServer::HandleAlarmRecoveryStatus(const httplib::Request& req, httplib::Response& res) {
+    try {
+        // ❌ 잘못된 코드: auto& alarm_recovery = Alarm::AlarmStartupRecovery::getInstance();
+        // ✅ 올바른 코드:
+        auto& alarm_recovery = PulseOne::Alarm::AlarmStartupRecovery::getInstance();
+        
+        // 복구 상태 확인
+        bool is_recovery_enabled = alarm_recovery.IsRecoveryEnabled();
+        bool is_recovery_completed = alarm_recovery.IsRecoveryCompleted();
+        auto recovery_stats = alarm_recovery.GetRecoveryStats();
+        
+        // JSON 응답 생성
+        nlohmann::json response_data;
+        response_data["recovery_enabled"] = is_recovery_enabled;
+        response_data["recovery_completed"] = is_recovery_completed;
+        response_data["total_active_alarms"] = recovery_stats.total_active_alarms;
+        response_data["successfully_published"] = recovery_stats.successfully_published;
+        response_data["failed_to_publish"] = recovery_stats.failed_to_publish;
+        response_data["recovery_duration_ms"] = recovery_stats.recovery_duration.count();
+        response_data["last_recovery_time"] = recovery_stats.last_recovery_time;
+        
+        // ❌ 잘못된 JSON 대입문 제거
+        // }; <- 이 줄이 문제였음
+        
+        res.set_content(CreateSuccessResponse(response_data).dump(), "application/json");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("알람 복구 상태 조회 실패: " + std::string(e.what()));
+        
+        nlohmann::json error_data;
+        error_data["error"] = "Failed to get alarm recovery status";
+        error_data["details"] = e.what();
+        
+        res.status = 500;
+        res.set_content(CreateErrorResponse(error_data).dump(), "application/json");
+    }
+}
+
+// POST /api/alarm/recovery/trigger - 수동 알람 복구 트리거
+void RestApiServer::HandleAlarmRecoveryTrigger(const httplib::Request& req, httplib::Response& res) {
+    try {
+        // ❌ 잘못된 코드: auto& alarm_recovery = Alarm::AlarmStartupRecovery::getInstance();
+        // ✅ 올바른 코드:
+        auto& alarm_recovery = PulseOne::Alarm::AlarmStartupRecovery::getInstance();
+        
+        LogManager::getInstance().Info("REST API를 통한 알람 복구 수동 트리거 요청");
+        
+        // 알람 복구 실행
+        size_t recovered_count = alarm_recovery.RecoverActiveAlarms();
+        auto recovery_stats = alarm_recovery.GetRecoveryStats();
+        
+        // JSON 응답 생성
+        nlohmann::json response_data;
+        response_data["message"] = "Alarm recovery triggered successfully";
+        response_data["recovered_count"] = recovered_count;
+        response_data["total_active_alarms"] = recovery_stats.total_active_alarms;
+        response_data["successfully_published"] = recovery_stats.successfully_published;
+        response_data["failed_to_publish"] = recovery_stats.failed_to_publish;
+        response_data["recovery_duration_ms"] = recovery_stats.recovery_duration.count();
+        response_data["triggered_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        // ❌ 잘못된 JSON 대입문 제거
+        // }; <- 이 줄이 문제였음
+        
+        res.set_content(CreateSuccessResponse(response_data).dump(), "application/json");
+        
+        LogManager::getInstance().Info("알람 복구 REST API 응답 완료 - 복구된 알람: " + 
+                                      std::to_string(recovered_count) + "개");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("알람 복구 트리거 실패: " + std::string(e.what()));
+        
+        nlohmann::json error_data;
+        error_data["error"] = "Failed to trigger alarm recovery";
+        error_data["details"] = e.what();
+        
+        res.status = 500;
+        res.set_content(CreateErrorResponse(error_data).dump(), "application/json");
+    }
 }
 
 #ifndef HAVE_HTTPLIB

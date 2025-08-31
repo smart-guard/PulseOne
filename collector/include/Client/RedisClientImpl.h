@@ -152,7 +152,7 @@ public:
     
     ConnectionStats getStats() const;
     void resetStats();
-
+    bool forceReconnect();  // 테스트용 즉시 재연결
 private:
     // =============================================================================
     // 내부 헬퍼 메서드들
