@@ -59,7 +59,7 @@ public:
     bool exists(const std::string& key) override;
     bool expire(const std::string& key, int seconds) override;
     int ttl(const std::string& key) override;
-    
+    int incr(const std::string& key, int increment = 1) override;
     // =============================================================================
     // Hash 조작 (RedisClient 인터페이스 구현)
     // =============================================================================

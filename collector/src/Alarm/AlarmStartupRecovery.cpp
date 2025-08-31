@@ -5,6 +5,7 @@
  */
 
 #include "Alarm/AlarmStartupRecovery.h"
+#include "Storage/BackendFormat.h" 
 #include <chrono>
 #include <thread>
 #include <algorithm>
@@ -12,7 +13,7 @@
 #include <sstream>
 
 using namespace PulseOne::Alarm;
-
+using namespace PulseOne::Storage;
 // =============================================================================
 // 싱글톤 구현
 // =============================================================================
@@ -323,9 +324,9 @@ Storage::BackendFormat::AlarmEventData AlarmStartupRecovery::ConvertToBackendFor
     
     try {
         // 기본 정보 복사
-        alarm_data.occurrence_id = occurrence_entity.getId();
+        alarm_data.occurrence_id = std::to_string(occurrence_entity.getId()); // ✅ string으로 변환
         alarm_data.rule_id = occurrence_entity.getRuleId();
-        alarm_data.device_id = occurrence_entity.getDeviceId();
+        alarm_data.device_id = std::to_string(occurrence_entity.getDeviceId()); // ✅ string으로 변환
         alarm_data.point_id = occurrence_entity.getPointId();
         alarm_data.tenant_id = occurrence_entity.getTenantId();
         
@@ -333,36 +334,36 @@ Storage::BackendFormat::AlarmEventData AlarmStartupRecovery::ConvertToBackendFor
         alarm_data.message = occurrence_entity.getAlarmMessage();
         alarm_data.trigger_value = occurrence_entity.getTriggerValue();
         
-        // 🔧 컴파일 에러 수정: enum → string 변환 후 ConvertSeverityToInt 호출
-        std::string severity_str = PulseOne::Alarm::severityToString(occurrence_entity.getSeverity());
-        alarm_data.severity = ConvertSeverityToInt(severity_str);
-        
-        // 🔧 컴파일 에러 수정: enum → string 변환 후 ConvertStateToInt 호출  
-        std::string state_str = PulseOne::Alarm::stateToString(occurrence_entity.getState());
-        alarm_data.state = ConvertStateToInt(state_str);
+        // ✅ 타입 수정: enum → string 직접 변환
+        alarm_data.severity = PulseOne::Alarm::severityToString(occurrence_entity.getSeverity());
+        alarm_data.state = PulseOne::Alarm::stateToString(occurrence_entity.getState());
         
         // 시간 변환
         auto duration = occurrence_entity.getOccurrenceTime().time_since_epoch();
-        alarm_data.occurred_at = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+        alarm_data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
         
         // 추가 정보
         alarm_data.source_name = occurrence_entity.getSourceName().value_or("");
         alarm_data.location = occurrence_entity.getLocation().value_or("");
         
-        LogManager::getInstance().log("alarm_recovery", LogLevel::DEBUG,
-            "Backend 포맷 변환 완료: ID=" + std::to_string(alarm_data.occurrence_id) + 
-            ", Severity=" + severity_str + "(" + std::to_string(alarm_data.severity) + ")" +
-            ", State=" + state_str + "(" + std::to_string(alarm_data.state) + ")");
-        
     } catch (const std::exception& e) {
         LogManager::getInstance().log("alarm_recovery", LogLevel::ERROR,
             "Backend 포맷 변환 실패: " + std::string(e.what()));
         
-        // 기본값으로 초기화
-        alarm_data = Structs::BackendAlarmData{};
-        alarm_data.occurrence_id = occurrence_entity.getId();
-        alarm_data.severity = 3; // MEDIUM
-        alarm_data.state = 1;    // ACTIVE
+        // ✅ 올바른 기본값 초기화 
+        alarm_data.occurrence_id = std::to_string(occurrence_entity.getId());
+        alarm_data.rule_id = occurrence_entity.getRuleId();
+        alarm_data.device_id = std::to_string(occurrence_entity.getDeviceId());
+        alarm_data.point_id = occurrence_entity.getPointId();
+        alarm_data.tenant_id = occurrence_entity.getTenantId();
+        alarm_data.message = "시스템 복구된 알람";
+        alarm_data.severity = "MEDIUM";  // ✅ string 기본값
+        alarm_data.state = "active";     // ✅ string 기본값
+        alarm_data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        alarm_data.trigger_value = "";
+        alarm_data.source_name = "";
+        alarm_data.location = "";
     }
     
     return alarm_data;

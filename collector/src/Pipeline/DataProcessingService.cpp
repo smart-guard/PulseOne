@@ -506,22 +506,25 @@ Storage::BackendFormat::AlarmEventData DataProcessingService::ConvertAlarmEventT
     data.rule_id = alarm_event.rule_id;
     data.tenant_id = alarm_event.tenant_id;
     data.point_id = alarm_event.point_id;
-    data.device_id = std::to_string(alarm_event.tenant_id);
+    data.device_id = alarm_event.device_id;  // UUID는 이미 string 호환
     data.message = alarm_event.message;
-    data.severity = static_cast<int>(alarm_event.severity);
-    data.state = static_cast<int>(alarm_event.state);
+    
+    // ✅ 타입 수정: enum → string 직접 변환 (AlarmTypes.h 함수 사용)
+    data.severity = PulseOne::Alarm::severityToString(alarm_event.severity);
+    data.state = PulseOne::Alarm::stateToString(alarm_event.state);
+    
     data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         alarm_event.occurrence_time.time_since_epoch()).count();
     data.source_name = alarm_event.source_name;
     data.location = alarm_event.location;
     
-    // ✅ string 타입 처리 추가
+    // ✅ DataValue → string 변환 (기존 로직 유지)
     std::visit([&data](const auto& v) {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::string>) {
-            data.trigger_value = v;  // 이미 string이면 그대로 사용
+            data.trigger_value = v;
         } else {
-            data.trigger_value = std::to_string(v);  // 숫자면 to_string
+            data.trigger_value = std::to_string(v);
         }
     }, alarm_event.trigger_value);
     
