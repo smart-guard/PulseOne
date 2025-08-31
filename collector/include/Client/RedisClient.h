@@ -106,7 +106,13 @@ public:
      * @return TTL (초), -1이면 만료 없음, -2면 키 없음
      */
     virtual int ttl(const std::string& key) = 0;
-    
+    /**
+     * @brief 정수 값 증가
+     * @param key 키
+     * @param increment 증가값 (기본 1)
+     * @return 증가 후 값
+     */
+    virtual int incr(const std::string& key, int increment = 1) = 0;
     // =============================================================================
     // Hash 조작
     // =============================================================================

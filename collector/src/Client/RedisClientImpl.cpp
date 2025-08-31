@@ -221,6 +221,24 @@ int RedisClientImpl::ttl(const std::string& key) {
     }, -1);
 }
 
+int RedisClientImpl::incr(const std::string& key, int increment) {
+    return executeWithRetry<int>([this, &key, increment]() {
+#ifdef HAS_HIREDIS
+        redisReply* reply;
+        if (increment == 1) {
+            reply = executeCommandSafe("INCR %s", key.c_str());
+        } else {
+            reply = executeCommandSafe("INCRBY %s %d", key.c_str(), increment);
+        }
+        int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
+        if (reply) freeReplyObject(reply);
+        return result;
+#else
+        logInfo("INCR " + key + " " + std::to_string(increment) + " (시뮬레이션)");
+        return increment;
+#endif
+    }, 0);
+}
 // =============================================================================
 // Hash 조작
 // =============================================================================

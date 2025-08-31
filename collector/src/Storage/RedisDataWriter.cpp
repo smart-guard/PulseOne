@@ -236,36 +236,38 @@ bool RedisDataWriter::PublishAlarmEvent(const BackendFormat::AlarmEventData& ala
         
         std::string json_str = alarm_data.toJson().dump();
         
-        // 1. 여러 채널에 발행 (Backend AlarmEventSubscriber가 구독)
+        // 1. 여러 채널에 발행
         redis_client_->publish("alarms:all", json_str);
         redis_client_->publish("tenant:" + std::to_string(alarm_data.tenant_id) + ":alarms", json_str);
         redis_client_->publish("device:" + alarm_data.device_id + ":alarms", json_str);
         
-        // 🔧 타입 수정: severity는 int 타입 (0=INFO, 1=LOW, 2=MEDIUM, 3=HIGH, 4=CRITICAL)
-        if (alarm_data.severity >= 4) { // CRITICAL
+        // 심각도별 채널 발행 (severity는 이제 string 타입)
+        if (alarm_data.severity == "CRITICAL") {
             redis_client_->publish("alarms:critical", json_str);
-        } else if (alarm_data.severity >= 3) { // HIGH
+        } else if (alarm_data.severity == "HIGH") {
             redis_client_->publish("alarms:high", json_str);
         }
         
-        // 2. 활성 알람으로 저장 (ACTIVE 상태인 경우만)
-        if (alarm_data.state == 1) { // ACTIVE
+        // 2. 활성 알람으로 저장 (state는 이제 string 타입)
+        if (alarm_data.state == "active") {
             std::string active_key = "alarm:active:" + std::to_string(alarm_data.rule_id);
             redis_client_->setex(active_key, json_str, 7200); // 2시간 TTL
         }
         
-        // 3. 알람 카운터 업데이트
+        // 3. ✅ incr 메서드 대신 다른 방법 사용 (RedisClient에 incr이 없음)
         std::string counter_key = "alarms:count:today";
-        redis_client_->incr(counter_key);
-        redis_client_->expire(counter_key, 86400); // 24시간 TTL
+        std::string current_count = redis_client_->get(counter_key);
+        int count = current_count.empty() ? 1 : std::stoi(current_count) + 1;
+        redis_client_->setex(counter_key, std::to_string(count), 86400); // 24시간 TTL
         
         stats_.total_writes.fetch_add(1);
         stats_.successful_writes.fetch_add(1);
         stats_.alarm_publishes.fetch_add(1);
         
+        // ✅ severity 로그 수정: string이므로 to_string 제거
         LogManager::getInstance().log("redis_writer", LogLevel::INFO,
                    "알람 이벤트 발행: rule_id=" + std::to_string(alarm_data.rule_id) + 
-                   ", severity=" + std::to_string(alarm_data.severity));
+                   ", severity=" + alarm_data.severity);  // to_string 제거!
         
         return true;
         
