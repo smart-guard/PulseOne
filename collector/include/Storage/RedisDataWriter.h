@@ -1,12 +1,11 @@
 //=============================================================================
 // collector/include/Storage/RedisDataWriter.h
 // 
-// 목적: Backend 완전 호환 Redis 데이터 저장 클래스 (컴파일 에러 수정)
-// 특징:
-//   - Backend realtime.js가 기대하는 정확한 JSON 구조 구현
-//   - device:{id}:{point_name} 키 패턴 완벽 지원
-//   - Worker 초기화 데이터 저장 지원
-//   - 모든 컴파일 에러 해결
+// 수정: BackendFormat 구조체들을 별도 헤더로 분리
+// 변경사항:
+//   - namespace BackendFormat { ... } 블록 제거
+//   - #include "Storage/BackendFormat.h" 추가
+//   - 나머지 RedisDataWriter 클래스는 그대로 유지
 //=============================================================================
 
 #ifndef REDIS_DATA_WRITER_H
@@ -16,6 +15,7 @@
 #include "Common/Enums.h"
 #include "Client/RedisClient.h"
 #include "Utils/LogManager.h"
+#include "Storage/BackendFormat.h"  // ← 새로 추가!
 #include "nlohmann/json.hpp"
 #include <memory>
 #include <string>
@@ -27,127 +27,7 @@
 namespace PulseOne {
 namespace Storage {
 
-/**
- * @brief Backend 완전 호환 Redis 데이터 구조체들
- */
-namespace BackendFormat {
-
-    /**
-     * @brief Device Point 데이터 (Backend realtime.js가 읽는 형식)
-     * Redis 키: device:{device_id}:{point_name}
-     * 
-     * Backend의 processPointKey() 함수가 기대하는 정확한 구조
-     */
-    struct DevicePointData {
-        int point_id;                   // 포인트 ID
-        std::string device_id;          // "1", "2", "3" (숫자 문자열)
-        std::string device_name;        // "Device 1", "Device 2"
-        std::string point_name;         // "temperature_sensor_01", "pressure_sensor_01"
-        std::string value;              // "25.4", "true", "150" (항상 문자열)
-        int64_t timestamp;              // Unix timestamp (milliseconds)
-        std::string quality;            // "good", "bad", "uncertain", "comm_failure", "last_known"
-        std::string data_type;          // "boolean", "integer", "number", "string"
-        std::string unit;               // "°C", "bar", "L/min", ""
-        bool changed = false;           // 값 변경 여부
-        
-        nlohmann::json toJson() const {
-            nlohmann::json j;
-            j["point_id"] = point_id;
-            j["device_id"] = device_id;
-            j["device_name"] = device_name;
-            j["point_name"] = point_name;
-            j["value"] = value;
-            j["timestamp"] = timestamp;
-            j["quality"] = quality;
-            j["data_type"] = data_type;
-            j["unit"] = unit;
-            if (changed) j["changed"] = true;
-            return j;
-        }
-    };
-
-    /**
-     * @brief Point Latest 데이터 (legacy 지원)
-     * Redis 키: point:{point_id}:latest
-     */
-    struct PointLatestData {
-        std::string device_id;          // 디바이스 ID
-        int point_id;                   // 포인트 ID
-        std::string value;              // 값 (문자열)
-        int64_t timestamp;              // Unix timestamp (milliseconds)
-        int quality;                    // 품질 코드 (숫자)
-        bool changed = false;           // 값 변경 여부
-        
-        nlohmann::json toJson() const {
-            nlohmann::json j;
-            j["device_id"] = device_id;
-            j["point_id"] = point_id;
-            j["value"] = value;
-            j["timestamp"] = timestamp;
-            j["quality"] = quality;
-            if (changed) j["changed"] = true;
-            return j;
-        }
-    };
-
-    /**
-     * @brief Alarm 이벤트 데이터
-     * Redis 채널: alarms:all, tenant:{id}:alarms, device:{id}:alarms
-     * Redis 키: alarm:active:{rule_id}
-     */
-    struct AlarmEventData {
-        std::string type = "alarm_event";
-        std::string occurrence_id;      // 발생 ID
-        int rule_id;                    // 규칙 ID
-        int tenant_id;                  // 테넌트 ID
-        int point_id;                   // 포인트 ID
-        std::string device_id;          // 디바이스 ID
-        std::string message;            // 알람 메시지
-        int severity;                   // 0=INFO, 1=LOW, 2=MEDIUM, 3=HIGH, 4=CRITICAL
-        int state;                      // 0=INACTIVE, 1=ACTIVE, 2=ACKNOWLEDGED, 3=CLEARED
-        int64_t timestamp;              // Unix timestamp (milliseconds)
-        std::string source_name;        // 소스 이름
-        std::string location;           // 위치
-        std::string trigger_value;      // 트리거 값 (문자열)
-        
-        nlohmann::json toJson() const {
-            nlohmann::json j;
-            j["type"] = type;
-            j["occurrence_id"] = occurrence_id;
-            j["rule_id"] = rule_id;
-            j["tenant_id"] = tenant_id;
-            j["point_id"] = point_id;
-            j["device_id"] = device_id;
-            j["message"] = message;
-            j["severity"] = severity;
-            j["state"] = state;
-            j["timestamp"] = timestamp;
-            j["source_name"] = source_name;
-            j["location"] = location;
-            j["trigger_value"] = trigger_value;
-            return j;
-        }
-    };
-
-    /**
-     * @brief Device Full State 데이터
-     * Redis 키: device:full:{device_id}
-     */
-    struct DeviceFullData {
-        std::string device_id;          // 디바이스 ID
-        int64_t timestamp;              // Unix timestamp (milliseconds)
-        nlohmann::json points;          // 포인트 배열
-        
-        nlohmann::json toJson() const {
-            nlohmann::json j;
-            j["device_id"] = device_id;
-            j["timestamp"] = timestamp;
-            j["points"] = points;
-            return j;
-        }
-    };
-
-} // namespace BackendFormat
+// BackendFormat 네임스페이스는 별도 헤더에서 include됨
 
 /**
  * @brief Backend 완전 호환 Redis 데이터 저장 클래스

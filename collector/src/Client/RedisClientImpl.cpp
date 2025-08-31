@@ -103,6 +103,16 @@ void RedisClientImpl::disconnect() {
     }
     
     connected_ = false;
+    reconnect_attempts_ = 0;  // 재연결 시도 횟수 초기화
+    
+    // 백그라운드 재연결 즉시 트리거
+    watchdog_cv_.notify_one();
+}
+
+bool RedisClientImpl::forceReconnect() {
+    std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
+    reconnect_attempts_ = 0;
+    return attemptConnection();
 }
 
 bool RedisClientImpl::isConnected() const {

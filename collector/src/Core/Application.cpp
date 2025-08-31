@@ -10,6 +10,8 @@
 #include "Database/DatabaseManager.h"
 #include "Database/RepositoryFactory.h"
 #include "Workers/WorkerManager.h"
+#include "Alarm/AlarmStartupRecovery.h"
+
 
 #ifdef HAVE_HTTPLIB
 #include "Api/ConfigApiCallbacks.h"
@@ -100,7 +102,7 @@ bool CollectorApplication::Initialize() {
         }
         
         // 5. WorkerManager를 통한 활성 워커들 시작
-        LogManager::getInstance().Info("Step 5/5: Starting active workers...");
+        LogManager::getInstance().Info("Step 5/6: Starting active workers...");
         try {
             auto& worker_manager = Workers::WorkerManager::getInstance();
             int started_count = worker_manager.StartAllActiveWorkers();
@@ -113,8 +115,55 @@ bool CollectorApplication::Initialize() {
             
         } catch (const std::exception& e) {
             LogManager::getInstance().Error("✗ Worker startup failed: " + std::string(e.what()));
-            // 워커 시작 실패는 경고이지만 시스템은 계속 실행
             LogManager::getInstance().Warn("System will continue running without workers");
+        }
+
+        // ✅ 6. 활성 알람 복구 (새로 추가!)
+        LogManager::getInstance().Info("Step 6/6: Recovering active alarms...");
+        try {
+            auto& alarm_recovery = Alarm::AlarmStartupRecovery::getInstance();
+            
+            // 복구 기능이 활성화되어 있는지 확인
+            if (alarm_recovery.IsRecoveryEnabled()) {
+                LogManager::getInstance().Info("Starting alarm recovery process...");
+                
+                // 활성 알람 복구 실행
+                size_t recovered_count = alarm_recovery.RecoverActiveAlarms();
+                
+                if (recovered_count > 0) {
+                    LogManager::getInstance().Info("✓ Successfully recovered " + 
+                                                 std::to_string(recovered_count) + 
+                                                 " active alarms to Redis");
+                    LogManager::getInstance().Info("→ Frontend users will see active alarms immediately");
+                } else {
+                    LogManager::getInstance().Info("→ No active alarms to recover");
+                }
+                
+                // 복구 통계 로그
+                auto stats = alarm_recovery.GetRecoveryStats();
+                if (stats.total_active_alarms > 0) {
+                    LogManager::getInstance().Info("Alarm Recovery Statistics:");
+                    LogManager::getInstance().Info("  - Total active alarms in DB: " + 
+                                                 std::to_string(stats.total_active_alarms));
+                    LogManager::getInstance().Info("  - Successfully published: " + 
+                                                 std::to_string(stats.successfully_published));
+                    LogManager::getInstance().Info("  - Failed to publish: " + 
+                                                 std::to_string(stats.failed_to_publish));
+                    LogManager::getInstance().Info("  - Recovery time: " + 
+                                                 std::to_string(stats.recovery_duration.count()) + "ms");
+                    
+                    if (!stats.last_error.empty()) {
+                        LogManager::getInstance().Warn("  - Last error: " + stats.last_error);
+                    }
+                }
+                
+            } else {
+                LogManager::getInstance().Info("→ Alarm recovery is disabled in configuration");
+            }
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("✗ Alarm recovery failed: " + std::string(e.what()));
+            LogManager::getInstance().Warn("System will continue running - alarms can be recovered manually");
         }
 
         LogManager::getInstance().Info("=== SYSTEM INITIALIZATION COMPLETED ===");

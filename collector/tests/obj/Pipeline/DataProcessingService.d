@@ -20,7 +20,7 @@ obj/Pipeline/DataProcessingService.o: \
  ../include/VirtualPoint/VirtualPointEngine.h \
  ../include/VirtualPoint/VirtualPointTypes.h \
  ../include/Database/Entities/VirtualPointEntity.h \
- ../include/Storage/RedisDataWriter.h \
+ ../include/Storage/RedisDataWriter.h ../include/Storage/BackendFormat.h \
  ../include/Database/RepositoryFactory.h \
  ../include/Database/Repositories/CurrentValueRepository.h \
  ../include/Database/Repositories/IRepository.h \
