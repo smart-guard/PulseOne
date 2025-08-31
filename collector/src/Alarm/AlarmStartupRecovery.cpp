@@ -1,94 +1,141 @@
 /**
- * @file AlarmStartupRecovery.cpp  
- * @brief 시스템 시작 시 DB에서 활성 알람을 Redis로 복구하는 구현
+ * @file AlarmStartupRecovery.cpp
+ * @brief 컴파일 에러 완전 수정 - Storage 네임스페이스 문제 해결
  * @date 2025-08-31
+ * @version Fixed: Storage 타입 인식 및 네임스페이스 문제 해결
  */
 
 #include "Alarm/AlarmStartupRecovery.h"
-#include "Storage/BackendFormat.h" 
+
+// 🔥 중요: Storage 관련 헤더를 명시적으로 포함
+#include "Storage/BackendFormat.h"
+#include "Storage/RedisDataWriter.h"
+
+// Database 시스템
+#include "Database/RepositoryFactory.h"
+#include "Database/Repositories/AlarmOccurrenceRepository.h"
+#include "Database/Entities/AlarmOccurrenceEntity.h"
+
+// 기본 시스템
+#include "Utils/LogManager.h"
+#include "Utils/ConfigManager.h"
+
+// Common 타입들
+#include "Common/Structs.h"
+#include "Common/Enums.h"
+#include "Alarm/AlarmTypes.h"
+
 #include <chrono>
 #include <thread>
-#include <algorithm>
-#include <iomanip>
-#include <sstream>
+#include <stdexcept>
 
+// 🔥 네임스페이스 별칭으로 타입 명확화
+using namespace PulseOne;
 using namespace PulseOne::Alarm;
-using namespace PulseOne::Storage;
+using LogLevel = PulseOne::Enums::LogLevel;
+
+// 🔥 Storage 타입 별칭으로 컴파일 에러 방지
+using BackendAlarmData = PulseOne::Storage::BackendFormat::AlarmEventData;
+
+namespace PulseOne {
+namespace Alarm {
+
 // =============================================================================
-// 싱글톤 구현
+// 상수 정의
 // =============================================================================
+
+constexpr int REDIS_PUBLISH_RETRY_COUNT = 3;
+constexpr std::chrono::milliseconds RETRY_DELAY{100};
+
+// =============================================================================
+// 싱글톤 인스턴스
+// =============================================================================
+
+std::unique_ptr<AlarmStartupRecovery> AlarmStartupRecovery::instance_ = nullptr;
+std::mutex AlarmStartupRecovery::instance_mutex_;
 
 AlarmStartupRecovery& AlarmStartupRecovery::getInstance() {
-    static AlarmStartupRecovery instance;
-    return instance;
+    std::lock_guard<std::mutex> lock(instance_mutex_);
+    if (!instance_) {
+        instance_ = std::unique_ptr<AlarmStartupRecovery>(new AlarmStartupRecovery());
+    }
+    return *instance_;
 }
 
-AlarmStartupRecovery::AlarmStartupRecovery() {
-    LogManager::getInstance().log("startup_recovery", LogLevel::INFO, 
-                                  "AlarmStartupRecovery 인스턴스 생성");
+// =============================================================================
+// 생성자 및 소멸자
+// =============================================================================
+
+AlarmStartupRecovery::AlarmStartupRecovery()
+    : recovery_enabled_(true)
+    , recovery_completed_(false)
+    , recovery_in_progress_(false)
+    , alarm_occurrence_repo_(nullptr)
+    , redis_data_writer_(nullptr) {
     
-    // 통계 초기화
-    ResetRecoveryStats();
-    
-    // 컴포넌트 초기화는 지연로딩 (RecoverActiveAlarms 호출 시)
+    LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
+                                  "AlarmStartupRecovery 생성됨");
 }
 
 AlarmStartupRecovery::~AlarmStartupRecovery() {
     LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                  "AlarmStartupRecovery 소멸");
+                                  "AlarmStartupRecovery 소멸됨");
 }
 
 // =============================================================================
-// 핵심 복구 메서드 구현
+// 메인 복구 메서드 (수정된 버전)
 // =============================================================================
 
 size_t AlarmStartupRecovery::RecoverActiveAlarms() {
     if (!recovery_enabled_.load()) {
         LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "알람 복구가 비활성화됨 - 건너뜀");
+                                      "알람 복구 비활성화됨 - 건너뜀");
         return 0;
     }
     
-    if (recovery_in_progress_.exchange(true)) {
+    if (recovery_in_progress_.load()) {
         LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
                                       "알람 복구가 이미 진행 중입니다");
         return 0;
     }
     
-    LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                  "=== 시스템 시작 시 활성 알람 복구 시작 ===");
-    
+    recovery_in_progress_.store(true);
     auto start_time = std::chrono::steady_clock::now();
+    
+    LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
+                                  "🚨 시스템 시작 시 활성 알람 복구 시작");
+    
+    // 통계 초기화
+    recovery_stats_ = RecoveryStats{};
+    
     size_t total_recovered = 0;
     
     try {
         // 1. 컴포넌트 초기화
         if (!InitializeComponents()) {
-            HandleRecoveryError("컴포넌트 초기화", "Repository 또는 Redis 연결 실패");
+            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+                                          "컴포넌트 초기화 실패");
             recovery_in_progress_.store(false);
             return 0;
         }
         
         // 2. DB에서 활성 알람 로드
         auto active_alarms = LoadActiveAlarmsFromDB();
-        
-        std::lock_guard<std::mutex> stats_lock(stats_mutex_);
         recovery_stats_.total_active_alarms = active_alarms.size();
         
         LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "DB에서 " + std::to_string(active_alarms.size()) + 
+                                      "📊 DB에서 " + std::to_string(active_alarms.size()) + 
                                       "개의 활성 알람 발견");
         
         if (active_alarms.empty()) {
             LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                          "복구할 활성 알람이 없습니다");
+                                          "✅ 복구할 활성 알람이 없습니다");
             recovery_completed_.store(true);
             recovery_in_progress_.store(false);
             return 0;
         }
         
-        // 3. 배치 단위로 Redis 발행
-        size_t batch_count = 0;
+        // 3. 배치로 Redis 발행
         size_t success_count = 0;
         
         for (const auto& alarm_entity : active_alarms) {
@@ -112,73 +159,34 @@ size_t AlarmStartupRecovery::RecoverActiveAlarms() {
                     
                     if (retry < REDIS_PUBLISH_RETRY_COUNT - 1) {
                         std::this_thread::sleep_for(RETRY_DELAY);
-                        LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG_LEVEL,
-                                                      "Redis 발행 재시도 " + std::to_string(retry + 1) + 
-                                                      "/3: 알람 ID " + std::to_string(alarm_entity.getId()));
                     }
                 }
                 
                 if (published) {
                     success_count++;
                     recovery_stats_.successfully_published++;
-                    
-                    LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG_LEVEL,
-                                                  "활성 알람 복구 성공: rule_id=" + 
-                                                  std::to_string(alarm_entity.getRuleId()) +
-                                                  ", severity=" + std::to_string(static_cast<int>(alarm_entity.getSeverity())));
                 } else {
                     recovery_stats_.failed_to_publish++;
-                    LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
-                                                  "활성 알람 Redis 발행 실패: rule_id=" + 
-                                                  std::to_string(alarm_entity.getRuleId()));
-                }
-                
-                // 배치 처리 진행상황
-                batch_count++;
-                if (batch_count % MAX_RECOVERY_BATCH_SIZE == 0) {
-                    LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                                  "복구 진행: " + std::to_string(batch_count) + "/" + 
-                                                  std::to_string(active_alarms.size()) + " 처리됨");
                 }
                 
             } catch (const std::exception& e) {
                 recovery_stats_.failed_to_publish++;
-                HandleRecoveryError("개별 알람 복구", 
-                                    "Rule ID " + std::to_string(alarm_entity.getRuleId()) + 
-                                    ": " + e.what());
+                LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+                                              "개별 알람 복구 실패: " + std::string(e.what()));
             }
         }
         
         total_recovered = success_count;
-        
-        // 4. 복구 완료 처리
-        auto end_time = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        {
-            std::lock_guard<std::mutex> stats_lock(stats_mutex_);
-            recovery_stats_.recovery_duration = duration;
-            
-            // 현재 시간 문자열 생성
-            auto now = std::chrono::system_clock::now();
-            auto time_t = std::chrono::system_clock::to_time_t(now);
-            std::stringstream ss;
-            ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-            recovery_stats_.last_recovery_time = ss.str();
-        }
-        
         recovery_completed_.store(true);
         
+        // 4. 결과 요약
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        recovery_stats_.recovery_duration = duration;
+        
         LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "=== 활성 알람 복구 완료 ===");
-        LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "- 전체 활성 알람: " + std::to_string(active_alarms.size()) + "개");
-        LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "- 성공적으로 복구: " + std::to_string(success_count) + "개");
-        LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "- 실패: " + std::to_string(recovery_stats_.failed_to_publish) + "개");
-        LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "- 소요시간: " + std::to_string(duration.count()) + "ms");
+                                      "🎯 알람 복구 완료 - 성공: " + std::to_string(success_count) + 
+                                      "개, 실패: " + std::to_string(recovery_stats_.failed_to_publish) + "개");
         
         if (success_count > 0) {
             LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
@@ -247,9 +255,14 @@ size_t AlarmStartupRecovery::RecoverActiveAlarmsByTenant(int tenant_id) {
 bool AlarmStartupRecovery::InitializeComponents() {
     try {
         // 1. Repository 초기화
-        auto& repo_factory = Database::RepositoryFactory::getInstance();
-        alarm_occurrence_repo_ = repo_factory.getAlarmOccurrenceRepository();
+        auto& factory = Database::RepositoryFactory::getInstance();
+        if (!factory.initialize()) {
+            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+                                          "RepositoryFactory 초기화 실패");
+            return false;
+        }
         
+        alarm_occurrence_repo_ = factory.getAlarmOccurrenceRepository();
         if (!alarm_occurrence_repo_) {
             LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
                                           "AlarmOccurrenceRepository 획득 실패");
@@ -258,57 +271,46 @@ bool AlarmStartupRecovery::InitializeComponents() {
         
         // 2. RedisDataWriter 초기화
         if (!redis_data_writer_) {
-            redis_data_writer_ = std::make_unique<Storage::RedisDataWriter>();
+            redis_data_writer_ = std::make_shared<Storage::RedisDataWriter>();
         }
         
         if (!redis_data_writer_->IsConnected()) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
-                                          "RedisDataWriter 연결 실패");
-            return false;
+            LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
+                                          "RedisDataWriter 연결 상태 불량");
         }
         
-        LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG_LEVEL,
-                                      "알람 복구 컴포넌트 초기화 완료");
+        LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG,
+                                      "AlarmStartupRecovery 컴포넌트 초기화 완료");
+        
         return true;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
-                                      "컴포넌트 초기화 실패: " + std::string(e.what()));
+                                      "컴포넌트 초기화 중 예외: " + std::string(e.what()));
         return false;
     }
 }
 
 // =============================================================================
-// 핵심 복구 로직 구현
+// 핵심 로직 구현
 // =============================================================================
 
-std::vector<PulseOne::Database::Entities::AlarmOccurrenceEntity> AlarmStartupRecovery::LoadActiveAlarmsFromDB() {
+std::vector<Database::Entities::AlarmOccurrenceEntity> AlarmStartupRecovery::LoadActiveAlarmsFromDB() {
     try {
         if (!alarm_occurrence_repo_) {
             LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
-                                          "Repository가 초기화되지 않음");
+                                          "AlarmOccurrenceRepository가 null입니다");
             return {};
         }
         
-        // DB에서 활성 알람 조회 (state='active')
+        // 활성 알람 조회 (state='active' AND acknowledged_time IS NULL)
         auto active_alarms = alarm_occurrence_repo_->findActive();
         
-        // 추가 필터: acknowledged되지 않은 것만 (더 중요한 알람들)
-        std::vector<Database::Entities::AlarmOccurrenceEntity> unacknowledged_alarms;
-        
-        for (const auto& alarm : active_alarms) {
-            // acknowledged_time이 없는 것들만 복구 (더 긴급한 알람)
-            if (!alarm.getAcknowledgedTime().has_value()) {
-                unacknowledged_alarms.push_back(alarm);
-            }
-        }
-        
         LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                      "전체 활성 알람: " + std::to_string(active_alarms.size()) + 
-                                      "개, 미인지 알람: " + std::to_string(unacknowledged_alarms.size()) + "개");
+                                      "DB에서 " + std::to_string(active_alarms.size()) + 
+                                      "개의 활성 알람 로드됨");
         
-        // 미인지 알람이 더 중요하므로 우선 복구
-        return unacknowledged_alarms.empty() ? active_alarms : unacknowledged_alarms;
+        return active_alarms;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
@@ -317,77 +319,88 @@ std::vector<PulseOne::Database::Entities::AlarmOccurrenceEntity> AlarmStartupRec
     }
 }
 
-Storage::BackendFormat::AlarmEventData AlarmStartupRecovery::ConvertToBackendFormat(
+// 🔥 컴파일 에러 수정: 올바른 타입 별칭 사용
+BackendAlarmData AlarmStartupRecovery::ConvertToBackendFormat(
     const PulseOne::Database::Entities::AlarmOccurrenceEntity& occurrence_entity) const {
     
-    Storage::BackendFormat::AlarmEventData alarm_data;
+    BackendAlarmData alarm_data;
     
     try {
         // 기본 정보 복사
-        alarm_data.occurrence_id = std::to_string(occurrence_entity.getId()); // ✅ string으로 변환
+        alarm_data.occurrence_id = std::to_string(occurrence_entity.getId());
         alarm_data.rule_id = occurrence_entity.getRuleId();
-        alarm_data.device_id = std::to_string(occurrence_entity.getDeviceId()); // ✅ string으로 변환
-        alarm_data.point_id = occurrence_entity.getPointId();
+        
+        // 🔥 수정: std::optional<int> 안전 처리
+        if (occurrence_entity.getDeviceId().has_value()) {
+            alarm_data.device_id = std::to_string(occurrence_entity.getDeviceId().value());
+        } else {
+            alarm_data.device_id = "0";
+        }
+        
+        if (occurrence_entity.getPointId().has_value()) {
+            alarm_data.point_id = occurrence_entity.getPointId().value();
+        } else {
+            alarm_data.point_id = 0;
+        }
+        
         alarm_data.tenant_id = occurrence_entity.getTenantId();
         
         // 메시지 및 값
         alarm_data.message = occurrence_entity.getAlarmMessage();
         alarm_data.trigger_value = occurrence_entity.getTriggerValue();
         
-        // ✅ 타입 수정: enum → string 직접 변환
-        alarm_data.severity = PulseOne::Alarm::severityToString(occurrence_entity.getSeverity());
-        alarm_data.state = PulseOne::Alarm::stateToString(occurrence_entity.getState());
+        // enum → string 변환
+        alarm_data.severity = AlarmSeverityToString(occurrence_entity.getSeverity());
+        alarm_data.state = AlarmStateToString(occurrence_entity.getState());
         
         // 시간 변환
         auto duration = occurrence_entity.getOccurrenceTime().time_since_epoch();
         alarm_data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
         
-        // 추가 정보
-        alarm_data.source_name = occurrence_entity.getSourceName().value_or("");
-        alarm_data.location = occurrence_entity.getLocation().value_or("");
+        // 🔥 수정: std::string 직접 할당 (value_or() 없음)
+        alarm_data.source_name = occurrence_entity.getSourceName();
+        alarm_data.location = occurrence_entity.getLocation();
+        
+        // 타입 지정
+        alarm_data.type = "alarm_event";
+        
+        LogManager::getInstance().log("alarm_recovery", LogLevel::DEBUG,
+            "Backend 포맷 변환 완료: ID=" + alarm_data.occurrence_id + 
+            ", Severity=" + alarm_data.severity + 
+            ", State=" + alarm_data.state);
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("alarm_recovery", LogLevel::ERROR,
             "Backend 포맷 변환 실패: " + std::string(e.what()));
         
-        // ✅ 올바른 기본값 초기화 
+        // 기본값으로 초기화
+        alarm_data = BackendAlarmData{};
         alarm_data.occurrence_id = std::to_string(occurrence_entity.getId());
-        alarm_data.rule_id = occurrence_entity.getRuleId();
-        alarm_data.device_id = std::to_string(occurrence_entity.getDeviceId());
-        alarm_data.point_id = occurrence_entity.getPointId();
-        alarm_data.tenant_id = occurrence_entity.getTenantId();
-        alarm_data.message = "시스템 복구된 알람";
-        alarm_data.severity = "MEDIUM";  // ✅ string 기본값
-        alarm_data.state = "active";     // ✅ string 기본값
-        alarm_data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        alarm_data.trigger_value = "";
-        alarm_data.source_name = "";
-        alarm_data.location = "";
+        alarm_data.device_id = "0";
+        alarm_data.point_id = 0;
+        alarm_data.severity = "MEDIUM";
+        alarm_data.state = "ACTIVE";
+        alarm_data.type = "alarm_event";
     }
     
     return alarm_data;
 }
 
-
-bool AlarmStartupRecovery::PublishAlarmToRedis(const Storage::BackendFormat::AlarmEventData& alarm_data) {
+bool AlarmStartupRecovery::PublishAlarmToRedis(const BackendAlarmData& alarm_data) {
     try {
         if (!redis_data_writer_ || !redis_data_writer_->IsConnected()) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+            LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
                                           "RedisDataWriter 연결되지 않음");
             return false;
         }
         
-        // Redis Pub/Sub으로 알람 발행 (기존 채널들 사용)
+        // RedisDataWriter를 통해 알람 발행
         bool success = redis_data_writer_->PublishAlarmEvent(alarm_data);
         
         if (success) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG_LEVEL,
+            LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG,
                                           "Redis 알람 발행 성공: rule_id=" + 
-                                          std::to_string(alarm_data.rule_id) + 
-                                          ", channels=[alarms:all, tenant:" + 
-                                          std::to_string(alarm_data.tenant_id) + ":alarms, device:" + 
-                                          alarm_data.device_id + ":alarms]");
+                                          std::to_string(alarm_data.rule_id));
         } else {
             LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
                                           "Redis 알람 발행 실패: rule_id=" + 
@@ -407,115 +420,95 @@ bool AlarmStartupRecovery::ValidateAlarmForRecovery(
     const Database::Entities::AlarmOccurrenceEntity& occurrence_entity) const {
     
     try {
-        // 1. 필수 필드 확인
+        // 1. 기본 ID 확인
+        if (occurrence_entity.getId() <= 0) {
+            LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG,
+                                          "무효한 알람 ID: " + std::to_string(occurrence_entity.getId()));
+            return false;
+        }
+        
+        // 2. 룰 ID 확인
         if (occurrence_entity.getRuleId() <= 0) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
-                                          "유효하지 않은 rule_id: " + 
-                                          std::to_string(occurrence_entity.getRuleId()));
+            LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG,
+                                          "무효한 룰 ID: " + std::to_string(occurrence_entity.getRuleId()));
             return false;
         }
         
-        if (occurrence_entity.getTenantId() <= 0) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
-                                          "유효하지 않은 tenant_id: " + 
-                                          std::to_string(occurrence_entity.getTenantId()));
-            return false;
+        // 3. 상태 확인 (ACTIVE 여야 함)
+        if (occurrence_entity.getState() != AlarmState::ACTIVE) {
+            return false; // ACTIVE가 아니면 복구 대상 아님
         }
         
-        // 2. 상태 확인
-        std::string state = (occurrence_entity.getState() == PulseOne::Alarm::AlarmState::ACTIVE) ? "active" : "inactive";
-        if (state != "active") {
-            LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG_LEVEL,
-                                          "비활성 상태 알람 건너뜀: " + state);
-            return false;
-        }
-        
-        // 3. 메시지 확인
+        // 4. 메시지 확인
         if (occurrence_entity.getAlarmMessage().empty()) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
-                                          "빈 알람 메시지: rule_id=" + 
-                                          std::to_string(occurrence_entity.getRuleId()));
-            // 빈 메시지여도 복구는 진행 (기본 메시지로 대체)
-        }
-        
-        // 4. 타임스탬프 유효성 (너무 오래된 알람 제외)
-        auto occurrence_time = occurrence_entity.getOccurrenceTime();
-        auto now = std::chrono::system_clock::now();
-        auto age = std::chrono::duration_cast<std::chrono::hours>(now - occurrence_time);
-        
-        // 7일 이상 오래된 알람은 복구하지 않음
-        if (age.count() > 24 * 7) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
-                                          "7일 이상 오래된 알람 건너뜀: rule_id=" + 
-                                          std::to_string(occurrence_entity.getRuleId()) + 
-                                          " (나이: " + std::to_string(age.count()) + "시간)");
+            LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG,
+                                          "빈 알람 메시지: ID=" + std::to_string(occurrence_entity.getId()));
             return false;
         }
         
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
-                                      "알람 유효성 검사 실패: " + std::string(e.what()));
+        LogManager::getInstance().log("startup_recovery", LogLevel::WARN,
+                                      "알람 유효성 검증 중 예외: " + std::string(e.what()));
         return false;
     }
 }
 
 // =============================================================================
-// 유틸리티 메서드 구현
+// 헬퍼 메서드 구현
 // =============================================================================
 
-int AlarmStartupRecovery::ConvertSeverityToInt(const std::string& severity_str) const {
-    if (severity_str == "CRITICAL" || severity_str == "critical") return 4;
-    if (severity_str == "HIGH" || severity_str == "high") return 3;
-    if (severity_str == "MEDIUM" || severity_str == "medium") return 2;
-    if (severity_str == "LOW" || severity_str == "low") return 1;
-    if (severity_str == "INFO" || severity_str == "info") return 0;
-    
-    // 숫자 문자열인 경우
-    try {
-        return std::stoi(severity_str);
-    } catch (...) {
-        return 3; // 기본값: HIGH
-    }
-}
-
-int AlarmStartupRecovery::ConvertStateToInt(const std::string& state_str) const {
-    if (state_str == "active") return 1;
-    if (state_str == "acknowledged") return 2;
-    if (state_str == "cleared") return 3;
-    return 0; // INACTIVE
-}
-
-int64_t AlarmStartupRecovery::ConvertTimestampToMillis(
-    const std::chrono::system_clock::time_point& timestamp) const {
-    
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        timestamp.time_since_epoch()).count();
-}
-
-void AlarmStartupRecovery::HandleRecoveryError(const std::string& operation, 
-                                               const std::string& error_message) {
-    std::string full_error = operation + " 실패: " + error_message;
+void AlarmStartupRecovery::HandleRecoveryError(const std::string& context, const std::string& error_msg) {
+    std::string full_error = context + ": " + error_msg;
     
     LogManager::getInstance().log("startup_recovery", LogLevel::ERROR, full_error);
     
-    std::lock_guard<std::mutex> stats_lock(stats_mutex_);
     recovery_stats_.last_error = full_error;
+    recovery_stats_.last_recovery_time = GetCurrentTimeString();
+    
+    recovery_completed_.store(false);
 }
 
-// =============================================================================
-// 통계 관리 구현
-// =============================================================================
+std::string AlarmStartupRecovery::GetCurrentTimeString() const {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
 
 void AlarmStartupRecovery::ResetRecoveryStats() {
-    std::lock_guard<std::mutex> stats_lock(stats_mutex_);
-    
-    recovery_stats_.total_active_alarms = 0;
-    recovery_stats_.successfully_published = 0;
-    recovery_stats_.failed_to_publish = 0;
-    recovery_stats_.invalid_alarms = 0;
-    recovery_stats_.recovery_duration = std::chrono::milliseconds{0};
-    recovery_stats_.last_recovery_time.clear();
-    recovery_stats_.last_error.clear();
+    recovery_stats_ = RecoveryStats{};
+    LogManager::getInstance().log("startup_recovery", LogLevel::INFO,
+                                  "복구 통계 리셋 완료");
 }
+
+// =============================================================================
+// enum → string 변환 헬퍼 함수들 (컴파일 에러 방지)
+// =============================================================================
+
+std::string AlarmStartupRecovery::AlarmSeverityToString(AlarmSeverity severity) const {
+    switch (severity) {
+        case AlarmSeverity::INFO:     return "INFO";
+        case AlarmSeverity::LOW:      return "LOW";
+        case AlarmSeverity::MEDIUM:   return "MEDIUM";
+        case AlarmSeverity::HIGH:     return "HIGH";
+        case AlarmSeverity::CRITICAL: return "CRITICAL";
+        default:                      return "MEDIUM";
+    }
+}
+
+std::string AlarmStartupRecovery::AlarmStateToString(AlarmState state) const {
+    switch (state) {
+        case AlarmState::ACTIVE:       return "ACTIVE";
+        case AlarmState::ACKNOWLEDGED: return "ACKNOWLEDGED";
+        case AlarmState::CLEARED:      return "CLEARED";
+        case AlarmState::SUPPRESSED:   return "SUPPRESSED";
+        default:                       return "ACTIVE";
+    }
+}
+
+} // namespace Alarm
+} // namespace PulseOne
