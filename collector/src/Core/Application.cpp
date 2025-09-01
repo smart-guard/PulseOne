@@ -16,6 +16,7 @@
 #ifdef HAVE_HTTPLIB
 #include "Api/ConfigApiCallbacks.h"
 #include "Api/DeviceApiCallbacks.h"
+#include "Api/HardwareApiCallbacks.h"
 #endif
 
 #include <iostream>
@@ -324,6 +325,8 @@ bool CollectorApplication::InitializeRestApiServer() {
         PulseOne::Api::DeviceApiCallbacks::Setup(api_server_.get());
         LogManager::getInstance().Info("✓ DeviceApiCallbacks registered");
         
+        PulseOne::Api::HardwareApiCallbacks::Setup(api_server_.get());
+        LogManager::getInstance().Info("✓ HardwareApiCallbacks registered");
         // API 서버 시작
         if (api_server_->Start()) {
             LogManager::getInstance().Info("✓ REST API Server started on port " + std::to_string(api_port));
