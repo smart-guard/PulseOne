@@ -713,7 +713,8 @@ function gracefulShutdown(signal) {
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
 
-const server = app.listen(PORT, async () => {
+// ⭐ FIXED: 기존 server 변수 재사용하여 중복 선언 문제 해결
+server.listen(PORT, '0.0.0.0', async () => {
     const wsStatus = webSocketService ? 
         `✅ 활성화 (${webSocketService.getStatus().stats?.socket_clients || 0}명 연결)` : 
         '❌ 비활성화';
