@@ -240,29 +240,29 @@ bool RedisDataWriter::PublishAlarmEvent(const BackendFormat::AlarmEventData& ala
         redis_client_->publish("alarms:all", json_str);
         redis_client_->publish("tenant:" + std::to_string(alarm_data.tenant_id) + ":alarms", json_str);
         
-        // device_id가 optional<int>인 경우 처리
-        if (alarm_data.device_id.has_value()) {
-            redis_client_->publish("device:" + std::to_string(alarm_data.device_id.value()) + ":alarms", json_str);
+        // device_id 처리 (이제 string 타입)
+        if (!alarm_data.device_id.empty()) {
+            redis_client_->publish("device:" + alarm_data.device_id + ":alarms", json_str);
         }
         
-        // 🔧 수정: severity는 int 타입 (INFO=0, LOW=1, MEDIUM=2, HIGH=3, CRITICAL=4)
-        if (alarm_data.severity >= 4) { // CRITICAL
+        // 🔧 수정: severity는 std::string 타입 (문자열 비교)
+        if (alarm_data.severity == "CRITICAL" || alarm_data.severity == "critical") {
             redis_client_->publish("alarms:critical", json_str);
-        } else if (alarm_data.severity >= 3) { // HIGH
+        } else if (alarm_data.severity == "HIGH" || alarm_data.severity == "high") {
             redis_client_->publish("alarms:high", json_str);
         }
         
-        // 🔧 수정: state는 int 타입 (INACTIVE=0, ACTIVE=1, ACKNOWLEDGED=2, CLEARED=3)
-        if (alarm_data.state == 1) { // ACTIVE
+        // 🔧 수정: state는 std::string 타입 (문자열 비교)
+        if (alarm_data.state == "active" || alarm_data.state == "ACTIVE") {
             std::string active_key = "alarm:active:" + std::to_string(alarm_data.rule_id);
             redis_client_->setex(active_key, json_str, 7200); // 2시간 TTL
         }
         
-        // 3. 알람 카운터 업데이트 (기존 방식 유지)
+        // 3. 알람 카운터 업데이트
         std::string counter_key = "alarms:count:today";
         std::string current_count = redis_client_->get(counter_key);
         int count = current_count.empty() ? 1 : std::stoi(current_count) + 1;
-        redis_client_->setex(counter_key, std::to_string(count), 86400); // 24시간 TTL
+        redis_client_->setex(counter_key, std::to_string(count), 86400);
         
         stats_.total_writes.fetch_add(1);
         stats_.successful_writes.fetch_add(1);
@@ -270,7 +270,7 @@ bool RedisDataWriter::PublishAlarmEvent(const BackendFormat::AlarmEventData& ala
         
         LogManager::getInstance().log("redis_writer", LogLevel::INFO,
                    "알람 이벤트 발행: rule_id=" + std::to_string(alarm_data.rule_id) + 
-                   ", severity=" + std::to_string(alarm_data.severity));
+                   ", severity=" + alarm_data.severity);  // 🔧 수정: string 직접 출력
         
         return true;
         

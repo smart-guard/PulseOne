@@ -93,52 +93,69 @@ Storage::BackendFormat::AlarmEventData AlarmStartupRecovery::ConvertToBackendFor
     Storage::BackendFormat::AlarmEventData alarm_data;
     
     try {
-        // 기본 정보 복사
-        alarm_data.occurrence_id = occurrence_entity.getId();
+        // 🔧 수정: occurrence_id는 string 타입
+        alarm_data.occurrence_id = std::to_string(occurrence_entity.getId());
         alarm_data.rule_id = occurrence_entity.getRuleId();
-        alarm_data.device_id = occurrence_entity.getDeviceId();
-        alarm_data.point_id = occurrence_entity.getPointId();
         alarm_data.tenant_id = occurrence_entity.getTenantId();
+        
+        // 🔧 수정: device_id는 optional<int> → string 변환
+        auto device_id_opt = occurrence_entity.getDeviceId();
+        if (device_id_opt.has_value()) {
+            alarm_data.device_id = std::to_string(device_id_opt.value());
+        } else {
+            alarm_data.device_id = "";
+        }
+        
+        // 🔧 수정: point_id는 optional<int> → int 변환
+        auto point_id_opt = occurrence_entity.getPointId();
+        if (point_id_opt.has_value()) {
+            alarm_data.point_id = point_id_opt.value();
+        } else {
+            alarm_data.point_id = 0;
+        }
+        
         alarm_data.message = occurrence_entity.getAlarmMessage();
         alarm_data.trigger_value = occurrence_entity.getTriggerValue();
         
-        // 🎯 이제 enum 값을 직접 사용! (변환 불필요)
-        // AlarmSeverity: INFO=0, LOW=1, MEDIUM=2, HIGH=3, CRITICAL=4
-        alarm_data.severity = static_cast<int>(occurrence_entity.getSeverity());
+        // 🔧 핵심 수정: enum → string 변환 (AlarmTypes.h 함수 사용)
+        alarm_data.severity = PulseOne::Alarm::severityToString(occurrence_entity.getSeverity());
+        alarm_data.state = PulseOne::Alarm::stateToString(occurrence_entity.getState());
         
-        // AlarmState: INACTIVE=0, ACTIVE=1, ACKNOWLEDGED=2, CLEARED=3
-        alarm_data.state = static_cast<int>(occurrence_entity.getState());
+        // 🔧 수정: getOccurredAt() → getOccurrenceTime()
+        auto occurrence_time = occurrence_entity.getOccurrenceTime();
+        auto duration = occurrence_time.time_since_epoch();
+        alarm_data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
         
-        // 시간 변환
-        auto duration = occurrence_entity.getOccurrenceTime().time_since_epoch();
-        alarm_data.occurred_at = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+        // 🔧 수정: source_name, location은 이미 string (value_or() 불필요)
+        alarm_data.source_name = occurrence_entity.getSourceName();
+        alarm_data.location = occurrence_entity.getLocation();
         
-        // 추가 정보
-        alarm_data.source_name = occurrence_entity.getSourceName().value_or("");
-        alarm_data.location = occurrence_entity.getLocation().value_or("");
+        LogManager::getInstance().log("startup_recovery", LogLevel::DEBUG,
+            "Backend 포맷 변환 완료: ID=" + alarm_data.occurrence_id +  // 🔧 수정: string 직접 사용
+            ", Rule=" + std::to_string(alarm_data.rule_id) +
+            ", Severity=" + alarm_data.severity + " (" +               // 🔧 수정: string 직접 사용
+            std::to_string(static_cast<int>(occurrence_entity.getSeverity())) + ")" +
+            ", State=" + alarm_data.state + " (" +                     // 🔧 수정: string 직접 사용
+            std::to_string(static_cast<int>(occurrence_entity.getState())) + ")");
         
-        LogManager::getInstance().log("alarm_recovery", LogLevel::INFO,
-            "Backend 포맷 변환 완료: ID=" + std::to_string(alarm_data.occurrence_id) + 
-            ", RuleID=" + std::to_string(alarm_data.rule_id) +
-            ", Severity=" + std::to_string(alarm_data.severity) + " (" + 
-            PulseOne::Alarm::severityToString(occurrence_entity.getSeverity()) + ")" +
-            ", State=" + std::to_string(alarm_data.state) + " (" + 
-            PulseOne::Alarm::stateToString(occurrence_entity.getState()) + ")");
+        return alarm_data;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("alarm_recovery", LogLevel::ERROR,
-            "Backend 포맷 변환 실패: " + std::string(e.what()));
+        LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+                                      "Backend 포맷 변환 실패: " + std::string(e.what()));
         
-        // 안전한 기본값
-        alarm_data.occurrence_id = occurrence_entity.getId();
+        // 안전한 기본값으로 초기화
+        alarm_data.occurrence_id = std::to_string(occurrence_entity.getId());
         alarm_data.rule_id = occurrence_entity.getRuleId();
         alarm_data.tenant_id = occurrence_entity.getTenantId();
         alarm_data.message = occurrence_entity.getAlarmMessage();
-        alarm_data.severity = static_cast<int>(AlarmSeverity::CRITICAL);  // 4
-        alarm_data.state = static_cast<int>(AlarmState::ACTIVE);          // 1
+        alarm_data.severity = "CRITICAL";  // 🔧 수정: string 직접 할당
+        alarm_data.state = "ACTIVE";       // 🔧 수정: string 직접 할당
+        alarm_data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        return alarm_data;
     }
-    
-    return alarm_data;
 }
 
 // =============================================================================
