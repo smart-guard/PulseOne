@@ -45,51 +45,74 @@ WorkerManager::~WorkerManager() {
 bool WorkerManager::StartWorker(const std::string& device_id) {
     std::lock_guard<std::mutex> lock(workers_mutex_);
     
-    // 기존 Worker가 있으면 확인
+    // 기존 Worker가 있으면 상태만 확인
     auto existing = FindWorker(device_id);
-    if (existing && existing->GetState() == WorkerState::RUNNING) {
-        LogManager::getInstance().Info("Worker 이미 실행중: " + device_id);
-        return true;
-    }
-    
-    // 기존 Worker 정리
     if (existing) {
-        UnregisterWorker(device_id);
+        auto state = existing->GetState();
+        
+        // 이미 실행 중이면 성공 반환
+        if (state == WorkerState::RUNNING || state == WorkerState::RECONNECTING) {
+            LogManager::getInstance().Info("Worker 이미 활성: " + device_id);
+            return true;
+        }
+        
+        // 정지된 Worker가 있으면 재시작
+        if (state == WorkerState::STOPPED || state == WorkerState::ERROR) {
+            LogManager::getInstance().Info("기존 Worker 재시작 시도: " + device_id);
+            try {
+                auto restart_future = existing->Start();
+                // 🔥 연결 실패 여부와 관계없이 Worker 유지
+                restart_future.get(); // 결과는 무시
+                total_started_.fetch_add(1);
+                InitializeWorkerRedisData(device_id);
+                LogManager::getInstance().Info("Worker 재시작 완료: " + device_id);
+                return true;
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Error("Worker 재시작 예외: " + device_id + " - " + e.what());
+                // 🔥 예외 발생해도 Worker는 유지 (자동 재연결이 계속 시도)
+                return false;
+            }
+        }
     }
     
-    // 새 Worker 생성 및 시작
+    // 새 Worker 생성
     auto worker = CreateAndRegisterWorker(device_id);
     if (!worker) {
         total_errors_.fetch_add(1);
+        LogManager::getInstance().Error("Worker 생성 실패: " + device_id);
         return false;
     }
     
+    // 🔥 핵심 수정: Worker 시작 시도 - 결과와 관계없이 유지
     try {
-        auto start_future = worker->Start();
-        bool result = start_future.get();
+        LogManager::getInstance().Info("Worker 시작 시도: " + device_id);
         
-        if (result) {
+        auto start_future = worker->Start();
+        bool connection_result = start_future.get();
+        
+        if (connection_result) {
+            // 연결 성공
+            LogManager::getInstance().Info("Worker 연결 성공: " + device_id);
             total_started_.fetch_add(1);
-            
-            // Worker 시작 성공 시 Redis 초기화 데이터 저장
-            InitializeWorkerRedisData(device_id);
-            
-            LogManager::getInstance().Info("Worker 시작 완료: " + device_id);
         } else {
-            total_errors_.fetch_add(1);
-            UnregisterWorker(device_id);
-            LogManager::getInstance().Error("Worker 시작 실패: " + device_id);
+            // 🔥 연결 실패해도 Worker는 유지 (자동 재연결이 백그라운드에서 동작)
+            LogManager::getInstance().Info("Worker 생성됨 (연결 대기 중): " + device_id);
+            total_started_.fetch_add(1);
         }
         
-        return result;
+        // 🔥 성공/실패 관계없이 Redis 초기화 및 Worker 유지
+        InitializeWorkerRedisData(device_id);
+        LogManager::getInstance().Info("Worker 활성화 완료: " + device_id + " (자동 재연결 활성)");
+        return true;
         
     } catch (const std::exception& e) {
-        total_errors_.fetch_add(1);
-        UnregisterWorker(device_id);
-        LogManager::getInstance().Error("Worker 시작 예외: " + device_id + " - " + e.what());
-        return false;
+        // 🔥 예외 발생해도 Worker 유지 (재연결 스레드가 복구 시도)
+        LogManager::getInstance().Warn("Worker 시작 예외: " + device_id + " - " + e.what() + " (재연결 활성)");
+        total_started_.fetch_add(1); // 생성 자체는 성공으로 카운트
+        return true; // 🔥 중요: Worker는 유지되므로 성공으로 반환
     }
 }
+
 
 void WorkerManager::InitializeWorkerRedisData(const std::string& device_id) {
     if (!redis_data_writer_) {
@@ -122,39 +145,80 @@ bool WorkerManager::StopWorker(const std::string& device_id) {
     
     auto worker = FindWorker(device_id);
     if (!worker) {
-        LogManager::getInstance().Warn("Worker 없음: " + device_id);
+        LogManager::getInstance().Info("정리할 Worker 없음: " + device_id);
         return true;
     }
     
     try {
-        auto stop_future = worker->Stop();
-        bool result = stop_future.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+        LogManager::getInstance().Info("Worker 명시적 중지: " + device_id);
         
-        if (result) {
-            total_stopped_.fetch_add(1);
+        // Worker 완전 중지
+        auto stop_future = worker->Stop();
+        bool stop_result = stop_future.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
+        
+        if (stop_result) {
             LogManager::getInstance().Info("Worker 중지 완료: " + device_id);
+            total_stopped_.fetch_add(1);
         } else {
+            LogManager::getInstance().Warn("Worker 중지 타임아웃: " + device_id);
             total_errors_.fetch_add(1);
-            LogManager::getInstance().Error("Worker 중지 타임아웃: " + device_id);
         }
         
+        // 🔥 명시적 중지시에만 Worker 삭제
         UnregisterWorker(device_id);
-        return result;
+        return stop_result;
         
     } catch (const std::exception& e) {
-        total_errors_.fetch_add(1);
         LogManager::getInstance().Error("Worker 중지 예외: " + device_id + " - " + e.what());
-        UnregisterWorker(device_id);
+        UnregisterWorker(device_id); // 예외 시에도 정리
+        total_errors_.fetch_add(1);
         return false;
     }
 }
 
+
 bool WorkerManager::RestartWorker(const std::string& device_id) {
-    LogManager::getInstance().Info("Worker 재시작: " + device_id);
+    LogManager::getInstance().Info("Worker 재시작 요청: " + device_id);
     
-    StopWorker(device_id);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    return StartWorker(device_id);
+    std::lock_guard<std::mutex> lock(workers_mutex_);
+    
+    auto existing = FindWorker(device_id);
+    if (!existing) {
+        // Worker가 없으면 새로 생성
+        LogManager::getInstance().Info("Worker 없음 - 새로 생성: " + device_id);
+        lock.~lock_guard(); // 락 해제
+        return StartWorker(device_id);
+    }
+    
+    try {
+        // 🔥 기존 Worker를 삭제하지 않고 재시작만 수행
+        LogManager::getInstance().Info("기존 Worker 재시작: " + device_id);
+        
+        // 1단계: 현재 연결 정리 (Worker 객체는 유지)
+        if (existing->GetState() != WorkerState::STOPPED) {
+            auto stop_future = existing->Stop();
+            auto stop_result = stop_future.wait_for(std::chrono::seconds(3));
+            
+            if (stop_result != std::future_status::ready) {
+                LogManager::getInstance().Warn("Worker 중지 타임아웃: " + device_id + " (강제 재시작)");
+            }
+        }
+        
+        // 2단계: 잠시 대기 (리소스 정리)
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        
+        // 3단계: 동일 Worker 객체로 재시작 (DB에서 최신 설정 자동 로드)
+        auto restart_future = existing->Start();
+        restart_future.get(); // 결과는 무시 (재연결이 백그라운드에서 처리)
+        
+        LogManager::getInstance().Info("Worker 재시작 완료: " + device_id);
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Worker 재시작 예외: " + device_id + " - " + e.what());
+        // 🔥 예외 발생해도 Worker는 유지
+        return false;
+    }
 }
 
 bool WorkerManager::ReloadWorker(const std::string& device_id) {
@@ -433,17 +497,108 @@ nlohmann::json WorkerManager::GetWorkerStatus(const std::string& device_id) cons
     
     auto worker = FindWorker(device_id);
     if (!worker) {
-        return {{"error", "Worker not found"}, {"device_id", device_id}};
+        return nlohmann::json{
+            {"device_id", device_id},
+            {"error", "Worker not found"}
+        };
     }
     
-    return {
-        {"device_id", device_id},
-        {"state", static_cast<int>(worker->GetState())},
-        {"is_running", worker->GetState() == WorkerState::RUNNING},
-        {"is_paused", worker->GetState() == WorkerState::PAUSED},
-        {"timestamp", std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count()}
-    };
+    try {
+        auto state = worker->GetState();
+        bool is_connected = worker->CheckConnection();
+        
+        return nlohmann::json{
+            {"device_id", device_id},
+            {"state", WorkerStateToString(state)},
+            {"connected", is_connected},
+            {"auto_reconnect_active", true},
+            {"description", GetWorkerStateDescription(state, is_connected)}
+        };
+        
+    } catch (const std::exception& e) {
+        return nlohmann::json{
+            {"device_id", device_id},
+            {"error", "Status query failed: " + std::string(e.what())}
+        };
+    }
+}
+
+std::string WorkerManager::WorkerStateToString(WorkerState state) const {
+    switch (state) {
+        case WorkerState::RUNNING: return "RUNNING";
+        case WorkerState::STOPPED: return "STOPPED";
+        case WorkerState::RECONNECTING: return "RECONNECTING";
+        case WorkerState::DEVICE_OFFLINE: return "DEVICE_OFFLINE";
+        case WorkerState::ERROR: return "ERROR";
+        case WorkerState::STARTING: return "STARTING";
+        case WorkerState::STOPPING: return "STOPPING";
+        case WorkerState::PAUSED: return "PAUSED";
+        case WorkerState::MAINTENANCE: return "MAINTENANCE";
+        case WorkerState::SIMULATION: return "SIMULATION";
+        case WorkerState::CALIBRATION: return "CALIBRATION";
+        case WorkerState::COMMISSIONING: return "COMMISSIONING";
+        case WorkerState::COMMUNICATION_ERROR: return "COMMUNICATION_ERROR";
+        case WorkerState::DATA_INVALID: return "DATA_INVALID";
+        case WorkerState::SENSOR_FAULT: return "SENSOR_FAULT";
+        case WorkerState::MANUAL_OVERRIDE: return "MANUAL_OVERRIDE";
+        case WorkerState::EMERGENCY_STOP: return "EMERGENCY_STOP";
+        case WorkerState::BYPASS_MODE: return "BYPASS_MODE";
+        case WorkerState::DIAGNOSTIC_MODE: return "DIAGNOSTIC_MODE";
+        case WorkerState::WAITING_RETRY: return "WAITING_RETRY";
+        case WorkerState::MAX_RETRIES_EXCEEDED: return "MAX_RETRIES_EXCEEDED";
+        case WorkerState::UNKNOWN: 
+        default: return "UNKNOWN";
+    }
+}
+
+std::string WorkerManager::GetWorkerStateDescription(WorkerState state, bool connected) const {
+    switch (state) {
+        case WorkerState::RUNNING:
+            return connected ? "정상 동작 중" : "데이터 수집 중 (일시적 연결 끊김)";
+        case WorkerState::RECONNECTING:
+            return "자동 재연결 시도 중";
+        case WorkerState::DEVICE_OFFLINE:
+            return "디바이스 오프라인 (재연결 대기 중)";
+        case WorkerState::ERROR:
+            return "오류 상태 (복구 시도 중)";
+        case WorkerState::STOPPED:
+            return "중지됨";
+        case WorkerState::STARTING:
+            return "시작 중";
+        case WorkerState::STOPPING:
+            return "중지 중";
+        case WorkerState::PAUSED:
+            return "일시정지됨";
+        case WorkerState::MAINTENANCE:
+            return "점검 모드";
+        case WorkerState::SIMULATION:
+            return "시뮬레이션 모드";
+        case WorkerState::CALIBRATION:
+            return "교정 모드";
+        case WorkerState::COMMISSIONING:
+            return "시운전 모드";
+        case WorkerState::COMMUNICATION_ERROR:
+            return "통신 오류 (복구 시도 중)";
+        case WorkerState::DATA_INVALID:
+            return "데이터 이상 감지";
+        case WorkerState::SENSOR_FAULT:
+            return "센서 고장";
+        case WorkerState::MANUAL_OVERRIDE:
+            return "수동 제어 모드";
+        case WorkerState::EMERGENCY_STOP:
+            return "비상 정지";
+        case WorkerState::BYPASS_MODE:
+            return "우회 모드";
+        case WorkerState::DIAGNOSTIC_MODE:
+            return "진단 모드";
+        case WorkerState::WAITING_RETRY:
+            return "재시도 대기 중";
+        case WorkerState::MAX_RETRIES_EXCEEDED:
+            return "최대 재시도 횟수 초과";
+        case WorkerState::UNKNOWN:
+        default:
+            return "상태 확인 중";
+    }
 }
 
 nlohmann::json WorkerManager::GetWorkerList() const {
