@@ -15,6 +15,7 @@
 #include "Common/Structs.h"
 #include "Storage/RedisDataWriter.h"
 #include "Database/Repositories/CurrentValueRepository.h"
+#include "Workers/Base/BaseDeviceWorker.h"
 
 namespace PulseOne::Workers {
     
@@ -176,7 +177,8 @@ private:
      * @brief Worker 통계 정보 반환 (새로 추가)
      */
     nlohmann::json GetDetailedStatistics() const;
-
+    std::string WorkerStateToString(WorkerState state) const;
+    std::string GetWorkerStateDescription(WorkerState state, bool connected) const;
 private:
     // ==========================================================================
     // 멤버 변수들

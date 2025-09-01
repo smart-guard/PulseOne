@@ -1,5 +1,5 @@
 # =============================================================================
-# collector/tests/Makefile - Complete Enhanced Version with Step5 Redis Test
+# collector/tests/Makefile - Complete Enhanced Version with Step6 RestAPI Test
 # 모든 단계별 테스트 로그 파일 자동 생성 지원
 # =============================================================================
 
@@ -232,6 +232,7 @@ TEST_OBJECTS = $(OBJ_DIR)/test_step1_config_connection.o \
                $(OBJ_DIR)/test_step3_protocol_worker.o \
                $(OBJ_DIR)/test_step4_driver_data_validation.o \
                $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
+               $(OBJ_DIR)/test_step6_rest_api_worker_reload.o \
                $(OBJ_DIR)/test_step6_enhanced_pipeline.o \
                $(OBJ_DIR)/test_network_api.o \
                $(OBJ_DIR)/test_platform_compat.o \
@@ -346,9 +347,14 @@ $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_
 	@echo -e "$(CYAN)🔄 Compiling Step 5 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+$(OBJ_DIR)/test_step6_rest_api_worker_reload.o: test_step6_rest_api_worker_reload.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🌐 Compiling Step 6 RestAPI-WorkerManager Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 $(OBJ_DIR)/test_step6_enhanced_pipeline.o: test_step6_enhanced_pipeline.cpp
 	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(CYAN)⚡ Compiling Step 6 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)⚡ Compiling Step 6 Enhanced Pipeline Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_network_api.o: test_network_api.cpp
@@ -400,11 +406,17 @@ $(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integrat
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 5 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o
+$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o
 	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking Step 6 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(PURPLE)🔗 Linking Step 6 RestAPI-WorkerManager Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 6 RestAPI-WorkerManager Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step6_pipeline: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 6 Enhanced Pipeline Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ Step 6 Test build completed!$(NC)"
+	@echo -e "$(GREEN)✅ Step 6 Enhanced Pipeline Test build completed!$(NC)"
 
 $(BIN_DIR)/test_network: $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o
 	@mkdir -p $(BIN_DIR)
@@ -492,16 +504,16 @@ step4-test: step4-build create-log-dir
 	$(call analyze_log,$(LOG_FILE),Step 4)
 	@echo -e "$(GREEN)Step 4 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 5 테스트 (업데이트됨)
+# Step 5 테스트
 step5-build: create-dirs $(BIN_DIR)/test_step5
 
 step5-test: step5-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step5))
 	@echo -e "$(MAGENTA)🚀 Running Step 5 Test [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)WorkerManager-Redis Initial Data Validation Test$(NC)"
+	@echo -e "$(CYAN)Complete DB Integration Validation Test$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(BLUE)Testing WorkerManager → Redis initial data storage$(NC)"
-	@echo -e "$(BLUE)DB initial values → Worker initialization → Redis verification$(NC)"
+	@echo -e "$(BLUE)Testing complete end-to-end DB integration$(NC)"
+	@echo -e "$(BLUE)DB alarm recovery → Redis → Backend validation$(NC)"
 	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call create_log_summary,$(LOG_FILE),Step 5)
@@ -510,15 +522,16 @@ step5-test: step5-build create-log-dir
 	$(call analyze_log,$(LOG_FILE),Step 5)
 	@echo -e "$(GREEN)Step 5 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 6 테스트
+# Step 6 테스트 (새로운 RestAPI-WorkerManager 테스트)
 step6-build: create-dirs $(BIN_DIR)/test_step6
 
 step6-test: step6-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step6))
 	@echo -e "$(MAGENTA)🚀 Running Step 6 Test [$(PLATFORM)]...$(NC)"
-	@echo -e "$(CYAN)Enhanced Pipeline Test (Alarm + VirtualPoint)$(NC)"
+	@echo -e "$(CYAN)RestAPI → WorkerManager Integration Test$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
-	@echo -e "$(BLUE)Testing alarm and virtual point pipeline$(NC)"
+	@echo -e "$(BLUE)Testing RestAPI → WorkerManager device reload flow$(NC)"
+	@echo -e "$(BLUE)DB change → API call → Worker reload → Redis update$(NC)"
 	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call create_log_summary,$(LOG_FILE),Step 6)
@@ -526,6 +539,23 @@ step6-test: step6-build create-log-dir
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 6)
 	@echo -e "$(GREEN)Step 6 Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 6 Enhanced Pipeline 테스트 (기존)
+step6-pipeline-build: create-dirs $(BIN_DIR)/test_step6_pipeline
+
+step6-pipeline-test: step6-pipeline-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step6_pipeline))
+	@echo -e "$(MAGENTA)🚀 Running Step 6 Enhanced Pipeline Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Enhanced Pipeline Test (Alarm + VirtualPoint)$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing alarm and virtual point pipeline$(NC)"
+	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 6 Pipeline)
+	@./$(BIN_DIR)/test_step6_pipeline 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 6 Pipeline)
+	@echo -e "$(GREEN)Step 6 Enhanced Pipeline Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # Network 테스트
 network-build: create-dirs $(BIN_DIR)/test_network
@@ -588,7 +618,7 @@ check-logs: create-log-dir
 logs-summary: create-log-dir
 	@echo -e "$(BLUE)📊 Latest Test Logs Summary$(NC)"
 	@echo -e "$(YELLOW)=============================$(NC)"
-	@for step in step1 step2 step3 step4 step5 step6 network platform workermanager; do \
+	@for step in step1 step2 step3 step4 step5 step6 step6_pipeline network platform workermanager; do \
 		latest_log=$$(ls -t $(LOG_DIR)/$${step}_test_*.log 2>/dev/null | head -1); \
 		if [ -n "$$latest_log" ]; then \
 			echo -e "$(MAGENTA)$$step Test:$(NC)"; \
@@ -614,7 +644,7 @@ clean-all-logs: create-log-dir
 # 통합 실행
 # =============================================================================
 
-all-tests-build: create-dirs $(BIN_DIR)/test_step1 $(BIN_DIR)/test_step2 $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_network $(BIN_DIR)/test_platform $(BIN_DIR)/test_workermanager
+all-tests-build: create-dirs $(BIN_DIR)/test_step1 $(BIN_DIR)/test_step2 $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_step6_pipeline $(BIN_DIR)/test_network $(BIN_DIR)/test_platform $(BIN_DIR)/test_workermanager
 	@echo -e "$(GREEN)✅ All tests build completed for $(PLATFORM)!$(NC)"
 
 all-tests-run: all-tests-build create-log-dir
@@ -639,8 +669,11 @@ all-tests-run: all-tests-build create-log-dir
 	@echo -e "$(CYAN)Master log: $(MASTER_LOG)$(NC)"
 	@$(MAKE) logs-summary
 
-quick-test: workermanager-test platform-test step3-test
+quick-test: workermanager-test platform-test step6-test
 	@echo -e "$(GREEN)✅ Quick test completed with logging$(NC)"
+
+restapi-test: step6-test network-test
+	@echo -e "$(GREEN)✅ RestAPI integration tests completed$(NC)"
 
 # =============================================================================
 # 기존 유틸리티들
@@ -671,38 +704,42 @@ status:
 	@echo "Step 3: $(if $(wildcard $(BIN_DIR)/test_step3),✅ exists,❌ missing)"
 	@echo "Step 4: $(if $(wildcard $(BIN_DIR)/test_step4),✅ exists,❌ missing)"
 	@echo "Step 5: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
-	@echo "Step 6: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing)"
+	@echo "Step 6 RestAPI: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing)"
+	@echo "Step 6 Pipeline: $(if $(wildcard $(BIN_DIR)/test_step6_pipeline),✅ exists,❌ missing)"
 	@echo "Network: $(if $(wildcard $(BIN_DIR)/test_network),✅ exists,❌ missing)"
 	@echo "Platform: $(if $(wildcard $(BIN_DIR)/test_platform),✅ exists,❌ missing)"
 	@echo "WorkerManager: $(if $(wildcard $(BIN_DIR)/test_workermanager),✅ exists,❌ missing)"
 
 help:
-	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Comprehensive Logging$(NC)"
-	@echo -e "$(YELLOW)============================================================$(NC)"
+	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Step 6 RestAPI Integration$(NC)"
+	@echo -e "$(YELLOW)====================================================================$(NC)"
 	@echo ""
 	@echo -e "$(MAGENTA)🎯 Enhanced Features:$(NC)"
 	@echo "  Current platform: $(PLATFORM)"
 	@echo "  Auto-logging: All tests create timestamped log files"
 	@echo "  Log directory: $(LOG_DIR)"
+	@echo "  NEW: Step 6 RestAPI-WorkerManager integration test"
 	@echo ""
 	@echo -e "$(GREEN)Step-by-Step Test Commands (with logging):$(NC)"
 	@echo "  make step1-test   - Step 1: Configuration and connection test"
 	@echo "  make step2-test   - Step 2: Database entity validation test"
 	@echo "  make step3-test   - Step 3: Protocol worker property validation test"
 	@echo "  make step4-test   - Step 4: Driver data validation test"
-	@echo "  make step5-test   - Step 5: WorkerManager-Redis initial data test"
-	@echo "  make step6-test   - Step 6: Enhanced alarm+virtualpoint pipeline test"
+	@echo "  make step5-test   - Step 5: Complete DB integration validation test"
+	@echo "  make step6-test   - Step 6: RestAPI → WorkerManager integration test (NEW!)"
+	@echo "  make step6-pipeline-test - Step 6: Enhanced alarm+virtualpoint pipeline test"
 	@echo "  make network-test - Network: REST API server test"
 	@echo "  make platform-test - Platform: Cross-platform compatibility test"
 	@echo "  make workermanager-test - WorkerManager: Singleton and lifecycle test"
 	@echo ""
 	@echo -e "$(GREEN)Quick Build Commands:$(NC)"
-	@echo "  make step1-build, step2-build, step3-build, ..."
+	@echo "  make step1-build, step2-build, ..., step6-build"
 	@echo "  make all-tests-build - Build all tests"
 	@echo ""
 	@echo -e "$(GREEN)Integrated Execution:$(NC)"
 	@echo "  make all-tests-run - Run all tests with comprehensive logging"
-	@echo "  make quick-test    - Run core tests (WorkerManager + Platform + Step3)"
+	@echo "  make quick-test    - Run core tests (WorkerManager + Platform + Step6)"
+	@echo "  make restapi-test  - Run RestAPI related tests (Step6 + Network)"
 	@echo ""
 	@echo -e "$(CYAN)🗂️ Log Management:$(NC)"
 	@echo "  make check-logs      - Check log directory status"
@@ -716,16 +753,16 @@ help:
 	@echo "  make clean-all    - Clean everything (including logs)"
 	@echo "  make create-dirs  - Create all required directories"
 	@echo ""
-	@echo -e "$(CYAN)💡 Logging Features:$(NC)"
-	@echo "  - All tests create timestamped log files"
-	@echo "  - Automatic log analysis and summary"
-	@echo "  - Individual and master log files"
-	@echo "  - Log file preservation during clean"
-	@echo "  - Easy log management commands"
+	@echo -e "$(CYAN)💡 Step 6 RestAPI Integration Test Features:$(NC)"
+	@echo "  - DB change → API call → Worker reload flow"
+	@echo "  - Engineer property update simulation"
+	@echo "  - Redis data consistency verification"
+	@echo "  - RestAPI callback connectivity testing"
+	@echo "  - Multi-device reload stress testing"
 
 .PHONY: create-log-dir logs-summary check-logs clean-old-logs clean-all-logs \
-        step1-test step2-test step3-test step4-test step5-test step6-test \
-        network-test platform-test workermanager-test quick-test all-tests-run \
+        step1-test step2-test step3-test step4-test step5-test step6-test step6-pipeline-test \
+        network-test platform-test workermanager-test quick-test all-tests-run restapi-test \
         clean clean-all help status
 
 # 자동 종속성 생성
