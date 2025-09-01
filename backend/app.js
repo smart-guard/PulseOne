@@ -1,6 +1,6 @@
 // =============================================================================
-// backend/app.js - 메인 애플리케이션 (WebSocket 서비스 분리 완성 버전)
-// 기존 구조 + WebSocket 서비스 분리 + 모든 API 라우트 + 자동 초기화 시스템
+// backend/app.js - 통합 메인 애플리케이션 
+// 기존 구조 + WebSocket 서비스 분리 + Collector 통합 + 모든 API 라우트
 // =============================================================================
 
 const express = require('express');
@@ -8,6 +8,10 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const { initializeConnections } = require('./lib/connection/db');
+
+// =============================================================================
+// 안전한 모듈 로딩 (기존 방식 유지)
+// =============================================================================
 
 // WebSocket 서비스 로드 (안전하게)
 let WebSocketService = null;
@@ -44,11 +48,33 @@ try {
     console.warn('   실시간 알람 기능이 비활성화됩니다.');
 }
 
+// 🔥 Collector 프록시 서비스 (새로 추가)
+let CollectorProxyService = null;
+try {
+    const { getInstance: getCollectorProxy } = require('./lib/services/CollectorProxyService');
+    CollectorProxyService = getCollectorProxy;
+    console.log('✅ CollectorProxyService 로드 성공');
+} catch (error) {
+    console.warn('⚠️ CollectorProxyService 로드 실패:', error.message);
+    console.warn('   Collector 통합 기능이 비활성화됩니다.');
+}
+
+// 🔥 설정 동기화 훅 (새로 추가) 
+let ConfigSyncHooks = null;
+try {
+    const { getInstance: getConfigSyncHooks } = require('./lib/hooks/ConfigSyncHooks');
+    ConfigSyncHooks = getConfigSyncHooks;
+    console.log('✅ ConfigSyncHooks 로드 성공');
+} catch (error) {
+    console.warn('⚠️ ConfigSyncHooks 로드 실패:', error.message);
+    console.warn('   설정 동기화 기능이 비활성화됩니다.');
+}
+
 const app = express();
 const server = http.createServer(app);
 
 // ============================================================================
-// WebSocket 서비스 초기화
+// WebSocket 서비스 초기화 (기존 방식)
 // ============================================================================
 if (WebSocketService) {
     webSocketService = new WebSocketService(server);
@@ -62,7 +88,7 @@ if (WebSocketService) {
 }
 
 // ============================================================================
-// 미들웨어 설정
+// 미들웨어 설정 (기존 + 확장)
 // ============================================================================
 
 // CORS 설정 (프런트엔드 연동 강화)
@@ -80,6 +106,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 // 요청 로깅 미들웨어
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
@@ -132,7 +159,7 @@ app.use('/api/*', authenticateToken);
 app.use('/api/*', tenantIsolation);
 
 // ============================================================================
-// 데이터베이스 연결 및 자동 초기화
+// 데이터베이스 연결 및 자동 초기화 (기존 방식)
 // ============================================================================
 
 let connections = {};
@@ -176,7 +203,7 @@ async function initializeSystem() {
 }
 
 // ============================================================================
-// 실시간 알람 구독자 초기화
+// 실시간 알람 구독자 초기화 (기존 방식)
 // ============================================================================
 
 let alarmSubscriber = null;
@@ -208,7 +235,7 @@ app.locals.alarmSubscriber = null; // startAlarmSubscriber에서 설정됨
 app.locals.serverStartTime = new Date().toISOString();
 
 // ============================================================================
-// 헬스체크 및 초기화 관리 엔드포인트
+// 헬스체크 및 초기화 관리 엔드포인트 (기존 + 확장)
 // ============================================================================
 
 // Health check
@@ -230,6 +257,19 @@ app.get('/api/health', async (req, res) => {
             alarm_subscriber: {
                 enabled: !!alarmSubscriber,
                 status: alarmSubscriber ? alarmSubscriber.getStatus() : null
+            }
+        };
+        
+        // 🔥 Collector 통합 상태 (새로 추가)
+        healthInfo.collector_integration = {
+            proxy_service: {
+                enabled: !!CollectorProxyService,
+                status: CollectorProxyService ? (CollectorProxyService().isCollectorHealthy() ? 'healthy' : 'unhealthy') : null,
+                last_check: CollectorProxyService ? CollectorProxyService().getLastHealthCheck() : null
+            },
+            config_sync: {
+                enabled: !!ConfigSyncHooks,
+                hooks_registered: ConfigSyncHooks ? ConfigSyncHooks().getRegisteredHooks().length : 0
             }
         };
         
@@ -269,7 +309,7 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// 실시간 알람 테스트 엔드포인트
+// 실시간 알람 테스트 엔드포인트 (기존)
 app.post('/api/test/alarm', (req, res) => {
     if (!webSocketService) {
         return res.status(503).json({
@@ -319,7 +359,7 @@ app.post('/api/test/alarm', (req, res) => {
     }
 });
 
-// 초기화 상태 조회
+// 초기화 상태 조회 (기존)
 app.get('/api/init/status', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
@@ -355,7 +395,7 @@ app.get('/api/init/status', async (req, res) => {
     }
 });
 
-// 초기화 수동 트리거
+// 초기화 수동 트리거 (기존)
 app.post('/api/init/trigger', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
@@ -399,7 +439,7 @@ app.post('/api/init/trigger', async (req, res) => {
     }
 });
 
-// 임시 초기화 대안 엔드포인트
+// 임시 초기화 대안 엔드포인트 (기존)
 app.post('/api/init/manual', async (req, res) => {
     try {
         console.log('🔧 수동 초기화 시도...');
@@ -442,7 +482,7 @@ app.post('/api/init/manual', async (req, res) => {
 });
 
 // ============================================================================
-// API Routes 등록
+// API Routes 등록 (기존 + 새로 추가)
 // ============================================================================
 
 console.log('\n🚀 API 라우트 등록 중...\n');
@@ -460,15 +500,34 @@ app.use('/api/users', userRoutes);
 
 console.log('✅ 기존 시스템 API 라우트들 등록 완료');
 
-// 핵심 비즈니스 API
+// 🔥 향상된 디바이스 라우트 (Collector 동기화 포함)
 try {
-    const deviceRoutes = require('./routes/devices');
-    app.use('/api/devices', deviceRoutes);
-    console.log('✅ Device Management API 라우트 등록 완료');
+    const enhancedDeviceRoutes = require('./routes/devices');
+    app.use('/api/devices', enhancedDeviceRoutes);
+    console.log('✅ Enhanced Device API with Collector sync 등록 완료');
 } catch (error) {
-    console.warn('⚠️ Device 라우트 로드 실패:', error.message);
+    console.warn('⚠️ Enhanced Device 라우트 로드 실패:', error.message);
+    
+    // 폴백: 기존 디바이스 라우트 사용
+    try {
+        const fallbackDeviceRoutes = require('./routes/devices-fallback');
+        app.use('/api/devices', fallbackDeviceRoutes);
+        console.log('✅ Fallback Device API 등록 완료');
+    } catch (fallbackError) {
+        console.error('❌ Device API 라우트 로드 완전 실패');
+    }
 }
 
+// 🔥 Collector 프록시 라우트 등록 (새로 추가)
+try {
+    const collectorProxyRoutes = require('./routes/collector-proxy');
+    app.use('/api/collector', collectorProxyRoutes);
+    console.log('✅ Collector Proxy API 라우트 등록 완료');
+} catch (error) {
+    console.error('❌ Collector Proxy 라우트 로드 실패:', error.message);
+}
+
+// 핵심 비즈니스 API
 try {
     const dataRoutes = require('./routes/data');
     app.use('/api/data', dataRoutes);
@@ -553,7 +612,7 @@ try {
 console.log('\n🎉 모든 API 라우트 등록 완료!\n');
 
 // =============================================================================
-// Error Handling
+// Error Handling (기존)
 // =============================================================================
 
 // 404 handler (API 전용)
@@ -594,7 +653,7 @@ app.use((error, req, res, next) => {
 });
 
 // =============================================================================
-// Graceful Shutdown
+// Graceful Shutdown (기존 + Collector 정리 추가)
 // =============================================================================
 
 process.on('SIGTERM', gracefulShutdown);
@@ -611,6 +670,18 @@ function gracefulShutdown(signal) {
         
         console.log('✅ HTTP server closed');
         
+        // 🔥 Collector 연결 정리 (새로 추가)
+        try {
+            console.log('🔄 Cleaning up Collector connections...');
+            // 여기서는 단순히 상태를 로그만 남김 (연결 자체는 자동 정리됨)
+            if (CollectorProxyService) {
+                const proxy = CollectorProxyService();
+                console.log(`✅ Collector proxy cleaned up`);
+            }
+        } catch (error) {
+            console.log(`⚠️ Collector cleanup warning: ${error.message}`);
+        }
+        
         // 알람 구독자 정리
         if (alarmSubscriber) {
             try {
@@ -626,6 +697,7 @@ function gracefulShutdown(signal) {
         if (connections.redis) connections.redis.disconnect();
         
         console.log('✅ Database connections closed');
+        console.log('✅ Graceful shutdown completed');
         process.exit(0);
     });
     
@@ -636,18 +708,18 @@ function gracefulShutdown(signal) {
 }
 
 // =============================================================================
-// Start Server
+// Start Server (기존 + Collector 상태 표시)
 // =============================================================================
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
 
-server.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
     const wsStatus = webSocketService ? 
         `✅ 활성화 (${webSocketService.getStatus().stats?.socket_clients || 0}명 연결)` : 
         '❌ 비활성화';
         
     console.log(`
-🚀 PulseOne Backend Server Started! (WebSocket 서비스 분리 완성)
+🚀 PulseOne Backend Server Started! (Collector 통합 완성)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Dashboard:     http://localhost:${PORT}
 🔧 API Health:    http://localhost:${PORT}/api/health
@@ -665,6 +737,14 @@ server.listen(PORT, async () => {
 🔍 WebSocket 상태: GET  http://localhost:${PORT}/api/websocket/status
 👥 클라이언트 목록: GET  http://localhost:${PORT}/api/websocket/clients
 🏠 룸 정보:        GET  http://localhost:${PORT}/api/websocket/rooms
+
+🔥 NEW: Collector Integration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎮 Collector Control: http://localhost:${PORT}/api/collector/health
+📡 Device Control:    http://localhost:${PORT}/api/devices/{id}/start
+⚡ Hardware Control: http://localhost:${PORT}/api/devices/{id}/digital/{output}/control
+🔄 Config Sync:      http://localhost:${PORT}/api/collector/config/reload
+📊 Worker Status:    http://localhost:${PORT}/api/collector/workers/status
 
 🔥 핵심 비즈니스 API (우선순위 1 - 필수)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -693,12 +773,14 @@ Environment: ${process.env.NODE_ENV || 'development'}
 Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enabled' : '❌ Disabled'}
 DatabaseInitializer: ${DatabaseInitializer ? '✅ Available' : '❌ Not Found'}
 WebSocket Service: ${webSocketService ? '✅ Enabled' : '❌ Disabled'}
+Collector Proxy: ${CollectorProxyService ? '✅ Available' : '❌ Not Found'}
+Config Sync Hooks: ${ConfigSyncHooks ? '✅ Available' : '❌ Not Found'}
 Authentication: 🔓 Development Mode (Basic Auth)
 Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v3.0.0 - WebSocket 서비스 분리)
+🎉 PulseOne 통합 백엔드 시스템 완전 가동! (v4.0.0 - Collector 통합)
    - 알람 관리 ✅
    - 디바이스 관리 ✅  
    - 가상포인트 관리 ✅
@@ -708,9 +790,63 @@ PID: ${process.pid}
    - WebSocket 상태 관리 ✅
    - 자동 초기화 ${DatabaseInitializer ? '✅' : '⚠️'}
    - 서비스 제어 ✅
+   - Collector 프록시 ${CollectorProxyService ? '✅' : '⚠️'}
+   - 설정 동기화 ${ConfigSyncHooks ? '✅' : '⚠️'}
    - 멀티테넌트 지원 ✅
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
+    
+    // 🔥 Collector 연결 상태 확인 (새로 추가)
+    try {
+        console.log('🔄 Checking Collector connection...');
+        if (CollectorProxyService) {
+            const proxy = CollectorProxyService();
+            const healthResult = await proxy.healthCheck();
+            
+            console.log(`✅ Collector connection successful!`);
+            console.log(`   📍 Collector URL: ${proxy.getCollectorConfig().host}:${proxy.getCollectorConfig().port}`);
+            console.log(`   📊 Collector Status: ${healthResult.data?.status || 'unknown'}`);
+            console.log(`   🕒 Response Time: ${healthResult.data?.uptime_seconds || 'unknown'}`);
+            
+            // 워커 상태도 확인
+            try {
+                const workerResult = await proxy.getWorkerStatus();
+                const workerCount = Object.keys(workerResult.data?.workers || {}).length;
+                console.log(`   🏭 Active Workers: ${workerCount}`);
+            } catch (workerError) {
+                console.log(`   ⚠️ Worker status unavailable: ${workerError.message}`);
+            }
+        } else {
+            console.log('⚠️ CollectorProxyService not available');
+        }
+        
+    } catch (collectorError) {
+        console.warn(`⚠️ Collector connection failed: ${collectorError.message}`);
+        if (CollectorProxyService) {
+            const proxy = CollectorProxyService();
+            console.log(`   📍 Attempted URL: ${proxy.getCollectorConfig().host}:${proxy.getCollectorConfig().port}`);
+        }
+        console.log(`   💡 Backend will continue without Collector integration`);
+        console.log(`   🔧 To enable Collector, ensure it's running and check COLLECTOR_HOST/COLLECTOR_API_PORT settings`);
+    }
+    
+    // 🔥 설정 동기화 시스템 상태 (새로 추가)
+    try {
+        if (ConfigSyncHooks) {
+            const hooks = ConfigSyncHooks();
+            const registeredHooks = hooks.getRegisteredHooks();
+            console.log(`🎣 Config Sync Hooks: ${hooks.isHookEnabled() ? '✅ Enabled' : '❌ Disabled'}`);
+            console.log(`   📋 Registered Hooks: ${registeredHooks.length}`);
+            
+            if (registeredHooks.length > 0) {
+                console.log(`   🔗 Hook Types: ${registeredHooks.slice(0, 3).join(', ')}${registeredHooks.length > 3 ? '...' : ''}`);
+            }
+        }
+    } catch (hookError) {
+        console.warn(`⚠️ Config sync hooks initialization failed: ${hookError.message}`);
+    }
+    
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     
     // 3초 후 실시간 알람 구독자 시작
     setTimeout(startAlarmSubscriber, 3000);
