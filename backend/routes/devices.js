@@ -1,23 +1,28 @@
 // ============================================================================
-// backend/routes/devices.js
-// 디바이스 관리 API - protocol_id 직접 처리 (변환 로직 제거)
+// backend/routes/devices.js (통합 버전)
+// 기존 디바이스 관리 API + Collector 프록시 + 설정 동기화
 // ============================================================================
 
 const express = require('express');
 const router = express.Router();
 const sqlite3 = require('sqlite3').verbose();
 
-// Repository imports
+// Repository imports (기존)
 const DeviceRepository = require('../lib/database/repositories/DeviceRepository');
 const SiteRepository = require('../lib/database/repositories/SiteRepository');
 const ConfigManager = require('../lib/config/ConfigManager');
+
+// 🔥 새로 추가: Collector 프록시 및 동기화 시스템
+const { getInstance: getCollectorProxy } = require('../lib/services/CollectorProxyService');
+const { getInstance: getConfigSyncHooks } = require('../lib/hooks/ConfigSyncHooks');
+
 const { 
     authenticateToken, 
     tenantIsolation, 
     validateTenantStatus 
 } = require('../middleware/tenantIsolation');
 
-// Repository 인스턴스 생성
+// Repository 인스턴스 생성 (기존)
 let deviceRepo = null;
 let siteRepo = null;
 const configManager = ConfigManager.getInstance();
@@ -39,12 +44,9 @@ function getSiteRepo() {
 }
 
 // ============================================================================
-// 미들웨어 및 헬퍼 함수들
+// 미들웨어 및 헬퍼 함수들 (기존 유지)
 // ============================================================================
 
-/**
- * 표준 응답 생성
- */
 function createResponse(success, data, message, error_code) {
     return {
         success,
@@ -55,9 +57,6 @@ function createResponse(success, data, message, error_code) {
     };
 }
 
-/**
- * 페이징 응답 생성
- */
 function createPaginatedResponse(items, pagination, message) {
     return createResponse(true, {
         items,
@@ -72,20 +71,15 @@ function createPaginatedResponse(items, pagination, message) {
     }, message);
 }
 
-/**
- * RTU 디바이스 설정 파싱 및 정보 추가 헬퍼 함수
- */
 function enhanceDeviceWithRtuInfo(device) {
     if (!device) return device;
 
     try {
-        // Config 파싱 개선 - 다양한 형태 처리
         let config = {};
         
         if (device.config) {
             if (typeof device.config === 'string') {
                 if (device.config === '[object Object]' || device.config.startsWith('[object')) {
-                    // 잘못 직렬화된 객체 - 빈 객체로 처리
                     console.warn(`Device ${device.id}: Invalid config string detected, using empty config`);
                     config = {};
                 } else {
@@ -97,7 +91,6 @@ function enhanceDeviceWithRtuInfo(device) {
                     }
                 }
             } else if (typeof device.config === 'object') {
-                // 이미 객체인 경우
                 config = device.config;
             } else {
                 console.warn(`Device ${device.id}: Unexpected config type ${typeof device.config}, using empty config`);
@@ -105,24 +98,22 @@ function enhanceDeviceWithRtuInfo(device) {
             }
         }
         
-        // RTU 특화 정보 추가
         const enhanced = {
             ...device,
-            config: config, // 파싱된 config
+            config: config,
             rtu_info: null
         };
 
-        // RTU 디바이스인 경우 특별 처리
         if (device.protocol_type === 'MODBUS_RTU') {
             enhanced.rtu_info = {
                 slave_id: config.slave_id || null,
                 master_device_id: config.master_device_id || null,
-                baud_rate: config.baud_rate || 9600, // 기본값 추가
+                baud_rate: config.baud_rate || 9600,
                 data_bits: config.data_bits || 8,
                 stop_bits: config.stop_bits || 1,
                 parity: config.parity || 'N',
                 frame_delay_ms: config.frame_delay_ms || null,
-                response_timeout_ms: config.response_timeout_ms || 1000, // 기본값 추가
+                response_timeout_ms: config.response_timeout_ms || 1000,
                 is_master: device.device_type === 'GATEWAY',
                 is_slave: device.device_type !== 'GATEWAY' && config.master_device_id,
                 serial_port: device.endpoint,
@@ -139,37 +130,28 @@ function enhanceDeviceWithRtuInfo(device) {
         console.warn(`Device ${device.id}: Config processing failed:`, error.message);
         return {
             ...device,
-            config: {}, // 안전한 기본값
+            config: {},
             rtu_info: null
         };
     }
 }
 
-/**
- * 디바이스 배열에 RTU 정보 추가
- */
 function enhanceDevicesWithRtuInfo(devices) {
     if (!Array.isArray(devices)) return devices;
     return devices.map(device => enhanceDeviceWithRtuInfo(device));
 }
 
-/**
- * RTU 마스터-슬래이브 관계 정보 추가
- */
 async function addRtuRelationships(devices, tenantId) {
     if (!Array.isArray(devices)) return devices;
     
-    // RTU 마스터들 찾기
     const rtuMasters = devices.filter(d => 
         d.protocol_type === 'MODBUS_RTU' && d.device_type === 'GATEWAY'
     );
     
-    // RTU 슬래이브들 찾기  
     const rtuSlaves = devices.filter(d => 
         d.protocol_type === 'MODBUS_RTU' && d.device_type !== 'GATEWAY'
     );
     
-    // 마스터별 슬래이브 정보 추가
     for (const master of rtuMasters) {
         const slaves = rtuSlaves.filter(slave => {
             const slaveConfig = slave.rtu_info;
@@ -193,16 +175,12 @@ async function addRtuRelationships(devices, tenantId) {
     return devices;
 }
 
-/**
- * protocol_id 유효성 검사 (프론트엔드에서 잘못된 ID 전송 시 체크)
- */
 async function validateProtocolId(protocolId, tenantId) {
     if (!protocolId || typeof protocolId !== 'number') {
         return { valid: false, error: 'protocol_id is required and must be a number' };
     }
 
     try {
-        // protocols 테이블에서 해당 ID가 존재하고 활성화되어 있는지 확인
         const protocolQuery = `SELECT id, protocol_type, display_name FROM protocols WHERE id = ? AND is_enabled = 1`;
         const result = await getDeviceRepo().dbFactory.executeQuery(protocolQuery, [protocolId]);
         
@@ -217,9 +195,59 @@ async function validateProtocolId(protocolId, tenantId) {
     }
 }
 
-/**
- * 인증 미들웨어 (개발용)
- */
+// 🔥 새로 추가: Collector 연결 확인 미들웨어
+const checkCollectorConnection = async (req, res, next) => {
+    try {
+        const proxy = getCollectorProxy();
+        
+        if (!proxy.isCollectorHealthy()) {
+            try {
+                await proxy.healthCheck();
+            } catch (error) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'Collector service is unavailable',
+                    details: 'Collector 서비스에 연결할 수 없습니다. 서비스가 실행 중인지 확인하세요.',
+                    lastHealthCheck: proxy.getLastHealthCheck(),
+                    collectorConfig: proxy.getCollectorConfig()
+                });
+            }
+        }
+        
+        next();
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to check collector connection',
+            details: error.message
+        });
+    }
+};
+
+// 🔥 새로 추가: Collector 프록시 에러 핸들러
+const handleCollectorProxyError = (error, req, res) => {
+    console.error(`❌ Collector Proxy Error [${req.method} ${req.originalUrl}]:`, error);
+    
+    if (error.name === 'CollectorProxyError') {
+        const statusCode = error.status || 500;
+        
+        res.status(statusCode).json({
+            success: false,
+            error: `Collector API Error: ${error.operation}`,
+            details: error.collectorError || error.message,
+            context: error.context,
+            collectorResponse: error.collectorResponse
+        });
+    } else {
+        res.status(500).json({
+            success: false,
+            error: 'Proxy communication failed',
+            details: error.message
+        });
+    }
+};
+
+// 인증 미들웨어 (기존)
 const devAuthMiddleware = (req, res, next) => {
     req.user = {
         id: 1,
@@ -230,9 +258,6 @@ const devAuthMiddleware = (req, res, next) => {
     next();
 };
 
-/**
- * 테넌트 격리 미들웨어
- */
 const devTenantMiddleware = (req, res, next) => {
     req.tenantId = req.user.tenant_id;
     next();
@@ -243,19 +268,14 @@ router.use(devAuthMiddleware);
 router.use(devTenantMiddleware);
 
 // ============================================================================
-// 우선순위 라우트들 (반드시 :id 라우트보다 먼저!)
+// 우선순위 라우트들 (기존 유지)
 // ============================================================================
 
-/**
- * GET /api/devices/protocols
- * 지원하는 프로토콜 목록 조회 - protocols 테이블에서 ID 포함하여 조회
- */
 router.get('/protocols', async (req, res) => {
     try {
         const { tenantId } = req;
         console.log('지원 프로토콜 목록 조회...');
 
-        // Repository의 getAvailableProtocols 사용
         const protocols = await getDeviceRepo().getAvailableProtocols(tenantId);
         console.log(`${protocols.length}개 프로토콜 조회 완료`);
         
@@ -268,10 +288,6 @@ router.get('/protocols', async (req, res) => {
     }
 });
 
-/**
- * GET /api/devices/statistics
- * 디바이스 통계 조회 (RTU 정보 포함)
- */
 router.get('/statistics', async (req, res) => {
     try {
         const { tenantId } = req;
@@ -285,12 +301,10 @@ router.get('/statistics', async (req, res) => {
         } catch (repoError) {
             console.warn('Repository 통계 메서드 없음, 기본 통계 생성:', repoError.message);
             
-            // 디바이스 목록을 기반으로 통계 계산
             const devicesResult = await getDeviceRepo().findAllDevices({ tenantId });
             const devices = devicesResult.items || [];
             const enhancedDevices = enhanceDevicesWithRtuInfo(devices);
             
-            // RTU 통계 추가
             const rtuDevices = enhancedDevices.filter(d => d.protocol_type === 'MODBUS_RTU');
             const rtuMasters = rtuDevices.filter(d => d.rtu_info && d.rtu_info.is_master);
             const rtuSlaves = rtuDevices.filter(d => d.rtu_info && d.rtu_info.is_slave);
@@ -333,10 +347,6 @@ router.get('/statistics', async (req, res) => {
     }
 });
 
-/**
- * POST /api/devices/bulk-action
- * 일괄 작업 (활성화/비활성화/삭제)
- */
 router.post('/bulk-action', async (req, res) => {
     try {
         const { tenantId } = req;
@@ -400,22 +410,137 @@ router.post('/bulk-action', async (req, res) => {
     }
 });
 
+// 🔥 새로 추가: 배치 워커 제어 API
+router.post('/batch/start', async (req, res) => {
+    try {
+        const { device_ids = [] } = req.body;
+        
+        if (!Array.isArray(device_ids) || device_ids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'device_ids must be a non-empty array'
+            });
+        }
+        
+        console.log(`🚀 Starting ${device_ids.length} devices: ${device_ids.join(', ')}`);
+        
+        const proxy = getCollectorProxy();
+        
+        const promises = device_ids.map(async (deviceId) => {
+            try {
+                const result = await proxy.startDevice(deviceId.toString());
+                return {
+                    device_id: deviceId,
+                    success: true,
+                    data: result.data
+                };
+            } catch (error) {
+                return {
+                    device_id: deviceId,
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
+        
+        const batchResults = await Promise.all(promises);
+        const successful = batchResults.filter(r => r.success);
+        const failed = batchResults.filter(r => !r.success);
+        
+        res.json({
+            success: failed.length === 0,
+            message: `Batch start completed: ${successful.length} successful, ${failed.length} failed`,
+            data: {
+                total_processed: batchResults.length,
+                successful: successful.length,
+                failed: failed.length,
+                results: batchResults
+            },
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ Batch start failed:', error);
+        
+        res.status(500).json({
+            success: false,
+            error: 'Batch start operation failed',
+            details: error.message
+        });
+    }
+});
+
+router.post('/batch/stop', async (req, res) => {
+    try {
+        const { device_ids = [], graceful = true } = req.body;
+        
+        if (!Array.isArray(device_ids) || device_ids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'device_ids must be a non-empty array'
+            });
+        }
+        
+        console.log(`🛑 Stopping ${device_ids.length} devices: ${device_ids.join(', ')}`);
+        
+        const proxy = getCollectorProxy();
+        
+        const promises = device_ids.map(async (deviceId) => {
+            try {
+                const result = await proxy.stopDevice(deviceId.toString(), { graceful });
+                return {
+                    device_id: deviceId,
+                    success: true,
+                    data: result.data
+                };
+            } catch (error) {
+                return {
+                    device_id: deviceId,
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
+        
+        const batchResults = await Promise.all(promises);
+        const successful = batchResults.filter(r => r.success);
+        const failed = batchResults.filter(r => !r.success);
+        
+        res.json({
+            success: failed.length === 0,
+            message: `Batch stop completed: ${successful.length} successful, ${failed.length} failed`,
+            data: {
+                total_processed: batchResults.length,
+                successful: successful.length,
+                failed: failed.length,
+                results: batchResults
+            },
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ Batch stop failed:', error);
+        
+        res.status(500).json({
+            success: false,
+            error: 'Batch stop operation failed',
+            details: error.message
+        });
+    }
+});
+
 // ============================================================================
-// 디바이스 CRUD API (protocol_id 직접 처리)
+// 디바이스 CRUD API (기존 + 설정 동기화 통합)
 // ============================================================================
 
-/**
- * GET /api/devices
- * 디바이스 목록 조회 (RTU 정보 포함)
- */
 router.get('/', async (req, res) => {
     try {
         const { tenantId } = req;
         const {
             page = 1,
             limit = 25,
-            protocol_type,      // 필터링 호환성
-            protocol_id,        // 새로운 ID 필터링
+            protocol_type,
+            protocol_id,
             device_type,
             connection_status,
             status,
@@ -423,21 +548,23 @@ router.get('/', async (req, res) => {
             search,
             sort_by = 'id',
             sort_order = 'ASC',
-            include_rtu_relations = false
+            include_rtu_relations = false,
+            include_collector_status = false  // 🔥 새로 추가
         } = req.query;
 
-        console.log('디바이스 목록 조회 요청 (RTU 정보 포함):', {
+        console.log('디바이스 목록 조회 요청 (RTU + Collector 상태 포함):', {
             tenantId,
             page: parseInt(page),
             limit: parseInt(limit),
             protocol_id: protocol_id ? parseInt(protocol_id) : undefined,
-            include_rtu_relations: include_rtu_relations === 'true'
+            include_rtu_relations: include_rtu_relations === 'true',
+            include_collector_status: include_collector_status === 'true'
         });
 
         const options = {
             tenantId,
             protocolType: protocol_type,
-            protocolId: protocol_id ? parseInt(protocol_id) : null, // 새로운 필터 옵션
+            protocolId: protocol_id ? parseInt(protocol_id) : null,
             deviceType: device_type,
             connectionStatus: connection_status,
             status,
@@ -466,14 +593,34 @@ router.get('/', async (req, res) => {
                 };
             }
 
-            // RTU 정보 추가 처리
             console.log('RTU 정보 추가 중...');
             result.items = enhanceDevicesWithRtuInfo(result.items);
 
-            // RTU 관계 정보 추가 (옵션)
             if (include_rtu_relations === 'true') {
                 console.log('RTU 마스터-슬래이브 관계 정보 추가 중...');
                 result.items = await addRtuRelationships(result.items, tenantId);
+            }
+
+            // 🔥 새로 추가: Collector 상태 정보 추가
+            if (include_collector_status === 'true') {
+                try {
+                    console.log('Collector 워커 상태 조회 중...');
+                    const proxy = getCollectorProxy();
+                    const workerResult = await proxy.getWorkerStatus();
+                    const workerStatuses = workerResult.data?.workers || {};
+                    
+                    result.items.forEach(device => {
+                        const workerStatus = workerStatuses[device.id.toString()];
+                        device.collector_status = workerStatus || {
+                            status: 'unknown',
+                            message: 'No status available'
+                        };
+                    });
+                    
+                    console.log('Collector 상태 정보 추가 완료');
+                } catch (collectorError) {
+                    console.warn('⚠️ Collector 상태 조회 실패:', collectorError.message);
+                }
             }
 
         } catch (repoError) {
@@ -490,16 +637,14 @@ router.get('/', async (req, res) => {
             };
         }
 
-        console.log(`디바이스 ${result.items.length}개 조회 완료 (RTU 정보 포함)`);
+        console.log(`디바이스 ${result.items.length}개 조회 완료 (RTU + Collector 정보 포함)`);
         
-        // RTU 디바이스 수 카운트
         const rtuDevices = result.items.filter(d => d.protocol_type === 'MODBUS_RTU');
         const rtuMasters = rtuDevices.filter(d => d.rtu_info && d.rtu_info.is_master);
         const rtuSlaves = rtuDevices.filter(d => d.rtu_info && d.rtu_info.is_slave);
         
         const responseData = createPaginatedResponse(result.items, result.pagination, 'Devices retrieved successfully');
         
-        // RTU 통계 정보 추가
         responseData.data.rtu_summary = {
             total_rtu_devices: rtuDevices.length,
             rtu_masters: rtuMasters.length,
@@ -522,20 +667,17 @@ router.get('/', async (req, res) => {
     }
 });
 
-/**
- * GET /api/devices/:id
- * 특정 디바이스 상세 조회 (RTU 정보 포함)
- */
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { tenantId } = req;
         const { 
             include_data_points = false,
-            include_rtu_network = false
+            include_rtu_network = false,
+            include_collector_status = false  // 🔥 새로 추가
         } = req.query;
 
-        console.log(`디바이스 ID ${id} 상세 조회 시작 (RTU 정보 포함)...`);
+        console.log(`디바이스 ID ${id} 상세 조회 시작 (RTU + Collector 정보 포함)...`);
 
         const device = await getDeviceRepo().findById(parseInt(id), tenantId);
 
@@ -543,15 +685,28 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
         }
 
-        // RTU 정보 추가
         const enhancedDevice = enhanceDeviceWithRtuInfo(device);
 
-        // RTU 네트워크 정보 추가 (RTU 디바이스인 경우)
+        // 🔥 새로 추가: Collector 상태 정보
+        if (include_collector_status === 'true') {
+            try {
+                console.log(`Collector 상태 조회: Device ${id}`);
+                const proxy = getCollectorProxy();
+                const statusResult = await proxy.getDeviceStatus(id);
+                enhancedDevice.collector_status = statusResult.data;
+            } catch (collectorError) {
+                console.warn(`⚠️ Collector 상태 조회 실패 Device ${id}:`, collectorError.message);
+                enhancedDevice.collector_status = {
+                    error: 'Unable to fetch real-time status',
+                    last_attempt: new Date().toISOString()
+                };
+            }
+        }
+
         if (include_rtu_network === 'true' && enhancedDevice.protocol_type === 'MODBUS_RTU') {
             console.log('RTU 네트워크 정보 조회 중...');
             
             if (enhancedDevice.rtu_info && enhancedDevice.rtu_info.is_master) {
-                // 마스터인 경우: 연결된 슬래이브들 조회
                 try {
                     const allDevices = await getDeviceRepo().findAllDevices({ tenantId });
                     const slaves = (allDevices.items || [])
@@ -581,7 +736,6 @@ router.get('/:id', async (req, res) => {
                 }
                 
             } else if (enhancedDevice.rtu_info && enhancedDevice.rtu_info.is_slave) {
-                // 슬래이브인 경우: 마스터 디바이스 조회
                 try {
                     const masterId = enhancedDevice.rtu_info.master_device_id;
                     if (masterId) {
@@ -600,7 +754,6 @@ router.get('/:id', async (req, res) => {
             }
         }
 
-        // 데이터포인트 포함 요청 시
         if (include_data_points === 'true') {
             try {
                 const dataPoints = await getDeviceRepo().getDataPointsByDevice(enhancedDevice.id, tenantId);
@@ -622,10 +775,6 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-/**
- * POST /api/devices
- * 새 디바이스 등록 - protocol_id 직접 사용
- */
 router.post('/', async (req, res) => {
     try {
         const { tenantId, user } = req;
@@ -636,20 +785,18 @@ router.post('/', async (req, res) => {
             created_at: new Date().toISOString()
         };
 
-        console.log('새 디바이스 등록 요청 (protocol_id 직접 사용):', {
+        console.log('새 디바이스 등록 요청 (protocol_id 직접 사용 + 동기화):', {
             name: deviceData.name,
             protocol_id: deviceData.protocol_id,
             endpoint: deviceData.endpoint
         });
 
-        // 기본 유효성 검사
         if (!deviceData.name || !deviceData.protocol_id || !deviceData.endpoint) {
             return res.status(400).json(
                 createResponse(false, null, 'Name, protocol_id, and endpoint are required', 'VALIDATION_ERROR')
             );
         }
 
-        // protocol_id 유효성 검사
         const protocolValidation = await validateProtocolId(deviceData.protocol_id, tenantId);
         if (!protocolValidation.valid) {
             return res.status(400).json(
@@ -657,7 +804,6 @@ router.post('/', async (req, res) => {
             );
         }
 
-        // 같은 이름의 디바이스 중복 확인
         const existingDevice = await getDeviceRepo().findByName(deviceData.name, tenantId);
         if (existingDevice) {
             return res.status(409).json(
@@ -665,9 +811,17 @@ router.post('/', async (req, res) => {
             );
         }
 
-        // Repository에서 직접 protocol_id 사용 (변환 로직 제거됨)
         const newDevice = await getDeviceRepo().createDevice(deviceData, tenantId);
         const enhancedDevice = enhanceDeviceWithRtuInfo(newDevice);
+
+        // 🔥 새로 추가: Collector 동기화 후크 실행
+        try {
+            const hooks = getConfigSyncHooks();
+            await hooks.afterDeviceCreate(enhancedDevice);
+            console.log(`✅ Device created and synced with Collector: ${newDevice.id}`);
+        } catch (syncError) {
+            console.warn(`⚠️ Device created but sync failed: ${syncError.message}`);
+        }
 
         console.log(`새 디바이스 등록 완료: ID ${newDevice.id} (protocol_id: ${deviceData.protocol_id})`);
         res.status(201).json(createResponse(true, enhancedDevice, 'Device created successfully'));
@@ -678,10 +832,6 @@ router.post('/', async (req, res) => {
     }
 });
 
-/**
- * PUT /api/devices/:id
- * 디바이스 정보 수정 - protocol_id 직접 사용
- */
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -691,9 +841,8 @@ router.put('/:id', async (req, res) => {
             updated_at: new Date().toISOString()
         };
 
-        console.log(`디바이스 ID ${id} 수정 요청 (protocol_id 직접 사용):`, Object.keys(updateData));
+        console.log(`디바이스 ID ${id} 수정 요청 (protocol_id 직접 사용 + 동기화):`, Object.keys(updateData));
 
-        // protocol_id 유효성 검사 (변경 시)
         if (updateData.protocol_id !== undefined) {
             const protocolValidation = await validateProtocolId(updateData.protocol_id, tenantId);
             if (!protocolValidation.valid) {
@@ -703,7 +852,6 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        // 이름 중복 확인 (이름 변경 시)
         if (updateData.name) {
             const existingDevice = await getDeviceRepo().findByName(updateData.name, tenantId);
             if (existingDevice && existingDevice.id !== parseInt(id)) {
@@ -713,7 +861,14 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        // Repository에서 직접 protocol_id 사용 (변환 로직 제거됨)
+        // 🔥 수정: 업데이트 전 기존 디바이스 조회
+        const oldDevice = await getDeviceRepo().findById(parseInt(id), tenantId);
+        if (!oldDevice) {
+            return res.status(404).json(
+                createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND')
+            );
+        }
+
         const updatedDevice = await getDeviceRepo().updateDeviceInfo(parseInt(id), updateData, tenantId);
 
         if (!updatedDevice) {
@@ -724,6 +879,15 @@ router.put('/:id', async (req, res) => {
 
         const enhancedDevice = enhanceDeviceWithRtuInfo(updatedDevice);
 
+        // 🔥 새로 추가: Collector 동기화 후크 실행
+        try {
+            const hooks = getConfigSyncHooks();
+            await hooks.afterDeviceUpdate(oldDevice, enhancedDevice);
+            console.log(`✅ Device updated and synced with Collector: ${id}`);
+        } catch (syncError) {
+            console.warn(`⚠️ Device updated but sync failed: ${syncError.message}`);
+        }
+
         console.log(`디바이스 ID ${id} 수정 완료`);
         res.json(createResponse(true, enhancedDevice, 'Device updated successfully'));
 
@@ -733,10 +897,6 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-/**
- * DELETE /api/devices/:id
- * 디바이스 삭제
- */
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -744,7 +904,14 @@ router.delete('/:id', async (req, res) => {
 
         console.log(`디바이스 ID ${id} 삭제 요청...`);
 
-        // 연관된 데이터포인트 확인
+        // 🔥 수정: 삭제 전 디바이스 정보 조회 (동기화용)
+        const device = await getDeviceRepo().findById(parseInt(id), tenantId);
+        if (!device) {
+            return res.status(404).json(
+                createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND')
+            );
+        }
+
         try {
             const dataPoints = await getDeviceRepo().getDataPointsByDevice(parseInt(id), tenantId);
             if (dataPoints.length > 0) {
@@ -765,6 +932,15 @@ router.delete('/:id', async (req, res) => {
             console.warn('데이터포인트 확인 실패, 계속 진행:', dpError.message);
         }
 
+        // 🔥 새로 추가: Collector 동기화 후크 실행 (삭제 전)
+        try {
+            const hooks = getConfigSyncHooks();
+            await hooks.afterDeviceDelete(device);
+            console.log(`✅ Device delete synced with Collector: ${id}`);
+        } catch (syncError) {
+            console.warn(`⚠️ Device delete sync failed: ${syncError.message}`);
+        }
+
         const deleted = await getDeviceRepo().deleteById(parseInt(id), tenantId);
 
         if (!deleted) {
@@ -783,13 +959,249 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ============================================================================
-// 디바이스 상태 및 제어 API (기존 코드 유지)
+// 🔥 새로 추가: Collector 프록시 API들 (디바이스 제어)
 // ============================================================================
 
-/**
- * POST /api/devices/:id/enable
- * 디바이스 활성화
- */
+router.post('/:id/start', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        const { force_restart = false } = req.body;
+        
+        console.log(`🚀 Starting device worker: ${deviceId}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.startDevice(deviceId, { forceRestart: force_restart });
+        
+        res.json({
+            success: true,
+            message: `Device ${deviceId} started successfully`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            action: 'start',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+router.post('/:id/stop', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        const { graceful = true } = req.body;
+        
+        console.log(`🛑 Stopping device worker: ${deviceId}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.stopDevice(deviceId, { graceful });
+        
+        res.json({
+            success: true,
+            message: `Device ${deviceId} stopped successfully`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            action: 'stop',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+router.post('/:id/restart', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        
+        console.log(`🔄 Restarting device worker: ${deviceId}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.restartDevice(deviceId);
+        
+        res.json({
+            success: true,
+            message: `Device ${deviceId} restarted successfully`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            action: 'restart',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+router.get('/:id/status', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.getDeviceStatus(deviceId);
+        
+        res.json({
+            success: true,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+router.get('/:id/data/current', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        const { point_ids } = req.query;
+        
+        const proxy = getCollectorProxy();
+        const pointIds = point_ids ? point_ids.split(',').map(id => id.trim()) : [];
+        const result = await proxy.getCurrentData(deviceId, pointIds);
+        
+        res.json({
+            success: true,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            point_count: result.data?.points?.length || 0,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+// ============================================================================
+// 🔥 새로 추가: 하드웨어 제어 API
+// ============================================================================
+
+router.post('/:id/digital/:outputId/control', checkCollectorConnection, async (req, res) => {
+    try {
+        const { id: deviceId, outputId } = req.params;
+        const { state, duration, force = false } = req.body;
+        
+        if (state === undefined || state === null) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: state (true/false)'
+            });
+        }
+        
+        console.log(`🔌 Digital control: Device ${deviceId}, Output ${outputId}, State: ${state}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.controlDigitalOutput(deviceId, outputId, state, { duration, force });
+        
+        res.json({
+            success: true,
+            message: `Digital output ${outputId} set to ${state}`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            output_id: outputId,
+            state: Boolean(state),
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+router.post('/:id/analog/:outputId/control', checkCollectorConnection, async (req, res) => {
+    try {
+        const { id: deviceId, outputId } = req.params;
+        const { value, unit, ramp_time } = req.body;
+        
+        if (value === undefined || value === null) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: value (number)'
+            });
+        }
+        
+        console.log(`📊 Analog control: Device ${deviceId}, Output ${outputId}, Value: ${value}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.controlAnalogOutput(deviceId, outputId, value, { unit, rampTime: ramp_time });
+        
+        res.json({
+            success: true,
+            message: `Analog output ${outputId} set to ${value}${unit ? ' ' + unit : ''}`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            output_id: outputId,
+            value: Number(value),
+            unit: unit || null,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+router.post('/:id/pump/:pumpId/control', checkCollectorConnection, async (req, res) => {
+    try {
+        const { id: deviceId, pumpId } = req.params;
+        const { enable, speed = 100, duration } = req.body;
+        
+        if (enable === undefined || enable === null) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: enable (true/false)'
+            });
+        }
+        
+        console.log(`⚡ Pump control: Device ${deviceId}, Pump ${pumpId}, Enable: ${enable}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.controlPump(deviceId, pumpId, enable, { speed, duration });
+        
+        res.json({
+            success: true,
+            message: `Pump ${pumpId} ${enable ? 'started' : 'stopped'}`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            pump_id: pumpId,
+            enable: Boolean(enable),
+            speed: Number(speed),
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+router.post('/:id/config/reload', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        
+        console.log(`🔄 Reloading config for device ${deviceId}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.reloadDeviceConfig(deviceId);
+        
+        res.json({
+            success: true,
+            message: `Configuration reloaded for device ${deviceId}`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+// ============================================================================
+// 기존 API들 (그대로 유지)
+// ============================================================================
+
 router.post('/:id/enable', async (req, res) => {
     try {
         const { id } = req.params;
@@ -814,10 +1226,6 @@ router.post('/:id/enable', async (req, res) => {
     }
 });
 
-/**
- * POST /api/devices/:id/disable
- * 디바이스 비활성화
- */
 router.post('/:id/disable', async (req, res) => {
     try {
         const { id } = req.params;
@@ -842,10 +1250,6 @@ router.post('/:id/disable', async (req, res) => {
     }
 });
 
-/**
- * POST /api/devices/:id/test-connection
- * 디바이스 연결 테스트
- */
 router.post('/:id/test-connection', async (req, res) => {
     try {
         const { id } = req.params;
@@ -860,7 +1264,6 @@ router.post('/:id/test-connection', async (req, res) => {
 
         const enhancedDevice = enhanceDeviceWithRtuInfo(device);
 
-        // 연결 테스트 시뮬레이션
         const isSuccessful = Math.random() > 0.1;
         const responseTime = Math.floor(Math.random() * 200) + 50;
         
@@ -876,7 +1279,6 @@ router.post('/:id/test-connection', async (req, res) => {
             rtu_info: enhancedDevice.rtu_info
         };
 
-        // 테스트 결과에 따라 디바이스 상태 업데이트
         const newConnectionStatus = isSuccessful ? 'connected' : 'disconnected';
         await getDeviceRepo().updateDeviceConnection(
             device.id,
@@ -894,14 +1296,6 @@ router.post('/:id/test-connection', async (req, res) => {
     }
 });
 
-// ============================================================================
-// 기타 API들 (기존과 동일)
-// ============================================================================
-
-/**
- * GET /api/devices/:id/data-points
- * 디바이스의 데이터포인트 목록 조회
- */
 router.get('/:id/data-points', async (req, res) => {
     const startTime = Date.now();
     console.log('\n' + '='.repeat(80));
@@ -919,7 +1313,6 @@ router.get('/:id/data-points', async (req, res) => {
 
         console.log('처리 시작: 디바이스 ID', id, '데이터포인트 조회...');
 
-        // 디바이스 존재 확인
         let device = null;
         try {
             device = await getDeviceRepo().findById(parseInt(id), tenantId);
@@ -934,7 +1327,6 @@ router.get('/:id/data-points', async (req, res) => {
             return res.status(404).json(createResponse(false, null, 'Device not found', 'DEVICE_NOT_FOUND'));
         }
 
-        // 데이터포인트 조회
         let dataPoints = [];
         try {
             console.log('데이터포인트 조회 중...');
@@ -946,12 +1338,10 @@ router.get('/:id/data-points', async (req, res) => {
             dataPoints = [];
         }
 
-        // 안전 검사
         if (!Array.isArray(dataPoints)) {
             dataPoints = [];
         }
 
-        // 필터링 적용
         let filteredPoints = dataPoints;
         
         if (data_type) {
@@ -966,7 +1356,6 @@ router.get('/:id/data-points', async (req, res) => {
             console.log(`활성화 필터: ${beforeFilter} → ${filteredPoints.length}`);
         }
 
-        // 페이징 적용
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
         const offset = (pageNum - 1) * limitNum;
@@ -1001,10 +1390,6 @@ router.get('/:id/data-points', async (req, res) => {
     }
 });
 
-/**
- * GET /api/devices/rtu/networks
- * RTU 네트워크 요약 정보 조회
- */
 router.get('/rtu/networks', async (req, res) => {
     try {
         const { tenantId } = req;
@@ -1054,10 +1439,6 @@ router.get('/rtu/networks', async (req, res) => {
     }
 });
 
-/**
- * GET /api/devices/debug/direct
- * SQLite 직접 조회 (디버깅용) - protocol_id 포함
- */
 router.get('/debug/direct', async (req, res) => {
     try {
         const dbPath = configManager.get('SQLITE_PATH', './data/db/pulseone.db');
@@ -1129,10 +1510,6 @@ router.get('/debug/direct', async (req, res) => {
     }
 });
 
-/**
- * GET /api/devices/debug/repository
- * Repository 상태 확인
- */
 router.get('/debug/repository', async (req, res) => {
     try {
         const repo = getDeviceRepo();
