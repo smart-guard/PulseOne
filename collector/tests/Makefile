@@ -1,6 +1,6 @@
 # =============================================================================
-# collector/tests/Makefile - Complete Enhanced Version with Step6 RestAPI Test
-# 모든 단계별 테스트 로그 파일 자동 생성 지원
+# collector/tests/Makefile - Complete Enhanced Version with Step 7 REST API Backend Test
+# 모든 단계별 테스트 로그 파일 자동 생성 지원 + Step 7 완전 통합
 # =============================================================================
 
 # 성능 최적화 설정
@@ -31,6 +31,7 @@ HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mq
 HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
 HAS_QUICKJS := $(shell pkg-config --exists quickjs && echo "1" || echo "0")
 HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
 
 # 컴파일러 설정 (플랫폼별)
 CXX = g++
@@ -173,8 +174,21 @@ else
     $(warning ⚠️ httplib not available - REST API disabled)
 endif
 
+# CURL 라이브러리 설정 (Step 7용)
+ifeq ($(HAS_CURL),1)
+    CURL_LIBS = -lcurl
+    CURL_INCLUDES = $(shell pkg-config --cflags libcurl 2>/dev/null || echo "")
+    INCLUDES += $(CURL_INCLUDES)
+    CXXFLAGS += -DHAS_CURL=1
+    $(info ✅ CURL support enabled - Step 7 REST API tests available)
+else
+    CURL_LIBS = 
+    CXXFLAGS += -DHAS_CURL=0
+    $(warning ⚠️ libcurl not available - Step 7 tests will be disabled)
+endif
+
 # 전체 라이브러리 설정
-BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) $(HTTP_LIBS) -lm -ldl $(PLATFORM_LIBS)
+BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) $(HTTP_LIBS) $(CURL_LIBS) -lm -ldl $(PLATFORM_LIBS)
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
 TEST_LIBS = -lgtest -lgtest_main -pthread
@@ -234,6 +248,7 @@ TEST_OBJECTS = $(OBJ_DIR)/test_step1_config_connection.o \
                $(OBJ_DIR)/test_step5_complete_db_integration_validation.o \
                $(OBJ_DIR)/test_step6_rest_api_worker_reload.o \
                $(OBJ_DIR)/test_step6_enhanced_pipeline.o \
+               $(OBJ_DIR)/test_step7_rest_api_backend_complete.o \
                $(OBJ_DIR)/test_network_api.o \
                $(OBJ_DIR)/test_platform_compat.o \
                $(OBJ_DIR)/test_workermanager.o
@@ -357,6 +372,16 @@ $(OBJ_DIR)/test_step6_enhanced_pipeline.o: test_step6_enhanced_pipeline.cpp
 	@echo -e "$(CYAN)⚡ Compiling Step 6 Enhanced Pipeline Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+$(OBJ_DIR)/test_step7_rest_api_backend_complete.o: test_step7_rest_api_backend_complete.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🎯 Compiling Step 7 Complete REST API Backend Test [$(PLATFORM)]...$(NC)"
+ifeq ($(HAS_CURL),1)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+else
+	@echo -e "$(RED)❌ Skipping Step 7 - libcurl not available$(NC)"
+	@touch $@
+endif
+
 $(OBJ_DIR)/test_network_api.o: test_network_api.cpp
 	@mkdir -p $(OBJ_DIR)
 	@echo -e "$(CYAN)🌐 Compiling Network Test [$(PLATFORM)]...$(NC)"
@@ -417,6 +442,20 @@ $(BIN_DIR)/test_step6_pipeline: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pi
 	@echo -e "$(PURPLE)🔗 Linking Step 6 Enhanced Pipeline Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 6 Enhanced Pipeline Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step7: $(ALL_OBJECTS) $(OBJ_DIR)/test_step7_rest_api_backend_complete.o
+	@mkdir -p $(BIN_DIR)
+ifeq ($(HAS_CURL),1)
+	@echo -e "$(PURPLE)🔗 Linking Step 7 Complete REST API Backend Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step7_rest_api_backend_complete.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 7 Complete REST API Backend Test build completed!$(NC)"
+else
+	@echo -e "$(YELLOW)⚠️ Step 7 Test skipped - libcurl not available$(NC)"
+	@echo '#!/bin/bash' > $@
+	@echo 'echo "Step 7 test requires libcurl - install with: apt install libcurl4-openssl-dev"' >> $@
+	@echo 'exit 1' >> $@
+	@chmod +x $@
+endif
 
 $(BIN_DIR)/test_network: $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o
 	@mkdir -p $(BIN_DIR)
@@ -557,6 +596,32 @@ step6-pipeline-test: step6-pipeline-build create-log-dir
 	$(call analyze_log,$(LOG_FILE),Step 6 Pipeline)
 	@echo -e "$(GREEN)Step 6 Enhanced Pipeline Test completed. Log saved: $(LOG_FILE)$(NC)"
 
+# Step 7 테스트 (새로운 완전 통합 테스트)
+step7-build: create-dirs $(BIN_DIR)/test_step7
+
+step7-test: step7-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step7))
+	@echo -e "$(MAGENTA)🚀 Running Step 7 Complete Integration Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)REST API Backend Complete Integration Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+ifeq ($(HAS_CURL),1)
+	@echo -e "$(BLUE)Testing complete API → WorkerManager → Hardware flow$(NC)"
+	@echo -e "$(BLUE)DeviceApiCallbacks + HardwareApiCallbacks + WorkerManager$(NC)"
+	@echo -e "$(BLUE)This test includes HTTP server on port 8081$(NC)"
+	@echo -e "$(BLUE)No external dependencies required - fully self-contained$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 7)
+	@./$(BIN_DIR)/test_step7 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 7)
+	@echo -e "$(GREEN)Step 7 Complete Integration Test completed. Log saved: $(LOG_FILE)$(NC)"
+else
+	@echo -e "$(YELLOW)Step 7 requires libcurl - install with: apt install libcurl4-openssl-dev$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo "Step 7 skipped - libcurl not available" > $(LOG_FILE)
+	@echo -e "$(YELLOW)Step 7 Complete Integration Test skipped. Log saved: $(LOG_FILE)$(NC)"
+endif
+
 # Network 테스트
 network-build: create-dirs $(BIN_DIR)/test_network
 
@@ -618,7 +683,7 @@ check-logs: create-log-dir
 logs-summary: create-log-dir
 	@echo -e "$(BLUE)📊 Latest Test Logs Summary$(NC)"
 	@echo -e "$(YELLOW)=============================$(NC)"
-	@for step in step1 step2 step3 step4 step5 step6 step6_pipeline network platform workermanager; do \
+	@for step in step1 step2 step3 step4 step5 step6 step6_pipeline step7 network platform workermanager; do \
 		latest_log=$$(ls -t $(LOG_DIR)/$${step}_test_*.log 2>/dev/null | head -1); \
 		if [ -n "$$latest_log" ]; then \
 			echo -e "$(MAGENTA)$$step Test:$(NC)"; \
@@ -644,7 +709,7 @@ clean-all-logs: create-log-dir
 # 통합 실행
 # =============================================================================
 
-all-tests-build: create-dirs $(BIN_DIR)/test_step1 $(BIN_DIR)/test_step2 $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_step6_pipeline $(BIN_DIR)/test_network $(BIN_DIR)/test_platform $(BIN_DIR)/test_workermanager
+all-tests-build: create-dirs $(BIN_DIR)/test_step1 $(BIN_DIR)/test_step2 $(BIN_DIR)/test_step3 $(BIN_DIR)/test_step4 $(BIN_DIR)/test_step5 $(BIN_DIR)/test_step6 $(BIN_DIR)/test_step6_pipeline $(BIN_DIR)/test_step7 $(BIN_DIR)/test_network $(BIN_DIR)/test_platform $(BIN_DIR)/test_workermanager
 	@echo -e "$(GREEN)✅ All tests build completed for $(PLATFORM)!$(NC)"
 
 all-tests-run: all-tests-build create-log-dir
@@ -660,7 +725,7 @@ all-tests-run: all-tests-build create-log-dir
 	@echo "========================================" >> $(MASTER_LOG)
 	@echo ""
 	@echo -e "$(YELLOW)Running tests in sequence...$(NC)"
-	@$(MAKE) step1-test step2-test step3-test step4-test step5-test step6-test network-test platform-test workermanager-test
+	@$(MAKE) step1-test step2-test step3-test step4-test step5-test step6-test step7-test network-test platform-test workermanager-test
 	@echo ""
 	@echo "========================================" >> $(MASTER_LOG)
 	@echo "All Tests Completed: $(shell date)" >> $(MASTER_LOG)
@@ -669,10 +734,10 @@ all-tests-run: all-tests-build create-log-dir
 	@echo -e "$(CYAN)Master log: $(MASTER_LOG)$(NC)"
 	@$(MAKE) logs-summary
 
-quick-test: workermanager-test platform-test step6-test
+quick-test: workermanager-test platform-test step7-test
 	@echo -e "$(GREEN)✅ Quick test completed with logging$(NC)"
 
-restapi-test: step6-test network-test
+restapi-test: step6-test step7-test network-test
 	@echo -e "$(GREEN)✅ RestAPI integration tests completed$(NC)"
 
 # =============================================================================
@@ -698,6 +763,16 @@ status:
 	@echo "Log directory: $(LOG_DIR)"
 	@echo "Total log files: $(shell find $(LOG_DIR) -name '*.log' 2>/dev/null | wc -l)"
 	@echo ""
+	@echo "Library Support:"
+	@echo "HTTP (httplib): $(if $(filter 1,$(HAS_HTTPLIB)),✅ available,❌ missing)"
+	@echo "CURL: $(if $(filter 1,$(HAS_CURL)),✅ available,❌ missing)"
+	@echo "JSON (nlohmann): $(if $(filter 1,$(HAS_NLOHMANN_JSON)),✅ available,❌ missing)"
+	@echo "Redis (hiredis): $(if $(filter 1,$(HAS_HIREDIS)),✅ available,❌ missing)"
+	@echo "MQTT C: $(if $(filter 1,$(HAS_MQTT_C)),✅ available,❌ missing)"
+	@echo "MQTT C++: $(if $(filter 1,$(HAS_MQTT_CPP)),✅ available,❌ missing)"
+	@echo "BACnet: $(if $(filter 1,$(HAS_BACNET_STACK)),✅ available,❌ missing)"
+	@echo "QuickJS: $(if $(filter 1,$(HAS_QUICKJS)),✅ available,❌ missing)"
+	@echo ""
 	@echo "Binary Status:"
 	@echo "Step 1: $(if $(wildcard $(BIN_DIR)/test_step1),✅ exists,❌ missing)"
 	@echo "Step 2: $(if $(wildcard $(BIN_DIR)/test_step2),✅ exists,❌ missing)"
@@ -706,19 +781,21 @@ status:
 	@echo "Step 5: $(if $(wildcard $(BIN_DIR)/test_step5),✅ exists,❌ missing)"
 	@echo "Step 6 RestAPI: $(if $(wildcard $(BIN_DIR)/test_step6),✅ exists,❌ missing)"
 	@echo "Step 6 Pipeline: $(if $(wildcard $(BIN_DIR)/test_step6_pipeline),✅ exists,❌ missing)"
+	@echo "Step 7 Complete: $(if $(wildcard $(BIN_DIR)/test_step7),✅ exists,❌ missing)"
 	@echo "Network: $(if $(wildcard $(BIN_DIR)/test_network),✅ exists,❌ missing)"
 	@echo "Platform: $(if $(wildcard $(BIN_DIR)/test_platform),✅ exists,❌ missing)"
 	@echo "WorkerManager: $(if $(wildcard $(BIN_DIR)/test_workermanager),✅ exists,❌ missing)"
 
 help:
-	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Step 6 RestAPI Integration$(NC)"
+	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Complete Step 7 Integration$(NC)"
 	@echo -e "$(YELLOW)====================================================================$(NC)"
 	@echo ""
 	@echo -e "$(MAGENTA)🎯 Enhanced Features:$(NC)"
 	@echo "  Current platform: $(PLATFORM)"
 	@echo "  Auto-logging: All tests create timestamped log files"
 	@echo "  Log directory: $(LOG_DIR)"
-	@echo "  NEW: Step 6 RestAPI-WorkerManager integration test"
+	@echo "  NEW: Step 7 Complete REST API Backend Integration Test"
+	@echo "  CURL support: $(if $(filter 1,$(HAS_CURL)),✅ enabled,❌ disabled (install libcurl4-openssl-dev))"
 	@echo ""
 	@echo -e "$(GREEN)Step-by-Step Test Commands (with logging):$(NC)"
 	@echo "  make step1-test   - Step 1: Configuration and connection test"
@@ -726,20 +803,21 @@ help:
 	@echo "  make step3-test   - Step 3: Protocol worker property validation test"
 	@echo "  make step4-test   - Step 4: Driver data validation test"
 	@echo "  make step5-test   - Step 5: Complete DB integration validation test"
-	@echo "  make step6-test   - Step 6: RestAPI → WorkerManager integration test (NEW!)"
+	@echo "  make step6-test   - Step 6: RestAPI → WorkerManager integration test"
 	@echo "  make step6-pipeline-test - Step 6: Enhanced alarm+virtualpoint pipeline test"
+	@echo "  make step7-test   - Step 7: Complete REST API Backend Integration (NEW!)"
 	@echo "  make network-test - Network: REST API server test"
 	@echo "  make platform-test - Platform: Cross-platform compatibility test"
 	@echo "  make workermanager-test - WorkerManager: Singleton and lifecycle test"
 	@echo ""
 	@echo -e "$(GREEN)Quick Build Commands:$(NC)"
-	@echo "  make step1-build, step2-build, ..., step6-build"
+	@echo "  make step1-build, step2-build, ..., step7-build"
 	@echo "  make all-tests-build - Build all tests"
 	@echo ""
 	@echo -e "$(GREEN)Integrated Execution:$(NC)"
 	@echo "  make all-tests-run - Run all tests with comprehensive logging"
-	@echo "  make quick-test    - Run core tests (WorkerManager + Platform + Step6)"
-	@echo "  make restapi-test  - Run RestAPI related tests (Step6 + Network)"
+	@echo "  make quick-test    - Run core tests (WorkerManager + Platform + Step7)"
+	@echo "  make restapi-test  - Run RestAPI related tests (Step6 + Step7 + Network)"
 	@echo ""
 	@echo -e "$(CYAN)🗂️ Log Management:$(NC)"
 	@echo "  make check-logs      - Check log directory status"
@@ -753,15 +831,26 @@ help:
 	@echo "  make clean-all    - Clean everything (including logs)"
 	@echo "  make create-dirs  - Create all required directories"
 	@echo ""
-	@echo -e "$(CYAN)💡 Step 6 RestAPI Integration Test Features:$(NC)"
-	@echo "  - DB change → API call → Worker reload flow"
-	@echo "  - Engineer property update simulation"
-	@echo "  - Redis data consistency verification"
-	@echo "  - RestAPI callback connectivity testing"
-	@echo "  - Multi-device reload stress testing"
+	@echo -e "$(CYAN)💡 Step 7 Complete REST API Backend Integration Features:$(NC)"
+	@echo "  - Self-contained HTTP server (port 8081) - no external dependencies"
+	@echo "  - DeviceApiCallbacks + HardwareApiCallbacks full integration"
+	@echo "  - Worker lifecycle control (start/stop/pause/resume/restart)"
+	@echo "  - Hardware control (digital/analog outputs, parameters)"
+	@echo "  - System control APIs (stats, reload, reinitialization)"
+	@echo "  - Concurrent request handling stress test"
+	@echo "  - End-to-end integration flow validation"
+	@echo "  - Comprehensive HTTP response validation"
+	@echo ""
+	@echo -e "$(YELLOW)🎯 Recommended Test Sequence:$(NC)"
+	@echo "  1. make step7-test        - Most comprehensive test"
+	@echo "  2. make restapi-test      - All REST API related tests"
+	@echo "  3. make all-tests-run     - Complete system validation"
+	@echo ""
+	@echo -e "$(RED)⚠️ Dependencies for Step 7:$(NC)"
+	@echo "  sudo apt install libcurl4-openssl-dev libgtest-dev nlohmann-json3-dev"
 
 .PHONY: create-log-dir logs-summary check-logs clean-old-logs clean-all-logs \
-        step1-test step2-test step3-test step4-test step5-test step6-test step6-pipeline-test \
+        step1-test step2-test step3-test step4-test step5-test step6-test step6-pipeline-test step7-test \
         network-test platform-test workermanager-test quick-test all-tests-run restapi-test \
         clean clean-all help status
 
