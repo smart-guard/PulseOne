@@ -1,16 +1,12 @@
 /**
- * @file test_updated_alarm_conversion.cpp
- * @brief 수정된 알람 변환 과정 테스트 (enum 직접 사용 버전)
- * @date 2025-09-01
- * 
- * 목적:
- * 1. DB에서 가져온 AlarmOccurrenceEntity의 원시 enum 값 확인
- * 2. enum을 직접 int로 변환하는 새로운 방식 검증
- * 3. Redis 저장 조건 만족 여부 확인
+ * @file test_step5_complete_db_integration_validation.cpp
+ * @brief 수정된 완전한 End-to-End 알람 테스트 - 컴파일 에러 해결
  */
 
 #include <gtest/gtest.h>
 #include <iostream>
+#include <thread>
+#include <chrono>
 
 // PulseOne 시스템
 #include "Utils/ConfigManager.h"
@@ -21,23 +17,32 @@
 #include "Alarm/AlarmStartupRecovery.h"
 #include "Alarm/AlarmTypes.h"
 #include "Storage/BackendFormat.h"
+#include "Storage/RedisDataWriter.h"
+#include "Client/RedisClientImpl.h"  // 🔧 수정: 구체적 구현체 사용
 
 using namespace PulseOne;
 using namespace PulseOne::Database;
 using namespace PulseOne::Alarm;
+using namespace PulseOne::Storage;
 
-class UpdatedAlarmConversionTest : public ::testing::Test {
+class CompleteAlarmE2ETest : public ::testing::Test {
 protected:
     void SetUp() override {
-        std::cout << "\n🔍 === 수정된 알람 변환 테스트 시작 ===" << std::endl;
+        std::cout << "\n🚀 === 완전한 End-to-End 알람 테스트 시작 ===" << std::endl;
         InitializeSystem();
     }
     
+    void TearDown() override {
+        std::cout << "\n🏁 === 테스트 완료 ===" << std::endl;
+    }
+    
     void InitializeSystem() {
+        // 기본 시스템 초기화
         config_manager_ = &ConfigManager::getInstance();
         logger_ = &LogManager::getInstance();
         db_manager_ = &DatabaseManager::getInstance();
         
+        // DB Repository 초기화
         repo_factory_ = &RepositoryFactory::getInstance();
         if (!repo_factory_->isInitialized()) {
             ASSERT_TRUE(repo_factory_->initialize()) << "RepositoryFactory 초기화 실패";
@@ -46,7 +51,18 @@ protected:
         alarm_occurrence_repo_ = repo_factory_->getAlarmOccurrenceRepository();
         ASSERT_TRUE(alarm_occurrence_repo_) << "AlarmOccurrenceRepository 획득 실패";
         
+        // AlarmStartupRecovery 초기화
         alarm_recovery_ = &AlarmStartupRecovery::getInstance();
+        
+        // 🔧 수정: RedisClientImpl 구체적 구현체 생성
+        redis_client_ = std::make_shared<RedisClientImpl>();
+        
+        // 🔧 수정: RedisClientImpl의 connect 메서드 매개변수 제공
+        ASSERT_TRUE(redis_client_->connect("localhost", 6379)) << "Redis 연결 실패";
+        
+        // RedisDataWriter 초기화
+        redis_data_writer_ = std::make_shared<RedisDataWriter>(redis_client_);
+        ASSERT_TRUE(redis_data_writer_->IsConnected()) << "RedisDataWriter 연결 실패";
         
         std::cout << "✅ 시스템 초기화 완료" << std::endl;
     }
@@ -57,190 +73,297 @@ protected:
     RepositoryFactory* repo_factory_;
     AlarmStartupRecovery* alarm_recovery_;
     std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repo_;
+    std::shared_ptr<RedisClientImpl> redis_client_;  // 🔧 수정: 구체적 타입 사용
+    std::shared_ptr<RedisDataWriter> redis_data_writer_;
 };
 
-TEST_F(UpdatedAlarmConversionTest, Test_Direct_Enum_Conversion) {
-    std::cout << "\n🎯 === 직접 Enum 변환 테스트 ===" << std::endl;
+TEST_F(CompleteAlarmE2ETest, Complete_DB_To_Redis_Backend_Flow) {
+    std::cout << "\n🎯 === 완전한 DB → Redis → Backend 플로우 테스트 ===" << std::endl;
     
     // ==========================================================================
-    // 1. 수정된 enum 값 검증
+    // 1단계: Redis 완전 리셋 - 🔧 수정: 실제 존재하는 메서드 사용
     // ==========================================================================
-    std::cout << "\n📊 === 수정된 Enum 매핑 검증 ===" << std::endl;
-    std::cout << "AlarmSeverity 매핑:" << std::endl;
-    std::cout << "  - INFO = " << static_cast<int>(AlarmSeverity::INFO) << " (should be 0)" << std::endl;
-    std::cout << "  - LOW = " << static_cast<int>(AlarmSeverity::LOW) << " (should be 1)" << std::endl;
-    std::cout << "  - MEDIUM = " << static_cast<int>(AlarmSeverity::MEDIUM) << " (should be 2)" << std::endl;
-    std::cout << "  - HIGH = " << static_cast<int>(AlarmSeverity::HIGH) << " (should be 3)" << std::endl;
-    std::cout << "  - CRITICAL = " << static_cast<int>(AlarmSeverity::CRITICAL) << " (should be 4)" << std::endl;
-    
-    std::cout << "\nAlarmState 매핑:" << std::endl;
-    std::cout << "  - INACTIVE = " << static_cast<int>(AlarmState::INACTIVE) << " (should be 0)" << std::endl;
-    std::cout << "  - ACTIVE = " << static_cast<int>(AlarmState::ACTIVE) << " (should be 1)" << std::endl;
-    std::cout << "  - ACKNOWLEDGED = " << static_cast<int>(AlarmState::ACKNOWLEDGED) << " (should be 2)" << std::endl;
-    std::cout << "  - CLEARED = " << static_cast<int>(AlarmState::CLEARED) << " (should be 3)" << std::endl;
-    
-    // 컴파일 타임 검증 (이미 AlarmTypes.h에 있음)
-    ASSERT_EQ(static_cast<int>(AlarmSeverity::INFO), 0);
-    ASSERT_EQ(static_cast<int>(AlarmSeverity::LOW), 1);
-    ASSERT_EQ(static_cast<int>(AlarmSeverity::MEDIUM), 2);
-    ASSERT_EQ(static_cast<int>(AlarmSeverity::HIGH), 3);
-    ASSERT_EQ(static_cast<int>(AlarmSeverity::CRITICAL), 4);
-    
-    ASSERT_EQ(static_cast<int>(AlarmState::INACTIVE), 0);
-    ASSERT_EQ(static_cast<int>(AlarmState::ACTIVE), 1);
-    ASSERT_EQ(static_cast<int>(AlarmState::ACKNOWLEDGED), 2);
-    ASSERT_EQ(static_cast<int>(AlarmState::CLEARED), 3);
-    
-    std::cout << "✅ Enum 매핑 검증 통과" << std::endl;
-    
-    // ==========================================================================
-    // 2. DB에서 활성 알람 가져오기
-    // ==========================================================================
-    auto active_alarms = alarm_occurrence_repo_->findActive();
-    ASSERT_GT(active_alarms.size(), 0) << "활성 알람이 없어서 테스트 불가능";
-    
-    const auto& test_alarm = active_alarms[0];
-    
-    std::cout << "\n📋 === 테스트 알람 정보 ===" << std::endl;
-    std::cout << "DB 알람 ID: " << test_alarm.getId() << std::endl;
-    std::cout << "Rule ID: " << test_alarm.getRuleId() << std::endl;
-    std::cout << "Tenant ID: " << test_alarm.getTenantId() << std::endl;
-    
-    // ==========================================================================
-    // 3. 수정된 직접 변환 방식 테스트
-    // ==========================================================================
-    auto raw_severity_enum = test_alarm.getSeverity();
-    auto raw_state_enum = test_alarm.getState();
-    
-    // 🎯 새로운 방식: enum 직접 변환
-    int converted_severity = static_cast<int>(raw_severity_enum);
-    int converted_state = static_cast<int>(raw_state_enum);
-    
-    std::cout << "\n🔧 === 직접 변환 결과 ===" << std::endl;
-    std::cout << "Raw Severity Enum → Int: " << static_cast<int>(raw_severity_enum) << " → " << converted_severity << std::endl;
-    std::cout << "Raw State Enum → Int: " << static_cast<int>(raw_state_enum) << " → " << converted_state << std::endl;
-    
-    // 문자열 변환도 확인 (로그용)
-    std::string severity_str = PulseOne::Alarm::severityToString(raw_severity_enum);
-    std::string state_str = PulseOne::Alarm::stateToString(raw_state_enum);
-    
-    std::cout << "Severity 문자열: " << severity_str << std::endl;
-    std::cout << "State 문자열: " << state_str << std::endl;
-    
-    // ==========================================================================
-    // 4. BackendFormat 변환 시뮬레이션
-    // ==========================================================================
-    std::cout << "\n🔄 === BackendFormat 변환 시뮬레이션 ===" << std::endl;
-    
-    Storage::BackendFormat::AlarmEventData backend_alarm;
-    backend_alarm.occurrence_id = test_alarm.getId();
-    backend_alarm.rule_id = test_alarm.getRuleId();
-    backend_alarm.tenant_id = test_alarm.getTenantId();
-    backend_alarm.message = test_alarm.getAlarmMessage();
-    backend_alarm.device_id = test_alarm.getDeviceId();
-    backend_alarm.point_id = test_alarm.getPointId();
-    
-    // 🎯 핵심: enum을 직접 int로 변환
-    backend_alarm.severity = converted_severity;
-    backend_alarm.state = converted_state;
-    
-    // 시간 변환
-    auto duration = test_alarm.getOccurrenceTime().time_since_epoch();
-    backend_alarm.occurred_at = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-    
-    std::cout << "변환된 BackendFormat:" << std::endl;
-    std::cout << "  - occurrence_id: " << backend_alarm.occurrence_id << std::endl;
-    std::cout << "  - rule_id: " << backend_alarm.rule_id << std::endl;
-    std::cout << "  - severity: " << backend_alarm.severity << std::endl;
-    std::cout << "  - state: " << backend_alarm.state << std::endl;
-    std::cout << "  - tenant_id: " << backend_alarm.tenant_id << std::endl;
-    
-    // ==========================================================================
-    // 5. Redis 저장 조건 검증
-    // ==========================================================================
-    std::cout << "\n🔍 === Redis 저장 조건 검증 ===" << std::endl;
-    
-    // RedisDataWriter::PublishAlarmEvent()의 조건들
-    bool state_condition = (backend_alarm.state == 1);  // ACTIVE
-    bool severity_critical = (backend_alarm.severity >= 4);  // CRITICAL 이상
-    bool severity_high = (backend_alarm.severity >= 3);  // HIGH 이상
-    
-    std::cout << "조건 검사:" << std::endl;
-    std::cout << "  - State == 1 (ACTIVE): " << (state_condition ? "✅ 통과" : "❌ 실패") << std::endl;
-    std::cout << "  - Severity >= 4 (CRITICAL): " << (severity_critical ? "✅ 통과" : "❌ 실패") << std::endl;
-    std::cout << "  - Severity >= 3 (HIGH+): " << (severity_high ? "✅ 통과" : "❌ 실패") << std::endl;
-    
-    std::cout << "\n예상 Redis 동작:" << std::endl;
-    if (state_condition) {
-        std::cout << "  ✅ alarm:active:" << backend_alarm.rule_id << " 키 저장될 예정" << std::endl;
-    } else {
-        std::cout << "  ❌ 활성 알람 키 저장 안됨 (state != 1)" << std::endl;
-    }
-    
-    if (severity_critical) {
-        std::cout << "  ✅ alarms:critical 채널 발행될 예정" << std::endl;
-    } else if (severity_high) {
-        std::cout << "  ✅ alarms:high 채널 발행될 예정" << std::endl;
-    } else {
-        std::cout << "  💡 특별 채널 발행 안됨 (일반 alarms:all만)" << std::endl;
-    }
-    
-    // ==========================================================================
-    // 6. 실제 AlarmStartupRecovery 호출 테스트
-    // ==========================================================================
-    std::cout << "\n🚀 === 실제 Recovery 변환 테스트 ===" << std::endl;
+    std::cout << "\n🧹 === 1단계: Redis 완전 리셋 ===" << std::endl;
     
     try {
-        // private 메서드이므로 직접 호출은 불가능하지만, 전체 복구 과정을 통해 검증
-        size_t recovered_count = alarm_recovery_->RecoverActiveAlarms();
+        // 🔧 수정: select(0) 후 모든 키 삭제하는 방식으로 변경
+        redis_client_->select(0);  // DB 0 선택
         
-        std::cout << "Recovery 실행 결과: " << recovered_count << "개 복구됨" << std::endl;
+        // 테스트 키 삭제로 리셋 시뮬레이션 (완전한 flushall 대신)
+        std::vector<std::string> test_keys = {
+            "alarm:active:1", "alarm:active:2", "alarm:active:3", 
+            "alarm:active:999999"
+        };
         
-        auto recovery_stats = alarm_recovery_->GetRecoveryStats();
-        std::cout << "Recovery 통계:" << std::endl;
-        std::cout << "  - 총 활성 알람: " << recovery_stats.total_active_alarms << std::endl;
-        std::cout << "  - 성공 발행: " << recovery_stats.successfully_published << std::endl;
-        std::cout << "  - 실패: " << recovery_stats.failed_to_publish << std::endl;
+        for (const auto& key : test_keys) {
+            redis_client_->del(key);
+        }
         
-        EXPECT_GT(recovery_stats.successfully_published, 0) << "최소 1개 알람은 성공해야 함";
+        std::cout << "✅ Redis 테스트 키 정리 완료" << std::endl;
+        
+        // 리셋 확인
+        std::string test_key = "alarm:active:999999";
+        std::string before_reset = redis_client_->get(test_key);
+        ASSERT_TRUE(before_reset.empty()) << "Redis 리셋 실패 - 데이터가 남아있음";
+        std::cout << "✅ Redis 리셋 확인 완료" << std::endl;
         
     } catch (const std::exception& e) {
-        std::cout << "Recovery 실행 중 예외: " << e.what() << std::endl;
-        FAIL() << "Recovery 실행 실패";
+        FAIL() << "Redis 리셋 실패: " << e.what();
     }
     
     // ==========================================================================
-    // 7. 최종 결론
+    // 2단계: DB에서 활성 알람 조회
     // ==========================================================================
-    std::cout << "\n🎯 === 최종 결론 ===" << std::endl;
+    std::cout << "\n📊 === 2단계: DB 활성 알람 조회 ===" << std::endl;
     
-    bool conversion_success = true;
-    std::vector<std::string> issues;
+    auto active_alarms = alarm_occurrence_repo_->findActive();
+    std::cout << "DB에서 조회된 활성 알람: " << active_alarms.size() << "개" << std::endl;
     
-    if (converted_severity < 0 || converted_severity > 4) {
-        conversion_success = false;
-        issues.push_back("Severity 변환값 범위 초과: " + std::to_string(converted_severity));
-    }
+    ASSERT_GT(active_alarms.size(), 0) << "활성 알람이 없어서 테스트 불가능";
     
-    if (converted_state < 0 || converted_state > 3) {
-        conversion_success = false;
-        issues.push_back("State 변환값 범위 초과: " + std::to_string(converted_state));
-    }
+    // 첫 번째 알람 상세 정보 출력
+    const auto& test_alarm = active_alarms[0];
+    std::cout << "\n🔍 테스트 대상 알람 (DB 원본):" << std::endl;
+    std::cout << "  - ID: " << test_alarm.getId() << std::endl;
+    std::cout << "  - Rule ID: " << test_alarm.getRuleId() << std::endl;
+    std::cout << "  - Tenant ID: " << test_alarm.getTenantId() << std::endl;
     
-    if (!state_condition) {
-        issues.push_back("ACTIVE 상태가 아님 (Redis 키 저장 안됨)");
-    }
+    auto device_id_opt = test_alarm.getDeviceId();
+    std::cout << "  - Device ID: " << (device_id_opt.has_value() ? std::to_string(device_id_opt.value()) : "NULL") << std::endl;
     
-    if (conversion_success && issues.empty()) {
-        std::cout << "✅ 모든 변환이 성공적으로 완료됨!" << std::endl;
-        std::cout << "✅ Redis 저장 조건 만족" << std::endl;
-        std::cout << "🚀 새로운 enum 직접 변환 방식이 정상 동작함!" << std::endl;
-    } else {
-        std::cout << "⚠️ 발견된 이슈들:" << std::endl;
-        for (const auto& issue : issues) {
-            std::cout << "  - " << issue << std::endl;
+    auto point_id_opt = test_alarm.getPointId();  
+    std::cout << "  - Point ID: " << (point_id_opt.has_value() ? std::to_string(point_id_opt.value()) : "NULL") << std::endl;
+    
+    std::cout << "  - Severity: " << static_cast<int>(test_alarm.getSeverity()) << " (" << test_alarm.getSeverityString() << ")" << std::endl;
+    std::cout << "  - State: " << static_cast<int>(test_alarm.getState()) << " (" << test_alarm.getStateString() << ")" << std::endl;
+    std::cout << "  - Message: '" << test_alarm.getAlarmMessage() << "'" << std::endl;
+    
+    // ==========================================================================
+    // 3단계: AlarmStartupRecovery 실행
+    // ==========================================================================
+    std::cout << "\n🔄 === 3단계: AlarmStartupRecovery 실행 ===" << std::endl;
+    
+    size_t recovered_count = alarm_recovery_->RecoverActiveAlarms();
+    std::cout << "AlarmStartupRecovery 복구 결과: " << recovered_count << "개" << std::endl;
+    
+    EXPECT_GT(recovered_count, 0) << "AlarmStartupRecovery 복구 실패";
+    
+    // 복구 처리 시간 대기
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    
+    // ==========================================================================
+    // 4단계: Redis 직접 조회로 저장 확인
+    // ==========================================================================
+    std::cout << "\n🔍 === 4단계: Redis 저장 데이터 직접 조회 ===" << std::endl;
+    
+    std::vector<std::pair<std::string, std::string>> found_redis_data;
+    
+    for (const auto& alarm : active_alarms) {
+        if (alarm.getState() == AlarmState::ACTIVE) {
+            std::string redis_key = "alarm:active:" + std::to_string(alarm.getRuleId());
+            std::string redis_data = redis_client_->get(redis_key);
+            
+            std::cout << "\nRedis 키 조회: " << redis_key << std::endl;
+            
+            if (!redis_data.empty()) {
+                std::cout << "✅ Redis 데이터 발견 (길이: " << redis_data.length() << " bytes)" << std::endl;
+                std::cout << "📄 저장된 데이터 (앞 200자): " << redis_data.substr(0, 200) << "..." << std::endl;
+                found_redis_data.push_back({redis_key, redis_data});
+            } else {
+                std::cout << "❌ Redis 데이터 없음" << std::endl;
+            }
         }
     }
     
-    std::cout << "\n📋 === 테스트 완료 ===" << std::endl;
+    ASSERT_GT(found_redis_data.size(), 0) << "Redis에 저장된 알람 데이터가 없음";
+    std::cout << "\n✅ 총 " << found_redis_data.size() << "개의 Redis 키에서 데이터 발견" << std::endl;
+    
+    // ==========================================================================
+    // 5단계: DB 데이터와 Redis 데이터 일치성 검증
+    // ==========================================================================
+    std::cout << "\n🔍 === 5단계: DB ↔ Redis 데이터 일치성 검증 ===" << std::endl;
+    
+    bool data_consistency_ok = true;
+    
+    for (const auto& [redis_key, redis_data] : found_redis_data) {
+        try {
+            // Redis JSON 파싱
+            nlohmann::json redis_json = nlohmann::json::parse(redis_data);
+            
+            // Redis에서 rule_id 추출
+            int redis_rule_id = redis_json.value("rule_id", 0);
+            
+            // DB에서 해당 rule_id 알람 찾기
+            auto db_alarm_it = std::find_if(active_alarms.begin(), active_alarms.end(),
+                [redis_rule_id](const auto& alarm) {
+                    return alarm.getRuleId() == redis_rule_id;
+                });
+            
+            if (db_alarm_it != active_alarms.end()) {
+                const auto& db_alarm = *db_alarm_it;
+                
+                std::cout << "\n📋 Rule ID " << redis_rule_id << " 데이터 비교:" << std::endl;
+                
+                // 필드별 일치성 검증
+                std::string db_severity = severityToString(db_alarm.getSeverity());
+                std::string redis_severity = redis_json.value("severity", "");
+                
+                std::string db_state = stateToString(db_alarm.getState());
+                std::string redis_state = redis_json.value("state", "");
+                
+                std::string db_message = db_alarm.getAlarmMessage();
+                std::string redis_message = redis_json.value("message", "");
+                
+                std::cout << "  Severity: DB('" << db_severity << "') vs Redis('" << redis_severity << "') " 
+                         << (db_severity == redis_severity ? "✅" : "❌") << std::endl;
+                
+                std::cout << "  State: DB('" << db_state << "') vs Redis('" << redis_state << "') " 
+                         << (db_state == redis_state ? "✅" : "❌") << std::endl;
+                
+                std::cout << "  Message: DB('" << db_message << "') vs Redis('" << redis_message << "') " 
+                         << (db_message == redis_message ? "✅" : "❌") << std::endl;
+                
+                // 일치하지 않으면 실패 플래그 설정
+                if (db_severity != redis_severity || db_state != redis_state || db_message != redis_message) {
+                    data_consistency_ok = false;
+                    std::cout << "❌ Rule ID " << redis_rule_id << " 데이터 불일치 발견" << std::endl;
+                }
+                
+            } else {
+                std::cout << "❌ Redis Rule ID " << redis_rule_id << "에 해당하는 DB 알람을 찾을 수 없음" << std::endl;
+                data_consistency_ok = false;
+            }
+            
+        } catch (const std::exception& e) {
+            std::cout << "❌ Redis 데이터 파싱 실패 (" << redis_key << "): " << e.what() << std::endl;
+            data_consistency_ok = false;
+        }
+    }
+    
+    EXPECT_TRUE(data_consistency_ok) << "DB와 Redis 데이터 일치성 검증 실패";
+    
+    // ==========================================================================
+    // 6단계: 백엔드 구독 포맷 호환성 검증
+    // ==========================================================================
+    std::cout << "\n🎯 === 6단계: 백엔드 구독 포맷 호환성 검증 ===" << std::endl;
+    
+    bool backend_compatibility_ok = true;
+    
+    for (const auto& [redis_key, redis_data] : found_redis_data) {
+        try {
+            nlohmann::json backend_json = nlohmann::json::parse(redis_data);
+            
+            std::cout << "\n📝 " << redis_key << " 백엔드 호환성 검사:" << std::endl;
+            
+            // 필수 필드 존재 확인
+            std::vector<std::string> required_fields = {
+                "type", "occurrence_id", "rule_id", "tenant_id", 
+                "message", "severity", "state", "timestamp"
+            };
+            
+            for (const std::string& field : required_fields) {
+                bool has_field = backend_json.contains(field);
+                std::cout << "  - " << field << ": " << (has_field ? "✅" : "❌") << std::endl;
+                
+                if (!has_field) {
+                    backend_compatibility_ok = false;
+                }
+            }
+            
+            // 타입 검증 (severity, state는 반드시 string)
+            if (backend_json.contains("severity")) {
+                bool is_string = backend_json["severity"].is_string();
+                std::cout << "  - severity type: " << (is_string ? "string ✅" : "not string ❌") << std::endl;
+                if (!is_string) backend_compatibility_ok = false;
+            }
+            
+            if (backend_json.contains("state")) {
+                bool is_string = backend_json["state"].is_string();
+                std::cout << "  - state type: " << (is_string ? "string ✅" : "not string ❌") << std::endl;
+                if (!is_string) backend_compatibility_ok = false;
+            }
+            
+            // 백엔드가 기대하는 값 형태 검증
+            if (backend_json.contains("severity")) {
+                std::string severity = backend_json["severity"].get<std::string>();
+                bool valid_severity = (severity == "INFO" || severity == "LOW" || severity == "MEDIUM" || 
+                                     severity == "HIGH" || severity == "CRITICAL");
+                std::cout << "  - severity value ('" << severity << "'): " << (valid_severity ? "✅" : "❌") << std::endl;
+                if (!valid_severity) backend_compatibility_ok = false;
+            }
+            
+            if (backend_json.contains("state")) {
+                std::string state = backend_json["state"].get<std::string>();
+                bool valid_state = (state == "INACTIVE" || state == "ACTIVE" || state == "ACKNOWLEDGED" || 
+                                  state == "CLEARED" || state == "SUPPRESSED" || state == "SHELVED");
+                std::cout << "  - state value ('" << state << "'): " << (valid_state ? "✅" : "❌") << std::endl;
+                if (!valid_state) backend_compatibility_ok = false;
+            }
+            
+        } catch (const std::exception& e) {
+            std::cout << "❌ 백엔드 호환성 검증 실패 (" << redis_key << "): " << e.what() << std::endl;
+            backend_compatibility_ok = false;
+        }
+    }
+    
+    EXPECT_TRUE(backend_compatibility_ok) << "백엔드 구독 포맷 호환성 검증 실패";
+    
+    // ==========================================================================
+    // 7단계: 최종 판정 및 결과 출력
+    // ==========================================================================
+    std::cout << "\n🏆 === 7단계: 최종 테스트 결과 ===" << std::endl;
+    
+    bool all_tests_passed = true;
+    std::vector<std::string> failure_reasons;
+    
+    // 각 단계별 검증
+    if (active_alarms.size() == 0) {
+        failure_reasons.push_back("DB에서 활성 알람 조회 실패");
+        all_tests_passed = false;
+    }
+    
+    if (recovered_count == 0) {
+        failure_reasons.push_back("AlarmStartupRecovery 복구 실패");
+        all_tests_passed = false;
+    }
+    
+    if (found_redis_data.size() == 0) {
+        failure_reasons.push_back("Redis에 알람 데이터 저장되지 않음");
+        all_tests_passed = false;
+    }
+    
+    if (!data_consistency_ok) {
+        failure_reasons.push_back("DB와 Redis 데이터 일치성 검증 실패");
+        all_tests_passed = false;
+    }
+    
+    if (!backend_compatibility_ok) {
+        failure_reasons.push_back("백엔드 구독 포맷 호환성 실패");
+        all_tests_passed = false;
+    }
+    
+    // 최종 결과 출력
+    if (all_tests_passed) {
+        std::cout << "\n🎉 모든 테스트 통과!" << std::endl;
+        std::cout << "✅ Redis 리셋 → DB 조회 → AlarmStartupRecovery → RedisDataWriter → Redis 저장 → 데이터 검증 → 백엔드 호환성" << std::endl;
+        std::cout << "✅ 총 " << active_alarms.size() << "개 DB 알람 → " << recovered_count << "개 복구 → " 
+                  << found_redis_data.size() << "개 Redis 저장" << std::endl;
+        std::cout << "✅ 전체 End-to-End 플로우 정상 동작 확인" << std::endl;
+        
+    } else {
+        std::cout << "\n💥 테스트 실패!" << std::endl;
+        std::cout << "실패 원인:" << std::endl;
+        for (const auto& reason : failure_reasons) {
+            std::cout << "  ❌ " << reason << std::endl;
+        }
+        
+        std::cout << "\n📊 상세 정보:" << std::endl;
+        std::cout << "  - DB 활성 알람: " << active_alarms.size() << "개" << std::endl;
+        std::cout << "  - 복구된 알람: " << recovered_count << "개" << std::endl;
+        std::cout << "  - Redis 저장 확인: " << found_redis_data.size() << "개" << std::endl;
+        std::cout << "  - 데이터 일치성: " << (data_consistency_ok ? "OK" : "FAIL") << std::endl;
+        std::cout << "  - 백엔드 호환성: " << (backend_compatibility_ok ? "OK" : "FAIL") << std::endl;
+        
+        FAIL() << "End-to-End 테스트 실패 - 위 원인들을 확인하세요";
+    }
 }
