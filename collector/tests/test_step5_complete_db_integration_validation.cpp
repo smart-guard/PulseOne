@@ -1,524 +1,246 @@
 /**
- * @file test_step5_fixed_access.cpp
- * @brief Step5 접근성 문제 수정 버전 - Private 멤버 접근 문제 해결
- * @date 2025-08-31
+ * @file test_updated_alarm_conversion.cpp
+ * @brief 수정된 알람 변환 과정 테스트 (enum 직접 사용 버전)
+ * @date 2025-09-01
  * 
- * 🔧 수정사항:
- * 1. private 멤버 변수들을 protected로 변경
- * 2. private 메서드들을 protected로 변경
- * 3. friend class 또는 getter 메서드 추가
- * 4. 기존 GitHub 구조의 테스트 패턴 적용
+ * 목적:
+ * 1. DB에서 가져온 AlarmOccurrenceEntity의 원시 enum 값 확인
+ * 2. enum을 직접 int로 변환하는 새로운 방식 검증
+ * 3. Redis 저장 조건 만족 여부 확인
  */
 
 #include <gtest/gtest.h>
 #include <iostream>
-#include <vector>
-#include <memory>
-#include <string>
-#include <chrono>
-#include <thread>
-#include <iomanip>
 
-// JSON 라이브러리
-#include <nlohmann/json.hpp>
-
-// PulseOne 핵심 시스템
+// PulseOne 시스템
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
 #include "Database/DatabaseManager.h"
 #include "Database/RepositoryFactory.h"
-
-// Entity 및 Repository
-#include "Database/Entities/DeviceEntity.h"
-#include "Database/Entities/AlarmOccurrenceEntity.h"
-#include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
-
-// 알람 시스템
 #include "Alarm/AlarmStartupRecovery.h"
 #include "Alarm/AlarmTypes.h"
-
-// Common 구조체
-#include "Common/Structs.h"
-#include "Common/Enums.h"
+#include "Storage/BackendFormat.h"
 
 using namespace PulseOne;
 using namespace PulseOne::Database;
 using namespace PulseOne::Alarm;
-using LogLevel = PulseOne::Enums::LogLevel;
 
-// =============================================================================
-// Step5 수정된 통합 테스트 클래스
-// =============================================================================
-
-class Step5FixedIntegrationTest : public ::testing::Test {
+class UpdatedAlarmConversionTest : public ::testing::Test {
 protected:
-    // =============================================================================
-    // 🔧 수정: private → protected (TEST_F에서 접근 가능)
-    // =============================================================================
-    
     void SetUp() override {
-        std::cout << "\n🔧 === Step5 수정된 통합 테스트 시작 ===" << std::endl;
-        test_start_time_ = std::chrono::steady_clock::now();
-        
-        // 안전한 초기화
-        if (!SafeSystemInitialization()) {
-            FAIL() << "시스템 초기화 실패";
-        }
-        
-        std::cout << "✅ 안전한 테스트 환경 구성 완료" << std::endl;
+        std::cout << "\n🔍 === 수정된 알람 변환 테스트 시작 ===" << std::endl;
+        InitializeSystem();
     }
     
-    void TearDown() override {
-        auto test_duration = std::chrono::steady_clock::now() - test_start_time_;
-        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(test_duration);
-        
-        std::cout << "\n🧹 === Step5 테스트 정리 (소요: " << duration_ms.count() << "ms) ===" << std::endl;
-        
-        // 안전한 정리
-        SafeCleanup();
-        
-        std::cout << "✅ 안전한 정리 완료" << std::endl;
-    }
-
-    // =============================================================================
-    // 🔧 수정: private → protected (테스트 메서드들 접근 가능)
-    // =============================================================================
-    
-    bool SafeSystemInitialization();
-    void SafeCleanup();
-    void TestBasicSystemHealth();
-    void TestDatabaseConnectivity();
-    void TestAlarmSystemBasics();
-    void TestMinimalRedisOperations();
-    void TestAlarmRecoveryLogic();
-
-    // =============================================================================
-    // 🔧 수정: private → protected (상태 변수들 접근 가능)
-    // =============================================================================
-    
-    std::chrono::steady_clock::time_point test_start_time_;
-    
-    // 시스템 컴포넌트들 (포인터로 관리, 생성하지 않음)
-    ConfigManager* config_manager_;
-    LogManager* logger_;
-    DatabaseManager* db_manager_;
-    RepositoryFactory* repo_factory_;
-    
-    // Repository들 (shared_ptr로 안전 관리)
-    std::shared_ptr<Repositories::DeviceRepository> device_repo_;
-    std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repo_;
-    
-    // 알람 복구 관리자 (포인터로만 참조)
-    AlarmStartupRecovery* alarm_recovery_;
-    
-    // 🔧 수정: private → protected (상태 플래그들 접근 가능)
-    bool system_initialized_;
-    bool repositories_ready_;
-    bool alarm_system_ready_;
-
-public:
-    // =============================================================================
-    // 🔧 추가: Public 접근자 메서드들 (friend class 대신)
-    // =============================================================================
-    
-    bool GetSystemInitialized() const { return system_initialized_; }
-    bool GetRepositoriesReady() const { return repositories_ready_; }
-    bool GetAlarmSystemReady() const { return alarm_system_ready_; }
-    ConfigManager* GetConfigManager() const { return config_manager_; }
-    LogManager* GetLogger() const { return logger_; }
-    
-    // 공개 테스트 메서드들
-    void RunComprehensiveTest();
-};
-
-// =============================================================================
-// 🔧 구현부: protected 메서드들
-// =============================================================================
-
-bool Step5FixedIntegrationTest::SafeSystemInitialization() {
-    std::cout << "🎯 안전한 시스템 초기화 시작..." << std::endl;
-    
-    system_initialized_ = false;
-    repositories_ready_ = false;
-    alarm_system_ready_ = false;
-    
-    try {
-        // 1. 기본 시스템 참조 획득 (싱글톤 getInstance() 사용)
-        std::cout << "📋 기본 시스템 컴포넌트 참조..." << std::endl;
-        
+    void InitializeSystem() {
         config_manager_ = &ConfigManager::getInstance();
         logger_ = &LogManager::getInstance();
         db_manager_ = &DatabaseManager::getInstance();
         
-        if (!config_manager_ || !logger_ || !db_manager_) {
-            std::cout << "❌ 기본 시스템 컴포넌트 참조 실패" << std::endl;
-            return false;
-        }
-        
-        system_initialized_ = true;
-        std::cout << "✅ 기본 시스템 컴포넌트 준비됨" << std::endl;
-        
-        // 2. Repository 초기화 (싱글톤 getInstance() + initialize() 호출)
-        std::cout << "🗄️ Repository 시스템 초기화..." << std::endl;
-        
         repo_factory_ = &RepositoryFactory::getInstance();
-        if (!repo_factory_) {
-            std::cout << "❌ RepositoryFactory 참조 실패" << std::endl;
-            return false;
-        }
-        
-        // 🔧 핵심 수정: RepositoryFactory 수동 초기화 필요!
         if (!repo_factory_->isInitialized()) {
-            std::cout << "🔧 RepositoryFactory 초기화 중..." << std::endl;
-            if (!repo_factory_->initialize()) {
-                std::cout << "❌ RepositoryFactory 초기화 실패" << std::endl;
-                return false;
-            }
-            std::cout << "✅ RepositoryFactory 초기화 성공" << std::endl;
-        } else {
-            std::cout << "✅ RepositoryFactory 이미 초기화됨" << std::endl;
+            ASSERT_TRUE(repo_factory_->initialize()) << "RepositoryFactory 초기화 실패";
         }
         
-        // Repository 초기화는 이미 완료되어 있다고 가정
-        device_repo_ = repo_factory_->getDeviceRepository();
         alarm_occurrence_repo_ = repo_factory_->getAlarmOccurrenceRepository();
+        ASSERT_TRUE(alarm_occurrence_repo_) << "AlarmOccurrenceRepository 획득 실패";
         
-        if (device_repo_ && alarm_occurrence_repo_) {
-            repositories_ready_ = true;
-            std::cout << "✅ Repository 시스템 준비됨" << std::endl;
-        } else {
-            std::cout << "⚠️ 일부 Repository 없음 - 제한적 테스트 진행" << std::endl;
-        }
+        alarm_recovery_ = &AlarmStartupRecovery::getInstance();
         
-        // 3. 알람 시스템 참조 (싱글톤 getInstance() 사용)
-        std::cout << "🚨 알람 시스템 참조..." << std::endl;
-        
-        try {
-            alarm_recovery_ = &AlarmStartupRecovery::getInstance();
-            if (alarm_recovery_) {
-                alarm_system_ready_ = true;
-                std::cout << "✅ 알람 시스템 준비됨" << std::endl;
-            }
-        } catch (const std::exception& e) {
-            std::cout << "⚠️ 알람 시스템 참조 실패: " << e.what() << std::endl;
-            alarm_recovery_ = nullptr;
-        }
-        
-        std::cout << "🎯 안전한 시스템 초기화 완료" << std::endl;
-        return true;
-        
-    } catch (const std::exception& e) {
-        std::cout << "💥 시스템 초기화 중 예외: " << e.what() << std::endl;
-        return false;
+        std::cout << "✅ 시스템 초기화 완료" << std::endl;
     }
-}
 
-void Step5FixedIntegrationTest::SafeCleanup() {
-    std::cout << "🛡️ 안전한 정리 시작..." << std::endl;
-    
-    try {
-        // Redis 조작 없이 간단한 상태 확인만
-        if (alarm_recovery_ && alarm_recovery_->IsRecoveryCompleted()) {
-            std::cout << "📊 알람 복구 상태: 완료됨" << std::endl;
-        }
-        
-        // 포인터들 null로 설정 (delete 하지 않음 - 싱글톤이므로)
-        alarm_recovery_ = nullptr;
-        config_manager_ = nullptr;
-        logger_ = nullptr;
-        db_manager_ = nullptr;
-        repo_factory_ = nullptr;
-        
-        // shared_ptr는 자동 해제됨
-        device_repo_.reset();
-        alarm_occurrence_repo_.reset();
-        
-        std::cout << "🛡️ 안전한 정리 완료 - Redis 조작 없음" << std::endl;
-        
-    } catch (const std::exception& e) {
-        std::cout << "⚠️ 정리 중 예외 (무시): " << e.what() << std::endl;
-    }
-}
+    ConfigManager* config_manager_;
+    LogManager* logger_;
+    DatabaseManager* db_manager_;
+    RepositoryFactory* repo_factory_;
+    AlarmStartupRecovery* alarm_recovery_;
+    std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repo_;
+};
 
-void Step5FixedIntegrationTest::TestBasicSystemHealth() {
-    std::cout << "\n🔍 기본 시스템 상태 검증..." << std::endl;
+TEST_F(UpdatedAlarmConversionTest, Test_Direct_Enum_Conversion) {
+    std::cout << "\n🎯 === 직접 Enum 변환 테스트 ===" << std::endl;
     
-    // 시스템 컴포넌트 상태 확인
-    EXPECT_TRUE(system_initialized_) << "시스템 초기화 안됨";
-    EXPECT_TRUE(config_manager_) << "ConfigManager 없음";
-    EXPECT_TRUE(logger_) << "LogManager 없음";
-    EXPECT_TRUE(db_manager_) << "DatabaseManager 없음";
-    EXPECT_TRUE(repo_factory_) << "RepositoryFactory 없음";
+    // ==========================================================================
+    // 1. 수정된 enum 값 검증
+    // ==========================================================================
+    std::cout << "\n📊 === 수정된 Enum 매핑 검증 ===" << std::endl;
+    std::cout << "AlarmSeverity 매핑:" << std::endl;
+    std::cout << "  - INFO = " << static_cast<int>(AlarmSeverity::INFO) << " (should be 0)" << std::endl;
+    std::cout << "  - LOW = " << static_cast<int>(AlarmSeverity::LOW) << " (should be 1)" << std::endl;
+    std::cout << "  - MEDIUM = " << static_cast<int>(AlarmSeverity::MEDIUM) << " (should be 2)" << std::endl;
+    std::cout << "  - HIGH = " << static_cast<int>(AlarmSeverity::HIGH) << " (should be 3)" << std::endl;
+    std::cout << "  - CRITICAL = " << static_cast<int>(AlarmSeverity::CRITICAL) << " (should be 4)" << std::endl;
     
-    if (system_initialized_) {
-        std::cout << "✅ 기본 시스템 상태 정상" << std::endl;
-    }
-}
-
-void Step5FixedIntegrationTest::TestDatabaseConnectivity() {
-    std::cout << "\n🗄️ 데이터베이스 연결성 검증..." << std::endl;
+    std::cout << "\nAlarmState 매핑:" << std::endl;
+    std::cout << "  - INACTIVE = " << static_cast<int>(AlarmState::INACTIVE) << " (should be 0)" << std::endl;
+    std::cout << "  - ACTIVE = " << static_cast<int>(AlarmState::ACTIVE) << " (should be 1)" << std::endl;
+    std::cout << "  - ACKNOWLEDGED = " << static_cast<int>(AlarmState::ACKNOWLEDGED) << " (should be 2)" << std::endl;
+    std::cout << "  - CLEARED = " << static_cast<int>(AlarmState::CLEARED) << " (should be 3)" << std::endl;
     
-    if (!repositories_ready_) {
-        std::cout << "⚠️ Repository 준비 안됨 - DB 테스트 건너뜀" << std::endl;
-        return;
-    }
+    // 컴파일 타임 검증 (이미 AlarmTypes.h에 있음)
+    ASSERT_EQ(static_cast<int>(AlarmSeverity::INFO), 0);
+    ASSERT_EQ(static_cast<int>(AlarmSeverity::LOW), 1);
+    ASSERT_EQ(static_cast<int>(AlarmSeverity::MEDIUM), 2);
+    ASSERT_EQ(static_cast<int>(AlarmSeverity::HIGH), 3);
+    ASSERT_EQ(static_cast<int>(AlarmSeverity::CRITICAL), 4);
     
-    try {
-        // 디바이스 수 확인 (read-only)
-        if (device_repo_) {
-            auto all_devices = device_repo_->findAll();
-            std::cout << "📊 등록된 디바이스: " << all_devices.size() << "개" << std::endl;
-            EXPECT_GE(all_devices.size(), 0) << "디바이스 조회 실패";
-        }
-        
-        // 알람 수 확인 (read-only)
-        if (alarm_occurrence_repo_) {
-            auto all_alarms = alarm_occurrence_repo_->findActive();
-            std::cout << "🚨 활성 알람: " << all_alarms.size() << "개" << std::endl;
-            EXPECT_GE(all_alarms.size(), 0) << "알람 조회 실패";
-        }
-        
-        std::cout << "✅ 데이터베이스 연결성 정상" << std::endl;
-        
-    } catch (const std::exception& e) {
-        std::cout << "💥 DB 연결성 테스트 중 예외: " << e.what() << std::endl;
-        FAIL() << "데이터베이스 연결 문제";
-    }
-}
-
-void Step5FixedIntegrationTest::TestAlarmSystemBasics() {
-    std::cout << "\n🚨 알람 시스템 기본 동작 검증..." << std::endl;
+    ASSERT_EQ(static_cast<int>(AlarmState::INACTIVE), 0);
+    ASSERT_EQ(static_cast<int>(AlarmState::ACTIVE), 1);
+    ASSERT_EQ(static_cast<int>(AlarmState::ACKNOWLEDGED), 2);
+    ASSERT_EQ(static_cast<int>(AlarmState::CLEARED), 3);
     
-    if (!alarm_system_ready_) {
-        std::cout << "⚠️ 알람 시스템 준비 안됨 - 테스트 건너뜀" << std::endl;
-        return;
-    }
+    std::cout << "✅ Enum 매핑 검증 통과" << std::endl;
     
-    try {
-        // 알람 복구 시스템 상태만 확인 (실행하지 않음)
-        bool is_enabled = alarm_recovery_->IsRecoveryEnabled();
-        bool is_completed = alarm_recovery_->IsRecoveryCompleted();
-        
-        std::cout << "📊 알람 복구 상태:" << std::endl;
-        std::cout << "  - 활성화: " << (is_enabled ? "예" : "아니오") << std::endl;
-        std::cout << "  - 완료: " << (is_completed ? "예" : "아니오") << std::endl;
-        
-        // 통계 확인 (안전)
-        auto stats = alarm_recovery_->GetRecoveryStats();
-        std::cout << "📊 복구 통계:" << std::endl;
-        std::cout << "  - 총 활성 알람: " << stats.total_active_alarms << "개" << std::endl;
-        std::cout << "  - 성공 발행: " << stats.successfully_published << "개" << std::endl;
-        std::cout << "  - 실패: " << stats.failed_to_publish << "개" << std::endl;
-        
-        // 기본 검증
-        EXPECT_TRUE(alarm_recovery_) << "AlarmStartupRecovery 인스턴스 없음";
-        
-        std::cout << "✅ 알람 시스템 기본 동작 정상" << std::endl;
-        
-    } catch (const std::exception& e) {
-        std::cout << "💥 알람 시스템 테스트 중 예외: " << e.what() << std::endl;
-    }
-}
-
-void Step5FixedIntegrationTest::TestMinimalRedisOperations() {
-    std::cout << "\n🔍 최소한의 Redis 연결 확인..." << std::endl;
+    // ==========================================================================
+    // 2. DB에서 활성 알람 가져오기
+    // ==========================================================================
+    auto active_alarms = alarm_occurrence_repo_->findActive();
+    ASSERT_GT(active_alarms.size(), 0) << "활성 알람이 없어서 테스트 불가능";
     
-    try {
-        // DatabaseManager를 통한 Redis 상태 확인 (가장 안전)
-        if (db_manager_) {
-            // Redis 연결 상태만 확인 (조작하지 않음)
-            std::cout << "📊 DB 관리자를 통한 연결 상태 확인..." << std::endl;
-            std::cout << "✅ Redis 상태 확인 완료 (조작 없음)" << std::endl;
-        } else {
-            std::cout << "⚠️ DatabaseManager 없음 - Redis 테스트 건너뜀" << std::endl;
-        }
-        
-    } catch (const std::exception& e) {
-        std::cout << "⚠️ Redis 확인 중 예외: " << e.what() << " (무시)" << std::endl;
-    }
-}
-
-void Step5FixedIntegrationTest::TestAlarmRecoveryLogic() {
-    std::cout << "\n🔄 알람 복구 로직 검증..." << std::endl;
+    const auto& test_alarm = active_alarms[0];
     
-    if (!alarm_system_ready_ || !repositories_ready_) {
-        std::cout << "⚠️ 시스템 준비 안됨 - 알람 복구 테스트 건너뜀" << std::endl;
-        return;
-    }
+    std::cout << "\n📋 === 테스트 알람 정보 ===" << std::endl;
+    std::cout << "DB 알람 ID: " << test_alarm.getId() << std::endl;
+    std::cout << "Rule ID: " << test_alarm.getRuleId() << std::endl;
+    std::cout << "Tenant ID: " << test_alarm.getTenantId() << std::endl;
     
-    try {
-        // DB에서 활성 알람만 확인 (Redis 조작 없음)
-        auto active_alarms = alarm_occurrence_repo_->findActive();
-        std::cout << "📊 DB의 활성 알람: " << active_alarms.size() << "개" << std::endl;
-        
-        if (active_alarms.empty()) {
-            std::cout << "ℹ️ 활성 알람 없음 - 복구 로직 준비됨" << std::endl;
-            std::cout << "✅ 알람 복구 로직 준비됨 (실행하지 않음)" << std::endl;
-            return;
-        }
-        
-        // 활성 알람이 있는 경우 정보만 출력
-        std::cout << "📋 활성 알람 정보:" << std::endl;
-        for (size_t i = 0; i < std::min(active_alarms.size(), size_t(3)); ++i) {
-            const auto& alarm = active_alarms[i];
-            std::cout << "  🚨 알람 " << (i+1) << ": " 
-                      << "Rule=" << alarm.getRuleId() 
-                      << ", Severity=" << alarm.getSeverityString()
-                      << ", State=" << alarm.getStateString() << std::endl;
-        }
-        
-        if (active_alarms.size() > 3) {
-            std::cout << "  ... 그 외 " << (active_alarms.size() - 3) << "개 더" << std::endl;
-        }
-        
-        // 복구 시스템 준비 상태만 확인 (실제 복구 실행하지 않음)
-        bool recovery_enabled = alarm_recovery_->IsRecoveryEnabled();
-        std::cout << "🔧 복구 시스템 상태: " << (recovery_enabled ? "활성화" : "비활성화") << std::endl;
-        
-        EXPECT_TRUE(recovery_enabled) << "알람 복구 시스템 비활성화됨";
-        
-        std::cout << "✅ 알람 복구 로직 검증 완료 (실행 없이 검증만)" << std::endl;
-        
-    } catch (const std::exception& e) {
-        std::cout << "💥 알람 복구 검증 중 예외: " << e.what() << std::endl;
-    }
-}
-
-void Step5FixedIntegrationTest::RunComprehensiveTest() {
-    std::cout << "\n🎯 종합 테스트 실행..." << std::endl;
+    // ==========================================================================
+    // 3. 수정된 직접 변환 방식 테스트
+    // ==========================================================================
+    auto raw_severity_enum = test_alarm.getSeverity();
+    auto raw_state_enum = test_alarm.getState();
     
-    // Phase 1: 기본 시스템
-    TestBasicSystemHealth();
+    // 🎯 새로운 방식: enum 직접 변환
+    int converted_severity = static_cast<int>(raw_severity_enum);
+    int converted_state = static_cast<int>(raw_state_enum);
     
-    // Phase 2: 데이터베이스
-    TestDatabaseConnectivity();
+    std::cout << "\n🔧 === 직접 변환 결과 ===" << std::endl;
+    std::cout << "Raw Severity Enum → Int: " << static_cast<int>(raw_severity_enum) << " → " << converted_severity << std::endl;
+    std::cout << "Raw State Enum → Int: " << static_cast<int>(raw_state_enum) << " → " << converted_state << std::endl;
     
-    // Phase 3: Redis (최소한)
-    TestMinimalRedisOperations();
+    // 문자열 변환도 확인 (로그용)
+    std::string severity_str = PulseOne::Alarm::severityToString(raw_severity_enum);
+    std::string state_str = PulseOne::Alarm::stateToString(raw_state_enum);
     
-    // Phase 4: 알람 시스템
-    TestAlarmSystemBasics();
+    std::cout << "Severity 문자열: " << severity_str << std::endl;
+    std::cout << "State 문자열: " << state_str << std::endl;
     
-    // Phase 5: 복구 로직
-    TestAlarmRecoveryLogic();
+    // ==========================================================================
+    // 4. BackendFormat 변환 시뮬레이션
+    // ==========================================================================
+    std::cout << "\n🔄 === BackendFormat 변환 시뮬레이션 ===" << std::endl;
     
-    std::cout << "\n🏆 종합 테스트 완료" << std::endl;
-}
-
-// =============================================================================
-// 🔧 수정된 메인 테스트들 (Protected 멤버 접근 가능)
-// =============================================================================
-
-TEST_F(Step5FixedIntegrationTest, Fixed_Integration_Test) {
-    std::cout << "\n🛡️ === Step5 수정된 통합 테스트 === " << std::endl;
-    std::cout << "목표: Private 접근 문제 해결 후 시스템 검증" << std::endl;
+    Storage::BackendFormat::AlarmEventData backend_alarm;
+    backend_alarm.occurrence_id = test_alarm.getId();
+    backend_alarm.rule_id = test_alarm.getRuleId();
+    backend_alarm.tenant_id = test_alarm.getTenantId();
+    backend_alarm.message = test_alarm.getAlarmMessage();
+    backend_alarm.device_id = test_alarm.getDeviceId();
+    backend_alarm.point_id = test_alarm.getPointId();
     
-    // 전체 테스트 실행
-    RunComprehensiveTest();
+    // 🎯 핵심: enum을 직접 int로 변환
+    backend_alarm.severity = converted_severity;
+    backend_alarm.state = converted_state;
     
-    // 🔧 수정: protected 멤버 접근 (이제 컴파일 에러 없음)
-    std::cout << "\n📊 === 최종 테스트 결과 ===" << std::endl;
-    std::cout << "✅ 시스템 초기화: " << (system_initialized_ ? "성공" : "실패") << std::endl;
-    std::cout << "✅ Repository 준비: " << (repositories_ready_ ? "성공" : "실패") << std::endl;
-    std::cout << "✅ 알람 시스템: " << (alarm_system_ready_ ? "성공" : "실패") << std::endl;
+    // 시간 변환
+    auto duration = test_alarm.getOccurrenceTime().time_since_epoch();
+    backend_alarm.occurred_at = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
     
-    // 기본 검증
-    EXPECT_TRUE(system_initialized_) << "시스템 초기화 실패";
+    std::cout << "변환된 BackendFormat:" << std::endl;
+    std::cout << "  - occurrence_id: " << backend_alarm.occurrence_id << std::endl;
+    std::cout << "  - rule_id: " << backend_alarm.rule_id << std::endl;
+    std::cout << "  - severity: " << backend_alarm.severity << std::endl;
+    std::cout << "  - state: " << backend_alarm.state << std::endl;
+    std::cout << "  - tenant_id: " << backend_alarm.tenant_id << std::endl;
     
-    // 성공 조건 (관대한 기준)
-    bool overall_success = system_initialized_ && 
-                          (repositories_ready_ || alarm_system_ready_);
+    // ==========================================================================
+    // 5. Redis 저장 조건 검증
+    // ==========================================================================
+    std::cout << "\n🔍 === Redis 저장 조건 검증 ===" << std::endl;
     
-    EXPECT_TRUE(overall_success) << "전체 시스템 준비 실패";
+    // RedisDataWriter::PublishAlarmEvent()의 조건들
+    bool state_condition = (backend_alarm.state == 1);  // ACTIVE
+    bool severity_critical = (backend_alarm.severity >= 4);  // CRITICAL 이상
+    bool severity_high = (backend_alarm.severity >= 3);  // HIGH 이상
     
-    if (overall_success) {
-        std::cout << "\n🎉 === Step5 수정된 통합 테스트 성공! ===" << std::endl;
-        std::cout << "🛡️ Private 접근 문제 해결됨" << std::endl;
-        std::cout << "✅ 시스템 기본 동작 확인됨" << std::endl;
-        std::cout << "🚀 Frontend 연결 준비 상태" << std::endl;
+    std::cout << "조건 검사:" << std::endl;
+    std::cout << "  - State == 1 (ACTIVE): " << (state_condition ? "✅ 통과" : "❌ 실패") << std::endl;
+    std::cout << "  - Severity >= 4 (CRITICAL): " << (severity_critical ? "✅ 통과" : "❌ 실패") << std::endl;
+    std::cout << "  - Severity >= 3 (HIGH+): " << (severity_high ? "✅ 통과" : "❌ 실패") << std::endl;
+    
+    std::cout << "\n예상 Redis 동작:" << std::endl;
+    if (state_condition) {
+        std::cout << "  ✅ alarm:active:" << backend_alarm.rule_id << " 키 저장될 예정" << std::endl;
     } else {
-        std::cout << "\n⚠️ === Step5 부분 성공 ===" << std::endl;
-        std::cout << "기본 시스템은 동작하지만 일부 제한사항 있음" << std::endl;
+        std::cout << "  ❌ 활성 알람 키 저장 안됨 (state != 1)" << std::endl;
     }
-}
-
-TEST_F(Step5FixedIntegrationTest, Database_Only_Test) {
-    std::cout << "\n🗄️ === 데이터베이스 전용 테스트 ===" << std::endl;
     
-    // 🔧 수정: protected 메서드 접근 (이제 컴파일 에러 없음)
-    TestDatabaseConnectivity();
-    
-    // 🔧 수정: protected 멤버 접근 (이제 컴파일 에러 없음)
-    EXPECT_TRUE(repositories_ready_) << "데이터베이스 시스템 실패";
-    
-    if (repositories_ready_) {
-        std::cout << "✅ 데이터베이스 시스템 완전 동작" << std::endl;
-    }
-}
-
-TEST_F(Step5FixedIntegrationTest, Alarm_System_Only_Test) {
-    std::cout << "\n🚨 === 알람 시스템 전용 테스트 ===" << std::endl;
-    
-    // 🔧 수정: protected 메서드 접근 (이제 컴파일 에러 없음)
-    TestAlarmSystemBasics();
-    
-    // 알람 시스템 기본 검증
-    if (alarm_system_ready_) {
-        // 🔧 수정: protected 멤버 접근 (이제 컴파일 에러 없음)
-        auto stats = alarm_recovery_->GetRecoveryStats();
-        
-        // 통계 출력
-        std::cout << "📊 현재 알람 복구 통계:" << std::endl;
-        std::cout << "  - 마지막 복구 시간: " << stats.last_recovery_time << std::endl;
-        std::cout << "  - 마지막 오류: " << (stats.last_error.empty() ? "없음" : stats.last_error) << std::endl;
-        
-        EXPECT_TRUE(alarm_system_ready_) << "알람 시스템 실패";
-        std::cout << "✅ 알람 시스템 완전 동작" << std::endl;
+    if (severity_critical) {
+        std::cout << "  ✅ alarms:critical 채널 발행될 예정" << std::endl;
+    } else if (severity_high) {
+        std::cout << "  ✅ alarms:high 채널 발행될 예정" << std::endl;
     } else {
-        std::cout << "⚠️ 알람 시스템 사용 불가" << std::endl;
+        std::cout << "  💡 특별 채널 발행 안됨 (일반 alarms:all만)" << std::endl;
     }
-}
-
-TEST_F(Step5FixedIntegrationTest, System_Readiness_Check) {
-    std::cout << "\n🎯 === 시스템 준비도 종합 검사 ===" << std::endl;
     
-    // 전체 검증
-    RunComprehensiveTest();
+    // ==========================================================================
+    // 6. 실제 AlarmStartupRecovery 호출 테스트
+    // ==========================================================================
+    std::cout << "\n🚀 === 실제 Recovery 변환 테스트 ===" << std::endl;
     
-    // 준비도 계산
-    int readiness_score = 0;
-    int max_score = 4;
+    try {
+        // private 메서드이므로 직접 호출은 불가능하지만, 전체 복구 과정을 통해 검증
+        size_t recovered_count = alarm_recovery_->RecoverActiveAlarms();
+        
+        std::cout << "Recovery 실행 결과: " << recovered_count << "개 복구됨" << std::endl;
+        
+        auto recovery_stats = alarm_recovery_->GetRecoveryStats();
+        std::cout << "Recovery 통계:" << std::endl;
+        std::cout << "  - 총 활성 알람: " << recovery_stats.total_active_alarms << std::endl;
+        std::cout << "  - 성공 발행: " << recovery_stats.successfully_published << std::endl;
+        std::cout << "  - 실패: " << recovery_stats.failed_to_publish << std::endl;
+        
+        EXPECT_GT(recovery_stats.successfully_published, 0) << "최소 1개 알람은 성공해야 함";
+        
+    } catch (const std::exception& e) {
+        std::cout << "Recovery 실행 중 예외: " << e.what() << std::endl;
+        FAIL() << "Recovery 실행 실패";
+    }
     
-    // 🔧 수정: protected 멤버 접근 (이제 컴파일 에러 없음)
-    if (system_initialized_) readiness_score++;
-    if (repositories_ready_) readiness_score++;
-    if (alarm_system_ready_) readiness_score++;
-    if (config_manager_ && logger_) readiness_score++;
+    // ==========================================================================
+    // 7. 최종 결론
+    // ==========================================================================
+    std::cout << "\n🎯 === 최종 결론 ===" << std::endl;
     
-    double readiness_percent = (double)readiness_score / max_score * 100.0;
+    bool conversion_success = true;
+    std::vector<std::string> issues;
     
-    std::cout << "\n📊 === 시스템 준비도 ===" << std::endl;
-    std::cout << "점수: " << readiness_score << "/" << max_score 
-              << " (" << std::fixed << std::setprecision(1) << readiness_percent << "%)" << std::endl;
+    if (converted_severity < 0 || converted_severity > 4) {
+        conversion_success = false;
+        issues.push_back("Severity 변환값 범위 초과: " + std::to_string(converted_severity));
+    }
     
-    if (readiness_percent >= 75.0) {
-        std::cout << "🎉 시스템 준비 완료! Frontend 사용 가능" << std::endl;
-    } else if (readiness_percent >= 50.0) {
-        std::cout << "⚠️ 시스템 부분 준비 - 제한적 사용 가능" << std::endl;
+    if (converted_state < 0 || converted_state > 3) {
+        conversion_success = false;
+        issues.push_back("State 변환값 범위 초과: " + std::to_string(converted_state));
+    }
+    
+    if (!state_condition) {
+        issues.push_back("ACTIVE 상태가 아님 (Redis 키 저장 안됨)");
+    }
+    
+    if (conversion_success && issues.empty()) {
+        std::cout << "✅ 모든 변환이 성공적으로 완료됨!" << std::endl;
+        std::cout << "✅ Redis 저장 조건 만족" << std::endl;
+        std::cout << "🚀 새로운 enum 직접 변환 방식이 정상 동작함!" << std::endl;
     } else {
-        std::cout << "❌ 시스템 준비 부족 - 설정 확인 필요" << std::endl;
+        std::cout << "⚠️ 발견된 이슈들:" << std::endl;
+        for (const auto& issue : issues) {
+            std::cout << "  - " << issue << std::endl;
+        }
     }
     
-    // 관대한 검증 (50% 이상이면 통과)
-    EXPECT_GE(readiness_percent, 50.0) << "시스템 준비도 부족";
-    
-    // 🎯 실제 테스트 목적 달성
-    if (readiness_percent >= 75.0) {
-        std::cout << "\n🏆 === Step5 핵심 목표 달성 ===" << std::endl;
-        std::cout << "✅ DB-Redis 데이터 플로우 동작 확인" << std::endl;
-        std::cout << "✅ 알람 복구 및 Pub/Sub 준비 완료" << std::endl;
-        std::cout << "✅ Frontend 연결 준비 상태 검증" << std::endl;
-        std::cout << "🚀 실제 사용자 서비스 준비 완료!" << std::endl;
-    }
+    std::cout << "\n📋 === 테스트 완료 ===" << std::endl;
 }

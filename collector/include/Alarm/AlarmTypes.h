@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Alarm/AlarmTypes.h
-// PulseOne 알람 시스템 - 공통 타입 정의 (컴파일 에러 완전 해결)
+// PulseOne 알람 시스템 - 공통 타입 정의 (완성본)
 // =============================================================================
 
 #ifndef ALARM_TYPES_H
@@ -14,14 +14,14 @@
 #include <variant>
 #include <nlohmann/json.hpp>
 
-// 🔥 기존 프로젝트 타입들 import (필수!)
+// 기존 프로젝트 타입들 import
 #include "Common/BasicTypes.h"
 
 namespace PulseOne {
 namespace Alarm {
 
 // =============================================================================
-// 🎯 기존 프로젝트 타입 별칭들 (추가된 부분)
+// 기존 프로젝트 타입 별칭들
 // =============================================================================
 using UUID = PulseOne::BasicTypes::UUID;
 using Timestamp = PulseOne::BasicTypes::Timestamp;
@@ -29,26 +29,26 @@ using DataValue = PulseOne::BasicTypes::DataVariant;
 using JsonType = nlohmann::json;
 
 // =============================================================================
-// 🎯 열거형 타입들 (기존 유지 + 누락된 값 추가)
+// 열거형 타입들 - enum 값 수정 완료
 // =============================================================================
 
-// 알람 타입 정의 (COMMUNICATION, QUALITY 추가!)
+// 알람 타입 정의
 enum class AlarmType : uint8_t {
     ANALOG = 0,
     DIGITAL = 1,
     SCRIPT = 2,
     COMPOUND = 3,
-    COMMUNICATION = 4,   // 🔥 추가됨
-    QUALITY = 5          // 🔥 추가됨
+    COMMUNICATION = 4,
+    QUALITY = 5
 };
 
-// 알람 심각도
+// 알람 심각도 - 백엔드 표준에 맞게 수정
 enum class AlarmSeverity : uint8_t {
-    CRITICAL = 0,
-    HIGH = 1,
-    MEDIUM = 2,
-    LOW = 3,
-    INFO = 4
+    INFO = 0,        // 0=INFO (가장 낮은 심각도)
+    LOW = 1,         // 1=LOW
+    MEDIUM = 2,      // 2=MEDIUM (기본값)
+    HIGH = 3,        // 3=HIGH
+    CRITICAL = 4     // 4=CRITICAL (가장 높은 심각도)
 };
 
 // 알람 상태
@@ -73,9 +73,9 @@ enum class DigitalTrigger : uint8_t {
 // 대상 타입
 enum class TargetType : uint8_t {
     UNKNOWN = 255,
-    DATA_POINT = 0,     // 데이터 포인트
-    VIRTUAL_POINT = 1,  // 가상 포인트
-    GROUP = 2           // 그룹
+    DATA_POINT = 0,
+    VIRTUAL_POINT = 1,
+    GROUP = 2
 };
 
 // 아날로그 레벨
@@ -110,59 +110,40 @@ enum class TriggerCondition : uint8_t {
     RATE_CHANGE = 8
 };
 
-/**
- * @brief 알람 이벤트 구조체
- * @details RabbitMQ로 전송되는 알람 정보
- */    
 // =============================================================================
-// 🚨 경고 해결된 AlarmEvent 구조체 - PulseOne 알람 시스템 통합 (기존 유지!)
+// AlarmEvent 구조체 - 수정된 enum 기본값 적용
 // =============================================================================
 
 struct AlarmEvent {
-    // =============================================================================
-    // 🎯 핵심 식별자 및 연결 (기존 그대로!)
-    // =============================================================================
-    UUID device_id;                    // 디바이스 UUID
-    int point_id = 0;                  // ✅ 원래대로 int 유지! (TimestampedValue.point_id와 일치)
-    int rule_id = 0;                   // 알람 규칙 ID
-    int occurrence_id = 0;             // 알람 발생 ID (0 = 신규)
+    // 핵심 식별자 및 연결
+    UUID device_id;
+    int point_id = 0;
+    int rule_id = 0;
+    int occurrence_id = 0;
     
-    // =============================================================================
-    // 🎯 알람 데이터 및 상태 (기존 그대로!)
-    // =============================================================================
-    DataValue current_value;           // 현재 값
-    double threshold_value = 0.0;      // 임계값
-    
-    // ✅ enum 타입으로 변경 + 변환 함수 제공
+    // 알람 데이터 및 상태
+    DataValue current_value;
+    double threshold_value = 0.0;
     TriggerCondition trigger_condition = TriggerCondition::NONE;
     
-    // =============================================================================
-    // 🎯 알람 메타데이터 (기존 그대로!)
-    // =============================================================================
-    AlarmType alarm_type = AlarmType::ANALOG;           // ✅ enum 타입
-    std::string message;                                // 알람 메시지
-    AlarmSeverity severity = AlarmSeverity::INFO;       // ✅ enum 타입 (기존)
-    AlarmState state = AlarmState::ACTIVE;              // ✅ enum 타입
+    // 알람 메타데이터 - 수정된 기본값
+    AlarmType alarm_type = AlarmType::ANALOG;
+    std::string message;
+    AlarmSeverity severity = AlarmSeverity::MEDIUM;  // 기본값: MEDIUM (enum 값 2)
+    AlarmState state = AlarmState::ACTIVE;
     
-    // =============================================================================
-    // 🎯 시간 정보 (기존 그대로!)
-    // =============================================================================
-    Timestamp timestamp;               // 기존 타임스탬프 (현재 시간)
-    Timestamp occurrence_time;         // 실제 알람 발생 시간
+    // 시간 정보
+    Timestamp timestamp;
+    Timestamp occurrence_time;
     
-    // =============================================================================
-    // 🎯 추가 컨텍스트 정보 (기존 그대로!)
-    // =============================================================================
-    std::string source_name;           // 소스 이름 (디바이스명 등)
-    std::string location;              // 위치 정보
-    int tenant_id = 1;                 // 테넌트 ID
+    // 추가 컨텍스트 정보
+    std::string source_name;
+    std::string location;
+    int tenant_id = 1;
+    DataValue trigger_value;
+    bool condition_met = false;
     
-    DataValue trigger_value;           // ✅ DataValue 타입 유지 (일관성)
-    bool condition_met = false;        // bool 타입 유지
-    
-    // =============================================================================
-    // 🎯 생성자들 (기존 그대로!)
-    // =============================================================================
+    // 생성자들
     AlarmEvent() : timestamp(std::chrono::system_clock::now()),
                 occurrence_time(std::chrono::system_clock::now()) {}
     
@@ -170,63 +151,51 @@ struct AlarmEvent {
             const DataValue& value, AlarmSeverity sev,
             const std::string& msg, AlarmType type = AlarmType::ANALOG) 
         : device_id(dev_id), 
-        point_id(pt_id),              // ✅ int 타입
+        point_id(pt_id),
         current_value(value),
-        alarm_type(type),             // ✅ enum 직접 할당
+        alarm_type(type),
         message(msg),
-        severity(sev),                // ✅ enum 직접 할당
-        state(AlarmState::ACTIVE),    // ✅ enum 직접 할당
+        severity(sev),
+        state(AlarmState::ACTIVE),
         timestamp(std::chrono::system_clock::now()),
         occurrence_time(std::chrono::system_clock::now()) {}
     
-    // =============================================================================
-    // 🎯 타입 변환 헬퍼 메서드들 (기존 그대로! COMMUNICATION, QUALITY 추가)
-    // =============================================================================
-    
-    /**
-     * @brief 심각도를 문자열로 반환
-     */
+    // 타입 변환 헬퍼 메서드들 - 수정된 enum 순서 반영
     std::string getSeverityString() const {
         switch(severity) {
-            case AlarmSeverity::CRITICAL: return "CRITICAL";
-            case AlarmSeverity::HIGH: return "HIGH";
-            case AlarmSeverity::MEDIUM: return "MEDIUM";
-            case AlarmSeverity::LOW: return "LOW";
             case AlarmSeverity::INFO: return "INFO";
-            default: return "UNKNOWN";
+            case AlarmSeverity::LOW: return "LOW";
+            case AlarmSeverity::MEDIUM: return "MEDIUM";
+            case AlarmSeverity::HIGH: return "HIGH";
+            case AlarmSeverity::CRITICAL: return "CRITICAL";
+            default: return "MEDIUM";
         }
     }
     
-    /**
-     * @brief 알람 타입을 문자열로 반환 (COMMUNICATION, QUALITY 추가!)
-     */
     std::string getAlarmTypeString() const {
         switch(alarm_type) {
             case AlarmType::ANALOG: return "ANALOG";
             case AlarmType::DIGITAL: return "DIGITAL";
-            case AlarmType::COMMUNICATION: return "COMMUNICATION";  // 🔥 추가
-            case AlarmType::QUALITY: return "QUALITY";              // 🔥 추가
             case AlarmType::SCRIPT: return "SCRIPT";
             case AlarmType::COMPOUND: return "COMPOUND";
-            default: return "UNKNOWN";
+            case AlarmType::COMMUNICATION: return "COMMUNICATION";
+            case AlarmType::QUALITY: return "QUALITY";
+            default: return "ANALOG";
         }
     }
     
-    /**
-     * @brief 알람 상태를 문자열로 반환
-     */
     std::string getStateString() const {
         switch(state) {
+            case AlarmState::INACTIVE: return "INACTIVE";
             case AlarmState::ACTIVE: return "ACTIVE";
             case AlarmState::ACKNOWLEDGED: return "ACKNOWLEDGED";
             case AlarmState::CLEARED: return "CLEARED";
-            default: return "UNKNOWN";
+            case AlarmState::SUPPRESSED: return "SUPPRESSED";
+            case AlarmState::SHELVED: return "SHELVED";
+            default: return "ACTIVE";
         }
     }
     
-    /**
-     * @brief 트리거 조건을 문자열로 반환
-     */
     std::string getTriggerConditionString() const {
         switch(trigger_condition) {
             case TriggerCondition::HIGH: return "HIGH";
@@ -242,9 +211,6 @@ struct AlarmEvent {
         }
     }
     
-    /**
-     * @brief trigger_value를 문자열로 반환
-     */
     std::string getTriggerValueString() const {
         return std::visit([](const auto& v) -> std::string {
             if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>) {
@@ -257,49 +223,32 @@ struct AlarmEvent {
         }, trigger_value);
     }
     
-    // =============================================================================
-    // 🎯 기존 헬퍼 메서드들 (그대로 유지!)
-    // =============================================================================
+    // 헬퍼 메서드들
+    bool isNewOccurrence() const { return occurrence_id == 0; }
+    bool isActive() const { return state == AlarmState::ACTIVE; }
+    bool isCleared() const { return state == AlarmState::CLEARED; }
     
-    bool isNewOccurrence() const {
-        return occurrence_id == 0;
-    }
-    
-    bool isActive() const {
-        return state == AlarmState::ACTIVE;
-    }
-    
-    bool isCleared() const {
-        return state == AlarmState::CLEARED;
-    }
-    
-    /**
-     * @brief 심각도 수치 반환 (정렬용)
-     */
+    // 심각도 수치 반환 (정렬용) - 수정된 enum 값 반영
     int getSeverityLevel() const {
         switch(severity) {
-            case AlarmSeverity::CRITICAL: return 5;
-            case AlarmSeverity::HIGH: return 4;
-            case AlarmSeverity::MEDIUM: return 3;
-            case AlarmSeverity::LOW: return 2;
-            case AlarmSeverity::INFO: return 1;
-            default: return 0;
+            case AlarmSeverity::CRITICAL: return 4;  // 가장 높음
+            case AlarmSeverity::HIGH: return 3;
+            case AlarmSeverity::MEDIUM: return 2;
+            case AlarmSeverity::LOW: return 1;
+            case AlarmSeverity::INFO: return 0;      // 가장 낮음
+            default: return 2;
         }
     }
     
-    // =============================================================================
-    // 🎯 JSON 직렬화 (기존 그대로! JsonType 사용)
-    // =============================================================================
+    // JSON 직렬화
     std::string ToJSON() const {
         JsonType j;
         
-        // 기본 정보
         j["device_id"] = device_id;
         j["point_id"] = point_id;
         j["rule_id"] = rule_id;
         j["occurrence_id"] = occurrence_id;
         
-        // enum → string 변환
         j["severity"] = getSeverityString();
         j["alarm_type"] = getAlarmTypeString();
         j["state"] = getStateString();
@@ -307,23 +256,14 @@ struct AlarmEvent {
         
         j["message"] = message;
         j["threshold_value"] = threshold_value;
-        
-        // 추가 정보
         j["source_name"] = source_name;
         j["location"] = location;
         j["tenant_id"] = tenant_id;
         j["condition_met"] = condition_met;
         
-        // variant 값 처리
-        std::visit([&j](const auto& v) {
-            j["current_value"] = v;
-        }, current_value);
+        std::visit([&j](const auto& v) { j["current_value"] = v; }, current_value);
+        std::visit([&j](const auto& v) { j["trigger_value"] = v; }, trigger_value);
         
-        std::visit([&j](const auto& v) {
-            j["trigger_value"] = v;
-        }, trigger_value);
-        
-        // 타임스탬프를 ISO 문자열로 변환
         auto convertTimestamp = [](const Timestamp& ts) -> std::string {
             auto time_t = std::chrono::system_clock::to_time_t(ts);
             std::tm tm_buf;
@@ -345,25 +285,21 @@ struct AlarmEvent {
 };
 
 // =============================================================================
-// 기존 구조체들 모두 그대로 유지!
+// 기존 구조체들 - 그대로 유지
 // =============================================================================
 
-// 알람 규칙 정의 (기존 그대로!)
 struct AlarmRule {
     int id = 0;
     int tenant_id = 0;
     std::string name;
     std::string description;
     
-    // 대상
     std::string target_type;
     int target_id = 0;
     std::string target_group;
     
-    // 타입별 설정
     AlarmType alarm_type = AlarmType::ANALOG;
     
-    // 아날로그 설정
     struct AnalogLimits {
         std::optional<double> high_high;
         std::optional<double> high;
@@ -372,43 +308,34 @@ struct AlarmRule {
         double deadband = 0.0;
     } analog_limits;
     
-    // 디지털 설정
     DigitalTrigger digital_trigger = DigitalTrigger::ON_CHANGE;
     std::map<int, std::string> state_messages;
     
-    // 스크립트
     std::string condition_script;
     std::string message_script;
     
-    // 메시지
     nlohmann::json message_config;
     std::string message_template;
     
-    // 우선순위
     AlarmSeverity severity = AlarmSeverity::MEDIUM;
     int priority = 100;
     
-    // 자동 처리
     bool auto_acknowledge = false;
     std::chrono::minutes acknowledge_timeout{0};
     bool auto_clear = true;
     
-    // 알림
     bool notification_enabled = true;
     std::chrono::seconds notification_delay{0};
     std::vector<std::string> notification_channels;
     
-    // 상태
     bool is_enabled = true;
     bool is_latched = false;
     
-    // 런타임 상태
     mutable AnalogAlarmLevel last_analog_level = AnalogAlarmLevel::NORMAL;
     mutable bool last_digital_state = false;
     mutable std::optional<double> last_value;
 };
 
-// 알람 발생 정보 (기존 그대로!)
 struct AlarmOccurrence {
     int64_t id = 0;
     int rule_id = 0;
@@ -421,85 +348,50 @@ struct AlarmOccurrence {
     AlarmSeverity severity;
     AlarmState state = AlarmState::ACTIVE;
     
-    // 확인 정보
     std::optional<std::chrono::system_clock::time_point> acknowledged_time;
     std::optional<int> acknowledged_by;
     std::string acknowledge_comment;
     
-    // 해제 정보
     std::optional<std::chrono::system_clock::time_point> cleared_time;
     std::optional<nlohmann::json> cleared_value;
     
-    // 컨텍스트
     nlohmann::json context_data;
 };
 
-// 알람 평가 결과 (기존 그대로!)
 struct AlarmEvaluation {
-    // =============================================================================
-    // 🎯 기본 평가 결과 (기존 유지)
-    // =============================================================================
     bool should_trigger = false;
     bool should_clear = false;
     bool state_changed = false;
     
-    // =============================================================================
-    // 🎯 아날로그 알람 레벨 (기존 유지)
-    // =============================================================================
     AnalogAlarmLevel analog_level = AnalogAlarmLevel::NORMAL;
     
-    // =============================================================================
-    // 🎯 조건 및 메시지 (기존 유지)
-    // =============================================================================
-    std::string condition_met;           // ✅ 기존 string 필드 유지
-    std::string message;                 // ✅ 기존 string 필드 유지
+    std::string condition_met;
+    std::string message;
     
-    // =============================================================================
-    // 🎯 심각도 (기존 enum 유지)
-    // =============================================================================
-    AlarmSeverity severity = AlarmSeverity::MEDIUM;  // ✅ 기존 enum 유지
+    AlarmSeverity severity = AlarmSeverity::MEDIUM;
     
-    // =============================================================================
-    // 🎯 컨텍스트 데이터 (기존 유지)
-    // =============================================================================
-    nlohmann::json context_data;        // ✅ 기존 JSON 필드 유지
+    nlohmann::json context_data;
     
-    // =============================================================================
-    // 🎯 추가 필드들 - 기존 코드 호환성 (모두 유지)
-    // =============================================================================
-    std::string triggered_value;        // ✅ 기존 string 필드 유지
-    std::string alarm_level;            // ✅ 기존 string 필드 유지
-    std::chrono::microseconds evaluation_time{0};  // ✅ 기존 시간 필드 유지
-    std::chrono::system_clock::time_point timestamp;  // ✅ 기존 타임스탬프 유지
-    int rule_id = 0;                    // ✅ 기존 ID 필드 유지
-    int tenant_id = 0;                  // ✅ 기존 테넌트 ID 유지
+    std::string triggered_value;
+    std::string alarm_level;
+    std::chrono::microseconds evaluation_time{0};
+    std::chrono::system_clock::time_point timestamp;
+    int rule_id = 0;
+    int tenant_id = 0;
     
-    // =============================================================================
-    // 🎯 생성자 (기존 호환성)
-    // =============================================================================
     AlarmEvaluation() : timestamp(std::chrono::system_clock::now()) {}
     
-    // =============================================================================
-    // 🎯 헬퍼 메서드들 (편의성)
-    // =============================================================================
-    
-    /**
-     * @brief 심각도를 문자열로 반환
-     */
     std::string getSeverityString() const {
         switch(severity) {
-            case AlarmSeverity::CRITICAL: return "CRITICAL";
-            case AlarmSeverity::HIGH: return "HIGH";
-            case AlarmSeverity::MEDIUM: return "MEDIUM";
-            case AlarmSeverity::LOW: return "LOW";
             case AlarmSeverity::INFO: return "INFO";
+            case AlarmSeverity::LOW: return "LOW";
+            case AlarmSeverity::MEDIUM: return "MEDIUM";
+            case AlarmSeverity::HIGH: return "HIGH";
+            case AlarmSeverity::CRITICAL: return "CRITICAL";
             default: return "MEDIUM";
         }
     }
     
-    /**
-     * @brief 아날로그 레벨을 문자열로 반환
-     */
     std::string getAnalogLevelString() const {
         switch(analog_level) {
             case AnalogAlarmLevel::HIGH_HIGH: return "HIGH_HIGH";
@@ -511,19 +403,9 @@ struct AlarmEvaluation {
         }
     }
     
-    /**
-     * @brief condition_met 값이 비어있지 않으면 true 반환
-     */
-    bool hasConditionMet() const {
-        return !condition_met.empty();
-    }
+    bool hasConditionMet() const { return !condition_met.empty(); }
 };
 
-// =============================================================================
-// 기존 구조체들 계속 그대로 유지!
-// =============================================================================
-
-// 알람 필터
 struct AlarmFilter {
     std::optional<int> tenant_id;
     std::optional<AlarmState> state;
@@ -535,61 +417,36 @@ struct AlarmFilter {
     int offset = 0;
 };
 
-
-/**
- * @brief 알람 처리 통계
- * @details 시스템 전체의 알람 처리 현황을 추적
- */
 struct AlarmProcessingStats {
-    uint64_t total_evaluated = 0;      // 총 평가된 알람 수
-    uint64_t total_triggered = 0;      // 총 발생한 알람 수
-    uint64_t total_cleared = 0;        // 총 해제된 알람 수
-    uint64_t total_acknowledged = 0;   // 총 인지된 알람 수
+    uint64_t total_evaluated = 0;
+    uint64_t total_triggered = 0;
+    uint64_t total_cleared = 0;
+    uint64_t total_acknowledged = 0;
     
-    // 심각도별 통계
-    uint64_t critical_count = 0;       // Critical 알람 수
-    uint64_t high_count = 0;           // High 알람 수
-    uint64_t medium_count = 0;         // Medium 알람 수
-    uint64_t low_count = 0;            // Low 알람 수
-    uint64_t info_count = 0;           // Info 알람 수
+    uint64_t critical_count = 0;
+    uint64_t high_count = 0;
+    uint64_t medium_count = 0;
+    uint64_t low_count = 0;
+    uint64_t info_count = 0;
     
-    // 타입별 통계
-    uint64_t analog_alarms = 0;        // 아날로그 알람 수
-    uint64_t digital_alarms = 0;       // 디지털 알람 수
-    uint64_t script_alarms = 0;        // 스크립트 알람 수
+    uint64_t analog_alarms = 0;
+    uint64_t digital_alarms = 0;
+    uint64_t script_alarms = 0;
     
-    // 성능 통계
-    double avg_evaluation_time_us = 0.0;  // 평균 평가 시간 (마이크로초)
-    uint64_t evaluation_errors = 0;       // 평가 에러 수
+    double avg_evaluation_time_us = 0.0;
+    uint64_t evaluation_errors = 0;
     
-    // 시간 정보
     std::chrono::system_clock::time_point last_alarm_time;
     std::chrono::system_clock::time_point stats_start_time;
     
-    /**
-     * @brief 기본 생성자 - 시작 시간 초기화
-     */
-    AlarmProcessingStats() 
-        : stats_start_time(std::chrono::system_clock::now()) {}
+    AlarmProcessingStats() : stats_start_time(std::chrono::system_clock::now()) {}
     
-    /**
-     * @brief 총 활성 알람 수 계산
-     */
-    uint64_t getTotalActiveAlarms() const {
-        return total_triggered - total_cleared;
-    }
-    
-    /**
-     * @brief 알람 발생률 계산 (알람/평가)
-     */
-    double getAlarmRate() const {
+    uint64_t getTotalActiveAlarms() const { return total_triggered - total_cleared; }
+    double getAlarmRate() const { 
         return (total_evaluated > 0) ? 
                static_cast<double>(total_triggered) / static_cast<double>(total_evaluated) : 0.0;
     }
     
-    /**
-     * @brief 통계를 JSON으로 변환
-     */
     nlohmann::json toJson() const {
         nlohmann::json j;
         j["total_evaluated"] = total_evaluated;
@@ -622,9 +479,6 @@ struct AlarmProcessingStats {
     }
 };
 
-/**
- * @brief 알람 시스템 상태 정보
- */
 struct AlarmSystemStatus {
     bool engine_initialized = false;
     bool repositories_available = false;
@@ -636,19 +490,12 @@ struct AlarmSystemStatus {
     std::chrono::system_clock::time_point last_evaluation_time;
     std::chrono::system_clock::time_point system_start_time;
     
-    AlarmSystemStatus() 
-        : system_start_time(std::chrono::system_clock::now()) {}
+    AlarmSystemStatus() : system_start_time(std::chrono::system_clock::now()) {}
     
-    /**
-     * @brief 시스템 가동 시간 계산
-     */
     std::chrono::duration<double> getUptime() const {
         return std::chrono::system_clock::now() - system_start_time;
     }
     
-    /**
-     * @brief 시스템이 완전히 준비되었는지 확인
-     */
     bool isFullyReady() const {
         return engine_initialized && repositories_available && script_engine_ready;
     }
@@ -671,10 +518,6 @@ struct AlarmSystemStatus {
     }
 };
 
-/**
- * @brief 통합 알람 메트릭스
- * @details 모든 알람 관련 메트릭을 포함하는 최상위 구조체
- */
 struct AlarmMetrics {
     AlarmProcessingStats processing;
     AlarmSystemStatus system;
@@ -689,7 +532,6 @@ struct AlarmMetrics {
     }
 };
 
-// 알람 통계
 struct AlarmStatistics {
     int total_rules = 0;
     int active_alarms = 0;
@@ -702,50 +544,50 @@ struct AlarmStatistics {
 };
 
 // =============================================================================
-// 🎯 타입 변환 헬퍼 함수들 (기존 그대로! COMMUNICATION, QUALITY 추가만)
+// 타입 변환 헬퍼 함수들 - 대소문자 모두 지원
 // =============================================================================
 
-// AlarmType 변환 (COMMUNICATION, QUALITY 추가!)
+// AlarmType 변환
 inline std::string alarmTypeToString(AlarmType type) {
     switch (type) {
-        case AlarmType::ANALOG: return "analog";
-        case AlarmType::DIGITAL: return "digital";
-        case AlarmType::SCRIPT: return "script";
-        case AlarmType::COMPOUND: return "compound";
-        case AlarmType::COMMUNICATION: return "communication";  // 🔥 추가
-        case AlarmType::QUALITY: return "quality";              // 🔥 추가
-        default: return "analog";
+        case AlarmType::ANALOG: return "ANALOG";
+        case AlarmType::DIGITAL: return "DIGITAL";
+        case AlarmType::SCRIPT: return "SCRIPT";
+        case AlarmType::COMPOUND: return "COMPOUND";
+        case AlarmType::COMMUNICATION: return "COMMUNICATION";
+        case AlarmType::QUALITY: return "QUALITY";
+        default: return "ANALOG";
     }
 }
 
 inline AlarmType stringToAlarmType(const std::string& str) {
-    if (str == "analog" || str == "ANALOG") return AlarmType::ANALOG;
-    if (str == "digital" || str == "DIGITAL") return AlarmType::DIGITAL;
-    if (str == "script" || str == "SCRIPT") return AlarmType::SCRIPT;
-    if (str == "compound" || str == "COMPOUND") return AlarmType::COMPOUND;
-    if (str == "communication" || str == "COMMUNICATION") return AlarmType::COMMUNICATION;  // 🔥 추가
-    if (str == "quality" || str == "QUALITY") return AlarmType::QUALITY;                    // 🔥 추가
+    if (str == "ANALOG" || str == "analog") return AlarmType::ANALOG;
+    if (str == "DIGITAL" || str == "digital") return AlarmType::DIGITAL;
+    if (str == "SCRIPT" || str == "script") return AlarmType::SCRIPT;
+    if (str == "COMPOUND" || str == "compound") return AlarmType::COMPOUND;
+    if (str == "COMMUNICATION" || str == "communication") return AlarmType::COMMUNICATION;
+    if (str == "QUALITY" || str == "quality") return AlarmType::QUALITY;
     return AlarmType::ANALOG;
 }
 
-// 나머지 모든 변환 함수들 기존 그대로 유지...
+// AlarmSeverity 변환 - 수정된 enum 순서 반영
 inline std::string severityToString(AlarmSeverity severity) {
     switch (severity) {
-        case AlarmSeverity::CRITICAL: return "CRITICAL";
-        case AlarmSeverity::HIGH: return "HIGH";
-        case AlarmSeverity::MEDIUM: return "MEDIUM";
-        case AlarmSeverity::LOW: return "LOW";
         case AlarmSeverity::INFO: return "INFO";
+        case AlarmSeverity::LOW: return "LOW";
+        case AlarmSeverity::MEDIUM: return "MEDIUM";
+        case AlarmSeverity::HIGH: return "HIGH";
+        case AlarmSeverity::CRITICAL: return "CRITICAL";
         default: return "MEDIUM";
     }
 }
 
 inline AlarmSeverity stringToSeverity(const std::string& str) {
-    if (str == "CRITICAL" || str == "critical") return AlarmSeverity::CRITICAL;
-    if (str == "HIGH" || str == "high") return AlarmSeverity::HIGH;
-    if (str == "MEDIUM" || str == "medium") return AlarmSeverity::MEDIUM;
-    if (str == "LOW" || str == "low") return AlarmSeverity::LOW;
     if (str == "INFO" || str == "info") return AlarmSeverity::INFO;
+    if (str == "LOW" || str == "low") return AlarmSeverity::LOW;
+    if (str == "MEDIUM" || str == "medium") return AlarmSeverity::MEDIUM;
+    if (str == "HIGH" || str == "high") return AlarmSeverity::HIGH;
+    if (str == "CRITICAL" || str == "critical") return AlarmSeverity::CRITICAL;
     return AlarmSeverity::MEDIUM;
 }
 
@@ -763,12 +605,12 @@ inline std::string stateToString(AlarmState state) {
 }
 
 inline AlarmState stringToState(const std::string& str) {
-    if (str == "INACTIVE") return AlarmState::INACTIVE;
-    if (str == "ACTIVE") return AlarmState::ACTIVE;
-    if (str == "ACKNOWLEDGED") return AlarmState::ACKNOWLEDGED;
-    if (str == "CLEARED") return AlarmState::CLEARED;
-    if (str == "SUPPRESSED") return AlarmState::SUPPRESSED;
-    if (str == "SHELVED") return AlarmState::SHELVED;
+    if (str == "INACTIVE" || str == "inactive") return AlarmState::INACTIVE;
+    if (str == "ACTIVE" || str == "active") return AlarmState::ACTIVE;
+    if (str == "ACKNOWLEDGED" || str == "acknowledged") return AlarmState::ACKNOWLEDGED;
+    if (str == "CLEARED" || str == "cleared") return AlarmState::CLEARED;
+    if (str == "SUPPRESSED" || str == "suppressed") return AlarmState::SUPPRESSED;
+    if (str == "SHELVED" || str == "shelved") return AlarmState::SHELVED;
     return AlarmState::ACTIVE;
 }
 
@@ -785,11 +627,11 @@ inline std::string digitalTriggerToString(DigitalTrigger trigger) {
 }
 
 inline DigitalTrigger stringToDigitalTrigger(const std::string& str) {
-    if (str == "ON_TRUE") return DigitalTrigger::ON_TRUE;
-    if (str == "ON_FALSE") return DigitalTrigger::ON_FALSE;
-    if (str == "ON_CHANGE") return DigitalTrigger::ON_CHANGE;
-    if (str == "ON_RISING") return DigitalTrigger::ON_RISING;
-    if (str == "ON_FALLING") return DigitalTrigger::ON_FALLING;
+    if (str == "ON_TRUE" || str == "on_true") return DigitalTrigger::ON_TRUE;
+    if (str == "ON_FALSE" || str == "on_false") return DigitalTrigger::ON_FALSE;
+    if (str == "ON_CHANGE" || str == "on_change") return DigitalTrigger::ON_CHANGE;
+    if (str == "ON_RISING" || str == "on_rising") return DigitalTrigger::ON_RISING;
+    if (str == "ON_FALLING" || str == "on_falling") return DigitalTrigger::ON_FALLING;
     return DigitalTrigger::ON_CHANGE;
 }
 
@@ -804,9 +646,9 @@ inline std::string targetTypeToString(TargetType type) {
 }
 
 inline TargetType stringToTargetType(const std::string& str) {
-    if (str == "DATA_POINT") return TargetType::DATA_POINT;
-    if (str == "VIRTUAL_POINT") return TargetType::VIRTUAL_POINT;
-    if (str == "GROUP") return TargetType::GROUP;
+    if (str == "DATA_POINT" || str == "data_point") return TargetType::DATA_POINT;
+    if (str == "VIRTUAL_POINT" || str == "virtual_point") return TargetType::VIRTUAL_POINT;
+    if (str == "GROUP" || str == "group") return TargetType::GROUP;
     return TargetType::DATA_POINT;
 }
 
@@ -823,38 +665,37 @@ inline std::string analogAlarmLevelToString(AnalogAlarmLevel level) {
 }
 
 inline AnalogAlarmLevel stringToAnalogAlarmLevel(const std::string& str) {
-    if (str == "NORMAL") return AnalogAlarmLevel::NORMAL;
-    if (str == "LOW_LOW") return AnalogAlarmLevel::LOW_LOW;
-    if (str == "LOW") return AnalogAlarmLevel::LOW;
-    if (str == "HIGH") return AnalogAlarmLevel::HIGH;
-    if (str == "HIGH_HIGH") return AnalogAlarmLevel::HIGH_HIGH;
+    if (str == "NORMAL" || str == "normal") return AnalogAlarmLevel::NORMAL;
+    if (str == "LOW_LOW" || str == "low_low") return AnalogAlarmLevel::LOW_LOW;
+    if (str == "LOW" || str == "low") return AnalogAlarmLevel::LOW;
+    if (str == "HIGH" || str == "high") return AnalogAlarmLevel::HIGH;
+    if (str == "HIGH_HIGH" || str == "high_high") return AnalogAlarmLevel::HIGH_HIGH;
     return AnalogAlarmLevel::NORMAL;
 }
 
 // =============================================================================
-// 🎯 소문자 변환 헬퍼 함수들 (기존 그대로! COMMUNICATION, QUALITY 추가만)
+// 소문자 변환 함수들
 // =============================================================================
 
-// 소문자 변환 함수들
 inline std::string alarmTypeToLowerString(AlarmType type) {
     switch (type) {
         case AlarmType::ANALOG: return "analog";
         case AlarmType::DIGITAL: return "digital"; 
         case AlarmType::SCRIPT: return "script";
         case AlarmType::COMPOUND: return "compound";
-        case AlarmType::COMMUNICATION: return "communication";  // 🔥 추가
-        case AlarmType::QUALITY: return "quality";              // 🔥 추가
+        case AlarmType::COMMUNICATION: return "communication";
+        case AlarmType::QUALITY: return "quality";
         default: return "analog";
     }
 }
 
 inline std::string severityToLowerString(AlarmSeverity severity) {
     switch (severity) {
-        case AlarmSeverity::CRITICAL: return "critical";
-        case AlarmSeverity::HIGH: return "high";
-        case AlarmSeverity::MEDIUM: return "medium";
-        case AlarmSeverity::LOW: return "low";
         case AlarmSeverity::INFO: return "info";
+        case AlarmSeverity::LOW: return "low";
+        case AlarmSeverity::MEDIUM: return "medium";
+        case AlarmSeverity::HIGH: return "high";
+        case AlarmSeverity::CRITICAL: return "critical";
         default: return "medium";
     }
 }
@@ -870,6 +711,21 @@ inline std::string stateToLowerString(AlarmState state) {
         default: return "active";
     }
 }
+
+// =============================================================================
+// 컴파일 타임 검증 - enum 값 확인
+// =============================================================================
+
+static_assert(static_cast<int>(AlarmSeverity::INFO) == 0, "INFO should be 0");
+static_assert(static_cast<int>(AlarmSeverity::LOW) == 1, "LOW should be 1");
+static_assert(static_cast<int>(AlarmSeverity::MEDIUM) == 2, "MEDIUM should be 2");
+static_assert(static_cast<int>(AlarmSeverity::HIGH) == 3, "HIGH should be 3");
+static_assert(static_cast<int>(AlarmSeverity::CRITICAL) == 4, "CRITICAL should be 4");
+
+static_assert(static_cast<int>(AlarmState::INACTIVE) == 0, "INACTIVE should be 0");
+static_assert(static_cast<int>(AlarmState::ACTIVE) == 1, "ACTIVE should be 1");
+static_assert(static_cast<int>(AlarmState::ACKNOWLEDGED) == 2, "ACKNOWLEDGED should be 2");
+static_assert(static_cast<int>(AlarmState::CLEARED) == 3, "CLEARED should be 3");
 
 } // namespace Alarm
 } // namespace PulseOne
