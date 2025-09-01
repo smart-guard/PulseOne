@@ -121,17 +121,57 @@ void WorkerManager::InitializeWorkerRedisData(const std::string& device_id) {
     }
     
     try {
+        // 기존 데이터 포인트 저장
         auto current_values = LoadCurrentValuesFromDB(device_id);
         
         if (current_values.empty()) {
             LogManager::getInstance().Debug("디바이스 " + device_id + "에 초기화할 데이터 없음");
-            return;
+            // 데이터가 없어도 설정 메타데이터는 저장
+        } else {
+            size_t saved = redis_data_writer_->SaveWorkerInitialData(device_id, current_values);
+            LogManager::getInstance().Info("Worker Redis 데이터 초기화: " + device_id + 
+                                         " (" + std::to_string(saved) + "개 포인트)");
         }
         
-        size_t saved = redis_data_writer_->SaveWorkerInitialData(device_id, current_values);
-        
-        LogManager::getInstance().Info("Worker Redis 초기화 완료: " + device_id + 
-                                     " (" + std::to_string(saved) + "개 포인트)");
+        // 🔥 핵심 추가: 설정값 메타데이터를 Redis에 저장
+        try {
+            json metadata;
+            
+            int device_int_id = std::stoi(device_id);
+            auto& repo_factory = Database::RepositoryFactory::getInstance();
+            auto settings_repo = repo_factory.getDeviceSettingsRepository();
+            
+            if (settings_repo) {
+                auto settings_opt = settings_repo->findById(device_int_id);
+                if (settings_opt.has_value()) {
+                    const auto& settings = settings_opt.value();
+                    
+                    metadata["timeout_ms"] = settings.getReadTimeoutMs();
+                    metadata["retry_interval_ms"] = settings.getRetryIntervalMs();
+                    metadata["backoff_time_ms"] = settings.getBackoffTimeMs();
+                    metadata["keep_alive_enabled"] = settings.isKeepAliveEnabled();
+                    metadata["polling_interval_ms"] = settings.getPollingIntervalMs();
+                    metadata["max_retry_count"] = settings.getMaxRetryCount();
+                    metadata["worker_restarted_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+                    
+                    // Redis에 Worker 상태 + 설정 메타데이터 저장
+                    bool redis_saved = redis_data_writer_->SaveWorkerStatus(device_id, "initialized", metadata);
+                    
+                    if (redis_saved) {
+                        LogManager::getInstance().Info("Worker Redis 설정 메타데이터 저장 완료: " + device_id);
+                        LogManager::getInstance().Debug("  - timeout_ms: " + std::to_string(settings.getReadTimeoutMs()));
+                        LogManager::getInstance().Debug("  - retry_interval_ms: " + std::to_string(settings.getRetryIntervalMs()));
+                        "  - keep_alive_enabled: " + std::string(settings.isKeepAliveEnabled() ? "true" : "false");
+                    } else {
+                        LogManager::getInstance().Warn("Redis Worker 상태 저장 실패: " + device_id);
+                    }
+                }
+            }
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Warn("Worker 설정 메타데이터 Redis 저장 실패: " + device_id + " - " + e.what());
+        }
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Worker Redis 초기화 실패: " + device_id + 
@@ -191,48 +231,84 @@ bool WorkerManager::RestartWorker(const std::string& device_id) {
     }
     
     try {
-        // 🔥 기존 Worker를 삭제하지 않고 재시작만 수행
-        LogManager::getInstance().Info("기존 Worker 재시작: " + device_id);
+        LogManager::getInstance().Info("기존 Worker 재시작 (설정 리로드): " + device_id);
         
-        // 1단계: 현재 연결 정리 (Worker 객체는 유지)
+        // 1. 기존 Worker 완전 중지
         if (existing->GetState() != WorkerState::STOPPED) {
+            LogManager::getInstance().Info("Worker 중지 중: " + device_id);
             auto stop_future = existing->Stop();
             auto stop_result = stop_future.wait_for(std::chrono::seconds(3));
             
             if (stop_result != std::future_status::ready) {
-                LogManager::getInstance().Warn("Worker 중지 타임아웃: " + device_id + " (강제 재시작)");
+                LogManager::getInstance().Warn("Worker 중지 타임아웃: " + device_id);
             }
         }
         
-        // 2단계: 잠시 대기 (리소스 정리)
+        // 2. 기존 Worker 삭제 (설정 리로드 강제)
+        LogManager::getInstance().Info("기존 Worker 삭제 (설정 리로드 위해): " + device_id);
+        UnregisterWorker(device_id);
+        
+        // 잠시 대기 (리소스 정리)
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         
-        // 3단계: 동일 Worker 객체로 재시작 (DB에서 최신 설정 자동 로드)
-        auto restart_future = existing->Start();
-        restart_future.get(); // 결과는 무시 (재연결이 백그라운드에서 처리)
+        // 🔥 핵심 추가: Redis에 재시작 상태 즉시 업데이트
+        if (redis_data_writer_) {
+            try {
+                json restart_metadata;
+                restart_metadata["restart_initiated_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                restart_metadata["action"] = "worker_restart";
+                
+                redis_data_writer_->SaveWorkerStatus(device_id, "restarting", restart_metadata);
+                LogManager::getInstance().Debug("Redis 재시작 상태 업데이트: " + device_id);
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Warn("Redis 재시작 상태 저장 실패: " + std::string(e.what()));
+            }
+        }
         
-        LogManager::getInstance().Info("Worker 재시작 완료: " + device_id);
-        return true;
+        // 3. 새로 Worker 생성 (DB에서 최신 설정 자동 로드)
+        LogManager::getInstance().Info("새 Worker 생성 (최신 설정 적용): " + device_id);
+        lock.~lock_guard(); // 락 해제하여 StartWorker 호출 가능하게
+        
+        bool start_result = StartWorker(device_id);
+        if (start_result) {
+            LogManager::getInstance().Info("Worker 재시작 완료 (새 설정 적용): " + device_id);
+        } else {
+            LogManager::getInstance().Error("Worker 재시작 실패: " + device_id);
+        }
+        
+        return start_result;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Worker 재시작 예외: " + device_id + " - " + e.what());
-        // 🔥 예외 발생해도 Worker는 유지
-        return false;
+        
+        // 예외 발생 시에도 새로 생성 시도
+        try {
+            UnregisterWorker(device_id);
+            lock.~lock_guard();
+            return StartWorker(device_id);
+        } catch (...) {
+            return false;
+        }
     }
 }
 
 bool WorkerManager::ReloadWorker(const std::string& device_id) {
     LogManager::getInstance().Info("Worker 설정 리로드: " + device_id);
     
-    // WorkerFactory에서 프로토콜 리로드
+    // 🔥 수정: WorkerFactory 프로토콜 리로드는 선택사항
     if (worker_factory_) {
-        worker_factory_->ReloadProtocols();
+        try {
+            worker_factory_->ReloadProtocols();
+            LogManager::getInstance().Info("WorkerFactory 프로토콜 리로드 완료");
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Warn("WorkerFactory 리로드 실패: " + std::string(e.what()));
+        }
     }
     
-    // Worker 재시작
+    // 🔥 핵심: RestartWorker 호출 (이제 설정을 새로 로드함)
     return RestartWorker(device_id);
 }
-
 // =============================================================================
 // 대량 작업
 // =============================================================================
@@ -507,13 +583,54 @@ nlohmann::json WorkerManager::GetWorkerStatus(const std::string& device_id) cons
         auto state = worker->GetState();
         bool is_connected = worker->CheckConnection();
         
-        return nlohmann::json{
+        json result = {
             {"device_id", device_id},
             {"state", WorkerStateToString(state)},
             {"connected", is_connected},
             {"auto_reconnect_active", true},
             {"description", GetWorkerStateDescription(state, is_connected)}
         };
+        
+        // 🔥 핵심 추가: Worker 설정값 메타데이터 포함
+        try {
+            json metadata;
+            
+            // DB에서 최신 설정값 조회
+            int device_int_id = std::stoi(device_id);
+            auto& repo_factory = Database::RepositoryFactory::getInstance();
+            auto settings_repo = repo_factory.getDeviceSettingsRepository();
+            
+            if (settings_repo) {
+                auto settings_opt = settings_repo->findById(device_int_id);
+                if (settings_opt.has_value()) {
+                    const auto& settings = settings_opt.value();
+                    
+                    // 설정값을 메타데이터에 추가
+                    metadata["timeout_ms"] = settings.getReadTimeoutMs();
+                    metadata["retry_interval_ms"] = settings.getRetryIntervalMs();
+                    metadata["backoff_time_ms"] = settings.getBackoffTimeMs();
+                    metadata["keep_alive_enabled"] = settings.isKeepAliveEnabled();
+                    metadata["polling_interval_ms"] = settings.getPollingIntervalMs();
+                    metadata["max_retry_count"] = settings.getMaxRetryCount();
+                    
+                    // 현재 시간 타임스탬프 추가
+                    metadata["captured_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+                    
+                    LogManager::getInstance().Debug("Worker 설정 메타데이터 생성: " + device_id + 
+                        " (timeout=" + std::to_string(settings.getReadTimeoutMs()) + "ms)");
+                }
+            }
+            
+            if (!metadata.empty()) {
+                result["metadata"] = metadata;
+            }
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Warn("Worker 메타데이터 생성 실패: " + device_id + " - " + e.what());
+        }
+        
+        return result;
         
     } catch (const std::exception& e) {
         return nlohmann::json{
@@ -657,54 +774,64 @@ std::shared_ptr<BaseDeviceWorker> WorkerManager::FindWorker(const std::string& d
 }
 
 std::shared_ptr<BaseDeviceWorker> WorkerManager::CreateAndRegisterWorker(const std::string& device_id) {
-    if (device_id.empty()) {
-        LogManager::getInstance().Error("빈 device_id");
-        return nullptr;
-    }
-    
     try {
-        // device_id 검증 (숫자만 허용)
-        int device_int_id;
-        try {
-            device_int_id = std::stoi(device_id);
-            if (device_int_id <= 0) {
-                LogManager::getInstance().Error("잘못된 device_id: " + device_id);
-                return nullptr;
-            }
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("device_id 파싱 실패: " + device_id);
+        LogManager::getInstance().Info("Worker 생성 시작: " + device_id + " (DB 최신 설정 로드)");
+        
+        // 🔥 핵심 확인: DB에서 최신 디바이스 설정 로드
+        auto& repo_factory = Database::RepositoryFactory::getInstance();
+        auto device_repo = repo_factory.getDeviceRepository();
+        auto settings_repo = repo_factory.getDeviceSettingsRepository();
+        
+        if (!device_repo) {
+            LogManager::getInstance().Error("DeviceRepository 없음: " + device_id);
             return nullptr;
         }
         
-        // WorkerFactory 초기화 (thread-safe)
-        if (!worker_factory_) {
-            static std::mutex factory_init_mutex;
-            std::lock_guard<std::mutex> lock(factory_init_mutex);
-            if (!worker_factory_) {
-                worker_factory_ = std::make_unique<WorkerFactory>();
+        // 디바이스 정보 로드
+        int device_int_id = std::stoi(device_id);
+        auto device_opt = device_repo->findById(device_int_id);
+        if (!device_opt.has_value()) {
+            LogManager::getInstance().Error("디바이스 정보 없음: " + device_id);
+            return nullptr;
+        }
+        
+        const auto& device = device_opt.value();
+        LogManager::getInstance().Info("디바이스 정보 로드: " + device.getName() + " (enabled: " + 
+                                      (device.isEnabled() ? "true" : "false") + ")");
+        
+        // 🔥 핵심: 디바이스 설정 최신값 로드
+        if (settings_repo) {
+            auto settings_opt = settings_repo->findById(device_int_id);
+            if (settings_opt.has_value()) {
+                const auto& settings = settings_opt.value();
+                LogManager::getInstance().Info("최신 디바이스 설정 로드 확인:");
+                LogManager::getInstance().Info("  - timeout_ms: " + std::to_string(settings.getReadTimeoutMs()));
+                LogManager::getInstance().Info("  - retry_interval_ms: " + std::to_string(settings.getRetryIntervalMs()));
+                LogManager::getInstance().Info("  - backoff_time_ms: " + std::to_string(settings.getBackoffTimeMs()));
+                LogManager::getInstance().Info("  - keep_alive_enabled: " + std::string(settings.isKeepAliveEnabled() ? "true" : "false"));
+            } else {
+                LogManager::getInstance().Warn("디바이스 설정 없음: " + device_id + " (기본값 사용)");
             }
         }
         
-        // Worker 생성 (안전한 변환)
-        auto unique_worker = worker_factory_->CreateWorkerById(device_int_id);
+        // WorkerFactory에서 Worker 생성 (최신 설정 자동 적용됨)
+        auto unique_worker = worker_factory_->CreateWorker(device);
         if (!unique_worker) {
             LogManager::getInstance().Error("Worker 생성 실패: " + device_id);
             return nullptr;
         }
         
-        // unique_ptr → shared_ptr 안전 변환
-        std::shared_ptr<BaseDeviceWorker> shared_worker(std::move(unique_worker));
-        if (!shared_worker) {
-            LogManager::getInstance().Error("shared_ptr 변환 실패: " + device_id);
-            return nullptr;
-        }
+        // 🔥 핵심: unique_ptr → shared_ptr 안전 변환
+        std::shared_ptr<BaseDeviceWorker> shared_worker = std::move(unique_worker);
         
-        // 등록
+        // Worker 등록
         RegisterWorker(device_id, shared_worker);
+        LogManager::getInstance().Info("Worker 생성 및 등록 완료: " + device_id + " (최신 설정 적용됨)");
+        
         return shared_worker;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("CreateAndRegisterWorker 예외: " + device_id + " - " + e.what());
+        LogManager::getInstance().Error("Worker 생성 예외: " + device_id + " - " + e.what());
         return nullptr;
     }
 }
