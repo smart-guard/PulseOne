@@ -242,6 +242,12 @@ private:
     UserManagementCallback user_management_callback_;
     SystemBackupCallback system_backup_callback_;
     LogDownloadCallback log_download_callback_;
+
+    // 🔥 NEW: 에러 분류 헬퍼 함수
+    std::pair<std::string, std::string> ClassifyHardwareError(const std::string& device_id, const std::exception& e);
+    
+    // 🔥 NEW: 확장된 에러 응답 생성
+    json CreateErrorResponse(const std::string& error, const std::string& error_code, const std::string& details = "");
 };
 
 } // namespace Network

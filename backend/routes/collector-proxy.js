@@ -305,44 +305,6 @@ router.post('/devices/:deviceId/analog/:outputId/control', checkCollectorConnect
 });
 
 /**
- * POST /api/collector/devices/:deviceId/pump/:pumpId/control
- * 펌프 제어
- */
-router.post('/devices/:deviceId/pump/:pumpId/control', checkCollectorConnection, async (req, res) => {
-  try {
-    const { deviceId, pumpId } = req.params;
-    const { enable, speed, duration } = req.body;
-    
-    if (enable === undefined || enable === null) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required parameter: enable',
-        details: 'enable must be true or false'
-      });
-    }
-    
-    console.log(`⚡ Pump control: Device ${deviceId}, Pump ${pumpId}, Enable: ${enable}`);
-    
-    const proxy = getCollectorProxy();
-    const result = await proxy.controlPump(deviceId, pumpId, enable, { speed, duration });
-    
-    res.json({
-      success: true,
-      message: `Pump ${pumpId} ${enable ? 'started' : 'stopped'}`,
-      data: result.data,
-      device_id: deviceId,
-      pump_id: pumpId,
-      enable: Boolean(enable),
-      speed: speed || null,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    handleProxyError(error, req, res);
-  }
-});
-
-/**
  * POST /api/collector/devices/:deviceId/parameters/:parameterId/set
  * 디바이스 파라미터 설정
  */

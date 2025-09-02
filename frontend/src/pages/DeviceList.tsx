@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/pages/DeviceList.tsx 
-// 무한 API 호출 문제 해결 + 모든 기능 유지 버전
+// 🔥 완전한 최종 버전 - 기존 기능 + 새로운 Collector 제어 기능 모두 통합
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -140,7 +140,8 @@ const DeviceList: React.FC = () => {
         status: statusFilter !== 'all' ? statusFilter : undefined,
         search: searchTerm || undefined,
         sort_by: 'name',
-        sort_order: 'ASC'
+        sort_order: 'ASC',
+        include_collector_status: true // 실시간 워커 상태 포함
       });
 
       if (response.success && response.data) {
@@ -234,7 +235,7 @@ const DeviceList: React.FC = () => {
   }, [devices]);
 
   // =============================================================================
-  // 디바이스 제어 함수들 (실제 API 사용) - 복원
+  // 🔥 기존 디바이스 제어 함수들 (DB 레벨) - 그대로 유지
   // =============================================================================
 
   // 디바이스 연결 테스트
@@ -312,7 +313,480 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 모달 이벤트 핸들러들 - 복원
+  // 🔥 신규 추가: Collector 워커 제어 함수들 (실시간 제어)
+  // =============================================================================
+
+  /**
+   * 워커 시작 (Collector 레벨) - 확인 팝업 추가
+   */
+  const handleStartWorker = async (deviceId: number) => {
+    const device = devices.find(d => d.id === deviceId);
+    const deviceName = device?.name || `Device ${deviceId}`;
+    
+    // 확인 팝업
+    const confirmed = window.confirm(
+      `워커를 시작하시겠습니까?\n\n` +
+      `디바이스: ${deviceName}\n` +
+      `엔드포인트: ${device?.endpoint || 'N/A'}\n` +
+      `프로토콜: ${device?.protocol_type || 'N/A'}\n\n` +
+      `이 작업은 데이터 수집을 시작합니다.`
+    );
+    
+    if (!confirmed) {
+      console.log(`🚫 워커 시작 취소: ${deviceId}`);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log(`🚀 워커 시작: ${deviceId}`);
+
+      const response = await DeviceApiService.startDeviceWorker(deviceId);
+
+      if (response.success) {
+        console.log(`✅ 워커 시작 완료: ${deviceId}`);
+        
+        // 성공 메시지 표시
+        const workerInfo = response.data;
+        const message = workerInfo?.worker_pid 
+          ? `워커가 시작되었습니다 (PID: ${workerInfo.worker_pid})`
+          : '워커가 시작되었습니다';
+        
+        alert(message);
+        
+        // 상태 새로고침
+        await loadDevices(true);
+      } else {
+        throw new Error(response.error || '워커 시작 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 워커 시작 실패: ${deviceId}`, err);
+      setError(err instanceof Error ? err.message : '워커 시작 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 워커 정지 (Collector 레벨) - 확인 팝업 추가
+   */
+  const handleStopWorker = async (deviceId: number) => {
+    const device = devices.find(d => d.id === deviceId);
+    const deviceName = device?.name || `Device ${deviceId}`;
+    
+    // 확인 팝업
+    const confirmed = window.confirm(
+      `워커를 정지하시겠습니까?\n\n` +
+      `디바이스: ${deviceName}\n` +
+      `현재 상태: ${device?.collector_status?.status || '알 수 없음'}\n\n` +
+      `⚠️ 주의: 데이터 수집이 중단됩니다.`
+    );
+    
+    if (!confirmed) {
+      console.log(`🚫 워커 정지 취소: ${deviceId}`);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log(`🛑 워커 정지: ${deviceId}`);
+
+      const response = await DeviceApiService.stopDeviceWorker(deviceId, { graceful: true });
+
+      if (response.success) {
+        console.log(`✅ 워커 정지 완료: ${deviceId}`);
+        
+        alert('워커가 안전하게 정지되었습니다');
+        
+        // 상태 새로고침
+        await loadDevices(true);
+      } else {
+        throw new Error(response.error || '워커 정지 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 워커 정지 실패: ${deviceId}`, err);
+      setError(err instanceof Error ? err.message : '워커 정지 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 워커 재시작 (Collector 레벨) - 확인 팝업 추가
+   */
+  const handleRestartWorker = async (deviceId: number) => {
+    const device = devices.find(d => d.id === deviceId);
+    const deviceName = device?.name || `Device ${deviceId}`;
+    
+    // 확인 팝업
+    const confirmed = window.confirm(
+      `워커를 재시작하시겠습니까?\n\n` +
+      `디바이스: ${deviceName}\n` +
+      `현재 상태: ${device?.collector_status?.status || '알 수 없음'}\n\n` +
+      `재시작하면 데이터 수집이 일시적으로 중단됩니다.`
+    );
+    
+    if (!confirmed) {
+      console.log(`🚫 워커 재시작 취소: ${deviceId}`);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log(`🔄 워커 재시작: ${deviceId}`);
+
+      const response = await DeviceApiService.restartDeviceWorker(deviceId);
+
+      if (response.success) {
+        console.log(`✅ 워커 재시작 완료: ${deviceId}`);
+        
+        const workerInfo = response.data;
+        const message = workerInfo?.worker_pid 
+          ? `워커가 재시작되었습니다 (PID: ${workerInfo.worker_pid})`
+          : '워커가 재시작되었습니다';
+        
+        alert(message);
+        
+        // 상태 새로고침
+        await loadDevices(true);
+      } else {
+        throw new Error(response.error || '워커 재시작 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 워커 재시작 실패: ${deviceId}`, err);
+      setError(err instanceof Error ? err.message : '워커 재시작 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 워커 일시정지 (새로운 기능) - 확인 팝업 추가
+   */
+  const handlePauseWorker = async (deviceId: number) => {
+    const device = devices.find(d => d.id === deviceId);
+    const deviceName = device?.name || `Device ${deviceId}`;
+    
+    // 확인 팝업
+    const confirmed = window.confirm(
+      `워커를 일시정지하시겠습니까?\n\n` +
+      `디바이스: ${deviceName}\n` +
+      `데이터 수집이 일시적으로 중단됩니다.\n` +
+      `나중에 재개할 수 있습니다.`
+    );
+    
+    if (!confirmed) {
+      console.log(`🚫 워커 일시정지 취소: ${deviceId}`);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log(`⏸️ 워커 일시정지: ${deviceId}`);
+
+      const response = await DeviceApiService.pauseDeviceWorker(deviceId);
+
+      if (response.success) {
+        console.log(`✅ 워커 일시정지 완료: ${deviceId}`);
+        alert('워커가 일시정지되었습니다');
+        await loadDevices(true);
+      } else {
+        throw new Error(response.error || '워커 일시정지 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 워커 일시정지 실패: ${deviceId}`, err);
+      setError(err instanceof Error ? err.message : '워커 일시정지 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 워커 재개 (새로운 기능) - 확인 팝업 추가
+   */
+  const handleResumeWorker = async (deviceId: number) => {
+    const device = devices.find(d => d.id === deviceId);
+    const deviceName = device?.name || `Device ${deviceId}`;
+    
+    // 확인 팝업
+    const confirmed = window.confirm(
+      `워커를 재개하시겠습니까?\n\n` +
+      `디바이스: ${deviceName}\n` +
+      `데이터 수집을 다시 시작합니다.`
+    );
+    
+    if (!confirmed) {
+      console.log(`🚫 워커 재개 취소: ${deviceId}`);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log(`▶️ 워커 재개: ${deviceId}`);
+
+      const response = await DeviceApiService.resumeDeviceWorker(deviceId);
+
+      if (response.success) {
+        console.log(`✅ 워커 재개 완료: ${deviceId}`);
+        alert('워커가 재개되었습니다');
+        await loadDevices(true);
+      } else {
+        throw new Error(response.error || '워커 재개 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 워커 재개 실패: ${deviceId}`, err);
+      setError(err instanceof Error ? err.message : '워커 재개 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 실시간 워커 상태 조회 (새로운 기능)
+   */
+  const handleCheckWorkerStatus = async (deviceId: number) => {
+    try {
+      setIsProcessing(true);
+      console.log(`📊 워커 상태 조회: ${deviceId}`);
+
+      const response = await DeviceApiService.getDeviceWorkerStatus(deviceId);
+
+      if (response.success && response.data) {
+        const status = response.data;
+        
+        const statusInfo = `
+워커 상태: ${status.worker_status || 'unknown'}
+PID: ${status.worker_pid || 'N/A'}
+업타임: ${DeviceApiService.formatDeviceUptime(status.uptime_seconds)}
+마지막 활동: ${status.last_activity || 'N/A'}
+처리된 요청: ${status.performance_metrics?.requests_processed || 0}개
+평균 응답시간: ${status.performance_metrics?.avg_response_time_ms || 0}ms
+        `.trim();
+        
+        alert(statusInfo);
+        console.log(`✅ 워커 상태 조회 완료: ${deviceId}`, status);
+      } else {
+        throw new Error(response.error || '워커 상태 조회 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 워커 상태 조회 실패: ${deviceId}`, err);
+      setError(err instanceof Error ? err.message : '워커 상태 조회 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // =============================================================================
+  // 🔥 신규 추가: 워커 상태 기반 UI 제어 함수들
+  // =============================================================================
+
+  /**
+   * 워커 상태 확인 유틸리티
+   */
+  const getWorkerStatus = (device: Device): string => {
+    return device.collector_status?.status || 'unknown';
+  };
+
+  /**
+   * 워커 상태별 버튼 활성화 체크
+   */
+  const shouldShowStartButton = (device: Device): boolean => {
+    const status = getWorkerStatus(device);
+    return status === 'stopped' || status === 'error' || status === 'unknown';
+  };
+
+  const shouldShowStopButton = (device: Device): boolean => {
+    const status = getWorkerStatus(device);
+    return status === 'running' || status === 'paused';
+  };
+
+  const shouldShowPauseButton = (device: Device): boolean => {
+    const status = getWorkerStatus(device);
+    return status === 'running';
+  };
+
+  const shouldShowResumeButton = (device: Device): boolean => {
+    const status = getWorkerStatus(device);
+    return status === 'paused';
+  };
+
+  /**
+   * 워커 상태 표시 텍스트
+   */
+  const getWorkerStatusText = (device: Device): string => {
+    const status = getWorkerStatus(device);
+    switch (status) {
+      case 'running': return '실행 중';
+      case 'stopped': return '정지됨';
+      case 'paused': return '일시정지';
+      case 'starting': return '시작 중';
+      case 'stopping': return '정지 중';
+      case 'error': return '오류';
+      default: return '알 수 없음';
+    }
+  };
+
+  /**
+   * 워커 상태별 CSS 클래스
+   */
+  const getWorkerStatusClass = (device: Device): string => {
+    const status = getWorkerStatus(device);
+    switch (status) {
+      case 'running': return 'worker-status-running';
+      case 'stopped': return 'worker-status-stopped';
+      case 'paused': return 'worker-status-paused';
+      case 'starting': return 'worker-status-starting';
+      case 'stopping': return 'worker-status-stopping';
+      case 'error': return 'worker-status-error';
+      default: return 'worker-status-unknown';
+    }
+  };
+
+  /**
+   * 디바이스 설정 재로드
+   */
+  const handleReloadDeviceConfig = async (deviceId: number) => {
+    try {
+      setIsProcessing(true);
+      console.log(`🔄 설정 재로드: ${deviceId}`);
+
+      const response = await DeviceApiService.reloadDeviceConfig(deviceId);
+
+      if (response.success && response.data) {
+        const result = response.data;
+        const message = `설정 재로드 완료\n적용된 변경사항: ${result.changes_applied || 0}개\n경고: ${result.warnings?.length || 0}개`;
+        alert(message);
+        console.log(`✅ 설정 재로드 완료:`, result);
+        await loadDevices(true);
+      } else {
+        throw new Error(response.error || '설정 재로드 실패');
+      }
+    } catch (err) {
+      console.error(`❌ 설정 재로드 실패: ${deviceId}`, err);
+      setError(err instanceof Error ? err.message : '설정 재로드 실패');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // =============================================================================
+  // 🔥 신규 추가: 일괄 워커 제어 함수들
+  // =============================================================================
+
+  /**
+   * 워커 일괄 제어
+   */
+  const handleBulkWorkerAction = async (action: 'start' | 'stop' | 'restart') => {
+    if (selectedDevices.length === 0) {
+      alert('작업할 디바이스를 선택해주세요.');
+      return;
+    }
+
+    const actionText = action === 'start' ? '시작' : action === 'stop' ? '정지' : '재시작';
+    const confirmMessage = `선택된 ${selectedDevices.length}개 디바이스의 워커를 ${actionText}하시겠습니까?`;
+    
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log(`🔄 워커 일괄 ${action}:`, selectedDevices);
+
+      let response;
+      
+      if (action === 'start') {
+        response = await DeviceApiService.startMultipleDeviceWorkers(selectedDevices);
+      } else if (action === 'stop') {
+        response = await DeviceApiService.stopMultipleDeviceWorkers(selectedDevices, { graceful: true });
+      } else {
+        // 재시작은 개별적으로 처리 (배치 API가 없을 경우)
+        const results = await Promise.allSettled(
+          selectedDevices.map(deviceId => 
+            DeviceApiService.restartDeviceWorker(deviceId)
+          )
+        );
+        
+        const successful = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - successful;
+        
+        response = {
+          success: true,
+          data: { total_processed: results.length, successful, failed }
+        };
+      }
+
+      if (response.success && response.data) {
+        const result = response.data;
+        const message = `워커 ${actionText} 완료\n성공: ${result.successful}개\n실패: ${result.failed}개`;
+        alert(message);
+        
+        console.log(`✅ 워커 일괄 ${action} 완료:`, result);
+        
+        setSelectedDevices([]);
+        await loadDevices(true);
+      } else {
+        throw new Error(response.error || `워커 일괄 ${actionText} 실패`);
+      }
+    } catch (err) {
+      console.error(`❌ 워커 일괄 ${action} 실패:`, err);
+      setError(err instanceof Error ? err.message : `워커 일괄 ${actionText} 실패`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * 설정 관리 일괄 작업
+   */
+  const handleBulkConfigAction = async (action: 'reload' | 'test') => {
+    if (selectedDevices.length === 0) {
+      alert('작업할 디바이스를 선택해주세요.');
+      return;
+    }
+
+    const actionText = action === 'reload' ? '설정 재로드' : '연결 테스트';
+    const confirmMessage = `선택된 ${selectedDevices.length}개 디바이스에 ${actionText}를 수행하시겠습니까?`;
+    
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      console.log(`🔄 ${actionText} 일괄 실행:`, selectedDevices);
+
+      const results = await Promise.allSettled(
+        selectedDevices.map(async (deviceId) => {
+          if (action === 'reload') {
+            return await DeviceApiService.reloadDeviceConfig(deviceId);
+          } else {
+            return await DeviceApiService.testDeviceConnection(deviceId);
+          }
+        })
+      );
+
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const failed = results.length - successful;
+      
+      const message = `${actionText} 완료\n성공: ${successful}개\n실패: ${failed}개`;
+      alert(message);
+      
+      console.log(`✅ ${actionText} 일괄 실행 완료: 성공 ${successful}개, 실패 ${failed}개`);
+      
+      setSelectedDevices([]);
+      await loadDevices(true);
+      
+    } catch (err) {
+      console.error(`❌ ${actionText} 일괄 실행 실패:`, err);
+      setError(err instanceof Error ? err.message : `${actionText} 일괄 실행 실패`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // =============================================================================
+  // 모달 이벤트 핸들러들 - 그대로 유지
   // =============================================================================
 
   const handleDeviceClick = (device: Device) => {
@@ -353,7 +827,7 @@ const DeviceList: React.FC = () => {
       if (modalMode === 'create') {
         response = await DeviceApiService.createDevice({
           name: deviceData.name,
-          protocol_type: deviceData.protocol_type,
+          protocol_id: deviceData.protocol_id, // 수정: protocol_type → protocol_id
           endpoint: deviceData.endpoint,
           device_type: deviceData.device_type,
           manufacturer: deviceData.manufacturer,
@@ -365,6 +839,7 @@ const DeviceList: React.FC = () => {
       } else if (modalMode === 'edit' && selectedDevice) {
         response = await DeviceApiService.updateDevice(selectedDevice.id, {
           name: deviceData.name,
+          protocol_id: deviceData.protocol_id, // 수정: protocol_type → protocol_id
           endpoint: deviceData.endpoint,
           device_type: deviceData.device_type,
           manufacturer: deviceData.manufacturer,
@@ -418,7 +893,7 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 기타 이벤트 핸들러들 - 복원
+  // 기타 이벤트 핸들러들 - 그대로 유지
   // =============================================================================
 
   const handleSearch = useCallback((term: string) => {
@@ -523,7 +998,7 @@ const DeviceList: React.FC = () => {
   }, []);
 
   // =============================================================================
-  // 스타일링 함수들 - 복원
+  // 스타일링 함수들 - 그대로 유지
   // =============================================================================
 
   const getProtocolBadgeStyle = (protocolType: string) => {
@@ -656,7 +1131,7 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // UI 렌더링 - 모든 UI 컴포넌트 복원
+  // UI 렌더링 - 모든 UI 컴포넌트 + 새로운 버튼들
   // =============================================================================
 
   return (
@@ -780,32 +1255,99 @@ const DeviceList: React.FC = () => {
           </select>
         </div>
 
-        {/* 일괄 작업 버튼들 - 복원 */}
+        {/* 🔥 일괄 작업 버튼들 - 확장된 버전 */}
         {selectedDevices.length > 0 && (
           <div className="bulk-actions">
             <span className="selected-count">
               {selectedDevices.length}개 선택됨
             </span>
+            
+            {/* 기존 DB 레벨 일괄 작업 */}
+            <div className="bulk-group">
+              <label className="bulk-group-label">DB 설정:</label>
+              <button 
+                onClick={() => handleBulkAction('enable')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-success"
+              >
+                <i className="fas fa-check"></i>
+                일괄 활성화
+              </button>
+              <button 
+                onClick={() => handleBulkAction('disable')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-warning"
+              >
+                <i className="fas fa-pause"></i>
+                일괄 비활성화
+              </button>
+              <button 
+                onClick={() => handleBulkAction('delete')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-danger"
+              >
+                <i className="fas fa-trash"></i>
+                일괄 삭제
+              </button>
+            </div>
+            
+            {/* 🔥 새로운 워커 제어 일괄 작업 */}
+            <div className="bulk-group">
+              <label className="bulk-group-label">워커 제어:</label>
+              <button 
+                onClick={() => handleBulkWorkerAction('start')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-primary"
+              >
+                <i className="fas fa-rocket"></i>
+                일괄 시작
+              </button>
+              <button 
+                onClick={() => handleBulkWorkerAction('stop')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-danger"
+              >
+                <i className="fas fa-stop"></i>
+                일괄 정지
+              </button>
+              <button 
+                onClick={() => handleBulkWorkerAction('restart')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-secondary"
+              >
+                <i className="fas fa-redo"></i>
+                일괄 재시작
+              </button>
+            </div>
+            
+            {/* 🔥 새로운 설정 관리 일괄 작업 */}
+            <div className="bulk-group">
+              <label className="bulk-group-label">설정:</label>
+              <button 
+                onClick={() => handleBulkConfigAction('reload')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-info"
+              >
+                <i className="fas fa-sync-alt"></i>
+                설정 재로드
+              </button>
+              <button 
+                onClick={() => handleBulkConfigAction('test')}
+                disabled={isProcessing}
+                className="btn btn-sm btn-outline"
+              >
+                <i className="fas fa-plug"></i>
+                연결 테스트
+              </button>
+            </div>
+            
+            {/* 선택 해제 버튼 */}
             <button 
-              onClick={() => handleBulkAction('enable')}
-              disabled={isProcessing}
-              className="btn btn-sm btn-success"
+              onClick={() => setSelectedDevices([])}
+              className="btn btn-sm btn-ghost"
+              title="선택 해제"
             >
-              일괄 활성화
-            </button>
-            <button 
-              onClick={() => handleBulkAction('disable')}
-              disabled={isProcessing}
-              className="btn btn-sm btn-warning"
-            >
-              일괄 비활성화
-            </button>
-            <button 
-              onClick={() => handleBulkAction('delete')}
-              disabled={isProcessing}
-              className="btn btn-sm btn-danger"
-            >
-              일괄 삭제
+              <i className="fas fa-times"></i>
             </button>
           </div>
         )}
@@ -867,7 +1409,7 @@ const DeviceList: React.FC = () => {
                   key={device.id}
                   className="device-table-row"
                 >
-                  {/* 체크박스 - 복원 */}
+                  {/* 체크박스 */}
                   <div className="device-table-cell">
                     <input
                       type="checkbox"
@@ -969,9 +1511,11 @@ const DeviceList: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 작업 버튼들 */}
+                  {/* 🔥 작업 버튼들 - 완전히 새로운 확장 버전 */}
                   <div className="device-table-cell">
                     <div className="device-actions">
+                      
+                      {/* 🔥 기존 버튼들 - 패턴 유지 */}
                       <button 
                         onClick={() => handleTestConnection(device.id)}
                         disabled={isProcessing}
@@ -980,6 +1524,7 @@ const DeviceList: React.FC = () => {
                       >
                         <i className="fas fa-plug"></i>
                       </button>
+                      
                       <button 
                         onClick={() => handleEditDevice(device)}
                         disabled={isProcessing}
@@ -988,6 +1533,133 @@ const DeviceList: React.FC = () => {
                       >
                         <i className="fas fa-edit"></i>
                       </button>
+                      
+                      {/* 🔥 새로운 구분선 */}
+                      <div className="action-divider"></div>
+                      
+                      {/* 🔥 신규 추가: Collector 워커 제어 버튼들 - 상태 기반 동적 표시 */}
+                      
+                      {/* 워커 상태 표시 */}
+                      <div className="worker-status-indicator">
+                        <span className={`worker-status-badge ${getWorkerStatusClass(device)}`}>
+                          {getWorkerStatusText(device)}
+                        </span>
+                      </div>
+                      
+                      {/* 워커 시작 버튼 (정지/오류/알수없음 상태일 때만) */}
+                      {shouldShowStartButton(device) && (
+                        <button 
+                          onClick={() => handleStartWorker(device.id)}
+                          disabled={isProcessing}
+                          className="action-btn btn-start-worker"
+                          title="워커 시작"
+                        >
+                          <i className="fas fa-rocket"></i>
+                        </button>
+                      )}
+                      
+                      {/* 워커 정지 버튼 (실행 중이거나 일시정지 중일 때) */}
+                      {shouldShowStopButton(device) && (
+                        <button 
+                          onClick={() => handleStopWorker(device.id)}
+                          disabled={isProcessing}
+                          className="action-btn btn-stop"
+                          title="워커 정지"
+                        >
+                          <i className="fas fa-stop"></i>
+                        </button>
+                      )}
+                      
+                      {/* 워커 일시정지 버튼 (실행 중일 때만) */}
+                      {shouldShowPauseButton(device) && (
+                        <button 
+                          onClick={() => handlePauseWorker(device.id)}
+                          disabled={isProcessing}
+                          className="action-btn btn-pause-worker"
+                          title="워커 일시정지"
+                        >
+                          <i className="fas fa-pause-circle"></i>
+                        </button>
+                      )}
+                      
+                      {/* 워커 재개 버튼 (일시정지 중일 때만) */}
+                      {shouldShowResumeButton(device) && (
+                        <button 
+                          onClick={() => handleResumeWorker(device.id)}
+                          disabled={isProcessing}
+                          className="action-btn btn-resume"
+                          title="워커 재개"
+                        >
+                          <i className="fas fa-play-circle"></i>
+                        </button>
+                      )}
+                      
+                      {/* 워커 재시작 (항상 표시, 단 정지 중에는 비활성화) */}
+                      <button 
+                        onClick={() => handleRestartWorker(device.id)}
+                        disabled={isProcessing || getWorkerStatus(device) === 'stopped'}
+                        className="action-btn btn-restart"
+                        title={getWorkerStatus(device) === 'stopped' ? '워커를 먼저 시작하세요' : '워커 재시작'}
+                      >
+                        <i className="fas fa-redo"></i>
+                      </button>
+                      
+                      {/* 🔥 새로운 구분선 */}
+                      <div className="action-divider"></div>
+                      
+                      {/* 🔥 신규 추가: 유틸리티 버튼들 */}
+                      
+                      {/* 워커 상태 조회 */}
+                      <button 
+                        onClick={() => handleCheckWorkerStatus(device.id)}
+                        disabled={isProcessing}
+                        className="action-btn btn-status"
+                        title="워커 상태 확인"
+                      >
+                        <i className="fas fa-info-circle"></i>
+                      </button>
+                      
+                      {/* 설정 재로드 */}
+                      <button 
+                        onClick={() => handleReloadDeviceConfig(device.id)}
+                        disabled={isProcessing}
+                        className="action-btn btn-config"
+                        title="설정 재로드"
+                      >
+                        <i className="fas fa-sync-alt"></i>
+                      </button>
+                      
+                      {/* 드롭다운 메뉴 (더 많은 옵션) */}
+                      <div className="dropdown">
+                        <button 
+                          className="action-btn btn-more"
+                          title="더 많은 옵션"
+                        >
+                          <i className="fas fa-ellipsis-v"></i>
+                        </button>
+                        <div className="dropdown-menu">
+                          <button onClick={() => handleCheckWorkerStatus(device.id)}>
+                            <i className="fas fa-info-circle"></i> 워커 상태 상세
+                          </button>
+                          <button onClick={() => handleReloadDeviceConfig(device.id)}>
+                            <i className="fas fa-sync"></i> 설정 동기화
+                          </button>
+                          <button onClick={() => console.log('실시간 데이터 보기')}>
+                            <i className="fas fa-chart-line"></i> 실시간 데이터
+                          </button>
+                          <button onClick={() => console.log('데이터포인트 관리')}>
+                            <i className="fas fa-list"></i> 데이터포인트
+                          </button>
+                          <div className="dropdown-divider"></div>
+                          <button 
+                            onClick={() => handleDeleteDevice?.(device.id)}
+                            className="danger"
+                          >
+                            <i className="fas fa-trash"></i> 삭제
+                          </button>
+                        </div>
+                      </div>
+                      
                     </div>
                   </div>
                 </div>
@@ -997,7 +1669,7 @@ const DeviceList: React.FC = () => {
         )}
       </div>
 
-      {/* 페이징 - 복원 */}
+      {/* 페이징 */}
       {devices.length > 0 && (
         <div className="pagination-section">
           <Pagination
@@ -1021,7 +1693,7 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 상태바 - 복원 */}
+      {/* 상태바 */}
       <div className="status-bar">
         <div className="status-bar-left">
           <div className="last-update">

@@ -1074,6 +1074,54 @@ router.get('/:id/data/current', checkCollectorConnection, async (req, res) => {
     }
 });
 
+router.post('/:id/start', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        const { force_restart = false } = req.body;
+        
+        console.log(`🚀 Starting device worker: ${deviceId}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.startDevice(deviceId, { forceRestart: force_restart });
+        
+        res.json({
+            success: true,
+            message: `Device ${deviceId} started successfully`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            action: 'start',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
+
+// 🔥 누락된 API 2: 워커 정지  
+router.post('/:id/stop', checkCollectorConnection, async (req, res) => {
+    try {
+        const deviceId = req.params.id;
+        const { graceful = true } = req.body;
+        
+        console.log(`🛑 Stopping device worker: ${deviceId}`);
+        
+        const proxy = getCollectorProxy();
+        const result = await proxy.stopDevice(deviceId, { graceful });
+        
+        res.json({
+            success: true,
+            message: `Device ${deviceId} stopped successfully`,
+            data: result.data,
+            device_id: parseInt(deviceId),
+            action: 'stop',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        handleCollectorProxyError(error, req, res);
+    }
+});
 // ============================================================================
 // 🔥 새로 추가: 하드웨어 제어 API
 // ============================================================================
@@ -1135,39 +1183,6 @@ router.post('/:id/analog/:outputId/control', checkCollectorConnection, async (re
             output_id: outputId,
             value: Number(value),
             unit: unit || null,
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (error) {
-        handleCollectorProxyError(error, req, res);
-    }
-});
-
-router.post('/:id/pump/:pumpId/control', checkCollectorConnection, async (req, res) => {
-    try {
-        const { id: deviceId, pumpId } = req.params;
-        const { enable, speed = 100, duration } = req.body;
-        
-        if (enable === undefined || enable === null) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required parameter: enable (true/false)'
-            });
-        }
-        
-        console.log(`⚡ Pump control: Device ${deviceId}, Pump ${pumpId}, Enable: ${enable}`);
-        
-        const proxy = getCollectorProxy();
-        const result = await proxy.controlPump(deviceId, pumpId, enable, { speed, duration });
-        
-        res.json({
-            success: true,
-            message: `Pump ${pumpId} ${enable ? 'started' : 'stopped'}`,
-            data: result.data,
-            device_id: parseInt(deviceId),
-            pump_id: pumpId,
-            enable: Boolean(enable),
-            speed: Number(speed),
             timestamp: new Date().toISOString()
         });
         
