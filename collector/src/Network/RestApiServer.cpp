@@ -171,11 +171,6 @@ void RestApiServer::SetupRoutes() {
         HandlePostPointControl(req, res);
     });
     
-    // 하드웨어 제어 - 기존 펌프/밸브 콜백 이름 유지
-    server_->Post(R"(/api/devices/([^/]+)/pump/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
-        HandlePostPumpControl(req, res);
-    });
-    
     server_->Post(R"(/api/devices/([^/]+)/valve/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostValveControl(req, res);
     });
@@ -355,33 +350,85 @@ void RestApiServer::SetupRoutes() {
 
 void RestApiServer::HandleGetDevices(const httplib::Request& req, httplib::Response& res) {
     try {
+        SetCorsHeaders(res);
+        
         if (device_list_callback_) {
             json device_list = device_list_callback_();
             res.set_content(CreateSuccessResponse(device_list).dump(), "application/json");
         } else {
-            res.set_content(CreateErrorResponse("Device list callback not set").dump(), "application/json");
-            res.status = 500;
+            json error_response = CreateErrorResponse(
+                "Device list callback not set",
+                "COLLECTOR_NOT_CONFIGURED",
+                "Device list functionality is not available"
+            );
+            res.status = 503;
+            res.set_content(error_response.dump(), "application/json");
         }
     } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        json error_response = CreateErrorResponse(
+            "Failed to retrieve device list",
+            "DEVICE_LIST_ERROR",
+            "Unable to retrieve device information: " + std::string(e.what())
+        );
         res.status = 500;
+        res.set_content(error_response.dump(), "application/json");
     }
 }
 
 void RestApiServer::HandleGetDeviceStatus(const httplib::Request& req, httplib::Response& res) {
     try {
+        SetCorsHeaders(res);
         std::string device_id = ExtractDeviceId(req);
+        
+        if (device_id.empty()) {
+            json error_response = CreateErrorResponse(
+                "Device ID required",
+                "MISSING_DEVICE_ID",
+                "Device ID must be specified in the URL path"
+            );
+            res.status = 400;
+            res.set_content(error_response.dump(), "application/json");
+            return;
+        }
         
         if (device_status_callback_) {
             json status = device_status_callback_(device_id);
+            
+            // 빈 응답 체크
+            if (status.empty() || (status.contains("error") && status["error"] == "device_not_found")) {
+                json error_response = CreateErrorResponse(
+                    "Device not found",
+                    "DEVICE_NOT_FOUND",
+                    "Device with ID '" + device_id + "' does not exist"
+                );
+                error_response["device_id"] = device_id;
+                res.status = 404;
+                res.set_content(error_response.dump(), "application/json");
+                return;
+            }
+            
             res.set_content(CreateSuccessResponse(status).dump(), "application/json");
         } else {
-            res.set_content(CreateErrorResponse("Device status callback not set").dump(), "application/json");
-            res.status = 500;
+            json error_response = CreateErrorResponse(
+                "Device status callback not set",
+                "COLLECTOR_NOT_CONFIGURED",
+                "Device status functionality is not available"
+            );
+            res.status = 503;
+            res.set_content(error_response.dump(), "application/json");
         }
     } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
+        auto [error_code, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        
+        json error_response = CreateErrorResponse(
+            "Failed to get device status",
+            error_code,
+            error_details
+        );
+        error_response["device_id"] = ExtractDeviceId(req);
+        
         res.status = 500;
+        res.set_content(error_response.dump(), "application/json");
     }
 }
 
@@ -420,47 +467,114 @@ void RestApiServer::HandlePostDiagnostics(const httplib::Request& req, httplib::
 // DeviceWorker 제어 핸들러들
 void RestApiServer::HandlePostDeviceStart(const httplib::Request& req, httplib::Response& res) {
     try {
+        SetCorsHeaders(res);
         std::string device_id = ExtractDeviceId(req);
         
         if (device_start_callback_) {
             bool success = device_start_callback_(device_id);
             if (success) {
-                json message_data = CreateMessageResponse("Device worker started");
-                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "started";
+                data["message"] = "Device worker started successfully";
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
             } else {
-                res.set_content(CreateErrorResponse("Failed to start device worker").dump(), "application/json");
-                res.status = 500;
+                // 🔥 실패 시 구체적인 에러 코드 반환
+                json error_response = CreateErrorResponse(
+                    "Failed to start device worker",
+                    "WORKER_START_FAILED", 
+                    "Device worker could not be started. Check device configuration and hardware connection."
+                );
+                error_response["device_id"] = device_id;
+                
+                res.status = 422; // Unprocessable Entity (하드웨어 문제 가능성)
+                res.set_content(error_response.dump(), "application/json");
             }
         } else {
-            res.set_content(CreateErrorResponse("Device start callback not set").dump(), "application/json");
-            res.status = 500;
+            json error_response = CreateErrorResponse(
+                "Device start callback not set",
+                "COLLECTOR_NOT_CONFIGURED",
+                "Collector service is not properly configured"
+            );
+            res.status = 503; // Service Unavailable
+            res.set_content(error_response.dump(), "application/json");
         }
+        
     } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
+        // 🔥 예외를 분석해서 구체적인 에러 코드 반환
+        auto [error_code, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        
+        json error_response = CreateErrorResponse(
+            "Device start operation failed",
+            error_code,
+            error_details
+        );
+        error_response["device_id"] = ExtractDeviceId(req);
+        
+        // 에러 종류에 따른 HTTP 상태 코드
+        if (error_code == "HARDWARE_CONNECTION_FAILED" || error_code == "HARDWARE_TIMEOUT" ||
+            error_code.find("MODBUS") != std::string::npos || error_code.find("MQTT") != std::string::npos) {
+            res.status = 422; // 하드웨어 연결 문제
+        } else if (error_code == "WORKER_ALREADY_RUNNING") {
+            res.status = 409; // Conflict
+        } else if (error_code == "PERMISSION_DENIED") {
+            res.status = 403; // Forbidden
+        } else {
+            res.status = 500; // Internal Server Error
+        }
+        
+        res.set_content(error_response.dump(), "application/json");
     }
 }
 
 void RestApiServer::HandlePostDeviceStop(const httplib::Request& req, httplib::Response& res) {
     try {
+        SetCorsHeaders(res);
         std::string device_id = ExtractDeviceId(req);
         
         if (device_stop_callback_) {
             bool success = device_stop_callback_(device_id);
             if (success) {
-                json message_data = CreateMessageResponse("Device worker stopped");
-                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "stopped";
+                data["message"] = "Device worker stopped successfully";
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
             } else {
-                res.set_content(CreateErrorResponse("Failed to stop device worker").dump(), "application/json");
-                res.status = 500;
+                json error_response = CreateErrorResponse(
+                    "Failed to stop device worker",
+                    "WORKER_STOP_FAILED",
+                    "Device worker could not be stopped gracefully"
+                );
+                error_response["device_id"] = device_id;
+                
+                res.status = 422;
+                res.set_content(error_response.dump(), "application/json");
             }
         } else {
-            res.set_content(CreateErrorResponse("Device stop callback not set").dump(), "application/json");
-            res.status = 500;
+            json error_response = CreateErrorResponse(
+                "Device stop callback not set",
+                "COLLECTOR_NOT_CONFIGURED",
+                "Collector service is not properly configured"
+            );
+            res.status = 503;
+            res.set_content(error_response.dump(), "application/json");
         }
+        
     } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
+        auto [error_code, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        
+        json error_response = CreateErrorResponse(
+            "Device stop operation failed",
+            error_code,
+            error_details
+        );
+        error_response["device_id"] = ExtractDeviceId(req);
+        
+        res.status = (error_code == "WORKER_NOT_FOUND") ? 404 : 500;
+        res.set_content(error_response.dump(), "application/json");
     }
 }
 
@@ -559,42 +673,9 @@ void RestApiServer::HandlePostPointControl(const httplib::Request& req, httplib:
     }
 }
 
-// 기존 하드웨어 제어 핸들러들 (펌프/밸브/세트포인트)
-void RestApiServer::HandlePostPumpControl(const httplib::Request& req, httplib::Response& res) {
-    try {
-        std::string device_id = ExtractDeviceId(req, 1);
-        std::string pump_id = ExtractDeviceId(req, 2);
-        
-        bool enable = false;
-        try {
-            json request_body = json::parse(req.body);
-            enable = request_body.value("enable", false);
-        } catch (...) {
-            enable = false;
-        }
-        
-        if (pump_control_callback_) {
-            bool success = pump_control_callback_(device_id, pump_id, enable);
-            if (success) {
-                std::string action = enable ? "started" : "stopped";
-                json message_data = CreateMessageResponse("Pump " + pump_id + " " + action);
-                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
-            } else {
-                res.set_content(CreateErrorResponse("Failed to control pump").dump(), "application/json");
-                res.status = 500;
-            }
-        } else {
-            res.set_content(CreateErrorResponse("Pump control callback not set").dump(), "application/json");
-            res.status = 500;
-        }
-    } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
-    }
-}
-
 void RestApiServer::HandlePostValveControl(const httplib::Request& req, httplib::Response& res) {
     try {
+        SetCorsHeaders(res);
         std::string device_id = ExtractDeviceId(req, 1);
         std::string valve_id = ExtractDeviceId(req, 2);
         
@@ -603,26 +684,65 @@ void RestApiServer::HandlePostValveControl(const httplib::Request& req, httplib:
             json request_body = json::parse(req.body);
             open = request_body.value("open", false);
         } catch (...) {
-            open = false;
+            json error_response = CreateErrorResponse(
+                "Invalid request body",
+                "INVALID_REQUEST_FORMAT",
+                "Request body must contain valid JSON with 'open' field"
+            );
+            res.status = 400;
+            res.set_content(error_response.dump(), "application/json");
+            return;
         }
         
         if (valve_control_callback_) {
             bool success = valve_control_callback_(device_id, valve_id, open);
             if (success) {
                 std::string action = open ? "opened" : "closed";
-                json message_data = CreateMessageResponse("Valve " + valve_id + " " + action);
-                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["valve_id"] = valve_id;
+                data["action"] = action;
+                data["open"] = open;
+                data["message"] = "Valve " + valve_id + " " + action + " successfully";
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
             } else {
-                res.set_content(CreateErrorResponse("Failed to control valve").dump(), "application/json");
-                res.status = 500;
+                std::string action = open ? "open" : "close";
+                json error_response = CreateErrorResponse(
+                    "Failed to control valve",
+                    "VALVE_CONTROL_FAILED",
+                    "Unable to " + action + " valve " + valve_id + ". Check hardware connection and valve status."
+                );
+                error_response["device_id"] = device_id;
+                error_response["valve_id"] = valve_id;
+                error_response["requested_action"] = action;
+                
+                res.status = 422;
+                res.set_content(error_response.dump(), "application/json");
             }
         } else {
-            res.set_content(CreateErrorResponse("Valve control callback not set").dump(), "application/json");
-            res.status = 500;
+            json error_response = CreateErrorResponse(
+                "Valve control callback not set",
+                "COLLECTOR_NOT_CONFIGURED",
+                "Valve control functionality is not available"
+            );
+            res.status = 503;
+            res.set_content(error_response.dump(), "application/json");
         }
+        
     } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
+        auto [error_code, error_details] = ClassifyHardwareError(ExtractDeviceId(req, 1), e);
+        
+        json error_response = CreateErrorResponse(
+            "Valve control operation failed",
+            error_code,
+            error_details
+        );
+        error_response["device_id"] = ExtractDeviceId(req, 1);
+        error_response["valve_id"] = ExtractDeviceId(req, 2);
+        
+        res.status = 422;
+        res.set_content(error_response.dump(), "application/json");
     }
 }
 
@@ -661,6 +781,7 @@ void RestApiServer::HandlePostSetpointChange(const httplib::Request& req, httpli
 // 새로운 하드웨어 제어 핸들러들 (디지털/아날로그/파라미터)
 void RestApiServer::HandlePostDigitalOutput(const httplib::Request& req, httplib::Response& res) {
     try {
+        SetCorsHeaders(res);
         std::string device_id = ExtractDeviceId(req, 1);
         std::string output_id = ExtractDeviceId(req, 2);
         
@@ -669,26 +790,65 @@ void RestApiServer::HandlePostDigitalOutput(const httplib::Request& req, httplib
             json request_body = json::parse(req.body);
             enable = request_body.value("enable", false);
         } catch (...) {
-            enable = false;
+            json error_response = CreateErrorResponse(
+                "Invalid request body",
+                "INVALID_REQUEST_FORMAT",
+                "Request body must contain valid JSON with 'enable' field"
+            );
+            res.status = 400;
+            res.set_content(error_response.dump(), "application/json");
+            return;
         }
         
         if (digital_output_callback_) {
             bool success = digital_output_callback_(device_id, output_id, enable);
             if (success) {
                 std::string action = enable ? "enabled" : "disabled";
-                json message_data = CreateMessageResponse("Digital output " + output_id + " " + action);
-                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["output_id"] = output_id;
+                data["action"] = action;
+                data["enable"] = enable;
+                data["message"] = "Digital output " + output_id + " " + action + " successfully";
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
             } else {
-                res.set_content(CreateErrorResponse("Failed to control digital output").dump(), "application/json");
-                res.status = 500;
+                std::string action = enable ? "enable" : "disable";
+                json error_response = CreateErrorResponse(
+                    "Failed to control digital output",
+                    "DIGITAL_OUTPUT_CONTROL_FAILED",
+                    "Unable to " + action + " digital output " + output_id + ". Check hardware connection and output status."
+                );
+                error_response["device_id"] = device_id;
+                error_response["output_id"] = output_id;
+                error_response["requested_action"] = action;
+                
+                res.status = 422; // 하드웨어 제어 실패
+                res.set_content(error_response.dump(), "application/json");
             }
         } else {
-            res.set_content(CreateErrorResponse("Digital output callback not set").dump(), "application/json");
-            res.status = 500;
+            json error_response = CreateErrorResponse(
+                "Digital output callback not set",
+                "COLLECTOR_NOT_CONFIGURED",
+                "Digital output control functionality is not available"
+            );
+            res.status = 503;
+            res.set_content(error_response.dump(), "application/json");
         }
+        
     } catch (const std::exception& e) {
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-        res.status = 500;
+        auto [error_code, error_details] = ClassifyHardwareError(ExtractDeviceId(req, 1), e);
+        
+        json error_response = CreateErrorResponse(
+            "Digital output control operation failed",
+            error_code,
+            error_details
+        );
+        error_response["device_id"] = ExtractDeviceId(req, 1);
+        error_response["output_id"] = ExtractDeviceId(req, 2);
+        
+        res.status = 422; // 대부분 하드웨어 관련 문제
+        res.set_content(error_response.dump(), "application/json");
     }
 }
 
@@ -1101,10 +1261,21 @@ void RestApiServer::SetCorsHeaders(httplib::Response& res) {
 #endif
 }
 
-json RestApiServer::CreateErrorResponse(const std::string& error) {
+json RestApiServer::CreateErrorResponse(const std::string& error, const std::string& error_code, const std::string& details) {
     json response = json::object();
     response["success"] = false;
     response["error"] = error;
+    
+    // 🔥 NEW: 구체적인 에러 코드 (백엔드가 HTTP 상태코드 결정에 사용)
+    if (!error_code.empty()) {
+        response["error_code"] = error_code;
+    }
+    
+    // 🔥 NEW: 상세 정보 (사용자 친화적 메시지)
+    if (!details.empty()) {
+        response["details"] = details;
+    }
+    
     response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
         system_clock::now().time_since_epoch()).count());
     return response;
@@ -1408,6 +1579,74 @@ void RestApiServer::HandleAlarmRecoveryTrigger(const httplib::Request& req, http
         res.status = 500;
         res.set_content(CreateErrorResponse(error_data).dump(), "application/json");
     }
+}
+
+std::pair<std::string, std::string> RestApiServer::ClassifyHardwareError(const std::string& device_id, const std::exception& e) {
+    std::string error_message = e.what();
+    std::string lower_msg = error_message;
+    std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(), ::tolower);
+    
+    // 연결 실패 패턴들
+    if (lower_msg.find("connection") != std::string::npos && 
+        (lower_msg.find("failed") != std::string::npos || lower_msg.find("refused") != std::string::npos)) {
+        return {"HARDWARE_CONNECTION_FAILED", "Device connection failed: " + error_message};
+    }
+    
+    // 타임아웃 패턴들
+    if (lower_msg.find("timeout") != std::string::npos || lower_msg.find("timed out") != std::string::npos) {
+        return {"HARDWARE_TIMEOUT", "Device response timeout: " + error_message};
+    }
+    
+    // Modbus 특화 에러들
+    if (lower_msg.find("modbus") != std::string::npos) {
+        if (lower_msg.find("slave") != std::string::npos && lower_msg.find("respond") != std::string::npos) {
+            return {"MODBUS_SLAVE_NO_RESPONSE", "Modbus slave not responding: " + error_message};
+        }
+        if (lower_msg.find("crc") != std::string::npos || lower_msg.find("checksum") != std::string::npos) {
+            return {"MODBUS_CRC_ERROR", "Modbus CRC error: " + error_message};
+        }
+        return {"MODBUS_PROTOCOL_ERROR", "Modbus protocol error: " + error_message};
+    }
+    
+    // MQTT 특화 에러들
+    if (lower_msg.find("mqtt") != std::string::npos) {
+        if (lower_msg.find("broker") != std::string::npos) {
+            return {"MQTT_BROKER_UNREACHABLE", "MQTT broker unreachable: " + error_message};
+        }
+        if (lower_msg.find("auth") != std::string::npos || lower_msg.find("credential") != std::string::npos) {
+            return {"MQTT_AUTH_FAILED", "MQTT authentication failed: " + error_message};
+        }
+        return {"MQTT_CONNECTION_ERROR", "MQTT connection error: " + error_message};
+    }
+    
+    // Worker 관리 에러들
+    if (lower_msg.find("worker") != std::string::npos) {
+        if (lower_msg.find("already") != std::string::npos && lower_msg.find("running") != std::string::npos) {
+            return {"WORKER_ALREADY_RUNNING", "Worker already running: " + error_message};
+        }
+        if (lower_msg.find("not found") != std::string::npos) {
+            return {"WORKER_NOT_FOUND", "Worker not found: " + error_message};
+        }
+        return {"WORKER_OPERATION_FAILED", "Worker operation failed: " + error_message};
+    }
+    
+    // 디바이스 관련 에러들
+    if (lower_msg.find("device") != std::string::npos && lower_msg.find("not found") != std::string::npos) {
+        return {"DEVICE_NOT_FOUND", "Device not found: " + error_message};
+    }
+    
+    // 권한 관련 에러들
+    if (lower_msg.find("permission") != std::string::npos || lower_msg.find("access denied") != std::string::npos) {
+        return {"PERMISSION_DENIED", "Access denied: " + error_message};
+    }
+    
+    // 설정 관련 에러들
+    if (lower_msg.find("config") != std::string::npos || lower_msg.find("invalid") != std::string::npos) {
+        return {"CONFIGURATION_ERROR", "Configuration error: " + error_message};
+    }
+    
+    // 기본 에러
+    return {"COLLECTOR_INTERNAL_ERROR", "Internal collector error: " + error_message};
 }
 
 #ifndef HAVE_HTTPLIB
