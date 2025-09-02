@@ -4,7 +4,7 @@
 // =============================================================================
 
 const axios = require('axios');
-const https = require('https');
+const http = require('http');
 const ConfigManager = require('../config/ConfigManager');
 
 class CircuitBreaker {
@@ -71,14 +71,14 @@ class ConnectionPool {
     this.keepAliveMsecs = options.keepAliveMsecs || 1000;
     this.maxFreeSockets = options.maxFreeSockets || 10;
     
-    // HTTP Agent 설정 (Connection Pooling)
-    this.httpAgent = new https.Agent({
+    // HTTP Agent 설정 (https 대신 http)
+    this.httpAgent = new http.Agent({  // ← 여기 수정
       keepAlive: this.keepAlive,
       keepAliveMsecs: this.keepAliveMsecs,
       maxSockets: this.maxSockets,
       maxFreeSockets: this.maxFreeSockets,
-      timeout: 5000,
-      freeSocketTimeout: 30000
+      timeout: 5000
+      // freeSocketTimeout는 http.Agent에서 지원되지 않으므로 제거
     });
   }
 
@@ -157,30 +157,29 @@ class CollectorProxyService {
 
   setupHttpClient() {
     this.httpClient = axios.create({
-      baseURL: `http://${this.collectorConfig.host}:${this.collectorConfig.port}`,
-      timeout: this.collectorConfig.timeout,
-      headers: {
+        baseURL: `http://${this.collectorConfig.host}:${this.collectorConfig.port}`,
+        timeout: this.collectorConfig.timeout,
+        headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'PulseOne-Backend/2.1.0-Enhanced',
         'Connection': 'keep-alive'
-      },
-      // Connection pooling 적용
-      httpAgent: this.connectionPool.getAgent(),
-      
-      // 재시도 설정
-      retry: this.collectorConfig.retries,
-      retryDelay: (retryCount) => {
-        return Math.min(1000 * Math.pow(2, retryCount), 10000); // 지수 백오프
-      },
-      
-      // 요청 validation
-      validateStatus: (status) => {
+        },
+        // HTTP Agent 사용 (https 대신)
+        httpAgent: this.connectionPool.getAgent(),
+        
+        // 재시도 설정
+        retry: this.collectorConfig.retries,
+        retryDelay: (retryCount) => {
+        return Math.min(1000 * Math.pow(2, retryCount), 10000);
+        },
+        
+        validateStatus: (status) => {
         return status >= 200 && status < 300;
-      }
+        }
     });
 
     this.setupInterceptors();
-  }
+    }
 
   setupInterceptors() {
     // 요청 인터셉터
