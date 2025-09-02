@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/services/deviceApi.ts
-// 개선된 Device API - protocol_id 직접 관리
+// 완성된 Device API - 모든 Collector 제어 API 통합
 // ============================================================================
 
 import { API_CONFIG } from '../config';
@@ -10,7 +10,7 @@ import { API_CONFIG } from '../config';
 // ============================================================================
 
 export interface ProtocolInfo {
-  id: number;                    // 🔥 추가: database ID
+  id: number;                    // 데이터베이스 ID
   protocol_type: string;         // 백엔드 호환성
   name: string;                  // 표시명 (display_name)
   value: string;                 // 호환성 (protocol_type와 동일)
@@ -50,13 +50,13 @@ export interface Device {
   model?: string;
   serial_number?: string;
   
-  // 🔥 프로토콜 정보 - ID와 타입 모두 관리
+  // 프로토콜 정보 - ID와 타입 모두 관리
   protocol_id: number;           // 데이터베이스 ID (실제 저장값)
   protocol_type: string;         // 타입 문자열 (표시용)
   endpoint: string;
   config?: any;
   
-  // 🔥 프로토콜 상세 정보 (JOIN된 데이터)
+  // 프로토콜 상세 정보 (JOIN된 데이터)
   protocol?: {
     id: number;
     type: string;
@@ -77,6 +77,20 @@ export interface Device {
   status?: string | any;
   last_seen?: string;
   last_communication?: string;
+  
+  // Collector 상태 (실시간)
+  collector_status?: {
+    status?: string;
+    message?: string;
+    worker_pid?: number;
+    uptime?: number;
+    last_error?: string;
+    performance?: {
+      requests_processed?: number;
+      errors?: number;
+      avg_response_time?: number;
+    };
+  };
   
   // 데이터포인트 정보
   data_point_count?: number;
@@ -109,7 +123,75 @@ export interface Device {
 }
 
 // ============================================================================
-// 요청 인터페이스 - protocol_id 사용
+// Collector 제어 관련 인터페이스들
+// ============================================================================
+
+export interface CollectorDeviceStatus {
+  device_id: string;
+  worker_status: 'running' | 'stopped' | 'paused' | 'error' | 'starting' | 'stopping';
+  worker_pid?: number;
+  uptime_seconds?: number;
+  last_activity?: string;
+  performance_metrics?: {
+    requests_processed: number;
+    successful_requests: number;
+    failed_requests: number;
+    avg_response_time_ms: number;
+    last_response_time_ms?: number;
+  };
+  connection_info?: {
+    protocol: string;
+    endpoint: string;
+    connected: boolean;
+    last_connected?: string;
+    connection_attempts?: number;
+  };
+  error_info?: {
+    last_error?: string;
+    error_count?: number;
+    consecutive_errors?: number;
+  };
+  data_points?: {
+    total: number;
+    active: number;
+    last_update?: string;
+  };
+}
+
+export interface WorkerBatchResult {
+  total_processed: number;
+  successful: number;
+  failed: number;
+  results: Array<{
+    device_id: number;
+    success: boolean;
+    data?: any;
+    error?: string;
+  }>;
+}
+
+export interface HardwareControlResult {
+  device_id: string;
+  output_id: string;
+  action: string;
+  success: boolean;
+  previous_state?: any;
+  new_state?: any;
+  timestamp: string;
+  response_time_ms?: number;
+}
+
+export interface ConfigSyncResult {
+  device_id: string;
+  sync_type: 'reload' | 'sync' | 'notify';
+  success: boolean;
+  changes_applied?: number;
+  warnings?: string[];
+  timestamp: string;
+}
+
+// ============================================================================
+// 요청 인터페이스들
 // ============================================================================
 
 export interface CreateDeviceRequest {
@@ -118,7 +200,7 @@ export interface CreateDeviceRequest {
   device_type: string;
   manufacturer?: string;
   model?: string;
-  protocol_id: number;           // 🔥 변경: protocol_type → protocol_id
+  protocol_id: number;           // protocol_type → protocol_id
   endpoint: string;
   config?: any;
   site_id?: number;
@@ -135,13 +217,48 @@ export interface UpdateDeviceRequest {
   device_type?: string;
   manufacturer?: string;
   model?: string;
-  protocol_id?: number;          // 🔥 변경: protocol_type → protocol_id
+  protocol_id?: number;          // protocol_type → protocol_id
   endpoint?: string;
   config?: any;
   polling_interval?: number;
   timeout?: number;
   retry_count?: number;
   is_enabled?: boolean;
+}
+
+export interface GetDevicesParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  protocol_type?: string;        // 필터링용 (호환성)
+  protocol_id?: number;          // ID로 필터링
+  device_type?: string;
+  connection_status?: string;
+  status?: string;
+  site_id?: number;
+  device_group_id?: number;
+  sort_by?: string;
+  sort_order?: 'ASC' | 'DESC';
+  include_rtu_relations?: boolean;
+  include_collector_status?: boolean; // 실시간 상태 포함
+}
+
+export interface DigitalControlRequest {
+  state: boolean;
+  duration?: number;  // 지속시간 (밀리초)
+  force?: boolean;    // 강제 실행
+}
+
+export interface AnalogControlRequest {
+  value: number;
+  unit?: string;
+  ramp_time?: number; // 램프 시간 (밀리초)
+}
+
+export interface PumpControlRequest {
+  enable: boolean;
+  speed?: number;     // 0-100%
+  duration?: number;  // 지속시간 (밀리초)
 }
 
 // ============================================================================
@@ -214,22 +331,6 @@ export interface DeviceStats {
     }>;
   };
   last_updated: string;
-}
-
-export interface GetDevicesParams {
-  page?: number;
-  limit?: number;
-  search?: string;
-  protocol_type?: string;        // 필터링용 (호환성)
-  protocol_id?: number;          // 🔥 추가: ID로 필터링
-  device_type?: string;
-  connection_status?: string;
-  status?: string;
-  site_id?: number;
-  device_group_id?: number;
-  sort_by?: string;
-  sort_order?: 'ASC' | 'DESC';
-  include_rtu_relations?: boolean;
 }
 
 export interface ApiResponse<T> {
@@ -364,6 +465,31 @@ class ProtocolManager {
         device_count: 0,
         enabled_count: 0,
         connected_count: 0
+      },
+      {
+        id: 3,
+        protocol_type: 'MQTT',
+        name: 'MQTT',
+        value: 'MQTT',
+        description: 'Message Queuing Telemetry Transport',
+        display_name: 'MQTT',
+        default_port: 1883,
+        requires_broker: true,
+        device_count: 0,
+        enabled_count: 0,
+        connected_count: 0
+      },
+      {
+        id: 4,
+        protocol_type: 'BACNET',
+        name: 'BACnet',
+        value: 'BACNET',
+        description: 'Building Automation and Control Networks',
+        display_name: 'BACnet',
+        default_port: 47808,
+        device_count: 0,
+        enabled_count: 0,
+        connected_count: 0
       }
     ];
   }
@@ -397,11 +523,12 @@ class ProtocolManager {
 }
 
 // ============================================================================
-// DeviceApiService 클래스 - protocol_id 지원
+// DeviceApiService 클래스 - 모든 Collector 제어 API 통합
 // ============================================================================
 
 export class DeviceApiService {
   private static readonly BASE_URL = '/api/devices';
+  private static readonly COLLECTOR_URL = '/api/collector';
   
   // 초기화 (프로토콜 로드)
   static async initialize(): Promise<void> {
@@ -413,6 +540,10 @@ export class DeviceApiService {
     return ProtocolManager;
   }
   
+  // ========================================================================
+  // 기본 CRUD API들
+  // ========================================================================
+
   // 디바이스 목록 조회
   static async getDevices(params?: GetDevicesParams): Promise<ApiResponse<DevicesResponse>> {
     try {
@@ -445,7 +576,8 @@ export class DeviceApiService {
     id: number, 
     options?: { 
       include_data_points?: boolean; 
-      include_rtu_network?: boolean; 
+      include_rtu_network?: boolean;
+      include_collector_status?: boolean;
     }
   ): Promise<ApiResponse<Device>> {
     try {
@@ -457,6 +589,10 @@ export class DeviceApiService {
       
       if (options?.include_rtu_network) {
         queryParams.append('include_rtu_network', 'true');
+      }
+      
+      if (options?.include_collector_status) {
+        queryParams.append('include_collector_status', 'true');
       }
       
       const url = `${this.BASE_URL}/${id}?${queryParams.toString()}`;
@@ -550,7 +686,11 @@ export class DeviceApiService {
     }
   }
 
-  // 디바이스 활성화/비활성화
+  // ========================================================================
+  // 기본 디바이스 제어 API들 (DB 상태 변경)
+  // ========================================================================
+
+  // 디바이스 활성화
   static async enableDevice(id: number): Promise<ApiResponse<Device>> {
     try {
       const response = await fetch(`${this.BASE_URL}/${id}/enable`, {
@@ -568,6 +708,7 @@ export class DeviceApiService {
     }
   }
 
+  // 디바이스 비활성화
   static async disableDevice(id: number): Promise<ApiResponse<Device>> {
     try {
       const response = await fetch(`${this.BASE_URL}/${id}/disable`, {
@@ -603,7 +744,404 @@ export class DeviceApiService {
     }
   }
 
-  // 일괄 작업
+  // ========================================================================
+  // 신규 추가: Collector 워커 제어 API들 (실시간 제어)
+  // ========================================================================
+
+  // 워커 시작 (Collector 레벨)
+  static async startDeviceWorker(id: number, options?: { forceRestart?: boolean }): Promise<ApiResponse<CollectorDeviceStatus>> {
+    try {
+      console.log(`🚀 Starting device worker: ${id}`);
+      
+      const response = await fetch(`${this.BASE_URL}/${id}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(options || {})
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 워커 ${id} 시작 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 워커 정지 (Collector 레벨)
+  static async stopDeviceWorker(id: number, options?: { graceful?: boolean }): Promise<ApiResponse<CollectorDeviceStatus>> {
+    try {
+      console.log(`🛑 Stopping device worker: ${id}`);
+      
+      const response = await fetch(`${this.BASE_URL}/${id}/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(options || { graceful: true })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 워커 ${id} 정지 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 워커 재시작 (Collector 레벨)
+  static async restartDeviceWorker(id: number, options?: { wait?: number }): Promise<ApiResponse<CollectorDeviceStatus>> {
+    try {
+      console.log(`🔄 Restarting device worker: ${id}`);
+      
+      const response = await fetch(`${this.BASE_URL}/${id}/restart`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(options || {})
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 워커 ${id} 재시작 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 워커 일시정지
+  static async pauseDeviceWorker(id: number): Promise<ApiResponse<CollectorDeviceStatus>> {
+    try {
+      console.log(`⏸️ Pausing device worker: ${id}`);
+      
+      const response = await fetch(`${this.COLLECTOR_URL}/devices/${id}/pause`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 워커 ${id} 일시정지 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 워커 재개
+  static async resumeDeviceWorker(id: number): Promise<ApiResponse<CollectorDeviceStatus>> {
+    try {
+      console.log(`▶️ Resuming device worker: ${id}`);
+      
+      const response = await fetch(`${this.COLLECTOR_URL}/devices/${id}/resume`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 워커 ${id} 재개 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 워커 실시간 상태 조회
+  static async getDeviceWorkerStatus(id: number): Promise<ApiResponse<CollectorDeviceStatus>> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/${id}/status`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 워커 ${id} 상태 조회 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 실시간 데이터 조회
+  static async getCurrentDeviceData(id: number, pointIds?: string[]): Promise<ApiResponse<any>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (pointIds && pointIds.length > 0) {
+        queryParams.append('point_ids', pointIds.join(','));
+      }
+      
+      const url = `${this.BASE_URL}/${id}/data/current?${queryParams.toString()}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${id} 실시간 데이터 조회 실패:`, error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // 신규 추가: 하드웨어 직접 제어 API들
+  // ========================================================================
+
+  // 디지털 출력 제어 (릴레이, 솔레노이드 등)
+  static async controlDigitalOutput(
+    deviceId: number, 
+    outputId: string, 
+    request: DigitalControlRequest
+  ): Promise<ApiResponse<HardwareControlResult>> {
+    try {
+      console.log(`🔌 Digital control: Device ${deviceId}, Output ${outputId}, State: ${request.state}`);
+      
+      const response = await fetch(`${this.BASE_URL}/${deviceId}/digital/${outputId}/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디지털 출력 제어 실패 (Device ${deviceId}, Output ${outputId}):`, error);
+      throw error;
+    }
+  }
+
+  // 아날로그 출력 제어 (4-20mA, 0-10V 등)
+  static async controlAnalogOutput(
+    deviceId: number, 
+    outputId: string, 
+    request: AnalogControlRequest
+  ): Promise<ApiResponse<HardwareControlResult>> {
+    try {
+      console.log(`📊 Analog control: Device ${deviceId}, Output ${outputId}, Value: ${request.value}`);
+      
+      const response = await fetch(`${this.BASE_URL}/${deviceId}/analog/${outputId}/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`아날로그 출력 제어 실패 (Device ${deviceId}, Output ${outputId}):`, error);
+      throw error;
+    }
+  }
+
+  // 펌프 제어
+  static async controlPump(
+    deviceId: number, 
+    pumpId: string, 
+    request: PumpControlRequest
+  ): Promise<ApiResponse<HardwareControlResult>> {
+    try {
+      console.log(`⚡ Pump control: Device ${deviceId}, Pump ${pumpId}, Enable: ${request.enable}`);
+      
+      const response = await fetch(`${this.BASE_URL}/${deviceId}/pump/${pumpId}/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`펌프 제어 실패 (Device ${deviceId}, Pump ${pumpId}):`, error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // 신규 추가: 배치 작업 API들
+  // ========================================================================
+
+  // 배치 워커 시작
+  static async startMultipleDeviceWorkers(deviceIds: number[]): Promise<ApiResponse<WorkerBatchResult>> {
+    try {
+      console.log(`🚀 Starting ${deviceIds.length} device workers:`, deviceIds);
+      
+      const response = await fetch(`${this.BASE_URL}/batch/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_ids: deviceIds })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('배치 워커 시작 실패:', error);
+      throw error;
+    }
+  }
+
+  // 배치 워커 정지
+  static async stopMultipleDeviceWorkers(
+    deviceIds: number[], 
+    options?: { graceful?: boolean }
+  ): Promise<ApiResponse<WorkerBatchResult>> {
+    try {
+      console.log(`🛑 Stopping ${deviceIds.length} device workers:`, deviceIds);
+      
+      const response = await fetch(`${this.BASE_URL}/batch/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_ids: deviceIds, ...options })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('배치 워커 정지 실패:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // 신규 추가: 설정 동기화 API들
+  // ========================================================================
+
+  // 디바이스 설정 재로드
+  static async reloadDeviceConfig(id: number): Promise<ApiResponse<ConfigSyncResult>> {
+    try {
+      console.log(`🔄 Reloading config for device ${id}`);
+      
+      const response = await fetch(`${this.BASE_URL}/${id}/config/reload`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${id} 설정 재로드 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 전체 설정 재로드
+  static async reloadAllConfigs(): Promise<ApiResponse<ConfigSyncResult>> {
+    try {
+      console.log('🔄 Reloading all configurations');
+      
+      const response = await fetch(`${this.COLLECTOR_URL}/config/reload`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('전체 설정 재로드 실패:', error);
+      throw error;
+    }
+  }
+
+  // 디바이스 설정 동기화
+  static async syncDeviceSettings(id: number, settings: any): Promise<ApiResponse<ConfigSyncResult>> {
+    try {
+      console.log(`🔄 Syncing settings for device ${id}`);
+      
+      const response = await fetch(`${this.COLLECTOR_URL}/devices/${id}/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`디바이스 ${id} 설정 동기화 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 설정 변경 알림
+  static async notifyConfigChange(
+    type: string, 
+    entityId: number, 
+    changes?: any
+  ): Promise<ApiResponse<ConfigSyncResult>> {
+    try {
+      console.log(`🔔 Notifying config change: ${type} ${entityId}`);
+      
+      const response = await fetch(`${this.COLLECTOR_URL}/config/notify-change`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type, entity_id: entityId, changes: changes || {} })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`설정 변경 알림 실패 (${type} ${entityId}):`, error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // 기존 API들 (유지)
+  // ========================================================================
+
+  // 일괄 작업 (DB 레벨)
   static async bulkAction(data: BulkActionRequest): Promise<ApiResponse<BulkActionResult>> {
     try {
       const response = await fetch(`${this.BASE_URL}/bulk-action`, {
@@ -708,6 +1246,10 @@ export class DeviceApiService {
     }
   }
 
+  // ========================================================================
+  // 유틸리티 메서드들
+  // ========================================================================
+
   // RTU 관련 유틸리티 메서드들
   static isRtuDevice(device: Device): boolean {
     return device.protocol_type === 'MODBUS_RTU';
@@ -782,6 +1324,42 @@ export class DeviceApiService {
     });
     
     return networks;
+  }
+
+  // 디바이스 상태 체크 유틸리티
+  static isDeviceOnline(device: Device): boolean {
+    return device.connection_status === 'connected' || 
+           device.connection_status === 'online';
+  }
+
+  static isDeviceRunning(device: Device): boolean {
+    return device.collector_status?.status === 'running' || 
+           device.status === 'running';
+  }
+
+  static isDeviceEnabled(device: Device): boolean {
+    return device.is_enabled;
+  }
+
+  static getDeviceLastSeen(device: Device): Date | null {
+    if (!device.last_seen) return null;
+    return new Date(device.last_seen);
+  }
+
+  static formatDeviceUptime(uptimeSeconds: number | undefined): string {
+    if (!uptimeSeconds) return '알 수 없음';
+    
+    const hours = Math.floor(uptimeSeconds / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const seconds = Math.floor(uptimeSeconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}시간 ${minutes}분`;
+    } else if (minutes > 0) {
+      return `${minutes}분 ${seconds}초`;
+    } else {
+      return `${seconds}초`;
+    }
   }
 }
 

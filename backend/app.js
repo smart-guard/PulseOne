@@ -10,7 +10,7 @@ const http = require('http');
 const { initializeConnections } = require('./lib/connection/db');
 
 // =============================================================================
-// 안전한 모듈 로딩 (기존 방식 유지)
+// 안전한 모듈 로딩 (상세 에러 정보 포함)
 // =============================================================================
 
 // WebSocket 서비스 로드 (안전하게)
@@ -48,26 +48,67 @@ try {
     console.warn('   실시간 알람 기능이 비활성화됩니다.');
 }
 
-// 🔥 Collector 프록시 서비스 (새로 추가)
+// 🔥 Collector 프록시 서비스 (개선된 에러 처리)
 let CollectorProxyService = null;
 try {
     const { getInstance: getCollectorProxy } = require('./lib/services/CollectorProxyService');
     CollectorProxyService = getCollectorProxy;
     console.log('✅ CollectorProxyService 로드 성공');
+    
+    // 즉시 인스턴스 초기화 테스트
+    try {
+        const testProxy = CollectorProxyService();
+        console.log('✅ CollectorProxyService 인스턴스 생성 성공');
+    } catch (instanceError) {
+        console.warn('⚠️ CollectorProxyService 인스턴스 생성 실패:', instanceError.message);
+        CollectorProxyService = null;
+    }
+    
 } catch (error) {
     console.warn('⚠️ CollectorProxyService 로드 실패:', error.message);
+    console.warn('   상세 에러:', error.stack?.split('\n')[0] || 'Unknown error');
     console.warn('   Collector 통합 기능이 비활성화됩니다.');
 }
 
-// 🔥 설정 동기화 훅 (새로 추가) 
+// 🔥 설정 동기화 훅 (개선된 에러 처리와 경로)
 let ConfigSyncHooks = null;
 try {
+    // 먼저 hooks 폴더에서 시도
     const { getInstance: getConfigSyncHooks } = require('./lib/hooks/ConfigSyncHooks');
     ConfigSyncHooks = getConfigSyncHooks;
-    console.log('✅ ConfigSyncHooks 로드 성공');
-} catch (error) {
-    console.warn('⚠️ ConfigSyncHooks 로드 실패:', error.message);
-    console.warn('   설정 동기화 기능이 비활성화됩니다.');
+    console.log('✅ ConfigSyncHooks 로드 성공 (lib/hooks/)');
+    
+    // 즉시 인스턴스 초기화 테스트
+    try {
+        const testHooks = ConfigSyncHooks();
+        console.log('✅ ConfigSyncHooks 인스턴스 생성 성공');
+    } catch (instanceError) {
+        console.warn('⚠️ ConfigSyncHooks 인스턴스 생성 실패:', instanceError.message);
+        ConfigSyncHooks = null;
+    }
+    
+} catch (error1) {
+    try {
+        // hooks 폴더가 실패하면 hook 폴더에서 시도
+        const { getInstance: getConfigSyncHooks } = require('./lib/hook/ConfigSyncHooks');
+        ConfigSyncHooks = getConfigSyncHooks;
+        console.log('✅ ConfigSyncHooks 로드 성공 (lib/hook/)');
+        
+        // 인스턴스 테스트
+        try {
+            const testHooks = ConfigSyncHooks();
+            console.log('✅ ConfigSyncHooks 인스턴스 생성 성공');
+        } catch (instanceError) {
+            console.warn('⚠️ ConfigSyncHooks 인스턴스 생성 실패:', instanceError.message);
+            ConfigSyncHooks = null;
+        }
+        
+    } catch (error2) {
+        console.warn('⚠️ ConfigSyncHooks 로드 완전 실패:');
+        console.warn('   hooks 폴더 시도:', error1.message);
+        console.warn('   hook 폴더 시도:', error2.message);
+        console.warn('   설정 동기화 기능이 비활성화됩니다.');
+    }
 }
 
 const app = express();
@@ -260,18 +301,42 @@ app.get('/api/health', async (req, res) => {
             }
         };
         
-        // 🔥 Collector 통합 상태 (새로 추가)
+        // 🔥 Collector 통합 상태 (개선된 상태 확인)
         healthInfo.collector_integration = {
             proxy_service: {
                 enabled: !!CollectorProxyService,
-                status: CollectorProxyService ? (CollectorProxyService().isCollectorHealthy() ? 'healthy' : 'unhealthy') : null,
-                last_check: CollectorProxyService ? CollectorProxyService().getLastHealthCheck() : null
+                status: null,
+                last_check: null,
+                error: null
             },
             config_sync: {
                 enabled: !!ConfigSyncHooks,
-                hooks_registered: ConfigSyncHooks ? ConfigSyncHooks().getRegisteredHooks().length : 0
+                hooks_registered: 0,
+                error: null
             }
         };
+        
+        // CollectorProxyService 상태 상세 확인
+        if (CollectorProxyService) {
+            try {
+                const proxy = CollectorProxyService();
+                healthInfo.collector_integration.proxy_service.status = proxy.isCollectorHealthy() ? 'healthy' : 'unhealthy';
+                healthInfo.collector_integration.proxy_service.last_check = proxy.getLastHealthCheck();
+            } catch (proxyError) {
+                healthInfo.collector_integration.proxy_service.status = 'error';
+                healthInfo.collector_integration.proxy_service.error = proxyError.message;
+            }
+        }
+        
+        // ConfigSyncHooks 상태 상세 확인
+        if (ConfigSyncHooks) {
+            try {
+                const hooks = ConfigSyncHooks();
+                healthInfo.collector_integration.config_sync.hooks_registered = hooks.getRegisteredHooks().length;
+            } catch (hooksError) {
+                healthInfo.collector_integration.config_sync.error = hooksError.message;
+            }
+        }
         
         // 초기화 시스템 상태
         healthInfo.initialization = {
@@ -708,7 +773,7 @@ function gracefulShutdown(signal) {
 }
 
 // =============================================================================
-// Start Server (기존 + Collector 상태 표시)
+// Start Server (개선된 진단 메시지)
 // =============================================================================
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
@@ -719,6 +784,9 @@ server.listen(PORT, '0.0.0.0', async () => {
         `✅ 활성화 (${webSocketService.getStatus().stats?.socket_clients || 0}명 연결)` : 
         '❌ 비활성화';
         
+    const collectorStatus = CollectorProxyService ? '✅ Available' : '❌ Not Found';
+    const syncHooksStatus = ConfigSyncHooks ? '✅ Available' : '❌ Not Found';
+    
     console.log(`
 🚀 PulseOne Backend Server Started! (Collector 통합 완성)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -774,8 +842,8 @@ Environment: ${process.env.NODE_ENV || 'development'}
 Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enabled' : '❌ Disabled'}
 DatabaseInitializer: ${DatabaseInitializer ? '✅ Available' : '❌ Not Found'}
 WebSocket Service: ${webSocketService ? '✅ Enabled' : '❌ Disabled'}
-Collector Proxy: ${CollectorProxyService ? '✅ Available' : '❌ Not Found'}
-Config Sync Hooks: ${ConfigSyncHooks ? '✅ Available' : '❌ Not Found'}
+Collector Proxy: ${collectorStatus}
+Config Sync Hooks: ${syncHooksStatus}
 Authentication: 🔓 Development Mode (Basic Auth)
 Tenant Isolation: ✅ Enabled
 PID: ${process.pid}
@@ -791,13 +859,13 @@ PID: ${process.pid}
    - WebSocket 상태 관리 ✅
    - 자동 초기화 ${DatabaseInitializer ? '✅' : '⚠️'}
    - 서비스 제어 ✅
-   - Collector 프록시 ${CollectorProxyService ? '✅' : '⚠️'}
-   - 설정 동기화 ${ConfigSyncHooks ? '✅' : '⚠️'}
+   - Collector 프록시 ${collectorStatus}
+   - 설정 동기화 ${syncHooksStatus}
    - 멀티테넌트 지원 ✅
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
     
-    // 🔥 Collector 연결 상태 확인 (새로 추가)
+    // 🔥 Collector 연결 상태 확인 (개선된 진단)
     try {
         console.log('🔄 Checking Collector connection...');
         if (CollectorProxyService) {
@@ -818,7 +886,7 @@ PID: ${process.pid}
                 console.log(`   ⚠️ Worker status unavailable: ${workerError.message}`);
             }
         } else {
-            console.log('⚠️ CollectorProxyService not available');
+            console.log('⚠️ CollectorProxyService not available - check loading errors above');
         }
         
     } catch (collectorError) {
@@ -831,7 +899,7 @@ PID: ${process.pid}
         console.log(`   🔧 To enable Collector, ensure it's running and check COLLECTOR_HOST/COLLECTOR_API_PORT settings`);
     }
     
-    // 🔥 설정 동기화 시스템 상태 (새로 추가)
+    // 🔥 설정 동기화 시스템 상태 (개선된 진단)
     try {
         if (ConfigSyncHooks) {
             const hooks = ConfigSyncHooks();
@@ -842,6 +910,8 @@ PID: ${process.pid}
             if (registeredHooks.length > 0) {
                 console.log(`   🔗 Hook Types: ${registeredHooks.slice(0, 3).join(', ')}${registeredHooks.length > 3 ? '...' : ''}`);
             }
+        } else {
+            console.log('⚠️ ConfigSyncHooks not available - check loading errors above');
         }
     } catch (hookError) {
         console.warn(`⚠️ Config sync hooks initialization failed: ${hookError.message}`);
