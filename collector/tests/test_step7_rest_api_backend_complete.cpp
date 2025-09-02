@@ -1,7 +1,7 @@
 // =============================================================================
-// collector/tests/test_step7_rest_api_backend_data_flow.cpp
-// Step 7: REST API 백엔드 데이터 플로우 검증 테스트
-// 하드웨어 연결 없이 신호 전달과 데이터 도착 검증에 집중
+// collector/tests/test_step7_rest_api_backend_complete.cpp
+// Step 7: REST API 백엔드 데이터 플로우 검증 테스트 - 수정 완성본
+// URL 패턴 수정: /control 및 /set 추가
 // =============================================================================
 
 #include <gtest/gtest.h>
@@ -438,7 +438,7 @@ protected:
 };
 
 // =============================================================================
-// 데이터 플로우 검증 테스트들
+// 데이터 플로우 검증 테스트들 - URL 수정됨
 // =============================================================================
 
 TEST_F(Step7DataFlowTest, BasicConnectivityDataFlow) {
@@ -494,19 +494,19 @@ TEST_F(Step7DataFlowTest, HardwareControlDataFlow) {
     EXPECT_TRUE(ValidateJsonResponse(start_response, "data"));
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
-    // 1. 디지털 출력 제어
+    // 1. 디지털 출력 제어 - URL 수정: /control 추가
     json digital_data = {{"enable", true}};
-    auto digital_response = http_client_->Post("/api/devices/" + device_id + "/digital/pump01", digital_data);
+    auto digital_response = http_client_->Post("/api/devices/" + device_id + "/digital/pump01/control", digital_data);
     EXPECT_TRUE(ValidateJsonResponse(digital_response, "data"));
     
-    // 2. 아날로그 출력 제어
+    // 2. 아날로그 출력 제어 - URL 수정: /control 추가
     json analog_data = {{"value", 75.5}};
-    auto analog_response = http_client_->Post("/api/devices/" + device_id + "/analog/valve01", analog_data);
+    auto analog_response = http_client_->Post("/api/devices/" + device_id + "/analog/valve01/control", analog_data);
     EXPECT_TRUE(ValidateJsonResponse(analog_response, "data"));
     
-    // 3. 파라미터 변경
+    // 3. 파라미터 변경 - URL 수정: /set 추가
     json param_data = {{"value", 25.0}};
-    auto param_response = http_client_->Post("/api/devices/" + device_id + "/parameters/temp_setpoint", param_data);
+    auto param_response = http_client_->Post("/api/devices/" + device_id + "/parameters/temp_setpoint/set", param_data);
     EXPECT_TRUE(ValidateJsonResponse(param_response, "data"));
     
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -536,9 +536,9 @@ TEST_F(Step7DataFlowTest, InvalidDataHandling) {
     EXPECT_TRUE(ValidateJsonResponse(start_response, "data"));
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
-    // 1. 범위 초과 아날로그 값 테스트
+    // 1. 범위 초과 아날로그 값 테스트 - URL 수정: /control 추가
     json invalid_analog = {{"value", 150.0}};  // 100% 초과
-    auto invalid_response = http_client_->Post("/api/devices/" + device_id + "/analog/valve01", invalid_analog);
+    auto invalid_response = http_client_->Post("/api/devices/" + device_id + "/analog/valve01/control", invalid_analog);
     EXPECT_FALSE(invalid_response.success);  // 실패해야 정상
     
     // 2. Worker가 중지된 상태에서 하드웨어 제어 시도
@@ -546,8 +546,9 @@ TEST_F(Step7DataFlowTest, InvalidDataHandling) {
     EXPECT_TRUE(ValidateJsonResponse(stop_response, "data"));
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
+    // URL 수정: /control 추가
     json control_data = {{"enable", true}};
-    auto control_response = http_client_->Post("/api/devices/" + device_id + "/digital/pump01", control_data);
+    auto control_response = http_client_->Post("/api/devices/" + device_id + "/digital/pump01/control", control_data);
     EXPECT_FALSE(control_response.success);  // Worker가 중지되어 실패해야 정상
     
     LogManager::getInstance().Info("✓ Invalid data handling verified");
@@ -601,21 +602,21 @@ TEST_F(Step7DataFlowTest, EndToEndDataFlow) {
     EXPECT_TRUE(ValidateJsonResponse(start_response, "data"));
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
-    // 3. 하드웨어 제어 시퀀스
+    // 3. 하드웨어 제어 시퀀스 - 모든 URL 수정됨
     json pump_on = {{"enable", true}};
-    auto pump_on_resp = http_client_->Post("/api/devices/" + device_id + "/digital/pump01", pump_on);
+    auto pump_on_resp = http_client_->Post("/api/devices/" + device_id + "/digital/pump01/control", pump_on);
     EXPECT_TRUE(ValidateJsonResponse(pump_on_resp, "data"));
     
     json valve_control = {{"value", 50.0}};
-    auto valve_resp = http_client_->Post("/api/devices/" + device_id + "/analog/valve01", valve_control);
+    auto valve_resp = http_client_->Post("/api/devices/" + device_id + "/analog/valve01/control", valve_control);
     EXPECT_TRUE(ValidateJsonResponse(valve_resp, "data"));
     
     json temp_setting = {{"value", 22.5}};
-    auto temp_resp = http_client_->Post("/api/devices/" + device_id + "/parameters/temp_setpoint", temp_setting);
+    auto temp_resp = http_client_->Post("/api/devices/" + device_id + "/parameters/temp_setpoint/set", temp_setting);
     EXPECT_TRUE(ValidateJsonResponse(temp_resp, "data"));
     
     json pump_off = {{"enable", false}};
-    auto pump_off_resp = http_client_->Post("/api/devices/" + device_id + "/digital/pump01", pump_off);
+    auto pump_off_resp = http_client_->Post("/api/devices/" + device_id + "/digital/pump01/control", pump_off);
     EXPECT_TRUE(ValidateJsonResponse(pump_off_resp, "data"));
     
     // 4. Worker 중지
