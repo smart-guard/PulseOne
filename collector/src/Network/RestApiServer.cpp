@@ -737,7 +737,7 @@ void RestApiServer::HandlePostParameterChange(const httplib::Request& req, httpl
     try {
         SetCorsHeaders(res);
         std::string device_id = ExtractDeviceId(req, 1);
-        std::string setpoint_id = ExtractDeviceId(req, 2);
+        std::string parameter_id = ExtractDeviceId(req, 2);
         
         double value = 0.0;
         try {
@@ -747,24 +747,25 @@ void RestApiServer::HandlePostParameterChange(const httplib::Request& req, httpl
             value = 0.0;
         }
         
-        if (setpoint_change_callback_) {
-            bool success = setpoint_change_callback_(device_id, setpoint_id, value);
+        // 수정: setpoint_change_callback_ → parameter_change_callback_
+        if (parameter_change_callback_) {
+            bool success = parameter_change_callback_(device_id, parameter_id, value);
             if (success) {
-                json data = CreateOutputResponse(value, "setpoint");
+                json data = CreateOutputResponse(value, "parameter");
                 data["device_id"] = device_id;
-                data["setpoint_id"] = setpoint_id;
+                data["parameter_id"] = parameter_id;
                 res.set_content(CreateSuccessResponse(data).dump(), "application/json");
             } else {
                 auto& mapper = HttpErrorMapper::getInstance();
                 int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
                 res.status = http_status;
-                res.set_content(CreateErrorResponse("Failed to change setpoint", "SETPOINT_CHANGE_FAILED", "").dump(), "application/json");
+                res.set_content(CreateErrorResponse("Failed to change parameter", "PARAMETER_CHANGE_FAILED", "").dump(), "application/json");
             }
         } else {
             auto& mapper = HttpErrorMapper::getInstance();
             int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
             res.status = http_status;
-            res.set_content(CreateErrorResponse("Setpoint change callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+            res.set_content(CreateErrorResponse("Parameter change callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
         }
     } catch (const std::exception& e) {
         auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req, 1), e);
@@ -774,7 +775,7 @@ void RestApiServer::HandlePostParameterChange(const httplib::Request& req, httpl
         
         json error_response = CreateErrorResponse(error_details, error_code_str, "");
         error_response["device_id"] = ExtractDeviceId(req, 1);
-        error_response["setpoint_id"] = ExtractDeviceId(req, 2);
+        error_response["parameter_id"] = ExtractDeviceId(req, 2);
         res.status = http_status;
         res.set_content(error_response.dump(), "application/json");
     }
@@ -1113,6 +1114,214 @@ void RestApiServer::SetAnalogOutputCallback(AnalogOutputCallback callback) {
 
 void RestApiServer::SetParameterChangeCallback(ParameterChangeCallback callback) {
     parameter_change_callback_ = callback;
+}
+
+void RestApiServer::HandleGetDeviceGroups(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        if (device_group_list_callback_) {
+            json groups = device_group_list_callback_();
+            res.set_content(CreateSuccessResponse(groups).dump(), "application/json");
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device group list callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Device group functionality is not available").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to retrieve device groups");
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandleGetDeviceGroupStatus(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_status_callback_) {
+            json status = device_group_status_callback_(group_id);
+            
+            if (status.empty() || (status.contains("error") && status["error"] == "group_not_found")) {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_NOT_FOUND);
+                res.status = http_status;
+                
+                json error_response = CreateErrorResponse("Device group not found", "GROUP_NOT_FOUND", 
+                                                         "Device group with ID '" + group_id + "' does not exist");
+                error_response["group_id"] = group_id;
+                res.set_content(error_response.dump(), "application/json");
+                return;
+            }
+            
+            res.set_content(CreateSuccessResponse(status).dump(), "application/json");
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device group status callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Device group functionality is not available").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractGroupId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to get device group status");
+        error_response["group_id"] = ExtractGroupId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDeviceGroupStart(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_control_callback_) {
+            bool success = device_group_control_callback_(group_id, "start");
+            if (success) {
+                json data = CreateGroupActionResponse(group_id, "started", true);
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                
+                json error_response = CreateErrorResponse("Failed to start device group", "GROUP_START_FAILED", 
+                                                         "Unable to start all devices in group '" + group_id + "'");
+                error_response["group_id"] = group_id;
+                error_response["action"] = "start";
+                
+                res.status = http_status;
+                res.set_content(error_response.dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device group control callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Device group control functionality is not available").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractGroupId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Group start operation failed");
+        error_response["group_id"] = ExtractGroupId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDeviceGroupStop(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string group_id = ExtractGroupId(req);
+        
+        if (device_group_control_callback_) {
+            bool success = device_group_control_callback_(group_id, "stop");
+            if (success) {
+                json data = CreateGroupActionResponse(group_id, "stopped", true);
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                
+                json error_response = CreateErrorResponse("Failed to stop device group", "GROUP_STOP_FAILED", 
+                                                         "Unable to stop all devices in group '" + group_id + "'");
+                error_response["group_id"] = group_id;
+                error_response["action"] = "stop";
+                
+                res.status = http_status;
+                res.set_content(error_response.dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device group control callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Device group control functionality is not available").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractGroupId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Group stop operation failed");
+        error_response["group_id"] = ExtractGroupId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        json stats = json::object();
+        stats["total_errors"] = 0;
+        stats["error_types"] = json::object();
+        stats["device_errors"] = json::object();
+        stats["last_24_hours"] = json::array();
+        
+        res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to get error statistics");
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string error_code = ExtractDeviceId(req, 1);  // Reusing method for path parameter
+        
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode enum_code = mapper.ParseErrorString(error_code);
+        
+        // GetErrorDetail 메서드를 사용하여 ErrorDetail 구조체 가져오기
+        auto error_detail = mapper.GetErrorDetail(enum_code);
+        
+        json info = json::object();
+        info["error_code"] = error_code;
+        info["http_status"] = error_detail.http_status;
+        info["severity"] = error_detail.severity;
+        info["category"] = error_detail.category;
+        info["error_type"] = error_detail.error_type;
+        info["recoverable"] = error_detail.recoverable;
+        info["user_actionable"] = error_detail.user_actionable;
+        info["action_hint"] = error_detail.action_hint;
+        info["tech_details"] = error_detail.tech_details;
+        info["user_message"] = mapper.GetUserFriendlyMessage(enum_code);
+        
+        res.set_content(CreateSuccessResponse(info).dump(), "application/json");
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to get error code information");
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
 }
 
 #ifndef HAVE_HTTPLIB
