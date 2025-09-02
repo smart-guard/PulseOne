@@ -124,16 +124,22 @@ class DeviceRepository {
         // 그룹화 및 정렬
         query += DeviceQueries.getGroupByAndOrder();
 
-        // 페이징
+        // 🔥 페이징 수정: LIMIT와 OFFSET 모두 추가
         const limit = filters.limit || 25;
         const page = filters.page || 1;
         const offset = (page - 1) * limit;
         
+        // LIMIT 추가
         query += DeviceQueries.addLimit();
         params.push(limit);
+        
+        // 🚨 핵심 수정: OFFSET 추가
+        query += DeviceQueries.addOffset();
+        params.push(offset);
 
+        console.log(`페이징 설정: page=${page}, limit=${limit}, offset=${offset}`);
         console.log('실행할 쿼리:', query.substring(0, 200) + '...');
-        console.log('파라미터:', params.length + '개');
+        console.log('파라미터:', params.length + '개', params);
 
         const result = await this.dbFactory.executeQuery(query, params);
         
@@ -150,14 +156,14 @@ class DeviceRepository {
             devices = [];
         }
 
-        console.log(`${devices.length}개 디바이스 조회 완료`);
+        console.log(`${devices.length}개 디바이스 조회 완료 (page=${page})`);
 
         // 데이터 파싱
         const parsedDevices = devices.map(device => this.parseDevice(device));
 
-        // 페이징 정보 계산
-        const totalCount = devices.length > 0 ? 
-            (filters.page && filters.limit ? await this.getDeviceCount(filters) : devices.length) : 0;
+        // 🔥 페이징 정보 계산 수정: 정확한 totalCount 조회
+        const totalCount = filters.page && filters.limit ? 
+            await this.getDeviceCount(filters) : devices.length;
         
         const pagination = {
             page: parseInt(page),
@@ -166,6 +172,8 @@ class DeviceRepository {
             has_next: page * limit < totalCount,
             has_prev: page > 1
         };
+
+        console.log('페이지네이션 정보:', pagination);
 
         return {
             items: parsedDevices,
