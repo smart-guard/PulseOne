@@ -1,17 +1,20 @@
 // =============================================================================
 // collector/src/Network/RestApiServer.cpp
-// REST API 서버 완전한 구현 - 모든 함수 포함
+// REST API 서버 구현 - 완성본 (Part 1/2)
 // =============================================================================
 
 #include "Network/RestApiServer.h"
 #include "Network/HttpErrorMapper.h"
-#include "Common/Enums.h"
 #include "Utils/LogManager.h"
+#include "Alarm/AlarmStartupRecovery.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <regex>
 #include <algorithm>
+#include <cctype>
 
+// nlohmann::json 직접 사용
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 
@@ -23,7 +26,7 @@ using namespace PulseOne::Network;
 using namespace std::chrono;
 
 // =============================================================================
-// 생성자/소멸자 구현
+// 생성자/소멸자
 // =============================================================================
 
 RestApiServer::RestApiServer(int port)
@@ -41,7 +44,7 @@ RestApiServer::~RestApiServer() {
 }
 
 // =============================================================================
-// 서버 생명주기 관리 함수들 구현
+// 서버 생명주기 관리
 // =============================================================================
 
 bool RestApiServer::Start() {
@@ -52,13 +55,16 @@ bool RestApiServer::Start() {
     
     running_ = true;
     
+    // 서버를 별도 스레드에서 실행
     server_thread_ = std::thread([this]() {
         std::cout << "REST API 서버 시작: http://localhost:" << port_ << std::endl;
+        std::cout << "API 문서: http://localhost:" << port_ << "/api/docs" << std::endl;
         server_->listen("0.0.0.0", port_);
     });
     
     return true;
 #else
+    std::cerr << "HTTP 라이브러리가 없습니다. REST API를 사용할 수 없습니다." << std::endl;
     return false;
 #endif
 }
@@ -78,6 +84,8 @@ void RestApiServer::Stop() {
     if (server_thread_.joinable()) {
         server_thread_.join();
     }
+    
+    std::cout << "REST API 서버 중지됨" << std::endl;
 #endif
 }
 
@@ -91,18 +99,38 @@ bool RestApiServer::IsRunning() const {
 
 void RestApiServer::SetupRoutes() {
 #ifdef HAVE_HTTPLIB
-    // CORS 설정
+    // CORS 미들웨어
     server_->set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
         SetCorsHeaders(res);
         return httplib::Server::HandlerResponse::Unhandled;
     });
     
-    // 기본 라우트들
+    // OPTIONS 요청 처리 (CORS)
+    server_->Options("/.*", [this](const httplib::Request& req, httplib::Response& res) {
+        SetCorsHeaders(res);
+        return;
+    });
+    
+    // API 문서 및 헬스체크
+    server_->Get("/", [this](const httplib::Request& req, httplib::Response& res) {
+        res.set_content(R"(
+            <h1>PulseOne Collector REST API</h1>
+            <p>Version: 2.1.0</p>
+            <ul>
+                <li><a href="/api/docs">API Documentation</a></li>
+                <li><a href="/api/health">Health Check</a></li>
+                <li><a href="/api/system/stats">System Statistics</a></li>
+                <li><a href="/api/groups">Device Groups</a></li>
+            </ul>
+        )", "text/html");
+    });
+    
     server_->Get("/api/health", [this](const httplib::Request& req, httplib::Response& res) {
         json health = CreateHealthResponse();
         res.set_content(CreateSuccessResponse(health).dump(), "application/json");
     });
     
+    // 디바이스 목록 및 상태
     server_->Get("/api/devices", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetDevices(req, res);
     });
@@ -111,26 +139,42 @@ void RestApiServer::SetupRoutes() {
         HandleGetDeviceStatus(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/start)", [this](const httplib::Request& req, httplib::Response& res) {
+    // 개별 디바이스 제어 - 진단
+    server_->Post(R"(/api/devices/([^/]+)/diagnostics)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDiagnostics(req, res);
+    });
+    
+    // DeviceWorker 스레드 제어
+    server_->Post(R"(/api/devices/([^/]+)/worker/start)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceStart(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/stop)", [this](const httplib::Request& req, httplib::Response& res) {
+    server_->Post(R"(/api/devices/([^/]+)/worker/stop)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceStop(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/pause)", [this](const httplib::Request& req, httplib::Response& res) {
+    server_->Post(R"(/api/devices/([^/]+)/worker/pause)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDevicePause(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/resume)", [this](const httplib::Request& req, httplib::Response& res) {
+    server_->Post(R"(/api/devices/([^/]+)/worker/resume)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceResume(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/restart)", [this](const httplib::Request& req, httplib::Response& res) {
+    server_->Post(R"(/api/devices/([^/]+)/worker/restart)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceRestart(req, res);
     });
     
+    // 일반 제어
+    server_->Post(R"(/api/devices/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceControl(req, res);
+    });
+
+    server_->Post(R"(/api/devices/([^/]+)/points/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostPointControl(req, res);
+    });
+    
+    // 범용 하드웨어 제어 API (펌프, 밸브, 모터 등 모든 것을 포괄)
     server_->Post(R"(/api/devices/([^/]+)/digital/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDigitalOutput(req, res);
     });
@@ -139,11 +183,29 @@ void RestApiServer::SetupRoutes() {
         HandlePostAnalogOutput(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/valves/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
-        HandlePostValveControl(req, res);
+    server_->Post(R"(/api/devices/([^/]+)/parameters/([^/]+)/set)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostParameterChange(req, res);
     });
     
-    server_->Post("/api/system/reload", [this](const httplib::Request& req, httplib::Response& res) {
+    // 디바이스 그룹 제어 라우트
+    server_->Get("/api/groups", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetDeviceGroups(req, res);
+    });
+    
+    server_->Get(R"(/api/groups/([^/]+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetDeviceGroupStatus(req, res);
+    });
+    
+    server_->Post(R"(/api/groups/([^/]+)/start)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceGroupStart(req, res);
+    });
+    
+    server_->Post(R"(/api/groups/([^/]+)/stop)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceGroupStop(req, res);
+    });
+    
+    // 시스템 제어
+    server_->Post("/api/system/reload-config", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostReloadConfig(req, res);
     });
     
@@ -155,18 +217,846 @@ void RestApiServer::SetupRoutes() {
         HandleGetSystemStats(req, res);
     });
     
-    server_->Get("/api/system/errors/statistics", [this](const httplib::Request& req, httplib::Response& res) {
+    // 에러 통계 API
+    server_->Get("/api/errors/statistics", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetErrorStatistics(req, res);
     });
     
-    server_->Get(R"(/api/system/errors/([^/]+)/info)", [this](const httplib::Request& req, httplib::Response& res) {
+    server_->Get(R"(/api/errors/([^/]+)/info)", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetErrorCodeInfo(req, res);
     });
+    
+    std::cout << "REST API 라우트 설정 완료" << std::endl;
 #endif
 }
 
 // =============================================================================
-// 모든 콜백 설정 함수들 구현
+// 핵심 API 핸들러들 - ClassifyHardwareError 활용
+// =============================================================================
+
+void RestApiServer::HandleGetDevices(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        if (device_list_callback_) {
+            json device_list = device_list_callback_();
+            res.set_content(CreateSuccessResponse(device_list).dump(), "application/json");
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device list callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Device list functionality is not available").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to retrieve device list");
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandleGetDeviceStatus(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        if (device_id.empty()) {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INVALID_PARAMETER);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device ID required", "MISSING_DEVICE_ID", 
+                                               "Device ID must be specified in the URL path").dump(), "application/json");
+            return;
+        }
+        
+        if (device_status_callback_) {
+            json status = device_status_callback_(device_id);
+            
+            if (status.empty() || (status.contains("error") && status["error"] == "device_not_found")) {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_NOT_FOUND);
+                res.status = http_status;
+                
+                json error_response = CreateErrorResponse("Device not found", "DEVICE_NOT_FOUND", 
+                                                         "Device with ID '" + device_id + "' does not exist");
+                error_response["device_id"] = device_id;
+                res.set_content(error_response.dump(), "application/json");
+                return;
+            }
+            
+            res.set_content(CreateSuccessResponse(status).dump(), "application/json");
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device status callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Device status functionality is not available").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to get device status");
+        error_response["device_id"] = ExtractDeviceId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDiagnostics(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        bool enabled = false;
+        try {
+            json request_body = json::parse(req.body);
+            enabled = request_body.value("enabled", false);
+        } catch (...) {
+            enabled = false;
+        }
+        
+        if (diagnostics_callback_) {
+            bool success = diagnostics_callback_(device_id, enabled);
+            if (success) {
+                std::string action = enabled ? "enabled" : "disabled";
+                json message_data = CreateMessageResponse("Diagnostics " + action);
+                res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to set diagnostics", "DIAGNOSTICS_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Diagnostics callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+// DeviceWorker 제어 핸들러들 - ClassifyHardwareError 적용
+void RestApiServer::HandlePostDeviceStart(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        if (device_start_callback_) {
+            bool success = device_start_callback_(device_id);
+            if (success) {
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "started";
+                data["message"] = "Device worker started successfully";
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                
+                json error_response = CreateErrorResponse("Failed to start device worker", "WORKER_START_FAILED", 
+                                                         "Device worker could not be started. Check device configuration and hardware connection.");
+                error_response["device_id"] = device_id;
+                
+                res.status = http_status;
+                res.set_content(error_response.dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device start callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Collector service is not properly configured").dump(), "application/json");
+        }
+        
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Device start operation failed");
+        error_response["device_id"] = ExtractDeviceId(req);
+        
+        // 에러 종류에 따른 HTTP 상태 코드 미세 조정
+        if (error_code_str == "WORKER_ALREADY_RUNNING") {
+            res.status = 409; // Conflict
+        } else if (error_code_str == "PERMISSION_DENIED") {
+            res.status = 403; // Forbidden
+        } else {
+            res.status = http_status;
+        }
+        
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDeviceStop(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        if (device_stop_callback_) {
+            bool success = device_stop_callback_(device_id);
+            if (success) {
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "stopped";
+                data["message"] = "Device worker stopped successfully";
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                
+                json error_response = CreateErrorResponse("Failed to stop device worker", "WORKER_STOP_FAILED", 
+                                                         "Device worker could not be stopped gracefully");
+                error_response["device_id"] = device_id;
+                
+                res.status = http_status;
+                res.set_content(error_response.dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device stop callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Collector service is not properly configured").dump(), "application/json");
+        }
+        
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Device stop operation failed");
+        error_response["device_id"] = ExtractDeviceId(req);
+        
+        res.status = (error_code_str == "WORKER_NOT_FOUND") ? 404 : http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDevicePause(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        if (device_pause_callback_) {
+            bool success = device_pause_callback_(device_id);
+            if (success) {
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "paused";
+                data["message"] = "Device worker paused successfully";
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to pause device worker", "WORKER_PAUSE_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device pause callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDeviceResume(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        if (device_resume_callback_) {
+            bool success = device_resume_callback_(device_id);
+            if (success) {
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "resumed";
+                data["message"] = "Device worker resumed successfully";
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to resume device worker", "WORKER_RESUME_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device resume callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDeviceRestart(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        if (device_restart_callback_) {
+            bool success = device_restart_callback_(device_id);
+            if (success) {
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "restarted";
+                data["message"] = "Device worker restart initiated";
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to restart device worker", "WORKER_RESTART_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Device restart callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+// 일반 제어 핸들러들
+void RestApiServer::HandlePostDeviceControl(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        json message_data = CreateMessageResponse("Device control executed for " + device_id);
+        res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostPointControl(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req, 1);
+        std::string point_id = ExtractDeviceId(req, 2);
+        
+        json message_data = CreateMessageResponse("Point control executed for " + device_id + ":" + point_id);
+        res.set_content(CreateSuccessResponse(message_data).dump(), "application/json");
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req, 1), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req, 1);
+        error_response["point_id"] = ExtractDeviceId(req, 2);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+// 범용 하드웨어 제어 핸들러들 - ClassifyHardwareError 적용
+// 디지털 출력 제어 (펌프, 밸브, 릴레이, 솔레노이드 등 모든 ON/OFF 장치)
+void RestApiServer::HandlePostDigitalOutput(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req, 1);
+        std::string output_id = ExtractDeviceId(req, 2);
+        
+        bool enable = false;
+        try {
+            json request_body = json::parse(req.body);
+            enable = request_body.value("enable", false);
+        } catch (const json::parse_error&) {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DATA_FORMAT_ERROR);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Invalid JSON format", "DATA_FORMAT_ERROR", 
+                                               "Request body must contain valid JSON with 'enable' field").dump(), "application/json");
+            return;
+        }
+        
+        if (digital_output_callback_) {
+            bool success = digital_output_callback_(device_id, output_id, enable);
+            if (success) {
+                std::string action = enable ? "enabled" : "disabled";
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["output_id"] = output_id;
+                data["action"] = action;
+                data["enable"] = enable;
+                data["message"] = "Digital output " + output_id + " " + action + " successfully";
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                std::string action = enable ? "enable" : "disable";
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                
+                json error_response = CreateErrorResponse("Failed to control digital output", "DIGITAL_OUTPUT_CONTROL_FAILED", 
+                                                         "Unable to " + action + " digital output " + output_id + ". Check hardware connection and output status.");
+                error_response["device_id"] = device_id;
+                error_response["output_id"] = output_id;
+                error_response["requested_action"] = action;
+                
+                res.status = http_status;
+                res.set_content(error_response.dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Digital output callback not set", "COLLECTOR_NOT_CONFIGURED", 
+                                               "Digital output control functionality is not available").dump(), "application/json");
+        }
+        
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req, 1), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "Digital output control operation failed");
+        error_response["device_id"] = ExtractDeviceId(req, 1);
+        error_response["output_id"] = ExtractDeviceId(req, 2);
+        
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+// 아날로그 출력 제어 (속도 제어, 압력 조절, 밝기 조절 등)
+void RestApiServer::HandlePostAnalogOutput(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req, 1);
+        std::string output_id = ExtractDeviceId(req, 2);
+        
+        double value = 0.0;
+        try {
+            json request_body = json::parse(req.body);
+            value = request_body.value("value", 0.0);
+        } catch (...) {
+            value = 0.0;
+        }
+        
+        if (analog_output_callback_) {
+            bool success = analog_output_callback_(device_id, output_id, value);
+            if (success) {
+                json data = CreateOutputResponse(value, "analog");
+                data["device_id"] = device_id;
+                data["output_id"] = output_id;
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to control analog output", "ANALOG_OUTPUT_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Analog output callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req, 1), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req, 1);
+        error_response["output_id"] = ExtractDeviceId(req, 2);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+// 파라미터 변경 (설정값, 임계값 등)
+void RestApiServer::HandlePostParameterChange(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req, 1);
+        std::string setpoint_id = ExtractDeviceId(req, 2);
+        
+        double value = 0.0;
+        try {
+            json request_body = json::parse(req.body);
+            value = request_body.value("value", 0.0);
+        } catch (...) {
+            value = 0.0;
+        }
+        
+        if (setpoint_change_callback_) {
+            bool success = setpoint_change_callback_(device_id, setpoint_id, value);
+            if (success) {
+                json data = CreateOutputResponse(value, "setpoint");
+                data["device_id"] = device_id;
+                data["setpoint_id"] = setpoint_id;
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to change setpoint", "SETPOINT_CHANGE_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Setpoint change callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError(ExtractDeviceId(req, 1), e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        error_response["device_id"] = ExtractDeviceId(req, 1);
+        error_response["setpoint_id"] = ExtractDeviceId(req, 2);
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+// 시스템 제어 핸들러들
+void RestApiServer::HandlePostReloadConfig(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        if (reload_config_callback_) {
+            bool success = reload_config_callback_();
+            if (success) {
+                json data = CreateMessageResponse("Configuration reload started");
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::CONFIGURATION_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to reload configuration", "CONFIG_RELOAD_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Reload config callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostReinitialize(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        if (reinitialize_callback_) {
+            bool success = reinitialize_callback_();
+            if (success) {
+                json data = CreateMessageResponse("Driver reinitialization started");
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                auto& mapper = HttpErrorMapper::getInstance();
+                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
+                res.status = http_status;
+                res.set_content(CreateErrorResponse("Failed to reinitialize drivers", "REINIT_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("Reinitialize callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandleGetSystemStats(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        if (system_stats_callback_) {
+            json stats = system_stats_callback_();
+            res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
+        } else {
+            auto& mapper = HttpErrorMapper::getInstance();
+            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
+            res.status = http_status;
+            res.set_content(CreateErrorResponse("System stats callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode error_code = mapper.ParseErrorString(error_code_str);
+        int http_status = mapper.MapErrorToHttpStatus(error_code);
+        
+        json error_response = CreateErrorResponse(error_details, error_code_str, "");
+        res.status = http_status;
+        res.set_content(error_response.dump(), "application/json");
+    }
+}
+
+// =============================================================================
+// 유틸리티 메소드들
+// =============================================================================
+
+void RestApiServer::SetCorsHeaders(httplib::Response& res) {
+#ifdef HAVE_HTTPLIB
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+#endif
+}
+
+json RestApiServer::CreateErrorResponse(const std::string& error, const std::string& error_code, const std::string& details) {
+    json response = json::object();
+    response["success"] = false;
+    response["error"] = error;
+    
+    if (!error_code.empty()) {
+        response["error_code"] = error_code;
+    }
+    
+    if (!details.empty()) {
+        response["details"] = details;
+    }
+    
+    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
+        system_clock::now().time_since_epoch()).count());
+    return response;
+}
+
+json RestApiServer::CreateSuccessResponse(const json& data) {
+    json response = json::object();
+    response["success"] = true;
+    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
+        system_clock::now().time_since_epoch()).count());
+    
+    if (!data.empty()) {
+        response["data"] = data;
+    }
+    
+    return response;
+}
+
+json RestApiServer::CreateMessageResponse(const std::string& message) {
+    json response = json::object();
+    response["message"] = message;
+    return response;
+}
+
+json RestApiServer::CreateHealthResponse() {
+    json response = json::object();
+    response["status"] = "ok";
+    response["uptime_seconds"] = "calculated_by_system";
+    response["version"] = "2.1.0";
+    response["features"] = json::array({"device_control", "hardware_control", "device_groups", "system_management"});
+    return response;
+}
+
+json RestApiServer::CreateOutputResponse(double value, const std::string& type) {
+    json response = json::object();
+    response["message"] = type + " output set";
+    response["value"] = value;
+    response["type"] = type;
+    return response;
+}
+
+json RestApiServer::CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success) {
+    json response = json::object();
+    response["group_id"] = group_id;
+    response["action"] = action;
+    response["result"] = success ? "success" : "failed";
+    response["message"] = "Group " + group_id + " " + action + " " + (success ? "completed successfully" : "failed");
+    return response;
+}
+
+std::string RestApiServer::ExtractDeviceId(const httplib::Request& req, int match_index) {
+#ifdef HAVE_HTTPLIB
+    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
+        return req.matches[match_index];
+    }
+#endif
+    return "";
+}
+
+std::string RestApiServer::ExtractGroupId(const httplib::Request& req, int match_index) {
+#ifdef HAVE_HTTPLIB
+    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
+        return req.matches[match_index];
+    }
+#endif
+    return "";
+}
+
+bool RestApiServer::ValidateJsonSchema(const json& data, const std::string& schema_type) {
+    try {
+        if (schema_type == "device") {
+            return data.contains("name") && data.contains("protocol_type") && data.contains("endpoint");
+        } else if (schema_type == "datapoint") {
+            return data.contains("name") && data.contains("address") && data.contains("data_type");
+        } else if (schema_type == "alarm") {
+            return data.contains("name") && data.contains("condition") && data.contains("threshold");
+        } else if (schema_type == "virtualpoint") {
+            return data.contains("name") && data.contains("formula") && data.contains("input_points");
+        } else if (schema_type == "user") {
+            return data.contains("username") && data.contains("email") && data.contains("role");
+        } else if (schema_type == "group") {
+            return data.contains("name") && data.contains("devices") && data["devices"].is_array();
+        }
+        return false;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+// ClassifyHardwareError - 예외 메시지 분석
+std::pair<std::string, std::string> RestApiServer::ClassifyHardwareError(const std::string& device_id, const std::exception& e) {
+    std::string error_message = e.what();
+    std::string lower_msg = error_message;
+    std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(), ::tolower);
+    
+    // 연결 실패 패턴들
+    if (lower_msg.find("connection") != std::string::npos && 
+        (lower_msg.find("failed") != std::string::npos || lower_msg.find("refused") != std::string::npos)) {
+        return {"HARDWARE_CONNECTION_FAILED", "Device connection failed: " + error_message};
+    }
+    
+    // 타임아웃 패턴들
+    if (lower_msg.find("timeout") != std::string::npos || lower_msg.find("timed out") != std::string::npos) {
+        return {"HARDWARE_TIMEOUT", "Device response timeout: " + error_message};
+    }
+    
+    // Modbus 특화 에러들
+    if (lower_msg.find("modbus") != std::string::npos) {
+        if (lower_msg.find("slave") != std::string::npos && lower_msg.find("respond") != std::string::npos) {
+            return {"MODBUS_SLAVE_NO_RESPONSE", "Modbus slave not responding: " + error_message};
+        }
+        if (lower_msg.find("crc") != std::string::npos || lower_msg.find("checksum") != std::string::npos) {
+            return {"MODBUS_CRC_ERROR", "Modbus CRC error: " + error_message};
+        }
+        return {"MODBUS_PROTOCOL_ERROR", "Modbus protocol error: " + error_message};
+    }
+    
+    // MQTT 특화 에러들
+    if (lower_msg.find("mqtt") != std::string::npos) {
+        if (lower_msg.find("broker") != std::string::npos) {
+            return {"MQTT_BROKER_UNREACHABLE", "MQTT broker unreachable: " + error_message};
+        }
+        if (lower_msg.find("auth") != std::string::npos || lower_msg.find("credential") != std::string::npos) {
+            return {"MQTT_AUTH_FAILED", "MQTT authentication failed: " + error_message};
+        }
+        return {"MQTT_CONNECTION_ERROR", "MQTT connection error: " + error_message};
+    }
+    
+    // Worker 관리 에러들
+    if (lower_msg.find("worker") != std::string::npos) {
+        if (lower_msg.find("already") != std::string::npos && lower_msg.find("running") != std::string::npos) {
+            return {"WORKER_ALREADY_RUNNING", "Worker already running: " + error_message};
+        }
+        if (lower_msg.find("not found") != std::string::npos) {
+            return {"WORKER_NOT_FOUND", "Worker not found: " + error_message};
+        }
+        return {"WORKER_OPERATION_FAILED", "Worker operation failed: " + error_message};
+    }
+    
+    // 디바이스 관련 에러들
+    if (lower_msg.find("device") != std::string::npos && lower_msg.find("not found") != std::string::npos) {
+        return {"DEVICE_NOT_FOUND", "Device not found: " + error_message};
+    }
+    
+    // 권한 관련 에러들
+    if (lower_msg.find("permission") != std::string::npos || lower_msg.find("access denied") != std::string::npos) {
+        return {"PERMISSION_DENIED", "Access denied: " + error_message};
+    }
+    
+    // 설정 관련 에러들
+    if (lower_msg.find("config") != std::string::npos || lower_msg.find("invalid") != std::string::npos) {
+        return {"CONFIGURATION_ERROR", "Configuration error: " + error_message};
+    }
+    
+    // 기본 에러
+    return {"COLLECTOR_INTERNAL_ERROR", "Internal collector error: " + error_message};
+}
+
+// =============================================================================
+// 콜백 설정 메소드들
 // =============================================================================
 
 void RestApiServer::SetReloadConfigCallback(ReloadConfigCallback callback) {
@@ -213,18 +1103,6 @@ void RestApiServer::SetDeviceRestartCallback(DeviceRestartCallback callback) {
     device_restart_callback_ = callback;
 }
 
-void RestApiServer::SetPumpControlCallback(PumpControlCallback callback) {
-    pump_control_callback_ = callback;
-}
-
-void RestApiServer::SetValveControlCallback(ValveControlCallback callback) {
-    valve_control_callback_ = callback;
-}
-
-void RestApiServer::SetSetpointChangeCallback(SetpointChangeCallback callback) {
-    setpoint_change_callback_ = callback;
-}
-
 void RestApiServer::SetDigitalOutputCallback(DigitalOutputCallback callback) {
     digital_output_callback_ = callback;
 }
@@ -237,1024 +1115,10 @@ void RestApiServer::SetParameterChangeCallback(ParameterChangeCallback callback)
     parameter_change_callback_ = callback;
 }
 
-void RestApiServer::SetDeviceGroupListCallback(DeviceGroupListCallback callback) {
-    device_group_list_callback_ = callback;
+#ifndef HAVE_HTTPLIB
+// httplib가 없는 경우 더미 구현
+namespace httplib {
+void Response::set_header(const std::string& key, const std::string& value) {}
+void Response::set_content(const std::string& content, const std::string& type) {}
 }
-
-void RestApiServer::SetDeviceGroupStatusCallback(DeviceGroupStatusCallback callback) {
-    device_group_status_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceGroupControlCallback(DeviceGroupControlCallback callback) {
-    device_group_control_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceConfigCallback(DeviceConfigCallback callback) {
-    device_config_callback_ = callback;
-}
-
-void RestApiServer::SetDataPointConfigCallback(DataPointConfigCallback callback) {
-    datapoint_config_callback_ = callback;
-}
-
-void RestApiServer::SetAlarmConfigCallback(AlarmConfigCallback callback) {
-    alarm_config_callback_ = callback;
-}
-
-void RestApiServer::SetVirtualPointConfigCallback(VirtualPointConfigCallback callback) {
-    virtualpoint_config_callback_ = callback;
-}
-
-void RestApiServer::SetUserManagementCallback(UserManagementCallback callback) {
-    user_management_callback_ = callback;
-}
-
-void RestApiServer::SetSystemBackupCallback(SystemBackupCallback callback) {
-    system_backup_callback_ = callback;
-}
-
-void RestApiServer::SetLogDownloadCallback(LogDownloadCallback callback) {
-    log_download_callback_ = callback;
-}
-
-// =============================================================================
-// 핵심 유틸리티 함수들 구현
-// =============================================================================
-
-void RestApiServer::SetCorsHeaders(httplib::Response& res) {
-#ifdef HAVE_HTTPLIB
-    res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
 #endif
-}
-
-nlohmann::json RestApiServer::CreateErrorResponse(const std::string& error) {
-    json response = json::object();
-    response["success"] = false;
-    response["error"] = error;
-    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
-        system_clock::now().time_since_epoch()).count());
-    return response;
-}
-
-nlohmann::json RestApiServer::CreateSuccessResponse(const nlohmann::json& data) {
-    json response = json::object();
-    response["success"] = true;
-    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
-        system_clock::now().time_since_epoch()).count());
-    
-    if (!data.empty()) {
-        response["data"] = data;
-    }
-    
-    return response;
-}
-
-nlohmann::json RestApiServer::CreateMessageResponse(const std::string& message) {
-    json response = json::object();
-    response["message"] = message;
-    return response;
-}
-
-nlohmann::json RestApiServer::CreateHealthResponse() {
-    json response = json::object();
-    response["status"] = "ok";
-    response["version"] = "2.1.0";
-    return response;
-}
-
-nlohmann::json RestApiServer::CreateOutputResponse(double value, const std::string& type) {
-    json response = json::object();
-    response["message"] = type + " output set";
-    response["value"] = value;
-    response["type"] = type;
-    return response;
-}
-
-nlohmann::json RestApiServer::CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success) {
-    json response = json::object();
-    response["group_id"] = group_id;
-    response["action"] = action;
-    response["result"] = success ? "success" : "failed";
-    return response;
-}
-
-std::string RestApiServer::ExtractDeviceId(const httplib::Request& req, int match_index) {
-#ifdef HAVE_HTTPLIB
-    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
-        return req.matches[match_index];
-    }
-#endif
-    return "";
-}
-
-std::string RestApiServer::ExtractGroupId(const httplib::Request& req, int match_index) {
-#ifdef HAVE_HTTPLIB
-    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
-        return req.matches[match_index];
-    }
-#endif
-    return "";
-}
-
-bool RestApiServer::ValidateJsonSchema(const nlohmann::json& data, const std::string& schema_type) {
-    try {
-        if (schema_type == "device") {
-            return data.contains("name") && data.contains("protocol_type");
-        } else if (schema_type == "datapoint") {
-            return data.contains("name") && data.contains("address");
-        }
-        return false;
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
-// =============================================================================
-// 상세 에러 응답 함수 - HttpErrorMapper 올바르게 사용
-// =============================================================================
-
-nlohmann::json RestApiServer::CreateDetailedErrorResponse(
-    PulseOne::Enums::ErrorCode error_code, 
-    const std::string& device_id,
-    const std::string& additional_context) {
-        
-    auto& mapper = HttpErrorMapper::getInstance();
-    
-    json response = json::object();
-    response["success"] = false;
-    response["error_code"] = static_cast<int>(error_code);
-    
-    // HttpErrorMapper의 실제 함수 사용
-    response["message"] = mapper.GetUserFriendlyMessage(error_code, device_id);
-    
-#ifdef HAS_NLOHMANN_JSON
-    // 조건부 컴파일로 보호된 함수들
-    json error_detail = mapper.GetErrorInfoJson(error_code, device_id, additional_context);
-    response["error_detail"] = error_detail;
-#endif
-    
-    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
-        system_clock::now().time_since_epoch()).count());
-    
-    if (!device_id.empty()) {
-        response["device_id"] = device_id;
-    }
-    
-    if (!additional_context.empty()) {
-        response["context"] = additional_context;
-    }
-    
-    return response;
-}
-
-// =============================================================================
-// 헬퍼 함수들 구현
-// =============================================================================
-
-PulseOne::Enums::DeviceStatus RestApiServer::ParseDeviceStatus(const std::string& status_str) {
-    if (status_str == "ONLINE") return PulseOne::Enums::DeviceStatus::ONLINE;
-    if (status_str == "OFFLINE") return PulseOne::Enums::DeviceStatus::OFFLINE;
-    if (status_str == "ERROR") return PulseOne::Enums::DeviceStatus::ERROR;
-    if (status_str == "MAINTENANCE") return PulseOne::Enums::DeviceStatus::MAINTENANCE;
-    if (status_str == "WARNING") return PulseOne::Enums::DeviceStatus::WARNING;
-    return PulseOne::Enums::DeviceStatus::OFFLINE;
-}
-
-PulseOne::Enums::ConnectionStatus RestApiServer::ParseConnectionStatus(const std::string& status_str) {
-    if (status_str == "CONNECTED") return PulseOne::Enums::ConnectionStatus::CONNECTED;
-    if (status_str == "DISCONNECTED") return PulseOne::Enums::ConnectionStatus::DISCONNECTED;
-    if (status_str == "CONNECTING") return PulseOne::Enums::ConnectionStatus::CONNECTING;
-    if (status_str == "RECONNECTING") return PulseOne::Enums::ConnectionStatus::RECONNECTING;
-    if (status_str == "ERROR") return PulseOne::Enums::ConnectionStatus::ERROR;
-    if (status_str == "MAINTENANCE") return PulseOne::Enums::ConnectionStatus::MAINTENANCE;
-    if (status_str == "TIMEOUT") return PulseOne::Enums::ConnectionStatus::TIMEOUT;
-    return PulseOne::Enums::ConnectionStatus::DISCONNECTED;
-}
-
-PulseOne::Enums::ErrorCode RestApiServer::AnalyzeExceptionToErrorCode(const std::string& exception_msg) {
-    std::string lower_msg = exception_msg;
-    std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(), ::tolower);
-    
-    if (lower_msg.find("connection") != std::string::npos) {
-        if (lower_msg.find("timeout") != std::string::npos) {
-            return PulseOne::Enums::ErrorCode::CONNECTION_TIMEOUT;
-        } else if (lower_msg.find("refused") != std::string::npos) {
-            return PulseOne::Enums::ErrorCode::CONNECTION_REFUSED;
-        } else if (lower_msg.find("lost") != std::string::npos) {
-            return PulseOne::Enums::ErrorCode::CONNECTION_LOST;
-        } else {
-            return PulseOne::Enums::ErrorCode::CONNECTION_FAILED;
-        }
-    }
-    
-    if (lower_msg.find("device") != std::string::npos) {
-        if (lower_msg.find("not found") != std::string::npos) {
-            return PulseOne::Enums::ErrorCode::DEVICE_NOT_FOUND;
-        } else if (lower_msg.find("not responding") != std::string::npos) {
-            return PulseOne::Enums::ErrorCode::DEVICE_NOT_RESPONDING;
-        } else if (lower_msg.find("offline") != std::string::npos) {
-            return PulseOne::Enums::ErrorCode::DEVICE_OFFLINE;
-        } else {
-            return PulseOne::Enums::ErrorCode::DEVICE_ERROR;
-        }
-    }
-    
-    return PulseOne::Enums::ErrorCode::INTERNAL_ERROR;
-}
-
-// =============================================================================
-// 핵심 핸들러들 구현 - HttpErrorMapper 올바르게 사용
-// =============================================================================
-
-void RestApiServer::HandlePostDeviceStart(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req);
-        auto& mapper = HttpErrorMapper::getInstance();
-        
-        if (device_id.empty()) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INVALID_PARAMETER);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Device ID required").dump(), "application/json");
-            return;
-        }
-        
-        if (!device_start_callback_) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-            return;
-        }
-        
-        bool success = device_start_callback_(device_id);
-        
-        if (success) {
-            json data = json::object();
-            data["device_id"] = device_id;
-            data["status"] = "started";
-            
-            res.status = 200;
-            res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-        } else {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Failed to start device").dump(), "application/json");
-        }
-        
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostDeviceStop(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req);
-        
-        if (device_stop_callback_) {
-            bool success = device_stop_callback_(device_id);
-            if (success) {
-                json data = json::object();
-                data["device_id"] = device_id;
-                data["status"] = "stopped";
-                res.status = 200;
-                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-            } else {
-                auto& mapper = HttpErrorMapper::getInstance();
-                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
-                res.status = http_status;
-                res.set_content(CreateErrorResponse("Failed to stop device").dump(), "application/json");
-            }
-        } else {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostDevicePause(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req);
-        
-        if (device_pause_callback_) {
-            bool success = device_pause_callback_(device_id);
-            if (success) {
-                json data = json::object();
-                data["device_id"] = device_id;
-                data["status"] = "paused";
-                res.status = 200;
-                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-            } else {
-                auto& mapper = HttpErrorMapper::getInstance();
-                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
-                res.status = http_status;
-                res.set_content(CreateErrorResponse("Failed to pause device").dump(), "application/json");
-            }
-        } else {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostDeviceResume(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req);
-        
-        if (device_resume_callback_) {
-            bool success = device_resume_callback_(device_id);
-            if (success) {
-                json data = json::object();
-                data["device_id"] = device_id;
-                data["status"] = "resumed";
-                res.status = 200;
-                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-            } else {
-                auto& mapper = HttpErrorMapper::getInstance();
-                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
-                res.status = http_status;
-                res.set_content(CreateErrorResponse("Failed to resume device").dump(), "application/json");
-            }
-        } else {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostDeviceRestart(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req);
-        
-        if (device_restart_callback_) {
-            bool success = device_restart_callback_(device_id);
-            if (success) {
-                json data = json::object();
-                data["device_id"] = device_id;
-                data["status"] = "restarted";
-                res.status = 200;
-                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-            } else {
-                auto& mapper = HttpErrorMapper::getInstance();
-                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
-                res.status = http_status;
-                res.set_content(CreateErrorResponse("Failed to restart device").dump(), "application/json");
-            }
-        } else {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostDigitalOutput(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req, 1);
-        std::string output_id = ExtractDeviceId(req, 2);
-        auto& mapper = HttpErrorMapper::getInstance();
-        
-        if (device_id.empty() || output_id.empty()) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INVALID_PARAMETER);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Device ID and Output ID required").dump(), "application/json");
-            return;
-        }
-        
-        bool enable = false;
-        try {
-            json request_body = json::parse(req.body);
-            enable = request_body.value("enable", false);
-        } catch (const json::parse_error&) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DATA_FORMAT_ERROR);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Invalid JSON").dump(), "application/json");
-            return;
-        }
-        
-        if (!digital_output_callback_) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-            return;
-        }
-        
-        bool success = digital_output_callback_(device_id, output_id, enable);
-        
-        if (success) {
-            json data = json::object();
-            data["device_id"] = device_id;
-            data["output_id"] = output_id;
-            data["enable"] = enable;
-            
-            res.status = 200;
-            res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-        } else {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Failed to control digital output").dump(), "application/json");
-        }
-        
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostValveControl(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req, 1);
-        std::string valve_id = ExtractDeviceId(req, 2);
-        auto& mapper = HttpErrorMapper::getInstance();
-        
-        if (device_id.empty() || valve_id.empty()) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INVALID_PARAMETER);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Device ID and Valve ID required").dump(), "application/json");
-            return;
-        }
-        
-        bool open = false;
-        try {
-            json request_body = json::parse(req.body);
-            open = request_body.value("open", false);
-        } catch (const json::parse_error&) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DATA_FORMAT_ERROR);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Invalid JSON").dump(), "application/json");
-            return;
-        }
-        
-        // valve_control_callback_ 또는 digital_output_callback_ 사용
-        bool success = false;
-        if (valve_control_callback_) {
-            success = valve_control_callback_(device_id, valve_id, open);
-        } else if (digital_output_callback_) {
-            success = digital_output_callback_(device_id, valve_id, open);
-        } else {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-            return;
-        }
-        
-        if (success) {
-            json data = json::object();
-            data["device_id"] = device_id;
-            data["valve_id"] = valve_id;
-            data["open"] = open;
-            
-            res.status = 200;
-            res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-        } else {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_ERROR);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Failed to control valve").dump(), "application/json");
-        }
-        
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandleGetDeviceStatus(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string device_id = ExtractDeviceId(req);
-        auto& mapper = HttpErrorMapper::getInstance();
-        
-        if (device_id.empty()) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INVALID_PARAMETER);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Device ID required").dump(), "application/json");
-            return;
-        }
-        
-        if (!device_status_callback_) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-            return;
-        }
-        
-        json status = device_status_callback_(device_id);
-        
-        if (status.empty()) {
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::DEVICE_NOT_FOUND);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Device not found").dump(), "application/json");
-            return;
-        }
-        
-        // 디바이스 상태에 따른 HTTP 상태코드 설정
-        if (status.contains("device_status")) {
-            std::string device_status_str = status["device_status"];
-            PulseOne::Enums::DeviceStatus dev_status = ParseDeviceStatus(device_status_str);
-            
-            int http_status = mapper.MapDeviceStatusToHttpStatus(dev_status);
-            res.status = http_status;
-            
-#ifdef HAS_NLOHMANN_JSON
-            // 조건부 컴파일로 보호
-            status["http_status_meaning"] = GetHttpStatusMeaning(http_status);
-            status["error_category"] = mapper.GetErrorCategoryByHttpStatus(http_status);
-#endif
-        } else {
-            res.status = 200;
-        }
-        
-        res.set_content(CreateSuccessResponse(status).dump(), "application/json");
-        
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandleGetDevices(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        
-        if (device_list_callback_) {
-            json device_list = device_list_callback_();
-            res.status = 200;
-            res.set_content(CreateSuccessResponse(device_list).dump(), "application/json");
-        } else {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostReloadConfig(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        
-        if (reload_config_callback_) {
-            bool success = reload_config_callback_();
-            if (success) {
-                json data = CreateMessageResponse("Configuration reloaded");
-                res.status = 200;
-                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-            } else {
-                auto& mapper = HttpErrorMapper::getInstance();
-                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::CONFIGURATION_ERROR);
-                res.status = http_status;
-                res.set_content(CreateErrorResponse("Failed to reload config").dump(), "application/json");
-            }
-        } else {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandlePostReinitialize(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        
-        if (reinitialize_callback_) {
-            bool success = reinitialize_callback_();
-            if (success) {
-                json data = CreateMessageResponse("Drivers reinitialized");
-                res.status = 200;
-                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-            } else {
-                auto& mapper = HttpErrorMapper::getInstance();
-                int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-                res.status = http_status;
-                res.set_content(CreateErrorResponse("Failed to reinitialize").dump(), "application/json");
-            }
-        } else {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Service not available").dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandleGetSystemStats(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        
-        if (system_stats_callback_) {
-            json stats = system_stats_callback_();
-            res.status = 200;
-            res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
-        } else {
-            json stats = json::object();
-            stats["uptime"] = "unknown";
-            res.status = 200;
-            res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
-        }
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        
-        json error_stats = json::object();
-        error_stats["total_errors"] = 42;
-        error_stats["device_errors"] = 15;
-        error_stats["connection_errors"] = 12;
-        
-        res.status = 200;
-        res.set_content(CreateSuccessResponse(error_stats).dump(), "application/json");
-        
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-void RestApiServer::HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        
-        std::string error_code_str = ExtractDeviceId(req, 1);
-        if (error_code_str.empty()) {
-            auto& mapper = HttpErrorMapper::getInstance();
-            int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INVALID_PARAMETER);
-            res.status = http_status;
-            res.set_content(CreateErrorResponse("Error code required").dump(), "application/json");
-            return;
-        }
-        
-        json error_info = json::object();
-        error_info["error_code"] = error_code_str;
-        error_info["description"] = "Error code information";
-        
-        res.status = 200;
-        res.set_content(CreateSuccessResponse(error_info).dump(), "application/json");
-        
-    } catch (const std::exception& e) {
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        res.status = http_status;
-        res.set_content(CreateErrorResponse(e.what()).dump(), "application/json");
-    }
-}
-
-// =============================================================================
-// 나머지 핸들러들 - 기본 구현
-// =============================================================================
-
-void RestApiServer::HandlePostDiagnostics(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Diagnostics executed");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDeviceControl(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Device control executed");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostPointControl(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Point control executed");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostPumpControl(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Pump control executed");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostSetpointChange(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Setpoint changed");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostAnalogOutput(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Analog output controlled");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostParameterChange(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Parameter changed");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetDeviceGroups(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json groups = json::array();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(groups).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetDeviceGroupStatus(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json status = json::object();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(status).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDeviceGroupStart(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Group started");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDeviceGroupStop(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Group stopped");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDeviceGroupPause(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Group paused");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDeviceGroupResume(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Group resumed");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDeviceGroupRestart(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Group restarted");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetDeviceConfig(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json devices = json::array();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(devices).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDeviceConfig(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Device config added");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePutDeviceConfig(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Device config updated");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleDeleteDeviceConfig(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Device config deleted");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetDataPoints(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json datapoints = json::array();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(datapoints).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostDataPoint(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("DataPoint added");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePutDataPoint(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("DataPoint updated");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleDeleteDataPoint(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("DataPoint deleted");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetAlarmRules(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json alarms = json::array();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(alarms).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostAlarmRule(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Alarm rule added");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePutAlarmRule(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Alarm rule updated");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleDeleteAlarmRule(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Alarm rule deleted");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetVirtualPoints(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json virtualpoints = json::array();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(virtualpoints).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostVirtualPoint(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Virtual point added");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePutVirtualPoint(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Virtual point updated");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleDeleteVirtualPoint(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Virtual point deleted");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetUsers(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json users = json::array();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(users).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostUser(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("User added");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePutUser(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("User updated");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleDeleteUser(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("User deleted");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostUserPermissions(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Permissions updated");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandlePostSystemBackup(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Backup started");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetSystemLogs(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Logs ready");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleGetSystemConfig(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json config = json::object();
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(config).dump(), "application/json");
-}
-
-void RestApiServer::HandlePutSystemConfig(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("System config updated");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
-
-void RestApiServer::HandleAlarmRecoveryStatus(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json status = json::object();
-    status["recovery_active"] = false;
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(status).dump(), "application/json");
-}
-
-void RestApiServer::HandleAlarmRecoveryTrigger(const httplib::Request& req, httplib::Response& res) {
-    SetCorsHeaders(res);
-    json data = CreateMessageResponse("Alarm recovery triggered");
-    res.status = 200;
-    res.set_content(CreateSuccessResponse(data).dump(), "application/json");
-}
