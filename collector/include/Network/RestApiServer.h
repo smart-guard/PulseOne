@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Network/RestApiServer.h
-// REST API 서버 헤더 - 기존 콜백 유지 + 디바이스 그룹 기능 추가
+// REST API 서버 헤더 - 컴파일 에러 수정 (기존 패턴 유지)
 // =============================================================================
 
 #ifndef PULSEONE_REST_API_SERVER_H
@@ -13,6 +13,10 @@
 #include <thread>
 #include <map>
 #include <vector>
+
+// ✅ 필수 헤더들 먼저 포함 (순서 중요!)
+#include "Common/Enums.h"      // PulseOne::Enums 네임스페이스 필요
+#include "Common/Utils.h"      // 유틸리티 함수들
 
 // nlohmann/json 직접 사용 (기존 프로젝트 패턴 따름)
 #include <nlohmann/json.hpp>
@@ -184,6 +188,10 @@ private:
     void HandleGetSystemConfig(const httplib::Request& req, httplib::Response& res);
     void HandlePutSystemConfig(const httplib::Request& req, httplib::Response& res);
     
+    // 알람 복구 핸들러들
+    void HandleAlarmRecoveryStatus(const httplib::Request& req, httplib::Response& res);
+    void HandleAlarmRecoveryTrigger(const httplib::Request& req, httplib::Response& res);
+    
     // 유틸리티 메서드들
     void SetCorsHeaders(httplib::Response& res);
     nlohmann::json CreateErrorResponse(const std::string& error);
@@ -191,12 +199,26 @@ private:
     nlohmann::json CreateMessageResponse(const std::string& message);       
     nlohmann::json CreateHealthResponse();                                  
     nlohmann::json CreateOutputResponse(double value, const std::string& type);
-    nlohmann::json CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success); // 새로 추가
+    nlohmann::json CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success);
     bool ValidateJsonSchema(const nlohmann::json& data, const std::string& schema_type);
     std::string ExtractDeviceId(const httplib::Request& req, int match_index = 1);
-    std::string ExtractGroupId(const httplib::Request& req, int match_index = 1); // 새로 추가
-    void HandleAlarmRecoveryStatus(const httplib::Request& req, httplib::Response& res);
-    void HandleAlarmRecoveryTrigger(const httplib::Request& req, httplib::Response& res);
+    std::string ExtractGroupId(const httplib::Request& req, int match_index = 1);
+    
+    // ✅ 상세 에러 응답 생성 함수 선언 추가
+    nlohmann::json CreateDetailedErrorResponse(
+        PulseOne::Enums::ErrorCode error_code, 
+        const std::string& device_id = "",
+        const std::string& additional_context = ""
+    );
+    
+    // ✅ 에러 관련 API 핸들러들 선언 추가
+    void HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res);
+    void HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res);
+    
+    // ✅ 헬퍼 메서드들
+    PulseOne::Enums::DeviceStatus ParseDeviceStatus(const std::string& status_str);
+    PulseOne::Enums::ConnectionStatus ParseConnectionStatus(const std::string& status_str);
+    PulseOne::Enums::ErrorCode AnalyzeExceptionToErrorCode(const std::string& exception_msg);
 
 private:
     int port_;
@@ -242,12 +264,6 @@ private:
     UserManagementCallback user_management_callback_;
     SystemBackupCallback system_backup_callback_;
     LogDownloadCallback log_download_callback_;
-
-    // 🔥 NEW: 에러 분류 헬퍼 함수
-    std::pair<std::string, std::string> ClassifyHardwareError(const std::string& device_id, const std::exception& e);
-    
-    // 🔥 NEW: 확장된 에러 응답 생성
-    json CreateErrorResponse(const std::string& error, const std::string& error_code, const std::string& details = "");
 };
 
 } // namespace Network
