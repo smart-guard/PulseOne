@@ -557,11 +557,13 @@ const systemRoutes = require('./routes/system');
 const processRoutes = require('./routes/processes');
 const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/user');
+const errorRoutes = require('./routes/errors');
 
 app.use('/api/system', systemRoutes);
 app.use('/api/processes', processRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/errors', errorRoutes);
 
 console.log('✅ 기존 시스템 API 라우트들 등록 완료');
 
