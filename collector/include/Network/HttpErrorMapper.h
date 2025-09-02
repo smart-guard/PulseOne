@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Network/HttpErrorMapper.h
-// ErrorDetail 구조체 제대로 반환하도록 수정
+// ErrorCode → HTTP Status Code 매핑 및 에러 상세 정보 제공
 // =============================================================================
 
 #ifndef PULSEONE_HTTP_ERROR_MAPPER_H
@@ -9,6 +9,7 @@
 #include "Common/Enums.h"
 #include <string>
 #include <unordered_map>
+#include <chrono>
 
 #ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
@@ -22,7 +23,7 @@ namespace Network {
  */
 class HttpErrorMapper {
 public:
-    // 에러 상세 정보 구조체 - ✅ public으로 이동
+    // 에러 상세 정보 구조체
     struct ErrorDetail {
         int http_status;           // HTTP 상태코드
         std::string error_type;    // 에러 타입 (connection, device, protocol 등)
@@ -38,6 +39,51 @@ public:
     static HttpErrorMapper& getInstance() {
         static HttpErrorMapper instance;
         return instance;
+    }
+    
+    /**
+     * @brief ClassifyHardwareError의 문자열 결과를 ErrorCode로 변환
+     * @param error_str ClassifyHardwareError에서 반환된 에러 분류 문자열
+     * @return 대응하는 ErrorCode enum 값
+     */
+    PulseOne::Enums::ErrorCode ParseErrorString(const std::string& error_str) const {
+        static const std::unordered_map<std::string, PulseOne::Enums::ErrorCode> stringToEnum = {
+            // 연결 관련
+            {"HARDWARE_CONNECTION_FAILED", PulseOne::Enums::ErrorCode::CONNECTION_FAILED},
+            {"HARDWARE_TIMEOUT", PulseOne::Enums::ErrorCode::CONNECTION_TIMEOUT},
+            {"CONNECTION_REFUSED", PulseOne::Enums::ErrorCode::CONNECTION_REFUSED},
+            {"CONNECTION_LOST", PulseOne::Enums::ErrorCode::CONNECTION_LOST},
+            
+            // Modbus 관련
+            {"MODBUS_SLAVE_NO_RESPONSE", PulseOne::Enums::ErrorCode::DEVICE_NOT_RESPONDING},
+            {"MODBUS_CRC_ERROR", PulseOne::Enums::ErrorCode::CHECKSUM_ERROR},
+            {"MODBUS_PROTOCOL_ERROR", PulseOne::Enums::ErrorCode::MODBUS_EXCEPTION},
+            
+            // MQTT 관련
+            {"MQTT_BROKER_UNREACHABLE", PulseOne::Enums::ErrorCode::CONNECTION_FAILED},
+            {"MQTT_AUTH_FAILED", PulseOne::Enums::ErrorCode::AUTHENTICATION_FAILED},
+            {"MQTT_CONNECTION_ERROR", PulseOne::Enums::ErrorCode::MQTT_PUBLISH_FAILED},
+            
+            // Worker 관련
+            {"WORKER_ALREADY_RUNNING", PulseOne::Enums::ErrorCode::DEVICE_BUSY},
+            {"WORKER_NOT_FOUND", PulseOne::Enums::ErrorCode::DEVICE_NOT_FOUND},
+            {"WORKER_OPERATION_FAILED", PulseOne::Enums::ErrorCode::DEVICE_ERROR},
+            
+            // 디바이스 관련
+            {"DEVICE_NOT_FOUND", PulseOne::Enums::ErrorCode::DEVICE_NOT_FOUND},
+            
+            // 권한 관련
+            {"PERMISSION_DENIED", PulseOne::Enums::ErrorCode::INSUFFICIENT_PERMISSION},
+            
+            // 설정 관련
+            {"CONFIGURATION_ERROR", PulseOne::Enums::ErrorCode::CONFIGURATION_ERROR},
+            
+            // 기본값
+            {"COLLECTOR_INTERNAL_ERROR", PulseOne::Enums::ErrorCode::INTERNAL_ERROR}
+        };
+        
+        auto it = stringToEnum.find(error_str);
+        return (it != stringToEnum.end()) ? it->second : PulseOne::Enums::ErrorCode::INTERNAL_ERROR;
     }
     
     /**
@@ -149,7 +195,7 @@ public:
     }
     
     /**
-     * @brief 에러코드별 상세 정보 제공 - ✅ ErrorDetail 구조체 제대로 반환
+     * @brief 에러코드별 상세 정보 제공
      */
     ErrorDetail GetErrorDetail(PulseOne::Enums::ErrorCode error_code) const {
         int http_status = MapErrorToHttpStatus(error_code);
@@ -193,7 +239,7 @@ public:
                 return {http_status, "device", "high", "hardware", false, true,
                        "디바이스 전원 확인", "디바이스 오프라인 - 전원 및 연결 상태 확인"};
             
-            // 데이터 관련 - ✅ ErrorDetail 구조체로 제대로 반환
+            // 데이터 관련
             case PulseOne::Enums::ErrorCode::INVALID_DATA:
                 return {http_status, "data", "medium", "software", false, true,
                        "입력값 확인", "잘못된 데이터 형식 또는 값"};
@@ -515,6 +561,7 @@ inline std::string GetHttpStatusMeaning(int status_code) {
         case 433: return "잘못된 응답";
         case 434: return "체크섬 에러";
         case 435: return "프레임 에러";
+        case 436: return "잘못된 상태";
         
         // 데이터 관련 (450-469)
         case 450: return "잘못된 데이터";

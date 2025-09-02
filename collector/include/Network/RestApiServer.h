@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Network/RestApiServer.h
-// REST API 서버 헤더 - 컴파일 에러 수정 (기존 패턴 유지)
+// REST API 서버 헤더 파일
 // =============================================================================
 
 #ifndef PULSEONE_REST_API_SERVER_H
@@ -13,12 +13,14 @@
 #include <thread>
 #include <map>
 #include <vector>
+#include <utility>
 
-// ✅ 필수 헤더들 먼저 포함 (순서 중요!)
-#include "Common/Enums.h"      // PulseOne::Enums 네임스페이스 필요
-#include "Common/Utils.h"      // 유틸리티 함수들
+// 필수 헤더들
+#include "Common/Enums.h"
+#include "Common/Utils.h"
+#include "Network/HttpErrorMapper.h"
 
-// nlohmann/json 직접 사용 (기존 프로젝트 패턴 따름)
+// nlohmann/json
 #include <nlohmann/json.hpp>
 
 // HTTP 라이브러리 전방 선언
@@ -49,17 +51,12 @@ public:
     using DeviceResumeCallback = std::function<bool(const std::string&)>;
     using DeviceRestartCallback = std::function<bool(const std::string&)>;
     
-    // 기존 하드웨어 제어 콜백들 (유지)
-    using PumpControlCallback = std::function<bool(const std::string&, const std::string&, bool)>;
-    using ValveControlCallback = std::function<bool(const std::string&, const std::string&, bool)>;
-    using SetpointChangeCallback = std::function<bool(const std::string&, const std::string&, double)>;
-    
-    // 새로운 범용 하드웨어 제어 콜백들
+    // 범용 하드웨어 제어 콜백들 (펌프, 밸브, 모터, 릴레이 등 모두 포괄)
     using DigitalOutputCallback = std::function<bool(const std::string&, const std::string&, bool)>;
     using AnalogOutputCallback = std::function<bool(const std::string&, const std::string&, double)>;
     using ParameterChangeCallback = std::function<bool(const std::string&, const std::string&, double)>;
     
-    // 디바이스 그룹 제어 콜백들 (새로 추가)
+    // 디바이스 그룹 제어 콜백들
     using DeviceGroupListCallback = std::function<nlohmann::json()>;
     using DeviceGroupStatusCallback = std::function<nlohmann::json(const std::string&)>;
     using DeviceGroupControlCallback = std::function<bool(const std::string&, const std::string&)>;
@@ -96,17 +93,12 @@ public:
     void SetDeviceResumeCallback(DeviceResumeCallback callback);
     void SetDeviceRestartCallback(DeviceRestartCallback callback);
     
-    // 기존 하드웨어 제어 콜백 설정 (유지)
-    void SetPumpControlCallback(PumpControlCallback callback);
-    void SetValveControlCallback(ValveControlCallback callback);
-    void SetSetpointChangeCallback(SetpointChangeCallback callback);
-    
-    // 새로운 범용 하드웨어 제어 콜백 설정
+    // 범용 하드웨어 제어 콜백 설정 
     void SetDigitalOutputCallback(DigitalOutputCallback callback);
     void SetAnalogOutputCallback(AnalogOutputCallback callback);
     void SetParameterChangeCallback(ParameterChangeCallback callback);
     
-    // 디바이스 그룹 콜백 설정 (새로 추가)
+    // 디바이스 그룹 콜백 설정
     void SetDeviceGroupListCallback(DeviceGroupListCallback callback);
     void SetDeviceGroupStatusCallback(DeviceGroupStatusCallback callback);
     void SetDeviceGroupControlCallback(DeviceGroupControlCallback callback);
@@ -142,17 +134,12 @@ private:
     void HandlePostDeviceControl(const httplib::Request& req, httplib::Response& res);
     void HandlePostPointControl(const httplib::Request& req, httplib::Response& res);
     
-    // 기존 하드웨어 제어 핸들러들 (유지)
-    void HandlePostPumpControl(const httplib::Request& req, httplib::Response& res);
-    void HandlePostValveControl(const httplib::Request& req, httplib::Response& res);
-    void HandlePostSetpointChange(const httplib::Request& req, httplib::Response& res);
-    
-    // 새로운 범용 하드웨어 제어 핸들러들
+    // 범용 하드웨어 제어 핸들러들
     void HandlePostDigitalOutput(const httplib::Request& req, httplib::Response& res);
     void HandlePostAnalogOutput(const httplib::Request& req, httplib::Response& res);
     void HandlePostParameterChange(const httplib::Request& req, httplib::Response& res);
     
-    // 디바이스 그룹 핸들러들 (새로 추가)
+    // 디바이스 그룹 핸들러들
     void HandleGetDeviceGroups(const httplib::Request& req, httplib::Response& res);
     void HandleGetDeviceGroupStatus(const httplib::Request& req, httplib::Response& res);
     void HandlePostDeviceGroupStart(const httplib::Request& req, httplib::Response& res);
@@ -192,9 +179,15 @@ private:
     void HandleAlarmRecoveryStatus(const httplib::Request& req, httplib::Response& res);
     void HandleAlarmRecoveryTrigger(const httplib::Request& req, httplib::Response& res);
     
+    // 에러 통계 핸들러들
+    void HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res);
+    void HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res);
+    
     // 유틸리티 메서드들
     void SetCorsHeaders(httplib::Response& res);
-    nlohmann::json CreateErrorResponse(const std::string& error);
+    nlohmann::json CreateErrorResponse(const std::string& error, 
+                                      const std::string& error_code = "", 
+                                      const std::string& details = "");
     nlohmann::json CreateSuccessResponse(const nlohmann::json& data = nlohmann::json::object());
     nlohmann::json CreateMessageResponse(const std::string& message);       
     nlohmann::json CreateHealthResponse();                                  
@@ -204,21 +197,20 @@ private:
     std::string ExtractDeviceId(const httplib::Request& req, int match_index = 1);
     std::string ExtractGroupId(const httplib::Request& req, int match_index = 1);
     
-    // ✅ 상세 에러 응답 생성 함수 선언 추가
+    // 상세 에러 응답 생성 함수
     nlohmann::json CreateDetailedErrorResponse(
         PulseOne::Enums::ErrorCode error_code, 
         const std::string& device_id = "",
         const std::string& additional_context = ""
     );
     
-    // ✅ 에러 관련 API 핸들러들 선언 추가
-    void HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res);
-    void HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res);
-    
-    // ✅ 헬퍼 메서드들
+    // 헬퍼 메서드들
     PulseOne::Enums::DeviceStatus ParseDeviceStatus(const std::string& status_str);
     PulseOne::Enums::ConnectionStatus ParseConnectionStatus(const std::string& status_str);
     PulseOne::Enums::ErrorCode AnalyzeExceptionToErrorCode(const std::string& exception_msg);
+    
+    // ClassifyHardwareError - 예외 메시지 분석
+    std::pair<std::string, std::string> ClassifyHardwareError(const std::string& device_id, const std::exception& e);
 
 private:
     int port_;
@@ -241,17 +233,12 @@ private:
     DeviceResumeCallback device_resume_callback_;
     DeviceRestartCallback device_restart_callback_;
     
-    // 기존 하드웨어 제어 콜백들 (유지)
-    PumpControlCallback pump_control_callback_;
-    ValveControlCallback valve_control_callback_;
-    SetpointChangeCallback setpoint_change_callback_;
-    
-    // 새로운 범용 하드웨어 제어 콜백들
+    // 범용 하드웨어 제어 콜백들
     DigitalOutputCallback digital_output_callback_;
     AnalogOutputCallback analog_output_callback_;
     ParameterChangeCallback parameter_change_callback_;
     
-    // 디바이스 그룹 콜백들 (새로 추가)
+    // 디바이스 그룹 콜백들
     DeviceGroupListCallback device_group_list_callback_;
     DeviceGroupStatusCallback device_group_status_callback_;
     DeviceGroupControlCallback device_group_control_callback_;
