@@ -1,32 +1,38 @@
 /* ============================================================================
    frontend/src/styles/device-list.css
-   🔥 DeviceList 페이지 전용 CSS - 완전 스코프 제한
+   🔥 완전히 새로운 반응형 디바이스 리스트 CSS
    ============================================================================ */
 
 /* ============================================
-   🔥 DeviceList 컨테이너 및 CSS 변수 정의
+   🔥 1. CSS 변수로 동적 크기 관리 - 적절한 비율로 다시 조정
+   ============================================ */
+:root {
+  /* 기본 테이블 설정 */
+  --table-padding: clamp(12px, 1.5vw, 32px);
+  --table-gap: clamp(4px, 0.5vw, 12px);
+  --cell-padding: clamp(6px, 0.6vw, 16px);
+  --font-size-base: clamp(11px, 0.9vw, 13px);
+  --font-size-small: clamp(9px, 0.8vw, 11px);
+  
+  /* 🔥 컨테이너 내에서 균형잡힌 비율 설정 */
+  --col-checkbox: 50px;                      /* 체크박스: 고정 */
+  --col-device: 2.5fr;                       /* 디바이스: 가장 중요한 정보 */
+  --col-protocol: 1.2fr;                     /* 프로토콜: 적당한 크기 */
+  --col-status: 1fr;                         /* 상태: 기본 크기 */
+  --col-connection: 1.1fr;                   /* 연결: 약간 여유 */
+  --col-data: 1fr;                           /* 데이터: 기본 크기 */
+  --col-performance: 1.1fr;                  /* 성능: 약간 여유 */
+  --col-network: 1fr;                        /* 네트워크: 기본 크기 */
+  --col-actions: 100px;                      /* 작업: 버튼 크기에 맞춤 */
+}
+
+/* ============================================
+   🔥 2. 기본 레이아웃 - 부모 컨테이너에 맞추기
    ============================================ */
 .device-list-container {
-  /* DeviceList 전용 CSS 변수들 */
-  --device-table-padding: clamp(12px, 1.5vw, 24px);
-  --device-table-gap: clamp(6px, 0.8vw, 12px);
-  --device-cell-padding: clamp(8px, 1vw, 16px);
-  --device-font-base: clamp(12px, 1vw, 14px);
-  --device-font-small: clamp(10px, 0.9vw, 12px);
-  
-  /* 🔥 그리드 열 크기 재조정 - 원본처럼 컴팩트하게 */
-  --device-col-checkbox: 50px;                      /* 체크박스 */
-  --device-col-device: 2.5fr;                       /* 디바이스: 원본 크기로 */
-  --device-col-protocol: 1.2fr;                     /* 프로토콜 */
-  --device-col-status: 1fr;                         /* 상태 */
-  --device-col-connection: 1.1fr;                   /* 연결 */
-  --device-col-worker-status: 1fr;                  /* 워커상태 */
-  --device-col-actions: 140px;                      /* 작업: 줄임 */
-  
-  /* 기본 레이아웃 */
-  width: 100%;
+  width: 100%;                           /* 부모 컨테이너에 맞춤 */
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: hidden;                    /* 가로 스크롤 숨김 */
   background: #f8fafc;
   min-height: 100vh;
   box-sizing: border-box;
@@ -34,14 +40,12 @@
   padding: 0;
 }
 
-/* ============================================
-   🔥 페이지 헤더 스타일
-   ============================================ */
-.device-list-container .page-header {
+/* 페이지 헤더 */
+.page-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: var(--device-table-padding);
+  padding: var(--table-padding);
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 24px;
@@ -49,7 +53,7 @@
   gap: 16px;
 }
 
-.device-list-container .header-left {
+.header-left {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -57,8 +61,8 @@
   flex: 1;
 }
 
-.device-list-container .page-title {
-  font-size: clamp(20px, 3vw, 32px);
+.page-title {
+  font-size: clamp(18px, 2.5vw, 28px);
   font-weight: 700;
   color: #111827;
   margin: 0;
@@ -67,40 +71,101 @@
   gap: 12px;
 }
 
-.device-list-container .page-title i {
+.page-title i {
   color: #3b82f6;
-  font-size: clamp(18px, 2.5vw, 28px);
+  font-size: clamp(16px, 2vw, 24px);
 }
 
-.device-list-container .page-subtitle {
-  font-size: clamp(13px, 1.3vw, 16px);
+.page-subtitle {
+  font-size: clamp(12px, 1.2vw, 16px);
   color: #6b7280;
   margin: 0;
 }
 
-.device-list-container .header-right {
+.header-right {
   display: flex;
   align-items: center;
 }
 
-.device-list-container .header-actions {
+.header-actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 
 /* ============================================
-   🔥 필터 섹션
+   🔥 3. 통계 카드 - 완전 반응형
    ============================================ */
-.device-list-container .filters-section {
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--table-gap);
+  margin-bottom: 32px;
+  padding: 0 var(--table-padding);
+}
+
+.stat-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: var(--device-table-padding);
-  margin: 0 var(--device-table-padding) 24px;
+  padding: clamp(16px, 2vw, 32px);
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  min-height: clamp(100px, 12vw, 160px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
-.device-list-container .filters-row {
+.stat-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.stat-icon {
+  margin-bottom: 12px;
+}
+
+.stat-icon i {
+  font-size: clamp(20px, 3vw, 36px);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: clamp(24px, 4vw, 48px);
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+  margin: 0;
+}
+
+.stat-label {
+  font-size: clamp(12px, 1.2vw, 18px);
+  color: #6b7280;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* ============================================
+   🔥 4. 필터 섹션 - 완전 반응형
+   ============================================ */
+.filters-section {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: var(--table-padding);
+  margin: 0 var(--table-padding) 24px;
+}
+
+.filters-row {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -108,14 +173,15 @@
   flex-wrap: wrap;
 }
 
-.device-list-container .search-box {
+/* 검색박스 */
+.search-box {
   position: relative;
   flex: 1;
   min-width: 200px;
   max-width: 400px;
 }
 
-.device-list-container .search-box i {
+.search-box i {
   position: absolute;
   left: 12px;
   top: 50%;
@@ -124,41 +190,42 @@
   font-size: 14px;
 }
 
-.device-list-container .search-box input {
+.search-box input {
   width: 100%;
   padding: 12px 16px 12px 40px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   transition: all 0.2s ease;
   box-sizing: border-box;
 }
 
-.device-list-container .search-box input:focus {
+.search-box input:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.device-list-container .filters-row select {
+/* 필터 셀렉트 박스들 */
+.filters-row select {
   padding: 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   background: #ffffff;
   cursor: pointer;
   min-width: 120px;
   flex-shrink: 0;
 }
 
-.device-list-container .filters-row select:focus {
+.filters-row select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-/* 일괄 작업 */
-.device-list-container .bulk-actions {
+/* 일괄 작업 버튼들 */
+.bulk-actions {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -170,16 +237,16 @@
   flex-wrap: wrap;
 }
 
-.device-list-container .selected-count {
-  font-size: var(--device-font-base);
+.selected-count {
+  font-size: var(--font-size-base);
   color: #374151;
   font-weight: 500;
 }
 
 /* ============================================
-   🔥 에러 및 로딩 상태
+   🔥 5. 에러 및 상태 메시지
    ============================================ */
-.device-list-container .error-message {
+.error-message {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -188,10 +255,10 @@
   border: 1px solid #fecaca;
   border-radius: 8px;
   color: #dc2626;
-  margin: 0 var(--device-table-padding) 16px;
+  margin: 0 var(--table-padding) 16px;
 }
 
-.device-list-container .error-message button {
+.error-message button {
   margin-left: auto;
   background: none;
   border: none;
@@ -199,7 +266,7 @@
   cursor: pointer;
 }
 
-.device-list-container .loading-spinner {
+.loading-spinner {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -208,130 +275,139 @@
   color: #6b7280;
 }
 
-.device-list-container .loading-spinner i {
+.loading-spinner i {
   font-size: 32px;
   color: #3b82f6;
 }
 
-.device-list-container .empty-state {
+.empty-state {
   text-align: center;
   padding: 60px 24px;
   color: #6b7280;
 }
 
-.device-list-container .empty-state i {
+.empty-state i {
   font-size: 48px;
   color: #d1d5db;
   margin-bottom: 16px;
 }
 
-.device-list-container .empty-state h3 {
+.empty-state h3 {
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 8px;
   color: #374151;
 }
 
+.empty-state p {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
 /* ============================================
-   🔥 핵심 - 수정된 CSS Grid 테이블
+   🔥 6. 핵심 - 완전 반응형 테이블 (CSS Grid) - 부모 컨테이너에 맞추기
    ============================================ */
-.device-list-container .devices-table-container {
+.devices-table-container {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  margin: 0 var(--device-table-padding);
-  width: calc(100% - 2 * var(--device-table-padding));
+  margin: 0 var(--table-padding);
+  width: calc(100% - 2 * var(--table-padding));  /* 부모 컨테이너 기준 */
 }
 
-.device-list-container .device-table {
+.device-table {
   width: 100%;
   background: white;
   overflow: hidden;
 }
 
-/* 워커상태 열 추가된 그리드 - 행 높이 원본처럼 줄임 */
-.device-list-container .device-table-header,
-.device-list-container .device-table-row {
+/* 🔥 핵심: 컨테이너 내에서 전체 너비 사용하는 그리드 */
+.device-table-header,
+.device-table-row {
   display: grid;
   grid-template-columns: 
-    var(--device-col-checkbox)
-    var(--device-col-device) 
-    var(--device-col-protocol) 
-    var(--device-col-status) 
-    var(--device-col-connection) 
-    var(--device-col-worker-status)
-    var(--device-col-actions);
-  gap: var(--device-table-gap);
-  padding: 6px var(--device-table-padding); /* 패딩 줄임 */
+    var(--col-checkbox)
+    var(--col-device) 
+    var(--col-protocol) 
+    var(--col-status) 
+    var(--col-connection) 
+    var(--col-data) 
+    var(--col-performance) 
+    var(--col-network) 
+    var(--col-actions);
+  gap: var(--table-gap);
+  padding: var(--cell-padding) var(--table-padding);
   align-items: center;
-  min-height: 45px; /* 원본처럼 줄임 */
+  min-height: clamp(35px, 4vw, 50px);
   word-break: break-word;
   overflow: hidden;
   width: 100%;
   box-sizing: border-box;
 }
 
-.device-list-container .device-table-header {
+.device-table-header {
   background: #f3f4f6;
   border-bottom: 2px solid #e5e7eb;
-  font-size: var(--device-font-small);
+  font-size: var(--font-size-small);
   font-weight: 700;
   color: #374151;
   text-transform: uppercase;
   letter-spacing: 0.025em;
 }
 
-.device-list-container .device-table-header > div {
+.device-table-header > div {
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: var(--device-font-small);
+  font-size: var(--font-size-small);
   padding: 4px 0;
 }
 
-.device-list-container .device-table-header > div:first-child {
+.device-table-header > div:first-child {
   justify-content: flex-start;
 }
 
-.device-list-container .device-table-header > div:nth-child(2) {
+.device-table-header > div:nth-child(2) {
   justify-content: flex-start;
   text-align: left;
 }
 
-.device-list-container .device-table-body {
+/* 테이블 바디 */
+.device-table-body {
   max-height: 70vh;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-.device-list-container .device-table-row {
+.device-table-row {
   border-bottom: 1px solid #e5e7eb;
   transition: all 0.2s ease;
   background: white;
 }
 
-.device-list-container .device-table-row:hover {
+.device-table-row:hover {
   background: #f9fafb;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.device-list-container .device-table-row:nth-child(even) {
+.device-table-row:nth-child(even) {
   background: #fafafa;
 }
 
-.device-list-container .device-table-row:nth-child(even):hover {
+.device-table-row:nth-child(even):hover {
   background: #f3f4f6;
 }
 
-.device-list-container .device-table-cell {
+.device-table-cell {
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   line-height: 1.3;
   padding: 2px;
   overflow: hidden;
@@ -339,215 +415,210 @@
   hyphens: auto;
 }
 
-.device-list-container .device-table-cell:first-child {
+.device-table-cell:first-child {
   justify-content: flex-start;
 }
 
-.device-list-container .device-table-cell:nth-child(2) {
+.device-table-cell:nth-child(2) {
   justify-content: flex-start;
   text-align: left;
 }
 
 /* ============================================
-   🔥 디바이스 정보 표시 - 원본처럼 컴팩트하게
+   🔥 7. 디바이스 정보 셀 (최적화) - 여백 줄이기
    ============================================ */
-.device-list-container .device-info {
+.device-info {
   display: flex;
-  align-items: center;
-  gap: 6px; /* 원본처럼 줄임 */
+  align-items: flex-start;
+  gap: clamp(4px, 0.6vw, 8px);      /* 간격 줄이기 */
   width: 100%;
   min-width: 0;
-  padding: 0;
-  height: 100%;
+  padding: 0;                       /* 추가 패딩 제거 */
 }
 
-.device-list-container .device-info > div {
+.device-info > div {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px; /* 간격 최소화 */
+  margin: 0;                        /* 마진 제거 */
 }
 
-.device-list-container .device-icon {
-  width: 28px; /* 원본처럼 줄임 */
-  height: 28px;
+.device-icon {
+  width: clamp(20px, 2.2vw, 32px);   /* 아이콘 크기 줄이기 */
+  height: clamp(20px, 2.2vw, 32px);
   background: linear-gradient(135deg, #3b82f6, #2563eb);
-  border-radius: 6px;
+  border-radius: 6px;                /* 라운드 줄이기 */
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 12px;
+  font-size: clamp(8px, 1.2vw, 14px);
   flex-shrink: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  margin: 0;
+  margin: 0;                         /* 마진 제거 */
 }
 
-.device-list-container .device-name {
+.device-name {
   font-weight: 600;
   color: #111827;
-  font-size: 12px; /* 원본처럼 줄임 */
-  margin: 0;
+  font-size: var(--font-size-base);
+  margin: 0 0 2px 0;                 /* 마진 최소화 */
   text-align: left;
-  line-height: 1.1; /* 라인 높이 줄임 */
+  line-height: 1.2;                  /* 라인 높이 줄이기 */
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0;
+  padding: 0;                        /* 패딩 제거 */
 }
 
-.device-list-container .device-name:hover {
+.device-name:hover {
   color: #3b82f6;
 }
 
-/* 원본처럼 모든 정보를 매우 컴팩트하게 */
-.device-list-container .device-details {
-  display: none; /* 공간 절약을 위해 숨김 */
+.device-details {
+  display: flex;
+  gap: 2px;                          /* 간격 최소화 */
+  margin: 0 0 2px 0;                 /* 마진 최소화 */
+  flex-wrap: wrap;
 }
 
-.device-list-container .device-description {
-  font-size: 9px;
+.device-type,
+.device-manufacturer {
+  font-size: clamp(8px, 0.7vw, 10px); /* 폰트 크기 줄이기 */
   color: #6b7280;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: #f3f4f6;
+  padding: 1px 4px;                  /* 패딩 줄이기 */
+  border-radius: 3px;                /* 라운드 줄이기 */
+  font-weight: 500;
   white-space: nowrap;
-  max-width: 180px; /* 줄임 */
-  line-height: 1.1;
+  margin: 0;                         /* 마진 제거 */
 }
 
-.device-list-container .device-endpoint {
-  font-size: 9px;
+.device-endpoint {
+  font-size: clamp(8px, 0.7vw, 10px); /* 폰트 크기 줄이기 */
   color: #6b7280;
   font-family: 'Courier New', monospace;
   background: #f9fafb;
-  padding: 1px 3px;
-  border-radius: 2px;
+  padding: 1px 4px;                  /* 패딩 줄이기 */
+  border-radius: 3px;
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin: 0;
-  max-width: 180px; /* 줄임 */
-  line-height: 1.1;
+  margin: 0;                         /* 마진 제거 */
 }
 
 /* ============================================
-   🔥 배지 스타일
+   🔥 8. 프로토콜 및 상태 배지
    ============================================ */
-.device-list-container .protocol-badge {
+.protocol-badge {
   display: inline-flex;
   align-items: center;
-  padding: clamp(3px, 0.4vw, 6px) clamp(6px, 1vw, 12px);
+  padding: clamp(2px, 0.3vw, 6px) clamp(4px, 0.8vw, 12px);
   border-radius: 12px;
-  font-size: var(--device-font-small);
+  font-size: var(--font-size-small);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.025em;
-  border: 1px solid;
+  border: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-  background: #dbeafe;
-  color: #1e40af;
-  border-color: #93c5fd;
 }
 
-.device-list-container .status-badge {
+.status-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: clamp(3px, 0.4vw, 6px) clamp(6px, 1vw, 12px);
-  border-radius: 6px;
-  font-size: var(--device-font-small);
+  padding: clamp(2px, 0.3vw, 6px) clamp(4px, 0.8vw, 12px);
+  border-radius: 4px;
+  font-size: var(--font-size-small);
   font-weight: 600;
-  border: 1px solid;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  background: #f3f4f6;
-  color: #4b5563;
-  border-color: #d1d5db;
-}
-
-/* ============================================
-   🔥 워커 상태 배지 스타일
-   ============================================ */
-.device-list-container .worker-status-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: clamp(3px, 0.4vw, 6px) clamp(6px, 1vw, 10px);
-  border-radius: 6px;
-  font-size: clamp(9px, 0.8vw, 11px);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border: 1px solid;
+  border: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 
-.device-list-container .worker-status-running {
+.status-dot {
+  width: clamp(4px, 0.5vw, 8px);
+  height: clamp(4px, 0.5vw, 8px);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 상태별 색상 */
+.status-badge.status-running {
   background: #dcfce7;
   color: #166534;
-  border-color: #86efac;
 }
 
-.device-list-container .worker-status-stopped {
+.status-badge.status-stopped {
   background: #fee2e2;
   color: #dc2626;
-  border-color: #fca5a5;
 }
 
-.device-list-container .worker-status-paused {
-  background: #fef3c7;
-  color: #d97706;
-  border-color: #fcd34d;
-}
-
-.device-list-container .worker-status-starting {
-  background: #e0f2fe;
-  color: #0891b2;
-  border-color: #7dd3fc;
-}
-
-.device-list-container .worker-status-stopping {
-  background: #fed7d7;
-  color: #c53030;
-  border-color: #fc8181;
-}
-
-.device-list-container .worker-status-error {
+.status-badge.status-error {
   background: #fee2e2;
-  color: #ef4444;
-  border-color: #fca5a5;
-  animation: deviceWorkerErrorBlink 2s infinite;
+  color: #dc2626;
 }
 
-.device-list-container .worker-status-unknown {
-  background: #f1f5f9;
-  color: #64748b;
-  border-color: #cbd5e1;
+.status-badge.status-disabled {
+  background: #f3f4f6;
+  color: #4b5563;
 }
 
-@keyframes deviceWorkerErrorBlink {
-  0%, 50% { opacity: 1; }
-  25%, 75% { opacity: 0.6; }
+.status-badge.status-unknown {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.connection-badge.connection-connected {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.connection-badge.connection-disconnected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.connection-badge.connection-error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.connection-badge.connection-unknown {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.status-dot-connected {
+  background: #22c55e;
+  box-shadow: 0 0 0 1px #bbf7d0;
+}
+
+.status-dot-disconnected,
+.status-dot-error {
+  background: #ef4444;
+  box-shadow: 0 0 0 1px #fecaca;
+}
+
+.status-dot-unknown {
+  background: #6b7280;
+  box-shadow: 0 0 0 1px #d1d5db;
 }
 
 /* ============================================
-   🔥 연결 정보 스타일
+   🔥 9. 정보 표시 영역
    ============================================ */
-.device-list-container .connection-info {
+.connection-info,
+.data-info,
+.performance-info,
+.network-info {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -558,8 +629,8 @@
   overflow: hidden;
 }
 
-.device-list-container .info-title {
-  font-size: var(--device-font-small);
+.info-title {
+  font-size: var(--font-size-small);
   font-weight: 600;
   color: #374151;
   margin-bottom: 1px;
@@ -571,21 +642,32 @@
   width: 100%;
 }
 
-/* ============================================
-   🔥 액션 버튼들 - 워커 제어 중심
-   ============================================ */
-.device-list-container .device-actions {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  justify-content: flex-start;
+.info-subtitle {
+  font-size: clamp(8px, 0.8vw, 11px);
+  font-weight: 400;
+  color: #6b7280;
+  text-align: center;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   width: 100%;
-  flex-wrap: wrap;
 }
 
-.device-list-container .action-btn {
-  width: 28px;
-  height: 28px;
+/* ============================================
+   🔥 10. 액션 버튼들 - 크기 최적화
+   ============================================ */
+.device-actions {
+  display: flex;
+  gap: 4px;                              /* 간격 줄이기 */
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.action-btn {
+  width: 32px;                           /* 고정 크기로 변경 */
+  height: 32px;
   border: none;
   border-radius: 6px;
   display: flex;
@@ -593,188 +675,120 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 11px;
+  font-size: 12px;                       /* 고정 폰트 크기 */
   flex-shrink: 0;
-  background: #f3f4f6;
-  color: #6b7280;
 }
 
-.device-list-container .action-btn:hover:not(:disabled) {
+.action-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
 }
 
-.device-list-container .action-btn:active {
+.action-btn:active {
   transform: translateY(0);
 }
 
-.device-list-container .action-btn:disabled {
-  background: #e5e7eb !important;
-  color: #9ca3af !important;
+.action-btn:disabled {
+  background: #d1d5db !important;
   cursor: not-allowed;
   transform: none;
 }
 
-/* 기존 버튼 */
-.device-list-container .btn-view {
+.btn-view {
   background: #3b82f6;
   color: white;
 }
 
-.device-list-container .btn-view:hover {
+.btn-view:hover {
   background: #2563eb;
 }
 
-.device-list-container .btn-edit {
+.btn-edit {
   background: #8b5cf6;
   color: white;
 }
 
-.device-list-container .btn-edit:hover {
+.btn-edit:hover {
   background: #7c3aed;
-}
-
-/* 워커 제어 버튼들 */
-.device-list-container .btn-start {
-  background: #10b981;
-  color: white;
-}
-
-.device-list-container .btn-start:hover {
-  background: #059669;
-}
-
-.device-list-container .btn-pause {
-  background: #f59e0b;
-  color: white;
-}
-
-.device-list-container .btn-pause:hover {
-  background: #d97706;
-}
-
-.device-list-container .btn-resume {
-  background: #3b82f6;
-  color: white;
-}
-
-.device-list-container .btn-resume:hover {
-  background: #2563eb;
-}
-
-.device-list-container .btn-stop {
-  background: #ef4444;
-  color: white;
-}
-
-.device-list-container .btn-stop:hover {
-  background: #dc2626;
-}
-
-.device-list-container .btn-restart {
-  background: #8b5cf6;
-  color: white;
-}
-
-.device-list-container .btn-restart:hover {
-  background: #7c3aed;
-}
-
-/* 구분선 */
-.device-list-container .action-divider {
-  width: 1px;
-  height: 20px;
-  background-color: #e5e7eb;
-  margin: 0 4px;
-  flex-shrink: 0;
 }
 
 /* ============================================
-   🔥 버튼 공통 스타일
+   🔥 11. 공통 버튼 스타일
    ============================================ */
-.device-list-container .btn {
+.btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: clamp(8px, 1.2vw, 12px) clamp(12px, 1.8vw, 20px);
+  gap: 8px;
+  padding: clamp(6px, 1vw, 12px) clamp(10px, 1.5vw, 20px);
   border: none;
   border-radius: 6px;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
 }
 
-.device-list-container .btn-primary {
+.btn-primary {
   background: #3b82f6;
   color: white;
 }
 
-.device-list-container .btn-primary:hover {
+.btn-primary:hover {
   background: #2563eb;
 }
 
-.device-list-container .btn-secondary {
+.btn-secondary {
   background: #f3f4f6;
   color: #374151;
   border: 1px solid #d1d5db;
 }
 
-.device-list-container .btn-secondary:hover {
+.btn-secondary:hover {
   background: #e5e7eb;
 }
 
-.device-list-container .btn-sm {
-  padding: clamp(4px, 0.8vw, 8px) clamp(8px, 1.2vw, 12px);
-  font-size: var(--device-font-small);
-}
-
-.device-list-container .btn-success {
+.btn-success {
   background: #22c55e;
   color: white;
 }
 
-.device-list-container .btn-success:hover {
+.btn-success:hover {
   background: #16a34a;
 }
 
-.device-list-container .btn-warning {
+.btn-warning {
   background: #f59e0b;
   color: white;
 }
 
-.device-list-container .btn-warning:hover {
+.btn-warning:hover {
   background: #d97706;
 }
 
-.device-list-container .btn-danger {
+.btn-danger {
   background: #ef4444;
   color: white;
 }
 
-.device-list-container .btn-danger:hover {
+.btn-danger:hover {
   background: #dc2626;
 }
 
-/* ============================================
-   🔥 페이징 섹션
-   ============================================ */
-.device-list-container .pagination-section {
-  padding: var(--device-table-padding);
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
+.btn-sm {
+  padding: clamp(4px, 0.6vw, 8px) clamp(6px, 1vw, 12px);
+  font-size: var(--font-size-small);
 }
 
 /* ============================================
-   🔥 상태바 - 로딩 인디케이터 위치 수정
+   🔥 12. 상태바 스타일
    ============================================ */
-.device-list-container .status-bar {
+.status-bar {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: var(--device-table-padding);
-  margin: 24px var(--device-table-padding) 0;
+  padding: var(--table-padding);
+  margin: 24px var(--table-padding) 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -783,119 +797,115 @@
   gap: 16px;
 }
 
-.device-list-container .status-bar-left {
+.status-bar-left {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
   flex-wrap: wrap;
 }
 
-.device-list-container .last-update {
+.last-update {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   color: #6b7280;
 }
 
-.device-list-container .update-time {
+.update-time {
   color: #111827;
   font-weight: 600;
 }
 
-.device-list-container .auto-refresh-status {
+.auto-refresh-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
 }
 
-.device-list-container .refresh-indicator {
+.refresh-indicator {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
   border-radius: 20px;
-  font-size: var(--device-font-small);
+  font-size: var(--font-size-small);
   font-weight: 500;
 }
 
-.device-list-container .refresh-indicator.active {
+.refresh-indicator.active {
   background: #dcfce7;
   color: #166534;
 }
 
-.device-list-container .refresh-indicator.inactive {
+.refresh-indicator.inactive {
   background: #fef3c7;
   color: #92400e;
 }
 
-.device-list-container .refresh-dot {
+.refresh-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
 }
 
-.device-list-container .refresh-indicator.active .refresh-dot {
+.refresh-indicator.active .refresh-dot {
   background: #22c55e;
-  animation: deviceRefreshPulse 2s infinite;
+  animation: pulse 2s infinite;
 }
 
-.device-list-container .refresh-indicator.inactive .refresh-dot {
+.refresh-indicator.inactive .refresh-dot {
   background: #f59e0b;
 }
 
-/* 🔥 백그라운드 새로고침 인디케이터 완전 위치 고정 */
-.device-list-container .background-refresh-indicator {
+.background-refresh {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   color: #3b82f6;
-  background: #eff6ff;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid #dbeafe;
-  position: relative;
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
-/* 🔥 DeviceList 내부의 모든 스피너 아이콘 스타일 강제 적용 */
-.device-list-container .background-refresh-indicator .fa-spin,
-.device-list-container .processing-indicator .fa-spin,
-.device-list-container .refresh-button .fa-spin {
-  animation: deviceListSpin 1s linear infinite !important;
-  display: inline-block !important;
-  font-size: inherit !important;
+.background-refresh i {
+  font-size: var(--font-size-small);
 }
 
-/* DeviceList 전용 spin 애니메이션 */
-@keyframes deviceListSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.api-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: var(--font-size-base);
+  color: #6b7280;
 }
 
-.device-list-container .background-refresh-indicator i {
-  font-size: var(--device-font-small);
+.api-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #059669;
 }
 
-.device-list-container .status-bar-right {
+.api-indicator i {
+  font-size: 8px;
+}
+
+.status-bar-right {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.device-list-container .processing-indicator {
+.processing-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
   color: #3b82f6;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
-.device-list-container .refresh-button {
+.refresh-button {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -904,102 +914,147 @@
   border: 1px solid #d1d5db;
   border-radius: 8px;
   color: #374151;
-  font-size: var(--device-font-base);
+  font-size: var(--font-size-base);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.device-list-container .refresh-button:hover:not(:disabled) {
+.refresh-button:hover:not(:disabled) {
   background: #e5e7eb;
 }
 
-.device-list-container .refresh-button:disabled {
+.refresh-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 /* ============================================
-   🔥 애니메이션
+   🔥 13. 페이지네이션 섹션
    ============================================ */
-@keyframes deviceRefreshPulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+.pagination-section {
+  padding: var(--table-padding);
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
 }
 
 /* ============================================
-   🔥 반응형 디자인 - DeviceList 전용
+   🔥 14. 화면 크기별 최적화 - 전체 너비 활용하는 방향으로 조정
    ============================================ */
-@media (max-width: 1200px) {
-  .device-list-container .device-table-header > div:nth-child(5),
-  .device-list-container .device-table-cell:nth-child(5) {
-    display: none; /* 연결 열 숨김 */
+
+/* 🔥 화면 크기별 열 숨기기 - 비율은 그대로 유지 */
+@media (max-width: 1400px) {
+  .device-table-header > div:nth-child(8),
+  .device-table-cell:nth-child(8) {
+    display: none; /* 네트워크 열 숨김 */
   }
   
-  .device-list-container {
-    --device-col-actions: 160px; /* 액션 버튼 크기 조정 */
-  }
-  
-  .device-list-container .device-table-header,
-  .device-list-container .device-table-row {
+  .device-table-header,
+  .device-table-row {
     grid-template-columns: 
-      var(--device-col-checkbox)
-      var(--device-col-device) 
-      var(--device-col-protocol) 
-      var(--device-col-status) 
-      var(--device-col-worker-status)
-      var(--device-col-actions);
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-connection) 
+      var(--col-data) 
+      var(--col-performance) 
+      var(--col-actions);
   }
 }
 
-@media (max-width: 900px) {
-  .device-list-container .device-table-header > div:nth-child(4),
-  .device-list-container .device-table-cell:nth-child(4) {
-    display: none; /* 상태 열 숨김 */
+@media (max-width: 1200px) {
+  .device-table-header > div:nth-child(7),
+  .device-table-cell:nth-child(7) {
+    display: none; /* 성능 열 숨김 */
   }
   
-  .device-list-container {
-    --device-col-actions: 140px;
-  }
-  
-  .device-list-container .device-table-header,
-  .device-list-container .device-table-row {
+  .device-table-header,
+  .device-table-row {
     grid-template-columns: 
-      var(--device-col-checkbox)
-      var(--device-col-device) 
-      var(--device-col-protocol) 
-      var(--device-col-worker-status)
-      var(--device-col-actions);
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-connection) 
+      var(--col-data) 
+      var(--col-actions);
+  }
+}
+
+@media (max-width: 1000px) {
+  .device-table-header > div:nth-child(6),
+  .device-table-cell:nth-child(6) {
+    display: none; /* 데이터 열 숨김 */
+  }
+  
+  :root {
+    --col-actions: 80px;  /* 액션 버튼 크기만 조정 */
+  }
+  
+  .device-table-header,
+  .device-table-row {
+    grid-template-columns: 
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-connection) 
+      var(--col-actions);
+  }
+}
+
+@media (max-width: 800px) {
+  .device-table-header > div:nth-child(5),
+  .device-table-cell:nth-child(5) {
+    display: none; /* 연결 열 숨김 */
+  }
+  
+  :root {
+    --col-actions: 70px;  /* 액션 버튼 더 작게 */
+  }
+  
+  .device-table-header,
+  .device-table-row {
+    grid-template-columns: 
+      var(--col-checkbox)
+      var(--col-device) 
+      var(--col-protocol) 
+      var(--col-status) 
+      var(--col-actions);
   }
 }
 
 @media (max-width: 600px) {
-  .device-list-container .filters-row {
+  /* 필터들을 세로로 배치 */
+  .filters-row {
     flex-direction: column;
     align-items: stretch;
   }
   
-  .device-list-container .search-box {
+  .search-box {
     max-width: none;
   }
   
-  .device-list-container .filters-row select {
+  .filters-row select {
     min-width: auto;
   }
   
-  .device-list-container .page-header {
+  /* 통계 카드를 2x2로 배치 */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  /* 헤더를 세로로 배치 */
+  .page-header {
     flex-direction: column;
     align-items: stretch;
   }
   
-  .device-list-container .header-actions {
+  .header-actions {
     justify-content: stretch;
   }
   
-  .device-list-container .header-actions .btn {
+  .header-actions .btn {
     flex: 1;
     justify-content: center;
   }
@@ -1007,11 +1062,11 @@
 
 /* 매우 작은 화면에서는 카드 형태로 변경 */
 @media (max-width: 480px) {
-  .device-list-container .device-table-header {
+  .device-table-header {
     display: none;
   }
   
-  .device-list-container .device-table-body {
+  .device-table-body {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -1019,7 +1074,7 @@
     background: #f8fafc;
   }
   
-  .device-list-container .device-table-row {
+  .device-table-row {
     display: block;
     background: white;
     border: 1px solid #e5e7eb;
@@ -1029,46 +1084,624 @@
     position: relative;
   }
   
-  .device-list-container .device-table-cell {
+  .device-table-cell {
     display: block;
     margin-bottom: 8px;
     text-align: left;
     font-size: 14px;
   }
   
-  .device-list-container .device-table-cell:first-child {
+  .device-table-cell:first-child {
     position: absolute;
     top: 16px;
     right: 16px;
     margin-bottom: 0;
   }
   
-  .device-list-container .device-table-cell:last-child {
+  .device-table-cell:last-child {
     margin-bottom: 0;
-    text-align: center;
+    text-align: right;
+  }
+  
+  /* 통계 카드를 1x4로 배치 */
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 }
 
+/* ============================================
+   🔥 15. 애니메이션 및 유틸리티
+   ============================================ */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 색상 유틸리티 클래스 */
+.text-primary { color: #3b82f6; }
+.text-success { color: #10b981; }
+.text-error { color: #ef4444; }
+.text-warning { color: #f59e0b; }
+
 /* 스크롤바 스타일링 */
-.device-list-container .device-table-body::-webkit-scrollbar {
+.device-table-body::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.device-list-container .device-table-body::-webkit-scrollbar-track {
+.device-table-body::-webkit-scrollbar-track {
   background: #f8fafc;
 }
 
-.device-list-container .device-table-body::-webkit-scrollbar-thumb {
+.device-table-body::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 3px;
 }
 
-.device-list-container .device-table-body::-webkit-scrollbar-thumb:hover {
+.device-table-body::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
 /* 텍스트 선택 방지 (성능 개선) */
-.device-list-container .device-table-header {
+.device-table-header {
   user-select: none;
+}
+
+/* ============================================
+   🔥 16. 디버깅용 (개발 시에만 사용)
+   ============================================ */
+/*
+.device-table-header,
+.device-table-row {
+  border: 1px dashed red;
+}
+
+.device-table-cell {
+  border: 1px dashed blue;
+}
+*/
+
+/* 🔥 DeviceList 컨테이너 내부에서만 적용되는 스타일들 */
+.device-list-container .action-divider {
+  width: 1px;
+  height: 20px;
+  background-color: #e5e7eb;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* 🔥 DeviceList - 새로운 워커 제어 버튼들 */
+.device-list-container .action-btn.btn-start-worker {
+  color: #10b981;
+}
+
+.device-list-container .action-btn.btn-start-worker:hover {
+  background-color: #ecfdf5;
+  color: #047857;
+}
+
+.device-list-container .action-btn.btn-stop {
+  color: #ef4444;
+}
+
+.device-list-container .action-btn.btn-stop:hover {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+.device-list-container .action-btn.btn-pause-worker {
+  color: #f59e0b;
+}
+
+.device-list-container .action-btn.btn-pause-worker:hover {
+  background-color: #fffbeb;
+  color: #d97706;
+}
+
+.device-list-container .action-btn.btn-resume {
+  color: #3b82f6;
+}
+
+.device-list-container .action-btn.btn-resume:hover {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+.device-list-container .action-btn.btn-restart {
+  color: #8b5cf6;
+}
+
+.device-list-container .action-btn.btn-restart:hover {
+  background-color: #faf5ff;
+  color: #7c3aed;
+}
+
+/* 🔥 DeviceList - 워커 상태 표시 스타일 */
+.device-list-container .worker-status-indicator {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+}
+
+.device-list-container .worker-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.device-list-container .worker-status-running {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.device-list-container .worker-status-stopped {
+  background-color: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+
+.device-list-container .worker-status-paused {
+  background-color: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fcd34d;
+}
+
+.device-list-container .worker-status-starting {
+  background-color: #e0f2fe;
+  color: #0891b2;
+  border: 1px solid #7dd3fc;
+}
+
+.device-list-container .worker-status-stopping {
+  background-color: #fed7d7;
+  color: #c53030;
+  border: 1px solid #fc8181;
+}
+
+.device-list-container .worker-status-error {
+  background-color: #fee2e2;
+  color: #ef4444;
+  border: 1px solid #fca5a5;
+  animation: statusErrorBlink 2s infinite;
+}
+
+.device-list-container .worker-status-unknown {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+@keyframes statusErrorBlink {
+  0%, 50% { opacity: 1; }
+  25%, 75% { opacity: 0.6; }
+}
+
+/* 🔥 DeviceList - 워커 상태별 버튼 스타일 개선 */
+.device-list-container .action-btn.btn-status {
+  color: #6b7280;
+}
+
+.device-list-container .action-btn.btn-status:hover {
+  background-color: #f9fafb;
+  color: #374151;
+}
+
+.device-list-container .action-btn.btn-config {
+  color: #374151;
+}
+
+.device-list-container .action-btn.btn-config:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+/* 🔥 DeviceList - 드롭다운 메뉴 */
+.device-list-container .dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.device-list-container .dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  z-index: 1000;
+  min-width: 160px;
+  padding: 4px 0;
+  animation: deviceListDropdownFadeIn 0.15s ease-out;
+}
+
+@keyframes deviceListDropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.device-list-container .dropdown:hover .dropdown-menu {
+  display: block;
+}
+
+.device-list-container .dropdown-menu button {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.device-list-container .dropdown-menu button:hover {
+  background-color: #f3f4f6;
+}
+
+.device-list-container .dropdown-menu button.danger {
+  color: #ef4444;
+}
+
+.device-list-container .dropdown-menu button.danger:hover {
+  background-color: #fee2e2;
+}
+
+.device-list-container .dropdown-divider {
+  height: 1px;
+  background-color: #e5e7eb;
+  margin: 4px 0;
+}
+
+/* 🔥 DeviceList - 일괄 작업 확장된 스타일 */
+.device-list-container .bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.device-list-container .selected-count {
+  font-weight: 600;
+  color: #1f2937;
+  padding: 6px 12px;
+  background: #dbeafe;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid #93c5fd;
+}
+
+.device-list-container .bulk-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-left: 1px solid #d1d5db;
+}
+
+.device-list-container .bulk-group:first-of-type {
+  border-left: none;
+  padding-left: 0;
+}
+
+.device-list-container .bulk-group-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+/* 🔥 DeviceList - 일괄 작업 버튼 스타일 */
+.device-list-container .btn-sm {
+  padding: 6px 10px;
+  font-size: 11px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.device-list-container .btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: 1px solid #2563eb;
+}
+
+.device-list-container .btn-primary:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+.device-list-container .btn-secondary {
+  background: #6b7280;
+  color: white;
+  border: 1px solid #4b5563;
+}
+
+.device-list-container .btn-secondary:hover {
+  background: #4b5563;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(75, 85, 99, 0.2);
+}
+
+.device-list-container .btn-info {
+  background: #06b6d4;
+  color: white;
+  border: 1px solid #0891b2;
+}
+
+.device-list-container .btn-info:hover {
+  background: #0891b2;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(8, 145, 178, 0.2);
+}
+
+.device-list-container .btn-outline {
+  background: transparent;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
+.device-list-container .btn-outline:hover {
+  background: #f3f4f6;
+  color: #374151;
+  border-color: #9ca3af;
+}
+
+.device-list-container .btn-ghost {
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  padding: 4px 8px;
+}
+
+.device-list-container .btn-ghost:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* 🔥 DeviceList - 버튼 비활성화 상태 */
+.device-list-container .btn-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.device-list-container .btn-sm:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* 🔥 DeviceList - 반응형 디자인 - 모바일에서 일괄 작업 */
+@media (max-width: 768px) {
+  .device-list-container .bulk-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .device-list-container .bulk-group {
+    border-left: none;
+    border-top: 1px solid #d1d5db;
+    padding: 8px 0 0 0;
+    justify-content: center;
+  }
+  
+  .device-list-container .bulk-group:first-of-type {
+    border-top: none;
+    padding-top: 0;
+  }
+  
+  .device-list-container .bulk-group-label {
+    margin-right: 8px;
+  }
+  
+  .device-list-container .selected-count {
+    text-align: center;
+  }
+}
+
+/* 🔥 DeviceList - 액션 버튼 반응형 */
+@media (max-width: 768px) {
+  .device-list-container .device-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .device-list-container .action-divider {
+    display: none;
+  }
+  
+  .device-list-container .hardware-controls {
+    border-left: none;
+    padding-left: 0;
+    margin-left: 0;
+  }
+  
+  .device-list-container .dropdown-menu {
+    right: auto;
+    left: 0;
+  }
+}
+
+/* 🔥 DeviceList - 로딩 및 처리 상태 개선 */
+.device-list-container .processing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.device-list-container .background-refresh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #3b82f6;
+  background: #eff6ff;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* 🔥 DeviceList - 워커 상태 표시 개선 */
+.device-list-container .device-actions .action-btn {
+  position: relative;
+}
+
+.device-list-container .device-actions .action-btn.btn-start-worker::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.device-list-container .device-actions .action-btn.btn-stop::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  background: #ef4444;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.device-list-container .device-table-row:hover .action-btn::after {
+  opacity: 1;
+}
+
+/* 🔥 DeviceList - tooltip 스타일 개선 */
+.device-list-container .action-btn[title]:hover::before {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  margin-bottom: 4px;
+}
+
+/* 🔥 DeviceList - 성능 최적화 - GPU 가속 */
+.device-list-container .device-actions,
+.device-list-container .bulk-actions,
+.device-list-container .dropdown-menu {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.device-list-container .action-btn:hover {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* 🔥 DeviceList - 접근성 개선 */
+.device-list-container .action-btn:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+.device-list-container .btn-sm:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+/* 🔥 DeviceList - 다크모드 지원 (선택사항) */
+@media (prefers-color-scheme: dark) {
+  .device-list-container .bulk-actions {
+    background: #1f2937;
+    border-color: #374151;
+  }
+  
+  .device-list-container .selected-count {
+    background: #1e40af;
+    color: #dbeafe;
+    border-color: #2563eb;
+  }
+  
+  .device-list-container .bulk-group {
+    border-color: #4b5563;
+  }
+  
+  .device-list-container .bulk-group-label {
+    color: #9ca3af;
+  }
+  
+  .device-list-container .dropdown-menu {
+    background: #1f2937;
+    border-color: #374151;
+  }
+  
+  .device-list-container .dropdown-menu button {
+    color: #f3f4f6;
+  }
+  
+  .device-list-container .dropdown-menu button:hover {
+    background: #374151;
+  }
+  
+  .device-list-container .action-divider {
+    background-color: #4b5563;
+  }
 }
