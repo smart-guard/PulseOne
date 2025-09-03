@@ -66,6 +66,24 @@ export interface Device {
     category?: string;
   };
   
+  settings?: {
+    polling_interval_ms?: number;
+    connection_timeout_ms?: number;
+    read_timeout_ms?: number;
+    write_timeout_ms?: number;
+    max_retry_count?: number;
+    retry_interval_ms?: number;
+    backoff_time_ms?: number;
+    keep_alive_enabled?: boolean;
+    keep_alive_interval_s?: number;
+    data_validation_enabled?: boolean;
+    performance_monitoring_enabled?: boolean;
+    detailed_logging_enabled?: boolean;
+    diagnostic_mode_enabled?: boolean;
+    communication_logging_enabled?: boolean;
+    [key: string]: any;
+  };
+  
   // 운영 설정
   polling_interval?: number;
   timeout?: number;
@@ -211,19 +229,38 @@ export interface CreateDeviceRequest {
   is_enabled: boolean;
 }
 
-export interface UpdateDeviceRequest {
+export interface DeviceUpdateData {
   name?: string;
-  description?: string;
+  endpoint?: string;
   device_type?: string;
+  site_id?: number;
   manufacturer?: string;
   model?: string;
-  protocol_id?: number;          // protocol_type → protocol_id
-  endpoint?: string;
-  config?: any;
+  description?: string;
   polling_interval?: number;
   timeout?: number;
   retry_count?: number;
   is_enabled?: boolean;
+  config?: any;
+  device_group_id?: number;
+  // 🔥 핵심 추가: settings 필드
+  settings?: {
+    polling_interval_ms?: number;
+    connection_timeout_ms?: number;
+    read_timeout_ms?: number;
+    write_timeout_ms?: number;
+    max_retry_count?: number;
+    retry_interval_ms?: number;
+    backoff_time_ms?: number;
+    keep_alive_enabled?: boolean;
+    keep_alive_interval_s?: number;
+    data_validation_enabled?: boolean;
+    performance_monitoring_enabled?: boolean;
+    detailed_logging_enabled?: boolean;
+    diagnostic_mode_enabled?: boolean;
+    communication_logging_enabled?: boolean;
+    [key: string]: any; // 추가 설정 필드를 위한 인덱스 시그니처
+  };
 }
 
 export interface GetDevicesParams {

@@ -40,6 +40,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
     is_enabled: true
   });
 
+  // 편집 중인 데이터포인트 상태 - 기본값 설정
   const [editingPointData, setEditingPointData] = useState({
     name: '',
     description: '',
@@ -499,7 +500,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </button>
               <button
                 onClick={handleCreateDataPoint}
-                disabled={isProcessing || !newPoint.name.trim() || !newPoint.address.trim()}
+                disabled={isProcessing || !String(newPoint.name || '').trim() || !String(newPoint.address || '').trim()}
                 className="btn btn-primary"
               >
                 {isProcessing ? (
