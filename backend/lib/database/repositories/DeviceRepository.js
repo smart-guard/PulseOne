@@ -41,7 +41,9 @@ class DeviceRepository {
       }
       
       console.log(`디바이스 ID ${id} 조회 성공: ${devices[0].name}`);
-      return this.parseDevice(devices[0]);
+      
+      // 🔥 수정: await 추가
+      return await this.parseDevice(devices[0]);
       
     } catch (error) {
       console.error('DeviceRepository.findById 오류:', error);
@@ -176,7 +178,7 @@ class DeviceRepository {
         console.log(`${devices.length}개 디바이스 조회 완료 (page=${page})`);
 
         // 데이터 파싱 (기존 그대로)
-        const parsedDevices = devices.map(device => this.parseDevice(device));
+        const parsedDevices = await Promise.all(devices.map(device => this.parseDevice(device)));
 
         // 페이징 정보 계산 (기존 그대로)
         const totalCount = filters.page && filters.limit ?
@@ -692,6 +694,9 @@ class DeviceRepository {
   // 헬퍼 메소드들
   // =============================================================================
 
+  // DeviceRepository.js - parseDevice 메서드 완성본
+  // 🔥 settings 필드를 실제 DB에서 조회하도록 수정
+
   parseDevice(device) {
     if (!device) return null;
 
@@ -712,6 +717,29 @@ class DeviceRepository {
         } catch (configError) {
           console.warn(`Device ${device.id}: Config parse error:`, configError.message);
         }
+      }
+
+      // 🔥 핵심 최적화: JOIN으로 가져온 device_settings 데이터 사용
+      const settings = {};
+      
+      // JOIN 결과에서 settings 필드들이 있으면 사용
+      if (device.polling_interval_ms !== undefined && device.polling_interval_ms !== null) {
+        settings.polling_interval_ms = device.polling_interval_ms;
+        settings.connection_timeout_ms = device.connection_timeout_ms || 5000;
+        settings.max_retry_count = device.max_retry_count || 3;
+        settings.retry_interval_ms = device.retry_interval_ms || 1000;
+        settings.backoff_time_ms = device.backoff_time_ms || 2000;
+        settings.keep_alive_enabled = !!device.keep_alive_enabled;
+        settings.keep_alive_interval_s = device.keep_alive_interval_s || 30;
+      } else {
+        // JOIN에서 settings 데이터가 없으면 기본값 사용
+        settings.polling_interval_ms = 1000;
+        settings.connection_timeout_ms = 5000;
+        settings.max_retry_count = 3;
+        settings.retry_interval_ms = 1000;
+        settings.backoff_time_ms = 2000;
+        settings.keep_alive_enabled = false;
+        settings.keep_alive_interval_s = 30;
       }
 
       return {
@@ -742,7 +770,7 @@ class DeviceRepository {
         // 프로토콜 정보
         protocol_name: device.protocol_name,
         
-        // 상태 정보 (device_status 테이블)
+        // 상태 정보 (device_status 테이블에서 JOIN으로 가져온 데이터)
         connection_status: device.connection_status || 'disconnected',
         last_communication: device.last_communication,
         error_count: device.error_count || 0,
@@ -762,13 +790,18 @@ class DeviceRepository {
         
         // 통계
         data_point_count: parseInt(device.data_point_count) || 0,
-        enabled_point_count: parseInt(device.enabled_point_count) || 0
+        enabled_point_count: parseInt(device.enabled_point_count) || 0,
+        
+        // 🔥 핵심 수정: JOIN으로 가져온 settings 데이터 사용 (추가 DB 쿼리 없음)
+        settings: settings
       };
     } catch (error) {
       console.error('Device parsing 오류:', error);
       return null;
     }
   }
+
+
 
   parseDataPoint(dp) {
     return {

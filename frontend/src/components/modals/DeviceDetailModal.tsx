@@ -118,6 +118,9 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   }), []);
 
   // 예쁜 모달 표시 함수들
+  // DeviceDetailModal.tsx - showCustomModal 함수만 수정
+// 기존 라인 148-163 부근의 showCustomModal 함수를 이렇게 교체
+
   const showCustomModal = (config: {
     type: 'confirm' | 'success' | 'error';
     title: string;
@@ -128,6 +131,8 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     onCancel?: () => void;
     showCancel?: boolean;
   }) => {
+    console.log('📋 showCustomModal 호출:', config.type, config.title);
+    
     setCustomModal({
       isOpen: true,
       type: config.type,
@@ -136,12 +141,38 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       confirmText: config.confirmText || '확인',
       cancelText: config.cancelText || '취소',
       onConfirm: () => {
-        config.onConfirm();
+        console.log('✅ 모달 확인 버튼 클릭됨');
+        
+        // 🔥 핵심 수정: 모달을 먼저 닫고, 그 다음 콜백 실행
         setCustomModal(prev => ({ ...prev, isOpen: false }));
+        
+        // 짧은 지연 후 콜백 실행 (모달 닫기 완료 후)
+        setTimeout(() => {
+          try {
+            console.log('🔥 콜백 실행 시작...');
+            config.onConfirm();
+            console.log('✅ 콜백 실행 완료');
+          } catch (error) {
+            console.error('❌ 콜백 실행 오류:', error);
+          }
+        }, 100);
       },
       onCancel: () => {
-        config.onCancel?.();
+        console.log('❌ 모달 취소 버튼 클릭됨');
+        
+        // 모달 먼저 닫기
         setCustomModal(prev => ({ ...prev, isOpen: false }));
+        
+        // 취소 콜백 실행 (있다면)
+        if (config.onCancel) {
+          setTimeout(() => {
+            try {
+              config.onCancel!();
+            } catch (error) {
+              console.error('❌ 취소 콜백 실행 오류:', error);
+            }
+          }, 100);
+        }
       },
       showCancel: config.showCancel !== false
     });
@@ -251,6 +282,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               savedDevice = response.data;
               console.log('🎉 디바이스 생성 성공:', savedDevice);
               
+              // 🔥 핵심 수정: 즉시 성공 처리 후 모달 닫기
               showCustomModal({
                 type: 'success',
                 title: '디바이스 생성 완료',
@@ -258,18 +290,27 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                 confirmText: '확인',
                 showCancel: false,
                 onConfirm: () => {
-                  // 🔥 핵심 수정: onSave 콜백 호출 후 반드시 onClose 호출
-                  onSave?.(savedDevice);
-                  onClose(); // 🎯 이 부분이 누락되어 있었음!
+                  console.log('🔥 생성 성공 팝업 확인 - 콜백 실행');
+                  
+                  // 부모 컴포넌트에 저장된 디바이스 전달
+                  if (onSave) {
+                    console.log('📞 onSave 콜백 호출:', savedDevice.name);
+                    onSave(savedDevice);
+                  }
+                  
+                  // 모달 닫기
+                  console.log('🚪 모달 닫기 실행');
+                  onClose();
                 }
               });
             } else {
               throw new Error(response.error || '생성 실패');
             }
+            
           } else if (mode === 'edit') {
             console.log('🔥 디바이스 수정 시작...');
             
-            // 🔥 핵심 수정: settings도 포함해서 업데이트 (DeviceSettingsTab 연동)
+            // settings도 포함해서 업데이트
             const updateData = {
               name: editData.name,
               description: editData.description,
@@ -282,7 +323,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               timeout: editData.timeout,
               retry_count: editData.retry_count,
               is_enabled: editData.is_enabled,
-              settings: editData.settings
+              settings: editData.settings // 🔥 settings 포함
             };
 
             console.log('🚀 실제 전송할 데이터:', JSON.stringify(updateData, null, 2));
@@ -293,6 +334,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               savedDevice = response.data;
               console.log('🎉 디바이스 수정 성공:', savedDevice);
               
+              // 🔥 핵심 수정: 즉시 성공 처리 후 모달 닫기
               showCustomModal({
                 type: 'success',
                 title: '디바이스 수정 완료',
@@ -300,15 +342,24 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                 confirmText: '확인',
                 showCancel: false,
                 onConfirm: () => {
-                  // 🔥 핵심 수정: onSave 콜백 호출 후 반드시 onClose 호출
-                  onSave?.(savedDevice);
-                  onClose(); // 🎯 이 부분이 누락되어 있었음!
+                  console.log('🔥 수정 성공 팝업 확인 - 콜백 실행');
+                  
+                  // 부모 컴포넌트에 수정된 디바이스 전달
+                  if (onSave) {
+                    console.log('📞 onSave 콜백 호출:', savedDevice.name);
+                    onSave(savedDevice);
+                  }
+                  
+                  // 모달 닫기
+                  console.log('🚪 모달 닫기 실행');
+                  onClose();
                 }
               });
             } else {
               throw new Error(response.error || '수정 실패');
             }
           }
+          
         } catch (error) {
           console.error('❌ 디바이스 저장 실패:', error);
           
@@ -319,6 +370,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             confirmText: '확인',
             showCancel: false,
             onConfirm: () => {
+              console.log('❌ 에러 팝업 확인 - 모달은 열린 상태 유지');
               // 에러의 경우 모달은 닫지 않고 사용자가 다시 시도할 수 있도록 함
             }
           });
@@ -327,8 +379,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         }
       }
     });
-  }, [editData, mode, onSave, onClose]); // 🔥 dependencies에 onClose 추가
-
+  }, [editData, mode, onSave, onClose]); // dependencies에 onSave, onClose 모두 포함
 
   // 🎨 예쁜 삭제 함수 (브라우저 기본 팝업 대신 커스텀 모달)
   const handleDelete = useCallback(async () => {

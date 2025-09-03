@@ -125,8 +125,8 @@ class CollectorProxyService {
     this.collectorConfig = {
       host: this.config.get('COLLECTOR_HOST', 'localhost'),
       port: this.config.getNumber('COLLECTOR_API_PORT', 8080),
-      timeout: this.config.getNumber('COLLECTOR_TIMEOUT_MS', 5000),
-      retries: this.config.getNumber('COLLECTOR_MAX_RETRIES', 3),
+      timeout: this.config.getNumber('COLLECTOR_TIMEOUT_MS', 500),
+      retries: this.config.getNumber('COLLECTOR_MAX_RETRIES', 1),
       enabled: this.config.getBoolean('COLLECTOR_ENABLED', true),
       
       // 새로운 고급 설정들
@@ -786,6 +786,52 @@ class CollectorProxyService {
     return error;
   }
 }
+
+// CollectorProxyService에 추가
+class CollectorHealthManager {
+    constructor() {
+        this.isHealthy = true;
+        this.failureCount = 0;
+        this.lastCheck = 0;
+        this.FAILURE_THRESHOLD = 3;      // 3번 실패하면 차단
+        this.CHECK_INTERVAL = 30000;     // 30초마다 재확인
+        this.FAST_FAIL_TIMEOUT = 500;    // 빠른 실패
+    }
+
+    async checkHealth() {
+        const now = Date.now();
+        
+        // 건강하면 바로 진행
+        if (this.isHealthy) return true;
+        
+        // 차단된 상태면 주기적으로만 재확인
+        if (now - this.lastCheck < this.CHECK_INTERVAL) {
+            throw new Error('Collector is currently down (circuit open)');
+        }
+        
+        // 재확인 시도
+        try {
+            await this.quickPing();
+            this.isHealthy = true;
+            this.failureCount = 0;
+            console.log('🟢 Collector 복구됨');
+            return true;
+        } catch (error) {
+            this.lastCheck = now;
+            throw new Error('Collector still down');
+        }
+    }
+
+    onFailure() {
+        this.failureCount++;
+        if (this.failureCount >= this.FAILURE_THRESHOLD) {
+            this.isHealthy = false;
+            this.lastCheck = Date.now();
+            console.log('🔴 Collector 차단됨 (Circuit Open)');
+        }
+    }
+}
+
 
 // 싱글톤 인스턴스
 let instance = null;

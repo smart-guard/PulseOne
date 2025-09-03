@@ -144,12 +144,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
     
     setEditingPoint(dataPoint);
     setEditingPointData({
-      name: dataPoint.name,
+      name: dataPoint.name || '',
       description: dataPoint.description || '',
-      address: dataPoint.address,
+      address: String(dataPoint.address || ''), // 문자열로 변환
       data_type: dataPoint.data_type as any,
       unit: dataPoint.unit || '',
-      is_enabled: dataPoint.is_enabled
+      is_enabled: dataPoint.is_enabled || false
     });
     setShowEditForm(true);
   };
@@ -258,7 +258,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           <select value={filterDataType} onChange={(e) => setFilterDataType(e.target.value)} className="filter-select">
             <option value="all">전체 타입</option>
             <option value="number">숫자</option>
-            <option value="boolean">불린</option>
+            <option value="boolean">Bool</option>
             <option value="string">문자열</option>
           </select>
         </div>
@@ -604,7 +604,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </button>
               <button
                 onClick={handleUpdateDataPoint}
-                disabled={isProcessing || !editingPointData.name.trim() || !editingPointData.address.trim()}
+                disabled={isProcessing || !String(editingPointData.name || '').trim() || !String(editingPointData.address || '').trim()}
                 className="btn btn-primary"
               >
                 {isProcessing ? (

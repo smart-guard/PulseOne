@@ -603,24 +603,30 @@ router.get('/', async (req, res) => {
 
             // 🔥 새로 추가: Collector 상태 정보 추가
             if (include_collector_status === 'true') {
-                try {
-                    console.log('Collector 워커 상태 조회 중...');
-                    const proxy = getCollectorProxy();
-                    const workerResult = await proxy.getWorkerStatus();
-                    const workerStatuses = workerResult.data?.workers || {};
-                    
-                    result.items.forEach(device => {
-                        const workerStatus = workerStatuses[device.id.toString()];
-                        device.collector_status = workerStatus || {
-                            status: 'unknown',
-                            message: 'No status available'
-                        };
-                    });
-                    
-                    console.log('Collector 상태 정보 추가 완료');
-                } catch (collectorError) {
-                    console.warn('⚠️ Collector 상태 조회 실패:', collectorError.message);
-                }
+                setImmediate(async () => {
+                    try {
+                        const healthManager = getCollectorHealthManager();
+                        await healthManager.checkHealth();
+                        
+                        console.log('Collector 워커 상태 조회 중...');
+                        const proxy = getCollectorProxy();
+                        await proxy.quickHealthCheck({ timeout: 500 });
+                        const workerResult = await proxy.getWorkerStatus();
+                        const workerStatuses = workerResult.data?.workers || {};
+                        
+                        result.items.forEach(device => {
+                            const workerStatus = workerStatuses[device.id.toString()];
+                            device.collector_status = workerStatus || {
+                                status: 'unknown',
+                                message: 'No status available'
+                            };
+                        });
+                        
+                        console.log('Collector 상태 정보 추가 완료');
+                    } catch (collectorError) {
+                        console.warn('⚠️ Collector 상태 조회 실패:', collectorError.message);
+                    }
+                });
             }
 
         } catch (repoError) {
@@ -689,18 +695,23 @@ router.get('/:id', async (req, res) => {
 
         // 🔥 새로 추가: Collector 상태 정보
         if (include_collector_status === 'true') {
-            try {
-                console.log(`Collector 상태 조회: Device ${id}`);
-                const proxy = getCollectorProxy();
-                const statusResult = await proxy.getDeviceStatus(id);
-                enhancedDevice.collector_status = statusResult.data;
-            } catch (collectorError) {
-                console.warn(`⚠️ Collector 상태 조회 실패 Device ${id}:`, collectorError.message);
-                enhancedDevice.collector_status = {
-                    error: 'Unable to fetch real-time status',
-                    last_attempt: new Date().toISOString()
-                };
-            }
+            setImmediate(async () => {
+                try {
+                    console.log(`Collector 상태 조회: Device ${id}`);
+                    const healthManager = getCollectorHealthManager();
+                    await healthManager.checkHealth(); // 빠른 실패 또는 통과
+                    console.log('Collector 워커 상태 조회 중...');
+                    const proxy = getCollectorProxy();
+                    const statusResult = await proxy.getDeviceStatus(id);
+                    enhancedDevice.collector_status = statusResult.data;
+                } catch (collectorError) {
+                    console.warn(`⚠️ Collector 상태 조회 실패 Device ${id}:`, collectorError.message);
+                    enhancedDevice.collector_status = {
+                        error: 'Unable to fetch real-time status',
+                        last_attempt: new Date().toISOString()
+                    };
+                }
+            });
         }
 
         if (include_rtu_network === 'true' && enhancedDevice.protocol_type === 'MODBUS_RTU') {
@@ -814,15 +825,16 @@ router.post('/', async (req, res) => {
         const newDevice = await getDeviceRepo().createDevice(deviceData, tenantId);
         const enhancedDevice = enhanceDeviceWithRtuInfo(newDevice);
 
+        setImmediate(async () => {
         // 🔥 새로 추가: Collector 동기화 후크 실행
-        try {
-            const hooks = getConfigSyncHooks();
-            await hooks.afterDeviceCreate(enhancedDevice);
-            console.log(`✅ Device created and synced with Collector: ${newDevice.id}`);
-        } catch (syncError) {
-            console.warn(`⚠️ Device created but sync failed: ${syncError.message}`);
-        }
-
+            try {
+                const hooks = getConfigSyncHooks();
+                await hooks.afterDeviceCreate(enhancedDevice);
+                console.log(`✅ Device created and synced with Collector: ${newDevice.id}`);
+            } catch (syncError) {
+                console.warn(`⚠️ Device created but sync failed: ${syncError.message}`);
+            }
+        });
         console.log(`새 디바이스 등록 완료: ID ${newDevice.id} (protocol_id: ${deviceData.protocol_id})`);
         res.status(201).json(createResponse(true, enhancedDevice, 'Device created successfully'));
 
@@ -965,13 +977,15 @@ router.delete('/:id', async (req, res) => {
         }
 
         // 🔥 새로 추가: Collector 동기화 후크 실행 (삭제 전)
-        try {
-            const hooks = getConfigSyncHooks();
-            await hooks.afterDeviceDelete(device);
-            console.log(`✅ Device delete synced with Collector: ${id}`);
-        } catch (syncError) {
-            console.warn(`⚠️ Device delete sync failed: ${syncError.message}`);
-        }
+        setImmediate(async () => {
+            try {
+                const hooks = getConfigSyncHooks();
+                await hooks.afterDeviceUpdate(oldDevice, enhancedDevice);
+                console.log(`✅ Device updated and synced with Collector: ${id}`);
+            } catch (syncError) {
+                console.warn(`⚠️ Async sync failed: ${syncError.message}`);
+            }
+        });
 
         const deleted = await getDeviceRepo().deleteById(parseInt(id), tenantId);
 
