@@ -1,5 +1,5 @@
 /* ============================================================================
-   DeviceList CSS - 원본 인라인 스타일을 정확히 변환
+   DeviceList CSS 완성본 - 균형잡힌 Grid + 스크롤바 대응
    ============================================================================ */
 
 /* 기본 컨테이너 */
@@ -161,7 +161,9 @@
   cursor: pointer;
 }
 
-/* 테이블 컨테이너 */
+/* ============================================================================
+   핵심: 테이블 컨테이너 - 스크롤바 대응
+   ============================================================================ */
 .device-list-table-container {
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -169,6 +171,8 @@
   overflow: hidden;
   margin: 0 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  width: calc(100% - 48px);
+  max-width: calc(100% - 48px);
 }
 
 /* 로딩 스피너 */
@@ -225,7 +229,9 @@
   font-size: 14px;
 }
 
-/* 테이블 헤더 - 반응형 Grid */
+/* ============================================================================
+   핵심: 테이블 헤더 - 스크롤바 고려한 정렬
+   ============================================================================ */
 .device-list-table-header {
   display: grid;
   background: #f8fafc;
@@ -235,14 +241,101 @@
   text-transform: uppercase;
   letter-spacing: 0.025em;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  /* 🔥 스크롤바 공간 확보 */
+  padding-right: 17px; /* 스크롤바 너비만큼 */
 }
 
-/* 화면 크기별 Grid 설정 */
+/* 🔥 헤더 모든 셀을 가운데 정렬 */
+.device-list-table-header > div {
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+/* 체크박스와 디바이스는 왼쪽 정렬 유지 */
+.device-list-table-header > div:first-child {
+  justify-content: flex-start;
+}
+
+.device-list-table-header > div:nth-child(2) {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* 테이블 바디 */
+.device-list-table-body {
+  max-height: 65vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 🔥 스크롤바 커스터마이징으로 정확한 너비 보장 */
+}
+
+/* 🔥 스크롤바 스타일링 및 너비 고정 */
+.device-list-table-body::-webkit-scrollbar {
+  width: 8px; /* 정확한 스크롤바 너비 */
+}
+
+.device-list-table-body::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.device-list-table-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.device-list-table-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Firefox 스크롤바 너비 */
+.device-list-table-body {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+/* 테이블 행 */
+.device-list-table-row {
+  display: grid;
+  border-bottom: 1px solid #f1f5f9;
+  align-items: center;
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.device-list-table-row:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.device-list-table-row:hover {
+  background-color: #f3f4f6;
+}
+
+/* ============================================================================
+   핵심: 화면 크기별 최적화된 Grid 설정
+   ============================================================================ */
+
+/* 🔥 큰 화면 (1400px 이상) - 여백 없이 꽉 채우기 */
 @media (min-width: 1400px) {
   .device-list-table-header,
   .device-list-table-row {
-    grid-template-columns: 50px 1fr 100px 80px 100px 120px 100px 160px;
-    gap: 8px;
+    grid-template-columns: 
+      50px                        /* 체크박스 */
+      3fr                         /* 디바이스: 가장 넓게 */
+      1.2fr                       /* 프로토콜 */
+      0.8fr                       /* 상태 */
+      1fr                         /* 연결 */
+      1fr                         /* 데이터 */
+      1fr                         /* 성능 */
+      160px;                      /* 작업버튼: 고정 */
+    gap: 12px;
     padding: 12px 16px;
     font-size: 12px;
   }
@@ -259,19 +352,28 @@
   }
 }
 
-@media (max-width: 1399px) {
+/* 🔥 중간 화면 (1000px-1399px) - 비례 축소 */
+@media (max-width: 1399px) and (min-width: 1000px) {
   .device-list-table-header,
   .device-list-table-row {
-    grid-template-columns: 40px 1fr 80px 60px 80px 90px 80px 140px;
-    gap: 4px;
-    padding: 8px 8px;
+    grid-template-columns: 
+      40px                        /* 체크박스 축소 */
+      2.5fr                       /* 디바이스: 여전히 넓게 */
+      1fr                         /* 프로토콜 */
+      0.7fr                       /* 상태 축소 */
+      0.8fr                       /* 연결 축소 */
+      0.8fr                       /* 데이터 축소 */
+      0.8fr                       /* 성능 축소 */
+      140px;                      /* 작업버튼 축소 */
+    gap: 8px;
+    padding: 10px 12px;
     font-size: 11px;
   }
   
   .device-list-action-btn {
-    width: 24px;
-    height: 24px;
-    font-size: 9px;
+    width: 25px;
+    height: 25px;
+    font-size: 10px;
     margin: 0 1px;
   }
   
@@ -280,54 +382,53 @@
   }
 }
 
-/* 테이블 헤더 셀 */
-.device-list-table-header > div:first-child {
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* 🔥 작은 화면 (1000px 미만) - 간격 최소화 */
+@media (max-width: 999px) {
+  .device-list-table-header,
+  .device-list-table-row {
+    grid-template-columns: 
+      35px                        /* 체크박스 */
+      2fr                         /* 디바이스: 충분한 공간 */
+      0.9fr                       /* 프로토콜 */
+      0.6fr                       /* 상태 */
+      0.7fr                       /* 연결 */
+      0.7fr                       /* 데이터 */
+      0.7fr                       /* 성능 */
+      120px;                      /* 작업버튼 */
+    gap: 4px;                     /* 🔥 간격 축소 */
+    padding: 8px 8px;
+    font-size: 10px;
+  }
+  
+  /* 🔥 프로토콜/상태 폰트 더 축소 */
+  .device-list-protocol-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  
+  .device-list-status-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  
+  .device-list-action-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 8px;
+    margin: 0;
+  }
 }
 
-.device-list-table-header > div:nth-child(2) {
-  text-align: left;
-}
-
-.device-list-table-header > div:not(:first-child):not(:nth-child(2)) {
-  text-align: center;
-}
-
-
-/* 테이블 바디 */
-.device-list-table-body {
-  max-height: 65vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* 테이블 행 */
-.device-list-table-row {
-  display: grid;
-  border-bottom: 1px solid #f1f5f9;
-  align-items: center;
-  transition: background-color 0.15s ease;
-  cursor: pointer;
-  min-height: 60px; /* 고정 높이 추가 */
-}
-
-.device-list-table-row:nth-child(even) {
-  background-color: #fafafa;
-}
-
-.device-list-table-row:hover {
-  background-color: #f3f4f6;
-}
+/* ============================================================================
+   디바이스 셀 내용 최적화
+   ============================================================================ */
 
 /* 체크박스 셀 */
 .device-list-checkbox-cell {
   text-align: center;
   display: flex;
   align-items: center;
-  justify-content: center !important;
+  justify-content: center;
 }
 
 .device-list-checkbox-cell input {
@@ -336,8 +437,10 @@
 
 /* 디바이스 정보 셀 */
 .device-list-device-cell {
-  justify-content: flex-start !important;
-  align-items: center !important;
+  justify-content: flex-start;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .device-list-device-info {
@@ -348,6 +451,9 @@
   padding: 4px 8px;
   border-radius: 8px;
   transition: background-color 0.15s ease;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .device-list-device-info:hover {
@@ -370,6 +476,7 @@
 .device-list-device-details {
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .device-list-device-name {
@@ -380,7 +487,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2; /* 라인 높이 고정 */
+  line-height: 1.2;
+  max-width: 100%;
 }
 
 .device-list-device-meta {
@@ -390,7 +498,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2; /* 라인 높이 고정 */
+  line-height: 1.2;
+  max-width: 100%;
 }
 
 .device-list-device-endpoint {
@@ -401,12 +510,16 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2; /* 라인 높이 고정 */
+  line-height: 1.2;
+  max-width: 100%;
 }
 
 /* 프로토콜 셀 */
 .device-list-protocol-cell {
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .device-list-protocol-badge {
@@ -415,6 +528,7 @@
   display: inline-block;
   border-radius: 4px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .device-list-protocol-modbus {
@@ -438,6 +552,9 @@
 /* 상태 셀 */
 .device-list-status-cell {
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .device-list-status-badge {
@@ -446,6 +563,7 @@
   font-size: 11px;
   font-weight: 600;
   display: inline-block;
+  white-space: nowrap;
 }
 
 .device-list-status-connected {
@@ -463,9 +581,14 @@
   color: #4b5563;
 }
 
-/* 연결, 데이터, 성능 셀 */
+/* 연결, 데이터, 성능 셀 - 🔥 가운데 정렬 + 여백 최적화 */
 .device-list-info-cell {
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
 }
 
 .device-list-info-title {
@@ -473,12 +596,14 @@
   font-weight: 600;
   margin: 0;
   color: #374151;
+  line-height: 1.2;
 }
 
 .device-list-info-subtitle {
   font-size: 10px;
   color: #9ca3af;
-  margin: 2px 0 0 0;
+  margin: 1px 0 0 0;
+  line-height: 1.2;
 }
 
 /* 액션 버튼 셀 */
@@ -495,6 +620,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .device-list-action-btn {

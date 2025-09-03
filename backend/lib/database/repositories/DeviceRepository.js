@@ -115,16 +115,33 @@ class DeviceRepository {
           params.push(filters.deviceType || filters.device_type);
         }
 
+        // 🔥 누락 필터 1: 연결상태
+        if (filters.connectionStatus || filters.connection_status) {
+          query += DeviceQueries.addConnectionStatusFilter();
+          params.push(filters.connectionStatus || filters.connection_status);
+        }
+
+        // 🔥 누락 필터 2: 상태  
+        if (filters.status) {
+          if (filters.status === 'running') {
+            query += DeviceQueries.addStatusRunningFilter();
+          } else if (filters.status === 'stopped') {
+            query += DeviceQueries.addStatusStoppedFilter();
+          } else if (filters.status === 'error') {
+            query += DeviceQueries.addStatusErrorFilter();
+          }
+        }
+
         if (filters.search) {
           query += DeviceQueries.addSearchFilter();
           const searchTerm = `%${filters.search}%`;
           params.push(searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
-        // 그룹화 및 정렬
+        // 그룹화 및 정렬 (원본으로 복원)
         query += DeviceQueries.getGroupByAndOrder();
 
-        // 🔥 페이징 수정: LIMIT와 OFFSET 모두 추가
+        // 페이징 처리 (기존 그대로)
         const limit = filters.limit || 25;
         const page = filters.page || 1;
         const offset = (page - 1) * limit;
@@ -133,7 +150,7 @@ class DeviceRepository {
         query += DeviceQueries.addLimit();
         params.push(limit);
         
-        // 🚨 핵심 수정: OFFSET 추가
+        // OFFSET 추가  
         query += DeviceQueries.addOffset();
         params.push(offset);
 
@@ -143,7 +160,7 @@ class DeviceRepository {
 
         const result = await this.dbFactory.executeQuery(query, params);
         
-        // 결과 처리 (다양한 DB 드라이버 대응)
+        // 결과 처리 (다양한 DB 드라이버 대응) - 기존 그대로
         let devices = [];
         if (Array.isArray(result)) {
             devices = result;
@@ -158,12 +175,12 @@ class DeviceRepository {
 
         console.log(`${devices.length}개 디바이스 조회 완료 (page=${page})`);
 
-        // 데이터 파싱
+        // 데이터 파싱 (기존 그대로)
         const parsedDevices = devices.map(device => this.parseDevice(device));
 
-        // 🔥 페이징 정보 계산 수정: 정확한 totalCount 조회
-        const totalCount = filters.page && filters.limit ? 
-            await this.getDeviceCount(filters) : devices.length;
+        // 페이징 정보 계산 (기존 그대로)
+        const totalCount = filters.page && filters.limit ?
+          await this.getDeviceCount(filters) : devices.length;
         
         const pagination = {
             page: parseInt(page),
@@ -187,6 +204,54 @@ class DeviceRepository {
     }
   }
 
+
+  // =============================================================================
+  // 🔥 새로 추가: status 필드 정규화 메서드
+  // =============================================================================
+
+  parseDeviceWithStatus(device) {
+    try {
+      // 기존 파싱
+      const parsed = this.parseDevice(device);
+
+      // 🔥 status 필드 정규화 (is_enabled + connection_status 조합)
+      let status = 'unknown';
+      
+      if (parsed.is_enabled === false || parsed.is_enabled === 0) {
+        status = 'stopped';  // 비활성화 = stopped
+      } else if (parsed.connection_status === 'error') {
+        status = 'error';    // 연결오류 = error
+      } else if (parsed.connection_status === 'connected') {
+        status = 'running';  // 연결됨 + 활성화 = running
+      } else if (parsed.connection_status === 'disconnected') {
+        status = 'stopped';  // 연결안됨 = stopped
+      } else {
+        status = parsed.is_enabled ? 'running' : 'stopped';
+      }
+
+      // 🔥 클라이언트 호환성을 위한 추가 필드들
+      return {
+        ...parsed,
+        status: status,  // 정규화된 상태
+        // 백업 필드들 (기존 코드 호환성)
+        worker_status: status,
+        device_status: status,
+        // 통계 필드들 추가
+        data_point_count: parsed.data_point_count || 0,
+        enabled_point_count: parsed.enabled_point_count || 0,
+        last_seen: parsed.last_communication || parsed.updated_at
+      };
+
+    } catch (error) {
+      console.warn('Device status parsing 실패:', error.message);
+      return this.parseDevice(device); // 기본 파싱만 반환
+    }
+  }
+
+  // =============================================================================
+  // 🔥 수정: getDeviceCount에도 필터링 추가
+  // =============================================================================
+
   async getDeviceCount(filters = {}) {
     try {
         let query = DeviceQueries.getDeviceCount();
@@ -196,7 +261,23 @@ class DeviceRepository {
         query += DeviceQueries.addTenantFilter();
         params.push(filters.tenantId || filters.tenant_id || 1);
 
-        // 추가 필터들
+        // 🔥 상태 필터링 추가 (기존 패턴 유지)
+        if (filters.connectionStatus || filters.connection_status) {
+          query += DeviceQueries.addConnectionStatusFilter();
+          params.push(filters.connectionStatus || filters.connection_status);
+        }
+
+        if (filters.status) {
+          if (filters.status === 'running') {
+            query += DeviceQueries.addStatusRunningFilter();
+          } else if (filters.status === 'stopped') {
+            query += DeviceQueries.addStatusStoppedFilter();
+          } else if (filters.status === 'error') {
+            query += DeviceQueries.addStatusErrorFilter();
+          }
+        }
+
+        // 기존 필터들
         if (filters.siteId || filters.site_id) {
           query += DeviceQueries.addSiteFilter();
           params.push(filters.siteId || filters.site_id);
@@ -614,37 +695,79 @@ class DeviceRepository {
   parseDevice(device) {
     if (!device) return null;
 
-    return {
-      ...device,
-      is_enabled: !!device.is_enabled,
-      config: device.config ? JSON.parse(device.config) : {},
+    try {
+      let parsedConfig = {};
       
-      protocol: {
-        id: device.protocol_id,
-        type: device.protocol_type,
-        name: device.protocol_name || device.protocol_type
-      },
-      
-      settings: {
-        polling_interval_ms: device.polling_interval_ms,
-        connection_timeout_ms: device.connection_timeout_ms,
-        max_retry_count: device.max_retry_count,
-        retry_interval_ms: device.retry_interval_ms,
-        backoff_time_ms: device.backoff_time_ms,
-        keep_alive_enabled: !!device.keep_alive_enabled,
-        keep_alive_interval_s: device.keep_alive_interval_s,
-        updated_at: device.settings_updated_at
-      },
-      status: {
-        status: device.connection_status || 'unknown',
+      if (device.config) {
+        try {
+          if (typeof device.config === 'string') {
+            if (device.config.startsWith('{') || device.config.startsWith('[')) {
+              parsedConfig = JSON.parse(device.config);
+            } else {
+              console.warn(`Device ${device.id}: Invalid JSON config:`, device.config);
+            }
+          } else if (typeof device.config === 'object') {
+            parsedConfig = device.config;
+          }
+        } catch (configError) {
+          console.warn(`Device ${device.id}: Config parse error:`, configError.message);
+        }
+      }
+
+      return {
+        id: device.id,
+        tenant_id: device.tenant_id,
+        site_id: device.site_id,
+        device_group_id: device.device_group_id,
+        edge_server_id: device.edge_server_id,
+        name: device.name,
+        description: device.description,
+        device_type: device.device_type,
+        manufacturer: device.manufacturer,
+        model: device.model,
+        serial_number: device.serial_number,
+        protocol_id: device.protocol_id,
+        protocol_type: device.protocol_type,
+        endpoint: device.endpoint,
+        config: parsedConfig,
+        polling_interval: device.polling_interval,
+        timeout: device.timeout,
+        retry_count: device.retry_count,
+        is_enabled: !!device.is_enabled,
+        installation_date: device.installation_date,
+        last_maintenance: device.last_maintenance,
+        created_at: device.created_at,
+        updated_at: device.updated_at,
+        
+        // 프로토콜 정보
+        protocol_name: device.protocol_name,
+        
+        // 상태 정보 (device_status 테이블)
+        connection_status: device.connection_status || 'disconnected',
+        last_communication: device.last_communication,
+        error_count: device.error_count || 0,
         last_error: device.last_error,
         response_time: device.response_time,
         firmware_version: device.firmware_version,
-        hardware_info: device.hardware_info ? JSON.parse(device.hardware_info) : null,
-        diagnostic_data: device.diagnostic_data ? JSON.parse(device.diagnostic_data) : null,
-        updated_at: device.status_updated_at
-      }
-    };
+        hardware_info: device.hardware_info,
+        diagnostic_data: device.diagnostic_data,
+        
+        // 사이트 정보
+        site_name: device.site_name,
+        site_code: device.site_code,
+        
+        // 그룹 정보
+        group_name: device.group_name,
+        group_type: device.group_type,
+        
+        // 통계
+        data_point_count: parseInt(device.data_point_count) || 0,
+        enabled_point_count: parseInt(device.enabled_point_count) || 0
+      };
+    } catch (error) {
+      console.error('Device parsing 오류:', error);
+      return null;
+    }
   }
 
   parseDataPoint(dp) {

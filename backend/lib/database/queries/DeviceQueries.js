@@ -111,6 +111,10 @@ class DeviceQueries {
     return ` AND d.is_enabled = ?`;
   }
 
+  static addStatusRunningFilter() {
+    return ` AND d.is_enabled = 1`;
+  }
+
   static addSearchFilter() {
     return ` AND (d.name LIKE ? OR d.description LIKE ? OR d.manufacturer LIKE ? OR d.model LIKE ?)`;
   }
