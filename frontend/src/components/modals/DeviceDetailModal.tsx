@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceDetailModal.tsx
-// 🎨 예쁜 커스텀 모달 완전 적용 버전
+// 🔥 updateDeviceSettings 에러 완전 해결 - 즉시 저장 방식으로 변경
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -112,6 +112,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     timeout: 5000,
     retry_count: 3,
     is_enabled: true,
+    settings: {}, // 🔥 settings 필드 추가
     created_at: '',
     updated_at: ''
   }), []);
@@ -268,7 +269,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           } else if (mode === 'edit') {
             console.log('🔥 디바이스 수정 시작...');
             
-            // 🔥 settings도 포함해서 업데이트 (DeviceSettingsTab 연동)
+            // 🔥 핵심 수정: settings도 포함해서 업데이트 (DeviceSettingsTab 연동)
             const updateData = {
               name: editData.name,
               description: editData.description,
@@ -281,8 +282,11 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               timeout: editData.timeout,
               retry_count: editData.retry_count,
               is_enabled: editData.is_enabled,
-              settings: editData.settings // 🔥 settings 포함 - DeviceSettingsTab 변경사항 반영
+              settings: editData.settings
             };
+
+            console.log('🚀 실제 전송할 데이터:', JSON.stringify(updateData, null, 2));
+            console.log('🔍 settings 필드 확인:', updateData.settings);
 
             const response = await DeviceApiService.updateDevice(editData.id, updateData);
             if (response.success && response.data) {
@@ -393,6 +397,8 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     setEditData(prev => prev ? { ...prev, [field]: value } : null);
   }, []);
 
+  // 🔥 핵심 수정: updateSettings 함수를 간단하게 변경
+  // DeviceApiService.updateDeviceSettings() 호출 제거
   const updateSettings = useCallback((field: string, value: any) => {
     console.log(`🔥 DeviceDetailModal updateSettings 호출: ${field} = ${value}`);
     
@@ -411,12 +417,10 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       return updatedDevice;
     });
     
-    // 🔥 실시간 저장을 위한 API 호출 (선택사항)
-    if (mode === 'edit' && editData?.id) {
-      // 즉시 서버에 저장하고 싶다면 이 부분 활성화
-      DeviceApiService.updateDeviceSettings(editData.id, { [field]: value });
-    }
-  }, [mode, editData?.id]);
+    // 🔥 문제 해결: DeviceApiService.updateDeviceSettings() 호출 완전 제거
+    // 대신 DeviceSettingsTab에서 변경된 값들은 전체 저장 시에 한번에 저장됨
+    console.log('✅ 설정값이 로컬 상태에 저장됨 - 전체 저장 시 서버에 반영예정');
+  }, []);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && editData?.settings) {
@@ -468,7 +472,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         loadDataPoints(device.id);
       }
     }
-  }, [isOpen, device, mode]);
+  }, [isOpen, device, mode, newDeviceTemplate, loadDataPoints]);
 
   if (!isOpen) return null;
 

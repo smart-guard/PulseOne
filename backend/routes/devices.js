@@ -841,8 +841,10 @@ router.put('/:id', async (req, res) => {
             updated_at: new Date().toISOString()
         };
 
-        console.log(`디바이스 ID ${id} 수정 요청 (protocol_id 직접 사용 + 동기화):`, Object.keys(updateData));
+        console.log(`🔧 디바이스 ID ${id} 수정 요청 (settings 포함):`, Object.keys(updateData));
+        console.log(`🔍 settings 데이터:`, updateData.settings);
 
+        // 프로토콜 검증 (변경 시)
         if (updateData.protocol_id !== undefined) {
             const protocolValidation = await validateProtocolId(updateData.protocol_id, tenantId);
             if (!protocolValidation.valid) {
@@ -852,6 +854,7 @@ router.put('/:id', async (req, res) => {
             }
         }
 
+        // 이름 중복 검증 (변경 시)
         if (updateData.name) {
             const existingDevice = await getDeviceRepo().findByName(updateData.name, tenantId);
             if (existingDevice && existingDevice.id !== parseInt(id)) {
@@ -869,6 +872,22 @@ router.put('/:id', async (req, res) => {
             );
         }
 
+        // 🔥 핵심 추가: settings 처리 로직
+        if (updateData.settings && Object.keys(updateData.settings).length > 0) {
+            console.log(`💾 디바이스 ${id} settings 업데이트 시작...`);
+            
+            try {
+                // device_settings 테이블에 UPSERT (INSERT OR REPLACE)
+                await getDeviceRepo().updateDeviceSettings(parseInt(id), updateData.settings, tenantId);
+                console.log(`✅ 디바이스 ${id} settings 업데이트 완료`);
+            } catch (settingsError) {
+                console.error(`❌ 디바이스 ${id} settings 업데이트 실패:`, settingsError.message);
+                // settings 업데이트가 실패해도 다른 필드는 업데이트 계속 진행
+                console.warn(`⚠️ settings 업데이트 실패했지만 다른 필드는 계속 처리`);
+            }
+        }
+
+        // 기본 디바이스 정보 업데이트 (devices 테이블)
         const updatedDevice = await getDeviceRepo().updateDeviceInfo(parseInt(id), updateData, tenantId);
 
         if (!updatedDevice) {
@@ -877,9 +896,22 @@ router.put('/:id', async (req, res) => {
             );
         }
 
+        // RTU 정보 추가
         const enhancedDevice = enhanceDeviceWithRtuInfo(updatedDevice);
 
-        // 🔥 새로 추가: Collector 동기화 후크 실행
+        // 🔥 settings 필드를 응답에 추가 (프론트엔드에서 확인 가능하도록)
+        if (updateData.settings) {
+            try {
+                const deviceSettings = await getDeviceRepo().getDeviceSettings(parseInt(id));
+                enhancedDevice.settings = deviceSettings || {};
+                console.log(`📋 응답에 settings 포함:`, enhancedDevice.settings);
+            } catch (settingsError) {
+                console.warn(`⚠️ settings 조회 실패:`, settingsError.message);
+                enhancedDevice.settings = updateData.settings; // 전송된 값으로 대체
+            }
+        }
+
+        // 🔥 Collector 동기화 후크 실행
         try {
             const hooks = getConfigSyncHooks();
             await hooks.afterDeviceUpdate(oldDevice, enhancedDevice);
@@ -888,11 +920,11 @@ router.put('/:id', async (req, res) => {
             console.warn(`⚠️ Device updated but sync failed: ${syncError.message}`);
         }
 
-        console.log(`디바이스 ID ${id} 수정 완료`);
+        console.log(`✅ 디바이스 ID ${id} 수정 완료 (settings 포함)`);
         res.json(createResponse(true, enhancedDevice, 'Device updated successfully'));
 
     } catch (error) {
-        console.error(`디바이스 ID ${req.params.id} 수정 실패:`, error.message);
+        console.error(`❌ 디바이스 ID ${req.params.id} 수정 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'DEVICE_UPDATE_ERROR'));
     }
 });

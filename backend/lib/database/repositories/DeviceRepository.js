@@ -850,6 +850,84 @@ class DeviceRepository {
       note: 'Default statistics due to query error'
     };
   }
+
+  /**
+ * 디바이스 설정 업데이트 또는 생성 (UPSERT)
+ * @param {number} deviceId - 디바이스 ID
+ * @param {Object} settings - 설정 객체
+ * @param {number} tenantId - 테넌트 ID
+ * @returns {Promise<boolean>} 성공 여부
+ */
+async updateDeviceSettings(deviceId, settings, tenantId = null) {
+    try {
+        console.log(`DeviceRepository.updateDeviceSettings: Device ${deviceId}`, settings);
+        
+        const DeviceQueries = require('../queries/DeviceQueries');
+        
+        // 기존 DeviceQueries.upsertDeviceSettings() 쿼리 사용
+        const query = DeviceQueries.upsertDeviceSettings();
+        
+        const params = [
+            deviceId,
+            settings.polling_interval_ms || 1000,
+            settings.connection_timeout_ms || 5000,
+            settings.max_retry_count || 3,
+            settings.retry_interval_ms || 1000,
+            settings.backoff_time_ms || 2000,
+            settings.keep_alive_enabled ? 1 : 0,
+            settings.keep_alive_interval_s || 30
+        ];
+
+        const result = await this.dbFactory.executeQuery(query, params);
+        
+        console.log(`✅ 디바이스 ${deviceId} settings 업데이트 완료`);
+        return true;
+
+    } catch (error) {
+        console.error('DeviceRepository.updateDeviceSettings 실패:', error.message);
+        throw new Error(`디바이스 설정 업데이트 실패: ${error.message}`);
+    }
+}
+
+/**
+ * 디바이스 설정 조회
+ * @param {number} deviceId - 디바이스 ID
+ * @returns {Promise<Object|null>} 설정 객체 또는 null
+ */
+async getDeviceSettings(deviceId) {
+    try {
+        console.log(`DeviceRepository.getDeviceSettings: Device ${deviceId}`);
+        
+        const DeviceQueries = require('../queries/DeviceQueries');
+        const query = DeviceQueries.getDeviceSettings();
+
+        const result = await this.dbFactory.executeQuery(query, [deviceId]);
+        const settings = Array.isArray(result) ? result[0] : result;
+
+        if (!settings) {
+            console.log(`디바이스 ${deviceId}의 설정이 없음`);
+            return null;
+        }
+
+        // DB 값을 프론트엔드 형태로 변환
+        const formattedSettings = {
+            polling_interval_ms: settings.polling_interval_ms || 1000,
+            connection_timeout_ms: settings.connection_timeout_ms || 5000,
+            max_retry_count: settings.max_retry_count || 3,
+            retry_interval_ms: settings.retry_interval_ms || 1000,
+            backoff_time_ms: settings.backoff_time_ms || 2000,
+            keep_alive_enabled: !!settings.keep_alive_enabled,
+            keep_alive_interval_s: settings.keep_alive_interval_s || 30
+        };
+
+        console.log(`디바이스 ${deviceId} 설정 조회 완료`);
+        return formattedSettings;
+
+    } catch (error) {
+        console.error('DeviceRepository.getDeviceSettings 실패:', error.message);
+        throw new Error(`디바이스 설정 조회 실패: ${error.message}`);
+    }
+  }
 }
 
 module.exports = DeviceRepository;
