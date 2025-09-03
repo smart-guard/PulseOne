@@ -15,9 +15,6 @@ const DeviceList: React.FC = () => {
   // 강제 리렌더링을 위한 키 추가
   const [renderKey, setRenderKey] = useState(0);
   
-  // 화면 크기 상태 추가
-  const [screenWidth, setScreenWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1400);
-  
   // 로딩 상태 분리
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
@@ -30,6 +27,10 @@ const DeviceList: React.FC = () => {
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
   const [connectionFilter, setConnectionFilter] = useState<string>('all');
   const [availableProtocols, setAvailableProtocols] = useState<string[]>([]);
+
+  // 정렬 상태
+  const [sortField, setSortField] = useState<string>('name');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('ASC');
 
   // 실시간 업데이트
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -112,7 +113,48 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 데이터 로드 함수들
+  // 정렬 기능
+  // =============================================================================
+
+  // 정렬 핸들러
+  const handleSort = useCallback((field: string) => {
+    setSortField(prevField => {
+      if (prevField === field) {
+        setSortOrder(prevOrder => prevOrder === 'ASC' ? 'DESC' : 'ASC');
+        return prevField;
+      } else {
+        setSortOrder('ASC');
+        return field;
+      }
+    });
+    setCurrentPage(1);
+  }, []);
+
+  // 정렬 아이콘 표시
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <i className="fas fa-sort" style={{opacity: 0.3, marginLeft: '4px', fontSize: '10px'}}></i>;
+    }
+    return sortOrder === 'ASC' 
+      ? <i className="fas fa-sort-up" style={{color: '#3b82f6', marginLeft: '4px', fontSize: '10px'}}></i>
+      : <i className="fas fa-sort-down" style={{color: '#3b82f6', marginLeft: '4px', fontSize: '10px'}}></i>;
+  };
+
+  // 정렬 가능한 헤더 스타일
+  const getSortableHeaderStyle = (field: string) => ({
+    cursor: 'pointer',
+    userSelect: 'none' as const,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    transition: 'background-color 0.2s ease',
+    backgroundColor: sortField === field ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+  });
+
+  // =============================================================================
+  // 데이터 로드 함수들 - 순환 참조 제거
   // =============================================================================
 
   const loadDevices = useCallback(async (isBackground = false) => {
@@ -125,25 +167,62 @@ const DeviceList: React.FC = () => {
       
       setError(null);
 
-      const response = await DeviceApiService.getDevices({
-        page: currentPage,
-        limit: pageSize,
-        protocol_type: protocolFilter !== 'all' ? protocolFilter : undefined,
-        connection_status: connectionFilter !== 'all' ? connectionFilter : undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        search: searchTerm || undefined,
-        sort_by: 'name',
-        sort_order: 'ASC',
+      // 🔥 서버 필터는 프로토콜만 지원, 나머지는 클라이언트 필터링
+      const apiParams = {
+        page: 1, // 🔥 전체 데이터를 가져오기 위해 첫 페이지부터
+        limit: 1000, // 🔥 충분히 큰 수로 모든 데이터 가져오기
+        protocol_type: protocolFilter !== 'all' ? protocolFilter : undefined, // 프로토콜만 서버 필터
+        search: searchTerm || undefined, // 검색은 서버에서 처리
+        sort_by: sortField,
+        sort_order: sortOrder,
         include_collector_status: true
-      });
+      };
+
+      console.log('🔥 서버 API 호출 파라미터 (프로토콜+검색만):', apiParams);
+
+      const response = await DeviceApiService.getDevices(apiParams);
+
+      console.log('🔥 API 응답 성공:', !!response.success);
+      console.log('🔥 서버에서 받은 전체 데이터 개수:', response.data?.items?.length);
 
       if (response.success && response.data) {
-        const newDevices = response.data.items || [];
-        setDevices([...newDevices]);
-        setRenderKey(prev => prev + 1);
+        let allDevices = response.data.items || [];
         
-        const apiTotal = response.data.pagination?.total || 0;
-        setTotalCount(apiTotal);
+        console.log('🔥 필터링 전 데이터 개수:', allDevices.length);
+
+        // 🔥 클라이언트 사이드 필터링
+        let filteredDevices = allDevices;
+
+        // 상태 필터링 (status 객체 처리)
+        if (statusFilter !== 'all') {
+          filteredDevices = filteredDevices.filter(device => {
+            const deviceStatus = device.status;
+            // status 객체에서 적절한 필드 찾기
+            const statusValue = deviceStatus?.current || deviceStatus?.state || deviceStatus?.value || 'unknown';
+            return statusValue === statusFilter;
+          });
+          console.log('🔥 상태 필터링 후:', filteredDevices.length, '개');
+        }
+
+        // 연결상태 필터링
+        if (connectionFilter !== 'all') {
+          filteredDevices = filteredDevices.filter(device => {
+            return device.connection_status === connectionFilter;
+          });
+          console.log('🔥 연결상태 필터링 후:', filteredDevices.length, '개');
+        }
+
+        // 🔥 페이징 처리 (클라이언트에서)
+        const totalFiltered = filteredDevices.length;
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        const paginatedDevices = filteredDevices.slice(startIndex, endIndex);
+
+        console.log('🔥 최종 페이징 결과:', paginatedDevices.length, '개 (전체:', totalFiltered, '개)');
+
+        setDevices(paginatedDevices);
+        setTotalCount(totalFiltered); // 필터된 총 개수
+        setRenderKey(prev => prev + 1);
         
         if (!hasInitialLoad) {
           setHasInitialLoad(true);
@@ -164,7 +243,7 @@ const DeviceList: React.FC = () => {
       setIsBackgroundRefreshing(false);
       setLastUpdate(new Date());
     }
-  }, [currentPage, pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, hasInitialLoad, checkScrollbar]);
+  }, [currentPage, pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, sortField, sortOrder, hasInitialLoad, checkScrollbar]);
 
   const loadDeviceStats = useCallback(async () => {
     try {
@@ -187,6 +266,58 @@ const DeviceList: React.FC = () => {
     } catch (err) {
       console.warn('프로토콜 로드 실패:', err);
     }
+  }, []);
+
+  // =============================================================================
+  // 🔥 모달 콜백 함수들 (핵심 수정 부분)
+  // =============================================================================
+
+  /**
+   * 디바이스 저장 성공 처리
+   */
+  const handleDeviceSave = useCallback(async (savedDevice: Device) => {
+    console.log('✅ 디바이스 저장됨:', savedDevice);
+    
+    try {
+      // 디바이스 목록 새로고침
+      await loadDevices(true);
+      await loadDeviceStats();
+      
+      console.log('📊 디바이스 목록 새로고침 완료');
+    } catch (error) {
+      console.error('❌ 목록 새로고침 실패:', error);
+      // 새로고침 실패해도 모달은 닫힘 (저장은 성공했으므로)
+    }
+  }, [loadDevices, loadDeviceStats]);
+
+  /**
+   * 디바이스 삭제 성공 처리
+   */
+  const handleDeviceDelete = useCallback(async (deletedDeviceId: number) => {
+    console.log('🗑️ 디바이스 삭제됨:', deletedDeviceId);
+    
+    try {
+      // 선택된 디바이스 목록에서 제거
+      setSelectedDevices(prev => prev.filter(id => id !== deletedDeviceId));
+      
+      // 디바이스 목록 새로고침
+      await loadDevices(true);
+      await loadDeviceStats();
+      
+      console.log('📊 디바이스 목록 새로고침 완료');
+    } catch (error) {
+      console.error('❌ 목록 새로고침 실패:', error);
+      // 새로고침 실패해도 모달은 닫힘 (삭제는 성공했으므로)
+    }
+  }, [loadDevices, loadDeviceStats]);
+
+  /**
+   * 모달 닫기
+   */
+  const handleCloseModal = useCallback(() => {
+    setIsModalOpen(false);
+    setSelectedDevice(null);
+    setModalMode('view');
   }, []);
 
   // =============================================================================
@@ -281,15 +412,15 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 이벤트 핸들러들
+  // 이벤트 핸들러들 - useCallback으로 안정화
   // =============================================================================
 
-  const handleSearch = (term: string) => {
+  const handleSearch = useCallback((term: string) => {
     setSearchTerm(term);
     setCurrentPage(1);
-  };
+  }, []);
 
-  const handleFilterChange = (filterType: string, value: string) => {
+  const handleFilterChange = useCallback((filterType: string, value: string) => {
     switch (filterType) {
       case 'status':
         setStatusFilter(value);
@@ -302,43 +433,37 @@ const DeviceList: React.FC = () => {
         break;
     }
     setCurrentPage(1);
-  };
+  }, []);
 
-  const handleDeviceSelect = (deviceId: number, selected: boolean) => {
+  const handleDeviceSelect = useCallback((deviceId: number, selected: boolean) => {
     setSelectedDevices(prev => 
       selected 
         ? [...prev, deviceId]
         : prev.filter(id => id !== deviceId)
     );
-  };
+  }, []);
 
-  const handleSelectAll = (selected: boolean) => {
+  const handleSelectAll = useCallback((selected: boolean) => {
     setSelectedDevices(selected ? devices.map(d => d.id) : []);
-  };
+  }, [devices]);
 
-  const handleDeviceClick = (device: Device) => {
+  const handleDeviceClick = useCallback((device: Device) => {
     setSelectedDevice(device);
     setModalMode('view');
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const handleEditDevice = (device: Device) => {
+  const handleEditDevice = useCallback((device: Device) => {
     setSelectedDevice(device);
     setModalMode('edit');
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const handleCreateDevice = () => {
+  const handleCreateDevice = useCallback(() => {
     setSelectedDevice(null);
     setModalMode('create');
     setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedDevice(null);
-    loadDevices(true);
-  };
+  }, []);
 
   const handlePageSizeChange = useCallback((newPageSize: number) => {
     setPageSize(newPageSize);
@@ -392,26 +517,32 @@ const DeviceList: React.FC = () => {
   };
 
   // =============================================================================
-  // 라이프사이클 hooks
+  // 라이프사이클 hooks - 순환 참조 완전 제거
   // =============================================================================
 
+  // 초기 로드 - 한 번만 실행
   useEffect(() => {
+    console.log('🔥 초기 로드 시작');
     loadDevices();
     loadAvailableProtocols();
-  }, []);
+  }, []); // 빈 배열
 
+  // 통계 로드 - devices 길이 변경시만
   useEffect(() => {
     if (devices.length > 0) {
       loadDeviceStats();
     }
-  }, [devices.length, loadDeviceStats]);
+  }, [devices.length]);
 
+  // 필터/정렬/페이징 변경시 데이터 새로고침
   useEffect(() => {
     if (hasInitialLoad) {
+      console.log('🔥 필터/정렬/페이징 변경으로 데이터 새로고침');
       loadDevices(true);
     }
-  }, [currentPage, pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, hasInitialLoad]);
+  }, [currentPage, pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, sortField, sortOrder, hasInitialLoad]);
 
+  // 자동 새로고침 - 독립적 관리
   useEffect(() => {
     if (!autoRefresh || !hasInitialLoad) {
       if (autoRefreshRef.current) {
@@ -421,27 +552,25 @@ const DeviceList: React.FC = () => {
       return;
     }
 
-    autoRefreshRef.current = setInterval(() => {
+    const intervalId = setInterval(() => {
+      console.log('🔥 자동 새로고침 실행');
       loadDevices(true);
     }, 60000);
+    
+    autoRefreshRef.current = intervalId;
 
     return () => {
-      if (autoRefreshRef.current) {
-        clearInterval(autoRefreshRef.current);
-        autoRefreshRef.current = null;
-      }
+      clearInterval(intervalId);
     };
-  }, [autoRefresh, hasInitialLoad, loadDevices]);
+  }, [autoRefresh, hasInitialLoad]);
 
-  // 창 리사이즈 시 화면 크기 업데이트
+  // 창 리사이즈 처리
   useEffect(() => {
     const handleResize = () => {
-      setScreenWidth(window.innerWidth);
       checkScrollbar();
       setRenderKey(prev => prev + 1);
     };
     
-    setScreenWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [checkScrollbar]);
@@ -564,21 +693,64 @@ const DeviceList: React.FC = () => {
           </div>
         ) : (
           <div key={`table-${renderKey}`}>
-            {/* 헤더 */}
+            {/* 정렬 기능이 있는 헤더 */}
             <div className="device-list-table-header">
-              <div>
+              <div className="device-list-checkbox-cell">
                 <input
                   type="checkbox"
                   checked={selectedDevices.length === devices.length && devices.length > 0}
                   onChange={(e) => handleSelectAll(e.target.checked)}
                 />
               </div>
-              <div>디바이스</div>
-              <div>프로토콜</div>
-              <div>상태</div>
-              <div>연결</div>
-              <div>데이터</div>
-              <div>성능</div>
+              
+              <div 
+                style={getSortableHeaderStyle('name')}
+                onClick={() => handleSort('name')}
+              >
+                디바이스
+                {getSortIcon('name')}
+              </div>
+              
+              <div 
+                style={getSortableHeaderStyle('protocol_type')}
+                onClick={() => handleSort('protocol_type')}
+              >
+                프로토콜
+                {getSortIcon('protocol_type')}
+              </div>
+              
+              <div 
+                style={getSortableHeaderStyle('status')}
+                onClick={() => handleSort('status')}
+              >
+                상태
+                {getSortIcon('status')}
+              </div>
+              
+              <div 
+                style={getSortableHeaderStyle('connection_status')}
+                onClick={() => handleSort('connection_status')}
+              >
+                연결
+                {getSortIcon('connection_status')}
+              </div>
+              
+              <div 
+                style={getSortableHeaderStyle('data_point_count')}
+                onClick={() => handleSort('data_point_count')}
+              >
+                데이터
+                {getSortIcon('data_point_count')}
+              </div>
+              
+              <div 
+                style={getSortableHeaderStyle('response_time')}
+                onClick={() => handleSort('response_time')}
+              >
+                성능
+                {getSortIcon('response_time')}
+              </div>
+              
               <div>작업</div>
             </div>
 
@@ -808,8 +980,17 @@ const DeviceList: React.FC = () => {
         </div>
       )}
 
-      {/* 모달 */}
-      <DeviceDetailModal device={selectedDevice} isOpen={isModalOpen} mode={modalMode} onClose={handleCloseModal} onSave={async () => {}} onDelete={async () => {}} />
+      {/* 🔥 수정된 모달 - 올바른 콜백 함수들 전달 */}
+      {isModalOpen && (
+        <DeviceDetailModal 
+          device={selectedDevice} 
+          isOpen={isModalOpen} 
+          mode={modalMode} 
+          onClose={handleCloseModal}
+          onSave={handleDeviceSave}     // ✅ 실제 저장 함수
+          onDelete={handleDeviceDelete} // ✅ 실제 삭제 함수
+        />
+      )}
     </div>
   );
 };
