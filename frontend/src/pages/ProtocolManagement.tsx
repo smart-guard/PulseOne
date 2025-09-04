@@ -270,12 +270,16 @@ const ProtocolManagement: React.FC = () => {
     return colors[category] || '#6b7280';
   };
 
-  // 통계 계산 (실제 데이터 기반)
+  // 통계 계산 (실제 데이터 기반 - API 없을 때 대체)
   const calculateStats = () => {
-    if (stats) return stats;
+    // API 통계가 있으면 사용, 없으면 현재 데이터로 계산
+    if (stats && stats.total_protocols) {
+      return stats;
+    }
     
+    // 백엔드 API 없을 때 프론트엔드에서 계산
     return {
-      total_protocols: totalCount || protocols.length,
+      total_protocols: protocols.length,
       enabled_protocols: protocols.filter(p => p.is_enabled).length,
       deprecated_protocols: protocols.filter(p => p.is_deprecated).length,
       total_devices: protocols.reduce((sum, p) => sum + (p.device_count || 0), 0)
@@ -978,20 +982,6 @@ const ProtocolManagement: React.FC = () => {
                 >
                   ✏️ 편집
                 </button>
-                <button 
-                  onClick={() => handleProtocolAction('test', protocol.id)}
-                  disabled={processing === protocol.id}
-                  style={{
-                    padding: '8px 12px',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {processing === protocol.id ? '⏳' : '🔗'} 테스트
-                </button>
                 {protocol.is_enabled ? (
                   <button 
                     onClick={() => handleProtocolAction('disable', protocol.id)}
@@ -1314,30 +1304,15 @@ const ProtocolManagement: React.FC = () => {
         />
       )}
 
-      {/* 프로토콜 편집/생성 모달 - 디버그 정보 추가 */}
+      {/* 프로토콜 편집/생성 모달 */}
       {showEditor && (
-        <>
-          <div style={{
-            position: 'fixed',
-            top: '10px',
-            right: '10px',
-            backgroundColor: 'yellow',
-            padding: '10px',
-            zIndex: 10000,
-            border: '2px solid red',
-            fontFamily: 'monospace',
-            fontSize: '12px'
-          }}>
-            DEBUG: showEditor = {JSON.stringify(showEditor)}
-          </div>
-          <ProtocolEditor
-            protocolId={showEditor.protocolId}
-            mode={showEditor.mode}
-            isOpen={true}
-            onSave={handleEditorSave}
-            onCancel={handleEditorCancel}
-          />
-        </>
+        <ProtocolEditor
+          protocolId={showEditor.protocolId}
+          mode={showEditor.mode}
+          isOpen={true}
+          onSave={handleEditorSave}
+          onCancel={handleEditorCancel}
+        />
       )}
     </div>
   );
