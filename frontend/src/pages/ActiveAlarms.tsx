@@ -276,6 +276,8 @@ const ActiveAlarms: React.FC = () => {
     try {
       setError(null);
       
+      console.log('🔍 활성 알람 조회 시작...');
+      
       const response = await AlarmApiService.getActiveAlarms({
         page: pagination.currentPage,
         limit: pagination.pageSize,
@@ -284,45 +286,74 @@ const ActiveAlarms: React.FC = () => {
         search: searchTerm || undefined
       });
 
-      if (response.success && response.data?.items) {
-        const formattedAlarms = response.data.items.map((alarm: any) => ({
-          id: alarm.id,
-          rule_id: alarm.rule_id,
-          rule_name: alarm.rule_name,
-          device_id: alarm.device_id,
-          device_name: alarm.device_name,
-          data_point_id: alarm.data_point_id,
-          data_point_name: alarm.data_point_name,
-          severity: mapSeverity(alarm.severity),
-          priority: getSeverityLevel(alarm.severity),
-          message: alarm.alarm_message || alarm.message,
-          description: alarm.description,
-          triggered_value: alarm.trigger_value || alarm.triggered_value,
-          threshold_value: alarm.threshold_value,
-          condition_type: alarm.condition_type,
-          triggered_at: alarm.occurrence_time || alarm.triggered_at,
-          acknowledged_at: alarm.acknowledged_at,
-          acknowledged_by: alarm.acknowledged_by,
-          acknowledgment_comment: alarm.acknowledgment_comment,
-          state: alarm.state,
-          quality: alarm.quality || 'good',
-          tags: alarm.tags,
-          metadata: alarm.metadata,
-          is_new: false
-        }));
+      console.log('📥 API 응답 전체:', response);
+      console.log('📊 응답 데이터:', response.data);
+
+      if (response.success && response.data) {
+        // 응답 구조 확인 및 처리
+        let alarmItems = [];
+        let totalCount = 0;
+
+        if (response.data.items) {
+          // 페이징된 응답 구조
+          alarmItems = response.data.items;
+          totalCount = response.data.pagination?.total || alarmItems.length;
+        } else if (Array.isArray(response.data)) {
+          // 직접 배열 응답
+          alarmItems = response.data;
+          totalCount = alarmItems.length;
+        } else if (response.data.rows) {
+          // rows 구조 응답 👈 이 부분 추가
+          alarmItems = Array.isArray(response.data.rows) ? response.data.rows : [response.data.rows];
+          totalCount = response.data.rowCount || alarmItems.length;
+        } else {
+          console.warn('⚠️ 예상하지 못한 응답 구조:', response.data);
+          alarmItems = [];
+          totalCount = 0;
+        }
+
+        console.log(`📋 처리된 알람 목록: ${alarmItems.length}개`);
+
+        const formattedAlarms = alarmItems.map((alarm: any) => {
+          console.log('🔧 개별 알람 데이터:', alarm);
+          
+          return {
+            id: alarm.id,
+            rule_id: alarm.rule_id,
+            rule_name: alarm.rule_name || `규칙 ${alarm.rule_id}`,
+            device_id: alarm.device_id,
+            device_name: alarm.device_name || `Device ${alarm.device_id}`,
+            data_point_id: alarm.point_id,
+            data_point_name: alarm.data_point_name,
+            severity: mapSeverity(alarm.severity),
+            priority: getSeverityLevel(alarm.severity),
+            message: alarm.alarm_message || alarm.message,
+            description: alarm.description,
+            triggered_value: alarm.trigger_value || alarm.triggered_value,
+            threshold_value: alarm.threshold_value,
+            condition_type: alarm.condition_type,
+            triggered_at: alarm.occurrence_time || alarm.triggered_at,
+            acknowledged_at: alarm.acknowledged_time, // 👈 필드명 확인
+            acknowledged_by: alarm.acknowledged_by,
+            acknowledgment_comment: alarm.acknowledge_comment, // 👈 필드명 확인
+            state: alarm.state,
+            quality: alarm.quality || 'good',
+            tags: alarm.tags,
+            metadata: alarm.metadata,
+            is_new: false
+          };
+        });
 
         setAlarms(formattedAlarms);
-        
-        if (response.data.pagination) {
-          pagination.updateTotalCount(response.data.pagination.total);
-        }
-        
+        pagination.updateTotalCount(totalCount);
         updateAlarmStats(formattedAlarms);
+
+        console.log(`✅ 활성 알람 ${formattedAlarms.length}개 로드 완료`);
       } else {
         setError(response.message || '알람 데이터 조회에 실패했습니다');
       }
     } catch (err) {
-      console.error('활성 알람 조회 실패:', err);
+      console.error('❌ 활성 알람 조회 실패:', err);
       setError(err instanceof Error ? err.message : '알람 데이터 조회에 실패했습니다');
     } finally {
       setIsLoading(false);
@@ -332,65 +363,113 @@ const ActiveAlarms: React.FC = () => {
   const handleAcknowledgeAlarm = useCallback(async (alarmId: number, comment: string = ''): Promise<void> => {
     try {
       setIsProcessing(true);
+      setError(null);
+      
+      console.log('🔧 알람 확인 요청:', { alarmId, comment });
       
       const response = await AlarmApiService.acknowledgeAlarm(alarmId, {
-        comment: comment
+        comment: comment.trim()
       });
 
+      console.log('📥 확인 API 응답:', response);
+
       if (!response.success) {
-        throw new Error(response.message || '확인 처리 실패');
+        throw new Error(response.message || '알람 확인 처리 실패');
       }
 
-      setAlarms(prev => prev.map(alarm => 
-        alarm.id === alarmId 
-          ? { 
-              ...alarm, 
-              state: 'acknowledged' as const,
-              acknowledged_at: new Date().toISOString(),
-              acknowledged_by: '관리자',
-              acknowledgment_comment: comment,
-              is_new: false
-            }
-          : alarm
-      ));
-
-      updateAlarmStats();
+      console.log('✅ 알람 확인 성공 - 3초 후 목록 새로고침');
+      
+      // UI 상태 먼저 정리
       setShowAckModal(false);
       setAckComment('');
       setSelectedAlarmForAck(null);
+      
+      // 잠시 후 목록 새로고침 (DB 업데이트 대기)
+      setTimeout(() => {
+        console.log('🔄 목록 새로고침 실행');
+        fetchActiveAlarms();
+      }, 1000);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : '알람 확인 처리 실패');
+      console.error('💥 알람 확인 실패:', err);
+      setError(`알람 확인 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     } finally {
       setIsProcessing(false);
     }
-  }, [updateAlarmStats]);
+  }, [fetchActiveAlarms]);
 
   const handleClearAlarm = useCallback(async (alarmId: number): Promise<void> => {
     try {
       setIsProcessing(true);
+      setError(null);
+      
+      console.log('🔧 알람 해제 요청 시작:', { 
+        alarmId,
+        timestamp: new Date().toISOString()
+      });
       
       const response = await AlarmApiService.clearAlarm(alarmId, {
-        comment: '사용자에 의해 해제됨'
+        comment: '사용자에 의해 해제됨',
+        clearedValue: null // 백엔드에서 요구하는 필드
+      });
+
+      console.log('📥 알람 해제 API 응답:', {
+        success: response.success,
+        message: response.message,
+        error: response.error,
+        data: response.data
       });
 
       if (!response.success) {
-        throw new Error(response.message || '해제 처리 실패');
+        const errorMsg = response.message || response.error || '알람 해제 처리 실패';
+        console.error('❌ 알람 해제 API 실패:', errorMsg);
+        throw new Error(errorMsg);
       }
 
-      setAlarms(prev => prev.filter(alarm => alarm.id !== alarmId));
+      // 로컬 상태에서 해당 알람 제거 (해제된 알람은 활성 목록에서 사라짐)
+      setAlarms(prev => {
+        const filteredAlarms = prev.filter(alarm => alarm.id !== alarmId);
+        console.log(`🗑️ 알람 ${alarmId} 제거됨. 남은 알람: ${filteredAlarms.length}개`);
+        return filteredAlarms;
+      });
       
       // Context의 알람 개수 감소
       decrementAlarmCount();
       
+      // 페이지네이션 총 개수 업데이트
+      if (pagination.totalCount > 0) {
+        pagination.updateTotalCount(pagination.totalCount - 1);
+      }
+      
+      // 통계 업데이트
       updateAlarmStats();
 
+      console.log('✅ 알람 해제 처리 완료:', alarmId);
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : '알람 해제 처리 실패');
+      console.error('💥 알람 해제 처리 중 예외 발생:', {
+        error: err,
+        alarmId,
+        stack: err instanceof Error ? err.stack : undefined
+      });
+      
+      const errorMessage = err instanceof Error ? err.message : '알람 해제 처리 실패';
+      setError(`알람 해제 실패: ${errorMessage}`);
+      
+      // 사용자에게 구체적인 오류 정보 제공
+      if (err instanceof Error && err.message.includes('401')) {
+        setError('인증이 만료되었습니다. 다시 로그인해주세요.');
+      } else if (err instanceof Error && err.message.includes('403')) {
+        setError('알람 해제 권한이 없습니다.');
+      } else if (err instanceof Error && err.message.includes('404')) {
+        setError('해당 알람을 찾을 수 없습니다.');
+      } else if (err instanceof Error && err.message.includes('409')) {
+        setError('이미 해제된 알람입니다.');
+      }
     } finally {
       setIsProcessing(false);
     }
-  }, [updateAlarmStats, decrementAlarmCount]);
+  }, [updateAlarmStats, decrementAlarmCount, pagination]);
 
   // =============================================================================
   // WebSocket 관련 함수들

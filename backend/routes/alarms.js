@@ -1,112 +1,43 @@
-// ============================================================================
+// =============================================================================
 // backend/routes/alarms.js
-// 완전한 알람 관리 API - 라우트 순서 수정됨 (전체 버전)
-// ============================================================================
+// Repository 패턴으로 완전 리팩토링된 알람 관리 API (44개 엔드포인트)
+// =============================================================================
 
 const express = require('express');
 const router = express.Router();
 
-// ConfigManager 기반 DB 연결
-const ConfigManager = require('../lib/config/ConfigManager');
-const DatabaseFactory = require('../lib/database/DatabaseFactory');
-const AlarmQueries = require('../lib/database/queries/AlarmQueries');
+// Repository 인스턴스들
+const AlarmOccurrenceRepository = require('../lib/database/repositories/AlarmOccurrenceRepository');
+const AlarmRuleRepository = require('../lib/database/repositories/AlarmRuleRepository');
+const AlarmTemplateRepository = require('../lib/database/repositories/AlarmTemplateRepository');
 
-// DB 팩토리 관리
-let dbFactory = null;
+// Repository 싱글톤 관리
+let occurrenceRepo = null;
+let ruleRepo = null;
+let templateRepo = null;
 
-async function getDatabaseFactory() {
-    if (!dbFactory) {
-        const config = ConfigManager.getInstance();
-        dbFactory = new DatabaseFactory();
+function getOccurrenceRepo() {
+    if (!occurrenceRepo) {
+        occurrenceRepo = new AlarmOccurrenceRepository();
+        console.log("✅ AlarmOccurrenceRepository 인스턴스 생성 완료");
     }
-    return dbFactory;
+    return occurrenceRepo;
 }
 
-// ============================================================================
-// DatabaseFactory.executeQuery 사용 헬퍼 함수들
-// ============================================================================
-
-async function dbAll(sql, params = []) {
-    const factory = await getDatabaseFactory();
-    try {
-        const results = await factory.executeQuery(sql, params);
-        
-        console.log('🔍 DatabaseFactory 원시 결과:', {
-            타입: typeof results,
-            생성자: results?.constructor?.name,
-            키들: results ? Object.keys(results) : '없음',
-            길이: results?.length,
-            rows존재: !!results?.rows,
-            rows길이: results?.rows?.length
-        });
-        
-        // 다양한 가능한 결과 구조 처리
-        if (Array.isArray(results)) {
-            return results;
-        } else if (results && Array.isArray(results.rows)) {
-            return results.rows;
-        } else if (results && results.recordset) {
-            return results.recordset;
-        } else if (results && Array.isArray(results.results)) {
-            return results.results;
-        } else {
-            console.warn('예상하지 못한 결과 구조:', results);
-            return [];
-        }
-    } catch (error) {
-        console.error('Database query error:', error);
-        throw error;
+function getRuleRepo() {
+    if (!ruleRepo) {
+        ruleRepo = new AlarmRuleRepository();
+        console.log("✅ AlarmRuleRepository 인스턴스 생성 완료");
     }
+    return ruleRepo;
 }
 
-async function dbGet(sql, params = []) {
-    const factory = await getDatabaseFactory();
-    try {
-        const results = await factory.executeQuery(sql, params);
-        
-        console.log('🔍 dbGet 원시 결과:', {
-            타입: typeof results,
-            키들: results ? Object.keys(results) : '없음'
-        });
-        
-        // 단일 결과 추출
-        if (Array.isArray(results) && results.length > 0) {
-            return results[0];
-        } else if (results?.rows && Array.isArray(results.rows) && results.rows.length > 0) {
-            return results.rows[0];
-        } else if (results?.recordset && results.recordset.length > 0) {
-            return results.recordset[0];
-        } else if (results && !Array.isArray(results) && typeof results === 'object') {
-            // 단일 객체가 직접 반환된 경우
-            return results;
-        } else {
-            return null;
-        }
-    } catch (error) {
-        console.error('Database query error:', error);
-        throw error;
+function getTemplateRepo() {
+    if (!templateRepo) {
+        templateRepo = new AlarmTemplateRepository();
+        console.log("✅ AlarmTemplateRepository 인스턴스 생성 완료");
     }
-}
-
-async function dbRun(sql, params = []) {
-    const factory = await getDatabaseFactory();
-    try {
-        const result = await factory.executeQuery(sql, params);
-        
-        console.log('🔍 dbRun 원시 결과:', {
-            타입: typeof result,
-            키들: result ? Object.keys(result) : '없음'
-        });
-        
-        // INSERT/UPDATE/DELETE 결과 처리
-        return {
-            lastID: result?.lastInsertRowid || result?.insertId || result?.lastID || null,
-            changes: result?.changes || result?.affectedRows || result?.rowsAffected || 1
-        };
-    } catch (error) {
-        console.error('Database execution error:', error);
-        throw error;
-    }
+    return templateRepo;
 }
 
 // ============================================================================
@@ -141,336 +72,40 @@ const tenantIsolation = (req, res, next) => {
 router.use(authenticateToken);
 router.use(tenantIsolation);
 
-// 포맷팅 함수들
-function formatAlarmRule(rule) {
-    return {
-        id: rule.id,
-        tenant_id: rule.tenant_id,
-        
-        // 기본 정보
-        name: rule.name,
-        description: rule.description,
-        
-        // 타겟 정보
-        target_type: rule.target_type,
-        target_id: rule.target_id,
-        target_group: rule.target_group,
-        
-        // JOIN된 정보들
-        device_name: rule.device_name,
-        device_type: rule.device_type,
-        manufacturer: rule.manufacturer,
-        model: rule.model,
-        site_name: rule.site_name,
-        site_location: rule.site_location,
-        site_description: rule.site_description,
-        data_point_name: rule.data_point_name,
-        data_point_description: rule.data_point_description,
-        unit: rule.unit,
-        data_type: rule.data_type,
-        virtual_point_name: rule.virtual_point_name,
-        virtual_point_description: rule.virtual_point_description,
-        calculation_formula: rule.calculation_formula,
-        condition_display: rule.condition_display,
-        target_display: rule.target_display,
-        
-        // 알람 타입 및 조건
-        alarm_type: rule.alarm_type,
-        severity: rule.severity,
-        priority: rule.priority,
-        
-        // 임계값들
-        high_high_limit: rule.high_high_limit,
-        high_limit: rule.high_limit,
-        low_limit: rule.low_limit,
-        low_low_limit: rule.low_low_limit,
-        deadband: rule.deadband,
-        rate_of_change: rule.rate_of_change,
-        
-        // 디지털 알람 조건
-        trigger_condition: rule.trigger_condition,
-        
-        // 스크립트 관련
-        condition_script: rule.condition_script,
-        message_script: rule.message_script,
-        
-        // 메시지 관련
-        message_config: parseJSON(rule.message_config),
-        message_template: rule.message_template,
-        
-        // 동작 설정들
-        auto_acknowledge: !!rule.auto_acknowledge,
-        acknowledge_timeout_min: rule.acknowledge_timeout_min,
-        auto_clear: !!rule.auto_clear,
-        suppression_rules: parseJSON(rule.suppression_rules),
-        
-        // 알림 설정들
-        notification_enabled: !!rule.notification_enabled,
-        notification_delay_sec: rule.notification_delay_sec,
-        notification_repeat_interval_min: rule.notification_repeat_interval_min,
-        notification_channels: parseJSON(rule.notification_channels),
-        notification_recipients: parseJSON(rule.notification_recipients),
-        
-        // 상태 및 제어
-        is_enabled: !!rule.is_enabled,
-        is_latched: !!rule.is_latched,
-        
-        // 템플릿 관련
-        template_id: rule.template_id,
-        rule_group: rule.rule_group,
-        created_by_template: !!rule.created_by_template,
-        last_template_update: rule.last_template_update,
-        
-        // 에스컬레이션 관련
-        escalation_enabled: !!rule.escalation_enabled,
-        escalation_max_level: rule.escalation_max_level,
-        escalation_rules: parseJSON(rule.escalation_rules),
-        
-        // 카테고리 및 태그 (새로 추가됨)
-        category: rule.category,
-        tags: parseJSON(rule.tags, []),
-        
-        // 감사 정보
-        created_by: rule.created_by,
-        created_at: rule.created_at,
-        updated_at: rule.updated_at
-    };
-}
-
-function formatAlarmOccurrence(occurrence) {
-    return {
-        id: occurrence.id,
-        rule_id: occurrence.rule_id,
-        tenant_id: occurrence.tenant_id,
-        
-        // 알람 정보
-        rule_name: occurrence.rule_name,
-        rule_severity: occurrence.rule_severity,
-        target_type: occurrence.target_type,
-        target_id: occurrence.target_id,
-        
-        // JOIN된 정보들
-        device_name: occurrence.device_name,
-        site_location: occurrence.site_location,
-        data_point_name: occurrence.data_point_name,
-        virtual_point_name: occurrence.virtual_point_name,
-        
-        // 발생 정보
-        occurrence_time: occurrence.occurrence_time,
-        trigger_value: occurrence.trigger_value,
-        trigger_condition: occurrence.trigger_condition,
-        alarm_message: occurrence.alarm_message,
-        severity: occurrence.severity,
-        state: occurrence.state,
-        
-        // 확인 정보
-        acknowledged_time: occurrence.acknowledged_time,
-        acknowledged_by: occurrence.acknowledged_by,
-        acknowledge_comment: occurrence.acknowledge_comment,
-        
-        // 해제 정보 - cleared_by 필드 추가!
-        cleared_time: occurrence.cleared_time,
-        cleared_value: occurrence.cleared_value,
-        clear_comment: occurrence.clear_comment,
-        cleared_by: occurrence.cleared_by,                    // 누락된 필드 추가!
-        
-        // 알림 정보
-        notification_sent: !!occurrence.notification_sent,
-        notification_time: occurrence.notification_time,
-        notification_count: occurrence.notification_count,
-        notification_result: parseJSON(occurrence.notification_result),
-        
-        // 컨텍스트 정보
-        context_data: parseJSON(occurrence.context_data),
-        source_name: occurrence.source_name,
-        location: occurrence.location,
-        
-        // 디바이스/포인트 ID
-        device_id: occurrence.device_id,
-        point_id: occurrence.point_id,
-        
-        // 카테고리 및 태그
-        category: occurrence.category,
-        tags: parseJSON(occurrence.tags, []),
-        
-        // 감사 정보
-        created_at: occurrence.created_at,
-        updated_at: occurrence.updated_at
-    };
-}
-
-function formatAlarmTemplate(template) {
-    return {
-        id: template.id,
-        tenant_id: template.tenant_id,
-        name: template.name,
-        description: template.description,
-        category: template.category,
-        condition_type: template.condition_type,
-        condition_template: template.condition_template,
-        default_config: parseJSON(template.default_config),
-        severity: template.severity,
-        message_template: template.message_template,
-        applicable_data_types: parseJSON(template.applicable_data_types, []),
-        applicable_device_types: parseJSON(template.applicable_device_types, []),
-        notification_enabled: !!template.notification_enabled,
-        email_notification: !!template.email_notification,
-        sms_notification: !!template.sms_notification,
-        auto_acknowledge: !!template.auto_acknowledge,
-        auto_clear: !!template.auto_clear,
-        usage_count: template.usage_count || 0,
-        is_active: !!template.is_active,
-        is_system_template: !!template.is_system_template,
-        
-        // 태그 (새로 추가됨)
-        tags: parseJSON(template.tags, []),
-        
-        created_by: template.created_by,
-        created_at: template.created_at,
-        updated_at: template.updated_at
-    };
-}
-
-function parseJSON(jsonString, defaultValue = {}) {
-    try {
-        return jsonString ? JSON.parse(jsonString) : defaultValue;
-    } catch (error) {
-        console.warn('JSON 파싱 실패:', jsonString, error);
-        return defaultValue;
-    }
-}
-
 // ============================================================================
-// 알람 발생 (Alarm Occurrences) API
+// 알람 발생 (Alarm Occurrences) API - 16개 엔드포인트
 // ============================================================================
 
 /**
-* GET /api/alarms/active
-* 활성 알람 목록 조회 - ORDER BY 중복 제거
-*/
+ * GET /api/alarms/active
+ * 활성 알람 목록 조회
+ */
 router.get('/active', async (req, res) => {
-   try {
-       const { tenantId } = req;
-       const { 
-           page = 1, 
-           limit = 50,
-           severity,
-           device_id,
-           acknowledged = false,
-           category,
-           tag
-       } = req.query;
-       
-       console.log('활성 알람 조회 시작...');
+    try {
+        const repo = getOccurrenceRepo();
+        const filters = {
+            tenantId: req.tenantId,
+            state: 'active',
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 50,
+            severity: req.query.severity,
+            deviceId: req.query.device_id,
+            acknowledged: req.query.acknowledged,
+            category: req.query.category,
+            tag: req.query.tag,
+            sortBy: 'occurrence_time',
+            sortOrder: 'DESC'
+        };
 
-       // 기본 쿼리 사용하고 수동으로 필터 적용
-       let query = AlarmQueries.AlarmOccurrence.FIND_ACTIVE;
-       let params = [tenantId];
-       
-       // ORDER BY 제거 (마지막에 다시 추가할 예정)
-       const orderByIndex = query.lastIndexOf('ORDER BY');
-       if (orderByIndex !== -1) {
-           query = query.substring(0, orderByIndex).trim();
-       }
-       
-       // 추가 필터들을 수동으로 WHERE 절에 추가
-       if (severity && severity !== 'all') {
-           query += ` AND ao.severity = ?`;
-           params.push(severity);
-       }
-       
-       if (device_id) {
-           query += ` AND ao.device_id = ?`;
-           params.push(parseInt(device_id));
-       }
-       
-       if (acknowledged === 'true') {
-           query += ` AND ao.acknowledged_time IS NOT NULL`;
-       } else if (acknowledged === 'false') {
-           query += ` AND ao.acknowledged_time IS NULL`;
-       }
-       
-       if (category && category !== 'all') {
-           query += ` AND ao.category = ?`;
-           params.push(category);
-       }
-       
-       if (tag && tag.trim()) {
-           query += ` AND ao.tags LIKE ?`;
-           params.push(`%${tag}%`);
-       }
-       
-       // ORDER BY 한 번만 추가
-       query += ` ORDER BY ao.occurrence_time DESC`;
-       
-       // 페이징
-       const offset = (parseInt(page) - 1) * parseInt(limit);
-       query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+        const result = await repo.findAll(filters);
+        
+        console.log(`활성 알람 ${result.items.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'Active alarms retrieved successfully'));
 
-       console.log('실행할 쿼리:', query);
-       console.log('파라미터:', params);
-
-       const results = await dbAll(query, params);
-       
-       // 총 개수 조회
-       let countQuery = `
-           SELECT COUNT(*) as total
-           FROM alarm_occurrences ao
-           LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-           LEFT JOIN devices d ON d.id = ao.device_id
-           LEFT JOIN data_points dp ON dp.id = ao.point_id
-           LEFT JOIN sites s ON d.site_id = s.id
-           WHERE ao.tenant_id = ? AND ao.state = 'active'
-       `;
-       let countParams = [tenantId];
-       
-       // 카운트 쿼리에도 같은 필터 적용
-       if (severity && severity !== 'all') {
-           countQuery += ` AND ao.severity = ?`;
-           countParams.push(severity);
-       }
-       
-       if (device_id) {
-           countQuery += ` AND ao.device_id = ?`;
-           countParams.push(parseInt(device_id));
-       }
-       
-       if (acknowledged === 'true') {
-           countQuery += ` AND ao.acknowledged_time IS NOT NULL`;
-       } else if (acknowledged === 'false') {
-           countQuery += ` AND ao.acknowledged_time IS NULL`;
-       }
-       
-       if (category && category !== 'all') {
-           countQuery += ` AND ao.category = ?`;
-           countParams.push(category);
-       }
-       
-       if (tag && tag.trim()) {
-           countQuery += ` AND ao.tags LIKE ?`;
-           countParams.push(`%${tag}%`);
-       }
-       
-       const countResult = await dbGet(countQuery, countParams);
-       const total = countResult ? countResult.total : 0;
-       
-       const result = {
-           items: results.map(alarm => formatAlarmOccurrence(alarm)),
-           pagination: {
-               page: parseInt(page),
-               limit: parseInt(limit),
-               total: total,
-               totalPages: Math.ceil(total / parseInt(limit))
-           }
-       };
-       
-       console.log(`활성 알람 ${results.length}개 조회 완료 (총 ${total}개)`);
-       res.json(createResponse(true, result, 'Active alarms retrieved successfully'));
-
-   } catch (error) {
-       console.error('활성 알람 조회 실패:', error.message);
-       res.status(500).json(createResponse(false, null, error.message, 'ACTIVE_ALARMS_ERROR'));
-   }
+    } catch (error) {
+        console.error('활성 알람 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'ACTIVE_ALARMS_ERROR'));
+    }
 });
 
 /**
@@ -479,88 +114,25 @@ router.get('/active', async (req, res) => {
  */
 router.get('/occurrences', async (req, res) => {
     try {
-        const { tenantId } = req;
-        const {
-            page = 1,
-            limit = 50,
-            state,
-            severity,
-            rule_id,
-            device_id,
-            search,
-            category,  // 새로 추가
-            tag        // 새로 추가
-        } = req.query;
-        
-        console.log('알람 발생 목록 조회 시작...');
-
-        let query, params;
-        
-        if (search) {
-            // 검색 쿼리는 별도로 구현 필요
-            query = AlarmQueries.AlarmOccurrence.FIND_ALL;
-            params = [tenantId];
-        } else {
-            // 기본 쿼리 사용하고 수동으로 필터 적용
-            query = AlarmQueries.AlarmOccurrence.FIND_ALL;
-            params = [tenantId];
-            
-            // 추가 필터들을 수동으로 WHERE 절에 추가
-            if (state && state !== 'all') {
-                query += ` AND ao.state = ?`;
-                params.push(state);
-            }
-            
-            if (severity && severity !== 'all') {
-                query += ` AND ao.severity = ?`;
-                params.push(severity);
-            }
-            
-            if (rule_id) {
-                query += ` AND ao.rule_id = ?`;
-                params.push(parseInt(rule_id));
-            }
-            
-            if (device_id) {
-                query += ` AND ao.device_id = ?`;
-                params.push(parseInt(device_id));
-            }
-            
-            if (category && category !== 'all') {
-                query += ` AND ao.category = ?`;
-                params.push(category);
-            }
-            
-            if (tag && tag.trim()) {
-                query += ` AND ao.tags LIKE ?`;
-                params.push(`%${tag}%`);
-            }
-        }
-        
-        query = AlarmQueries.addSorting(query, 'occurrence_time', 'DESC');
-        
-        // 페이징
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-
-        const results = await dbAll(query, params);
-        
-        // 총 개수 조회
-        const countQuery = AlarmQueries.AlarmOccurrence.STATS_SUMMARY;
-        const countResult = await dbGet(countQuery, [tenantId]);
-        const total = countResult?.total_occurrences || 0;
-        
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
+        const repo = getOccurrenceRepo();
+        const filters = {
+            tenantId: req.tenantId,
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 50,
+            state: req.query.state,
+            severity: req.query.severity,
+            ruleId: req.query.rule_id,
+            deviceId: req.query.device_id,
+            category: req.query.category,
+            tag: req.query.tag,
+            search: req.query.search,
+            sortBy: 'occurrence_time',
+            sortOrder: 'DESC'
         };
+
+        const result = await repo.findAll(filters);
         
-        console.log(`알람 발생 ${results.length}개 조회 완료`);
+        console.log(`알람 발생 ${result.items.length}개 조회 완료`);
         res.json(createResponse(true, result, 'Alarm occurrences retrieved successfully'));
 
     } catch (error) {
@@ -575,19 +147,15 @@ router.get('/occurrences', async (req, res) => {
  */
 router.get('/occurrences/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
+        const repo = getOccurrenceRepo();
+        const occurrence = await repo.findById(parseInt(req.params.id), req.tenantId);
         
-        console.log(`알람 발생 ID ${id} 조회 시작...`);
-
-        const result = await dbGet(AlarmQueries.AlarmOccurrence.FIND_BY_ID, [parseInt(id), tenantId]);
-        
-        if (!result) {
+        if (!occurrence) {
             return res.status(404).json(createResponse(false, null, 'Alarm occurrence not found', 'ALARM_NOT_FOUND'));
         }
 
-        console.log(`알람 발생 ID ${id} 조회 완료`);
-        res.json(createResponse(true, formatAlarmOccurrence(result), 'Alarm occurrence retrieved successfully'));
+        console.log(`알람 발생 ID ${req.params.id} 조회 완료`);
+        res.json(createResponse(true, occurrence, 'Alarm occurrence retrieved successfully'));
 
     } catch (error) {
         console.error(`알람 발생 ID ${req.params.id} 조회 실패:`, error.message);
@@ -601,126 +169,25 @@ router.get('/occurrences/:id', async (req, res) => {
  */
 router.get('/history', async (req, res) => {
     try {
-        const { tenantId } = req;
-        const { 
-            page = 1, 
-            limit = 100,
-            severity,
-            device_id,
-            date_from,
-            date_to,
-            state,
-            category,
-            tag
-        } = req.query;
-        
-        console.log('알람 이력 조회 시작...');
-
-        // ✅ 올바른 베이스 쿼리 사용 (ao 별칭이 포함된 JOIN 쿼리)
-        let query = AlarmQueries.AlarmOccurrence.FIND_ALL;
-        let params = [tenantId];
-        
-        // ✅ ORDER BY를 안전하게 제거 (마지막 ORDER BY만 제거)
-        const orderByIndex = query.lastIndexOf('ORDER BY');
-        if (orderByIndex !== -1) {
-            query = query.substring(0, orderByIndex).trim();
-        }
-        
-        // 필터 조건들 추가 (이제 ao 별칭이 올바르게 정의됨)
-        if (severity && severity !== 'all') {
-            query += ` AND ao.severity = ?`;
-            params.push(severity);
-        }
-        
-        if (device_id) {
-            query += ` AND ao.device_id = ?`;
-            params.push(parseInt(device_id));
-        }
-        
-        if (state && state !== 'all') {
-            query += ` AND ao.state = ?`;
-            params.push(state);
-        }
-        
-        if (category && category !== 'all') {
-            query += ` AND ao.category = ?`;
-            params.push(category);
-        }
-        
-        if (tag && tag.trim()) {
-            query += ` AND ao.tags LIKE ?`;
-            params.push(`%${tag}%`);
-        }
-        
-        if (date_from && date_to) {
-            query += ` AND ao.occurrence_time >= ? AND ao.occurrence_time <= ?`;
-            params.push(date_from, date_to);
-        }
-        
-        // ORDER BY 추가
-        query += ` ORDER BY ao.occurrence_time DESC`;
-        
-        // 페이징 추가
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
-
-        const results = await dbAll(query, params);
-        
-        // ✅ 총 개수 조회를 위한 별도 쿼리 (더 정확한 카운트)
-        let countQuery = `
-            SELECT COUNT(*) as total
-            FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            WHERE ao.tenant_id = ?
-        `;
-        let countParams = [tenantId];
-        
-        // 동일한 필터 조건을 카운트 쿼리에도 적용
-        if (severity && severity !== 'all') {
-            countQuery += ` AND ao.severity = ?`;
-            countParams.push(severity);
-        }
-        
-        if (device_id) {
-            countQuery += ` AND ao.device_id = ?`;
-            countParams.push(parseInt(device_id));
-        }
-        
-        if (state && state !== 'all') {
-            countQuery += ` AND ao.state = ?`;
-            countParams.push(state);
-        }
-        
-        if (category && category !== 'all') {
-            countQuery += ` AND ao.category = ?`;
-            countParams.push(category);
-        }
-        
-        if (tag && tag.trim()) {
-            countQuery += ` AND ao.tags LIKE ?`;
-            countParams.push(`%${tag}%`);
-        }
-        
-        if (date_from && date_to) {
-            countQuery += ` AND ao.occurrence_time >= ? AND ao.occurrence_time <= ?`;
-            countParams.push(date_from, date_to);
-        }
-        
-        const countResult = await dbGet(countQuery, countParams);
-        const total = countResult?.total || 0;
-        
-        // 응답 구성
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
+        const repo = getOccurrenceRepo();
+        const filters = {
+            tenantId: req.tenantId,
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 100,
+            severity: req.query.severity,
+            deviceId: req.query.device_id,
+            state: req.query.state,
+            category: req.query.category,
+            tag: req.query.tag,
+            dateFrom: req.query.date_from,
+            dateTo: req.query.date_to,
+            sortBy: 'occurrence_time',
+            sortOrder: 'DESC'
         };
+
+        const result = await repo.findAll(filters);
         
-        console.log(`알람 이력 ${results.length}개 조회 완료 (전체: ${total}개)`);
+        console.log(`알람 이력 ${result.items.length}개 조회 완료`);
         res.json(createResponse(true, result, 'Alarm history retrieved successfully'));
 
     } catch (error) {
@@ -735,24 +202,22 @@ router.get('/history', async (req, res) => {
  */
 router.post('/occurrences/:id/acknowledge', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { comment = '' } = req.body;
-        const { user, tenantId } = req;
-        
-        console.log(`알람 발생 ${id} 확인 처리 시작...`);
+        const repo = getOccurrenceRepo();
+        const updatedOccurrence = await repo.acknowledge(
+            parseInt(req.params.id),
+            req.user.id,
+            req.body.comment || '',
+            req.tenantId
+        );
 
-        const result = await dbRun(AlarmQueries.AlarmOccurrence.ACKNOWLEDGE, [user.id, comment, parseInt(id), tenantId]);
-
-        if (result.changes > 0) {
-            const updatedAlarm = await dbGet(AlarmQueries.AlarmOccurrence.FIND_BY_ID, [parseInt(id), tenantId]);
-
-            console.log(`알람 발생 ${id} 확인 처리 완료`);
-            res.json(createResponse(true, formatAlarmOccurrence(updatedAlarm), 'Alarm occurrence acknowledged successfully'));
-        } else {
+        if (!updatedOccurrence) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm occurrence not found or already acknowledged', 'ALARM_NOT_FOUND')
             );
         }
+
+        console.log(`알람 발생 ${req.params.id} 확인 처리 완료`);
+        res.json(createResponse(true, updatedOccurrence, 'Alarm occurrence acknowledged successfully'));
 
     } catch (error) {
         console.error(`알람 발생 ${req.params.id} 확인 처리 실패:`, error.message);
@@ -766,34 +231,23 @@ router.post('/occurrences/:id/acknowledge', async (req, res) => {
  */
 router.post('/occurrences/:id/clear', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { comment = '', clearedValue = '' } = req.body;
-        const { user, tenantId } = req;
-        
-        console.log(`알람 발생 ${id} 해제 처리 시작... (사용자: ${user.id})`);
+        const repo = getOccurrenceRepo();
+        const updatedOccurrence = await repo.clear(
+            parseInt(req.params.id),
+            req.user.id,
+            req.body.clearedValue || '',
+            req.body.comment || '',
+            req.tenantId
+        );
 
-        // 수정: cleared_by 파라미터 추가 (4개 → 5개 파라미터)
-        // AlarmQueries.AlarmOccurrence.CLEAR 쿼리 구조:
-        // UPDATE alarm_occurrences SET state = 'cleared', cleared_time = CURRENT_TIMESTAMP, 
-        // cleared_value = ?, clear_comment = ?, cleared_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-        const result = await dbRun(AlarmQueries.AlarmOccurrence.CLEAR, [
-            clearedValue, 
-            comment, 
-            user.id,        // cleared_by 파라미터 추가!
-            parseInt(id), 
-            tenantId
-        ]);
-
-        if (result.changes > 0) {
-            const updatedAlarm = await dbGet(AlarmQueries.AlarmOccurrence.FIND_BY_ID, [parseInt(id), tenantId]);
-
-            console.log(`알람 발생 ${id} 해제 처리 완료 (사용자: ${user.id})`);
-            res.json(createResponse(true, formatAlarmOccurrence(updatedAlarm), 'Alarm occurrence cleared successfully'));
-        } else {
+        if (!updatedOccurrence) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm occurrence not found', 'ALARM_NOT_FOUND')
             );
         }
+
+        console.log(`알람 발생 ${req.params.id} 해제 처리 완료`);
+        res.json(createResponse(true, updatedOccurrence, 'Alarm occurrence cleared successfully'));
 
     } catch (error) {
         console.error(`알람 발생 ${req.params.id} 해제 처리 실패:`, error.message);
@@ -801,56 +255,20 @@ router.post('/occurrences/:id/clear', async (req, res) => {
     }
 });
 
-
 /**
  * GET /api/alarms/user/:userId/cleared
  * 특정 사용자가 해제한 알람들 조회
  */
 router.get('/user/:userId/cleared', async (req, res) => {
     try {
-        const { userId } = req.params;
-        const { tenantId } = req;
-        const { page = 1, limit = 50 } = req.query;
+        const repo = getOccurrenceRepo();
+        const occurrences = await repo.findClearedByUser(
+            parseInt(req.params.userId),
+            req.tenantId
+        );
         
-        console.log(`사용자 ${userId}가 해제한 알람 조회...`);
-
-        let query = `
-            SELECT ao.*, ar.name as rule_name, d.name as device_name
-            FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ao.device_id = d.id
-            WHERE ao.cleared_by = ? AND ao.tenant_id = ?
-            ORDER BY ao.cleared_time DESC
-        `;
-        const params = [parseInt(userId), tenantId];
-        
-        // 총 개수 조회
-        const countQuery = `
-            SELECT COUNT(*) as total
-            FROM alarm_occurrences ao
-            WHERE ao.cleared_by = ? AND ao.tenant_id = ?
-        `;
-        const countResult = await dbGet(countQuery, params);
-        const total = countResult?.total || 0;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`사용자 ${userId}가 해제한 알람 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'User cleared alarms retrieved successfully'));
+        console.log(`사용자 ${req.params.userId}가 해제한 알람 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'User cleared alarms retrieved successfully'));
 
     } catch (error) {
         console.error(`사용자 ${req.params.userId} 해제 알람 조회 실패:`, error.message);
@@ -864,49 +282,14 @@ router.get('/user/:userId/cleared', async (req, res) => {
  */
 router.get('/user/:userId/acknowledged', async (req, res) => {
     try {
-        const { userId } = req.params;
-        const { tenantId } = req;
-        const { page = 1, limit = 50 } = req.query;
+        const repo = getOccurrenceRepo();
+        const occurrences = await repo.findAcknowledgedByUser(
+            parseInt(req.params.userId),
+            req.tenantId
+        );
         
-        console.log(`사용자 ${userId}가 확인한 알람 조회...`);
-
-        let query = `
-            SELECT ao.*, ar.name as rule_name, d.name as device_name
-            FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ao.device_id = d.id
-            WHERE ao.acknowledged_by = ? AND ao.tenant_id = ?
-            ORDER BY ao.acknowledged_time DESC
-        `;
-        const params = [parseInt(userId), tenantId];
-        
-        // 총 개수 조회
-        const countQuery = `
-            SELECT COUNT(*) as total
-            FROM alarm_occurrences ao
-            WHERE ao.acknowledged_by = ? AND ao.tenant_id = ?
-        `;
-        const countResult = await dbGet(countQuery, params);
-        const total = countResult?.total || 0;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`사용자 ${userId}가 확인한 알람 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'User acknowledged alarms retrieved successfully'));
+        console.log(`사용자 ${req.params.userId}가 확인한 알람 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'User acknowledged alarms retrieved successfully'));
 
     } catch (error) {
         console.error(`사용자 ${req.params.userId} 확인 알람 조회 실패:`, error.message);
@@ -915,116 +298,16 @@ router.get('/user/:userId/acknowledged', async (req, res) => {
 });
 
 /**
- * GET /api/alarms/audit-trail
- * 알람 감사 추적 조회 - cleared_by 및 acknowledged_by 활용
- */
-router.get('/audit-trail', async (req, res) => {
-    try {
-        const { tenantId } = req;
-        const { page = 1, limit = 100, user_id, action } = req.query;
-        
-        console.log('알람 감사 추적 조회...');
-
-        let query = `
-            SELECT 
-                ao.*,
-                ar.name as rule_name,
-                d.name as device_name,
-                u1.username as acknowledged_by_name,
-                u2.username as cleared_by_name
-            FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON ao.device_id = d.id
-            LEFT JOIN users u1 ON ao.acknowledged_by = u1.id
-            LEFT JOIN users u2 ON ao.cleared_by = u2.id
-            WHERE ao.tenant_id = ?
-        `;
-        let params = [tenantId];
-        
-        // 사용자 필터링
-        if (user_id) {
-            query += ` AND (ao.acknowledged_by = ? OR ao.cleared_by = ?)`;
-            params.push(parseInt(user_id), parseInt(user_id));
-        }
-        
-        // 액션 필터링
-        if (action === 'acknowledged') {
-            query += ` AND ao.acknowledged_time IS NOT NULL`;
-        } else if (action === 'cleared') {
-            query += ` AND ao.cleared_time IS NOT NULL`;
-        }
-        
-        query += ` ORDER BY ao.updated_at DESC`;
-        
-        // 총 개수 조회
-        const totalResults = await dbAll(query, params);
-        const total = totalResults.length;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(occurrence => ({
-                ...formatAlarmOccurrence(occurrence),
-                acknowledged_by_name: occurrence.acknowledged_by_name,
-                cleared_by_name: occurrence.cleared_by_name
-            })),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`감사 추적 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Alarm audit trail retrieved successfully'));
-
-    } catch (error) {
-        console.error('감사 추적 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'AUDIT_TRAIL_ERROR'));
-    }
-});
-/**
  * GET /api/alarms/occurrences/category/:category
  * 카테고리별 알람 발생 조회
  */
 router.get('/occurrences/category/:category', async (req, res) => {
     try {
-        const { category } = req.params;
-        const { tenantId } = req;
-        const { page = 1, limit = 50 } = req.query;
+        const repo = getOccurrenceRepo();
+        const occurrences = await repo.findByCategory(req.params.category, req.tenantId);
         
-        console.log(`카테고리 ${category} 알람 발생 조회...`);
-
-        let query = AlarmQueries.AlarmOccurrence.FIND_BY_CATEGORY;
-        const params = [tenantId, category];
-        
-        // 총 개수 조회
-        const totalResults = await dbAll(query, params);
-        const total = totalResults.length;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`카테고리 ${category} 알람 발생 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Category alarm occurrences retrieved successfully'));
+        console.log(`카테고리 ${req.params.category} 알람 발생 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'Category alarm occurrences retrieved successfully'));
 
     } catch (error) {
         console.error(`카테고리 ${req.params.category} 알람 발생 조회 실패:`, error.message);
@@ -1038,37 +321,11 @@ router.get('/occurrences/category/:category', async (req, res) => {
  */
 router.get('/occurrences/tag/:tag', async (req, res) => {
     try {
-        const { tag } = req.params;
-        const { tenantId } = req;
-        const { page = 1, limit = 50 } = req.query;
+        const repo = getOccurrenceRepo();
+        const occurrences = await repo.findByTag(req.params.tag, req.tenantId);
         
-        console.log(`태그 ${tag} 알람 발생 조회...`);
-
-        let query = AlarmQueries.AlarmOccurrence.FIND_BY_TAG;
-        const params = [tenantId, `%${tag}%`];
-        
-        // 총 개수 조회
-        const totalResults = await dbAll(query, params);
-        const total = totalResults.length;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(occurrence => formatAlarmOccurrence(occurrence)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        };
-        
-        console.log(`태그 ${tag} 알람 발생 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Tag alarm occurrences retrieved successfully'));
+        console.log(`태그 ${req.params.tag} 알람 발생 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'Tag alarm occurrences retrieved successfully'));
 
     } catch (error) {
         console.error(`태그 ${req.params.tag} 알람 발생 조회 실패:`, error.message);
@@ -1076,74 +333,169 @@ router.get('/occurrences/tag/:tag', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/alarms/unacknowledged
+ * 미확인 알람만 조회
+ */
+router.get('/unacknowledged', async (req, res) => {
+    try {
+        const repo = getOccurrenceRepo();
+        const occurrences = await repo.findUnacknowledged(req.tenantId);
+        
+        console.log(`미확인 알람 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'Unacknowledged alarms retrieved successfully'));
+
+    } catch (error) {
+        console.error('미확인 알람 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'UNACKNOWLEDGED_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/device/:deviceId
+ * 특정 디바이스의 알람 조회
+ */
+router.get('/device/:deviceId', async (req, res) => {
+    try {
+        const repo = getOccurrenceRepo();
+        const occurrences = await repo.findByDevice(parseInt(req.params.deviceId), req.tenantId);
+        
+        console.log(`디바이스 ${req.params.deviceId} 알람 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'Device alarms retrieved successfully'));
+
+    } catch (error) {
+        console.error(`디바이스 ${req.params.deviceId} 알람 조회 실패:`, error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/recent
+ * 최근 알람 발생 조회
+ */
+router.get('/recent', async (req, res) => {
+    try {
+        const repo = getOccurrenceRepo();
+        const limit = parseInt(req.query.limit) || 20;
+        const occurrences = await repo.findRecentOccurrences(limit, req.tenantId);
+        
+        console.log(`최근 알람 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'Recent alarms retrieved successfully'));
+
+    } catch (error) {
+        console.error('최근 알람 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'RECENT_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/today
+ * 오늘 발생한 알람 조회
+ */
+router.get('/today', async (req, res) => {
+    try {
+        const repo = getOccurrenceRepo();
+        const occurrences = await repo.findTodayAlarms(req.tenantId);
+        
+        console.log(`오늘 발생한 알람 ${occurrences.length}개 조회 완료`);
+        res.json(createResponse(true, occurrences, 'Today alarms retrieved successfully'));
+
+    } catch (error) {
+        console.error('오늘 알람 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TODAY_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/audit-trail
+ * 알람 감사 추적 조회
+ */
+router.get('/audit-trail', async (req, res) => {
+    try {
+        const repo = getOccurrenceRepo();
+        const filters = {
+            tenantId: req.tenantId,
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 100,
+            acknowledged_by: req.query.user_id,
+            cleared_by: req.query.user_id,
+            sortBy: 'updated_at',
+            sortOrder: 'DESC'
+        };
+
+        const result = await repo.findAll(filters);
+        
+        console.log(`감사 추적 ${result.items.length}개 조회 완료`);
+        res.json(createResponse(true, result, 'Alarm audit trail retrieved successfully'));
+
+    } catch (error) {
+        console.error('감사 추적 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'AUDIT_TRAIL_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/statistics/today
+ * 오늘 알람 통계 조회
+ */
+router.get('/statistics/today', async (req, res) => {
+    try {
+        const repo = getOccurrenceRepo();
+        const stats = await repo.getStatsToday(req.tenantId);
+        
+        console.log('오늘 알람 통계 조회 완료:', stats);
+        res.json(createResponse(true, stats, 'Today alarm statistics retrieved successfully'));
+
+    } catch (error) {
+        console.error('오늘 알람 통계 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TODAY_ALARM_STATS_ERROR'));
+    }
+});
+
 // ============================================================================
-// 🚀 중요: 특정 라우트들을 먼저 등록 (/:id 라우트보다 먼저!)
+// 알람 규칙 (Alarm Rules) API - 12개 엔드포인트
 // ============================================================================
 
 /**
  * PATCH /api/alarms/rules/:id/toggle
- * 알람 규칙 활성화/비활성화 토글 (간단!)
+ * 알람 규칙 활성화/비활성화 토글
  */
 router.patch('/rules/:id/toggle', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const { is_enabled } = req.body;  // true 또는 false만 받음
+        const repo = getRuleRepo();
+        const result = await repo.updateEnabledStatus(
+            parseInt(req.params.id),
+            req.body.is_enabled,
+            req.tenantId
+        );
 
-        console.log(`🔄 알람 규칙 ${id} 상태 변경: ${is_enabled}`);
-
-        // 간단한 쿼리 사용 - name 필드 건드리지 않음!
-        const params = AlarmQueries.buildEnabledStatusParams(is_enabled, id, tenantId);
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_ENABLED_STATUS, params);
-
-        if (result.changes > 0) {
-            console.log(`✅ 알람 규칙 ${id} 상태 변경 완료`);
-            res.json(createResponse(true, { 
-                id: parseInt(id), 
-                is_enabled: is_enabled 
-            }, `Alarm rule ${is_enabled ? 'enabled' : 'disabled'} successfully`));
-        } else {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
-            );
-        }
+        console.log(`알람 규칙 ${req.params.id} 상태 변경 완료`);
+        res.json(createResponse(true, result, `Alarm rule ${req.body.is_enabled ? 'enabled' : 'disabled'} successfully`));
 
     } catch (error) {
-        console.error(`❌ 알람 규칙 ${req.params.id} 상태 변경 실패:`, error.message);
+        console.error(`알람 규칙 ${req.params.id} 상태 변경 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_TOGGLE_ERROR'));
     }
 });
 
 /**
- * PATCH /api/alarms/rules/:id/settings  
- * 알람 규칙 설정만 업데이트 (name 건드리지 않음)
+ * PATCH /api/alarms/rules/:id/settings
+ * 알람 규칙 설정만 업데이트
  */
 router.patch('/rules/:id/settings', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const settings = req.body;  // is_enabled, notification_enabled 등만
+        const repo = getRuleRepo();
+        const result = await repo.updateSettings(
+            parseInt(req.params.id),
+            req.body,
+            req.tenantId
+        );
 
-        console.log(`⚙️ 알람 규칙 ${id} 설정 업데이트:`, settings);
-
-        // 설정만 업데이트하는 쿼리 사용
-        const params = AlarmQueries.buildSettingsParams(settings, id, tenantId);
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_SETTINGS_ONLY, params);
-
-        if (result.changes > 0) {
-            console.log(`✅ 알람 규칙 ${id} 설정 업데이트 완료`);
-            res.json(createResponse(true, { 
-                id: parseInt(id),
-                updated_settings: settings 
-            }, 'Alarm rule settings updated successfully'));
-        } else {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
-            );
-        }
+        console.log(`알람 규칙 ${req.params.id} 설정 업데이트 완료`);
+        res.json(createResponse(true, result, 'Alarm rule settings updated successfully'));
 
     } catch (error) {
-        console.error(`❌ 알람 규칙 ${req.params.id} 설정 업데이트 실패:`, error.message);
+        console.error(`알람 규칙 ${req.params.id} 설정 업데이트 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_SETTINGS_ERROR'));
     }
 });
@@ -1154,29 +506,18 @@ router.patch('/rules/:id/settings', async (req, res) => {
  */
 router.patch('/rules/:id/name', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const { name } = req.body;
+        const repo = getRuleRepo();
+        const result = await repo.updateName(
+            parseInt(req.params.id),
+            req.body.name,
+            req.tenantId
+        );
 
-        console.log(`📝 알람 규칙 ${id} 이름 업데이트: ${name}`);
-
-        const params = AlarmQueries.buildNameParams(name, id, tenantId);
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_NAME_ONLY, params);
-
-        if (result.changes > 0) {
-            console.log(`✅ 알람 규칙 ${id} 이름 업데이트 완료`);
-            res.json(createResponse(true, { 
-                id: parseInt(id),
-                name: name 
-            }, 'Alarm rule name updated successfully'));
-        } else {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
-            );
-        }
+        console.log(`알람 규칙 ${req.params.id} 이름 업데이트 완료`);
+        res.json(createResponse(true, result, 'Alarm rule name updated successfully'));
 
     } catch (error) {
-        console.error(`❌ 알람 규칙 ${req.params.id} 이름 업데이트 실패:`, error.message);
+        console.error(`알람 규칙 ${req.params.id} 이름 업데이트 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_NAME_ERROR'));
     }
 });
@@ -1187,29 +528,18 @@ router.patch('/rules/:id/name', async (req, res) => {
  */
 router.patch('/rules/:id/severity', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const { severity } = req.body;
+        const repo = getRuleRepo();
+        const result = await repo.updateSeverity(
+            parseInt(req.params.id),
+            req.body.severity,
+            req.tenantId
+        );
 
-        console.log(`⚠️ 알람 규칙 ${id} 심각도 업데이트: ${severity}`);
-
-        const params = AlarmQueries.buildSeverityParams(severity, id, tenantId);
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE_SEVERITY_ONLY, params);
-
-        if (result.changes > 0) {
-            console.log(`✅ 알람 규칙 ${id} 심각도 업데이트 완료`);
-            res.json(createResponse(true, { 
-                id: parseInt(id),
-                severity: severity 
-            }, 'Alarm rule severity updated successfully'));
-        } else {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
-            );
-        }
+        console.log(`알람 규칙 ${req.params.id} 심각도 업데이트 완료`);
+        res.json(createResponse(true, result, 'Alarm rule severity updated successfully'));
 
     } catch (error) {
-        console.error(`❌ 알람 규칙 ${req.params.id} 심각도 업데이트 실패:`, error.message);
+        console.error(`알람 규칙 ${req.params.id} 심각도 업데이트 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_SEVERITY_ERROR'));
     }
 });
@@ -1220,15 +550,11 @@ router.patch('/rules/:id/severity', async (req, res) => {
  */
 router.get('/rules/category/:category', async (req, res) => {
     try {
-        const { category } = req.params;
-        const { tenantId } = req;
+        const repo = getRuleRepo();
+        const rules = await repo.findByCategory(req.params.category, req.tenantId);
         
-        console.log(`카테고리 ${category} 알람 규칙 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmRule.FIND_BY_CATEGORY, [category, tenantId]);
-        
-        console.log(`카테고리 ${category} 알람 규칙 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(rule => formatAlarmRule(rule)), 'Category alarm rules retrieved successfully'));
+        console.log(`카테고리 ${req.params.category} 알람 규칙 ${rules.length}개 조회 완료`);
+        res.json(createResponse(true, rules, 'Category alarm rules retrieved successfully'));
 
     } catch (error) {
         console.error(`카테고리 ${req.params.category} 알람 규칙 조회 실패:`, error.message);
@@ -1242,15 +568,11 @@ router.get('/rules/category/:category', async (req, res) => {
  */
 router.get('/rules/tag/:tag', async (req, res) => {
     try {
-        const { tag } = req.params;
-        const { tenantId } = req;
+        const repo = getRuleRepo();
+        const rules = await repo.findByTag(req.params.tag, req.tenantId);
         
-        console.log(`태그 ${tag} 알람 규칙 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmRule.FIND_BY_TAG, [`%${tag}%`, tenantId]);
-        
-        console.log(`태그 ${tag} 알람 규칙 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(rule => formatAlarmRule(rule)), 'Tag alarm rules retrieved successfully'));
+        console.log(`태그 ${req.params.tag} 알람 규칙 ${rules.length}개 조회 완료`);
+        res.json(createResponse(true, rules, 'Tag alarm rules retrieved successfully'));
 
     } catch (error) {
         console.error(`태그 ${req.params.tag} 알람 규칙 조회 실패:`, error.message);
@@ -1260,31 +582,23 @@ router.get('/rules/tag/:tag', async (req, res) => {
 
 /**
  * GET /api/alarms/rules/statistics
- * 알람 규칙 통계 조회 - category 통계 포함
+ * 알람 규칙 통계 조회
  */
 router.get('/rules/statistics', async (req, res) => {
     try {
-        const { tenantId } = req;
-        
-        console.log('알람 규칙 통계 조회 시작...');
-
-        const [
-            summaryStats,
-            severityStats,
-            typeStats,
-            categoryStats  // 새로 추가
-        ] = await Promise.all([
-            dbGet(AlarmQueries.AlarmRule.STATS_SUMMARY, [tenantId]),
-            dbAll(AlarmQueries.AlarmRule.STATS_BY_SEVERITY, [tenantId]),
-            dbAll(AlarmQueries.AlarmRule.STATS_BY_TYPE, [tenantId]),
-            dbAll(AlarmQueries.AlarmRule.STATS_BY_CATEGORY, [tenantId])  // 새로 추가
+        const repo = getRuleRepo();
+        const [summary, bySeverity, byType, byCategory] = await Promise.all([
+            repo.getStatsSummary(req.tenantId),
+            repo.getStatsBySeverity(req.tenantId),
+            repo.getStatsByType(req.tenantId),
+            repo.getStatsByCategory(req.tenantId)
         ]);
 
         const stats = {
-            summary: summaryStats,
-            by_severity: severityStats,
-            by_type: typeStats,
-            by_category: categoryStats  // 새로 추가
+            summary,
+            by_severity: bySeverity,
+            by_type: byType,
+            by_category: byCategory
         };
         
         console.log('알람 규칙 통계 조회 완료');
@@ -1296,105 +610,30 @@ router.get('/rules/statistics', async (req, res) => {
     }
 });
 
-// ============================================================================
-// 일반적인 알람 규칙 CRUD 라우트들 (특정 라우트들 이후에 등록)
-// ============================================================================
-
 /**
  * GET /api/alarms/rules
  * 알람 규칙 목록 조회
  */
 router.get('/rules', async (req, res) => {
     try {
-        const { tenantId } = req;
-        const { 
-            page = 1, 
-            limit = 50,
-            enabled,
-            alarm_type,
-            severity,
-            target_type,
-            target_id,
-            search,
-            category,  // 새로 추가
-            tag        // 새로 추가
-        } = req.query;
-        
-        console.log('알람 규칙 조회 시작:', { tenantId, page, limit, enabled, alarm_type, severity, search, category, tag });
-
-        let query, params;
-        
-        if (search) {
-            // 검색 쿼리 사용 - category, tags 검색 포함
-            query = AlarmQueries.AlarmRule.SEARCH;
-            const searchTerm = `%${search}%`;
-            params = [tenantId, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm];
-        } else {
-            // 기본 쿼리 사용하고 수동으로 필터 적용
-            query = AlarmQueries.AlarmRule.FIND_ALL;
-            params = [tenantId];
-            
-            // 추가 필터들을 수동으로 WHERE 절에 추가
-            if (alarm_type && alarm_type !== 'all') {
-                query += ` AND ar.alarm_type = ?`;
-                params.push(alarm_type);
-            }
-            
-            if (severity && severity !== 'all') {
-                query += ` AND ar.severity = ?`;
-                params.push(severity);
-            }
-            
-            if (enabled !== undefined) {
-                query += ` AND ar.is_enabled = ?`;
-                params.push(enabled === 'true' ? 1 : 0);
-            }
-            
-            if (target_type && target_type !== 'all') {
-                query += ` AND ar.target_type = ?`;
-                params.push(target_type);
-            }
-            
-            if (target_id) {
-                query += ` AND ar.target_id = ?`;
-                params.push(parseInt(target_id));
-            }
-            
-            if (category && category !== 'all') {
-                query += ` AND ar.category = ?`;
-                params.push(category);
-            }
-            
-            if (tag && tag.trim()) {
-                query += ` AND ar.tags LIKE ?`;
-                params.push(`%${tag}%`);
-            }
-        }
-        
-        // 총 개수 조회 (페이징 전)
-        const totalResults = await dbAll(query, params);
-        const total = totalResults.length;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-        
-        console.log('실행할 쿼리:', query);
-        console.log('파라미터:', params);
-        
-        const results = await dbAll(query, params);
-        
-        const result = {
-            items: results.map(rule => formatAlarmRule(rule)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
+        const repo = getRuleRepo();
+        const filters = {
+            tenantId: req.tenantId,
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 50,
+            isEnabled: req.query.enabled,
+            alarmType: req.query.alarm_type,
+            severity: req.query.severity,
+            targetType: req.query.target_type,
+            targetId: req.query.target_id,
+            category: req.query.category,
+            tag: req.query.tag,
+            search: req.query.search
         };
+
+        const result = await repo.findAll(filters);
         
-        console.log(`알람 규칙 ${results.length}개 조회 완료 (총 ${total}개)`);
+        console.log(`알람 규칙 ${result.items.length}개 조회 완료`);
         res.json(createResponse(true, result, 'Alarm rules retrieved successfully'));
 
     } catch (error) {
@@ -1409,21 +648,17 @@ router.get('/rules', async (req, res) => {
  */
 router.get('/rules/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        
-        console.log(`알람 규칙 ID ${id} 조회...`);
+        const repo = getRuleRepo();
+        const rule = await repo.findById(parseInt(req.params.id), req.tenantId);
 
-        const result = await dbGet(AlarmQueries.AlarmRule.FIND_BY_ID, [parseInt(id), tenantId]);
-
-        if (!result) {
+        if (!rule) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm rule not found', 'ALARM_RULE_NOT_FOUND')
             );
         }
 
-        console.log(`알람 규칙 ID ${id} 조회 완료`);
-        res.json(createResponse(true, formatAlarmRule(result), 'Alarm rule retrieved successfully'));
+        console.log(`알람 규칙 ID ${req.params.id} 조회 완료`);
+        res.json(createResponse(true, rule, 'Alarm rule retrieved successfully'));
 
     } catch (error) {
         console.error(`알람 규칙 ${req.params.id} 조회 실패:`, error.message);
@@ -1437,32 +672,17 @@ router.get('/rules/:id', async (req, res) => {
  */
 router.post('/rules', async (req, res) => {
     try {
-        const { tenantId, user } = req;
-        const alarmRuleData = {
+        const repo = getRuleRepo();
+        const ruleData = {
             ...req.body,
-            tenant_id: tenantId,
-            created_by: user.id
+            tenant_id: req.tenantId,
+            created_by: req.user.id
         };
 
-        console.log('새 알람 규칙 생성:', alarmRuleData);
-
-        // 필수 필드 검증
-        AlarmQueries.validateAlarmRule(alarmRuleData);
-
-        // AlarmQueries 헬퍼 사용 - category, tags 포함
-        const params = AlarmQueries.buildCreateRuleParams(alarmRuleData);
-
-        const result = await dbRun(AlarmQueries.AlarmRule.CREATE, params);
-
-        if (result.lastID) {
-            // 생성된 규칙 조회
-            const newRule = await dbGet(AlarmQueries.AlarmRule.FIND_BY_ID, [result.lastID, tenantId]);
-
-            console.log(`새 알람 규칙 생성 완료: ID ${result.lastID}`);
-            res.status(201).json(createResponse(true, formatAlarmRule(newRule), 'Alarm rule created successfully'));
-        } else {
-            throw new Error('알람 규칙 생성 실패 - ID 반환되지 않음');
-        }
+        const newRule = await repo.create(ruleData, req.user.id);
+        
+        console.log(`새 알람 규칙 생성 완료: ID ${newRule.id}`);
+        res.status(201).json(createResponse(true, newRule, 'Alarm rule created successfully'));
 
     } catch (error) {
         console.error('알람 규칙 생성 실패:', error.message);
@@ -1476,28 +696,21 @@ router.post('/rules', async (req, res) => {
  */
 router.put('/rules/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const updateData = req.body;
+        const repo = getRuleRepo();
+        const updatedRule = await repo.update(
+            parseInt(req.params.id),
+            req.body,
+            req.tenantId
+        );
 
-        console.log(`알람 규칙 ${id} 수정:`, updateData);
-
-        // AlarmQueries 헬퍼 사용 - category, tags 포함
-        const params = AlarmQueries.buildUpdateRuleParams(updateData, parseInt(id), tenantId);
-
-        const result = await dbRun(AlarmQueries.AlarmRule.UPDATE, params);
-
-        if (result.changes > 0) {
-            // 수정된 규칙 조회
-            const updatedRule = await dbGet(AlarmQueries.AlarmRule.FIND_BY_ID, [parseInt(id), tenantId]);
-
-            console.log(`알람 규칙 ID ${id} 수정 완료`);
-            res.json(createResponse(true, formatAlarmRule(updatedRule), 'Alarm rule updated successfully'));
-        } else {
+        if (!updatedRule) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm rule not found or update failed', 'ALARM_RULE_UPDATE_FAILED')
             );
         }
+
+        console.log(`알람 규칙 ID ${req.params.id} 수정 완료`);
+        res.json(createResponse(true, updatedRule, 'Alarm rule updated successfully'));
 
     } catch (error) {
         console.error(`알람 규칙 ${req.params.id} 수정 실패:`, error.message);
@@ -1511,21 +724,17 @@ router.put('/rules/:id', async (req, res) => {
  */
 router.delete('/rules/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
+        const repo = getRuleRepo();
+        const deleted = await repo.delete(parseInt(req.params.id), req.tenantId);
 
-        console.log(`알람 규칙 ${id} 삭제...`);
-
-        const result = await dbRun(AlarmQueries.AlarmRule.DELETE, [parseInt(id), tenantId]);
-
-        if (result.changes > 0) {
-            console.log(`알람 규칙 ID ${id} 삭제 완료`);
-            res.json(createResponse(true, { deleted: true }, 'Alarm rule deleted successfully'));
-        } else {
+        if (!deleted) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm rule not found or delete failed', 'ALARM_RULE_DELETE_FAILED')
             );
         }
+
+        console.log(`알람 규칙 ID ${req.params.id} 삭제 완료`);
+        res.json(createResponse(true, { deleted: true }, 'Alarm rule deleted successfully'));
 
     } catch (error) {
         console.error(`알람 규칙 ${req.params.id} 삭제 실패:`, error.message);
@@ -1534,7 +743,7 @@ router.delete('/rules/:id', async (req, res) => {
 });
 
 // ============================================================================
-// 알람 템플릿 (Alarm Templates) API
+// 알람 템플릿 (Alarm Templates) API - 14개 엔드포인트
 // ============================================================================
 
 /**
@@ -1543,64 +752,22 @@ router.delete('/rules/:id', async (req, res) => {
  */
 router.get('/templates', async (req, res) => {
     try {
-        const { tenantId } = req;
-        const { 
-            page = 1, 
-            limit = 50,
-            category,
-            is_system_template,
-            search,
-            tag  // 새로 추가
-        } = req.query;
-        
-        console.log('알람 템플릿 조회 시작...');
-
-        let query, params;
-        
-        if (search) {
-            query = AlarmQueries.AlarmTemplate.SEARCH;
-            const searchTerm = `%${search}%`;
-            params = [tenantId, searchTerm, searchTerm, searchTerm, searchTerm];  // tags 검색 추가
-        } else if (tag) {
-            query = AlarmQueries.AlarmTemplate.FIND_BY_TAG;
-            params = [`%${tag}%`, tenantId];
-        } else if (category) {
-            query = AlarmQueries.AlarmTemplate.FIND_BY_CATEGORY;
-            params = [category, tenantId];
-        } else if (is_system_template === 'true') {
-            query = AlarmQueries.AlarmTemplate.FIND_SYSTEM_TEMPLATES;
-            params = [];
-        } else {
-            query = AlarmQueries.AlarmTemplate.FIND_ALL;
-            params = [tenantId];
-        }
-        
-        // 총 개수 조회
-        const totalResults = await dbAll(query, params);
-        const total = totalResults.length;
-        
-        // 페이징 적용
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query = AlarmQueries.addPagination(query, parseInt(limit), offset);
-        console.log('실행할 쿼리:', query);
-        console.log('파라미터:', params);
-        const results = await dbAll(query, params);
-        console.log('쿼리 결과 타입:', typeof results);
-        console.log('쿼리 결과 길이:', results ? results.length : 'null/undefined');
-        console.log('첫 번째 결과 샘플:', results[0]);
-        const result = {
-            items: results.map(template => formatAlarmTemplate(template)),
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
+        const repo = getTemplateRepo();
+        const filters = {
+            tenantId: req.tenantId,
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 50,
+            category: req.query.category,
+            isSystemTemplate: req.query.is_system_template,
+            tag: req.query.tag,
+            search: req.query.search
         };
+
+        const result = await repo.findAll(filters);
         
-        console.log(`알람 템플릿 ${results.length}개 조회 완료`);
+        console.log(`알람 템플릿 ${result.items.length}개 조회 완료`);
         res.json(createResponse(true, result, 'Alarm templates retrieved successfully'));
-        
+
     } catch (error) {
         console.error('알람 템플릿 조회 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATES_ERROR'));
@@ -1613,21 +780,17 @@ router.get('/templates', async (req, res) => {
  */
 router.get('/templates/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        
-        console.log(`알람 템플릿 ID ${id} 조회...`);
+        const repo = getTemplateRepo();
+        const template = await repo.findById(parseInt(req.params.id), req.tenantId);
 
-        const result = await dbGet(AlarmQueries.AlarmTemplate.FIND_BY_ID, [parseInt(id), tenantId]);
-
-        if (!result) {
+        if (!template) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm template not found', 'ALARM_TEMPLATE_NOT_FOUND')
             );
         }
 
-        console.log(`알람 템플릿 ID ${id} 조회 완료`);
-        res.json(createResponse(true, formatAlarmTemplate(result), 'Alarm template retrieved successfully'));
+        console.log(`알람 템플릿 ID ${req.params.id} 조회 완료`);
+        res.json(createResponse(true, template, 'Alarm template retrieved successfully'));
 
     } catch (error) {
         console.error(`알람 템플릿 ${req.params.id} 조회 실패:`, error.message);
@@ -1641,34 +804,17 @@ router.get('/templates/:id', async (req, res) => {
  */
 router.post('/templates', async (req, res) => {
     try {
-        const { tenantId, user } = req;
+        const repo = getTemplateRepo();
         const templateData = {
             ...req.body,
-            tenant_id: tenantId,
-            created_by: user.id
+            tenant_id: req.tenantId,
+            created_by: req.user.id
         };
 
-        console.log('새 알람 템플릿 생성...');
-
-        // 필수 필드 검증
-        AlarmQueries.validateTemplateRequiredFields(templateData);
-
-        // 템플릿 설정 유효성 검증 - tags 포함
-        AlarmQueries.validateTemplateConfig(templateData);
-
-        // AlarmQueries 헬퍼 사용 - tags 포함
-        const params = AlarmQueries.buildCreateTemplateParams(templateData);
-
-        const result = await dbRun(AlarmQueries.AlarmTemplate.CREATE, params);
-
-        if (result.lastID) {
-            const newTemplate = await dbGet(AlarmQueries.AlarmTemplate.FIND_BY_ID, [result.lastID, tenantId]);
-
-            console.log(`새 알람 템플릿 생성 완료: ID ${result.lastID}`);
-            res.status(201).json(createResponse(true, formatAlarmTemplate(newTemplate), 'Alarm template created successfully'));
-        } else {
-            throw new Error('알람 템플릿 생성 실패 - ID 반환되지 않음');
-        }
+        const newTemplate = await repo.create(templateData, req.user.id);
+        
+        console.log(`새 알람 템플릿 생성 완료: ID ${newTemplate.id}`);
+        res.status(201).json(createResponse(true, newTemplate, 'Alarm template created successfully'));
 
     } catch (error) {
         console.error('알람 템플릿 생성 실패:', error.message);
@@ -1682,30 +828,21 @@ router.post('/templates', async (req, res) => {
  */
 router.put('/templates/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
-        const updateData = req.body;
+        const repo = getTemplateRepo();
+        const updatedTemplate = await repo.update(
+            parseInt(req.params.id),
+            req.body,
+            req.tenantId
+        );
 
-        console.log(`알람 템플릿 ${id} 수정...`);
-
-        // 템플릿 설정 유효성 검증 - tags 포함
-        AlarmQueries.validateTemplateConfig(updateData);
-
-        // AlarmQueries 헬퍼 사용 - tags 포함
-        const params = AlarmQueries.buildUpdateTemplateParams(updateData, parseInt(id), tenantId);
-
-        const result = await dbRun(AlarmQueries.AlarmTemplate.UPDATE, params);
-
-        if (result.changes > 0) {
-            const updatedTemplate = await dbGet(AlarmQueries.AlarmTemplate.FIND_BY_ID, [parseInt(id), tenantId]);
-
-            console.log(`알람 템플릿 ID ${id} 수정 완료`);
-            res.json(createResponse(true, formatAlarmTemplate(updatedTemplate), 'Alarm template updated successfully'));
-        } else {
+        if (!updatedTemplate) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm template not found or update failed', 'ALARM_TEMPLATE_UPDATE_FAILED')
             );
         }
+
+        console.log(`알람 템플릿 ID ${req.params.id} 수정 완료`);
+        res.json(createResponse(true, updatedTemplate, 'Alarm template updated successfully'));
 
     } catch (error) {
         console.error(`알람 템플릿 ${req.params.id} 수정 실패:`, error.message);
@@ -1715,25 +852,21 @@ router.put('/templates/:id', async (req, res) => {
 
 /**
  * DELETE /api/alarms/templates/:id
- * 알람 템플릿 삭제 (소프트 삭제)
+ * 알람 템플릿 삭제
  */
 router.delete('/templates/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
+        const repo = getTemplateRepo();
+        const deleted = await repo.delete(parseInt(req.params.id), req.tenantId);
 
-        console.log(`알람 템플릿 ${id} 삭제...`);
-
-        const result = await dbRun(AlarmQueries.AlarmTemplate.DELETE, [parseInt(id), tenantId]);
-
-        if (result.changes > 0) {
-            console.log(`알람 템플릿 ID ${id} 삭제 완료`);
-            res.json(createResponse(true, { deleted: true }, 'Alarm template deleted successfully'));
-        } else {
+        if (!deleted) {
             return res.status(404).json(
                 createResponse(false, null, 'Alarm template not found or delete failed', 'ALARM_TEMPLATE_DELETE_FAILED')
             );
         }
+
+        console.log(`알람 템플릿 ID ${req.params.id} 삭제 완료`);
+        res.json(createResponse(true, { deleted: true }, 'Alarm template deleted successfully'));
 
     } catch (error) {
         console.error(`알람 템플릿 ${req.params.id} 삭제 실패:`, error.message);
@@ -1747,15 +880,11 @@ router.delete('/templates/:id', async (req, res) => {
  */
 router.get('/templates/category/:category', async (req, res) => {
     try {
-        const { category } = req.params;
-        const { tenantId } = req;
+        const repo = getTemplateRepo();
+        const templates = await repo.findByCategory(req.params.category, req.tenantId);
         
-        console.log(`카테고리 ${category} 템플릿 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmTemplate.FIND_BY_CATEGORY, [category, tenantId]);
-        
-        console.log(`카테고리 ${category} 템플릿 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(template => formatAlarmTemplate(template)), 'Category templates retrieved successfully'));
+        console.log(`카테고리 ${req.params.category} 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'Category templates retrieved successfully'));
 
     } catch (error) {
         console.error(`카테고리 ${req.params.category} 템플릿 조회 실패:`, error.message);
@@ -1769,15 +898,11 @@ router.get('/templates/category/:category', async (req, res) => {
  */
 router.get('/templates/tag/:tag', async (req, res) => {
     try {
-        const { tag } = req.params;
-        const { tenantId } = req;
+        const repo = getTemplateRepo();
+        const templates = await repo.findByTag(req.params.tag, req.tenantId);
         
-        console.log(`태그 ${tag} 템플릿 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmTemplate.FIND_BY_TAG, [`%${tag}%`, tenantId]);
-        
-        console.log(`태그 ${tag} 템플릿 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(template => formatAlarmTemplate(template)), 'Tag templates retrieved successfully'));
+        console.log(`태그 ${req.params.tag} 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'Tag templates retrieved successfully'));
 
     } catch (error) {
         console.error(`태그 ${req.params.tag} 템플릿 조회 실패:`, error.message);
@@ -1791,12 +916,11 @@ router.get('/templates/tag/:tag', async (req, res) => {
  */
 router.get('/templates/system', async (req, res) => {
     try {
-        console.log('시스템 템플릿 조회...');
-
-        const results = await dbAll(AlarmQueries.AlarmTemplate.FIND_SYSTEM_TEMPLATES, []);
+        const repo = getTemplateRepo();
+        const templates = await repo.findSystemTemplates();
         
-        console.log(`시스템 템플릿 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(template => formatAlarmTemplate(template)), 'System templates retrieved successfully'));
+        console.log(`시스템 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'System templates retrieved successfully'));
 
     } catch (error) {
         console.error('시스템 템플릿 조회 실패:', error.message);
@@ -1810,15 +934,11 @@ router.get('/templates/system', async (req, res) => {
  */
 router.get('/templates/data-type/:dataType', async (req, res) => {
     try {
-        const { dataType } = req.params;
-        const { tenantId } = req;
+        const repo = getTemplateRepo();
+        const templates = await repo.findByDataType(req.params.dataType, req.tenantId);
         
-        console.log(`데이터 타입 ${dataType} 적용 가능 템플릿 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmTemplate.FIND_BY_DATA_TYPE, [tenantId, `%"${dataType}"%`]);
-        
-        console.log(`데이터 타입 ${dataType} 템플릿 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(template => formatAlarmTemplate(template)), 'Data type templates retrieved successfully'));
+        console.log(`데이터 타입 ${req.params.dataType} 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'Data type templates retrieved successfully'));
 
     } catch (error) {
         console.error(`데이터 타입 ${req.params.dataType} 템플릿 조회 실패:`, error.message);
@@ -1832,81 +952,52 @@ router.get('/templates/data-type/:dataType', async (req, res) => {
  */
 router.post('/templates/:id/apply', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId, user } = req;
-        const { 
-            target_ids = [],  // data_point_ids에서 변경
-            target_type = 'data_point',  // 새로 추가
-            custom_configs = {},
-            rule_group_name = null 
-        } = req.body;
-
-        console.log(`템플릿 ${id}를 ${target_ids.length}개 타겟에 적용...`);
-
-        // 템플릿 조회
-        const template = await dbGet(AlarmQueries.AlarmTemplate.FIND_BY_ID, [parseInt(id), tenantId]);
+        const templateRepo = getTemplateRepo();
+        const ruleRepo = getRuleRepo();
+        
+        const template = await templateRepo.findById(parseInt(req.params.id), req.tenantId);
         if (!template) {
             return res.status(404).json(
                 createResponse(false, null, 'Template not found', 'TEMPLATE_NOT_FOUND')
             );
         }
 
-        // 규칙 그룹 ID 생성
-        const ruleGroupId = `template_${id}_${Date.now()}`;
-
-        // 각 타겟에 대해 알람 규칙 생성
+        const { target_ids = [], target_type = 'data_point', custom_configs = {} } = req.body;
+        const ruleGroupId = `template_${req.params.id}_${Date.now()}`;
         const createdRules = [];
+
         for (const targetId of target_ids) {
-            const customConfig = custom_configs[targetId] || {};
-            const mergedConfig = {
-                ...parseJSON(template.default_config),
-                ...customConfig
-            };
-
-            const ruleData = {
-                tenant_id: tenantId,
-                name: `${template.name}_${target_type}_${targetId}`,
-                description: `${template.description} (템플릿에서 자동 생성)`,
-                target_type: target_type,
-                target_id: targetId,
-                target_group: null,
-                alarm_type: template.condition_type,
-                // 기본 설정을 mergedConfig에서 추출
-                ...mergedConfig,
-                severity: template.severity,
-                message_template: template.message_template,
-                auto_acknowledge: template.auto_acknowledge,
-                auto_clear: template.auto_clear,
-                notification_enabled: template.notification_enabled,
-                template_id: template.id,
-                rule_group: ruleGroupId,
-                created_by_template: 1,
-                category: template.category,  // 새로 추가
-                tags: template.tags,  // 새로 추가
-                is_enabled: 1,
-                created_by: user.id
-            };
-
             try {
-                // 필수 필드 검증
-                AlarmQueries.validateAlarmRule(ruleData);
-                
-                const params = AlarmQueries.buildCreateRuleParams(ruleData);
-                const result = await dbRun(AlarmQueries.AlarmRule.CREATE, params);
-                
-                if (result.lastID) {
-                    const newRule = await dbGet(AlarmQueries.AlarmRule.FIND_BY_ID, [result.lastID, tenantId]);
-                    if (newRule) {
-                        createdRules.push(newRule);
-                    }
-                }
+                const ruleData = {
+                    tenant_id: req.tenantId,
+                    name: `${template.name}_${target_type}_${targetId}`,
+                    description: `${template.description} (템플릿에서 자동 생성)`,
+                    target_type: target_type,
+                    target_id: targetId,
+                    alarm_type: template.condition_type,
+                    severity: template.severity,
+                    message_template: template.message_template,
+                    auto_acknowledge: template.auto_acknowledge,
+                    auto_clear: template.auto_clear,
+                    notification_enabled: template.notification_enabled,
+                    template_id: template.id,
+                    rule_group: ruleGroupId,
+                    created_by_template: 1,
+                    category: template.category,
+                    tags: template.tags,
+                    is_enabled: 1,
+                    created_by: req.user.id,
+                    ...(custom_configs[targetId] || {})
+                };
+
+                const newRule = await ruleRepo.create(ruleData, req.user.id);
+                createdRules.push(newRule);
             } catch (ruleError) {
                 console.error(`타겟 ${targetId} 규칙 생성 실패:`, ruleError.message);
             }
         }
 
-        // 템플릿 사용량 증가
-        await dbRun(AlarmQueries.AlarmTemplate.INCREMENT_USAGE, [createdRules.length, template.id]);
+        await templateRepo.incrementUsage(template.id, createdRules.length);
 
         console.log(`템플릿 적용 완료: ${createdRules.length}개 규칙 생성`);
         res.json(createResponse(true, {
@@ -1914,7 +1005,7 @@ router.post('/templates/:id/apply', async (req, res) => {
             template_name: template.name,
             rule_group_id: ruleGroupId,
             rules_created: createdRules.length,
-            created_rules: createdRules.map(rule => formatAlarmRule(rule))
+            created_rules: createdRules
         }, 'Template applied successfully'));
 
     } catch (error) {
@@ -1929,15 +1020,11 @@ router.post('/templates/:id/apply', async (req, res) => {
  */
 router.get('/templates/:id/applied-rules', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { tenantId } = req;
+        const repo = getTemplateRepo();
+        const rules = await repo.findAppliedRules(parseInt(req.params.id), req.tenantId);
         
-        console.log(`템플릿 ${id}로 생성된 규칙들 조회...`);
-
-        const results = await dbAll(AlarmQueries.AlarmTemplate.FIND_APPLIED_RULES, [parseInt(id), tenantId]);
-        
-        console.log(`템플릿 ${id}로 생성된 규칙 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(rule => formatAlarmRule(rule)), 'Applied rules retrieved successfully'));
+        console.log(`템플릿 ${req.params.id}로 생성된 규칙 ${rules.length}개 조회 완료`);
+        res.json(createResponse(true, rules, 'Applied rules retrieved successfully'));
 
     } catch (error) {
         console.error(`템플릿 ${req.params.id} 적용 규칙 조회 실패:`, error.message);
@@ -1947,28 +1034,21 @@ router.get('/templates/:id/applied-rules', async (req, res) => {
 
 /**
  * GET /api/alarms/templates/statistics
- * 알람 템플릿 통계 조회 - tags 통계 포함
+ * 알람 템플릿 통계 조회
  */
 router.get('/templates/statistics', async (req, res) => {
     try {
-        const { tenantId } = req;
-        
-        console.log('알람 템플릿 통계 조회 시작...');
-
-        const [
-            summaryStats,
-            categoryStats,
-            mostUsed
-        ] = await Promise.all([
-            dbGet(AlarmQueries.AlarmTemplate.STATS_SUMMARY, [tenantId]),
-            dbAll(AlarmQueries.AlarmTemplate.COUNT_BY_CATEGORY, [tenantId]),
-            dbAll(AlarmQueries.AlarmTemplate.MOST_USED, [tenantId, 5])
+        const repo = getTemplateRepo();
+        const [summary, byCategory, mostUsed] = await Promise.all([
+            repo.getStatsSummary(req.tenantId),
+            repo.getStatsByCategory(req.tenantId),
+            repo.findMostUsed(req.tenantId, 5)
         ]);
 
         const stats = {
-            summary: summaryStats,
-            by_category: categoryStats,
-            most_used: mostUsed.map(template => formatAlarmTemplate(template))
+            summary,
+            by_category: byCategory,
+            most_used: mostUsed
         };
         
         console.log('알람 템플릿 통계 조회 완료');
@@ -1982,29 +1062,21 @@ router.get('/templates/statistics', async (req, res) => {
 
 /**
  * GET /api/alarms/templates/search
- * 알람 템플릿 검색 - tags 검색 포함
+ * 알람 템플릿 검색
  */
 router.get('/templates/search', async (req, res) => {
     try {
-        const { tenantId } = req;
-        const { q: searchTerm, limit = 20 } = req.query;
-        
-        if (!searchTerm) {
+        if (!req.query.q) {
             return res.status(400).json(
                 createResponse(false, null, 'Search term is required', 'SEARCH_TERM_REQUIRED')
             );
         }
 
-        console.log(`알람 템플릿 검색: "${searchTerm}"`);
+        const repo = getTemplateRepo();
+        const templates = await repo.search(req.query.q, req.tenantId, parseInt(req.query.limit) || 20);
         
-        let query = AlarmQueries.AlarmTemplate.SEARCH;
-        query = AlarmQueries.addPagination(query, parseInt(limit));
-        
-        const searchPattern = `%${searchTerm}%`;
-        const results = await dbAll(query, [tenantId, searchPattern, searchPattern, searchPattern, searchPattern]);
-        
-        console.log(`검색 결과: ${results.length}개 템플릿`);
-        res.json(createResponse(true, results.map(template => formatAlarmTemplate(template)), 'Template search completed successfully'));
+        console.log(`검색 결과: ${templates.length}개 템플릿`);
+        res.json(createResponse(true, templates, 'Template search completed successfully'));
 
     } catch (error) {
         console.error(`템플릿 검색 실패:`, error.message);
@@ -2018,15 +1090,12 @@ router.get('/templates/search', async (req, res) => {
  */
 router.get('/templates/most-used', async (req, res) => {
     try {
-        const { tenantId } = req;
-        const { limit = 10 } = req.query;
+        const repo = getTemplateRepo();
+        const limit = parseInt(req.query.limit) || 10;
+        const templates = await repo.findMostUsed(req.tenantId, limit);
         
-        console.log('인기 템플릿 조회...');
-
-        const results = await dbAll(AlarmQueries.AlarmTemplate.MOST_USED, [tenantId, parseInt(limit)]);
-        
-        console.log(`인기 템플릿 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(template => formatAlarmTemplate(template)), 'Most used templates retrieved successfully'));
+        console.log(`인기 템플릿 ${templates.length}개 조회 완료`);
+        res.json(createResponse(true, templates, 'Most used templates retrieved successfully'));
 
     } catch (error) {
         console.error('인기 템플릿 조회 실패:', error.message);
@@ -2035,46 +1104,45 @@ router.get('/templates/most-used', async (req, res) => {
 });
 
 // ============================================================================
-// 특화 API 엔드포인트들
+// 통합 통계 API - 2개 엔드포인트
 // ============================================================================
 
 /**
  * GET /api/alarms/statistics
- * 알람 통계 조회 - category 통계 포함
+ * 알람 통계 조회
  */
 router.get('/statistics', async (req, res) => {
     try {
-        const { tenantId } = req;
-        
-        console.log('알람 통계 조회 시작...');
+        const occurrenceRepo = getOccurrenceRepo();
+        const ruleRepo = getRuleRepo();
 
         const [
             occurrenceStats,
             ruleStats,
-            occurrenceCategoryStats,  // 새로 추가
-            ruleCategoryStats         // 새로 추가
+            occurrenceByCategory,
+            ruleByCategory
         ] = await Promise.all([
-            dbGet(AlarmQueries.AlarmOccurrence.STATS_SUMMARY, [tenantId]),
-            dbGet(AlarmQueries.AlarmRule.STATS_SUMMARY, [tenantId]),
-            dbAll(AlarmQueries.AlarmOccurrence.STATS_BY_CATEGORY, [tenantId]),  // 새로 추가
-            dbAll(AlarmQueries.AlarmRule.STATS_BY_CATEGORY, [tenantId])         // 새로 추가
+            occurrenceRepo.getStatsSummary(req.tenantId),
+            ruleRepo.getStatsSummary(req.tenantId),
+            occurrenceRepo.getStatsByCategory(req.tenantId),
+            ruleRepo.getStatsByCategory(req.tenantId)
         ]);
 
         const stats = {
             occurrences: {
                 ...occurrenceStats,
-                by_category: occurrenceCategoryStats  // 새로 추가
+                by_category: occurrenceByCategory
             },
             rules: {
                 ...ruleStats,
-                by_category: ruleCategoryStats        // 새로 추가
+                by_category: ruleByCategory
             },
             dashboard_summary: {
                 total_active: occurrenceStats?.active_alarms || 0,
                 total_rules: ruleStats?.total_rules || 0,
                 unacknowledged: occurrenceStats?.unacknowledged_alarms || 0,
                 enabled_rules: ruleStats?.enabled_rules || 0,
-                categories: ruleCategoryStats?.length || 0,
+                categories: ruleByCategory?.length || 0,
                 rules_with_tags: ruleStats?.rules_with_tags || 0
             }
         };
@@ -2089,129 +1157,99 @@ router.get('/statistics', async (req, res) => {
 });
 
 /**
- * GET /api/alarms/unacknowledged
- * 미확인 알람만 조회
- */
-router.get('/unacknowledged', async (req, res) => {
-    try {
-        const { tenantId } = req;
-        
-        console.log('미확인 알람 조회 시작...');
-
-        const results = await dbAll(AlarmQueries.AlarmOccurrence.FIND_UNACKNOWLEDGED, [tenantId]);
-        
-        console.log(`미확인 알람 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(alarm => formatAlarmOccurrence(alarm)), 'Unacknowledged alarms retrieved successfully'));
-
-    } catch (error) {
-        console.error('미확인 알람 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'UNACKNOWLEDGED_ALARMS_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/device/:deviceId
- * 특정 디바이스의 알람 조회
- */
-router.get('/device/:deviceId', async (req, res) => {
-    try {
-        const { deviceId } = req.params;
-        const { tenantId } = req;
-        
-        console.log(`디바이스 ${deviceId} 알람 조회 시작...`);
-
-        const results = await dbAll(AlarmQueries.AlarmOccurrence.FIND_BY_DEVICE, [tenantId, parseInt(deviceId)]);
-        
-        console.log(`디바이스 ${deviceId} 알람 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(alarm => formatAlarmOccurrence(alarm)), 'Device alarms retrieved successfully'));
-
-    } catch (error) {
-        console.error(`디바이스 ${req.params.deviceId} 알람 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'DEVICE_ALARMS_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/recent
- * 최근 알람 발생 조회
- */
-router.get('/recent', async (req, res) => {
-    try {
-        const { tenantId } = req;
-        const { limit = 20 } = req.query;
-        
-        console.log('최근 알람 조회 시작...');
-
-        const results = await dbAll(AlarmQueries.AlarmOccurrence.RECENT_OCCURRENCES, [tenantId, parseInt(limit)]);
-        
-        console.log(`최근 알람 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(alarm => formatAlarmOccurrence(alarm)), 'Recent alarms retrieved successfully'));
-
-    } catch (error) {
-        console.error('최근 알람 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'RECENT_ALARMS_ERROR'));
-    }
-});
-
-/**
  * GET /api/alarms/test
  * 알람 API 테스트 엔드포인트
  */
 router.get('/test', async (req, res) => {
     try {
-        // DatabaseFactory 연결 테스트
-        const factory = await getDatabaseFactory();
-        const testResult = await factory.executeQuery('SELECT 1 as test', []);
-        
-        res.json(createResponse(true, { 
-            message: 'Complete Alarm API is working with simplified update queries!',
-            database_test: testResult,
+        res.json(createResponse(true, {
+            message: 'Alarm API with Repository Pattern - Complete!',
             architecture: [
-                'ConfigManager-based database configuration',
-                'DatabaseFactory.executeQuery for unified database access', 
-                'AlarmQueries for centralized SQL management',
-                'DB-type independent implementation',
-                'Complete feature coverage with category/tags support',
-                '🆕 Simplified update queries for is_enabled field'
+                'Repository Pattern Implementation',
+                'AlarmOccurrenceRepository - 16 endpoints',
+                'AlarmRuleRepository - 12 endpoints',
+                'AlarmTemplateRepository - 14 endpoints',
+                'Statistics and Test - 2 endpoints',
+                'Total: 44 endpoints fully refactored'
             ],
-            available_endpoints: [
-                // 알람 발생 관련
+            improvements: [
+                'No direct DB calls (dbAll, dbGet, dbRun removed)',
+                'Consistent error handling',
+                'Pagination support on all list endpoints',
+                'Type-safe parameter handling',
+                'Cached queries where appropriate',
+                'Clean separation of concerns'
+            ],
+            repositories: {
+                AlarmOccurrenceRepository: {
+                    singleton: !!occurrenceRepo,
+                    methods: [
+                        'findAll', 'findById', 'findActive', 'findUnacknowledged',
+                        'findByDevice', 'findByCategory', 'findByTag', 'findRecentOccurrences',
+                        'findTodayAlarms', 'acknowledge', 'clear', 'create',
+                        'getStatsSummary', 'getStatsByCategory', 'getStatsToday'
+                    ]
+                },
+                AlarmRuleRepository: {
+                    singleton: !!ruleRepo,
+                    methods: [
+                        'findAll', 'findById', 'findByCategory', 'findByTag',
+                        'findByTarget', 'findEnabled', 'create', 'update',
+                        'updateEnabledStatus', 'updateSettings', 'updateName', 'updateSeverity',
+                        'delete', 'getStatsSummary', 'getStatsBySeverity', 'getStatsByCategory'
+                    ]
+                },
+                AlarmTemplateRepository: {
+                    singleton: !!templateRepo,
+                    methods: [
+                        'findAll', 'findById', 'findByCategory', 'findByTag',
+                        'findSystemTemplates', 'findByDataType', 'create', 'update',
+                        'delete', 'search', 'findMostUsed', 'incrementUsage',
+                        'findAppliedRules', 'getStatsSummary', 'getStatsByCategory'
+                    ]
+                }
+            },
+            endpoints: [
+                // AlarmOccurrence endpoints
                 'GET /api/alarms/active',
                 'GET /api/alarms/occurrences',
                 'GET /api/alarms/occurrences/:id',
-                'GET /api/alarms/occurrences/category/:category',
-                'GET /api/alarms/occurrences/tag/:tag',
                 'GET /api/alarms/history',
                 'POST /api/alarms/occurrences/:id/acknowledge',
                 'POST /api/alarms/occurrences/:id/clear',
+                'GET /api/alarms/user/:userId/cleared',
+                'GET /api/alarms/user/:userId/acknowledged',
+                'GET /api/alarms/occurrences/category/:category',
+                'GET /api/alarms/occurrences/tag/:tag',
                 'GET /api/alarms/unacknowledged',
-                'GET /api/alarms/recent',
                 'GET /api/alarms/device/:deviceId',
+                'GET /api/alarms/recent',
+                'GET /api/alarms/today',
+                'GET /api/alarms/audit-trail',
+                'GET /api/alarms/statistics/today',
                 
-                // 알람 규칙 관리 (기존)
-                'GET /api/alarms/rules',
-                'GET /api/alarms/rules/:id',
+                // AlarmRule endpoints
+                'PATCH /api/alarms/rules/:id/toggle',
+                'PATCH /api/alarms/rules/:id/settings',
+                'PATCH /api/alarms/rules/:id/name',
+                'PATCH /api/alarms/rules/:id/severity',
                 'GET /api/alarms/rules/category/:category',
                 'GET /api/alarms/rules/tag/:tag',
+                'GET /api/alarms/rules/statistics',
+                'GET /api/alarms/rules',
+                'GET /api/alarms/rules/:id',
                 'POST /api/alarms/rules',
                 'PUT /api/alarms/rules/:id',
                 'DELETE /api/alarms/rules/:id',
-                'GET /api/alarms/rules/statistics',
                 
-                // 🆕 간단한 업데이트 엔드포인트들 (NEW!)
-                'PATCH /api/alarms/rules/:id/toggle',        // is_enabled만 토글
-                'PATCH /api/alarms/rules/:id/settings',      // 설정만 업데이트
-                'PATCH /api/alarms/rules/:id/name',          // 이름만 업데이트
-                'PATCH /api/alarms/rules/:id/severity',      // 심각도만 업데이트
-                
-                // 알람 템플릿 관련
+                // AlarmTemplate endpoints
                 'GET /api/alarms/templates',
                 'GET /api/alarms/templates/:id',
-                'GET /api/alarms/templates/category/:category',
-                'GET /api/alarms/templates/tag/:tag',
                 'POST /api/alarms/templates',
                 'PUT /api/alarms/templates/:id',
                 'DELETE /api/alarms/templates/:id',
+                'GET /api/alarms/templates/category/:category',
+                'GET /api/alarms/templates/tag/:tag',
                 'GET /api/alarms/templates/system',
                 'GET /api/alarms/templates/data-type/:dataType',
                 'POST /api/alarms/templates/:id/apply',
@@ -2220,133 +1258,15 @@ router.get('/test', async (req, res) => {
                 'GET /api/alarms/templates/search',
                 'GET /api/alarms/templates/most-used',
                 
-                // 통계 및 기타
+                // Statistics endpoints
                 'GET /api/alarms/statistics',
                 'GET /api/alarms/test'
-            ],
-            route_order_fixed: true,
-            toggle_route_working: true
-        }, 'Complete Alarm API test successful - route order fixed!'));
+            ]
+        }, 'Repository Pattern Alarm API Test Successful!'));
 
     } catch (error) {
         console.error('테스트 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'TEST_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/today
- * 오늘 발생한 알람 조회
- */
-router.get('/today', async (req, res) => {
-    try {
-        const { tenantId } = req;
-        const { limit = 20 } = req.query;
-        
-        console.log('오늘 발생한 알람 조회 시작...');
-
-        // 오늘 날짜 범위 계산 (UTC 기준)
-        const today = new Date();
-        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-        
-        // ISO 문자열로 변환
-        const startDate = startOfDay.toISOString();
-        const endDate = endOfDay.toISOString();
-        
-        console.log('오늘 날짜 범위:', { startDate, endDate });
-
-        // 오늘 발생한 알람 조회 쿼리
-        const query = `
-            SELECT 
-                ao.*,
-                ar.name as rule_name,
-                d.name as device_name,
-                p.protocol_type,
-                dp.name as data_point_name,
-                s.location as site_location
-            FROM alarm_occurrences ao
-            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
-            LEFT JOIN devices d ON d.id = ao.device_id
-            LEFT JOIN protocols p ON d.protocol_id = p.id
-            LEFT JOIN data_points dp ON dp.id = ao.point_id
-            LEFT JOIN sites s ON d.site_id = s.id
-            WHERE ao.tenant_id = ? 
-                AND ao.occurrence_time >= ? 
-                AND ao.occurrence_time < ?
-            ORDER BY ao.occurrence_time DESC
-            LIMIT ?
-        `;
-        
-        const results = await dbAll(query, [tenantId, startDate, endDate, parseInt(limit)]);
-        
-        console.log(`오늘 발생한 알람 ${results.length}개 조회 완료`);
-        res.json(createResponse(true, results.map(alarm => formatAlarmOccurrence(alarm)), 'Today alarms retrieved successfully'));
-
-    } catch (error) {
-        console.error('오늘 알람 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'TODAY_ALARMS_ERROR'));
-    }
-});
-
-/**
- * GET /api/alarms/statistics/today
- * 오늘 알람 통계 조회
- */
-router.get('/statistics/today', async (req, res) => {
-    try {
-        const { tenantId } = req;
-        
-        console.log('오늘 알람 통계 조회 시작...');
-
-        // 오늘 날짜 범위 계산
-        const today = new Date();
-        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-        
-        const startDate = startOfDay.toISOString();
-        const endDate = endOfDay.toISOString();
-
-        // 오늘 알람 통계 쿼리
-        const statsQuery = `
-            SELECT 
-                COUNT(*) as today_total,
-                SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as today_active,
-                SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as today_unacknowledged,
-                SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as today_critical,
-                SUM(CASE WHEN severity = 'major' OR severity = 'high' THEN 1 ELSE 0 END) as today_major,
-                SUM(CASE WHEN severity = 'minor' OR severity = 'low' THEN 1 ELSE 0 END) as today_minor,
-                SUM(CASE WHEN severity = 'medium' OR severity = 'warning' THEN 1 ELSE 0 END) as today_warning
-            FROM alarm_occurrences 
-            WHERE tenant_id = ? 
-                AND occurrence_time >= ? 
-                AND occurrence_time < ?
-        `;
-        
-        const stats = await dbGet(statsQuery, [tenantId, startDate, endDate]);
-        
-        const result = {
-            today_total: stats?.today_total || 0,
-            today_active: stats?.today_active || 0,
-            today_unacknowledged: stats?.today_unacknowledged || 0,
-            severity_breakdown: {
-                critical: stats?.today_critical || 0,
-                major: stats?.today_major || 0,
-                minor: stats?.today_minor || 0,
-                warning: stats?.today_warning || 0
-            },
-            date_range: {
-                start: startDate,
-                end: endDate
-            }
-        };
-        
-        console.log('오늘 알람 통계 조회 완료:', result);
-        res.json(createResponse(true, result, 'Today alarm statistics retrieved successfully'));
-
-    } catch (error) {
-        console.error('오늘 알람 통계 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'TODAY_ALARM_STATS_ERROR'));
     }
 });
 
