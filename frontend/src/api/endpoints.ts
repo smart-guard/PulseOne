@@ -113,7 +113,8 @@ export const ENDPOINTS = {
   ALARMS_OCCURRENCE_ACKNOWLEDGE: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/acknowledge`,
   ALARMS_OCCURRENCE_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`,
   ALARMS_HISTORY: `${API_BASE}/api/alarms/history`,
-  
+  ALARM_TODAY: `${API_BASE}/api/alarms/today`,
+  ALARM_TODAY_STATISTICS: `${API_BASE}/api/alarms/statistics/today`,
   // ---- 카테고리/태그별 알람 발생 ----
   ALARMS_OCCURRENCES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/occurrences/category/${category}`,
   ALARMS_OCCURRENCES_TAG: (tag: string) => `${API_BASE}/api/alarms/occurrences/tag/${tag}`,

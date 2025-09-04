@@ -2234,4 +2234,120 @@ router.get('/test', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/alarms/today
+ * 오늘 발생한 알람 조회
+ */
+router.get('/today', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const { limit = 20 } = req.query;
+        
+        console.log('오늘 발생한 알람 조회 시작...');
+
+        // 오늘 날짜 범위 계산 (UTC 기준)
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+        
+        // ISO 문자열로 변환
+        const startDate = startOfDay.toISOString();
+        const endDate = endOfDay.toISOString();
+        
+        console.log('오늘 날짜 범위:', { startDate, endDate });
+
+        // 오늘 발생한 알람 조회 쿼리
+        const query = `
+            SELECT 
+                ao.*,
+                ar.name as rule_name,
+                d.name as device_name,
+                p.protocol_type,
+                dp.name as data_point_name,
+                s.location as site_location
+            FROM alarm_occurrences ao
+            LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
+            LEFT JOIN devices d ON d.id = ao.device_id
+            LEFT JOIN protocols p ON d.protocol_id = p.id
+            LEFT JOIN data_points dp ON dp.id = ao.point_id
+            LEFT JOIN sites s ON d.site_id = s.id
+            WHERE ao.tenant_id = ? 
+                AND ao.occurrence_time >= ? 
+                AND ao.occurrence_time < ?
+            ORDER BY ao.occurrence_time DESC
+            LIMIT ?
+        `;
+        
+        const results = await dbAll(query, [tenantId, startDate, endDate, parseInt(limit)]);
+        
+        console.log(`오늘 발생한 알람 ${results.length}개 조회 완료`);
+        res.json(createResponse(true, results.map(alarm => formatAlarmOccurrence(alarm)), 'Today alarms retrieved successfully'));
+
+    } catch (error) {
+        console.error('오늘 알람 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TODAY_ALARMS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/statistics/today
+ * 오늘 알람 통계 조회
+ */
+router.get('/statistics/today', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        
+        console.log('오늘 알람 통계 조회 시작...');
+
+        // 오늘 날짜 범위 계산
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+        
+        const startDate = startOfDay.toISOString();
+        const endDate = endOfDay.toISOString();
+
+        // 오늘 알람 통계 쿼리
+        const statsQuery = `
+            SELECT 
+                COUNT(*) as today_total,
+                SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as today_active,
+                SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as today_unacknowledged,
+                SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as today_critical,
+                SUM(CASE WHEN severity = 'major' OR severity = 'high' THEN 1 ELSE 0 END) as today_major,
+                SUM(CASE WHEN severity = 'minor' OR severity = 'low' THEN 1 ELSE 0 END) as today_minor,
+                SUM(CASE WHEN severity = 'medium' OR severity = 'warning' THEN 1 ELSE 0 END) as today_warning
+            FROM alarm_occurrences 
+            WHERE tenant_id = ? 
+                AND occurrence_time >= ? 
+                AND occurrence_time < ?
+        `;
+        
+        const stats = await dbGet(statsQuery, [tenantId, startDate, endDate]);
+        
+        const result = {
+            today_total: stats?.today_total || 0,
+            today_active: stats?.today_active || 0,
+            today_unacknowledged: stats?.today_unacknowledged || 0,
+            severity_breakdown: {
+                critical: stats?.today_critical || 0,
+                major: stats?.today_major || 0,
+                minor: stats?.today_minor || 0,
+                warning: stats?.today_warning || 0
+            },
+            date_range: {
+                start: startDate,
+                end: endDate
+            }
+        };
+        
+        console.log('오늘 알람 통계 조회 완료:', result);
+        res.json(createResponse(true, result, 'Today alarm statistics retrieved successfully'));
+
+    } catch (error) {
+        console.error('오늘 알람 통계 조회 실패:', error.message);
+        res.status(500).json(createResponse(false, null, error.message, 'TODAY_ALARM_STATS_ERROR'));
+    }
+});
+
 module.exports = router;

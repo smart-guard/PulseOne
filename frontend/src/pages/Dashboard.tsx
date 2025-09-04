@@ -51,6 +51,25 @@ interface ConfirmDialogState {
   type: 'warning' | 'danger' | 'info';
 }
 
+interface TodayAlarmStats {
+  today_total: number;
+  severity_breakdown: {
+    critical: number;
+    major: number;
+    minor: number;
+    warning: number;
+  };
+  hourly_distribution: Array<{
+    hour: number;
+    count: number;
+  }>;
+  device_breakdown: Array<{
+    device_id: number;
+    device_name: string;
+    alarm_count: number;
+  }>;
+}
+
 // ============================================================================
 // 🎯 메인 대시보드 컴포넌트
 // ============================================================================
@@ -125,16 +144,26 @@ const Dashboard: React.FC = () => {
 
       // 알람 데이터 추가 로드
       let alarmStats = null;
-      let recentAlarms = null;
+      let recentAlarms: any[] = [];
+      let todayAlarmStats: TodayAlarmStats | null = null;
       
       try {
-        const [statsResponse, recentResponse] = await Promise.all([
+        const [statsResponse, recentResponse, todayStatsResponse] = await Promise.all([
           DashboardApiService.getAlarmStatistics(),
-          DashboardApiService.getRecentAlarms(5)
+          DashboardApiService.getRecentAlarms(5),
+          DashboardApiService.getTodayAlarmStatistics && DashboardApiService.getTodayAlarmStatistics() || Promise.resolve({ success: false })
         ]);
         
         if (statsResponse.success) alarmStats = statsResponse.data;
-        if (recentResponse.success) recentAlarms = recentResponse.data;
+        if (recentResponse.success) {
+          recentAlarms = recentResponse.data || [];
+          console.log(`✅ 최근 알람 ${recentAlarms.length}개 로드 성공`);
+        }
+        if (todayStatsResponse.success) todayAlarmStats = todayStatsResponse.data;
+        // 알람이 없는 것은 정상 상황 (에러가 아님)
+        if (recentAlarms.length === 0) {
+          console.log('ℹ️ 현재 발생한 최근 알람이 없습니다 (정상)');
+        }
       } catch (alarmError) {
         console.warn('⚠️ 알람 데이터 로드 실패:', alarmError);
         errors.push('알람 데이터 로드 실패');
@@ -147,7 +176,8 @@ const Dashboard: React.FC = () => {
         databaseStats, 
         performanceData,
         alarmStats,
-        recentAlarms
+        recentAlarms,
+        todayAlarmStats
       );
 
       setDashboardData(dashboardData);
@@ -185,7 +215,8 @@ const Dashboard: React.FC = () => {
     databaseStats: any,
     performanceData: any,
     alarmStats: any,
-    recentAlarms: any[]
+    recentAlarms: any[],
+    todayAlarmStats: TodayAlarmStats | null
   ): DashboardData => {
     const now = new Date();
 
@@ -295,23 +326,23 @@ const Dashboard: React.FC = () => {
       enabled_devices: Math.floor((databaseStats?.devices || 5) * 0.8)
     };
 
-    // 알람 요약 (실제 알람 데이터 사용)
+    // 알람 요약 (API 응답 구조에 맞게 수정)
     const alarms: AlarmSummary = {
-      active_total: alarmStats?.dashboard_summary?.total_active || 15,
-      today_total: alarmStats?.occurrences?.today_total || 18,
+      active_total: alarmStats?.dashboard_summary?.total_active || 0,
+      today_total: todayAlarmStats?.today_total || 0,
       unacknowledged: alarmStats?.dashboard_summary?.unacknowledged || 0,
-      critical: alarmStats?.occurrences?.critical_alarms || 0,
-      major: alarmStats?.occurrences?.major_alarms || 5,
-      minor: alarmStats?.occurrences?.minor_alarms || 5,
-      warning: alarmStats?.occurrences?.warning_alarms || 5,
+      critical: todayAlarmStats?.severity_breakdown?.critical || 0,
+      major: todayAlarmStats?.severity_breakdown?.major || 0,
+      minor: todayAlarmStats?.severity_breakdown?.minor || 0,
+      warning: todayAlarmStats?.severity_breakdown?.warning || 0,
       recent_alarms: (recentAlarms || []).slice(0, 5).map(alarm => ({
         id: alarm.id || `alarm_${Date.now()}`,
-        type: alarm.severity as any || 'info',
-        message: alarm.message || '알람 메시지',
-        timestamp: alarm.triggered_at || alarm.timestamp || now.toISOString(),
+        type: (alarm.severity === 'medium' ? 'warning' : alarm.severity) as any || 'info',
+        message: alarm.alarm_message || alarm.message || '알람 메시지',
+        timestamp: alarm.occurrence_time || alarm.timestamp || now.toISOString(),
         device_id: alarm.device_id,
         device_name: alarm.device_name || 'Unknown Device',
-        acknowledged: alarm.acknowledged_at !== null,
+        acknowledged: alarm.acknowledged_time !== null,
         acknowledged_by: alarm.acknowledged_by,
         severity: alarm.severity || 'low'
       }))
@@ -436,25 +467,14 @@ const Dashboard: React.FC = () => {
         enabled_devices: 11
       },
       alarms: {
-        active_total: 15,
-        today_total: 18,
+        active_total: 0,
+        today_total: 0,
         unacknowledged: 0,
         critical: 0,
-        major: 5,
-        minor: 5,
-        warning: 5,
-        recent_alarms: [
-          {
-            id: 'alarm_1',
-            type: 'warning',
-            message: '백엔드 연결 실패 - 시뮬레이션 데이터를 표시합니다',
-            timestamp: now.toISOString(),
-            device_id: 1,
-            device_name: 'Backend Server',
-            acknowledged: false,
-            severity: 'medium'
-          }
-        ]
+        major: 0,
+        minor: 0,
+        warning: 0,
+        recent_alarms: []
       },
       health_status: {
         overall: 'degraded',
@@ -1288,23 +1308,23 @@ const Dashboard: React.FC = () => {
                     <div style={{
                       fontSize: '24px',
                       fontWeight: '700',
-                      color: '#1e293b',
+                      color: dashboardData.alarms.today_total > 0 ? '#dc2626' : '#1e293b',
                       marginBottom: '4px'
                     }}>
-                      {dashboardData.alarms.active_total}
+                      {dashboardData.alarms.today_total || 0}
                     </div>
                     <div style={{
                       fontSize: '12px',
                       color: '#64748b',
                       marginBottom: '8px'
                     }}>
-                      활성 알람
+                      24시간 내 알람
                     </div>
                     <div style={{
                       fontSize: '10px',
                       color: '#64748b'
                     }}>
-                      심각: {dashboardData.alarms.critical} / 미확인: {dashboardData.alarms.unacknowledged}
+                      심각: {dashboardData.alarms.critical || 0} / 미확인: {dashboardData.alarms.unacknowledged || 0}
                     </div>
                   </div>
                   
@@ -1583,8 +1603,8 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      {/* 📊 하단: 최근 알람 */}
-      {dashboardData && dashboardData.alarms.recent_alarms.length > 0 && (
+      {/* 📊 하단: 최근 알람 (기존 가로 레이아웃 유지) */}
+      {dashboardData && (
         <div style={{
           background: 'white',
           borderRadius: '12px',
@@ -1645,78 +1665,160 @@ const Dashboard: React.FC = () => {
               모든 알람 보기 →
             </button>
           </div>
+          
           <div style={{ padding: '20px' }}>
-            {dashboardData.alarms.recent_alarms.slice(0, 3).map((alarm, index) => (
-              <div key={alarm.id} style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '16px',
-                padding: '16px',
-                background: '#f8fafc',
-                borderRadius: '8px',
-                marginBottom: index < 2 ? '12px' : 0,
-                border: '1px solid #e2e8f0'
-              }}>
+            {!dashboardData.alarms.recent_alarms || dashboardData.alarms.recent_alarms.length === 0 ? (
+              dashboardData.alarms.today_total > 0 ? (
+                // 통계상 알람이 있는데 recent_alarms가 비어있는 경우
                 <div style={{
-                  width: '32px',
-                  height: '32px',
-                  background: alarm.type === 'warning' ? '#fef3c7' : 
-                             alarm.type === 'critical' ? '#fef2f2' :
-                             alarm.type === 'major' ? '#fef3c7' : '#e0f2fe',
-                  color: alarm.type === 'warning' ? '#f59e0b' : 
-                         alarm.type === 'critical' ? '#dc2626' :
-                         alarm.type === 'major' ? '#f59e0b' : '#0891b2',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
+                  textAlign: 'center',
+                  padding: '40px 20px',
+                  color: '#64748b'
                 }}>
-                  {alarm.type === 'warning' ? '⚠️' : 
-                   alarm.type === 'critical' ? '🚨' :
-                   alarm.type === 'major' ? '🔶' : 'ℹ️'}
-                </div>
-                <div style={{ flex: 1 }}>
                   <div style={{
-                    fontWeight: '500',
-                    color: '#1e293b',
+                    fontSize: '48px',
+                    marginBottom: '16px'
+                  }}>
+                    🔔
+                  </div>
+                  <h3 style={{
+                    margin: 0,
+                    marginBottom: '8px',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: '#f59e0b'
+                  }}>
+                    알람 목록을 불러올 수 없습니다
+                  </h3>
+                  <p style={{
+                    margin: 0,
                     fontSize: '14px',
-                    marginBottom: '4px'
+                    color: '#64748b',
+                    marginBottom: '16px'
                   }}>
-                    {alarm.message}
-                  </div>
-                  <div style={{
-                    fontSize: '12px',
-                    color: '#64748b'
-                  }}>
-                    {alarm.device_name} • {new Date(alarm.timestamp).toLocaleString()} • 심각도: {alarm.severity}
-                  </div>
+                    24시간 내 {dashboardData.alarms.today_total}건의 알람이 있지만<br/>
+                    최근 알람 목록을 가져오는 중 오류가 발생했습니다.
+                  </p>
+                  <button 
+                    onClick={() => loadDashboardOverview(true)}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    새로고침
+                  </button>
                 </div>
+              ) : (
+                // 실제로 알람이 없는 경우
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-end',
-                  gap: '4px',
-                  flexShrink: 0
+                  textAlign: 'center',
+                  padding: '40px 20px',
+                  color: '#64748b'
                 }}>
                   <div style={{
-                    fontSize: '12px',
+                    fontSize: '48px',
+                    marginBottom: '16px'
+                  }}>
+                    ✅
+                  </div>
+                  <h3 style={{
+                    margin: 0,
+                    marginBottom: '8px',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: '#16a34a'
+                  }}>
+                    현재 발생한 알람이 없습니다
+                  </h3>
+                  <p style={{
+                    margin: 0,
+                    fontSize: '14px',
                     color: '#64748b'
                   }}>
-                    {new Date(alarm.timestamp).toLocaleTimeString()}
-                  </div>
-                  <span style={{
-                    fontSize: '12px',
-                    color: alarm.acknowledged ? '#16a34a' : '#dc2626',
-                    background: alarm.acknowledged ? '#dcfce7' : '#fef2f2',
-                    padding: '4px 8px',
-                    borderRadius: '12px'
-                  }}>
-                    {alarm.acknowledged ? '✅ 확인됨' : '❗ 미확인'}
-                  </span>
+                    시스템이 정상적으로 동작하고 있습니다
+                  </p>
                 </div>
-              </div>
-            ))}
+              )
+            ) : (
+              // 알람이 있는 경우 표시 (기존 가로 레이아웃 유지)
+              dashboardData.alarms.recent_alarms.slice(0, 3).map((alarm, index) => (
+                <div key={alarm.id} style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '16px',
+                  padding: '16px',
+                  background: '#f8fafc',
+                  borderRadius: '8px',
+                  marginBottom: index < Math.min(dashboardData.alarms.recent_alarms.length, 3) - 1 ? '12px' : 0,
+                  border: '1px solid #e2e8f0'
+                }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    background: alarm.type === 'warning' ? '#fef3c7' : 
+                               alarm.type === 'critical' ? '#fef2f2' :
+                               alarm.type === 'major' ? '#fef3c7' : '#e0f2fe',
+                    color: alarm.type === 'warning' ? '#f59e0b' : 
+                           alarm.type === 'critical' ? '#dc2626' :
+                           alarm.type === 'major' ? '#f59e0b' : '#0891b2',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    {alarm.type === 'warning' ? '⚠️' : 
+                     alarm.type === 'critical' ? '🚨' :
+                     alarm.type === 'major' ? '🔶' : 'ℹ️'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      fontWeight: '500',
+                      color: '#1e293b',
+                      fontSize: '14px',
+                      marginBottom: '4px'
+                    }}>
+                      {alarm.message}
+                    </div>
+                    <div style={{
+                      fontSize: '12px',
+                      color: '#64748b'
+                    }}>
+                      {alarm.device_name} • {new Date(alarm.timestamp).toLocaleString()} • 심각도: {alarm.severity}
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    gap: '4px',
+                    flexShrink: 0
+                  }}>
+                    <div style={{
+                      fontSize: '12px',
+                      color: '#64748b'
+                    }}>
+                      {new Date(alarm.timestamp).toLocaleTimeString()}
+                    </div>
+                    <span style={{
+                      fontSize: '12px',
+                      color: alarm.acknowledged ? '#16a34a' : '#dc2626',
+                      background: alarm.acknowledged ? '#dcfce7' : '#fef2f2',
+                      padding: '4px 8px',
+                      borderRadius: '12px'
+                    }}>
+                      {alarm.acknowledged ? '✅ 확인됨' : '❗ 미확인'}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
