@@ -1,12 +1,12 @@
 // ============================================================================
 // frontend/src/api/services/protocolApi.ts
-// 프로토콜 관리 API 서비스 - 올바른 엔드포인트 경로로 수정
+// 기존 DeviceApi 패턴 100% 동일하게 적용한 프로토콜 API 서비스
 // ============================================================================
 
 import { ApiResponse } from '../../types/common';
 
 // ============================================================================
-// 🔧 프로토콜 관련 인터페이스들
+// 프로토콜 관련 인터페이스들 - DeviceApi 패턴과 동일
 // ============================================================================
 
 export interface Protocol {
@@ -84,43 +84,51 @@ export interface ProtocolUpdateData {
 }
 
 // ============================================================================
-// ProtocolApiService 클래스 - 올바른 엔드포인트 사용
+// ProtocolApiService 클래스 - DeviceApi 패턴 100% 동일
 // ============================================================================
 
 export class ProtocolApiService {
-  // 🔥 수정: 올바른 엔드포인트 경로
+  // DeviceApi와 동일한 BASE_URL 패턴 (상대 경로, Vite 프록시 사용)
   private static readonly BASE_URL = '/api/protocols';
 
   // ========================================================================
-  // 📋 기본 CRUD API들
+  // 기본 CRUD API들 - DeviceApi와 동일한 구조
   // ========================================================================
 
   /**
-   * 프로토콜 목록 조회
+   * 프로토콜 목록 조회 - DeviceApi.getDevices() 패턴
    */
   static async getProtocols(filters?: {
     category?: string;
     enabled?: string;
     deprecated?: string;
     search?: string;
+    limit?: number;
+    offset?: number;
+    sortBy?: string;
+    sortOrder?: string;
   }): Promise<ApiResponse<Protocol[]>> {
     try {
       console.log('📋 프로토콜 목록 조회...', filters);
 
-      let url = this.BASE_URL;
+      // DeviceApi와 동일한 쿼리 파라미터 생성
+      const queryParams = new URLSearchParams();
+      
       if (filters) {
-        const params = new URLSearchParams();
         Object.entries(filters).forEach(([key, value]) => {
-          if (value !== undefined && value !== '') {
-            params.append(key, value);
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, String(value));
           }
         });
-        
-        if (params.toString()) {
-          url += `?${params.toString()}`;
-        }
       }
+      
+      const url = queryParams.toString() ? 
+        `${this.BASE_URL}?${queryParams.toString()}` : 
+        this.BASE_URL;
 
+      console.log('🔥 실제 요청 URL:', url);
+
+      // DeviceApi와 동일한 fetch 패턴
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -139,7 +147,7 @@ export class ProtocolApiService {
   }
 
   /**
-   * 프로토콜 상세 조회
+   * 프로토콜 상세 조회 - DeviceApi.getDevice() 패턴
    */
   static async getProtocol(id: number): Promise<ApiResponse<Protocol>> {
     try {
@@ -163,7 +171,7 @@ export class ProtocolApiService {
   }
 
   /**
-   * 프로토콜 생성
+   * 프로토콜 생성 - DeviceApi.createDevice() 패턴
    */
   static async createProtocol(data: ProtocolCreateData): Promise<ApiResponse<Protocol>> {
     try {
@@ -193,7 +201,7 @@ export class ProtocolApiService {
   }
 
   /**
-   * 프로토콜 수정
+   * 프로토콜 수정 - DeviceApi.updateDevice() 패턴
    */
   static async updateProtocol(id: number, data: ProtocolUpdateData): Promise<ApiResponse<Protocol>> {
     try {
@@ -206,11 +214,11 @@ export class ProtocolApiService {
         },
         body: JSON.stringify(data),
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const result = await response.json();
       console.log(`✅ 프로토콜 ID ${id} 수정 완료`);
       
@@ -223,13 +231,14 @@ export class ProtocolApiService {
   }
 
   /**
-   * 프로토콜 삭제
+   * 프로토콜 삭제 - DeviceApi.deleteDevice() 패턴
    */
   static async deleteProtocol(id: number, force = false): Promise<ApiResponse<{ deleted: boolean }>> {
     try {
       console.log(`🗑️ 프로토콜 ID ${id} 삭제... (force: ${force})`);
-
+      
       const url = force ? `${this.BASE_URL}/${id}?force=true` : `${this.BASE_URL}/${id}`;
+      
       const response = await fetch(url, {
         method: 'DELETE',
       });
@@ -250,11 +259,11 @@ export class ProtocolApiService {
   }
 
   // ========================================================================
-  // 🔄 프로토콜 제어 API들
+  // 제어 API들 - DeviceApi.enableDevice/disableDevice 패턴
   // ========================================================================
 
   /**
-   * 프로토콜 활성화
+   * 프로토콜 활성화 - DeviceApi.enableDevice() 패턴
    */
   static async enableProtocol(id: number): Promise<ApiResponse<Protocol>> {
     try {
@@ -280,7 +289,7 @@ export class ProtocolApiService {
   }
 
   /**
-   * 프로토콜 비활성화
+   * 프로토콜 비활성화 - DeviceApi.disableDevice() 패턴
    */
   static async disableProtocol(id: number): Promise<ApiResponse<Protocol>> {
     try {
@@ -306,11 +315,11 @@ export class ProtocolApiService {
   }
 
   // ========================================================================
-  // 📊 통계 및 분석 API들
+  // 통계 및 분석 API들 - DeviceApi.getDeviceStatistics() 패턴
   // ========================================================================
 
   /**
-   * 프로토콜 통계 조회
+   * 프로토콜 통계 조회 - DeviceApi.getDeviceStatistics() 패턴
    */
   static async getProtocolStatistics(): Promise<ApiResponse<ProtocolStats>> {
     try {
@@ -320,7 +329,7 @@ export class ProtocolApiService {
       
       if (!response.ok) {
         console.warn(`통계 조회 실패: HTTP ${response.status}`);
-        // 통계는 필수가 아니므로 기본값 반환
+        // DeviceApi와 동일하게 기본값 반환
         return {
           success: true,
           data: {
@@ -340,7 +349,7 @@ export class ProtocolApiService {
       
     } catch (error) {
       console.warn('⚠️ 프로토콜 통계 조회 실패:', error);
-      // 통계는 필수가 아니므로 기본값 반환
+      // DeviceApi와 동일한 에러 처리 - 기본값 반환
       return {
         success: true,
         data: {
@@ -355,7 +364,7 @@ export class ProtocolApiService {
   }
 
   /**
-   * 프로토콜 연결 테스트
+   * 프로토콜 연결 테스트 - DeviceApi.testDeviceConnection() 패턴
    */
   static async testProtocolConnection(id: number, params: Record<string, any>): Promise<ApiResponse<{
     protocol_id: number;
