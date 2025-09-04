@@ -431,7 +431,76 @@ class ProtocolRepository extends BaseRepository {
             throw error;
         }
     }
+    /**
+     * 필터 조건에 맞는 프로토콜 총 개수 조회
+     * @param {Object} filters - 필터 조건
+     * @returns {Promise<number>} 총 개수
+     */
+    async getTotalCount(filters = {}) {
+        try {
+            console.log('📊 ProtocolRepository.getTotalCount 호출:', filters);
 
+            let query = 'SELECT COUNT(*) as total FROM protocols WHERE 1=1';
+            const params = [];
+
+            // 테넌트 필터 (필요시)
+            if (filters.tenantId) {
+                query += ' AND tenant_id = ?';
+                params.push(filters.tenantId);
+            }
+
+            // 카테고리 필터
+            if (filters.category) {
+                query += ' AND category = ?';
+                params.push(filters.category);
+            }
+            
+            // 활성화 상태 필터
+            if (filters.enabled !== undefined) {
+                query += ' AND is_enabled = ?';
+                params.push(filters.enabled === 'true' ? 1 : 0);
+            }
+
+            // 지원 중단 상태 필터  
+            if (filters.deprecated !== undefined) {
+                query += ' AND is_deprecated = ?';
+                params.push(filters.deprecated === 'true' ? 1 : 0);
+            }
+
+            // 시리얼 사용 필터
+            if (filters.uses_serial !== undefined) {
+                query += ' AND uses_serial = ?';
+                params.push(filters.uses_serial === 'true' ? 1 : 0);
+            }
+
+            // 브로커 필요 필터
+            if (filters.requires_broker !== undefined) {
+                query += ' AND requires_broker = ?';
+                params.push(filters.requires_broker === 'true' ? 1 : 0);
+            }
+            
+            // 검색 필터 (프로토콜 타입, 표시명, 설명에서 검색)
+            if (filters.search) {
+                query += ' AND (protocol_type LIKE ? OR display_name LIKE ? OR description LIKE ?)';
+                const searchTerm = `%${filters.search}%`;
+                params.push(searchTerm, searchTerm, searchTerm);
+            }
+
+            console.log('📊 실행할 COUNT 쿼리:', query);
+            console.log('📊 쿼리 파라미터:', params);
+
+            const result = await this.db.get(query, params);
+            const totalCount = result?.total || 0;
+            
+            console.log(`✅ 총 개수 조회 완료: ${totalCount}개`);
+            
+            return totalCount;
+            
+        } catch (error) {
+            console.error('❌ ProtocolRepository.getTotalCount 실패:', error);
+            throw error;
+        }
+    }
     // ==========================================================================
     // 검증 및 관계
     // ==========================================================================

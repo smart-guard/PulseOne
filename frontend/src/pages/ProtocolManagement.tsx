@@ -49,6 +49,18 @@ interface ProtocolStats {
   }>;
 }
 
+// 팝업 확인 다이얼로그 인터페이스
+interface ConfirmDialogState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  type: 'warning' | 'danger' | 'info';
+}
+
 const ProtocolManagement: React.FC = () => {
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [stats, setStats] = useState<ProtocolStats | null>(null);
@@ -61,14 +73,29 @@ const ProtocolManagement: React.FC = () => {
   const [processing, setProcessing] = useState<number | null>(null);
   const [showEditor, setShowEditor] = useState<{ mode: 'create' | 'edit' | 'view', protocolId?: number } | null>(null);
 
-  // 페이징 상태 추가
+  // 페이징 상태
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [totalCount, setTotalCount] = useState(0);
 
-  // 상세보기 모달 상태 추가
+  // 상세보기 모달 상태
   const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // 팝업 확인 다이얼로그 상태
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: '확인',
+    cancelText: '취소',
+    onConfirm: () => {},
+    onCancel: () => {},
+    type: 'info'
+  });
+
+  // 성공 메시지 상태
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // 프로토콜 목록 로드 (페이징 지원)
   const loadProtocols = useCallback(async () => {
@@ -143,25 +170,39 @@ const ProtocolManagement: React.FC = () => {
     }
   }, [selectedCategory, statusFilter, searchTerm]);
 
-  // 프로토콜 액션 처리
-  const handleProtocolAction = async (action: string, protocolId: number) => {
+  // 성공 메시지 자동 제거
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
+  // 팝업 확인 후 프로토콜 액션 실행
+  const executeProtocolAction = async (action: string, protocolId: number) => {
     try {
       setProcessing(protocolId);
       setError(null);
 
       console.log(`프로토콜 ${action} 실행:`, protocolId);
+      const protocol = protocols.find(p => p.id === protocolId);
 
       let response;
       switch (action) {
         case 'enable':
           response = await ProtocolApiService.updateProtocol(protocolId, { is_enabled: true });
+          if (response?.success) {
+            setSuccessMessage(`프로토콜 "${protocol?.display_name}"이(가) 활성화되었습니다.`);
+          }
           break;
         case 'disable':
           response = await ProtocolApiService.updateProtocol(protocolId, { is_enabled: false });
+          if (response?.success) {
+            setSuccessMessage(`프로토콜 "${protocol?.display_name}"이(가) 비활성화되었습니다.`);
+          }
           break;
         case 'test':
           // 연결 테스트의 경우 기본 파라미터로 테스트
-          const protocol = protocols.find(p => p.id === protocolId);
           if (protocol) {
             const testParams: Record<string, any> = {};
             
@@ -186,26 +227,21 @@ const ProtocolManagement: React.FC = () => {
               const message = result.test_successful 
                 ? `연결 테스트 성공! 응답시간: ${result.response_time_ms}ms`
                 : `연결 테스트 실패: ${result.error_message}`;
-              alert(message);
+              setSuccessMessage(message);
             }
           }
           break;
         case 'edit':
           console.log('편집 모달 열기:', protocolId);
-          console.log('설정할 showEditor 상태:', { mode: 'edit', protocolId });
           setShowEditor({ mode: 'edit', protocolId });
           return;
         case 'view':
           // 상세보기 모달 열기
           console.log('상세보기 모달 열기 시작:', protocolId);
           const protocolToView = protocols.find(p => p.id === protocolId);
-          console.log('찾은 프로토콜:', protocolToView);
           if (protocolToView) {
             setSelectedProtocol(protocolToView);
             setShowDetailModal(true);
-            console.log('상세보기 모달 상태 설정 완료');
-          } else {
-            console.error('프로토콜을 찾을 수 없습니다:', protocolId);
           }
           return;
         default:
@@ -222,10 +258,71 @@ const ProtocolManagement: React.FC = () => {
       const errorMessage = err instanceof Error ? err.message : `프로토콜 ${action} 실패`;
       console.error(`프로토콜 ${action} 에러:`, err);
       setError(errorMessage);
-      alert(errorMessage);
     } finally {
       setProcessing(null);
     }
+  };
+
+  // 프로토콜 액션 처리 (팝업 확인 먼저)
+  const handleProtocolAction = async (action: string, protocolId: number) => {
+    const protocol = protocols.find(p => p.id === protocolId);
+    if (!protocol) return;
+
+    // 즉시 실행되는 액션들
+    if (['view', 'test'].includes(action)) {
+      return executeProtocolAction(action, protocolId);
+    }
+
+    // 확인이 필요한 액션들
+    let dialogConfig: Partial<ConfirmDialogState> = {};
+    
+    switch (action) {
+      case 'enable':
+        dialogConfig = {
+          title: '프로토콜 활성화',
+          message: `프로토콜 "${protocol.display_name}"을(를) 활성화하시겠습니까?\n\n활성화된 프로토콜은 디바이스에서 사용할 수 있게 됩니다.`,
+          confirmText: '활성화',
+          type: 'info',
+          onConfirm: () => {
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+            executeProtocolAction(action, protocolId);
+          }
+        };
+        break;
+      case 'disable':
+        dialogConfig = {
+          title: '프로토콜 비활성화',
+          message: `프로토콜 "${protocol.display_name}"을(를) 비활성화하시겠습니까?\n\n비활성화하면 해당 프로토콜을 사용하는 디바이스들이 영향을 받을 수 있습니다.\n현재 ${protocol.device_count || 0}개의 디바이스가 이 프로토콜을 사용 중입니다.`,
+          confirmText: '비활성화',
+          type: 'warning',
+          onConfirm: () => {
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+            executeProtocolAction(action, protocolId);
+          }
+        };
+        break;
+      case 'edit':
+        dialogConfig = {
+          title: '프로토콜 편집',
+          message: `프로토콜 "${protocol.display_name}"을(를) 편집하시겠습니까?\n\n편집 모드로 진입하여 프로토콜 설정을 수정할 수 있습니다.`,
+          confirmText: '편집하기',
+          type: 'info',
+          onConfirm: () => {
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+            executeProtocolAction(action, protocolId);
+          }
+        };
+        break;
+      default:
+        return;
+    }
+
+    setConfirmDialog({
+      ...confirmDialog,
+      ...dialogConfig,
+      isOpen: true,
+      onCancel: () => setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   // 필터 초기화
@@ -233,7 +330,7 @@ const ProtocolManagement: React.FC = () => {
     setSelectedCategory('all');
     setStatusFilter('all');
     setSearchTerm('');
-    setCurrentPage(1); // 페이지도 첫 페이지로 초기화
+    setCurrentPage(1);
   };
 
   // 페이징 핸들러
@@ -242,7 +339,7 @@ const ProtocolManagement: React.FC = () => {
     setCurrentPage(page);
     if (newPageSize !== pageSize) {
       setPageSize(newPageSize);
-      setCurrentPage(1); // 페이지 크기 변경 시 첫 페이지로
+      setCurrentPage(1);
     }
   };
 
@@ -288,15 +385,159 @@ const ProtocolManagement: React.FC = () => {
 
   const currentStats = calculateStats();
 
-  // Editor 핸들러
+  // Editor 핸들러 (수정 버튼에서 확인 팝업 추가)
   const handleEditorSave = async (protocol: Protocol) => {
     await loadProtocols(); // 목록 새로고침
     setShowEditor(null); // Editor 닫기
+    
+    // 성공 메시지 표시
+    if (showEditor?.mode === 'create') {
+      setSuccessMessage(`프로토콜 "${protocol.display_name}"이(가) 성공적으로 생성되었습니다.`);
+    } else {
+      setSuccessMessage(`프로토콜 "${protocol.display_name}"이(가) 성공적으로 수정되었습니다.`);
+    }
   };
 
   const handleEditorCancel = () => {
     setShowEditor(null); // Editor 닫기
   };
+
+  // 확인 다이얼로그 컴포넌트
+  const ConfirmDialog: React.FC<{ config: ConfirmDialogState }> = ({ config }) => {
+    if (!config.isOpen) return null;
+
+    const getDialogColor = (type: string) => {
+      switch (type) {
+        case 'danger': return '#ef4444';
+        case 'warning': return '#f59e0b';
+        case 'info': 
+        default: return '#3b82f6';
+      }
+    };
+
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000
+      }}>
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          padding: '24px',
+          minWidth: '400px',
+          maxWidth: '500px',
+          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '16px'
+          }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              backgroundColor: `${getDialogColor(config.type)}20`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '20px'
+            }}>
+              {config.type === 'warning' ? '⚠️' : config.type === 'danger' ? '🚨' : 'ℹ️'}
+            </div>
+            <h3 style={{
+              margin: 0,
+              fontSize: '18px',
+              fontWeight: '600',
+              color: '#1e293b'
+            }}>
+              {config.title}
+            </h3>
+          </div>
+          
+          <p style={{
+            margin: 0,
+            marginBottom: '24px',
+            fontSize: '14px',
+            color: '#64748b',
+            lineHeight: '1.5',
+            whiteSpace: 'pre-line'
+          }}>
+            {config.message}
+          </p>
+
+          <div style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '12px'
+          }}>
+            <button
+              onClick={config.onCancel}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#f3f4f6',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151',
+                cursor: 'pointer'
+              }}
+            >
+              {config.cancelText}
+            </button>
+            <button
+              onClick={config.onConfirm}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: getDialogColor(config.type),
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              {config.confirmText}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 성공 메시지 컴포넌트
+  const SuccessMessage: React.FC<{ message: string }> = ({ message }) => (
+    <div style={{
+      position: 'fixed',
+      top: '20px',
+      right: '20px',
+      backgroundColor: '#dcfce7',
+      border: '1px solid #16a34a',
+      borderRadius: '8px',
+      padding: '12px 16px',
+      color: '#166534',
+      fontSize: '14px',
+      fontWeight: '500',
+      zIndex: 9999,
+      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    }}>
+      ✅ {message}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -353,6 +594,12 @@ const ProtocolManagement: React.FC = () => {
       padding: '24px',
       backgroundColor: '#f8fafc' 
     }}>
+      {/* 성공 메시지 */}
+      {successMessage && <SuccessMessage message={successMessage} />}
+
+      {/* 확인 다이얼로그 */}
+      <ConfirmDialog config={confirmDialog} />
+
       {/* 헤더 */}
       <div style={{ 
         display: 'flex', 
@@ -375,7 +622,7 @@ const ProtocolManagement: React.FC = () => {
             margin: 0,
             fontSize: '16px'
           }}>
-            통신 프로토콜의 조회, 편집, 등록을 관리합니다 (페이징 지원)
+            통신 프로토콜의 조회, 편집, 등록을 관리합니다 (확인 팝업 지원)
           </p>
         </div>
         <button 
