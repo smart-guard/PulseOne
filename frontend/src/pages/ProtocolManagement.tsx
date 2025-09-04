@@ -368,22 +368,27 @@ const ProtocolManagement: React.FC = () => {
   };
 
   // 통계 계산 (실제 데이터 기반 - API 없을 때 대체)
-  const calculateStats = () => {
-    // API 통계가 있으면 사용, 없으면 현재 데이터로 계산
-    if (stats && stats.total_protocols) {
-      return stats;
+  const getCurrentStats = () => {
+    // 백엔드 API 통계가 로드되었으면 사용
+    if (stats && stats.total_protocols !== undefined) {
+        return {
+        total_protocols: stats.total_protocols,
+        enabled_protocols: stats.enabled_protocols,
+        deprecated_protocols: stats.deprecated_protocols,
+        total_devices: stats.usage_stats?.reduce((sum, p) => sum + p.device_count, 0) || 0
+        };
     }
     
-    // 백엔드 API 없을 때 프론트엔드에서 계산
+    // API 로드 전이나 실패 시 현재 페이지 데이터로 임시 표시
     return {
-      total_protocols: protocols.length,
-      enabled_protocols: protocols.filter(p => p.is_enabled).length,
-      deprecated_protocols: protocols.filter(p => p.is_deprecated).length,
-      total_devices: protocols.reduce((sum, p) => sum + (p.device_count || 0), 0)
+        total_protocols: protocols.length,
+        enabled_protocols: protocols.filter(p => p.is_enabled).length,
+        deprecated_protocols: protocols.filter(p => p.is_deprecated).length,
+        total_devices: protocols.reduce((sum, p) => sum + (p.device_count || 0), 0)
     };
-  };
+    };
 
-  const currentStats = calculateStats();
+    const currentStats = getCurrentStats();
 
   // Editor 핸들러 (수정 버튼에서 확인 팝업 추가)
   const handleEditorSave = async (protocol: Protocol) => {
