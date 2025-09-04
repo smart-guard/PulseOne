@@ -276,7 +276,7 @@ class ProtocolRepository extends BaseRepository {
 
             // 연결된 디바이스 확인
             const deviceCountQuery = ProtocolQueries.countDevicesByProtocol();
-            const deviceCountResult = await this.executeSingle(deviceCountQuery, [id]);
+            const deviceCountResult = await this.executeQuerySingle(deviceCountQuery, [id]);
             const deviceCount = deviceCountResult ? deviceCountResult.count : 0;
 
             if (deviceCount > 0 && !force) {
@@ -415,9 +415,9 @@ class ProtocolRepository extends BaseRepository {
     async getCounts() {
         try {
             const [totalResult, enabledResult, deprecatedResult] = await Promise.all([
-                this.executeSingle(ProtocolQueries.countTotal()),
-                this.executeSingle(ProtocolQueries.countEnabled()),
-                this.executeSingle(ProtocolQueries.countDeprecated())
+                this.executeQuerySingle(ProtocolQueries.countTotal()),
+                this.executeQuerySingle(ProtocolQueries.countEnabled()),
+                this.executeQuerySingle(ProtocolQueries.countDeprecated())
             ]);
 
             return {
@@ -439,7 +439,7 @@ class ProtocolRepository extends BaseRepository {
     async checkProtocolTypeExists(protocolType, excludeId = null) {
         try {
             const query = ProtocolQueries.checkProtocolTypeExists();
-            const result = await this.executeSingle(query, [protocolType, excludeId || -1]);
+            const result = await this.executeQuerySingle(query, [protocolType, excludeId || -1]);
             
             return result ? result.count > 0 : false;
             

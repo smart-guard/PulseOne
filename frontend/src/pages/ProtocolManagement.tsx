@@ -1,18 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ProtocolApiService } from '../api/services/protocolApi';
+import ProtocolEditor from '../components/modals/ProtocolModal/ProtocolEditor';
+import { Pagination } from '../components/common/Pagination';
+import ProtocolDetailModal from '../components/modals/ProtocolModal/ProtocolDetailModal';
 
-// 프로토콜 데이터 타입
+// 프로토콜 데이터 타입 (실제 백엔드 응답과 매칭)
 interface Protocol {
   id: number;
   protocol_type: string;
   display_name: string;
   description: string;
-  category: string;
+  category?: string;
   default_port?: number;
+  uses_serial?: boolean;
+  requires_broker?: boolean;
+  supported_operations?: string[];
+  supported_data_types?: string[];
+  connection_params?: Record<string, any>;
+  default_polling_interval?: number;
+  default_timeout?: number;
+  max_concurrent_connections?: number;
+  vendor?: string;
+  standard_reference?: string;
   is_enabled: boolean;
   is_deprecated: boolean;
-  device_count: number;
-  enabled_count: number;
-  connected_count: number;
+  device_count?: number;
+  enabled_count?: number;
+  connected_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface ProtocolStats {
@@ -24,106 +40,212 @@ interface ProtocolStats {
     count: number;
     percentage: number;
   }>;
+  usage_stats: Array<{
+    protocol_type: string;
+    display_name: string;
+    device_count: number;
+    enabled_devices: number;
+    connected_devices: number;
+  }>;
 }
 
 const ProtocolManagement: React.FC = () => {
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [stats, setStats] = useState<ProtocolStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [processing, setProcessing] = useState<number | null>(null);
+  const [showEditor, setShowEditor] = useState<{ mode: 'create' | 'edit' | 'view', protocolId?: number } | null>(null);
 
-  // 샘플 데이터
-  const sampleProtocols: Protocol[] = [
-    {
-      id: 1,
-      protocol_type: 'MODBUS_TCP',
-      display_name: 'Modbus TCP',
-      description: 'Modbus TCP/IP Protocol for Ethernet-based industrial networks',
-      category: 'industrial',
-      default_port: 502,
-      is_enabled: true,
-      is_deprecated: false,
-      device_count: 12,
-      enabled_count: 10,
-      connected_count: 8
-    },
-    {
-      id: 2,
-      protocol_type: 'MODBUS_RTU',
-      display_name: 'Modbus RTU',
-      description: 'Modbus RTU Serial Protocol for RS-485/RS-232 networks',
-      category: 'industrial',
-      default_port: null,
-      is_enabled: true,
-      is_deprecated: false,
-      device_count: 8,
-      enabled_count: 6,
-      connected_count: 5
-    },
-    {
-      id: 3,
-      protocol_type: 'MQTT',
-      display_name: 'MQTT',
-      description: 'Message Queuing Telemetry Transport - Lightweight messaging protocol for IoT',
-      category: 'iot',
-      default_port: 1883,
-      is_enabled: true,
-      is_deprecated: false,
-      device_count: 15,
-      enabled_count: 12,
-      connected_count: 11
-    },
-    {
-      id: 4,
-      protocol_type: 'BACNET',
-      display_name: 'BACnet/IP',
-      description: 'Building Automation and Control Networks over IP',
-      category: 'building_automation',
-      default_port: 47808,
-      is_enabled: true,
-      is_deprecated: false,
-      device_count: 6,
-      enabled_count: 5,
-      connected_count: 4
-    },
-    {
-      id: 5,
-      protocol_type: 'HTTP_REST',
-      display_name: 'HTTP REST',
-      description: 'RESTful HTTP API for web-based device communication',
-      category: 'web',
-      default_port: 80,
-      is_enabled: false,
-      is_deprecated: true,
-      device_count: 2,
-      enabled_count: 0,
-      connected_count: 0
-    }
-  ];
+  // 페이징 상태 추가
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const sampleStats: ProtocolStats = {
-    total_protocols: 11,
-    enabled_protocols: 9,
-    deprecated_protocols: 2,
-    categories: [
-      { category: 'industrial', count: 5, percentage: 45.5 },
-      { category: 'iot', count: 3, percentage: 27.3 },
-      { category: 'building_automation', count: 2, percentage: 18.2 },
-      { category: 'web', count: 1, percentage: 9.1 }
-    ]
-  };
+  // 상세보기 모달 상태 추가
+  const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
-  useEffect(() => {
-    // 데이터 로딩 시뮬레이션
-    setTimeout(() => {
-      setProtocols(sampleProtocols);
-      setStats(sampleStats);
+  // 프로토콜 목록 로드 (페이징 지원)
+  const loadProtocols = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('프로토콜 목록 로드 시작...', { currentPage, pageSize });
+      
+      const filters = {
+        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        enabled: statusFilter === 'enabled' ? 'true' : statusFilter === 'disabled' ? 'false' : undefined,
+        search: searchTerm.trim() || undefined,
+        page: currentPage,
+        limit: pageSize
+      };
+
+      const response = await ProtocolApiService.getProtocols(filters);
+      
+      if (response.success) {
+        setProtocols(response.data || []);
+        
+        // 백엔드 응답에서 페이징 정보 추출
+        if (response.pagination) {
+          setTotalCount(response.pagination.total_count || response.pagination.total_items || 0);
+        } else if (response.total_count !== undefined) {
+          setTotalCount(response.total_count);
+        } else if (response.meta?.total) {
+          setTotalCount(response.meta.total);
+        } else {
+          // 페이징 정보가 없는 경우, 현재 데이터 길이 사용
+          setTotalCount((response.data || []).length);
+        }
+        
+        console.log(`프로토콜 ${response.data?.length || 0}개 로드 완료 (총 ${totalCount}개)`);
+      } else {
+        throw new Error(response.message || '프로토콜 목록 조회 실패');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '프로토콜 로드 실패';
+      console.error('프로토콜 로드 에러:', err);
+      setError(errorMessage);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
+  }, [selectedCategory, statusFilter, searchTerm, currentPage, pageSize]);
+
+  // 프로토콜 통계 로드
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await ProtocolApiService.getProtocolStatistics();
+      if (response.success) {
+        setStats(response.data);
+        console.log('프로토콜 통계 로드 완료');
+      }
+    } catch (err) {
+      console.warn('프로토콜 통계 로드 실패:', err);
+      // 통계는 필수가 아니므로 에러로 처리하지 않음
+    }
   }, []);
 
+  // 초기 데이터 로드
+  useEffect(() => {
+    loadProtocols();
+    loadStats();
+  }, [loadProtocols, loadStats]);
+
+  // 필터나 검색 변경 시 첫 페이지로 이동
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [selectedCategory, statusFilter, searchTerm]);
+
+  // 프로토콜 액션 처리
+  const handleProtocolAction = async (action: string, protocolId: number) => {
+    try {
+      setProcessing(protocolId);
+      setError(null);
+
+      console.log(`프로토콜 ${action} 실행:`, protocolId);
+
+      let response;
+      switch (action) {
+        case 'enable':
+          response = await ProtocolApiService.updateProtocol(protocolId, { is_enabled: true });
+          break;
+        case 'disable':
+          response = await ProtocolApiService.updateProtocol(protocolId, { is_enabled: false });
+          break;
+        case 'test':
+          // 연결 테스트의 경우 기본 파라미터로 테스트
+          const protocol = protocols.find(p => p.id === protocolId);
+          if (protocol) {
+            const testParams: Record<string, any> = {};
+            
+            // 프로토콜별 기본 테스트 파라미터 설정
+            if (protocol.protocol_type === 'MODBUS_TCP') {
+              testParams.host = '127.0.0.1';
+              testParams.port = protocol.default_port || 502;
+              testParams.slave_id = 1;
+            } else if (protocol.protocol_type === 'MQTT') {
+              testParams.broker_url = `mqtt://localhost:${protocol.default_port || 1883}`;
+              testParams.client_id = 'test_client';
+            } else if (protocol.protocol_type === 'BACNET') {
+              testParams.device_instance = 1234;
+              testParams.host = '127.0.0.1';
+              testParams.port = protocol.default_port || 47808;
+            }
+            
+            response = await ProtocolApiService.testProtocolConnection(protocolId, testParams);
+            
+            if (response.success && response.data) {
+              const result = response.data;
+              const message = result.test_successful 
+                ? `연결 테스트 성공! 응답시간: ${result.response_time_ms}ms`
+                : `연결 테스트 실패: ${result.error_message}`;
+              alert(message);
+            }
+          }
+          break;
+        case 'edit':
+          console.log('편집 모달 열기:', protocolId);
+          setShowEditor({ mode: 'edit', protocolId });
+          return;
+        case 'view':
+          // 상세보기 모달 열기
+          console.log('상세보기 모달 열기 시작:', protocolId);
+          const protocolToView = protocols.find(p => p.id === protocolId);
+          console.log('찾은 프로토콜:', protocolToView);
+          if (protocolToView) {
+            setSelectedProtocol(protocolToView);
+            setShowDetailModal(true);
+            console.log('상세보기 모달 상태 설정 완료');
+          } else {
+            console.error('프로토콜을 찾을 수 없습니다:', protocolId);
+          }
+          return;
+        default:
+          throw new Error(`알 수 없는 액션: ${action}`);
+      }
+
+      if (response && response.success) {
+        console.log(`프로토콜 ${action} 완료`);
+        await loadProtocols(); // 목록 새로고침
+      } else if (response) {
+        throw new Error(response.message || `프로토콜 ${action} 실패`);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : `프로토콜 ${action} 실패`;
+      console.error(`프로토콜 ${action} 에러:`, err);
+      setError(errorMessage);
+      alert(errorMessage);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  // 필터 초기화
+  const resetFilters = () => {
+    setSelectedCategory('all');
+    setStatusFilter('all');
+    setSearchTerm('');
+    setCurrentPage(1); // 페이지도 첫 페이지로 초기화
+  };
+
+  // 페이징 핸들러
+  const handlePageChange = (page: number, newPageSize: number) => {
+    console.log('페이지 변경:', { page, newPageSize });
+    setCurrentPage(page);
+    if (newPageSize !== pageSize) {
+      setPageSize(newPageSize);
+      setCurrentPage(1); // 페이지 크기 변경 시 첫 페이지로
+    }
+  };
+
+  // 카테고리 아이콘
   const getCategoryIcon = (category: string) => {
     const icons = {
       'industrial': '🏭',
@@ -135,6 +257,7 @@ const ProtocolManagement: React.FC = () => {
     return icons[category] || '📡';
   };
 
+  // 카테고리 색상
   const getCategoryColor = (category: string) => {
     const colors = {
       'industrial': '#3b82f6',
@@ -146,12 +269,41 @@ const ProtocolManagement: React.FC = () => {
     return colors[category] || '#6b7280';
   };
 
-  const filteredProtocols = protocols.filter(protocol => {
-    const matchesCategory = selectedCategory === 'all' || protocol.category === selectedCategory;
-    const matchesSearch = protocol.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         protocol.description.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // 통계 계산 (실제 데이터 기반)
+  const calculateStats = () => {
+    if (stats) return stats;
+    
+    return {
+      total_protocols: totalCount || protocols.length,
+      enabled_protocols: protocols.filter(p => p.is_enabled).length,
+      deprecated_protocols: protocols.filter(p => p.is_deprecated).length,
+      total_devices: protocols.reduce((sum, p) => sum + (p.device_count || 0), 0)
+    };
+  };
+
+  const currentStats = calculateStats();
+
+  // Editor 핸들러
+  const handleEditorSave = async (protocol: Protocol) => {
+    await loadProtocols(); // 목록 새로고침
+    setShowEditor(null); // Editor 닫기
+  };
+
+  const handleEditorCancel = () => {
+    setShowEditor(null); // Editor 닫기
+  };
+
+  // Editor가 열려있으면 Editor 표시
+  if (showEditor) {
+    return (
+      <ProtocolEditor
+        protocolId={showEditor.protocolId}
+        mode={showEditor.mode}
+        onSave={handleEditorSave}
+        onCancel={handleEditorCancel}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -159,9 +311,44 @@ const ProtocolManagement: React.FC = () => {
         display: 'flex', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        height: '400px' 
+        height: '400px',
+        flexDirection: 'column',
+        gap: '16px'
       }}>
-        <div>로딩 중...</div>
+        <div>🔄 프로토콜 데이터를 불러오는 중...</div>
+        <div style={{ fontSize: '14px', color: '#64748b' }}>
+          백엔드 API에서 데이터를 가져오고 있습니다.
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '400px',
+        flexDirection: 'column',
+        gap: '16px',
+        color: '#dc2626'
+      }}>
+        <div>❌ 오류가 발생했습니다</div>
+        <div style={{ fontSize: '14px' }}>{error}</div>
+        <button 
+          onClick={() => window.location.reload()}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#dc2626',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer'
+          }}
+        >
+          페이지 새로고침
+        </button>
       </div>
     );
   }
@@ -195,27 +382,30 @@ const ProtocolManagement: React.FC = () => {
             margin: 0,
             fontSize: '16px'
           }}>
-            통신 프로토콜의 조회, 편집, 등록을 관리합니다
+            통신 프로토콜의 조회, 편집, 등록을 관리합니다 (페이징 지원)
           </p>
         </div>
-        <button style={{
-          backgroundColor: '#3b82f6',
-          color: 'white',
-          border: 'none',
-          borderRadius: '8px',
-          padding: '12px 24px',
-          fontSize: '14px',
-          fontWeight: '500',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
+        <button 
+          onClick={() => setShowEditor({ mode: 'create' })}
+          style={{
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '12px 24px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
           ➕ 새 프로토콜 등록
         </button>
       </div>
 
-      {/* 통계 카드들 - 4열 가로 배치 */}
+      {/* 통계 카드들 */}
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: 'repeat(4, 1fr)', 
@@ -257,7 +447,7 @@ const ProtocolManagement: React.FC = () => {
             fontWeight: '700', 
             color: '#1e293b' 
           }}>
-            {stats?.total_protocols || 0}
+            {currentStats.total_protocols || 0}
           </div>
         </div>
 
@@ -296,7 +486,7 @@ const ProtocolManagement: React.FC = () => {
             fontWeight: '700', 
             color: '#16a34a' 
           }}>
-            {stats?.enabled_protocols || 0}
+            {currentStats.enabled_protocols || 0}
           </div>
         </div>
 
@@ -335,7 +525,7 @@ const ProtocolManagement: React.FC = () => {
             fontWeight: '700', 
             color: '#d97706' 
           }}>
-            {stats?.deprecated_protocols || 0}
+            {currentStats.deprecated_protocols || 0}
           </div>
         </div>
 
@@ -374,7 +564,7 @@ const ProtocolManagement: React.FC = () => {
             fontWeight: '700', 
             color: '#0284c7' 
           }}>
-            {protocols.reduce((sum, p) => sum + p.device_count, 0)}
+            {protocols.reduce((sum, p) => sum + (p.device_count || 0), 0)}
           </div>
         </div>
       </div>
@@ -457,13 +647,17 @@ const ProtocolManagement: React.FC = () => {
           }}>
             상태
           </label>
-          <select style={{
-            padding: '8px 12px',
-            border: '1px solid #d1d5db',
-            borderRadius: '6px',
-            fontSize: '14px',
-            width: '120px'
-          }}>
+          <select 
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '14px',
+              width: '120px'
+            }}
+          >
             <option value="all">전체 상태</option>
             <option value="enabled">활성</option>
             <option value="disabled">비활성</option>
@@ -501,26 +695,76 @@ const ProtocolManagement: React.FC = () => {
           </button>
         </div>
 
-        <button style={{
-          padding: '8px 16px',
-          backgroundColor: '#f3f4f6',
-          border: '1px solid #d1d5db',
-          borderRadius: '6px',
-          fontSize: '14px',
-          cursor: 'pointer'
-        }}>
+        <button 
+          onClick={resetFilters}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#f3f4f6',
+            border: '1px solid #d1d5db',
+            borderRadius: '6px',
+            fontSize: '14px',
+            cursor: 'pointer'
+          }}
+        >
           🔄 필터 초기화
         </button>
       </div>
 
-      {/* 프로토콜 목록 - 카드형 */}
-      {viewMode === 'cards' ? (
+      {/* 페이징 정보 표시 */}
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        padding: '12px 16px',
+        marginBottom: '16px',
+        boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+        border: '1px solid #e2e8f0',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        fontSize: '14px',
+        color: '#64748b'
+      }}>
+        <div>
+          {protocols.length > 0 ? (
+            <span>
+              {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} / {totalCount}개 표시
+            </span>
+          ) : (
+            <span>검색 결과 없음</span>
+          )}
+        </div>
+        <div>
+          페이지 {currentPage} / {Math.ceil(totalCount / pageSize) || 1}
+        </div>
+      </div>
+
+      {/* 프로토콜 목록 */}
+      {protocols.length === 0 ? (
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          padding: '48px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)',
+          border: '1px solid #e2e8f0',
+          marginBottom: '24px'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔍</div>
+          <h3 style={{ margin: 0, marginBottom: '8px', color: '#374151' }}>
+            조건에 맞는 프로토콜이 없습니다
+          </h3>
+          <p style={{ margin: 0, color: '#6b7280' }}>
+            다른 검색어나 필터를 시도해보세요
+          </p>
+        </div>
+      ) : viewMode === 'cards' ? (
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', 
-          gap: '20px' 
+          gap: '20px',
+          marginBottom: '24px'
         }}>
-          {filteredProtocols.map(protocol => (
+          {protocols.map(protocol => (
             <div 
               key={protocol.id}
               style={{
@@ -530,15 +774,20 @@ const ProtocolManagement: React.FC = () => {
                 boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)',
                 border: '1px solid #e2e8f0',
                 transition: 'all 0.2s ease',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                opacity: processing === protocol.id ? 0.6 : 1
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)';
+                if (processing !== protocol.id) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)';
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px 0 rgb(0 0 0 / 0.1)';
+                if (processing !== protocol.id) {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px 0 rgb(0 0 0 / 0.1)';
+                }
               }}
             >
               {/* 카드 헤더 */}
@@ -553,13 +802,13 @@ const ProtocolManagement: React.FC = () => {
                     width: '48px',
                     height: '48px',
                     borderRadius: '8px',
-                    backgroundColor: `${getCategoryColor(protocol.category)}20`,
+                    backgroundColor: `${getCategoryColor(protocol.category || 'network')}20`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: '20px'
                   }}>
-                    {getCategoryIcon(protocol.category)}
+                    {getCategoryIcon(protocol.category || 'network')}
                   </div>
                   <div>
                     <h3 style={{ 
@@ -582,13 +831,13 @@ const ProtocolManagement: React.FC = () => {
                       <span>•</span>
                       <span style={{
                         padding: '2px 6px',
-                        backgroundColor: getCategoryColor(protocol.category),
+                        backgroundColor: getCategoryColor(protocol.category || 'network'),
                         color: 'white',
                         borderRadius: '4px',
                         fontSize: '10px',
                         fontWeight: '500'
                       }}>
-                        {protocol.category}
+                        {protocol.category || 'network'}
                       </span>
                     </div>
                   </div>
@@ -662,7 +911,7 @@ const ProtocolManagement: React.FC = () => {
                     fontWeight: '700',
                     color: '#1e293b'
                   }}>
-                    {protocol.device_count}
+                    {protocol.device_count || 0}
                   </div>
                   <div style={{ 
                     fontSize: '12px', 
@@ -677,7 +926,7 @@ const ProtocolManagement: React.FC = () => {
                     fontWeight: '700',
                     color: '#16a34a'
                   }}>
-                    {protocol.enabled_count}
+                    {protocol.enabled_count || 0}
                   </div>
                   <div style={{ 
                     fontSize: '12px', 
@@ -692,7 +941,7 @@ const ProtocolManagement: React.FC = () => {
                     fontWeight: '700',
                     color: '#0284c7'
                   }}>
-                    {protocol.connected_count}
+                    {protocol.connected_count || 0}
                   </div>
                   <div style={{ 
                     fontSize: '12px', 
@@ -710,38 +959,81 @@ const ProtocolManagement: React.FC = () => {
                 paddingTop: '16px',
                 borderTop: '1px solid #f1f5f9'
               }}>
-                <button style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  cursor: 'pointer'
-                }}>
+                <button 
+                  onClick={() => handleProtocolAction('view', protocol.id)}
+                  disabled={processing === protocol.id}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
+                  }}
+                >
                   👁️ 상세보기
                 </button>
-                <button style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  cursor: 'pointer'
-                }}>
+                <button 
+                  onClick={() => handleProtocolAction('edit', protocol.id)}
+                  disabled={processing === protocol.id}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
+                  }}
+                >
                   ✏️ 편집
                 </button>
-                <button style={{
-                  padding: '8px 12px',
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  cursor: 'pointer'
-                }}>
-                  🔗 테스트
+                <button 
+                  onClick={() => handleProtocolAction('test', protocol.id)}
+                  disabled={processing === protocol.id}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {processing === protocol.id ? '⏳' : '🔗'} 테스트
                 </button>
+                {protocol.is_enabled ? (
+                  <button 
+                    onClick={() => handleProtocolAction('disable', protocol.id)}
+                    disabled={processing === protocol.id}
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#fef3c7',
+                      border: '1px solid #f59e0b',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {processing === protocol.id ? '⏳' : '⏸️'}
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => handleProtocolAction('enable', protocol.id)}
+                    disabled={processing === protocol.id}
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#dcfce7',
+                      border: '1px solid #16a34a',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {processing === protocol.id ? '⏳' : '▶️'}
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -753,7 +1045,8 @@ const ProtocolManagement: React.FC = () => {
           borderRadius: '12px',
           boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)',
           border: '1px solid #e2e8f0',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          marginBottom: '24px'
         }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -821,18 +1114,23 @@ const ProtocolManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredProtocols.map((protocol, index) => (
+              {protocols.map((protocol, index) => (
                 <tr 
                   key={protocol.id}
                   style={{ 
                     backgroundColor: index % 2 === 0 ? 'white' : '#f8fafc',
-                    transition: 'background-color 0.2s'
+                    transition: 'background-color 0.2s',
+                    opacity: processing === protocol.id ? 0.6 : 1
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f1f5f9';
+                    if (processing !== protocol.id) {
+                      e.currentTarget.style.backgroundColor = '#f1f5f9';
+                    }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = index % 2 === 0 ? 'white' : '#f8fafc';
+                    if (processing !== protocol.id) {
+                      e.currentTarget.style.backgroundColor = index % 2 === 0 ? 'white' : '#f8fafc';
+                    }
                   }}
                 >
                   <td style={{ padding: '16px', borderBottom: '1px solid #f1f5f9' }}>
@@ -841,13 +1139,13 @@ const ProtocolManagement: React.FC = () => {
                         width: '32px',
                         height: '32px',
                         borderRadius: '6px',
-                        backgroundColor: `${getCategoryColor(protocol.category)}20`,
+                        backgroundColor: `${getCategoryColor(protocol.category || 'network')}20`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '16px'
                       }}>
-                        {getCategoryIcon(protocol.category)}
+                        {getCategoryIcon(protocol.category || 'network')}
                       </div>
                       <div>
                         <div style={{ 
@@ -870,13 +1168,13 @@ const ProtocolManagement: React.FC = () => {
                   <td style={{ padding: '16px', borderBottom: '1px solid #f1f5f9' }}>
                     <span style={{
                       padding: '4px 8px',
-                      backgroundColor: getCategoryColor(protocol.category),
+                      backgroundColor: getCategoryColor(protocol.category || 'network'),
                       color: 'white',
                       borderRadius: '6px',
                       fontSize: '12px',
                       fontWeight: '500'
                     }}>
-                      {protocol.category}
+                      {protocol.category || 'network'}
                     </span>
                   </td>
                   <td style={{ 
@@ -894,10 +1192,10 @@ const ProtocolManagement: React.FC = () => {
                     textAlign: 'center'
                   }}>
                     <div style={{ fontSize: '16px', fontWeight: '600', color: '#1e293b' }}>
-                      {protocol.device_count}
+                      {protocol.device_count || 0}
                     </div>
                     <div style={{ fontSize: '12px', color: '#64748b' }}>
-                      {protocol.connected_count} 연결중
+                      {protocol.connected_count || 0} 연결중
                     </div>
                   </td>
                   <td style={{ 
@@ -923,71 +1221,76 @@ const ProtocolManagement: React.FC = () => {
                   }}>
                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                       <button 
-                        onClick={() => console.log('프로토콜 상세보기:', protocol.id)}
+                        onClick={() => handleProtocolAction('view', protocol.id)}
+                        disabled={processing === protocol.id}
                         style={{
                           padding: '6px 8px',
                           backgroundColor: '#f8fafc',
                           border: '1px solid #e2e8f0',
                           borderRadius: '4px',
                           fontSize: '12px',
-                          cursor: 'pointer'
+                          cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
                         }}
                       >
                         👁️
                       </button>
                       <button 
-                        onClick={() => console.log('프로토콜 편집:', protocol.id)}
+                        onClick={() => handleProtocolAction('edit', protocol.id)}
+                        disabled={processing === protocol.id}
                         style={{
                           padding: '6px 8px',
                           backgroundColor: '#f8fafc',
                           border: '1px solid #e2e8f0',
                           borderRadius: '4px',
                           fontSize: '12px',
-                          cursor: 'pointer'
+                          cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
                         }}
                       >
                         ✏️
                       </button>
                       <button 
                         onClick={() => handleProtocolAction('test', protocol.id)}
+                        disabled={processing === protocol.id}
                         style={{
                           padding: '6px 8px',
                           backgroundColor: '#f8fafc',
                           border: '1px solid #e2e8f0',
                           borderRadius: '4px',
                           fontSize: '12px',
-                          cursor: 'pointer'
+                          cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
                         }}
                       >
-                        🔗
+                        {processing === protocol.id ? '⏳' : '🔗'}
                       </button>
                       {protocol.is_enabled ? (
                         <button 
                           onClick={() => handleProtocolAction('disable', protocol.id)}
+                          disabled={processing === protocol.id}
                           style={{
                             padding: '6px 8px',
                             backgroundColor: '#fef3c7',
                             border: '1px solid #f59e0b',
                             borderRadius: '4px',
                             fontSize: '12px',
-                            cursor: 'pointer'
+                            cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
                           }}
                         >
-                          ⏸️
+                          {processing === protocol.id ? '⏳' : '⏸️'}
                         </button>
                       ) : (
                         <button 
                           onClick={() => handleProtocolAction('enable', protocol.id)}
+                          disabled={processing === protocol.id}
                           style={{
                             padding: '6px 8px',
                             backgroundColor: '#dcfce7',
                             border: '1px solid #16a34a',
                             borderRadius: '4px',
                             fontSize: '12px',
-                            cursor: 'pointer'
+                            cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
                           }}
                         >
-                          ▶️
+                          {processing === protocol.id ? '⏳' : '▶️'}
                         </button>
                       )}
                     </div>
@@ -997,6 +1300,54 @@ const ProtocolManagement: React.FC = () => {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* 페이징 컴포넌트 */}
+      {totalCount > 0 && (
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          padding: '20px',
+          boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          justifyContent: 'center'
+        }}>
+          <Pagination
+            current={currentPage}
+            total={totalCount}
+            pageSize={pageSize}
+            pageSizeOptions={[10, 25, 50, 100]}
+            showSizeChanger={true}
+            showTotal={true}
+            onChange={handlePageChange}
+            onShowSizeChange={handlePageChange}
+          />
+        </div>
+      )}
+
+      {/* 프로토콜 상세보기 모달 */}
+      {showDetailModal && selectedProtocol && (
+        <ProtocolDetailModal
+          protocol={selectedProtocol}
+          isOpen={showDetailModal}
+          onClose={() => {
+            console.log('상세보기 모달 닫기');
+            setShowDetailModal(false);
+            setSelectedProtocol(null);
+          }}
+        />
+      )}
+
+      {/* 프로토콜 편집/생성 모달 */}
+      {showEditor && (
+        <ProtocolEditor
+          protocolId={showEditor.protocolId}
+          mode={showEditor.mode}
+          isOpen={true}
+          onSave={handleEditorSave}
+          onCancel={handleEditorCancel}
+        />
       )}
     </div>
   );
