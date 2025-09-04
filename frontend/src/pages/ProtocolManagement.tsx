@@ -192,6 +192,7 @@ const ProtocolManagement: React.FC = () => {
           break;
         case 'edit':
           console.log('편집 모달 열기:', protocolId);
+          console.log('설정할 showEditor 상태:', { mode: 'edit', protocolId });
           setShowEditor({ mode: 'edit', protocolId });
           return;
         case 'view':
@@ -292,18 +293,6 @@ const ProtocolManagement: React.FC = () => {
   const handleEditorCancel = () => {
     setShowEditor(null); // Editor 닫기
   };
-
-  // Editor가 열려있으면 Editor 표시
-  if (showEditor) {
-    return (
-      <ProtocolEditor
-        protocolId={showEditor.protocolId}
-        mode={showEditor.mode}
-        onSave={handleEditorSave}
-        onCancel={handleEditorCancel}
-      />
-    );
-  }
 
   if (loading) {
     return (
@@ -1232,7 +1221,7 @@ const ProtocolManagement: React.FC = () => {
                           cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
                         }}
                       >
-                        👁️
+                        📋
                       </button>
                       <button 
                         onClick={() => handleProtocolAction('edit', protocol.id)}
@@ -1247,20 +1236,6 @@ const ProtocolManagement: React.FC = () => {
                         }}
                       >
                         ✏️
-                      </button>
-                      <button 
-                        onClick={() => handleProtocolAction('test', protocol.id)}
-                        disabled={processing === protocol.id}
-                        style={{
-                          padding: '6px 8px',
-                          backgroundColor: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          cursor: processing === protocol.id ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        {processing === protocol.id ? '⏳' : '🔗'}
                       </button>
                       {protocol.is_enabled ? (
                         <button 
@@ -1339,15 +1314,30 @@ const ProtocolManagement: React.FC = () => {
         />
       )}
 
-      {/* 프로토콜 편집/생성 모달 */}
+      {/* 프로토콜 편집/생성 모달 - 디버그 정보 추가 */}
       {showEditor && (
-        <ProtocolEditor
-          protocolId={showEditor.protocolId}
-          mode={showEditor.mode}
-          isOpen={true}
-          onSave={handleEditorSave}
-          onCancel={handleEditorCancel}
-        />
+        <>
+          <div style={{
+            position: 'fixed',
+            top: '10px',
+            right: '10px',
+            backgroundColor: 'yellow',
+            padding: '10px',
+            zIndex: 10000,
+            border: '2px solid red',
+            fontFamily: 'monospace',
+            fontSize: '12px'
+          }}>
+            DEBUG: showEditor = {JSON.stringify(showEditor)}
+          </div>
+          <ProtocolEditor
+            protocolId={showEditor.protocolId}
+            mode={showEditor.mode}
+            isOpen={true}
+            onSave={handleEditorSave}
+            onCancel={handleEditorCancel}
+          />
+        </>
       )}
     </div>
   );
