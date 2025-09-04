@@ -441,13 +441,7 @@ class ProtocolRepository extends BaseRepository {
             console.log('📊 ProtocolRepository.getTotalCount 호출:', filters);
 
             let query = 'SELECT COUNT(*) as total FROM protocols WHERE 1=1';
-            const params = [];
-
-            // 테넌트 필터 (필요시)
-            if (filters.tenantId) {
-                query += ' AND tenant_id = ?';
-                params.push(filters.tenantId);
-            }
+            const params = [];  
 
             // 카테고리 필터
             if (filters.category) {
@@ -489,7 +483,7 @@ class ProtocolRepository extends BaseRepository {
             console.log('📊 실행할 COUNT 쿼리:', query);
             console.log('📊 쿼리 파라미터:', params);
 
-            const result = await this.db.get(query, params);
+            const result = await this.executeQuerySingle(query, params);
             const totalCount = result?.total || 0;
             
             console.log(`✅ 총 개수 조회 완료: ${totalCount}개`);
