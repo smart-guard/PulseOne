@@ -622,7 +622,7 @@ const ProtocolManagement: React.FC = () => {
             margin: 0,
             fontSize: '16px'
           }}>
-            통신 프로토콜의 조회, 편집, 등록을 관리합니다 (확인 팝업 지원)
+            통신 프로토콜의 조회, 편집, 등록을 관리합니다
           </p>
         </div>
         <button 

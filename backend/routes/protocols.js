@@ -135,6 +135,12 @@ router.get('/category/:category', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const { tenantId } = req;
+        
+        // page 파라미터를 받아서 offset 계산 (다른 API와 동일한 패턴)
+        const page = req.query.page ? parseInt(req.query.page) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit) : null;
+        const offset = limit ? (page - 1) * limit : null;
+        
         const filters = {
             tenantId,
             category: req.query.category,
@@ -145,13 +151,12 @@ router.get('/', async (req, res) => {
             search: req.query.search,
             sortBy: req.query.sortBy || 'display_name',
             sortOrder: req.query.sortOrder || 'ASC',
-            limit: req.query.limit ? parseInt(req.query.limit) : null,
-            offset: req.query.offset ? parseInt(req.query.offset) : null
+            limit,
+            offset  // 계산된 offset 사용
         };
 
         console.log('📋 프로토콜 목록 조회 요청:', filters);
 
-        // 프로토콜 데이터와 총 개수를 병렬로 조회
         const [protocols, totalCount] = await Promise.all([
             getProtocolRepo().findAll(filters),
             getProtocolRepo().getTotalCount(filters)
@@ -159,16 +164,16 @@ router.get('/', async (req, res) => {
 
         console.log(`✅ 프로토콜 ${protocols.length}개 조회 완료 (전체: ${totalCount}개)`);
 
-        // 페이징 정보 계산
+        // 페이징 정보 계산 (page 기반으로 수정)
         const pagination = {
             total_count: totalCount,
-            current_page: filters.offset && filters.limit ? Math.floor(filters.offset / filters.limit) + 1 : 1,
-            page_size: filters.limit || totalCount,
-            total_pages: filters.limit ? Math.ceil(totalCount / filters.limit) : 1,
-            has_next: filters.offset && filters.limit ? (filters.offset + filters.limit) < totalCount : false,
-            has_prev: filters.offset && filters.limit ? filters.offset > 0 : false,
-            offset: filters.offset || 0,
-            limit: filters.limit || totalCount
+            current_page: page,  // 직접 page 사용
+            page_size: limit || totalCount,
+            total_pages: limit ? Math.ceil(totalCount / limit) : 1,
+            has_next: limit ? (page * limit) < totalCount : false,  // page 기반 계산
+            has_prev: page > 1,  // 간단하게 page > 1
+            offset: offset || 0,
+            limit: limit || totalCount
         };
 
         res.json(createResponse(
@@ -185,13 +190,6 @@ router.get('/', async (req, res) => {
         res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_LIST_ERROR'));
     }
 });
-
-    } catch (error) {
-        console.error('❌ 프로토콜 목록 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_LIST_ERROR'));
-    }
-});
-
 // ============================================================================
 // ➕ 프로토콜 생성 API - Repository 사용
 // ============================================================================
