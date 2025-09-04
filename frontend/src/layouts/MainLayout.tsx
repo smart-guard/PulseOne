@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/layouts/MainLayout.tsx
-// 실시간 알람 개수 연동 버전
+// 프로토콜 관리 메뉴를 추가한 실제 업데이트 버전
 // ============================================================================
 
 import React, { useState } from 'react';
@@ -89,6 +89,35 @@ export const MainLayout: React.FC = () => {
                   <i className="fas fa-network-wired"></i>
                 </div>
                 <span className="menu-title">디바이스 목록</span>
+              </Link>
+            </li>
+
+            {/* 🆕 프로토콜 관리 - 새로 추가 */}
+            <li className="menu-item">
+              <Link 
+                to="/protocols" 
+                className={`menu-link ${isActiveMenu('/protocols') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-plug"></i>
+                </div>
+                <span className="menu-title">프로토콜 관리</span>
+                {!sidebarCollapsed && (
+                  <span 
+                    style={{ 
+                      marginLeft: 'auto',
+                      padding: '2px 6px',
+                      fontSize: '9px',
+                      borderRadius: '8px',
+                      background: '#3b82f6',
+                      color: 'white',
+                      fontWeight: '500',
+                      textTransform: 'uppercase'
+                    }}
+                  >
+                    NEW
+                  </span>
+                )}
               </Link>
             </li>
 
@@ -318,6 +347,7 @@ export const MainLayout: React.FC = () => {
               <span className="breadcrumb-item active">
                 {location.pathname === '/' || location.pathname === '/dashboard' ? '대시보드' : 
                  location.pathname.includes('/devices') ? '디바이스 관리' :
+                 location.pathname.includes('/protocols') ? '프로토콜 관리' : // 🆕 추가
                  location.pathname.includes('/data') ? '데이터 관리' :
                  location.pathname.includes('/alarms') ? '알람 관리' :
                  location.pathname.includes('/system') ? '시스템 관리' : '페이지'}

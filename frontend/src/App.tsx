@@ -25,6 +25,8 @@ import SystemStatus from './pages/SystemStatus';
 import UserManagement from './pages/UserManagement';
 import PermissionManagement from './pages/PermissionManagement';
 import BackupRestore from './pages/BackupRestore';
+import ProtocolManagement from './pages/ProtocolManagement';
+
 
 const App: React.FC = () => {
   return (
@@ -44,6 +46,9 @@ const App: React.FC = () => {
                 {/* 디바이스 관리 */}
                 <Route path="devices" element={<DeviceList />} />
                 
+                {/* 🆕 프로토콜 관리 - 새로 추가된 라우트 */}
+                <Route path="protocols" element={<ProtocolManagement />} />
+
                 {/* 데이터 관리 */}
                 <Route path="data">
                   <Route path="explorer" element={<DataExplorer />} />

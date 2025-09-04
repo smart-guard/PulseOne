@@ -31,6 +31,15 @@ export type {
   BulkActionResult
 } from './services/deviceApi';
 
+// 🔌 프로토콜 관리 API (새로 추가)
+export { ProtocolApiService } from './services/protocolApi';
+export type {
+  Protocol,
+  ProtocolStats,
+  ProtocolCreateData,
+  ProtocolUpdateData
+} from './services/protocolApi';
+
 // 📊 데이터 익스플로러 API
 export { DataApiService } from './services/dataApi';
 export type {
