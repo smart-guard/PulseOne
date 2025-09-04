@@ -1,493 +1,588 @@
-// ============================================================================
+// =============================================================================
 // backend/lib/database/repositories/AlarmRuleRepository.js
-// BaseRepository 상속받은 AlarmRuleRepository - 쿼리 분리 적용, INSERT 오류 수정
-// ============================================================================
+// ProtocolRepository 패턴과 100% 동일하게 구현
+// =============================================================================
 
 const BaseRepository = require('./BaseRepository');
 const AlarmQueries = require('../queries/AlarmQueries');
 
-/**
- * 알람 규칙 Repository 클래스 (C++ AlarmRuleRepository와 동일한 구조)
- * BaseRepository를 상속받아 공통 기능 활용
- * 
- * 🔧 주요 개선사항:
- * - AlarmQueries.js 쿼리 분리 패턴 적용
- * - INSERT 컬럼/값 개수 불일치 문제 해결 (15개 컬럼 사용)
- * - 헬퍼 메서드로 파라미터 생성 자동화
- * - 필드 검증 로직 추가
- */
 class AlarmRuleRepository extends BaseRepository {
     constructor() {
+        // ProtocolRepository와 동일한 패턴: 매개변수 없는 생성자
         super('alarm_rules');
-        
-        // 알람 규칙 특화 필드 정의 (C++ AlarmRuleEntity와 동일)
-        this.fields = {
-            id: 'autoIncrement',
-            tenant_id: 'int',
-            name: 'varchar(100)',
-            description: 'text',
-            target_type: 'varchar(20)', // 'data_point', 'virtual_point', 'device', 'group'
-            target_id: 'int',
-            alarm_type: 'varchar(20)', // 'analog', 'digital', 'script'
-            severity: 'varchar(20)', // 'critical', 'high', 'medium', 'low'
-            priority: 'int',
-            is_enabled: 'boolean',
-            auto_clear: 'boolean',
-            
-            // Analog 알람 설정
-            high_limit: 'double',
-            low_limit: 'double',
-            deadband: 'double',
-            
-            // Digital 알람 설정
-            digital_trigger: 'varchar(20)', // 'on_true', 'on_false', 'on_change'
-            
-            // Script 알람 설정
-            condition_script: 'text',
-            message_script: 'text',
-            
-            // 고급 설정
-            suppress_duration: 'int', // 초 단위
-            escalation_rules: 'text', // JSON
-            tags: 'text', // JSON 배열
-            
-            // 메타데이터
-            created_by: 'int',
-            created_at: 'timestamp',
-            updated_at: 'timestamp'
-        };
-
-        console.log('✅ AlarmRuleRepository 초기화 완료 (쿼리 분리 적용)');
+        console.log('📋 AlarmRuleRepository initialized with standard pattern');
     }
 
-    // ========================================================================
-    // 🔥 BaseRepository 필수 메서드 구현 (AlarmQueries 활용)
-    // ========================================================================
+    // ==========================================================================
+    // 기본 CRUD 연산 (AlarmQueries 사용)
+    // ==========================================================================
 
-    /**
-     * 모든 알람 규칙 조회 (페이징, 필터링 지원)
-     */
     async findAll(filters = {}) {
         try {
+            console.log('AlarmRuleRepository.findAll 호출:', filters);
+            
             let query = AlarmQueries.AlarmRule.FIND_ALL;
-            const params = [filters.tenant_id || 1];
+            const params = [];
+            const conditions = [];
 
-            // 동적 WHERE 절 추가
-            if (filters.target_type || filters.alarm_type || filters.severity || 
-                filters.is_enabled !== undefined || filters.search) {
-                
-                const { query: updatedQuery, params: additionalParams } = 
-                    AlarmQueries.buildAlarmRuleWhereClause(query, filters);
-                
-                query = updatedQuery;
-                params.push(...additionalParams.slice(1)); // tenant_id 제외하고 추가
+            // 테넌트 ID 필수
+            params.push(filters.tenantId || 1);
+
+            // 필터 조건 추가
+            if (filters.targetType && filters.targetType !== 'all') {
+                conditions.push('ar.target_type = ?');
+                params.push(filters.targetType);
             }
 
-            // 페이징 추가
-            if (filters.limit) {
-                query = AlarmQueries.addPagination(query, filters.limit, filters.offset);
-                params.push(parseInt(filters.limit));
-                if (filters.offset) {
-                    params.push(parseInt(filters.offset));
-                }
+            if (filters.targetId) {
+                conditions.push('ar.target_id = ?');
+                params.push(parseInt(filters.targetId));
             }
 
-            const results = await this.executeQuery(query, params);
+            if (filters.alarmType && filters.alarmType !== 'all') {
+                conditions.push('ar.alarm_type = ?');
+                params.push(filters.alarmType);
+            }
+
+            if (filters.severity && filters.severity !== 'all') {
+                conditions.push('ar.severity = ?');
+                params.push(filters.severity);
+            }
+
+            if (filters.isEnabled === true || filters.isEnabled === 'true') {
+                conditions.push('ar.is_enabled = 1');
+            } else if (filters.isEnabled === false || filters.isEnabled === 'false') {
+                conditions.push('ar.is_enabled = 0');
+            }
+
+            if (filters.category && filters.category !== 'all') {
+                conditions.push('ar.category = ?');
+                params.push(filters.category);
+            }
+
+            if (filters.tag) {
+                conditions.push('ar.tags LIKE ?');
+                params.push(`%${filters.tag}%`);
+            }
+
+            if (filters.templateId) {
+                conditions.push('ar.template_id = ?');
+                params.push(parseInt(filters.templateId));
+            }
+
+            if (filters.ruleGroup) {
+                conditions.push('ar.rule_group = ?');
+                params.push(filters.ruleGroup);
+            }
+
+            if (filters.search) {
+                conditions.push('(ar.name LIKE ? OR ar.description LIKE ? OR ar.category LIKE ? OR ar.tags LIKE ?)');
+                const searchParam = `%${filters.search}%`;
+                params.push(searchParam, searchParam, searchParam, searchParam);
+            }
+
+            // 조건들을 쿼리에 추가
+            if (conditions.length > 0) {
+                query += ' AND ' + conditions.join(' AND ');
+            }
+
+            // 정렬 추가
+            const sortBy = filters.sortBy || 'created_at';
+            const sortOrder = filters.sortOrder || 'DESC';
+            query += ` ORDER BY ar.${sortBy} ${sortOrder}`;
+
+            // 페이징 처리를 위한 변수
+            const page = filters.page || 1;
+            const limit = filters.limit || 50;
+            const offset = (page - 1) * limit;
+
+            // 전체 개수 먼저 조회 (페이징 정보를 위해)
+            let countQuery = 'SELECT COUNT(*) as total FROM alarm_rules ar WHERE ar.tenant_id = ?';
+            const countParams = [filters.tenantId || 1];
             
-            // 🔥 results가 undefined인 경우 처리
-            const items = results || [];
+            if (conditions.length > 0) {
+                countQuery += ' AND ' + conditions.join(' AND ');
+                countParams.push(...params.slice(1));
+            }
             
+            const countResult = await this.executeQuery(countQuery, countParams);
+            const total = countResult.length > 0 ? countResult[0].total : 0;
+
+            // 페이징 적용한 실제 데이터 조회
+            query += ' LIMIT ? OFFSET ?';
+            params.push(limit, offset);
+
+            const rules = await this.executeQuery(query, params);
+
+            console.log(`✅ 알람 규칙 ${rules.length}개 조회 완료 (전체: ${total}개)`);
+
+            // 페이징 정보와 함께 반환
             return {
-                items: items.map(rule => this.formatAlarmRule(rule)),
+                items: rules.map(rule => this.parseAlarmRule(rule)),
                 pagination: {
-                    page: parseInt(filters.page) || 1,
-                    limit: parseInt(filters.limit) || 50,
-                    total: items.length,
-                    totalPages: Math.ceil(items.length / (parseInt(filters.limit) || 50))
+                    page: page,
+                    limit: limit,
+                    total: total,
+                    totalPages: Math.ceil(total / limit),
+                    hasNext: page < Math.ceil(total / limit),
+                    hasPrev: page > 1
                 }
             };
-
+            
         } catch (error) {
-            console.error('❌ AlarmRuleRepository.findAll 실패:', error);
+            console.error('AlarmRuleRepository.findAll 실패:', error.message);
             throw error;
         }
     }
 
-    /**
-     * ID로 알람 규칙 조회
-     */
-    async findById(id) {
+    async findById(id, tenantId = null) {
         try {
+            console.log(`AlarmRuleRepository.findById 호출: id=${id}, tenantId=${tenantId}`);
+            
             const query = AlarmQueries.AlarmRule.FIND_BY_ID;
-            const results = await this.executeQuery(query, [id, 1]); // tenant_id = 1 기본값
-            return results && results.length > 0 ? results[0] : null;
-        } catch (error) {
-            console.error('Error in AlarmRuleRepository.findById:', error);
-            throw error;
-        }
-    }
+            const params = [id, tenantId || 1];
 
-    /**
-     * 🔧 알람 규칙 생성 - INSERT 오류 완전 해결
-     * AlarmQueries의 헬퍼 메서드 사용으로 안전한 파라미터 생성
-     */
-    async create(alarmRuleData, tenantId = null) {
-        try {
-            const data = {
-                ...alarmRuleData,
-                tenant_id: tenantId || alarmRuleData.tenant_id || 1
-            };
-
-            // 필수 필드 검증
-            AlarmQueries.validateRequiredFields(data);
-
-            const query = AlarmQueries.AlarmRule.CREATE;
-            const params = AlarmQueries.buildCreateParams(data);
-
-            console.log(`🔧 INSERT 쿼리 실행 - 컬럼: 15개, 값: ${params.length}개`);
-
-            const result = await this.executeNonQuery(query, params);
+            const rules = await this.executeQuery(query, params);
             
-            // 🔥 수정: SQLite 결과 처리 방식 개선
-            let newId = null;
-            if (result) {
-                newId = result.lastInsertRowid || result.insertId || result.lastID;
-                console.log('INSERT 결과:', result);
-                console.log('추출된 ID:', newId);
-            }
-            
-            if (newId) {
-                console.log(`✅ 알람 규칙 생성 성공 - ID: ${newId}`);
-                return await this.findById(newId);
-            } else {
-                // 🔥 대안: 최근 생성된 규칙 조회
-                console.log('⚠️ ID 반환 실패, 최근 생성된 규칙 조회 시도...');
-                const recentQuery = `
-                    SELECT * FROM alarm_rules 
-                    WHERE tenant_id = ? AND name = ? 
-                    ORDER BY created_at DESC, id DESC 
-                    LIMIT 1
-                `;
-                const recent = await this.executeQuerySingle(recentQuery, [data.tenant_id, data.name]);
-                
-                if (recent) {
-                    console.log(`✅ 최근 생성된 규칙 발견 - ID: ${recent.id}`);
-                    return this.formatAlarmRule(recent);
-                } else {
-                    throw new Error('알람 규칙 생성 실패 - 생성된 규칙을 찾을 수 없음');
-                }
-            }
-
-        } catch (error) {
-            console.error('❌ AlarmRuleRepository.create 오류:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * 알람 규칙 업데이트
-     */
-    async update(id, updateData, tenantId = null) {
-        try {
-            // 필수 필드 검증
-            AlarmQueries.validateRequiredFields(updateData);
-            AlarmQueries.validateAlarmTypeSpecificFields(updateData);
-
-            const query = AlarmQueries.AlarmRule.UPDATE;
-            const params = AlarmQueries.buildUpdateParams(updateData, id, tenantId);
-
-            const result = await this.executeNonQuery(query, params);
-            
-            if (result && result.changes > 0) {
-                return await this.findById(id);
-            } else {
+            if (rules.length === 0) {
+                console.log(`알람 규칙 ID ${id} 찾을 수 없음`);
                 return null;
             }
-
-        } catch (error) {
-            console.error('Error updating alarm rule:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * 알람 규칙 삭제
-     */
-    async delete(id, tenantId = null) {
-        try {
-            const query = AlarmQueries.AlarmRule.DELETE;
-            const result = await this.executeNonQuery(query, [id, tenantId || 1]);
-            return result && result.changes > 0;
-        } catch (error) {
-            console.error('Error deleting alarm rule:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * 알람 규칙 존재 확인
-     */
-    async exists(id, tenantId = null) {
-        try {
-            const query = tenantId 
-                ? AlarmQueries.AlarmRule.EXISTS
-                : AlarmQueries.AlarmRule.EXISTS_SIMPLE;
             
-            const params = tenantId ? [id, tenantId] : [id];
-            const result = await this.executeQuerySingle(query, params);
-            return !!result;
-
+            console.log(`✅ 알람 규칙 ID ${id} 조회 성공`);
+            
+            return this.parseAlarmRule(rules[0]);
+            
         } catch (error) {
-            console.error(`❌ AlarmRuleRepository.exists(${id}) 실패:`, error);
-            return false;
+            console.error('AlarmRuleRepository.findById 실패:', error.message);
+            throw error;
         }
     }
 
-    // ========================================================================
-    // 🔥 알람 규칙 특화 메서드들 (AlarmQueries 활용)
-    // ========================================================================
+    async findByCategory(category, tenantId = null) {
+        try {
+            const query = AlarmQueries.AlarmRule.FIND_BY_CATEGORY;
+            const params = [category, tenantId || 1];
+            
+            const rules = await this.executeQuery(query, params);
+            
+            return rules.map(rule => this.parseAlarmRule(rule));
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.findByCategory 실패:', error.message);
+            throw error;
+        }
+    }
 
-    /**
-     * 대상별 알람 규칙 조회
-     */
+    async findByTag(tag, tenantId = null) {
+        try {
+            const query = AlarmQueries.AlarmRule.FIND_BY_TAG;
+            const params = [`%${tag}%`, tenantId || 1];
+            
+            const rules = await this.executeQuery(query, params);
+            
+            return rules.map(rule => this.parseAlarmRule(rule));
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.findByTag 실패:', error.message);
+            throw error;
+        }
+    }
+
     async findByTarget(targetType, targetId, tenantId = null) {
         try {
-            const cacheKey = `alarmRulesByTarget_${targetType}_${targetId}_${tenantId}`;
-            const cached = this.getFromCache(cacheKey);
-            if (cached) return cached;
-
             const query = AlarmQueries.AlarmRule.FIND_BY_TARGET;
             const params = [targetType, targetId, tenantId || 1];
-
-            const results = await this.executeQuery(query, params);
-            const alarmRules = results.map(rule => this.formatAlarmRule(rule));
-
-            this.setCache(cacheKey, alarmRules);
-            console.log(`✅ ${targetType}:${targetId} 알람 규칙 ${alarmRules.length}개 조회 완료`);
-            return alarmRules;
-
+            
+            const rules = await this.executeQuery(query, params);
+            
+            return rules.map(rule => this.parseAlarmRule(rule));
+            
         } catch (error) {
-            console.error(`❌ findByTarget(${targetType}, ${targetId}) 실패:`, error);
+            console.error('AlarmRuleRepository.findByTarget 실패:', error.message);
             throw error;
         }
     }
 
-    /**
-     * 활성화된 알람 규칙만 조회
-     */
     async findEnabled(tenantId = null) {
         try {
-            const cacheKey = `enabledAlarmRules_${tenantId}`;
-            const cached = this.getFromCache(cacheKey);
-            if (cached) return cached;
-
             const query = AlarmQueries.AlarmRule.FIND_ENABLED;
             const params = [tenantId || 1];
-
-            const results = await this.executeQuery(query, params);
-            const alarmRules = results.map(rule => this.formatAlarmRule(rule));
-
-            this.setCache(cacheKey, alarmRules);
-            console.log(`✅ 활성화된 알람 규칙 ${alarmRules.length}개 조회 완료`);
-            return alarmRules;
-
+            
+            const rules = await this.executeQuery(query, params);
+            
+            return rules.map(rule => this.parseAlarmRule(rule));
+            
         } catch (error) {
-            console.error('❌ findEnabled 실패:', error);
+            console.error('AlarmRuleRepository.findEnabled 실패:', error.message);
             throw error;
         }
     }
 
-    /**
-     * 알람 타입별 조회
-     */
     async findByType(alarmType, tenantId = null) {
         try {
             const query = AlarmQueries.AlarmRule.FIND_BY_TYPE;
             const params = [alarmType, tenantId || 1];
-
-            const results = await this.executeQuery(query, params);
-            return results.map(rule => this.formatAlarmRule(rule));
-
+            
+            const rules = await this.executeQuery(query, params);
+            
+            return rules.map(rule => this.parseAlarmRule(rule));
+            
         } catch (error) {
-            console.error(`❌ findByType(${alarmType}) 실패:`, error);
+            console.error('AlarmRuleRepository.findByType 실패:', error.message);
             throw error;
         }
     }
 
-    /**
-     * 심각도별 조회
-     */
     async findBySeverity(severity, tenantId = null) {
         try {
             const query = AlarmQueries.AlarmRule.FIND_BY_SEVERITY;
             const params = [severity, tenantId || 1];
-
-            const results = await this.executeQuery(query, params);
-            return results.map(rule => this.formatAlarmRule(rule));
-
+            
+            const rules = await this.executeQuery(query, params);
+            
+            return rules.map(rule => this.parseAlarmRule(rule));
+            
         } catch (error) {
-            console.error(`❌ findBySeverity(${severity}) 실패:`, error);
+            console.error('AlarmRuleRepository.findBySeverity 실패:', error.message);
             throw error;
         }
     }
 
-    /**
-     * 통계 조회
-     */
-    async getStatistics(tenantId = 1) {
-        try {
-            const query = AlarmQueries.AlarmRule.STATS_SUMMARY;
-            const result = await this.executeQuerySingle(query, [tenantId]);
-            return result || {
-                total_rules: 0,
-                enabled_rules: 0,
-                target_types: 0,
-                alarm_types: 0,
-                severity_levels: 0
-            };
-        } catch (error) {
-            console.error('Error getting alarm rule statistics:', error);
-            return { 
-                total_rules: 0, 
-                enabled_rules: 0, 
-                target_types: 0, 
-                alarm_types: 0, 
-                severity_levels: 0 
-            };
-        }
-    }
-
-    /**
-     * 심각도별 통계
-     */
-    async getStatsBySeverity(tenantId = 1) {
-        try {
-            const query = AlarmQueries.AlarmRule.STATS_BY_SEVERITY;
-            const results = await this.executeQuery(query, [tenantId]);
-            
-            return results.reduce((acc, row) => {
-                acc[row.severity] = {
-                    total: row.count,
-                    enabled: row.enabled_count
-                };
-                return acc;
-            }, {});
-        } catch (error) {
-            console.error('Error getting severity statistics:', error);
-            return {};
-        }
-    }
-
-    /**
-     * 타입별 통계
-     */
-    async getStatsByType(tenantId = 1) {
-        try {
-            const query = AlarmQueries.AlarmRule.STATS_BY_TYPE;
-            const results = await this.executeQuery(query, [tenantId]);
-            
-            return results.reduce((acc, row) => {
-                acc[row.alarm_type] = {
-                    total: row.count,
-                    enabled: row.enabled_count
-                };
-                return acc;
-            }, {});
-        } catch (error) {
-            console.error('Error getting type statistics:', error);
-            return {};
-        }
-    }
-
-    /**
-     * 검색 기능
-     */
-    async search(searchTerm, tenantId = 1, limit = 50) {
+    async search(searchTerm, tenantId = null, limit = 50) {
         try {
             const query = AlarmQueries.AlarmRule.SEARCH;
-            const searchPattern = `%${searchTerm}%`;
-            const params = [tenantId, searchPattern, searchPattern, searchPattern];
+            const searchParam = `%${searchTerm}%`;
+            const params = [
+                tenantId || 1,
+                searchParam, searchParam, searchParam, searchParam, searchParam,
+                searchParam, searchParam, searchParam, searchParam, searchParam
+            ];
             
+            let finalQuery = query;
             if (limit) {
-                const queryWithLimit = AlarmQueries.addPagination(query, limit);
+                finalQuery += ' LIMIT ?';
                 params.push(limit);
-                const results = await this.executeQuery(queryWithLimit, params);
-                return results.map(rule => this.formatAlarmRule(rule));
             }
             
-            const results = await this.executeQuery(query, params);
-            return results.map(rule => this.formatAlarmRule(rule));
-
+            const rules = await this.executeQuery(finalQuery, params);
+            
+            return rules.map(rule => this.parseAlarmRule(rule));
+            
         } catch (error) {
-            console.error(`❌ search("${searchTerm}") 실패:`, error);
+            console.error('AlarmRuleRepository.search 실패:', error.message);
             throw error;
         }
     }
 
-    // ========================================================================
-    // 🔥 헬퍼 메서드들
-    // ========================================================================
+    // ==========================================================================
+    // 생성, 수정, 삭제 연산
+    // ==========================================================================
 
-    /**
-     * 알람 규칙 데이터 포맷팅 (JSON 필드 파싱 포함)
-     */
-    formatAlarmRule(rule) {
+    async create(ruleData, userId = null) {
+        try {
+            console.log('AlarmRuleRepository.create 호출:', ruleData.name);
+            
+            // 필수 필드 검증
+            AlarmQueries.validateAlarmRule(ruleData);
+            
+            const query = AlarmQueries.AlarmRule.CREATE;
+            const params = AlarmQueries.buildCreateRuleParams({
+                ...ruleData,
+                created_by: userId || ruleData.created_by
+            });
+
+            const result = await this.executeNonQuery(query, params);
+            const insertId = result.lastInsertRowid || result.insertId || result.lastID;
+
+            if (insertId) {
+                console.log(`✅ 알람 규칙 생성 완료 (ID: ${insertId})`);
+                return await this.findById(insertId, ruleData.tenant_id);
+            } else {
+                throw new Error('Alarm rule creation failed - no ID returned');
+            }
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.create 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async update(id, updateData, tenantId = null) {
+        try {
+            console.log(`AlarmRuleRepository.update 호출: ID ${id}`);
+
+            // 존재 확인
+            const existing = await this.findById(id, tenantId);
+            if (!existing) {
+                throw new Error(`Alarm rule with ID ${id} not found`);
+            }
+
+            const query = AlarmQueries.AlarmRule.UPDATE;
+            const params = AlarmQueries.buildUpdateRuleParams(updateData, id, tenantId || 1);
+            
+            const result = await this.executeNonQuery(query, params);
+
+            if (result.changes && result.changes > 0) {
+                console.log(`✅ 알람 규칙 ID ${id} 업데이트 완료`);
+                return await this.findById(id, tenantId);
+            } else {
+                throw new Error(`Alarm rule with ID ${id} update failed`);
+            }
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.update 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async updateEnabledStatus(id, isEnabled, tenantId = null) {
+        try {
+            console.log(`AlarmRuleRepository.updateEnabledStatus 호출: ID ${id}, isEnabled=${isEnabled}`);
+
+            const query = AlarmQueries.AlarmRule.UPDATE_ENABLED_STATUS;
+            const params = AlarmQueries.buildEnabledStatusParams(isEnabled, id, tenantId || 1);
+            
+            const result = await this.executeNonQuery(query, params);
+
+            if (result.changes && result.changes > 0) {
+                console.log(`✅ 알람 규칙 ID ${id} 상태 업데이트 완료`);
+                return { id: parseInt(id), is_enabled: isEnabled };
+            } else {
+                throw new Error(`Alarm rule with ID ${id} not found`);
+            }
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.updateEnabledStatus 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async updateSettings(id, settings, tenantId = null) {
+        try {
+            console.log(`AlarmRuleRepository.updateSettings 호출: ID ${id}`);
+
+            const query = AlarmQueries.AlarmRule.UPDATE_SETTINGS_ONLY;
+            const params = AlarmQueries.buildSettingsParams(settings, id, tenantId || 1);
+            
+            const result = await this.executeNonQuery(query, params);
+
+            if (result.changes && result.changes > 0) {
+                console.log(`✅ 알람 규칙 ID ${id} 설정 업데이트 완료`);
+                return { id: parseInt(id), updated_settings: settings };
+            } else {
+                throw new Error(`Alarm rule with ID ${id} not found`);
+            }
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.updateSettings 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async updateName(id, name, tenantId = null) {
+        try {
+            console.log(`AlarmRuleRepository.updateName 호출: ID ${id}, name=${name}`);
+
+            const query = AlarmQueries.AlarmRule.UPDATE_NAME_ONLY;
+            const params = AlarmQueries.buildNameParams(name, id, tenantId || 1);
+            
+            const result = await this.executeNonQuery(query, params);
+
+            if (result.changes && result.changes > 0) {
+                console.log(`✅ 알람 규칙 ID ${id} 이름 업데이트 완료`);
+                return { id: parseInt(id), name: name };
+            } else {
+                throw new Error(`Alarm rule with ID ${id} not found`);
+            }
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.updateName 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async updateSeverity(id, severity, tenantId = null) {
+        try {
+            console.log(`AlarmRuleRepository.updateSeverity 호출: ID ${id}, severity=${severity}`);
+
+            const query = AlarmQueries.AlarmRule.UPDATE_SEVERITY_ONLY;
+            const params = AlarmQueries.buildSeverityParams(severity, id, tenantId || 1);
+            
+            const result = await this.executeNonQuery(query, params);
+
+            if (result.changes && result.changes > 0) {
+                console.log(`✅ 알람 규칙 ID ${id} 심각도 업데이트 완료`);
+                return { id: parseInt(id), severity: severity };
+            } else {
+                throw new Error(`Alarm rule with ID ${id} not found`);
+            }
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.updateSeverity 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async delete(id, tenantId = null) {
+        try {
+            console.log(`AlarmRuleRepository.delete 호출: ID ${id}`);
+
+            const query = AlarmQueries.AlarmRule.DELETE;
+            const params = [id, tenantId || 1];
+            
+            const result = await this.executeNonQuery(query, params);
+
+            if (result.changes && result.changes > 0) {
+                console.log(`✅ 알람 규칙 ID ${id} 삭제 완료`);
+                return true;
+            } else {
+                return false;
+            }
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.delete 실패:', error.message);
+            throw error;
+        }
+    }
+
+    // ==========================================================================
+    // 통계 및 집계 연산
+    // ==========================================================================
+
+    async getStatsSummary(tenantId = null) {
+        try {
+            const query = AlarmQueries.AlarmRule.STATS_SUMMARY;
+            const stats = await this.executeQuery(query, [tenantId || 1]);
+            
+            return stats.length > 0 ? stats[0] : {
+                total_rules: 0,
+                enabled_rules: 0,
+                alarm_types: 0,
+                severity_levels: 0,
+                target_types: 0,
+                categories: 0,
+                rules_with_tags: 0
+            };
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.getStatsSummary 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async getStatsBySeverity(tenantId = null) {
+        try {
+            const query = AlarmQueries.AlarmRule.STATS_BY_SEVERITY;
+            const stats = await this.executeQuery(query, [tenantId || 1]);
+            
+            return stats;
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.getStatsBySeverity 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async getStatsByType(tenantId = null) {
+        try {
+            const query = AlarmQueries.AlarmRule.STATS_BY_TYPE;
+            const stats = await this.executeQuery(query, [tenantId || 1]);
+            
+            return stats;
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.getStatsByType 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async getStatsByCategory(tenantId = null) {
+        try {
+            const query = AlarmQueries.AlarmRule.STATS_BY_CATEGORY;
+            const stats = await this.executeQuery(query, [tenantId || 1]);
+            
+            return stats;
+            
+        } catch (error) {
+            console.error('AlarmRuleRepository.getStatsByCategory 실패:', error.message);
+            throw error;
+        }
+    }
+
+    // ==========================================================================
+    // 추가 메서드들 - 기존 기능 유지
+    // ==========================================================================
+
+    async exists(id, tenantId = null) {
+        try {
+            const query = 'SELECT 1 FROM alarm_rules WHERE id = ? AND tenant_id = ? LIMIT 1';
+            const params = [id, tenantId || 1];
+
+            const result = await this.executeQuery(query, params);
+            return result.length > 0;
+
+        } catch (error) {
+            console.error(`AlarmRuleRepository.exists(${id}) 실패:`, error.message);
+            return false;
+        }
+    }
+
+    // ==========================================================================
+    // 유틸리티 메소드들 - ProtocolRepository 패턴과 동일
+    // ==========================================================================
+
+    parseAlarmRule(rule) {
         if (!rule) return null;
 
+        return {
+            ...rule,
+            // INTEGER 필드 변환
+            id: parseInt(rule.id),
+            tenant_id: parseInt(rule.tenant_id),
+            target_id: rule.target_id ? parseInt(rule.target_id) : null,
+            priority: parseInt(rule.priority) || 100,
+            acknowledge_timeout_min: parseInt(rule.acknowledge_timeout_min) || 0,
+            notification_delay_sec: parseInt(rule.notification_delay_sec) || 0,
+            notification_repeat_interval_min: parseInt(rule.notification_repeat_interval_min) || 0,
+            template_id: rule.template_id ? parseInt(rule.template_id) : null,
+            created_by: rule.created_by ? parseInt(rule.created_by) : null,
+            escalation_max_level: parseInt(rule.escalation_max_level) || 3,
+            
+            // FLOAT/DOUBLE 필드 변환
+            high_high_limit: rule.high_high_limit ? parseFloat(rule.high_high_limit) : null,
+            high_limit: rule.high_limit ? parseFloat(rule.high_limit) : null,
+            low_limit: rule.low_limit ? parseFloat(rule.low_limit) : null,
+            low_low_limit: rule.low_low_limit ? parseFloat(rule.low_low_limit) : null,
+            deadband: rule.deadband ? parseFloat(rule.deadband) : 0,
+            rate_of_change: rule.rate_of_change ? parseFloat(rule.rate_of_change) : 0,
+            
+            // Boolean 필드 변환
+            is_enabled: Boolean(rule.is_enabled),
+            is_latched: Boolean(rule.is_latched),
+            auto_acknowledge: Boolean(rule.auto_acknowledge),
+            auto_clear: Boolean(rule.auto_clear),
+            notification_enabled: Boolean(rule.notification_enabled),
+            created_by_template: Boolean(rule.created_by_template),
+            escalation_enabled: Boolean(rule.escalation_enabled),
+            
+            // JSON 필드 파싱
+            message_config: this.parseJsonField(rule.message_config),
+            suppression_rules: this.parseJsonField(rule.suppression_rules),
+            notification_channels: this.parseJsonField(rule.notification_channels),
+            notification_recipients: this.parseJsonField(rule.notification_recipients),
+            escalation_rules: this.parseJsonField(rule.escalation_rules),
+            tags: this.parseJsonField(rule.tags) || []
+        };
+    }
+
+    parseJsonField(jsonStr) {
+        if (!jsonStr) return null;
         try {
-            return {
-                ...rule,
-                is_enabled: !!rule.is_enabled,
-                auto_clear: !!rule.auto_clear,
-                notification_enabled: !!rule.notification_enabled,
-                escalation_rules: rule.escalation_rules ? JSON.parse(rule.escalation_rules) : null,
-                tags: rule.tags ? JSON.parse(rule.tags) : [],
-                created_at: rule.created_at,
-                updated_at: rule.updated_at
-            };
+            return typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         } catch (error) {
-            console.warn(`JSON 파싱 실패 for rule ${rule.id}:`, error);
-            return rule;
-        }
-    }
-
-    /**
-     * 캐시에서 데이터 조회
-     */
-    getFromCache(key) {
-        if (!this.cacheEnabled || !this.cache) return null;
-        
-        const cached = this.cache.get(key);
-        if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-            return cached.data;
-        }
-        
-        // 만료된 캐시 제거
-        if (cached) {
-            this.cache.delete(key);
-        }
-        return null;
-    }
-
-    /**
-     * 캐시에 데이터 저장
-     */
-    setCache(key, data) {
-        if (!this.cacheEnabled || !this.cache) return;
-        
-        this.cache.set(key, {
-            data: data,
-            timestamp: Date.now()
-        });
-    }
-
-    /**
-     * 캐시 초기화
-     */
-    clearCache() {
-        if (this.cache) {
-            this.cache.clear();
-            console.log('🗑️ AlarmRuleRepository 캐시 초기화 완료');
+            console.warn('JSON 파싱 실패:', error.message);
+            return null;
         }
     }
 }
