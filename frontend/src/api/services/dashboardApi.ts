@@ -668,4 +668,20 @@ export class DashboardApiService {
     
     return results as any;
   }
+
+    /**
+     * 오늘 발생한 알람 조회
+     */
+    static async getTodayAlarms(limit: number = 20): Promise<ApiResponse<RecentAlarm[]>> {
+        console.log('📅 오늘 발생한 알람 조회:', limit);
+        return this.httpClient.get<RecentAlarm[]>(ENDPOINTS.ALARM_TODAY, { limit });
+    }
+
+    /**
+     * 오늘 알람 통계 조회
+     */
+    static async getTodayAlarmStatistics(): Promise<ApiResponse<any>> {
+        console.log('📊 오늘 알람 통계 조회');
+        return this.httpClient.get<any>(ENDPOINTS.ALARM_TODAY_STATISTICS);
+    }
 }
