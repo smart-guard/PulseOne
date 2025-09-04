@@ -1,0 +1,589 @@
+/* ============================================================================
+   frontend/src/styles/protocol-management.css
+   프로토콜 관리 페이지 전용 스타일 - base.css 기반 확장
+   ============================================================================ */
+
+/* 기본 그리드 레이아웃 확장 */
+.protocol-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-6);
+}
+
+.protocol-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--neutral-200);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease-in-out;
+  overflow: hidden;
+}
+
+.protocol-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-200);
+}
+
+.protocol-card.selected {
+  border-color: var(--primary-400);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+/* 프로토콜 카드 헤더 */
+.protocol-card-header {
+  padding: var(--space-6);
+  border-bottom: 1px solid var(--neutral-100);
+  background: var(--neutral-50);
+}
+
+.protocol-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--neutral-900);
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.protocol-type {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  background: var(--neutral-100);
+  color: var(--neutral-700);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* 프로토콜 상태 표시 */
+.protocol-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.protocol-status.enabled {
+  color: var(--success-600);
+}
+
+.protocol-status.disabled {
+  color: var(--error-600);
+}
+
+.protocol-status.deprecated {
+  color: var(--warning-600);
+}
+
+/* 프로토콜 카테고리 배지 */
+.protocol-category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.protocol-category-badge.industrial {
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+
+.protocol-category-badge.commercial {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.protocol-category-badge.building {
+  background: var(--warning-100);
+  color: var(--warning-700);
+}
+
+.protocol-category-badge.energy {
+  background: var(--error-100);
+  color: var(--error-700);
+}
+
+.protocol-category-badge.custom {
+  background: var(--neutral-100);
+  color: var(--neutral-700);
+}
+
+/* 프로토콜 카드 바디 */
+.protocol-card-body {
+  padding: var(--space-6);
+}
+
+.protocol-description {
+  color: var(--neutral-600);
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+  min-height: 3.5rem; /* 일정한 높이 유지 */
+}
+
+.protocol-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.protocol-feature {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+  background: var(--neutral-50);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.protocol-feature i {
+  color: var(--primary-500);
+}
+
+/* 프로토콜 메타 정보 */
+.protocol-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  background: var(--neutral-50);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.protocol-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.protocol-meta-label {
+  color: var(--neutral-500);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-size: var(--text-xs);
+}
+
+.protocol-meta-value {
+  color: var(--neutral-900);
+  font-weight: 600;
+}
+
+/* 프로토콜 카드 액션 */
+.protocol-card-actions {
+  padding: var(--space-4) var(--space-6);
+  background: var(--neutral-50);
+  border-top: 1px solid var(--neutral-100);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.protocol-device-count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--neutral-600);
+}
+
+.protocol-device-count strong {
+  color: var(--primary-600);
+  font-weight: 600;
+}
+
+/* 프로토콜 액션 버튼 그룹 */
+.protocol-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.protocol-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  background: white;
+  color: var(--neutral-600);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-size: var(--text-sm);
+}
+
+.protocol-action-btn:hover {
+  background: var(--neutral-50);
+  border-color: var(--neutral-400);
+  color: var(--neutral-700);
+}
+
+.protocol-action-btn.primary {
+  background: var(--primary-50);
+  border-color: var(--primary-200);
+  color: var(--primary-600);
+}
+
+.protocol-action-btn.primary:hover {
+  background: var(--primary-100);
+  border-color: var(--primary-300);
+  color: var(--primary-700);
+}
+
+.protocol-action-btn.success {
+  background: var(--success-50);
+  border-color: var(--success-200);
+  color: var(--success-600);
+}
+
+.protocol-action-btn.success:hover {
+  background: var(--success-100);
+  border-color: var(--success-300);
+  color: var(--success-700);
+}
+
+.protocol-action-btn.warning {
+  background: var(--warning-50);
+  border-color: var(--warning-200);
+  color: var(--warning-600);
+}
+
+.protocol-action-btn.warning:hover {
+  background: var(--warning-100);
+  border-color: var(--warning-300);
+  color: var(--warning-700);
+}
+
+.protocol-action-btn.error {
+  background: var(--error-50);
+  border-color: var(--error-200);
+  color: var(--error-600);
+}
+
+.protocol-action-btn.error:hover {
+  background: var(--error-100);
+  border-color: var(--error-300);
+  color: var(--error-700);
+}
+
+.protocol-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--neutral-50);
+  color: var(--neutral-400);
+  border-color: var(--neutral-200);
+}
+
+/* 프로토콜 통계 카드 */
+.protocol-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.protocol-stat-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--neutral-200);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  transition: all 0.2s ease-in-out;
+}
+
+.protocol-stat-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.protocol-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.protocol-stat-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--neutral-600);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.protocol-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-lg);
+}
+
+.protocol-stat-value {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+
+.protocol-stat-change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.protocol-stat-change.positive {
+  color: var(--success-600);
+}
+
+.protocol-stat-change.negative {
+  color: var(--error-600);
+}
+
+.protocol-stat-change.neutral {
+  color: var(--neutral-500);
+}
+
+/* 프로토콜 필터 섹션 */
+.protocol-filters {
+  background: white;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--neutral-200);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+.protocol-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.protocol-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.protocol-filter-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--neutral-700);
+}
+
+.protocol-filter-input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  transition: all 0.2s ease-in-out;
+}
+
+.protocol-filter-input:focus {
+  outline: none;
+  border-color: var(--primary-400);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.protocol-filter-input.search {
+  padding-left: var(--space-10);
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z'/%3e%3c/svg%3e");
+  background-position: left var(--space-3) center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+}
+
+/* 프로토콜 모달 확장 스타일 */
+.protocol-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+}
+
+.protocol-modal-content {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  max-width: 800px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.protocol-modal-header {
+  padding: var(--space-6);
+  border-bottom: 1px solid var(--neutral-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.protocol-modal-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--neutral-900);
+}
+
+.protocol-modal-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: var(--neutral-400);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease-in-out;
+}
+
+.protocol-modal-close:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-600);
+}
+
+.protocol-modal-body {
+  padding: var(--space-6);
+}
+
+.protocol-modal-footer {
+  padding: var(--space-6);
+  border-top: 1px solid var(--neutral-200);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* 프로토콜 폼 스타일 */
+.protocol-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-6);
+}
+
+.protocol-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.protocol-form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.protocol-form-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--neutral-700);
+}
+
+.protocol-form-label.required::after {
+  content: ' *';
+  color: var(--error-500);
+}
+
+.protocol-form-input {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  transition: all 0.2s ease-in-out;
+}
+
+.protocol-form-input:focus {
+  outline: none;
+  border-color: var(--primary-400);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.protocol-form-input:disabled {
+  background: var(--neutral-50);
+  color: var(--neutral-500);
+  cursor: not-allowed;
+}
+
+.protocol-form-textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.protocol-form-checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--neutral-50);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--neutral-200);
+}
+
+.protocol-form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.protocol-form-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--neutral-300);
+  accent-color: var(--primary-500);
+}
+
+.protocol-form-checkbox label {
+  font-size: var(--text-sm);
+  color: var(--neutral-700);
+  cursor: pointer;
+}
+
+/* 반응형 스타일 */
+@media (max-width: 768px) {
+  .protocol-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .protocol-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .protocol-filters-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .protocol-form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .protocol-card-actions {
+    flex-direction: column;
+    gap: var(--space-3);
+    align-items: stretch;
+  }
+  
+  .protocol-actions {
+    justify-content: center;
+  }
+  
+  .protocol-modal-content {
+    margin: var(--space-2);
+    max-width: none;
+  }
+}

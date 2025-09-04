@@ -558,12 +558,15 @@ const processRoutes = require('./routes/processes');
 const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/user');
 const errorRoutes = require('./routes/errors');
+const protocolRoutes = require('./routes/protocols');
 
 app.use('/api/system', systemRoutes);
 app.use('/api/processes', processRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/errors', errorRoutes);
+app.use('/api/protocols', protocolRoutes);
+
 
 console.log('✅ 기존 시스템 API 라우트들 등록 완료');
 
@@ -584,6 +587,8 @@ try {
         console.error('❌ Device API 라우트 로드 완전 실패');
     }
 }
+
+
 
 // 🔥 Collector 프록시 라우트 등록 (새로 추가)
 try {
