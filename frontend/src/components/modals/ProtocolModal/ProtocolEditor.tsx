@@ -63,7 +63,6 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // ESC 키로 모달 닫기
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && onCancel) onCancel();
@@ -78,7 +77,6 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     };
   }, [isOpen, onCancel]);
 
-  // 편집 모드에서 기존 데이터 로드
   useEffect(() => {
     if (mode === 'edit' && protocolId && isOpen) {
       loadProtocol();
@@ -89,7 +87,6 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     try {
       setLoading(true);
       setError(null);
-
       const response = await ProtocolApiService.getProtocol(protocolId!);
       if (response.success) {
         setProtocol(response.data);
@@ -107,11 +104,17 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (mode === 'edit') {
+      const confirmMessage = `프로토콜 "${protocol.display_name || protocol.protocol_type}"을(를) 수정하시겠습니까?`;
+      if (!confirm(confirmMessage)) {
+        return;
+      }
+    }
+    
     try {
       setSaving(true);
       setError(null);
 
-      // 필수 필드 검증
       if (!protocol.protocol_type || !protocol.display_name) {
         throw new Error('프로토콜 타입과 표시명은 필수입니다.');
       }
@@ -124,16 +127,25 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       }
 
       if (response?.success) {
+        const successMessage = mode === 'create' 
+          ? '프로토콜이 성공적으로 생성되었습니다.' 
+          : '프로토콜이 성공적으로 수정되었습니다.';
+        alert(successMessage);
+        
         if (onSave) {
           onSave(response.data);
         }
-        alert(mode === 'create' ? '프로토콜이 생성되었습니다.' : '프로토콜이 수정되었습니다.');
       } else {
         throw new Error(response?.message || '저장 실패');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '저장 실패';
       setError(errorMessage);
+      
+      const failureMessage = mode === 'create' 
+        ? `프로토콜 생성에 실패했습니다: ${errorMessage}`
+        : `프로토콜 수정에 실패했습니다: ${errorMessage}`;
+      alert(failureMessage);
     } finally {
       setSaving(false);
     }
@@ -162,10 +174,12 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
         connection_params: params
       }));
     } catch (err) {
-      // JSON 파싱 에러는 무시 (사용자가 입력 중일 수 있음)
+      // JSON 파싱 에러는 무시
     }
   };
 
+  console.log('🔥 ProtocolEditor Debug:', { mode, isReadOnly: mode === 'view', protocolId });
+  
   const isReadOnly = mode === 'view';
   const title = mode === 'create' ? '새 프로토콜 등록' : mode === 'edit' ? '프로토콜 편집' : '프로토콜 상세보기';
 
@@ -231,66 +245,60 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
               justifyContent: 'center',
               color: '#6b7280',
               cursor: 'pointer',
-              fontSize: '20px',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#f3f4f6';
-              e.currentTarget.style.color = '#374151';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = '#6b7280';
+              fontSize: '20px'
             }}
           >
             ✕
           </button>
         </div>
 
-        {/* 모달 콘텐츠 */}
-        <div style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '24px'
-        }}>
-          {loading ? (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '200px',
-              flexDirection: 'column',
-              gap: '16px'
-            }}>
-              <div>프로토콜 정보를 불러오는 중...</div>
-            </div>
-          ) : (
-            <>
-              {/* 에러 표시 */}
-              {error && (
-                <div style={{
-                  backgroundColor: '#fee2e2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  marginBottom: '24px',
-                  color: '#dc2626'
-                }}>
-                  {error}
-                </div>
-              )}
+        {loading ? (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: '200px',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            <div>프로토콜 정보를 불러오는 중...</div>
+          </div>
+        ) : (
+          <>
+            {error && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                padding: '12px',
+                margin: '24px 24px 0 24px',
+                color: '#dc2626'
+              }}>
+                {error}
+              </div>
+            )}
 
-              {/* 폼 */}
-              <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} style={{ 
+              display: 'flex', 
+              flexDirection: 'column',
+              height: '100%'
+            }}>
+              {/* 스크롤 가능한 컨텐츠 영역 */}
+              <div style={{
+                height: '630px',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                padding: '16px'
+              }}>
                 {/* 기본 정보 */}
-                <div style={{ marginBottom: '32px' }}>
+                <div style={{ marginBottom: '24px' }}>
                   <h3 style={{
-                    fontSize: '18px',
+                    fontSize: '16px',
                     fontWeight: '600',
                     color: '#1e293b',
                     margin: 0,
-                    marginBottom: '16px',
-                    paddingBottom: '8px',
+                    marginBottom: '12px',
+                    paddingBottom: '6px',
                     borderBottom: '1px solid #e2e8f0'
                   }}>
                     기본 정보
@@ -299,14 +307,14 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: '16px',
-                    marginBottom: '16px'
+                    gap: '12px',
+                    marginBottom: '12px'
                   }}>
                     <div>
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
@@ -320,10 +328,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         placeholder="예: MODBUS_TCP"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: (isReadOnly || (mode === 'edit')) ? '#f9fafb' : 'white'
                         }}
                         required
@@ -334,7 +342,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
@@ -348,10 +356,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         placeholder="예: Modbus TCP"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                         required
@@ -359,11 +367,11 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ marginBottom: '16px' }}>
+                  <div style={{ marginBottom: '12px' }}>
                     <label style={{
                       display: 'block',
                       marginBottom: '4px',
-                      fontSize: '14px',
+                      fontSize: '13px',
                       fontWeight: '500',
                       color: '#374151'
                     }}>
@@ -374,13 +382,13 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       onChange={(e) => handleInputChange('description', e.target.value)}
                       readOnly={isReadOnly}
                       placeholder="프로토콜에 대한 설명을 입력하세요"
-                      rows={3}
+                      rows={2}
                       style={{
                         width: '100%',
-                        padding: '8px 12px',
+                        padding: '6px 10px',
                         border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
+                        borderRadius: '4px',
+                        fontSize: '13px',
                         resize: 'vertical',
                         backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                       }}
@@ -390,13 +398,14 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: '16px'
+                    gap: '12px',
+                    marginBottom: '12px'
                   }}>
                     <div>
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
@@ -408,18 +417,18 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         disabled={isReadOnly}
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       >
                         <option value="industrial">산업용</option>
                         <option value="iot">IoT</option>
                         <option value="building_automation">빌딩 자동화</option>
-                        <option value="web">웹</option>
                         <option value="network">네트워크</option>
+                        <option value="web">웹</option>
                       </select>
                     </div>
 
@@ -427,7 +436,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
@@ -436,17 +445,18 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       <input
                         type="number"
                         value={protocol.default_port || ''}
-                        onChange={(e) => handleInputChange('default_port', e.target.value ? parseInt(e.target.value) : null)}
+                        onChange={(e) => handleInputChange('default_port', e.target.value ? 
+                          parseInt(e.target.value) : null)}
                         readOnly={isReadOnly}
                         placeholder="예: 502"
                         min="1"
                         max="65535"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       />
@@ -456,7 +466,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
@@ -470,10 +480,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         placeholder="예: Modbus Organization"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       />
@@ -482,14 +492,14 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                 </div>
 
                 {/* 기술 설정 */}
-                <div style={{ marginBottom: '32px' }}>
+                <div style={{ marginBottom: '24px' }}>
                   <h3 style={{
-                    fontSize: '18px',
+                    fontSize: '16px',
                     fontWeight: '600',
                     color: '#1e293b',
                     margin: 0,
-                    marginBottom: '16px',
-                    paddingBottom: '8px',
+                    marginBottom: '12px',
+                    paddingBottom: '6px',
                     borderBottom: '1px solid #e2e8f0'
                   }}>
                     기술 설정
@@ -498,32 +508,33 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: '16px',
-                    marginBottom: '16px'
+                    gap: '12px',
+                    marginBottom: '12px'
                   }}>
                     <div>
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
-                        폴링 간격 (ms)
+                        기본 폴링 주기 (ms)
                       </label>
                       <input
                         type="number"
                         value={protocol.default_polling_interval || ''}
-                        onChange={(e) => handleInputChange('default_polling_interval', parseInt(e.target.value))}
+                        onChange={(e) => handleInputChange('default_polling_interval', 
+                          e.target.value ? parseInt(e.target.value) : null)}
                         readOnly={isReadOnly}
-                        placeholder="1500"
+                        placeholder="1000"
                         min="100"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       />
@@ -533,25 +544,26 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
-                        타임아웃 (ms)
+                        기본 타임아웃 (ms)
                       </label>
                       <input
                         type="number"
                         value={protocol.default_timeout || ''}
-                        onChange={(e) => handleInputChange('default_timeout', parseInt(e.target.value))}
+                        onChange={(e) => handleInputChange('default_timeout', 
+                          e.target.value ? parseInt(e.target.value) : null)}
                         readOnly={isReadOnly}
                         placeholder="5000"
                         min="1000"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       />
@@ -561,25 +573,27 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
-                        최대 동시 연결
+                        최대 동시 연결 수
                       </label>
                       <input
                         type="number"
                         value={protocol.max_concurrent_connections || ''}
-                        onChange={(e) => handleInputChange('max_concurrent_connections', parseInt(e.target.value))}
+                        onChange={(e) => handleInputChange('max_concurrent_connections', 
+                          e.target.value ? parseInt(e.target.value) : null)}
                         readOnly={isReadOnly}
                         placeholder="1"
                         min="1"
+                        max="100"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       />
@@ -587,16 +601,16 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   </div>
 
                   <div style={{
-                    display: 'flex',
-                    gap: '24px',
-                    marginBottom: '16px',
-                    flexWrap: 'wrap'
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '12px',
+                    marginBottom: '12px'
                   }}>
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      fontSize: '14px',
+                      gap: '6px',
+                      fontSize: '13px',
                       color: '#374151',
                       cursor: isReadOnly ? 'default' : 'pointer'
                     }}>
@@ -607,14 +621,14 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         disabled={isReadOnly}
                         style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
                       />
-                      시리얼 통신 사용
+                      시리얼 사용
                     </label>
 
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      fontSize: '14px',
+                      gap: '6px',
+                      fontSize: '13px',
                       color: '#374151',
                       cursor: isReadOnly ? 'default' : 'pointer'
                     }}>
@@ -631,8 +645,8 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      fontSize: '14px',
+                      gap: '6px',
+                      fontSize: '13px',
                       color: '#374151',
                       cursor: isReadOnly ? 'default' : 'pointer'
                     }}>
@@ -650,13 +664,13 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: '16px'
+                    gap: '12px'
                   }}>
                     <div>
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
@@ -670,10 +684,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         placeholder="예: read_coils, read_discrete_inputs, read_holding_registers"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       />
@@ -683,7 +697,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       <label style={{
                         display: 'block',
                         marginBottom: '4px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '500',
                         color: '#374151'
                       }}>
@@ -697,10 +711,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         placeholder="예: boolean, int16, uint16, int32, uint32, float32"
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
                           backgroundColor: isReadOnly ? '#f9fafb' : 'white'
                         }}
                       />
@@ -708,155 +722,87 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   </div>
                 </div>
 
-                {/* 고급 설정 */}
-                <div style={{ marginBottom: '32px' }}>
+                {/* 연결 파라미터 */}
+                <div style={{ marginBottom: '24px' }}>
                   <h3 style={{
-                    fontSize: '18px',
+                    fontSize: '16px',
                     fontWeight: '600',
                     color: '#1e293b',
                     margin: 0,
-                    marginBottom: '16px',
-                    paddingBottom: '8px',
+                    marginBottom: '12px',
+                    paddingBottom: '6px',
                     borderBottom: '1px solid #e2e8f0'
                   }}>
-                    고급 설정
+                    연결 파라미터 (JSON)
                   </h3>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '4px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#374151'
-                    }}>
-                      연결 파라미터 (JSON 형식)
-                    </label>
-                    <textarea
-                      value={JSON.stringify(protocol.connection_params || {}, null, 2)}
-                      onChange={(e) => handleConnectionParamsChange(e.target.value)}
-                      readOnly={isReadOnly}
-                      placeholder='{"host": {"type": "string", "required": true}}'
-                      rows={4}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontFamily: 'monospace',
-                        resize: 'vertical',
-                        backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      marginBottom: '4px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#374151'
-                    }}>
-                      표준 참조
-                    </label>
-                    <input
-                      type="text"
-                      value={protocol.standard_reference || ''}
-                      onChange={(e) => handleInputChange('standard_reference', e.target.value)}
-                      readOnly={isReadOnly}
-                      placeholder="예: MODBUS Application Protocol Specification V1.1b3"
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                      }}
-                    />
-                  </div>
+                  <textarea
+                    value={JSON.stringify(protocol.connection_params || {}, null, 2)}
+                    onChange={(e) => handleConnectionParamsChange(e.target.value)}
+                    readOnly={isReadOnly}
+                    placeholder='{"host": "127.0.0.1", "port": 502, "slave_id": 1}'
+                    rows={4}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      resize: 'vertical',
+                      backgroundColor: isReadOnly ? '#f9fafb' : 'white'
+                    }}
+                  />
                 </div>
-              </form>
-            </>
-          )}
-        </div>
+              </div>
 
-        {/* 모달 푸터 */}
-        {!isReadOnly && (
-          <div style={{
-            padding: '20px 24px',
-            borderTop: '1px solid #e5e7eb',
-            backgroundColor: '#f8fafc',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '12px',
-            flexShrink: 0
-          }}>
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={saving}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: '#f3f4f6',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                color: '#374151',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                if (!saving) {
-                  e.currentTarget.style.backgroundColor = '#e5e7eb';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!saving) {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
-                }
-              }}
-            >
-              취소
-            </button>
-            <button
-              type="submit"
-              onClick={(e) => {
-                const form = e.currentTarget.closest('.modal-content')?.querySelector('form') as HTMLFormElement;
-                if (form) {
-                  const submitEvent = new Event('submit', { cancelable: true, bubbles: true });
-                  form.dispatchEvent(submitEvent);
-                }
-              }}
-              disabled={saving}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: saving ? '#9ca3af' : '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                if (!saving) {
-                  e.currentTarget.style.backgroundColor = '#2563eb';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!saving) {
-                  e.currentTarget.style.backgroundColor = '#3b82f6';
-                }
-              }}
-            >
-              {saving ? '저장 중...' : mode === 'create' ? '등록하기' : '수정하기'}
-            </button>
-          </div>
+              {/* 모달 푸터 - 절대 위치로 고정 */}
+              <div style={{
+                position: 'sticky',
+                bottom: 0,
+                padding: '16px 20px',
+                borderTop: '1px solid #e5e7eb',
+                backgroundColor: '#f8fafc',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '12px',
+                zIndex: 10
+              }}>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  disabled={saving}
+                  style={{
+                    padding: '12px 24px',
+                    backgroundColor: '#f3f4f6',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    color: '#374151'
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  style={{
+                    padding: '12px 24px',
+                    backgroundColor: saving ? '#9ca3af' : '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: saving ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {saving ? '저장 중...' : mode === 'create' ? '등록하기' : '수정하기'}
+                </button>
+              </div>
+            </form>
+          </>
         )}
       </div>
     </div>
