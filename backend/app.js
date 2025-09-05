@@ -609,11 +609,13 @@ const systemRoutes = require('./routes/system');
 const processRoutes = require('./routes/processes');
 const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/user');
+const dataRoutes = require('./routes/data');
 
 app.use('/api/system', systemRoutes);
 app.use('/api/processes', processRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/data', dataRoutes);
 
 try {
     const errorRoutes = require('./routes/errors');

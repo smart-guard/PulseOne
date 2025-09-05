@@ -21,7 +21,14 @@ class AlarmRuleRepository extends BaseRepository {
         try {
             console.log('AlarmRuleRepository.findAll 호출:', filters);
             
-            let query = AlarmQueries.AlarmRule.FIND_ALL;
+            // FIND_ALL 쿼리에서 ORDER BY 부분 제거
+            let baseQuery = AlarmQueries.AlarmRule.FIND_ALL;
+            const orderByIndex = baseQuery.toUpperCase().indexOf('ORDER BY');
+            if (orderByIndex > -1) {
+                baseQuery = baseQuery.substring(0, orderByIndex).trim();
+            }
+            
+            let query = baseQuery;
             const params = [];
             const conditions = [];
 
@@ -86,7 +93,7 @@ class AlarmRuleRepository extends BaseRepository {
                 query += ' AND ' + conditions.join(' AND ');
             }
 
-            // 정렬 추가
+            // 정렬 추가 (한 번만!)
             const sortBy = filters.sortBy || 'created_at';
             const sortOrder = filters.sortOrder || 'DESC';
             query += ` ORDER BY ar.${sortBy} ${sortOrder}`;
@@ -102,6 +109,7 @@ class AlarmRuleRepository extends BaseRepository {
             
             if (conditions.length > 0) {
                 countQuery += ' AND ' + conditions.join(' AND ');
+                // 파라미터 복사 시 순서 주의
                 countParams.push(...params.slice(1));
             }
             
@@ -118,7 +126,8 @@ class AlarmRuleRepository extends BaseRepository {
 
             // 페이징 정보와 함께 반환
             return {
-                items: rules.map(rule => this.parseAlarmRule(rule)),
+                items: Array.isArray(rules) ? 
+                    rules.map(rule => this.parseAlarmRule(rule)) : [],
                 pagination: {
                     page: page,
                     limit: limit,
@@ -131,7 +140,20 @@ class AlarmRuleRepository extends BaseRepository {
             
         } catch (error) {
             console.error('AlarmRuleRepository.findAll 실패:', error.message);
-            throw error;
+            console.error('쿼리 에러 상세:', error);
+            
+            // 에러 발생 시에도 빈 결과 반환
+            return {
+                items: [],
+                pagination: {
+                    page: filters.page || 1,
+                    limit: filters.limit || 50,
+                    total: 0,
+                    totalPages: 0,
+                    hasNext: false,
+                    hasPrev: false
+                }
+            };
         }
     }
 

@@ -15,13 +15,13 @@ import { useDataExplorerPagination } from '../hooks/usePagination';
 import '../styles/data-explorer.css';
 
 // ============================================================================
-// 기존 인터페이스 그대로 유지
+// 인터페이스 확장 - RTU 계층구조 지원
 // ============================================================================
 
 interface TreeNode {
   id: string;
   label: string;
-  type: 'tenant' | 'site' | 'device' | 'datapoint';
+  type: 'tenant' | 'site' | 'device' | 'master' | 'slave' | 'datapoint';
   level: number;
   isExpanded: boolean;
   isLoaded: boolean;
@@ -31,6 +31,13 @@ interface TreeNode {
   deviceInfo?: DeviceInfo;
   lastUpdate?: string;
   connectionStatus?: 'connected' | 'disconnected' | 'error';
+  rtuInfo?: {
+    role?: 'master' | 'slave';
+    slaveId?: number;
+    masterDeviceId?: number;
+    serialPort?: string;
+    slaveCount?: number;
+  };
 }
 
 interface DeviceInfo {
@@ -40,6 +47,30 @@ interface DeviceInfo {
   point_count: number;
   status: string;
   last_seen?: string;
+  protocol_type?: string;
+  endpoint?: string;
+  rtu_info?: {
+    is_master: boolean;
+    is_slave: boolean;
+    slave_id?: number;
+    master_device_id?: number;
+    slave_count?: number;
+    slaves?: Array<{
+      device_id: number;
+      device_name: string;
+      slave_id: number | null;
+      device_type: string;
+      connection_status: string;
+    }>;
+    serial_port?: string;
+    baud_rate?: number;
+  };
+  rtu_network?: {
+    role: 'master' | 'slave';
+    slaves?: any[];
+    slave_count?: number;
+    network_status?: string;
+  };
 }
 
 interface FilterState {
@@ -50,9 +81,7 @@ interface FilterState {
 }
 
 const DataExplorer: React.FC = () => {
-  // ========================================================================
-  // 기존 상태 관리 그대로 유지
-  // ========================================================================
+  // 상태 관리
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [selectedDataPoints, setSelectedDataPoints] = useState<RealtimeValue[]>([]);
@@ -72,11 +101,10 @@ const DataExplorer: React.FC = () => {
   const [refreshInterval, setRefreshInterval] = useState(3);
   const [showChart, setShowChart] = useState(false);
 
-  // 페이징 훅 추가
   const pagination = useDataExplorerPagination(0);
 
   // ========================================================================
-  // 기존 API 서비스 연동 함수들 그대로 유지
+  // API 서비스 연동 함수들 - 디버깅 강화
   // ========================================================================
   const loadDevices = useCallback(async () => {
     try {
@@ -85,21 +113,59 @@ const DataExplorer: React.FC = () => {
         page: 1,
         limit: 1000,
         sort_by: 'name',
-        sort_order: 'ASC'
+        sort_order: 'ASC',
+        include_rtu_relations: true
       });
 
       if (response.success && response.data?.items) {
-        const deviceList: DeviceInfo[] = response.data.items.map((device: Device) => ({
+        const deviceList: DeviceInfo[] = response.data.items.map((device: any) => ({
           device_id: device.id.toString(),
           device_name: device.name,
           device_type: device.device_type || 'Unknown',
           point_count: device.data_point_count || device.data_points_count || 0,
           status: device.status || 'unknown',
-          last_seen: device.last_seen
+          last_seen: device.last_seen,
+          protocol_type: device.protocol_type,
+          endpoint: device.endpoint,
+          rtu_info: device.rtu_info,
+          rtu_network: device.rtu_network
         }));
         
         setDevices(deviceList);
-        console.log(`✅ 데이터베이스에서 ${deviceList.length}개 디바이스 로드 완료:`, deviceList);
+        console.log(`✅ 데이터베이스에서 ${deviceList.length}개 디바이스 로드 완료`);
+        
+        // **디버깅: 실제 데이터 구조 확인**
+        console.log('📋 로드된 디바이스 상세 정보 (처음 5개):');
+        deviceList.slice(0, 5).forEach((device, index) => {
+          console.log(`  ${index + 1}. ${device.device_name}:`, {
+            id: device.device_id,
+            protocol_type: device.protocol_type,
+            device_type: device.device_type,
+            endpoint: device.endpoint,
+            rtu_info: device.rtu_info,
+            rtu_network: device.rtu_network,
+            point_count: device.point_count
+          });
+        });
+        
+        // RTU 디바이스 필터링 테스트
+        const rtuDevices = deviceList.filter(d => d.protocol_type === 'MODBUS_RTU');
+        console.log(`🔍 MODBUS_RTU 프로토콜 디바이스: ${rtuDevices.length}개`);
+        rtuDevices.forEach(device => {
+          console.log(`  - ${device.device_name} (타입: ${device.device_type}, RTU정보: ${device.rtu_info ? 'O' : 'X'})`);
+        });
+        
+        // 이름에 RTU가 포함된 디바이스 확인
+        const nameBasedRtuDevices = deviceList.filter(d => 
+          d.device_name?.includes('RTU') || 
+          d.device_name?.includes('MASTER') || 
+          d.device_name?.includes('SLAVE')
+        );
+        console.log(`🔍 이름 기반 RTU 디바이스: ${nameBasedRtuDevices.length}개`);
+        nameBasedRtuDevices.forEach(device => {
+          console.log(`  - ${device.device_name} (프로토콜: ${device.protocol_type})`);
+        });
+        
         return deviceList;
       } else {
         console.warn('⚠️ 디바이스 API 응답 이상:', response);
@@ -163,6 +229,9 @@ const DataExplorer: React.FC = () => {
     }
   }, []);
 
+  // ========================================================================
+  // 개선된 트리 생성 함수 - RTU 계층구조 적용
+  // ========================================================================
   const generateTreeData = useCallback(async (devices: DeviceInfo[]): Promise<TreeNode[]> => {
     if (!devices || devices.length === 0) {
       return [{
@@ -176,38 +245,288 @@ const DataExplorer: React.FC = () => {
       }];
     }
 
-    const deviceNodesPromises = devices.map(async (device) => {
-      let connectionStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
-      let realDataCount = 0;
+    console.log('🏗️ RTU 계층구조를 반영한 트리 생성 시작...');
+    console.log('📋 전체 디바이스 목록:', devices.map(d => ({
+      name: d.device_name,
+      protocol: d.protocol_type,
+      type: d.device_type,
+      rtu_info: d.rtu_info
+    })));
+
+    // **실시간 RTU 식별 (의존성 문제 해결)**
+    const rtuDevices = devices.filter(d => d.protocol_type === 'MODBUS_RTU');
+    console.log(`🔍 RTU 디바이스 필터링: ${rtuDevices.length}개`);
+
+    const rtuMasters = devices.filter(d => {
+      if (d.protocol_type !== 'MODBUS_RTU') return false;
       
-      try {
-        const deviceValues = await loadDeviceData(device.device_id);
-        if (deviceValues.length > 0) {
-          connectionStatus = 'connected';
-          realDataCount = deviceValues.length;
-        }
-      } catch (error) {
-        console.warn(`⚠️ 디바이스 ${device.device_id} 연결 상태 확인 실패:`, error);
-        connectionStatus = 'error';
+      const isMaster = d.device_type === 'GATEWAY' || 
+                       d.rtu_info?.is_master === true ||
+                       d.device_name?.includes('MASTER') ||
+                       (!d.rtu_info?.slave_id && !d.rtu_info?.master_device_id);
+      
+      if (isMaster) {
+        console.log(`✅ RTU 마스터 식별: ${d.device_name}`, {
+          device_type: d.device_type,
+          is_master: d.rtu_info?.is_master,
+          has_master_in_name: d.device_name?.includes('MASTER'),
+          no_slave_info: !d.rtu_info?.slave_id && !d.rtu_info?.master_device_id
+        });
       }
-
-      const pointCount = connectionStatus === 'connected' ? realDataCount : device.point_count;
-
-      return {
-        id: `device-${device.device_id}`,
-        label: `${device.device_name} (포인트: ${pointCount})`,
-        type: 'device' as const,
-        level: 2,
-        isExpanded: false,
-        isLoaded: false,
-        deviceInfo: device,
-        connectionStatus,
-        lastUpdate: device.last_seen,
-        childCount: pointCount
-      };
+      
+      return isMaster;
     });
 
+    const rtuSlaves = devices.filter(d => {
+      if (d.protocol_type !== 'MODBUS_RTU') return false;
+      
+      const isSlave = (d.rtu_info?.is_slave === true) ||
+                      (d.rtu_info?.slave_id && d.rtu_info?.slave_id > 0) ||
+                      (d.rtu_info?.master_device_id && d.rtu_info?.master_device_id > 0) ||
+                      d.device_name?.includes('SLAVE');
+      
+      if (isSlave) {
+        console.log(`✅ RTU 슬레이브 식별: ${d.device_name}`, {
+          is_slave: d.rtu_info?.is_slave,
+          slave_id: d.rtu_info?.slave_id,
+          master_device_id: d.rtu_info?.master_device_id,
+          has_slave_in_name: d.device_name?.includes('SLAVE')
+        });
+      }
+      
+      return isSlave;
+    });
+
+    const normalDevices = devices.filter(d => d.protocol_type !== 'MODBUS_RTU');
+    const orphanRtuDevices = rtuDevices.filter(d => 
+      !rtuMasters.includes(d) && !rtuSlaves.includes(d)
+    );
+
+    console.log(`📊 디바이스 분류 결과:`);
+    console.log(`  - RTU 마스터: ${rtuMasters.length}개`, rtuMasters.map(d => d.device_name));
+    console.log(`  - RTU 슬레이브: ${rtuSlaves.length}개`, rtuSlaves.map(d => d.device_name));
+    console.log(`  - 일반 디바이스: ${normalDevices.length}개`, normalDevices.map(d => d.device_name));
+    console.log(`  - 미분류 RTU: ${orphanRtuDevices.length}개`, orphanRtuDevices.map(d => d.device_name));
+
+    const deviceNodesPromises: Promise<TreeNode>[] = [];
+
+    // 1. RTU 마스터 디바이스들과 슬레이브들 계층적 처리
+    for (const master of rtuMasters) {
+      const masterPromise = (async () => {
+        console.log(`🔌 마스터 ${master.device_name} 처리 시작...`);
+        
+        // 마스터의 연결 상태 확인
+        let connectionStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
+        let masterRealDataCount = 0;
+        
+        try {
+          const masterValues = await loadDeviceData(master.device_id);
+          if (masterValues.length > 0) {
+            connectionStatus = 'connected';
+            masterRealDataCount = masterValues.length;
+          }
+        } catch (error) {
+          console.warn(`⚠️ RTU 마스터 ${master.device_id} 연결 상태 확인 실패:`, error);
+          connectionStatus = 'error';
+        }
+
+        // 이 마스터에 속한 슬레이브 디바이스들 찾기 - 다양한 방법으로 매칭
+        const masterSlaves = rtuSlaves.filter(slave => {
+          // 방법 1: rtu_info.master_device_id로 매칭
+          if (slave.rtu_info?.master_device_id === parseInt(master.device_id)) {
+            console.log(`✅ 슬레이브 ${slave.device_name} → 마스터 ${master.device_name} (master_device_id 매칭)`);
+            return true;
+          }
+          
+          // 방법 2: 디바이스 이름 패턴으로 매칭 (예: RTU-MASTER-001 → RTU-*-SLAVE-*)
+          const masterPrefix = master.device_name.replace('MASTER', '').replace(/\-\d+$/, '');
+          if (slave.device_name.includes(masterPrefix) && slave.device_name.includes('SLAVE')) {
+            console.log(`✅ 슬레이브 ${slave.device_name} → 마스터 ${master.device_name} (이름 패턴 매칭)`);
+            return true;
+          }
+          
+          // 방법 3: 백엔드 rtu_network 정보 활용
+          if (master.rtu_network?.slaves?.some(s => s.device_id === parseInt(slave.device_id))) {
+            console.log(`✅ 슬레이브 ${slave.device_name} → 마스터 ${master.device_name} (rtu_network 매칭)`);
+            return true;
+          }
+          
+          return false;
+        });
+
+        console.log(`🔌 마스터 ${master.device_name}: ${masterSlaves.length}개 슬레이브 발견`);
+        masterSlaves.forEach(slave => console.log(`  └─ ${slave.device_name}`));
+
+        // 슬레이브 노드들 생성
+        const slaveNodesPromises = masterSlaves.map(async (slave) => {
+          let slaveConnectionStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
+          let slaveRealDataCount = 0;
+          
+          try {
+            const slaveValues = await loadDeviceData(slave.device_id);
+            if (slaveValues.length > 0) {
+              slaveConnectionStatus = 'connected';
+              slaveRealDataCount = slaveValues.length;
+            }
+          } catch (error) {
+            console.warn(`⚠️ RTU 슬레이브 ${slave.device_id} 연결 상태 확인 실패:`, error);
+            slaveConnectionStatus = 'error';
+          }
+
+          const slavePointCount = slaveConnectionStatus === 'connected' ? slaveRealDataCount : slave.point_count;
+
+          return {
+            id: `slave-${slave.device_id}`,
+            label: `${slave.device_name} (SlaveID: ${slave.rtu_info?.slave_id || '?'}${slavePointCount > 0 ? `, 포인트: ${slavePointCount}` : ''})`,
+            type: 'slave' as const,
+            level: 3,
+            isExpanded: false,
+            isLoaded: false,
+            deviceInfo: slave,
+            connectionStatus: slaveConnectionStatus,
+            lastUpdate: slave.last_seen,
+            childCount: slavePointCount,
+            rtuInfo: {
+              role: 'slave',
+              slaveId: slave.rtu_info?.slave_id,
+              masterDeviceId: slave.rtu_info?.master_device_id
+            }
+          };
+        });
+
+        const slaveNodes = await Promise.all(slaveNodesPromises);
+        
+        // 마스터의 포인트 수 계산
+        const masterPointCount = connectionStatus === 'connected' ? masterRealDataCount : master.point_count;
+        const totalSlavePoints = slaveNodes.reduce((sum, slave) => sum + (slave.childCount || 0), 0);
+        const totalPoints = masterPointCount + totalSlavePoints;
+
+        return {
+          id: `master-${master.device_id}`,
+          label: `${master.device_name} (포트: ${master.endpoint || 'Unknown'}${totalPoints > 0 ? `, 총 포인트: ${totalPoints}` : ''})`,
+          type: 'master' as const,
+          level: 2,
+          isExpanded: false,
+          isLoaded: true,
+          children: slaveNodes.length > 0 ? slaveNodes : undefined, // 슬레이브가 없으면 children을 undefined로
+          deviceInfo: master,
+          connectionStatus,
+          lastUpdate: master.last_seen,
+          childCount: slaveNodes.length,
+          rtuInfo: {
+            role: 'master',
+            serialPort: master.endpoint,
+            slaveCount: slaveNodes.length
+          }
+        };
+      })();
+
+      deviceNodesPromises.push(masterPromise);
+    }
+
+    // 2. 독립 RTU 슬레이브들 (마스터에 매칭되지 않은 슬레이브들)
+    const orphanSlaves = rtuSlaves.filter(slave => {
+      return !rtuMasters.some(master => {
+        return slave.rtu_info?.master_device_id === parseInt(master.device_id) ||
+               (master.device_name.replace('MASTER', '').replace(/\-\d+$/, '') && 
+                slave.device_name.includes(master.device_name.replace('MASTER', '').replace(/\-\d+$/, '')) && 
+                slave.device_name.includes('SLAVE')) ||
+               master.rtu_network?.slaves?.some(s => s.device_id === parseInt(slave.device_id));
+      });
+    });
+
+    console.log(`🔍 독립 RTU 슬레이브들: ${orphanSlaves.length}개`, orphanSlaves.map(d => d.device_name));
+
+    for (const slave of orphanSlaves) {
+      const slavePromise = (async () => {
+        let connectionStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
+        let realDataCount = 0;
+        
+        try {
+          const deviceValues = await loadDeviceData(slave.device_id);
+          if (deviceValues.length > 0) {
+            connectionStatus = 'connected';
+            realDataCount = deviceValues.length;
+          }
+        } catch (error) {
+          console.warn(`⚠️ 독립 RTU 슬레이브 ${slave.device_id} 연결 상태 확인 실패:`, error);
+          connectionStatus = 'error';
+        }
+
+        const pointCount = connectionStatus === 'connected' ? realDataCount : slave.point_count;
+
+        return {
+          id: `device-${slave.device_id}`,
+          label: `${slave.device_name} (독립 RTU 슬레이브${pointCount > 0 ? `, 포인트: ${pointCount}` : ''})`,
+          type: 'device' as const,
+          level: 2,
+          isExpanded: false,
+          isLoaded: false,
+          deviceInfo: slave,
+          connectionStatus,
+          lastUpdate: slave.last_seen,
+          childCount: pointCount
+        };
+      })();
+
+      deviceNodesPromises.push(slavePromise);
+    }
+
+    // 3. 일반 디바이스들과 미분류 RTU 디바이스들 처리
+    const allOtherDevices = [...normalDevices, ...orphanRtuDevices];
+    
+    for (const device of allOtherDevices) {
+      const devicePromise = (async () => {
+        let connectionStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
+        let realDataCount = 0;
+        
+        try {
+          const deviceValues = await loadDeviceData(device.device_id);
+          if (deviceValues.length > 0) {
+            connectionStatus = 'connected';
+            realDataCount = deviceValues.length;
+          }
+        } catch (error) {
+          console.warn(`⚠️ 디바이스 ${device.device_id} 연결 상태 확인 실패:`, error);
+          connectionStatus = 'error';
+        }
+
+        const pointCount = connectionStatus === 'connected' ? realDataCount : device.point_count;
+        
+        let deviceLabel = device.device_name;
+        if (device.protocol_type === 'MODBUS_RTU') {
+          deviceLabel += ` (독립 RTU)`;
+        }
+        if (pointCount > 0) {
+          deviceLabel += ` (포인트: ${pointCount})`;
+        }
+
+        return {
+          id: `device-${device.device_id}`,
+          label: deviceLabel,
+          type: 'device' as const,
+          level: 2,
+          isExpanded: false,
+          isLoaded: false,
+          deviceInfo: device,
+          connectionStatus,
+          lastUpdate: device.last_seen,
+          childCount: pointCount
+        };
+      })();
+
+      deviceNodesPromises.push(devicePromise);
+    }
+
     const deviceNodes = await Promise.all(deviceNodesPromises);
+
+    console.log(`✅ 트리 생성 완료: ${deviceNodes.length}개 최상위 노드 생성`);
+    console.log('📋 생성된 노드들:', deviceNodes.map(node => ({
+      id: node.id,
+      type: node.type,
+      label: node.label,
+      children: node.children?.length || 0
+    })));
 
     return [{
       id: 'tenant-1',
@@ -226,18 +545,21 @@ const DataExplorer: React.FC = () => {
         children: deviceNodes
       }]
     }];
-  }, [loadDeviceData]);
+  }, [loadDeviceData]); // 의존성 배열 단순화
 
+  // ========================================================================
+  // 자식 노드 로드 함수
+  // ========================================================================
   const loadDeviceChildren = useCallback(async (deviceNode: TreeNode) => {
-    if (deviceNode.type !== 'device') return;
+    if (!['device', 'master', 'slave'].includes(deviceNode.type)) return;
     
-    const deviceId = deviceNode.id.replace('device-', '');
+    const deviceId = deviceNode.id.replace(/^(device-|master-|slave-)/, '');
     console.log(`🔄 디바이스 ${deviceId} 자식 노드 로드...`);
 
     try {
       const dataPoints = await loadDeviceData(deviceId);
       if (dataPoints.length === 0) {
-        console.log(`⚠️ 디바이스 ${deviceId}: Redis에 데이터 없음 - 트리 확장 안함`);
+        console.log(`⚠️ 디바이스 ${deviceId}: Redis에 데이터 없음`);
         setTreeData(prev => updateTreeNode(prev, deviceNode.id, {
           isLoaded: true,
           isExpanded: false,
@@ -246,7 +568,7 @@ const DataExplorer: React.FC = () => {
         return;
       }
 
-      const pointNodes: TreeNode[] = dataPoints.map((point: any, index: number) => ({
+      const pointNodes: TreeNode[] = dataPoints.map((point: any) => ({
         id: `${deviceNode.id}-point-${point.point_id}`,
         label: point.point_name,
         type: 'datapoint',
@@ -275,8 +597,39 @@ const DataExplorer: React.FC = () => {
     }
   }, [loadDeviceData]);
 
+  // ========================================================================
+  // 유틸리티 함수들
+  // ========================================================================
+  const updateTreeNode = (nodes: TreeNode[], nodeId: string, updates: Partial<TreeNode>): TreeNode[] => {
+    return nodes.map(node => {
+      if (node.id === nodeId) {
+        return { ...node, ...updates };
+      }
+      if (node.children) {
+        return { ...node, children: updateTreeNode(node.children, nodeId, updates) };
+      }
+      return node;
+    });
+  };
+
+  const findAllDataPoints = (nodes: TreeNode[]): RealtimeValue[] => {
+    const dataPoints: RealtimeValue[] = [];
+    const traverse = (nodeArray: TreeNode[]) => {
+      nodeArray.forEach(node => {
+        if (node.type === 'datapoint' && node.dataPoint) {
+          dataPoints.push(node.dataPoint);
+        }
+        if (node.children) {
+          traverse(node.children);
+        }
+      });
+    };
+    traverse(nodes);
+    return dataPoints;
+  };
+
   const renderEmptyDeviceMessage = (selectedNode: TreeNode | null) => {
-    if (!selectedNode || selectedNode.type !== 'device') return null;
+    if (!selectedNode || !['device', 'master', 'slave'].includes(selectedNode.type)) return null;
     
     const device = selectedNode.deviceInfo;
     const connectionStatus = selectedNode.connectionStatus;
@@ -301,8 +654,14 @@ const DataExplorer: React.FC = () => {
         }}>
           <div><strong>디바이스 정보:</strong></div>
           <div>타입: {device?.device_type || 'Unknown'}</div>
+          <div>프로토콜: {device?.protocol_type || 'Unknown'}</div>
           <div>설정된 포인트: {device?.point_count || 0}개</div>
           <div>마지막 연결: {device?.last_seen || '없음'}</div>
+          {selectedNode.rtuInfo && (
+            <div>RTU 역할: {selectedNode.rtuInfo.role}
+              {selectedNode.rtuInfo.slaveId && ` (SlaveID: ${selectedNode.rtuInfo.slaveId})`}
+            </div>
+          )}
         </div>
         <div style={{
           marginTop: '16px',
@@ -315,6 +674,9 @@ const DataExplorer: React.FC = () => {
     );
   };
 
+  // ========================================================================
+  // 초기화 함수
+  // ========================================================================
   const initializeData = useCallback(async () => {
     setIsLoading(true);
     setConnectionStatus('connecting');
@@ -347,53 +709,16 @@ const DataExplorer: React.FC = () => {
   }, [loadRealtimeData, loadDevices, generateTreeData]);
 
   // ========================================================================
-  // 유틸리티 함수들 그대로 유지
-  // ========================================================================
-  const updateTreeNode = (nodes: TreeNode[], nodeId: string, updates: Partial<TreeNode>): TreeNode[] => {
-    return nodes.map(node => {
-      if (node.id === nodeId) {
-        return { ...node, ...updates };
-      }
-      if (node.children) {
-        return { ...node, children: updateTreeNode(node.children, nodeId, updates) };
-      }
-      return node;
-    });
-  };
-
-  const findAllDataPoints = (nodes: TreeNode[]): RealtimeValue[] => {
-    const dataPoints: RealtimeValue[] = [];
-    const traverse = (nodeArray: TreeNode[]) => {
-      nodeArray.forEach(node => {
-        if (node.type === 'datapoint' && node.dataPoint) {
-          dataPoints.push(node.dataPoint);
-        }
-        if (node.children) {
-          traverse(node.children);
-        }
-      });
-    };
-    traverse(nodes);
-    return dataPoints;
-  };
-
-  // ========================================================================
-  // 필터링된 데이터 (기존 로직 유지)
+  // 필터링된 데이터
   // ========================================================================
   const filteredDataPoints = useMemo(() => {
-    if (selectedNode && selectedNode.type === 'device' &&
+    if (selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) &&
       (selectedNode.connectionStatus === 'disconnected' || selectedNode.childCount === 0)) {
       console.log('🔍 필터링: 연결 안된 디바이스 선택됨 - 빈 배열 반환');
       return [];
     }
 
     let points = selectedDataPoints.length > 0 ? selectedDataPoints : realtimeData;
-    console.log('🔍 필터링 시작:', {
-      selectedDataPoints: selectedDataPoints.length,
-      realtimeData: realtimeData.length,
-      sourcePick: selectedDataPoints.length > 0 ? 'selected' : 'realtime',
-      initialPoints: points.length
-    });
 
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase();
@@ -402,42 +727,35 @@ const DataExplorer: React.FC = () => {
         (dp.device_name && dp.device_name.toLowerCase().includes(searchTerm)) ||
         (dp.key && dp.key.toLowerCase().includes(searchTerm))
       );
-      console.log(`🔍 검색 필터 "${filters.search}" 적용 후: ${points.length}개`);
     }
 
     if (filters.dataType !== 'all') {
       points = points.filter((dp: RealtimeValue) => dp.data_type === filters.dataType);
-      console.log(`🔍 데이터타입 필터 "${filters.dataType}" 적용 후: ${points.length}개`);
     }
 
     if (filters.quality !== 'all') {
       points = points.filter((dp: RealtimeValue) => dp.quality === filters.quality);
-      console.log(`🔍 품질 필터 "${filters.quality}" 적용 후: ${points.length}개`);
     }
 
     if (filters.device !== 'all') {
       points = points.filter((dp: RealtimeValue) => dp.device_id === filters.device);
-      console.log(`🔍 디바이스 필터 "${filters.device}" 적용 후: ${points.length}개`);
     }
 
-    console.log('✅ 필터링 완료:', points.length + '개');
     return points;
   }, [selectedDataPoints, realtimeData, filters, selectedNode]);
 
-  // 페이징된 데이터 추가
   const paginatedDataPoints = useMemo(() => {
     const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
     const endIndex = startIndex + pagination.pageSize;
     return filteredDataPoints.slice(startIndex, endIndex);
   }, [filteredDataPoints, pagination.currentPage, pagination.pageSize]);
 
-  // 필터링된 데이터가 변경되면 페이징 총 개수 업데이트
   useEffect(() => {
     pagination.updateTotalCount(filteredDataPoints.length);
   }, [filteredDataPoints.length, pagination.updateTotalCount]);
 
   // ========================================================================
-  // 기존 이벤트 핸들러들 그대로 유지
+  // 이벤트 핸들러들
   // ========================================================================
   const handleDataPointSelect = useCallback((dataPoint: RealtimeValue) => {
     setSelectedDataPoints(prev => {
@@ -515,28 +833,48 @@ const DataExplorer: React.FC = () => {
 
   const handleNodeClick = useCallback((node: TreeNode) => {
     setSelectedNode(node);
+    
     if (node.type === 'datapoint' && node.dataPoint) {
       setSelectedDataPoints([node.dataPoint]);
-    } else if (node.type === 'device') {
-      const deviceId = node.id.replace('device-', '');
+    } else if (['device', 'master', 'slave'].includes(node.type)) {
+      const deviceId = node.id.replace(/^(device-|master-|slave-)/, '');
+      
       if (node.connectionStatus === 'disconnected' || node.childCount === 0) {
-        console.log(`⚠️ 디바이스 ${deviceId}: Redis 데이터 없음 - 강제 초기화`);
+        console.log(`⚠️ 디바이스 ${deviceId}: Redis 데이터 없음`);
         setSelectedDataPoints([]);
         setRealtimeData([]);
         return;
       }
 
-      const existingDataPoints = findAllDataPoints([node]);
-      if (existingDataPoints.length > 0) {
-        setSelectedDataPoints(existingDataPoints);
-      }
-
-      loadDeviceData(deviceId).then(dataPoints => {
-        if (dataPoints.length > 0) {
-          setSelectedDataPoints(dataPoints);
-          setRealtimeData(dataPoints);
+      // RTU 마스터인 경우, 자신과 모든 슬레이브의 데이터를 로드
+      if (node.type === 'master' && node.children) {
+        Promise.all([
+          loadDeviceData(deviceId),
+          ...node.children.map(child => {
+            const slaveId = child.id.replace('slave-', '');
+            return loadDeviceData(slaveId);
+          })
+        ]).then(results => {
+          const allDataPoints = results.flat();
+          if (allDataPoints.length > 0) {
+            setSelectedDataPoints(allDataPoints);
+            setRealtimeData(allDataPoints);
+          }
+        });
+      } else {
+        // 일반 디바이스나 슬레이브인 경우
+        const existingDataPoints = findAllDataPoints([node]);
+        if (existingDataPoints.length > 0) {
+          setSelectedDataPoints(existingDataPoints);
         }
-      });
+
+        loadDeviceData(deviceId).then(dataPoints => {
+          if (dataPoints.length > 0) {
+            setSelectedDataPoints(dataPoints);
+            setRealtimeData(dataPoints);
+          }
+        });
+      }
 
       if (!node.isLoaded && node.childCount && node.childCount > 0) {
         loadDeviceChildren(node);
@@ -553,7 +891,7 @@ const DataExplorer: React.FC = () => {
   }, [findAllDataPoints, loadDeviceChildren, loadDeviceData]);
 
   // ========================================================================
-  // 기존 초기 로딩 및 자동 새로고침
+  // 자동 새로고침 로직
   // ========================================================================
   useEffect(() => {
     initializeData();
@@ -562,23 +900,18 @@ const DataExplorer: React.FC = () => {
   useEffect(() => {
     if (!autoRefresh || refreshInterval <= 0) return;
 
-    console.log(`🔄 자동 새로고침 설정: ${refreshInterval}초 간격`);
     const interval = setInterval(() => {
-      console.log('🔄 자동 새로고침 실행...');
       setLastRefresh(new Date());
       if (devices.length > 0) {
         loadRealtimeData(devices);
       }
     }, refreshInterval * 1000);
 
-    return () => {
-      console.log('🔄 자동 새로고침 정리');
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, devices, loadRealtimeData]);
 
   // ========================================================================
-  // 기존 렌더링 헬퍼 함수들 그대로 유지
+  // 렌더링 함수 - 개선된 아이콘
   // ========================================================================
   const renderTreeNode = (node: TreeNode): React.ReactNode => {
     const hasChildren = (node.children && node.children.length > 0) || (node.childCount && node.childCount > 0);
@@ -599,6 +932,8 @@ const DataExplorer: React.FC = () => {
             {node.type === 'tenant' && '🏢'}
             {node.type === 'site' && '🏭'}
             {node.type === 'device' && '📱'}
+            {node.type === 'master' && '🔌'}
+            {node.type === 'slave' && '📊'}
             {node.type === 'datapoint' && '📊'}
           </span>
           <span className="tree-node-label">
@@ -612,18 +947,14 @@ const DataExplorer: React.FC = () => {
               </span>
             </div>
           )}
-          {node.type === 'device' && node.connectionStatus && (
+          {(['device', 'master', 'slave'].includes(node.type)) && node.connectionStatus && (
             <span className={`connection-badge ${node.connectionStatus}`}>
               {node.connectionStatus === 'connected' && '🟢'}
               {node.connectionStatus === 'disconnected' && '⚪'}
               {node.connectionStatus === 'error' && '❌'}
             </span>
           )}
-          {!hasChildren && node.childCount && (
-            <span className="child-count">
-              {node.childCount}
-            </span>
-          )}
+          {/* 🔥 완전히 제거: childCount 표시 로직 삭제 */}
         </div>
         {isExpanded && node.children && (
           <div className="tree-children">
@@ -635,7 +966,7 @@ const DataExplorer: React.FC = () => {
   };
 
   // ========================================================================
-  // 메인 렌더링 - 페이징만 추가
+  // 메인 렌더링
   // ========================================================================
   return (
     <div className="data-explorer-container">
@@ -643,7 +974,7 @@ const DataExplorer: React.FC = () => {
       <div className="page-header">
         <div className="header-left">
           <h1 className="page-title">
-            📊 PulseOne 실시간 데이터 탐색기
+            📊 PulseOne 실시간 데이터 탐색기 (RTU 계층구조)
           </h1>
           <div className="header-meta">
             <div className={`connection-status status-${connectionStatus}`}>
@@ -733,7 +1064,7 @@ const DataExplorer: React.FC = () => {
         {/* 왼쪽: 트리 패널 */}
         <div className="tree-panel">
           <div className="tree-header">
-            <h3>📋 데이터 구조</h3>
+            <h3>📋 데이터 구조 (RTU 네트워크)</h3>
             <div className="search-container">
               <div className="search-input-wrapper">
                 <input
@@ -752,7 +1083,7 @@ const DataExplorer: React.FC = () => {
             {isLoading ? (
               <div className="loading-container">
                 <div className="loading-spinner"></div>
-                <div className="loading-text">DB/Redis에서 데이터 로딩 중...</div>
+                <div className="loading-text">RTU 네트워크 구조 분석 중...</div>
               </div>
             ) : treeData.length === 0 ? (
               <div className="empty-state">
@@ -871,7 +1202,7 @@ const DataExplorer: React.FC = () => {
               </h4>
 
               {filteredDataPoints.length === 0 ? (
-                selectedNode && selectedNode.type === 'device' &&
+                selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) &&
                 (selectedNode.connectionStatus === 'disconnected' || selectedNode.childCount === 0) ?
                 renderEmptyDeviceMessage(selectedNode) : (
                   <div className="empty-state">
@@ -897,11 +1228,10 @@ const DataExplorer: React.FC = () => {
                     <div className="header-cell">시간</div>
                   </div>
 
-                  {/* 테이블 바디 - 페이징된 데이터만 렌더링 */}
+                  {/* 테이블 바디 */}
                   <div className="data-table-body">
                     {paginatedDataPoints.map((dataPoint: RealtimeValue, index: number) => (
                       <div key={dataPoint.key || `row-${index}`} className="data-table-row">
-                        {/* 체크박스 */}
                         <div className="table-cell cell-checkbox" data-label="선택">
                           <input
                             type="checkbox"
@@ -910,7 +1240,6 @@ const DataExplorer: React.FC = () => {
                           />
                         </div>
                         
-                        {/* 포인트명 */}
                         <div className="table-cell cell-point" data-label="포인트명">
                           <div className="point-info">
                             <div className="point-name">
@@ -922,14 +1251,12 @@ const DataExplorer: React.FC = () => {
                           </div>
                         </div>
                         
-                        {/* 디바이스 */}
                         <div className="table-cell cell-device" data-label="디바이스">
                           <div className="device-name">
                             {(dataPoint.device_name || '').replace('-CTRL-', '').replace('-01', '')}
                           </div>
                         </div>
                         
-                        {/* 현재값 */}
                         <div className="table-cell cell-value" data-label="현재값">
                           <div className="value-display">
                             <span className={`value ${dataPoint.quality || 'unknown'}`}>
@@ -939,7 +1266,6 @@ const DataExplorer: React.FC = () => {
                           </div>
                         </div>
                         
-                        {/* 품질 */}
                         <div className="table-cell cell-quality" data-label="품질">
                           <span className={`quality-badge ${dataPoint.quality || 'unknown'}`}>
                             {dataPoint.quality === 'good' ? 'OK' :
@@ -950,7 +1276,6 @@ const DataExplorer: React.FC = () => {
                           </span>
                         </div>
                         
-                        {/* 타입 */}
                         <div className="table-cell cell-type" data-label="타입">
                           <span className="data-type">
                             {dataPoint.data_type === 'number' ? 'NUM' :
@@ -960,7 +1285,6 @@ const DataExplorer: React.FC = () => {
                           </span>
                         </div>
                         
-                        {/* 시간 - 밀리초 포함 */}
                         <div className="table-cell cell-time" data-label="업데이트">
                           <span className="timestamp">
                             {dataPoint.timestamp ?
@@ -976,7 +1300,7 @@ const DataExplorer: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* 페이징 컴포넌트 추가 */}
+                  {/* 페이징 컴포넌트 */}
                   {filteredDataPoints.length > 0 && (
                     <Pagination
                       current={pagination.currentPage}

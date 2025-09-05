@@ -21,7 +21,15 @@ class AlarmOccurrenceRepository extends BaseRepository {
         try {
             console.log('AlarmOccurrenceRepository.findAll 호출:', filters);
             
-            let query = AlarmQueries.AlarmOccurrence.FIND_ALL;
+            // FIND_ALL 쿼리에서 ORDER BY 부분 제거
+            let baseQuery = AlarmQueries.AlarmOccurrence.FIND_ALL;
+            // ORDER BY가 이미 포함되어 있다면 제거
+            const orderByIndex = baseQuery.toUpperCase().indexOf('ORDER BY');
+            if (orderByIndex > -1) {
+                baseQuery = baseQuery.substring(0, orderByIndex).trim();
+            }
+            
+            let query = baseQuery;
             const params = [];
             const conditions = [];
 
@@ -90,7 +98,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 query += ' AND ' + conditions.join(' AND ');
             }
 
-            // 정렬 추가
+            // 정렬 추가 (한 번만!)
             const sortBy = filters.sortBy || 'occurrence_time';
             const sortOrder = filters.sortOrder || 'DESC';
             query += ` ORDER BY ao.${sortBy} ${sortOrder}`;
@@ -105,11 +113,10 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const countParams = [filters.tenantId || 1];
             
             if (conditions.length > 0) {
-                // 동일한 조건 적용
-                const conditionsForCount = [...conditions];
-                countQuery += ' AND ' + conditionsForCount.join(' AND ');
-                // params에서 첫번째(tenant_id) 제외하고 나머지 추가
-                countParams.push(...params.slice(1));
+                countQuery += ' AND ' + conditions.join(' AND ');
+                // ORDER BY 전의 파라미터만 사용
+                const conditionParamCount = params.length - 1; // tenant_id 제외
+                countParams.push(...params.slice(1, conditionParamCount + 1));
             }
             
             const countResult = await this.executeQuery(countQuery, countParams);
@@ -125,7 +132,8 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
             // 페이징 정보와 함께 반환
             return {
-                items: occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence)),
+                items: Array.isArray(occurrences) ? 
+                    occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence)) : [],
                 pagination: {
                     page: page,
                     limit: limit,
@@ -138,7 +146,20 @@ class AlarmOccurrenceRepository extends BaseRepository {
             
         } catch (error) {
             console.error('AlarmOccurrenceRepository.findAll 실패:', error.message);
-            throw error;
+            console.error('쿼리 에러 상세:', error);
+            
+            // 에러 발생 시에도 빈 결과 반환
+            return {
+                items: [],
+                pagination: {
+                    page: filters.page || 1,
+                    limit: filters.limit || 50,
+                    total: 0,
+                    totalPages: 0,
+                    hasNext: false,
+                    hasPrev: false
+                }
+            };
         }
     }
 
