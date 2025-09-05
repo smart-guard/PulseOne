@@ -14,7 +14,7 @@ import { useDataExplorerPagination } from '../hooks/usePagination';
 import '../styles/data-explorer.css';
 
 // ============================================================================
-// 인터페이스 - 백엔드 API 응답에 맞게 단순화
+// 인터페이스 - 트리 확장 상태 관리 추가
 // ============================================================================
 
 interface TreeNode {
@@ -43,6 +43,9 @@ interface TreeNode {
   unit?: string;
   quality?: string;
   timestamp?: string;
+  // 트리 확장 상태 관리
+  isExpanded?: boolean;
+  hasRedisData?: boolean;
 }
 
 interface FilterState {
@@ -69,18 +72,58 @@ const DataExplorer: React.FC = () => {
     quality: 'all',
     device: 'all'
   });
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(3);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(10);
   const [showChart, setShowChart] = useState(false);
+
+  // 트리 확장 상태와 Redis 데이터 상태 분리 관리
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['PulseOne-Factory', 'Factory-A-Production-Line']));
+  const [redisConnectedDevices, setRedisConnectedDevices] = useState<Set<string>>(new Set());
 
   const pagination = useDataExplorerPagination(0);
 
   // ========================================================================
-  // 새로운 API를 사용한 트리 데이터 로드
+  // Redis 연결 상태 체크하는 함수
+  // ========================================================================
+  const checkDeviceRedisStatus = useCallback(async (deviceId: string): Promise<boolean> => {
+    try {
+      const response = await RealtimeApiService.getDeviceValues(deviceId);
+      return response.success && response.data?.data_points && response.data.data_points.length > 0;
+    } catch (error) {
+      return false;
+    }
+  }, []);
+
+  // ========================================================================
+  // 트리 노드에 Redis 상태 업데이트
+  // ========================================================================
+  const updateTreeWithRedisStatus = useCallback((nodes: TreeNode[]): TreeNode[] => {
+    return nodes.map(node => {
+      const updatedNode = { ...node };
+      
+      if (['device', 'master', 'slave'].includes(node.type) && node.device_info?.device_id) {
+        const deviceId = node.device_info.device_id;
+        updatedNode.hasRedisData = redisConnectedDevices.has(deviceId);
+        updatedNode.connection_status = redisConnectedDevices.has(deviceId) ? 'connected' : 'disconnected';
+      }
+      
+      // 확장 상태 유지
+      updatedNode.isExpanded = expandedNodes.has(node.id);
+      
+      if (node.children) {
+        updatedNode.children = updateTreeWithRedisStatus(node.children);
+      }
+      
+      return updatedNode;
+    });
+  }, [redisConnectedDevices, expandedNodes]);
+
+  // ========================================================================
+  // 수정된 트리 데이터 로드 - Redis 상태 체크 추가
   // ========================================================================
   const loadTreeStructure = useCallback(async () => {
     try {
-      console.log('🌳 백엔드 API에서 트리 구조 로드 시작...');
+      console.log('트리 구조 로드 시작...');
       setIsLoading(true);
       setConnectionStatus('connecting');
       
@@ -90,32 +133,48 @@ const DataExplorer: React.FC = () => {
       });
       
       if (response.success && response.data) {
-        console.log('✅ 트리 구조 로드 완료:', response.data.statistics);
+        console.log('트리 구조 로드 완료:', response.data.statistics);
         
-        // 백엔드에서 받은 트리 구조를 그대로 사용
-        setTreeData([response.data.tree]);
+        // 백엔드에서 받은 트리 구조 처리
+        const processTreeNode = (node: any): TreeNode => ({
+          ...node,
+          isExpanded: expandedNodes.has(node.id),
+          hasRedisData: false // 기본값, Redis 체크 후 업데이트
+        });
+
+        const processedTree = processTreeNode(response.data.tree);
+        // 자식 노드들도 처리
+        if (processedTree.children) {
+          processedTree.children = processedTree.children.map(processTreeNode);
+        }
+        
+        setTreeData([processedTree]);
         setStatistics(response.data.statistics);
         setConnectionStatus('connected');
         setError(null);
         
-        // 실시간 데이터 추출
-        const allDataPoints: RealtimeValue[] = [];
-        const extractDataPoints = (node: TreeNode) => {
-          if (node.data_points) {
-            allDataPoints.push(...node.data_points);
+        const allNodeIds = new Set<string>();
+        const collectAllNodeIds = (node: TreeNode) => {
+          if (['tenant', 'site', 'device', 'master', 'slave'].includes(node.type)) {
+            allNodeIds.add(node.id);
           }
           if (node.children) {
-            node.children.forEach(extractDataPoints);
+            node.children.forEach(collectAllNodeIds);
           }
         };
-        extractDataPoints(response.data.tree);
-        setRealtimeData(allDataPoints);
+        collectAllNodeIds(processedTree);
+        
+        console.log(`모든 노드 자동 확장: ${allNodeIds.size}개`);
+        setExpandedNodes(allNodeIds);
+        
+        // Redis 연결 상태 체크
+        checkAllDevicesRedisStatus(processedTree);
         
       } else {
         throw new Error(response.error || '트리 구조 로드 실패');
       }
     } catch (error: any) {
-      console.error('❌ 트리 구조 로드 실패:', error);
+      console.error('트리 구조 로드 실패:', error);
       setError(`트리 구조 로드 실패: ${error.message}`);
       setConnectionStatus('disconnected');
       setTreeData([{
@@ -123,7 +182,9 @@ const DataExplorer: React.FC = () => {
         label: 'PulseOne Factory (연결 실패)',
         type: 'tenant',
         level: 0,
-        children: []
+        children: [],
+        isExpanded: false,
+        hasRedisData: false
       }]);
     } finally {
       setIsLoading(false);
@@ -131,22 +192,58 @@ const DataExplorer: React.FC = () => {
   }, []);
 
   // ========================================================================
-  // 디바이스 세부 데이터 로드 (기존 로직 유지)
+  // 모든 디바이스의 Redis 상태 체크
+  // ========================================================================
+  const checkAllDevicesRedisStatus = useCallback(async (rootNode: TreeNode) => {
+    const deviceIds: string[] = [];
+    
+    // 트리에서 모든 디바이스 ID 추출
+    const extractDeviceIds = (node: TreeNode) => {
+      if (['device', 'master', 'slave'].includes(node.type) && node.device_info?.device_id) {
+        deviceIds.push(node.device_info.device_id);
+      }
+      if (node.children) {
+        node.children.forEach(extractDeviceIds);
+      }
+    };
+    
+    extractDeviceIds(rootNode);
+    console.log(`Redis 상태 체크 대상: ${deviceIds.length}개 디바이스`);
+    
+    // 각 디바이스의 Redis 상태 확인
+    const connectedDevices = new Set<string>();
+    for (const deviceId of deviceIds) {
+      const hasData = await checkDeviceRedisStatus(deviceId);
+      if (hasData) {
+        connectedDevices.add(deviceId);
+        console.log(`디바이스 ${deviceId}: Redis 연결됨`);
+      }
+    }
+    
+    setRedisConnectedDevices(connectedDevices);
+    console.log(`Redis 연결 완료: ${connectedDevices.size}/${deviceIds.length}개 활성`);
+    
+    // 트리 데이터 업데이트
+    setTreeData(prev => updateTreeWithRedisStatus(prev));
+  }, [checkDeviceRedisStatus, updateTreeWithRedisStatus]);
+
+  // ========================================================================
+  // 디바이스 세부 데이터 로드
   // ========================================================================
   const loadDeviceData = useCallback(async (deviceId: string) => {
     try {
-      console.log(`🔄 디바이스 ${deviceId} Redis 데이터 확인...`);
+      console.log(`디바이스 ${deviceId} Redis 데이터 확인...`);
       const response = await RealtimeApiService.getDeviceValues(deviceId);
       if (response.success && response.data?.data_points) {
         const dataPoints: RealtimeValue[] = response.data.data_points;
-        console.log(`✅ 디바이스 ${deviceId}: Redis에서 ${dataPoints.length}개 포인트 발견`);
+        console.log(`디바이스 ${deviceId}: Redis에서 ${dataPoints.length}개 포인트 발견`);
         return dataPoints;
       } else {
-        console.warn(`⚠️ 디바이스 ${deviceId} Redis에 데이터 없음`);
+        console.warn(`디바이스 ${deviceId} Redis에 데이터 없음`);
         return [];
       }
     } catch (error: any) {
-      console.error(`❌ 디바이스 ${deviceId} Redis 확인 실패:`, error);
+      console.error(`디바이스 ${deviceId} Redis 확인 실패:`, error);
       return [];
     }
   }, []);
@@ -160,12 +257,12 @@ const DataExplorer: React.FC = () => {
     const deviceId = deviceNode.device_info?.device_id;
     if (!deviceId) return;
     
-    console.log(`🔄 디바이스 ${deviceId} 자식 노드 로드...`);
+    console.log(`디바이스 ${deviceId} 자식 노드 로드...`);
 
     try {
       const dataPoints = await loadDeviceData(deviceId);
       if (dataPoints.length === 0) {
-        console.log(`⚠️ 디바이스 ${deviceId}: Redis에 데이터 없음`);
+        console.log(`디바이스 ${deviceId}: Redis에 데이터 없음`);
         return;
       }
 
@@ -177,7 +274,9 @@ const DataExplorer: React.FC = () => {
         value: point.value,
         unit: point.unit,
         quality: point.quality,
-        timestamp: point.timestamp
+        timestamp: point.timestamp,
+        isExpanded: false,
+        hasRedisData: true
       }));
 
       // 트리 데이터 업데이트
@@ -186,9 +285,9 @@ const DataExplorer: React.FC = () => {
         child_count: pointNodes.length
       }));
 
-      console.log(`✅ 디바이스 ${deviceId} 자식 노드 ${pointNodes.length}개 로드 완료`);
+      console.log(`디바이스 ${deviceId} 자식 노드 ${pointNodes.length}개 로드 완료`);
     } catch (error) {
-      console.error(`❌ 디바이스 ${deviceId} 자식 노드 로드 실패:`, error);
+      console.error(`디바이스 ${deviceId} 자식 노드 로드 실패:`, error);
     }
   }, [loadDeviceData]);
 
@@ -207,50 +306,24 @@ const DataExplorer: React.FC = () => {
     });
   };
 
-  const findAllDataPoints = (nodes: TreeNode[]): RealtimeValue[] => {
-    const dataPoints: RealtimeValue[] = [];
-    const traverse = (nodeArray: TreeNode[]) => {
-      nodeArray.forEach(node => {
-        if (node.type === 'datapoint') {
-          dataPoints.push({
-            key: node.id,
-            point_name: node.label,
-            point_id: node.id.split('-').pop() || '',
-            device_id: node.device_info?.device_id || '',
-            device_name: node.device_info?.device_name || '',
-            value: node.value,
-            unit: node.unit,
-            quality: node.quality,
-            timestamp: node.timestamp,
-            data_type: typeof node.value,
-            source: 'redis'
-          } as RealtimeValue);
-        }
-        if (node.children) {
-          traverse(node.children);
-        }
-      });
-    };
-    traverse(nodes);
-    return dataPoints;
-  };
-
   const renderEmptyDeviceMessage = (selectedNode: TreeNode | null) => {
     if (!selectedNode || !['device', 'master', 'slave'].includes(selectedNode.type)) return null;
     
     const device = selectedNode.device_info;
-    const connectionStatus = selectedNode.connection_status;
 
     return (
       <div className="empty-state">
         <div style={{fontSize: '48px', marginBottom: '16px'}}>
-          {connectionStatus === 'disconnected' ? '🔴' : '⚠️'}
+          {selectedNode.hasRedisData ? '🔍' : '🔴'}
         </div>
         <h3 style={{margin: '0 0 8px 0', fontSize: '18px', color: '#374151'}}>
-          {device?.device_name} 연결 안됨
+          {device?.device_name} {selectedNode.hasRedisData ? '데이터 없음' : '연결 안됨'}
         </h3>
         <p style={{margin: '0 0 8px 0', fontSize: '14px'}}>
-          이 디바이스는 현재 Redis에 실시간 데이터가 없습니다.
+          {selectedNode.hasRedisData ? 
+            '이 디바이스에는 현재 표시할 데이터포인트가 없습니다.' :
+            '이 디바이스는 현재 Redis에 실시간 데이터가 없습니다.'
+          }
         </p>
         <div style={{
           marginTop: '16px',
@@ -269,7 +342,10 @@ const DataExplorer: React.FC = () => {
           fontSize: '12px',
           color: '#9ca3af'
         }}>
-          연결이 복구되면 실시간 데이터가 표시됩니다.
+          {selectedNode.hasRedisData ? 
+            '데이터포인트를 추가하거나 설정을 확인해보세요.' :
+            '연결이 복구되면 실시간 데이터가 표시됩니다.'
+          }
         </div>
       </div>
     );
@@ -279,9 +355,8 @@ const DataExplorer: React.FC = () => {
   // 필터링된 데이터
   // ========================================================================
   const filteredDataPoints = useMemo(() => {
-    if (selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) &&
-      (selectedNode.connection_status === 'disconnected' || !selectedNode.point_count)) {
-      console.log('🔍 필터링: 연결 안된 디바이스 선택됨 - 빈 배열 반환');
+    if (selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) && !selectedNode.hasRedisData) {
+      console.log('필터링: 연결 안된 디바이스 선택됨 - 빈 배열 반환');
       return [];
     }
 
@@ -332,19 +407,25 @@ const DataExplorer: React.FC = () => {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    console.log('🔄 수동 새로고침 시작...');
+    console.log('수동 새로고침 시작...');
     setLastRefresh(new Date());
     loadTreeStructure();
   }, [loadTreeStructure]);
 
+  const [showExportModal, setShowExportModal] = useState(false);
   const handleExportData = useCallback(() => {
-    console.log('📥 CSV 데이터 내보내기 시작...');
+    console.log('CSV 데이터 내보내기 시작...');
     if (filteredDataPoints.length === 0) {
-      console.warn('⚠️ 내보낼 데이터가 없습니다.');
+      console.warn('내보낼 데이터가 없습니다.');
       alert('내보낼 데이터가 없습니다.');
       return;
     }
 
+    // 커스텀 모달 표시
+    setShowExportModal(true);
+  }, [filteredDataPoints]);
+
+  const confirmExport = useCallback(() => {
     const csvHeaders = [
       'Device Name (디바이스명)',
       'Point Name (포인트명)',
@@ -381,16 +462,19 @@ const DataExplorer: React.FC = () => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    console.log(`✅ ${filteredDataPoints.length}개 데이터 CSV 내보내기 완료`);
+    setShowExportModal(false);
+    console.log(`${filteredDataPoints.length}개 데이터 CSV 내보내기 완료`);
   }, [filteredDataPoints]);
 
   const clearSelection = useCallback(() => {
-    console.log('🔄 선택 초기화');
+    console.log('선택 초기화');
     setSelectedDataPoints([]);
     setSelectedNode(null);
   }, []);
 
   const handleNodeClick = useCallback((node: TreeNode) => {
+    console.log(`클릭된 노드: ${node.label} (${node.type})`);
+    
     setSelectedNode(node);
     
     if (node.type === 'datapoint') {
@@ -411,55 +495,56 @@ const DataExplorer: React.FC = () => {
     } else if (['device', 'master', 'slave'].includes(node.type)) {
       const deviceId = node.device_info?.device_id;
       
-      if (!deviceId || node.connection_status === 'disconnected' || !node.point_count) {
-        console.log(`⚠️ 디바이스 ${deviceId}: Redis 데이터 없음`);
+      if (!deviceId) {
+        console.log('디바이스 ID가 없음');
         setSelectedDataPoints([]);
         return;
       }
 
-      // RTU 마스터인 경우, 자신과 모든 슬레이브의 데이터를 로드
-      if (node.type === 'master' && node.children) {
-        Promise.all([
-          loadDeviceData(deviceId),
-          ...node.children.map(child => {
-            const slaveId = child.device_info?.device_id;
-            return slaveId ? loadDeviceData(slaveId) : Promise.resolve([]);
-          })
-        ]).then(results => {
-          const allDataPoints = results.flat();
-          if (allDataPoints.length > 0) {
-            setSelectedDataPoints(allDataPoints);
-            setRealtimeData(allDataPoints);
-          }
-        });
-      } else {
-        // 일반 디바이스나 슬레이브인 경우
-        const existingDataPoints = findAllDataPoints([node]);
-        if (existingDataPoints.length > 0) {
-          setSelectedDataPoints(existingDataPoints);
+      // 디바이스 클릭 시 즉시 Redis에서 데이터 로드
+      console.log(`디바이스 ${deviceId} 실시간 데이터 로드 중...`);
+      loadDeviceData(deviceId).then(dataPoints => {
+        if (dataPoints.length > 0) {
+          console.log(`디바이스 ${deviceId}: ${dataPoints.length}개 포인트 표시`);
+          setSelectedDataPoints(dataPoints);
+          setRealtimeData(dataPoints);
+        } else {
+          console.log(`디바이스 ${deviceId}: 표시할 데이터 없음`);
+          setSelectedDataPoints([]);
         }
-
-        loadDeviceData(deviceId).then(dataPoints => {
-          if (dataPoints.length > 0) {
-            setSelectedDataPoints(dataPoints);
-            setRealtimeData(dataPoints);
-          }
-        });
-      }
+      });
 
       // 자식 노드 로드 (데이터포인트)
       if (!node.children && node.point_count && node.point_count > 0) {
         loadDeviceChildren(node);
       }
     }
-  }, [findAllDataPoints, loadDeviceChildren, loadDeviceData]);
+
+    // 트리 확장/접기 처리
+    if (['tenant', 'site', 'device', 'master', 'slave'].includes(node.type) && 
+        ((node.children && node.children.length > 0) || (node.child_count && node.child_count > 0))) {
+      
+      const newExpandedNodes = new Set(expandedNodes);
+      if (expandedNodes.has(node.id)) {
+        newExpandedNodes.delete(node.id);
+        console.log(`노드 접기: ${node.label}`);
+      } else {
+        newExpandedNodes.add(node.id);
+        console.log(`노드 펼치기: ${node.label}`);
+      }
+      setExpandedNodes(newExpandedNodes);
+      
+      // 트리 데이터에 확장 상태 반영
+      setTreeData(prev => updateTreeWithRedisStatus(prev));
+    }
+  }, [expandedNodes, loadDeviceChildren, loadDeviceData, updateTreeWithRedisStatus]);
 
   // ========================================================================
   // 초기화 및 자동 새로고침
   // ========================================================================
   useEffect(() => {
     loadTreeStructure();
-  }, [loadTreeStructure]);
+  }, []);
 
   useEffect(() => {
     if (!autoRefresh || refreshInterval <= 0) return;
@@ -473,11 +558,11 @@ const DataExplorer: React.FC = () => {
   }, [autoRefresh, refreshInterval, loadTreeStructure]);
 
   // ========================================================================
-  // 렌더링 함수
+  // 수정된 렌더링 함수 - 확장 상태와 연결 상태 정확히 표시
   // ========================================================================
   const renderTreeNode = (node: TreeNode): React.ReactNode => {
     const hasChildren = (node.children && node.children.length > 0) || (node.child_count && node.child_count > 0);
-    const isExpanded = node.children && node.children.length > 0;
+    const isExpanded = expandedNodes.has(node.id) && node.children && node.children.length > 0;
 
     return (
       <div key={node.id} className="tree-node">
@@ -509,11 +594,9 @@ const DataExplorer: React.FC = () => {
               </span>
             </div>
           )}
-          {(['device', 'master', 'slave'].includes(node.type)) && node.connection_status && (
-            <span className={`connection-badge ${node.connection_status}`}>
-              {node.connection_status === 'connected' && '🟢'}
-              {node.connection_status === 'disconnected' && '⚪'}
-              {node.connection_status === 'error' && '❌'}
+          {(['device', 'master', 'slave'].includes(node.type)) && (
+            <span className={`connection-badge ${node.hasRedisData ? 'connected' : 'disconnected'}`}>
+              {node.hasRedisData ? '🟢' : '⚪'}
             </span>
           )}
         </div>
@@ -550,7 +633,7 @@ const DataExplorer: React.FC = () => {
                 {connectionStatus === 'disconnected' && 'API 연결 끊김'}
               </span>
               <span>
-                ({statistics.total_devices || 0}개 디바이스, {filteredDataPoints.length}개 포인트)
+                ({statistics.total_devices || 0}개 디바이스, {redisConnectedDevices.size}개 활성, {filteredDataPoints.length}개 포인트)
               </span>
             </div>
             <div>
@@ -580,10 +663,10 @@ const DataExplorer: React.FC = () => {
                 onChange={(e) => setRefreshInterval(Number(e.target.value))}
                 className="refresh-interval"
               >
-                <option value={1}>1초</option>
-                <option value={3}>3초</option>
                 <option value={5}>5초</option>
                 <option value={10}>10초</option>
+                <option value={30}>30초</option>
+                <option value={60}>1분</option>
               </select>
             )}
           </div>
@@ -621,6 +704,38 @@ const DataExplorer: React.FC = () => {
             >
               ×
             </button>
+          </div>
+        </div>
+      )}
+      {/* 내보내기 확인 모달 - DataExplorer 전용 스타일 */}
+      {showExportModal && (
+        <div className="data-explorer-modal-overlay">
+          <div className="data-explorer-modal-content">
+            <div className="data-explorer-modal-header">
+              <div className="data-explorer-modal-icon info">
+                <i className="fas fa-download"></i>
+              </div>
+              <h3>데이터 내보내기</h3>
+            </div>
+            <div className="data-explorer-modal-body">
+              {filteredDataPoints.length}개의 실시간 데이터를 CSV 파일로 내보내시겠습니까?
+
+              파일명: pulseone_realtime_data_{new Date().toISOString().split('T')[0]}.csv
+            </div>
+            <div className="data-explorer-modal-footer">
+              <button 
+                onClick={() => setShowExportModal(false)} 
+                className="data-explorer-modal-btn data-explorer-modal-btn-cancel"
+              >
+                취소
+              </button>
+              <button 
+                onClick={confirmExport} 
+                className="data-explorer-modal-btn data-explorer-modal-btn-confirm data-explorer-modal-btn-info"
+              >
+                내보내기
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -755,12 +870,11 @@ const DataExplorer: React.FC = () => {
               </h4>
 
               {filteredDataPoints.length === 0 ? (
-                selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) &&
-                (selectedNode.connection_status === 'disconnected' || !selectedNode.point_count) ?
+                selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) ?
                 renderEmptyDeviceMessage(selectedNode) : (
                   <div className="empty-state">
                     <p style={{margin: '0 0 8px 0'}}>표시할 데이터가 없습니다</p>
-                    <small>필터를 조정하거나 API 연결을 확인해보세요</small>
+                    <small>왼쪽 트리에서 디바이스를 선택하거나 필터를 조정해보세요</small>
                     {realtimeData.length > 0 && (
                       <div style={{marginTop: '10px', fontSize: '12px', color: '#6c757d'}}>
                         <p style={{margin: 0}}>원본 데이터는 {realtimeData.length}개가 있지만 필터 조건에 맞지 않습니다.</p>
