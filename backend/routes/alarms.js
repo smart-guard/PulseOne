@@ -198,60 +198,222 @@ router.get('/history', async (req, res) => {
 
 /**
  * POST /api/alarms/occurrences/:id/acknowledge
- * 알람 확인 처리
+ * 알람 확인 처리 - Repository 패턴 100% 활용
  */
 router.post('/occurrences/:id/acknowledge', async (req, res) => {
     try {
-        const repo = getOccurrenceRepo();
-        const updatedOccurrence = await repo.acknowledge(
-            parseInt(req.params.id),
-            req.user.id,
-            req.body.comment || '',
-            req.tenantId
-        );
+        const { id } = req.params;
+        const { comment = '' } = req.body;
+        const { tenantId, user } = req;
+        
+        console.log(`🔧 알람 발생 ${id} 확인 처리 시작...`, {
+            userId: user.id,
+            userName: user.username || user.name,
+            comment,
+            tenantId
+        });
 
-        if (!updatedOccurrence) {
+        // 1. Repository 인스턴스 획득
+        const repo = getOccurrenceRepo();
+        
+        // 2. 알람 존재 여부 확인
+        const occurrence = await repo.findById(parseInt(id), tenantId);
+        
+        if (!occurrence) {
+            console.error(`❌ 알람 발생 ${id}를 찾을 수 없음`);
             return res.status(404).json(
-                createResponse(false, null, 'Alarm occurrence not found or already acknowledged', 'ALARM_NOT_FOUND')
+                createResponse(false, null, 'Alarm occurrence not found', 'ALARM_NOT_FOUND')
+            );
+        }
+        
+        // 3. 이미 확인된 알람인지 체크
+        if (occurrence.acknowledged_time) {
+            console.warn(`⚠️ 알람 발생 ${id}는 이미 확인됨`);
+            return res.status(409).json(
+                createResponse(false, null, 'Alarm already acknowledged', 'ALREADY_ACKNOWLEDGED')
+            );
+        }
+        
+        // 4. 이미 해제된 알람인지 체크
+        if (occurrence.state === 'cleared') {
+            console.warn(`⚠️ 알람 발생 ${id}는 이미 해제됨`);
+            return res.status(409).json(
+                createResponse(false, null, 'Alarm already cleared', 'ALREADY_CLEARED')
             );
         }
 
-        console.log(`알람 발생 ${req.params.id} 확인 처리 완료`);
-        res.json(createResponse(true, updatedOccurrence, 'Alarm occurrence acknowledged successfully'));
+        // 5. Repository를 통한 알람 확인 처리
+        const updatedOccurrence = await repo.acknowledge(
+            parseInt(id),
+            user.username || user.name || `User ${user.id}`,
+            comment,
+            tenantId
+        );
+        
+        // 6. state가 acknowledged로 업데이트되지 않은 경우 추가 업데이트
+        if (updatedOccurrence && updatedOccurrence.state !== 'acknowledged') {
+            console.log(`🔄 state를 'acknowledged'로 추가 업데이트`);
+            await repo.updateState(parseInt(id), 'acknowledged', tenantId);
+            updatedOccurrence.state = 'acknowledged';
+        }
 
+        // 7. Redis 캐시 업데이트 (기존 패턴 사용)
+        try {
+            const { getRedisClient } = require('../lib/connection/redis');
+            const redis = await getRedisClient();
+            
+            if (redis) {
+                const cacheKey = `alarm:occurrence:${tenantId}:${id}`;
+                await redis.setex(cacheKey, 300, JSON.stringify(updatedOccurrence));
+                console.log(`✅ Redis 캐시 업데이트 완료: ${cacheKey}`);
+            }
+        } catch (cacheError) {
+            console.warn('⚠️ Redis 캐시 업데이트 실패:', cacheError.message);
+        }
+
+        // 8. WebSocket 실시간 알림 (옵션)
+        if (global.io) {
+            global.io.to(`tenant_${tenantId}`).emit('alarm:acknowledged', {
+                occurrence_id: parseInt(id),
+                acknowledged_by: user.username || user.name || `User ${user.id}`,
+                acknowledged_time: updatedOccurrence.acknowledged_time,
+                state: updatedOccurrence.state || 'acknowledged'
+            });
+        }
+
+        console.log(`✅ 알람 발생 ${id} 확인 처리 완료 (state: ${updatedOccurrence.state})`);
+        
+        res.json(createResponse(true, updatedOccurrence, 'Alarm occurrence acknowledged successfully'));
+        
     } catch (error) {
-        console.error(`알람 발생 ${req.params.id} 확인 처리 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'ALARM_ACKNOWLEDGE_ERROR'));
+        console.error(`💥 알람 발생 ${req.params.id} 확인 처리 실패:`, error);
+        
+        // 409 에러인 경우 더 자세한 정보 제공
+        if (error.message && error.message.includes('already acknowledged')) {
+            res.status(409).json(
+                createResponse(false, {
+                    alarm_id: parseInt(req.params.id),
+                    current_state: 'acknowledged',
+                    suggestion: 'Already acknowledged - refresh the alarm list'
+                }, error.message, 'ALREADY_ACKNOWLEDGED')
+            );
+        } else {
+            res.status(500).json(
+                createResponse(false, null, error.message, 'ALARM_ACKNOWLEDGE_ERROR')
+            );
+        }
     }
 });
 
 /**
  * POST /api/alarms/occurrences/:id/clear
- * 알람 해제 처리
+ * 알람 해제 처리 - Repository 패턴 100% 활용
  */
 router.post('/occurrences/:id/clear', async (req, res) => {
     try {
-        const repo = getOccurrenceRepo();
-        const updatedOccurrence = await repo.clear(
-            parseInt(req.params.id),
-            req.user.id,
-            req.body.clearedValue || '',
-            req.body.comment || '',
-            req.tenantId
-        );
+        const { id } = req.params;
+        const { clearedValue = '', comment = '' } = req.body;
+        const { tenantId, user } = req;
+        
+        console.log(`🔧 알람 발생 ${id} 해제 처리 시작...`, {
+            userId: user.id,
+            userName: user.username || user.name,
+            clearedValue,
+            comment,
+            tenantId
+        });
 
-        if (!updatedOccurrence) {
+        // 1. Repository 인스턴스 획득
+        const repo = getOccurrenceRepo();
+        
+        // 2. 알람 존재 여부 확인
+        const occurrence = await repo.findById(parseInt(id), tenantId);
+        
+        if (!occurrence) {
+            console.error(`❌ 알람 발생 ${id}를 찾을 수 없음`);
             return res.status(404).json(
                 createResponse(false, null, 'Alarm occurrence not found', 'ALARM_NOT_FOUND')
             );
         }
+        
+        // 3. 이미 해제된 알람인지 체크
+        if (occurrence.state === 'cleared' || occurrence.cleared_time) {
+            console.warn(`⚠️ 알람 발생 ${id}는 이미 해제됨`);
+            return res.status(409).json(
+                createResponse(false, null, 'Alarm already cleared', 'ALREADY_CLEARED')
+            );
+        }
 
-        console.log(`알람 발생 ${req.params.id} 해제 처리 완료`);
+        // 4. Repository를 통한 알람 해제 처리
+        const updatedOccurrence = await repo.clear(
+            parseInt(id),
+            user.username || user.name || `User ${user.id}`,
+            clearedValue,
+            comment,
+            tenantId
+        );
+        
+        // 5. state가 cleared로 업데이트되지 않은 경우 추가 업데이트
+        if (updatedOccurrence && updatedOccurrence.state !== 'cleared') {
+            console.log(`🔄 state를 'cleared'로 추가 업데이트`);
+            await repo.updateState(parseInt(id), 'cleared', tenantId);
+            updatedOccurrence.state = 'cleared';
+        }
+
+        // 6. 알람 규칙의 활성 알람 카운터 감소 (Repository 사용)
+        if (occurrence.rule_id) {
+            try {
+                const ruleRepo = getRuleRepo();
+                // 규칙에 활성 알람 카운터 업데이트 메서드가 있다면 사용
+                // 없다면 이 부분은 제거하거나 별도 구현 필요
+                console.log(`📊 알람 규칙 ${occurrence.rule_id} 활성 카운터 감소 처리 (TODO: 구현 필요)`);
+            } catch (ruleError) {
+                console.warn('⚠️ 알람 규칙 카운터 업데이트 실패:', ruleError.message);
+            }
+        }
+
+        // 7. Redis 캐시 삭제 (해제된 알람은 캐시에서 제거)
+        if (redisClient) {
+            try {
+                const redis = await redisClient.getRedisClient();
+                if (redis) {
+                    const cacheKey = `alarm:occurrence:${tenantId}:${id}`;
+                    await redis.del(cacheKey);
+                    
+                    // 활성 알람 목록 캐시도 무효화
+                    const activeListKey = `alarm:active:${tenantId}`;
+                    await redis.del(activeListKey);
+                    
+                    console.log(`✅ Redis 캐시 삭제 완료`);
+                }
+            } catch (cacheError) {
+                console.warn('⚠️ Redis 캐시 삭제 실패:', cacheError.message);
+            }
+        }
+
+        // 8. WebSocket 실시간 알림 (옵션)
+        if (global.io) {
+            global.io.to(`tenant_${tenantId}`).emit('alarm:cleared', {
+                occurrence_id: parseInt(id),
+                cleared_by: user.username || user.name || `User ${user.id}`,
+                cleared_time: updatedOccurrence.cleared_time,
+                state: updatedOccurrence.state || 'cleared'
+            });
+        }
+
+        // 9. 알람 이력 기록 (Repository 패턴으로 확장 가능)
+        // TODO: AlarmHistoryRepository가 있다면 사용
+        console.log(`📋 알람 이력 기록 처리 (TODO: AlarmHistoryRepository 구현)`);
+
+        console.log(`✅ 알람 발생 ${id} 해제 처리 완료 (state: ${updatedOccurrence.state})`);
+        
         res.json(createResponse(true, updatedOccurrence, 'Alarm occurrence cleared successfully'));
-
+        
     } catch (error) {
-        console.error(`알람 발생 ${req.params.id} 해제 처리 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'ALARM_CLEAR_ERROR'));
+        console.error(`💥 알람 발생 ${req.params.id} 해제 처리 실패:`, error);
+        res.status(500).json(
+            createResponse(false, null, error.message, 'ALARM_CLEAR_ERROR')
+        );
     }
 });
 

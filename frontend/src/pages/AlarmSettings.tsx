@@ -1,5 +1,12 @@
+// ============================================================================
+// frontend/src/pages/AlarmSettings.tsx
+// 알람 설정 관리 페이지 - API Service 통합 버전
+// ============================================================================
+
 import React, { useState, useEffect } from 'react';
 import { AlarmApiService, AlarmRule } from '../api/services/alarmApi';
+import { DataApiService } from '../api/services/dataApi';
+import { DeviceApiService } from '../api/services/deviceApi';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
 import AlarmCreateEditModal from '../components/modals/AlarmCreateEditModal';
 import '../styles/alarm-settings.css';
@@ -28,17 +35,7 @@ interface Device {
 const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   // ConfirmProvider 사용
   const { confirm } = useConfirmContext();
-  const testConfirm = async () => {
-    try {
-      const result = await confirm({
-        title: '테스트',
-        message: '테스트입니다'
-      });
-      console.log('테스트 결과:', result);
-    } catch (error) {
-      console.error('테스트 에러:', error);
-    }
-  };
+  
   // 상태 관리
   const [alarmRules, setAlarmRules] = useState<AlarmRule[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,53 +98,50 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }
   };
 
-  // 타겟 데이터 로딩 (데이터포인트, 디바이스 목록)
+  /**
+   * 🔥 타겟 데이터 로딩 - API 서비스 사용으로 변경
+   */
   const loadTargetData = async () => {
     try {
       setLoadingTargetData(true);
       
+      // 🔥 API 서비스 사용으로 변경
       const [dataPointsResponse, devicesResponse] = await Promise.all([
-        fetch('/api/data/points'),
-        fetch('/api/devices')
+        DataApiService.searchDataPoints({
+          page: 1,
+          limit: 1000,
+          enabled_only: false,
+          include_current_value: false
+        }),
+        DeviceApiService.getDevices({
+          page: 1,
+          limit: 100,
+          enabled_only: false
+        })
       ]);
       
-      if (dataPointsResponse.ok) {
-        const dataPointsData = await dataPointsResponse.json();
-        console.log('로드된 데이터포인트:', dataPointsData);
-        
-        // API 응답 구조에 맞게 items 배열 추출
-        if (dataPointsData.success && dataPointsData.data && Array.isArray(dataPointsData.data.items)) {
-          setDataPoints(dataPointsData.data.items);
-        } else if (dataPointsData.items && Array.isArray(dataPointsData.items)) {
-          setDataPoints(dataPointsData.items);
-        } else {
-          console.warn('예상치 못한 데이터포인트 응답 구조:', dataPointsData);
-          setDataPoints([]);
-        }
+      // 데이터포인트 처리
+      if (dataPointsResponse.success && dataPointsResponse.data) {
+        const points = dataPointsResponse.data.items || [];
+        setDataPoints(points);
+        console.log(`✅ 데이터포인트 ${points.length}개 로드 완료`);
       } else {
-        console.error('데이터포인트 로딩 실패:', dataPointsResponse.status);
+        console.warn('데이터포인트 로딩 실패:', dataPointsResponse.message);
         setDataPoints([]);
       }
       
-      if (devicesResponse.ok) {
-        const devicesData = await devicesResponse.json();
-        console.log('로드된 디바이스:', devicesData);
-        
-        // API 응답 구조에 맞게 items 배열 추출
-        if (devicesData.success && devicesData.data && Array.isArray(devicesData.data.items)) {
-          setDevices(devicesData.data.items);
-        } else if (devicesData.items && Array.isArray(devicesData.items)) {
-          setDevices(devicesData.items);
-        } else {
-          console.warn('예상치 못한 디바이스 응답 구조:', devicesData);
-          setDevices([]);
-        }
+      // 디바이스 처리
+      if (devicesResponse.success && devicesResponse.data) {
+        const deviceList = devicesResponse.data.items || [];
+        setDevices(deviceList);
+        console.log(`✅ 디바이스 ${deviceList.length}개 로드 완료`);
       } else {
-        console.error('디바이스 로딩 실패:', devicesResponse.status);
+        console.warn('디바이스 로딩 실패:', devicesResponse.message);
         setDevices([]);
       }
+      
     } catch (error) {
-      console.error('타겟 데이터 로딩 실패:', error);
+      console.error('❌ 타겟 데이터 로딩 실패:', error);
       setDataPoints([]);
       setDevices([]);
     } finally {
@@ -213,65 +207,65 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
     }
   };
 
-  // 🚀 수정된 알람 규칙 활성화/비활성화 토글 (새로운 confirm 다이얼로그 사용)
-const handleToggleRule = async (ruleId: number, currentStatus: boolean, ruleName: string) => {
-  const newStatus = !currentStatus;
-  const action = newStatus ? '활성화' : '비활성화';
-  
-  try {
-    const confirmed = await confirm({
-      title: '알람 규칙 상태 변경',
-      message: `"${ruleName}" 알람 규칙을 ${action}하시겠습니까?\n\n이 작업은 즉시 적용됩니다.`,
-      confirmText: action,
-      cancelText: '취소',
-      confirmButtonType: newStatus ? 'primary' : 'warning'
-    });
-
-    if (!confirmed) {
-      return;
-    }
-
-    setToggleLoading(prev => new Set([...prev, ruleId]));
+  // 알람 규칙 활성화/비활성화 토글
+  const handleToggleRule = async (ruleId: number, currentStatus: boolean, ruleName: string) => {
+    const newStatus = !currentStatus;
+    const action = newStatus ? '활성화' : '비활성화';
     
-    const response = await AlarmApiService.toggleAlarmRule(ruleId, newStatus);
-    
-    if (response.success) {
-      setAlarmRules(prev => 
-        prev.map(rule =>
-          rule.id === ruleId ? { ...rule, is_enabled: newStatus } : rule
-        )
-      );
+    try {
+      const confirmed = await confirm({
+        title: '알람 규칙 상태 변경',
+        message: `"${ruleName}" 알람 규칙을 ${action}하시겠습니까?\n\n이 작업은 즉시 적용됩니다.`,
+        confirmText: action,
+        cancelText: '취소',
+        confirmButtonType: newStatus ? 'primary' : 'warning'
+      });
+
+      if (!confirmed) {
+        return;
+      }
+
+      setToggleLoading(prev => new Set([...prev, ruleId]));
+      
+      const response = await AlarmApiService.toggleAlarmRule(ruleId, newStatus);
+      
+      if (response.success) {
+        setAlarmRules(prev => 
+          prev.map(rule =>
+            rule.id === ruleId ? { ...rule, is_enabled: newStatus } : rule
+          )
+        );
+        
+        await confirm({
+          title: '상태 변경 완료',
+          message: `"${ruleName}" 알람 규칙이 성공적으로 ${action}되었습니다.`,
+          confirmText: '확인',
+          confirmButtonType: 'primary',
+          showCancelButton: false
+        });
+      } else {
+        throw new Error(response.message || `${action}에 실패했습니다.`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : `알람 규칙 ${action}에 실패했습니다.`;
       
       await confirm({
-        title: '상태 변경 완료',
-        message: `"${ruleName}" 알람 규칙이 성공적으로 ${action}되었습니다.`,
+        title: '상태 변경 실패',
+        message: `${action} 중 오류가 발생했습니다:\n${errorMessage}`,
         confirmText: '확인',
-        confirmButtonType: 'primary',
+        confirmButtonType: 'danger',
         showCancelButton: false
       });
-    } else {
-      throw new Error(response.message || `${action}에 실패했습니다.`);
+      
+      await loadAlarmRules();
+    } finally {
+      setToggleLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(ruleId);
+        return newSet;
+      });
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : `알람 규칙 ${action}에 실패했습니다.`;
-    
-    await confirm({
-      title: '상태 변경 실패',
-      message: `${action} 중 오류가 발생했습니다:\n${errorMessage}`,
-      confirmText: '확인',
-      confirmButtonType: 'danger',
-      showCancelButton: false
-    });
-    
-    await loadAlarmRules();
-  } finally {
-    setToggleLoading(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(ruleId);
-      return newSet;
-    });
-  }
-};
+  };
 
   // 모달 핸들러들
   const handleCreateRule = () => {
@@ -403,7 +397,7 @@ const handleToggleRule = async (ruleId: number, currentStatus: boolean, ruleName
     return colorClasses[classIndex];
   };
 
-  // 🚀 개별 토글 버튼 컴포넌트 (수정됨)
+  // 개별 토글 버튼 컴포넌트
   const ToggleButton: React.FC<{ rule: AlarmRule; size?: 'sm' | 'normal' }> = ({ rule, size = 'normal' }) => {
     const isToggling = toggleLoading.has(rule.id);
     
@@ -417,7 +411,7 @@ const handleToggleRule = async (ruleId: number, currentStatus: boolean, ruleName
         onClick={handleClick}
         title={rule.is_enabled ? '비활성화' : '활성화'}
         disabled={isToggling || loading}
-        style={{ minWidth: '40px' }}  // 너비도 줄임
+        style={{ minWidth: '40px' }}
       >
         {isToggling ? (
           <i className="fas fa-spinner fa-spin"></i>

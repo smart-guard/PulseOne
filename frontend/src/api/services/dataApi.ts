@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/api/services/dataApi.ts
-// 데이터 익스플로러 API 서비스 - dataPointsApi 완전 통합 버전
+// 데이터 익스플로러 API 서비스 - 최종 완성본
 // ============================================================================
 
 import { API_CONFIG } from '../config';
@@ -169,7 +169,7 @@ export interface ExportResult {
 }
 
 // ============================================================================
-// 🔧 HTTP 클라이언트 클래스 (재사용)
+// 🔧 HTTP 클라이언트 클래스 - URL 중복 문제 수정
 // ============================================================================
 
 class HttpClient {
@@ -180,7 +180,19 @@ class HttpClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
+    // 🔥 URL 중복 방지 로직
+    let url: string;
+    
+    if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+      // 이미 완전한 URL인 경우
+      url = endpoint;
+    } else if (endpoint.startsWith('/')) {
+      // 절대 경로인 경우 (/api/... 등)
+      url = `${this.baseUrl}${endpoint}`;
+    } else {
+      // 상대 경로인 경우
+      url = `${this.baseUrl}/${endpoint}`;
+    }
     
     console.log('🌐 Data API Request:', {
       method: options.method || 'GET',
@@ -189,8 +201,8 @@ class HttpClient {
     });
     
     const config: RequestInit = {
-      timeout: API_CONFIG.TIMEOUT,
       headers: {
+        'Content-Type': 'application/json',
         ...API_CONFIG.DEFAULT_HEADERS,
         ...options.headers,
       },
@@ -211,20 +223,19 @@ class HttpClient {
         throw new Error(errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data: ApiResponse<T> = await response.json();
+      const data = await response.json();
       
-      // Backend 응답 변환
+      // Backend 응답 형식 보장
       if ('success' in data) {
-        return {
-          success: data.success,
-          data: data.data,
-          message: data.message,
-          error: data.error,
-          timestamp: data.timestamp
-        };
+        return data as ApiResponse<T>;
       }
       
-      return data;
+      // 표준 형식이 아닌 경우 변환
+      return {
+        success: true,
+        data: data as T,
+        message: 'Success'
+      } as ApiResponse<T>;
       
     } catch (error) {
       console.error('❌ Data API Request failed:', {
@@ -236,15 +247,16 @@ class HttpClient {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : 'Unknown error',
         data: null as any
       };
     }
   }
 
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
-    const queryParams = new URLSearchParams();
-    
     if (params) {
+      const queryParams = new URLSearchParams();
+      
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           if (Array.isArray(value)) {
@@ -254,12 +266,16 @@ class HttpClient {
           }
         }
       });
+      
+      const queryString = queryParams.toString();
+      if (queryString) {
+        endpoint = endpoint.includes('?') 
+          ? `${endpoint}&${queryString}` 
+          : `${endpoint}?${queryString}`;
+      }
     }
     
-    const url = params && queryParams.toString() ? 
-      `${endpoint}?${queryParams.toString()}` : endpoint;
-    
-    return this.request<T>(url, { method: 'GET' });
+    return this.request<T>(endpoint, { method: 'GET' });
   }
 
   async post<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
@@ -268,17 +284,35 @@ class HttpClient {
       body: data ? JSON.stringify(data) : undefined
     });
   }
+
+  async put<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined
+    });
+  }
+
+  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
+  async patch<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: data ? JSON.stringify(data) : undefined
+    });
+  }
 }
 
 // ============================================================================
-// 📊 데이터 익스플로러 API 서비스 클래스 (완전 통합 버전)
+// 📊 데이터 익스플로러 API 서비스 클래스
 // ============================================================================
 
 export class DataApiService {
   private static httpClient = new HttpClient();
 
   // ========================================================================
-  // 🔍 데이터포인트 검색 및 조회 (기존 메소드들)
+  // 🔍 데이터포인트 검색 및 조회
   // ========================================================================
 
   /**
@@ -310,13 +344,8 @@ export class DataApiService {
     return this.httpClient.get<DataPoint>(`/api/data/points/${id}`, options);
   }
 
-  // ========================================================================
-  // 🆕 InputVariableSourceSelector용 메소드들 (dataPointsApi 통합)
-  // ========================================================================
-
   /**
    * 데이터포인트 목록 조회 (InputVariableSourceSelector 전용)
-   * 기존 dataPointsApi.getDataPoints()를 완전 대체
    */
   static async getDataPoints(filters?: {
     search?: string;
@@ -346,71 +375,37 @@ export class DataApiService {
       filtered_count: number;
     };
   }> {
-    console.log('🔄 데이터포인트 목록 조회 (통합 API):', filters);
+    console.log('🔄 데이터포인트 목록 조회:', filters);
 
-    try {
-      // ✅ 직접 fetch로 호출 (URL 중복 문제 해결)
-      const params = new URLSearchParams();
+    const response = await this.searchDataPoints(filters);
+    
+    if (response.success && response.data) {
+      const { items = [], pagination } = response.data;
       
-      // 기본값 설정
-      params.append('limit', (filters?.limit || 1000).toString());
-      params.append('page', (filters?.page || 1).toString());
-      params.append('sort_by', filters?.sort_by || 'name');
-      params.append('sort_order', filters?.sort_order || 'ASC');
-      
-      // 선택적 필터들
-      if (filters?.search) params.append('search', filters.search);
-      if (filters?.device_id) params.append('device_id', filters.device_id.toString());
-      if (filters?.site_id) params.append('site_id', filters.site_id.toString());
-      if (filters?.data_type) params.append('data_type', filters.data_type);
-      if (filters?.enabled_only !== undefined) params.append('enabled_only', filters.enabled_only.toString());
-      if (filters?.include_current_value !== undefined) params.append('include_current_value', filters.include_current_value.toString());
-
-      // ✅ URL 올바르게 구성
-      const url = `/api/data/points?${params.toString()}`;
-      console.log('🔗 API 요청 URL:', url);
-
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('📦 API 응답:', result);
-      
-      // 백엔드 응답 처리 (타입 변환 지원)
-      if (result.success && result.data) {
-        const points = result.data.points || [];
-        return {
-          points: points,
-          totalCount: result.data.pagination?.total || points.length,
-          pagination: {
-            page: result.data.pagination?.page || 1,
-            limit: result.data.pagination?.limit || 1000,
-            hasNext: result.data.pagination?.has_next || false,
-            hasPrev: result.data.pagination?.has_prev || false,
-            total: result.data.pagination?.total || points.length,
-            totalPages: result.data.pagination?.total_pages || 1
-          },
-          transformationInfo: result.data.data_transformation || {
-            types_converted: true,
-            original_count: points.length,
-            filtered_count: points.length
-          }
-        };
-      } else {
-        throw new Error(result.message || 'API 응답 처리 실패');
-      }
-
-    } catch (error) {
-      console.warn('⚠️ API 호출 실패, 목 데이터 사용:', error);
-      return this.getMockDataPoints(filters);
+      return {
+        points: items,
+        totalCount: pagination?.total || items.length,
+        pagination: {
+          page: pagination?.page || 1,
+          limit: pagination?.limit || 1000,
+          hasNext: pagination?.hasNext || false,
+          hasPrev: pagination?.hasPrev || false,
+          total: pagination?.total || items.length,
+          totalPages: pagination?.totalPages || 1
+        },
+        transformationInfo: {
+          types_converted: true,
+          original_count: items.length,
+          filtered_count: items.length
+        }
+      };
+    } else {
+      throw new Error(response.message || 'API 응답 처리 실패');
     }
   }
 
   /**
-   * 디바이스 목록 조회 (InputVariableSourceSelector 전용)
+   * 디바이스 목록 조회
    */
   static async getDevices(): Promise<Array<{
     id: number;
@@ -418,47 +413,28 @@ export class DataApiService {
     protocol_type: string;
     connection_status: string;
   }>> {
-    try {
-      console.log('🔄 디바이스 목록 조회');
-      
-      const response = await fetch('/api/devices?limit=100&enabled_only=true');
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+    console.log('🔄 디바이스 목록 조회');
+    
+    const response = await fetch('/api/devices?limit=100&enabled_only=true');
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
 
-      const result = await response.json();
-      console.log('📦 디바이스 API 응답:', result);
-      
-      if (result.success && result.data?.items) {
-        return result.data.items.map((d: any) => ({
-          id: d.id,
-          name: d.name,
-          protocol_type: d.protocol_type || 'unknown',
-          connection_status: d.connection_status || 'unknown'
-        }));
-      } else if (result.success && Array.isArray(result.data)) {
-        return result.data.map((d: any) => ({
-          id: d.id,
-          name: d.name,
-          protocol_type: d.protocol_type || 'unknown',
-          connection_status: d.connection_status || 'unknown'
-        }));
-      } else {
-        throw new Error(result.message || '디바이스 API 응답 구조 오류');
-      }
-    } catch (error) {
-      console.warn('⚠️ 디바이스 API 호출 실패, 목 데이터 사용:', error);
-      return [
-        { id: 1, name: 'PLC-001 (보일러)', protocol_type: 'modbus', connection_status: 'connected' },
-        { id: 2, name: 'WEATHER-001 (기상)', protocol_type: 'mqtt', connection_status: 'connected' },
-        { id: 3, name: 'HVAC-001 (공조)', protocol_type: 'bacnet', connection_status: 'connected' }
-      ];
+    const result = await response.json();
+    console.log('📦 디바이스 API 응답:', result);
+    
+    if (result.success && result.data?.items) {
+      return result.data.items;
+    } else if (Array.isArray(result.data)) {
+      return result.data;
+    } else {
+      throw new Error(result.message || '디바이스 API 응답 구조 오류');
     }
   }
 
   // ========================================================================
-  // ⚡ 실시간 현재값 조회 (기존 메소드들)
+  // ⚡ 실시간 현재값 조회
   // ========================================================================
 
   /**
@@ -497,7 +473,7 @@ export class DataApiService {
   }
 
   // ========================================================================
-  // 📊 이력 데이터 조회 (기존 메소드들)
+  // 📊 이력 데이터 조회
   // ========================================================================
 
   /**
@@ -525,7 +501,7 @@ export class DataApiService {
   }
 
   // ========================================================================
-  // 🔍 고급 검색 및 쿼리 (기존 메소드들)
+  // 🔍 고급 검색 및 쿼리
   // ========================================================================
 
   /**
@@ -543,7 +519,7 @@ export class DataApiService {
   }
 
   // ========================================================================
-  // 📊 데이터 통계 및 분석 (기존 메소드들)
+  // 📊 데이터 통계 및 분석
   // ========================================================================
 
   /**
@@ -559,7 +535,7 @@ export class DataApiService {
   }
 
   // ========================================================================
-  // 📤 데이터 내보내기 (기존 메소드들)
+  // 📤 데이터 내보내기
   // ========================================================================
 
   /**
@@ -619,7 +595,7 @@ export class DataApiService {
   }
 
   // ========================================================================
-  // 🔧 유틸리티 메서드들 (기존 메소드들)
+  // 🔧 유틸리티 메서드들
   // ========================================================================
 
   /**
@@ -695,214 +671,10 @@ export class DataApiService {
       return 0;
     });
   }
-
-  // ========================================================================
-  // 🎭 목 데이터 (API 실패 시)
-  // ========================================================================
-
-  /**
-   * 목 데이터포인트 (InputVariableSourceSelector용)
-   */
-  private static getMockDataPoints(filters?: any): {
-    points: DataPoint[];
-    totalCount: number;
-    pagination: { 
-      page: number; 
-      limit: number; 
-      hasNext: boolean; 
-      hasPrev: boolean; 
-      total: number;
-      totalPages: number;
-    };
-    transformationInfo: {
-      types_converted: boolean;
-      original_count: number;
-      filtered_count: number;
-    };
-  } {
-    console.log('🎭 목 데이터포인트 사용 (타입 변환 적용됨)');
-
-    // ✅ 웹 표준 타입으로 변환된 목 데이터
-    const mockData: DataPoint[] = [
-      {
-        id: 101,
-        device_id: 1,
-        device_name: 'PLC-001 (보일러)',
-        name: 'Temperature_Sensor_01',
-        description: '보일러 온도 센서',
-        data_type: 'number', // ✅ 변환됨
-        original_data_type: 'FLOAT32', // 원본 타입 보존
-        current_value: 85.3,
-        unit: '°C',
-        address: '40001',
-        is_enabled: true,
-        min_value: 0,
-        max_value: 200,
-        created_at: '2024-08-20T09:00:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      },
-      {
-        id: 102,
-        device_id: 1,
-        device_name: 'PLC-001 (보일러)',
-        name: 'Pressure_Sensor_01',
-        description: '보일러 압력 센서',
-        data_type: 'number', // ✅ 변환됨
-        original_data_type: 'UINT32', // 원본 타입 보존
-        current_value: 2.4,
-        unit: 'bar',
-        address: '40002',
-        is_enabled: true,
-        min_value: 0,
-        max_value: 10,
-        created_at: '2024-08-20T09:05:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      },
-      {
-        id: 103,
-        device_id: 2,
-        device_name: 'WEATHER-001 (기상)',
-        name: 'External_Temperature',
-        description: '외부 온도 센서',
-        data_type: 'number', // ✅ 변환됨
-        original_data_type: 'FLOAT64', // 원본 타입 보존
-        current_value: 24.5,
-        unit: '°C',
-        address: 'temp',
-        is_enabled: true,
-        min_value: -20,
-        max_value: 50,
-        created_at: '2024-08-20T09:10:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      },
-      {
-        id: 104,
-        device_id: 2,
-        device_name: 'WEATHER-001 (기상)',
-        name: 'Humidity_Sensor',
-        description: '습도 센서',
-        data_type: 'number', // ✅ 변환됨
-        original_data_type: 'UINT16', // 원본 타입 보존
-        current_value: 65.2,
-        unit: '%',
-        address: 'humidity',
-        is_enabled: true,
-        min_value: 0,
-        max_value: 100,
-        created_at: '2024-08-20T09:15:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      },
-      {
-        id: 105,
-        device_id: 3,
-        device_name: 'HVAC-001 (공조)',
-        name: 'Fan_Status',
-        description: '환풍기 동작 상태',
-        data_type: 'boolean', // ✅ 변환됨
-        original_data_type: 'BOOL', // 원본 타입 보존
-        current_value: true,
-        address: 'coil_001',
-        is_enabled: true,
-        created_at: '2024-08-20T09:20:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      },
-      {
-        id: 106,
-        device_id: 3,
-        device_name: 'HVAC-001 (공조)',
-        name: 'System_Mode',
-        description: '시스템 동작 모드',
-        data_type: 'string', // ✅ 변환됨
-        original_data_type: 'STRING', // 원본 타입 보존
-        current_value: '냉방',
-        address: 'mode',
-        is_enabled: true,
-        created_at: '2024-08-20T09:25:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      },
-      {
-        id: 107,
-        device_id: 1,
-        device_name: 'PLC-001 (보일러)',
-        name: 'Flow_Rate',
-        description: '유량 센서',
-        data_type: 'number', // ✅ 변환됨
-        original_data_type: 'DECIMAL', // 원본 타입 보존
-        current_value: 15.7,
-        unit: 'L/min',
-        address: '40003',
-        is_enabled: true,
-        min_value: 0,
-        max_value: 100,
-        created_at: '2024-08-20T09:30:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      },
-      {
-        id: 108,
-        device_id: 2,
-        device_name: 'WEATHER-001 (기상)',
-        name: 'Wind_Speed',
-        description: '풍속 센서',
-        data_type: 'number', // ✅ 변환됨
-        original_data_type: 'REAL', // 원본 타입 보존
-        current_value: 3.2,
-        unit: 'm/s',
-        address: 'wind',
-        is_enabled: true,
-        min_value: 0,
-        max_value: 50,
-        created_at: '2024-08-20T09:35:00Z',
-        updated_at: '2024-08-23T10:30:00Z'
-      }
-    ];
-
-    // 필터 적용
-    let filteredData = mockData;
-    
-    if (filters?.search) {
-      const search = filters.search.toLowerCase();
-      filteredData = filteredData.filter((dp: any) =>
-        dp.name.toLowerCase().includes(search) ||
-        dp.description.toLowerCase().includes(search) ||
-        dp.device_name.toLowerCase().includes(search)
-      );
-    }
-
-    if (filters?.device_id) {
-      filteredData = filteredData.filter((dp: any) => dp.device_id === filters.device_id);
-    }
-
-    if (filters?.data_type) {
-      // ✅ 이제 웹 표준 타입으로 정확히 필터링 가능
-      filteredData = filteredData.filter((dp: any) => dp.data_type === filters.data_type);
-    }
-
-    if (filters?.enabled_only) {
-      filteredData = filteredData.filter((dp: any) => dp.is_enabled);
-    }
-
-    return {
-      points: filteredData,
-      totalCount: filteredData.length,
-      pagination: {
-        page: 1,
-        limit: 1000,
-        hasNext: false,
-        hasPrev: false,
-        total: filteredData.length,
-        totalPages: 1
-      },
-      transformationInfo: {
-        types_converted: true,
-        original_count: mockData.length,
-        filtered_count: filteredData.length
-      }
-    };
-  }
 }
 
 // ============================================================================
-// 📤 Export - 기본 및 명명된 export 모두 제공
+// 📤 Export
 // ============================================================================
 
 export default DataApiService;
