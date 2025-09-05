@@ -1398,7 +1398,84 @@ export class DeviceApiService {
       return `${seconds}초`;
     }
   }
+
+  /**
+   * 🌳 디바이스 트리 구조 조회
+   * RTU Master/Slave 계층구조를 포함한 완전한 트리 데이터를 반환
+   */
+  static async getDeviceTreeStructure(options?: {
+    include_data_points?: boolean;
+    include_realtime?: boolean;
+  }): Promise<ApiResponse<{
+    tree: any;
+    statistics: any;
+    options: any;
+  }>> {
+    try {
+      console.log('🌳 디바이스 트리 구조 조회:', options);
+      
+      const queryParams = new URLSearchParams();
+      if (options?.include_data_points) {
+        queryParams.append('include_data_points', 'true');
+      }
+      if (options?.include_realtime) {
+        queryParams.append('include_realtime', 'true');
+      }
+      
+      const url = `/api/devices/tree-structure?${queryParams.toString()}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('디바이스 트리 구조 조회 실패:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🔍 디바이스 트리 구조 검색
+   */
+  static async searchDeviceTree(criteria: {
+    search?: string;
+    protocol_type?: string;
+    connection_status?: string;
+    device_type?: string;
+    include_realtime?: boolean;
+  }): Promise<ApiResponse<{
+    tree: any;
+    total_found: number;
+    search_criteria: any;
+  }>> {
+    try {
+      console.log('🔍 디바이스 트리 검색:', criteria);
+      
+      const queryParams = new URLSearchParams();
+      Object.entries(criteria).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          queryParams.append(key, value.toString());
+        }
+      });
+      
+      const url = `${this.BASE_URL}/tree-structure/search?${queryParams.toString()}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('디바이스 트리 검색 실패:', error);
+      throw error;
+    }
 }
+}
+
+
 
 // Export 기본값
 export default DeviceApiService;

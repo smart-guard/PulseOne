@@ -532,7 +532,6 @@ router.post('/batch/stop', async (req, res) => {
 // ============================================================================
 // 디바이스 CRUD API (기존 + 설정 동기화 통합)
 // ============================================================================
-
 router.get('/', async (req, res) => {
     try {
         const { tenantId } = req;
@@ -670,6 +669,425 @@ router.get('/', async (req, res) => {
     } catch (error) {
         console.error('디바이스 목록 조회 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'DEVICES_LIST_ERROR'));
+    }
+});
+
+
+
+/**
+ * 🌳 디바이스 트리 구조 API - 개선된 버전 (하드코딩 URL 제거)
+ * RTU Master/Slave 계층구조를 포함한 완전한 트리 데이터를 반환
+ * GET /api/devices/tree-structure
+ */
+router.get('/tree-structure', async (req, res) => {
+    try {
+        console.log('🌳 디바이스 트리 구조 API 호출됨');
+        
+        const tenantId = req.user?.tenant_id || 1;
+        const includeDataPoints = req.query.include_data_points === 'true';
+        const includeRealtime = req.query.include_realtime === 'true';
+        
+        // 1. 모든 디바이스 조회 (DeviceRepository 구조에 맞춤)
+        console.log('📋 디바이스 목록 조회 중...');
+        let devicesResult;
+        try {
+            devicesResult = await getDeviceRepo().findAllDevices({
+                tenantId: tenantId,
+                page: 1,
+                limit: 1000
+            });
+            console.log('DeviceRepository 응답 구조:', typeof devicesResult, Object.keys(devicesResult || {}));
+        } catch (repoError) {
+            console.error('DeviceRepository 호출 실패:', repoError.message);
+            throw new Error('디바이스 조회 실패: ' + repoError.message);
+        }
+        
+        // DeviceRepository는 { items, pagination } 구조를 반환
+        const devices = devicesResult.items || [];
+        if (devices.length === 0) {
+            console.warn('조회된 디바이스가 없습니다');
+        }
+        
+        const enhancedDevices = enhanceDevicesWithRtuInfo(devices);
+        const devicesWithRelations = await addRtuRelationships(enhancedDevices, tenantId);
+        
+        console.log(`✅ ${devicesWithRelations.length}개 디바이스 로드 완료`);
+        
+        // 2. RTU 네트워크별 디바이스 분류
+        const rtuMasters = devicesWithRelations.filter(d => 
+            d.protocol_type === 'MODBUS_RTU' && 
+            (d.device_type === 'GATEWAY' || d.rtu_info?.is_master)
+        );
+        
+        const rtuSlaves = devicesWithRelations.filter(d => 
+            d.protocol_type === 'MODBUS_RTU' && 
+            d.device_type !== 'GATEWAY' && 
+            (d.rtu_info?.is_slave || d.rtu_info?.master_device_id)
+        );
+        
+        const normalDevices = devicesWithRelations.filter(d => 
+            d.protocol_type !== 'MODBUS_RTU'
+        );
+        
+        const orphanRtuDevices = devicesWithRelations.filter(d => 
+            d.protocol_type === 'MODBUS_RTU' && 
+            d.device_type !== 'GATEWAY' && 
+            !d.rtu_info?.is_slave && 
+            !d.rtu_info?.master_device_id
+        );
+        
+        console.log(`🔍 디바이스 분류: 마스터 ${rtuMasters.length}개, 슬레이브 ${rtuSlaves.length}개, 일반 ${normalDevices.length}개, 독립RTU ${orphanRtuDevices.length}개`);
+        
+        // 3. 실시간 데이터 포함 여부 확인 (내부 모듈 호출)
+        let realtimeDataMap = {};
+        if (includeRealtime) {
+            try {
+                console.log('📡 실시간 데이터 조회 중...');
+                
+                // 실시간 데이터 조회 시도
+                try {
+                    const { getCurrentValuesFromRedis } = require('./realtime');
+                    const realtimeData = await getCurrentValuesFromRedis({
+                        device_ids: devicesWithRelations.map(d => d.id.toString()),
+                        limit: 5000,
+                        quality_filter: 'all'
+                    });
+                    
+                    if (realtimeData && realtimeData.current_values) {
+                        realtimeData.current_values.forEach(point => {
+                            const deviceId = point.device_id?.toString();
+                            if (deviceId) {
+                                if (!realtimeDataMap[deviceId]) realtimeDataMap[deviceId] = [];
+                                realtimeDataMap[deviceId].push(point);
+                            }
+                        });
+                        console.log(`✅ 실시간 데이터 로드 완료: ${Object.keys(realtimeDataMap).length}개 디바이스`);
+                    }
+                } catch (realtimeError) {
+                    console.warn('⚠️ 실시간 데이터 로드 실패:', realtimeError.message);
+                    // 실시간 데이터 로드 실패 시에도 기본 트리는 반환
+                }
+            } catch (error) {
+                console.warn('⚠️ 실시간 데이터 모듈 로드 실패:', error.message);
+            }
+        }
+        
+        // 4. 디바이스별 포인트 수 계산 함수
+        const getDevicePointCount = (device) => {
+            if (includeRealtime && realtimeDataMap[device.id.toString()]) {
+                return realtimeDataMap[device.id.toString()].length;
+            }
+            return device.data_point_count || device.data_points_count || 0;
+        };
+        
+        // 5. 트리 노드 생성 함수
+        const createDeviceNode = (device, type = 'device', level = 2, children = null) => {
+            const pointCount = getDevicePointCount(device);
+            const connectionStatus = realtimeDataMap[device.id.toString()] ? 'connected' : 'disconnected';
+            
+            let label = device.name;
+            if (type === 'master') {
+                const totalSlavePoints = children ? children.reduce((sum, child) => sum + (child.point_count || 0), 0) : 0;
+                const totalPoints = pointCount + totalSlavePoints;
+                label = `${device.name} (포트: ${device.endpoint || 'Unknown'}${totalPoints > 0 ? `, 총 포인트: ${totalPoints}` : ''})`;
+            } else if (type === 'slave') {
+                const slaveId = device.rtu_info?.slave_id || '?';
+                label = `${device.name} (SlaveID: ${slaveId}${pointCount > 0 ? `, 포인트: ${pointCount}` : ''})`;
+            } else {
+                if (pointCount > 0) {
+                    label += ` (포인트: ${pointCount})`;
+                }
+            }
+            
+            const node = {
+                id: `${type}-${device.id}`,
+                label: label,
+                type: type,
+                level: level,
+                device_info: {
+                    device_id: device.id.toString(),
+                    device_name: device.name,
+                    device_type: device.device_type,
+                    protocol_type: device.protocol_type,
+                    endpoint: device.endpoint,
+                    connection_status: connectionStatus,
+                    status: device.status,
+                    last_seen: device.last_seen,
+                    is_enabled: device.is_enabled
+                },
+                connection_status: connectionStatus,
+                rtu_info: device.rtu_info || null
+            };
+            
+            // 포인트 수가 0보다 클 때만 추가
+            if (pointCount > 0) {
+                node.point_count = pointCount;
+            }
+            
+            // 자식 노드가 있을 때만 추가
+            if (children && children.length > 0) {
+                node.children = children;
+                node.child_count = children.length;
+            }
+            
+            // 데이터포인트 포함 옵션
+            if (includeDataPoints && realtimeDataMap[device.id.toString()]) {
+                node.data_points = realtimeDataMap[device.id.toString()].map(point => ({
+                    id: `datapoint-${point.point_id}`,
+                    label: point.point_name,
+                    type: 'datapoint',
+                    level: level + 1,
+                    value: point.value,
+                    unit: point.unit,
+                    quality: point.quality,
+                    timestamp: point.timestamp
+                }));
+            }
+            
+            return node;
+        };
+        
+        // 6. RTU 마스터와 슬레이브 매칭 및 트리 노드 생성
+        const deviceNodes = [];
+        
+        // RTU 마스터들 처리
+        for (const master of rtuMasters) {
+            console.log(`🔌 마스터 ${master.name} 처리 중...`);
+            
+            // 이 마스터에 속한 슬레이브들 찾기
+            const masterSlaves = rtuSlaves.filter(slave => {
+                // 방법 1: rtu_info.master_device_id로 매칭
+                if (slave.rtu_info?.master_device_id === master.id) {
+                    return true;
+                }
+                
+                // 방법 2: 디바이스 이름 패턴으로 매칭
+                const masterPrefix = master.name.replace('MASTER', '').replace(/\-\d+$/, '');
+                if (slave.name.includes(masterPrefix) && slave.name.includes('SLAVE')) {
+                    return true;
+                }
+                
+                // 방법 3: rtu_network 정보 활용
+                if (master.rtu_network?.slaves?.some(s => s.device_id === slave.id)) {
+                    return true;
+                }
+                
+                return false;
+            });
+            
+            console.log(`  └─ ${masterSlaves.length}개 슬레이브 발견:`, masterSlaves.map(s => s.name));
+            
+            // 슬레이브 노드들 생성
+            const slaveNodes = masterSlaves.map(slave => createDeviceNode(slave, 'slave', 3));
+            
+            // 마스터 노드 생성
+            const masterNode = createDeviceNode(master, 'master', 2, slaveNodes);
+            deviceNodes.push(masterNode);
+        }
+        
+        // 독립 RTU 슬레이브들 (마스터에 매칭되지 않은 슬레이브들)
+        const orphanSlaves = rtuSlaves.filter(slave => {
+            return !rtuMasters.some(master => {
+                return slave.rtu_info?.master_device_id === master.id ||
+                       (master.name.replace('MASTER', '').replace(/\-\d+$/, '') && 
+                        slave.name.includes(master.name.replace('MASTER', '').replace(/\-\d+$/, '')) && 
+                        slave.name.includes('SLAVE')) ||
+                       master.rtu_network?.slaves?.some(s => s.device_id === slave.id);
+            });
+        });
+        
+        orphanSlaves.forEach(slave => {
+            const slaveNode = createDeviceNode(slave, 'device', 2);
+            slaveNode.label = `${slave.name} (독립 RTU 슬레이브${slaveNode.point_count ? `, 포인트: ${slaveNode.point_count}` : ''})`;
+            deviceNodes.push(slaveNode);
+        });
+        
+        // 일반 디바이스들과 미분류 RTU 디바이스들
+        [...normalDevices, ...orphanRtuDevices].forEach(device => {
+            const deviceNode = createDeviceNode(device, 'device', 2);
+            if (device.protocol_type === 'MODBUS_RTU') {
+                deviceNode.label = `${device.name} (독립 RTU${deviceNode.point_count ? `, 포인트: ${deviceNode.point_count}` : ''})`;
+            }
+            deviceNodes.push(deviceNode);
+        });
+        
+        // 7. 최종 트리 구조 생성
+        const treeStructure = {
+            id: 'tenant-1',
+            label: 'PulseOne Factory',
+            type: 'tenant',
+            level: 0,
+            children: [{
+                id: 'site-1',
+                label: 'Factory A - Production Line',
+                type: 'site',
+                level: 1,
+                children: deviceNodes,
+                child_count: deviceNodes.length
+            }],
+            child_count: 1
+        };
+        
+        // 8. 통계 정보 생성
+        const statistics = {
+            total_devices: devicesWithRelations.length,
+            rtu_masters: rtuMasters.length,
+            rtu_slaves: rtuSlaves.length,
+            normal_devices: normalDevices.length,
+            orphan_rtu_devices: orphanRtuDevices.length,
+            connected_devices: Object.keys(realtimeDataMap).length,
+            total_data_points: Object.values(realtimeDataMap).reduce((sum, points) => sum + points.length, 0)
+        };
+        
+        console.log('✅ 트리 구조 생성 완료:', statistics);
+        
+        // 9. 응답 반환
+        res.json({
+            success: true,
+            data: {
+                tree: treeStructure,
+                statistics: statistics,
+                options: {
+                    include_data_points: includeDataPoints,
+                    include_realtime: includeRealtime
+                }
+            },
+            message: 'Device tree structure retrieved successfully',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ 디바이스 트리 구조 생성 실패:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            message: 'Failed to generate device tree structure',
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+
+/**
+ * 🔍 디바이스 트리 구조 검색 API - 개선된 버전
+ * 특정 조건으로 필터링된 트리 구조를 반환
+ * GET /api/devices/tree-structure/search
+ */
+router.get('/tree-structure/search', async (req, res) => {
+    try {
+        const tenantId = req.user?.tenant_id || 1;
+        const { 
+            search, 
+            protocol_type, 
+            connection_status, 
+            device_type,
+            include_realtime = 'false' 
+        } = req.query;
+        
+        console.log('🔍 디바이스 트리 검색 API 호출됨:', { search, protocol_type, connection_status, device_type });
+        
+        // 필터 조건으로 디바이스 조회
+        const devicesResult = await getDeviceRepo().findAllDevices({
+            page: 1,
+            limit: 1000,
+            search: search,
+            protocol_type: protocol_type,
+            connection_status: connection_status,
+            device_type: device_type,
+            include_rtu_relations: true,
+            tenant_id: tenantId
+        });
+        
+        if (!devicesResult.success) {
+            throw new Error('디바이스 검색 실패: ' + devicesResult.error);
+        }
+        
+        const devices = enhanceDevicesWithRtuInfo(
+            (devicesResult && devicesResult.items) ? devicesResult.items : 
+            Array.isArray(devicesResult) ? devicesResult : []
+        );
+        const devicesWithRelations = await addRtuRelationships(devices, tenantId);
+        
+        // 실시간 데이터 포함 시 내부 모듈 호출
+        let realtimeDataMap = {};
+        if (include_realtime === 'true') {
+            try {
+                const realtimeData = await getRealtimeCurrentValues({
+                    device_ids: devicesWithRelations.map(d => d.id.toString()),
+                    limit: 1000
+                });
+                
+                if (realtimeData && realtimeData.current_values) {
+                    realtimeData.current_values.forEach(point => {
+                        const deviceId = point.device_id?.toString();
+                        if (deviceId) {
+                            if (!realtimeDataMap[deviceId]) realtimeDataMap[deviceId] = [];
+                            realtimeDataMap[deviceId].push(point);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.warn('⚠️ 검색 중 실시간 데이터 로드 실패:', error.message);
+            }
+        }
+        
+        // 기본 트리 구조 API와 동일한 로직으로 처리
+        const filteredNodes = devicesWithRelations.map(device => {
+            const pointCount = realtimeDataMap[device.id.toString()]?.length || device.data_point_count || 0;
+            const connectionStatus = realtimeDataMap[device.id.toString()] ? 'connected' : 'disconnected';
+            
+            const node = {
+                id: `device-${device.id}`,
+                label: device.name + (pointCount > 0 ? ` (포인트: ${pointCount})` : ''),
+                type: 'device',
+                level: 2,
+                device_info: {
+                    device_id: device.id.toString(),
+                    device_name: device.name,
+                    device_type: device.device_type,
+                    protocol_type: device.protocol_type,
+                    endpoint: device.endpoint,
+                    connection_status: connectionStatus,
+                    status: device.status
+                },
+                connection_status: connectionStatus
+            };
+            
+            if (pointCount > 0) {
+                node.point_count = pointCount;
+            }
+            
+            return node;
+        });
+        
+        const searchResult = {
+            id: 'search-result',
+            label: `검색 결과 (${filteredNodes.length}개)`,
+            type: 'search',
+            level: 0,
+            children: filteredNodes,
+            child_count: filteredNodes.length
+        };
+        
+        res.json({
+            success: true,
+            data: {
+                tree: searchResult,
+                total_found: filteredNodes.length,
+                search_criteria: { search, protocol_type, connection_status, device_type }
+            },
+            message: 'Device tree search completed successfully',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ 디바이스 트리 검색 실패:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            message: 'Failed to search device tree structure',
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
@@ -1600,5 +2018,41 @@ router.get('/debug/repository', async (req, res) => {
         });
     }
 });
+
+
+// ============================================================================
+// 🔧 내부 모듈 헬퍼 함수들 - 하드코딩 URL 대신 직접 호출
+// ============================================================================
+
+/**
+ * 실시간 현재값 조회 (내부 모듈 직접 호출)
+ */
+async function getRealtimeCurrentValues(params = {}) {
+    try {
+        // 🔥 개선: realtime routes 모듈의 함수를 직접 호출
+        const { getCurrentValuesFromRedis } = require('./realtime');
+        
+        return await getCurrentValuesFromRedis({
+            device_ids: params.device_ids || null,
+            point_names: params.point_names || null,
+            quality_filter: params.quality_filter || 'all',
+            limit: params.limit || 100,
+            sort_by: params.sort_by || 'device_id'
+        });
+        
+    } catch (error) {
+        console.warn('⚠️ 내부 실시간 데이터 조회 실패:', error.message);
+        
+        // 실패 시 더미 데이터 반환
+        return {
+            current_values: [],
+            total_count: 0,
+            data_source: 'fallback',
+            error: error.message
+        };
+    }
+}
+
+
 
 module.exports = router;
