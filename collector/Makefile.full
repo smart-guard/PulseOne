@@ -1,0 +1,78 @@
+MINGW_CXX = x86_64-w64-mingw32-g++
+MINGW_PREFIX = /usr/x86_64-w64-mingw32
+
+CXXFLAGS = -std=c++17 -O2 -static-libgcc -static-libstdc++ -static \
+           -DHAS_MODBUS=1 -DHAS_MQTT=1 -DHAS_BACNET=1 -DHAVE_HTTPLIB=1
+
+INCLUDES = -Iinclude \
+           -I$(MINGW_PREFIX)/include \
+           -I$(MINGW_PREFIX)/include/nlohmann \
+           -I$(MINGW_PREFIX)/include/bacnet \
+           -Iinclude/Platform \
+           -Iinclude/Api \
+           -Iinclude/Alarm \
+           -Iinclude/VirtualPoint \
+           -Iinclude/Network \
+           -Iinclude/Workers \
+           -Iinclude/Workers/Base \
+           -Iinclude/Workers/Protocol \
+           -Iinclude/Workers/Components \
+           -Iinclude/Database \
+           -Iinclude/Database/Entities \
+           -Iinclude/Database/Repositories \
+           -Iinclude/Common \
+           -Iinclude/Utils \
+           -Iinclude/Config \
+           -Iinclude/Drivers \
+           -Iinclude/Drivers/Common \
+           -Iinclude/Pipeline \
+           -Iinclude/Storage \
+           -Iinclude/Client
+
+LIBPATH = -L$(MINGW_PREFIX)/lib
+LIBS = -lmodbus -lpaho-mqtt3c -lbacnet -lsqlite3 -lpthread -lws2_32 -liphlpapi
+
+# 모든 소스 파일 포함
+ALL_SOURCES = src/main.cpp \
+              $(wildcard src/Core/*.cpp) \
+              $(wildcard src/Utils/*.cpp) \
+              $(wildcard src/Config/*.cpp) \
+              $(wildcard src/Database/*.cpp) \
+              $(wildcard src/Database/Entities/*.cpp) \
+              $(wildcard src/Database/Repositories/*.cpp) \
+              $(wildcard src/Client/*.cpp) \
+              $(wildcard src/Workers/Base/*.cpp) \
+              $(wildcard src/Workers/Protocol/*.cpp) \
+              $(wildcard src/Workers/Components/*.cpp) \
+              $(wildcard src/Workers/WorkerFactory.cpp) \
+              $(wildcard src/Workers/WorkerManager.cpp) \
+              $(wildcard src/Drivers/Common/*.cpp) \
+              $(wildcard src/Drivers/Modbus/*.cpp) \
+              $(wildcard src/Drivers/Mqtt/*.cpp) \
+              $(wildcard src/Drivers/Bacnet/*.cpp) \
+              $(wildcard src/Pipeline/*.cpp) \
+              $(wildcard src/Alarm/*.cpp) \
+              $(wildcard src/VirtualPoint/*.cpp) \
+              $(wildcard src/Network/*.cpp) \
+              $(wildcard src/Api/*.cpp) \
+              $(wildcard src/Platform/*.cpp) \
+              $(wildcard src/Storage/*.cpp)
+
+TARGET = bin/collector.exe
+
+full: $(TARGET)
+
+$(TARGET): $(ALL_SOURCES)
+	@echo "Building FULL PulseOne Collector with ALL protocols:"
+	@echo "  ✓ Modbus TCP/RTU"
+	@echo "  ✓ MQTT Client/Broker" 
+	@echo "  ✓ BACnet IP"
+	@echo "  ✓ HTTP/REST API"
+	@echo "  ✓ SQLite Database"
+	@echo "Sources: $(words $(ALL_SOURCES)) files"
+	@mkdir -p bin
+	$(MINGW_CXX) $(CXXFLAGS) $(INCLUDES) $(LIBPATH) $(ALL_SOURCES) -o $@ $(LIBS)
+	@echo "FULL collector built: $@"
+
+clean:
+	rm -rf bin/

@@ -2,207 +2,197 @@
 #ifndef PULSEONE_COMMON_ENUMS_H
 #define PULSEONE_COMMON_ENUMS_H
 
-/**
- * @file Enums.h
- * @brief PulseOne 통합 열거형 정의 (중복 제거)
- * @author PulseOne Development Team
- * @date 2025-08-04
- * @details
- * 🎯 목적: 기존 프로젝트의 모든 중복 열거형들을 하나로 통합
- * 📋 기존 코드 분석 결과:
- * - Utils/LogLevels.h의 LogLevel 통합
- * - 기존 Common/Enums.h의 내용 확장 및 정리
- * - 중복된 에러 코드, 상태값들 통합
- * - 새로운 점검 관련 열거형 추가
- */
-
 #include <cstdint>
 #include <string>
+
+// =============================================================================
+// Windows 매크로 충돌 방지 - 반드시 enum 정의 전에!
+// =============================================================================
+#ifdef _WIN32
+    // Windows.h의 ERROR 매크로 제거
+    #ifdef ERROR
+        #undef ERROR
+    #endif
+    
+    // Windows.h의 다른 충돌 가능한 매크로들 제거
+    #ifdef FATAL
+        #undef FATAL
+    #endif
+    
+    #ifdef MAINTENANCE
+        #undef MAINTENANCE
+    #endif
+    
+    #ifdef min
+        #undef min
+    #endif
+    
+    #ifdef max
+        #undef max
+    #endif
+    
+    // Windows 전용 정의
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+#endif
 
 namespace PulseOne {
 namespace Enums {
 
     // =========================================================================
-    // 🔥 프로토콜 관련 열거형들 (기존 여러 정의 통합)
+    // 프로토콜 타입
     // =========================================================================
-    
-    /**
-     * @brief 프로토콜 타입 (모든 중복 정의 통합)
-     * @details Modbus, MQTT, BACnet 등 지원하는 모든 프로토콜
-     */
     enum class ProtocolType : uint8_t {
         UNKNOWN = 0,
         MODBUS_TCP = 1,
         MODBUS_RTU = 2,
-        MODBUS_ASCII = 3,      // 향후 확장
+        MODBUS_ASCII = 3,
         MQTT = 4,
-        MQTT_5 = 5,            // MQTT 5.0 명시적 지원
+        MQTT_5 = 5,
         BACNET = 6,
         BACNET_IP = 6,
         BACNET_MSTP = 7,
-        OPC_UA = 8,            // 향후 확장
-        ETHERNET_IP = 9,       // 향후 확장
-        PROFINET = 10,         // 향후 확장
-        HTTP_REST = 11,        // 향후 확장
-        COAP = 12,             // 향후 확장
-        CUSTOM = 254,          // 사용자 정의 프로토콜
+        OPC_UA = 8,
+        ETHERNET_IP = 9,
+        PROFINET = 10,
+        HTTP_REST = 11,
+        COAP = 12,
+        CUSTOM = 254,
         MAX_PROTOCOLS = 255
     };
 
     // =========================================================================
-    // 🔥 로그 관련 열거형들 (기존 Utils/LogLevels.h 통합)
+    // 로그 레벨 - Windows 호환
     // =========================================================================
-    
-    /**
-     * @brief 로그 레벨 (기존 LogLevels.h와 100% 호환)
-     * @details 기존 LogManager와 완전 호환되도록 설계
-     */
     enum class LogLevel : uint8_t {
-        TRACE = 0,     // 가장 상세한 디버그 정보
-        DEBUG = 1,     // 디버그 정보
-        DEBUG_LEVEL = 1, // DEBUG 와 같음 호환성 때문에 DEBUG_LEVEL 이름을 쓰는것 뿐임
-        INFO = 2,      // 일반 정보 (기본값)
-        WARN = 3,      // 경고
-        ERROR = 4,     // 에러
-        FATAL = 5,     // 치명적 에러
-        MAINTENANCE = 6, // 🆕 점검 관련 로그
-        OFF = 255      // 로그 비활성화
+        TRACE = 0,
+        DEBUG = 1,
+        DEBUG_LEVEL = 1,
+        INFO = 2,
+        WARN = 3,
+        ERROR = 4,      // Windows ERROR 매크로와 충돌 방지됨
+        FATAL = 5,      // Windows FATAL 매크로와 충돌 방지됨
+        MAINTENANCE = 6,
+        OFF = 255
     };
     
-    /**
-     * @brief 드라이버 로그 카테고리 (세분화된 로그 분류)
-     * @details 프로토콜 드라이버에서 사용하는 로그 카테고리
-     */
+    // =========================================================================
+    // 드라이버 로그 카테고리
+    // =========================================================================
     enum class DriverLogCategory : uint8_t {
-        GENERAL = 0,           // 일반적인 드라이버 로그
-        CONNECTION = 1,        // 연결 관련 로그
-        COMMUNICATION = 2,     // 통신 관련 로그
-        DATA_PROCESSING = 3,   // 데이터 처리 관련 로그
-        ERROR_HANDLING = 4,    // 에러 처리 관련 로그
-        PERFORMANCE = 5,       // 성능 관련 로그
-        SECURITY = 6,          // 보안 관련 로그
-        PROTOCOL_SPECIFIC = 7, // 프로토콜별 특수 로그
-        DIAGNOSTICS = 8,       // 진단 정보 로그
-        MAINTENANCE = 9        // 🆕 점검 관련 로그
+        GENERAL = 0,
+        CONNECTION = 1,
+        COMMUNICATION = 2,
+        DATA_PROCESSING = 3,
+        ERROR_HANDLING = 4,
+        PERFORMANCE = 5,
+        SECURITY = 6,
+        PROTOCOL_SPECIFIC = 7,
+        DIAGNOSTICS = 8,
+        MAINTENANCE = 9
     };
 
     // =========================================================================
-    // 🔥 상태 및 연결 관련 열거형들 (중복 제거)
+    // 연결 상태 - Windows 호환
     // =========================================================================
-    
-    /**
-     * @brief 연결 상태 (모든 프로토콜 공통)
-     * @details 기존 여러 ConnectionState, ConnectionStatus 통합
-     */
     enum class ConnectionStatus : uint8_t {
-        DISCONNECTED = 0,      // 연결 해제됨
-        CONNECTING = 1,        // 연결 중
-        CONNECTED = 2,         // 연결됨
-        RECONNECTING = 3,      // 재연결 중
-        DISCONNECTING = 4,     // 연결 해제 중
-        ERROR = 5,             // 연결 에러
-        TIMEOUT = 6,           // 연결 타임아웃
-        MAINTENANCE = 7,       // 🆕 점검 모드 (연결 차단)
+        DISCONNECTED = 0,
+        CONNECTING = 1,
+        CONNECTED = 2,
+        RECONNECTING = 3,
+        DISCONNECTING = 4,
+        ERROR = 5,      // Windows ERROR 매크로와 충돌 방지됨
+        TIMEOUT = 6,
+        MAINTENANCE = 7
     };
     
-    /**
-     * @brief 드라이버 상태 (모든 드라이버 공통)
-     * @details 기존 여러 DriverStatus 정의 통합
-     */
+    // =========================================================================
+    // 드라이버 상태 - Windows 호환
+    // =========================================================================
     enum class DriverStatus : uint8_t {
-        UNINITIALIZED = 0,     // 초기화 안됨
-        INITIALIZING = 1,      // 초기화 중
-        INITIALIZED = 2,       // 초기화 완료
-        STARTING = 3,          // 시작 중
-        RUNNING = 4,           // 실행 중
-        PAUSING = 5,           // 일시정지 중
-        PAUSED = 6,            // 일시정지됨
-        STOPPING = 7,          // 정지 중
-        STOPPED = 8,           // 정지됨
-        ERROR = 9,             // 에러 상태
-        CRASHED = 10,          // 크래시됨
-        MAINTENANCE = 11       // 🆕 점검 모드
+        UNINITIALIZED = 0,
+        INITIALIZING = 1,
+        INITIALIZED = 2,
+        STARTING = 3,
+        RUNNING = 4,
+        PAUSING = 5,
+        PAUSED = 6,
+        STOPPING = 7,
+        STOPPED = 8,
+        ERROR = 9,      // Windows ERROR 매크로와 충돌 방지됨
+        CRASHED = 10,
+        MAINTENANCE = 11
     };
 
     // =========================================================================
-    // 🔥 데이터 관련 열거형들
+    // 데이터 품질
     // =========================================================================
-    
-    /**
-     * @brief 데이터 품질 상태 (확장)
-     * @details Utils.h 함수들과 완전 호환되도록 확장
-     */
     enum class DataQuality : uint8_t {
-        // 기본 품질 상태 (0-7)
-        UNKNOWN = 0,                    // 알 수 없음
-        GOOD = 1,                       // 정상
-        BAD = 2,                        // 불량
-        UNCERTAIN = 3,                  // 불확실
-        STALE = 4,                      // 오래된 데이터
-        MAINTENANCE = 5,                // 점검 중
-        SIMULATED = 6,                  // 시뮬레이션 데이터
-        MANUAL = 7,                     // 수동 입력 데이터
-        
-        // 확장 품질 상태 (8-15) - Utils.h 함수 호환
-        NOT_CONNECTED = 8,              // 연결 안됨
-        TIMEOUT = 9,                    // 타임아웃
-        SCAN_DELAYED = 10,              // 스캔 지연
-        UNDER_MAINTENANCE = 11,         // 점검 중 (상세)
-        STALE_DATA = 12,                // 부실한 데이터
-        VERY_STALE_DATA = 13,           // 매우 부실한 데이터
-        MAINTENANCE_BLOCKED = 14,       // 점검으로 차단됨
-        ENGINEER_OVERRIDE = 15          // 엔지니어 오버라이드
+        UNKNOWN = 0,
+        GOOD = 1,
+        BAD = 2,
+        UNCERTAIN = 3,
+        STALE = 4,
+        MAINTENANCE = 5,
+        SIMULATED = 6,
+        MANUAL = 7,
+        NOT_CONNECTED = 8,
+        TIMEOUT = 9,
+        SCAN_DELAYED = 10,
+        UNDER_MAINTENANCE = 11,
+        STALE_DATA = 12,
+        VERY_STALE_DATA = 13,
+        MAINTENANCE_BLOCKED = 14,
+        ENGINEER_OVERRIDE = 15
     };
     
-    /**
-     * @brief 데이터 타입 (모든 프로토콜 공통)
-     * @details 기존 여러 DataType 정의 통합
-     */
+    // =========================================================================
+    // 데이터 타입
+    // =========================================================================
     enum class DataType : uint8_t {
-        UNKNOWN = 0,           // 알 수 없는 타입
-        BOOL = 1,             // 불린 (1비트)
-        INT8 = 2,             // 8비트 정수
-        UINT8 = 3,            // 8비트 부호없는 정수
-        INT16 = 4,            // 16비트 정수 (Modbus 주요 타입)
-        UINT16 = 5,           // 16비트 부호없는 정수
-        INT32 = 6,            // 32비트 정수
-        UINT32 = 7,           // 32비트 부호없는 정수
-        INT64 = 8,            // 64비트 정수
-        UINT64 = 9,           // 64비트 부호없는 정수
-        FLOAT32 = 10,         // 32비트 부동소수점
-        FLOAT64 = 11,         // 64비트 부동소수점 (DOUBLE)
-        STRING = 12,          // 문자열 (MQTT JSON, BACnet 문자열)
-        BINARY = 13,          // 바이너리 데이터
-        DATETIME = 14,        // 날짜/시간
-        JSON = 15,            // JSON 객체 (MQTT 특화)
-        ARRAY = 16,           // 배열 (향후 확장)
-        OBJECT = 17           // 객체 (향후 확장)
+        UNKNOWN = 0,
+        BOOL = 1,
+        INT8 = 2,
+        UINT8 = 3,
+        INT16 = 4,
+        UINT16 = 5,
+        INT32 = 6,
+        UINT32 = 7,
+        INT64 = 8,
+        UINT64 = 9,
+        FLOAT32 = 10,
+        FLOAT64 = 11,
+        STRING = 12,
+        BINARY = 13,
+        DATETIME = 14,
+        JSON = 15,
+        ARRAY = 16,
+        OBJECT = 17
     };
     
-    /**
-     * @brief 접근 타입 (읽기/쓰기 권한)
-     */
+    // =========================================================================
+    // 접근 타입
+    // =========================================================================
     enum class AccessType : uint8_t {
-        READ_ONLY = 0,        // 읽기 전용
-        WRITE_ONLY = 1,       // 쓰기 전용  
-        READ_WRITE = 2,       // 읽기/쓰기
-        READ_WRITE_MAINTENANCE_ONLY = 3  // 🆕 점검 시에만 쓰기 가능
+        READ_ONLY = 0,
+        WRITE_ONLY = 1,
+        READ_WRITE = 2,
+        READ_WRITE_MAINTENANCE_ONLY = 3
     };    
 
     // =========================================================================
-    // 🔥 에러 및 결과 관련 열거형들 (중복 제거)
+    // 에러 코드 - Windows 호환
     // =========================================================================
-    
-    /**
-     * @brief 통합 에러 코드 (모든 중복 ErrorCode 통합)
-     * @details Modbus, MQTT, BACnet 공통 에러 코드
-     */
     enum class ErrorCode : uint16_t {
-        // 공통 성공/실패
         SUCCESS = 0,
         UNKNOWN_ERROR = 1,
         
-        // 연결 관련 에러 (1-99)
+        // 연결 관련
         CONNECTION_FAILED = 10,
         CONNECTION_TIMEOUT = 11,
         CONNECTION_REFUSED = 12,
@@ -210,124 +200,109 @@ namespace Enums {
         AUTHENTICATION_FAILED = 14,
         AUTHORIZATION_FAILED = 15,
         
-        // 통신 관련 에러 (100-199)
+        // 통신 관련
         TIMEOUT = 100,
         PROTOCOL_ERROR = 101,
         INVALID_REQUEST = 102,
         INVALID_RESPONSE = 103,
         CHECKSUM_ERROR = 104,
-        INVALID_ENDPOINT = 104,
-        FRAME_ERROR = 105,
+        INVALID_ENDPOINT = 105,
+        FRAME_ERROR = 106,
         
-        // 데이터 관련 에러 (200-299)
+        // 데이터 관련
         INVALID_DATA = 200,
         DATA_TYPE_MISMATCH = 201,
         DATA_OUT_OF_RANGE = 202,
         DATA_FORMAT_ERROR = 203,
-        UNSUPPORTED_FUNCTION = 203,
-        DATA_STALE = 204,
+        UNSUPPORTED_FUNCTION = 204,
+        DATA_STALE = 205,
         
-        // 디바이스 관련 에러 (300-399)
+        // 디바이스 관련
         DEVICE_NOT_RESPONDING = 300,
         DEVICE_BUSY = 301,
         DEVICE_ERROR = 302,
         DEVICE_NOT_FOUND = 303,
         DEVICE_OFFLINE = 304,
         
-        // 설정 관련 에러 (400-499)
+        // 설정 관련
         INVALID_CONFIGURATION = 400,
         MISSING_CONFIGURATION = 401,
         CONFIGURATION_ERROR = 402,
+        INVALID_PARAMETER = 403,
         
-        // 시스템 관련 에러 (500-599)
+        // 시스템 관련
         MEMORY_ERROR = 500,
         RESOURCE_EXHAUSTED = 501,
         INTERNAL_ERROR = 502,
         FILE_ERROR = 503,
-        INVALID_PARAMETER = 506,
         
-        // 🆕 점검 관련 에러 (600-699)
+        // 점검 관련
         MAINTENANCE_ACTIVE = 600,
         MAINTENANCE_PERMISSION_DENIED = 601,
         MAINTENANCE_TIMEOUT = 602,
         REMOTE_CONTROL_BLOCKED = 603,
         INSUFFICIENT_PERMISSION = 604,
         
-        // 프로토콜 특화 에러 (1000+)
+        // 프로토콜 특화
         MODBUS_EXCEPTION = 1000,
         MQTT_PUBLISH_FAILED = 1100,
         BACNET_SERVICE_ERROR = 1200
     };
 
     // =========================================================================
-    // 🔥 점검 및 유지보수 관련 열거형들 (신규)
+    // 점검 상태
     // =========================================================================
-    
-    /**
-     * @brief 점검 상태 (Maintenance Status)
-     * @details 시스템/디바이스의 점검 상태 관리
-     */
     enum class MaintenanceStatus : uint8_t {
-        NORMAL = 0,            // 정상 운영
-        SCHEDULED = 1,         // 점검 예정
-        IN_PROGRESS = 2,       // 점검 중
-        PAUSED = 3,           // 점검 일시중지
-        COMPLETED = 4,        // 점검 완료
-        CANCELLED = 5,        // 점검 취소
-        EMERGENCY = 6         // 긴급 점검
+        NORMAL = 0,
+        SCHEDULED = 1,
+        IN_PROGRESS = 2,
+        PAUSED = 3,
+        COMPLETED = 4,
+        CANCELLED = 5,
+        EMERGENCY = 6
     };
     
-    /**
-     * @brief 점검 타입
-     */
+    // =========================================================================
+    // 점검 타입
+    // =========================================================================
     enum class MaintenanceType : uint8_t {
-        ROUTINE = 0,          // 정기 점검
-        PREVENTIVE = 1,       // 예방 점검
-        CORRECTIVE = 2,       // 수정 점검
-        EMERGENCY = 3,        // 긴급 점검
-        CALIBRATION = 4,      // 캘리브레이션
-        FIRMWARE_UPDATE = 5,  // 펌웨어 업데이트
-        CONFIGURATION = 6     // 설정 변경
+        ROUTINE = 0,
+        PREVENTIVE = 1,
+        CORRECTIVE = 2,
+        EMERGENCY = 3,
+        CALIBRATION = 4,
+        FIRMWARE_UPDATE = 5,
+        CONFIGURATION = 6
     };
 
     // =========================================================================
-    // 🔥 디바이스 관련 열거형들
+    // 디바이스 타입
     // =========================================================================
-    
-    /**
-     * @brief 디바이스 타입
-     * @details 산업 현장에서 사용하는 다양한 디바이스 분류
-     */
     enum class DeviceType : uint8_t {
-        GENERIC = 0,          // 일반 디바이스
-        PLC = 1,             // PLC (Programmable Logic Controller)
-        HMI = 2,             // HMI (Human Machine Interface)
-        SENSOR = 3,          // 센서 
-        ACTUATOR = 4,        // 액추에이터
-        DRIVE = 5,           // 인버터/드라이브
-        GATEWAY = 6,         // 게이트웨이
-        ENERGY_METER = 7,    // 전력량계
-        TEMPERATURE_CONTROLLER = 8,  // 온도 조절기
-        FLOW_METER = 9,      // 유량계
-        PRESSURE_TRANSMITTER = 10,   // 압력 전송기
-        VALVE = 11,          // 밸브
-        PUMP = 12,           // 펌프
-        MOTOR = 13,          // 모터
-        ROBOT = 14,          // 로봇
-        CAMERA = 15,         // 비전 카메라
-        SCALE = 16,          // 저울
-        BARCODE_READER = 17, // 바코드 리더
-        RFID_READER = 18     // RFID 리더
+        GENERIC = 0,
+        PLC = 1,
+        HMI = 2,
+        SENSOR = 3,
+        ACTUATOR = 4,
+        DRIVE = 5,
+        GATEWAY = 6,
+        ENERGY_METER = 7,
+        TEMPERATURE_CONTROLLER = 8,
+        FLOW_METER = 9,
+        PRESSURE_TRANSMITTER = 10,
+        VALVE = 11,
+        PUMP = 12,
+        MOTOR = 13,
+        ROBOT = 14,
+        CAMERA = 15,
+        SCALE = 16,
+        BARCODE_READER = 17,
+        RFID_READER = 18
     };
 
     // =========================================================================
-    // 🔥 우선순위 및 레벨 관련 열거형들
+    // 우선순위
     // =========================================================================
-    
-    /**
-     * @brief 작업 우선순위
-     * @details 비동기 작업, 알람 등의 우선순위 관리
-     */
     enum class Priority : uint8_t {
         LOWEST = 0,
         LOW = 1,
@@ -337,49 +312,52 @@ namespace Enums {
         CRITICAL = 5
     };
     
-    /**
-     * @brief 알람 레벨
-     * @details 알람의 심각도 분류
-     */
+    // =========================================================================
+    // 알람 레벨
+    // =========================================================================
     enum class AlarmLevel : uint8_t {
-        INFO = 0,            // 정보성 알람
-        WARNING = 1,         // 경고 알람
-        MINOR = 2,           // 경미한 알람
-        MAJOR = 3,           // 중요한 알람
-        CRITICAL = 4,        // 치명적 알람
-        EMERGENCY = 5        // 비상 알람
+        INFO = 0,
+        WARNING = 1,
+        MINOR = 2,
+        MAJOR = 3,
+        CRITICAL = 4,
+        EMERGENCY = 5
     };
 
-    /**
-     * @brief 접근 모드 (DataPoint 전용) - WorkerFactory 호환
-     */
+    // =========================================================================
+    // 접근 모드 (WorkerFactory 호환)
+    // =========================================================================
     enum class AccessMode : uint8_t {
-        read = 0,           // 읽기 전용
-        write = 1,          // 쓰기 전용
-        read_write = 2      // 읽기/쓰기
+        read = 0,
+        write = 1,
+        read_write = 2
     };
 
-    /**
-     * @brief Modbus 레지스터 타입 (공통 정의)
-     */
+    // =========================================================================
+    // Modbus 레지스터 타입
+    // =========================================================================
     enum class ModbusRegisterType : uint8_t {
-        COIL = 0,              ///< 코일 (0x01, 0x05, 0x0F)
-        DISCRETE_INPUT = 1,    ///< 접점 입력 (0x02)
-        HOLDING_REGISTER = 2,  ///< 홀딩 레지스터 (0x03, 0x06, 0x10)
-        INPUT_REGISTER = 3     ///< 입력 레지스터 (0x04)
+        COIL = 0,
+        DISCRETE_INPUT = 1,
+        HOLDING_REGISTER = 2,
+        INPUT_REGISTER = 3
     };
 
-    enum class DeviceStatus {
+    // =========================================================================
+    // 디바이스 상태 - Windows 호환
+    // =========================================================================
+    enum class DeviceStatus : uint8_t {
         ONLINE = 0,
-        OFFLINE = 1, 
+        OFFLINE = 1,
         MAINTENANCE = 2,
-        ERROR = 3,
+        ERROR = 3,      // Windows ERROR 매크로와 충돌 방지됨
         WARNING = 4
     };
 
-    /**
-     * @brief 디바이스 상태를 문자열로 변환
-     */
+    // =========================================================================
+    // 문자열 변환 함수들 (인라인) - Windows 호환
+    // =========================================================================
+    
     inline std::string DeviceStatusToString(DeviceStatus status) {
         switch (status) {
             case DeviceStatus::ONLINE:      return "ONLINE";
@@ -391,16 +369,56 @@ namespace Enums {
         }
     }
 
-    /**
-     * @brief 문자열을 디바이스 상태로 변환
-     */
     inline DeviceStatus StringToDeviceStatus(const std::string& status_str) {
         if (status_str == "ONLINE") return DeviceStatus::ONLINE;
         if (status_str == "OFFLINE") return DeviceStatus::OFFLINE;
         if (status_str == "MAINTENANCE") return DeviceStatus::MAINTENANCE;
         if (status_str == "ERROR") return DeviceStatus::ERROR;
         if (status_str == "WARNING") return DeviceStatus::WARNING;
-        return DeviceStatus::OFFLINE;  // 기본값
+        return DeviceStatus::OFFLINE;
+    }
+
+    inline std::string LogLevelToString(LogLevel level) {
+        switch (level) {
+            case LogLevel::TRACE:       return "TRACE";
+            case LogLevel::DEBUG:       return "DEBUG";
+            case LogLevel::INFO:        return "INFO";
+            case LogLevel::WARN:        return "WARN";
+            case LogLevel::ERROR:       return "ERROR";
+            case LogLevel::FATAL:       return "FATAL";
+            case LogLevel::MAINTENANCE: return "MAINTENANCE";
+            case LogLevel::OFF:         return "OFF";
+            default:                    return "UNKNOWN";
+        }
+    }
+
+    inline std::string ConnectionStatusToString(ConnectionStatus status) {
+        switch (status) {
+            case ConnectionStatus::DISCONNECTED:  return "DISCONNECTED";
+            case ConnectionStatus::CONNECTING:    return "CONNECTING";
+            case ConnectionStatus::CONNECTED:     return "CONNECTED";
+            case ConnectionStatus::RECONNECTING:  return "RECONNECTING";
+            case ConnectionStatus::DISCONNECTING: return "DISCONNECTING";
+            case ConnectionStatus::ERROR:         return "ERROR";
+            case ConnectionStatus::TIMEOUT:       return "TIMEOUT";
+            case ConnectionStatus::MAINTENANCE:   return "MAINTENANCE";
+            default:                              return "UNKNOWN";
+        }
+    }
+
+    inline std::string ErrorCodeToString(ErrorCode code) {
+        switch (code) {
+            case ErrorCode::SUCCESS:                return "SUCCESS";
+            case ErrorCode::UNKNOWN_ERROR:          return "UNKNOWN_ERROR";
+            case ErrorCode::CONNECTION_FAILED:      return "CONNECTION_FAILED";
+            case ErrorCode::CONNECTION_TIMEOUT:     return "CONNECTION_TIMEOUT";
+            case ErrorCode::DEVICE_NOT_RESPONDING:  return "DEVICE_NOT_RESPONDING";
+            case ErrorCode::INVALID_DATA:           return "INVALID_DATA";
+            case ErrorCode::MODBUS_EXCEPTION:       return "MODBUS_EXCEPTION";
+            case ErrorCode::MQTT_PUBLISH_FAILED:    return "MQTT_PUBLISH_FAILED";
+            case ErrorCode::BACNET_SERVICE_ERROR:   return "BACNET_SERVICE_ERROR";
+            default:                                 return "UNKNOWN_ERROR";
+        }
     }
 
 } // namespace Enums
