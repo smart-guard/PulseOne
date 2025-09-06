@@ -1,299 +1,260 @@
-// collector/include/Common/BasicTypes.h
-#ifndef PULSEONE_COMMON_BASIC_TYPES_H
-#define PULSEONE_COMMON_BASIC_TYPES_H
-
-/**
- * @file BasicTypes.h
- * @brief PulseOne 기본 타입 정의 (최우선 기반 클래스)
- * @author PulseOne Development Team
- * @date 2025-08-04
- * @details 
- * 🎯 목적: 기존 프로젝트와 100% 호환되면서 새로운 통합 아키텍처의 기반
- * 📋 기존 코드 분석 결과:
- * - ConfigManager, LogManager, DatabaseManager 등이 이미 존재
- * - Utils/LogLevels.h, Common/Structs.h 등 기존 구조 유지
- * - 새로운 타입들은 기존과 충돌하지 않도록 설계
- */
+#ifndef COMMON_BASIC_TYPES_H
+#define COMMON_BASIC_TYPES_H
 
 #include <string>
-#include <variant>
 #include <chrono>
-#include <cstdint>
+#include <variant>
 #include <vector>
+#include <map>
 #include <memory>
+#include <cstdint>
+#include <random>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
 
-// 조건부 UUID 라이브러리 include
+// Windows에서 UUID 충돌 방지
 #ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
     #include <rpc.h>
     #pragma comment(lib, "rpcrt4.lib")
-#elif defined(__APPLE__)
-    #include <uuid/uuid.h>
-#elif defined(__linux__)
-    #include <uuid/uuid.h>
+    
+    // Windows의 UUID를 저장하고 재정의
+    namespace WinAPI {
+        using WinUUID = ::UUID;
+    }
+    
+    // UUID 매크로 제거
+    #ifdef UUID
+        #undef UUID
+    #endif
 #else
-    // Fallback: 간단한 UUID 구현
+    // Linux/Unix 시스템
+    #ifdef __has_include
+        #if __has_include(<uuid/uuid.h>)
+            #include <uuid/uuid.h>
+            #define HAS_LIBUUID 1
+        #endif
+    #endif
 #endif
 
 namespace PulseOne {
 namespace BasicTypes {
-
-    // =========================================================================
-    // 🔥 핵심 기본 타입들 (기존 프로젝트와 호환)
-    // =========================================================================
     
-    /**
-     * @brief UUID 타입 (범용 고유 식별자)
-     * @details 디바이스, 데이터 포인트, 요청 등의 식별에 사용
-     */
-    using UUID = std::string;  // 기존 프로젝트가 string 기반이므로 호환성 유지
+    // ===================================================================
+    // 기본 타입 정의
+    // ===================================================================
     
-    /**
-     * @brief 타임스탬프 타입
-     * @details 모든 시간 관련 데이터에 사용
-     */
+    // PulseOne의 UUID는 항상 string
+    using UUID = std::string;
+    using DeviceID = std::string;
+    using DataPointID = uint32_t;
+    using AlarmID = uint32_t;
+    using TenantID = uint32_t;
+    using SiteID = uint32_t;
+    using UserID = uint32_t;
+    using Value = double;
+    
+    // 시간 관련 타입
     using Timestamp = std::chrono::system_clock::time_point;
-    
-    /**
-     * @brief 시간 간격 타입
-     * @details 타임아웃, 주기 등에 사용
-     */
     using Duration = std::chrono::milliseconds;
+    using Seconds = std::chrono::seconds;
+    using Minutes = std::chrono::minutes;
     
-    /**
-     * @brief 엔지니어 ID 타입 (점검 기능용)
-     * @details 점검 모드 진입 시 엔지니어 식별
-     */
+    // 엔지니어 ID (문자열)
     using EngineerID = std::string;
-
-    // =========================================================================  
-    // 🔥 데이터 값 변형 타입 (모든 프로토콜 지원)
-    // =========================================================================
     
-    /**
-     * @brief 범용 데이터 값 타입
-     * @details 모든 프로토콜에서 사용하는 통합 데이터 타입
-     * - Modbus: 레지스터 값들
-     * - MQTT: JSON 페이로드 값들  
-     * - BACnet: Property 값들
-     */
+    // 데이터 변형 타입
     using DataVariant = std::variant<
-        bool,           // 0: 불린 값 (코일, 디지털 입력)
-        int16_t,        // 1: 16비트 정수 (Modbus 레지스터)
-        uint16_t,       // 2: 16비트 부호없는 정수
-        int32_t,        // 3: 32비트 정수 (확장)
-        uint32_t,       // 4: 32비트 부호없는 정수
-        float,          // 5: 32비트 부동소수점 (아날로그 값)
-        double,         // 6: 64비트 부동소수점 (고정밀)
-        std::string     // 7: 문자열 (MQTT JSON, BACnet 문자열)
+        bool,
+        int16_t,
+        uint16_t,
+        int32_t,
+        uint32_t,
+        int64_t,
+        uint64_t,
+        float,
+        double,
+        std::string
     >;
     
-    // =========================================================================
-    // 🔥 유틸리티 함수들 (기존 Utils와 중복 방지)
-    // =========================================================================
+    // 프로토콜 타입
+    enum class ProtocolType : uint8_t {
+        UNKNOWN = 0,
+        MODBUS_TCP = 1,
+        MODBUS_RTU = 2,
+        MQTT = 3,
+        BACNET = 4,
+        OPC_UA = 5,
+        CUSTOM = 99
+    };
     
-    /**
-     * @brief UUID 생성 함수
-     * @return 새로운 UUID 문자열
-     * @details 플랫폼별 최적화된 UUID 생성
-     */
+    // 데이터 품질
+    enum class DataQuality : uint8_t {
+        GOOD = 0,
+        UNCERTAIN = 1,
+        BAD = 2,
+        NOT_CONNECTED = 3
+    };
+    
+    // ===================================================================
+    // UUID 생성 함수
+    // ===================================================================
+    
     inline UUID GenerateUUID() {
-        #ifdef _WIN32
-            UUID uuid;
-            RPC_CSTR uuid_string;
-            if (UuidCreate(&uuid) == RPC_S_OK) {
-                if (UuidToStringA(&uuid, &uuid_string) == RPC_S_OK) {
-                    std::string result(reinterpret_cast<char*>(uuid_string));
-                    RpcStringFreeA(&uuid_string);
-                    return result;
-                }
-            }
-            // Fallback
-            return "uuid-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-            
-        #elif defined(__APPLE__) || defined(__linux__)
-            uuid_t uuid;
-            uuid_generate_random(uuid);
-            char uuid_str[37];
-            uuid_unparse_lower(uuid, uuid_str);
-            return std::string(uuid_str);
-            
-        #else
-            // Simple fallback UUID
-            static uint64_t counter = 0;
-            auto now = std::chrono::high_resolution_clock::now();
-            auto timestamp = now.time_since_epoch().count();
-            return "uuid-" + std::to_string(timestamp) + "-" + std::to_string(++counter);
-        #endif
+#ifdef _WIN32
+        // Windows: RPC 라이브러리 사용
+        ::UUID uuid;
+        UuidCreate(&uuid);
+        
+        unsigned char* str;
+        UuidToStringA(&uuid, &str);
+        
+        std::string result(reinterpret_cast<char*>(str));
+        RpcStringFreeA(&str);
+        
+        // 소문자로 변환
+        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+        return result;
+        
+#elif defined(HAS_LIBUUID)
+        // Linux: libuuid 사용
+        uuid_t uuid;
+        uuid_generate(uuid);
+        
+        char uuid_str[37];
+        uuid_unparse_lower(uuid, uuid_str);
+        return std::string(uuid_str);
+        
+#else
+        // Fallback: 간단한 랜덤 UUID 생성 (UUID v4)
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        static std::uniform_int_distribution<> dis(0, 15);
+        static std::uniform_int_distribution<> dis2(8, 11);
+        
+        std::stringstream ss;
+        ss << std::hex;
+        
+        // 8-4-4-4-12 형식
+        for (int i = 0; i < 8; i++) ss << dis(gen);
+        ss << "-";
+        for (int i = 0; i < 4; i++) ss << dis(gen);
+        ss << "-4"; // Version 4 UUID
+        for (int i = 0; i < 3; i++) ss << dis(gen);
+        ss << "-";
+        ss << dis2(gen); // Variant bits
+        for (int i = 0; i < 3; i++) ss << dis(gen);
+        ss << "-";
+        for (int i = 0; i < 12; i++) ss << dis(gen);
+        
+        return ss.str();
+#endif
     }
     
-    /**
-     * @brief 현재 타임스탬프 반환
-     * @return 현재 시간 타임스탬프
-     */
-    inline Timestamp CurrentTimestamp() {
+    // ===================================================================
+    // 유틸리티 함수
+    // ===================================================================
+    
+    // UUID 유효성 검사
+    inline bool IsValidUUID(const UUID& uuid) {
+        if (uuid.length() != 36) return false;
+        
+        // 8-4-4-4-12 형식 확인
+        if (uuid[8] != '-' || uuid[13] != '-' || 
+            uuid[18] != '-' || uuid[23] != '-') {
+            return false;
+        }
+        
+        // 16진수 문자 확인
+        for (size_t i = 0; i < uuid.length(); i++) {
+            if (i == 8 || i == 13 || i == 18 || i == 23) continue;
+            char c = uuid[i];
+            if (!((c >= '0' && c <= '9') || 
+                  (c >= 'a' && c <= 'f') || 
+                  (c >= 'A' && c <= 'F'))) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // 현재 시간 가져오기
+    inline Timestamp GetCurrentTime() {
         return std::chrono::system_clock::now();
     }
     
-    /**
-     * @brief 타임스탬프를 문자열로 변환
-     * @param timestamp 변환할 타임스탬프
-     * @param format 포맷 문자열 (기본: ISO 8601)
-     * @return 포맷된 시간 문자열
-     */
-    inline std::string TimestampToString(const Timestamp& timestamp, 
-                                        const std::string& format = "%Y-%m-%dT%H:%M:%S") {
-        auto time_t = std::chrono::system_clock::to_time_t(timestamp);
-        std::tm tm_buf;
-        
-        #ifdef _WIN32
-            localtime_s(&tm_buf, &time_t);
-        #else
-            localtime_r(&time_t, &tm_buf);
-        #endif
-        
-        char buffer[128];
-        std::strftime(buffer, sizeof(buffer), format.c_str(), &tm_buf);
-        
-        // 밀리초 추가
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            timestamp.time_since_epoch()) % 1000;
-        
-        return std::string(buffer) + "." + 
-               std::to_string(ms.count()).insert(0, 3 - std::to_string(ms.count()).length(), '0');
+    // 타임스탬프를 문자열로 변환
+    inline std::string TimestampToString(const Timestamp& ts) {
+        auto time_t = std::chrono::system_clock::to_time_t(ts);
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+        return ss.str();
     }
     
-    /**
-     * @brief DataVariant의 타입 인덱스 반환
-     * @param value 값
-     * @return 타입 인덱스 (0=bool, 1=int16_t, ..., 7=string)
-     */
-    inline size_t GetDataVariantTypeIndex(const DataVariant& value) {
-        return value.index();
+    // 문자열을 타임스탬프로 변환
+    inline Timestamp StringToTimestamp(const std::string& str) {
+        std::tm tm = {};
+        std::istringstream ss(str);
+        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+        return std::chrono::system_clock::from_time_t(std::mktime(&tm));
     }
     
-    /**
-     * @brief DataVariant를 문자열로 변환
-     * @param value 변환할 값
-     * @return 문자열 표현
-     */
-    inline std::string DataVariantToString(const DataVariant& value) {
-        return std::visit([](const auto& v) -> std::string {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, std::string>) {
-                return v;
-            } else if constexpr (std::is_same_v<T, bool>) {
-                return v ? "true" : "false";
-            } else {
-                return std::to_string(v);
-            }
-        }, value);
+    // Duration을 밀리초로 변환
+    inline uint64_t DurationToMs(const Duration& duration) {
+        return duration.count();
     }
     
-    /**
-     * @brief 문자열을 DataVariant로 변환 (타입 추론)
-     * @param str 변환할 문자열
-     * @param hint_type 타입 힌트 (기본값: 자동 추론)
-     * @return 변환된 DataVariant
-     */
-    inline DataVariant StringToDataVariant(const std::string& str, size_t hint_type = 7) {
-        // 자동 타입 추론
-        if (hint_type == 7) {  // 자동 추론 모드
-            // 불린 체크
-            if (str == "true" || str == "TRUE" || str == "1") return true;
-            if (str == "false" || str == "FALSE" || str == "0") return false;
-            
-            // 숫자 체크
-            try {
-                // 소수점 포함 여부 확인
-                if (str.find('.') != std::string::npos) {
-                    double d = std::stod(str);
-                    float f = static_cast<float>(d);
-                    // 정밀도 손실이 없으면 float 사용
-                    if (std::abs(d - static_cast<double>(f)) < 1e-6) {
-                        return f;
-                    } else {
-                        return d;
-                    }
-                } else {
-                    // 정수 처리
-                    long long ll = std::stoll(str);
-                    if (ll >= INT16_MIN && ll <= INT16_MAX) {
-                        return static_cast<int16_t>(ll);
-                    } else if (ll >= 0 && ll <= UINT16_MAX) {
-                        return static_cast<uint16_t>(ll);
-                    } else if (ll >= INT32_MIN && ll <= INT32_MAX) {
-                        return static_cast<int32_t>(ll);
-                    } else if (ll >= 0 && ll <= UINT32_MAX) {
-                        return static_cast<uint32_t>(ll);
-                    }
-                }
-            } catch (...) {
-                // 숫자 변환 실패 시 문자열로 처리
-            }
+    // 밀리초를 Duration으로 변환
+    inline Duration MsToDuration(uint64_t ms) {
+        return Duration(ms);
+    }
+    
+    // 프로토콜 타입을 문자열로 변환
+    inline std::string ProtocolTypeToString(ProtocolType type) {
+        switch (type) {
+            case ProtocolType::MODBUS_TCP: return "MODBUS_TCP";
+            case ProtocolType::MODBUS_RTU: return "MODBUS_RTU";
+            case ProtocolType::MQTT: return "MQTT";
+            case ProtocolType::BACNET: return "BACNET";
+            case ProtocolType::OPC_UA: return "OPC_UA";
+            case ProtocolType::CUSTOM: return "CUSTOM";
+            default: return "UNKNOWN";
         }
-        
-        // 힌트 기반 변환 또는 기본 문자열 반환
-        switch (hint_type) {
-            case 0: return str == "true" || str == "1";
-            case 1: try { return static_cast<int16_t>(std::stoi(str)); } catch (...) { break; }
-            case 2: try { return static_cast<uint16_t>(std::stoul(str)); } catch (...) { break; }
-            case 3: try { return static_cast<int32_t>(std::stol(str)); } catch (...) { break; }
-            case 4: try { return static_cast<uint32_t>(std::stoul(str)); } catch (...) { break; }
-            case 5: try { return std::stof(str); } catch (...) { break; }
-            case 6: try { return std::stod(str); } catch (...) { break; }
-            default: break;
+    }
+    
+    // 문자열을 프로토콜 타입으로 변환
+    inline ProtocolType StringToProtocolType(const std::string& str) {
+        if (str == "MODBUS_TCP") return ProtocolType::MODBUS_TCP;
+        if (str == "MODBUS_RTU") return ProtocolType::MODBUS_RTU;
+        if (str == "MQTT") return ProtocolType::MQTT;
+        if (str == "BACNET") return ProtocolType::BACNET;
+        if (str == "OPC_UA") return ProtocolType::OPC_UA;
+        if (str == "CUSTOM") return ProtocolType::CUSTOM;
+        return ProtocolType::UNKNOWN;
+    }
+    
+    // 데이터 품질을 문자열로 변환
+    inline std::string DataQualityToString(DataQuality quality) {
+        switch (quality) {
+            case DataQuality::GOOD: return "GOOD";
+            case DataQuality::UNCERTAIN: return "UNCERTAIN";
+            case DataQuality::BAD: return "BAD";
+            case DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
+            default: return "UNKNOWN";
         }
-        
-        return str;  // 기본값: 문자열
     }
-
-    // =========================================================================
-    // 🔥 메모리 및 성능 최적화 타입들
-    // =========================================================================
     
-    /**
-     * @brief 경량 문자열 뷰 (C++17 호환)
-     * @details 문자열 복사 없이 참조만 제공 (성능 최적화)
-     */
-    using StringView = std::string_view;
-    
-    /**
-     * @brief 스마트 포인터 별칭들
-     */
-    template<typename T>
-    using UniquePtr = std::unique_ptr<T>;
-    
-    template<typename T>
-    using SharedPtr = std::shared_ptr<T>;
-    
-    template<typename T>
-    using WeakPtr = std::weak_ptr<T>;
-    
-    /**
-     * @brief 벡터 별칭들 (자주 사용되는 타입들)
-     */
-    using StringVector = std::vector<std::string>;
-    using UUIDVector = std::vector<UUID>;
-    using DataVariantVector = std::vector<DataVariant>;
-
-    // =========================================================================
-    // 🔥 기존 PulseOne 프로젝트와의 호환성 보장
-    // =========================================================================
-    
-    /**
-     * @brief 기존 프로젝트 호환성을 위한 타입 별칭들
-     * @details 기존 코드가 계속 작동하도록 보장
-     */
-    namespace Compatibility {
-        // 기존 코드에서 사용했을 수 있는 타입들
-        using DeviceId = UUID;
-        using PointId = UUID;
-        using RequestId = UUID;
-        using Value = DataVariant;
-        using TimeStamp = Timestamp;  // 기존 스타일
-    }
-
 } // namespace BasicTypes
 } // namespace PulseOne
 
-#endif // PULSEONE_COMMON_BASIC_TYPES_H
+// ===================================================================
+// 전역 별칭 (편의를 위해)
+// ===================================================================
+using PulseOneUUID = PulseOne::BasicTypes::UUID;
+using PulseOneTimestamp = PulseOne::BasicTypes::Timestamp;
+using PulseOneDuration = PulseOne::BasicTypes::Duration;
+
+#endif // COMMON_BASIC_TYPES_H

@@ -39,6 +39,7 @@ using DriverLogContext = PulseOne::Structs::DriverLogContext;
 using ErrorInfo = PulseOne::Structs::ErrorInfo;
 
 // ✅ BasicTypes에서 가져오는 타입들
+using UUID = PulseOne::BasicTypes::UUID;
 using EngineerID = PulseOne::BasicTypes::EngineerID;
 
 /**

@@ -1,7 +1,6 @@
 #include <mutex>
 #include <sstream>
-#include <iomanip>
-#include "Platform/PlatformCompat.h"
+#include <iomanip>#include "Platform/PlatformCompat.h"
 // =============================================================================
 // collector/src/Utils/LogManager.cpp - 완전한 기능 보존 + 자동 초기화
 // =============================================================================
@@ -189,7 +188,7 @@ std::string LogManager::formatMaintenanceLog(const UUID& device_id,
     std::ostringstream oss;
     oss << "[" << getCurrentTimestamp() << "]"
         << "[MAINTENANCE]"
-        << "[Device:" << device_id.c_str() << "]"
+        << "[Device:" << device_id << "]"
         << "[Engineer:" << engineer_id << "]"
         << " " << message;
     return oss.str();
@@ -319,7 +318,7 @@ void LogManager::logMaintenanceEnd(const DeviceInfo& device, const EngineerID& e
 
 void LogManager::logRemoteControlBlocked(const UUID& device_id, const std::string& reason) {
     std::ostringstream oss;
-    oss << "REMOTE CONTROL BLOCKED - Device: " << device_id.c_str() << ", Reason: " << reason;
+    oss << "REMOTE CONTROL BLOCKED - Device: " << device_id << ", Reason: " << reason;
     log("security", LogLevel::WARN, oss.str());
 }
 
@@ -329,7 +328,7 @@ void LogManager::logDriver(const UUID& device_id, DriverLogCategory category,
     if (!shouldLogCategory(category, level)) return;
     
     std::ostringstream oss;
-    oss << "[Device:" << device_id.c_str() << "][" << Utils::DriverLogCategoryToString(category) << "] " << message;
+    oss << "[Device:" << device_id << "][" << Utils::DriverLogCategoryToString(category) << "] " << message;
     
     std::string categoryName = "driver_" + Utils::DriverLogCategoryToString(category);
     log(categoryName, level, oss.str());
@@ -341,7 +340,7 @@ void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
     if (quality == DataQuality::GOOD) return;  // 정상 데이터는 로깅 안함
     
     std::ostringstream oss;
-    oss << "DATA QUALITY ISSUE - Device: " << device_id.c_str() 
+    oss << "DATA QUALITY ISSUE - Device: " << device_id 
         << ", Point: " << point_id 
         << ", Quality: " << Utils::DataQualityToString(quality);
     

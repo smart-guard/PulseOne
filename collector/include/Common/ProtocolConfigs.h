@@ -1,41 +1,23 @@
-// collector/include/Common/ProtocolConfigs.h
 #ifndef PULSEONE_PROTOCOL_CONFIGS_H
 #define PULSEONE_PROTOCOL_CONFIGS_H
 
-/**
- * @file ProtocolConfigs.h
- * @brief 프로토콜별 구체적 설정 클래스들
- * @author PulseOne Development Team
- * @date 2025-08-05
- * 
- * 🎯 포함된 클래스들:
- * - ModbusConfig (기존 ModbusDriverConfig 대체)
- * - MqttConfig (기존 MqttDriverConfig 대체)
- * - BACnetConfig (기존 BACnetDriverConfig 대체)
- */
-
+#include <string>
+#include <memory>
+#include <cstdint>
+#include <nlohmann/json.hpp>
 #include "IProtocolConfig.h"
 
-// nlohmann/json 조건부 include
-#ifdef HAS_NLOHMANN_JSON
-    #include <nlohmann/json.hpp>
-    namespace json_impl = nlohmann;
-#else
-    namespace json_impl {
-    }
-#endif
-
-namespace PulseOne::Structs {
+namespace PulseOne {
+namespace Structs {
     
     /**
-     * @brief Modbus 프로토콜 설정 (기존 ModbusDriverConfig 대체)
-     * @details 기존 필드명 100% 보존하여 호환성 확보
+     * @brief Modbus 프로토콜 설정
      */
     class ModbusConfig : public IProtocolConfig {
     public:
-        // 🔥 기존 필드명 100% 보존 (호환성 확보)
+        // 기존 필드명 100% 보존
         int slave_id = 1;
-        int unit_id = 1;                          // slave_id 별칭
+        int unit_id = 1;
         int max_registers_per_request = 125;
         bool use_rtu = false;
         bool byte_swap = false;
@@ -62,7 +44,7 @@ namespace PulseOne::Structs {
         }
         
         std::string ToJson() const override {
-            json_impl::json j;
+            nlohmann::json j;
             j["slave_id"] = slave_id;
             j["unit_id"] = unit_id;
             j["max_registers_per_request"] = max_registers_per_request;
@@ -79,7 +61,7 @@ namespace PulseOne::Structs {
         
         bool FromJson(const std::string& json) override {
             try {
-                auto j = json_impl::json::parse(json);
+                auto j = nlohmann::json::parse(json);
                 slave_id = j.value("slave_id", 1);
                 unit_id = j.value("unit_id", slave_id);
                 max_registers_per_request = j.value("max_registers_per_request", 125);
@@ -97,14 +79,14 @@ namespace PulseOne::Structs {
                 return false;
             }
         }
-    };
+    }; // ModbusConfig 끝
     
     /**
-     * @brief MQTT 프로토콜 설정 (기존 MqttDriverConfig 대체)
+     * @brief MQTT 프로토콜 설정
      */
     class MqttConfig : public IProtocolConfig {
     public:
-        // 🔥 기존 필드명 100% 보존
+        // 기존 필드명 100% 보존
         std::string broker_url = "";
         std::string client_id = "";
         std::string username = "";
@@ -112,7 +94,7 @@ namespace PulseOne::Structs {
         int qos = 1;
         bool clean_session = true;
         int keep_alive_interval = 60;
-        int keepalive_s = 60;                     // 별칭
+        int keepalive_s = 60;
         
         // SSL/TLS
         bool use_ssl = false;
@@ -139,7 +121,7 @@ namespace PulseOne::Structs {
         }
         
         std::string ToJson() const override {
-            json_impl::json j;
+            nlohmann::json j;
             j["broker_url"] = broker_url;
             j["client_id"] = client_id;
             j["username"] = username;
@@ -157,7 +139,7 @@ namespace PulseOne::Structs {
         
         bool FromJson(const std::string& json) override {
             try {
-                auto j = json_impl::json::parse(json);
+                auto j = nlohmann::json::parse(json);
                 broker_url = j.value("broker_url", std::string(""));
                 client_id = j.value("client_id", std::string(""));
                 username = j.value("username", std::string(""));
@@ -176,23 +158,23 @@ namespace PulseOne::Structs {
                 return false;
             }
         }
-    };
+    }; // MqttConfig 끝
     
     /**
-     * @brief BACnet 프로토콜 설정 (기존 BACnetDriverConfig 대체)
+     * @brief BACnet 프로토콜 설정
      */
     class BACnetConfig : public IProtocolConfig {
     public:
-        // 🔥 기존 필드명 100% 보존
+        // 기존 필드명 100% 보존
         uint32_t device_id = 1000;
-        uint32_t device_instance = 1000;          // device_id 별칭
+        uint32_t device_instance = 1000;
         uint16_t port = 47808;
-        uint16_t bacnet_port = 47808;             // port 별칭
+        uint16_t bacnet_port = 47808;
         std::string interface_name = "";
         
         // 서비스 지원
         bool use_cov = true;
-        bool support_cov = true;                  // use_cov 별칭
+        bool support_cov = true;
         int cov_lifetime = 3600;
         bool support_who_is = true;
         bool support_read_property_multiple = true;
@@ -212,11 +194,11 @@ namespace PulseOne::Structs {
         }
         
         bool IsValid() const override {
-            return device_id > 0 && device_id <= 4194303;  // BACnet device ID 범위
+            return device_id > 0 && device_id <= 4194303;
         }
         
         std::string ToJson() const override {
-            json_impl::json j;
+            nlohmann::json j;
             j["device_id"] = device_id;
             j["device_instance"] = device_instance;
             j["port"] = port;
@@ -235,7 +217,7 @@ namespace PulseOne::Structs {
         
         bool FromJson(const std::string& json) override {
             try {
-                auto j = json_impl::json::parse(json);
+                auto j = nlohmann::json::parse(json);
                 device_id = j.value("device_id", 1000U);
                 device_instance = j.value("device_instance", device_id);
                 port = j.value("port", static_cast<uint16_t>(47808));
@@ -254,7 +236,9 @@ namespace PulseOne::Structs {
                 return false;
             }
         }
-    };
-}
+    }; // BACnetConfig 끝
+
+} // namespace Structs
+} // namespace PulseOne
 
 #endif // PULSEONE_PROTOCOL_CONFIGS_H
