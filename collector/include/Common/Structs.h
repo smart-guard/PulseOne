@@ -1,3 +1,5 @@
+#include <nlohmann/json.hpp>
+namespace json_impl = nlohmann;
 // collector/include/Common/Structs.h
 #ifndef PULSEONE_COMMON_STRUCTS_H
 #define PULSEONE_COMMON_STRUCTS_H
@@ -29,95 +31,10 @@
 #include <string>
 #include <map>
 #include "Alarm/AlarmTypes.h"
-// 🔥 JSON 라이브러리 조건부 정의 (한 번만!)
-#ifdef HAS_NLOHMANN_JSON
-    #include <nlohmann/json.hpp>
-    using JsonType = nlohmann::json;
-#else
-     // 완전한 DummyJson 클래스 - 🔥 const char* operator[] 추가!
-    class DummyJson {
-    public:
-        // 기본 생성자/소멸자
-        DummyJson() = default;
-        DummyJson(const DummyJson&) = default;
-        DummyJson(DummyJson&&) = default;
-        ~DummyJson() = default;
-        
-        // 🔥 모든 기본 타입에 대한 할당 연산자들
-        DummyJson& operator=(const DummyJson&) = default;
-        DummyJson& operator=(DummyJson&&) = default;
-        
-        // 문자열 타입들
-        DummyJson& operator=(const std::string&) { return *this; }
-        DummyJson& operator=(const char*) { return *this; }
-        
-        // 정수 타입들
-        DummyJson& operator=(bool) { return *this; }
-        DummyJson& operator=(int) { return *this; }
-        DummyJson& operator=(unsigned int) { return *this; }
-        DummyJson& operator=(long) { return *this; }
-        DummyJson& operator=(unsigned long) { return *this; }
-        DummyJson& operator=(long long) { return *this; }
-        DummyJson& operator=(unsigned long long) { return *this; }
-        DummyJson& operator=(short) { return *this; }
-        DummyJson& operator=(unsigned short) { return *this; }
-        DummyJson& operator=(char) { return *this; }
-        DummyJson& operator=(unsigned char) { return *this; }
-        
-        // 부동소수점 타입들
-        DummyJson& operator=(float) { return *this; }
-        DummyJson& operator=(double) { return *this; }
-        DummyJson& operator=(long double) { return *this; }
-        
-        // 🔥 인덱싱 연산자들 - const char* 추가!
-        DummyJson& operator[](const std::string&) { return *this; }
-        const DummyJson& operator[](const std::string&) const { return *this; }
-        DummyJson& operator[](int) { return *this; }
-        const DummyJson& operator[](int) const { return *this; }
-        DummyJson& operator[](size_t) { return *this; }
-        const DummyJson& operator[](size_t) const { return *this; }
-        
-        // 🔥 핵심 수정: const char* operator[] 추가!
-        DummyJson& operator[](const char* key) { return *this; }
-        const DummyJson& operator[](const char* key) const { return *this; }
-        
-        // 기본 메서드들
-        template<typename T> 
-        T get() const { return T{}; }
-        
-        template<typename T> 
-        T value(const std::string&, const T& default_val) const { return default_val; }
-        
-        bool contains(const std::string&) const { return false; }
-        std::string dump(int = 0) const { return "{}"; }
-        void push_back(const DummyJson&) {}
-        bool empty() const { return true; }
-        size_t size() const { return 0; }
-        void clear() {}
-        
-        // 정적 메서드들
-        static DummyJson parse(const std::string&) { return DummyJson{}; }
-        static DummyJson object() { return DummyJson{}; }
-        static DummyJson array() { return DummyJson{}; }
-        
-        // 암시적 변환 연산자들
-        operator bool() const { return false; }
-        operator int() const { return 0; }
-        operator double() const { return 0.0; }
-        operator std::string() const { return ""; }
-        
-        // 반복자 지원 (기본)
-        using iterator = DummyJson*;
-        using const_iterator = const DummyJson*;
-        iterator begin() { return this; }
-        iterator end() { return this; }
-        const_iterator begin() const { return this; }
-        const_iterator end() const { return this; }
-        const_iterator cbegin() const { return this; }
-        const_iterator cend() const { return this; }
-    };
-    using JsonType = DummyJson;
-#endif
+
+#include <nlohmann/json.hpp>
+using JsonType = nlohmann::json;
+
 
 // 🔥 전방 선언으로 순환 의존성 방지
 namespace PulseOne::Structs {
@@ -130,7 +47,7 @@ namespace Structs {
     // 🔥 타입 별칭 명시적 선언 (순환 참조 방지)
     using namespace PulseOne::BasicTypes;
     using namespace PulseOne::Enums;
-    using JsonType = json_impl::json;
+    using JsonType = nlohmann::json;
 
     // 🔥 핵심 타입들 명시적 별칭 (필수!)
     using DataValue = PulseOne::BasicTypes::DataVariant;   // ✅ 매우 중요!

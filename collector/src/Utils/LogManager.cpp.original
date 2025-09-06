@@ -1,6 +1,3 @@
-#include <mutex>
-#include <sstream>
-#include <iomanip>
 #include "Platform/PlatformCompat.h"
 // =============================================================================
 // collector/src/Utils/LogManager.cpp - 완전한 기능 보존 + 자동 초기화
@@ -73,7 +70,7 @@ bool LogManager::doInitialize() {
         categoryLevels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::DATA_PROCESSING] = LogLevel::INFO;
-        categoryLevels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::LOG_ERROR;
+        categoryLevels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::ERROR;
         categoryLevels_[DriverLogCategory::PERFORMANCE] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::SECURITY] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG_LEVEL;
@@ -189,7 +186,7 @@ std::string LogManager::formatMaintenanceLog(const UUID& device_id,
     std::ostringstream oss;
     oss << "[" << getCurrentTimestamp() << "]"
         << "[MAINTENANCE]"
-        << "[Device:" << device_id.c_str() << "]"
+        << "[Device:" << device_id << "]"
         << "[Engineer:" << engineer_id << "]"
         << " " << message;
     return oss.str();
@@ -227,7 +224,7 @@ void LogManager::updateStatistics(LogLevel level) {
             statistics_.warn_count++;
             statistics_.warning_count++;  // 별칭 동기화
             break;
-        case LogLevel::LOG_ERROR:
+        case LogLevel::ERROR:
             statistics_.error_count++;
             break;
         case LogLevel::FATAL:
@@ -258,7 +255,7 @@ void LogManager::Warn(const std::string& message) {
 }
 
 void LogManager::Error(const std::string& message) {
-    log(defaultCategory_, LogLevel::LOG_ERROR, message);
+    log(defaultCategory_, LogLevel::ERROR, message);
 }
 
 void LogManager::Fatal(const std::string& message) {
@@ -319,7 +316,7 @@ void LogManager::logMaintenanceEnd(const DeviceInfo& device, const EngineerID& e
 
 void LogManager::logRemoteControlBlocked(const UUID& device_id, const std::string& reason) {
     std::ostringstream oss;
-    oss << "REMOTE CONTROL BLOCKED - Device: " << device_id.c_str() << ", Reason: " << reason;
+    oss << "REMOTE CONTROL BLOCKED - Device: " << device_id << ", Reason: " << reason;
     log("security", LogLevel::WARN, oss.str());
 }
 
@@ -329,7 +326,7 @@ void LogManager::logDriver(const UUID& device_id, DriverLogCategory category,
     if (!shouldLogCategory(category, level)) return;
     
     std::ostringstream oss;
-    oss << "[Device:" << device_id.c_str() << "][" << Utils::DriverLogCategoryToString(category) << "] " << message;
+    oss << "[Device:" << device_id << "][" << Utils::DriverLogCategoryToString(category) << "] " << message;
     
     std::string categoryName = "driver_" + Utils::DriverLogCategoryToString(category);
     log(categoryName, level, oss.str());
@@ -341,7 +338,7 @@ void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
     if (quality == DataQuality::GOOD) return;  // 정상 데이터는 로깅 안함
     
     std::ostringstream oss;
-    oss << "DATA QUALITY ISSUE - Device: " << device_id.c_str() 
+    oss << "DATA QUALITY ISSUE - Device: " << device_id 
         << ", Point: " << point_id 
         << ", Quality: " << Utils::DataQualityToString(quality);
     
@@ -349,7 +346,7 @@ void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
         oss << ", Reason: " << reason;
     }
     
-    LogLevel level = (quality == DataQuality::BAD) ? LogLevel::LOG_ERROR : LogLevel::WARN;
+    LogLevel level = (quality == DataQuality::BAD) ? LogLevel::ERROR : LogLevel::WARN;
     log("data_quality", level, oss.str());
 }
 
@@ -359,7 +356,7 @@ void LogManager::logDriver(const std::string& driverName, const std::string& mes
 }
 
 void LogManager::logError(const std::string& message) {
-    log("error", LogLevel::LOG_ERROR, message);
+    log("error", LogLevel::ERROR, message);
 }
 
 void LogManager::logPacket(const std::string& driver, const std::string& device,
