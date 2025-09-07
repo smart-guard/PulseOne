@@ -25,9 +25,15 @@
 #include "Database/Entities/VirtualPointEntity.h"
 
 // QuickJS 헤더
-extern "C" {
-    #include <quickjs/quickjs.h>
-}
+#ifdef _WIN32
+    extern "C" {
+        #include <quickjs.h>
+    }
+#else
+    extern "C" {
+        #include <quickjs/quickjs.h>
+    }
+#endif
 
 // JSON 라이브러리
 #include <nlohmann/json.hpp>

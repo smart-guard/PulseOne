@@ -57,7 +57,7 @@ bool WorkerManager::StartWorker(const std::string& device_id) {
         }
         
         // 정지된 Worker가 있으면 재시작
-        if (state == WorkerState::STOPPED || state == WorkerState::ERROR) {
+        if (state == WorkerState::STOPPED || state == WorkerState::WORKER_ERROR) {
             LogManager::getInstance().Info("기존 Worker 재시작 시도: " + device_id);
             try {
                 auto restart_future = existing->Start();
@@ -646,7 +646,7 @@ std::string WorkerManager::WorkerStateToString(WorkerState state) const {
         case WorkerState::STOPPED: return "STOPPED";
         case WorkerState::RECONNECTING: return "RECONNECTING";
         case WorkerState::DEVICE_OFFLINE: return "DEVICE_OFFLINE";
-        case WorkerState::ERROR: return "ERROR";
+        case WorkerState::WORKER_ERROR: return "ERROR";
         case WorkerState::STARTING: return "STARTING";
         case WorkerState::STOPPING: return "STOPPING";
         case WorkerState::PAUSED: return "PAUSED";
@@ -676,7 +676,7 @@ std::string WorkerManager::GetWorkerStateDescription(WorkerState state, bool con
             return "자동 재연결 시도 중";
         case WorkerState::DEVICE_OFFLINE:
             return "디바이스 오프라인 (재연결 대기 중)";
-        case WorkerState::ERROR:
+        case WorkerState::WORKER_ERROR:
             return "오류 상태 (복구 시도 중)";
         case WorkerState::STOPPED:
             return "중지됨";
@@ -927,7 +927,7 @@ nlohmann::json WorkerManager::GetAllWorkersStatus() const {
                     worker_status["state"] = "paused";
                     paused_count++;
                     break;
-                case WorkerState::ERROR:
+                case WorkerState::WORKER_ERROR:
                     worker_status["state"] = "error";
                     error_count++;
                     break;
@@ -984,7 +984,7 @@ nlohmann::json WorkerManager::GetDetailedStatistics() const {
                 case WorkerState::RUNNING: running_count++; break;
                 case WorkerState::STOPPED: stopped_count++; break;
                 case WorkerState::PAUSED: paused_count++; break;
-                case WorkerState::ERROR: error_count++; break;
+                case WorkerState::WORKER_ERROR: error_count++; break;
                 default: break;
             }
         }

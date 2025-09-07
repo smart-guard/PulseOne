@@ -1,21 +1,17 @@
-#include "Platform/PlatformCompat.h"// =============================================================================
-// collector/include/Utils/LogManager.h - 경고 없는 자동 초기화 버전
-// 🔥 FIX: std::call_once 관련 모든 경고 해결
-// =============================================================================
-
 #ifndef LOG_MANAGER_H
 #define LOG_MANAGER_H
 
 /**
  * @file LogManager.h
- * @brief PulseOne 통합 로그 관리자 (완전 최종 버전) - 안전한 자동 초기화
+ * @brief PulseOne 통합 로그 관리자 - PlatformCompat.h 사용
  * @author PulseOne Development Team
- * @date 2025-07-29
- * @version 5.1.1 - 경고 없는 자동 초기화
+ * @date 2025-09-06
  */
 
-#include "Common/Enums.h"
-#include "Common/Structs.h"
+// 🔥 FIRST: PlatformCompat.h가 모든 플랫폼 문제를 해결함
+#include "Platform/PlatformCompat.h"
+
+// 표준 헤더들
 #include <string>
 #include <fstream>
 #include <map>
@@ -24,54 +20,48 @@
 #include <thread>
 #include <sstream>
 #include <iostream>
-#include <filesystem>
 #include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <vector>
 
-// ✅ PulseOne 타입들을 전역에서 사용하기 위한 별칭
+// PulseOne 타입 시스템
+#include "Common/Enums.h"
+#include "Common/BasicTypes.h"
+#include "Common/Structs.h"
+
+// 전역 네임스페이스 타입 별칭 (기존 코드 호환성)
 using LogLevel = PulseOne::Enums::LogLevel;
 using DriverLogCategory = PulseOne::Enums::DriverLogCategory;
 using DataQuality = PulseOne::Enums::DataQuality;
-
-// ✅ Structs에서 가져오는 타입들
-using DeviceInfo = PulseOne::Structs::DeviceInfo;
-using LogStatistics = PulseOne::Structs::LogStatistics;
-using DriverLogContext = PulseOne::Structs::DriverLogContext;
-using ErrorInfo = PulseOne::Structs::ErrorInfo;
-
-// ✅ BasicTypes에서 가져오는 타입들
+using UUID = PulseOne::BasicTypes::UUID;
 using EngineerID = PulseOne::BasicTypes::EngineerID;
+using Timestamp = PulseOne::BasicTypes::Timestamp;
 
 /**
- * @brief 통합 로그 관리자 (싱글톤, 전역 네임스페이스) - 경고 없는 자동 초기화
- * @details 파일/콘솔 출력, 포맷팅, 카테고리 관리, 점검 기능 모두 포함
+ * @brief 완전 전역 싱글톤 로그 관리자
+ * @details 다른 코드에서 LogManager::getInstance()로 직접 접근
  */
 class LogManager {
 public:
     // =============================================================================
-    // 🔥 FIX: 경고 없는 자동 초기화 getInstance
+    // 전역 싱글톤 패턴 (Meyer's Singleton + 자동 초기화)
     // =============================================================================
     
-    /**
-     * @brief 싱글톤 인스턴스 반환 (자동 초기화됨)
-     * @return LogManager 인스턴스 참조
-     */
     static LogManager& getInstance() {
         static LogManager instance;
         instance.ensureInitialized();
         return instance;
     }
     
-    /**
-     * @brief 초기화 상태 확인
-     * @return 초기화 완료 시 true
-     */
     bool isInitialized() const {
         return initialized_.load(std::memory_order_acquire);
     }
 
     // =============================================================================
-    // 기존 코드 호환성을 위한 메소드들 (100% 유지)
+    // 기본 로그 메소드들 (기존 코드 100% 호환성)
     // =============================================================================
+    
     void Info(const std::string& message);
     void Warn(const std::string& message);
     void Error(const std::string& message);
@@ -81,8 +71,9 @@ public:
     void Maintenance(const std::string& message);
 
     // =============================================================================
-    // 포맷 문자열을 지원하는 템플릿 메소드들 (기존 유지)
+    // 포맷 문자열 지원 템플릿
     // =============================================================================
+    
     template<typename... Args>
     void Info(const std::string& format, Args&&... args) {
         std::string message = formatString(format, std::forward<Args>(args)...);
@@ -119,42 +110,38 @@ public:
         Trace(message);
     }
 
-    template<typename... Args>
-    void Maintenance(const std::string& format, Args&&... args) {
-        std::string message = formatString(format, std::forward<Args>(args)...);
-        Maintenance(message);
-    }
-
     // =============================================================================
-    // 확장된 로그 메소드들 (Complete Common Types 사용)
+    // 확장 로그 메소드들
     // =============================================================================
+    
     void log(const std::string& category, LogLevel level, const std::string& message);
     void log(const std::string& category, const std::string& level, const std::string& message);
     
-    // ✅ 점검 관련 로그 메소드 (모든 타입 완전 지원)
+    // 점검 관련 로그
     void logMaintenance(const UUID& device_id, const EngineerID& engineer_id, 
                        const std::string& message);
-    void logMaintenanceStart(const DeviceInfo& device, const EngineerID& engineer_id);
-    void logMaintenanceEnd(const DeviceInfo& device, const EngineerID& engineer_id);
+    void logMaintenanceStart(const PulseOne::Structs::DeviceInfo& device, const EngineerID& engineer_id);
+    void logMaintenanceEnd(const PulseOne::Structs::DeviceInfo& device, const EngineerID& engineer_id);
     void logRemoteControlBlocked(const UUID& device_id, const std::string& reason);
     
-    // 특수 목적 로그 (기존 호환)
+    // 드라이버 로그
     void logDriver(const std::string& driverName, const std::string& message);
+    void logDriver(const UUID& device_id, DriverLogCategory category, 
+                  LogLevel level, const std::string& message);
+    
+    // 데이터 품질 로그
+    void logDataQuality(const UUID& device_id, const UUID& point_id,
+                       DataQuality quality, const std::string& reason = "");
+
+    // 특수 로그
     void logError(const std::string& message);
     void logPacket(const std::string& driver, const std::string& device,
                    const std::string& rawPacket, const std::string& decoded);
 
-    // ✅ 드라이버 로그 (Complete Types 지원)
-    void logDriver(const UUID& device_id, DriverLogCategory category, 
-                  LogLevel level, const std::string& message);
+    // =============================================================================
+    // 로그 레벨 관리
+    // =============================================================================
     
-    // ✅ 데이터 품질 로그 (Complete Types 지원)
-    void logDataQuality(const UUID& device_id, const UUID& point_id,
-                       DataQuality quality, const std::string& reason = "");
-
-    // =============================================================================
-    // 로그 레벨 관리 (Complete Enums 지원)
-    // =============================================================================
     void setLogLevel(LogLevel level) { 
         std::lock_guard<std::mutex> lock(mutex_);
         minLevel_ = level; 
@@ -165,11 +152,9 @@ public:
         return minLevel_; 
     }
 
-    // ✅ 카테고리별 로그 레벨 설정 (Complete Enums 지원)
     void setCategoryLogLevel(DriverLogCategory category, LogLevel level);
     LogLevel getCategoryLogLevel(DriverLogCategory category) const;
     
-    // ✅ 점검 모드 설정
     void setMaintenanceMode(bool enabled) {
         std::lock_guard<std::mutex> lock(mutex_);
         maintenance_mode_enabled_ = enabled;
@@ -181,19 +166,18 @@ public:
     }
 
     // =============================================================================
-    // 통계 및 상태 관리 (Complete Structs 지원)
+    // 통계 및 관리
     // =============================================================================
-    LogStatistics getStatistics() const;
-    void resetStatistics();
     
+    PulseOne::Structs::LogStatistics getStatistics() const;
+    void resetStatistics();
     void flushAll();
     void rotateLogs();
 
 private:
     // =============================================================================
-    // 생성자/소멸자 (싱글톤)
+    // 생성자/소멸자 (싱글톤이므로 private)
     // =============================================================================
-    
     LogManager();
     ~LogManager();
     
@@ -204,13 +188,14 @@ private:
     LogManager& operator=(LogManager&&) = delete;
 
     // =============================================================================
-    // 🔥 경고 없는 초기화 로직
+    // 초기화 관련
     // =============================================================================
     void ensureInitialized();
     bool doInitialize();
+    bool createDirectoryRecursive(const std::string& path);
 
     // =============================================================================
-    // 내부 유틸리티 메소드들
+    // 내부 유틸리티
     // =============================================================================
     std::string getCurrentDate();
     std::string getCurrentTime();
@@ -220,14 +205,20 @@ private:
     bool shouldLog(LogLevel level) const;
     bool shouldLogCategory(DriverLogCategory category, LogLevel level) const;
 
-    // ✅ 포맷팅 메소드들 (Complete Types 지원)
+    // 포맷팅
     std::string formatLogMessage(LogLevel level, const std::string& category,
                                 const std::string& message);
     std::string formatMaintenanceLog(const UUID& device_id, const EngineerID& engineer_id,
                                    const std::string& message);
 
-    // ✅ 통계 업데이트
+    // 통계
     void updateStatistics(LogLevel level);
+
+    // 유틸리티 함수들
+    std::string logLevelToString(LogLevel level);
+    LogLevel stringToLogLevel(const std::string& level);
+    std::string driverLogCategoryToString(DriverLogCategory category);
+    std::string dataQualityToString(DataQuality quality);
 
     // =============================================================================
     // 포맷 문자열 구현
@@ -263,58 +254,47 @@ private:
     }
 
     // =============================================================================
-    // 멤버 변수들 (Complete Types 지원 + 초기화 상태)
+    // 멤버 변수들
     // =============================================================================
     
-    /// 초기화 상태 (원자적 연산)
+    // 초기화 상태
     std::atomic<bool> initialized_;
-    
-    /// 초기화용 뮤텍스
     mutable std::mutex init_mutex_;
     
-    /// 메인 뮤텍스와 로그 파일들
+    // 로그 파일 및 설정
     mutable std::mutex mutex_;
     std::map<std::string, std::ofstream> logFiles_;
     LogLevel minLevel_;
     std::string defaultCategory_;
     
-    /// 카테고리별 로그 레벨 (Complete Enums)
+    // 카테고리별 로그 레벨
     std::map<DriverLogCategory, LogLevel> categoryLevels_;
     
-    /// 점검 모드
+    // 점검 모드
     bool maintenance_mode_enabled_;
     
-    /// 통계 정보 (Complete Structs)
-    mutable LogStatistics statistics_;
+    // 통계 정보
+    mutable PulseOne::Structs::LogStatistics statistics_;
     
-    /// 로그 로테이션 설정
+    // 로그 로테이션 설정
     size_t max_log_size_mb_;
     int max_log_files_;
 };
 
 // =============================================================================
-// 전역 편의 함수들 (Complete Types 지원)
+// 전역 편의 함수들 (기존 코드에서 사용하는 패턴)
 // =============================================================================
 
-/**
- * @brief 전역 로거 인스턴스 (기존 호환성)
- */
 inline LogManager& Logger() {
     return LogManager::getInstance();
 }
 
-/**
- * @brief 점검 로그 편의 함수 (Complete Types)
- */
 inline void LogMaintenance(const UUID& device_id, 
                           const EngineerID& engineer_id,
                           const std::string& message) {
     LogManager::getInstance().logMaintenance(device_id, engineer_id, message);
 }
 
-/**
- * @brief 드라이버 로그 편의 함수 (Complete Types)
- */
 inline void LogDriver(const UUID& device_id, 
                      DriverLogCategory category,
                      LogLevel level,

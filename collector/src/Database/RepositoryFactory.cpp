@@ -83,7 +83,21 @@ bool RepositoryFactory::initialize() {
         logger_->Info("🔧 RepositoryFactory initializing...");
         
         // 1. DatabaseManager 초기화 확인
-        if (!db_manager_->isPostgresConnected() && !db_manager_->isSQLiteConnected()) {
+        bool any_db_connected = db_manager_->isSQLiteConnected();
+
+        #ifdef HAS_POSTGRESQL
+        if (db_manager_->isPostgresConnected()) {
+            any_db_connected = true;
+        }
+        #endif
+
+        #ifdef HAS_MYSQL
+        if (db_manager_->isMySQLConnected()) {
+            any_db_connected = true;
+        }
+        #endif
+
+        if (!any_db_connected) {
             logger_->Error("DatabaseManager not connected - attempting initialization");
             if (!db_manager_->initialize()) {
                 logger_->Error("Failed to initialize DatabaseManager");

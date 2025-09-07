@@ -507,7 +507,7 @@ bool BaseDeviceWorker::IsActiveState(WorkerState state) {
  * @brief 에러 상태인지 확인
  */
 bool BaseDeviceWorker::IsErrorState(WorkerState state) {
-    return state == WorkerState::ERROR ||
+    return state == WorkerState::ERWORKER_ERRORROR ||
            state == WorkerState::DEVICE_OFFLINE ||
            state == WorkerState::COMMUNICATION_ERROR ||
            state == WorkerState::DATA_INVALID ||
@@ -787,7 +787,7 @@ PulseOne::Enums::DeviceStatus BaseDeviceWorker::ConvertWorkerStateToDeviceStatus
         case WorkerState::CALIBRATION:
             return PulseOne::Enums::DeviceStatus::ONLINE;
             
-        case WorkerState::ERROR:
+        case WorkerState::WORKER_ERROR:
         case WorkerState::DEVICE_OFFLINE:
         case WorkerState::COMMUNICATION_ERROR:
         case WorkerState::MAX_RETRIES_EXCEEDED:
@@ -808,7 +808,7 @@ std::string BaseDeviceWorker::GetStatusMessage() const {
     switch (current_state_.load()) {
         case WorkerState::RUNNING:
             return "정상 동작 중";
-        case WorkerState::ERROR:
+        case WorkerState::WORKER_ERROR:
             return "오류 발생: " + last_error_message_;
         case WorkerState::DEVICE_OFFLINE:
             return "디바이스 오프라인";
@@ -836,7 +836,7 @@ std::string BaseDeviceWorker::WorkerStateToString(WorkerState state) const {
         case WorkerState::RUNNING: return "RUNNING";
         case WorkerState::PAUSED: return "PAUSED";
         case WorkerState::STOPPING: return "STOPPING";
-        case WorkerState::ERROR: return "ERROR";
+        case WorkerState::WORKER_ERROR: return "ERROR";
         case WorkerState::MAINTENANCE: return "MAINTENANCE";
         case WorkerState::SIMULATION: return "SIMULATION";
         case WorkerState::CALIBRATION: return "CALIBRATION";

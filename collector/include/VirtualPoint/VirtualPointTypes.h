@@ -19,6 +19,31 @@
 #ifndef VIRTUAL_POINT_TYPES_H
 #define VIRTUAL_POINT_TYPES_H
 
+#ifdef _WIN32
+    // Windows.h의 ERROR 매크로 제거
+    #ifdef ERROR
+        #undef ERROR
+    #endif
+    
+    // 다른 충돌 가능한 매크로들도 제거
+    #ifdef FATAL
+        #undef FATAL
+    #endif
+    
+    #ifdef MAINTENANCE
+        #undef MAINTENANCE
+    #endif
+    
+    #ifdef min
+        #undef min
+    #endif
+    
+    #ifdef max
+        #undef max
+    #endif
+#endif
+
+
 #include <string>
 #include <vector>
 #include <map>

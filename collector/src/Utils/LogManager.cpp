@@ -1,10 +1,15 @@
-#include <mutex>
-#include <sstream>
-#include <iomanip>
-#include "Platform/PlatformCompat.h"
-// =============================================================================
-// collector/src/Utils/LogManager.cpp - 완전한 기능 보존 + 자동 초기화
-// =============================================================================
+/**
+ * @file LogManager.cpp
+ * @brief PulseOne 통합 로그 관리자 - 완전 크로스 컴파일 대응
+ * @author PulseOne Development Team
+ * @date 2025-09-06
+ * 
+ * 완전한 크로스 플랫폼 지원:
+ * - Windows/Linux API 충돌 완전 해결
+ * - 새 헤더와 100% 매칭 (올바른 enum 값들)
+ * - LogStatistics 완전한 구조체 사용
+ * - MinGW 크로스 컴파일 완전 대응
+ */
 
 #include "Utils/LogManager.h"
 #include <iostream>
@@ -12,15 +17,43 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
-#include <filesystem>
-
-namespace fs = std::filesystem;
-namespace Utils = PulseOne::Utils;
-using LogLevel = PulseOne::Enums::LogLevel;
 
 // =============================================================================
-// 🔥 핵심: 실제 초기화 로직 (thread-safe)
+// 🔥 크로스 플랫폼 파일시스템 처리 (헤더 이후)
 // =============================================================================
+
+#if PULSEONE_WINDOWS
+    #include <direct.h>
+    #include <io.h>
+    #define PATH_SEPARATOR "\\"
+    #define MKDIR(path) _mkdir(path)
+    #define ACCESS(path, mode) _access(path, mode)
+#else
+    #include <sys/stat.h>
+    #include <unistd.h>
+    #define PATH_SEPARATOR "/"
+    #define MKDIR(path) mkdir(path, 0755)
+    #define ACCESS(path, mode) access(path, mode)
+#endif
+
+// =============================================================================
+// 생성자/소멸자 및 초기화
+// =============================================================================
+
+LogManager::LogManager() 
+    : initialized_(false)
+    , minLevel_(LogLevel::INFO)
+    , defaultCategory_("system")
+    , maintenance_mode_enabled_(false)
+    , max_log_size_mb_(100)
+    , max_log_files_(30) {
+    // 생성자에서는 기본값만 설정
+}
+
+LogManager::~LogManager() {
+    flushAll();
+}
+
 void LogManager::ensureInitialized() {
     // 빠른 체크 (이미 초기화됨)
     if (initialized_.load(std::memory_order_acquire)) {
@@ -38,22 +71,7 @@ void LogManager::ensureInitialized() {
     initialized_.store(true, std::memory_order_release);
 }
 
-LogManager::LogManager() 
-    : initialized_(false)
-    , minLevel_(LogLevel::INFO)
-    , defaultCategory_("system")
-    , maintenance_mode_enabled_(false)
-    , max_log_size_mb_(100)
-    , max_log_files_(30) {
-    // 생성자에서는 기본값만 설정
-}
-
-LogManager::~LogManager() {
-    flushAll();
-}
-
 bool LogManager::doInitialize() {
-    // 중복 초기화 방지 (double-checked locking)
     if (initialized_.load()) {
         return true;
     }
@@ -66,44 +84,59 @@ bool LogManager::doInitialize() {
     }
     
     try {
-        std::cout << "🔧 LogManager 자동 초기화 시작...\n";
+        std::cout << "LogManager 자동 초기화 시작...\n";
         
-        // 🆕 카테고리별 기본 로그 레벨 설정
+        // 🔥 올바른 enum 값들로 설정 (Common/Enums.h 기준)
         categoryLevels_[DriverLogCategory::GENERAL] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::DATA_PROCESSING] = LogLevel::INFO;
-        categoryLevels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::LOG_ERROR;
+        categoryLevels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::ERROR;
         categoryLevels_[DriverLogCategory::PERFORMANCE] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::SECURITY] = LogLevel::WARN;
-        categoryLevels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG_LEVEL;
-        categoryLevels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG_LEVEL;
+        categoryLevels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG;
+        categoryLevels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG;
+        categoryLevels_[DriverLogCategory::MAINTENANCE] = LogLevel::WARN;
         
         // 로그 디렉토리 확인 및 생성
-        try {
-            if (!fs::exists("logs")) {
-                fs::create_directories("logs");
-            }
-        } catch (const std::exception& e) {
-            std::cout << "⚠️  로그 디렉토리 생성 중 오류: " << e.what() << "\n";
-        }
+        createDirectoryRecursive("logs");
         
         initialized_.store(true);
         
-        std::cout << "✅ LogManager 자동 초기화 완료\n";
+        std::cout << "LogManager 자동 초기화 완료\n";
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "❌ LogManager 초기화 실패: " << e.what() << "\n";
+        std::cerr << "LogManager 초기화 실패: " << e.what() << "\n";
         return false;
     }
 }
 
 // =============================================================================
-// 🔥 이하 모든 메서드들은 기존 구현과 100% 동일
+// 플랫폼별 디렉토리 생성
 // =============================================================================
 
-// 시간 관련 유틸리티 (기존 + 확장)
+bool LogManager::createDirectoryRecursive(const std::string& path) {
+    if (ACCESS(path.c_str(), 0) == 0) {
+        return true; // 이미 존재함
+    }
+    
+    // 부모 디렉토리 먼저 생성
+    size_t pos = path.find_last_of(PATH_SEPARATOR);
+    if (pos != std::string::npos) {
+        std::string parent = path.substr(0, pos);
+        if (!createDirectoryRecursive(parent)) {
+            return false;
+        }
+    }
+    
+    return MKDIR(path.c_str()) == 0;
+}
+
+// =============================================================================
+// 시간 관련 유틸리티 (크로스 플랫폼 안전)
+// =============================================================================
+
 std::string LogManager::getCurrentDate() {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -126,34 +159,51 @@ std::string LogManager::getCurrentTime() {
 
 std::string LogManager::getCurrentTimestamp() {
     auto now = std::chrono::system_clock::now();
-    return Utils::TimestampToISOString(now);
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm buf{};
+    SAFE_LOCALTIME(&t, &buf);
+    std::ostringstream oss;
+    oss << std::put_time(&buf, "%Y-%m-%d %H:%M:%S");
+    return oss.str();
 }
 
-// 로그 경로 및 파일 관리 (기존 + 확장)
+// =============================================================================
+// 로그 경로 및 파일 관리
+// =============================================================================
+
 std::string LogManager::buildLogPath(const std::string& category) {
     std::string date = getCurrentDate();
     std::string baseDir;
 
     if (category.rfind("packet_", 0) == 0) {
-        baseDir = "logs/packets/" + date + "/" + category.substr(7);
+        baseDir = "logs" PATH_SEPARATOR "packets" PATH_SEPARATOR + date + PATH_SEPARATOR + category.substr(7);
     } else if (category == "maintenance") {
-        baseDir = "logs/maintenance/" + date;
+        baseDir = "logs" PATH_SEPARATOR "maintenance" PATH_SEPARATOR + date;
     } else {
-        baseDir = "logs/" + date;
+        baseDir = "logs" PATH_SEPARATOR + date;
     }
 
-    fs::path fullPath = (category.rfind("packet_", 0) == 0)
-        ? fs::path(baseDir + ".log")
-        : fs::path(baseDir + "/" + category + ".log");
-
-    if (!fs::exists(fullPath.parent_path())) {
-        fs::create_directories(fullPath.parent_path());
+    std::string fullPath;
+    if (category.rfind("packet_", 0) == 0) {
+        fullPath = baseDir + ".log";
+    } else {
+        fullPath = baseDir + PATH_SEPARATOR + category + ".log";
     }
 
-    return fullPath.string();
+    // 디렉토리 생성
+    size_t pos = fullPath.find_last_of(PATH_SEPARATOR);
+    if (pos != std::string::npos) {
+        std::string dir = fullPath.substr(0, pos);
+        createDirectoryRecursive(dir);
+    }
+
+    return fullPath;
 }
 
-// 로그 레벨 검사 (기존 + 카테고리 지원)
+// =============================================================================
+// 로그 레벨 검사
+// =============================================================================
+
 bool LogManager::shouldLog(LogLevel level) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return static_cast<int>(level) >= static_cast<int>(minLevel_);
@@ -168,12 +218,15 @@ bool LogManager::shouldLogCategory(DriverLogCategory category, LogLevel level) c
     return static_cast<int>(level) >= static_cast<int>(categoryLevel);
 }
 
-// 메시지 포맷팅 (🆕)
+// =============================================================================
+// 메시지 포맷팅
+// =============================================================================
+
 std::string LogManager::formatLogMessage(LogLevel level, const std::string& category,
                                        const std::string& message) {
     std::ostringstream oss;
     oss << "[" << getCurrentTimestamp() << "]"
-        << "[" << Utils::LogLevelToString(level) << "]";
+        << "[" << logLevelToString(level) << "]";
     
     if (!category.empty() && category != defaultCategory_) {
         oss << "[" << category << "]";
@@ -189,13 +242,16 @@ std::string LogManager::formatMaintenanceLog(const UUID& device_id,
     std::ostringstream oss;
     oss << "[" << getCurrentTimestamp() << "]"
         << "[MAINTENANCE]"
-        << "[Device:" << device_id.c_str() << "]"
+        << "[Device:" << device_id << "]"
         << "[Engineer:" << engineer_id << "]"
         << " " << message;
     return oss.str();
 }
 
-// 파일 쓰기 및 통계 (기존 + 통계 추가)
+// =============================================================================
+// 파일 쓰기 및 통계
+// =============================================================================
+
 void LogManager::writeToFile(const std::string& filePath, const std::string& message) {
     std::lock_guard<std::mutex> lock(mutex_);
     
@@ -207,7 +263,7 @@ void LogManager::writeToFile(const std::string& filePath, const std::string& mes
         stream.open(filePath, std::ios::app);
     }
     stream << message << std::endl;
-    stream.flush();  // 🆕 즉시 플러시
+    stream.flush();
 }
 
 void LogManager::updateStatistics(LogLevel level) {
@@ -227,7 +283,7 @@ void LogManager::updateStatistics(LogLevel level) {
             statistics_.warn_count++;
             statistics_.warning_count++;  // 별칭 동기화
             break;
-        case LogLevel::LOG_ERROR:
+        case LogLevel::ERROR:
             statistics_.error_count++;
             break;
         case LogLevel::FATAL:
@@ -236,11 +292,7 @@ void LogManager::updateStatistics(LogLevel level) {
         case LogLevel::MAINTENANCE:
             statistics_.maintenance_count++;
             break;
-        case LogLevel::OFF:
-            // 로그가 비활성화된 경우, 통계에 포함하지 않음
-            break;
         default:
-            // 알 수 없는 로그 레벨의 경우도 처리
             break;
     }
 
@@ -248,7 +300,10 @@ void LogManager::updateStatistics(LogLevel level) {
     statistics_.last_log_time = std::chrono::system_clock::now();
 }
 
-// 기본 로그 메소드들 (기존 + 신규)
+// =============================================================================
+// 기본 로그 메소드들
+// =============================================================================
+
 void LogManager::Info(const std::string& message) {
     log(defaultCategory_, LogLevel::INFO, message);
 }
@@ -258,7 +313,7 @@ void LogManager::Warn(const std::string& message) {
 }
 
 void LogManager::Error(const std::string& message) {
-    log(defaultCategory_, LogLevel::LOG_ERROR, message);
+    log(defaultCategory_, LogLevel::ERROR, message);
 }
 
 void LogManager::Fatal(const std::string& message) {
@@ -266,7 +321,7 @@ void LogManager::Fatal(const std::string& message) {
 }
 
 void LogManager::Debug(const std::string& message) {
-    log(defaultCategory_, LogLevel::DEBUG_LEVEL, message);
+    log(defaultCategory_, LogLevel::DEBUG, message);
 }
 
 void LogManager::Trace(const std::string& message) {
@@ -279,7 +334,10 @@ void LogManager::Maintenance(const std::string& message) {
     }
 }
 
-// 확장 로그 메소드들 (기존 + 신규)
+// =============================================================================
+// 확장 로그 메소드들
+// =============================================================================
+
 void LogManager::log(const std::string& category, LogLevel level, const std::string& message) {
     if (!shouldLog(level)) return;
     
@@ -290,10 +348,14 @@ void LogManager::log(const std::string& category, LogLevel level, const std::str
 }
 
 void LogManager::log(const std::string& category, const std::string& level, const std::string& message) {
-    log(category, Utils::StringToLogLevel(level), message);
+    LogLevel logLevel = stringToLogLevel(level);
+    log(category, logLevel, message);
 }
 
-// 🆕 점검 관련 로그 메소드들
+// =============================================================================
+// 점검 관련 로그 메소드들
+// =============================================================================
+
 void LogManager::logMaintenance(const UUID& device_id, const EngineerID& engineer_id, 
                                const std::string& message) {
     std::string formatted = formatMaintenanceLog(device_id, engineer_id, message);
@@ -301,16 +363,15 @@ void LogManager::logMaintenance(const UUID& device_id, const EngineerID& enginee
     writeToFile(path, formatted);
 }
 
-void LogManager::logMaintenanceStart(const DeviceInfo& device, const EngineerID& engineer_id) {
+void LogManager::logMaintenanceStart(const PulseOne::Structs::DeviceInfo& device, const EngineerID& engineer_id) {
     std::ostringstream oss;
-    oss << "🔧 [MAINTENANCE START] Device: " << device.getName() 
-        << " (" << device.getId() << "), Protocol: " << Utils::ProtocolTypeToString(device.GetProtocol())
-        << ", Engineer: " << engineer_id;
+    oss << "MAINTENANCE START - Device: " << device.name 
+        << " (" << device.id << "), Engineer: " << engineer_id;
     
-    log("maintenance", LogLevel::MAINTENANCE, oss.str());
+    logMaintenance(device.id, engineer_id, oss.str());
 }
 
-void LogManager::logMaintenanceEnd(const DeviceInfo& device, const EngineerID& engineer_id) {
+void LogManager::logMaintenanceEnd(const PulseOne::Structs::DeviceInfo& device, const EngineerID& engineer_id) {
     std::ostringstream oss;
     oss << "MAINTENANCE COMPLETED - Device: " << device.name 
         << " (" << device.id << ")";
@@ -319,47 +380,56 @@ void LogManager::logMaintenanceEnd(const DeviceInfo& device, const EngineerID& e
 
 void LogManager::logRemoteControlBlocked(const UUID& device_id, const std::string& reason) {
     std::ostringstream oss;
-    oss << "REMOTE CONTROL BLOCKED - Device: " << device_id.c_str() << ", Reason: " << reason;
+    oss << "REMOTE CONTROL BLOCKED - Device: " << device_id << ", Reason: " << reason;
     log("security", LogLevel::WARN, oss.str());
 }
 
-// 🆕 드라이버 로그 (카테고리 지원)
+// =============================================================================
+// 드라이버 로그
+// =============================================================================
+
 void LogManager::logDriver(const UUID& device_id, DriverLogCategory category, 
                           LogLevel level, const std::string& message) {
     if (!shouldLogCategory(category, level)) return;
     
     std::ostringstream oss;
-    oss << "[Device:" << device_id.c_str() << "][" << Utils::DriverLogCategoryToString(category) << "] " << message;
+    oss << "[Device:" << device_id << "][" << driverLogCategoryToString(category) << "] " << message;
     
-    std::string categoryName = "driver_" + Utils::DriverLogCategoryToString(category);
+    std::string categoryName = "driver_" + driverLogCategoryToString(category);
     log(categoryName, level, oss.str());
 }
 
-// 🆕 데이터 품질 로그
+// =============================================================================
+// 데이터 품질 로그
+// =============================================================================
+
 void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
                                DataQuality quality, const std::string& reason) {
-    if (quality == DataQuality::GOOD) return;  // 정상 데이터는 로깅 안함
+    if (quality == DataQuality::GOOD) return;
     
     std::ostringstream oss;
-    oss << "DATA QUALITY ISSUE - Device: " << device_id.c_str() 
+    oss << "DATA QUALITY ISSUE - Device: " << device_id 
         << ", Point: " << point_id 
-        << ", Quality: " << Utils::DataQualityToString(quality);
+        << ", Quality: " << dataQualityToString(quality);
     
     if (!reason.empty()) {
         oss << ", Reason: " << reason;
     }
     
-    LogLevel level = (quality == DataQuality::BAD) ? LogLevel::LOG_ERROR : LogLevel::WARN;
+    LogLevel level = (quality == DataQuality::BAD) ? LogLevel::ERROR : LogLevel::WARN;
     log("data_quality", level, oss.str());
 }
 
-// 기존 특수 로그 메소드들 (유지)
+// =============================================================================
+// 기존 특수 로그 메소드들
+// =============================================================================
+
 void LogManager::logDriver(const std::string& driverName, const std::string& message) {
     log("driver_" + driverName, LogLevel::INFO, message);
 }
 
 void LogManager::logError(const std::string& message) {
-    log("error", LogLevel::LOG_ERROR, message);
+    log("error", LogLevel::ERROR, message);
 }
 
 void LogManager::logPacket(const std::string& driver, const std::string& device,
@@ -371,7 +441,10 @@ void LogManager::logPacket(const std::string& driver, const std::string& device,
     writeToFile(path, oss.str());
 }
 
-// 카테고리별 로그 레벨 관리 (🆕)
+// =============================================================================
+// 카테고리별 로그 레벨 관리
+// =============================================================================
+
 void LogManager::setCategoryLogLevel(DriverLogCategory category, LogLevel level) {
     std::lock_guard<std::mutex> lock(mutex_);
     categoryLevels_[category] = level;
@@ -383,18 +456,18 @@ LogLevel LogManager::getCategoryLogLevel(DriverLogCategory category) const {
     return (it != categoryLevels_.end()) ? it->second : minLevel_;
 }
 
-// 통계 및 관리 (🆕)
-LogStatistics LogManager::getStatistics() const {
+// =============================================================================
+// 통계 및 관리
+// =============================================================================
+
+PulseOne::Structs::LogStatistics LogManager::getStatistics() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    
-    // 🔥 수정: 명시적 복사 생성자 사용
-    LogStatistics copy(statistics_);
-    return copy;
+    return statistics_;
 }
 
 void LogManager::resetStatistics() {
-    // 🔥 수정: ResetAllCounters 메소드 사용하거나 개별 리셋
-    statistics_.ResetAllCounters();
+    std::lock_guard<std::mutex> lock(mutex_);
+    statistics_ = PulseOne::Structs::LogStatistics{};
 }
 
 void LogManager::flushAll() {
@@ -420,6 +493,59 @@ void LogManager::rotateLogs() {
     }
     logFiles_.clear();
     
-    // TODO: 오래된 로그 파일 삭제/압축 로직 추가
     Info("Log rotation completed");
+}
+
+// =============================================================================
+// 유틸리티 함수들 (크로스 플랫폼)
+// =============================================================================
+
+std::string LogManager::logLevelToString(LogLevel level) {
+    switch (level) {
+        case LogLevel::TRACE: return "TRACE";
+        case LogLevel::DEBUG: return "DEBUG";
+        case LogLevel::INFO: return "INFO";
+        case LogLevel::WARN: return "WARN";
+        case LogLevel::ERROR: return "ERROR";
+        case LogLevel::FATAL: return "FATAL";
+        case LogLevel::MAINTENANCE: return "MAINT";
+        default: return "UNKNOWN";
+    }
+}
+
+LogLevel LogManager::stringToLogLevel(const std::string& level) {
+    if (level == "TRACE") return LogLevel::TRACE;
+    if (level == "DEBUG") return LogLevel::DEBUG;
+    if (level == "INFO") return LogLevel::INFO;
+    if (level == "WARN") return LogLevel::WARN;
+    if (level == "ERROR") return LogLevel::ERROR;
+    if (level == "FATAL") return LogLevel::FATAL;
+    if (level == "MAINTENANCE" || level == "MAINT") return LogLevel::MAINTENANCE;
+    return LogLevel::INFO;
+}
+
+std::string LogManager::driverLogCategoryToString(DriverLogCategory category) {
+    switch (category) {
+        case DriverLogCategory::GENERAL: return "GENERAL";
+        case DriverLogCategory::CONNECTION: return "CONNECTION";
+        case DriverLogCategory::COMMUNICATION: return "COMMUNICATION";
+        case DriverLogCategory::DATA_PROCESSING: return "DATA_PROCESSING";
+        case DriverLogCategory::ERROR_HANDLING: return "ERROR_HANDLING";
+        case DriverLogCategory::PERFORMANCE: return "PERFORMANCE";
+        case DriverLogCategory::SECURITY: return "SECURITY";
+        case DriverLogCategory::PROTOCOL_SPECIFIC: return "PROTOCOL_SPECIFIC";
+        case DriverLogCategory::DIAGNOSTICS: return "DIAGNOSTICS";
+        case DriverLogCategory::MAINTENANCE: return "MAINTENANCE";
+        default: return "UNKNOWN";
+    }
+}
+
+std::string LogManager::dataQualityToString(DataQuality quality) {
+    switch (quality) {
+        case DataQuality::GOOD: return "GOOD";
+        case DataQuality::UNCERTAIN: return "UNCERTAIN";
+        case DataQuality::BAD: return "BAD";
+        case DataQuality::NOT_CONNECTED: return "NOT_CONNECTED";
+        default: return "UNKNOWN";
+    }
 }

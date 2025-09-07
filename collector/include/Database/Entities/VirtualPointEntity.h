@@ -12,19 +12,6 @@
 #include <vector>
 #include <chrono>
 
-#ifdef HAS_NLOHMANN_JSON
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-#else
-struct json {
-    template<typename T> T get() const { return T{}; }
-    bool contains(const std::string&) const { return false; }
-    std::string dump() const { return "{}"; }
-    static json parse(const std::string&) { return json{}; }
-    static json object() { return json{}; }
-    static json array() { return json{}; }
-};
-#endif
 
 namespace PulseOne {
 namespace Database {

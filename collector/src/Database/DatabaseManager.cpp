@@ -1,4 +1,3 @@
-// DatabaseManager.cpp - 크로스플랫폼 버전
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include <thread>
@@ -30,7 +29,7 @@ bool DatabaseManager::doInitialize() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     LogManager::getInstance().log("database", LogLevel::INFO, 
-        "🔧 DatabaseManager 초기화 시작...");
+        "DatabaseManager 초기화 시작...");
     
     // 사용 가능한 DB 목록 출력
     logAvailableDatabases();
@@ -42,10 +41,10 @@ bool DatabaseManager::doInitialize() {
     if (enabled_databases_[DatabaseType::SQLITE]) {
         if (connectSQLite()) {
             LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ SQLite 연결 성공");
+                "SQLite 연결 성공");
         } else {
             LogManager::getInstance().log("database", LogLevel::ERROR, 
-                "❌ SQLite 연결 실패");
+                "SQLite 연결 실패");
             return false;
         }
     }
@@ -54,7 +53,7 @@ bool DatabaseManager::doInitialize() {
     if (enabled_databases_[DatabaseType::POSTGRESQL]) {
         if (connectPostgres()) {
             LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ PostgreSQL 연결 성공");
+                "PostgreSQL 연결 성공");
         }
     }
 #endif
@@ -63,25 +62,23 @@ bool DatabaseManager::doInitialize() {
     if (enabled_databases_[DatabaseType::MYSQL]) {
         if (connectMySQL()) {
             LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ MySQL 연결 성공");
+                "MySQL 연결 성공");
         }
     }
 #endif
 
-#ifdef HAS_MSSQL
+#if HAS_MSSQL
     if (enabled_databases_[DatabaseType::MSSQL]) {
         if (connectMSSQL()) {
             LogManager::getInstance().log("database", LogLevel::INFO, 
-                "✅ MSSQL 연결 성공");
+                "MSSQL 연결 성공");
         }
     }
 #endif
 
-#ifdef HAS_REDIS
     if (enabled_databases_[DatabaseType::REDIS]) {
         connectRedis();
     }
-#endif
 
     return true;
 }
@@ -111,7 +108,7 @@ void DatabaseManager::loadDatabaseConfig() {
         primary_rdb_ = DatabaseType::MYSQL;
     }
 #endif
-#ifdef HAS_MSSQL
+#if HAS_MSSQL
     else if (db_type == "MSSQL") {
         enabled_databases_[DatabaseType::MSSQL] = true;
         primary_rdb_ = DatabaseType::MSSQL;
@@ -122,6 +119,9 @@ void DatabaseManager::loadDatabaseConfig() {
         enabled_databases_[DatabaseType::SQLITE] = true;
         primary_rdb_ = DatabaseType::SQLITE;
     }
+    
+    // Redis는 항상 활성화
+    enabled_databases_[DatabaseType::REDIS] = true;
 }
 
 // ========================================================================
@@ -264,9 +264,11 @@ bool DatabaseManager::executeNonQueryMySQL(const std::string& query) {
 #endif
 
 // ========================================================================
-// MSSQL 구현 (Windows 전용)
+// MSSQL 구현 - 조건부 컴파일
 // ========================================================================
-#ifdef HAS_MSSQL
+
+#if HAS_MSSQL
+// MSSQL 지원 시 실제 구현
 bool DatabaseManager::connectMSSQL() {
     if (SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &mssql_env_) != SQL_SUCCESS) {
         return false;
@@ -304,12 +306,100 @@ bool DatabaseManager::connectMSSQL() {
 bool DatabaseManager::isMSSQLConnected() {
     return mssql_conn_ != nullptr;
 }
-#endif
+
+bool DatabaseManager::executeQueryMSSQL(const std::string& query, 
+                                       std::vector<std::vector<std::string>>& results) {
+    if (!mssql_conn_) return false;
+    
+    SQLHSTMT stmt;
+    if (SQLAllocHandle(SQL_HANDLE_STMT, mssql_conn_, &stmt) != SQL_SUCCESS) {
+        return false;
+    }
+    
+    SQLRETURN ret = SQLExecDirect(stmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+    if (!SQL_SUCCEEDED(ret)) {
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return false;
+    }
+    
+    SQLSMALLINT col_count;
+    SQLNumResultCols(stmt, &col_count);
+    
+    while (SQLFetch(stmt) == SQL_SUCCESS) {
+        std::vector<std::string> row;
+        for (int i = 1; i <= col_count; ++i) {
+            SQLCHAR buffer[256];
+            SQLLEN indicator;
+            
+            if (SQLGetData(stmt, i, SQL_C_CHAR, buffer, sizeof(buffer), &indicator) == SQL_SUCCESS) {
+                if (indicator == SQL_NULL_DATA) {
+                    row.push_back("NULL");
+                } else {
+                    row.push_back(reinterpret_cast<char*>(buffer));
+                }
+            } else {
+                row.push_back("");
+            }
+        }
+        results.push_back(row);
+    }
+    
+    SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+    return true;
+}
+
+bool DatabaseManager::executeNonQueryMSSQL(const std::string& query) {
+    if (!mssql_conn_) return false;
+    
+    SQLHSTMT stmt;
+    if (SQLAllocHandle(SQL_HANDLE_STMT, mssql_conn_, &stmt) != SQL_SUCCESS) {
+        return false;
+    }
+    
+    SQLRETURN ret = SQLExecDirect(stmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+    bool success = SQL_SUCCEEDED(ret);
+    
+    SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+    return success;
+}
+
+void* DatabaseManager::getMSSQLConnection() {
+    return static_cast<void*>(mssql_conn_);
+}
+
+#else
+// MSSQL 미지원 시 더미 구현
+bool DatabaseManager::connectMSSQL() {
+    LogManager::getInstance().log("database", LogLevel::WARN, 
+        "MSSQL 연결 미지원 (컴파일 시 비활성화됨)");
+    return false;
+}
+
+bool DatabaseManager::isMSSQLConnected() {
+    return false;
+}
+
+bool DatabaseManager::executeQueryMSSQL(const std::string&, 
+                                       std::vector<std::vector<std::string>>&) {
+    LogManager::getInstance().log("database", LogLevel::WARN, 
+        "MSSQL 쿼리 미지원 (컴파일 시 비활성화됨)");
+    return false;
+}
+
+bool DatabaseManager::executeNonQueryMSSQL(const std::string&) {
+    LogManager::getInstance().log("database", LogLevel::WARN, 
+        "MSSQL 쿼리 미지원 (컴파일 시 비활성화됨)");
+    return false;
+}
+
+void* DatabaseManager::getMSSQLConnection() {
+    return nullptr;
+}
+#endif // HAS_MSSQL
 
 // ========================================================================
-// Redis 구현 (조건부)
+// Redis 구현 (항상 포함)
 // ========================================================================
-#ifdef HAS_REDIS
 bool DatabaseManager::connectRedis() {
     try {
         redis_client_ = std::make_unique<RedisClientImpl>();
@@ -327,7 +417,30 @@ bool DatabaseManager::connectRedis() {
 bool DatabaseManager::isRedisConnected() {
     return redis_client_ != nullptr;
 }
+
+void DatabaseManager::disconnectRedis() {
+    if (redis_client_) {
+        redis_client_->disconnect();
+        redis_client_.reset();
+    }
+}
+
+bool DatabaseManager::isInfluxConnected() {
+#ifdef HAS_INFLUX
+    return influx_client_ != nullptr;
+#else
+    return false;  // InfluxDB 지원이 빌드되지 않은 경우
 #endif
+}
+
+bool DatabaseManager::testRedisConnection() {
+    return isRedisConnected();
+}
+
+std::map<std::string, std::string> DatabaseManager::getRedisInfo() {
+    // Redis info 구현
+    return {};
+}
 
 // ========================================================================
 // 통합 쿼리 인터페이스
@@ -367,6 +480,9 @@ bool DatabaseManager::executeQuery(const std::string& query,
             return executeQueryMySQL(query, results);
 #endif
 
+        case DatabaseType::MSSQL:
+            return executeQueryMSSQL(query, results);
+
         default:
             return false;
     }
@@ -386,6 +502,9 @@ bool DatabaseManager::executeNonQuery(const std::string& query) {
         case DatabaseType::MYSQL:
             return executeNonQueryMySQL(query);
 #endif
+
+        case DatabaseType::MSSQL:
+            return executeNonQueryMSSQL(query);
 
         default:
             return false;
@@ -412,7 +531,7 @@ void DatabaseManager::disconnectAll() {
     }
 #endif
 
-#ifdef HAS_MSSQL
+#if HAS_MSSQL
     if (mssql_conn_) {
         SQLDisconnect(mssql_conn_);
         SQLFreeHandle(SQL_HANDLE_DBC, mssql_conn_);
@@ -422,11 +541,12 @@ void DatabaseManager::disconnectAll() {
         SQLFreeHandle(SQL_HANDLE_ENV, mssql_env_);
         mssql_env_ = nullptr;
     }
+#else
+    mssql_conn_ = nullptr;
+    mssql_env_ = nullptr;
 #endif
 
-#ifdef HAS_REDIS
-    redis_client_.reset();
-#endif
+    disconnectRedis();
 }
 
 std::string DatabaseManager::getDatabaseTypeName(DatabaseType type) {
@@ -458,3 +578,58 @@ std::string DatabaseManager::buildConnectionString(DatabaseType type) {
             return "";
     }
 }
+
+std::map<std::string, bool> DatabaseManager::getAllConnectionStatus() {
+    std::map<std::string, bool> status;
+    
+    status["SQLite"] = isSQLiteConnected();
+    
+#ifdef HAS_POSTGRESQL
+    status["PostgreSQL"] = isPostgresConnected();
+#endif
+
+#ifdef HAS_MYSQL
+    status["MySQL"] = isMySQLConnected();
+#endif
+
+    status["MSSQL"] = isMSSQLConnected();
+    status["Redis"] = isRedisConnected();
+#ifdef HAS_INFLUX    
+    status["Influx"] = isInfluxConnected();
+#endif
+    return status;
+}
+
+bool DatabaseManager::isConnected(DatabaseType db_type) {
+    switch (db_type) {
+        case DatabaseType::SQLITE: return isSQLiteConnected();
+#ifdef HAS_POSTGRESQL
+        case DatabaseType::POSTGRESQL: return isPostgresConnected();
+#endif
+#ifdef HAS_MYSQL
+        case DatabaseType::MYSQL: return isMySQLConnected();
+#endif
+        case DatabaseType::MSSQL: return isMSSQLConnected();
+        case DatabaseType::REDIS: return isRedisConnected();
+#ifdef HAS_INFLUX        
+        case DatabaseType::INFLUXDB: return isInfluxConnected();
+#endif        
+        default: return false;
+    }
+}
+
+void DatabaseManager::reinitialize() {
+    disconnectAll();
+    doInitialize();
+}
+
+void DatabaseManager::setDatabaseEnabled(DatabaseType db_type, bool enabled) {
+    enabled_databases_[db_type] = enabled;
+}
+
+void DatabaseManager::ensureInitialized() {
+    std::call_once(init_flag_, [this]() {
+        initialization_success_.store(doInitialize());
+    });
+}
+

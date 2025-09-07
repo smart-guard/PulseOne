@@ -88,7 +88,7 @@ RedisClientImpl::~RedisClientImpl() {
 bool RedisClientImpl::connect(const std::string& host, int port, const std::string& password) {
     // 이미 자동 연결이 활성화되어 있으므로 현재 상태 반환
     logInfo("수동 연결 요청 - 자동 연결이 이미 활성화됨");
-    return connected_;
+    return connected_.load();
 }
 
 void RedisClientImpl::disconnect() {
@@ -116,7 +116,7 @@ bool RedisClientImpl::forceReconnect() {
 }
 
 bool RedisClientImpl::isConnected() const {
-    return connected_;
+    return connected_.load();
 }
 
 // =============================================================================
@@ -779,7 +779,7 @@ bool RedisClientImpl::ping() {
         if (reply) freeReplyObject(reply);
         return result;
 #else
-        return connected_;
+        return connected_.load();
 #endif
     }, false);
 }

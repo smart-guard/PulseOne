@@ -6,6 +6,8 @@
 #ifndef WORKERS_BASE_DEVICE_WORKER_H
 #define WORKERS_BASE_DEVICE_WORKER_H
 
+
+#include "Platform/PlatformCompat.h"
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 #include "Common/BasicTypes.h"
@@ -36,7 +38,7 @@ enum class WorkerState {
     RUNNING = 2,                ///< 정상 실행 중
     PAUSED = 3,                 ///< 일시정지됨 (소프트웨어)
     STOPPING = 4,               ///< 정지 중
-    ERROR = 5,                  ///< 오류 상태
+    WORKER_ERROR = 5,           ///< 오류 상태
     
     // 현장 운영 상태들
     MAINTENANCE = 10,           ///< 점검 모드

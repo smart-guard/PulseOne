@@ -1,47 +1,47 @@
-// =============================================================================
-// collector/include/Utils/ConfigManager.h - 완전히 경고 없는 싱글톤 구현
-// 🔥 모든 컴파일러 경고 해결
-// =============================================================================
-
 #pragma once
 
+/**
+ * @file ConfigManager.h  
+ * @brief 통합 설정 관리자 - PlatformCompat.h 사용
+ * @author PulseOne Development Team
+ * @date 2025-09-06
+ */
+
+// PlatformCompat.h가 모든 플랫폼 문제를 해결함
+#include "Platform/PlatformCompat.h"
+
+// 표준 헤더들
 #include <string>
 #include <map>
 #include <mutex>
 #include <vector>
-#include <filesystem>
 #include <atomic>
 
-#ifdef _WIN32
-#include <windows.h>
+// 파일시스템 헤더 (C++17 호환성)
+#if __cplusplus >= 201703L && __has_include(<filesystem>)
+    #include <filesystem>
+    namespace fs = std::filesystem;
+    #define HAS_FILESYSTEM 1
 #else
-#include <unistd.h>
+    #define HAS_FILESYSTEM 0
 #endif
 
 /**
  * @class ConfigManager
- * @brief 통합 설정 관리자 (싱글톤) - 경고 없는 자동 초기화
+ * @brief 통합 설정 관리자 (크로스 플랫폼 싱글톤)
  */
 class ConfigManager {
 public:
     // ==========================================================================
-    // 🔥 방법 1: 가장 안전한 구현 (Meyer's Singleton + 초기화 플래그)
+    // 전역 싱글톤 패턴 (Meyer's Singleton + 자동 초기화)
     // ==========================================================================
     
-    /**
-     * @brief 싱글톤 인스턴스 반환 (자동 초기화됨)
-     * @return ConfigManager 인스턴스 참조
-     */
     static ConfigManager& getInstance() {
         static ConfigManager instance;
         instance.ensureInitialized();
         return instance;
     }
     
-    /**
-     * @brief 초기화 상태 확인
-     * @return 초기화 완료 시 true
-     */
     bool isInitialized() const {
         return initialized_.load(std::memory_order_acquire);
     }
@@ -94,12 +94,9 @@ private:
     ConfigManager& operator=(ConfigManager&&) = delete;
     
     // ==========================================================================
-    // 🔥 경고 없는 초기화 로직
+    // 크로스 플랫폼 초기화 로직
     // ==========================================================================
     
-    /**
-     * @brief 스레드 안전한 초기화 보장 (경고 없음)
-     */
     void ensureInitialized() {
         // 빠른 체크 (이미 초기화됨)
         if (initialized_.load(std::memory_order_acquire)) {
@@ -117,10 +114,6 @@ private:
         initialized_.store(true, std::memory_order_release);
     }
     
-    /**
-     * @brief 실제 초기화 로직
-     * @return 초기화 성공 여부
-     */
     bool doInitialize();
     
     // ==========================================================================
@@ -156,7 +149,7 @@ private:
     /// 초기화 상태 (원자적 연산)
     std::atomic<bool> initialized_;
     
-    /// 초기화용 뮤텍스 (static 함수 내 static 변수는 문제될 수 있음)
+    /// 초기화용 뮤텍스
     mutable std::mutex init_mutex_;
     
     /// 설정 데이터 저장소
