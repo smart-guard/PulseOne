@@ -13,11 +13,8 @@
 #include <chrono>
 #include <iostream>
 
-#ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
-#endif
-
 // Eclipse Paho MQTT C++ 헤더들
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
@@ -938,10 +935,11 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
             LogMessage("DEBUG", "Using endpoint as JSON config", "MQTT");
         }
         
-        // JSON 설정이 있다면 파싱 (기존 필드들만 사용)
+        // JSON 설정이 있다면 파싱
         if (has_json_config) {
             try {
-                auto json_config = json::parse(json_config_str);
+                // nlohmann::json 직접 사용 (using 선언으로 json 별칭 사용)
+                json json_config = json::parse(json_config_str);
                 
                 // =============================================================
                 // MQTT 특화 설정들 파싱 (기존 필드만)
@@ -949,38 +947,49 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
                 
                 // QoS 설정
                 if (json_config.contains("qos")) {
-                    default_qos_ = json_config["qos"].get<int>();
-                    if (default_qos_ < 0 || default_qos_ > 2) {
-                        LogMessage("WARN", "Invalid QoS value, using default: 0", "MQTT");
-                        default_qos_ = 0;
+                    // .get<int>() 대신 직접 캐스팅
+                    if (json_config["qos"].is_number_integer()) {
+                        default_qos_ = json_config["qos"];
+                        if (default_qos_ < 0 || default_qos_ > 2) {
+                            LogMessage("WARN", "Invalid QoS value, using default: 0", "MQTT");
+                            default_qos_ = 0;
+                        }
                     }
                 }
                 
                 // Keep Alive 설정
                 if (json_config.contains("keep_alive")) {
-                    keep_alive_seconds_ = json_config["keep_alive"].get<int>();
-                    if (keep_alive_seconds_ < 10 || keep_alive_seconds_ > 300) {
-                        LogMessage("WARN", "Keep alive out of range (10-300s), using 60s", "MQTT");
-                        keep_alive_seconds_ = 60;
+                    if (json_config["keep_alive"].is_number_integer()) {
+                        keep_alive_seconds_ = json_config["keep_alive"];
+                        if (keep_alive_seconds_ < 10 || keep_alive_seconds_ > 300) {
+                            LogMessage("WARN", "Keep alive out of range (10-300s), using 60s", "MQTT");
+                            keep_alive_seconds_ = 60;
+                        }
                     }
                 }
                 
                 // Clean Session 설정
                 if (json_config.contains("clean_session")) {
-                    clean_session_ = json_config["clean_session"].get<bool>();
+                    if (json_config["clean_session"].is_boolean()) {
+                        clean_session_ = json_config["clean_session"];
+                    }
                 }
                 
                 // Auto Reconnect 설정 (JSON이 config보다 우선)
                 if (json_config.contains("auto_reconnect")) {
-                    auto_reconnect_ = json_config["auto_reconnect"].get<bool>();
+                    if (json_config["auto_reconnect"].is_boolean()) {
+                        auto_reconnect_ = json_config["auto_reconnect"];
+                    }
                 }
                 
                 // Timeout 설정 (JSON이 config보다 우선)
                 if (json_config.contains("timeout_ms")) {
-                    timeout_ms_ = json_config["timeout_ms"].get<int>();
-                    if (timeout_ms_ < 1000 || timeout_ms_ > 60000) {
-                        LogMessage("WARN", "Timeout out of range (1-60s), using 30s", "MQTT");
-                        timeout_ms_ = 30000;
+                    if (json_config["timeout_ms"].is_number_integer()) {
+                        timeout_ms_ = json_config["timeout_ms"];
+                        if (timeout_ms_ < 1000 || timeout_ms_ > 60000) {
+                            LogMessage("WARN", "Timeout out of range (1-60s), using 30s", "MQTT");
+                            timeout_ms_ = 30000;
+                        }
                     }
                 }
                 
@@ -989,19 +998,29 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
                 // =============================================================
                 
                 if (json_config.contains("broker_host")) {
-                    std::string broker_host = json_config["broker_host"].get<std::string>();
-                    int broker_port = json_config.value("broker_port", 1883);
+                    std::string broker_host = "";
+                    if (json_config["broker_host"].is_string()) {
+                        broker_host = json_config["broker_host"];
+                    }
                     
-                    // URL 재구성 (기본 tcp 프로토콜 사용)
-                    broker_url_ = "tcp://" + broker_host + ":" + std::to_string(broker_port);
+                    int broker_port = 1883;
+                    if (json_config.contains("broker_port") && json_config["broker_port"].is_number_integer()) {
+                        broker_port = json_config["broker_port"];
+                    }
                     
-                    LogMessage("INFO", "Broker URL updated from JSON: " + broker_url_, "MQTT");
+                    if (!broker_host.empty()) {
+                        // URL 재구성 (기본 tcp 프로토콜 사용)
+                        broker_url_ = "tcp://" + broker_host + ":" + std::to_string(broker_port);
+                        LogMessage("INFO", "Broker URL updated from JSON: " + broker_url_, "MQTT");
+                    }
                 }
                 
                 // 전체 broker_url이 JSON에 있으면 사용
                 if (json_config.contains("broker_url")) {
-                    broker_url_ = json_config["broker_url"].get<std::string>();
-                    LogMessage("INFO", "Broker URL from JSON: " + broker_url_, "MQTT");
+                    if (json_config["broker_url"].is_string()) {
+                        broker_url_ = json_config["broker_url"];
+                        LogMessage("INFO", "Broker URL from JSON: " + broker_url_, "MQTT");
+                    }
                 }
                 
                 // =============================================================
@@ -1009,11 +1028,13 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
                 // =============================================================
                 
                 if (json_config.contains("client_id")) {
-                    std::string json_client_id = json_config["client_id"].get<std::string>();
-                    if (!json_client_id.empty()) {
-                        client_id_ = json_client_id;
-                    } else {
-                        LogMessage("WARN", "Empty client_id in JSON, keeping generated: " + client_id_, "MQTT");
+                    if (json_config["client_id"].is_string()) {
+                        std::string json_client_id = json_config["client_id"];
+                        if (!json_client_id.empty()) {
+                            client_id_ = json_client_id;
+                        } else {
+                            LogMessage("WARN", "Empty client_id in JSON, keeping generated: " + client_id_, "MQTT");
+                        }
                     }
                 }
                 
@@ -1021,8 +1042,15 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
                 // 로그 출력을 위한 추가 정보 (실제 기능은 구현하지 않음)
                 // =============================================================
                 
-                bool use_ssl = json_config.value("use_ssl", false);
-                std::string username = json_config.value("username", std::string(""));
+                bool use_ssl = false;
+                if (json_config.contains("use_ssl") && json_config["use_ssl"].is_boolean()) {
+                    use_ssl = json_config["use_ssl"];
+                }
+                
+                std::string username = "";
+                if (json_config.contains("username") && json_config["username"].is_string()) {
+                    username = json_config["username"];
+                }
                 
                 LogMessage("INFO", "MQTT JSON configuration parsed successfully", "MQTT");
                 
@@ -1038,6 +1066,9 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
                 LogMessage("WARN", "Failed to parse JSON config: " + std::string(e.what()) + 
                           ", using basic configuration", "MQTT");
                 // JSON 파싱 실패해도 기본 설정으로 계속 진행
+            } catch (const std::exception& e) {
+                LogMessage("WARN", "General exception parsing JSON config: " + std::string(e.what()) + 
+                          ", using basic configuration", "MQTT");
             }
         } else {
             LogMessage("INFO", "No JSON configuration found, using basic settings", "MQTT");
