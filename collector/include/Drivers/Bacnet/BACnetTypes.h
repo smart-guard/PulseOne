@@ -1,12 +1,24 @@
 // =============================================================================
 // collector/include/Drivers/Bacnet/BACnetTypes.h
-// BACnet 타입 정의 및 상수 - 완전 복원
+// BACnet 타입 정의 및 상수 - 괄호 완전 수정 완성본
 // =============================================================================
 
 #ifndef BACNET_TYPES_H
 #define BACNET_TYPES_H
 
 #include <cstdint>
+#include <string>
+#include <algorithm>
+
+// =============================================================================
+// 매크로 충돌 방지 (Windows 호환성)
+// =============================================================================
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
 
 // =============================================================================
 // BACnet 기본 타입 정의
@@ -23,19 +35,17 @@ extern "C" {
 using BACnetObjectType = BACNET_OBJECT_TYPE;
 using BACnetPropertyId = BACNET_PROPERTY_ID;
 using BACnetErrorCode = BACNET_ERROR_CODE;
-using BACnetObjectId = BACNET_OBJECT_ID;
 
 #else
 
 // =============================================================================
-// BACnet 스택이 없을 때의 타입 정의 (완전한 열거형으로 정의)
+// BACnet 스택이 없을 때의 타입 정의 (Windows 크로스 컴파일용)
 // =============================================================================
 
 /**
  * @brief BACnet 객체 타입 열거형
  */
 enum BACnetObjectType : uint16_t {
-    // 표준 객체 타입들
     OBJECT_ANALOG_INPUT = 0,
     OBJECT_ANALOG_OUTPUT = 1,
     OBJECT_ANALOG_VALUE = 2,
@@ -67,12 +77,12 @@ enum BACnetObjectType : uint16_t {
     OBJECT_LOAD_CONTROL = 28,
     OBJECT_STRUCTURED_VIEW = 29,
     OBJECT_ACCESS_DOOR = 30,
-    // 더 많은 타입들...
+    OBJECT_PROPRIETARY_MIN = 128,
     MAX_BACNET_OBJECT_TYPE = 1023
-};
+}; // ✅ enum 괄호 닫힘
 
 /**
- * @brief BACnet 프로퍼티 ID 열거형
+ * @brief BACnet 프로퍼티 ID 열거형 - 완전한 목록
  */
 enum BACnetPropertyId : uint32_t {
     PROP_ACKED_TRANSITIONS = 0,
@@ -205,9 +215,8 @@ enum BACnetPropertyId : uint32_t {
     PROP_COV_RESUBSCRIPTION_INTERVAL = 128,
     PROP_CURRENT_NOTIFY_TIME = 129,
     PROP_EVENT_TIME_STAMPS = 130,
-    // 더 많은 프로퍼티들...
     MAX_BACNET_PROPERTY_ID = 4194303
-};
+}; // ✅ enum 괄호 닫힘
 
 /**
  * @brief BACnet 에러 코드
@@ -261,30 +270,65 @@ enum BACnetErrorCode : uint8_t {
     ERROR_CODE_DUPLICATE_NAME = 48,
     ERROR_CODE_DUPLICATE_OBJECT_ID = 49,
     ERROR_CODE_PROPERTY_IS_NOT_AN_ARRAY = 50,
-    ERROR_CODE_ABORT_BUFFER_OVERFLOW = 51,
-    ERROR_CODE_ABORT_INVALID_APDU_IN_THIS_STATE = 52,
-    ERROR_CODE_ABORT_PREEMPTED_BY_HIGHER_PRIORITY_TASK = 53,
-    ERROR_CODE_ABORT_SEGMENTATION_NOT_SUPPORTED = 54,
-    ERROR_CODE_ABORT_PROPRIETARY = 55,
-    ERROR_CODE_ABORT_OTHER = 56,
-    ERROR_CODE_INVALID_TAG = 57,
-    ERROR_CODE_NETWORK_DOWN = 58,
-    ERROR_CODE_REJECT_BUFFER_OVERFLOW = 59,
-    ERROR_CODE_REJECT_INCONSISTENT_PARAMETERS = 60,
-    ERROR_CODE_REJECT_INVALID_PARAMETER_DATA_TYPE = 61,
-    ERROR_CODE_REJECT_INVALID_TAG = 62,
-    ERROR_CODE_REJECT_MISSING_REQUIRED_PARAMETER = 63,
-    ERROR_CODE_REJECT_PARAMETER_OUT_OF_RANGE = 64,
-    ERROR_CODE_REJECT_TOO_MANY_ARGUMENTS = 65,
-    ERROR_CODE_REJECT_UNDEFINED_ENUMERATION = 66,
-    ERROR_CODE_REJECT_UNRECOGNIZED_SERVICE = 67,
-    ERROR_CODE_REJECT_PROPRIETARY = 68,
-    ERROR_CODE_REJECT_OTHER = 69,
     MAX_BACNET_ERROR_CODE = 255
-};
+}; // ✅ enum 괄호 닫힘
 
 // =============================================================================
-// BACnet 상수들
+// Windows 크로스 컴파일을 위한 C 스타일 타입 별칭 (핵심!)
+// =============================================================================
+typedef BACnetObjectType BACNET_OBJECT_TYPE;
+typedef BACnetPropertyId BACNET_PROPERTY_ID;
+typedef BACnetErrorCode BACNET_ERROR_CODE;
+
+// BACnet 응용 데이터 값 구조체
+typedef struct {
+    uint8_t tag;
+    uint32_t type_flag;
+    union {
+        bool Boolean;
+        uint32_t Unsigned_Int;
+        int32_t Signed_Int;
+        float Real;
+        double Double;
+        struct {
+            char* value;
+            uint8_t length;
+            uint8_t encoding;
+        } Character_String;
+        uint8_t *octet_string;
+        struct {
+            uint8_t year;
+            uint8_t month;
+            uint8_t day;
+            uint8_t wday;
+        } date;
+        struct {
+            uint8_t hour;
+            uint8_t minute;
+            uint8_t second;
+            uint8_t hundredths;
+        } time;
+        struct {
+            uint32_t instance;
+            uint16_t type;
+        } object_id;
+    } type;
+    uint8_t *next;
+} BACNET_APPLICATION_DATA_VALUE; // ✅ typedef 완료
+
+// BACnet 주소 구조체
+typedef struct {
+    uint8_t mac[6];
+    uint8_t mac_len;
+    uint16_t net;
+    uint8_t len;
+    uint8_t adr[7];
+} BACNET_ADDRESS; // ✅ typedef 완료
+
+#endif // HAS_BACNET_STACK ✅ 조건부 컴파일 닫힘
+
+// =============================================================================
+// BACnet 상수들 (Windows/Linux 공통)
 // =============================================================================
 
 // 배열 인덱스 상수
@@ -293,7 +337,7 @@ constexpr uint32_t BACNET_NO_PRIORITY = 0;
 
 // 최대값들
 constexpr uint32_t BACNET_MAX_INSTANCE = 4194303;
-constexpr uint16_t BACNET_MAX_DEVICE_ID = 4194303;
+constexpr uint32_t BACNET_MAX_DEVICE_ID = 4194303;
 
 // 기본 포트
 constexpr uint16_t BACNET_DEFAULT_PORT = 47808;
@@ -301,10 +345,25 @@ constexpr uint16_t BACNET_DEFAULT_PORT = 47808;
 // 타임아웃
 constexpr uint32_t BACNET_DEFAULT_TIMEOUT_MS = 5000;
 
-#endif // HAS_BACNET_STACK
+// BACnet 프로토콜 상수들
+constexpr uint16_t MAX_APDU = 1476;
+constexpr uint16_t MAX_NPDU = 1497;
+constexpr uint8_t MAX_OBJECTS_PER_RPM = 20;
+constexpr uint8_t MAX_OBJECTS_PER_WPM = 20;
+
+// 응용 데이터 태그
+constexpr uint8_t BACNET_APPLICATION_TAG_BOOLEAN = 1;
+constexpr uint8_t BACNET_APPLICATION_TAG_UNSIGNED_INT = 2;
+constexpr uint8_t BACNET_APPLICATION_TAG_SIGNED_INT = 3;
+constexpr uint8_t BACNET_APPLICATION_TAG_REAL = 4;
+constexpr uint8_t BACNET_APPLICATION_TAG_DOUBLE = 5;
+constexpr uint8_t BACNET_APPLICATION_TAG_CHARACTER_STRING = 7;
+
+// 문자열 인코딩
+constexpr uint8_t CHARACTER_UTF8 = 0;
 
 // =============================================================================
-// 공통 유틸리티 함수들 (BACnet 스택 유무와 관계없이 사용)
+// 공통 유틸리티 함수들
 // =============================================================================
 
 namespace PulseOne {
@@ -314,7 +373,11 @@ namespace BACnet {
 /**
  * @brief BACnet 객체 타입을 문자열로 변환
  */
+#ifdef HAS_BACNET_STACK
+inline std::string ObjectTypeToString(BACNET_OBJECT_TYPE type) {
+#else
 inline std::string ObjectTypeToString(BACnetObjectType type) {
+#endif
     switch (type) {
         case OBJECT_ANALOG_INPUT: return "Analog Input";
         case OBJECT_ANALOG_OUTPUT: return "Analog Output";
@@ -323,9 +386,9 @@ inline std::string ObjectTypeToString(BACnetObjectType type) {
         case OBJECT_BINARY_OUTPUT: return "Binary Output";
         case OBJECT_BINARY_VALUE: return "Binary Value";
         case OBJECT_DEVICE: return "Device";
-        case OBJECT_MULTI_STATE_INPUT: return "Multistate Input";      // 🔥 수정됨
-        case OBJECT_MULTI_STATE_OUTPUT: return "Multistate Output";    // 🔥 수정됨
-        case OBJECT_MULTI_STATE_VALUE: return "Multistate Value";      // 🔥 이걸로 수정 (중복 제거)
+        case OBJECT_MULTI_STATE_INPUT: return "Multistate Input";
+        case OBJECT_MULTI_STATE_OUTPUT: return "Multistate Output";
+        case OBJECT_MULTI_STATE_VALUE: return "Multistate Value";
         case OBJECT_TRENDLOG: return "Trend Log";
         case OBJECT_ACCUMULATOR: return "Accumulator";
         case OBJECT_CALENDAR: return "Calendar";
@@ -335,15 +398,20 @@ inline std::string ObjectTypeToString(BACnetObjectType type) {
         case OBJECT_FILE: return "File";
         case OBJECT_GROUP: return "Group";
         case OBJECT_LOOP: return "Loop";
-        case OBJECT_NOTIFICATION_CLASS: return "Notification Class";   // 🔥 올바른 값 유지
+        case OBJECT_NOTIFICATION_CLASS: return "Notification Class";
         case OBJECT_PROGRAM: return "Program";
         default: return "Unknown (" + std::to_string(static_cast<int>(type)) + ")";
-    }
-}
+    } // ✅ switch 괄호 닫힘
+} // ✅ function 괄호 닫힘
+
 /**
  * @brief 문자열을 BACnet 객체 타입으로 변환
  */
+#ifdef HAS_BACNET_STACK
+inline BACNET_OBJECT_TYPE StringToObjectType(const std::string& type_str) {
+#else
 inline BACnetObjectType StringToObjectType(const std::string& type_str) {
+#endif
     std::string upper_str = type_str;
     std::transform(upper_str.begin(), upper_str.end(), upper_str.begin(), ::toupper);
     
@@ -361,16 +429,24 @@ inline BACnetObjectType StringToObjectType(const std::string& type_str) {
     // 숫자로 파싱 시도
     try {
         int type_num = std::stoi(type_str);
+#ifdef HAS_BACNET_STACK
+        return static_cast<BACNET_OBJECT_TYPE>(type_num);
+#else
         return static_cast<BACnetObjectType>(type_num);
+#endif
     } catch (...) {
         return OBJECT_ANALOG_INPUT; // 기본값
-    }
-}
+    } // ✅ catch 괄호 닫힘
+} // ✅ function 괄호 닫힘
 
 /**
  * @brief BACnet 프로퍼티 ID를 문자열로 변환
  */
+#ifdef HAS_BACNET_STACK
+inline std::string PropertyIdToString(BACNET_PROPERTY_ID prop_id) {
+#else
 inline std::string PropertyIdToString(BACnetPropertyId prop_id) {
+#endif
     switch (prop_id) {
         case PROP_PRESENT_VALUE: return "Present Value";
         case PROP_DESCRIPTION: return "Description";
@@ -393,13 +469,17 @@ inline std::string PropertyIdToString(BACnetPropertyId prop_id) {
         case PROP_RELINQUISH_DEFAULT: return "Relinquish Default";
         case PROP_PRIORITY_ARRAY: return "Priority Array";
         default: return "Property " + std::to_string(static_cast<uint32_t>(prop_id));
-    }
-}
+    } // ✅ switch 괄호 닫힘
+} // ✅ function 괄호 닫힘
 
 /**
  * @brief 문자열을 BACnet 프로퍼티 ID로 변환
  */
+#ifdef HAS_BACNET_STACK
+inline BACNET_PROPERTY_ID StringToPropertyId(const std::string& prop_str) {
+#else
 inline BACnetPropertyId StringToPropertyId(const std::string& prop_str) {
+#endif
     std::string upper_str = prop_str;
     std::transform(upper_str.begin(), upper_str.end(), upper_str.begin(), ::toupper);
     
@@ -418,47 +498,68 @@ inline BACnetPropertyId StringToPropertyId(const std::string& prop_str) {
     // 숫자로 파싱 시도
     try {
         uint32_t prop_num = std::stoul(prop_str);
+#ifdef HAS_BACNET_STACK
+        return static_cast<BACNET_PROPERTY_ID>(prop_num);
+#else
         return static_cast<BACnetPropertyId>(prop_num);
+#endif
     } catch (...) {
         return PROP_PRESENT_VALUE; // 기본값
-    }
-}
+    } // ✅ catch 괄호 닫힘
+} // ✅ function 괄호 닫힘
 
 /**
  * @brief BACnet 객체 ID 생성
  */
+#ifdef HAS_BACNET_STACK
+inline uint32_t CreateObjectId(BACNET_OBJECT_TYPE type, uint32_t instance) {
+#else
 inline uint32_t CreateObjectId(BACnetObjectType type, uint32_t instance) {
+#endif
     return (static_cast<uint32_t>(type) << 22) | (instance & 0x3FFFFF);
-}
+} // ✅ function 괄호 닫힘
 
 /**
  * @brief BACnet 객체 ID에서 타입 추출
  */
+#ifdef HAS_BACNET_STACK
+inline BACNET_OBJECT_TYPE ExtractObjectType(uint32_t object_id) {
+    return static_cast<BACNET_OBJECT_TYPE>((object_id >> 22) & 0x3FF);
+#else
 inline BACnetObjectType ExtractObjectType(uint32_t object_id) {
     return static_cast<BACnetObjectType>((object_id >> 22) & 0x3FF);
-}
+#endif
+} // ✅ function 괄호 닫힘
 
 /**
  * @brief BACnet 객체 ID에서 인스턴스 추출
  */
 inline uint32_t ExtractObjectInstance(uint32_t object_id) {
     return object_id & 0x3FFFFF;
-}
+} // ✅ function 괄호 닫힘
 
-} // namespace BACnet
-} // namespace Drivers
-} // namespace PulseOne
+/**
+ * @brief BACnet 객체 식별자 유효성 검사
+ */
+inline bool IsValidObjectId(uint32_t object_id) {
+    uint32_t type = (object_id >> 22) & 0x3FF;
+    uint32_t instance = object_id & 0x3FFFFF;
+    return (type <= MAX_BACNET_OBJECT_TYPE) && (instance <= BACNET_MAX_INSTANCE);
+} // ✅ function 괄호 닫힘
 
-#endif // BACNET_TYPES_H
+/**
+ * @brief BACnet 프로퍼티 ID 유효성 검사
+ */
+#ifdef HAS_BACNET_STACK
+inline bool IsValidPropertyId(BACNET_PROPERTY_ID prop_id) {
+#else
+inline bool IsValidPropertyId(BACnetPropertyId prop_id) {
+#endif
+    return static_cast<uint32_t>(prop_id) <= MAX_BACNET_PROPERTY_ID;
+} // ✅ function 괄호 닫힘
 
-// =============================================================================
-// BACnetDriver.h와 BACnetObjectMapper.h에 추가할 include 문
-// =============================================================================
+} // namespace BACnet ✅ namespace 닫힘
+} // namespace Drivers ✅ namespace 닫힘
+} // namespace PulseOne ✅ namespace 닫힘
 
-/*
-BACnetDriver.h와 BACnetObjectMapper.h 파일 상단에 이것을 추가:
-
-#include "Drivers/Bacnet/BACnetTypes.h"
-
-그러면 BACnetObjectType, BACnetPropertyId가 정의되어 컴파일 에러가 해결됩니다.
-*/
+#endif // BACNET_TYPES_H ✅ 헤더 가드 닫힘

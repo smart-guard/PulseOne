@@ -106,7 +106,7 @@ std::future<bool> ModbusRtuWorker::Start() {
             
         } catch (const std::exception& e) {
             logger.Error("RTU Worker start failed: " + std::string(e.what()));
-            ChangeState(WorkerState::ERROR);
+            ChangeState(WorkerState::WORKER_ERROR);
             return false;
         }
     });

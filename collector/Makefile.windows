@@ -1,312 +1,162 @@
 # =============================================================================
-# Makefile.windows - PulseOne 완전한 Windows 크로스 컴파일
-# 모든 프로토콜과 기능 지원
+# Makefile.windows - 실제 파일 기반 PulseOne Windows 크로스 컴파일
 # =============================================================================
 
-# 플랫폼 설정
-PLATFORM = Windows
-IS_WINDOWS = 1
-
-# Windows 크로스 컴파일러
+# 기본 설정
 CXX = x86_64-w64-mingw32-g++
 CC = x86_64-w64-mingw32-gcc
 AR = x86_64-w64-mingw32-ar
 STRIP = x86_64-w64-mingw32-strip
-WINDRES = x86_64-w64-mingw32-windres
 
 # 디렉토리
 SRC_DIR = src
 INCLUDE_DIR = include
-BUILD_DIR = build-win
-BIN_DIR = bin-win
-LIB_DIR = lib
-
-# 타겟
+BUILD_DIR = build-windows
+BIN_DIR = bin-windows
 TARGET = collector.exe
 
-# =============================================================================
-# 컴파일 플래그
-# =============================================================================
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2
-CXXFLAGS += -DPULSEONE_WINDOWS=1
-CXXFLAGS += -DWIN32 -D_WIN32 -DWINVER=0x0601 -D_WIN32_WINNT=0x0601
+# Windows 특화 컴파일 플래그
+CXXFLAGS = -std=c++17 -O2 -Wall -Wextra
+CXXFLAGS += -DPULSEONE_WINDOWS=1 -D_WIN32 -DPULSEONE_DISABLE_MSSQL=1
 CXXFLAGS += -DWIN32_LEAN_AND_MEAN -DNOMINMAX
-CXXFLAGS += -D_USE_MATH_DEFINES
-CXXFLAGS += -DUNICODE -D_UNICODE
-
-# 정적 링크 (포터블 실행파일)
 CXXFLAGS += -static -static-libgcc -static-libstdc++
 
-# =============================================================================
 # Include 경로
-# =============================================================================
+MINGW_PREFIX = /usr/x86_64-w64-mingw32
 INCLUDES = -I$(INCLUDE_DIR)
+INCLUDES += -I$(INCLUDE_DIR)/Platform
 INCLUDES += -I$(INCLUDE_DIR)/Common
-INCLUDES += -I$(INCLUDE_DIR)/Core
 INCLUDES += -I$(INCLUDE_DIR)/Utils
-INCLUDES += -I$(INCLUDE_DIR)/Client
-INCLUDES += -I$(INCLUDE_DIR)/Workers
-INCLUDES += -I$(INCLUDE_DIR)/Workers/Base
-INCLUDES += -I$(INCLUDE_DIR)/Workers/Protocol
 INCLUDES += -I$(INCLUDE_DIR)/Database
 INCLUDES += -I$(INCLUDE_DIR)/Database/Entities
 INCLUDES += -I$(INCLUDE_DIR)/Database/Repositories
+INCLUDES += -I$(INCLUDE_DIR)/Workers
+INCLUDES += -I$(INCLUDE_DIR)/Workers/Base
+INCLUDES += -I$(INCLUDE_DIR)/Workers/Protocol
+INCLUDES += -I$(INCLUDE_DIR)/Workers/Components
+INCLUDES += -I$(INCLUDE_DIR)/Client
 INCLUDES += -I$(INCLUDE_DIR)/Alarm
-INCLUDES += -I$(INCLUDE_DIR)/Platform
 INCLUDES += -I$(INCLUDE_DIR)/VirtualPoint
-INCLUDES += -I$(INCLUDE_DIR)/Communication
-INCLUDES += -I$(INCLUDE_DIR)/DataStore
-INCLUDES += -I$(INCLUDE_DIR)/Monitoring
-
-# MinGW include
-MINGW_PREFIX = /usr/x86_64-w64-mingw32
+INCLUDES += -I$(INCLUDE_DIR)/Pipeline
+INCLUDES += -I$(INCLUDE_DIR)/Storage
 INCLUDES += -I$(MINGW_PREFIX)/include
 
-# 라이브러리 헤더
-ifneq ($(wildcard $(MINGW_PREFIX)/include/nlohmann/json.hpp),)
-    INCLUDES += -I$(MINGW_PREFIX)/include/nlohmann
-    CXXFLAGS += -DHAVE_NLOHMANN_JSON=1
-endif
-
-ifneq ($(wildcard $(MINGW_PREFIX)/include/modbus),)
-    INCLUDES += -I$(MINGW_PREFIX)/include/modbus
-endif
-
-ifneq ($(wildcard $(MINGW_PREFIX)/include/bacnet),)
-    INCLUDES += -I$(MINGW_PREFIX)/include/bacnet
-endif
-
-# =============================================================================
 # 라이브러리 감지 및 설정
-# =============================================================================
-LDFLAGS = -L$(MINGW_PREFIX)/lib
-LDFLAGS += -Wl,--enable-stdcall-fixup
-LDFLAGS += -static
+LDFLAGS = -L$(MINGW_PREFIX)/lib -static
 
 # Windows 필수 라이브러리
-WIN_LIBS = -lws2_32 -lwsock32 -liphlpapi
-WIN_LIBS += -lrpcrt4 -luuid -lole32 -loleaut32
+WIN_LIBS = -lws2_32 -lwsock32 -liphlpapi -lrpcrt4 -luuid
 WIN_LIBS += -lwinmm -lkernel32 -luser32 -ladvapi32
-WIN_LIBS += -lpsapi -lshlwapi -ldbghelp
 
-# Modbus
+# SQLite (기본)
+DB_LIBS = -lsqlite3
+
+# 프로토콜 라이브러리 (선택적)
+PROTOCOL_LIBS =
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libmodbus.a),)
     PROTOCOL_LIBS += -lmodbus
-    CXXFLAGS += -DHAVE_LIBMODBUS=1
-    HAS_MODBUS = 1
-    $(info ✅ Modbus support enabled)
+    CXXFLAGS += -DHAVE_MODBUS=1
 endif
 
-# MQTT
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libpaho-mqtt3c.a),)
-    PROTOCOL_LIBS += -lpaho-mqttpp3 -lpaho-mqtt3cs -lpaho-mqtt3as -lpaho-mqtt3c
-    CXXFLAGS += -DHAVE_PAHO_MQTT=1
-    HAS_MQTT = 1
-    $(info ✅ MQTT support enabled)
+    PROTOCOL_LIBS += -lpaho-mqtt3c
+    CXXFLAGS += -DHAVE_MQTT=1
 endif
 
-# BACnet
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libbacnet.a),)
     PROTOCOL_LIBS += -lbacnet
     CXXFLAGS += -DHAVE_BACNET=1
-    HAS_BACNET = 1
-    $(info ✅ BACnet support enabled)
 endif
 
-# Redis
+# Redis (선택적)
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libhiredis.a),)
     DB_LIBS += -lhiredis
     CXXFLAGS += -DHAVE_REDIS=1
-    HAS_REDIS = 1
-    $(info ✅ Redis support enabled)
 endif
-
-# SQLite3
-ifneq ($(wildcard $(MINGW_PREFIX)/lib/libsqlite3.a),)
-    DB_LIBS += -lsqlite3
-    CXXFLAGS += -DHAVE_SQLITE=1
-    HAS_SQLITE = 1
-    $(info ✅ SQLite support enabled)
-endif
-
-# OpenSSL
-ifneq ($(wildcard $(MINGW_PREFIX)/lib/libssl.a),)
-    SSL_LIBS += -lssl -lcrypto
-    CXXFLAGS += -DHAVE_OPENSSL=1
-    $(info ✅ OpenSSL support enabled)
-endif
-
-# QuickJS (JavaScript 엔진)
-ifneq ($(wildcard $(MINGW_PREFIX)/lib/libquickjs.a),)
-    JS_LIBS += -lquickjs
-    CXXFLAGS += -DHAVE_QUICKJS=1
-    $(info ✅ QuickJS support enabled)
-endif
-
-# HTTP 라이브러리 (헤더 온리)
-ifneq ($(wildcard $(MINGW_PREFIX)/include/httplib.h),)
-    CXXFLAGS += -DHAVE_HTTPLIB=1
-    $(info ✅ HTTP support enabled)
-endif
-
-# =============================================================================
-# 소스 파일 목록
-# =============================================================================
-
-# Core 모듈 (필수)
-CORE_SOURCES = \
-    $(SRC_DIR)/main.cpp \
-    $(SRC_DIR)/Core/Application.cpp
-
-# Utils 모듈
-UTILS_SOURCES = \
-    $(SRC_DIR)/Utils/ConfigManager.cpp \
-    $(SRC_DIR)/Utils/LogManager.cpp
-
-# Database 모듈 (SQLite 기반)
-ifdef HAS_SQLITE
-DATABASE_SOURCES = \
-    $(SRC_DIR)/Database/DatabaseManager.cpp \
-    $(SRC_DIR)/Database/SQLiteWrapper.cpp
-endif
-
-# Client 모듈
-CLIENT_SOURCES =
-ifdef HAS_REDIS
-    CLIENT_SOURCES += $(SRC_DIR)/Client/RedisClientImpl.cpp
-endif
-ifdef HAS_SQLITE
-    CLIENT_SOURCES += $(SRC_DIR)/Client/SQLiteClient.cpp
-endif
-
-# Workers - Base
-WORKER_BASE_SOURCES = \
-    $(SRC_DIR)/Workers/Base/BaseDeviceWorker.cpp \
-    $(SRC_DIR)/Workers/WorkerFactory.cpp
-
-# Platform 특화 Workers (Windows 호환 버전)
-WORKER_PLATFORM_SOURCES = \
-    $(SRC_DIR)/Workers/Base/TcpBasedWorker.cpp \
-    $(SRC_DIR)/Workers/Base/SerialBasedWorker.cpp
-
-# Workers - Protocol
-WORKER_PROTOCOL_SOURCES =
-ifdef HAS_MODBUS
-    WORKER_PROTOCOL_SOURCES += $(SRC_DIR)/Workers/Protocol/ModbusWorker.cpp
-    WORKER_PROTOCOL_SOURCES += $(SRC_DIR)/Workers/Protocol/ModbusTCPWorker.cpp
-    WORKER_PROTOCOL_SOURCES += $(SRC_DIR)/Workers/Protocol/ModbusRTUWorker.cpp
-endif
-
-ifdef HAS_MQTT
-    WORKER_PROTOCOL_SOURCES += $(SRC_DIR)/Workers/Protocol/MQTTWorker.cpp
-endif
-
-ifdef HAS_BACNET
-    WORKER_PROTOCOL_SOURCES += $(SRC_DIR)/Workers/Protocol/BACnetWorker.cpp
-endif
-
-# Alarm 모듈 (SQLite 기반으로 변경)
-ifdef HAS_SQLITE
-ALARM_SOURCES = \
-    $(SRC_DIR)/Alarm/AlarmEngine.cpp \
-    $(SRC_DIR)/Alarm/AlarmManager.cpp \
-    $(SRC_DIR)/Alarm/AlarmStartupRecovery.cpp
-endif
-
-# VirtualPoint 모듈 (JavaScript 엔진 포함)
-VIRTUAL_SOURCES = \
-    $(SRC_DIR)/VirtualPoint/VirtualPointEngine.cpp \
-    $(SRC_DIR)/VirtualPoint/VirtualPointManager.cpp
-
-ifdef HAS_QUICKJS
-    VIRTUAL_SOURCES += $(SRC_DIR)/VirtualPoint/JavaScriptEngine.cpp
-endif
-
-# Communication 모듈
-COMM_SOURCES = \
-    $(SRC_DIR)/Communication/MessageBus.cpp \
-    $(SRC_DIR)/Communication/EventDispatcher.cpp
-
-# DataStore 모듈
-DATASTORE_SOURCES = \
-    $(SRC_DIR)/DataStore/DataCache.cpp \
-    $(SRC_DIR)/DataStore/HistoryManager.cpp
-
-# Monitoring 모듈
-MONITORING_SOURCES = \
-    $(SRC_DIR)/Monitoring/PerformanceMonitor.cpp \
-    $(SRC_DIR)/Monitoring/SystemHealthMonitor.cpp
-
-# HTTP API 모듈
-ifdef HAVE_HTTPLIB
-HTTP_SOURCES = \
-    $(SRC_DIR)/HTTP/HttpServer.cpp \
-    $(SRC_DIR)/HTTP/RestApiHandler.cpp
-endif
-
-# 전체 소스 목록
-SOURCES = $(CORE_SOURCES) \
-          $(UTILS_SOURCES) \
-          $(DATABASE_SOURCES) \
-          $(CLIENT_SOURCES) \
-          $(WORKER_BASE_SOURCES) \
-          $(WORKER_PLATFORM_SOURCES) \
-          $(WORKER_PROTOCOL_SOURCES) \
-          $(ALARM_SOURCES) \
-          $(VIRTUAL_SOURCES) \
-          $(COMM_SOURCES) \
-          $(DATASTORE_SOURCES) \
-          $(MONITORING_SOURCES) \
-          $(HTTP_SOURCES)
-
-# 실제 존재하는 소스만 필터링
-EXISTING_SOURCES = $(wildcard $(SOURCES))
-
-# 오브젝트 파일
-OBJS = $(EXISTING_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
 # 모든 라이브러리
-LIBS = $(PROTOCOL_LIBS) $(DB_LIBS) $(SSL_LIBS) $(JS_LIBS) $(WIN_LIBS) -lpthread
+LIBS = $(PROTOCOL_LIBS) $(DB_LIBS) $(WIN_LIBS) -lpthread
+
+# =============================================================================
+# 실제 존재하는 소스 파일 탐지
+# =============================================================================
+
+# wildcard를 사용해서 실제 존재하는 파일만 포함
+ALL_CPP_FILES = $(shell find $(SRC_DIR) -name "*.cpp" -type f 2>/dev/null)
+
+# 컴파일할 소스 파일들 (main.cpp는 마지막에)
+SOURCES = $(filter-out $(SRC_DIR)/main.cpp,$(ALL_CPP_FILES))
+MAIN_SOURCE = $(SRC_DIR)/main.cpp
+
+# 오브젝트 파일들
+OBJECTS = $(SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+MAIN_OBJECT = $(BUILD_DIR)/main.o
 
 # =============================================================================
 # 빌드 규칙
 # =============================================================================
 
-.PHONY: all clean check-env info test
+.PHONY: all clean info check-files help
 
-all: check-env $(BIN_DIR)/$(TARGET)
+all: check-files $(BIN_DIR)/$(TARGET)
 
-check-env:
+check-files:
 	@echo "================================================"
-	@echo "  PulseOne Windows Cross-Compile Environment"
+	@echo "  PulseOne Windows Cross-Compile"
 	@echo "================================================"
 	@echo "Compiler: $(CXX)"
-	@echo "Platform: $(PLATFORM)"
+	@echo "Found CPP files: $(words $(ALL_CPP_FILES))"
 	@echo ""
-	@echo "Enabled Features:"
-	@echo "  Modbus:   $(if $(HAS_MODBUS),✅,❌)"
-	@echo "  MQTT:     $(if $(HAS_MQTT),✅,❌)"
-	@echo "  BACnet:   $(if $(HAS_BACNET),✅,❌)"
-	@echo "  Redis:    $(if $(HAS_REDIS),✅,❌)"
-	@echo "  SQLite:   $(if $(HAS_SQLITE),✅,❌)"
-	@echo "  OpenSSL:  $(if $(findstring -lssl,$(SSL_LIBS)),✅,❌)"
-	@echo "  QuickJS:  $(if $(findstring -lquickjs,$(JS_LIBS)),✅,❌)"
-	@echo "  HTTP API: $(if $(findstring HAVE_HTTPLIB,$(CXXFLAGS)),✅,❌)"
+	@echo "Libraries:"
+	@echo "  SQLite:   ✅ (기본)"
+	@echo "  Modbus:   $(if $(findstring -lmodbus,$(PROTOCOL_LIBS)),✅,❌)"
+	@echo "  MQTT:     $(if $(findstring -lpaho-mqtt3c,$(PROTOCOL_LIBS)),✅,❌)"
+	@echo "  BACnet:   $(if $(findstring -lbacnet,$(PROTOCOL_LIBS)),✅,❌)"
+	@echo "  Redis:    $(if $(findstring -lhiredis,$(DB_LIBS)),✅,❌)"
 	@echo "================================================"
 
-$(BIN_DIR)/$(TARGET): $(OBJS)
-	@mkdir -p $(BIN_DIR)
+$(BIN_DIR)/$(TARGET): $(OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	@echo "🔗 Linking $@..."
-	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
+	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) $(MAIN_OBJECT) $(LIBS)
 	@echo "📦 Stripping debug symbols..."
 	$(STRIP) $@
-	@echo "✅ Build complete: $@ ($(shell du -h $@ 2>/dev/null | cut -f1))"
+	@echo "✅ Build complete: $@"
+	@echo "   Size: $(shell du -h $@ 2>/dev/null | cut -f1 || echo 'N/A')"
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
+# 일반 소스 파일 컴파일
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir -p $(dir $@)
 	@echo "⚙️  Compiling $(notdir $<)..."
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@ 2>/dev/null || \
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@ || \
 	 (echo "❌ Failed: $(notdir $<)" && exit 1)
+
+# main.cpp 컴파일
+$(MAIN_OBJECT): $(MAIN_SOURCE) | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo "⚙️  Compiling main.cpp..."
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@ || \
+	 (echo "❌ Failed: main.cpp" && exit 1)
+
+# 디렉토리 생성
+$(BUILD_DIR):
+	@mkdir -p $@
+	@mkdir -p $(BUILD_DIR)/Utils
+	@mkdir -p $(BUILD_DIR)/Database
+	@mkdir -p $(BUILD_DIR)/Database/Entities
+	@mkdir -p $(BUILD_DIR)/Database/Repositories
+	@mkdir -p $(BUILD_DIR)/Workers
+	@mkdir -p $(BUILD_DIR)/Workers/Base
+	@mkdir -p $(BUILD_DIR)/Workers/Protocol
+	@mkdir -p $(BUILD_DIR)/Workers/Components
+	@mkdir -p $(BUILD_DIR)/Client
+	@mkdir -p $(BUILD_DIR)/Alarm
+	@mkdir -p $(BUILD_DIR)/VirtualPoint
+	@mkdir -p $(BUILD_DIR)/Pipeline
+	@mkdir -p $(BUILD_DIR)/Storage
+	@mkdir -p $(BUILD_DIR)/Platform
+
+$(BIN_DIR):
+	@mkdir -p $@
 
 clean:
 	@echo "🧹 Cleaning build artifacts..."
@@ -314,13 +164,38 @@ clean:
 	@echo "✅ Clean complete"
 
 info:
-	@echo "Source files to compile:"
-	@for src in $(EXISTING_SOURCES); do echo "  - $$src"; done
+	@echo "📊 Source files analysis:"
+	@echo "Total CPP files: $(words $(ALL_CPP_FILES))"
 	@echo ""
-	@echo "Total: $(words $(EXISTING_SOURCES)) files"
+	@echo "Found source files:"
+	@for src in $(ALL_CPP_FILES); do echo "  - $$src"; done
+	@echo ""
+	@echo "Will compile $(words $(SOURCES)) files + main.cpp"
 
-test: $(BIN_DIR)/$(TARGET)
-	@echo "🧪 Testing executable..."
-	@file $(BIN_DIR)/$(TARGET) | grep -q "PE32+" && \
-	 echo "✅ Valid Windows 64-bit executable" || \
-	 echo "❌ Invalid executable format"
+# 개별 파일 테스트 컴파일
+test-file:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make test-file FILE=src/path/to/file.cpp"; \
+		exit 1; \
+	fi
+	@echo "🧪 Testing compilation of $(FILE)..."
+	@mkdir -p build-test
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $(FILE) -o build-test/test.o && \
+	 echo "✅ $(FILE) compiles successfully" || \
+	 echo "❌ $(FILE) failed to compile"
+	@rm -f build-test/test.o
+
+help:
+	@echo "PulseOne Windows Build System"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all        - Build complete project"
+	@echo "  clean      - Clean build artifacts"
+	@echo "  info       - Show source file information"
+	@echo "  test-file  - Test single file (use FILE=path)"
+	@echo "  help       - Show this help"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make all"
+	@echo "  make test-file FILE=src/main.cpp"
+	@echo "  make clean"

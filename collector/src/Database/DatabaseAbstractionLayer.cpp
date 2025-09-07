@@ -622,14 +622,48 @@ std::string DatabaseAbstractionLayer::getCurrentDbType() {
         return "SQLITE";  // 기본값
     }
     
+    // SQLite는 항상 확인 가능
     if (db_manager_->isSQLiteConnected()) {
         return "SQLITE";
-    } else if (db_manager_->isPostgresConnected()) {
+    } 
+    
+    // PostgreSQL은 조건부 컴파일 확인
+#ifdef HAS_POSTGRESQL
+    else if (db_manager_->isPostgresConnected()) {
         return "POSTGRESQL";
-    } else if (db_manager_->isRedisConnected()) {
+    }
+#endif
+
+    // MySQL은 조건부 컴파일 확인  
+#ifdef HAS_MYSQL
+    else if (db_manager_->isMySQLConnected()) {
+        return "MYSQL";
+    }
+#endif
+
+    // MSSQL은 조건부 컴파일 확인
+#ifdef HAS_MSSQL
+    else if (db_manager_->isMSSQLConnected()) {
+        return "MSSQL";
+    }
+#endif
+
+    // Redis는 조건부 컴파일 확인
+#ifdef HAS_REDIS
+    else if (db_manager_->isRedisConnected()) {
         return "REDIS";
-    } else {
-        return "SQLITE";  // 기본값
+    }
+#endif
+
+    // InfluxDB는 조건부 컴파일 확인
+#ifdef HAS_INFLUX
+    else if (db_manager_->isInfluxConnected()) {
+        return "INFLUXDB";
+    }
+#endif
+
+    else {
+        return "SQLITE";  // 기본값 (어떤 DB도 연결되지 않았을 때)
     }
 }
 

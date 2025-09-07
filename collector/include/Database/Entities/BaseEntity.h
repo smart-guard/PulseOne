@@ -7,7 +7,7 @@
  * @author PulseOne Development Team
  * @date 2025-07-31
  */
-
+#include "Platform/PlatformCompat.h"
 #include "Database/DatabaseManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/LogManager.h"
@@ -48,7 +48,7 @@ enum class EntityState {
     LOADED,
     MODIFIED,
     DELETED,
-    ERROR
+    ENTITY_ERROR
 };
 
 /**
@@ -285,10 +285,10 @@ public:
     bool isNew() const { return state_ == EntityState::NEW; }
     bool isModified() const { return state_ == EntityState::MODIFIED; }
     bool isDeleted() const { return state_ == EntityState::DELETED; }
-    bool isError() const { return state_ == EntityState::ERROR; }
+    bool isError() const { return state_ == EntityState::ENTITY_ERROR; }
     
     virtual bool isValid() const {
-        return state_ != EntityState::ERROR && id_ >= 0;
+        return state_ != EntityState::ENTITY_ERROR && id_ >= 0;
     }
 
     void markModified() {
@@ -304,7 +304,7 @@ public:
     }
     
     void markError() {
-        state_ = EntityState::ERROR;
+        state_ = EntityState::ENTITY_ERROR;
         updated_at_ = std::chrono::system_clock::now();
     }
     

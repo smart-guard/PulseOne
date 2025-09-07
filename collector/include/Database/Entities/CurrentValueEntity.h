@@ -26,18 +26,8 @@
 #include <iomanip>
 #include <variant>
 
-#ifdef HAS_NLOHMANN_JSON
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-#else
-struct json {
-    template<typename T> T get() const { return T{}; }
-    bool contains(const std::string&) const { return false; }
-    std::string dump() const { return "{}"; }
-    static json parse(const std::string&) { return json{}; }
-    static json object() { return json{}; }
-};
-#endif
+// 🔥 기존 패턴 100% 준수: BaseEntity.h에서 이미 json 정의됨
+// using json = nlohmann::json; 는 BaseEntity.h에서 가져옴
 
 namespace PulseOne {
 
@@ -447,6 +437,10 @@ public:
         
         return stats;
     }
+
+    // =======================================================================
+    // CPP에서 구현될 메서드들 (선언만)
+    // =======================================================================
     void updateValue(const PulseOne::BasicTypes::DataVariant& new_value, PulseOne::Enums::DataQuality quality);
     void updateValueWithRaw(const PulseOne::BasicTypes::DataVariant& current_val,
                            const PulseOne::BasicTypes::DataVariant& raw_val, 

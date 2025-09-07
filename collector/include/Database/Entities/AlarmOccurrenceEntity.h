@@ -24,11 +24,6 @@
 #include <iomanip>
 #include <vector>
 
-#ifdef HAS_NLOHMANN_JSON
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-#endif
-
 namespace PulseOne {
 namespace Database {
 namespace Entities {

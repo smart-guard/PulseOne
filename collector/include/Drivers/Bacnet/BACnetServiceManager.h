@@ -1,11 +1,14 @@
 // =============================================================================
 // collector/include/Drivers/Bacnet/BACnetServiceManager.h
-// 🔥 BACnet 고급 서비스 관리자 - RPM, WPM, Object Services
+// BACnet 고급 서비스 관리자 헤더 - Windows/Linux 완전 호환 완성본
 // =============================================================================
 
 #ifndef BACNET_SERVICE_MANAGER_H
 #define BACNET_SERVICE_MANAGER_H
 
+// =============================================================================
+// 필수 헤더 포함 (기존 프로젝트 패턴 준수)
+// =============================================================================
 #include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetTypes.h"
 #include <memory>
@@ -14,7 +17,11 @@
 #include <mutex>
 #include <future>
 #include <atomic>
+#include <chrono>
+#include <queue>
+#include <unordered_map>
 
+// BACnet 스택 조건부 포함
 #ifdef HAS_BACNET_STACK
 extern "C" {
     #include <bacnet/bacdef.h>
@@ -27,17 +34,35 @@ extern "C" {
 namespace PulseOne {
 namespace Drivers {
 
+// =============================================================================
+// 전방 선언
+// =============================================================================
 class BACnetDriver; // 전방 선언
+
+// =============================================================================
+// 타입 별칭 정의 (기존 프로젝트 패턴)
+// =============================================================================
+using TimestampedValue = PulseOne::Structs::TimestampedValue;
+using DataPoint = PulseOne::Structs::DataPoint;
+using DataValue = PulseOne::Structs::DataValue;
+using DeviceInfo = PulseOne::Structs::DeviceInfo;
+using DataQuality = PulseOne::Enums::DataQuality;
 
 /**
  * @brief BACnet 고급 서비스 관리자
  * 
- * 다음 고급 BACnet 서비스들을 관리:
+ * 고급 BACnet 서비스들을 관리:
  * - Read Property Multiple (RPM)
  * - Write Property Multiple (WPM) 
  * - Create/Delete Object
  * - Device Discovery 최적화
  * - 배치 처리 최적화
+ * 
+ * 주요 특징:
+ * - Windows/Linux 크로스 플랫폼 지원
+ * - 요청/응답 관리 시스템
+ * - 자동 그룹핑 최적화
+ * - 캐싱 및 통계 기능
  */
 class BACnetServiceManager {
 public:
@@ -52,7 +77,7 @@ public:
     BACnetServiceManager& operator=(const BACnetServiceManager&) = delete;
     
     // ==========================================================================
-    // 🔥 고급 읽기 서비스
+    // 고급 읽기 서비스
     // ==========================================================================
     
     /**
@@ -69,18 +94,14 @@ public:
                              uint32_t timeout_ms = 5000);
     
     /**
-     * @brief 최적화된 배치 읽기 (자동 RPM 그룹핑)
+     * @brief 개별 속성 읽기
      * @param device_id 대상 디바이스 ID
-     * @param points DataPoint 목록 (자동으로 BACnet 객체로 변환)
-     * @param results 결과 저장소
+     * @param object_type BACnet 객체 타입
+     * @param object_instance 객체 인스턴스 번호
+     * @param property_id 프로퍼티 ID
+     * @param result 결과 저장소
+     * @param array_index 배열 인덱스 (기본: 전체)
      * @return 성공 여부
-     */
-    bool BatchRead(uint32_t device_id,
-                   const std::vector<Structs::DataPoint>& points,
-                   std::vector<TimestampedValue>& results);
-    
-    /**
-     * @brief 단일 프로퍼티 읽기 (기본 Read Property)
      */
     bool ReadProperty(uint32_t device_id,
                      BACNET_OBJECT_TYPE object_type,
@@ -89,103 +110,137 @@ public:
                      TimestampedValue& result,
                      uint32_t array_index = BACNET_ARRAY_ALL);
     
+    /**
+     * @brief 최적화된 배치 읽기 (자동 RPM 그룹핑)
+     * @param device_id 대상 디바이스 ID
+     * @param points DataPoint 목록
+     * @param results 결과 저장소
+     * @return 성공 여부
+     */
+    bool BatchRead(uint32_t device_id,
+                  const std::vector<DataPoint>& points,
+                  std::vector<TimestampedValue>& results);
+    
     // ==========================================================================
-    // 🔥 고급 쓰기 서비스
+    // 고급 쓰기 서비스
     // ==========================================================================
     
     /**
      * @brief Write Property Multiple 서비스
+     * @param device_id 대상 디바이스 ID
+     * @param values 쓸 값들의 맵
+     * @param timeout_ms 타임아웃 (기본: 5000ms)
+     * @return 성공 여부
      */
     bool WritePropertyMultiple(uint32_t device_id,
-                              const std::map<DataPoint, Structs::DataValue>& values,
+                              const std::map<DataPoint, DataValue>& values,
                               uint32_t timeout_ms = 5000);
     
     /**
-     * @brief 최적화된 배치 쓰기
-     */
-    bool BatchWrite(uint32_t device_id,
-                    const std::vector<std::pair<Structs::DataPoint, Structs::DataValue>>& point_values);
-    
-    /**
-     * @brief 단일 프로퍼티 쓰기
+     * @brief 개별 속성 쓰기
+     * @param device_id 대상 디바이스 ID
+     * @param object_type BACnet 객체 타입
+     * @param object_instance 객체 인스턴스 번호
+     * @param property_id 프로퍼티 ID
+     * @param value 쓸 값
+     * @param priority 우선순위 (기본: 0 = 없음)
+     * @param array_index 배열 인덱스 (기본: 전체)
+     * @return 성공 여부
      */
     bool WriteProperty(uint32_t device_id,
                       BACNET_OBJECT_TYPE object_type,
                       uint32_t object_instance,
                       BACNET_PROPERTY_ID property_id,
-                      const Structs::DataValue& value,
-                      uint8_t priority = BACNET_NO_PRIORITY,
+                      const DataValue& value,
+                      uint8_t priority = 0,
                       uint32_t array_index = BACNET_ARRAY_ALL);
     
+    /**
+     * @brief 최적화된 배치 쓰기 (자동 WPM 그룹핑)
+     * @param device_id 대상 디바이스 ID
+     * @param point_values 포인트-값 쌍 목록
+     * @return 성공 여부
+     */
+    bool BatchWrite(uint32_t device_id,
+                   const std::vector<std::pair<DataPoint, DataValue>>& point_values);
+    
     // ==========================================================================
-    // 🔥 객체 관리 서비스
+    // 객체 관리 서비스
     // ==========================================================================
     
     /**
-     * @brief 객체 생성
+     * @brief BACnet 객체 생성
+     * @param device_id 대상 디바이스 ID
+     * @param object_type 생성할 객체 타입
+     * @param object_instance 객체 인스턴스 번호
+     * @param initial_properties 초기 프로퍼티 값들
+     * @return 성공 여부
      */
     bool CreateObject(uint32_t device_id,
                      BACNET_OBJECT_TYPE object_type,
                      uint32_t object_instance,
-                     const std::map<BACNET_PROPERTY_ID, Structs::DataValue>& initial_properties = {});
+                     const std::map<BACNET_PROPERTY_ID, DataValue>& initial_properties = {});
     
     /**
-     * @brief 객체 삭제
+     * @brief BACnet 객체 삭제
+     * @param device_id 대상 디바이스 ID
+     * @param object_type 삭제할 객체 타입
+     * @param object_instance 객체 인스턴스 번호
+     * @return 성공 여부
      */
     bool DeleteObject(uint32_t device_id,
                      BACNET_OBJECT_TYPE object_type,
                      uint32_t object_instance);
     
-    /**
-     * @brief 디바이스 객체 목록 조회
-     */
-    std::vector<DataPoint> GetDeviceObjects(uint32_t device_id,
-                                                  BACNET_OBJECT_TYPE filter_type = OBJECT_PROPRIETARY_MIN);
-    
     // ==========================================================================
-    // 🔥 디바이스 발견 최적화
+    // 디바이스 발견 및 관리
     // ==========================================================================
     
     /**
-     * @brief 향상된 디바이스 발견
+     * @brief 네트워크에서 BACnet 디바이스 발견
+     * @param devices 발견된 디바이스 정보 맵
+     * @param low_limit 검색 범위 하한 (기본: 0)
+     * @param high_limit 검색 범위 상한 (기본: 최대값)
+     * @param timeout_ms 타임아웃 (기본: 5000ms)
+     * @return 발견된 디바이스 개수
      */
     int DiscoverDevices(std::map<uint32_t, DeviceInfo>& devices,
                        uint32_t low_limit = 0,
-                       uint32_t high_limit = 4194303,
-                       uint32_t timeout_ms = 3000);
+                       uint32_t high_limit = BACNET_MAX_DEVICE_ID,
+                       uint32_t timeout_ms = 5000);
     
     /**
-     * @brief 특정 디바이스 정보 조회
+     * @brief 디바이스 정보 조회
+     * @param device_id 디바이스 ID
+     * @param device_info 디바이스 정보 저장소
+     * @return 성공 여부
      */
     bool GetDeviceInfo(uint32_t device_id, DeviceInfo& device_info);
     
     /**
-     * @brief 디바이스 온라인 상태 확인
+     * @brief 디바이스 연결 확인 (ping)
+     * @param device_id 디바이스 ID
+     * @param timeout_ms 타임아웃 (기본: 3000ms)
+     * @return 응답 여부
      */
-    bool PingDevice(uint32_t device_id, uint32_t timeout_ms = 1000);
+    bool PingDevice(uint32_t device_id, uint32_t timeout_ms = 3000);
+    
+    /**
+     * @brief 디바이스의 객체 목록 조회
+     * @param device_id 디바이스 ID
+     * @param filter_type 필터할 객체 타입 (기본: 모든 타입)
+     * @return 객체 목록
+     */
+    std::vector<DataPoint> GetDeviceObjects(uint32_t device_id,
+                                           BACNET_OBJECT_TYPE filter_type = MAX_BACNET_OBJECT_TYPE);
     
     // ==========================================================================
-    // 서비스 상태 및 통계
+    // 통계 및 관리
     // ==========================================================================
     
     /**
-     * @brief 서비스 성능 통계
+     * @brief 서비스 통계 초기화
      */
-    struct ServiceStatistics {
-        std::atomic<uint64_t> rpm_requests{0};
-        std::atomic<uint64_t> rpm_success{0};
-        std::atomic<uint64_t> wpm_requests{0};
-        std::atomic<uint64_t> wpm_success{0};
-        std::atomic<uint64_t> object_creates{0};
-        std::atomic<uint64_t> object_deletes{0};
-        std::atomic<double> avg_rpm_time_ms{0.0};
-        std::atomic<double> avg_wpm_time_ms{0.0};
-        std::atomic<uint32_t> max_objects_per_rpm{0};
-        
-        void Reset();
-    };
-    
-    const ServiceStatistics& GetServiceStatistics() const { return service_stats_; }
     void ResetServiceStatistics();
     
 private:
@@ -193,128 +248,137 @@ private:
     // 내부 구조체들
     // ==========================================================================
     
+    /**
+     * @brief 대기 중인 요청 정보
+     */
     struct PendingRequest {
         uint8_t invoke_id;
-        std::chrono::steady_clock::time_point start_time;
-        std::chrono::steady_clock::time_point timeout_time;
         std::string service_type;
+        std::chrono::steady_clock::time_point timeout_time;
         std::promise<bool> promise;
-        std::vector<TimestampedValue>* results_ptr = nullptr;
         
-        PendingRequest(uint8_t id, const std::string& type, uint32_t timeout_ms);
+        PendingRequest(uint8_t id, const std::string& type, uint32_t timeout_ms)
+            : invoke_id(id)
+            , service_type(type)
+            , timeout_time(std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms)) {}
     };
     
+    /**
+     * @brief RPM 최적화를 위한 그룹
+     */
     struct RPMGroup {
         std::vector<DataPoint> objects;
-        std::vector<size_t> original_indices; // 원본 배열에서의 인덱스
-        size_t estimated_size_bytes;
+        std::vector<size_t> original_indices;
+        size_t estimated_size_bytes = 0;
+    };
+    
+    /**
+     * @brief 간단한 서비스 통계
+     */
+    struct ServiceStatistics {
+        std::atomic<uint64_t> rpm_count{0};
+        std::atomic<uint64_t> wpm_count{0};
+        std::atomic<uint64_t> rp_count{0};
+        std::atomic<uint64_t> wp_count{0};
+        std::atomic<uint64_t> success_count{0};
+        std::atomic<uint64_t> error_count{0};
         
-        RPMGroup();
+        void Reset() {
+            rpm_count = 0;
+            wpm_count = 0;
+            rp_count = 0;
+            wp_count = 0;
+            success_count = 0;
+            error_count = 0;
+        }
     };
     
     // ==========================================================================
     // 멤버 변수들
     // ==========================================================================
     
-    BACnetDriver* driver_;                    // 부모 드라이버
-    ServiceStatistics service_stats_;         // 서비스 통계
+    /// BACnet 드라이버 참조
+    BACnetDriver* driver_;
     
-    // 요청 관리
+    /// Invoke ID 관리
+    std::atomic<uint8_t> next_invoke_id_;
+    
+    /// 요청 관리
     std::mutex requests_mutex_;
-    std::map<uint8_t, std::unique_ptr<PendingRequest>> pending_requests_;
-    uint8_t next_invoke_id_{1};
+    std::unordered_map<uint8_t, std::unique_ptr<PendingRequest>> pending_requests_;
     
-    // 성능 최적화
+    /// 디바이스 캐시
     std::mutex optimization_mutex_;
     std::map<uint32_t, DeviceInfo> device_cache_;
-    std::chrono::steady_clock::time_point last_cache_cleanup_;
     
-    // RPM 최적화 설정
-    static constexpr size_t MAX_RPM_OBJECTS = 50;        // RPM당 최대 객체 수
-    static constexpr size_t MAX_APDU_SIZE = 1476;        // 최대 APDU 크기
-    static constexpr size_t ESTIMATED_OVERHEAD = 20;     // 객체당 예상 오버헤드
+    /// 서비스 통계
+    ServiceStatistics service_stats_;
     
     // ==========================================================================
-    // 내부 헬퍼 메서드들
+    // 최적화 상수들
+    // ==========================================================================
+    static constexpr size_t MAX_RPM_OBJECTS = 20;
+    static constexpr size_t MAX_APDU_SIZE = 1476;
+    static constexpr size_t ESTIMATED_OVERHEAD = 20;
+    
+    // ==========================================================================
+    // 내부 메서드들
     // ==========================================================================
     
-    // 요청 관리
+    /// 유틸리티 함수들
     uint8_t GetNextInvokeId();
+    void LogServiceError(const std::string& service_name, const std::string& error_msg);
+    void UpdateServiceStatistics(const std::string& service_type, bool success, double time_ms);
+    
+    /// 디바이스 캐시 관리
+    void UpdateDeviceCache(uint32_t device_id, const DeviceInfo& info);
+    bool GetCachedDeviceInfo(uint32_t device_id, DeviceInfo& device_info);
+    void CleanupDeviceCache();
+    
+    /// 요청 관리 시스템
     void RegisterRequest(std::unique_ptr<PendingRequest> request);
     bool CompleteRequest(uint8_t invoke_id, bool success);
     std::shared_future<bool> GetRequestFuture(uint8_t invoke_id);
     void TimeoutRequests();
     
-    // RPM 최적화
+    /// RPM 최적화
     std::vector<RPMGroup> OptimizeRPMGroups(const std::vector<DataPoint>& objects);
     size_t EstimateObjectSize(const DataPoint& object);
     bool CanGroupObjects(const DataPoint& obj1, const DataPoint& obj2);
     
-    // WPM 최적화
-    std::vector<std::map<DataPoint, Structs::DataValue>> 
-        OptimizeWPMGroups(const std::map<DataPoint, Structs::DataValue>& values);
+    /// WPM 최적화
+    std::vector<std::map<DataPoint, DataValue>> OptimizeWPMGroups(
+        const std::map<DataPoint, DataValue>& values);
     
-    // 데이터 변환
-    DataPoint DataPointToBACnetObject(const Structs::DataPoint& point);
+    /// 데이터 변환 함수들
+    DataPoint DataPointToBACnetObject(const DataPoint& point);
     TimestampedValue BACnetValueToTimestampedValue(const BACNET_APPLICATION_DATA_VALUE& bacnet_value);
-    bool DataValueToBACnetValue(const Structs::DataValue& data_value, 
+    bool DataValueToBACnetValue(const DataValue& data_value,
                                BACNET_APPLICATION_DATA_VALUE& bacnet_value);
     
-    // 에러 처리
-    void LogServiceError(const std::string& service_name, const std::string& error_message);
-    void UpdateServiceStatistics(const std::string& service_type, bool success, double duration_ms);
-    
-    // 캐시 관리
-    void UpdateDeviceCache(uint32_t device_id, const DeviceInfo& device_info);
-    bool GetCachedDeviceInfo(uint32_t device_id, DeviceInfo& device_info);
-    void CleanupDeviceCache();
-    
 #ifdef HAS_BACNET_STACK
-    // BACnet 스택 헬퍼들
-    bool SendRPMRequest(uint32_t device_id, const std::vector<DataPoint>& objects, uint8_t invoke_id);
-    bool SendWPMRequest(uint32_t device_id, const std::map<DataPoint, Structs::DataValue>& values, uint8_t invoke_id);
-    bool ParseRPMResponse(const uint8_t* service_data, uint16_t service_len, 
+    /// BACnet 프로토콜 헬퍼 함수들 (Linux에서만 컴파일)
+    bool SendRPMRequest(uint32_t device_id,
+                       const std::vector<DataPoint>& objects,
+                       uint8_t invoke_id);
+    
+    bool SendWPMRequest(uint32_t device_id,
+                       const std::map<DataPoint, DataValue>& values,
+                       uint8_t invoke_id);
+    
+    bool ParseRPMResponse(const uint8_t* service_data,
+                         uint16_t service_len,
                          const std::vector<DataPoint>& expected_objects,
                          std::vector<TimestampedValue>& results);
+    
     bool ParseWPMResponse(const uint8_t* service_data, uint16_t service_len);
     
-    // 주소 관리
     bool GetDeviceAddress(uint32_t device_id, BACNET_ADDRESS& address);
     void CacheDeviceAddress(uint32_t device_id, const BACNET_ADDRESS& address);
-#endif
+#endif // HAS_BACNET_STACK
     
-    // 친구 클래스
     friend class BACnetDriver;
 };
-
-// =============================================================================
-// 🔥 인라인 구현들 (성능 최적화)
-// =============================================================================
-
-inline BACnetServiceManager::PendingRequest::PendingRequest(uint8_t id, const std::string& type, uint32_t timeout_ms)
-    : invoke_id(id)
-    , start_time(std::chrono::steady_clock::now())
-    , timeout_time(start_time + std::chrono::milliseconds(timeout_ms))
-    , service_type(type) {
-}
-
-inline BACnetServiceManager::RPMGroup::RPMGroup() 
-    : estimated_size_bytes(0) {
-    objects.reserve(MAX_RPM_OBJECTS);
-    original_indices.reserve(MAX_RPM_OBJECTS);
-}
-
-inline void BACnetServiceManager::ServiceStatistics::Reset() {
-    rpm_requests = 0;
-    rpm_success = 0;
-    wpm_requests = 0;
-    wpm_success = 0;
-    object_creates = 0;
-    object_deletes = 0;
-    avg_rpm_time_ms = 0.0;
-    avg_wpm_time_ms = 0.0;
-    max_objects_per_rpm = 0;
-}
 
 } // namespace Drivers
 } // namespace PulseOne
