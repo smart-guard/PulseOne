@@ -1,15 +1,16 @@
 /**
  * @file BACnetDiscoveryService.h 
- * @brief BACnet 발견 서비스 - 🔥 동적 Worker 생성 기능 완전 추가
+ * @brief BACnet 발견 서비스 - 버그 수정 및 안전성 강화 완성본
  * @author PulseOne Development Team
  * @date 2025-08-09
- * @version 6.0.0 - 동적 확장
+ * @version 6.1.0 - 안전성 강화
  * 
- * ✅ 새로운 핵심 기능:
+ * 핵심 기능:
  * 1. 새 디바이스 발견 시 자동으로 Worker 생성
  * 2. WorkerFactory와 연동하여 프로토콜별 Worker 동적 생성
  * 3. 1:1 구조 (1 Device = 1 Worker) 완전 지원
  * 4. Worker 생명주기 관리 (생성/시작/중지/삭제)
+ * 5. 스레드 안전성 및 예외 안전성 보장
  */
 
 #ifndef BACNET_DISCOVERY_SERVICE_H
@@ -18,13 +19,13 @@
 #include "Database/Repositories/DeviceRepository.h" 
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
-#include "Database/Repositories/DeviceSettingsRepository.h"  // 🔥 추가
+#include "Database/Repositories/DeviceSettingsRepository.h"
 #include "Database/DatabaseTypes.h"    
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 #include "Drivers/Bacnet/BACnetTypes.h"
 
-// 🔥 WorkerFactory 추가
+// WorkerFactory 추가
 #include "Workers/WorkerFactory.h"
 #include "Workers/Base/BaseDeviceWorker.h"
 
@@ -35,7 +36,7 @@
 #include <map>
 #include <vector>
 
-// 🔥 전방 선언
+// 전방 선언
 namespace PulseOne {
 namespace Workers {
     class BACnetWorker;
@@ -47,15 +48,16 @@ namespace Workers {
 
 class BACnetDiscoveryService {
 public:
-    // 🔥 Repository 의존성 주입
+    // Repository 의존성 주입
     void SetDeviceSettingsRepository(std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo);
     
     // =======================================================================
-    // 🔥 DeviceInfo ↔ DeviceEntity 변환 함수들
+    // DeviceInfo ↔ DeviceEntity 변환 함수들 - 안전성 강화
     // =======================================================================
     
-    void ConvertDeviceInfoToEntity(const DeviceInfo& device_info, Database::Entities::DeviceEntity& entity);
-    Database::Entities::DeviceEntity ConvertDeviceInfoToEntity(const DeviceInfo& device_info);
+    void ConvertDeviceInfoToEntity(const PulseOne::Structs::DeviceInfo& device_info, 
+                                   Database::Entities::DeviceEntity& entity);
+    Database::Entities::DeviceEntity ConvertDeviceInfoToEntity(const PulseOne::Structs::DeviceInfo& device_info);
     
     // =======================================================================
     // 통계 구조체 - 동적 Worker 생성 통계 추가
@@ -70,7 +72,7 @@ public:
         size_t values_saved = 0;
         size_t database_errors = 0;
         
-        // 🔥 새로운 통계: 동적 Worker 관리
+        // 새로운 통계: 동적 Worker 관리
         size_t workers_created = 0;
         size_t workers_started = 0;
         size_t workers_stopped = 0;
@@ -80,7 +82,7 @@ public:
     };
 
     // =======================================================================
-    // 🔥 Worker 관리 정보 구조체
+    // Worker 관리 정보 구조체 - 안전성 강화
     // =======================================================================
     
     struct ManagedWorker {
@@ -100,39 +102,39 @@ public:
     };
 
     // =======================================================================
-    // 생성자 및 소멸자
+    // 생성자 및 소멸자 - 예외 안전성 강화
     // =======================================================================
     
     explicit BACnetDiscoveryService(
         std::shared_ptr<Database::Repositories::DeviceRepository> device_repo,
         std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repo,
         std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repo = nullptr,
-        std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo = nullptr,  // 🔥 추가
+        std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo = nullptr,
         std::shared_ptr<WorkerFactory> worker_factory = nullptr
     );
     
     ~BACnetDiscoveryService();
 
     // =======================================================================
-    // 🔥 기존 기능 + 새로운 Worker 관리 기능
+    // 기존 기능 + 새로운 Worker 관리 기능
     // =======================================================================
     
     // 기존 Worker 등록 (레거시 호환)
     bool RegisterToWorker(std::shared_ptr<BACnetWorker> worker);
     void UnregisterFromWorker();
     
-    // 🔥 새로운 동적 Worker 관리 기능
+    // 새로운 동적 Worker 관리 기능
     bool StartDynamicDiscovery();
     void StopDynamicDiscovery();
     bool IsDiscoveryActive() const;
     
-    // 🔥 발견된 디바이스별 Worker 관리
+    // 발견된 디바이스별 Worker 관리
     std::shared_ptr<BaseDeviceWorker> CreateWorkerForDevice(const PulseOne::Structs::DeviceInfo& device_info);
     bool StartWorkerForDevice(const std::string& device_id);
     bool StopWorkerForDevice(const std::string& device_id);
     bool RemoveWorkerForDevice(const std::string& device_id);
     
-    // 🔥 Worker 상태 조회
+    // Worker 상태 조회
     std::vector<std::string> GetManagedWorkerIds() const;
     std::shared_ptr<BaseDeviceWorker> GetWorkerForDevice(const std::string& device_id) const;
     ManagedWorker* GetManagedWorkerInfo(const std::string& device_id) const;
@@ -144,7 +146,7 @@ public:
     void ResetStatistics();
 
     // =======================================================================
-    // 🔥 콜백 핸들러들 - 동적 Worker 생성 로직 추가
+    // 콜백 핸들러들 - 동적 Worker 생성 로직 추가
     // =======================================================================
     
     void OnDeviceDiscovered(const PulseOne::Structs::DeviceInfo& device);
@@ -153,7 +155,7 @@ public:
     void OnValueChanged(const std::string& object_id, const PulseOne::Structs::TimestampedValue& value);
 
     // =======================================================================
-    // 🔥 네트워크 스캔 기능 (선택사항)
+    // 네트워크 스캔 기능 (선택사항) - 안전성 강화
     // =======================================================================
     
     bool StartNetworkScan(const std::string& network_range = "");
@@ -162,13 +164,21 @@ public:
 
 private:
     // =======================================================================
-    // 🔥 동적 Worker 생성 및 관리 메서드들
+    // 동적 Worker 생성 및 관리 메서드들 - 안전성 강화
     // =======================================================================
     
     bool CreateAndStartWorkerForNewDevice(const PulseOne::Structs::DeviceInfo& device_info);
     bool IsDeviceAlreadyManaged(const std::string& device_id) const;
     void CleanupFailedWorkers();
     void UpdateWorkerActivity(const std::string& device_id);
+    
+    // 새로 추가된 안전한 Worker 관리 메서드들
+    void SafeCleanupAllWorkers();
+    bool StopWorkerForDeviceSafe(const std::string& device_id);
+    
+    // 통계 업데이트 메서드들 (오버로드)
+    void UpdateStatistics(const std::string& operation, bool success);
+    void UpdateStatistics(const std::string& operation, size_t count);
     
     // =======================================================================
     // 기존 데이터베이스 저장 메서드들
@@ -201,15 +211,15 @@ private:
     std::shared_ptr<Database::Repositories::DeviceRepository> device_repository_;
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repository_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repository_;
-    std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repository_;  // 🔥 추가
+    std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repository_;
     
-    // 🔥 WorkerFactory 추가
+    // WorkerFactory
     std::shared_ptr<WorkerFactory> worker_factory_;
     
     // 기존 워커 연결 (레거시 호환)
     std::weak_ptr<BACnetWorker> registered_worker_;
     
-    // 🔥 동적 Worker 관리
+    // 동적 Worker 관리 - 스레드 안전성 강화
     mutable std::mutex managed_workers_mutex_;
     std::map<std::string, std::unique_ptr<ManagedWorker>> managed_workers_;  // device_id -> ManagedWorker
     
@@ -218,11 +228,11 @@ private:
     std::atomic<bool> is_discovery_active_;
     std::atomic<bool> is_network_scan_active_;
     
-    // 통계 및 동기화
+    // 통계 및 동기화 - 스레드 안전성 강화
     mutable Statistics statistics_;
     mutable std::mutex stats_mutex_;
     
-    // 🔥 네트워크 스캔 스레드 (선택사항)
+    // 네트워크 스캔 스레드 (선택사항) - 안전성 강화
     std::unique_ptr<std::thread> network_scan_thread_;
     std::atomic<bool> network_scan_running_;
 };
