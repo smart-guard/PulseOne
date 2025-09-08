@@ -1,38 +1,76 @@
-#include "Platform/PlatformCompat.h"
 /**
- * @file UdpBasedWorker.cpp
- * @brief UDP 기반 디바이스 워커 클래스 구현
- * @author PulseOne Development Team
+ * @file UdpBasedWorker.cpp - Windows 크로스 플랫폼 호환성 완전 수정
+ * @brief UDP 기반 디바이스 워커 클래스 구현 - MinGW 완전 대응
+ * @author PulseOne Development Team  
  * @date 2025-01-23
- * @version 1.0.0
+ * @version 1.2.0 - 헤더와 완전 동기화
  */
 
+// =============================================================================
+// UUID 충돌 방지 및 플랫폼 호환성 (가장 먼저!)
+// =============================================================================
+#ifdef _WIN32
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    // UUID 충돌 방지
+    #define UUID _WIN32_UUID_BACKUP
+#endif
+
+#include "Platform/PlatformCompat.h"
 #include "Workers/Base/UdpBasedWorker.h"
+
+#ifdef _WIN32
+    #undef UUID
+#endif
+
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
-#include <sys/select.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <sstream>
 #include <iomanip>
 #include <cstring>
 #include <thread>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <ifaddrs.h>
+
+// =============================================================================
+// 플랫폼별 네트워크 헤더 (조건부 include)
+// =============================================================================
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #include <windows.h>
+    // Windows용 select 정의는 이미 winsock2.h에 포함됨
+#else
+    #include <sys/select.h>
+    #include <unistd.h>
+    #include <fcntl.h>
+    #include <errno.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>
+    #include <ifaddrs.h>
+#endif
 
 using namespace std::chrono;
-
 using LogLevel = PulseOne::Enums::LogLevel;
+
 namespace PulseOne {
 namespace Workers {
+
+// =============================================================================
+// 정적 멤버 초기화 (Windows 전용)
+// =============================================================================
+#if PULSEONE_WINDOWS
+bool UdpBasedWorker::winsock_initialized_ = false;
+std::mutex UdpBasedWorker::winsock_mutex_;
+#endif
 
 // =============================================================================
 // 생성자 및 소멸자
 // =============================================================================
 
-UdpBasedWorker::UdpBasedWorker(const PulseOne::DeviceInfo& device_info)
+UdpBasedWorker::UdpBasedWorker(const PulseOne::Structs::DeviceInfo& device_info)
     : BaseDeviceWorker(device_info)    
     , receive_thread_running_(false) {
     
@@ -42,6 +80,13 @@ UdpBasedWorker::UdpBasedWorker(const PulseOne::DeviceInfo& device_info)
     
     // UDP 연결 정보 초기화  
     udp_connection_.last_activity = system_clock::now();
+    
+#ifdef _WIN32
+    // Windows에서 Winsock 초기화
+    if (!InitializeWinsock()) {
+        LogMessage(LogLevel::LOG_ERROR, "Failed to initialize Winsock for UDP");
+    }
+#endif
     
     LogMessage(LogLevel::INFO, "UdpBasedWorker created for device: " + device_info.name);
     
@@ -63,6 +108,11 @@ UdpBasedWorker::~UdpBasedWorker() {
     // UDP 소켓 정리
     CloseUdpSocket();
     
+#ifdef _WIN32
+    // Windows에서 Winsock 정리 (전역)
+    CleanupWinsock();
+#endif
+    
     LogMessage(LogLevel::INFO, "UdpBasedWorker destroyed for device: " + device_info_.name);
 }
 
@@ -71,6 +121,7 @@ UdpBasedWorker::~UdpBasedWorker() {
 // =============================================================================
 
 void UdpBasedWorker::ConfigureUdp(const UdpConfig& config) {
+    std::lock_guard<std::mutex> lock(udp_config_mutex_);
     udp_config_ = config;
     LogMessage(LogLevel::INFO, "UDP configuration updated");
 }
@@ -96,17 +147,20 @@ std::string UdpBasedWorker::GetUdpConnectionInfo() const {
     ss << "  \"last_activity_timestamp\": " << last_activity_time << ",\n";
     
     // UDP 설정 정보
-    ss << "  \"config\": {\n";
-    ss << "    \"local_interface\": \"" << udp_config_.local_interface << "\",\n";
-    ss << "    \"local_port\": " << udp_config_.local_port << ",\n";
-    ss << "    \"remote_host\": \"" << udp_config_.remote_host << "\",\n";
-    ss << "    \"remote_port\": " << udp_config_.remote_port << ",\n";
-    ss << "    \"broadcast_enabled\": " << (udp_config_.broadcast_enabled ? "true" : "false") << ",\n";
-    ss << "    \"multicast_enabled\": " << (udp_config_.multicast_enabled ? "true" : "false") << ",\n";
-    ss << "    \"socket_timeout_ms\": " << udp_config_.socket_timeout_ms << ",\n";
-    ss << "    \"receive_buffer_size\": " << udp_config_.receive_buffer_size << ",\n";
-    ss << "    \"send_buffer_size\": " << udp_config_.send_buffer_size << "\n";
-    ss << "  }\n";
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        ss << "  \"config\": {\n";
+        ss << "    \"local_interface\": \"" << udp_config_.local_interface << "\",\n";
+        ss << "    \"local_port\": " << udp_config_.local_port << ",\n";
+        ss << "    \"remote_host\": \"" << udp_config_.remote_host << "\",\n";
+        ss << "    \"remote_port\": " << udp_config_.remote_port << ",\n";
+        ss << "    \"broadcast_enabled\": " << (udp_config_.broadcast_enabled ? "true" : "false") << ",\n";
+        ss << "    \"multicast_enabled\": " << (udp_config_.multicast_enabled ? "true" : "false") << ",\n";
+        ss << "    \"socket_timeout_ms\": " << udp_config_.socket_timeout_ms << ",\n";
+        ss << "    \"receive_buffer_size\": " << udp_config_.receive_buffer_size << ",\n";
+        ss << "    \"send_buffer_size\": " << udp_config_.send_buffer_size << "\n";
+        ss << "  }\n";
+    }
     ss << "}";
     
     return ss.str();
@@ -247,9 +301,15 @@ bool UdpBasedWorker::CloseConnection() {
 
 bool UdpBasedWorker::CheckConnection() {
     // UDP 소켓 상태 확인
+#ifdef _WIN32
+    if (udp_connection_.socket_fd == INVALID_SOCKET || !udp_connection_.is_bound) {
+        return false;
+    }
+#else
     if (udp_connection_.socket_fd == -1 || !udp_connection_.is_bound) {
         return false;
     }
+#endif
     
     // 프로토콜별 연결 상태 확인
     if (!CheckProtocolConnection()) {
@@ -284,11 +344,19 @@ bool UdpBasedWorker::CreateUdpSocket() {
     CloseUdpSocket();
     
     // UDP 소켓 생성
+#ifdef _WIN32
+    udp_connection_.socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udp_connection_.socket_fd == INVALID_SOCKET) {
+        LogMessage(LogLevel::LOG_ERROR, "Failed to create UDP socket: " + SocketErrorToString(WSAGetLastError()));
+        return false;
+    }
+#else
     udp_connection_.socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_connection_.socket_fd == -1) {
         LogMessage(LogLevel::LOG_ERROR, "Failed to create UDP socket: " + std::string(strerror(errno)));
         return false;
     }
+#endif
     
     LogMessage(LogLevel::DEBUG_LEVEL, "UDP socket created (fd: " + std::to_string(udp_connection_.socket_fd) + ")");
     
@@ -302,34 +370,69 @@ bool UdpBasedWorker::CreateUdpSocket() {
 }
 
 bool UdpBasedWorker::BindUdpSocket() {
+#ifdef _WIN32
+    if (udp_connection_.socket_fd == INVALID_SOCKET) {
+        LogMessage(LogLevel::LOG_ERROR, "Socket not created before binding");
+        return false;
+    }
+#else
     if (udp_connection_.socket_fd == -1) {
         LogMessage(LogLevel::LOG_ERROR, "Socket not created before binding");
         return false;
     }
+#endif
     
     // 로컬 주소 설정
     memset(&udp_connection_.local_addr, 0, sizeof(udp_connection_.local_addr));
     udp_connection_.local_addr.sin_family = AF_INET;
-    udp_connection_.local_addr.sin_port = htons(udp_config_.local_port);
+    
+    // UDP 설정 안전하게 접근
+    uint16_t local_port;
+    std::string local_interface;
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        local_port = udp_config_.local_port;
+        local_interface = udp_config_.local_interface;
+    }
+    
+    udp_connection_.local_addr.sin_port = htons(local_port);
     
     // 바인딩 인터페이스 설정
-    if (udp_config_.local_interface == "0.0.0.0" || udp_config_.local_interface.empty()) {
+    if (local_interface == "0.0.0.0" || local_interface.empty()) {
         udp_connection_.local_addr.sin_addr.s_addr = INADDR_ANY;
     } else {
-        if (inet_pton(AF_INET, udp_config_.local_interface.c_str(), 
-                     &udp_connection_.local_addr.sin_addr) != 1) {
-            LogMessage(LogLevel::LOG_ERROR, "Invalid local interface: " + udp_config_.local_interface);
+        // MinGW 호환성을 위해 inet_addr 사용
+#ifdef _WIN32
+        udp_connection_.local_addr.sin_addr.s_addr = inet_addr(local_interface.c_str());
+        if (udp_connection_.local_addr.sin_addr.s_addr == INADDR_NONE) {
+            LogMessage(LogLevel::LOG_ERROR, "Invalid local interface: " + local_interface);
             return false;
         }
+#else
+        if (inet_pton(AF_INET, local_interface.c_str(), 
+                     &udp_connection_.local_addr.sin_addr) != 1) {
+            LogMessage(LogLevel::LOG_ERROR, "Invalid local interface: " + local_interface);
+            return false;
+        }
+#endif
     }
     
     // 바인딩 수행
+#ifdef _WIN32
+    if (bind(udp_connection_.socket_fd, 
+             reinterpret_cast<struct sockaddr*>(&udp_connection_.local_addr),
+             sizeof(udp_connection_.local_addr)) == SOCKET_ERROR) {
+        LogMessage(LogLevel::LOG_ERROR, "Failed to bind UDP socket: " + SocketErrorToString(WSAGetLastError()));
+        return false;
+    }
+#else
     if (bind(udp_connection_.socket_fd, 
              reinterpret_cast<struct sockaddr*>(&udp_connection_.local_addr),
              sizeof(udp_connection_.local_addr)) == -1) {
         LogMessage(LogLevel::LOG_ERROR, "Failed to bind UDP socket: " + std::string(strerror(errno)));
         return false;
     }
+#endif
     
     udp_connection_.is_bound = true;
     
@@ -346,33 +449,67 @@ bool UdpBasedWorker::BindUdpSocket() {
 }
 
 void UdpBasedWorker::CloseUdpSocket() {
+#ifdef _WIN32
+    if (udp_connection_.socket_fd != INVALID_SOCKET) {
+        closesocket(udp_connection_.socket_fd);
+        LogMessage(LogLevel::DEBUG_LEVEL, "UDP socket closed (fd: " + std::to_string(udp_connection_.socket_fd) + ")");
+        udp_connection_.socket_fd = INVALID_SOCKET;
+    }
+#else
     if (udp_connection_.socket_fd != -1) {
         close(udp_connection_.socket_fd);
         LogMessage(LogLevel::DEBUG_LEVEL, "UDP socket closed (fd: " + std::to_string(udp_connection_.socket_fd) + ")");
         udp_connection_.socket_fd = -1;
     }
+#endif
     
     udp_connection_.is_bound = false;
     udp_connection_.is_connected = false;
 }
 
 // =============================================================================
-// 데이터 송수신
+// 데이터 송수신 (플랫폼별 반환 타입)
 // =============================================================================
 
+#if PULSEONE_WINDOWS
+int UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data, 
+                                const struct sockaddr_in& target_addr) {
+#else
 ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data, 
                                     const struct sockaddr_in& target_addr) {
+#endif
+
+#ifdef _WIN32
+    if (udp_connection_.socket_fd == INVALID_SOCKET) {
+        LogMessage(LogLevel::LOG_ERROR, "Socket not created for sending data");
+        UpdateErrorStats(true);
+        return -1;
+    }
+#else
     if (udp_connection_.socket_fd == -1) {
         LogMessage(LogLevel::LOG_ERROR, "Socket not created for sending data");
         UpdateErrorStats(true);
         return -1;
     }
+#endif
     
     if (data.empty()) {
         LogMessage(LogLevel::WARN, "Attempted to send empty data");
         return 0;
     }
     
+#ifdef _WIN32
+    int bytes_sent = sendto(udp_connection_.socket_fd,
+                           reinterpret_cast<const char*>(data.data()), static_cast<int>(data.size()), 0,
+                           reinterpret_cast<const struct sockaddr*>(&target_addr),
+                           sizeof(target_addr));
+    
+    if (bytes_sent == SOCKET_ERROR) {
+        LogMessage(LogLevel::LOG_ERROR, "Failed to send UDP data: " + SocketErrorToString(WSAGetLastError()));
+        UpdateErrorStats(true);
+        return -1;
+    }
+#else
     ssize_t bytes_sent = sendto(udp_connection_.socket_fd,
                                data.data(), data.size(), 0,
                                reinterpret_cast<const struct sockaddr*>(&target_addr),
@@ -383,6 +520,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data,
         UpdateErrorStats(true);
         return -1;
     }
+#endif
     
     // 통계 업데이트
     UpdateSendStats(static_cast<size_t>(bytes_sent));
@@ -395,8 +533,13 @@ ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data,
     return bytes_sent;
 }
 
+#if PULSEONE_WINDOWS
+int UdpBasedWorker::SendUdpData(const std::string& data, 
+                                const std::string& target_host, uint16_t target_port) {
+#else
 ssize_t UdpBasedWorker::SendUdpData(const std::string& data, 
                                     const std::string& target_host, uint16_t target_port) {
+#endif
     struct sockaddr_in target_addr;
     if (!StringToSockAddr(target_host, target_port, target_addr)) {
         LogMessage(LogLevel::LOG_ERROR, "Invalid target address: " + target_host + ":" + std::to_string(target_port));
@@ -407,8 +550,18 @@ ssize_t UdpBasedWorker::SendUdpData(const std::string& data,
     return SendUdpData(data_bytes, target_addr);
 }
 
+#if PULSEONE_WINDOWS
+int UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t port) {
+#else
 ssize_t UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t port) {
-    if (!udp_config_.broadcast_enabled) {
+#endif
+    bool broadcast_enabled;
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        broadcast_enabled = udp_config_.broadcast_enabled;
+    }
+    
+    if (!broadcast_enabled) {
         LogMessage(LogLevel::LOG_ERROR, "Broadcast is disabled");
         return -1;
     }
@@ -419,7 +572,7 @@ ssize_t UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t
     broadcast_addr.sin_port = htons(port);
     broadcast_addr.sin_addr.s_addr = INADDR_BROADCAST;
     
-    ssize_t result = SendUdpData(data, broadcast_addr);
+    auto result = SendUdpData(data, broadcast_addr);
     if (result > 0) {
         UpdateSendStats(static_cast<size_t>(result), true, false);
     }
@@ -427,9 +580,20 @@ ssize_t UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t
     return result;
 }
 
+#if PULSEONE_WINDOWS
+int UdpBasedWorker::SendMulticast(const std::vector<uint8_t>& data, 
+                                  const std::string& multicast_group, uint16_t port) {
+#else
 ssize_t UdpBasedWorker::SendMulticast(const std::vector<uint8_t>& data, 
                                       const std::string& multicast_group, uint16_t port) {
-    if (!udp_config_.multicast_enabled) {
+#endif
+    bool multicast_enabled;
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        multicast_enabled = udp_config_.multicast_enabled;
+    }
+    
+    if (!multicast_enabled) {
         LogMessage(LogLevel::LOG_ERROR, "Multicast is disabled");
         return -1;
     }
@@ -440,7 +604,7 @@ ssize_t UdpBasedWorker::SendMulticast(const std::vector<uint8_t>& data,
         return -1;
     }
     
-    ssize_t result = SendUdpData(data, multicast_addr);
+    auto result = SendUdpData(data, multicast_addr);
     if (result > 0) {
         UpdateSendStats(static_cast<size_t>(result), false, true);
     }
@@ -497,40 +661,67 @@ bool UdpBasedWorker::StringToSockAddr(const std::string& ip_str, uint16_t port,
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     
+    // MinGW 호환성을 위해 inet_addr 사용
+#ifdef _WIN32
+    addr.sin_addr.s_addr = inet_addr(ip_str.c_str());
+    if (addr.sin_addr.s_addr == INADDR_NONE) {
+        return false;
+    }
+#else
     if (inet_pton(AF_INET, ip_str.c_str(), &addr.sin_addr) != 1) {
         return false;
     }
+#endif
     
     return true;
 }
 
 std::string UdpBasedWorker::SockAddrToString(const struct sockaddr_in& addr) {
+#ifdef _WIN32
+    // Windows에서는 inet_ntoa 사용
+    std::string ip = inet_ntoa(addr.sin_addr);
+#else
     char ip_str[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, &addr.sin_addr, ip_str, INET_ADDRSTRLEN) == nullptr) {
         return "invalid";
     }
+    std::string ip = ip_str;
+#endif
     
-    return std::string(ip_str) + ":" + std::to_string(ntohs(addr.sin_port));
+    return ip + ":" + std::to_string(ntohs(addr.sin_port));
 }
 
 std::string UdpBasedWorker::CalculateBroadcastAddress(const std::string& interface_ip, 
                                                       const std::string& subnet_mask) {
     struct in_addr ip_addr, mask_addr, broadcast_addr;
     
+#ifdef _WIN32
+    // Windows: inet_addr 사용
+    ip_addr.s_addr = inet_addr(interface_ip.c_str());
+    mask_addr.s_addr = inet_addr(subnet_mask.c_str());
+    
+    if (ip_addr.s_addr == INADDR_NONE || mask_addr.s_addr == INADDR_NONE) {
+        return "";
+    }
+#else
     if (inet_pton(AF_INET, interface_ip.c_str(), &ip_addr) != 1 ||
         inet_pton(AF_INET, subnet_mask.c_str(), &mask_addr) != 1) {
         return "";
     }
+#endif
     
     // 브로드캐스트 주소 계산: IP | (~mask)
     broadcast_addr.s_addr = ip_addr.s_addr | (~mask_addr.s_addr);
     
+#ifdef _WIN32
+    return std::string(inet_ntoa(broadcast_addr));
+#else
     char broadcast_str[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, &broadcast_addr, broadcast_str, INET_ADDRSTRLEN) == nullptr) {
         return "";
     }
-    
     return std::string(broadcast_str);
+#endif
 }
 
 // =============================================================================
@@ -549,30 +740,29 @@ bool UdpBasedWorker::ParseUdpConfig() {
         std::string endpoint = device_info_.endpoint;
         size_t colon_pos = endpoint.find(':');
         
-        if (colon_pos != std::string::npos) {
-            udp_config_.remote_ip = endpoint.substr(0, colon_pos);
-            udp_config_.remote_port = static_cast<uint16_t>(std::stoi(endpoint.substr(colon_pos + 1)));
-        } else {
-            udp_config_.remote_ip = endpoint;
-            udp_config_.remote_port = 502;  // 기본 포트
-        }
-        
-        // 3. ✅ DeviceInfo의 int 필드 직접 사용 (Duration 아님)
-        udp_config_.socket_timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);
-        
-        // 4. ✅ DeviceInfo의 int 필드 직접 사용 (Duration 아님)
-        udp_config_.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
-        
-        // 5. 재시도 횟수는 그대로 사용
-        udp_config_.max_retries = static_cast<uint32_t>(device_info_.retry_count);
-        
-        // 6. 기본값 검증 및 보정
-        if (udp_config_.socket_timeout_ms == 0) {
-            udp_config_.socket_timeout_ms = 5000;  // 5초 기본값
-        }
-        
-        if (udp_config_.polling_interval_ms == 0) {
-            udp_config_.polling_interval_ms = 1000;  // 1초 기본값
+        {
+            std::lock_guard<std::mutex> lock(udp_config_mutex_);
+            if (colon_pos != std::string::npos) {
+                udp_config_.remote_ip = endpoint.substr(0, colon_pos);
+                udp_config_.remote_port = static_cast<uint16_t>(std::stoi(endpoint.substr(colon_pos + 1)));
+            } else {
+                udp_config_.remote_ip = endpoint;
+                udp_config_.remote_port = 502;  // 기본 포트
+            }
+            
+            // 3. DeviceInfo의 int 필드 직접 사용
+            udp_config_.socket_timeout_ms = static_cast<uint32_t>(device_info_.timeout_ms);
+            udp_config_.polling_interval_ms = static_cast<uint32_t>(device_info_.polling_interval_ms);
+            udp_config_.max_retries = static_cast<uint32_t>(device_info_.retry_count);
+            
+            // 4. 기본값 검증 및 보정
+            if (udp_config_.socket_timeout_ms == 0) {
+                udp_config_.socket_timeout_ms = 5000;  // 5초 기본값
+            }
+            
+            if (udp_config_.polling_interval_ms == 0) {
+                udp_config_.polling_interval_ms = 1000;  // 1초 기본값
+            }
         }
         
         LogMessage(LogLevel::INFO, 
@@ -587,25 +777,48 @@ bool UdpBasedWorker::ParseUdpConfig() {
     }
 }
 
-
 bool UdpBasedWorker::SetSocketOptions() {
+#ifdef _WIN32
+    if (udp_connection_.socket_fd == INVALID_SOCKET) {
+        return false;
+    }
+#else
     if (udp_connection_.socket_fd == -1) {
         return false;
     }
+#endif
     
     int opt = 1;
     
     // SO_REUSEADDR 설정
-    if (udp_config_.reuse_address) {
+    bool reuse_address;
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        reuse_address = udp_config_.reuse_address;
+    }
+    
+    if (reuse_address) {
+#ifdef _WIN32
+        if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_REUSEADDR, 
+                      reinterpret_cast<const char*>(&opt), sizeof(opt)) == SOCKET_ERROR) {
+            LogMessage(LogLevel::WARN, "Failed to set SO_REUSEADDR: " + SocketErrorToString(WSAGetLastError()));
+        }
+#else
         if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_REUSEADDR, 
                       &opt, sizeof(opt)) == -1) {
             LogMessage(LogLevel::WARN, "Failed to set SO_REUSEADDR: " + std::string(strerror(errno)));
         }
+#endif
     }
     
     // SO_REUSEPORT 설정 (Linux 전용)
 #ifdef SO_REUSEPORT
-    if (udp_config_.reuse_port) {
+    bool reuse_port;
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        reuse_port = udp_config_.reuse_port;
+    }
+    if (reuse_port) {
         if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_REUSEPORT, 
                       &opt, sizeof(opt)) == -1) {
             LogMessage(LogLevel::WARN, "Failed to set SO_REUSEPORT: " + std::string(strerror(errno)));
@@ -614,31 +827,79 @@ bool UdpBasedWorker::SetSocketOptions() {
 #endif
     
     // 브로드캐스트 허용
-    if (udp_config_.broadcast_enabled) {
+    bool broadcast_enabled;
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        broadcast_enabled = udp_config_.broadcast_enabled;
+    }
+    
+    if (broadcast_enabled) {
+#ifdef _WIN32
+        if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_BROADCAST, 
+                      reinterpret_cast<const char*>(&opt), sizeof(opt)) == SOCKET_ERROR) {
+            LogMessage(LogLevel::WARN, "Failed to enable broadcast: " + SocketErrorToString(WSAGetLastError()));
+        }
+#else
         if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_BROADCAST, 
                       &opt, sizeof(opt)) == -1) {
             LogMessage(LogLevel::WARN, "Failed to enable broadcast: " + std::string(strerror(errno)));
         }
+#endif
+    }
+    
+    // 버퍼 크기 설정
+    uint32_t recv_buffer_size, send_buffer_size, socket_timeout_ms;
+    {
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        recv_buffer_size = udp_config_.receive_buffer_size;
+        send_buffer_size = udp_config_.send_buffer_size;
+        socket_timeout_ms = udp_config_.socket_timeout_ms;
     }
     
     // 수신 버퍼 크기 설정
-    int recv_buffer_size = static_cast<int>(udp_config_.receive_buffer_size);
+    int recv_buf_size = static_cast<int>(recv_buffer_size);
+#ifdef _WIN32
     if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_RCVBUF, 
-                  &recv_buffer_size, sizeof(recv_buffer_size)) == -1) {
+                  reinterpret_cast<const char*>(&recv_buf_size), sizeof(recv_buf_size)) == SOCKET_ERROR) {
+        LogMessage(LogLevel::WARN, "Failed to set receive buffer size: " + SocketErrorToString(WSAGetLastError()));
+    }
+#else
+    if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_RCVBUF, 
+                  &recv_buf_size, sizeof(recv_buf_size)) == -1) {
         LogMessage(LogLevel::WARN, "Failed to set receive buffer size: " + std::string(strerror(errno)));
     }
+#endif
     
     // 송신 버퍼 크기 설정
-    int send_buffer_size = static_cast<int>(udp_config_.send_buffer_size);
+    int send_buf_size = static_cast<int>(send_buffer_size);
+#ifdef _WIN32
     if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_SNDBUF, 
-                  &send_buffer_size, sizeof(send_buffer_size)) == -1) {
+                  reinterpret_cast<const char*>(&send_buf_size), sizeof(send_buf_size)) == SOCKET_ERROR) {
+        LogMessage(LogLevel::WARN, "Failed to set send buffer size: " + SocketErrorToString(WSAGetLastError()));
+    }
+#else
+    if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_SNDBUF, 
+                  &send_buf_size, sizeof(send_buf_size)) == -1) {
         LogMessage(LogLevel::WARN, "Failed to set send buffer size: " + std::string(strerror(errno)));
     }
+#endif
     
     // 소켓 타임아웃 설정
+#ifdef _WIN32
+    DWORD timeout = socket_timeout_ms;
+    if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_RCVTIMEO, 
+                  reinterpret_cast<const char*>(&timeout), sizeof(timeout)) == SOCKET_ERROR) {
+        LogMessage(LogLevel::WARN, "Failed to set receive timeout: " + SocketErrorToString(WSAGetLastError()));
+    }
+    
+    if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_SNDTIMEO, 
+                  reinterpret_cast<const char*>(&timeout), sizeof(timeout)) == SOCKET_ERROR) {
+        LogMessage(LogLevel::WARN, "Failed to set send timeout: " + SocketErrorToString(WSAGetLastError()));
+    }
+#else
     struct timeval timeout;
-    timeout.tv_sec = udp_config_.socket_timeout_ms / 1000;
-    timeout.tv_usec = (udp_config_.socket_timeout_ms % 1000) * 1000;
+    timeout.tv_sec = socket_timeout_ms / 1000;
+    timeout.tv_usec = (socket_timeout_ms % 1000) * 1000;
     
     if (setsockopt(udp_connection_.socket_fd, SOL_SOCKET, SO_RCVTIMEO, 
                   &timeout, sizeof(timeout)) == -1) {
@@ -649,6 +910,7 @@ bool UdpBasedWorker::SetSocketOptions() {
                   &timeout, sizeof(timeout)) == -1) {
         LogMessage(LogLevel::WARN, "Failed to set send timeout: " + std::string(strerror(errno)));
     }
+#endif
     
     LogMessage(LogLevel::DEBUG_LEVEL, "Socket options configured successfully");
     return true;
@@ -671,6 +933,18 @@ void UdpBasedWorker::ReceiveThreadFunction() {
         select_timeout.tv_sec = 0;
         select_timeout.tv_usec = 100000; // 100ms
         
+#ifdef _WIN32
+        int select_result = select(0, &read_fds, nullptr, nullptr, &select_timeout);
+        
+        if (select_result == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            if (error != WSAEINTR) {
+                LogMessage(LogLevel::LOG_ERROR, "Select error in receive thread: " + SocketErrorToString(error));
+                UpdateErrorStats(false);
+            }
+            continue;
+        }
+#else
         int select_result = select(udp_connection_.socket_fd + 1, &read_fds, nullptr, nullptr, &select_timeout);
         
         if (select_result == -1) {
@@ -680,6 +954,7 @@ void UdpBasedWorker::ReceiveThreadFunction() {
             }
             continue;
         }
+#endif
         
         if (select_result == 0) {
             // 타임아웃, 계속 진행
@@ -688,6 +963,21 @@ void UdpBasedWorker::ReceiveThreadFunction() {
         
         if (FD_ISSET(udp_connection_.socket_fd, &read_fds)) {
             // 데이터 수신
+#ifdef _WIN32
+            int bytes_received = recvfrom(udp_connection_.socket_fd,
+                                         reinterpret_cast<char*>(buffer), sizeof(buffer), 0,
+                                         reinterpret_cast<struct sockaddr*>(&sender_addr),
+                                         &sender_addr_len);
+            
+            if (bytes_received == SOCKET_ERROR) {
+                int error = WSAGetLastError();
+                if (error != WSAEWOULDBLOCK) {
+                    LogMessage(LogLevel::LOG_ERROR, "Receive error: " + SocketErrorToString(error));
+                    UpdateErrorStats(false);
+                }
+                continue;
+            }
+#else
             ssize_t bytes_received = recvfrom(udp_connection_.socket_fd,
                                              buffer, sizeof(buffer), 0,
                                              reinterpret_cast<struct sockaddr*>(&sender_addr),
@@ -700,6 +990,7 @@ void UdpBasedWorker::ReceiveThreadFunction() {
                 }
                 continue;
             }
+#endif
             
             if (bytes_received > 0) {
                 // 패킷 생성
@@ -769,6 +1060,53 @@ void UdpBasedWorker::UpdateErrorStats(bool is_send_error) {
         udp_stats_.receive_errors++;
     }
 }
+
+// =============================================================================
+// 플랫폼별 메서드 구현
+// =============================================================================
+
+#ifdef _WIN32
+std::string UdpBasedWorker::SocketErrorToString(int error_code) const {
+    switch (error_code) {
+        case WSAEADDRINUSE: return "Address already in use";
+        case WSAECONNREFUSED: return "Connection refused";
+        case WSAEHOSTUNREACH: return "Host unreachable";
+        case WSAENETUNREACH: return "Network unreachable";
+        case WSAETIMEDOUT: return "Connection timed out";
+        case WSAEWOULDBLOCK: return "Operation would block";
+        case WSAEINPROGRESS: return "Operation in progress";
+        case WSAENOTCONN: return "Socket not connected";
+        case WSAECONNRESET: return "Connection reset by peer";
+        case WSAECONNABORTED: return "Connection aborted";
+        case WSAEINTR: return "Interrupted system call";
+        default: return "Winsock error " + std::to_string(error_code);
+    }
+}
+
+bool UdpBasedWorker::InitializeWinsock() {
+    std::lock_guard<std::mutex> lock(winsock_mutex_);
+    
+    if (winsock_initialized_) {
+        return true;
+    }
+    
+    WSADATA wsa_data;
+    int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+    if (result != 0) {
+        LogMessage(LogLevel::LOG_ERROR, "WSAStartup failed: " + SocketErrorToString(result));
+        return false;
+    }
+    
+    winsock_initialized_ = true;
+    LogMessage(LogLevel::DEBUG_LEVEL, "Winsock initialized successfully");
+    return true;
+}
+
+void UdpBasedWorker::CleanupWinsock() {
+    // 정적 정리는 프로세스 종료 시에만 수행 (개별 인스턴스에서는 호출하지 않음)
+    // 여러 UdpBasedWorker 인스턴스가 공유하므로
+}
+#endif
 
 } // namespace Workers
 } // namespace PulseOne

@@ -171,6 +171,8 @@ public:
      * @return 성공 시 true
      */
     virtual bool WriteDataPoint(const std::string& point_id, const DataValue& value) {
+        (void)point_id;  // unused parameter 경고 억제
+        (void)value;     // unused parameter 경고 억제
         LogMessage(LogLevel::WARN, "WriteDataPoint not implemented for protocol: " + GetProtocolType());
         return false;
     }
