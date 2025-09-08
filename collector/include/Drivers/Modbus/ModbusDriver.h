@@ -88,7 +88,7 @@ public:
     
     // IProtocolDriver 필수 구현 메서드들
     ProtocolType GetProtocolType() const override;
-    Structs::DriverStatus GetStatus() const override;
+    Enums::DriverStatus GetStatus() const override;
     ErrorInfo GetLastError() const override;
     
     // =======================================================================

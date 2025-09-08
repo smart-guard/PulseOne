@@ -1,9 +1,9 @@
 /**
  * @file UdpBasedWorker.h
- * @brief UDP 기반 디바이스 워커 클래스
+ * @brief UDP 기반 디바이스 워커 클래스 - Windows/Linux 크로스 플랫폼 완전 지원
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 1.0.0
+ * @version 1.1.0 - Windows 호환성 완전 수정
  * 
  * @details
  * BaseDeviceWorker를 상속받아 UDP 통신에 특화된 기능을 제공합니다.
@@ -14,14 +14,33 @@
 #define UDP_BASED_WORKER_H
 
 #include "Workers/Base/BaseDeviceWorker.h"
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
+#include "Platform/PlatformCompat.h"  // 크로스 플랫폼 호환성
 #include <memory>
 #include <atomic>
 #include <mutex>
 #include <thread>
 #include <queue>
+#include <chrono>
+
+// =============================================================================
+// 플랫폼별 네트워크 헤더 포함 (PlatformCompat.h 기반)
+// =============================================================================
+#if PULSEONE_WINDOWS
+    // Windows: winsock2.h가 PlatformCompat.h에서 이미 포함됨
+    using socklen_t = int;
+    #ifndef SOCKET_ERROR
+        #define SOCKET_ERROR (-1)
+    #endif
+#else
+    // Linux/Unix: 전통적인 네트워크 헤더들
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <netinet/in.h>
+    #include <unistd.h>
+    #include <errno.h>
+    #include <fcntl.h>
+    #include <sys/select.h>
+#endif
 
 namespace PulseOne {
 namespace Workers {
@@ -49,10 +68,14 @@ struct UdpConfig {
 };
 
 /**
- * @brief UDP 연결 정보
+ * @brief UDP 연결 정보 (크로스 플랫폼)
  */
 struct UdpConnectionInfo {
-    int socket_fd = -1;                       ///< 소켓 파일 디스크립터
+#if PULSEONE_WINDOWS
+    SOCKET socket_fd = INVALID_SOCKET;        ///< Windows 소켓 핸들
+#else
+    int socket_fd = -1;                       ///< Unix 소켓 파일 디스크립터
+#endif
     struct sockaddr_in local_addr;            ///< 로컬 주소
     struct sockaddr_in remote_addr;           ///< 원격 주소 (P2P 모드용)
     bool is_bound = false;                    ///< 바인딩 상태
@@ -91,11 +114,11 @@ struct UdpPacket {
 
 /**
  * @class UdpBasedWorker
- * @brief UDP 통신 기반 디바이스 워커
+ * @brief UDP 통신 기반 디바이스 워커 (크로스 플랫폼)
  * 
  * @details
  * BaseDeviceWorker를 상속받아 UDP 통신에 특화된 기능을 제공합니다.
- * - UDP 소켓 생성 및 관리
+ * - UDP 소켓 생성 및 관리 (Windows/Linux 호환)
  * - 브로드캐스트/멀티캐스트 지원
  * - 비동기 패킷 송수신
  * - 패킷 큐잉 및 처리
@@ -111,10 +134,8 @@ public:
     /**
      * @brief 생성자
      * @param device_info 디바이스 정보
-     * @param redis_client Redis 클라이언트
-     * @param influx_client InfluxDB 클라이언트
      */
-    explicit UdpBasedWorker(const PulseOne::DeviceInfo& device_info);
+    explicit UdpBasedWorker(const PulseOne::Structs::DeviceInfo& device_info);
     
     /**
      * @brief 가상 소멸자
@@ -132,6 +153,15 @@ public:
     void ConfigureUdp(const UdpConfig& config);
     
     /**
+     * @brief UDP 설정 조회
+     * @return UDP 설정
+     */
+    UdpConfig GetUdpConfig() const { 
+        std::lock_guard<std::mutex> lock(udp_config_mutex_);
+        return udp_config_; 
+    }
+    
+    /**
      * @brief UDP 연결 정보 조회
      * @return JSON 형태의 연결 정보
      */
@@ -139,7 +169,7 @@ public:
     
     /**
      * @brief UDP 통계 정보 조회
-     * @return JSON 형태의 UDP 통계 + BaseDeviceWorker 통계
+     * @return JSON 형태의 UDP 통계
      */
     std::string GetUdpStats() const;
     
@@ -149,7 +179,7 @@ public:
     void ResetUdpStats();
 
     // =============================================================================
-    // BaseDeviceWorker 순수 가상 함수 구현 (UDP 특화)
+    // BaseDeviceWorker 오버라이드 (UDP 특화)
     // =============================================================================
     
     /**
@@ -162,9 +192,8 @@ public:
     /**
      * @brief UDP 기반 연결 해제
      * @details 프로토콜 해제 → UDP 소켓 해제 순서로 진행
-     * @return 성공 시 true
      */
-    bool CloseConnection() override;
+    void CloseConnection() override;
     
     /**
      * @brief UDP 기반 연결 상태 확인
@@ -195,9 +224,8 @@ protected:
     /**
      * @brief 프로토콜별 연결 해제 (BACnet, DNP3 등에서 구현)
      * @details UDP 소켓 해제 전에 호출됨
-     * @return 성공 시 true
      */
-    virtual bool CloseProtocolConnection() = 0;
+    virtual void CloseProtocolConnection() = 0;
     
     /**
      * @brief 프로토콜별 연결 상태 확인 (BACnet, DNP3 등에서 구현)
@@ -240,13 +268,16 @@ protected:
     void CloseUdpSocket();
     
     /**
-     * @brief 데이터 송신 (유니캐스트)
+     * @brief 데이터 송신 (유니캐스트) - 크로스 플랫폼
      * @param data 송신할 데이터
      * @param target_addr 대상 주소
      * @return 송신된 바이트 수 (-1: 실패)
      */
-    ssize_t SendUdpData(const std::vector<uint8_t>& data, 
-                        const struct sockaddr_in& target_addr);
+#if PULSEONE_WINDOWS
+    int SendUdpData(const std::vector<uint8_t>& data, const struct sockaddr_in& target_addr);
+#else
+    ssize_t SendUdpData(const std::vector<uint8_t>& data, const struct sockaddr_in& target_addr);
+#endif
     
     /**
      * @brief 데이터 송신 (문자열 오버로드)
@@ -255,8 +286,11 @@ protected:
      * @param target_port 대상 포트
      * @return 송신된 바이트 수 (-1: 실패)
      */
-    ssize_t SendUdpData(const std::string& data, 
-                        const std::string& target_host, uint16_t target_port);
+#if PULSEONE_WINDOWS
+    int SendUdpData(const std::string& data, const std::string& target_host, uint16_t target_port);
+#else
+    ssize_t SendUdpData(const std::string& data, const std::string& target_host, uint16_t target_port);
+#endif
     
     /**
      * @brief 브로드캐스트 데이터 송신
@@ -264,7 +298,11 @@ protected:
      * @param port 대상 포트
      * @return 송신된 바이트 수 (-1: 실패)
      */
+#if PULSEONE_WINDOWS
+    int SendBroadcast(const std::vector<uint8_t>& data, uint16_t port);
+#else
     ssize_t SendBroadcast(const std::vector<uint8_t>& data, uint16_t port);
+#endif
     
     /**
      * @brief 멀티캐스트 데이터 송신
@@ -273,11 +311,14 @@ protected:
      * @param port 대상 포트
      * @return 송신된 바이트 수 (-1: 실패)
      */
-    ssize_t SendMulticast(const std::vector<uint8_t>& data, 
-                          const std::string& multicast_group, uint16_t port);
+#if PULSEONE_WINDOWS
+    int SendMulticast(const std::vector<uint8_t>& data, const std::string& multicast_group, uint16_t port);
+#else
+    ssize_t SendMulticast(const std::vector<uint8_t>& data, const std::string& multicast_group, uint16_t port);
+#endif
     
     /**
-     * @brief 데이터 수신 (논블로킹)
+     * @brief 데이터 수신 (논블로킹) - 크로스 플랫폼
      * @param packet 수신된 패킷 (출력)
      * @param timeout_ms 타임아웃 (밀리초, 0=즉시 반환)
      * @return 성공 시 true
@@ -291,6 +332,27 @@ protected:
     size_t GetPendingPacketCount() const;
 
     // =============================================================================
+    // 비동기 수신 관리
+    // =============================================================================
+    
+    /**
+     * @brief 수신 스레드 시작
+     * @return 성공 시 true
+     */
+    bool StartReceiveThread();
+    
+    /**
+     * @brief 수신 스레드 중지
+     */
+    void StopReceiveThread();
+    
+    /**
+     * @brief 수신 스레드 실행 상태 확인
+     * @return 실행 중이면 true
+     */
+    bool IsReceiveThreadRunning() const { return receive_thread_running_.load(); }
+
+    // =============================================================================
     // 유틸리티 메서드 (파생 클래스에서 사용 가능)
     // =============================================================================
     
@@ -301,12 +363,12 @@ protected:
      * @param addr 변환된 주소 (출력)
      * @return 성공 시 true
      */
-    static bool StringToSockAddr(const std::string& ip_str, uint16_t port, 
-                                 struct sockaddr_in& addr);
+    static bool StringToSockAddr(const std::string& ip_str, uint16_t port, struct sockaddr_in& addr);
     
     /**
      * @brief sockaddr_in을 IP 주소 문자열로 변환
-     * @param addr 주소    * @return IP 주소 문자열
+     * @param addr 주소
+     * @return IP 주소 문자열
      */
     static std::string SockAddrToString(const struct sockaddr_in& addr);
     
@@ -318,6 +380,62 @@ protected:
      */
     static std::string CalculateBroadcastAddress(const std::string& interface_ip, 
                                                  const std::string& subnet_mask);
+
+    // =============================================================================
+    // 플랫폼별 소켓 유틸리티
+    // =============================================================================
+    
+#if PULSEONE_WINDOWS
+    /**
+     * @brief Windows용 소켓 에러 코드 조회
+     * @return 에러 코드
+     */
+    int GetLastSocketError() const { return WSAGetLastError(); }
+    
+    /**
+     * @brief Windows용 소켓 에러 메시지 변환
+     * @param error_code 에러 코드
+     * @return 에러 메시지
+     */
+    std::string SocketErrorToString(int error_code) const;
+    
+    /**
+     * @brief Winsock 초기화
+     * @return 성공 시 true
+     */
+    bool InitializeWinsock();
+    
+    /**
+     * @brief Winsock 정리
+     */
+    void CleanupWinsock();
+    
+    /**
+     * @brief 소켓이 유효한지 확인
+     * @return 유효하면 true
+     */
+    bool IsSocketValid() const { return udp_connection_.socket_fd != INVALID_SOCKET; }
+    
+#else
+    /**
+     * @brief Unix용 소켓 에러 코드 조회
+     * @return 에러 코드
+     */
+    int GetLastSocketError() const { return errno; }
+    
+    /**
+     * @brief Unix용 소켓 에러 메시지 변환
+     * @param error_code 에러 코드
+     * @return 에러 메시지
+     */
+    std::string SocketErrorToString(int error_code) const { return strerror(error_code); }
+    
+    /**
+     * @brief 소켓이 유효한지 확인
+     * @return 유효하면 true
+     */
+    bool IsSocketValid() const { return udp_connection_.socket_fd >= 0; }
+#endif
 
     // =============================================================================
     // 멤버 변수 (protected)
@@ -363,6 +481,21 @@ private:
     bool SetSocketOptions();
     
     /**
+     * @brief 소켓을 논블로킹 모드로 설정
+     * @param non_blocking 논블로킹 모드 여부
+     * @return 성공 시 true
+     */
+    bool SetSocketNonBlocking(bool non_blocking = true);
+    
+    /**
+     * @brief 소켓 이벤트 대기 (크로스 플랫폼)
+     * @param timeout_ms 타임아웃 (밀리초)
+     * @param wait_for_read true=읽기 대기, false=쓰기 대기
+     * @return 이벤트 발생 시 true
+     */
+    bool WaitForSocketEvent(uint32_t timeout_ms, bool wait_for_read = true);
+    
+    /**
      * @brief 수신 스레드 함수
      */
     void ReceiveThreadFunction();
@@ -373,8 +506,7 @@ private:
      * @param is_broadcast 브로드캐스트 여부
      * @param is_multicast 멀티캐스트 여부
      */
-    void UpdateSendStats(size_t bytes_sent, bool is_broadcast = false, 
-                        bool is_multicast = false);
+    void UpdateSendStats(size_t bytes_sent, bool is_broadcast = false, bool is_multicast = false);
     
     /**
      * @brief 통계 업데이트 (수신)
@@ -382,14 +514,24 @@ private:
      * @param is_broadcast 브로드캐스트 여부
      * @param is_multicast 멀티캐스트 여부
      */
-    void UpdateReceiveStats(size_t bytes_received, bool is_broadcast = false, 
-                           bool is_multicast = false);
+    void UpdateReceiveStats(size_t bytes_received, bool is_broadcast = false, bool is_multicast = false);
     
     /**
      * @brief 에러 통계 업데이트
      * @param is_send_error 송신 에러 여부 (false=수신 에러)
      */
     void UpdateErrorStats(bool is_send_error);
+
+    // =============================================================================
+    // 설정 보호용 뮤텍스
+    // =============================================================================
+    mutable std::mutex udp_config_mutex_;
+
+#if PULSEONE_WINDOWS
+    /// Winsock 초기화 상태 (전역)
+    static bool winsock_initialized_;
+    static std::mutex winsock_mutex_;
+#endif
 };
 
 } // namespace Workers

@@ -104,6 +104,27 @@ namespace PulseOne::Utils {
             default: return "UNKNOWN";
         }
     }
+
+    /**
+    * @brief 문자열을 드라이버 로그 카테고리로 변환
+    */
+    inline DriverLogCategory StringToDriverLogCategory(const std::string& str) {
+        std::string upper = str;
+        std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+        
+        if (upper == "GENERAL") return DriverLogCategory::GENERAL;
+        if (upper == "CONNECTION") return DriverLogCategory::CONNECTION;
+        if (upper == "COMMUNICATION") return DriverLogCategory::COMMUNICATION;
+        if (upper == "DATA_PROCESSING") return DriverLogCategory::DATA_PROCESSING;
+        if (upper == "ERROR_HANDLING") return DriverLogCategory::ERROR_HANDLING;
+        if (upper == "PERFORMANCE") return DriverLogCategory::PERFORMANCE;
+        if (upper == "SECURITY") return DriverLogCategory::SECURITY;
+        if (upper == "PROTOCOL_SPECIFIC") return DriverLogCategory::PROTOCOL_SPECIFIC;
+        if (upper == "DIAGNOSTICS") return DriverLogCategory::DIAGNOSTICS;
+        if (upper == "MAINTENANCE") return DriverLogCategory::MAINTENANCE;
+        
+        return DriverLogCategory::GENERAL; // 기본값
+    }
     
     /**
      * @brief 로그 레벨을 문자열로 변환
@@ -114,8 +135,8 @@ namespace PulseOne::Utils {
             case LogLevel::DEBUG: return "DEBUG";        // 🔥 DEBUG_LEVEL → DEBUG 수정
             case LogLevel::INFO: return "INFO";
             case LogLevel::WARN: return "WARN";
-            case LogLevel::ERROR: return "ERROR";
-            case LogLevel::FATAL: return "FATAL";
+            case LogLevel::LOG_ERROR: return "ERROR";
+            case LogLevel::LOG_FATAL: return "FATAL";
             case LogLevel::MAINTENANCE: return "MAINTENANCE";
             default: return "UNKNOWN";
         }
@@ -132,8 +153,8 @@ namespace PulseOne::Utils {
         if (upper == "DEBUG") return LogLevel::DEBUG;    // 🔥 DEBUG_LEVEL → DEBUG 수정
         if (upper == "INFO") return LogLevel::INFO;
         if (upper == "WARN") return LogLevel::WARN;
-        if (upper == "ERROR") return LogLevel::ERROR;
-        if (upper == "FATAL") return LogLevel::FATAL;
+        if (upper == "ERROR") return LogLevel::LOG_ERROR;
+        if (upper == "FATAL") return LogLevel::LOG_FATAL;
         if (upper == "MAINTENANCE") return LogLevel::MAINTENANCE;
         return LogLevel::INFO; // 기본값
     }

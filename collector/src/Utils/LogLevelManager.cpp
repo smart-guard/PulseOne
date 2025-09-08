@@ -1,33 +1,28 @@
 // =============================================================================
-// collector/src/Utils/LogLevelManager.cpp - 완전한 기능 보존 + 자동 초기화
+// collector/src/Utils/LogLevelManager.cpp - 컴파일 에러 수정 완성본
 // =============================================================================
 
 #include "Utils/LogLevelManager.h"
 #include "Utils/LogManager.h"  
-#include "Common/Utils.h"      // ✅ Utils 함수들 사용
+#include "Common/Utils.h"      
 #include <thread>
 #include <chrono>
 #include <algorithm>
 #include <sstream>
 
-// ✅ 전역 네임스페이스에서 구현
-
 // =============================================================================
-// 🔥 핵심: 실제 초기화 로직 (thread-safe)
+// 핵심: 실제 초기화 로직 (thread-safe)
 // =============================================================================
 void LogLevelManager::ensureInitialized() {
-    // 빠른 체크 (이미 초기화됨)
     if (initialized_.load(std::memory_order_acquire)) {
         return;
     }
     
-    // 느린 체크 (뮤텍스 사용)
     std::lock_guard<std::mutex> lock(init_mutex_);
     if (initialized_.load(std::memory_order_relaxed)) {
         return;
     }
     
-    // 실제 초기화 수행
     doInitialize(nullptr, nullptr);
     initialized_.store(true, std::memory_order_release);
 }
@@ -43,7 +38,6 @@ LogLevelManager::LogLevelManager()
     , level_change_count_(0)
     , db_check_count_(0)
     , file_check_count_(0) {
-    // 생성자에서는 기본값만 설정
 }
 
 LogLevelManager::~LogLevelManager() { 
@@ -51,37 +45,30 @@ LogLevelManager::~LogLevelManager() {
 }
 
 bool LogLevelManager::doInitialize() {
-    // 중복 초기화 방지 (double-checked locking)
     if (initialized_.load()) {
         return true;
     }
     
     std::lock_guard<std::mutex> lock(category_mutex_);
     
-    // 다시 한 번 체크
     if (initialized_.load()) {
         return true;
     }
     
     try {
-        std::cout << "🔧 LogLevelManager 자동 초기화 시작...\n";
+        config_ = &ConfigManager::getInstance();
+        db_manager_ = &DatabaseManager::getInstance();
         
-        // 🔥 자동으로 다른 싱글톤들 가져오기
-        config_ = &ConfigManager::getInstance();      // 자동 초기화됨
-        db_manager_ = &DatabaseManager::getInstance(); // 자동 초기화됨
-        
-        // 카테고리별 기본 레벨 설정
         category_levels_[DriverLogCategory::GENERAL] = LogLevel::INFO;
         category_levels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
         category_levels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
         category_levels_[DriverLogCategory::DATA_PROCESSING] = LogLevel::INFO;
-        category_levels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::ERROR;
+        category_levels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::LOG_ERROR;
         category_levels_[DriverLogCategory::PERFORMANCE] = LogLevel::WARN;
         category_levels_[DriverLogCategory::SECURITY] = LogLevel::WARN;
         category_levels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG_LEVEL;
         category_levels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG_LEVEL;
         
-        // 초기 로그 레벨 설정
         LogLevel level = LoadLogLevelFromDB();
         if (level == LogLevel::INFO) {
             LogLevel file_level = LoadLogLevelFromFile();
@@ -91,31 +78,19 @@ bool LogLevelManager::doInitialize() {
         }
         
         current_level_ = level;
-        
-        // LogManager에 레벨 설정
         LogManager::getInstance().setLogLevel(level);
-        
-        // 카테고리 레벨 로드
         LoadCategoryLevelsFromDB();
-        
-        // 모니터링 시작
         StartMonitoring();
         
         initialized_.store(true);
-        
-        std::cout << "✅ LogLevelManager 자동 초기화 완료 (레벨: " 
-                  << PulseOne::Utils::LogLevelToString(level) << ")\n";
-        
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "❌ LogLevelManager 초기화 실패: " << e.what() << "\n";
         return false;
     }
 }
 
 bool LogLevelManager::doInitialize(ConfigManager* config, DatabaseManager* db) {
-    // 수동 초기화 버전 (기존 호환성)
     if (initialized_.load()) {
         return true;
     }
@@ -130,8 +105,7 @@ bool LogLevelManager::doInitialize(ConfigManager* config, DatabaseManager* db) {
         config_ = config;
         db_manager_ = db;
         
-        // 기존 초기화 로직 그대로
-        LogManager::getInstance().Info("🔧 LogLevelManager initializing...");
+        LogManager::getInstance().Info("LogLevelManager initializing...");
         
         LogLevel level = LoadLogLevelFromDB();
         if (level == LogLevel::INFO) {
@@ -147,24 +121,18 @@ bool LogLevelManager::doInitialize(ConfigManager* config, DatabaseManager* db) {
         
         initialized_.store(true);
         
-        LogManager::getInstance().Info("✅ LogLevelManager initialized successfully");
+        LogManager::getInstance().Info("LogLevelManager initialized successfully");
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("❌ LogLevelManager 초기화 실패: {}", e.what());
+        LogManager::getInstance().Error("LogLevelManager 초기화 실패: " + std::string(e.what()));
         return false;
     }
 }
 
-
-// =============================================================================
-// 🔥 이하 모든 메서드들은 기존 구현과 100% 동일
-// =============================================================================
-
-// 초기화 및 생명주기 (기존 호환성 유지)
 void LogLevelManager::Shutdown() {
     if (running_) {
-        LogManager::getInstance().Info("🔧 LogLevelManager shutting down...");
+        LogManager::getInstance().Info("LogLevelManager shutting down...");
         StopMonitoring();
         
         {
@@ -172,11 +140,10 @@ void LogLevelManager::Shutdown() {
             change_callbacks_.clear();
         }
         
-        LogManager::getInstance().Info("✅ LogLevelManager shutdown completed");
+        LogManager::getInstance().Info("LogLevelManager shutdown completed");
     }
 }
 
-// 로그 레벨 관리 - 기본
 void LogLevelManager::SetLogLevel(LogLevel level, LogLevelSource source,
                                  const EngineerID& changed_by, const std::string& reason) {
     LogLevel old_level = current_level_;
@@ -203,14 +170,12 @@ void LogLevelManager::SetLogLevel(LogLevel level, LogLevelSource source,
         }
         
         LogManager::getInstance().Info(
-            "🎯 Log level changed: {} → {} (Source: {}, By: {})", 
-            PulseOne::Utils::LogLevelToString(old_level), 
-            PulseOne::Utils::LogLevelToString(level),
-            LogLevelSourceToString(source), changed_by);
+            "Log level changed: " + PulseOne::Utils::LogLevelToString(old_level) + 
+            " -> " + PulseOne::Utils::LogLevelToString(level) +
+            " (Source: " + LogLevelSourceToString(source) + ", By: " + changed_by + ")");
     }
 }
 
-// 카테고리별 로그 레벨 관리 (기존 그대로)
 void LogLevelManager::SetCategoryLogLevel(DriverLogCategory category, LogLevel level) {
     {
         std::lock_guard<std::mutex> lock(category_mutex_);
@@ -220,9 +185,8 @@ void LogLevelManager::SetCategoryLogLevel(DriverLogCategory category, LogLevel l
     LogManager::getInstance().setCategoryLogLevel(category, level);
     
     LogManager::getInstance().Info(
-        "📊 Category log level set: {} = {}",
-        PulseOne::Utils::DriverLogCategoryToString(category), 
-        PulseOne::Utils::LogLevelToString(level));
+        "Category log level set: " + PulseOne::Utils::DriverLogCategoryToString(category) + 
+        " = " + PulseOne::Utils::LogLevelToString(level));
 }
 
 LogLevel LogLevelManager::GetCategoryLogLevel(DriverLogCategory category) const {
@@ -235,10 +199,10 @@ void LogLevelManager::ResetCategoryLogLevels() {
     std::lock_guard<std::mutex> lock(category_mutex_);
     category_levels_.clear();
     
-    LogManager::getInstance().Info("🔄 All category log levels reset to default");
+    LogManager::getInstance().Info("All category log levels reset to default");
 }
 
-// 점검 모드 관리 (기존 그대로)
+// 수정된 SetMaintenanceMode 메소드 (템플릿 에러 해결)
 void LogLevelManager::SetMaintenanceMode(bool enabled, LogLevel maintenance_level,
                                         const EngineerID& engineer_id) {
     bool was_enabled = maintenance_mode_.load();
@@ -249,8 +213,9 @@ void LogLevelManager::SetMaintenanceMode(bool enabled, LogLevel maintenance_leve
         SetLogLevel(maintenance_level, LogLevelSource::MAINTENANCE_OVERRIDE,
                    engineer_id, "Maintenance mode activated");
         
+        // 수정: 템플릿 방식 대신 문자열 연결 사용
         LogManager::getInstance().Maintenance(
-            "🔧 Maintenance mode STARTED by engineer: {}", engineer_id);
+            "Maintenance mode STARTED by engineer: " + engineer_id);
             
     } else if (!enabled && was_enabled) {
         LogLevel restore_level = LoadLogLevelFromFile();
@@ -262,15 +227,14 @@ void LogLevelManager::SetMaintenanceMode(bool enabled, LogLevel maintenance_leve
                    engineer_id, "Maintenance mode deactivated");
         
         LogManager::getInstance().Maintenance(
-            "✅ Maintenance mode ENDED by engineer: {}", engineer_id);
+            "Maintenance mode ENDED by engineer: " + engineer_id);
     }
 }
 
-// 웹 API 지원 (기존 그대로)
 bool LogLevelManager::UpdateLogLevelInDB(LogLevel level, const EngineerID& changed_by,
                                         const std::string& reason) {
     if (!db_manager_) {
-        LogManager::getInstance().Warn("⚠️ Cannot update log level: DB not available");
+        LogManager::getInstance().Warn("Cannot update log level: DB not available");
         return false;
     }
     
@@ -280,15 +244,15 @@ bool LogLevelManager::UpdateLogLevelInDB(LogLevel level, const EngineerID& chang
         if (success) {
             SetLogLevel(level, LogLevelSource::WEB_API, changed_by, reason);
             LogManager::getInstance().Info(
-                "✅ Log level updated via Web API: {} by {}", 
-                PulseOne::Utils::LogLevelToString(level), changed_by);
+                "Log level updated via Web API: " + PulseOne::Utils::LogLevelToString(level) + 
+                " by " + changed_by);
         }
         
         return success;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error(
-            "❌ Failed to update log level in DB: {}", e.what());
+            "Failed to update log level in DB: " + std::string(e.what()));
         return false;
     }
 }
@@ -308,16 +272,17 @@ bool LogLevelManager::UpdateCategoryLogLevelInDB(DriverLogCategory category, Log
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error(
-            "❌ Failed to update category log level in DB: {}", e.what());
+            "Failed to update category log level in DB: " + std::string(e.what()));
         return false;
     }
 }
 
+// 수정된 StartMaintenanceModeFromWeb (PostgreSQL → SQLite)
 bool LogLevelManager::StartMaintenanceModeFromWeb(const EngineerID& engineer_id,
                                                  LogLevel maintenance_level) {
     if (engineer_id.empty() || !PulseOne::Utils::IsValidEngineerID(engineer_id)) {
         LogManager::getInstance().Error(
-            "❌ Invalid engineer ID for maintenance mode: {}", engineer_id);
+            "Invalid engineer ID for maintenance mode: " + engineer_id);
         return false;
     }
     
@@ -329,21 +294,22 @@ bool LogLevelManager::StartMaintenanceModeFromWeb(const EngineerID& engineer_id,
                 "INSERT INTO maintenance_log (engineer_id, action, log_level, timestamp, source) "
                 "VALUES ('" + engineer_id + "', 'START', '" + 
                 PulseOne::Utils::LogLevelToString(maintenance_level) +
-                "', NOW(), 'WEB_API')";
-            db_manager_->executeNonQueryPostgres(query);
+                "', datetime('now'), 'WEB_API')";
+            db_manager_->executeNonQuerySQLite(query);
         } catch (const std::exception& e) {
             LogManager::getInstance().Warn(
-                "⚠️ Failed to log maintenance start to DB: {}", e.what());
+                "Failed to log maintenance start to DB: " + std::string(e.what()));
         }
     }
     
     return true;
 }
 
+// 수정된 EndMaintenanceModeFromWeb (PostgreSQL → SQLite)
 bool LogLevelManager::EndMaintenanceModeFromWeb(const EngineerID& engineer_id) {
     if (!maintenance_mode_.load()) {
         LogManager::getInstance().Warn(
-            "⚠️ Cannot end maintenance mode: not currently in maintenance mode");
+            "Cannot end maintenance mode: not currently in maintenance mode");
         return false;
     }
     
@@ -353,24 +319,23 @@ bool LogLevelManager::EndMaintenanceModeFromWeb(const EngineerID& engineer_id) {
         try {
             std::string query = 
                 "INSERT INTO maintenance_log (engineer_id, action, timestamp, source) "
-                "VALUES ('" + engineer_id + "', 'END', NOW(), 'WEB_API')";
-            db_manager_->executeNonQueryPostgres(query);
+                "VALUES ('" + engineer_id + "', 'END', datetime('now'), 'WEB_API')";
+            db_manager_->executeNonQuerySQLite(query);
         } catch (const std::exception& e) {
             LogManager::getInstance().Warn(
-                "⚠️ Failed to log maintenance end to DB: {}", e.what());
+                "Failed to log maintenance end to DB: " + std::string(e.what()));
         }
     }
     
     return true;
 }
 
-// 모니터링 (기존 그대로)
 void LogLevelManager::StartMonitoring() {
     if (running_.load()) return;
     
     running_.store(true);
     monitor_thread_ = std::thread([this]() {
-        LogManager::getInstance().Debug("🔍 LogLevelManager monitoring started");
+        LogManager::getInstance().Debug("LogLevelManager monitoring started");
         MonitoringLoop();
     });
 }
@@ -383,7 +348,7 @@ void LogLevelManager::StopMonitoring() {
         monitor_thread_.join();
     }
     
-    LogManager::getInstance().Debug("🔍 LogLevelManager monitoring stopped");
+    LogManager::getInstance().Debug("LogLevelManager monitoring stopped");
 }
 
 void LogLevelManager::MonitoringLoop() {
@@ -392,12 +357,11 @@ void LogLevelManager::MonitoringLoop() {
             CheckDatabaseChanges();
             CheckFileChanges();
             
-            // 10초 간격으로 체크
             std::this_thread::sleep_for(std::chrono::seconds(10));
             
         } catch (const std::exception& e) {
             LogManager::getInstance().Error(
-                "❌ LogLevelManager monitoring error: {}", e.what());
+                "LogLevelManager monitoring error: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(30));
         }
     }
@@ -406,7 +370,6 @@ void LogLevelManager::MonitoringLoop() {
 void LogLevelManager::CheckDatabaseChanges() {
     auto now = std::chrono::steady_clock::now();
     
-    // 30초마다 DB 체크
     if (now - last_db_check_ > std::chrono::seconds(30)) {
         db_check_count_++;
         
@@ -422,7 +385,6 @@ void LogLevelManager::CheckDatabaseChanges() {
 void LogLevelManager::CheckFileChanges() {
     auto now = std::chrono::steady_clock::now();
     
-    // 60초마다 파일 체크
     if (now - last_file_check_ > std::chrono::seconds(60)) {
         file_check_count_++;
         
@@ -435,7 +397,6 @@ void LogLevelManager::CheckFileChanges() {
     }
 }
 
-// 콜백 및 이벤트 관리 (기존 그대로)
 void LogLevelManager::RegisterChangeCallback(const LogLevelChangeCallback& callback) {
     std::lock_guard<std::mutex> lock(callback_mutex_);
     change_callbacks_.push_back(callback);
@@ -454,7 +415,7 @@ void LogLevelManager::NotifyLevelChange(const LogLevelChangeEvent& event) {
             callback(event.old_level, event.new_level);
         } catch (const std::exception& e) {
             LogManager::getInstance().Error(
-                "❌ Error in log level change callback: {}", e.what());
+                "Error in log level change callback: " + std::string(e.what()));
         }
     }
 }
@@ -464,7 +425,6 @@ void LogLevelManager::AddToHistory(const LogLevelChangeEvent& event) {
     
     change_history_.push_back(event);
     
-    // 최대 1000개 이벤트만 유지
     if (change_history_.size() > 1000) {
         change_history_.erase(change_history_.begin(), change_history_.begin() + 100);
     }
@@ -486,7 +446,6 @@ void LogLevelManager::ClearChangeHistory() {
     change_history_.clear();
 }
 
-// 상태 조회 및 진단 (기존 그대로)
 LogLevelManager::ManagerStatus LogLevelManager::GetStatus() const {
     ManagerStatus status;
     
@@ -520,47 +479,42 @@ LogLevelManager::ManagerStatus LogLevelManager::GetStatus() const {
 void LogLevelManager::RunDiagnostics() {
     LogManager& logger = LogManager::getInstance();
     
-    logger.Info("🔧 Running LogLevelManager diagnostics...");
+    logger.Info("Running LogLevelManager diagnostics...");
     
-    // 설정 검증
     bool config_valid = ValidateConfiguration();
-    logger.Info("📋 Configuration valid: {}", config_valid ? "YES" : "NO");
+    logger.Info("Configuration valid: " + std::string(config_valid ? "YES" : "NO"));
     
-    // 상태 정보
     ManagerStatus status = GetStatus();
-    logger.Info("📊 Status: {}", status.ToJson());
+    logger.Info("Status: " + status.ToJson());
     
-    // DB 연결 테스트
     if (db_manager_) {
         try {
             LogLevel test_level = LoadLogLevelFromDB();
-            logger.Info("🗄️ Database connection: OK (current level: {})", 
-                       PulseOne::Utils::LogLevelToString(test_level));
+            logger.Info("Database connection: OK (current level: " + 
+                       PulseOne::Utils::LogLevelToString(test_level) + ")");
         } catch (const std::exception& e) {
-            logger.Error("🗄️ Database connection: FAILED ({})", e.what());
+            logger.Error("Database connection: FAILED (" + std::string(e.what()) + ")");
         }
     } else {
-        logger.Warn("🗄️ Database: NOT CONFIGURED");
+        logger.Warn("Database: NOT CONFIGURED");
     }
     
-    // 파일 설정 테스트
     if (config_) {
         try {
             LogLevel test_level = LoadLogLevelFromFile();
-            logger.Info("📁 Config file: OK (current level: {})", 
-                       PulseOne::Utils::LogLevelToString(test_level));
+            logger.Info("Config file: OK (current level: " + 
+                       PulseOne::Utils::LogLevelToString(test_level) + ")");
         } catch (const std::exception& e) {
-            logger.Error("📁 Config file: FAILED ({})", e.what());
+            logger.Error("Config file: FAILED (" + std::string(e.what()) + ")");
         }
     } else {
-        logger.Warn("📁 Config: NOT CONFIGURED");
+        logger.Warn("Config: NOT CONFIGURED");
     }
     
-    logger.Info("✅ LogLevelManager diagnostics completed");
+    logger.Info("LogLevelManager diagnostics completed");
 }
 
 bool LogLevelManager::ValidateConfiguration() const {
-    // 기본 검증 사항들
     if (current_level_ < LogLevel::TRACE || current_level_ > LogLevel::MAINTENANCE) {
         return false;
     }
@@ -569,7 +523,6 @@ bool LogLevelManager::ValidateConfiguration() const {
         return false;
     }
     
-    // 카테고리 레벨 검증
     std::lock_guard<std::mutex> lock(category_mutex_);
     for (const auto& pair : category_levels_) {
         if (pair.second < LogLevel::TRACE || pair.second > LogLevel::MAINTENANCE) {
@@ -580,24 +533,34 @@ bool LogLevelManager::ValidateConfiguration() const {
     return true;
 }
 
-// 내부 DB 및 파일 처리 (기존 그대로)
+// 수정된 LoadLogLevelFromDB (SQLite 콜백 방식)
 LogLevel LogLevelManager::LoadLogLevelFromDB() {
     if (!db_manager_) return LogLevel::INFO;
     
     try {
-        std::string query = "SELECT setting_value FROM system_settings WHERE setting_key = 'log_level'";
-        auto result = db_manager_->executeQueryPostgres(query);
+        std::string query = "SELECT setting_value FROM system_settings WHERE setting_name = 'default_log_level'";
         
-        if (!result.empty()) {
-            std::string level_str = result[0]["setting_value"].as<std::string>();
-            LogLevel level = PulseOne::Utils::StringToLogLevel(level_str);
-            
-            last_db_check_ = std::chrono::steady_clock::now();
-            return level;
+        std::string result_value;
+        bool found = false;
+        
+        auto callback = [](void* data, int argc, char** argv, char** azColName) -> int {
+            if (argc > 0 && argv[0]) {
+                auto* result_ptr = static_cast<std::pair<std::string*, bool*>*>(data);
+                *(result_ptr->first) = argv[0];
+                *(result_ptr->second) = true;
+            }
+            return 0;
+        };
+        
+        std::pair<std::string*, bool*> callback_data(&result_value, &found);
+        db_manager_->executeQuerySQLite(query, callback, &callback_data);
+        
+        if (found) {
+            return PulseOne::Utils::StringToLogLevel(result_value);
         }
     } catch (const std::exception& e) {
         LogManager::getInstance().Debug(
-            "🔍 Failed to load log level from DB: {}", e.what());
+            "Failed to load log level from DB: " + std::string(e.what()));
     }
     
     return LogLevel::INFO;
@@ -615,100 +578,86 @@ LogLevel LogLevelManager::LoadLogLevelFromFile() {
     return LogLevel::INFO;
 }
 
+// 수정된 SaveLogLevelToDB (SQLite)
 bool LogLevelManager::SaveLogLevelToDB(LogLevel level, LogLevelSource source,
                                       const EngineerID& changed_by, const std::string& reason) {
     if (!db_manager_) return false;
     
     try {
-        std::string level_str = PulseOne::Utils::LogLevelToString(level);
-        std::string source_str = LogLevelSourceToString(source);
-        
         std::string query = 
-            "INSERT INTO system_settings (setting_key, setting_value, updated_at, updated_by) "
-            "VALUES ('log_level', '" + level_str + "', NOW(), '" + changed_by + "') "
-            "ON CONFLICT (setting_key) DO UPDATE SET "
-            "setting_value = EXCLUDED.setting_value, "
-            "updated_at = EXCLUDED.updated_at, "
-            "updated_by = EXCLUDED.updated_by";
-            
-        bool success = db_manager_->executeNonQueryPostgres(query);
+            "INSERT OR REPLACE INTO system_settings (setting_name, setting_value, changed_by, changed_at, reason) "
+            "VALUES ('default_log_level', '" + PulseOne::Utils::LogLevelToString(level) + 
+            "', '" + changed_by + "', datetime('now'), '" + reason + "')";
+        
+        bool success = db_manager_->executeNonQuerySQLite(query);
         
         if (success) {
             std::string history_query = 
                 "INSERT INTO log_level_history (old_level, new_level, source, changed_by, reason, change_time) "
-                "VALUES ('" + PulseOne::Utils::LogLevelToString(current_level_) + "', '" + level_str + "', '" +
-                source_str + "', '" + changed_by + "', '" + reason + "', NOW())";
-            db_manager_->executeNonQueryPostgres(history_query);
+                "VALUES ('" + PulseOne::Utils::LogLevelToString(current_level_) + "', '" + 
+                PulseOne::Utils::LogLevelToString(level) + "', '" +
+                LogLevelSourceToString(source) + "', '" + changed_by + "', '" + reason + "', datetime('now'))";
+            db_manager_->executeNonQuerySQLite(history_query);
         }
         
         return success;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error(
-            "❌ Failed to save log level to DB: {}", e.what());
+            "Failed to save log level to DB: " + std::string(e.what()));
         return false;
     }
 }
 
+// 수정된 LoadCategoryLevelsFromDB (SQLite 콜백 방식)
 void LogLevelManager::LoadCategoryLevelsFromDB() {
     if (!db_manager_) return;
     
     try {
-        std::string query = "SELECT category, log_level FROM category_log_levels";
-        auto result = db_manager_->executeQueryPostgres(query);
+        std::string query = "SELECT category, log_level FROM driver_log_levels";
         
-        std::lock_guard<std::mutex> lock(category_mutex_);
+        auto callback = [](void* data, int argc, char** argv, char** azColName) -> int {
+            if (argc >= 2 && argv[0] && argv[1]) {
+                auto* manager = static_cast<LogLevelManager*>(data);
+                
+                std::string category_str = argv[0];
+                std::string level_str = argv[1];
+                
+                DriverLogCategory category = PulseOne::Utils::StringToDriverLogCategory(category_str);
+                LogLevel level = PulseOne::Utils::StringToLogLevel(level_str);
+                
+                manager->SetCategoryLogLevel(category, level);
+            }
+            return 0;
+        };
         
-        for (const auto& row : result) {
-            std::string category_str = row["category"].as<std::string>();
-            std::string level_str = row["log_level"].as<std::string>();
-            
-            // 문자열을 enum으로 변환 (수동 매핑)
-            DriverLogCategory category = DriverLogCategory::GENERAL;  // 기본값
-            if (category_str == "CONNECTION") category = DriverLogCategory::CONNECTION;
-            else if (category_str == "COMMUNICATION") category = DriverLogCategory::COMMUNICATION;
-            else if (category_str == "DATA_PROCESSING") category = DriverLogCategory::DATA_PROCESSING;
-            else if (category_str == "ERROR_HANDLING") category = DriverLogCategory::ERROR_HANDLING;
-            else if (category_str == "PERFORMANCE") category = DriverLogCategory::PERFORMANCE;
-            else if (category_str == "SECURITY") category = DriverLogCategory::SECURITY;
-            else if (category_str == "PROTOCOL_SPECIFIC") category = DriverLogCategory::PROTOCOL_SPECIFIC;
-            else if (category_str == "DIAGNOSTICS") category = DriverLogCategory::DIAGNOSTICS;
-            LogLevel level = PulseOne::Utils::StringToLogLevel(level_str);
-            
-            category_levels_[category] = level;
-        }
+        db_manager_->executeQuerySQLite(query, callback, this);
         
-        LogManager::getInstance().Debug(
-            "📊 Loaded {} category log levels from DB", result.size());
+        LogManager::getInstance().Info("Loaded category log levels from DB");
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Debug(
-            "🔍 Failed to load category levels from DB: {}", e.what());
+            "Failed to load category levels from DB: " + std::string(e.what()));
     }
 }
 
+// 수정된 SaveCategoryLevelToDB (SQLite)
 bool LogLevelManager::SaveCategoryLevelToDB(DriverLogCategory category, LogLevel level,
                                            const EngineerID& changed_by) {
     if (!db_manager_) return false;
     
     try {
-        std::string category_str = PulseOne::Utils::DriverLogCategoryToString(category);
-        std::string level_str = PulseOne::Utils::LogLevelToString(level);
-        
         std::string query = 
-            "INSERT INTO category_log_levels (category, log_level, updated_by, updated_at) "
-            "VALUES ('" + category_str + "', '" + level_str + "', '" + changed_by + "', NOW()) "
-            "ON CONFLICT (category) DO UPDATE SET "
-            "log_level = EXCLUDED.log_level, "
-            "updated_by = EXCLUDED.updated_by, "
-            "updated_at = EXCLUDED.updated_at";
-            
-        return db_manager_->executeNonQueryPostgres(query);
+            "INSERT OR REPLACE INTO driver_log_levels (category, log_level, updated_by, updated_at) "
+            "VALUES ('" + PulseOne::Utils::DriverLogCategoryToString(category) + 
+            "', '" + PulseOne::Utils::LogLevelToString(level) + 
+            "', '" + changed_by + "', datetime('now'))";
+        
+        return db_manager_->executeNonQuerySQLite(query);
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error(
-            "❌ Failed to save category log level to DB: {}", e.what());
+            "Failed to save category level to DB: " + std::string(e.what()));
         return false;
     }
 }
-

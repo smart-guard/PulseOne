@@ -480,7 +480,7 @@ public:
                 return 206;  // Partial Content - 경고 상태
             case PulseOne::Enums::DeviceStatus::MAINTENANCE:
                 return 510;  // 점검 중
-            case PulseOne::Enums::DeviceStatus::ERROR:
+            case PulseOne::Enums::DeviceStatus::DEVICE_ERROR:
                 return 472;  // 디바이스 에러
             case PulseOne::Enums::DeviceStatus::OFFLINE:
             default:

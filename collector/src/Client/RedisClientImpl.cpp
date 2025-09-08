@@ -1028,7 +1028,7 @@ void RedisClientImpl::logWarning(const std::string& message) const {
 }
 
 void RedisClientImpl::logError(const std::string& message) const {
-    LogManager::getInstance().log("redis", LogLevel::ERROR, message);
+    LogManager::getInstance().log("redis", LogLevel::LOG_ERROR, message);
 }
 
 void RedisClientImpl::incrementCommand() {

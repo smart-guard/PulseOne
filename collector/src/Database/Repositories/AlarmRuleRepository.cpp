@@ -39,7 +39,7 @@ namespace Repositories {
 std::vector<AlarmRuleEntity> AlarmRuleRepository::findAll() {
     try {
         if (!ensureTableExists()) {
-            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR, 
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR, 
                                         "findAll - Table creation failed");
             return {};
         }
@@ -66,7 +66,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findAll() {
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findAll failed: " + std::string(e.what()));
         return {};
     }
@@ -112,7 +112,7 @@ std::optional<AlarmRuleEntity> AlarmRuleRepository::findById(int id) {
         return entity;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -125,7 +125,7 @@ bool AlarmRuleRepository::save(AlarmRuleEntity& entity) {
         }
         
         if (!validateAlarmRule(entity)) {
-            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                         "save - Invalid alarm rule data");
             return false;
         }
@@ -152,7 +152,7 @@ bool AlarmRuleRepository::save(AlarmRuleEntity& entity) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "save failed: " + std::string(e.what()));
         return false;
     }
@@ -165,7 +165,7 @@ bool AlarmRuleRepository::update(const AlarmRuleEntity& entity) {
         }
         
         if (!validateAlarmRule(entity)) {
-            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                         "update - Invalid alarm rule data");
             return false;
         }
@@ -195,7 +195,7 @@ bool AlarmRuleRepository::update(const AlarmRuleEntity& entity) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "update failed: " + std::string(e.what()));
         return false;
     }
@@ -227,7 +227,7 @@ bool AlarmRuleRepository::deleteById(int id) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "deleteById failed: " + std::string(e.what()));
         return false;
     }
@@ -257,7 +257,7 @@ bool AlarmRuleRepository::exists(int id) {
         return !results.empty() && std::stoi(results[0].at("count")) > 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "exists failed: " + std::string(e.what()));
         return false;
     }
@@ -312,7 +312,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByIds(const std::vector<in
                                     "findByIds - Found " + std::to_string(results.size()) + " alarm rules for " + std::to_string(ids.size()) + " IDs");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findByIds failed: " + std::string(e.what()));
     }
     
@@ -355,7 +355,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByConditions(
                                     "findByConditions - Found " + std::to_string(results.size()) + " alarm rules");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findByConditions failed: " + std::string(e.what()));
     }
     
@@ -382,7 +382,7 @@ int AlarmRuleRepository::countByConditions(const std::vector<QueryCondition>& co
         return 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "countByConditions failed: " + std::string(e.what()));
         return 0;
     }
@@ -462,7 +462,7 @@ int AlarmRuleRepository::deleteByIds(const std::vector<int>& ids) {
         return 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "deleteByIds failed: " + std::string(e.what()));
         return 0;
     }
@@ -513,7 +513,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByTarget(const std::string
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findByTarget failed: " + std::string(e.what()));
         return {};
     }
@@ -532,7 +532,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByTenant(int tenant_id, bo
         return findByConditions(conditions);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findByTenant failed: " + std::string(e.what()));
         return {};
     }
@@ -551,7 +551,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findBySeverity(const std::stri
         return findByConditions(conditions);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findBySeverity failed: " + std::string(e.what()));
         return {};
     }
@@ -570,7 +570,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByAlarmType(const std::str
         return findByConditions(conditions);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findByAlarmType failed: " + std::string(e.what()));
         return {};
     }
@@ -604,7 +604,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findAllEnabled() {
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findAllEnabled failed: " + std::string(e.what()));
         return {};
     }
@@ -624,7 +624,7 @@ std::optional<AlarmRuleEntity> AlarmRuleRepository::findByName(const std::string
         return findFirstByConditions(conditions);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "findByName failed: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -635,7 +635,7 @@ bool AlarmRuleRepository::isNameTaken(const std::string& name, int tenant_id, in
         auto found = findByName(name, tenant_id, exclude_id);
         return found.has_value();
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "isNameTaken failed: " + std::string(e.what()));
         return false;
     }
@@ -787,7 +787,7 @@ AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(const std::map<std::string, 
         return entity;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "mapRowToEntity failed: " + std::string(e.what()));
         
         // 🔥 최소 동작 가능한 기본 엔티티 반환
@@ -903,7 +903,7 @@ bool AlarmRuleRepository::ensureTableExists() {
         // 🔥 ExtendedSQLQueries.h 사용
         return true; // 테이블 이미 존재함
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "ensureTableExists failed: " + std::string(e.what()));
         return false;
     }
@@ -912,7 +912,7 @@ bool AlarmRuleRepository::ensureTableExists() {
 bool AlarmRuleRepository::validateAlarmRule(const AlarmRuleEntity& entity) {
     // 🔥 수정: UNKNOWN 체크 제거, 기본값으로 변경
     if (entity.getName().empty()) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "validateAlarmRule - Name cannot be empty");
         return false;
     }
@@ -922,7 +922,7 @@ bool AlarmRuleRepository::validateAlarmRule(const AlarmRuleEntity& entity) {
     if (target_type != PulseOne::Alarm::TargetType::DATA_POINT &&
         target_type != PulseOne::Alarm::TargetType::VIRTUAL_POINT &&
         target_type != PulseOne::Alarm::TargetType::GROUP) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "validateAlarmRule - Invalid target type");
         return false;
     }
@@ -931,7 +931,7 @@ bool AlarmRuleRepository::validateAlarmRule(const AlarmRuleEntity& entity) {
     if ((target_type == PulseOne::Alarm::TargetType::DATA_POINT || 
          target_type == PulseOne::Alarm::TargetType::VIRTUAL_POINT) &&
         (!entity.getTargetId().has_value() || entity.getTargetId().value() <= 0)) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "validateAlarmRule - Target ID required for DATA_POINT/VIRTUAL_POINT");
         return false;
     }
@@ -939,7 +939,7 @@ bool AlarmRuleRepository::validateAlarmRule(const AlarmRuleEntity& entity) {
     // GROUP의 경우 target_group 필수
     if (target_type == PulseOne::Alarm::TargetType::GROUP &&
         entity.getTargetGroup().empty()) {
-        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "validateAlarmRule - Target group required for GROUP type");
         return false;
     }
@@ -952,7 +952,7 @@ bool AlarmRuleRepository::validateAlarmRule(const AlarmRuleEntity& entity) {
             !entity.getHighLimit().has_value() &&
             !entity.getLowLimit().has_value() &&
             !entity.getLowLowLimit().has_value()) {
-            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                         "validateAlarmRule - Analog alarm requires at least one threshold");
             return false;
         }
@@ -961,7 +961,7 @@ bool AlarmRuleRepository::validateAlarmRule(const AlarmRuleEntity& entity) {
     if (alarm_type == PulseOne::Alarm::AlarmType::SCRIPT) {
         // 스크립트 알람은 condition_script 필수
         if (entity.getConditionScript().empty()) {
-            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                         "validateAlarmRule - Script alarm requires condition script");
             return false;
         }

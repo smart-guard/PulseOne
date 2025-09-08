@@ -43,7 +43,7 @@ bool DatabaseManager::doInitialize() {
             LogManager::getInstance().log("database", LogLevel::INFO, 
                 "SQLite 연결 성공");
         } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "SQLite 연결 실패");
             return false;
         }

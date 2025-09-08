@@ -65,8 +65,8 @@ private:
                 case LogLevel::DEBUG_LEVEL: return "DEBUG";
                 case LogLevel::INFO: return "INFO";
                 case LogLevel::WARN: return "WARN";
-                case LogLevel::ERROR: return "ERROR";
-                case LogLevel::FATAL: return "FATAL";
+                case LogLevel::LOG_ERROR: return "ERROR";
+                case LogLevel::LOG_FATAL: return "FATAL";
                 case LogLevel::MAINTENANCE: return "MAINT";
                 default: return "UNKNOWN";
             }
@@ -116,11 +116,11 @@ public:
     }
     
     void Error(const std::string& message, DriverLogCategory category = DriverLogCategory::GENERAL) {
-        LogWithContext(LogLevel::ERROR, message, category, default_context_);
+        LogWithContext(LogLevel::LOG_ERROR, message, category, default_context_);
     }
     
     void Fatal(const std::string& message, DriverLogCategory category = DriverLogCategory::GENERAL) {
-        LogWithContext(LogLevel::FATAL, message, category, default_context_);
+        LogWithContext(LogLevel::LOG_FATAL, message, category, default_context_);
     }
     
     void Trace(const std::string& message, DriverLogCategory category = DriverLogCategory::GENERAL) {
@@ -151,10 +151,10 @@ public:
                 case LogLevel::WARN:
                     legacy_logger_->Warn(formatted_message);
                     break;
-                case LogLevel::ERROR:
+                case LogLevel::LOG_ERROR:
                     legacy_logger_->Error(formatted_message);
                     break;
-                case LogLevel::FATAL:
+                case LogLevel::LOG_FATAL:
                     legacy_logger_->Fatal(formatted_message);
                     break;
                 case LogLevel::TRACE:  // 🆕 TRACE 처리
@@ -224,8 +224,8 @@ public:
                 case LogLevel::DEBUG_LEVEL: Debug(message, category); break;
                 case LogLevel::INFO: Info(message, category); break;
                 case LogLevel::WARN: Warn(message, category); break;
-                case LogLevel::ERROR: Error(message, category); break;
-                case LogLevel::FATAL: Fatal(message, category); break;
+                case LogLevel::LOG_ERROR: Error(message, category); break;
+                case LogLevel::LOG_FATAL: Fatal(message, category); break;
                 case LogLevel::TRACE: Trace(message, category); break;  // 🆕
                 case LogLevel::MAINTENANCE: Maintenance(message, category); break;  // 🆕
             }
@@ -238,8 +238,8 @@ public:
             case LogLevel::DEBUG_LEVEL: log_count_debug_++; break;
             case LogLevel::INFO: log_count_info_++; break;
             case LogLevel::WARN: log_count_warn_++; break;
-            case LogLevel::ERROR: log_count_error_++; break;
-            case LogLevel::FATAL: log_count_fatal_++; break;
+            case LogLevel::LOG_ERROR: log_count_error_++; break;
+            case LogLevel::LOG_FATAL: log_count_fatal_++; break;
             case LogLevel::TRACE: log_count_trace_++; break;  // 🆕
             case LogLevel::MAINTENANCE: log_count_maintenance_++; break;  // 🆕
         }
@@ -318,9 +318,9 @@ public:
 
 #define DRIVER_LOG_ERROR(logger, message, category) \
     do { \
-        if ((logger).GetMinLevel() <= LogLevel::ERROR) { \
+        if ((logger).GetMinLevel() <= LogLevel::LOG_ERROR) { \
             auto ctx = DRIVER_LOG_CONTEXT(); \
-            (logger).LogWithContext(LogLevel::ERROR, message, category, ctx); \
+            (logger).LogWithContext(LogLevel::LOG_ERROR, message, category, ctx); \
         } \
     } while(0)
 

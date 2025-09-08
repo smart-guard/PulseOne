@@ -48,7 +48,7 @@ void ScriptLibraryRepository::initializeDependencies() {
         LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::DEBUG,
                                     "initializeDependencies - Repository initialized");
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "initializeDependencies failed: " + std::string(e.what()));
     }
 }
@@ -60,7 +60,7 @@ void ScriptLibraryRepository::initializeDependencies() {
 std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findAll() {
     try {
         if (!ensureTableExists()) {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR, 
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR, 
                                         "findAll - Table creation failed");
             return {};
         }
@@ -86,7 +86,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findAll() {
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findAll failed: " + std::string(e.what()));
         return {};
     }
@@ -132,7 +132,7 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findById(int id) {
         return entity;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -141,7 +141,7 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findById(int id) {
 bool ScriptLibraryRepository::save(ScriptLibraryEntity& entity) {
     try {
         if (!validateEntity(entity)) {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                         "save - Invalid script entity");
             return false;
         }
@@ -196,14 +196,14 @@ bool ScriptLibraryRepository::save(ScriptLibraryEntity& entity) {
                                             "save - Script saved: " + entity.getName());
             }
         } else {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                         "save - Failed to save script: " + entity.getName());
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "save failed: " + std::string(e.what()));
         return false;
     }
@@ -212,7 +212,7 @@ bool ScriptLibraryRepository::save(ScriptLibraryEntity& entity) {
 bool ScriptLibraryRepository::update(const ScriptLibraryEntity& entity) {
     try {
         if (entity.getId() <= 0 || !validateEntity(entity)) {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                         "update - Invalid script entity");
             return false;
         }
@@ -260,14 +260,14 @@ bool ScriptLibraryRepository::update(const ScriptLibraryEntity& entity) {
             LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
                                         "update - Script updated: " + entity.getName());
         } else {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                         "update - Failed to update script: " + entity.getName());
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "update failed: " + std::string(e.what()));
         return false;
     }
@@ -276,7 +276,7 @@ bool ScriptLibraryRepository::update(const ScriptLibraryEntity& entity) {
 bool ScriptLibraryRepository::deleteById(int id) {
     try {
         if (id <= 0) {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                         "deleteById - Invalid ID");
             return false;
         }
@@ -307,7 +307,7 @@ bool ScriptLibraryRepository::deleteById(int id) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "deleteById failed: " + std::string(e.what()));
         return false;
     }
@@ -337,7 +337,7 @@ bool ScriptLibraryRepository::exists(int id) {
         return !results.empty() && std::stoi(results[0].at("count")) > 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "exists failed: " + std::string(e.what()));
         return false;
     }
@@ -377,7 +377,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByIds(const std::v
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                      "findByIds 실행 실패: " + std::string(e.what()));
         return {};
     }
@@ -415,7 +415,7 @@ int ScriptLibraryRepository::saveBulk(std::vector<ScriptLibraryEntity>& entities
         return success_count;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                      "saveBulk 실행 실패: " + std::string(e.what()));
         return 0;
     }
@@ -453,7 +453,7 @@ int ScriptLibraryRepository::updateBulk(const std::vector<ScriptLibraryEntity>& 
         return success_count;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                      "updateBulk 실행 실패: " + std::string(e.what()));
         return 0;
     }
@@ -493,7 +493,7 @@ int ScriptLibraryRepository::deleteByIds(const std::vector<int>& ids) {
         return 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                      "deleteByIds 실행 실패: " + std::string(e.what()));
         return 0;
     }
@@ -545,7 +545,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByConditions(const
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                      "findByConditions 실행 실패: " + std::string(e.what()));
         return {};
     }
@@ -591,7 +591,7 @@ int ScriptLibraryRepository::countByConditions(const std::map<std::string, std::
         return 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                      "countByConditions 실행 실패: " + std::string(e.what()));
         return 0;
     }
@@ -631,7 +631,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByCategory(const s
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findByCategory failed: " + std::string(e.what()));
         return {};
     }
@@ -667,7 +667,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByTenantId(int ten
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findByTenantId failed: " + std::string(e.what()));
         return {};
     }
@@ -701,7 +701,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findSystemScripts() {
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findSystemScripts failed: " + std::string(e.what()));
         return {};
     }
@@ -736,7 +736,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findTopUsed(int limit)
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findTopUsed failed: " + std::string(e.what()));
         return {};
     }
@@ -771,7 +771,7 @@ bool ScriptLibraryRepository::incrementUsageCount(int script_id) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "incrementUsageCount failed: " + std::string(e.what()));
         return false;
     }
@@ -792,14 +792,14 @@ bool ScriptLibraryRepository::ensureTableExists() {
             LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::DEBUG,
                                         "ensureTableExists - Table creation/check completed");
         } else {
-            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                         "ensureTableExists - Table creation failed");
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "ensureTableExists failed: " + std::string(e.what()));
         return false;
     }
@@ -864,7 +864,7 @@ ScriptLibraryEntity ScriptLibraryRepository::mapRowToEntity(const std::map<std::
         entity.markSaved(); // 데이터베이스에서 로드됨을 표시
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "mapRowToEntity failed: " + std::string(e.what()));
         throw; // 상위로 전파
     }
@@ -911,19 +911,19 @@ std::string ScriptLibraryRepository::returnTypeEnumToString(ScriptLibraryEntity:
 
 bool ScriptLibraryRepository::validateEntity(const ScriptLibraryEntity& entity) const {
     if (entity.getName().empty()) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "validateEntity - Empty script name");
         return false;
     }
     
     if (entity.getScriptCode().empty()) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "validateEntity - Empty script code");
         return false;
     }
     
     if (entity.getTenantId() < 0) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "validateEntity - Invalid tenant_id: " + std::to_string(entity.getTenantId()));
         return false;
     }
@@ -967,7 +967,7 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findByName(int tenan
         return entity;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findByName failed: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -1018,7 +1018,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByTags(const std::
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "findByTags failed: " + std::string(e.what()));
         return {};
     }
@@ -1069,7 +1069,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::search(const std::stri
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "search failed: " + std::string(e.what()));
         return {};
     }
@@ -1093,7 +1093,7 @@ bool ScriptLibraryRepository::recordUsage(int script_id, int virtual_point_id, i
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "recordUsage failed: " + std::string(e.what()));
         return false;
     }
@@ -1127,7 +1127,7 @@ bool ScriptLibraryRepository::saveVersion(int script_id, const std::string& vers
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "saveVersion failed: " + std::string(e.what()));
         return false;
     }
@@ -1172,7 +1172,7 @@ std::vector<std::map<std::string, std::string>> ScriptLibraryRepository::getTemp
                                     "getTemplates - Found " + std::to_string(templates.size()) + " templates");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "getTemplates failed: " + std::string(e.what()));
     }
     
@@ -1215,7 +1215,7 @@ std::optional<std::map<std::string, std::string>> ScriptLibraryRepository::getTe
         return template_info;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                     "getTemplateById failed: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -1280,7 +1280,7 @@ nlohmann::json ScriptLibraryRepository::getUsageStatistics(int tenant_id) {
                                    "getUsageStatistics - Generated statistics for tenant: " + std::to_string(tenant_id));
        
    } catch (const std::exception& e) {
-       LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::ERROR,
+       LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::LOG_ERROR,
                                    "getUsageStatistics failed: " + std::string(e.what()));
        stats["error"] = e.what();
    }

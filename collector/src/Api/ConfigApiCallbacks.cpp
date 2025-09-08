@@ -168,9 +168,9 @@ void ConfigApiCallbacks::ApplyImmediateConfigChanges() {
             } else if (new_log_level == "WARN") {
                 logger.setLogLevel(LogLevel::WARN);
             } else if (new_log_level == "ERROR") {
-                logger.setLogLevel(LogLevel::ERROR);
+                logger.setLogLevel(LogLevel::LOG_ERROR);
             } else if (new_log_level == "FATAL") {
-                logger.setLogLevel(LogLevel::FATAL);
+                logger.setLogLevel(LogLevel::LOG_FATAL);
             } else if (new_log_level == "TRACE") {
                 logger.setLogLevel(LogLevel::TRACE);
             }

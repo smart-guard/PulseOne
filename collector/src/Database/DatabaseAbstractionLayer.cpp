@@ -564,7 +564,7 @@ bool DatabaseAbstractionLayer::executeCreateTable(const std::string& create_sql)
     // 1. 테이블 이름 추출
     std::string table_name = extractTableNameFromCreateSQL(create_sql);
     if (table_name.empty()) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "테이블 이름을 추출할 수 없음: " + create_sql.substr(0, 100) + "...");
         return false;
     }
@@ -597,7 +597,7 @@ bool DatabaseAbstractionLayer::doesTableExist(const std::string& table_name) {
         return exists;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "테이블 존재 확인 실패: " + table_name + " - " + std::string(e.what()));
         return false;
     }

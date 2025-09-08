@@ -75,8 +75,8 @@ namespace Enums {
         DEBUG_LEVEL = 1,
         INFO = 2,
         WARN = 3,
-        ERROR = 4,      // Windows ERROR 매크로와 충돌 방지됨
-        FATAL = 5,      // Windows FATAL 매크로와 충돌 방지됨
+        LOG_ERROR = 4,      // 🔥 ERROR → LOG_ERROR로 변경 (Windows 매크로 충돌 완전 방지)
+        LOG_FATAL = 5,          // Windows FATAL 매크로와 충돌 방지됨
         MAINTENANCE = 6,
         OFF = 255
     };
@@ -124,7 +124,7 @@ namespace Enums {
         PAUSED = 6,
         STOPPING = 7,
         STOPPED = 8,
-        ERROR = 9,      // Windows ERROR 매크로와 충돌 방지됨
+        DRIVER_ERROR = 9,      // Windows ERROR 매크로와 충돌 방지됨
         CRASHED = 10,
         MAINTENANCE = 11
     };
@@ -350,7 +350,7 @@ namespace Enums {
         ONLINE = 0,
         OFFLINE = 1,
         MAINTENANCE = 2,
-        ERROR = 3,      // Windows ERROR 매크로와 충돌 방지됨
+        DEVICE_ERROR = 3,      // Windows ERROR 매크로와 충돌 방지됨
         WARNING = 4
     };
 
@@ -363,7 +363,7 @@ namespace Enums {
             case DeviceStatus::ONLINE:      return "ONLINE";
             case DeviceStatus::OFFLINE:     return "OFFLINE";
             case DeviceStatus::MAINTENANCE: return "MAINTENANCE";
-            case DeviceStatus::ERROR:       return "ERROR";
+            case DeviceStatus::DEVICE_ERROR:       return "ERROR";
             case DeviceStatus::WARNING:     return "WARNING";
             default:                        return "UNKNOWN";
         }
@@ -373,7 +373,7 @@ namespace Enums {
         if (status_str == "ONLINE") return DeviceStatus::ONLINE;
         if (status_str == "OFFLINE") return DeviceStatus::OFFLINE;
         if (status_str == "MAINTENANCE") return DeviceStatus::MAINTENANCE;
-        if (status_str == "ERROR") return DeviceStatus::ERROR;
+        if (status_str == "ERROR") return DeviceStatus::DEVICE_ERROR;
         if (status_str == "WARNING") return DeviceStatus::WARNING;
         return DeviceStatus::OFFLINE;
     }
@@ -384,8 +384,8 @@ namespace Enums {
             case LogLevel::DEBUG:       return "DEBUG";
             case LogLevel::INFO:        return "INFO";
             case LogLevel::WARN:        return "WARN";
-            case LogLevel::ERROR:       return "ERROR";
-            case LogLevel::FATAL:       return "FATAL";
+            case LogLevel::LOG_ERROR:   return "ERROR";
+            case LogLevel::LOG_FATAL:   return "FATAL";
             case LogLevel::MAINTENANCE: return "MAINTENANCE";
             case LogLevel::OFF:         return "OFF";
             default:                    return "UNKNOWN";
@@ -419,6 +419,68 @@ namespace Enums {
             case ErrorCode::BACNET_SERVICE_ERROR:   return "BACNET_SERVICE_ERROR";
             default:                                 return "UNKNOWN_ERROR";
         }
+    }
+
+        // =========================================================================
+    // 🔥 DriverStatus 문자열 변환 헬퍼 함수
+    // =========================================================================
+    
+    /**
+     * @brief DriverStatus → 문자열 변환
+     */
+    inline std::string DriverStatusToString(DriverStatus status) {
+        switch (status) {
+            case DriverStatus::UNINITIALIZED: return "UNINITIALIZED";
+            case DriverStatus::INITIALIZING: return "INITIALIZING";
+            case DriverStatus::INITIALIZED: return "INITIALIZED";
+            case DriverStatus::STARTING: return "STARTING";
+            case DriverStatus::RUNNING: return "RUNNING";
+            case DriverStatus::PAUSING: return "PAUSING";
+            case DriverStatus::PAUSED: return "PAUSED";
+            case DriverStatus::STOPPING: return "STOPPING";
+            case DriverStatus::STOPPED: return "STOPPED";
+            case DriverStatus::DRIVER_ERROR: return "DRIVER_ERROR";  // 🔥 변경된 이름
+            case DriverStatus::CRASHED: return "CRASHED";
+            case DriverStatus::MAINTENANCE: return "MAINTENANCE";
+            default: return "UNKNOWN";
+        }
+    }
+    
+    /**
+     * @brief 문자열 → DriverStatus 변환
+     */
+    inline DriverStatus StringToDriverStatus(const std::string& status_str) {
+        if (status_str == "UNINITIALIZED") return DriverStatus::UNINITIALIZED;
+        if (status_str == "INITIALIZING") return DriverStatus::INITIALIZING;
+        if (status_str == "INITIALIZED") return DriverStatus::INITIALIZED;
+        if (status_str == "STARTING") return DriverStatus::STARTING;
+        if (status_str == "RUNNING") return DriverStatus::RUNNING;
+        if (status_str == "PAUSING") return DriverStatus::PAUSING;
+        if (status_str == "PAUSED") return DriverStatus::PAUSED;
+        if (status_str == "STOPPING") return DriverStatus::STOPPING;
+        if (status_str == "STOPPED") return DriverStatus::STOPPED;
+        if (status_str == "DRIVER_ERROR" || status_str == "ERROR") return DriverStatus::DRIVER_ERROR;  // 🔥 기존 호환성
+        if (status_str == "CRASHED") return DriverStatus::CRASHED;
+        if (status_str == "MAINTENANCE") return DriverStatus::MAINTENANCE;
+        return DriverStatus::UNINITIALIZED;
+    }
+
+    // =========================================================================
+    // 🔥 기존 코드 호환성을 위한 상수 정의
+    // =========================================================================
+    namespace DriverStatusCompat {
+        constexpr uint8_t UNINITIALIZED = 0;
+        constexpr uint8_t INITIALIZING = 1;
+        constexpr uint8_t INITIALIZED = 2;
+        constexpr uint8_t STARTING = 3;
+        constexpr uint8_t RUNNING = 4;
+        constexpr uint8_t PAUSING = 5;
+        constexpr uint8_t PAUSED = 6;
+        constexpr uint8_t STOPPING = 7;
+        constexpr uint8_t STOPPED = 8;
+        constexpr uint8_t DRIVER_ERROR = 9;    // 🔥 ERROR → DRIVER_ERROR
+        constexpr uint8_t CRASHED = 10;
+        constexpr uint8_t MAINTENANCE = 11;
     }
 
 } // namespace Enums

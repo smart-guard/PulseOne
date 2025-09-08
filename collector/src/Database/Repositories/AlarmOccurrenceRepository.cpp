@@ -37,7 +37,7 @@ namespace Repositories {
 std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll() {
     try {
         if (!ensureTableExists()) {
-            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR, 
+            LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR, 
                                         "findAll - Table creation failed");
             return {};
         }
@@ -62,7 +62,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll() {
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findAll failed: " + std::string(e.what()));
         return {};
     }
@@ -104,7 +104,7 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
         return entity;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -116,7 +116,7 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
         logger.log("AlarmOccurrenceRepository", LogLevel::INFO, "save() 메서드 시작");
         
         if (!ensureTableExists()) {
-            logger.log("AlarmOccurrenceRepository", LogLevel::ERROR, "테이블 존재 확인 실패");
+            logger.log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR, "테이블 존재 확인 실패");
             return false;
         }
         
@@ -202,12 +202,12 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
             
             return true;
         } else {
-            logger.log("AlarmOccurrenceRepository", LogLevel::ERROR, "INSERT 쿼리 실행 실패");
+            logger.log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR, "INSERT 쿼리 실행 실패");
             return false;
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "save() 메서드 예외 발생: " + std::string(e.what()));
         return false;
     }
@@ -278,7 +278,7 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "update failed: " + std::string(e.what()));
         return false;
     }
@@ -306,7 +306,7 @@ bool AlarmOccurrenceRepository::deleteById(int id) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "deleteById failed: " + std::string(e.what()));
         return false;
     }
@@ -333,7 +333,7 @@ bool AlarmOccurrenceRepository::exists(int id) {
         return !results.empty() && std::stoi(results[0].at("count")) > 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "exists failed: " + std::string(e.what()));
         return false;
     }
@@ -385,7 +385,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByIds(const st
                                     "findByIds - Found " + std::to_string(results.size()) + " alarm occurrences");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findByIds failed: " + std::string(e.what()));
     }
     
@@ -427,7 +427,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByConditions(
                                     "findByConditions - Found " + std::to_string(results.size()) + " alarm occurrences");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findByConditions failed: " + std::string(e.what()));
     }
     
@@ -453,7 +453,7 @@ int AlarmOccurrenceRepository::countByConditions(const std::vector<QueryConditio
         return 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "countByConditions failed: " + std::string(e.what()));
         return 0;
     }
@@ -528,7 +528,7 @@ int AlarmOccurrenceRepository::deleteByIds(const std::vector<int>& ids) {
         return 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "deleteByIds failed: " + std::string(e.what()));
         return 0;
     }
@@ -575,7 +575,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActive(std::op
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findActive failed: " + std::string(e.what()));
         return {};
     }
@@ -620,7 +620,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByRuleId(int r
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findByRuleId failed: " + std::string(e.what()));
         return {};
     }
@@ -667,7 +667,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTenant(int t
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findByTenant failed: " + std::string(e.what()));
         return {};
     }
@@ -720,7 +720,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTimeRange(
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findByTimeRange failed: " + std::string(e.what()));
         return {};
     }
@@ -757,7 +757,7 @@ bool AlarmOccurrenceRepository::acknowledge(int64_t occurrence_id, int acknowled
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "acknowledge failed: " + std::string(e.what()));
         return false;
     }
@@ -795,7 +795,7 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, int cleared_by, con
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "clear failed: " + std::string(e.what()));
         return false;
     }
@@ -843,7 +843,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findClearedByUser(
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findClearedByUser failed: " + std::string(e.what()));
         return {};
     }
@@ -891,7 +891,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAcknowledgedBy
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findAcknowledgedByUser failed: " + std::string(e.what()));
         return {};
     }
@@ -934,7 +934,7 @@ std::map<std::string, int> AlarmOccurrenceRepository::getAlarmStatistics(int ten
                                     "getAlarmStatistics - Retrieved statistics for tenant: " + std::to_string(tenant_id));
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "getAlarmStatistics failed: " + std::string(e.what()));
     }
     
@@ -983,7 +983,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActiveByRuleId
         return entities;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findActiveByRuleId failed: " + std::string(e.what()));
         return {};
     }
@@ -1009,7 +1009,7 @@ int AlarmOccurrenceRepository::findMaxId() {
         return 0;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "findMaxId failed: " + std::string(e.what()));
         return 0;
     }
@@ -1203,7 +1203,7 @@ AlarmOccurrenceEntity AlarmOccurrenceRepository::mapRowToEntity(const std::map<s
         return entity;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "mapRowToEntity failed: " + std::string(e.what()));
         throw;
     }
@@ -1265,7 +1265,7 @@ bool AlarmOccurrenceRepository::ensureTableExists() {
 
         return db_layer.executeNonQuery(SQL::AlarmOccurrence::CREATE_TABLE);
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
                                     "ensureTableExists failed: " + std::string(e.what()));
         return false;
     }

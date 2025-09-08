@@ -55,7 +55,7 @@ AlarmManager::AlarmManager()
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ AlarmManager 초기화 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ AlarmManager 초기화 실패: " + std::string(e.what()));
         initialized_ = false;
     }
 }
@@ -86,7 +86,7 @@ void AlarmManager::initializeData() {
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 초기 데이터 로드 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 초기 데이터 로드 실패: " + std::string(e.what()));
     }
 }
 
@@ -116,7 +116,7 @@ bool AlarmManager::initScriptEngine() {
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ JavaScript 엔진 초기화 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ JavaScript 엔진 초기화 실패: " + std::string(e.what()));
         return false;
     }
 }
@@ -167,7 +167,7 @@ std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage
     
     if (!initialized_.load()) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ AlarmManager 초기화되지 않음");
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ AlarmManager 초기화되지 않음");
         return events;
     }
     
@@ -196,7 +196,7 @@ std::vector<AlarmEvent> AlarmManager::evaluateForMessage(const DeviceDataMessage
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 메시지 평가 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 메시지 평가 실패: " + std::string(e.what()));
     }
     
     return events;
@@ -269,7 +269,7 @@ void AlarmManager::adjustSeverityByBusinessRules(AlarmEvent& event) {
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 심각도 조정 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 심각도 조정 실패: " + std::string(e.what()));
     }
 }
 
@@ -353,7 +353,7 @@ void AlarmManager::analyzeContinuousAlarmPattern(AlarmEvent& event) {
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 연속 알람 패턴 분석 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 연속 알람 패턴 분석 실패: " + std::string(e.what()));
     }
 }
 
@@ -388,7 +388,7 @@ void AlarmManager::applyCategorySpecificRules(AlarmEvent& event) {
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 카테고리별 규칙 적용 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 카테고리별 규칙 적용 실패: " + std::string(e.what()));
     }
 }
 
@@ -483,7 +483,7 @@ bool AlarmManager::acknowledgeAlarm(int64_t occurrence_id, int user_id, const st
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 알람 확인 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 알람 확인 실패: " + std::string(e.what()));
         return false;
     }
 }
@@ -596,7 +596,7 @@ json AlarmManager::getStatistics() const {
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 통계 정보 생성 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 통계 정보 생성 실패: " + std::string(e.what()));
         stats["error"] = "Failed to get statistics";
     }
     
@@ -649,7 +649,7 @@ std::string AlarmManager::interpolateTemplate(const std::string& tmpl,
         }
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
-        logger.log("alarm", LogLevel::ERROR, "❌ 템플릿 변수 치환 실패: " + std::string(e.what()));
+        logger.log("alarm", LogLevel::LOG_ERROR, "❌ 템플릿 변수 치환 실패: " + std::string(e.what()));
     }
     
     return result;

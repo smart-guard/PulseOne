@@ -154,7 +154,7 @@ bool ScriptLibraryManager::initialize(std::shared_ptr<DatabaseManager> db_manage
         repository_ = repo_factory.getScriptLibraryRepository();
         
         if (!repository_) {
-            LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                          "ScriptLibraryRepository 가져오기 실패");
             return false;
         }
@@ -173,7 +173,7 @@ bool ScriptLibraryManager::initialize(std::shared_ptr<DatabaseManager> db_manage
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "ScriptLibraryManager 초기화 실패: " + std::string(e.what()));
         return false;
     }
@@ -224,7 +224,7 @@ bool ScriptLibraryManager::loadSystemScripts() {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "시스템 스크립트 로드 실패: " + std::string(e.what()));
         return false;
     }
@@ -236,7 +236,7 @@ bool ScriptLibraryManager::loadSystemScripts() {
 
 std::optional<ScriptDefinition> ScriptLibraryManager::getScript(const std::string& name, int tenant_id) {
     if (!initialized_.load()) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "ScriptLibraryManager가 초기화되지 않음");
         return std::nullopt;
     }
@@ -276,7 +276,7 @@ std::optional<ScriptDefinition> ScriptLibraryManager::getScript(const std::strin
         return std::nullopt;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "getScript('" + name + "') 실패: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -316,7 +316,7 @@ std::optional<ScriptDefinition> ScriptLibraryManager::getScriptById(int script_i
         return std::nullopt;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "getScriptById(" + std::to_string(script_id) + ") 실패: " + std::string(e.what()));
         return std::nullopt;
     }
@@ -346,7 +346,7 @@ std::vector<ScriptDefinition> ScriptLibraryManager::getAllScripts(int tenant_id)
                                      std::to_string(scripts.size()) + "개 조회 완료");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "getAllScripts(" + std::to_string(tenant_id) + ") 실패: " + std::string(e.what()));
     }
     
@@ -377,7 +377,7 @@ std::vector<ScriptDefinition> ScriptLibraryManager::getScriptsByCategory(const s
                                      std::to_string(scripts.size()) + "개 조회 완료");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "getScriptsByCategory('" + category + "') 실패: " + std::string(e.what()));
     }
     
@@ -464,7 +464,7 @@ std::vector<std::string> ScriptLibraryManager::collectDependencies(const std::st
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "collectDependencies 실패: " + std::string(e.what()));
     }
     
@@ -478,7 +478,7 @@ void ScriptLibraryManager::recordUsage(int script_id, int virtual_point_id, cons
         }
         
         if (!repository_) {
-            LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+            LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                         "recordUsage - Repository not available");
             return;
         }
@@ -505,7 +505,7 @@ void ScriptLibraryManager::recordUsage(int script_id, int virtual_point_id, cons
                                     " used by VP " + std::to_string(virtual_point_id));
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                     "recordUsage failed: " + std::string(e.what()));
     }
 }
@@ -521,7 +521,7 @@ void ScriptLibraryManager::recordUsage(const std::string& script_name, int virtu
                                          "recordUsage: 스크립트 '" + script_name + "' 찾을 수 없음");
         }
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "recordUsage(name) 실패: " + std::string(e.what()));
     }
 }
@@ -570,7 +570,7 @@ std::string ScriptLibraryManager::buildCompleteScript(const std::string& formula
         return result;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "buildCompleteScript 실패: " + std::string(e.what()));
         return formula; // 실패 시 원본 반환
     }
@@ -658,7 +658,7 @@ bool ScriptLibraryManager::validateScript(const std::string& script_code) {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::ERROR,
+        LogManager::getInstance().log("ScriptLibraryManager", LogLevel::LOG_ERROR,
                                      "validateScript 실패: " + std::string(e.what()));
         return false;
     }

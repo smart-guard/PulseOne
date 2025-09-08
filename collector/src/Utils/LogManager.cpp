@@ -91,7 +91,7 @@ bool LogManager::doInitialize() {
         categoryLevels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::DATA_PROCESSING] = LogLevel::INFO;
-        categoryLevels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::ERROR;
+        categoryLevels_[DriverLogCategory::ERROR_HANDLING] = LogLevel::LOG_ERROR;
         categoryLevels_[DriverLogCategory::PERFORMANCE] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::SECURITY] = LogLevel::WARN;
         categoryLevels_[DriverLogCategory::PROTOCOL_SPECIFIC] = LogLevel::DEBUG;
@@ -283,10 +283,10 @@ void LogManager::updateStatistics(LogLevel level) {
             statistics_.warn_count++;
             statistics_.warning_count++;  // 별칭 동기화
             break;
-        case LogLevel::ERROR:
+        case LogLevel::LOG_ERROR:
             statistics_.error_count++;
             break;
-        case LogLevel::FATAL:
+        case LogLevel::LOG_FATAL:
             statistics_.fatal_count++;
             break;
         case LogLevel::MAINTENANCE:
@@ -313,11 +313,11 @@ void LogManager::Warn(const std::string& message) {
 }
 
 void LogManager::Error(const std::string& message) {
-    log(defaultCategory_, LogLevel::ERROR, message);
+    log(defaultCategory_, LogLevel::LOG_ERROR, message);
 }
 
 void LogManager::Fatal(const std::string& message) {
-    log(defaultCategory_, LogLevel::FATAL, message);
+    log(defaultCategory_, LogLevel::LOG_FATAL, message);
 }
 
 void LogManager::Debug(const std::string& message) {
@@ -416,7 +416,7 @@ void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
         oss << ", Reason: " << reason;
     }
     
-    LogLevel level = (quality == DataQuality::BAD) ? LogLevel::ERROR : LogLevel::WARN;
+    LogLevel level = (quality == DataQuality::BAD) ? LogLevel::LOG_ERROR : LogLevel::WARN;
     log("data_quality", level, oss.str());
 }
 
@@ -429,7 +429,7 @@ void LogManager::logDriver(const std::string& driverName, const std::string& mes
 }
 
 void LogManager::logError(const std::string& message) {
-    log("error", LogLevel::ERROR, message);
+    log("error", LogLevel::LOG_ERROR, message);
 }
 
 void LogManager::logPacket(const std::string& driver, const std::string& device,
@@ -506,8 +506,8 @@ std::string LogManager::logLevelToString(LogLevel level) {
         case LogLevel::DEBUG: return "DEBUG";
         case LogLevel::INFO: return "INFO";
         case LogLevel::WARN: return "WARN";
-        case LogLevel::ERROR: return "ERROR";
-        case LogLevel::FATAL: return "FATAL";
+        case LogLevel::LOG_ERROR: return "ERROR";
+        case LogLevel::LOG_FATAL: return "FATAL";
         case LogLevel::MAINTENANCE: return "MAINT";
         default: return "UNKNOWN";
     }
@@ -518,8 +518,8 @@ LogLevel LogManager::stringToLogLevel(const std::string& level) {
     if (level == "DEBUG") return LogLevel::DEBUG;
     if (level == "INFO") return LogLevel::INFO;
     if (level == "WARN") return LogLevel::WARN;
-    if (level == "ERROR") return LogLevel::ERROR;
-    if (level == "FATAL") return LogLevel::FATAL;
+    if (level == "ERROR") return LogLevel::LOG_ERROR;
+    if (level == "FATAL") return LogLevel::LOG_FATAL;
     if (level == "MAINTENANCE" || level == "MAINT") return LogLevel::MAINTENANCE;
     return LogLevel::INFO;
 }

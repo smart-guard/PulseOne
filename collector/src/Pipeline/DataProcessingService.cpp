@@ -56,7 +56,7 @@ DataProcessingService::DataProcessingService()
             "DataProcessingService 생성 완료");
             
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "DataProcessingService 생성 중 예외: " + std::string(e.what()));
     }
 }
@@ -81,7 +81,7 @@ bool DataProcessingService::Start() {
     // PipelineManager 의존성 확인 (필수)
     auto& pipeline_manager = PipelineManager::GetInstance();
     if (!pipeline_manager.IsRunning()) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "PipelineManager가 실행되지 않았습니다!");
         return false;
     }
@@ -91,7 +91,7 @@ bool DataProcessingService::Start() {
     
     // VirtualPointBatchWriter 시작 (선택적)
     if (vp_batch_writer_ && !vp_batch_writer_->Start()) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "VirtualPointBatchWriter 시작 실패");
         return false;
     }
@@ -263,7 +263,7 @@ void DataProcessingService::ProcessBatch(
                 UpdateStatistics(static_cast<size_t>(enriched_data.points.size()), 0.0);
                 
             } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::ERROR,
+                LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
                     "메시지 처리 실패 (device_id=" + message.device_id + "): " + 
                     std::string(e.what()));
                 processing_errors_.fetch_add(1);
@@ -278,7 +278,7 @@ void DataProcessingService::ProcessBatch(
             "개 처리됨 (" + std::to_string(duration.count()) + "ms)");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "배치 처리 전체 실패: " + std::string(e.what()));
         processing_errors_.fetch_add(batch.size());
     }
@@ -302,7 +302,7 @@ Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnric
         return original_message;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "가상포인트 계산 실패: " + std::string(e.what()));
         return original_message;
     }
@@ -349,7 +349,7 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
         auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
         
         if (!vp_engine.isInitialized()) {
-            LogManager::getInstance().log("processing", LogLevel::ERROR,
+            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
                 "VirtualPointEngine이 초기화되지 않음!");
             
             // 강제 초기화 시도
@@ -359,12 +359,12 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
                     LogManager::getInstance().log("processing", LogLevel::INFO,
                         "VirtualPointEngine 강제 초기화 성공");
                 } else {
-                    LogManager::getInstance().log("processing", LogLevel::ERROR,
+                    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
                         "VirtualPointEngine 강제 초기화 실패");
                     return enriched_data;
                 }
             } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::ERROR,
+                LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
                     "VirtualPointEngine 초기화 예외: " + std::string(e.what()));
                 return enriched_data;
             }
@@ -409,7 +409,7 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
                 virtual_points_calculated += vp_results.size();
                 
             } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::ERROR, 
+                LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
                     "가상포인트 계산 실패 (device=" + 
                     device_msg.device_id + "): " + std::string(e.what()));
             }
@@ -434,7 +434,7 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
             "개 데이터 (원본 + 가상포인트)");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "가상포인트 계산 전체 실패: " + std::string(e.what()));
     }
     
@@ -493,7 +493,7 @@ void DataProcessingService::EvaluateAlarms(
                                      "알람 평가 완료: " + std::to_string(total_events) + "개 이벤트 생성");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
                                      "알람 평가 전체 실패: " + std::string(e.what()));
     }
 }
@@ -637,7 +637,7 @@ void DataProcessingService::SaveChangedPointsToRDB(
         auto current_value_repo = factory.getCurrentValueRepository();
         
         if (!current_value_repo) {
-            LogManager::getInstance().log("processing", LogLevel::ERROR,
+            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
                 "CurrentValueRepository 획득 실패");
             return;
         }
@@ -667,7 +667,7 @@ void DataProcessingService::SaveChangedPointsToRDB(
                 
             } catch (const std::exception& e) {
                 error_count++;
-                LogManager::getInstance().log("processing", LogLevel::ERROR,
+                LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
                     "Point " + std::to_string(point.point_id) + " 저장 중 예외: " + 
                     std::string(e.what()));
             }
@@ -688,7 +688,7 @@ void DataProcessingService::SaveChangedPointsToRDB(
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "RDB 저장 전체 실패: " + std::string(e.what()));
         HandleError("RDB 저장 실패", e.what());
     }
@@ -1060,7 +1060,7 @@ void DataProcessingService::HandleError(const std::string& error_message, const 
         full_message += ": " + context;
     }
     
-    LogManager::getInstance().log("processing", LogLevel::ERROR, full_message);
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, full_message);
     processing_errors_.fetch_add(1);
 }
 
@@ -1116,7 +1116,7 @@ PulseOne::Database::Entities::CurrentValueEntity DataProcessingService::ConvertT
         return entity;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "Point " + std::to_string(point.point_id) + " CurrentValueEntity 변환 실패: " + 
             std::string(e.what()));
         throw;
@@ -1137,7 +1137,7 @@ void DataProcessingService::SaveChangedPointsToRDB(const Structs::DeviceDataMess
         SaveChangedPointsToRDB(message, changed_points);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR,
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
             "SaveChangedPointsToRDB(단일) 실패: " + std::string(e.what()));
         HandleError("RDB 저장 실패", e.what());
     }
@@ -1150,7 +1150,7 @@ void DataProcessingService::SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEven
         auto alarm_occurrence_repo = factory.getAlarmOccurrenceRepository();
         
         if (!alarm_occurrence_repo) {
-            LogManager::getInstance().log("processing", LogLevel::ERROR, 
+            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
                 "AlarmOccurrenceRepository 없음");
             return;
         }
@@ -1181,12 +1181,12 @@ void DataProcessingService::SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEven
             LogManager::getInstance().log("processing", LogLevel::INFO, 
                 "알람 DB 저장 성공: rule_id=" + std::to_string(event.rule_id));
         } else {
-            LogManager::getInstance().log("processing", LogLevel::ERROR, 
+            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
                 "알람 DB 저장 실패: rule_id=" + std::to_string(event.rule_id));
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::ERROR, 
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
             "알람 DB 저장 예외: " + std::string(e.what()));
     }
 }

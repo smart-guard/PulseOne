@@ -612,7 +612,7 @@ void RedisDataWriter::HandleError(const std::string& context, const std::string&
     stats_.failed_writes.fetch_add(1);
     
     std::string full_message = context + ": " + error_message;
-    LogManager::getInstance().log("redis_writer", LogLevel::ERROR, full_message);
+    LogManager::getInstance().log("redis_writer", LogLevel::LOG_ERROR, full_message);
 }
 
 // =============================================================================

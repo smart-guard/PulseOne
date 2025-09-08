@@ -67,7 +67,7 @@ AlarmOccurrenceEntity::AlarmOccurrenceEntity(int occurrence_id)
 
 bool AlarmOccurrenceEntity::loadFromDatabase() {
     if (getId() <= 0) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "loadFromDatabase - Invalid occurrence ID: " + std::to_string(getId()));
         markError();
         return false;
@@ -92,7 +92,7 @@ bool AlarmOccurrenceEntity::loadFromDatabase() {
         return false;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "loadFromDatabase failed: " + std::string(e.what()));
         markError();
         return false;
@@ -125,12 +125,12 @@ bool AlarmOccurrenceEntity::saveToDatabase() {
             }
         }
         
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "saveToDatabase - Repository operation failed");
         return false;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "saveToDatabase failed: " + std::string(e.what()));
         markError();
         return false;
@@ -139,7 +139,7 @@ bool AlarmOccurrenceEntity::saveToDatabase() {
 
 bool AlarmOccurrenceEntity::deleteFromDatabase() {
     if (getId() <= 0) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "deleteFromDatabase - Invalid occurrence ID: " + std::to_string(getId()));
         return false;
     }
@@ -157,12 +157,12 @@ bool AlarmOccurrenceEntity::deleteFromDatabase() {
             }
         }
         
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "deleteFromDatabase - Repository operation failed");
         return false;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "deleteFromDatabase failed: " + std::string(e.what()));
         markError();
         return false;
@@ -171,7 +171,7 @@ bool AlarmOccurrenceEntity::deleteFromDatabase() {
 
 bool AlarmOccurrenceEntity::updateToDatabase() {
     if (getId() <= 0) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "updateToDatabase - Invalid occurrence ID: " + std::to_string(getId()));
         return false;
     }
@@ -191,12 +191,12 @@ bool AlarmOccurrenceEntity::updateToDatabase() {
             }
         }
         
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "updateToDatabase - Repository operation failed");
         return false;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "updateToDatabase failed: " + std::string(e.what()));
         markError();
         return false;
@@ -263,7 +263,7 @@ json AlarmOccurrenceEntity::toJson() const {
         j["tags"] = tags_;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "toJson failed: " + std::string(e.what()));
     }
     
@@ -389,7 +389,7 @@ bool AlarmOccurrenceEntity::fromJson(const json& j) {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "fromJson failed: " + std::string(e.what()));
         return false;
     }
@@ -432,7 +432,7 @@ bool AlarmOccurrenceEntity::acknowledge(int user_id, const std::string& comment)
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "acknowledge failed: " + std::string(e.what()));
         return false;
     }
@@ -462,7 +462,7 @@ bool AlarmOccurrenceEntity::clear(int user_id, const std::string& cleared_value,
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::ERROR,
+        LogManager::getInstance().log("AlarmOccurrenceEntity", LogLevel::LOG_ERROR,
                                     "clear failed: " + std::string(e.what()));
         return false;
     }

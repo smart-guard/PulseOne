@@ -229,7 +229,7 @@ void LogManager::updateStatistics(LogLevel level) {
         case LogLevel::LOG_ERROR:
             statistics_.error_count++;
             break;
-        case LogLevel::FATAL:
+        case LogLevel::LOG_FATAL:
             statistics_.fatal_count++;
             break;
         case LogLevel::MAINTENANCE:
@@ -261,7 +261,7 @@ void LogManager::Error(const std::string& message) {
 }
 
 void LogManager::Fatal(const std::string& message) {
-    log(defaultCategory_, LogLevel::FATAL, message);
+    log(defaultCategory_, LogLevel::LOG_FATAL, message);
 }
 
 void LogManager::Debug(const std::string& message) {

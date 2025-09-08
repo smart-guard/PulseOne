@@ -63,19 +63,19 @@ bool SerialBasedWorker::EstablishConnection() {
     
     // 시리얼 설정 검증
     if (!ValidateSerialConfig()) {
-        LogMessage(LogLevel::ERROR, "Invalid serial configuration");
+        LogMessage(LogLevel::LOG_ERROR, "Invalid serial configuration");
         return false;
     }
     
     // 시리얼 포트 열기
     if (!OpenSerialPort()) {
-        LogMessage(LogLevel::ERROR, "Failed to open serial port");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to open serial port");
         return false;
     }
     
     // 파생 클래스의 프로토콜별 연결 수립
     if (!EstablishProtocolConnection()) {
-        LogMessage(LogLevel::ERROR, "Failed to establish protocol connection");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to establish protocol connection");
         CloseSerialPort();
         return false;
     }
@@ -173,27 +173,27 @@ std::string SerialBasedWorker::GetSerialStats() const {
 
 bool SerialBasedWorker::ValidateSerialConfig() const {
     if (!ValidateSerialPort(serial_config_.port_name)) {
-        LogMessage(LogLevel::ERROR, "Invalid serial port name: " + serial_config_.port_name);
+        LogMessage(LogLevel::LOG_ERROR, "Invalid serial port name: " + serial_config_.port_name);
         return false;
     }
     
     if (!ValidateBaudRate(serial_config_.baud_rate)) {
-        LogMessage(LogLevel::ERROR, "Invalid baud rate: " + std::to_string(serial_config_.baud_rate));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid baud rate: " + std::to_string(serial_config_.baud_rate));
         return false;
     }
     
     if (serial_config_.data_bits != 7 && serial_config_.data_bits != 8) {
-        LogMessage(LogLevel::ERROR, "Invalid data bits: " + std::to_string(serial_config_.data_bits));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid data bits: " + std::to_string(serial_config_.data_bits));
         return false;
     }
     
     if (serial_config_.stop_bits != 1 && serial_config_.stop_bits != 2) {
-        LogMessage(LogLevel::ERROR, "Invalid stop bits: " + std::to_string(serial_config_.stop_bits));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid stop bits: " + std::to_string(serial_config_.stop_bits));
         return false;
     }
     
     if (serial_config_.parity != 'N' && serial_config_.parity != 'E' && serial_config_.parity != 'O') {
-        LogMessage(LogLevel::ERROR, "Invalid parity: " + std::string(1, serial_config_.parity));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid parity: " + std::string(1, serial_config_.parity));
         return false;
     }
     
@@ -207,7 +207,7 @@ bool SerialBasedWorker::OpenSerialPort() {
     // 시리얼 포트 열기
     serial_fd_ = open(serial_config_.port_name.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
     if (serial_fd_ < 0) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                    "Failed to open serial port " + serial_config_.port_name + 
                    ": " + std::string(strerror(errno)));
         return false;
@@ -219,7 +219,7 @@ bool SerialBasedWorker::OpenSerialPort() {
     
     // 기존 터미널 설정 백업
     if (tcgetattr(serial_fd_, &original_termios_) != 0) {
-        LogMessage(LogLevel::ERROR, "Failed to get terminal attributes: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to get terminal attributes: " + std::string(strerror(errno)));
         CloseSerialPort();
         return false;
     }
@@ -227,14 +227,14 @@ bool SerialBasedWorker::OpenSerialPort() {
     // 새로운 터미널 설정
     struct termios tty;
     if (!ConfigureTermios(tty)) {
-        LogMessage(LogLevel::ERROR, "Failed to configure terminal attributes");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to configure terminal attributes");
         CloseSerialPort();
         return false;
     }
     
     // 터미널 설정 적용
     if (tcsetattr(serial_fd_, TCSANOW, &tty) != 0) {
-        LogMessage(LogLevel::ERROR, "Failed to set terminal attributes: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to set terminal attributes: " + std::string(strerror(errno)));
         CloseSerialPort();
         return false;
     }
@@ -274,13 +274,13 @@ bool SerialBasedWorker::IsSerialPortOpen() const {
 
 ssize_t SerialBasedWorker::WriteSerialData(const void* data, size_t length) {
     if (serial_fd_ < 0) {
-        LogMessage(LogLevel::ERROR, "Cannot write data: serial port not open");
+        LogMessage(LogLevel::LOG_ERROR, "Cannot write data: serial port not open");
         return -1;
     }
     
     ssize_t written = write(serial_fd_, data, length);
     if (written < 0) {
-        LogMessage(LogLevel::ERROR, "Serial write failed: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Serial write failed: " + std::string(strerror(errno)));
         return -1;
     }
     
@@ -293,7 +293,7 @@ ssize_t SerialBasedWorker::WriteSerialData(const void* data, size_t length) {
 
 ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
     if (serial_fd_ < 0) {
-        LogMessage(LogLevel::ERROR, "Cannot read data: serial port not open");
+        LogMessage(LogLevel::LOG_ERROR, "Cannot read data: serial port not open");
         return -1;
     }
     
@@ -310,7 +310,7 @@ ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
     int select_result = select(serial_fd_ + 1, &read_fds, NULL, NULL, &timeout);
     
     if (select_result < 0) {
-        LogMessage(LogLevel::ERROR, "Serial select failed: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Serial select failed: " + std::string(strerror(errno)));
         return -1;
     }
     
@@ -321,7 +321,7 @@ ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
     
     ssize_t received = read(serial_fd_, buffer, buffer_size);
     if (received < 0) {
-        LogMessage(LogLevel::ERROR, "Serial read failed: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Serial read failed: " + std::string(strerror(errno)));
         return -1;
     }
     

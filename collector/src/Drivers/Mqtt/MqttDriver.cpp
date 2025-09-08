@@ -500,7 +500,7 @@ void MqttDriver::OnConnected(const std::string& cause) {
 // OnConnectionLost 함수 수정 (기존 함수 내용에 추가)
 void MqttDriver::OnConnectionLost(const std::string& cause) {
     is_connected_ = false;
-    status_ = Structs::DriverStatus::ERROR;
+    status_ = Structs::DriverStatus::DRIVER_ERROR;
     
     LogMessage("WARN", "MQTT connection lost: " + cause, "MQTT");
     
@@ -719,7 +719,7 @@ void MqttDriver::SetError(const std::string& error_message) {
         // ✅ timestamp 필드 제거 - ErrorInfo에 occurred_at이 자동 설정됨
     }
     
-    status_ = Structs::DriverStatus::ERROR;
+    status_ = Structs::DriverStatus::DRIVER_ERROR;
     LogMessage("ERROR", error_message, "MQTT");
 }
 
