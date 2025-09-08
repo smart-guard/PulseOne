@@ -3,6 +3,7 @@
 // BACnet 프로토콜 드라이버 구현 - 독립객체 + Windows/Linux 완전 호환 최종 수정
 //=============================================================================
 
+#include "Platform/PlatformCompat.h"
 #include "Drivers/Bacnet/BACnetDriver.h"
 #include "Utils/LogManager.h"
 
@@ -30,16 +31,6 @@
     #define CLOSE_SOCKET closesocket
     #define SOCKET_ERROR_TYPE int
     #define GET_SOCKET_ERROR() WSAGetLastError()
-    
-    // Windows에서 poll 구조체 정의
-    struct pollfd {
-        int fd;
-        short events;
-        short revents;
-    };
-    #define POLLIN  0x0001
-    #define POLLOUT 0x0004
-    
 #else
     // Linux: 표준 소켓 헤더
     #include <sys/socket.h>

@@ -59,9 +59,13 @@
         #define PULSEONE_DISABLE_MSSQL 1
     #endif
     
-    // Windows용 poll 상수 정의
-    #define POLLIN  0x0001
-    #define POLLOUT 0x0004
+    // Windows용 poll 상수 정의 (중복 정의 방지)
+    #ifndef POLLIN
+        #define POLLIN  0x0001
+    #endif
+    #ifndef POLLOUT
+        #define POLLOUT 0x0004  
+    #endif
     
 #else
     // Linux/Unix 설정

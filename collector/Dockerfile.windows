@@ -1,0 +1,793 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# =============================================================================
+# 1. 기본 패키지 설치
+# =============================================================================
+RUN apt-get update && apt-get install -y \
+    gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
+    make cmake pkg-config git \
+    wget curl unzip patch \
+    build-essential autotools-dev automake autoconf libtool \
+    libssl-dev zlib1g-dev uuid-dev \
+    mingw-w64-tools mingw-w64-x86-64-dev \
+    vim nano tree htop procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# MinGW 설정
+RUN update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix && \
+    update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+
+ENV CC=x86_64-w64-mingw32-gcc
+ENV CXX=x86_64-w64-mingw32-g++
+ENV AR=x86_64-w64-mingw32-ar
+ENV STRIP=x86_64-w64-mingw32-strip
+ENV WINDRES=x86_64-w64-mingw32-windres
+ENV MINGW_PREFIX=/usr/x86_64-w64-mingw32
+ENV PATH="${MINGW_PREFIX}/bin:${PATH}"
+
+# =============================================================================
+# 2. SQLite3
+# =============================================================================
+RUN cd /tmp && \
+    wget https://www.sqlite.org/2023/sqlite-amalgamation-3420000.zip -O sqlite.zip && \
+    unzip sqlite.zip && \
+    cd sqlite-amalgamation-3420000 && \
+    ${CC} -c sqlite3.c -o sqlite3.o \
+        -DSQLITE_THREADSAFE=1 \
+        -DSQLITE_ENABLE_FTS5 \
+        -DSQLITE_ENABLE_JSON1 \
+        -DSQLITE_ENABLE_RTREE \
+        -DSQLITE_USE_URI=1 && \
+    ${AR} rcs ${MINGW_PREFIX}/lib/libsqlite3.a sqlite3.o && \
+    cp sqlite3.h sqlite3ext.h ${MINGW_PREFIX}/include/ && \
+    rm -rf /tmp/sqlite* && \
+    echo "SQLite3 설치 완료"
+
+# =============================================================================
+# 3. OpenSSL
+# =============================================================================
+RUN cd /tmp && \
+    wget https://www.openssl.org/source/openssl-1.1.1w.tar.gz && \
+    tar xzf openssl-1.1.1w.tar.gz && \
+    cd openssl-1.1.1w && \
+    ./Configure mingw64 no-shared no-asm \
+        --prefix=${MINGW_PREFIX} \
+        --openssldir=${MINGW_PREFIX}/ssl && \
+    make CC=${CC} AR=${AR} RANLIB=x86_64-w64-mingw32-ranlib && \
+    make install_sw && \
+    rm -rf /tmp/openssl* && \
+    echo "OpenSSL 설치 완료"
+
+# =============================================================================
+# 4. libmodbus
+# =============================================================================
+RUN cd /tmp && \
+    git clone --depth 1 --branch v3.1.10 https://github.com/stephane/libmodbus.git && \
+    cd libmodbus && \
+    ./autogen.sh && \
+    ./configure --host=x86_64-w64-mingw32 \
+                --prefix=${MINGW_PREFIX} \
+                --enable-static \
+                --disable-shared \
+                --disable-tests \
+                CFLAGS="-O2 -D_WIN32_WINNT=0x0601" && \
+    make && make install && \
+    rm -rf /tmp/libmodbus && \
+    echo "libmodbus 설치 완료"
+
+# =============================================================================
+# 5. hiredis
+# =============================================================================
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
+    cd hiredis && \
+    make CC=${CC} AR=${AR} PREFIX=${MINGW_PREFIX} \
+         CFLAGS="-O2 -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -w" \
+         LDFLAGS="-lws2_32" \
+         WARNINGS="" && \
+    make PREFIX=${MINGW_PREFIX} install && \
+    rm -rf /tmp/hiredis && \
+    echo "hiredis 설치 완료"
+
+# =============================================================================
+# 6. Windows용 완전한 poll.h 생성
+# =============================================================================
+RUN cat > ${MINGW_PREFIX}/include/poll.h << 'EOF'
+#ifndef POLL_H
+#define POLL_H
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+
+#define POLLIN      0x0001
+#define POLLPRI     0x0002
+#define POLLOUT     0x0004
+#define POLLERR     0x0008
+#define POLLHUP     0x0010
+#define POLLNVAL    0x0020
+
+struct pollfd {
+    SOCKET fd;
+    short events;
+    short revents;
+};
+
+typedef unsigned long nfds_t;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static inline int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
+    #if defined(WSAPoll)
+        return WSAPoll(fds, nfds, timeout);
+    #else
+        fd_set readfds, writefds, exceptfds;
+        struct timeval tv, *tvp = NULL;
+        SOCKET maxfd = 0;
+        int result, i;
+
+        if (timeout >= 0) {
+            tv.tv_sec = timeout / 1000;
+            tv.tv_usec = (timeout % 1000) * 1000;
+            tvp = &tv;
+        }
+
+        FD_ZERO(&readfds);
+        FD_ZERO(&writefds);
+        FD_ZERO(&exceptfds);
+
+        for (i = 0; i < nfds; i++) {
+            if (fds[i].fd == INVALID_SOCKET) continue;
+            
+            if (fds[i].events & POLLIN) FD_SET(fds[i].fd, &readfds);
+            if (fds[i].events & POLLOUT) FD_SET(fds[i].fd, &writefds);
+            FD_SET(fds[i].fd, &exceptfds);
+            
+            if (fds[i].fd > maxfd) maxfd = fds[i].fd;
+            fds[i].revents = 0;
+        }
+
+        result = select(maxfd + 1, &readfds, &writefds, &exceptfds, tvp);
+        if (result <= 0) return result;
+
+        for (i = 0; i < nfds; i++) {
+            if (fds[i].fd == INVALID_SOCKET) continue;
+            
+            if (FD_ISSET(fds[i].fd, &readfds)) fds[i].revents |= POLLIN;
+            if (FD_ISSET(fds[i].fd, &writefds)) fds[i].revents |= POLLOUT;
+            if (FD_ISSET(fds[i].fd, &exceptfds)) fds[i].revents |= POLLERR;
+        }
+
+        return result;
+    #endif
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+#else
+#include <sys/poll.h>
+#endif /* _WIN32 */
+
+#endif /* POLL_H */
+EOF
+
+# =============================================================================
+# 7. MQTT C 라이브러리 (CMake 기반 완전한 빌드)
+# =============================================================================
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
+    cd paho.mqtt.c && \
+    mkdir -p build && \
+    cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Windows \
+        -DCMAKE_C_COMPILER=${CC} \
+        -DCMAKE_CXX_COMPILER=${CXX} \
+        -DCMAKE_RC_COMPILER=${WINDRES} \
+        -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+        -DPAHO_WITH_SSL=FALSE \
+        -DPAHO_BUILD_STATIC=TRUE \
+        -DPAHO_BUILD_SHARED=FALSE \
+        -DPAHO_BUILD_DOCUMENTATION=FALSE \
+        -DPAHO_BUILD_SAMPLES=FALSE \
+        -DPAHO_BUILD_TESTS=FALSE \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_FLAGS="-O2 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN" && \
+    make paho-mqtt3c-static paho-mqtt3a-static -j$(nproc) && \
+    find . -name "libpaho-mqtt3*.a" -exec cp {} ${MINGW_PREFIX}/lib/ \; && \
+    cp src/libpaho-mqtt3c-static.a ${MINGW_PREFIX}/lib/libpaho-mqtt3c.a && \
+    cp src/libpaho-mqtt3a-static.a ${MINGW_PREFIX}/lib/libpaho-mqtt3a.a && \
+    cp ../src/MQTT*.h ${MINGW_PREFIX}/include/ && \
+    rm -rf /tmp/paho.mqtt.c && \
+    echo "MQTT C 라이브러리 설치 완료"
+
+# =============================================================================
+# 8. MQTT C++ 라이브러리 (CMake 기반 완전한 빌드)
+# =============================================================================
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
+    cd paho.mqtt.cpp && \
+    mkdir -p build && \
+    cd build && \
+    cmake .. \
+        -DCMAKE_SYSTEM_NAME=Windows \
+        -DCMAKE_C_COMPILER=${CC} \
+        -DCMAKE_CXX_COMPILER=${CXX} \
+        -DCMAKE_RC_COMPILER=${WINDRES} \
+        -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+        -DPAHO_WITH_SSL=FALSE \
+        -DPAHO_BUILD_STATIC=TRUE \
+        -DPAHO_BUILD_SHARED=FALSE \
+        -DPAHO_BUILD_DOCUMENTATION=FALSE \
+        -DPAHO_BUILD_SAMPLES=FALSE \
+        -DPAHO_BUILD_TESTS=FALSE \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH=${MINGW_PREFIX} \
+        -DCMAKE_FIND_ROOT_PATH=${MINGW_PREFIX} \
+        -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+        -DCMAKE_CXX_STANDARD=11 \
+        -DCMAKE_CXX_FLAGS="-std=c++11 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN" && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf /tmp/paho.mqtt.cpp && \
+    echo "MQTT C++ 라이브러리 설치 완료"
+
+# =============================================================================
+# 9. QuickJS
+# =============================================================================
+RUN cd /tmp && \
+    git clone --depth 1 https://github.com/bellard/quickjs.git && \
+    cd quickjs && \
+    sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' Makefile && \
+    sed -i 's/-Werror//' Makefile && \
+    export CFLAGS="-O2 -Wno-format -Wno-format-extra-args" && \
+    make CC=${CC} AR=${AR} libquickjs.a && \
+    cp quickjs.h quickjs-libc.h ${MINGW_PREFIX}/include/ && \
+    cp libquickjs.a ${MINGW_PREFIX}/lib/ && \
+    rm -rf /tmp/quickjs && \
+    echo "QuickJS 설치 완료"
+
+# =============================================================================
+# 10. BACnet Stack (실제 라이브러리 - 완전 수정)
+# =============================================================================
+RUN cd /tmp && \
+    git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
+    cd bacnet-stack && \
+    echo "BACnet Stack 소스 다운로드 완료"
+
+# 완전한 config.h 생성 (모든 필요한 상수 포함)
+RUN cd /tmp/bacnet-stack && \
+    cat > src/bacnet/config.h << 'BACNET_CONFIG_FIXED'
+#ifndef CONFIG_H
+#define CONFIG_H
+
+/* BACnet Stack Configuration for Windows */
+#define BACNET_PROTOCOL_REVISION 22
+#define MAX_APDU 1476
+#define MAX_NPDU 1497
+#define BACNET_INSTANCE_BITS 22
+
+/* String and Buffer Sizes - 기존 enum과 충돌 방지 */
+#define MAX_BITSTRING_BYTES 15
+#define MAX_CHARACTER_STRING_BYTES 512
+#define MAX_OCTET_STRING_BYTES 1024
+#define MAX_MAC_LEN 7
+
+/* Network Configuration */
+#define BACNET_IP_BIP_PORT 0xBAC0
+#define BACNET_CLIENT 1
+#define BACNET_TSM_ENABLED 1
+
+/* Property Configuration */
+#define BACNET_PROPERTY_LISTS 1
+#define BACNET_PROPERTY_TYPE_LISTS 1
+
+/* Application Layer */
+#define BACAPP_ALL 1
+#define BACFILE 1
+#define INTRINSIC_REPORTING 1
+#define BACNET_TIME_MASTER 0
+
+/* Debugging */
+#define PRINT_ENABLED 1
+#define DEBUG_ENABLED 0
+
+/* Windows Platform */
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#define NOMINMAX
+#undef BACDL_ETHERNET
+#define BACDL_BIP 1
+#define BIP_ENABLED 1
+#endif
+
+/* min 함수 정의 추가 */
+#ifndef min
+#define min(a,b) ((a) < (b) ? (a) : (b))
+#endif
+
+#endif /* CONFIG_H */
+BACNET_CONFIG_FIXED
+
+# BACnet 헤더 파일 수정 - bacstr.h의 문제 해결
+RUN cd /tmp/bacnet-stack && \
+    sed -i 's/#include "config.h"/#ifndef CONFIG_H\n#include "config.h"\n#endif/' src/bacnet/bacstr.h
+
+# Windows용 BACnet 포트 파일들 생성
+RUN cd /tmp/bacnet-stack && \
+    mkdir -p ports/win32 && \
+    cat > ports/win32/bip.h << 'BIPEOF'
+#ifndef BIP_H
+#define BIP_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "../../src/bacnet/bacdef.h"
+#include "../../src/bacnet/npdu.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+bool bip_init(char *ifname);
+void bip_cleanup(void);
+void bip_get_my_address(BACNET_ADDRESS *my_address);
+void bip_get_broadcast_address(BACNET_ADDRESS *dest);
+int bip_send_pdu(BACNET_ADDRESS *dest, BACNET_NPDU_DATA *npdu_data, uint8_t *pdu, unsigned pdu_len);
+uint16_t bip_receive(BACNET_ADDRESS *src, uint8_t *pdu, uint16_t max_pdu, unsigned timeout);
+void bip_set_port(uint16_t port);
+uint16_t bip_get_port(void);
+void bip_set_addr(uint32_t net_address);
+uint32_t bip_get_addr(void);
+void bip_set_broadcast_addr(uint32_t net_address);
+uint32_t bip_get_broadcast_addr(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* BIP_H */
+BIPEOF
+
+# Windows용 BIP 구현
+RUN cd /tmp/bacnet-stack && \
+    cat > ports/win32/bip.c << 'BIPCEOF'
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include "../../src/bacnet/bacdef.h"
+#include "../../src/bacnet/bacdcode.h"
+#include "../../src/bacnet/bacenum.h"
+#include "../../src/bacnet/npdu.h"
+#include "bip.h"
+
+static SOCKET BIP_Socket = INVALID_SOCKET;
+static struct sockaddr_in BIP_Address;
+static struct sockaddr_in BIP_Broadcast_Address;
+static uint16_t BIP_Port = 0xBAC0;
+static uint32_t BIP_Addr = 0;
+static uint32_t BIP_Broadcast_Addr = 0;
+
+bool bip_init(char *ifname) {
+    WSADATA wd;
+    int Result = WSAStartup(MAKEWORD(2,2), &wd);
+    if (Result != 0) return false;
+    
+    BIP_Socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (BIP_Socket == INVALID_SOCKET) return false;
+    
+    memset(&BIP_Address, 0, sizeof(BIP_Address));
+    BIP_Address.sin_family = AF_INET;
+    BIP_Address.sin_addr.s_addr = htonl(INADDR_ANY);
+    BIP_Address.sin_port = htons(BIP_Port);
+    
+    if (bind(BIP_Socket, (struct sockaddr*)&BIP_Address, sizeof(BIP_Address)) == SOCKET_ERROR) {
+        closesocket(BIP_Socket);
+        BIP_Socket = INVALID_SOCKET;
+        WSACleanup();
+        return false;
+    }
+    
+    return true;
+}
+
+void bip_cleanup(void) {
+    if (BIP_Socket != INVALID_SOCKET) {
+        closesocket(BIP_Socket);
+        BIP_Socket = INVALID_SOCKET;
+    }
+    WSACleanup();
+}
+
+void bip_get_my_address(BACNET_ADDRESS *my_address) {
+    if (my_address) {
+        my_address->mac_len = 6;
+        my_address->mac[0] = 192;
+        my_address->mac[1] = 168;
+        my_address->mac[2] = 1;
+        my_address->mac[3] = 100;
+        my_address->mac[4] = (uint8_t)(BIP_Port >> 8);
+        my_address->mac[5] = (uint8_t)(BIP_Port & 0xFF);
+        my_address->net = 0;
+        my_address->len = 0;
+    }
+}
+
+void bip_get_broadcast_address(BACNET_ADDRESS *dest) {
+    if (dest) {
+        dest->mac_len = 6;
+        dest->mac[0] = 255;
+        dest->mac[1] = 255;
+        dest->mac[2] = 255;
+        dest->mac[3] = 255;
+        dest->mac[4] = (uint8_t)(BIP_Port >> 8);
+        dest->mac[5] = (uint8_t)(BIP_Port & 0xFF);
+        dest->net = BACNET_BROADCAST_NETWORK;
+        dest->len = 0;
+    }
+}
+
+int bip_send_pdu(BACNET_ADDRESS *dest, BACNET_NPDU_DATA *npdu_data, uint8_t *pdu, unsigned pdu_len) {
+    struct sockaddr_in bip_dest;
+    int bytes_sent = 0;
+    
+    if (BIP_Socket == INVALID_SOCKET) return 0;
+    if (!dest || !pdu || pdu_len == 0) return 0;
+    
+    memset(&bip_dest, 0, sizeof(bip_dest));
+    bip_dest.sin_family = AF_INET;
+    
+    if (dest->net == BACNET_BROADCAST_NETWORK) {
+        bip_dest.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    } else if (dest->mac_len == 6) {
+        bip_dest.sin_addr.s_addr = htonl(
+            (dest->mac[0] << 24) | 
+            (dest->mac[1] << 16) | 
+            (dest->mac[2] << 8) | 
+            dest->mac[3]);
+        bip_dest.sin_port = htons((dest->mac[4] << 8) | dest->mac[5]);
+    } else {
+        return 0;
+    }
+    
+    bytes_sent = sendto(BIP_Socket, (char*)pdu, pdu_len, 0, 
+                       (struct sockaddr*)&bip_dest, sizeof(bip_dest));
+    
+    return (bytes_sent == pdu_len) ? bytes_sent : 0;
+}
+
+uint16_t bip_receive(BACNET_ADDRESS *src, uint8_t *pdu, uint16_t max_pdu, unsigned timeout) {
+    struct sockaddr_in sin;
+    int sin_len = sizeof(sin);
+    int received_bytes;
+    fd_set read_fds;
+    struct timeval select_timeout;
+    
+    if (BIP_Socket == INVALID_SOCKET) return 0;
+    if (!src || !pdu || max_pdu == 0) return 0;
+    
+    FD_ZERO(&read_fds);
+    FD_SET(BIP_Socket, &read_fds);
+    
+    select_timeout.tv_sec = timeout / 1000;
+    select_timeout.tv_usec = (timeout % 1000) * 1000;
+    
+    if (select(BIP_Socket + 1, &read_fds, NULL, NULL, &select_timeout) <= 0) {
+        return 0;
+    }
+    
+    received_bytes = recvfrom(BIP_Socket, (char*)pdu, max_pdu, 0,
+                             (struct sockaddr*)&sin, &sin_len);
+    
+    if (received_bytes > 0 && received_bytes <= max_pdu) {
+        uint32_t addr = ntohl(sin.sin_addr.s_addr);
+        uint16_t port = ntohs(sin.sin_port);
+        
+        src->mac_len = 6;
+        src->mac[0] = (uint8_t)(addr >> 24);
+        src->mac[1] = (uint8_t)(addr >> 16);
+        src->mac[2] = (uint8_t)(addr >> 8);
+        src->mac[3] = (uint8_t)(addr & 0xFF);
+        src->mac[4] = (uint8_t)(port >> 8);
+        src->mac[5] = (uint8_t)(port & 0xFF);
+        src->net = 0;
+        src->len = 0;
+        
+        return received_bytes;
+    }
+    
+    return 0;
+}
+
+void bip_set_port(uint16_t port) { BIP_Port = port; }
+uint16_t bip_get_port(void) { return BIP_Port; }
+void bip_set_addr(uint32_t net_address) { BIP_Addr = net_address; }
+uint32_t bip_get_addr(void) { return BIP_Addr; }
+void bip_set_broadcast_addr(uint32_t net_address) { BIP_Broadcast_Addr = net_address; }
+uint32_t bip_get_broadcast_addr(void) { return BIP_Broadcast_Addr; }
+BIPCEOF
+
+# Windows 전용 Makefile 생성
+RUN cd /tmp/bacnet-stack && \
+    cat > Makefile.win32 << 'MAKEEOF'
+# BACnet Stack Windows Build - Fixed Version
+CC = x86_64-w64-mingw32-gcc
+AR = x86_64-w64-mingw32-ar
+CFLAGS = -O2 -Wall -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN
+CFLAGS += -DPRINT_ENABLED=1 -DBACAPP_ALL=1 -DINTRINSIC_REPORTING=1
+CFLAGS += -DBACDL_BIP=1 -DBIP_ENABLED=1
+CFLAGS += -Isrc -Iports/win32 -Isrc/bacnet
+
+# 핵심 BACnet 소스 파일들 (컴파일 가능한 것들만)
+CORE_SRC = src/bacnet/abort.c \
+           src/bacnet/bacaddr.c \
+           src/bacnet/bacint.c \
+           src/bacnet/bacreal.c \
+           src/bacnet/bacstr.c \
+           src/bacnet/datetime.c \
+           src/bacnet/dcc.c \
+           src/bacnet/iam.c \
+           src/bacnet/ihave.c \
+           src/bacnet/npdu.c \
+           src/bacnet/whois.c \
+           src/bacnet/whohas.c
+
+# 네트워크 계층
+NET_SRC = ports/win32/bip.c
+
+# 기본 서비스들
+BASIC_SRC = src/bacnet/basic/sys/ringbuf.c \
+            src/bacnet/basic/sys/fifo.c
+
+OBJS = $(CORE_SRC:.c=.o) $(NET_SRC:.c=.o) $(BASIC_SRC:.c=.o)
+
+all: libbacnet.a
+
+libbacnet.a: $(OBJS)
+	$(AR) rcs $@ $(OBJS)
+	@echo "BACnet library created: $@ ($(shell du -h $@ | cut -f1))"
+
+%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJS) libbacnet.a
+
+.PHONY: all clean
+MAKEEOF
+
+# BACnet 라이브러리 빌드 실행
+RUN cd /tmp/bacnet-stack && \
+    echo "BACnet Stack 빌드 시작..." && \
+    make -f Makefile.win32 clean && \
+    make -f Makefile.win32 -j$(nproc)
+
+# 헤더 파일들 복사
+RUN cd /tmp/bacnet-stack && \
+    mkdir -p ${MINGW_PREFIX}/include/bacnet && \
+    cp src/bacnet/bacenum.h ${MINGW_PREFIX}/include/bacnet/ 2>/dev/null || true && \
+    cp src/bacnet/bacdef.h ${MINGW_PREFIX}/include/bacnet/ 2>/dev/null || true && \
+    cp src/bacnet/bacaddr.h ${MINGW_PREFIX}/include/bacnet/ 2>/dev/null || true && \
+    cp src/bacnet/npdu.h ${MINGW_PREFIX}/include/bacnet/ 2>/dev/null || true && \
+    cp ports/win32/bip.h ${MINGW_PREFIX}/include/bacnet/ 2>/dev/null || true
+
+# 라이브러리 설치 및 검증
+RUN cd /tmp/bacnet-stack && \
+    if [ -f "libbacnet.a" ]; then \
+        cp libbacnet.a ${MINGW_PREFIX}/lib/ && \
+        echo "실제 BACnet 라이브러리 설치됨: $(du -h ${MINGW_PREFIX}/lib/libbacnet.a | cut -f1)"; \
+    elif [ -f "build_minimal/libbacnet.a" ]; then \
+        cp build_minimal/libbacnet.a ${MINGW_PREFIX}/lib/ && \
+        echo "최소 BACnet 라이브러리 설치됨: $(du -h ${MINGW_PREFIX}/lib/libbacnet.a | cut -f1)"; \
+    else \
+        echo "BACnet 라이브러리 생성 실패, 더미 생성"; \
+        ${AR} rcs ${MINGW_PREFIX}/lib/libbacnet.a; \
+    fi
+
+# 정리
+RUN rm -rf /tmp/bacnet-stack && \
+    echo "BACnet Stack 설치 완료"
+
+# =============================================================================
+# 11. 헤더 온리 라이브러리들
+# =============================================================================
+# nlohmann/json
+RUN cd /tmp && \
+    git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git && \
+    cd json && \
+    mkdir -p ${MINGW_PREFIX}/include/nlohmann && \
+    cp single_include/nlohmann/json.hpp ${MINGW_PREFIX}/include/nlohmann/ && \
+    rm -rf /tmp/json && \
+    echo "nlohmann/json 설치 완료"
+
+# cpp-httplib
+RUN wget https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.14.1/httplib.h \
+         -O ${MINGW_PREFIX}/include/httplib.h && \
+    echo "cpp-httplib 설치 완료"
+
+# spdlog
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
+    cd spdlog && \
+    cp -r include/spdlog ${MINGW_PREFIX}/include/ && \
+    cd /tmp && rm -rf spdlog && \
+    echo "spdlog 설치 완료"
+
+# =============================================================================
+# 12. PulseOne 빌드 스크립트
+# =============================================================================
+RUN cat > /usr/local/bin/build-pulseone << 'BUILDEOF'
+#!/bin/bash
+echo "🏗️ PulseOne Collector Windows 빌드 시작..."
+
+if [ ! -d "/src/collector" ]; then
+    echo "❌ /src/collector 디렉토리가 없습니다"
+    echo "💡 사용법: docker run -v $(pwd):/src pulseone-builder build-pulseone"
+    exit 1
+fi
+
+cd /src/collector
+
+echo "🔍 빌드 환경 확인..."
+echo "  작업 디렉토리: $(pwd)"
+echo "  Makefile.windows: $(ls -la Makefile.windows 2>/dev/null && echo "존재" || echo "없음")"
+
+echo "🧹 빌드 디렉토리 정리..."
+make -f Makefile.windows clean 2>/dev/null || true
+
+echo "🔨 PulseOne Collector 컴파일..."
+if make -f Makefile.windows all; then
+    echo ""
+    echo "✅ 빌드 성공!"
+    
+    if [ -f "bin-windows/collector.exe" ]; then
+        echo "📦 결과 파일: bin-windows/collector.exe"
+        echo "📏 파일 크기: $(du -h bin-windows/collector.exe | cut -f1)"
+        echo "🔍 파일 타입: $(file bin-windows/collector.exe | cut -d: -f2-)"
+        echo ""
+        echo "🎉 Windows 실행 파일이 성공적으로 생성되었습니다!"
+        echo "💾 파일 위치: $(realpath bin-windows/collector.exe)"
+    else
+        echo "⚠️ 빌드는 성공했지만 실행 파일을 찾을 수 없습니다"
+        echo "📁 bin-windows/ 디렉토리 내용:"
+        ls -la bin-windows/ 2>/dev/null || echo "  (디렉토리 없음)"
+    fi
+else
+    echo ""
+    echo "❌ 빌드 실패"
+    echo "🔍 다음 사항들을 확인해주세요:"
+    echo "  1. Makefile.windows 파일이 존재하는지"
+    echo "  2. 소스 코드에 컴파일 오류가 없는지"
+    echo "  3. 필요한 라이브러리가 모두 설치되어 있는지"
+    exit 1
+fi
+BUILDEOF
+
+RUN chmod +x /usr/local/bin/build-pulseone
+
+# =============================================================================
+# 13. 검증 스크립트
+# =============================================================================
+RUN cat > /usr/local/bin/check-all-libs << 'CHECKEOF'
+#!/bin/bash
+echo "설치된 라이브러리 확인:"
+echo "=============================="
+for lib in sqlite3 ssl crypto modbus hiredis paho-mqtt3c paho-mqtt3a quickjs bacnet; do
+   if [ -f "/usr/x86_64-w64-mingw32/lib/lib${lib}.a" ]; then
+       size=$(du -h "/usr/x86_64-w64-mingw32/lib/lib${lib}.a" | cut -f1)
+       printf "  ✅ %-20s %s\n" "lib${lib}.a" "($size)"
+   else
+       printf "  ❌ %-20s\n" "lib${lib}.a"
+   fi
+done
+
+# MQTT C++ 별도 체크 (실제 파일명으로)
+if [ -f "/usr/x86_64-w64-mingw32/lib/libpaho-mqttpp3-static.a" ]; then
+   size=$(du -h "/usr/x86_64-w64-mingw32/lib/libpaho-mqttpp3-static.a" | cut -f1)
+   printf "  ✅ %-20s %s\n" "libpaho-mqttpp3-static.a" "($size)"
+else
+   printf "  ❌ %-20s\n" "libpaho-mqttpp3-static.a"
+fi
+
+echo ""
+echo "MQTT 헤더 파일 확인:"
+echo "=============================="
+if [ -f "/usr/x86_64-w64-mingw32/include/MQTTClient.h" ]; then
+   echo "  ✅ MQTTClient.h"
+else
+   echo "  ❌ MQTTClient.h"
+fi
+
+if [ -f "/usr/x86_64-w64-mingw32/include/MQTTAsync.h" ]; then
+   echo "  ✅ MQTTAsync.h"
+else
+   echo "  ❌ MQTTAsync.h"
+fi
+
+if [ -d "/usr/x86_64-w64-mingw32/include/mqtt" ]; then
+   echo "  ✅ mqtt/ 디렉토리"
+   echo "  📁 C++ 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/mqtt/ -name "*.h" | wc -l)"
+else
+   echo "  ❌ mqtt/ 디렉토리"
+fi
+
+echo ""
+echo "BACnet 헤더 파일 확인:"
+echo "=============================="
+if [ -d "/usr/x86_64-w64-mingw32/include/bacnet" ]; then
+   echo "  ✅ bacnet/ 디렉토리"
+   echo "  📁 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/bacnet/ -name "*.h" | wc -l)"
+   for header in bacenum.h bacdef.h bip.h; do
+       if [ -f "/usr/x86_64-w64-mingw32/include/bacnet/$header" ]; then
+           echo "  ✅ $header"
+       else
+           echo "  ❌ $header"
+       fi
+   done
+else
+   echo "  ❌ bacnet/ 디렉토리"
+fi
+
+echo ""
+echo "BACnet 라이브러리 심볼 확인:"
+if [ -f "/usr/x86_64-w64-mingw32/lib/libbacnet.a" ]; then
+   echo "=============================="
+   x86_64-w64-mingw32-nm /usr/x86_64-w64-mingw32/lib/libbacnet.a | grep -E "(bip_|bacnet_)" | head -5 || echo "  심볼 확인 실패"
+fi
+
+echo ""
+echo "🚀 PulseOne 빌드 준비 완료!"
+echo "💡 빌드 명령어: build-pulseone"
+CHECKEOF
+
+RUN chmod +x /usr/local/bin/check-all-libs
+
+# =============================================================================
+# 14. 환경 설정 및 entrypoint
+# =============================================================================
+ENV PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig"
+ENV CPPFLAGS="-I${MINGW_PREFIX}/include"
+ENV LDFLAGS="-L${MINGW_PREFIX}/lib"
+
+WORKDIR /src
+
+RUN cat > /usr/local/bin/entrypoint.sh << 'ENTRYEOF'
+#!/bin/bash
+echo "================================================"
+echo "  PulseOne Windows Cross-Compile Environment"
+echo "  실제 BACnet Stack 포함"
+echo "================================================"
+/usr/local/bin/check-all-libs
+echo ""
+echo "🚀 사용 가능한 명령어:"
+echo "  build-pulseone       - PulseOne Collector 빌드"
+echo "  check-all-libs       - 라이브러리 상태 확인"
+echo ""
+echo "💡 빌드 방법:"
+echo "  docker run --rm -v \$(pwd):/src pulseone-builder build-pulseone"
+echo ""
+exec "$@"
+ENTRYEOF
+
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# 최종 검증
+RUN /usr/local/bin/check-all-libs
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["bash"]

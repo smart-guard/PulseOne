@@ -18,10 +18,6 @@
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 
-#ifdef HAVE_HTTPLIB
-#include <httplib.h>
-#endif
-
 using namespace PulseOne::Network;
 using namespace std::chrono;
 
