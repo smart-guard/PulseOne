@@ -1,6 +1,6 @@
 // =============================================================================
-// collector/include/Network/RestApiServer.h
-// REST API 서버 헤더 파일 - 조건부 컴파일 수정
+// collector/include/Network/RestApiServer.h - 컴파일 에러 완전 수정
+// Windows 매크로 충돌 해결 + unique_ptr 타입 문제 해결
 // =============================================================================
 
 #ifndef PULSEONE_REST_API_SERVER_H
@@ -14,6 +14,11 @@
 #include <map>
 #include <vector>
 #include <utility>
+
+// 🔥 Windows ERROR 매크로 충돌 해결 (반드시 최상단에)
+#ifdef ERROR
+#undef ERROR
+#endif
 
 // 필수 헤더들
 #include "Common/Enums.h"
@@ -113,6 +118,8 @@ public:
 private:
     void SetupRoutes();
     
+    // 🔥 핸들러들을 조건부 컴파일로 선언
+#ifdef HAVE_HTTPLIB
     // 기본 핸들러들
     void HandleGetDevices(const httplib::Request& req, httplib::Response& res);
     void HandleGetDeviceStatus(const httplib::Request& req, httplib::Response& res);
@@ -181,8 +188,13 @@ private:
     void HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res);
     void HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res);
     
-    // 유틸리티 메서드들
+    // 유틸리티 메서드들 (httplib 의존적)
     void SetCorsHeaders(httplib::Response& res);
+    std::string ExtractDeviceId(const httplib::Request& req, int match_index = 1);
+    std::string ExtractGroupId(const httplib::Request& req, int match_index = 1);
+#endif
+    
+    // 유틸리티 메서드들 (httplib 비의존적)
     nlohmann::json CreateErrorResponse(const std::string& error, 
                                       const std::string& error_code = "", 
                                       const std::string& details = "");
@@ -192,8 +204,6 @@ private:
     nlohmann::json CreateOutputResponse(double value, const std::string& type);
     nlohmann::json CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success);
     bool ValidateJsonSchema(const nlohmann::json& data, const std::string& schema_type);
-    std::string ExtractDeviceId(const httplib::Request& req, int match_index = 1);
-    std::string ExtractGroupId(const httplib::Request& req, int match_index = 1);
     
     // 상세 에러 응답 생성 함수
     nlohmann::json CreateDetailedErrorResponse(
@@ -212,11 +222,14 @@ private:
 
 private:
     int port_;
+    
+    // 🔥 unique_ptr 타입 문제 해결
 #ifdef HAVE_HTTPLIB
     std::unique_ptr<httplib::Server> server_;
 #else
-    std::unique_ptr<void> server_;  // 더미 포인터
+    std::unique_ptr<char> server_;  // void* 대신 char 사용
 #endif
+    
     std::thread server_thread_;
     std::atomic<bool> running_;
     

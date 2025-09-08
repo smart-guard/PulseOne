@@ -530,6 +530,20 @@ public:
         // 더 높은 상태코드 (더 심각한 문제) 반환
         return std::max(device_status_code, connection_status_code);
     }
+   std::string ErrorCodeToString(PulseOne::Enums::ErrorCode error_code) const {
+        switch(error_code) {
+            case PulseOne::Enums::ErrorCode::SUCCESS:
+                return "SUCCESS";
+            case PulseOne::Enums::ErrorCode::TIMEOUT:
+                return "TIMEOUT";
+            case PulseOne::Enums::ErrorCode::INSUFFICIENT_PERMISSION:  // 올바른 enum 값 사용
+                return "INSUFFICIENT_PERMISSION";
+            case PulseOne::Enums::ErrorCode::UNKNOWN_ERROR:
+                return "UNKNOWN_ERROR";
+            default:
+                return "UNKNOWN_ERROR";
+        }
+    }
 
 private:
     HttpErrorMapper() = default;
