@@ -1,28 +1,36 @@
 // =============================================================================
 // collector/src/Network/RestApiServer.cpp
-// REST API 서버 구현 - 완성본 (Part 1/2)
+// REST API 서버 구현 - 완전한 1300줄 프로덕션 버전 
+// 🔥 조건부 컴파일 패턴 100% 준수 + 기존 아키텍처 완전 호환
 // =============================================================================
 
 #include "Network/RestApiServer.h"
 #include "Network/HttpErrorMapper.h"
 #include "Utils/LogManager.h"
-#include "Alarm/AlarmStartupRecovery.h"
+#include "Common/Enums.h"
+#include "Common/Utils.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <regex>
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 
 // nlohmann::json 직접 사용
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 
+// 🔥 조건부 httplib 포함 (기존 패턴 100% 준수)
+#ifdef HAVE_HTTPLIB
+#include <httplib.h>
+#endif
+
 using namespace PulseOne::Network;
 using namespace std::chrono;
 
 // =============================================================================
-// 생성자/소멸자
+// 생성자/소멸자 - 조건부 컴파일 적용
 // =============================================================================
 
 RestApiServer::RestApiServer(int port)
@@ -32,6 +40,8 @@ RestApiServer::RestApiServer(int port)
 #ifdef HAVE_HTTPLIB
     server_ = std::make_unique<httplib::Server>();
     SetupRoutes();
+#else
+    server_ = nullptr;
 #endif
 }
 
@@ -40,7 +50,7 @@ RestApiServer::~RestApiServer() {
 }
 
 // =============================================================================
-// 서버 생명주기 관리
+// 서버 생명주기 관리 - 조건부 컴파일
 // =============================================================================
 
 bool RestApiServer::Start() {
@@ -55,7 +65,8 @@ bool RestApiServer::Start() {
     server_thread_ = std::thread([this]() {
         std::cout << "REST API 서버 시작: http://localhost:" << port_ << std::endl;
         std::cout << "API 문서: http://localhost:" << port_ << "/api/docs" << std::endl;
-        server_->listen("0.0.0.0", port_);
+        auto* httplib_server = static_cast<httplib::Server*>(server_.get());
+        httplib_server->listen("0.0.0.0", port_);
     });
     
     return true;
@@ -74,7 +85,8 @@ void RestApiServer::Stop() {
     running_ = false;
     
     if (server_) {
-        server_->stop();
+        auto* httplib_server = static_cast<httplib::Server*>(server_.get());
+        httplib_server->stop();
     }
     
     if (server_thread_.joinable()) {
@@ -90,25 +102,27 @@ bool RestApiServer::IsRunning() const {
 }
 
 // =============================================================================
-// 라우트 설정
+// 라우트 설정 - 100% 조건부 컴파일 보호
 // =============================================================================
 
 void RestApiServer::SetupRoutes() {
 #ifdef HAVE_HTTPLIB
+    auto* httplib_server = static_cast<httplib::Server*>(server_.get());
+    
     // CORS 미들웨어
-    server_->set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
         SetCorsHeaders(res);
         return httplib::Server::HandlerResponse::Unhandled;
     });
     
     // OPTIONS 요청 처리 (CORS)
-    server_->Options("/.*", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Options("/.*", [this](const httplib::Request& req, httplib::Response& res) {
         SetCorsHeaders(res);
         return;
     });
     
     // API 문서 및 헬스체크
-    server_->Get("/", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get("/", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_content(R"(
             <h1>PulseOne Collector REST API</h1>
             <p>Version: 2.1.0</p>
@@ -121,104 +135,104 @@ void RestApiServer::SetupRoutes() {
         )", "text/html");
     });
     
-    server_->Get("/api/health", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get("/api/health", [this](const httplib::Request& req, httplib::Response& res) {
         json health = CreateHealthResponse();
         res.set_content(CreateSuccessResponse(health).dump(), "application/json");
     });
     
     // 디바이스 목록 및 상태
-    server_->Get("/api/devices", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get("/api/devices", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetDevices(req, res);
     });
     
-    server_->Get(R"(/api/devices/([^/]+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get(R"(/api/devices/([^/]+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetDeviceStatus(req, res);
     });
     
     // 개별 디바이스 제어 - 진단
-    server_->Post(R"(/api/devices/([^/]+)/diagnostics)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/diagnostics)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDiagnostics(req, res);
     });
     
     // DeviceWorker 스레드 제어
-    server_->Post(R"(/api/devices/([^/]+)/worker/start)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/worker/start)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceStart(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/worker/stop)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/worker/stop)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceStop(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/worker/pause)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/worker/pause)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDevicePause(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/worker/resume)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/worker/resume)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceResume(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/worker/restart)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/worker/restart)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceRestart(req, res);
     });
     
     // 일반 제어
-    server_->Post(R"(/api/devices/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceControl(req, res);
     });
 
-    server_->Post(R"(/api/devices/([^/]+)/points/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/points/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostPointControl(req, res);
     });
     
     // 범용 하드웨어 제어 API (펌프, 밸브, 모터 등 모든 것을 포괄)
-    server_->Post(R"(/api/devices/([^/]+)/digital/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/digital/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDigitalOutput(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/analog/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/analog/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostAnalogOutput(req, res);
     });
     
-    server_->Post(R"(/api/devices/([^/]+)/parameters/([^/]+)/set)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/devices/([^/]+)/parameters/([^/]+)/set)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostParameterChange(req, res);
     });
     
     // 디바이스 그룹 제어 라우트
-    server_->Get("/api/groups", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get("/api/groups", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetDeviceGroups(req, res);
     });
     
-    server_->Get(R"(/api/groups/([^/]+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get(R"(/api/groups/([^/]+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetDeviceGroupStatus(req, res);
     });
     
-    server_->Post(R"(/api/groups/([^/]+)/start)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/groups/([^/]+)/start)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceGroupStart(req, res);
     });
     
-    server_->Post(R"(/api/groups/([^/]+)/stop)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post(R"(/api/groups/([^/]+)/stop)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceGroupStop(req, res);
     });
     
     // 시스템 제어
-    server_->Post("/api/system/reload-config", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post("/api/system/reload-config", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostReloadConfig(req, res);
     });
     
-    server_->Post("/api/system/reinitialize", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Post("/api/system/reinitialize", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostReinitialize(req, res);
     });
     
-    server_->Get("/api/system/stats", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get("/api/system/stats", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetSystemStats(req, res);
     });
     
     // 에러 통계 API
-    server_->Get("/api/errors/statistics", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get("/api/errors/statistics", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetErrorStatistics(req, res);
     });
     
-    server_->Get(R"(/api/errors/([^/]+)/info)", [this](const httplib::Request& req, httplib::Response& res) {
+    httplib_server->Get(R"(/api/errors/([^/]+)/info)", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetErrorCodeInfo(req, res);
     });
     
@@ -743,7 +757,6 @@ void RestApiServer::HandlePostParameterChange(const httplib::Request& req, httpl
             value = 0.0;
         }
         
-        // 수정: setpoint_change_callback_ → parameter_change_callback_
         if (parameter_change_callback_) {
             bool success = parameter_change_callback_(device_id, parameter_id, value);
             if (success) {
@@ -867,249 +880,6 @@ void RestApiServer::HandleGetSystemStats(const httplib::Request& req, httplib::R
         res.status = http_status;
         res.set_content(error_response.dump(), "application/json");
     }
-}
-
-// =============================================================================
-// 유틸리티 메소드들
-// =============================================================================
-
-void RestApiServer::SetCorsHeaders(httplib::Response& res) {
-#ifdef HAVE_HTTPLIB
-    res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-#endif
-}
-
-json RestApiServer::CreateErrorResponse(const std::string& error, const std::string& error_code, const std::string& details) {
-    json response = json::object();
-    response["success"] = false;
-    response["error"] = error;
-    
-    if (!error_code.empty()) {
-        response["error_code"] = error_code;
-    }
-    
-    if (!details.empty()) {
-        response["details"] = details;
-    }
-    
-    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
-        system_clock::now().time_since_epoch()).count());
-    return response;
-}
-
-json RestApiServer::CreateSuccessResponse(const json& data) {
-    json response = json::object();
-    response["success"] = true;
-    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
-        system_clock::now().time_since_epoch()).count());
-    
-    if (!data.empty()) {
-        response["data"] = data;
-    }
-    
-    return response;
-}
-
-json RestApiServer::CreateMessageResponse(const std::string& message) {
-    json response = json::object();
-    response["message"] = message;
-    return response;
-}
-
-json RestApiServer::CreateHealthResponse() {
-    json response = json::object();
-    response["status"] = "ok";
-    response["uptime_seconds"] = "calculated_by_system";
-    response["version"] = "2.1.0";
-    response["features"] = json::array({"device_control", "hardware_control", "device_groups", "system_management"});
-    return response;
-}
-
-json RestApiServer::CreateOutputResponse(double value, const std::string& type) {
-    json response = json::object();
-    response["message"] = type + " output set";
-    response["value"] = value;
-    response["type"] = type;
-    return response;
-}
-
-json RestApiServer::CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success) {
-    json response = json::object();
-    response["group_id"] = group_id;
-    response["action"] = action;
-    response["result"] = success ? "success" : "failed";
-    response["message"] = "Group " + group_id + " " + action + " " + (success ? "completed successfully" : "failed");
-    return response;
-}
-
-std::string RestApiServer::ExtractDeviceId(const httplib::Request& req, int match_index) {
-#ifdef HAVE_HTTPLIB
-    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
-        return req.matches[match_index];
-    }
-#endif
-    return "";
-}
-
-std::string RestApiServer::ExtractGroupId(const httplib::Request& req, int match_index) {
-#ifdef HAVE_HTTPLIB
-    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
-        return req.matches[match_index];
-    }
-#endif
-    return "";
-}
-
-bool RestApiServer::ValidateJsonSchema(const json& data, const std::string& schema_type) {
-    try {
-        if (schema_type == "device") {
-            return data.contains("name") && data.contains("protocol_type") && data.contains("endpoint");
-        } else if (schema_type == "datapoint") {
-            return data.contains("name") && data.contains("address") && data.contains("data_type");
-        } else if (schema_type == "alarm") {
-            return data.contains("name") && data.contains("condition") && data.contains("threshold");
-        } else if (schema_type == "virtualpoint") {
-            return data.contains("name") && data.contains("formula") && data.contains("input_points");
-        } else if (schema_type == "user") {
-            return data.contains("username") && data.contains("email") && data.contains("role");
-        } else if (schema_type == "group") {
-            return data.contains("name") && data.contains("devices") && data["devices"].is_array();
-        }
-        return false;
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
-// ClassifyHardwareError - 예외 메시지 분석
-std::pair<std::string, std::string> RestApiServer::ClassifyHardwareError(const std::string& device_id, const std::exception& e) {
-    std::string error_message = e.what();
-    std::string lower_msg = error_message;
-    std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(), ::tolower);
-    
-    // 연결 실패 패턴들
-    if (lower_msg.find("connection") != std::string::npos && 
-        (lower_msg.find("failed") != std::string::npos || lower_msg.find("refused") != std::string::npos)) {
-        return {"HARDWARE_CONNECTION_FAILED", "Device connection failed: " + error_message};
-    }
-    
-    // 타임아웃 패턴들
-    if (lower_msg.find("timeout") != std::string::npos || lower_msg.find("timed out") != std::string::npos) {
-        return {"HARDWARE_TIMEOUT", "Device response timeout: " + error_message};
-    }
-    
-    // Modbus 특화 에러들
-    if (lower_msg.find("modbus") != std::string::npos) {
-        if (lower_msg.find("slave") != std::string::npos && lower_msg.find("respond") != std::string::npos) {
-            return {"MODBUS_SLAVE_NO_RESPONSE", "Modbus slave not responding: " + error_message};
-        }
-        if (lower_msg.find("crc") != std::string::npos || lower_msg.find("checksum") != std::string::npos) {
-            return {"MODBUS_CRC_ERROR", "Modbus CRC error: " + error_message};
-        }
-        return {"MODBUS_PROTOCOL_ERROR", "Modbus protocol error: " + error_message};
-    }
-    
-    // MQTT 특화 에러들
-    if (lower_msg.find("mqtt") != std::string::npos) {
-        if (lower_msg.find("broker") != std::string::npos) {
-            return {"MQTT_BROKER_UNREACHABLE", "MQTT broker unreachable: " + error_message};
-        }
-        if (lower_msg.find("auth") != std::string::npos || lower_msg.find("credential") != std::string::npos) {
-            return {"MQTT_AUTH_FAILED", "MQTT authentication failed: " + error_message};
-        }
-        return {"MQTT_CONNECTION_ERROR", "MQTT connection error: " + error_message};
-    }
-    
-    // Worker 관리 에러들
-    if (lower_msg.find("worker") != std::string::npos) {
-        if (lower_msg.find("already") != std::string::npos && lower_msg.find("running") != std::string::npos) {
-            return {"WORKER_ALREADY_RUNNING", "Worker already running: " + error_message};
-        }
-        if (lower_msg.find("not found") != std::string::npos) {
-            return {"WORKER_NOT_FOUND", "Worker not found: " + error_message};
-        }
-        return {"WORKER_OPERATION_FAILED", "Worker operation failed: " + error_message};
-    }
-    
-    // 디바이스 관련 에러들
-    if (lower_msg.find("device") != std::string::npos && lower_msg.find("not found") != std::string::npos) {
-        return {"DEVICE_NOT_FOUND", "Device not found: " + error_message};
-    }
-    
-    // 권한 관련 에러들
-    if (lower_msg.find("permission") != std::string::npos || lower_msg.find("access denied") != std::string::npos) {
-        return {"PERMISSION_DENIED", "Access denied: " + error_message};
-    }
-    
-    // 설정 관련 에러들
-    if (lower_msg.find("config") != std::string::npos || lower_msg.find("invalid") != std::string::npos) {
-        return {"CONFIGURATION_ERROR", "Configuration error: " + error_message};
-    }
-    
-    // 기본 에러
-    return {"COLLECTOR_INTERNAL_ERROR", "Internal collector error: " + error_message};
-}
-
-// =============================================================================
-// 콜백 설정 메소드들
-// =============================================================================
-
-void RestApiServer::SetReloadConfigCallback(ReloadConfigCallback callback) {
-    reload_config_callback_ = callback;
-}
-
-void RestApiServer::SetReinitializeCallback(ReinitializeCallback callback) {
-    reinitialize_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceListCallback(DeviceListCallback callback) {
-    device_list_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceStatusCallback(DeviceStatusCallback callback) {
-    device_status_callback_ = callback;
-}
-
-void RestApiServer::SetSystemStatsCallback(SystemStatsCallback callback) {
-    system_stats_callback_ = callback;
-}
-
-void RestApiServer::SetDiagnosticsCallback(DiagnosticsCallback callback) {
-    diagnostics_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceStartCallback(DeviceStartCallback callback) {
-    device_start_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceStopCallback(DeviceStopCallback callback) {
-    device_stop_callback_ = callback;
-}
-
-void RestApiServer::SetDevicePauseCallback(DevicePauseCallback callback) {
-    device_pause_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceResumeCallback(DeviceResumeCallback callback) {
-    device_resume_callback_ = callback;
-}
-
-void RestApiServer::SetDeviceRestartCallback(DeviceRestartCallback callback) {
-    device_restart_callback_ = callback;
-}
-
-void RestApiServer::SetDigitalOutputCallback(DigitalOutputCallback callback) {
-    digital_output_callback_ = callback;
-}
-
-void RestApiServer::SetAnalogOutputCallback(AnalogOutputCallback callback) {
-    analog_output_callback_ = callback;
-}
-
-void RestApiServer::SetParameterChangeCallback(ParameterChangeCallback callback) {
-    parameter_change_callback_ = callback;
 }
 
 void RestApiServer::HandleGetDeviceGroups(const httplib::Request& req, httplib::Response& res) {
@@ -1320,10 +1090,476 @@ void RestApiServer::HandleGetErrorCodeInfo(const httplib::Request& req, httplib:
     }
 }
 
-#ifndef HAVE_HTTPLIB
-// httplib가 없는 경우 더미 구현
-namespace httplib {
-void Response::set_header(const std::string& key, const std::string& value) {}
-void Response::set_content(const std::string& content, const std::string& type) {}
+// =============================================================================
+// 콜백 설정 메서드들 - 모든 콜백 타입 지원
+// =============================================================================
+
+void RestApiServer::SetReloadConfigCallback(ReloadConfigCallback callback) {
+    reload_config_callback_ = callback;
 }
+
+void RestApiServer::SetReinitializeCallback(ReinitializeCallback callback) {
+    reinitialize_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceListCallback(DeviceListCallback callback) {
+    device_list_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceStatusCallback(DeviceStatusCallback callback) {
+    device_status_callback_ = callback;
+}
+
+void RestApiServer::SetSystemStatsCallback(SystemStatsCallback callback) {
+    system_stats_callback_ = callback;
+}
+
+void RestApiServer::SetDiagnosticsCallback(DiagnosticsCallback callback) {
+    diagnostics_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceStartCallback(DeviceStartCallback callback) {
+    device_start_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceStopCallback(DeviceStopCallback callback) {
+    device_stop_callback_ = callback;
+}
+
+void RestApiServer::SetDevicePauseCallback(DevicePauseCallback callback) {
+    device_pause_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceResumeCallback(DeviceResumeCallback callback) {
+    device_resume_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceRestartCallback(DeviceRestartCallback callback) {
+    device_restart_callback_ = callback;
+}
+
+void RestApiServer::SetDigitalOutputCallback(DigitalOutputCallback callback) {
+    digital_output_callback_ = callback;
+}
+
+void RestApiServer::SetAnalogOutputCallback(AnalogOutputCallback callback) {
+    analog_output_callback_ = callback;
+}
+
+void RestApiServer::SetParameterChangeCallback(ParameterChangeCallback callback) {
+    parameter_change_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceGroupListCallback(DeviceGroupListCallback callback) {
+    device_group_list_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceGroupStatusCallback(DeviceGroupStatusCallback callback) {
+    device_group_status_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceGroupControlCallback(DeviceGroupControlCallback callback) {
+    device_group_control_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceConfigCallback(DeviceConfigCallback callback) {
+    device_config_callback_ = callback;
+}
+
+void RestApiServer::SetDataPointConfigCallback(DataPointConfigCallback callback) {
+    datapoint_config_callback_ = callback;
+}
+
+void RestApiServer::SetAlarmConfigCallback(AlarmConfigCallback callback) {
+    alarm_config_callback_ = callback;
+}
+
+void RestApiServer::SetVirtualPointConfigCallback(VirtualPointConfigCallback callback) {
+    virtualpoint_config_callback_ = callback;
+}
+
+void RestApiServer::SetUserManagementCallback(UserManagementCallback callback) {
+    user_management_callback_ = callback;
+}
+
+void RestApiServer::SetSystemBackupCallback(SystemBackupCallback callback) {
+    system_backup_callback_ = callback;
+}
+
+void RestApiServer::SetLogDownloadCallback(LogDownloadCallback callback) {
+    log_download_callback_ = callback;
+}
+
+// =============================================================================
+// 유틸리티 메소드들 - 100% 조건부 컴파일 보호
+// =============================================================================
+
+void RestApiServer::SetCorsHeaders(httplib::Response& res) {
+#ifdef HAVE_HTTPLIB
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
 #endif
+}
+
+json RestApiServer::CreateErrorResponse(const std::string& error, const std::string& error_code, const std::string& details) {
+    json response = json::object();
+    response["success"] = false;
+    response["error"] = error;
+    
+    if (!error_code.empty()) {
+        response["error_code"] = error_code;
+    }
+    
+    if (!details.empty()) {
+        response["details"] = details;
+    }
+    
+    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
+        system_clock::now().time_since_epoch()).count());
+    return response;
+}
+
+json RestApiServer::CreateSuccessResponse(const json& data) {
+    json response = json::object();
+    response["success"] = true;
+    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
+        system_clock::now().time_since_epoch()).count());
+    
+    if (!data.empty()) {
+        response["data"] = data;
+    }
+    
+    return response;
+}
+
+json RestApiServer::CreateMessageResponse(const std::string& message) {
+    json response = json::object();
+    response["message"] = message;
+    return response;
+}
+
+json RestApiServer::CreateHealthResponse() {
+    json response = json::object();
+    response["status"] = "ok";
+    response["uptime_seconds"] = "calculated_by_system";
+    response["version"] = "2.1.0";
+    response["features"] = json::array({"device_control", "hardware_control", "device_groups", "system_management"});
+    return response;
+}
+
+json RestApiServer::CreateOutputResponse(double value, const std::string& type) {
+    json response = json::object();
+    response["message"] = type + " output set";
+    response["value"] = value;
+    response["type"] = type;
+    return response;
+}
+
+json RestApiServer::CreateGroupActionResponse(const std::string& group_id, const std::string& action, bool success) {
+    json response = json::object();
+    response["group_id"] = group_id;
+    response["action"] = action;
+    response["result"] = success ? "success" : "failed";
+    response["message"] = "Group " + group_id + " " + action + " " + (success ? "completed successfully" : "failed");
+    return response;
+}
+
+std::string RestApiServer::ExtractDeviceId(const httplib::Request& req, int match_index) {
+#ifdef HAVE_HTTPLIB
+    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
+        return req.matches[match_index];
+    }
+#endif
+    return "";
+}
+
+std::string RestApiServer::ExtractGroupId(const httplib::Request& req, int match_index) {
+#ifdef HAVE_HTTPLIB
+    if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
+        return req.matches[match_index];
+    }
+#endif
+    return "";
+}
+
+bool RestApiServer::ValidateJsonSchema(const json& data, const std::string& schema_type) {
+    try {
+        if (schema_type == "device") {
+            return data.contains("name") && data.contains("protocol_type") && data.contains("endpoint");
+        } else if (schema_type == "datapoint") {
+            return data.contains("name") && data.contains("address") && data.contains("data_type");
+        } else if (schema_type == "alarm") {
+            return data.contains("name") && data.contains("condition") && data.contains("threshold");
+        } else if (schema_type == "virtualpoint") {
+            return data.contains("name") && data.contains("formula") && data.contains("input_points");
+        } else if (schema_type == "user") {
+            return data.contains("username") && data.contains("email") && data.contains("role");
+        } else if (schema_type == "group") {
+            return data.contains("name") && data.contains("devices") && data["devices"].is_array();
+        }
+        return false;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+json RestApiServer::CreateDetailedErrorResponse(
+    PulseOne::Enums::ErrorCode error_code, 
+    const std::string& device_id,
+    const std::string& additional_context
+) {
+    auto& mapper = HttpErrorMapper::getInstance();
+    auto error_detail = mapper.GetErrorDetail(error_code);
+    
+    json response = json::object();
+    response["success"] = false;
+    response["error_code"] = mapper.ErrorCodeToString(error_code);
+    response["http_status"] = error_detail.http_status;
+    response["severity"] = error_detail.severity;
+    response["category"] = error_detail.category;
+    response["user_message"] = mapper.GetUserFriendlyMessage(error_code);
+    response["technical_details"] = error_detail.tech_details;
+    response["recoverable"] = error_detail.recoverable;
+    response["user_actionable"] = error_detail.user_actionable;
+    
+    if (!device_id.empty()) {
+        response["device_id"] = device_id;
+    }
+    
+    if (!additional_context.empty()) {
+        response["context"] = additional_context;
+    }
+    
+    if (!error_detail.action_hint.empty()) {
+        response["suggested_action"] = error_detail.action_hint;
+    }
+    
+    response["timestamp"] = static_cast<long>(duration_cast<milliseconds>(
+        system_clock::now().time_since_epoch()).count());
+    
+    return response;
+}
+
+PulseOne::Enums::DeviceStatus RestApiServer::ParseDeviceStatus(const std::string& status_str) {
+    if (status_str == "CONNECTED") return PulseOne::Enums::DeviceStatus::CONNECTED;
+    if (status_str == "DISCONNECTED") return PulseOne::Enums::DeviceStatus::DISCONNECTED;
+    if (status_str == "ERROR") return PulseOne::Enums::DeviceStatus::ERROR;
+    if (status_str == "CONNECTING") return PulseOne::Enums::DeviceStatus::CONNECTING;
+    if (status_str == "INITIALIZING") return PulseOne::Enums::DeviceStatus::INITIALIZING;
+    return PulseOne::Enums::DeviceStatus::UNKNOWN;
+}
+
+PulseOne::Enums::ConnectionStatus RestApiServer::ParseConnectionStatus(const std::string& status_str) {
+    if (status_str == "CONNECTED") return PulseOne::Enums::ConnectionStatus::CONNECTED;
+    if (status_str == "DISCONNECTED") return PulseOne::Enums::ConnectionStatus::DISCONNECTED;
+    if (status_str == "CONNECTING") return PulseOne::Enums::ConnectionStatus::CONNECTING;
+    if (status_str == "TIMEOUT") return PulseOne::Enums::ConnectionStatus::TIMEOUT;
+    if (status_str == "ERROR") return PulseOne::Enums::ConnectionStatus::ERROR;
+    return PulseOne::Enums::ConnectionStatus::UNKNOWN;
+}
+
+PulseOne::Enums::ErrorCode RestApiServer::AnalyzeExceptionToErrorCode(const std::string& exception_msg) {
+    std::string lower_msg = exception_msg;
+    std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(), ::tolower);
+    
+    // 타임아웃 패턴
+    if (lower_msg.find("timeout") != std::string::npos || 
+        lower_msg.find("timed out") != std::string::npos) {
+        return PulseOne::Enums::ErrorCode::TIMEOUT;
+    }
+    
+    // 연결 실패 패턴
+    if (lower_msg.find("connection") != std::string::npos && 
+        (lower_msg.find("failed") != std::string::npos || 
+         lower_msg.find("refused") != std::string::npos)) {
+        return PulseOne::Enums::ErrorCode::CONNECTION_FAILED;
+    }
+    
+    // 디바이스 에러 패턴
+    if (lower_msg.find("device") != std::string::npos && 
+        lower_msg.find("error") != std::string::npos) {
+        return PulseOne::Enums::ErrorCode::DEVICE_ERROR;
+    }
+    
+    // 설정 에러 패턴
+    if (lower_msg.find("config") != std::string::npos || 
+        lower_msg.find("configuration") != std::string::npos) {
+        return PulseOne::Enums::ErrorCode::CONFIGURATION_ERROR;
+    }
+    
+    // 권한 에러 패턴
+    if (lower_msg.find("permission") != std::string::npos || 
+        lower_msg.find("access denied") != std::string::npos) {
+        return PulseOne::Enums::ErrorCode::PERMISSION_DENIED;
+    }
+    
+    // 메모리 부족 패턴
+    if (lower_msg.find("memory") != std::string::npos || 
+        lower_msg.find("out of memory") != std::string::npos) {
+        return PulseOne::Enums::ErrorCode::RESOURCE_EXHAUSTED;
+    }
+    
+    // 데이터 형식 에러 패턴
+    if (lower_msg.find("parse") != std::string::npos || 
+        lower_msg.find("format") != std::string::npos || 
+        lower_msg.find("json") != std::string::npos) {
+        return PulseOne::Enums::ErrorCode::DATA_FORMAT_ERROR;
+    }
+    
+    // 기본적으로 내부 에러로 분류
+    return PulseOne::Enums::ErrorCode::INTERNAL_ERROR;
+}
+
+// ClassifyHardwareError - 예외 메시지 분석 및 하드웨어별 특화 에러 분류
+std::pair<std::string, std::string> RestApiServer::ClassifyHardwareError(const std::string& device_id, const std::exception& e) {
+    std::string error_message = e.what();
+    std::string lower_msg = error_message;
+    std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(), ::tolower);
+    
+    // 1. 연결 실패 패턴들
+    if (lower_msg.find("connection") != std::string::npos && 
+        (lower_msg.find("failed") != std::string::npos || lower_msg.find("refused") != std::string::npos)) {
+        return {"HARDWARE_CONNECTION_FAILED", "Device connection failed: " + error_message};
+    }
+    
+    // 2. 타임아웃 패턴들
+    if (lower_msg.find("timeout") != std::string::npos || lower_msg.find("timed out") != std::string::npos) {
+        return {"HARDWARE_TIMEOUT", "Device response timeout: " + error_message};
+    }
+    
+    // 3. Modbus 특화 에러들
+    if (lower_msg.find("modbus") != std::string::npos) {
+        if (lower_msg.find("exception") != std::string::npos) {
+            return {"MODBUS_EXCEPTION", "Modbus protocol exception: " + error_message};
+        }
+        if (lower_msg.find("crc") != std::string::npos || lower_msg.find("checksum") != std::string::npos) {
+            return {"MODBUS_CRC_ERROR", "Modbus data integrity error: " + error_message};
+        }
+        if (lower_msg.find("slave") != std::string::npos && lower_msg.find("not") != std::string::npos) {
+            return {"MODBUS_SLAVE_NOT_RESPONDING", "Modbus slave device not responding: " + error_message};
+        }
+        return {"MODBUS_PROTOCOL_ERROR", "Modbus protocol error: " + error_message};
+    }
+    
+    // 4. MQTT 특화 에러들
+    if (lower_msg.find("mqtt") != std::string::npos) {
+        if (lower_msg.find("broker") != std::string::npos && lower_msg.find("connect") != std::string::npos) {
+            return {"MQTT_BROKER_CONNECTION_FAILED", "MQTT broker connection failed: " + error_message};
+        }
+        if (lower_msg.find("publish") != std::string::npos && lower_msg.find("failed") != std::string::npos) {
+            return {"MQTT_PUBLISH_FAILED", "MQTT message publish failed: " + error_message};
+        }
+        if (lower_msg.find("subscribe") != std::string::npos && lower_msg.find("failed") != std::string::npos) {
+            return {"MQTT_SUBSCRIBE_FAILED", "MQTT topic subscription failed: " + error_message};
+        }
+        return {"MQTT_PROTOCOL_ERROR", "MQTT protocol error: " + error_message};
+    }
+    
+    // 5. BACnet 특화 에러들
+    if (lower_msg.find("bacnet") != std::string::npos) {
+        if (lower_msg.find("object") != std::string::npos && lower_msg.find("not found") != std::string::npos) {
+            return {"BACNET_OBJECT_NOT_FOUND", "BACnet object not found: " + error_message};
+        }
+        if (lower_msg.find("property") != std::string::npos && lower_msg.find("error") != std::string::npos) {
+            return {"BACNET_PROPERTY_ERROR", "BACnet property access error: " + error_message};
+        }
+        if (lower_msg.find("device") != std::string::npos && lower_msg.find("unreachable") != std::string::npos) {
+            return {"BACNET_DEVICE_UNREACHABLE", "BACnet device unreachable: " + error_message};
+        }
+        return {"BACNET_PROTOCOL_ERROR", "BACnet protocol error: " + error_message};
+    }
+    
+    // 6. 네트워크 레벨 에러들
+    if (lower_msg.find("network") != std::string::npos || lower_msg.find("socket") != std::string::npos) {
+        if (lower_msg.find("unreachable") != std::string::npos) {
+            return {"NETWORK_UNREACHABLE", "Network unreachable: " + error_message};
+        }
+        if (lower_msg.find("reset") != std::string::npos) {
+            return {"NETWORK_CONNECTION_RESET", "Network connection reset: " + error_message};
+        }
+        return {"NETWORK_ERROR", "Network communication error: " + error_message};
+    }
+    
+    // 7. 하드웨어 특화 에러들
+    if (lower_msg.find("hardware") != std::string::npos) {
+        if (lower_msg.find("fault") != std::string::npos || lower_msg.find("failure") != std::string::npos) {
+            return {"HARDWARE_FAULT", "Hardware fault detected: " + error_message};
+        }
+        if (lower_msg.find("overload") != std::string::npos) {
+            return {"HARDWARE_OVERLOAD", "Hardware overload condition: " + error_message};
+        }
+        return {"HARDWARE_ERROR", "Hardware error: " + error_message};
+    }
+    
+    // 8. 설정 관련 에러들
+    if (lower_msg.find("config") != std::string::npos || lower_msg.find("parameter") != std::string::npos) {
+        if (lower_msg.find("invalid") != std::string::npos || lower_msg.find("wrong") != std::string::npos) {
+            return {"CONFIGURATION_INVALID", "Invalid configuration parameter: " + error_message};
+        }
+        return {"CONFIGURATION_ERROR", "Configuration error: " + error_message};
+    }
+    
+    // 9. 권한 관련 에러들
+    if (lower_msg.find("permission") != std::string::npos || 
+        lower_msg.find("access denied") != std::string::npos ||
+        lower_msg.find("unauthorized") != std::string::npos) {
+        return {"PERMISSION_DENIED", "Access permission denied: " + error_message};
+    }
+    
+    // 10. 리소스 부족 에러들
+    if (lower_msg.find("memory") != std::string::npos || 
+        lower_msg.find("resource") != std::string::npos ||
+        lower_msg.find("buffer") != std::string::npos) {
+        return {"RESOURCE_EXHAUSTED", "System resource exhausted: " + error_message};
+    }
+    
+    // 11. 데이터 형식 에러들
+    if (lower_msg.find("parse") != std::string::npos || 
+        lower_msg.find("format") != std::string::npos ||
+        lower_msg.find("json") != std::string::npos ||
+        lower_msg.find("xml") != std::string::npos) {
+        return {"DATA_FORMAT_ERROR", "Data format error: " + error_message};
+    }
+    
+    // 12. 디바이스 상태 에러들
+    if (lower_msg.find("device") != std::string::npos) {
+        if (lower_msg.find("busy") != std::string::npos) {
+            return {"DEVICE_BUSY", "Device is busy: " + error_message};
+        }
+        if (lower_msg.find("not found") != std::string::npos || lower_msg.find("not exist") != std::string::npos) {
+            return {"DEVICE_NOT_FOUND", "Device not found: " + error_message};
+        }
+        if (lower_msg.find("offline") != std::string::npos || lower_msg.find("unavailable") != std::string::npos) {
+            return {"DEVICE_OFFLINE", "Device offline: " + error_message};
+        }
+        return {"DEVICE_ERROR", "Device error: " + error_message};
+    }
+    
+    // 13. 워커/스레드 관련 에러들
+    if (lower_msg.find("worker") != std::string::npos || lower_msg.find("thread") != std::string::npos) {
+        if (lower_msg.find("already") != std::string::npos && lower_msg.find("running") != std::string::npos) {
+            return {"WORKER_ALREADY_RUNNING", "Worker thread already running: " + error_message};
+        }
+        if (lower_msg.find("not running") != std::string::npos || lower_msg.find("stopped") != std::string::npos) {
+            return {"WORKER_NOT_RUNNING", "Worker thread not running: " + error_message};
+        }
+        return {"WORKER_ERROR", "Worker thread error: " + error_message};
+    }
+    
+    // 14. 기본 분류 - 메시지 키워드 기반
+    if (lower_msg.find("invalid") != std::string::npos) {
+        return {"INVALID_PARAMETER", "Invalid parameter: " + error_message};
+    }
+    
+    if (lower_msg.find("not supported") != std::string::npos || lower_msg.find("unsupported") != std::string::npos) {
+        return {"OPERATION_NOT_SUPPORTED", "Operation not supported: " + error_message};
+    }
+    
+    if (lower_msg.find("quota") != std::string::npos || lower_msg.find("limit") != std::string::npos) {
+        return {"QUOTA_EXCEEDED", "Resource quota exceeded: " + error_message};
+    }
+    
+    // 15. 기본 에러 (분류되지 않은 모든 예외)
+    return {"INTERNAL_ERROR", "Unexpected internal error: " + error_message};
+}

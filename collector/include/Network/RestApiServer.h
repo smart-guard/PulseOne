@@ -1,6 +1,6 @@
 // =============================================================================
 // collector/include/Network/RestApiServer.h
-// REST API 서버 헤더 파일
+// REST API 서버 헤더 파일 - 조건부 컴파일 수정
 // =============================================================================
 
 #ifndef PULSEONE_REST_API_SERVER_H
@@ -23,15 +23,10 @@
 // nlohmann/json
 #include <nlohmann/json.hpp>
 
-// HTTP 라이브러리 전방 선언
+// 🔥 HTTP 라이브러리 조건부 포함 (프로젝트 패턴 준수)
 #ifdef HAVE_HTTPLIB
 #include <httplib.h>
 #endif
-namespace httplib {
-    class Request;
-    class Response;
-    class Server;
-}
 
 namespace PulseOne {
 namespace Network {
@@ -217,7 +212,11 @@ private:
 
 private:
     int port_;
+#ifdef HAVE_HTTPLIB
     std::unique_ptr<httplib::Server> server_;
+#else
+    std::unique_ptr<void> server_;  // 더미 포인터
+#endif
     std::thread server_thread_;
     std::atomic<bool> running_;
     
