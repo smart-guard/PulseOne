@@ -1,30 +1,45 @@
+// =============================================================================
+// collector/src/Workers/Base/SerialBasedWorker.cpp - Windows 크로스 컴파일 완전 대응
+// =============================================================================
 
 /**
  * @file SerialBasedWorker.cpp
- * @brief 시리얼 통신 기반 프로토콜 워커의 구현
+ * @brief 크로스 플랫폼 시리얼 통신 기반 프로토콜 워커의 구현
  * @author PulseOne Development Team
- * @date 2025-01-22
- * @version 1.0.0
+ * @date 2025-09-08
+ * @version 8.0.0 - Windows 크로스 컴파일 완전 대응
  */
 
 #include "Workers/Base/SerialBasedWorker.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
-#include "Common/Enums.h"
 #include <chrono>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <cstring>      // strerror, memset 함수용
-#include <cerrno>       // errno 변수용
-#include <fcntl.h>      // open, O_RDWR, O_NOCTTY
-#include <unistd.h>     // close, read, write
-#include <sys/ioctl.h>  // ioctl
-#include "Platform/PlatformCompat.h"
+
+// =============================================================================
+// 플랫폼별 시스템 헤더 (조건부 include)
+// =============================================================================
+#if PULSEONE_WINDOWS
+    #include <windows.h>
+    #include <winbase.h>
+    #include <setupapi.h>
+    #include <devguid.h>
+    #include <regstr.h>
+    #pragma comment(lib, "setupapi.lib")
+#else
+    #include <cstring>      // strerror, memset 함수용
+    #include <cerrno>       // errno 변수용
+    #include <fcntl.h>      // open, O_RDWR, O_NOCTTY
+    #include <unistd.h>     // close, read, write
+    #include <sys/ioctl.h>  // ioctl
+    #include <sys/select.h> // select
+#endif
 
 using namespace std::chrono;
 using LogLevel = PulseOne::Enums::LogLevel;
-using LogLevel = PulseOne::Enums::LogLevel;
+
 namespace PulseOne {
 namespace Workers {
 
@@ -32,11 +47,11 @@ namespace Workers {
 // 생성자 및 소멸자
 // =============================================================================
 
-SerialBasedWorker::SerialBasedWorker(const PulseOne::DeviceInfo& device_info)
+SerialBasedWorker::SerialBasedWorker(const PulseOne::Structs::DeviceInfo& device_info)
     : BaseDeviceWorker(device_info)
-    , serial_fd_(-1) {
+    , serial_handle_(SERIAL_INVALID_HANDLE) {
     
-    // endpoint에서 시리얼 설정 파싱 (device_info_는 이제 protected)
+    // endpoint에서 시리얼 설정 파싱
     ParseEndpoint();
     
     // BaseDeviceWorker 재연결 설정 활용
@@ -48,7 +63,7 @@ SerialBasedWorker::SerialBasedWorker(const PulseOne::DeviceInfo& device_info)
     settings.keep_alive_interval_seconds = 45;  // 시리얼 Keep-alive
     UpdateReconnectionSettings(settings);
     
-    LogMessage(LogLevel::INFO, "SerialBasedWorker created for device: " + device_info_.name);
+    LogMessage(LogLevel::INFO, "SerialBasedWorker created for device: " + device_info.name);
 }
 
 SerialBasedWorker::~SerialBasedWorker() {
@@ -148,7 +163,11 @@ std::string SerialBasedWorker::GetSerialConnectionInfo() const {
     ss << "    \"software_flow_control\": " << (serial_config_.software_flow_control ? "true" : "false") << ",\n";
     ss << "    \"read_timeout_ms\": " << serial_config_.read_timeout_ms << ",\n";
     ss << "    \"write_timeout_ms\": " << serial_config_.write_timeout_ms << ",\n";
-    ss << "    \"serial_fd\": " << serial_fd_ << ",\n";
+#if PULSEONE_WINDOWS
+    ss << "    \"serial_handle\": " << reinterpret_cast<uintptr_t>(serial_handle_) << ",\n";
+#else
+    ss << "    \"serial_fd\": " << serial_handle_ << ",\n";
+#endif
     ss << "    \"connected\": " << (IsSerialPortOpen() ? "true" : "false") << "\n";
     ss << "  }\n";
     ss << "}";
@@ -161,7 +180,11 @@ std::string SerialBasedWorker::GetSerialStats() const {
     ss << "  \"serial_port\": {\n";
     ss << "    \"port_name\": \"" << serial_config_.port_name << "\",\n";
     ss << "    \"baud_rate\": " << serial_config_.baud_rate << ",\n";
-    ss << "    \"serial_fd\": " << serial_fd_ << ",\n";
+#if PULSEONE_WINDOWS
+    ss << "    \"serial_handle\": " << reinterpret_cast<uintptr_t>(serial_handle_) << ",\n";
+#else
+    ss << "    \"serial_fd\": " << serial_handle_ << ",\n";
+#endif
     ss << "    \"connected\": " << (IsSerialPortOpen() ? "true" : "false") << "\n";
     ss << "  },\n";
     ss << "  \"base_worker_stats\": " << GetReconnectionStats() << "\n";
@@ -170,7 +193,7 @@ std::string SerialBasedWorker::GetSerialStats() const {
 }
 
 // =============================================================================
-// 시리얼 포트 관리 (실제 구현)
+// 크로스 플랫폼 시리얼 포트 관리 (실제 구현)
 // =============================================================================
 
 bool SerialBasedWorker::ValidateSerialConfig() const {
@@ -206,9 +229,77 @@ bool SerialBasedWorker::OpenSerialPort() {
     // 기존 포트가 열려있으면 닫기
     CloseSerialPort();
     
+#if PULSEONE_WINDOWS
+    // =======================================================================
+    // Windows 시리얼 포트 열기
+    // =======================================================================
+    
+    // COM 포트명 변환 (COM10 이상은 특별한 형태 필요)
+    std::string port_name = serial_config_.port_name;
+    if (port_name.find("COM") == 0 && port_name.length() > 4) {
+        port_name = "\\\\.\\" + port_name;
+    }
+    
+    // 포트 열기
+    serial_handle_ = CreateFileA(
+        port_name.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,                    // exclusive access
+        NULL,                 // default security attributes
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (serial_handle_ == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        LogMessage(LogLevel::LOG_ERROR, 
+                   "Failed to open serial port " + serial_config_.port_name + 
+                   " (Error: " + std::to_string(error) + ")");
+        return false;
+    }
+    
+    // DCB 설정
+    if (!ConfigureWindowsDCB(win_serial_config_.dcb)) {
+        LogMessage(LogLevel::LOG_ERROR, "Failed to configure DCB");
+        CloseSerialPort();
+        return false;
+    }
+    
+    if (!SetCommState(serial_handle_, &win_serial_config_.dcb)) {
+        DWORD error = GetLastError();
+        LogMessage(LogLevel::LOG_ERROR, 
+                   "Failed to set comm state (Error: " + std::to_string(error) + ")");
+        CloseSerialPort();
+        return false;
+    }
+    
+    // 타임아웃 설정
+    if (!ConfigureWindowsTimeouts(win_serial_config_.timeouts)) {
+        LogMessage(LogLevel::LOG_ERROR, "Failed to configure timeouts");
+        CloseSerialPort();
+        return false;
+    }
+    
+    if (!SetCommTimeouts(serial_handle_, &win_serial_config_.timeouts)) {
+        DWORD error = GetLastError();
+        LogMessage(LogLevel::LOG_ERROR, 
+                   "Failed to set comm timeouts (Error: " + std::to_string(error) + ")");
+        CloseSerialPort();
+        return false;
+    }
+    
+    // 버퍼 플러시
+    FlushSerialPort(true, true);
+    
+#else
+    // =======================================================================
+    // Linux 시리얼 포트 열기
+    // =======================================================================
+    
     // 시리얼 포트 열기
-    serial_fd_ = open(serial_config_.port_name.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
-    if (serial_fd_ < 0) {
+    serial_handle_ = open(serial_config_.port_name.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
+    if (serial_handle_ < 0) {
         LogMessage(LogLevel::LOG_ERROR, 
                    "Failed to open serial port " + serial_config_.port_name + 
                    ": " + std::string(strerror(errno)));
@@ -216,11 +307,11 @@ bool SerialBasedWorker::OpenSerialPort() {
     }
     
     // 블로킹 모드로 설정
-    int flags = fcntl(serial_fd_, F_GETFL, 0);
-    fcntl(serial_fd_, F_SETFL, flags & ~O_NONBLOCK);
+    int flags = fcntl(serial_handle_, F_GETFL, 0);
+    fcntl(serial_handle_, F_SETFL, flags & ~O_NONBLOCK);
     
     // 기존 터미널 설정 백업
-    if (tcgetattr(serial_fd_, &original_termios_) != 0) {
+    if (tcgetattr(serial_handle_, &original_termios_) != 0) {
         LogMessage(LogLevel::LOG_ERROR, "Failed to get terminal attributes: " + std::string(strerror(errno)));
         CloseSerialPort();
         return false;
@@ -235,7 +326,7 @@ bool SerialBasedWorker::OpenSerialPort() {
     }
     
     // 터미널 설정 적용
-    if (tcsetattr(serial_fd_, TCSANOW, &tty) != 0) {
+    if (tcsetattr(serial_handle_, TCSANOW, &tty) != 0) {
         LogMessage(LogLevel::LOG_ERROR, "Failed to set terminal attributes: " + std::string(strerror(errno)));
         CloseSerialPort();
         return false;
@@ -244,72 +335,123 @@ bool SerialBasedWorker::OpenSerialPort() {
     // 버퍼 플러시
     FlushSerialPort(true, true);
     
+#endif
+    
     LogMessage(LogLevel::INFO, "Serial port opened successfully: " + serial_config_.port_name);
     return true;
 }
 
 void SerialBasedWorker::CloseSerialPort() {
-    if (serial_fd_ >= 0) {
-        // 원본 터미널 설정 복구
-        tcsetattr(serial_fd_, TCSANOW, &original_termios_);
-        
-        // 포트 닫기
-        close(serial_fd_);
-        serial_fd_ = -1;
+#if PULSEONE_WINDOWS
+    if (serial_handle_ != INVALID_HANDLE_VALUE) {
+        CloseHandle(serial_handle_);
+        serial_handle_ = INVALID_HANDLE_VALUE;
         LogMessage(LogLevel::DEBUG_LEVEL, "Serial port closed");
     }
+#else
+    if (serial_handle_ >= 0) {
+        // 원본 터미널 설정 복구
+        tcsetattr(serial_handle_, TCSANOW, &original_termios_);
+        
+        // 포트 닫기
+        close(serial_handle_);
+        serial_handle_ = -1;
+        LogMessage(LogLevel::DEBUG_LEVEL, "Serial port closed");
+    }
+#endif
 }
 
 bool SerialBasedWorker::IsSerialPortOpen() const {
-    if (serial_fd_ < 0) {
+#if PULSEONE_WINDOWS
+    if (serial_handle_ == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    
+    // Windows에서 포트 상태 확인
+    DWORD errors;
+    COMSTAT status;
+    if (!ClearCommError(serial_handle_, &errors, &status)) {
+        return false;
+    }
+    
+    return true;
+#else
+    if (serial_handle_ < 0) {
         return false;
     }
     
     // 포트 상태 확인
     int status;
-    if (ioctl(serial_fd_, TIOCMGET, &status) < 0) {
+    if (ioctl(serial_handle_, TIOCMGET, &status) < 0) {
         return false;
     }
     
     return true;
+#endif
 }
 
 ssize_t SerialBasedWorker::WriteSerialData(const void* data, size_t length) {
-    if (serial_fd_ < 0) {
+    if (serial_handle_ == SERIAL_INVALID_HANDLE) {
         LogMessage(LogLevel::LOG_ERROR, "Cannot write data: serial port not open");
         return -1;
     }
     
-    ssize_t written = write(serial_fd_, data, length);
+#if PULSEONE_WINDOWS
+    DWORD bytes_written = 0;
+    if (!WriteFile(serial_handle_, data, static_cast<DWORD>(length), &bytes_written, NULL)) {
+        DWORD error = GetLastError();
+        LogMessage(LogLevel::LOG_ERROR, "Serial write failed (Error: " + std::to_string(error) + ")");
+        return -1;
+    }
+    
+    // 전송 완료 대기
+    FlushFileBuffers(serial_handle_);
+    
+    LogMessage(LogLevel::DEBUG_LEVEL, "Sent " + std::to_string(bytes_written) + " bytes via serial");
+    return static_cast<ssize_t>(bytes_written);
+#else
+    ssize_t written = write(serial_handle_, data, length);
     if (written < 0) {
         LogMessage(LogLevel::LOG_ERROR, "Serial write failed: " + std::string(strerror(errno)));
         return -1;
     }
     
     // 전송 완료 대기
-    tcdrain(serial_fd_);
+    tcdrain(serial_handle_);
     
     LogMessage(LogLevel::DEBUG_LEVEL, "Sent " + std::to_string(written) + " bytes via serial");
     return written;
+#endif
 }
 
 ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
-    if (serial_fd_ < 0) {
+    if (serial_handle_ == SERIAL_INVALID_HANDLE) {
         LogMessage(LogLevel::LOG_ERROR, "Cannot read data: serial port not open");
         return -1;
     }
     
+#if PULSEONE_WINDOWS
+    DWORD bytes_read = 0;
+    if (!ReadFile(serial_handle_, buffer, static_cast<DWORD>(buffer_size), &bytes_read, NULL)) {
+        DWORD error = GetLastError();
+        LogMessage(LogLevel::LOG_ERROR, "Serial read failed (Error: " + std::to_string(error) + ")");
+        return -1;
+    }
+    
+    LogMessage(LogLevel::DEBUG_LEVEL, "Received " + std::to_string(bytes_read) + " bytes via serial");
+    return static_cast<ssize_t>(bytes_read);
+#else
     // 타임아웃 설정
     fd_set read_fds;
     struct timeval timeout;
     
     FD_ZERO(&read_fds);
-    FD_SET(serial_fd_, &read_fds);
+    FD_SET(serial_handle_, &read_fds);
     
     timeout.tv_sec = serial_config_.read_timeout_ms / 1000;
     timeout.tv_usec = (serial_config_.read_timeout_ms % 1000) * 1000;
     
-    int select_result = select(serial_fd_ + 1, &read_fds, NULL, NULL, &timeout);
+    int select_result = select(serial_handle_ + 1, &read_fds, NULL, NULL, &timeout);
     
     if (select_result < 0) {
         LogMessage(LogLevel::LOG_ERROR, "Serial select failed: " + std::string(strerror(errno)));
@@ -321,7 +463,7 @@ ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
         return 0;
     }
     
-    ssize_t received = read(serial_fd_, buffer, buffer_size);
+    ssize_t received = read(serial_handle_, buffer, buffer_size);
     if (received < 0) {
         LogMessage(LogLevel::LOG_ERROR, "Serial read failed: " + std::string(strerror(errno)));
         return -1;
@@ -329,28 +471,41 @@ ssize_t SerialBasedWorker::ReadSerialData(void* buffer, size_t buffer_size) {
     
     LogMessage(LogLevel::DEBUG_LEVEL, "Received " + std::to_string(received) + " bytes via serial");
     return received;
+#endif
 }
 
 bool SerialBasedWorker::FlushSerialPort(bool flush_input, bool flush_output) {
-    if (serial_fd_ < 0) {
+    if (serial_handle_ == SERIAL_INVALID_HANDLE) {
         return false;
     }
     
+#if PULSEONE_WINDOWS
+    DWORD flags = 0;
+    if (flush_input) flags |= PURGE_RXCLEAR;
+    if (flush_output) flags |= PURGE_TXCLEAR;
+    
+    if (!PurgeComm(serial_handle_, flags)) {
+        DWORD error = GetLastError();
+        LogMessage(LogLevel::WARN, "Failed to flush serial port (Error: " + std::to_string(error) + ")");
+        return false;
+    }
+#else
     int queue_selector = 0;
     if (flush_input) queue_selector |= TCIFLUSH;
     if (flush_output) queue_selector |= TCOFLUSH;
     
-    if (tcflush(serial_fd_, queue_selector) != 0) {
+    if (tcflush(serial_handle_, queue_selector) != 0) {
         LogMessage(LogLevel::WARN, "Failed to flush serial port: " + std::string(strerror(errno)));
         return false;
     }
+#endif
     
     LogMessage(LogLevel::DEBUG_LEVEL, "Serial port flushed");
     return true;
 }
 
-int SerialBasedWorker::GetSerialFd() const {
-    return serial_fd_;
+SerialHandle SerialBasedWorker::GetSerialHandle() const {
+    return serial_handle_;
 }
 
 // =============================================================================
@@ -359,16 +514,26 @@ int SerialBasedWorker::GetSerialFd() const {
 
 bool SerialBasedWorker::SendProtocolKeepAlive() {
     // 기본 구현: 시리얼 포트 상태만 확인
-    if (serial_fd_ < 0) {
+    if (serial_handle_ == SERIAL_INVALID_HANDLE) {
         return false;
     }
     
-    // DTR 신호 토글 (간단한 Keep-alive)
-    int status;
-    if (ioctl(serial_fd_, TIOCMGET, &status) < 0) {
+#if PULSEONE_WINDOWS
+    // Windows에서 포트 상태 확인
+    DWORD errors;
+    COMSTAT status;
+    if (!ClearCommError(serial_handle_, &errors, &status)) {
         LogMessage(LogLevel::WARN, "Failed to get serial status for keep-alive");
         return false;
     }
+#else
+    // DTR 신호 토글 (간단한 Keep-alive)
+    int status;
+    if (ioctl(serial_handle_, TIOCMGET, &status) < 0) {
+        LogMessage(LogLevel::WARN, "Failed to get serial status for keep-alive");
+        return false;
+    }
+#endif
     
     LogMessage(LogLevel::DEBUG_LEVEL, "Serial keep-alive sent");
     return true;
@@ -380,7 +545,7 @@ bool SerialBasedWorker::SendProtocolKeepAlive() {
 
 void SerialBasedWorker::ParseEndpoint() {
     if (!device_info_.endpoint.empty()) {
-        // endpoint 형식: "/dev/ttyUSB0:9600:8:N:1" 또는 "/dev/ttyUSB0"
+        // endpoint 형식: "/dev/ttyUSB0:9600:8:N:1" 또는 "COM1:9600:8:N:1"
         std::string endpoint = device_info_.endpoint;
         size_t colon_pos = endpoint.find(':');
         
@@ -419,6 +584,107 @@ void SerialBasedWorker::ParseEndpoint() {
         }
     }
 }
+
+#if PULSEONE_WINDOWS
+// =============================================================================
+// Windows 전용 구현
+// =============================================================================
+
+DWORD SerialBasedWorker::BaudRateToWinBaud(int baud_rate) const {
+    switch (baud_rate) {
+        case 1200:    return CBR_1200;
+        case 2400:    return CBR_2400;
+        case 4800:    return CBR_4800;
+        case 9600:    return CBR_9600;
+        case 19200:   return CBR_19200;
+        case 38400:   return CBR_38400;
+        case 57600:   return CBR_57600;
+        case 115200:  return CBR_115200;
+        default:      return CBR_9600;  // 기본값
+    }
+}
+
+bool SerialBasedWorker::ConfigureWindowsDCB(DCB& dcb) const {
+    memset(&dcb, 0, sizeof(dcb));
+    dcb.DCBlength = sizeof(dcb);
+    
+    // 보드레이트 설정
+    dcb.BaudRate = BaudRateToWinBaud(serial_config_.baud_rate);
+    
+    // 데이터 비트
+    dcb.ByteSize = static_cast<BYTE>(serial_config_.data_bits);
+    
+    // 스톱 비트
+    if (serial_config_.stop_bits == 2) {
+        dcb.StopBits = TWOSTOPBITS;
+    } else {
+        dcb.StopBits = ONESTOPBIT;
+    }
+    
+    // 패리티
+    switch (serial_config_.parity) {
+        case 'E':  // Even
+            dcb.Parity = EVENPARITY;
+            dcb.fParity = TRUE;
+            break;
+        case 'O':  // Odd
+            dcb.Parity = ODDPARITY;
+            dcb.fParity = TRUE;
+            break;
+        case 'N':  // None
+        default:
+            dcb.Parity = NOPARITY;
+            dcb.fParity = FALSE;
+            break;
+    }
+    
+    // 흐름 제어
+    if (serial_config_.hardware_flow_control) {
+        dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
+        dcb.fOutxCtsFlow = TRUE;
+    } else {
+        dcb.fRtsControl = RTS_CONTROL_DISABLE;
+        dcb.fOutxCtsFlow = FALSE;
+    }
+    
+    if (serial_config_.software_flow_control) {
+        dcb.fOutX = TRUE;
+        dcb.fInX = TRUE;
+        dcb.XonChar = 0x11;  // XON
+        dcb.XoffChar = 0x13; // XOFF
+    } else {
+        dcb.fOutX = FALSE;
+        dcb.fInX = FALSE;
+    }
+    
+    // 기타 설정
+    dcb.fBinary = TRUE;
+    dcb.fDtrControl = DTR_CONTROL_DISABLE;
+    dcb.fDsrSensitivity = FALSE;
+    dcb.fAbortOnError = FALSE;
+    
+    return true;
+}
+
+bool SerialBasedWorker::ConfigureWindowsTimeouts(COMMTIMEOUTS& timeouts) const {
+    memset(&timeouts, 0, sizeof(timeouts));
+    
+    // 읽기 타임아웃 설정
+    timeouts.ReadIntervalTimeout = 50;  // 문자 간 타임아웃
+    timeouts.ReadTotalTimeoutMultiplier = 10;
+    timeouts.ReadTotalTimeoutConstant = serial_config_.read_timeout_ms;
+    
+    // 쓰기 타임아웃 설정
+    timeouts.WriteTotalTimeoutMultiplier = 10;
+    timeouts.WriteTotalTimeoutConstant = serial_config_.write_timeout_ms;
+    
+    return true;
+}
+
+#else
+// =============================================================================
+// Linux 전용 구현
+// =============================================================================
 
 speed_t SerialBasedWorker::BaudRateToSpeed(int baud_rate) const {
     switch (baud_rate) {
@@ -504,6 +770,8 @@ bool SerialBasedWorker::ConfigureTermios(struct termios& tty) const {
     
     return true;
 }
+
+#endif
 
 } // namespace Workers
 } // namespace PulseOne

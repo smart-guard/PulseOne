@@ -1,27 +1,89 @@
-/**
- * @file SerialBasedWorker.h
- * @brief 시리얼 통신 기반 프로토콜들의 공통 기능을 제공하는 중간 클래스
- * @details Modbus RTU, DNP3 Serial 등이 상속받아 사용 (재연결은 BaseDeviceWorker에서 처리)
- * @author PulseOne Development Team
- * @date 2025-01-22
- * @version 1.0.0
- */
+// =============================================================================
+// collector/include/Workers/Base/SerialBasedWorker.h - Windows 크로스 컴파일 완전 대응
+// =============================================================================
 
 #ifndef WORKERS_SERIAL_BASED_WORKER_H
 #define WORKERS_SERIAL_BASED_WORKER_H
 
-#include "Workers/Base/BaseDeviceWorker.h"
+/**
+ * @file SerialBasedWorker.h - 크로스 플랫폼 시리얼 통신 워커
+ * @brief Windows/Linux 시리얼 포트 지원 기반 워커 클래스
+ * @author PulseOne Development Team
+ * @date 2025-09-08
+ * @version 8.0.0 - Windows 크로스 컴파일 완전 대응
+ */
+
+// =============================================================================
+// 🔥 플랫폼 호환성 헤더 (가장 먼저!)
+// =============================================================================
+#include "Platform/PlatformCompat.h"
+
+// =============================================================================
+// 시스템 헤더들 (플랫폼별 조건부)
+// =============================================================================
 #include <string>
+#include <memory>
+#include <vector>
+#include <map>
+#include <mutex>
 #include <atomic>
 #include <chrono>
-#include <memory>
-#include <termios.h>
+#include <future>
+
+#if PULSEONE_WINDOWS
+    // Windows 시리얼 포트 지원
+    #include <windows.h>
+    #include <winbase.h>
+    #include <tchar.h>
+    
+    // Windows COM 포트 상수들
+    #define SERIAL_INVALID_HANDLE INVALID_HANDLE_VALUE
+    typedef HANDLE SerialHandle;
+    typedef DWORD SerialBaudRate;
+    typedef BYTE SerialParity;
+    typedef BYTE SerialDataBits;
+    typedef BYTE SerialStopBits;
+    
+    // Windows 시리얼 설정 구조체
+    struct WinSerialConfig {
+        HANDLE handle;
+        DCB dcb;
+        COMMTIMEOUTS timeouts;
+        
+        WinSerialConfig() : handle(INVALID_HANDLE_VALUE) {
+            memset(&dcb, 0, sizeof(dcb));
+            memset(&timeouts, 0, sizeof(timeouts));
+        }
+    };
+    
+#else
+    // Linux/Unix 시리얼 포트 지원
+    #include <termios.h>
+    #include <fcntl.h>
+    #include <unistd.h>
+    #include <sys/ioctl.h>
+    #include <cstring>
+    #include <cerrno>
+    
+    typedef int SerialHandle;
+    typedef speed_t SerialBaudRate;
+    typedef char SerialParity;
+    typedef int SerialDataBits;
+    typedef int SerialStopBits;
+    
+    #define SERIAL_INVALID_HANDLE -1
+#endif
+
+// =============================================================================
+// PulseOne 헤더들
+// =============================================================================
+#include "Workers/Base/BaseDeviceWorker.h"
 
 namespace PulseOne {
 namespace Workers {
 
 /**
- * @brief 시리얼 포트 설정
+ * @brief 크로스 플랫폼 시리얼 포트 설정
  */
 struct SerialConfig {
     std::string port_name;           ///< 포트 이름 ("/dev/ttyUSB0", "COM1" 등)
@@ -35,7 +97,11 @@ struct SerialConfig {
     int write_timeout_ms;            ///< 쓰기 타임아웃 (밀리초)
     
     SerialConfig() 
+#if PULSEONE_WINDOWS
+        : port_name("COM1")
+#else
         : port_name("/dev/ttyUSB0")
+#endif
         , baud_rate(9600)
         , data_bits(8)
         , stop_bits(1)
@@ -57,7 +123,7 @@ public:
      * @brief 생성자 (BaseDeviceWorker와 일치)
      * @param device_info 디바이스 정보
      */
-    SerialBasedWorker(const PulseOne::DeviceInfo& device_info);
+    SerialBasedWorker(const PulseOne::Structs::DeviceInfo& device_info);
     
     /**
      * @brief 가상 소멸자
@@ -152,7 +218,7 @@ protected:
     virtual bool SendProtocolKeepAlive();
     
     // =============================================================================
-    // 시리얼 포트 관리 (파생 클래스에서 사용 가능)
+    // 크로스 플랫폼 시리얼 포트 관리 (파생 클래스에서 사용 가능)
     // =============================================================================
     
     /**
@@ -162,24 +228,24 @@ protected:
     bool ValidateSerialConfig() const;
     
     /**
-     * @brief 시리얼 포트 열기
+     * @brief 시리얼 포트 열기 (크로스 플랫폼)
      * @return 성공 시 true
      */
     bool OpenSerialPort();
     
     /**
-     * @brief 시리얼 포트 닫기
+     * @brief 시리얼 포트 닫기 (크로스 플랫폼)
      */
     void CloseSerialPort();
     
     /**
-     * @brief 시리얼 포트 연결 상태 확인
+     * @brief 시리얼 포트 연결 상태 확인 (크로스 플랫폼)
      * @return 연결된 경우 true
      */
     bool IsSerialPortOpen() const;
     
     /**
-     * @brief 시리얼 데이터 전송
+     * @brief 시리얼 데이터 전송 (크로스 플랫폼)
      * @param data 전송할 데이터
      * @param length 데이터 길이
      * @return 전송된 바이트 수 (실패 시 -1)
@@ -187,7 +253,7 @@ protected:
     ssize_t WriteSerialData(const void* data, size_t length);
     
     /**
-     * @brief 시리얼 데이터 수신
+     * @brief 시리얼 데이터 수신 (크로스 플랫폼)
      * @param buffer 수신 버퍼
      * @param buffer_size 버퍼 크기
      * @return 수신된 바이트 수 (실패 시 -1, 타임아웃 시 0)
@@ -195,7 +261,7 @@ protected:
     ssize_t ReadSerialData(void* buffer, size_t buffer_size);
     
     /**
-     * @brief 시리얼 포트 플러시 (버퍼 비우기)
+     * @brief 시리얼 포트 플러시 (크로스 플랫폼)
      * @param flush_input 입력 버퍼 플러시 여부
      * @param flush_output 출력 버퍼 플러시 여부
      * @return 성공 시 true
@@ -203,22 +269,27 @@ protected:
     bool FlushSerialPort(bool flush_input = true, bool flush_output = true);
     
     /**
-     * @brief 파일 디스크립터 조회
-     * @return 시리얼 포트 FD (열리지 않은 경우 -1)
+     * @brief 플랫폼별 핸들 조회
+     * @return 시리얼 포트 핸들 (열리지 않은 경우 SERIAL_INVALID_HANDLE)
      */
-    int GetSerialFd() const;
+    SerialHandle GetSerialHandle() const;
     
     // =============================================================================
     // 파생 클래스에서 사용할 수 있는 보호된 멤버들
     // =============================================================================
     
     SerialConfig serial_config_;                          ///< 시리얼 설정
-    int serial_fd_;                                       ///< 시리얼 포트 파일 디스크립터
+    SerialHandle serial_handle_;                          ///< 크로스 플랫폼 시리얼 핸들
+    
+#if PULSEONE_WINDOWS
+    WinSerialConfig win_serial_config_;                   ///< Windows 전용 시리얼 설정
+#else
     struct termios original_termios_;                     ///< 원본 터미널 설정 (복구용)
+#endif
 
 private:
     // =============================================================================
-    // 내부 유틸리티 메서드들
+    // 내부 유틸리티 메서드들 (크로스 플랫폼)
     // =============================================================================
     
     /**
@@ -226,6 +297,29 @@ private:
      */
     void ParseEndpoint();
     
+#if PULSEONE_WINDOWS
+    /**
+     * @brief 보드레이트를 Windows DCB 상수로 변환
+     * @param baud_rate 보드레이트
+     * @return Windows DCB 보드레이트 상수
+     */
+    DWORD BaudRateToWinBaud(int baud_rate) const;
+    
+    /**
+     * @brief Windows DCB 구조체 설정
+     * @param dcb 설정할 DCB 구조체
+     * @return 성공 시 true
+     */
+    bool ConfigureWindowsDCB(DCB& dcb) const;
+    
+    /**
+     * @brief Windows 타임아웃 설정
+     * @param timeouts 설정할 타임아웃 구조체
+     * @return 성공 시 true
+     */
+    bool ConfigureWindowsTimeouts(COMMTIMEOUTS& timeouts) const;
+    
+#else
     /**
      * @brief 보드레이트를 termios 상수로 변환
      * @param baud_rate 보드레이트
@@ -239,14 +333,15 @@ private:
      * @return 성공 시 true
      */
     bool ConfigureTermios(struct termios& tty) const;
+#endif
 };
 
 // =============================================================================
-// 헬퍼 함수들 (네임스페이스 내)
+// 헬퍼 함수들 (네임스페이스 내, 크로스 플랫폼)
 // =============================================================================
 
 /**
- * @brief 시리얼 포트 유효성 검사
+ * @brief 시리얼 포트 유효성 검사 (크로스 플랫폼)
  * @param port_name 포트 이름
  * @return 유효한 경우 true
  */
@@ -255,22 +350,28 @@ inline bool ValidateSerialPort(const std::string& port_name) {
         return false;
     }
     
+#if PULSEONE_WINDOWS
+    // Windows COM 포트 패턴 검사
+    if (port_name.find("COM") == 0) {
+        return true;
+    }
+    // Windows 확장 포트명도 지원 (COM10 이상)
+    if (port_name.find("\\\\.\\COM") == 0) {
+        return true;
+    }
+#else
     // Linux/Unix 시리얼 포트 패턴 검사
     if (port_name.find("/dev/tty") == 0 || 
         port_name.find("/dev/serial") == 0) {
         return true;
     }
-    
-    // Windows COM 포트 패턴 검사
-    if (port_name.find("COM") == 0) {
-        return true;
-    }
+#endif
     
     return false;
 }
 
 /**
- * @brief 보드레이트 유효성 검사
+ * @brief 보드레이트 유효성 검사 (크로스 플랫폼)
  * @param baud_rate 보드레이트
  * @return 지원되는 보드레이트인 경우 true
  */
