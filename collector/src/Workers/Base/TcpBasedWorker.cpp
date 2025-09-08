@@ -1,20 +1,31 @@
 /**
- * @file TcpBasedWorker.cpp - 완전 구현본 (모든 누락 함수 포함)
+ * @file TcpBasedWorker.cpp - MinGW 호환 최종 수정본
  * @brief TCP 기반 프로토콜 워커 구현 - 크로스 플랫폼 완전 지원
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 2.1.0 - 완전 구현
+ * @version 2.2.0 - MinGW 호환성 완료
  */
 
 // =============================================================================
-// UUID 충돌 방지 (가장 먼저!)
+// UUID 충돌 방지 (헤더보다 먼저!)
 // =============================================================================
 #ifdef _WIN32
-    #define NOMINMAX
-    #define WIN32_LEAN_AND_MEAN
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    // PulseOne UUID와 Windows UUID 충돌 방지
+    #define UUID _WIN32_UUID_BACKUP
 #endif
 
 #include "Workers/Base/TcpBasedWorker.h"
+
+#ifdef _WIN32
+    #undef UUID
+#endif
+
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
 #include <chrono>
@@ -28,7 +39,6 @@
 #ifdef _WIN32
     #include <winsock2.h>
     #include <ws2tcpip.h>
-    #include <iphlpapi.h>
     #include <windows.h>
 #else
     #include <cstring>
@@ -206,7 +216,8 @@ bool TcpBasedWorker::ValidateTcpConfig() const {
         return false;
     }
     
-    if (tcp_config_.port == 0 || tcp_config_.port > 65535) {
+    // uint16_t는 자동으로 0~65535 범위이므로 > 65535 검사 불필요
+    if (tcp_config_.port == 0) {
         LogMessage(LogLevel::LOG_ERROR, "Invalid port: " + std::to_string(tcp_config_.port));
         return false;
     }
@@ -298,10 +309,11 @@ bool TcpBasedWorker::ConnectToServer() {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(tcp_config_.port);
     
-    // IP 주소 변환 (플랫폼별 처리)
+    // IP 주소 변환 (MinGW 호환성을 위해 inet_addr 사용)
 #ifdef _WIN32
-    // Windows: inet_pton 사용
-    if (inet_pton(AF_INET, tcp_config_.ip_address.c_str(), &server_addr.sin_addr) != 1) {
+    // Windows/MinGW: inet_addr 사용 (inet_pton은 MinGW에서 지원 안됨)
+    server_addr.sin_addr.s_addr = inet_addr(tcp_config_.ip_address.c_str());
+    if (server_addr.sin_addr.s_addr == INADDR_NONE) {
         LogMessage(LogLevel::LOG_ERROR, "Invalid IP address: " + tcp_config_.ip_address);
         return false;
     }
@@ -541,7 +553,7 @@ bool TcpBasedWorker::SendProtocolKeepAlive() {
 }
 
 // =============================================================================
-// 에러 메시지 변환 유틸리티
+// 플랫폼별 에러 메시지 변환 유틸리티
 // =============================================================================
 
 #ifdef _WIN32

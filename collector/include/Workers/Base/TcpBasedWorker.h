@@ -252,10 +252,10 @@ private:
     // =============================================================================
     
     /**
-     * @brief 소켓 옵션 설정
+     * @brief 소켓 옵션 설정 (구현부에서 호출하는 정확한 이름!)
      * @return 성공 시 true
      */
-    bool SetSocketOptions();
+    bool ConfigureSocketOptions();
     
     /**
      * @brief 서버에 연결
@@ -285,6 +285,10 @@ private:
      */
     void ParseEndpoint();
 
+    // =============================================================================
+    // 플랫폼별 에러 메시지 변환 (구현부에서 호출되는 함수들)
+    // =============================================================================
+    
 #ifdef _WIN32
     /**
      * @brief Windows Winsock 초기화
@@ -296,6 +300,20 @@ private:
      * @brief Windows Winsock 정리
      */
     void CleanupWinsock();
+    
+    /**
+     * @brief Winsock 에러 코드를 문자열로 변환
+     * @param error_code 에러 코드
+     * @return 에러 메시지 문자열
+     */
+    std::string WinsockErrorToString(int error_code);
+#else
+    /**
+     * @brief Unix 소켓 에러 코드를 문자열로 변환
+     * @param error_code 에러 코드 (errno)
+     * @return 에러 메시지 문자열
+     */
+    std::string UnixSocketErrorToString(int error_code);
 #endif
 };
 

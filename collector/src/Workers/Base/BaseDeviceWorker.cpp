@@ -507,7 +507,7 @@ bool BaseDeviceWorker::IsActiveState(WorkerState state) {
  * @brief 에러 상태인지 확인
  */
 bool BaseDeviceWorker::IsErrorState(WorkerState state) {
-    return state == WorkerState::ERWORKER_ERRORROR ||
+    return state == WorkerState::WORKER_ERROR ||
            state == WorkerState::DEVICE_OFFLINE ||
            state == WorkerState::COMMUNICATION_ERROR ||
            state == WorkerState::DATA_INVALID ||
